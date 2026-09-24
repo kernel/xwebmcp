@@ -1,4 +1,18 @@
 {
   "$comment": "Index of custom WebMCP tools. Update this file whenever you add or change a tool. One entry per tool. namespace must equal the domain. status: draft | qa_passed | verified | broken. Entry fields: domain, tool, file (path under domains/), kind, url_patterns, status, qa_agent (agent id of the independent QA pass, or null), browser_session (live Kernel session id, or null when expired), last_verified (ISO date), notes.",
-  "tools": []
+  "tools": [
+    {
+      "domain": "flyfrontier.com",
+      "tool": "search_flights",
+      "file": "domains/flyfrontier.com/search_flights.js",
+      "kind": "cdp",
+      "namespace": "flyfrontier.com",
+      "url_patterns": ["https://flyfrontier.com/*", "https://*.flyfrontier.com/*"],
+      "status": "verified",
+      "qa_agent": "agt_7944f6b168e2b52c685d",
+      "browser_session": "wok7l4bkxn6ptqe0mf3rig15",
+      "last_verified": "2026-09-24",
+      "notes": "Core QA matrix passed; all 366 returned rows validated. Domain-namespace migration verified from /optional-services with 50 round-trip rows. Supervised use only: extended QA still found 3 stale-state errors in 24 valid-route calls and one timeout; no substituted flights returned. Adult-only; leg metadata fares are not checkout quotes. See domain README."
+    }
+  ]
 }
