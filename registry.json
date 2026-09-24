@@ -1,4 +1,18 @@
 {
   "$comment": "Index of custom WebMCP tools. Update this file whenever you add or change a tool. One entry per tool. namespace must equal the domain. status: draft | qa_passed | verified | broken. Entry fields: domain, tool, file (path under domains/), kind, url_patterns, status, qa_agent (agent id of the independent QA pass, or null), browser_session (live Kernel session id, or null when expired), last_verified (ISO date), notes.",
-  "tools": []
+  "tools": [
+    {
+      "domain": "delta.com",
+      "tool": "search_flights",
+      "file": "domains/delta.com/search_flights.js",
+      "kind": "cdp",
+      "namespace": "delta.com",
+      "url_patterns": ["https://delta.com/*", "https://*.delta.com/*"],
+      "status": "qa_passed",
+      "qa_agent": "agt_b189571b6d300a05921c",
+      "browser_session": "blp6z5n5xt2fuw0sf0pthv8u",
+      "last_verified": "2026-09-24",
+      "notes": "Independent targeted QA passed, including schema and synthetic parser/readiness regressions. A separate live DOM parse returned 20 rows; successful final full-tool invocation remains unverified due to intermittent Delta HTTP 429/SFAF001 failures. Domain migration invocation from a baggage page reached results and preserved explicit error output. Round trips return outbound options only; prices are displayed fares, not passenger totals. Real zero results and completeness beyond the 1.5-second DOM-quiescence heuristic remain unverified."
+    }
+  ]
 }
