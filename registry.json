@@ -1,4 +1,18 @@
 {
   "$comment": "Index of custom WebMCP tools. Update this file whenever you add or change a tool. One entry per tool. namespace must equal the domain. status: draft | qa_passed | verified | broken. Entry fields: domain, tool, file (path under domains/), kind, url_patterns, status, qa_agent (agent id of the independent QA pass, or null), browser_session (live Kernel session id, or null when expired), last_verified (ISO date), notes.",
-  "tools": []
+  "tools": [
+    {
+      "domain": "united.com",
+      "tool": "search_flights",
+      "file": "domains/united.com/search_flights.js",
+      "kind": "cdp",
+      "namespace": "united.com",
+      "url_patterns": ["https://united.com/*", "https://*.united.com/*"],
+      "status": "verified",
+      "qa_agent": "agt_a87837884a432de575e8",
+      "browser_session": "m49n8cyp3k0hzn902fof5x6t",
+      "last_verified": "2026-09-24",
+      "notes": "Independent QA passed; domain-namespace migration verified live from a non-homepage results page: 26 SFO-LAX itineraries in 29.309s. Adults, English/US cash fares, initial outbound page only; roundtrip starting fares are per person. Nearby airports are returned explicitly. Slow-search transport timeouts remain a risk."
+    }
+  ]
 }
