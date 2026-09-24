@@ -1,4 +1,4 @@
 {
-  "$comment": "Index of custom WebMCP tools. Update this file whenever you add or change a tool. status: draft | qa_passed | verified | broken",
+  "$comment": "Index of custom WebMCP tools. Update this file whenever you add or change a tool. One entry per tool. namespace must equal the domain. status: draft | qa_passed | verified | broken. Entry fields: domain, tool, file (path under domains/), kind, url_patterns, status, qa_agent (agent id of the independent QA pass, or null), browser_session (live Kernel session id, or null when expired), last_verified (ISO date), notes.",
   "tools": []
 }

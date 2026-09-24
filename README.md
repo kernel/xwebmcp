@@ -46,7 +46,25 @@ non-empty array of tool definitions** — exactly the string you can hand to
 }]
 ```
 
-Rules:
+## Conventions (required)
+
+**Namespace = the registrable domain** (`delta.com`, `aa.com`, …), exactly matching the
+tool's directory under `domains/`. Never use a shared thematic namespace across sites
+(e.g. `airline_tools`): with a shared namespace, `forceOverwriteNamespace: true` for one
+site atomically replaces another site's tools. Per-domain namespaces make that impossible.
+
+**`match.url_patterns` = apex + wildcard subdomains**, e.g.
+`["https://delta.com/*", "https://*.delta.com/*"]` — never a bare `https://*/*`, and
+https only. Many flows leave `www.` mid-task (e.g. Frontier submits to
+`booking.flyfrontier.com`); wildcard-subdomain patterns keep the tool attached to the tab
+for the whole flow.
+
+**No page assumptions.** Wildcard matching means a tool may be invoked while the browser
+is on any page of the domain (or an unrelated page entirely). `execute` must never assume
+the homepage, a form, or prior state: on invoke it verifies the current page is suitable
+for the flow and, when it is not, navigates to the required entry point first.
+
+## Rules
 
 1. No imports, no `require()`, no top-level statements — a single expression.
 2. Every tool declares a typed `inputSchema` **and** `outputSchema`.
@@ -56,6 +74,8 @@ Rules:
    submission) because it survives document replacement.
 5. Treat all page-provided data as untrusted; tools must not purchase, submit
    payments, or enter personal data unless the tool description says otherwise.
+6. Follow the Conventions section: domain namespace, apex + wildcard-subdomain URL
+   patterns, and no assumptions about the current page.
 
 ## Loading a tool
 
@@ -64,8 +84,8 @@ Rules:
 kernel browsers create --profile personal-stuff --proxy cincy
 
 # 2. in browser_repl (or via POST /browsers/{id}/webmcp/custom-tools):
-const source = (await import("node:fs")).readFileSync("/path/to/search_flights.js", "utf8");
-await webmcp.addCustomTools({ namespace: "<domain>", tools: eval(source) });
+const source = (await import("node:fs")).readFileSync("domains/delta.com/search_flights.js", "utf8");
+await webmcp.addCustomTools({ namespace: "delta.com", tools: eval(source) });
 const live = (await webmcp.listTools()).find(t => t.tool.name === "search_flights");
 const result = await webmcp.invokeTool(live.tool_ref, { /* input */ }, { timeoutSec: 120 });
 ```
