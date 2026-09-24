@@ -1,4 +1,18 @@
 {
   "$comment": "Index of custom WebMCP tools. Update this file whenever you add or change a tool. One entry per tool. namespace must equal the domain. status: draft | qa_passed | verified | broken. Entry fields: domain, tool, file (path under domains/), kind, url_patterns, status, qa_agent (agent id of the independent QA pass, or null), browser_session (live Kernel session id, or null when expired), last_verified (ISO date), notes.",
-  "tools": []
+  "tools": [
+    {
+      "domain": "jetblue.com",
+      "tool": "search_flights",
+      "file": "domains/jetblue.com/search_flights.js",
+      "kind": "cdp",
+      "namespace": "jetblue.com",
+      "url_patterns": ["https://jetblue.com/*", "https://*.jetblue.com/*"],
+      "status": "verified",
+      "qa_agent": "agt_8da83a2e489269a5ff05",
+      "browser_session": "fe509cugfxs9gqfs1wk1kkne",
+      "last_verified": "2026-09-24",
+      "notes": "Independent search/parser QA passed; domain migration live-verified from /travel-agents. Returns initial outbound cards only, including round trips; 1–7 adults; displayed cash fares are not trip totals. Inventory failures remain explicit errors."
+    }
+  ]
 }
