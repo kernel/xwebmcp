@@ -2,20 +2,36 @@
   "$comment": "Index of custom WebMCP tools. Update this file whenever you add or change a tool. One entry per tool. namespace must equal the domain. status: draft | qa_passed | verified | broken. Entry fields: domain, tool, file (path under domains/), kind, url_patterns, status, qa_agent (agent id of the independent QA pass, or null), browser_session (live Kernel session id, or null when expired), last_verified (ISO date), notes.",
   "tools": [
     {
-      "domain": "alaskaair.com",
+      "domain": "delta.com",
       "tool": "search_flights",
-      "file": "domains/alaskaair.com/search_flights.js",
+      "file": "domains/delta.com/search_flights.js",
       "kind": "cdp",
-      "namespace": "alaskaair.com",
+      "namespace": "delta.com",
       "url_patterns": [
-        "https://alaskaair.com/*",
-        "https://*.alaskaair.com/*"
+        "https://delta.com/*",
+        "https://*.delta.com/*"
+      ],
+      "status": "qa_passed",
+      "qa_agent": "agt_b189571b6d300a05921c",
+      "browser_session": "blp6z5n5xt2fuw0sf0pthv8u",
+      "last_verified": "2026-09-24",
+      "notes": "Independent targeted QA passed, including schema and synthetic parser/readiness regressions. A separate live DOM parse returned 20 rows; successful final full-tool invocation remains unverified due to intermittent Delta HTTP 429/SFAF001 failures. Domain migration invocation from a baggage page reached results and preserved explicit error output. Round trips return outbound options only; prices are displayed fares, not passenger totals. Real zero results and completeness beyond the 1.5-second DOM-quiescence heuristic remain unverified."
+    },
+    {
+      "domain": "united.com",
+      "tool": "search_flights",
+      "file": "domains/united.com/search_flights.js",
+      "kind": "cdp",
+      "namespace": "united.com",
+      "url_patterns": [
+        "https://united.com/*",
+        "https://*.united.com/*"
       ],
       "status": "verified",
-      "qa_agent": "agt_9e874c140265bd2a438f",
-      "browser_session": "b0djbuahqoj14q2qy8qhuln1",
+      "qa_agent": "agt_a87837884a432de575e8",
+      "browser_session": "m49n8cyp3k0hzn902fof5x6t",
       "last_verified": "2026-09-24",
-      "notes": "Independent QA checked 60 flight options across six populated searches, plus no-results, invalid-input and offline cases. Domain-namespace migration verified live from /content/travel-info: SEA-SFO round trip returned 10 of 45 options. Adults only; outbound first page; displayed fares per adult, including round-trip starting fares rather than selected return flights. See domain README for limitations."
+      "notes": "Independent QA passed; domain-namespace migration verified live from a non-homepage results page: 26 SFO-LAX itineraries in 29.309s. Adults, English/US cash fares, initial outbound page only; roundtrip starting fares are per person. Nearby airports are returned explicitly. Slow-search transport timeouts remain a risk."
     }
   ]
 }
