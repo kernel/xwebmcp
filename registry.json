@@ -1,4 +1,18 @@
 {
   "$comment": "Index of custom WebMCP tools. Update this file whenever you add or change a tool. One entry per tool. namespace must equal the domain. status: draft | qa_passed | verified | broken. Entry fields: domain, tool, file (path under domains/), kind, url_patterns, status, qa_agent (agent id of the independent QA pass, or null), browser_session (live Kernel session id, or null when expired), last_verified (ISO date), notes.",
-  "tools": []
+  "tools": [
+    {
+      "domain": "aa.com",
+      "tool": "search_flights",
+      "file": "domains/aa.com/search_flights.js",
+      "kind": "cdp",
+      "namespace": "aa.com",
+      "url_patterns": ["https://aa.com/*", "https://*.aa.com/*"],
+      "status": "verified",
+      "qa_agent": "agt_dbdb039786be4bed1121",
+      "browser_session": "qer6pzs0jzhw3r5j9bx7yse4",
+      "last_verified": "2026-09-24",
+      "notes": "Independent QA of the search implementation plus a live migration check from an expired booking page: 40 exact options. First-page outbound options, per-person from-fares; nearby airports and ground transport are labeled. Challenges and connection failures remain possible. Independent repeated-transition coverage of the radio mitigation and long-haul round-trip coverage remain incomplete; see the domain README."
+    }
+  ]
 }
