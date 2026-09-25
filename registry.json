@@ -112,6 +112,22 @@
       "browser_session": "m49n8cyp3k0hzn902fof5x6t",
       "last_verified": "2026-09-24",
       "notes": "Independent QA passed; domain-namespace migration verified live from a non-homepage results page: 26 SFO-LAX itineraries in 29.309s. Adults, English/US cash fares, initial outbound page only; roundtrip starting fares are per person. Nearby airports are returned explicitly. Slow-search transport timeouts remain a risk."
+    },
+    {
+      "domain": "southwest.com",
+      "tool": "login",
+      "file": "domains/southwest.com/login.js",
+      "kind": "cdp",
+      "namespace": "southwest.com",
+      "url_patterns": [
+        "https://southwest.com/*",
+        "https://*.southwest.com/*"
+      ],
+      "status": "qa_passed",
+      "qa_agent": "agt_b130ea47c33f86843968",
+      "browser_session": "jav7en141p05pbvrx59k9i14",
+      "last_verified": "2026-09-25",
+      "notes": "live success verified (logged_in:true, one submission, no MFA); failure path live-verified invalid_credentials; MFA/lockout synthetic only"
     }
   ]
 }
