@@ -8,20 +8,28 @@ const entry = "https://www.jetblue.com/signin";
 const searchEntry = "https://start.duckduckgo.com/";
 const input = { username: "qa@example.invalid", password: "fabricated-test-password" };
 const plain = value => JSON.parse(JSON.stringify(value));
+const branches = { authenticated: 0, mfa_required: 1, human_assist_required: 2, failed: 3 };
 const initial = {
   origin: "https://www.jetblue.com", path: "/signin", url: "https://www.jetblue.com/signin",
-  errors: [], hasForm: true, fieldsReady: true, submitReady: true,
-  remember: false, challenge: null, mfa: null, account: null
+  errors: [], hasForm: true, fieldsReady: true, submitReady: true, remember: false,
+  challenge: null, mfa: null, passkey: null, account: null
 };
+const cookies = [
+  { name: "sid", domain: ".jetblue.com", value: "SECRET-MUST-NOT-APPEAR" },
+  { name: "idx", domain: "www.jetblue.com", value: "SECRET-MUST-NOT-APPEAR" },
+  { name: "sid", domain: "trueblue.jetblue.com", value: "SECRET-MUST-NOT-APPEAR" },
+  { name: "other", domain: ".example.com", value: "SECRET-MUST-NOT-APPEAR" },
+  { name: "lookalike", domain: "jetblue.com.evil.example", value: "SECRET-MUST-NOT-APPEAR" }
+];
 
 function harness(options = {}) {
   let state = { ...initial, ...options.initial };
   let now = 0, reads = 0, submitted = false, readExpression, interrupted = false;
   let url = options.url ?? entry, followedResult = false;
-  const navigation = [], fills = [], clicks = [], lengthChecks = [], searchActions = [];
+  const navigation = [], fills = [], clicks = [], lengthChecks = [], searchActions = [], cdpCalls = [];
   const pageFunctions = {};
   const tools = runInNewContext(`(${source})`, {
-    URL, Date: { now: () => now },
+    URL, Number, Date: { now: () => now },
     pageInfo: async () => ({ url }),
     gotoUrl: async next => { navigation.push(next); url = options.searchUrl ?? next; },
     waitForElement: async selector => !options.missingSelector?.test(selector),
@@ -29,6 +37,11 @@ function harness(options = {}) {
       { role: "combobox", name: "Search with DuckDuckGo", backendNodeId: 1 },
       { role: "button", name: "Search", backendNodeId: 2 }
     ] }),
+    cdp: async (command, params, sessionId) => {
+      cdpCalls.push([command, sessionId]);
+      if (options.cookieReadFails) throw new Error("cookie read unavailable");
+      return { cookies };
+    },
     fillInput: async (selector, value) => {
       if (typeof selector === "object") searchActions.push(["query", value]);
       else {
@@ -55,6 +68,7 @@ function harness(options = {}) {
         interrupted = true;
         throw new Error("Execution context replaced");
       }
+      if (options.humanSignsInAfterReads === reads) state = { ...state, ...options.afterHuman };
       return state;
     },
     click: async selector => {
@@ -76,35 +90,54 @@ function harness(options = {}) {
     },
     waitMs: async ms => { now += ms; }
   });
-  return { tool: tools[0], navigation, fills, clicks, lengthChecks, searchActions, pageFunctions,
+  return { tool: tools[0], navigation, fills, clicks, lengthChecks, searchActions, cdpCalls, pageFunctions,
     reads: () => reads, readExpression: () => readExpression };
 }
 
-function failure(h, result, kind, submitted) {
-  const branch = h.tool.tool.outputSchema.oneOf[1];
+function conforms(h, result, status) {
+  const branch = h.tool.tool.outputSchema.oneOf[branches[status]];
+  assert.equal(result.status, status);
   assert.deepEqual(Object.keys(result).sort(), Array.from(branch.required).sort());
-  assert.equal(result.logged_in, false);
+  assert.equal(typeof result.submission_attempted, "boolean");
+  return branch;
+}
+
+function failure(h, result, kind, submitted) {
+  const branch = conforms(h, result, "failed");
   assert.equal(result.error_kind, kind);
   assert.ok(branch.properties.error_kind.enum.includes(kind));
-  assert.equal(typeof result.error_message, "string");
-  assert.ok(result.error_message.length > 0);
+  assert.ok(typeof result.error_message === "string" && result.error_message.length > 0);
   assert.ok(["site", "tool"].includes(result.message_source));
   assert.ok(result.attempts_remaining_if_shown === null || Number.isInteger(result.attempts_remaining_if_shown));
   assert.equal(result.submission_attempted, submitted);
 }
 
-test("single expression, CDP kind, domain patterns and dual typed schemas", () => {
+function humanAssist(h, result, reason, submitted) {
+  const branch = conforms(h, result, "human_assist_required");
+  assert.equal(result.assist_reason, reason);
+  assert.ok(branch.properties.assist_reason.enum.includes(reason));
+  assert.equal(result.automated_solving, "not_implemented");
+  assert.equal(result.next_step, "human_login_then_capture_session");
+  assert.equal(result.handoff.action, "open_browser_live_view_and_sign_in_manually");
+  assert.ok(result.challenge_evidence.length > 0);
+  assert.equal(result.submission_attempted, submitted);
+}
+
+test("single expression, CDP kind, domain patterns and four typed output states", () => {
   const { tool } = harness();
   assert.equal(tool.kind, "cdp");
   assert.equal(tool.tool.name, "login");
   assert.equal(tool.tool.inputSchema.type, "object");
   assert.equal(tool.tool.outputSchema.type, "object");
-  assert.equal(tool.tool.outputSchema.oneOf.length, 2);
+  assert.deepEqual(plain(tool.tool.outputSchema.oneOf.map(b => b.properties.status.const)),
+    ["authenticated", "mfa_required", "human_assist_required", "failed"]);
+  assert.ok(!tool.tool.outputSchema.oneOf[branches.failed].properties.error_kind.enum.includes("captcha_or_challenge"),
+    "a challenge is its own state, never an error kind");
   assert.deepEqual(plain(tool.match.url_patterns), ["https://jetblue.com/*", "https://*.jetblue.com/*"]);
 });
 
 for (const url of ["about:blank", "https://example.com/", "https://jetblue.com/", "https://help.jetblue.com/", "https://www.jetblue.com/travel-agents", "https://www.jetblue.com/signin/other"]) {
-  test(`navigates to the login entry before reading or filling from ${url}`, async () => {
+  test(`enters through search before reading or filling from ${url}`, async () => {
     const h = harness({ url, after: { errors: ["Unable to sign in"] } });
     failure(h, await h.tool.execute(input), "invalid_credentials", true);
     assert.deepEqual(h.navigation, [searchEntry]);
@@ -115,7 +148,12 @@ for (const url of ["about:blank", "https://example.com/", "https://jetblue.com/"
   });
 }
 
-for (const invalid of [undefined, {}, [], { username: "qa" }, { password: "synthetic" }, { ...input, password: "" }, { ...input, username: " " }, { ...input, remember_me: "yes" }, { ...input, use_filled_form: "yes" }, { ...input, otp: "123456" }, { ...input, use_filled_form: true }]) {
+for (const invalid of [undefined, {}, [], { username: "qa" }, { password: "synthetic" },
+  { ...input, password: "" }, { ...input, username: " " }, { ...input, remember_me: "yes" },
+  { ...input, use_filled_form: "yes" }, { ...input, otp: "123456" }, { ...input, use_filled_form: true },
+  { mode: "solve_captcha" }, { mode: "capture_session", ...input }, { mode: "await_human_login", use_filled_form: true },
+  { mode: "await_human_login", wait_seconds: 5 }, { mode: "await_human_login", wait_seconds: 6000 },
+  { mode: "await_human_login", wait_seconds: 30.5 }]) {
   test(`invalid input rejected without page access: ${JSON.stringify(invalid)}`, async () => {
     const h = harness();
     failure(h, await h.tool.execute(invalid), "validation_error", false);
@@ -130,7 +168,6 @@ for (const scenario of [
   { name: "lockout", after: { errors: ["Account locked. 0 attempts remaining"] }, kind: "locked_or_throttled", remaining: 0 },
   { name: "MFA failure", after: { errors: ["The verification code is incorrect."] }, kind: "mfa_failed" },
   { name: "session expiry", after: { errors: ["You have been logged out due to inactivity. Refresh or return to the sign in screen."] }, kind: "unknown" },
-  { name: "challenge", after: { challenge: "Verify you are human" }, kind: "captcha_or_challenge" },
   { name: "navigation to another origin", after: { origin: "https://example.com" }, kind: "unknown" },
   { name: "click outcome uncertain", clickInterrupted: true, kind: "unknown" },
   { name: "no conclusive outcome", kind: "unknown" }
@@ -146,9 +183,21 @@ for (const scenario of [
 }
 
 for (const scenario of [
+  { name: "rendered challenge after submitting", after: { challenge: "Verify you are human" }, evidence: "Verify you are human" },
+  { name: "challenge wording inside a site error", after: { errors: ["Please complete the CAPTCHA to continue."] }, evidence: "Please complete the CAPTCHA to continue." }
+]) {
+  test(`${scenario.name} reports human assist, never a solve attempt`, async () => {
+    const h = harness(scenario);
+    const result = await h.tool.execute(input);
+    humanAssist(h, result, "captcha_or_challenge", true);
+    assert.equal(result.challenge_evidence, scenario.evidence);
+    assert.deepEqual(h.clicks, ['input[type="submit"]'], "no extra interaction after a challenge");
+  });
+}
+
+for (const scenario of [
   { name: "blank password after fill", initial: { fieldsReady: false }, kind: "validation_error" },
   { name: "password length mismatch", lengthOK: false, kind: "validation_error" },
-  { name: "existing challenge", initial: { challenge: "Verify you are human" }, kind: "captcha_or_challenge" },
   { name: "existing lockout", initial: { errors: ["Too many attempts"] }, kind: "locked_or_throttled" },
   { name: "existing expired flow", initial: { errors: ["You have been logged out due to inactivity."] }, kind: "unknown" },
   { name: "missing form", initial: { hasForm: false }, kind: "unknown" }
@@ -159,6 +208,20 @@ for (const scenario of [
     assert.deepEqual(h.clicks, []);
   });
 }
+
+test("a challenge already on screen stops before any credential is typed", async () => {
+  const h = harness({ initial: { challenge: "Press and hold to confirm you are human" } });
+  humanAssist(h, await h.tool.execute(input), "captcha_or_challenge", false);
+  assert.deepEqual(h.fills, []);
+  assert.deepEqual(h.clicks, []);
+  assert.deepEqual(h.navigation, []);
+});
+
+test("a passkey-only prompt is an unsupported verification handoff, not a failure", async () => {
+  const h = harness({ initial: { hasForm: false, passkey: "Use your passkey to sign in" } });
+  humanAssist(h, await h.tool.execute(input), "unsupported_verification_method", false);
+  assert.deepEqual(h.clicks, []);
+});
 
 test("prefilled mode never calls fillInput or reads a password length", async () => {
   const h = harness({ after: { errors: ["Unable to sign in"] } });
@@ -173,27 +236,78 @@ test("stale unchanged errors time out instead of judging a new attempt", async (
   assert.deepEqual(h.clicks, ['input[type="submit"]']);
 });
 
-for (const mfa of [false, true]) {
-  test(`success branch distinguishes MFA from completed authentication: ${mfa}`, async () => {
-    const h = harness({ readInterrupted: true, after: { hasForm: false, mfa: mfa ? "Get a verification email" : null, account: mfa ? null : "Sign out" } });
-    const result = await h.tool.execute(input);
-    assert.deepEqual(Object.keys(result).sort(), Array.from(h.tool.tool.outputSchema.oneOf[0].required).sort());
-    assert.equal(result.logged_in, true);
-    assert.equal(result.authenticated, !mfa);
-    assert.equal(result.mfa_required, mfa);
-    assert.equal(result.next_step, mfa ? "complete_mfa" : "none");
-    assert.equal(result.submission_attempted, true);
-    assert.deepEqual(h.clicks, ['input[type="submit"]']);
+test("first-step acceptance reports MFA separately from completed authentication", async () => {
+  const h = harness({ readInterrupted: true, after: { hasForm: false, mfa: "Get a verification email" } });
+  const result = await h.tool.execute(input);
+  conforms(h, result, "mfa_required");
+  assert.equal(result.mfa_prompt, "Get a verification email");
+  assert.equal(result.next_step, "complete_mfa");
+  assert.equal(result.submission_attempted, true);
+});
+
+test("completed authentication reports cookie metadata and no cookie values", async () => {
+  const h = harness({ readInterrupted: true, after: { hasForm: false, account: "Sign out" } });
+  const result = await h.tool.execute(input);
+  conforms(h, result, "authenticated");
+  assert.equal(result.account_name_or_hint, "Sign out");
+  assert.deepEqual(plain(result.session), { cookie_read_ok: true, cookie_count: 3, cookie_names: ["idx", "sid"], values_returned: false });
+  assert.ok(!JSON.stringify(result).includes("SECRET-MUST-NOT-APPEAR"), "cookie values must never be returned");
+  assert.deepEqual(plain(h.cdpCalls), [["Storage.getCookies", null]]);
+});
+
+test("capture_session verifies an existing session without typing, clicking or navigating", async () => {
+  const h = harness({ initial: { hasForm: false, account: "Sign out" } });
+  const result = await h.tool.execute({ mode: "capture_session" });
+  conforms(h, result, "authenticated");
+  assert.equal(result.submission_attempted, false);
+  assert.equal(result.session.cookie_count, 3);
+  assert.deepEqual(h.fills, []);
+  assert.deepEqual(h.clicks, []);
+  assert.deepEqual(h.navigation, []);
+});
+
+test("capture_session reports an unreadable cookie store instead of implying an empty one", async () => {
+  const h = harness({ cookieReadFails: true, initial: { hasForm: false, account: "Sign out" } });
+  const result = await h.tool.execute({ mode: "capture_session" });
+  assert.deepEqual(plain(result.session), { cookie_read_ok: false, cookie_count: 0, cookie_names: [], values_returned: false });
+});
+
+for (const scenario of [
+  { name: "no session yet", initial: {}, expect: h => r => failure(h, r, "unknown", false) },
+  { name: "still at a challenge", initial: { challenge: "Verify you are human" }, expect: h => r => humanAssist(h, r, "captcha_or_challenge", false) },
+  { name: "still at MFA", initial: { hasForm: false, mfa: "Get a verification email" }, expect: h => r => conforms(h, r, "mfa_required") }
+]) {
+  test(`capture_session with ${scenario.name} does not claim a session`, async () => {
+    const h = harness({ initial: scenario.initial });
+    scenario.expect(h)(await h.tool.execute({ mode: "capture_session" }));
+    assert.deepEqual(h.clicks, []);
   });
 }
+
+test("await_human_login returns the session once a person finishes signing in", async () => {
+  const h = harness({ humanSignsInAfterReads: 3, afterHuman: { hasForm: false, account: "Sign out" } });
+  const result = await h.tool.execute({ mode: "await_human_login", wait_seconds: 60 });
+  conforms(h, result, "authenticated");
+  assert.equal(result.submission_attempted, false);
+  assert.deepEqual(h.fills, []);
+  assert.deepEqual(h.clicks, []);
+  assert.deepEqual(h.navigation, []);
+});
+
+test("await_human_login times out as pending, not as a failed login", async () => {
+  const h = harness({ initial: { challenge: "Verify you are human" } });
+  const result = await h.tool.execute({ mode: "await_human_login", wait_seconds: 10 });
+  humanAssist(h, result, "pending_human_login", false);
+  assert.deepEqual(h.clicks, []);
+});
 
 function element(text, extra = {}) {
   return { innerText: text, textContent: text, tagName: "DIV", getClientRects: () => [{}], ...extra };
 }
 
-async function parseFixture({ heading, button, code = false, password = false, genericChallenge = false }) {
+async function parseFixture({ heading, button, code = false, password = false, bodyText = null }) {
   const h = harness({ initial: { hasForm: false } });
-  await h.tool.execute(input);
+  await h.tool.execute({ mode: "capture_session" });
   const passcode = code || password ? element("", { type: password ? "password" : "text", value: "synthetic" }) : null;
   const document = {
     querySelector: selector => {
@@ -205,7 +319,7 @@ async function parseFixture({ heading, button, code = false, password = false, g
       if (selector === 'h1,h2,h3,[role="heading"]') return heading ? [element(heading)] : [];
       if (selector === 'a,button,input[type="submit"]') return button ? [element(button, { tagName: "INPUT", type: "submit", value: button })] : [];
       if (selector === 'input[autocomplete="one-time-code"],input[name="credentials.passcode"]') return passcode ? [passcode] : [];
-      if (selector === 'p,div,span' && genericChallenge) return [element("Verify you are human")];
+      if (selector === 'p,div,span' && bodyText) return [element(bodyText)];
       return [];
     }
   };
@@ -221,17 +335,13 @@ for (const fixture of [
   { heading: "Verify with your email", button: "Verify", code: true },
   { heading: "We sent an email to q***@example.invalid. Enter the verification code in the text box.", button: "Verify", code: true }
 ]) {
-  test(`real page-reader recognizes email MFA fixture: ${fixture.heading}`, async () => {
+  test(`page reader recognizes email MFA: ${fixture.heading}`, async () => {
     const state = await parseFixture(fixture);
     assert.equal(state.mfa, fixture.heading);
     assert.equal(state.hasForm, false);
     const h = harness({ initial: plain(state) });
-    const result = await h.tool.execute(input);
-    assert.equal(result.logged_in, true);
-    assert.equal(result.mfa_required, true);
-    assert.equal(result.authenticated, false);
-    assert.equal(result.submission_attempted, false);
-    assert.deepEqual(h.fills, []);
+    const result = await h.tool.execute({ mode: "capture_session" });
+    conforms(h, result, "mfa_required");
     assert.deepEqual(h.clicks, []);
   });
 }
@@ -241,8 +351,15 @@ test("verification-like heading alone is not MFA acceptance", async () => {
   assert.equal((await parseFixture({ heading: "Verify your identity", button: "Verify", password: true })).mfa, null);
 });
 
-test("generic text challenge remains detectable", async () => {
-  assert.equal((await parseFixture({ genericChallenge: true })).challenge, "Verify you are human");
+for (const wording of ["Verify you are human", "Press and hold to continue", "Security check", "Access Denied", "We detected unusual traffic from your network"]) {
+  test(`page reader recognizes challenge wording: ${wording}`, async () => {
+    assert.equal((await parseFixture({ bodyText: wording })).challenge, wording);
+  });
+}
+
+test("page reader recognizes a passkey prompt only while no password form is shown", async () => {
+  assert.equal((await parseFixture({ heading: "Use your passkey to sign in", button: "Continue" })).passkey, "Use your passkey to sign in");
+  assert.equal((await parseFixture({ heading: "Use your passkey to sign in", button: "Continue", password: true })).passkey, null);
 });
 
 test("a direct sign-in entry establishes a real search referral before filling", async () => {
