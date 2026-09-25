@@ -47,7 +47,7 @@
             previous_quantity: { type: "number", minimum: 0, description: "Quantity of this item in the cart before the update." },
             quantity: { type: "number", description: "Quantity now in the cart, as confirmed by Instacart." },
             quantity_type: { type: "string" },
-            cart_item_count: { type: "integer", minimum: 0 },
+            cart_item_count: { type: "integer", minimum: 0, description: "Number of distinct lines in the cart, not units." },
             subtotal_string: { type: ["string", "null"] }
           }
         },
@@ -114,9 +114,19 @@
         };
         // Only the store app's server-rendered pages carry the location; other pages (help, account) fall back to /store.
         const inline = parse(document.getElementById("node-apollo-state")?.textContent);
-        if (inline) return inline;
-        const html = await (await fetch("/store", { credentials: "include" })).text();
-        return parse(html.match(/<script id="node-apollo-state"[^>]*>([\s\S]*?)<\/script>/)?.[1]);
+        if (inline) return { loc: inline };
+        let last = null;
+        for (let attempt = 0; attempt < 2; attempt++) {
+          const response = await fetch("/store", { credentials: "include" });
+          const html = await response.text();
+          last = { status: response.status, url: response.url || "", proxy: /^(?:proxy proxy error|egress-proxy-mitm encountered)/i.test(html.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim()) };
+          const loc = parse(html.match(/<script id="node-apollo-state"[^>]*>([\s\S]*?)<\/script>/)?.[1]);
+          if (loc) return { loc };
+          if (/\/login/.test(last.url)) return { error: failure("not_logged_in", "Instacart redirected the store page to its login page; this session is not logged in. Run the login tool first.") };
+          if (response.status === 200 && !last.proxy) break;
+        }
+        if (last && (last.status !== 200 || last.proxy)) return { error: failure("unknown", `The Instacart store page did not load (HTTP ${last.status}${last.proxy ? ", proxy error page" : ""}); retry shortly.`) };
+        return { error: failure("location_unavailable", "Instacart did not report a shopping location for this session. The tools need a logged-in session with a saved delivery address; run the login tool first.") };
       };
       const currentUser = async () => {
         const r = await gql("SharedCurrentUser", {});
@@ -210,8 +220,9 @@
         const user = await currentUser();
         if (user.error) return { ...user.error, ...mutation };
         if (user.user.guest) return failure("not_logged_in", "This session is not logged in to Instacart; run the login tool first.", mutation);
-        const loc = await readLocation();
-        if (!loc) return failure("location_unavailable", "Instacart did not report a shopping location for this session; open instacart.com and set an address first.", mutation);
+        const located = await readLocation();
+        if (located.error) return { ...located.error, ...mutation };
+        const loc = located.loc;
         const resolved = await resolveShop(arg.slug, arg.serviceType, loc);
         if (resolved.error) return { ...resolved.error, ...mutation };
         const shop = resolved.shop, slug = shop.retailer?.slug || arg.slug;

@@ -123,12 +123,18 @@ function harness(name, options = {}) {
     crypto: { randomUUID: () => "00000000-0000-4000-8000-000000000000" },
     get location() { const u = new URL(url); return { origin: u.origin, hostname: u.hostname, protocol: u.protocol, href: u.href, pathname: u.pathname }; },
     document: {
-      getElementById: id => id === "node-apollo-state" && hasState ? { textContent: encodeURIComponent(JSON.stringify(apolloState)) } : null,
+      getElementById: id => id === "node-apollo-state" && hasState && options.inlineState !== false ? { textContent: encodeURIComponent(JSON.stringify(apolloState)) } : null,
       body: { get innerText() { return bodyText; } }
     },
     fetch: async (input, init = {}) => {
       const target = typeof input === "string" ? new URL(input, "https://www.instacart.com") : input;
-      if (target.pathname === "/store") return { status: 200, text: async () => hasState ? `<html><script id="node-apollo-state" type="application/json">${encodeURIComponent(JSON.stringify(apolloState))}</script></html>` : "<html></html>" };
+      if (target.pathname === "/store") {
+        fx.state.storeFetches = (fx.state.storeFetches ?? 0) + 1;
+        if (options.storePage === "login") return { status: 200, url: "https://www.instacart.com/login?next=%2Fstore", text: async () => "<html>Log in</html>" };
+        if (options.storePage === "proxy") return { status: 502, url: "https://www.instacart.com/store", text: async () => "<html><body>PROXY proxy error the upstream proxy provider timed out</body></html>" };
+        if (options.storePage === "flaky" && fx.state.storeFetches === 1) return { status: 502, url: "https://www.instacart.com/store", text: async () => "<html><body>PROXY proxy error the upstream proxy provider timed out</body></html>" };
+        return { status: 200, url: "https://www.instacart.com/store", text: async () => hasState ? `<html><script id="node-apollo-state" type="application/json">${encodeURIComponent(JSON.stringify(apolloState))}</script></html>` : "<html></html>" };
+      }
       let op, variables;
       if (init.method === "POST") { const body = JSON.parse(init.body); op = body.operationName; variables = body.variables; }
       else { op = target.searchParams.get("operationName"); variables = JSON.parse(target.searchParams.get("variables")); }
@@ -254,6 +260,33 @@ test("add_to_cart: a navigation failure is reported without a mutation", async (
 test("list_stores: missing location state is reported as location_unavailable", async () => {
   const h = harness("list_stores", { hasState: false });
   assert.equal((await h.run({})).error_kind, "location_unavailable");
+  assert.equal(h.state.storeFetches, 1);
+});
+
+test("list_stores: a page without inline state reads the location from the store page, retrying one failed fetch", async () => {
+  const h = harness("list_stores", { url: "https://www.instacart.com/help", inlineState: false, storePage: "flaky" });
+  const result = await h.run({});
+  assert.equal(result.status, "ok");
+  assert.equal(h.state.storeFetches, 2);
+  const inline = harness("list_stores");
+  await inline.run({});
+  assert.equal(inline.state.storeFetches, undefined);
+});
+
+test("get_item: the store page redirecting to login is not_logged_in", async () => {
+  const h = harness("get_item", { hasState: false, storePage: "login" });
+  const result = await h.run({ store: "kroger", item_id: "items_165949-1001" });
+  assert.equal(result.error_kind, "not_logged_in");
+});
+
+test("add_to_cart: a store page that fails to load is unknown with no mutation, after one retry", async () => {
+  const h = harness("add_to_cart", { hasState: false, storePage: "proxy" });
+  const result = await h.run({ store: "kroger", item_id: "items_165949-1001" });
+  assert.equal(result.error_kind, "unknown");
+  assert.match(result.error_message, /did not load/);
+  assert.equal(result.mutation_attempted, false);
+  assert.equal(h.state.storeFetches, 2);
+  assert.equal(h.state.mutations, 0);
 });
 
 // ---------------------------------------------------------------- list_stores

@@ -20,7 +20,7 @@
           properties: {
             status: { const: "ok" },
             scope: { type: "string", enum: ["store", "all_stores"] },
-            carts: { type: "array", items: { type: "object", additionalProperties: false, required: ["cart_id", "store", "item_count", "subtotal_string", "savings_string", "items"], properties: { cart_id: { type: "string" }, store: { type: "object", additionalProperties: false, required: ["store_slug", "name", "shop_id", "retailer_id", "service_type", "retailer_location_id"], properties: { store_slug: { type: ["string", "null"] }, name: { type: ["string", "null"] }, shop_id: { type: "string" }, retailer_id: { type: "string" }, service_type: { type: ["string", "null"] }, retailer_location_id: { type: ["string", "null"] } } }, item_count: { type: "integer", minimum: 0 }, subtotal_string: { type: ["string", "null"] }, savings_string: { type: ["string", "null"] }, items: { type: "array", items: { type: "object", additionalProperties: false, required: ["cart_item_id", "item_id", "product_id", "quantity", "quantity_type", "name", "size", "price_string", "price_cents", "line_total_cents", "available", "url"], properties: { cart_item_id: { type: "string" }, item_id: { type: "string" }, product_id: { type: ["string", "null"] }, quantity: { type: "number" }, quantity_type: { type: ["string", "null"] }, name: { type: ["string", "null"] }, size: { type: ["string", "null"] }, price_string: { type: ["string", "null"] }, price_cents: { type: ["integer", "null"] }, line_total_cents: { type: ["integer", "null"], description: "price_cents times quantity for per-each items; null for weighed items." }, available: { type: ["boolean", "null"] }, url: { type: ["string", "null"] } } } } } } }
+            carts: { type: "array", items: { type: "object", additionalProperties: false, required: ["cart_id", "store", "item_count", "subtotal_string", "savings_string", "items"], properties: { cart_id: { type: "string" }, store: { type: "object", additionalProperties: false, required: ["store_slug", "name", "shop_id", "retailer_id", "service_type", "retailer_location_id"], properties: { store_slug: { type: ["string", "null"] }, name: { type: ["string", "null"] }, shop_id: { type: "string" }, retailer_id: { type: "string" }, service_type: { type: ["string", "null"] }, retailer_location_id: { type: ["string", "null"] } } }, item_count: { type: "integer", minimum: 0, description: "Number of distinct lines, not units." }, subtotal_string: { type: ["string", "null"] }, savings_string: { type: ["string", "null"] }, items: { type: "array", items: { type: "object", additionalProperties: false, required: ["cart_item_id", "item_id", "product_id", "quantity", "quantity_type", "name", "size", "price_string", "price_cents", "line_total_cents", "available", "url"], properties: { cart_item_id: { type: "string" }, item_id: { type: "string" }, product_id: { type: ["string", "null"] }, quantity: { type: "number" }, quantity_type: { type: ["string", "null"] }, name: { type: ["string", "null"] }, size: { type: ["string", "null"] }, price_string: { type: ["string", "null"] }, price_cents: { type: ["integer", "null"] }, line_total_cents: { type: ["integer", "null"], description: "price_cents times quantity for per-each items; null for weighed items." }, available: { type: ["boolean", "null"] }, url: { type: ["string", "null"] } } } } } } }
           }
         },
         {
@@ -86,9 +86,19 @@
         };
         // Only the store app's server-rendered pages carry the location; other pages (help, account) fall back to /store.
         const inline = parse(document.getElementById("node-apollo-state")?.textContent);
-        if (inline) return inline;
-        const html = await (await fetch("/store", { credentials: "include" })).text();
-        return parse(html.match(/<script id="node-apollo-state"[^>]*>([\s\S]*?)<\/script>/)?.[1]);
+        if (inline) return { loc: inline };
+        let last = null;
+        for (let attempt = 0; attempt < 2; attempt++) {
+          const response = await fetch("/store", { credentials: "include" });
+          const html = await response.text();
+          last = { status: response.status, url: response.url || "", proxy: /^(?:proxy proxy error|egress-proxy-mitm encountered)/i.test(html.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim()) };
+          const loc = parse(html.match(/<script id="node-apollo-state"[^>]*>([\s\S]*?)<\/script>/)?.[1]);
+          if (loc) return { loc };
+          if (/\/login/.test(last.url)) return { error: failure("not_logged_in", "Instacart redirected the store page to its login page; this session is not logged in. Run the login tool first.") };
+          if (response.status === 200 && !last.proxy) break;
+        }
+        if (last && (last.status !== 200 || last.proxy)) return { error: failure("unknown", `The Instacart store page did not load (HTTP ${last.status}${last.proxy ? ", proxy error page" : ""}); retry shortly.`) };
+        return { error: failure("location_unavailable", "Instacart did not report a shopping location for this session. The tools need a logged-in session with a saved delivery address; run the login tool first.") };
       };
       const currentUser = async () => {
         const r = await gql("SharedCurrentUser", {});
@@ -180,8 +190,9 @@
         const user = await currentUser();
         if (user.error) return user.error;
         if (user.user.guest) return failure("not_logged_in", "This session is not logged in to Instacart; run the login tool first.");
-        const loc = await readLocation();
-        if (!loc) return failure("location_unavailable", "Instacart did not report a shopping location for this session; open instacart.com and set an address first.");
+        const located = await readLocation();
+        if (located.error) return located.error;
+        const loc = located.loc;
         const readCart = async shop => {
           const active = await activeCart(shop, loc);
           if (active.error) return active;

@@ -5,12 +5,12 @@ Tools for Instacart (https://www.instacart.com).
 | tool | file | status | notes |
 |------|------|--------|-------|
 | login | [login.js](login.js) | qa_passed | Passwordless email-code login. Email step, code step, already-logged-in check and wrong-account check live-verified on 2026-09-25; independent failure-path QA passed on the current source. |
-| list_stores | [list_stores.js](list_stores.js) | draft | Stores serving the account's address, with the `store_slug` and shop id the other tools take. |
-| search | [search.js](search.js) | draft | First-page product search in one store; exact matches first, related on request. |
-| get_item | [get_item.js](get_item.js) | draft | One item's price, availability, quantity rules and rating for a store. |
-| get_cart | [get_cart.js](get_cart.js) | draft | One store's cart with names, prices and subtotal, or a summary of every non-empty cart. |
-| add_to_cart | [add_to_cart.js](add_to_cart.js) | draft | Adds or increases a cart line after checking availability and quantity rules; one mutation, never retried. |
-| update_cart_item | [update_cart_item.js](update_cart_item.js) | draft | Sets a cart line to an exact quantity; 0 removes; one mutation, never retried. |
+| list_stores | [list_stores.js](list_stores.js) | qa_passed | Stores serving the account's address, with the `store_slug` and shop id the other tools take. |
+| search | [search.js](search.js) | qa_passed | First-page product search in one store; exact matches first, related on request. |
+| get_item | [get_item.js](get_item.js) | qa_passed | One item's price, availability, quantity rules and rating for a store. |
+| get_cart | [get_cart.js](get_cart.js) | qa_passed | One store's cart with names, prices and subtotal, or a summary of every non-empty cart. |
+| add_to_cart | [add_to_cart.js](add_to_cart.js) | qa_passed | Adds or increases a cart line after checking availability and quantity rules; one mutation, never retried. |
+| update_cart_item | [update_cart_item.js](update_cart_item.js) | qa_passed | Sets a cart line to an exact quantity; 0 removes; one mutation, never retried. |
 
 Register all seven files together as one array with `forceOverwriteNamespace: true`;
 registering one file that way removes the others.
@@ -231,9 +231,11 @@ returns `error_kind: "site_changed"` naming the operation.
 
 The shopper location (address id, zone, postal code, coordinates) is read from the
 `GetLastUserLocation` entry of the server-rendered Apollo state (`#node-apollo-state`
-on the current page, or fetched from `/store`). Without it the tools return
-`location_unavailable`. Carts additionally need a saved address (logged in), so the cart
-tools return `not_logged_in` for guests.
+on the current page, or fetched from `/store`, with one retry when that fetch fails).
+**Every shopping tool needs a logged-in session with a saved delivery address**: in an
+anonymous browser `/store` redirects to the login page, so the read-only tools return
+`not_logged_in` (redirect seen) or `location_unavailable` (no location anywhere), and
+the cart tools return `not_logged_in` before touching anything.
 
 ### Usage
 
@@ -297,7 +299,7 @@ existing line (quantity is the increment, and the confirmed total is returned);
 
 ### Status and known limitations (shopping)
 
-Status: `draft` until the independent QA pass signs off; see the registry.
+Status: `qa_passed`; see the registry and the QA summary below.
 
 Live-verified on 2026-09-25 in the author's logged-in stealth browser (`cincy` proxy),
 using the account's empty Kroger delivery cart and one cheap produce item:
@@ -305,24 +307,38 @@ using the account's empty Kroger delivery cart and one cheap produce item:
 | tool | case | result |
 |------|------|--------|
 | list_stores | all, `service_type: pickup`, `query: "kro"` | 68 stores at the address; filters and cap applied |
-| search | `kroger` / `bananas`, `grapes`, nonsense query, pickup variant | exact matches with prices and quantity rules; nonsense query returns `exact_match_count: 0` plus related items |
+| search | `kroger` / `bananas`, `grapes`, nonsense query, pickup variant | exact matches with prices and quantity rules; a nonsense query returned `exact_match_count: 0` plus related items (the site sometimes returns fuzzy hits as exact matches instead) |
 | get_item | known id, unknown id, id under the pickup store | details with stock level; `item_not_found` for both failure cases |
 | get_cart | Kroger cart, then all carts | empty Kroger cart with `$0.00` subtotal; three other carts summarized with names and subtotals |
 | add_to_cart | add 1, add 2 more, unknown id, fractional quantity | 0→1 then 1→3, subtotal updated; `item_not_found` and `invalid_input` without a mutation |
 | update_cart_item | set 2, set 0, set 0 again | 3→2, then removed, then `not_in_cart`; cart back to empty |
 
+Independent QA (agent `agt_6e2dd5dcf4c5b4e04b31`, `smartest` preset, 2026-09-25, commit
+`c25ca64`): anonymous stealth browser for the read-only paths plus the author's logged-in
+browser for the cart paths. Every output was validated against its output schema; all
+input-schema violations were stopped by the WebMCP input gate before any page action; the
+tools were not listed on non-Instacart pages and worked from `/help` and `/store/account`.
+Cart work used only two cheap items (bananas per-each, one apple sold by weight in 0.25 lb
+steps), covered add, increment, set, out-of-stock (`item_unavailable`), wrong-location id,
+step-rule rejections, `not_in_cart`, removal, and finished with the carts deep-equal to the
+recording. Two findings, both fixed afterwards: the read-only tools' descriptions claimed a
+logged-out fallback that does not exist (now they state the login requirement, and a login
+redirect is reported as `not_logged_in`), and a transient `/store` fetch failure was
+reported as `location_unavailable` (now retried once and, if it still fails, reported as
+`unknown` with the HTTP status). QA sign-off: `qa_passed`. The fixes changed only
+descriptions, the location fallback, and error wording; they are covered by the local
+tests and were re-checked live by the author.
+
 Unverified:
 
-- Anonymous (logged-out) use of `list_stores`, `search` and `get_item`; the location
-  fallback for guests relies on the site's IP-based location and has not been exercised.
-- Weighed items (`quantity.type: "weight"`) in the cart: only per-each items were added
-  live. Ratings were live-read as `0/0` only.
+- Ratings with non-zero review counts (only `count: 0` was seen live).
 - `throttled`, `site_changed`, and `cart_update_rejected` other than the unknown-item
   case have fixture coverage only.
 - Search pagination: only the first page is returned; the `Load more` placement carries
   no cursor and was not followed.
 - Extension-host portability was reasoned about (no Node globals; page work runs in the
   page) but only the Node CDP runtime was exercised.
+- `cart_item_count` and `item_count` count distinct lines, not units.
 
 Local tests re-create each tool's page-side function in a separate context with a fake
 `fetch`, so parsing, quantity rules, single-mutation behaviour and schema conformance
