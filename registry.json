@@ -188,11 +188,11 @@
         "https://*.ubereats.com/*",
         "https://auth.uber.com/*"
       ],
-      "status": "draft",
-      "qa_agent": null,
+      "status": "qa_passed",
+      "qa_agent": "agt_2d00f6bdd86545dc85b6",
       "browser_session": "hs15472lgc2jt0tvewsrqs3j",
       "last_verified": "2026-09-25",
-      "notes": "Live on the owner's account: DuckDuckGo entry, email step, method chooser, vault-filled password step, and the already-authenticated path verified through the tool; wrong-email-code path verified on fabricated accounts by two independent QA passes. QA found and the tool now handles the Log in link detached by hydration (confirmed live) and Continue rendering disabled for about a second (fix awaiting live re-verification). The SMS code step after the password was entered by hand once, so otp on the SMS step is fixture-tested only."
+      "notes": "Independent failure-path QA passed on the current source (three passes; the last found no defects: two search-engine entries reached the email code step with one submission each). Live on the owner's account through the tool: method chooser, vault-filled password step, and the already-authenticated path; wrong-email-code path verified on fabricated accounts. The SMS code step after the password was entered by hand once, so otp on the SMS step is fixture-tested only; wrong password, lockout, and CAPTCHA classification are fixture-only."
     },
     {
       "domain": "united.com",

@@ -5,7 +5,7 @@ auth service at `https://auth.uber.com/v2/`, so the login tool also matches that
 
 | tool  | file                 | status | notes                                                                                   |
 |-------|----------------------|--------|-----------------------------------------------------------------------------------------|
-| login | [login.js](login.js) | draft  | One submission per step; email, chooser, password, and signed-in paths live-verified; SMS code step fixture-only |
+| login | [login.js](login.js) | qa_passed | One submission per step; entry, email, chooser, password, and signed-in paths live-verified; SMS code step fixture-only |
 
 ## Native WebMCP tools
 
@@ -132,8 +132,10 @@ shows one, otherwise null), and `submission_attempted`.
   hydration defect above: the tool never reached Uber's email step on its own in 5 of 6
   live runs. A second pass (agent `agt_c4fd2ee51e0ad730bd35`, commit `84a9be7`) confirmed
   the fix (Log in clicked on its own in 2 of 2 runs that reached the auth page) and found
-  the disabled-Continue race above, which stopped 1 of 2 runs before submitting. That fix
-  has fixture coverage and is awaiting live re-verification.
+  the disabled-Continue race above, which stopped 1 of 2 runs before submitting. A third
+  pass (agent `agt_2d00f6bdd86545dc85b6`, commit `4c544ca`, the current tool source)
+  found no defects: two entries from the home page and from `/search?q=pizza` reached
+  the email code step with one submission each.
 - The SMS code step is classified and accepted by the tool (`enter_sms_code`, then
   `otp`), but that path has only fixture coverage. When the live password submission
   reached the SMS step, the tool at that revision did not recognize it and returned
@@ -198,6 +200,17 @@ deleted):
 | Four malformed inputs on the home page                     | fabricated  | rejected, no page action                 | all outputs valid under Ajv                           |
 | Listing on `/search?q=pizza`                               | n/a         | listed once the page settled             | one empty listing mid-navigation                      |
 
+Independent QA of commit `4c544ca` (agent `agt_2d00f6bdd86545dc85b6`, browser
+`h3jrfomzq2zzr7dzwp7t7n9z` on `us-mobile`, deleted). This is the sign-off for the current
+tool source; later commits touched only this README and the registry.
+
+| case                                                       | account     | result                                   | evidence                                              |
+|------------------------------------------------------------|-------------|------------------------------------------|-------------------------------------------------------|
+| Entry from home                                            | fabricated  | `enter_email_code`, 17.8 s, 1 submission | search engine → site → Log in → auth in telemetry     |
+| Re-invocation with the code step open                      | fabricated  | `enter_email_code`, 0 submissions        | email marker unchanged                                |
+| Entry from `/search?q=pizza` (second fabricated email)     | fabricated  | `enter_email_code`, 21.7 s, 1 submission | code step heading named the second address            |
+| Two malformed inputs on the home page                      | fabricated  | rejected, no page action                 | all outputs valid under Ajv                           |
+
 Local contract and fixture tests:
 
 ```sh
@@ -216,5 +229,6 @@ They are not live evidence.
   `personal-stuff` profile read-only, `rafs-vault` attached, `us-mobile` proxy).
   Signed in on 2026-09-25 and left signed in for the search and cart work.
 - Independent QA sessions: `nxg4wrwoyufbgdp9qb5zfhoa`, `oax3sse568exk6dv7421o8je`,
-  `znx8n3iwk7brwumkret2vsnh`, and `y5txeyzedfsqcxunsb8b7weo` (all deleted after their runs).
+  `znx8n3iwk7brwumkret2vsnh`, `y5txeyzedfsqcxunsb8b7weo`, and `h3jrfomzq2zzr7dzwp7t7n9z`
+  (all deleted after their runs).
 - Source: this repository is canonical; sessions expire but files do not.
