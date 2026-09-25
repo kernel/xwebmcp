@@ -252,11 +252,13 @@ the delivery address.
    three ids; `get_store({ store_id, query })` searches inside the store instead, which is
    the way to find a specific product in a large grocery store.
 3. `get_item({ store_id, item_id, section_id, subsection_id })` returns the price, whether
-   it is sold out, and the option groups. Call it whenever `has_options` is true: each
+   it can be ordered now (`available`: not sold out, store open, menu section being
+   served), and the option groups. Call it whenever `has_options` is true: each
    group has `group_id`, `min`, `max`, and options with `option_id` and `price_minor`;
    an option can carry `child_groups` that open once it is chosen.
 4. `add_to_cart({ store_id, item_id, section_id, subsection_id, quantity?, options?, special_instructions? })`
-   re-reads the item, rejects sold-out items and any option set that misses a required
+   re-reads the item, rejects sold-out items, items whose store is closed or whose
+   menu section is not being served now, and any option set that misses a required
    group, exceeds a group's `max`, names an option outside its group, or picks a sold-out
    option, and only then creates the store's cart or adds to it. Uber Eats keeps one cart
    per store, and adding an item that is already in that cart with the same options
@@ -335,6 +337,19 @@ reported quantities are what the site holds, not what was requested.
   merchant type; restaurant results can carry `isAvailable: false` for items in a
   menu section that is not currently being served, which the tools pass through as
   `available: false`.
+- **Availability lives on the store, not the item.** The item endpoint has `isSoldOut`
+  but no section or store availability, and the site's cart accepts an item from a
+  restaurant menu that is not being served (in-store search lists such items with
+  `available: false`). `get_item` and `add_to_cart` therefore also read the store:
+  a store that is not open and orderable, or (for restaurants) a `section_id` that is
+  in neither the store's `sections` nor its catalog, is `unavailable`. Grocery stores
+  are exempt from the section check because their catalog is paged and their aisle
+  sections are not all listed.
+- **Section ids are not stable across reads.** Two back-to-back store reads of the same
+  grocery store listed 7 of 73 items under a different `section_id` (same subsection),
+  and an item read can echo a different `subsection_id` than it was called with. The
+  item endpoint accepted both, so callers should treat the ids as the site's routing
+  hints and always pass the trio they last received together.
 - **Signed out, the user endpoint answers HTTP 403 `rtapi.forbidden`** rather than
   `isLoggedIn: false`. The cart tools treat that as `not_logged_in`; any other failure of
   that endpoint is a `site_error`.
@@ -352,8 +367,12 @@ reported quantities are what the site holds, not what was requested.
   contract case live except the signed-out cart tools, which reported the site's 403 as
   `site_error`; that and four minor findings (empty grocery `price_text`, a spurious
   second problem in one `add_to_cart` rejection, cart option `group_id` in the site's
-  keyed form, a trailing space in `price_text`) are fixed in the current source with
-  fixture coverage. Status stays `draft` until a QA pass signs off the current source.
+  keyed form, a trailing space in `price_text`) were fixed in `c42641f`. A second pass
+  (agent `agt_726228ec63fcc4d15c32`, commit `c42641f`) confirmed all five fixes and every
+  contract case, and found that `add_to_cart` accepted an item from a restaurant menu
+  section that was not being served; the store-level availability check above fixes
+  that, with fixture coverage. Status stays `draft` until a QA pass signs off the
+  current source.
 - Live-verified on 2026-09-25 through the registered tools on the owner's signed-in
   session (`us-mobile` proxy): search for a grocery product and for a restaurant
   cuisine including a second page; a grocery store listing, a restaurant in-store
@@ -420,6 +439,24 @@ empty before and after; no call navigated anywhere, and none touched `/checkout`
 | search, get_store| from a `/store/…` page and a `/search?…` page              | worked without navigating                              |
 | add_to_cart      | grocery item twice, restaurant item without and with its option, foreign option, two picks | one merged line; `invalid_options` for each rejection |
 | update_cart_item | 1 to 3 and back, unknown line, quantity 0 on both lines     | applied; `not_found`; both carts deleted               |
+| get_cart         | before and after                                            | `carts: []` both times                                 |
+
+Independent QA of commit `c42641f` (agent `agt_726228ec63fcc4d15c32`, same setup: one
+fresh `us-mobile` browser for the signed-out paths, deleted afterwards, and the owner
+session for the cart paths). All 62 outputs valid under Ajv; cart empty before and after;
+no navigation in any call. The five earlier findings were each confirmed fixed.
+
+| tool             | case                                                        | result                                                 |
+|------------------|-------------------------------------------------------------|--------------------------------------------------------|
+| search           | no address; grocery, restaurant, page 2, zero items per store | as documented                                        |
+| get_store        | grocery by both id forms, restaurant `query`, unknown id    | 73 items, none without `price_text`; `not_found`       |
+| get_item         | grocery item, restaurant items with and without groups, wrong section | as documented; `not_found`                   |
+| cart tools       | signed out                                                  | `not_logged_in`, no cart call                          |
+| all              | 13 malformed inputs                                         | rejected by the input-schema gate                      |
+| search, get_store| from `/store/…` and `/search?…` pages                      | no navigation                                          |
+| add_to_cart      | grocery item twice; restaurant item without, with, and with a foreign option | merged line; one problem per rejection |
+| add_to_cart      | item listed with `available: false` (menu not being served) | accepted (defect, fixed in the current source)         |
+| update_cart_item | 1 to 3, back to 1, unknown line, quantity 0 on each line    | applied; `not_found`; all carts deleted                |
 | get_cart         | before and after                                            | `carts: []` both times                                 |
 
 Local contract and fixture tests:

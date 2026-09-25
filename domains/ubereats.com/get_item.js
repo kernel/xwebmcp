@@ -3,7 +3,7 @@
   match: { url_patterns: ["https://ubereats.com/*", "https://*.ubereats.com/*"] },
   tool: {
     name: "get_item",
-    description: "Get one Uber Eats menu item or product: current price in minor currency units, whether it is sold out, and its option groups (each with group_id, min and max picks, and options with option_id and price). Call it before add_to_cart for any item whose has_options is true, and pass the chosen option ids to add_to_cart. item_id, section_id and subsection_id come from search or get_store. Read-only.",
+    description: "Get one Uber Eats menu item or product: current price in minor currency units, whether it can be ordered right now (not sold out, store open, menu section being served), and its option groups (each with group_id, min and max picks, and options with option_id and price). Call it before add_to_cart for any item whose has_options is true, and pass the chosen option ids to add_to_cart. item_id, section_id and subsection_id come from search or get_store. Read-only.",
     inputSchema: {
       type: "object", additionalProperties: false, required: ["store_id", "item_id", "section_id", "subsection_id"],
       properties: {
@@ -18,12 +18,13 @@
       oneOf: [
         {
           type: "object", additionalProperties: false,
-          required: ["ok", "store_id", "item_id", "section_id", "subsection_id", "name", "description", "price_minor", "price_text", "sold_out", "unavailable_reason", "has_options", "option_groups"],
+          required: ["ok", "store_id", "item_id", "section_id", "subsection_id", "name", "description", "price_minor", "price_text", "currency", "available", "sold_out", "unavailable_reason", "has_options", "option_groups"],
           properties: {
             ok: { const: true },
             store_id: { type: "string" }, item_id: { type: "string" }, section_id: { type: "string" }, subsection_id: { type: "string" },
             name: { type: "string" }, description: { type: "string" },
-            price_minor: { type: "integer", minimum: 0 }, price_text: { type: "string" },
+            price_minor: { type: "integer", minimum: 0 }, price_text: { type: "string" }, currency: { type: "string" },
+            available: { type: "boolean", description: "False when sold out, when the store is closed, or when the item's menu section is not being served now." },
             sold_out: { type: "boolean" }, unavailable_reason: { type: ["string", "null"] }, has_options: { type: "boolean" },
             option_groups: { type: "array", items: {
               type: "object", additionalProperties: false,
@@ -128,6 +129,16 @@
     };
     const siteFailure = error => error && error.site ? fail(error.code === "404" ? "not_found" : "site_error", error.message) : fail("unknown", "Browser interaction failed: " + String(error && error.message || error).slice(0, 200));
 
+    const storeAvailability = async (storeUuid, sectionUuid) => {
+      const store = await api("getStoreV1", { storeUuid, diningMode: "DELIVERY", time: { asap: true }, cbType: "EATER_ENDORSED" });
+      const merchant = store.storeMerchantTypeInfo && store.storeMerchantTypeInfo.uberMerchantType ? String(store.storeMerchantTypeInfo.uberMerchantType.type || "") : "";
+      const grocery = /GROCERY/.test(merchant) || (store.location && /GROCERY/.test(String(store.location.locationType || "")));
+      const served = new Set([...(store.sections || []).map(x => x && x.uuid), ...Object.keys(store.catalogSectionsMap || {})].filter(Boolean));
+      let reason = null;
+      if (!store.isOpen || !store.isOrderable) reason = text(store.closedMessage) || "The store is closed or not taking orders right now";
+      else if (!grocery && served.size && !served.has(sectionUuid)) reason = "The item's menu section is not being served right now";
+      return { available: reason === null, reason, currency: String(store.currencyCode || "") };
+    };
     const groupRows = list => (list || []).filter(g => g && g.uuid).map(g => ({
       group_id: String(g.uuid), title: text(g.title), min: Math.max(0, Number(g.minPermitted) || 0), max: Math.max(0, Number(g.maxPermitted) || 0),
       options: (g.options || []).filter(o => o && o.uuid).map(o => ({
@@ -147,12 +158,14 @@
       const item = await api("getMenuItemV1", { itemRequestType: "ITEM", storeUuid, sectionUuid: input.section_id.toLowerCase(), subsectionUuid: input.subsection_id.toLowerCase(), menuItemUuid: input.item_id.toLowerCase(), cbType: "EATER_ENDORSED", contextReferences: [] });
       if (!item || !item.uuid) return fail("not_found", "No item with those ids in this store.");
       const groups = groupRows(item.customizationsList);
+      const availability = await storeAvailability(storeUuid, input.section_id.toLowerCase());
       const priceText = (() => { const p = (item.productDetailsItems || []).find(d => d && d.payload && d.payload.pricingPayload); const el = p && p.payload.pricingPayload.pricingRichText && p.payload.pricingPayload.pricingRichText.richTextElements && p.payload.pricingPayload.pricingRichText.richTextElements[0]; return el && el.text && el.text.text ? text(el.text.text) : ""; })();
       return {
         ok: true, store_id: storeUuid, item_id: String(item.uuid), section_id: String(item.sectionUuid || input.section_id), subsection_id: String(item.subsectionUuid || input.subsection_id),
         name: text(item.title), description: text(item.itemDescription),
-        price_minor: minor(item.price) || 0, price_text: priceText.trim() || formatMinor(minor(item.price) || 0, String(item.currencyCode || "")),
-        sold_out: !!item.isSoldOut, unavailable_reason: item.isSoldOut ? text(item.suspendReason) || "Sold out" : null,
+        price_minor: minor(item.price) || 0, price_text: priceText.trim() || formatMinor(minor(item.price) || 0, availability.currency), currency: availability.currency,
+        available: !item.isSoldOut && availability.available,
+        sold_out: !!item.isSoldOut, unavailable_reason: item.isSoldOut ? text(item.suspendReason) || "Sold out" : availability.reason,
         has_options: !!item.hasCustomizations || groups.length > 0, option_groups: groups
       };
     } catch (error) {

@@ -3,7 +3,7 @@
   match: { url_patterns: ["https://ubereats.com/*", "https://*.ubereats.com/*"] },
   tool: {
     name: "add_to_cart",
-    description: "Add an Uber Eats item to the signed-in account's cart for its store (Uber Eats keeps one cart per store). Validates the item against the live menu first: it must exist, must not be sold out, and every option group's min and max picks must be satisfied by the given options, otherwise nothing is added. Adding an item that is already in the cart with the same options raises that line's quantity. Requires a signed-in session (use login first). store_id, item_id, section_id and subsection_id come from search or get_store; option ids from get_item. Never checks out, pays, or changes the address.",
+    description: "Add an Uber Eats item to the signed-in account's cart for its store (Uber Eats keeps one cart per store). Validates the item against the live menu first: it must exist, must not be sold out, its store must be open and its menu section being served now, and every option group's min and max picks must be satisfied by the given options, otherwise nothing is added. Adding an item that is already in the cart with the same options raises that line's quantity. Requires a signed-in session (use login first). store_id, item_id, section_id and subsection_id come from search or get_store; option ids from get_item. Never checks out, pays, or changes the address.",
     inputSchema: {
       type: "object", additionalProperties: false, required: ["store_id", "item_id", "section_id", "subsection_id"],
       properties: {
@@ -136,6 +136,16 @@
     };
     const siteFailure = error => error && error.site ? fail(error.code === "404" ? "not_found" : "site_error", error.message) : fail("unknown", "Browser interaction failed: " + String(error && error.message || error).slice(0, 200));
 
+    const storeAvailability = async (storeUuid, sectionUuid) => {
+      const store = await api("getStoreV1", { storeUuid, diningMode: "DELIVERY", time: { asap: true }, cbType: "EATER_ENDORSED" });
+      const merchant = store.storeMerchantTypeInfo && store.storeMerchantTypeInfo.uberMerchantType ? String(store.storeMerchantTypeInfo.uberMerchantType.type || "") : "";
+      const grocery = /GROCERY/.test(merchant) || (store.location && /GROCERY/.test(String(store.location.locationType || "")));
+      const served = new Set([...(store.sections || []).map(x => x && x.uuid), ...Object.keys(store.catalogSectionsMap || {})].filter(Boolean));
+      let reason = null;
+      if (!store.isOpen || !store.isOrderable) reason = text(store.closedMessage) || "The store is closed or not taking orders right now";
+      else if (!grocery && served.size && !served.has(sectionUuid)) reason = "The item's menu section is not being served right now";
+      return { available: reason === null, reason, currency: String(store.currencyCode || "") };
+    };
     const groupRows = list => (list || []).filter(g => g && g.uuid).map(g => ({
       group_id: String(g.uuid), title: text(g.title), min: Math.max(0, Number(g.minPermitted) || 0), max: Math.max(0, Number(g.maxPermitted) || 0),
       options: (g.options || []).filter(o => o && o.uuid).map(o => ({
@@ -204,6 +214,8 @@
       const item = await api("getMenuItemV1", { itemRequestType: "ITEM", storeUuid, sectionUuid: input.section_id.toLowerCase(), subsectionUuid: input.subsection_id.toLowerCase(), menuItemUuid: input.item_id.toLowerCase(), cbType: "EATER_ENDORSED", contextReferences: [] });
       if (!item || !item.uuid) return fail("not_found", "No item with those ids in this store; nothing added.");
       if (item.isSoldOut) return fail("unavailable", (text(item.title) || "The item") + " is sold out: " + (text(item.suspendReason) || "not available right now") + ". Nothing added.");
+      const availability = await storeAvailability(storeUuid, input.section_id.toLowerCase());
+      if (!availability.available) return fail("unavailable", (text(item.title) || "The item") + " cannot be ordered now: " + availability.reason + ". Nothing added.");
       // Every group in reach (top level, plus the child groups of chosen options) must be satisfied.
       const remaining = picks.map(p => ({ group_id: p.group_id.toLowerCase(), option_id: p.option_id.toLowerCase(), quantity: p.quantity === undefined ? 1 : p.quantity }));
       const customizations = {};

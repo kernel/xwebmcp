@@ -274,10 +274,10 @@ test('get_store: an unknown store is not_found', async () => {
 });
 
 test('get_item: returns price, availability, and nested option groups', async () => {
-  const h = harness('get_item', { responses: { getMenuItemV1: dipItem() } });
+  const h = harness('get_item', { responses: { getMenuItemV1: dipItem(), getStoreV1: restaurantData() } });
   const result = await h.run({ store_id: RESTAURANT, item_id: DIP, section_id: SECTION, subsection_id: SUBSECTION });
   assert.equal(result.ok, true);
-  assert.deepEqual([result.price_minor, result.sold_out, result.has_options], [100, false, true]);
+  assert.deepEqual([result.price_minor, result.currency, result.available, result.sold_out, result.unavailable_reason, result.has_options], [100, 'GBP', true, false, null, true]);
   const [group] = result.option_groups;
   assert.deepEqual([group.group_id, group.min, group.max, group.options.length], [GROUP, 1, 1, 2]);
   assert.deepEqual(group.options[0].child_groups[0].options[0], { option_id: CHILD_OPTION, title: 'Chilli', price_minor: 50, sold_out: false, default_quantity: 0, max_quantity: 2, child_groups: [] });
@@ -285,11 +285,25 @@ test('get_item: returns price, availability, and nested option groups', async ()
 });
 
 test('get_item: a sold-out item reports the site reason', async () => {
-  const h = harness('get_item', { responses: { getMenuItemV1: bananasItem({ isSoldOut: true }) } });
+  const h = harness('get_item', { responses: { getMenuItemV1: bananasItem({ isSoldOut: true }), getStoreV1: storeData() } });
   const result = await h.run({ store_id: STORE, item_id: BANANAS, section_id: SECTION, subsection_id: SUBSECTION });
-  assert.deepEqual([result.sold_out, result.unavailable_reason, result.price_text], [true, 'Item not available right now', '£1.35']);
-  const untagged = harness('get_item', { responses: { getMenuItemV1: bananasItem({ productDetailsItems: [{ type: 'PRICING', payload: { pricingPayload: { pricingRichText: { richTextElements: [{ text: { text: { text: '£7.69 ' } } }] } } } }] }) } });
+  assert.deepEqual([result.available, result.sold_out, result.unavailable_reason, result.price_text], [false, true, 'Item not available right now', '£1.35']);
+  const untagged = harness('get_item', { responses: { getStoreV1: storeData(), getMenuItemV1: bananasItem({ productDetailsItems: [{ type: 'PRICING', payload: { pricingPayload: { pricingRichText: { richTextElements: [{ text: { text: { text: '£7.69 ' } } }] } } } }] }) } });
   assert.equal((await untagged.run({ store_id: STORE, item_id: BANANAS, section_id: SECTION, subsection_id: SUBSECTION })).price_text, '£7.69');
+});
+
+test('get_item: a restaurant menu section that is not being served is reported as unavailable', async () => {
+  const h = harness('get_item', { responses: { getMenuItemV1: dipItem(), getStoreV1: restaurantData() } });
+  const result = await h.run({ store_id: RESTAURANT, item_id: DIP, section_id: ZERO, subsection_id: SUBSECTION });
+  assert.deepEqual([result.available, result.sold_out, result.unavailable_reason], [false, false, "The item's menu section is not being served right now"]);
+  const grocery = harness('get_item', { responses: { getMenuItemV1: bananasItem(), getStoreV1: storeData() } });
+  assert.equal((await grocery.run({ store_id: STORE, item_id: BANANAS, section_id: ZERO, subsection_id: SUBSECTION })).available, true);
+});
+
+test('get_item: a closed store is reported as unavailable with the site message', async () => {
+  const h = harness('get_item', { responses: { getMenuItemV1: bananasItem(), getStoreV1: storeData({ isOpen: false, closedMessage: 'Opens at 6:00 AM' }) } });
+  const result = await h.run({ store_id: STORE, item_id: BANANAS, section_id: SECTION, subsection_id: SUBSECTION });
+  assert.deepEqual([result.available, result.unavailable_reason], [false, 'Opens at 6:00 AM']);
 });
 
 test('get_item: an unknown item is not_found', async () => {
@@ -326,6 +340,22 @@ test('add_to_cart: a sold-out item adds nothing', async () => {
   assert.deepEqual(h.apiCalls(), ['getUserV1', 'getMenuItemV1']);
 });
 
+test('add_to_cart: an item from a menu section that is not being served adds nothing', async () => {
+  const h = harness('add_to_cart', { responses: { ...loggedIn, getStoreV1: restaurantData(), getMenuItemV1: dipItem() } });
+  const result = await h.run({ ...addInput, store_id: RESTAURANT, item_id: DIP, section_id: ZERO, options: [{ group_id: GROUP, option_id: OPTION }] });
+  assert.equal(result.error_kind, 'unavailable');
+  assert.match(result.error_message, /not being served/);
+  assert.deepEqual(h.apiCalls(), ['getUserV1', 'getMenuItemV1', 'getStoreV1']);
+});
+
+test('add_to_cart: a closed store adds nothing', async () => {
+  const h = harness('add_to_cart', { responses: { ...loggedIn, getStoreV1: storeData({ isOrderable: false, closedMessage: '' }), getMenuItemV1: bananasItem() } });
+  const result = await h.run(addInput);
+  assert.equal(result.error_kind, 'unavailable');
+  assert.match(result.error_message, /closed or not taking orders/);
+  assert.deepEqual(h.apiCalls(), ['getUserV1', 'getMenuItemV1', 'getStoreV1']);
+});
+
 test('add_to_cart: an unknown item adds nothing', async () => {
   const h = harness('add_to_cart', { responses: { ...loggedIn, getMenuItemV1: failure('ITEM_NOT_FOUND') } });
   assert.equal((await h.run({ ...addInput, item_id: ZERO })).error_kind, 'not_found');
@@ -341,18 +371,18 @@ for (const [label, options, pattern] of [
   ['a child pick above its limit', [{ group_id: GROUP, option_id: OPTION }, { group_id: CHILD_GROUP, option_id: CHILD_OPTION, quantity: 3 }], /at most 2/],
 ]) {
   test(`add_to_cart: ${label} is rejected before any cart call`, async () => {
-    const h = harness('add_to_cart', { responses: { ...loggedIn, getMenuItemV1: dipItem() } });
+    const h = harness('add_to_cart', { responses: { ...loggedIn, getStoreV1: restaurantData(), getMenuItemV1: dipItem() } });
     const result = await h.run({ ...addInput, store_id: RESTAURANT, item_id: DIP, options });
     assert.equal(result.error_kind, 'invalid_options');
     assert.match(result.error_message, pattern);
-    assert.deepEqual(h.apiCalls(), ['getUserV1', 'getMenuItemV1']);
+    assert.deepEqual(h.apiCalls(), ['getUserV1', 'getMenuItemV1', 'getStoreV1']);
   });
 }
 
 test('add_to_cart: creates the store cart when none exists and reports the new line', async () => {
   let orders = [];
   const h = harness('add_to_cart', { responses: {
-    ...loggedIn, getMenuItemV1: bananasItem(),
+    ...loggedIn, getStoreV1: storeData(), getMenuItemV1: bananasItem(),
     ...cartReads(() => orders, pricedOrder([cartLine({ shoppingCartItemUuid: NEW_LINE, quantity: 1, price: 135 })]), presentation(135, 573)),
     createDraftOrderV2: body => { orders = [draftOrder([cartLine({ shoppingCartItemUuid: body.shoppingCartItems[0].shoppingCartItemUuid, quantity: 1 })])]; return success({ draftOrder: orders[0] }); },
   } });
@@ -368,7 +398,7 @@ test('add_to_cart: creates the store cart when none exists and reports the new l
 test('add_to_cart: adds to the existing store cart and reports the merged line quantity', async () => {
   let orders = [draftOrder()];
   const h = harness('add_to_cart', { responses: {
-    ...loggedIn, getMenuItemV1: bananasItem(),
+    ...loggedIn, getStoreV1: storeData(), getMenuItemV1: bananasItem(),
     ...cartReads(() => orders, pricedOrder([cartLine({ quantity: 3, price: 135 })]), presentation(405, 843)),
     addItemsToDraftOrderV2: body => { orders = [draftOrder([cartLine({ quantity: 3 })])]; return success({ addedItems: body.items }); },
   } });
@@ -383,7 +413,7 @@ test('add_to_cart: adds to the existing store cart and reports the merged line q
 test('add_to_cart: option picks are sent in the site\'s customization map and priced into the unit price', async () => {
   let orders = [];
   const h = harness('add_to_cart', { responses: {
-    ...loggedIn, getMenuItemV1: dipItem(),
+    ...loggedIn, getStoreV1: restaurantData(), getMenuItemV1: dipItem(),
     ...cartReads(() => orders, pricedOrder([cartLine({ shoppingCartItemUuid: NEW_LINE, uuid: DIP, storeUuid: RESTAURANT, quantity: 2, price: 100, customizations: { [`${GROUP}+0`]: [{ uuid: OPTION, price: 0, quantity: 1, title: 'Garlic Dip', customizationMeta: { title: 'Pick your dip' } }], [`${CHILD_GROUP}+0`]: [{ uuid: CHILD_OPTION, price: 50, quantity: 2, title: 'Chilli', customizationMeta: { title: 'Extras' } }] } })]), presentation(400, 600)),
     createDraftOrderV2: body => { orders = [draftOrder([cartLine({ shoppingCartItemUuid: body.shoppingCartItems[0].shoppingCartItemUuid, uuid: DIP, storeUuid: RESTAURANT, quantity: 2, customizations: body.shoppingCartItems[0].customizations })], { storeUuid: RESTAURANT })]; return success({ draftOrder: orders[0] }); },
   } });
@@ -401,7 +431,7 @@ test('add_to_cart: option picks are sent in the site\'s customization map and pr
 test('add_to_cart: a merged line is found by item and options when the site renames the line', async () => {
   let orders = [draftOrder([cartLine({ quantity: 1 })])];
   const h = harness('add_to_cart', { responses: {
-    ...loggedIn, getMenuItemV1: bananasItem(),
+    ...loggedIn, getStoreV1: storeData(), getMenuItemV1: bananasItem(),
     ...cartReads(() => orders, pricedOrder([cartLine({ quantity: 2, price: 135 })]), presentation(270, 708)),
     addItemsToDraftOrderV2: () => { orders = [draftOrder([cartLine({ quantity: 2 })])]; return success({ addedItems: [] }); },
   } });
@@ -410,7 +440,7 @@ test('add_to_cart: a merged line is found by item and options when the site rena
 });
 
 test('add_to_cart: a create call that returns no cart is reported, not retried', async () => {
-  const h = harness('add_to_cart', { responses: { ...loggedIn, getMenuItemV1: bananasItem(), ...cartReads(() => []), createDraftOrderV2: success({ draftOrder: null }) } });
+  const h = harness('add_to_cart', { responses: { ...loggedIn, getStoreV1: storeData(), getMenuItemV1: bananasItem(), ...cartReads(() => []), createDraftOrderV2: success({ draftOrder: null }) } });
   const result = await h.run(addInput);
   assert.equal(result.error_kind, 'site_error');
   assert.equal(h.apiCalls().filter(a => a === 'createDraftOrderV2').length, 1);
