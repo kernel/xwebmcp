@@ -57,6 +57,14 @@ Local entry-point and packaging tests:
 node --test tests/aa.com.test.mjs
 ```
 
+## Known limitations
+
+- First results page only; round-trip searches return outbound options with per-person from-fares and never a selected return flight or a party total.
+- Adults only (1–9); no children, infants, award searches, or later result pages.
+- Nearby-airport and bus alternatives can be returned; check `matchesRequestedAirports`, `transportTypes`, and `exactMatchCount` before treating a row as an exact match.
+- American serves human-verification and access-denial pages; these return `blocked`, and a long-haul round trip can also fail on connection errors.
+- Independent repeated-transition coverage of the trip-type radio mitigation and long-haul round-trip coverage remain incomplete.
+
 ## Sessions
 
 - Development and migration-verification browser: `qer6pzs0jzhw3r5j9bx7yse4` (24-hour inactivity timeout, left alive).

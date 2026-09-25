@@ -47,6 +47,13 @@ node --test tests/jetblue-search-flights.test.mjs
 
 These use browser-helper stubs to check expression loading, matching, entry navigation from different hosts/pages, fresh search from suitable pages, and explicit failures. They do not replace live DOM or inventory QA.
 
+## Known limitations
+
+- Initial results batch only (commonly ten cards), including for round trips, which return outbound options rather than return-flight selections or whole-trip totals.
+- 1–7 adults; no children, infants, points, or multi-city searches.
+- Displayed cash fares keep the `$` symbol without inferring an ISO currency or passenger-total basis.
+- Inventory failures, timeouts, and malformed cards are returned as errors, not empty results; allow 120 seconds per invocation.
+
 ## Sessions
 
 - Verification browser: `fe509cugfxs9gqfs1wk1kkne` (24-hour inactivity timeout; left alive).
