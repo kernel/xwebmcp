@@ -171,7 +171,7 @@ Live-verified on 2026-09-25 (one residential stealth browser, personal profile,
   DuckDuckGo search, first organic result, B2C form, one submission,
   `invalid_credentials` with `Invalid email address`, 10.2 s, marker `concluded`.
 - Real credentials, entry from a product page: `search_referrer`, one submission,
-  no MFA, `authenticated: true`, header `RAFAEL`, landing `https://www.kroger.com/`,
+  no MFA, `authenticated: true`, the header first name, landing `https://www.kroger.com/`,
   16.6 s.
 - Already signed in: invoked from the cart page with the account email, no
   navigation or submission, `already_signed_in` with `email_confirmed`; invoked with
@@ -193,7 +193,7 @@ Unverified:
   seconds. The outputs stay schema-valid and nothing is submitted in that state.
 
 Best lead for the next person: the signed-in identity, store and loyalty number all
-sit in the `kroger-si-customer-data-token` JWT, and the header `RAFAEL` button is
+sit in the `kroger-si-customer-data-token` JWT, and the header first-name button is
 rendered on every page, so search and cart tools can reuse `read()`'s
 `signedIn`/`accountEmail` check unchanged. The site's own surfaces for those tools
 are `/search?query=<term>&searchType=default_search`, `/p/<slug>/<upc>` product
@@ -226,7 +226,5 @@ mode.
 
 ## Sessions
 
-- Long-lived signed-in browser: `noihe7yj13l2isft6decjt5a` (24-hour inactivity
-  timeout, profile changes not saved). It is reused for the search and cart tools.
 - Independent QA browsers were deleted by their agents after each pass.
 - Source: this repository is canonical; sessions expire but files do not.

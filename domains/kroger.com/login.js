@@ -135,7 +135,7 @@
         loggedInCookie = cookies.some(c => c.name === "loggedIn" && c.value === "yes");
         // The customer data token is a JWT whose payload names the signed-in account.
         const payload = cookies.find(c => c.name === "kroger-si-customer-data-token")?.value.split(".")[1];
-        if (payload) accountEmail = String(JSON.parse(Buffer.from(payload, "base64url").toString("utf8")).emailAddress || "").trim().toLowerCase() || null;
+        if (payload) accountEmail = String(JSON.parse(atob(payload.replace(/-/g, "+").replace(/_/g, "/"))).emailAddress || "").trim().toLowerCase() || null;
       } catch { /* Cookies confirm the header; they never decide on their own. */ }
       page.loggedInCookie = loggedInCookie;
       page.accountEmail = accountEmail;

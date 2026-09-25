@@ -143,7 +143,7 @@
       "qa_agent": "agt_8da83a2e489269a5ff05",
       "browser_session": "fe509cugfxs9gqfs1wk1kkne",
       "last_verified": "2026-09-24",
-      "notes": "Independent search/parser QA passed; domain migration live-verified from /travel-agents. Returns initial outbound cards only, including round trips; 1\u20137 adults; displayed cash fares are not trip totals. Inventory failures remain explicit errors."
+      "notes": "Independent search/parser QA passed; domain migration live-verified from /travel-agents. Returns initial outbound cards only, including round trips; 1–7 adults; displayed cash fares are not trip totals. Inventory failures remain explicit errors."
     },
     {
       "domain": "kroger.com",
@@ -157,7 +157,7 @@
       ],
       "status": "qa_passed",
       "qa_agent": "agt_81701554c70a9f25b7e6",
-      "browser_session": "noihe7yj13l2isft6decjt5a",
+      "browser_session": null,
       "last_verified": "2026-09-25",
       "notes": "Three independent failure-path QA passes (agt_b45e69419d64ca15c913, agt_2abe214c89e45307dfec, agt_81701554c70a9f25b7e6) found no blockers; their findings (110-second budget, entry_path on failures, README snippet, timeout wording) were fixed and re-checked, the last pass on this exact source without submissions. Author-verified live with one residential stealth browser: DuckDuckGo entry to the login.kroger.com form, fabricated submissions returning invalid_credentials with the site's text, one real submission returning authenticated (no MFA), and the already-signed-in path with the account email confirmed from the customer data token plus an account-mismatch refusal. Unverified: MFA/otp mode, lockout, CAPTCHA, wrong password for an existing account, other proxy configurations."
     },

@@ -102,7 +102,7 @@ function harness(options = {}) {
     };
   };
   const context = {
-    URL, Buffer, Date: { now: () => clock },
+    URL, atob, Date: { now: () => clock },
     cdp: async method => {
       assert.equal(method, "Network.getCookies");
       const cookies = state.loggedInCookie ? [{ name: "loggedIn", value: "yes" }] : [];
