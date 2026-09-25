@@ -114,6 +114,22 @@
       "notes": "Core QA matrix passed; all 366 returned rows validated. Domain-namespace migration verified from /optional-services with 50 round-trip rows. Supervised use only: extended QA still found 3 stale-state errors in 24 valid-route calls and one timeout; no substituted flights returned. Adult-only; leg metadata fares are not checkout quotes. See domain README."
     },
     {
+      "domain": "google.com",
+      "tool": "search_flights",
+      "file": "domains/google.com/search_flights.js",
+      "kind": "cdp",
+      "namespace": "google.com",
+      "url_patterns": [
+        "https://google.com/travel/*",
+        "https://*.google.com/travel/*"
+      ],
+      "status": "qa_passed",
+      "qa_agent": "agt_7ffe2dcdda2935caea70",
+      "browser_session": null,
+      "last_verified": "2026-09-25",
+      "notes": "Google Flights via a tfs deep link (hl=en, gl=US, curr); returns outbound itineraries from the best and other sections with flight numbers, segments, layovers and total prices for the requested passengers. Three independent QA rounds passed the full matrix plus date-line, airport-change, non-USD and unsupported-currency probes; a first-round intermittent loss of expanded detail panels was fixed and did not recur in 10 runs. url_patterns are deliberately narrowed to /travel/* (see the domain README). Consent interstitial, /sorry blocks and 'Price unavailable' cards are covered by local tests only."
+    },
+    {
       "domain": "jetblue.com",
       "tool": "login",
       "file": "domains/jetblue.com/login.js",
