@@ -250,6 +250,62 @@
     },
     {
       "domain": "ubereats.com",
+      "tool": "add_to_cart",
+      "file": "domains/ubereats.com/add_to_cart.js",
+      "kind": "cdp",
+      "namespace": "ubereats.com",
+      "url_patterns": [
+        "https://ubereats.com/*",
+        "https://*.ubereats.com/*"
+      ],
+      "status": "draft",
+      "last_verified": null,
+      "notes": ""
+    },
+    {
+      "domain": "ubereats.com",
+      "tool": "get_cart",
+      "file": "domains/ubereats.com/get_cart.js",
+      "kind": "cdp",
+      "namespace": "ubereats.com",
+      "url_patterns": [
+        "https://ubereats.com/*",
+        "https://*.ubereats.com/*"
+      ],
+      "status": "draft",
+      "last_verified": null,
+      "notes": ""
+    },
+    {
+      "domain": "ubereats.com",
+      "tool": "get_item",
+      "file": "domains/ubereats.com/get_item.js",
+      "kind": "cdp",
+      "namespace": "ubereats.com",
+      "url_patterns": [
+        "https://ubereats.com/*",
+        "https://*.ubereats.com/*"
+      ],
+      "status": "draft",
+      "last_verified": null,
+      "notes": ""
+    },
+    {
+      "domain": "ubereats.com",
+      "tool": "get_store",
+      "file": "domains/ubereats.com/get_store.js",
+      "kind": "cdp",
+      "namespace": "ubereats.com",
+      "url_patterns": [
+        "https://ubereats.com/*",
+        "https://*.ubereats.com/*"
+      ],
+      "status": "draft",
+      "last_verified": null,
+      "notes": ""
+    },
+    {
+      "domain": "ubereats.com",
       "tool": "login",
       "file": "domains/ubereats.com/login.js",
       "kind": "cdp",
@@ -261,10 +317,38 @@
       ],
       "status": "qa_passed",
       "last_verified": "2026-09-25",
-      "notes": "Independent failure-path QA passed on the current source (three passes; the last found no defects: two search-engine entries reached the email code step with one submission each). Live on the owner's account through the tool: method chooser, vault-filled password step, and the already-authenticated path; wrong-email-code path verified on fabricated accounts. The SMS code step after the password was entered by hand once, so otp on the SMS step is fixture-tested only; wrong password, lockout, and CAPTCHA classification are fixture-only.",
+      "notes": "Independent failure-path QA passed on the current source (three passes; the last found no defects: two search-engine entries reached the email code step with one submission each). Live on the owner's account through the tool: method chooser, vault-filled password step, and the already-authenticated path, which now confirms the account by comparing a SHA-256 of the requested email with the site's hashed account email (match and mismatch live-verified 2026-09-25); wrong-email-code path verified on fabricated accounts. The SMS code step after the password was entered by hand once, so otp on the SMS step is fixture-tested only; wrong password, lockout, and CAPTCHA classification are fixture-only.",
       "provenance": {
         "qa_agent": "agt_2d00f6bdd86545dc85b6"
       }
+    },
+    {
+      "domain": "ubereats.com",
+      "tool": "search",
+      "file": "domains/ubereats.com/search.js",
+      "kind": "cdp",
+      "namespace": "ubereats.com",
+      "url_patterns": [
+        "https://ubereats.com/*",
+        "https://*.ubereats.com/*"
+      ],
+      "status": "draft",
+      "last_verified": null,
+      "notes": ""
+    },
+    {
+      "domain": "ubereats.com",
+      "tool": "update_cart_item",
+      "file": "domains/ubereats.com/update_cart_item.js",
+      "kind": "cdp",
+      "namespace": "ubereats.com",
+      "url_patterns": [
+        "https://ubereats.com/*",
+        "https://*.ubereats.com/*"
+      ],
+      "status": "draft",
+      "last_verified": null,
+      "notes": ""
     },
     {
       "domain": "united.com",

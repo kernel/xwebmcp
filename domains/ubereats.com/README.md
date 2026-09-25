@@ -3,18 +3,25 @@
 Tools for Uber Eats (https://www.ubereats.com). Sign-in is handled by Uber's shared
 auth service at `https://auth.uber.com/v2/`, so the login tool also matches that host.
 
-| tool  | file                 | status | notes                                                                                   |
-|-------|----------------------|--------|-----------------------------------------------------------------------------------------|
-| login | [login.js](login.js) | qa_passed | One submission per step; entry, email, chooser, password, and signed-in paths live-verified; SMS code step fixture-only |
+| tool             | file                                         | status    | notes                                                                                   |
+|------------------|----------------------------------------------|-----------|-----------------------------------------------------------------------------------------|
+| login            | [login.js](login.js)                         | qa_passed | One submission per step; entry, email, chooser, password, and signed-in paths live-verified; SMS code step fixture-only |
+| search           | [search.js](search.js)                       | draft     | Stores and matching items from the site's search feed, one page per call; needs a delivery address |
+| get_store        | [get_store.js](get_store.js)                 | draft     | Store details, categories, menu items, or an in-store product search                    |
+| get_item         | [get_item.js](get_item.js)                   | draft     | Price, availability, and nested option groups for one item                             |
+| add_to_cart      | [add_to_cart.js](add_to_cart.js)             | draft     | Validates against the live menu, then creates or extends the store's cart; needs sign-in |
+| get_cart         | [get_cart.js](get_cart.js)                   | draft     | Every cart with priced lines and the site's subtotal and total; needs sign-in           |
+| update_cart_item | [update_cart_item.js](update_cart_item.js)   | draft     | Set a line's quantity, 0 removes; last removal deletes the store's cart; needs sign-in  |
 
 ## Native WebMCP tools
 
 None found. Checked on 2026-09-25, signed out and signed in, on the home page,
-the `auth.uber.com` sign-in steps, `/search?q=pizza`, a `/store/...` page, and
-`/checkout`: `webmcp.listTools()` returned only custom tools, `navigator.modelContext`
+the `auth.uber.com` sign-in steps, `/search?q=pizza`, a `/store/...` page, and the
+cart page: `webmcp.listTools()` returned only custom tools, `navigator.modelContext`
 is undefined, `document.modelContext` is only the Kernel runtime shim, and no element
-carries a `toolname` attribute. There is nothing to conflict with; search and cart
-tools will have to be custom too.
+carries a `toolname` attribute. Re-checked the same day while signed in, from the feed
+and a search page, when the search and cart tools were registered: still none. There is
+nothing to conflict with, so every tool here is custom.
 
 ## Login
 
@@ -121,10 +128,15 @@ shows one, otherwise null), and `submission_attempted`.
 - **Stale feedback.** Alerts from an earlier attempt persist. A `MutationObserver` armed
   before each submission marks alert changes; only changed feedback is classified.
 - **Saved address.** The feed opens with the profile's saved delivery address, which
-  for the `personal-stuff` profile is in London. Search and cart tools must set the
-  address explicitly rather than trusting the default.
+  need not be where an order should go. The search and cart tools read it and never
+  change it; results and prices depend on it.
 - **Marketing overlays.** A cookie notice ("Opt out" / "Got it") sits bottom-right on
-  the feed. It did not block the login flow but will need dismissing for cart work.
+  the feed. It does not block the login flow, and the search and cart tools use the
+  site's JSON endpoints rather than the page, so it never blocks them either.
+- **Account check.** The already-signed-in path calls the site's user endpoint, which
+  returns a SHA-256 of the account email rather than the address. The tool hashes the
+  requested email in page context and compares; a mismatch is reported as a different
+  account without any submission, and the email is never read back from the site.
 
 ### Status and known limitations
 
@@ -156,9 +168,9 @@ shows one, otherwise null), and `submission_attempted`.
 
 ### Live QA matrix
 
-Recorded 2026-09-25. Owner runs used the long-lived session below with the
-`personal-stuff` profile and the `us-mobile` proxy; fabricated runs used a separate
-stealth browser on the `cincy` proxy with no profile, since deleted.
+Recorded 2026-09-25. Owner runs used the long-lived session described under Sessions
+on the `us-mobile` proxy; fabricated runs used a separate stealth browser on the
+`cincy` proxy with no profile, since deleted.
 
 | case                                                       | account     | result                                   | evidence                                              |
 |------------------------------------------------------------|-------------|------------------------------------------|-------------------------------------------------------|
@@ -172,8 +184,8 @@ stealth browser on the `cincy` proxy with no profile, since deleted.
 | Native tool survey (5 surfaces, signed out and in)         | n/a         | none                                     | see above                                             |
 
 Independent QA of commit `aae5cc0` (agent `agt_b94bb0a4b4d20af839ae`, two stealth browsers
-without profile or vault: `nxg4wrwoyufbgdp9qb5zfhoa` on `cincy`, replaced by
-`oax3sse568exk6dv7421o8je` on `us-mobile` after the proxy error page; both deleted):
+without profile or vault, one on `cincy` replaced by one on `us-mobile` after the proxy
+error page; both deleted):
 
 | case                                                       | account     | result                                   | evidence                                              |
 |------------------------------------------------------------|-------------|------------------------------------------|-------------------------------------------------------|
@@ -186,9 +198,8 @@ without profile or vault: `nxg4wrwoyufbgdp9qb5zfhoa` on `cincy`, replaced by
 | Wrong 4-digit code                                         | fabricated  | `mfa_failed`, 1 submission               | "The email passcode you've entered is incorrect."     |
 | Same wrong code again immediately                          | fabricated  | `unknown` (20 s guard), 0 submissions    |                                                       |
 
-Independent QA of commit `84a9be7` (agent `agt_c4fd2ee51e0ad730bd35`, browsers
-`znx8n3iwk7brwumkret2vsnh` on `cincy` and `y5txeyzedfsqcxunsb8b7weo` on `us-mobile`, both
-deleted):
+Independent QA of commit `84a9be7` (agent `agt_c4fd2ee51e0ad730bd35`, one browser on
+`cincy` and one on `us-mobile`, both deleted):
 
 | case                                                       | account     | result                                   | evidence                                              |
 |------------------------------------------------------------|-------------|------------------------------------------|-------------------------------------------------------|
@@ -200,9 +211,9 @@ deleted):
 | Four malformed inputs on the home page                     | fabricated  | rejected, no page action                 | all outputs valid under Ajv                           |
 | Listing on `/search?q=pizza`                               | n/a         | listed once the page settled             | one empty listing mid-navigation                      |
 
-Independent QA of commit `4c544ca` (agent `agt_2d00f6bdd86545dc85b6`, browser
-`h3jrfomzq2zzr7dzwp7t7n9z` on `us-mobile`, deleted). This is the sign-off for the current
-tool source; later commits touched only this README and the registry.
+Independent QA of commit `4c544ca` (agent `agt_2d00f6bdd86545dc85b6`, one browser on
+`us-mobile`, deleted). This is the sign-off for the login tool source; the later change
+to the signed-in account check is covered by fixtures and a live owner run, see below.
 
 | case                                                       | account     | result                                   | evidence                                              |
 |------------------------------------------------------------|-------------|------------------------------------------|-------------------------------------------------------|
@@ -223,20 +234,192 @@ and non-login pages, entry failures, stale feedback, uncertain clicks, the choos
 password and prefilled-password handling, both code steps, and the per-step guards.
 They are not live evidence.
 
+## Search and cart
+
+Six read and cart tools built on the JSON endpoints the site itself calls from the page
+(`/_p/api/*`, POST with the page's cookies and the site's own `x-csrf-token: x` header).
+None of them scrape or click; each checks that the tab is on `ubereats.com`, opens the
+home page if it is not, and then calls the endpoints from the page's context. They never
+open checkout, never place an order, never touch payment, promotions, memberships, or
+the delivery address.
+
+### Flow
+
+1. `search({ query })` returns stores, each with `store_id`, and for product queries
+   (groceries, convenience) the matching items with `item_id`, `section_id`, and
+   `subsection_id`. Restaurant queries return stores only.
+2. `get_store({ store_id })` returns the store's categories and menu items with the same
+   three ids; `get_store({ store_id, query })` searches inside the store instead, which is
+   the way to find a specific product in a large grocery store.
+3. `get_item({ store_id, item_id, section_id, subsection_id })` returns the price, whether
+   it is sold out, and the option groups. Call it whenever `has_options` is true: each
+   group has `group_id`, `min`, `max`, and options with `option_id` and `price_minor`;
+   an option can carry `child_groups` that open once it is chosen.
+4. `add_to_cart({ store_id, item_id, section_id, subsection_id, quantity?, options?, special_instructions? })`
+   re-reads the item, rejects sold-out items and any option set that misses a required
+   group, exceeds a group's `max`, names an option outside its group, or picks a sold-out
+   option, and only then creates the store's cart or adds to it. Uber Eats keeps one cart
+   per store, and adding an item that is already in that cart with the same options
+   raises that line's quantity instead of adding a second line; the tool reports the
+   resulting `line_id` and `quantity` either way.
+5. `get_cart({})` lists every cart with `cart_id`, lines with `line_id`, unit prices with
+   options, and the site's subtotal and total (fees included).
+6. `update_cart_item({ cart_id, line_id, quantity })` sets a line's quantity; `0` removes
+   it, and removing the last line deletes that store's cart (`cart_deleted: true`).
+
+Ids come only from these tools. A `store_id` may be given either as the UUID the tools
+return or as the 22-character id at the end of a store URL (it is the base64url form of
+the same UUID bytes). Every other id must be the UUID as returned. Prices are integers in
+the minor unit of the returned `currency` (`price_minor`, `unit_price_minor`,
+`subtotal_minor`, `total_minor`), with the site's formatted text alongside.
+
+### Loading and invoking
+
+Register all seven tools as one array under namespace `ubereats.com`, because
+`forceOverwriteNamespace: true` replaces every tool in the namespace:
+
+```javascript
+const fs = await import("node:fs");
+const tools = ["login", "search", "get_store", "get_item", "add_to_cart", "get_cart", "update_cart_item"]
+  .map(name => eval(fs.readFileSync(`domains/ubereats.com/${name}.js`, "utf8"))[0]);
+await webmcp.addCustomTools({ namespace: "ubereats.com", tools, forceOverwriteNamespace: true });
+const ref = name => (await webmcp.listTools()).find(t => t.source.custom?.namespace === "ubereats.com" && t.tool.name === name).tool_ref;
+const found = await webmcp.invokeTool(await ref("search"), { query: "bananas" }, { timeoutSec: 60 });
+```
+
+`search`, `get_store`, and `get_item` work signed out as long as the session has a
+delivery address (the `uev2.loc` cookie); without one `search` returns
+`no_delivery_address`. The three cart tools require a signed-in session and return
+`not_logged_in` otherwise. Live calls took 1 to 3 s for reads and 3 to 8 s for cart
+changes, which re-read the cart afterwards; `timeoutSec: 60` is enough.
+
+### Output contract
+
+Every output is `{ ok: true, ... }` or `{ ok: false, error_kind, error_message }` with
+`error_kind` one of `invalid_input`, `not_logged_in`, `no_delivery_address`,
+`not_found`, `unavailable`, `invalid_options`, `site_error`, `unknown`. Input problems
+are rejected before any page or site call, and the message says what, if anything, was
+changed (`Nothing added.`, `Nothing changed.`). Cart tools return the cart they touched
+in the same shape `get_cart` uses, read back from the site after the change, so the
+reported quantities are what the site holds, not what was requested.
+
+### Site quirks
+
+- **The cart endpoints do not validate.** The site accepts an add with any item UUID,
+  a missing required option, or a removal of a line that does not exist, and only fails
+  later at checkout (its per-order read then errors with "Found invalid item"). The
+  tools therefore validate every add against `getMenuItemV1` and every update against
+  the current cart before calling a mutation.
+- **Ids.** Store pages use the base64url form of the store UUID; the search feed and
+  the endpoints use the UUID. Item reads need `sectionUuid` and `subsectionUuid` as well
+  as the item UUID (`invalid_uuid` otherwise), which is why the three ids travel
+  together.
+- **Option payload.** Chosen options are sent as a map keyed by
+  `<group uuid>+<groupId>` (the site's key format; `groupId` is 0 for the groups seen)
+  to a list of `{ uuid, price, quantity, title, defaultQuantity, customizationMeta }`.
+  Child groups use their own keys in the same map.
+- **Prices.** Menu prices are integers in minor units, except that grocery items priced
+  by weight can carry fractional values; the tools round them. Lines in the eater's
+  cart list carry `price: 0`; the per-order read (`getDraftOrderByUuidV1`) has the real
+  unit prices and `getCheckoutPresentationV1` (called with only the subtotal, total, and
+  basket-size payloads; it is a read, not the checkout page) has the totals.
+- **Merging.** Adding an item that is already in the cart with the same options returns
+  a new line id in the add response, but the cart keeps the original line with the
+  summed quantity. The tools locate the line by item and options after the add.
+- **Removing the last line** deletes the draft order on the site's side; no separate
+  discard call is needed.
+- **Search feed.** Grocery and convenience queries return `MINI_STORE_WITH_ITEMS`
+  entries (store plus matching items); restaurant queries return `REGULAR_STORE`
+  entries with no items. Twenty entries per page, `meta.offset` is the next offset.
+- **In-store search.** `getInStoreSearchV1` needs `isGrocery` to match the store's
+  merchant type; restaurant results can carry `isAvailable: false` for items in a
+  menu section that is not currently being served, which the tools pass through as
+  `available: false`.
+- **The checkout page.** `/checkout` shows "Place order" controls and upsell modals.
+  Nothing here navigates to it; the cart drawer on any store page and the endpoints
+  above are the only cart surfaces used.
+
+### Status and known limitations
+
+- No independent QA yet; status is `draft` for all six.
+- Live-verified on 2026-09-25 through the registered tools on the owner's signed-in
+  session (`us-mobile` proxy): search for a grocery product and for a restaurant
+  cuisine including a second page; a grocery store listing, a restaurant in-store
+  search, and an unknown store; item reads with and without option groups and an
+  unknown item; an empty cart; adding a grocery item, adding it again (quantity merged
+  to 2), a restaurant item with a required option (rejected without the option,
+  accepted with it), a wrong option set (three distinct problems reported); a
+  quantity change; a missing line; removing each line (both carts deleted); and the
+  cart empty afterwards. The cart was empty before the work and empty after it.
+- Fixture-only: child option groups in the add payload (the site's own add of a
+  nested option was not observed), the signed-out `not_logged_in` and
+  `no_delivery_address` paths, `site_error` paths, and entry from a page outside the
+  site (the tools are only listed on `ubereats.com` pages by their `url_patterns`, so
+  that path can only be exercised by calling `execute` directly).
+- Sold-out items and options were not seen live; the classification uses the
+  `isSoldOut` flags the endpoints return.
+- Search results depend on the session's delivery address, and prices are per store.
+  `search` covers the first page (20 entries) per call; `get_store` on a large grocery
+  store returns only the featured carousels, so use `query` there.
+- Pickup mode, scheduled delivery, group orders, business profiles, and special
+  instructions beyond a free-text note are not supported.
+- Best lead for the next person: run one live add with a nested child option on a
+  restaurant item (a pizza with a topping) and compare the resulting cart line's
+  `customizations` with the payload the site sends when the same choice is made in
+  the item modal.
+
+### Live QA matrix
+
+Owner session, 2026-09-25, through the registered tools:
+
+| tool             | case                                                        | result                                                 |
+|------------------|-------------------------------------------------------------|--------------------------------------------------------|
+| search           | grocery product query                                       | 19 stores with items, `has_more`, 2.5 s                |
+| search           | restaurant cuisine query, `offset: 20`                      | 20 stores, no items, 2.4 s                             |
+| get_store        | grocery store by URL id, `max_items: 5`                     | `grocery`, 30 categories, 5 items, truncated, 1.6 s    |
+| get_store        | restaurant with `query`                                     | `restaurant`, 4 matching items with options, 3.1 s     |
+| get_store        | unknown store                                               | `not_found`                                            |
+| get_item         | grocery item, restaurant item with a required group          | prices and groups as on the site, about 1 s each       |
+| get_item         | unknown item                                                | `not_found`                                            |
+| get_cart         | before any change                                           | `carts: []`                                            |
+| add_to_cart      | grocery item, then the same item again                      | one line, quantity 1 then 2, subtotal £1.35 then £2.70 |
+| add_to_cart      | restaurant item without its required option                 | `invalid_options`, nothing added                       |
+| add_to_cart      | restaurant item with the option and a note                  | second cart, unit price 100, option listed             |
+| add_to_cart      | two picks in a pick-one group plus an unknown option        | `invalid_options` naming all three problems            |
+| get_cart         | two carts                                                   | both listed with the site's subtotal and total         |
+| update_cart_item | quantity 2 to 3                                             | applied, subtotal £4.05                                |
+| update_cart_item | unknown line                                                | `not_found`, nothing changed                           |
+| update_cart_item | quantity 0 on each cart's only line                         | removed, `cart_deleted: true`, `cart: null`            |
+| get_cart         | after the removals                                          | `carts: []`                                            |
+
+Local contract and fixture tests:
+
+```sh
+node --test tests/ubereats-search-cart.test.mjs
+```
+
+They stub the page helpers and the site's endpoints (no DOM is needed because the tools
+do not scrape) and cover the single-expression contract, registry agreement, portability
+(no Node-only globals), input rejection before any page action for every tool, feed
+parsing and paging, the missing-address and off-site entry paths, store listing and
+in-store search, option group parsing, every add rejection, cart creation and extension,
+the option payload format, merged-line detection, priced and unpriced cart reads,
+quantity updates, removal, and cart deletion. They are not live evidence.
+
 ## URL patterns
 
-`login` uses the default `https://ubereats.com/*` and `https://*.ubereats.com/*` plus
-`https://auth.uber.com/*`. Uber Eats signs in on Uber's shared auth service at
+The search and cart tools use the default `https://ubereats.com/*` and
+`https://*.ubereats.com/*`. `login` uses the same pair plus `https://auth.uber.com/*`. Uber Eats signs in on Uber's shared auth service at
 `auth.uber.com`, which is on the `uber.com` registrable domain. The email-code, password,
 and SMS-code steps all render there, so the tool has to stay listed on that host for a
 follow-up call with `otp` to find it. No other `uber.com` host is matched.
 
 ## Sessions
 
-- Long-lived owner session: `hs15472lgc2jt0tvewsrqs3j` (24-hour inactivity timeout,
-  `personal-stuff` profile read-only, `rafs-vault` attached, `us-mobile` proxy).
-  Signed in on 2026-09-25 and left signed in for the search and cart work.
-- Independent QA sessions: `nxg4wrwoyufbgdp9qb5zfhoa`, `oax3sse568exk6dv7421o8je`,
-  `znx8n3iwk7brwumkret2vsnh`, `y5txeyzedfsqcxunsb8b7weo`, and `h3jrfomzq2zzr7dzwp7t7n9z`
-  (all deleted after their runs).
+- Owner session: one long-lived stealth browser with the owner's profile (read-only),
+  the credential vault, and the `us-mobile` proxy. Signed in on 2026-09-25 and kept
+  alive for the search and cart work. Session ids are ephemeral and live in the run
+  reports, not here.
+- Independent QA sessions for the login tool: five stealth browsers without profile or
+  vault, deleted after their runs.
 - Source: this repository is canonical; sessions expire but files do not.
