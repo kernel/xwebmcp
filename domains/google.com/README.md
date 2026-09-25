@@ -72,10 +72,12 @@ Author verification on 2026-09-25 (session `j3s22gi3hj37cbptlluo351a`, stealth, 
 | CVG–SFO 2026-10-16 one way, 1 adult economy | ok, 25 of 159 returned in 13.5 s, flight numbers for every itinerary |
 | CVG–SFO 2026-10-16 → 2026-10-23 round trip | ok, 25 of 99, round-trip totals, 3 best + 22 other |
 | JFK–LAX 2026-10-20 one way, 3 adults business, maxResults 8 | ok, 8 of 37, “for 3 adults” pricing note, hasMore |
-| JFK–LHR 2026-11-10 → 2026-11-17 round trip, GBP | see independent QA table below |
+| JFK–LHR 2026-11-10 → 2026-11-17 round trip, GBP, maxResults 40 | ok, 40 of 64, `£555` round-trip totals labeled “British pounds”, mixed-carrier itineraries such as American / British Airways with per-segment operators |
 | LUK–SFO 2026-10-16 one way | no_results with Google's alternative-suggestions message |
 | Invalid inputs (bad IATA, past date, return before depart, 12 passengers) | rejected before navigation |
-| Invocation from google.com search page, about:blank, another site | tool not listed (url_patterns); listed again on `/travel/*` |
+| Discovery from `google.com/`, `google.com/search`, `example.com`, `about:blank` | tool not listed (url_patterns), so it cannot be invoked there; listed again on `/travel/flights` and on `/travel/hotels` (which redirects to `/travel/search`) |
+
+Google Search itself served an automated-traffic challenge (`/sorry/`) on this egress during the reachability check; Google Flights never did.
 
 Independent QA: see the registry entry and the table appended below.
 

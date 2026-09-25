@@ -126,7 +126,7 @@
       const url = "https://www.google.com/travel/flights/search?" + new URLSearchParams({ tfs, hl: "en", gl: "US", curr: currency });
       const deadline = Date.now() + 110000;
       const remaining = cap => Math.max(1, Math.min(cap, Math.floor((deadline - Date.now()) / 1000)));
-      const isFlightsPage = href => { try { const u = new URL(href); return /(^|\.)google\.com$/.test(u.hostname) && u.pathname.startsWith("/travel/flights"); } catch { return false; } };
+      const isFlightsPage = href => { const u = new URL(href); return /(^|\.)google\.com$/.test(u.hostname) && u.pathname.startsWith("/travel/flights"); };
       try {
         const target = context.matches?.[0]?.top_target_id;
         if (target && (await currentTab()).targetId !== target) await switchTab(target);
@@ -183,11 +183,9 @@
           const sleep = ms => new Promise(r => setTimeout(r, ms));
           const cards = () => [...document.querySelectorAll("li.pIav2d")].filter(visible);
           const more = [...document.querySelectorAll('button[aria-label="View more flights"]')].find(visible);
-          let expandedMore = false;
           if (more && cards().length < maxResults) {
             const before = cards().length;
             more.click();
-            expandedMore = true;
             while (cards().length <= before && Date.now() < deadlineMs) await sleep(200);
           }
           const selected = cards().slice(0, maxResults);
@@ -195,7 +193,7 @@
           const pending = () => selected.filter(card => !card.querySelector(".c257Jb")).length;
           while (pending() && Date.now() < deadlineMs) await sleep(200);
           const announced = [...document.querySelectorAll("[aria-live]")].map(e => e.textContent.trim()).find(t => /^\d+ results? returned/i.test(t));
-          return { expandedMore, unexpanded: pending(), visible: cards().length, total: announced ? Number(announced.match(/^(\d+)/)[1]) : null, moreLeft: [...document.querySelectorAll('button[aria-label="View more flights"]')].some(visible) };
+          return { unexpanded: pending(), visible: cards().length, total: announced ? Number(announced.match(/^(\d+)/)[1]) : null, moreLeft: [...document.querySelectorAll('button[aria-label="View more flights"]')].some(visible) };
         }, { arg: { maxResults, deadlineMs: Date.now() + remaining(20) * 1000 } });
         if (expansion.unexpanded) warnings.push(`${expansion.unexpanded} itinerary detail panel(s) did not expand in time; their flightNumbers and segments are empty.`);
 
@@ -284,8 +282,9 @@
         else if (currencyNames.length === 1 && expectedName && !expectedName.test(currencyNames[0])) warnings.push(`Google labeled prices as ${currencyNames[0]}, not ${currency}; amounts may be in Google's fallback currency.`);
         if (page.flights.some(f => f.flightNumbers.length === 0) && !expansion.unexpanded) warnings.push("Some itineraries had no parseable segment details; their flightNumbers and segments are empty.");
         const flights = page.flights.map(({ currencyName, ...flightRow }) => flightRow);
+        if (!flights.length) return fail("PARSE_ERROR: Google announced results but no itinerary cards were readable.");
         const totalResults = expansion.total ?? readiness.total;
-        return { ...result, status: flights.length ? "ok" : "no_results", resultCount: flights.length, totalResults, hasMore: expansion.moreLeft || page.totalVisible > flights.length || (totalResults !== null && totalResults > flights.length), message: flights.length ? "" : "Google announced results but rendered no itinerary cards.", flights };
+        return { ...result, status: "ok", resultCount: flights.length, totalResults, hasMore: expansion.moreLeft || page.totalVisible > flights.length || (totalResults !== null && totalResults > flights.length), flights };
       } catch (error) {
         return fail(String(error?.message || error).replace(/^Error: /, "").split("\n")[0].slice(0, 500));
       }
