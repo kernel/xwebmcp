@@ -325,9 +325,12 @@ recording. Two findings, both fixed afterwards: the read-only tools' description
 logged-out fallback that does not exist (now they state the login requirement, and a login
 redirect is reported as `not_logged_in`), and a transient `/store` fetch failure was
 reported as `location_unavailable` (now retried once and, if it still fails, reported as
-`unknown` with the HTTP status). QA sign-off: `qa_passed`. The fixes changed only
-descriptions, the location fallback, and error wording; they are covered by the local
-tests and were re-checked live by the author.
+`unknown` with the HTTP status). The fixes changed only descriptions, the location
+fallback, and error wording. A second independent pass (agent `agt_e2b9b6bda0484789612a`,
+`smartest` preset, commit `948357c`, the current tool source) then confirmed both fixes
+live (anonymous browser returns `not_logged_in`; seven repeated logged-in `get_item` calls
+from `/help` and `/store/account` all succeeded), re-ran the cart cycle, found no defects,
+and restored the carts exactly. Sign-off for the current source: `qa_passed`.
 
 Unverified:
 

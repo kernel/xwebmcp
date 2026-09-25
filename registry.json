@@ -163,7 +163,7 @@
       "last_verified": "2026-09-25",
       "notes": "Adds an item to the logged-in account's per-store cart through the site's UpdateCartItemsMutation, increasing the quantity if the item is already there; checks availability and the item's min/max/increment first; one mutation per invocation, never retried. Live-verified 2026-09-25 (author and independent QA): per-each and weighed items, increments, unavailable item, wrong-location id, quantity-rule rejections, restored cart. Unverified: throttling and site rejections other than the unknown-item case.",
       "provenance": {
-        "qa_agent": "agt_6e2dd5dcf4c5b4e04b31"
+        "qa_agent": "agt_e2b9b6bda0484789612a"
       }
     },
     {
@@ -180,7 +180,7 @@
       "last_verified": "2026-09-25",
       "notes": "Reads one store's cart (names, prices, quantities, subtotal) or, without a store, every non-empty cart. Live-verified 2026-09-25 by independent QA, including not_logged_in in an anonymous browser. Lines whose item id belongs to another store location show a null price.",
       "provenance": {
-        "qa_agent": "agt_6e2dd5dcf4c5b4e04b31"
+        "qa_agent": "agt_e2b9b6bda0484789612a"
       }
     },
     {
@@ -197,7 +197,7 @@
       "last_verified": "2026-09-25",
       "notes": "Reads one item's price, availability, stock level, quantity rules and rating for a store from the site's Items query; rejects ids from another store location. Live-verified 2026-09-25 by independent QA; ratings only seen with zero reviews. Requires a logged-in session with a saved address.",
       "provenance": {
-        "qa_agent": "agt_6e2dd5dcf4c5b4e04b31"
+        "qa_agent": "agt_e2b9b6bda0484789612a"
       }
     },
     {
@@ -214,7 +214,7 @@
       "last_verified": "2026-09-25",
       "notes": "Lists the stores serving the account's saved address with the store_slug and shop id the other tools use. Live-verified 2026-09-25 by independent QA (68 stores, filters, cap). Requires a logged-in session with a saved address; an anonymous browser returns location_unavailable.",
       "provenance": {
-        "qa_agent": "agt_6e2dd5dcf4c5b4e04b31"
+        "qa_agent": "agt_e2b9b6bda0484789612a"
       }
     },
     {
@@ -248,7 +248,7 @@
       "last_verified": "2026-09-25",
       "notes": "First-page product search in one store through the site's SearchResultsPlacements query, hydrated with Items; exact matches first, related on request or when there are none. Live-verified 2026-09-25 by independent QA, including pickup variants. Requires a logged-in session with a saved address; the site sometimes returns fuzzy hits as exact results.",
       "provenance": {
-        "qa_agent": "agt_6e2dd5dcf4c5b4e04b31"
+        "qa_agent": "agt_e2b9b6bda0484789612a"
       }
     },
     {
@@ -265,7 +265,7 @@
       "last_verified": "2026-09-25",
       "notes": "Sets a cart line to an exact quantity (0 removes) through the site's UpdateCartItemsMutation; not_in_cart when the item is absent; one mutation per invocation, never retried. Live-verified 2026-09-25 (author and independent QA) with per-each and weighed items and a fully restored cart.",
       "provenance": {
-        "qa_agent": "agt_6e2dd5dcf4c5b4e04b31"
+        "qa_agent": "agt_e2b9b6bda0484789612a"
       }
     },
     {
