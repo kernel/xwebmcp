@@ -3,7 +3,7 @@
   match: { url_patterns: ["https://aa.com/*", "https://*.aa.com/*"] },
   tool: {
     name: "login",
-    description: "Submit American Airlines AAdvantage login once. Provide username and password, or explicitly use fields already filled by the human or Kernel Vault. Stops at MFA or captcha; never retries. A sessionStorage guard permits one submission per login tab storage lifetime. Results identify pre-existing versus post-submission observations. logged_in is true only for an authenticated account, not an MFA interstitial. No remember-me or SSO control was observed. Do not invoke again after an uncertain submission.",
+    description: "Submit American Airlines AAdvantage login once. When entry is needed, search DuckDuckGo and follow its first organic result only if it is an approved AA login URL; never send credentials to the search engine. Provide username and password, or explicitly use fields already filled by the human or Kernel Vault. Stops at MFA or captcha; never retries. A sessionStorage guard permits one submission per login tab storage lifetime. Results identify pre-existing versus post-submission observations. logged_in is true only for an authenticated account, not an MFA interstitial. No remember-me or SSO control was observed. Do not invoke again after an uncertain submission.",
     inputSchema: {
       type: "object",
       properties: {
@@ -102,9 +102,9 @@
           /(?:incorrect|invalid|unrecognized) (?:username|password|credentials)|(?:username|password|credentials).*(?:incorrect|invalid|not match)/i.test(message) ? "invalid_credentials" : "unknown";
         return { state, result: fail(kind, message, "site") };
       }
-      const mfa = texts.find(t => /(?:we(?:'ve| have)? sent|we sent|enter).*(?:verification|security|one.time) code|choose.*(?:verification|verification method)/i.test(t));
+      const mfa = texts.find(t => /(?:we(?:'ve| have)? sent|we sent|enter).*(?:verification|security|one.time) code|choose.*(?:verification|verification method)|how should we send your code/i.test(t));
       const otp = ax.nodes.some(n => n.role === "textbox" && /verification code|security code|one.time|otp/i.test(n.name || ""));
-      if (!state.password && mfa && (otp || /sent|choose/i.test(mfa))) return { state, result: {
+      if (!state.password && mfa && (otp || /sent|choose|how should we send your code/i.test(mfa))) return { state, result: {
         observation: submitted ? "after_submission" : "pre_existing", submission_attempted: submitted,
         outcome: "mfa_required", logged_in: false, first_step_succeeded: true, landing_url: state.url,
         account_name_or_hint: null, mfa_required: true, next_step: mfa
@@ -128,7 +128,28 @@
         if (observed.result) return observed.result;
       }
       if (!loginPage || !observed?.state.username || !observed?.state.password) {
-        await gotoUrl("https://www.aa.com/loyalty/login?uri=%2floyalty%2flogin&previousPage=%2FhomePage.do&from=comp_nav");
+        await gotoUrl("https://start.duckduckgo.com/");
+        await gotoUrl("https://start.duckduckgo.com/?q=american+airlines+login&ia=web");
+        const searchDeadline = Date.now() + 20000;
+        let resultState;
+        do {
+          await waitMs(250);
+          resultState = await js(() => {
+            if (location.origin !== "https://start.duckduckgo.com" && location.origin !== "https://duckduckgo.com") return "wrong_origin";
+            const first = document.querySelector('article[data-testid="result"] [data-testid="result-title-a"]');
+            if (!first) return "missing";
+            const target = new URL(first.href);
+            if (!((target.origin === "https://www.aa.com" && target.pathname === "/loyalty/login") ||
+                  (target.origin === "https://login.aa.com" && target.pathname === "/login"))) return "wrong_target";
+            document.querySelectorAll('[data-aa-login-result]').forEach(e => e.removeAttribute('data-aa-login-result'));
+            first.setAttribute("data-aa-login-result", "true");
+            first.setAttribute("target", "_self");
+            return "ready";
+          });
+          if (resultState !== "missing") break;
+        } while (Date.now() < searchDeadline);
+        if (resultState !== "ready") return fail("unknown", "The first organic search result is unavailable or is not an approved AA login URL. Nothing was submitted.");
+        await click('[data-aa-login-result="true"]');
         const deadline = Date.now() + 30000;
         do {
           await waitMs(500);

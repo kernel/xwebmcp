@@ -5,7 +5,7 @@ Tools for American Airlines (https://www.aa.com).
 | tool | file | status | notes |
 |---|---|---|---|
 | search_flights | [search_flights.js](search_flights.js) | verified | First-page outbound options; round-trip fares do not select a return flight. |
-| login | [login.js](login.js) | qa_passed | CAPTCHA failure live-verified; successful login and MFA remain unverified. |
+| login | [login.js](login.js) | qa_passed | DuckDuckGo entry reached MFA delivery selection; full authentication remains unverified. |
 
 ## Scope and loading
 
@@ -68,7 +68,7 @@ node --test tests/aa.com.test.mjs
 
 `login.js` is a self-contained tool-definition array. Register it with namespace `aa.com`, using `tools: eval(source)` as above. Omit `forceOverwriteNamespace` when adding it alongside the search tool so the other registration is not removed. Both apex and wildcard subdomains match; the actual sign-in flow redirects from `www.aa.com/loyalty/login` to `login.aa.com/login`.
 
-The tool checks the current page before interacting. An unsuitable page, including another subdomain or unrelated origin, is navigated to the login entry point. A suitable form is reused. Supply an AAdvantage number or username and password, or explicitly set `use_prefilled: true` after a human or vault fills both fields. Prefilled mode cannot recover values lost when an unsuitable page is replaced. The tool does not support email identifiers, OTP submission, MFA-method selection, account recovery, or CAPTCHA solving itself. No remember-me or third-party SSO control was observed.
+The tool checks the current page before interacting. From an unsuitable page, including another subdomain or unrelated origin, it opens `https://start.duckduckgo.com/`, issues the fixed public query `american airlines login` through the search URL, and clicks the first organic result. It proceeds only if that result is `https://www.aa.com/loyalty/login` or `https://login.aa.com/login`; changed rankings, unrelated destinations, and unavailable results return typed `unknown` without filling or submitting. The search query contains no account input, and no referrer header is spoofed. A suitable existing login form or MFA screen is reused. Supply an AAdvantage number or username and password, or explicitly set `use_prefilled: true` after a human or vault fills both fields. Prefilled mode cannot recover values lost when an unsuitable page is replaced. The tool does not support email identifiers, OTP submission, MFA-method selection, account recovery, or CAPTCHA solving itself. No remember-me or third-party SSO control was observed.
 
 The output schema separates authenticated, MFA-required, and failure outcomes. `first_step_succeeded: true` with `mfa_required: true` means the credential stage reached MFA, not a fully authenticated session; `logged_in` stays false until authentication completes. `observation` and `submission_attempted` distinguish a pre-existing screen from this invocation's result. A pre-existing account or MFA screen is not proof that the supplied account was authenticated.
 
@@ -79,13 +79,13 @@ Failures distinguish `invalid_credentials`, `captcha_or_challenge`, `mfa_failed`
 - Inputs are nested in open `adc-text-input` shadow roots. Inner IDs are randomized; the implementation finds visible inputs by their stable `username` and `password` names, uses the native value setter, and dispatches composed input/change events. Length equality is checked before proceeding, without returning field values.
 - The `Log in` control is an `adc-button` host with an inner shadow-root button. A rendering race previously checked it before the application enabled it. The fixed implementation polls for up to 10 seconds, returning typed `unknown` without submission if readiness never arrives.
 - A sessionStorage marker is written before the single click. Re-invocation in that login tab cannot submit again. This guard does not cover another tab or cleared browser storage; callers must enforce account-wide attempt limits. Unknown outcomes must not be retried automatically.
-- Post-submission observation lasts up to 45 seconds, allowing an installed solver time to act without clicking again. The observed challenge is a visible iframe titled `Challenge Content`, served from `/challenge-assets/v7/captcha.html`; `Loading...` is not authentication success or evidence of bad credentials. Invoke with `timeoutSec: 120` and a sufficiently long enclosing REPL timeout.
+- Post-submission observation lasts up to 45 seconds, allowing an installed solver time to act without clicking again. The observed challenge is a visible iframe titled `Challenge Content`, served from `/challenge-assets/v7/captcha.html`; `Loading...` is not authentication success or evidence of bad credentials. Search-result readiness is bounded to 20 seconds. Invoke with `timeoutSec: 180` and a sufficiently long enclosing REPL timeout to cover search navigation, form preparation, and post-submission observation.
 
 ### Login QA and configuration matrix
 
 Independent failure-path QA rejected missing/empty/conflicting inputs without submission, checked failure-schema conformance, and made one fabricated-account submission that reached the real CAPTCHA. Two static findings were fixed: cross-invocation submission guarding and explicit pre-existing-state attribution. Author synthetic regressions covered those fixes and the readiness race. Local migration tests additionally cover entry-point navigation, shadow input writes, output branches, and timeout behavior. These synthetic checks do not verify real successful authentication.
 
-The configuration matrix on 2026-09-25 used Chrome 153.0.8010.36, separate headful browsers copied from the same requested profile, and no profile save-back. It made one tool invocation per configuration, without retries. No successful login, MFA interstitial, or confirmed invalid-credentials response occurred.
+The direct-entry baseline matrix on 2026-09-25 used Chrome 153.0.8010.36, separate headful browsers copied from the same requested profile, and no profile save-back. It made one tool invocation per configuration, without retries. No successful login, MFA interstitial, or confirmed invalid-credentials response occurred.
 
 | Configuration | Actual submissions | Result | Solver evidence |
 |---|---:|---|---|
@@ -93,7 +93,7 @@ The configuration matrix on 2026-09-25 used Chrome 153.0.8010.36, separate headf
 | B: mobile proxy, stealth enabled | 0 | `unknown` during preparation; subsequent read-only page evaluation timed out | CapMonster loaded; no firing observed. |
 | C: residential proxy, stealth disabled | 1 | `captcha_or_challenge`; challenge persisted | No solver loaded. |
 
-All three outputs matched the schema. Residential CAPTCHA classification is live-verified with and without stealth. Successful login, MFA, invalid-credential and lockout behavior remain unverified on the real site; synthetic classification tests are not a substitute. The mobile failure does not establish that the credentials were rejected or identify the underlying browser failure. The migration was tested locally, without additional live credential submissions.
+All three baseline outputs matched the schema. Direct-entry residential CAPTCHA classification is live-verified with and without stealth. In that baseline, successful login, MFA, invalid-credential and lockout behavior were unverified on the real site; synthetic classification tests are not a substitute. The mobile failure does not establish that the credentials were rejected or identify the underlying browser failure. The migration was tested locally, without additional live credential submissions.
 
 Historical login test references (not credentials or live-view links):
 
@@ -101,7 +101,25 @@ Historical login test references (not credentials or live-view links):
 - Original development browser: `avy9sn160f5xke2jcwa0sa31`.
 - Matrix A: `jnke5q5m45anfru9og3bqjre`; B: `tzeo1hakca2ftlky6dla7n2p`; C: `tgi1xo9b54ffa22wj2lotcbp`.
 
-All three matrix browsers were deleted after testing. The registry's `browser_session` retains B as the latest stealth test reference, not an active session.
+All three direct-entry matrix browsers were deleted after testing.
+
+### DuckDuckGo-referrer experiment
+
+On 2026-09-25, the residential-stealth configuration was tested again in a fresh browser copied from the same profile, using Chrome 153.0.8010.36. The search homepage initially did not render its controls, so the public query was issued through its search URL. The first organic result was `https://www.aa.com/loyalty/login`. Clicking it reached the login form with the `document.referrer` origin `https://start.duckduckgo.com`; the existing tool reused that form without direct renavigation.
+
+| Configuration | Credential submissions | Result | Solver evidence |
+|---|---:|---|---|
+| A: residential proxy, stealth enabled | 1 | MFA delivery-choice screen; no visible CAPTCHA | CapMonster loaded; no start or success signal observed, and no observation-buffer loss. |
+| B: mobile proxy, stealth enabled | 0 | Not run: stopped after the first MFA success. | Not observed. |
+| C: residential proxy, stealth disabled | 0 | Not run: stopped after the first MFA success. | Not observed. |
+
+AA displayed `Let's confirm it's really you` and `To keep your account safe, we'll send a verification code. How should we send your code?`, with text and email delivery choices. The prior classifier missed this wording and returned `unknown` after 45 seconds despite the successful first step. The classifier now recognizes the observed wording. Re-registering and invoking against the existing screen returned schema-conforming `mfa_required`, `first_step_succeeded: true`, `logged_in: false`, `observation: pre_existing`, and `submission_attempted: false`. That verification did not resubmit credentials or send a code.
+
+This run changed the observed outcome from the direct-entry baseline's `captcha_or_challenge` to first-step MFA success. It does **not** prove the referrer caused the change: the residential egress IP and test time also changed, and only one referred attempt was made. Full authentication still requires human MFA completion; invalid-credential and lockout behavior remain unverified live. No automatic MFA delivery selection, code request, or OTP submission was added.
+
+The successful manual search-entry sequence is now implemented for tools invoked from unsuitable pages. The packaged route and corrected wording have local regression coverage; the automated search-entry code has not been followed by an additional live credential submission. The existing independent QA reference predates this change.
+
+Referrer experiment browser: `bqpgqp8xwmh46xu6addo3je1` (left alive at MFA with a 24-hour inactivity timeout). The registry points to this session.
 
 ```sh
 node --test tests/aa-login.test.mjs

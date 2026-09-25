@@ -4,7 +4,8 @@ import test from "node:test";
 import { runInNewContext } from "node:vm";
 
 const source = readFileSync(new URL("../domains/aa.com/login.js", import.meta.url), "utf8");
-const entryUrl = "https://www.aa.com/loyalty/login?uri=%2floyalty%2flogin&previousPage=%2FhomePage.do&from=comp_nav";
+const searchHome = "https://start.duckduckgo.com/";
+const searchUrl = "https://start.duckduckgo.com/?q=american+airlines+login&ia=web";
 const loginUrl = "https://login.aa.com/login?flowId=fixture";
 const input = { username: "qa_nonexistent", password: "synthetic-only" };
 const plain = value => JSON.parse(JSON.stringify(value));
@@ -32,7 +33,7 @@ function conforms(schema, value) {
 }
 
 function harness(options = {}) {
-  let clock = 0, checks = 0, clicks = 0, filled = 0, reads = 0, priorClicks = 0;
+  let clock = 0, checks = 0, clicks = 0, searchClicks = 0, filled = 0, reads = 0, priorClicks = 0;
   let url = options.url ?? loginUrl;
   let state = { url, host: new URL(url).hostname, username: true, password: true, filled: true, challenge: null, alerts: [], ...options.initial };
   const navigation = [], pageFunctions = {}, storage = new Map();
@@ -42,17 +43,27 @@ function harness(options = {}) {
     waitMs: async ms => { clock += ms; },
     gotoUrl: async target => {
       navigation.push(target);
+      url = target;
+    },
+    click: async selector => {
+      assert.equal(selector, '[data-aa-login-result="true"]');
+      searchClicks++;
       url = loginUrl;
       state = { ...state, url, host: "login.aa.com", username: true, password: true, filled: false, ...options.navigationState };
     },
     accessibilitySnapshot: async () => ({ nodes: clicks > priorClicks ? options.afterNodes ?? [] : options.initialNodes ?? [] }),
     js: async (fn, args) => {
       const text = fn.toString();
+      if (text.includes('article[data-testid="result"]')) {
+        pageFunctions.search = fn;
+        return options.searchResult ?? "ready";
+      }
       if (text.includes("const all =")) {
         reads++;
         return { ...state, ...(clicks > priorClicks ? options.after ?? { challenge: "Challenge Content" } : {}) };
       }
       if (args?.arg?.username !== undefined) {
+        assert.equal(new URL(url).origin, "https://login.aa.com");
         filled++;
         pageFunctions.fill = fn;
         return options.fillMatches ?? true;
@@ -70,7 +81,7 @@ function harness(options = {}) {
       return checks >= (options.enableAfter ?? 1);
     }
   });
-  return { tool: tools[0], navigation, pageFunctions, stats: () => ({ checks, clicks, filled, reads, clock }), clearResult: () => { priorClicks = clicks; } };
+  return { tool: tools[0], navigation, pageFunctions, stats: () => ({ checks, clicks, searchClicks, filled, reads, clock }), clearResult: () => { priorClicks = clicks; } };
 }
 
 async function invoke(h, ...values) {
@@ -93,7 +104,8 @@ for (const url of ["about:blank", "https://example.org/", "https://aa.com/", "ht
   test(`navigates to the login entry from ${url}`, async () => {
     const h = harness({ url });
     const result = await invoke(h);
-    assert.deepEqual(h.navigation, [entryUrl]);
+    assert.deepEqual(h.navigation, [searchHome, searchUrl]);
+    assert.equal(h.stats().searchClicks, 1);
     assert.equal(h.stats().clicks, 1);
     assert.equal(result.error_kind, "captcha_or_challenge");
   });
@@ -159,7 +171,7 @@ test("input schema rejects missing or conflicting fields", () => {
 test("prefilled mode navigates away from unsuitable pages but never invents field values", async () => {
   const h = harness({ url: "https://www.aa.com/homePage.do" });
   assert.equal((await invoke(h, { use_prefilled: true })).error_kind, "invalid_input");
-  assert.deepEqual(h.navigation, [entryUrl]);
+  assert.deepEqual(h.navigation, [searchHome, searchUrl]);
   assert.equal(h.stats().filled, 0);
   assert.equal(h.stats().clicks, 0);
 });
@@ -206,7 +218,7 @@ for (const mfa of [false, true]) {
 test("missing form times out without submitting", async () => {
   const h = harness({ url: "about:blank", navigationState: { username: false, password: false } });
   assert.equal((await invoke(h)).error_kind, "unknown");
-  assert.equal(h.stats().clock, 30000);
+  assert.equal(h.stats().clock, 30250);
   assert.equal(h.stats().clicks, 0);
 });
 
@@ -228,6 +240,65 @@ test("shadow DOM fill checks lengths and dispatches input and change events", as
   assert.equal(password.value.length, input.password.length);
   assert.deepEqual(username.events, ["input", "change"]);
   assert.deepEqual(password.events, ["input", "change"]);
+});
+
+for (const searchResult of ["missing", "wrong_target", "wrong_origin"]) {
+  test(`unsafe or unavailable first organic result: ${searchResult}`, async () => {
+    const h = harness({ url: "about:blank", searchResult });
+    const result = await invoke(h);
+    assert.equal(result.error_kind, "unknown");
+    assert.equal(result.submission_attempted, false);
+    assert.equal(h.stats().searchClicks, 0);
+    assert.equal(h.stats().clicks, 0);
+    assert.equal(h.stats().filled, 0);
+    if (searchResult === "missing") assert.equal(h.stats().clock, 20000);
+  });
+}
+
+test("organic result selection validates the first destination without skipping to another result", async () => {
+  const h = harness({ url: "about:blank" });
+  await invoke(h);
+  for (const [href, expected] of [
+    ["https://www.aa.com/loyalty/login", "ready"],
+    ["https://login.aa.com/login", "ready"],
+    ["https://www.aa.com/homePage.do", "wrong_target"],
+    ["https://aa.com.example.org/loyalty/login", "wrong_target"],
+    ["http://www.aa.com/loyalty/login", "wrong_target"]
+  ]) {
+    const attrs = {};
+    const first = { href, setAttribute: (key, value) => { attrs[key] = value; } };
+    const select = runInNewContext(`(${h.pageFunctions.search})`, {
+      URL,
+      location: { origin: "https://start.duckduckgo.com" },
+      document: {
+        querySelector: selector => {
+          assert.equal(selector, 'article[data-testid="result"] [data-testid="result-title-a"]');
+          return first;
+        },
+        querySelectorAll: () => []
+      }
+    });
+    assert.equal(select(), expected);
+    assert.equal(attrs["data-aa-login-result"], expected === "ready" ? "true" : undefined);
+    assert.equal(attrs.target, expected === "ready" ? "_self" : undefined);
+  }
+});
+
+test("observed delivery-choice wording is first-step MFA success without sending a code", async () => {
+  const wording = "To keep your account safe, we'll send a verification code. How should we send your code?";
+  const h = harness({ after: { username: false, password: false }, afterNodes: [
+    { role: "heading", name: "Let's confirm it's really you" },
+    { role: "StaticText", name: wording },
+    { role: "button", name: "Text" },
+    { role: "button", name: "Email" }
+  ] });
+  const result = await invoke(h);
+  assert.equal(result.outcome, "mfa_required");
+  assert.equal(result.first_step_succeeded, true);
+  assert.equal(result.logged_in, false);
+  assert.equal(result.mfa_required, true);
+  assert.equal(result.next_step, wording);
+  assert.equal(h.stats().clicks, 1);
 });
 
 test("registry preserves search and indexes login under aa.com", () => {
