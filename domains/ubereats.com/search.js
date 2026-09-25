@@ -115,7 +115,20 @@
       const { cookies } = await cdp("Network.getCookies", { urls: ["https://www.ubereats.com/"] });
       return cookies.some(c => c.name === "uev2.loc" && c.value.length > 10);
     };
-    const loggedIn = async () => { const user = await api("getUserV1", {}); return !!user.isLoggedIn; };
+    // Signed out, the user endpoint answers 403 rtapi.forbidden rather than isLoggedIn: false.
+    const loggedIn = async () => {
+      try { return !!(await api("getUserV1", {})).isLoggedIn; } catch (error) {
+        if (error && error.site && (error.code === "403" || /forbidden/i.test(error.message))) return false;
+        throw error;
+      }
+    };
+    const formatMinor = (value, currency) => {
+      if (value === null) return "";
+      try {
+        const format = new Intl.NumberFormat("en", { style: "currency", currency });
+        return format.format(value / Math.pow(10, format.resolvedOptions().maximumFractionDigits));
+      } catch { return (value / 100).toFixed(2) + (currency ? " " + currency : ""); }
+    };
     const siteFailure = error => error && error.site ? fail(error.code === "404" ? "not_found" : "site_error", error.message) : fail("unknown", "Browser interaction failed: " + String(error && error.message || error).slice(0, 200));
 
     if (!input || typeof input !== "object" || Array.isArray(input)) return fail("invalid_input", "Input must be an object with a query.");

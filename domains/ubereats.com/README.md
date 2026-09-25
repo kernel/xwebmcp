@@ -335,13 +335,25 @@ reported quantities are what the site holds, not what was requested.
   merchant type; restaurant results can carry `isAvailable: false` for items in a
   menu section that is not currently being served, which the tools pass through as
   `available: false`.
+- **Signed out, the user endpoint answers HTTP 403 `rtapi.forbidden`** rather than
+  `isLoggedIn: false`. The cart tools treat that as `not_logged_in`; any other failure of
+  that endpoint is a `site_error`.
+- **Grocery listings carry no price text.** Store catalog items in grocery stores have
+  `price` but an empty `priceTagline`; the tools format `price_minor` in the store's
+  currency for `price_text` when the site gives none. Restaurant listings and item reads
+  have the site's own text (trimmed).
 - **The checkout page.** `/checkout` shows "Place order" controls and upsell modals.
   Nothing here navigates to it; the cart drawer on any store page and the endpoints
   above are the only cart surfaces used.
 
 ### Status and known limitations
 
-- No independent QA yet; status is `draft` for all six.
+- Independent QA (agent `agt_48810e77599257408338`, commit `faae4c5`) passed every
+  contract case live except the signed-out cart tools, which reported the site's 403 as
+  `site_error`; that and four minor findings (empty grocery `price_text`, a spurious
+  second problem in one `add_to_cart` rejection, cart option `group_id` in the site's
+  keyed form, a trailing space in `price_text`) are fixed in the current source with
+  fixture coverage. Status stays `draft` until a QA pass signs off the current source.
 - Live-verified on 2026-09-25 through the registered tools on the owner's signed-in
   session (`us-mobile` proxy): search for a grocery product and for a restaurant
   cuisine including a second page; a grocery store listing, a restaurant in-store
@@ -391,6 +403,24 @@ Owner session, 2026-09-25, through the registered tools:
 | update_cart_item | unknown line                                                | `not_found`, nothing changed                           |
 | update_cart_item | quantity 0 on each cart's only line                         | removed, `cart_deleted: true`, `cart: null`            |
 | get_cart         | after the removals                                          | `carts: []`                                            |
+
+Independent QA of commit `faae4c5` (agent `agt_48810e77599257408338`): one fresh stealth
+browser on `us-mobile` without profile or vault for the signed-out paths (address set on
+the site's own home page to a public landmark, browser deleted afterwards), and the
+owner session for the cart paths. All 71 outputs were valid under Ajv; the cart was
+empty before and after; no call navigated anywhere, and none touched `/checkout`.
+
+| tool             | case                                                        | result                                                 |
+|------------------|-------------------------------------------------------------|--------------------------------------------------------|
+| search           | no address, then grocery, restaurant, page 2, `max_items_per_store: 0` | `no_delivery_address`, then as documented; page 2 had no repeats |
+| get_store        | grocery by UUID and by URL id, restaurant with `query`, unknown id | identical listings for both id forms; `not_found`  |
+| get_item         | grocery item, restaurant item with one group, item with nested child groups, wrong `section_id` | groups and children as on the site; `not_found` |
+| cart tools       | signed out                                                  | `site_error` instead of `not_logged_in` (fixed since)  |
+| all              | 15 malformed inputs                                         | rejected by the input-schema gate, no page action      |
+| search, get_store| from a `/store/…` page and a `/search?…` page              | worked without navigating                              |
+| add_to_cart      | grocery item twice, restaurant item without and with its option, foreign option, two picks | one merged line; `invalid_options` for each rejection |
+| update_cart_item | 1 to 3 and back, unknown line, quantity 0 on both lines     | applied; `not_found`; both carts deleted               |
+| get_cart         | before and after                                            | `carts: []` both times                                 |
 
 Local contract and fixture tests:
 

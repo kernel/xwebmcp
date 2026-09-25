@@ -95,7 +95,7 @@ const storeData = (extra = {}) => ({
   catalogSectionsMap: { [SECTION]: [
     { type: 'EATER_MESSAGE', payload: { eaterMessagingPayload: {} } },
     { type: 'HORIZONTAL_GRID', catalogSectionUUID: SUBSECTION, payload: { standardItemsPayload: { title: { text: 'Featured' }, catalogItems: [
-      { uuid: BANANAS, title: 'Bananas', itemDescription: 'Fruit', price: 135, priceTagline: { text: '£1.35' }, isSoldOut: false, isAvailable: true, hasCustomizations: false, sectionUuid: SECTION, subsectionUuid: SUBSECTION },
+      { uuid: BANANAS, title: 'Bananas', itemDescription: 'Fruit', price: 135, isSoldOut: false, isAvailable: true, hasCustomizations: false, sectionUuid: SECTION, subsectionUuid: SUBSECTION },
       { uuid: DIP, title: 'Loose Apples', price: 232.5, priceTagline: { text: '£2.33/kg' }, isSoldOut: true, isAvailable: false, hasCustomizations: false },
       { uuid: BANANAS, title: 'Duplicate', price: 1 }
     ] } } }
@@ -143,6 +143,8 @@ function harness(name, options = {}) {
 
 const loggedIn = { getUserV1: success({ isLoggedIn: true, hashedEmail: 'x'.repeat(64) }) };
 const loggedOut = { getUserV1: success({ isLoggedIn: false }) };
+// What the live site actually answers when signed out.
+const forbidden = { getUserV1: { status: 'failure', data: { code: 403, meta: { code: 'rtapi.forbidden' } } } };
 
 for (const name of tools) {
   test(`${name}: single-expression CDP tool matching the registry and declaring typed schemas`, () => {
@@ -245,7 +247,7 @@ test('get_store: grocery store lists categories from sections and aisles, dedups
   assert.deepEqual([result.kind, result.name, result.rating, result.rating_count, result.open, result.orderable], ['grocery', "Sainsbury's Local", 4.5, '7,000+', true, true]);
   assert.equal(result.url, `https://www.ubereats.com/store/sainsburys-local-london-queensways/${STORE_SHORT}`);
   assert.deepEqual(result.categories.map(c => c.title), ['Produce', 'Deals']);
-  assert.deepEqual(result.items.map(i => [i.name, i.price_minor, i.sold_out, i.available, i.category]), [['Bananas', 135, false, true, 'Featured'], ['Loose Apples', 233, true, false, 'Featured']]);
+  assert.deepEqual(result.items.map(i => [i.name, i.price_minor, i.price_text, i.sold_out, i.available, i.category]), [['Bananas', 135, '£1.35', false, true, 'Featured'], ['Loose Apples', 233, '£2.33/kg', true, false, 'Featured']]);
   assert.equal(result.items_truncated, false);
 });
 
@@ -286,6 +288,8 @@ test('get_item: a sold-out item reports the site reason', async () => {
   const h = harness('get_item', { responses: { getMenuItemV1: bananasItem({ isSoldOut: true }) } });
   const result = await h.run({ store_id: STORE, item_id: BANANAS, section_id: SECTION, subsection_id: SUBSECTION });
   assert.deepEqual([result.sold_out, result.unavailable_reason, result.price_text], [true, 'Item not available right now', '£1.35']);
+  const untagged = harness('get_item', { responses: { getMenuItemV1: bananasItem({ productDetailsItems: [{ type: 'PRICING', payload: { pricingPayload: { pricingRichText: { richTextElements: [{ text: { text: { text: '£7.69 ' } } }] } } } }] }) } });
+  assert.equal((await untagged.run({ store_id: STORE, item_id: BANANAS, section_id: SECTION, subsection_id: SUBSECTION })).price_text, '£7.69');
 });
 
 test('get_item: an unknown item is not_found', async () => {
@@ -308,6 +312,12 @@ test('add_to_cart: a signed-out session adds nothing', async () => {
   assert.deepEqual(h.apiCalls(), ['getUserV1']);
 });
 
+test('add_to_cart: the site\'s 403 for a signed-out session is reported as not_logged_in', async () => {
+  const h = harness('add_to_cart', { responses: { ...forbidden, getMenuItemV1: bananasItem() } });
+  assert.equal((await h.run(addInput)).error_kind, 'not_logged_in');
+  assert.deepEqual(h.apiCalls(), ['getUserV1']);
+});
+
 test('add_to_cart: a sold-out item adds nothing', async () => {
   const h = harness('add_to_cart', { responses: { ...loggedIn, getMenuItemV1: bananasItem({ isSoldOut: true }) } });
   const result = await h.run(addInput);
@@ -327,7 +337,7 @@ for (const [label, options, pattern] of [
   ['too many picks', [{ group_id: GROUP, option_id: OPTION }, { group_id: GROUP, option_id: OPTION2 }], /at most 1/],
   ['a sold-out option', [{ group_id: GROUP, option_id: OPTION2 }], /sold out/],
   ['an option from another item', [{ group_id: CHILD_GROUP, option_id: CHILD_OPTION }], /needs at least 1.*not offered/s],
-  ['an option id outside its group', [{ group_id: GROUP, option_id: CHILD_OPTION }], /not in group/],
+  ['an option id outside its group', [{ group_id: GROUP, option_id: CHILD_OPTION }], /^Option selection rejected: option [-0-9a-f]+ is not in group "Pick your dip"\. Call/],
   ['a child pick above its limit', [{ group_id: GROUP, option_id: OPTION }, { group_id: CHILD_GROUP, option_id: CHILD_OPTION, quantity: 3 }], /at most 2/],
 ]) {
   test(`add_to_cart: ${label} is rejected before any cart call`, async () => {
@@ -384,7 +394,7 @@ test('add_to_cart: option picks are sent in the site\'s customization map and pr
   assert.deepEqual(Object.keys(sent), [`${GROUP}+0`, `${CHILD_GROUP}+0`]);
   assert.deepEqual(sent[`${GROUP}+0`], [{ uuid: OPTION, price: 0, quantity: 1, title: 'Garlic Dip', defaultQuantity: 0, customizationMeta: { title: 'Pick your dip', isPickOne: true } }]);
   assert.deepEqual(sent[`${CHILD_GROUP}+0`][0].quantity, 2);
-  assert.deepEqual(result.cart.items[0].options.map(o => [o.group_title, o.title, o.quantity, o.price_minor]), [['Pick your dip', 'Garlic Dip', 1, 0], ['Extras', 'Chilli', 2, 50]]);
+  assert.deepEqual(result.cart.items[0].options.map(o => [o.group_id, o.group_title, o.title, o.quantity, o.price_minor]), [[GROUP, 'Pick your dip', 'Garlic Dip', 1, 0], [CHILD_GROUP, 'Extras', 'Chilli', 2, 50]]);
   assert.equal(result.cart.items[0].unit_price_minor, 200);
 });
 
@@ -407,8 +417,8 @@ test('add_to_cart: a create call that returns no cart is reported, not retried',
 });
 
 test('get_cart: a signed-out session is reported', async () => {
-  const h = harness('get_cart', { responses: loggedOut });
-  assert.equal((await h.run({})).error_kind, 'not_logged_in');
+  assert.equal((await harness('get_cart', { responses: loggedOut }).run({})).error_kind, 'not_logged_in');
+  assert.equal((await harness('get_cart', { responses: forbidden }).run({})).error_kind, 'not_logged_in');
 });
 
 test('get_cart: an empty account returns no carts', async () => {
@@ -440,8 +450,8 @@ test('update_cart_item: an unknown cart or line changes nothing', async () => {
 });
 
 test('update_cart_item: a signed-out session changes nothing', async () => {
-  const h = harness('update_cart_item', { responses: loggedOut });
-  assert.equal((await h.run({ cart_id: CART, line_id: LINE, quantity: 1 })).error_kind, 'not_logged_in');
+  assert.equal((await harness('update_cart_item', { responses: loggedOut }).run({ cart_id: CART, line_id: LINE, quantity: 1 })).error_kind, 'not_logged_in');
+  assert.equal((await harness('update_cart_item', { responses: forbidden }).run({ cart_id: CART, line_id: LINE, quantity: 1 })).error_kind, 'not_logged_in');
 });
 
 test('update_cart_item: sets a new quantity with the line\'s own fields and the priced unit price', async () => {

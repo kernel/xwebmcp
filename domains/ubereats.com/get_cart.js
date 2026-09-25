@@ -98,14 +98,27 @@
       const { cookies } = await cdp("Network.getCookies", { urls: ["https://www.ubereats.com/"] });
       return cookies.some(c => c.name === "uev2.loc" && c.value.length > 10);
     };
-    const loggedIn = async () => { const user = await api("getUserV1", {}); return !!user.isLoggedIn; };
+    // Signed out, the user endpoint answers 403 rtapi.forbidden rather than isLoggedIn: false.
+    const loggedIn = async () => {
+      try { return !!(await api("getUserV1", {})).isLoggedIn; } catch (error) {
+        if (error && error.site && (error.code === "403" || /forbidden/i.test(error.message))) return false;
+        throw error;
+      }
+    };
+    const formatMinor = (value, currency) => {
+      if (value === null) return "";
+      try {
+        const format = new Intl.NumberFormat("en", { style: "currency", currency });
+        return format.format(value / Math.pow(10, format.resolvedOptions().maximumFractionDigits));
+      } catch { return (value / 100).toFixed(2) + (currency ? " " + currency : ""); }
+    };
     const siteFailure = error => error && error.site ? fail(error.code === "404" ? "not_found" : "site_error", error.message) : fail("unknown", "Browser interaction failed: " + String(error && error.message || error).slice(0, 200));
 
     const optionRows = customizations => {
       const rows = [];
       for (const [key, selections] of Object.entries(customizations || {})) {
         for (const sel of selections || []) {
-          rows.push({ group_id: key, group_title: text(sel.customizationMeta && sel.customizationMeta.title), option_id: String(sel.uuid || ""), title: text(sel.title), quantity: Math.max(1, Number(sel.quantity) || 1), price_minor: minor(sel.price) || 0 });
+          rows.push({ group_id: String(key).split("+")[0], group_title: text(sel.customizationMeta && sel.customizationMeta.title), option_id: String(sel.uuid || ""), title: text(sel.title), quantity: Math.max(1, Number(sel.quantity) || 1), price_minor: minor(sel.price) || 0 });
         }
       }
       return rows;
