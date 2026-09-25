@@ -146,6 +146,22 @@
       "notes": "Google Flights via a tfs deep link (hl=en, gl=US, curr); returns outbound itineraries from the best and other sections with flight numbers, segments, layovers and total prices for the requested passengers. Three independent QA rounds passed the full matrix plus date-line, airport-change, non-USD and unsupported-currency probes; a first-round intermittent loss of expanded detail panels was fixed and did not recur in 10 runs. url_patterns are deliberately narrowed to /travel/* (see the domain README). Consent interstitial, /sorry blocks and 'Price unavailable' cards are covered by local tests only."
     },
     {
+      "domain": "instacart.com",
+      "tool": "login",
+      "file": "domains/instacart.com/login.js",
+      "kind": "cdp",
+      "namespace": "instacart.com",
+      "url_patterns": [
+        "https://instacart.com/*",
+        "https://*.instacart.com/*"
+      ],
+      "status": "qa_passed",
+      "qa_agent": "agt_3fa02b3438dc8870922b",
+      "browser_session": null,
+      "last_verified": "2026-09-25",
+      "notes": "Passwordless email-code login; password is accepted but never entered. Live-verified 2026-09-25 with one real email submission and one real code entry: DuckDuckGo entry, invalid_credentials for a fabricated address, mfa_required first step, authenticated completion, already-logged-in verification on /store/account, and wrong-account rejection. Independent failure-path QA passed twice (two defects found and fixed, then re-verified on the current source). Unverified: wrong or expired codes, lockout text, unresolved captcha, a proxy error on the DuckDuckGo results step (reported generically, no submission). No native WebMCP tools found."
+    },
+    {
       "domain": "jetblue.com",
       "tool": "login",
       "file": "domains/jetblue.com/login.js",
