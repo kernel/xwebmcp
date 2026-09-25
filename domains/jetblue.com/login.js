@@ -3,7 +3,7 @@
   match: { url_patterns: ["https://jetblue.com/*", "https://*.jetblue.com/*"] },
   tool: {
     name: "login",
-    description: "Submit JetBlue's username/password form once. Use use_filled_form for human or vault-filled credentials without returning their values. Success means first-step acceptance; authenticated is false when email verification or other MFA remains. Stops on challenges and never retries a submission. Does not request or submit MFA codes.",
+    description: "Enter JetBlue through a DuckDuckGo search for jetblue login and submit the username/password form once. Only the first organic result is accepted, and only if it is the canonical JetBlue sign-in URL. Use use_filled_form for human or vault-filled credentials without returning their values. Success means first-step acceptance; authenticated is false when email verification or other MFA remains. Stops on challenges and never retries a submission. Does not request or submit MFA codes.",
     inputSchema: {
       type: "object",
       properties: {
@@ -115,12 +115,56 @@
       };
       return null;
     };
+    const hasSearchReferrer = async () => js(() => {
+      try {
+        return ["https://duckduckgo.com", "https://start.duckduckgo.com"].includes(new URL(document.referrer).origin);
+      } catch {
+        return false;
+      }
+    });
     try {
-      const entry = "https://www.jetblue.com/signin?useIdx=true&returnUrl=https%3A%2F%2Fwww.jetblue.com%2F";
       const current = new URL((await pageInfo()).url);
-      if (current.origin !== "https://www.jetblue.com" || !/^\/signin\/?$/.test(current.pathname)) {
-        await gotoUrl(entry);
+      const atLogin = current.origin === "https://www.jetblue.com" && /^\/signin\/?$/.test(current.pathname);
+      if (atLogin) {
+        const existing = await readState();
+        if (existing.challenge || existing.mfa || existing.account || existing.errors.length) {
+          const result = outcome(existing);
+          if (result) return result;
+        }
+      }
+      if (input.use_filled_form && !atLogin) return failure("validation_error", "Prefilled mode requires the canonical JetBlue sign-in page; no navigation or submission made.");
+      if (!atLogin || (!input.use_filled_form && !await hasSearchReferrer())) {
+        await gotoUrl("https://start.duckduckgo.com/");
+        if (!await waitForElement('input[role="combobox"],input[type="text"]', { timeoutSec: 20 })) {
+          return failure("unknown", "DuckDuckGo search form did not become available; no login submission made.");
+        }
+        const searchPage = new URL((await pageInfo()).url);
+        if (!["https://start.duckduckgo.com", "https://duckduckgo.com"].includes(searchPage.origin)) {
+          return failure("unknown", "Search navigation left DuckDuckGo; no login submission made.");
+        }
+        const snapshot = await accessibilitySnapshot();
+        const query = snapshot.nodes.find(n => ["combobox", "textbox", "searchbox"].includes(n.role) && n.name === "Search with DuckDuckGo");
+        const search = snapshot.nodes.find(n => n.role === "button" && n.name === "Search");
+        if (!query || !search) return failure("unknown", "DuckDuckGo search controls were not recognized; no login submission made.");
+        await fillInput({ backendNodeId: query.backendNodeId }, "jetblue login");
+        await click({ backendNodeId: search.backendNodeId });
+        if (!await waitForElement('[data-testid="result"] [data-testid="result-title-a"]', { timeoutSec: 20 })) {
+          return failure("unknown", "DuckDuckGo organic results did not become available; no login submission made.");
+        }
+        const approved = await js(() => {
+          if (!["https://duckduckgo.com", "https://start.duckduckgo.com"].includes(location.origin)) return false;
+          document.querySelectorAll('[data-webmcp-jetblue-login]').forEach(e => e.removeAttribute('data-webmcp-jetblue-login'));
+          const first = document.querySelector('[data-testid="result"] [data-testid="result-title-a"]');
+          if (!first || !first.getClientRects().length) return false;
+          const destination = new URL(first.href);
+          if (destination.origin !== "https://www.jetblue.com" || !/^\/signin\/?$/.test(destination.pathname) || destination.search || destination.hash) return false;
+          first.setAttribute('data-webmcp-jetblue-login', 'true');
+          return true;
+        });
+        if (!approved) return failure("unknown", "The first organic result was not the approved JetBlue sign-in URL; no login submission made.");
+        await click('[data-webmcp-jetblue-login="true"]');
         await waitForElement('input[name="credentials.passcode"]', { timeoutSec: 20 });
+        if (!await hasSearchReferrer()) return failure("unknown", "The login landing page did not retain a DuckDuckGo referrer; no login submission made.");
       }
       let state = await readState();
       if (state.origin !== "https://www.jetblue.com") return outcome(state);
@@ -128,7 +172,7 @@
         const result = outcome(state);
         if (result) return result;
       }
-      if (!state.hasForm) {
+      if (!/^\/signin\/?$/.test(state.path) || !state.hasForm) {
         return outcome(state) || failure("unknown", "JetBlue login form did not become available; no submission made.");
       }
       if (state.errors.some(t => /locked|too many|try again later|rate.limit|temporarily blocked|logged out due to inactivity/i.test(t))) return outcome(state);

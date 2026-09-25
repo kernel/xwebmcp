@@ -58,7 +58,9 @@ These use browser-helper stubs to check expression loading, matching, entry navi
 
 Register `login.js` with namespace `jetblue.com`. It is a single CDP tool-array expression matching the apex and all HTTPS subdomains. Loading one file with `forceOverwriteNamespace: true` removes other tools in that namespace; combine the search and login arrays when registering both.
 
-The tool navigates from unrelated pages, the apex, subdomains, or non-login paths to the canonical `www.jetblue.com/signin` entry. An existing sign-in page is inspected first. Credentials are entered only on that canonical origin. The form calls the identifier **Username**; inputs are `username`, `password`, and optional `remember_me` (default false). Alternatively, `use_filled_form: true` submits an already-filled form without returning field values; it cannot be combined with explicit credentials. Use a fresh flow and allow 60 seconds for invocation.
+The tool enters through `https://start.duckduckgo.com/`, searches `jetblue login`, and clicks the **first organic result**, not an advertisement. It accepts that result only when it is `https://www.jetblue.com/signin` (optional trailing slash, no query or fragment), then verifies the actual DuckDuckGo document referrer before entering credentials. Unexpected results, search failures, missing referrers, and changed login destinations stop with a typed failure; there is no direct-navigation fallback or spoofed referrer.
+
+There are no starting-page assumptions: unrelated pages, the apex, subdomains, non-login paths, and direct sign-in entries use the search route. A canonical sign-in page already reached through DuckDuckGo can be reused. Existing challenges, errors, MFA, or authenticated state are reported without restarting the flow. Credentials are entered only on the canonical sign-in page. Inputs are `username`, `password`, and optional `remember_me` (default false). Alternatively, `use_filled_form: true` uses an already-filled canonical sign-in page without navigating or requiring a search referrer; it cannot be combined with explicit credentials and fails on other pages. Allow 120 seconds for invocation.
 
 The typed output distinguishes:
 
@@ -71,7 +73,7 @@ The tool makes at most one password submission and never retries it. Explicit cr
 ### Login quirks and fixes
 
 - Both the password and email OTP use `name="credentials.passcode"`. Password selectors now also require `type="password"`, so a code field cannot be mistaken for the password form or filled with a password.
-- **Fixed:** the original classifier missed “Get a verification email” / “Send me an email” and returned `unknown` despite first-step acceptance. The repository version recognizes the email-send interstitial and the subsequent “Verify with your email” / “Enter the verification code” screen. Regression fixtures exercise the actual page-reader expression using the observed wording. The patched implementation has not received another live credential submission.
+- **Fixed:** the original classifier missed “Get a verification email” / “Send me an email” and returned `unknown` despite first-step acceptance. The repository version recognizes the email-send interstitial and the subsequent “Verify with your email” / “Enter the verification code” screen. Regression fixtures exercise the actual page-reader expression using the observed wording. The corrected classifier subsequently returned typed first-step success during the live DuckDuckGo-referrer experiment below.
 - **Fixed:** plain-text “Verify you are human” outside a heading or alert is recognized. Independent QA found this with a DOM fixture; a parent regression check passed after the fix.
 - **Open:** a residential+stealth run did not retain the password during filling and stopped before submission. Its cause remains unconfirmed; the tool does not silently retry a fill or submit incomplete credentials.
 - Expired flows display “You have been logged out due to inactivity.” This is `unknown`, not a credential judgment. An already-visible inactivity error stops before submission. A post-submit timeout also remains inconclusive; inspect the page before deciding whether a new test is appropriate.
@@ -88,7 +90,34 @@ Configuration checks on 2026-09-25 used separate browsers with the same profile 
 | Mobile proxy, stealth enabled | 1 | Password-length guard passed; live email-MFA first-step success. Original tool returned `unknown` because it missed the interstitial; fixed as described above |
 | Residential proxy, stealth disabled | 0 | Not run: matrix stopped after mobile first-step success |
 
-The mobile session remains at email code entry after one separate verification-email request. Full authentication and code submission have not been verified. The repository migration and MFA fix are covered by local regression tests, not a new independent live QA pass.
+The original mobile session reached email code entry after one separate verification-email request. Full authentication and code submission have not been verified. The independent QA pass predates the repository migration and referrer-entry changes; those changes have local regression coverage and the live evidence below, not a new independent QA pass.
+
+### DuckDuckGo-referrer experiment — 2026-09-25
+
+A fresh residential+stealth browser opened `start.duckduckgo.com`, searched `jetblue login`, and clicked the first organic result, **Sign In | JetBlue**, linking to `https://www.jetblue.com/signin`. The landing page reported `document.referrer === "https://duckduckgo.com/"`. The corrected login tool then made one password-length-checked submission and returned:
+
+```json
+{
+  "logged_in": true,
+  "authenticated": false,
+  "landing_url": "https://www.jetblue.com/signin",
+  "account_name_or_hint": null,
+  "mfa_required": true,
+  "next_step": "complete_mfa",
+  "evidence": "Get a verification email",
+  "submission_attempted": true
+}
+```
+
+| Configuration | Direct-entry baseline | DuckDuckGo-entry rerun |
+|---|---|---|
+| Residential proxy, stealth enabled | Fill failure; no submission | Email-MFA first-step success; one submission; no CAPTCHA solver events |
+| Mobile proxy, stealth enabled | Email-MFA first-step success; one submission | Not run: stopped after residential first-step success |
+| Residential proxy, stealth disabled | Not run | Not run: stopped after residential first-step success |
+
+**Interpretation:** search-referrer entry worked, but reduced bot detection is **not established**. The failed residential baseline never submitted credentials, no CAPTCHA was observed in either run, and egress IP, time, page readiness, and login URL parameters were not held constant. This is a successful alternative entry path, not a controlled proof that the referrer changed detection behavior.
+
+The live run used native search interactions followed by the registered login tool on the referred page. The repository now packages those search interactions into `execute`; its new orchestration and strict destination/referrer checks have local tests. No extra password submission was made to retest the packaged entry branch. The successful referrer session is retained at the email-MFA first step: `a17cnzyab9ape5q7k92d4a1i`. An initial blank search homepage required one read-only reload during exploration; the packaged tool instead returns `unknown` when search controls do not load.
 
 Run `node --test tests/jetblue-login.test.mjs` for contract, navigation, single-submit safety, failure classification, and page-reader MFA fixtures. Run `node --test tests/*.test.mjs` for the repository suite. These tests use synthetic inputs and browser-helper stubs; they do not submit real logins.
 

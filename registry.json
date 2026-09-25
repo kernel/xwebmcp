@@ -79,7 +79,7 @@
       "qa_agent": "agt_19fb8339edef5ff82a82",
       "browser_session": "oh52hpvtipbx16z1hiqlj00n",
       "last_verified": "2026-09-25",
-      "notes": "email-MFA first-step live-verified on mobile+stealth (one submission); completion pending code entry; original MFA interstitial false-unknown defect fixed with page-reader regression fixtures, not another live credential submission; residential+stealth fill failure remains open"
+      "notes": "email-MFA first-step live-verified on mobile+stealth and, after DuckDuckGo search entry, residential+stealth (one submission each); completion pending code entry; corrected MFA classifier returned typed success on the referrer run; search orchestration packaged with local regression tests; no proven bot-detection improvement; see README for matrix and limitations"
     },
     {
       "domain": "jetblue.com",
