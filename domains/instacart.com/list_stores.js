@@ -79,16 +79,18 @@
         return { data: body?.data ?? null, error };
       };
       const readLocation = async () => {
-        let text = document.getElementById("node-apollo-state")?.textContent || "";
-        if (!text) {
-          const html = await (await fetch("/store", { credentials: "include" })).text();
-          text = html.match(/<script id="node-apollo-state"[^>]*>([\s\S]*?)<\/script>/)?.[1] || "";
-        }
-        let state = null;
-        try { state = JSON.parse(decodeURIComponent(text)); } catch { state = null; }
-        const loc = state?.GetLastUserLocation?.["{}"]?.lastUserLocation;
-        if (!loc || !loc.postalCode || !loc.zoneId) return null;
-        return { addressId: loc.addressId || null, zoneId: String(loc.zoneId), postalCode: String(loc.postalCode), coordinates: loc.coordinates ? { latitude: loc.coordinates.latitude, longitude: loc.coordinates.longitude } : null };
+        const parse = text => {
+          let state = null;
+          try { state = JSON.parse(decodeURIComponent(text || "")); } catch { state = null; }
+          const loc = state?.GetLastUserLocation?.["{}"]?.lastUserLocation;
+          if (!loc || !loc.postalCode || !loc.zoneId) return null;
+          return { addressId: loc.addressId || null, zoneId: String(loc.zoneId), postalCode: String(loc.postalCode), coordinates: loc.coordinates ? { latitude: loc.coordinates.latitude, longitude: loc.coordinates.longitude } : null };
+        };
+        // Only the store app's server-rendered pages carry the location; other pages (help, account) fall back to /store.
+        const inline = parse(document.getElementById("node-apollo-state")?.textContent);
+        if (inline) return inline;
+        const html = await (await fetch("/store", { credentials: "include" })).text();
+        return parse(html.match(/<script id="node-apollo-state"[^>]*>([\s\S]*?)<\/script>/)?.[1]);
       };
       const currentUser = async () => {
         const r = await gql("SharedCurrentUser", {});
