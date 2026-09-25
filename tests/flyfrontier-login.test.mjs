@@ -16,7 +16,7 @@ const searchState = { blocked: false, url: searchUrl };
 
 function harness(options = {}) {
   let state = { ...siteState, ...options.initial };
-  const navigation = [], fills = [], clicks = [], keys = [], typed = [];
+  const navigation = [], fills = [], clicks = [], keys = [], pasted = [];
   const tools = runInNewContext(`(${source})`, {
     URL,
     gotoUrl: async url => { navigation.push(url); },
@@ -27,15 +27,10 @@ function harness(options = {}) {
     },
     waitForNetworkIdle: async () => {},
     pressKey: async key => { keys.push(key); },
-    typeText: async value => {
-      typed.push(value);
-      state = { ...state, otpPopulated: options.otpPopulated ?? 6, ...options.afterOtp };
-    },
     fillInput: async (selector, value) => {
       fills.push({ selector, length: value.length });
       if (selector.includes('name="email"')) state = { ...state, emailValue: value };
       if (selector.includes('name="password"')) state = { ...state, passwordValue: value, formFilled: !!state.emailValue };
-      if (selector.includes("data-login-otp")) state = { ...state, otpPopulated: options.otpPopulated ?? 6, ...options.afterOtp };
     },
     click: async selector => {
       clicks.push(selector);
@@ -49,9 +44,12 @@ function harness(options = {}) {
       if (body.includes("mfaFieldCount")) return { ...state, formFilled: !!state.emailValue && !!state.passwordValue };
       if (body.includes("wisepops-instance")) return undefined;
       if (body.includes("data-login-entry")) return options.organicResult === null ? null : (options.organicResult ?? "https://www.flyfrontier.com/myfrontier");
-      if (body.includes('filter(e => e.value.length > 0).length')) return state.otpPopulated ?? 0;
-      if (body.includes('?.value.length === 0')) return false;
-      if (body.includes('field.value = ""')) return undefined;
+      if (body.includes("ClipboardEvent")) {
+        pasted.push(args.arg);
+        if (options.pasteIgnored) return false;
+        state = { ...state, ...options.afterOtp };
+        return true;
+      }
       if (body.includes("data-login-otp")) return options.otpFields ?? [0, 1, 2, 3, 4, 5];
       if (body.includes("identifier_matches")) return options.fillVerification ?? {
         identifier_matches: state.emailValue === args.arg.identifier,
@@ -62,7 +60,7 @@ function harness(options = {}) {
       return { ...searchState, ...options.search };
     }
   });
-  return { tools, run: input => tools[0].execute(input), navigation, fills, clicks, keys, typed };
+  return { tools, run: input => tools[0].execute(input), navigation, fills, clicks, keys, pasted };
 }
 
 test("source is a single expression with one cdp tool scoped to the domain", () => {
@@ -205,19 +203,35 @@ test("otp mode requires a visible six-field step and never resends", async () =>
   const result = await h.run({ mode: "otp", otp: "123456" });
   assert.equal(result.logged_in, true);
   assert.equal(result.authenticated, true);
-  assert.deepEqual(h.typed, ["123456"], "the code is typed once into the focused field");
+  assert.deepEqual(h.pasted, ["123456"], "the code is pasted once into the first box");
+  assert.equal(h.fills.length, 0, "per-box typing is never used");
   assert.equal(h.navigation.length, 0, "otp mode never re-enters through search");
 });
 
-test("a verification form that will not take all six digits fails without claiming a code was evaluated", async () => {
+test("a verification form that ignores the pasted code fails without claiming a code was evaluated", async () => {
   const h = harness({
     initial: { mfaVisible: true, mfaFieldCount: 6, mfaHint: "We sent a 6-digit verification code" },
-    otpPopulated: 5
+    pasteIgnored: true
   });
   const result = await h.run({ mode: "otp", otp: "123456" });
   assert.equal(result.logged_in, false);
   assert.equal(result.error_kind, "login_form_unavailable");
+  assert.equal(result.submitted, false);
   assert.match(result.error_message, /never evaluated a code/);
+});
+
+test("a rejected code is mfa_failed with the site's wording", async () => {
+  const h = harness({
+    initial: { mfaVisible: true, mfaFieldCount: 6, mfaHint: "We sent a 6-digit verification code" },
+    afterOtp: { errors: ["Invalid code. Please try again."] }
+  });
+  const result = await h.run({ mode: "otp", otp: "123456" });
+  assert.equal(result.logged_in, false);
+  assert.equal(result.error_kind, "mfa_failed");
+  assert.equal(result.error_message, "Invalid code. Please try again.");
+  assert.equal(result.error_source, "site");
+  assert.equal(result.submitted, true);
+  assert.deepEqual(h.pasted, ["123456"]);
 });
 
 test("prefilled mode submits an open form without navigating or reading the password", async () => {

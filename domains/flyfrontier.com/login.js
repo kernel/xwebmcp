@@ -151,17 +151,17 @@
         if (!s.mfaVisible || s.mfaFieldCount !== 6) return fail("login_form_unavailable", "No visible six-field email verification step; no code was submitted.", "before_submit");
         const bound = await js(() => [...document.querySelectorAll('.slider-visible input[data-vv-scope="mfa"]')].map((e, i) => { e.setAttribute("data-login-otp", String(i)); return i; }));
         if (bound.length !== 6) return fail("login_form_unavailable", "The verification step did not expose six code inputs; no code was submitted.", "before_submit");
+        // Clearing a box with Backspace moves focus to the previous box, so per-box typing lands one box to the left.
+        // The component spreads a pasted code across all six boxes and submits on its own once they are full.
+        const pasted = await js(code => {
+          const box = document.querySelector('.slider-visible input[data-login-otp="0"]');
+          box.focus();
+          const data = new DataTransfer();
+          data.setData("text", code);
+          return !box.dispatchEvent(new ClipboardEvent("paste", { clipboardData: data, bubbles: true, cancelable: true }));
+        }, { arg: otp });
+        if (!pasted) return fail("login_form_unavailable", "The verification form ignored the pasted code, so the site never evaluated a code.", "before_submit");
         submitted = true;
-        // The code inputs advance focus on each keystroke, so type once and repair any field the page skipped.
-        await js(() => { for (const field of document.querySelectorAll('.slider-visible input[data-vv-scope="mfa"]')) { field.value = ""; field.dispatchEvent(new Event("input", { bubbles: true })); } });
-        await click('.slider-visible input[data-login-otp="0"]');
-        await typeText(otp);
-        for (const i of bound) {
-          const empty = await js(index => document.querySelector('.slider-visible input[data-login-otp="' + index + '"]')?.value.length === 0, { arg: i });
-          if (empty) await fillInput('.slider-visible input[data-login-otp="' + i + '"]', otp[i]);
-        }
-        const populated = await js(() => [...document.querySelectorAll('.slider-visible input[data-vv-scope="mfa"]')].filter(e => e.value.length > 0).length);
-        if (populated !== 6) return fail("login_form_unavailable", "The verification form kept " + (6 - populated) + " of its six code fields empty, so the site never evaluated a code.", "after_submit");
         s = await poll(x => !!x.account || x.errors.length > 0 || !!x.challenge || !x.mfaVisible);
         if (!s) return fail("unknown", "The verification result did not resolve; do not automatically retry.", "after_submit");
         const outcome = classify(s, "after_submit");
