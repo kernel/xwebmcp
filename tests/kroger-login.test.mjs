@@ -442,11 +442,20 @@ test("the observation window shrinks to the remaining budget", async () => {
   assert.equal(h.submits(), 1);
 });
 
-test("entry waits are bounded by the remaining budget", async () => {
+test("entry waits are bounded by the remaining budget and say so", async () => {
   const h = harness({ start: "offsite", navigationDelay: 105000, missingControls: true });
   const result = await h.run();
   assert.equal(result.error_kind, "unknown");
   assert.equal(result.step, "search_entry");
+  assert.match(result.error_message, /within 5 seconds/);
+  assert.equal(h.submits(), 0);
+});
+
+test("a landing that never becomes usable reports the shortened wait", async () => {
+  const h = harness({ start: "offsite", navigationDelay: 95000, landing: "offsite" });
+  const result = await h.run();
+  assert.equal(result.step, "site_entry");
+  assert.match(result.error_message, /within 1[0-5] seconds/);
   assert.equal(h.submits(), 0);
 });
 

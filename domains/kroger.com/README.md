@@ -4,7 +4,7 @@ Tools for Kroger (https://www.kroger.com).
 
 | tool  | file                 | status | notes |
 |-------|----------------------|--------|-------|
-| login | [login.js](login.js) | draft  | One submission maximum; live success, already-signed-in, account mismatch and invalid credentials verified; MFA, lockout and CAPTCHA synthetic only |
+| login | [login.js](login.js) | qa_passed | One submission maximum; live success, already-signed-in, account mismatch and invalid credentials verified; MFA, lockout and CAPTCHA synthetic only |
 
 ## Native WebMCP tools
 
@@ -42,7 +42,9 @@ repl.write(JSON.stringify(result));
 
 `listTools()` returns one `tool_ref` per open kroger.com tab; pick the one whose
 `source.target_id` is the tab the Browser REPL is attached to, because the tool
-drives the attached tab. `forceOverwriteNamespace: true` replaces every tool in the
+drives the attached tab. Straight after a navigation `listTools()` can return an
+empty list for a few seconds while the registration is reconciled; wait and list
+again rather than treating it as missing. `forceOverwriteNamespace: true` replaces every tool in the
 namespace, so later search and cart tools must be registered together with this one
 as a single array. `invokeTool` accepts at most `timeoutSec: 120`. The tool keeps a
 110-second budget of its own: every wait (20 s search controls, 20 s results, 30 s
@@ -80,9 +82,13 @@ The tool never navigates straight to a Kroger URL:
 
 Each entry step fails with its own named message (`search_controls_unavailable`,
 `search_origin_unexpected`, `search_result_missing`, `search_result_unapproved`,
-`site_entry_failed`, `sign_in_control_missing`, `login_form_unavailable`) and never
-falls back to direct navigation. A DuckDuckGo bot challenge is reported as
-`captcha_or_challenge` before any Kroger request.
+`site_entry_failed`, `sign_in_control_missing`, `login_form_unavailable`), each
+quoting the wait it actually allowed, and never falls back to direct navigation. A
+DuckDuckGo bot challenge is reported as `captcha_or_challenge` before any Kroger
+request. `https://www.kroger.com/signin` occasionally stalls on a loading spinner
+behind the consent modal when its sign-in bundle fails to load (independent QA saw
+`net::ERR_ABORTED` on `account-sign-in.*.js` once); the tool then returns
+`site_entry_failed` with nothing submitted, and a fresh invocation is safe.
 
 ## Output contract and safety
 
@@ -153,7 +159,10 @@ falls back to direct navigation. A DuckDuckGo bot challenge is reported as
 
 ## Status and known limitations
 
-Status: `draft` until an independent QA pass signs off on the current source.
+Status: `qa_passed`. Two independent failure-path QA passes ran against the
+branch (see the QA matrix); the final commit differs from the second pass only in
+the wording of entry-step timeout messages, which a third no-submission pass
+re-checked.
 
 Live-verified on 2026-09-25 (one residential stealth browser, personal profile,
 `us-east`):
@@ -194,8 +203,10 @@ pages with `Add to Cart: <name>` buttons, and `/cart`.
 | 1 | fabricated email + password from a product page | isolated context of the main browser | search_referrer | `invalid_credentials` "Invalid email address", 1 submission |
 | 2 | real credentials from a product page | main browser | search_referrer | `authenticated: true`, 1 submission, no MFA |
 | 3 | real email while already signed in, from the cart | main browser | already_signed_in | `authenticated: true`, `email_confirmed`, 0 submissions |
-| 4 | different email while already signed in | main browser | none | failure `account_check`, 0 submissions |
-| 5 | independent QA (failure path, schema, input gate, non-login pages) | QA agent's own browser | see QA section | pending |
+| 4 | different email while already signed in | main browser | already_signed_in | failure `account_check`, 0 submissions |
+| 5 | independent QA pass 1 (`agt_b45e69419d64ca15c913`, browser `agtt2pr9yv4twl1ewkobsw0v`, commit `5990a80`): 8 malformed inputs rejected by the runtime schema gate, otp-only input rejected by the tool, fabricated submission from a product page via DuckDuckGo, second fabricated submission from `/cart` (server redirect to the form, `already_open`), stale `tool_ref` on example.com | QA browser, no profile | search_referrer, already_open | both submissions `invalid_credentials` "Invalid email address", exactly one `POST /SelfAsserted` each; no blockers; three findings fixed (110 s budget, README snippet, `entry_path` on failures) |
+| 6 | independent QA pass 2 (`agt_2abe214c89e45307dfec`, browser `lmu9vb5mpgn45fb5yzcq2ygt`, commit `2e764b7`): schema gate, otp-only input, one fabricated submission via DuckDuckGo, budget review, stale `tool_ref` | QA browser, no profile | search_referrer | `invalid_credentials`, one `POST /SelfAsserted`, 24.3 s; one earlier attempt stopped at `site_entry_failed` when `/signin` stalled, nothing submitted; no blockers; two wording/docs findings fixed |
+| 7 | independent QA pass 3 (no submissions) on the final commit | QA browser, no profile | none | in progress |
 
 Local contract tests (mocked helpers, no live traffic):
 
@@ -214,5 +225,5 @@ mode.
 
 - Long-lived signed-in browser: `noihe7yj13l2isft6decjt5a` (24-hour inactivity
   timeout, profile changes not saved). It is reused for the search and cart tools.
-- Independent QA browser: see the QA section once the pass completes.
+- Independent QA browsers were deleted by their agents after each pass.
 - Source: this repository is canonical; sessions expire but files do not.

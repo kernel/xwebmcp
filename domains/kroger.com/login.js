@@ -292,7 +292,8 @@
         entryPath = "search_referrer";
         await gotoUrl("https://start.duckduckgo.com/");
         let query, search;
-        const controlsDeadline = Date.now() + Math.min(20000, remaining());
+        const controlsWindow = Math.min(20000, remaining());
+        const controlsDeadline = Date.now() + controlsWindow;
         while (Date.now() < controlsDeadline) {
           const snapshot = await accessibilitySnapshot();
           query = snapshot.nodes.find(n => ["combobox", "textbox", "searchbox"].includes(n.role) && n.name === "Search with DuckDuckGo");
@@ -300,10 +301,11 @@
           if (query && search) break;
           await waitMs(500);
         }
-        if (!query || !search) return fail("unknown", "search_controls_unavailable: the DuckDuckGo search box did not appear within 20 seconds; nothing was submitted.");
+        if (!query || !search) return fail("unknown", "search_controls_unavailable: the DuckDuckGo search box did not appear within " + Math.round(controlsWindow / 1000) + " seconds; nothing was submitted.");
         await fillInput({ backendNodeId: query.backendNodeId }, "kroger login");
         await click({ backendNodeId: search.backendNodeId });
-        const listed = await waitForElement('article[data-testid="result"] a[data-testid="result-title-a"]', { timeoutSec: Math.max(1, Math.min(20, Math.floor(remaining() / 1000))) });
+        const resultsWindow = Math.max(1, Math.min(20, Math.floor(remaining() / 1000)));
+        const listed = await waitForElement('article[data-testid="result"] a[data-testid="result-title-a"]', { timeoutSec: resultsWindow });
         const results = await js(() => {
           const blocked = /unusual traffic|verify (?:that )?you(?:'re| are) human|are you a robot|bots use DuckDuckGo|select all squares/i.test((document.body?.innerText || "").slice(0, 4000));
           document.querySelectorAll("[data-kroger-login-entry]").forEach(e => e.removeAttribute("data-kroger-login-entry"));
@@ -319,12 +321,13 @@
         });
         if (!["https://duckduckgo.com", "https://start.duckduckgo.com"].includes(results.origin)) return fail("unknown", "search_origin_unexpected: the search left DuckDuckGo; nothing was submitted.");
         if (results.blocked) return fail("captcha_or_challenge", "DuckDuckGo challenged this session before any Kroger request was made; nothing was submitted.", "site");
-        if (!listed || !results.href) return fail("unknown", "search_result_missing: no organic result was listed for kroger login within 20 seconds; nothing was submitted.");
+        if (!listed || !results.href) return fail("unknown", "search_result_missing: no organic result was listed for kroger login within " + resultsWindow + " seconds; nothing was submitted.");
         if (!(results.host === "kroger.com" || results.host.endsWith(".kroger.com"))) return fail("unknown", "search_result_unapproved: the first organic result points at " + results.host + ", not kroger.com; nothing was submitted.");
         step = "site_entry";
         await click('a[data-kroger-login-entry="true"]');
-        state = await poll(s => s.challenge || (s.onSite && (s.formVisible || s.signedIn || !!s.welcomeText)), 30000);
-        if (!state) return fail("unknown", "site_entry_failed: the organic result did not land on a usable kroger.com page within 30 seconds; nothing was submitted.");
+        const landingWindow = Math.min(30000, remaining());
+        state = await poll(s => s.challenge || (s.onSite && (s.formVisible || s.signedIn || !!s.welcomeText)), landingWindow);
+        if (!state) return fail("unknown", "site_entry_failed: the organic result did not land on a usable kroger.com page within " + Math.round(landingWindow / 1000) + " seconds; nothing was submitted.");
         const blockedEntry = blockedBefore(state);
         if (blockedEntry) return blockedEntry;
         if (state.signedIn) return succeed(state);
@@ -332,8 +335,9 @@
           step = "login_form";
           entryPath = "site_navigation";
           if (!await openFromHeader()) return fail("unknown", "sign_in_control_missing: the site header did not offer a Sign In control; nothing was submitted.");
-          state = await poll(s => s.challenge || (s.loginHost && s.formVisible) || s.signedIn, 30000);
-          if (!state) return fail("unknown", "login_form_unavailable: the login.kroger.com sign-in form did not appear within 30 seconds; nothing was submitted.");
+          const formWindow = Math.min(30000, remaining());
+          state = await poll(s => s.challenge || (s.loginHost && s.formVisible) || s.signedIn, formWindow);
+          if (!state) return fail("unknown", "login_form_unavailable: the login.kroger.com sign-in form did not appear within " + Math.round(formWindow / 1000) + " seconds; nothing was submitted.");
           const blockedForm = blockedBefore(state);
           if (blockedForm) return blockedForm;
           if (state.signedIn) return succeed(state);
