@@ -87,6 +87,21 @@ completed session. Failures are explicit: `error_kind` plus `failed_step`, `erro
 (`site` or `tool`) and `submitted`, so a caller can always tell whether a password actually
 reached Delta. A captcha or bot challenge is reported as `error_kind: "captcha_or_challenge"`.
 
+### Status and known limitations
+
+**Draft.** Not independently QA-tested; last live check 2026-09-25.
+
+- **Live-verified:** search-result entry reaches `https://www.delta.com/skymiles/login` on
+  residential and mobile egress, the form fills, exactly one submission happens, and the
+  failure reports the step and `submitted: true`.
+- **Unverified:** a successful login, an MFA step, and a real captcha. Every Kernel browser
+  tried, including one with no profile attached, gets Delta's "login is unavailable right now"
+  while the same credentials work in an ordinary browser.
+- **Lead for the next person:** profile state is ruled out, so the block keys on egress or the
+  browser fingerprint. Compare what Delta's login page collects from a Kernel browser against an
+  ordinary browser, without submitting, before spending more real attempts; each one counts
+  against the account's lockout budget.
+
 ### Search-result entry path
 
 In `credentials` mode the entry path is DuckDuckGo only. The tool opens
@@ -181,6 +196,4 @@ real captcha remain unverified.
 
 - Development browser: `blp6z5n5xt2fuw0sf0pthv8u` (86,400-second inactivity timeout; left alive).
 - Independent QA browser: `vw2lg1cj5leg275iuf5jmul1` (86,400-second inactivity timeout; left alive).
-- `login` residential-egress browser: `hjyk5yaiscetfem12ol81i4q` (86,400-second inactivity timeout; left alive).
-- `login` mobile-egress browser: `dizdvlsqakfizhlha5kt776d` (86,400-second inactivity timeout; left alive).
 - Source: this repository is canonical; sessions expire but files do not. No credential-bearing live-view URL is stored here.

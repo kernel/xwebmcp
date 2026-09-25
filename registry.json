@@ -61,9 +61,9 @@
       ],
       "status": "draft",
       "qa_agent": null,
-      "browser_session": "hjyk5yaiscetfem12ol81i4q",
+      "browser_session": null,
       "last_verified": "2026-09-25",
-      "notes": "Search-result entry only: the tool reaches Delta through a DuckDuckGo organic result and has no direct-navigation fallback; each entry step fails with its own error_kind before any credential is typed. Invocable only while the browser is already on delta.com, which is a registration precondition rather than the login entry path. One submission per invocation, never retried. Unit-tested locally and run live once per egress (residential and mobile): both reached the login form and submitted, and both received Delta's own 'login is unavailable right now' message, so a successful login, an MFA step and a real captcha remain unverified. A third control run from a browser with no profile attached returned the same message, which rules out cookie or profile contamination as the cause; the same credentials sign in normally in an ordinary browser. Not independently QA-tested."
+      "notes": "Live-verified: search-result entry reaches the login form and submits exactly once, and failures report the step and whether a submission happened. Success path unverified: Delta returns 'login is unavailable right now' to every Kernel browser, including one with no profile, while the same credentials work in an ordinary browser."
     },
     {
       "domain": "flyfrontier.com",
