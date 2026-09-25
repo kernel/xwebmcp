@@ -293,7 +293,7 @@ carry `error_kind` and the site's or the tool's `error_message`:
 | `unavailable` | The product exists but is not sellable for the active fulfillment method at the selected store (`add_to_cart`). |
 | `quantity_limit` | The resulting quantity would exceed the site's `maxOrderQuantity` (`add_to_cart`, `update_cart_item`). |
 | `not_in_cart` | The UPC is not an active line; saved-for-later lines count as not in the cart (`update_cart_item`). |
-| `challenge` | HTTP 429 or a `cpr_chlge` body from Akamai Bot Manager. |
+| `challenge` | HTTP 429 or a `cpr_chlge` body from Akamai Bot Manager, twice in a row (one retry after 5 s is built in). |
 | `site_error` | Any other failure: non-JSON body, HTTP error, no active cart, header capture failure, or a write the site accepted but did not apply. |
 
 All prices are integers in US cents. `price_cents` is the regular price for the
@@ -358,7 +358,11 @@ pickup, `store_name`, because prices, availability and the cart are tied to it.
   "Too many requests" page on the homepage, and one product lookup in the
   signed-in session answered HTTP 429 with a challenge iframe that reloaded the
   page; the limit cleared within about ten minutes. The tools report this as
-  `challenge`; wait before calling again rather than retrying in a loop.
+  `challenge`. A 429 is answered at the edge before the origin sees the request,
+  so each API call is retried once after 5 seconds (safe for writes too), and the
+  tools wait 3 seconds after a header-capture reload because calls made before the
+  page's sensor has run are the ones that get challenged. Two challenges in a row
+  are reported as `challenge`; wait a few minutes rather than looping.
 - A product search for nonsense still returns fuzzy matches, so `no_results` is
   rare; `total_count` and `available_count` come from the site.
 - `page.size` is a hint: the site returns a few paid placements beyond it. The

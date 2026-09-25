@@ -71,6 +71,8 @@
           laf = event ? event.params.request.headers["x-laf-object"] : null;
           await waitForLoad(20);
         }
+        // Akamai answers API calls made right after a fresh load with a 429 challenge until the page's sensor has run.
+        await waitMs(3000);
         if (!laf) return { error: fail("site_error", "Could not capture the store and fulfillment context from the site's own requests; nothing was changed.") };
         await js(({ key, name, laf }) => sessionStorage.setItem(name, JSON.stringify({ key, laf, at: Date.now() })), { arg: { key: cacheKey, name: cacheName, laf } });
       }
@@ -91,13 +93,20 @@
       };
     };
     const api = async (ctx, path, init = {}) => {
-      const response = await js(async ({ path, method, body, headers }) => {
+      const send = () => js(async ({ path, method, body, headers }) => {
         const res = await fetch(path, { method, credentials: "include", headers: body === undefined ? headers : { ...headers, "content-type": "application/json" }, body });
         const text = await res.text();
         try { return { status: res.status, body: JSON.parse(text) }; } catch { return { status: res.status, body: null, text: text.slice(0, 200) }; }
       }, { arg: { path, method: init.method || "GET", body: init.body === undefined ? undefined : JSON.stringify(init.body), headers: ctx.headers } });
+      const challenged = r => r.status === 429 || !!r.body?.cpr_chlge;
+      let response = await send();
+      if (challenged(response)) {
+        // A 429 challenge is answered at the edge before the origin sees the request, so one retry cannot duplicate a write.
+        await waitMs(5000);
+        response = await send();
+      }
       if (response.status === 401 || response.status === 403) return { error: fail("not_authenticated", "Kroger rejected the request as unauthenticated (HTTP " + response.status + "); sign in with the login tool first.") };
-      if (response.status === 429 || response.body?.cpr_chlge) return { error: fail("challenge", "Kroger's bot protection challenged the request (HTTP " + response.status + "); wait before trying again.") };
+      if (challenged(response)) return { error: fail("challenge", "Kroger's bot protection challenged the request twice (HTTP " + response.status + "); wait a few minutes before trying again.") };
       if (!response.body) return { error: fail("site_error", "Kroger returned a non-JSON response (HTTP " + response.status + "): " + (response.text || "empty body")) };
       if (response.status >= 400 || response.body.errors) return { error: fail("site_error", "Kroger returned HTTP " + response.status + ": " + (response.body.errors?.reason || response.body.errors?.code || "unknown error")) };
       return { body: response.body };

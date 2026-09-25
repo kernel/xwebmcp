@@ -58,7 +58,7 @@ function harness(name, options = {}) {
     { name: "x-active-modality", value: encodeURIComponent(JSON.stringify({ type: options.modality ?? "DELIVERY", postalCode: "45200" })) },
     { name: "StoreCode", value: "00418" }, { name: "DD_modStore", value: "540FC001" }
   ];
-  const calls = { navigations: [], requests: [], captures: 0 };
+  const calls = { navigations: [], requests: [], captures: 0, waits: [] };
   let nextLine = 1;
   const respond = (status, body) => ({ status, body: JSON.stringify(body) });
   const route = (path, method, body) => {
@@ -87,6 +87,7 @@ function harness(name, options = {}) {
     pageInfo: async () => ({ url }),
     gotoUrl: async next => { calls.navigations.push(next); url = next; },
     waitForLoad: async () => options.loads !== false,
+    waitMs: async ms => { calls.waits.push(ms); },
     cdp: async (method, params) => {
       if (method === "Network.getCookies") return { cookies };
       if (method === "Network.enable") return {};
@@ -259,9 +260,33 @@ for (const [status, kind] of [[401, "not_authenticated"], [403, "not_authenticat
   });
 }
 
-test("search_products: a bot-protection challenge body maps to challenge", async () => {
+test("search_products: a bot-protection challenge body maps to challenge after one retry", async () => {
   const h = harness("search_products", { responses: path => path.includes("products-search") ? { status: 200, body: JSON.stringify({ cpr_chlge: "true" }) } : null });
   assert.equal((await h.run({ query: "bananas" })).error_kind, "challenge");
+  assert.equal(h.calls.requests.filter(r => r.path.includes("products-search")).length, 2);
+  assert.ok(h.calls.waits.includes(5000));
+});
+
+test("search_products: a single 429 is retried once and then succeeds", async () => {
+  let hits = 0;
+  const h = harness("search_products", { responses: path => path.includes("products-search") && ++hits === 1 ? { status: 429, body: JSON.stringify({ message: "Too many requests" }) } : null });
+  assert.equal((await h.run({ query: "bananas" })).status, "ok");
+  assert.equal(hits, 2);
+});
+
+test("add_to_cart: a challenged write is retried once because the edge never forwarded it", async () => {
+  let puts = 0;
+  const h = harness("add_to_cart", { responses: (path, method) => method === "PUT" && ++puts === 1 ? { status: 429, body: JSON.stringify({ cpr_chlge: "true" }) } : null });
+  const result = await h.run({ upc: "0000000004011", quantity: 1 });
+  assert.equal(result.status, "ok");
+  assert.equal(puts, 2);
+  assert.equal(h.cart().lineItems.filter(l => l.gtin13 === "0000000004011").length, 1);
+});
+
+test("get_product: settles after a header capture before calling the site", async () => {
+  const h = harness("get_product");
+  await h.run({ upc: "0000000004011" });
+  assert.ok(h.calls.waits.includes(3000));
 });
 
 test("search_products: a non-JSON body maps to site_error", async () => {
