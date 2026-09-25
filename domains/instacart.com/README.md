@@ -108,14 +108,22 @@ are recognized; the read-only account-page navigation is retried once, submissio
 - The code field is one input, not six; typing six digits auto-submits, so the tool
   never clicks a submit control on that step.
 - The `cincy` residential proxy returned two different Kernel error pages during
-  development (HTTP 502 `upstream_timeout`, and `egress-proxy-mitm … unexpected EOF`).
-  Both are transient; the tool reports them as `unknown` with the stage.
+  development (HTTP 502 `upstream_timeout`, and `egress-proxy-mitm … unexpected EOF`),
+  on Instacart and on DuckDuckGo. Both are transient; the tool reports them as `unknown`
+  with a proxy message and the stage, at every step including the search entry.
+- A site error left on the page by an earlier attempt is not this attempt's verdict.
+  `otp` mode first requires a visible Verify email step, then judges only feedback that
+  changed or reappeared after the six digits were typed; an unchanged stale error ends
+  in `unknown` after 30 s rather than a false `mfa_failed`.
+- The stealth browser's solver keeps solving reCAPTCHA challenges on an open `/login`
+  tab after the tool returns (independent QA counted 46 solves in one session). No
+  extra `GetEmailAvailability` request followed, so it does not resubmit anything.
 - Logged-out `/store*` URLs redirect to `/login?next=…`; the account check treats that
   redirect as "not logged in" and continues to the search entry.
 
 ## Status and known limitations
 
-Status: `draft` pending the independent QA pass (see the matrix below).
+Status: see the table at the top and `registry.json`; the QA history is below.
 
 Live-verified on 2026-09-25 (residential `cincy` proxy, stealth, `personal-stuff`
 profile, session `q2yx9he194tv65c9k0idghnz`):
@@ -128,14 +136,33 @@ profile, session `q2yx9he194tv65c9k0idghnz`):
 | logged out, real address | real email | one submission → `mfa_required: true`, `next_step: enter_email_otp` | 9.0 s |
 | Verify email step open | real email + emailed code | six key presses → auto-submit → `/store/account` matched → `authenticated: true` | 6.6 s |
 
+Independent QA, round 1 (agent `agt_3fa02b3438dc8870922b`, browser
+`lp3grtyz8mclt54bev1n11ou`, stealth, `cincy` proxy, no profile, no vault, commit
+`c342908`): 8 of 9 checks passed with two fabricated submissions (telemetry showed
+exactly two `GetEmailAvailability` requests and no `SendVerificationCode`). Failure
+path from `/store/costco/storefront` took 34.7 s including a 23 s solver run on a visible
+reCAPTCHA image challenge; from `/help` in a fresh tab it took 9.3 s with no challenge.
+All six invalid inputs were rejected by the WebMCP input-schema gate before `execute`
+ran; the tool's own checks were exercised locally. The tool was not listed on
+non-Instacart pages. Two defects were found and fixed afterwards:
+
+- `otp` mode reported a stale "Enter a valid email address." as `invalid_credentials`
+  instead of "No Verify email step is visible", and a stale code error would have
+  blocked a corrected code. Fixed by checking for the code step first and judging only
+  feedback that changed or reappeared after typing.
+- A proxy error page on `start.duckduckgo.com` surfaced as "search controls did not
+  become available". Fixed by checking for the proxy page in the search step.
+
 Unverified:
 
 - Wrong or expired codes (`mfa_failed`), lockout or throttling text, a visible reCAPTCHA
   that the solver fails to clear, and a `Request a new code` resend. These branches have
   mocked coverage only.
-- The code-step live run used the revision immediately before the hint selection was
-  narrowed to the shortest matching sentence; that change only affects the returned
-  `account_name_or_hint` text and is covered by the page-reader fixture test.
+- The code-step live run (`authenticated: true`) used the revision before the hint
+  selection was narrowed and before the QA fixes above; those changes only affect the
+  returned hint text and the pre-typing checks, and are covered by the mocked tests.
+- The email-step guard blocking a resubmission after an uncertain outcome has mocked
+  coverage only; proving it live would cost another real submission.
 - Phone, Google, and Facebook logins are out of scope.
 
 Best lead for the next person: the whole flow is GraphQL on `www.instacart.com/graphql`

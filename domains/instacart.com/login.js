@@ -195,18 +195,25 @@
       if (input.otp !== undefined) {
         stage = "before_submit";
         const s = await read();
-        const blocked = siteFailure(s);
-        if (blocked) return blocked;
+        if (s.proxyError || !s.onSite || s.challenge) return siteFailure(s);
         if (!s.codeStep) return fail("unknown", "No Verify email step is visible; invoke without otp first so Instacart emails a code. No code was entered.");
         if (s.hintMatches === false) return fail("unknown", "The visible code step belongs to a different address (" + mask(s.codeHint.match(/[\w.+-]+@[\w-]+(?:\.[\w-]+)+/)[0]) + "). No code was entered.");
         if (!await guard(codeGuardKey, 60000)) return fail("unknown", "This tab already entered a code within the last minute; inspect the page instead of entering another. No code was entered.");
+        // An error left by an earlier code is not this code's verdict: report only feedback that changed or reappeared.
+        const feedback = x => [x.codeError, ...x.alerts].filter(Boolean).join(" ");
+        const previous = feedback(s);
+        let cleared = !previous;
         submitted = true;
         stage = "after_submit";
         await click(codeSelector);
         for (const digit of input.otp) await pressKey(digit);
-        const typed = await poll(x => !x.codeStep || x.codeLength === 6 || !!x.codeError || x.alerts.length > 0, 5000);
-        if (typed && typed.codeStep && typed.codeLength !== 6 && !typed.codeError && !typed.alerts.length) return fail("unknown", "The code field did not accept all six digits; the site may not have evaluated the code. Inspect the page before any further attempt.");
-        const result = await poll(x => !x.onSite || x.proxyError || !!x.challenge || !!x.codeError || x.alerts.length > 0 || (!x.codeStep && (loggedIn(x) || x.path !== "/login")), 30000);
+        const typed = await poll(x => !x.codeStep || x.codeLength === 6 || feedback(x) !== previous, 5000);
+        if (typed && typed.codeStep && typed.codeLength !== 6 && feedback(typed) === previous) return fail("unknown", "The code field did not accept all six digits; the site may not have evaluated the code. Inspect the page before any further attempt.");
+        const result = await poll(x => {
+          const message = feedback(x);
+          if (!message) cleared = true;
+          return !x.onSite || x.proxyError || !!x.challenge || (!!message && (message !== previous || cleared)) || (!x.codeStep && (loggedIn(x) || x.path !== "/login"));
+        }, 30000);
         if (!result) return fail("unknown", "The code was entered but no result appeared within 30 seconds. Inspect the page before any further attempt.");
         const failed = siteFailure(result);
         if (failed) {
@@ -241,7 +248,11 @@
         if (query && search) break;
         await waitMs(500);
       }
-      if (!query || !search) return fail("unknown", "DuckDuckGo search controls did not become available; no login submission made.");
+      if (!query || !search) {
+        const blocked = await read();
+        if (blocked.proxyError) return siteFailure(blocked);
+        return fail("unknown", "DuckDuckGo search controls did not become available; no login submission made.");
+      }
       await fillInput({ backendNodeId: query.backendNodeId }, "instacart login");
       await click({ backendNodeId: search.backendNodeId });
       if (!await waitForElement('[data-testid="result"] [data-testid="result-title-a"]', { timeoutSec: 20 })) {

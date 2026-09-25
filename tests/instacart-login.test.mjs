@@ -57,7 +57,7 @@ const pages = {
 
 function harness(options = {}) {
   let state = options.start ?? pages.loginForm;
-  let now = 0, reads = 0, submitted = false, interrupted = false;
+  let now = 0, reads = 0, submitted = false, interrupted = false, waitsSinceSubmit = 0;
   const navigation = [], fills = [], clicks = [], keys = [], searchActions = [], storage = {};
   const pageFunctions = {};
   const setState = next => { state = { ...state, ...next }; };
@@ -67,7 +67,7 @@ function harness(options = {}) {
     gotoUrl: async next => {
       navigation.push(next);
       if (options.navigationError) throw new Error("Navigation failed");
-      if (next === searchEntry) state = { ...pages.search, url: options.searchUrl ?? searchEntry, onSite: false, challenge: options.searchChallenge ?? null };
+      if (next === searchEntry) state = { ...pages.search, url: options.searchUrl ?? searchEntry, onSite: false, challenge: options.searchChallenge ?? null, proxyError: !!options.searchProxyError };
       else if (next === accountUrl) state = options.accountPage?.(navigation.filter(u => u === accountUrl).length) ?? pages.account;
       else throw new Error(`unexpected navigation to ${next}`);
     },
@@ -135,7 +135,12 @@ function harness(options = {}) {
       setState({ codeLength: options.codeLengthAfterTyping ?? keys.length });
       if (keys.length === 6 && options.afterCode) setState(options.afterCode);
     },
-    waitMs: async ms => { now += ms; }
+    waitMs: async ms => {
+      now += ms;
+      if (!submitted) return;
+      waitsSinceSubmit++;
+      for (const [at, patch] of options.timeline ?? []) if (at === waitsSinceSubmit) setState(patch);
+    }
   });
   return {
     tool: tools[0], navigation, fills, clicks, keys, searchActions, pageFunctions, storage,
@@ -143,6 +148,7 @@ function harness(options = {}) {
     run: async (...args) => {
       submitted = false;
       interrupted = false;
+      waitsSinceSubmit = 0;
       const before = clicks.filter(c => c.startsWith("form:has(")).length;
       const result = plain(await tools[0].execute(args.length ? args[0] : input));
       assert.ok(conforms(tools[0].tool.outputSchema, result), JSON.stringify(result));
@@ -408,6 +414,7 @@ test("the MFA step keeps the guard so a re-invocation cannot request another cod
 
 for (const scenario of [
   { name: "search controls unavailable", missingControls: true },
+  { name: "proxy error page on the search engine", missingControls: true, searchProxyError: true, message: /proxy/ },
   { name: "unexpected search origin", searchUrl: "https://example.com/" },
   { name: "organic results unavailable", missingSelector: /result-title/ },
   { name: "first result is not www.instacart.com", approvedResult: false },
@@ -421,6 +428,7 @@ for (const scenario of [
     assert.equal(result.logged_in, false);
     assert.equal(result.submission_attempted, false);
     assert.ok(["search_entry", "site_entry", "before_submit"].includes(result.stage), result.stage);
+    if (scenario.message) assert.match(result.error_message, scenario.message);
     assert.deepEqual(h.navigation, [searchEntry]);
     assert.deepEqual(h.fills, []);
     assert.deepEqual(h.clicks, []);
@@ -492,13 +500,40 @@ test("otp mode reports a rejected code as mfa_failed", async () => {
   assert.equal(result.error_source, "site");
 });
 
-test("otp mode without a visible code step enters nothing", async () => {
-  for (const start of [pages.loginForm, pages.loggedInHome, pages.offSite]) {
+test("otp mode without a visible code step enters nothing, even beside a stale site error", async () => {
+  for (const start of [pages.loginForm, pages.loggedInHome, { ...pages.loginForm, emailError: unknownEmail }, { ...pages.home, alerts: ["Something went wrong"] }]) {
     const h = harness({ start });
-    failure(h, await h.run(otpInput), "unknown", false, "before_submit");
+    const result = await h.run(otpInput);
+    failure(h, result, "unknown", false, "before_submit");
+    assert.match(result.error_message, /No Verify email step/);
     assert.deepEqual(h.keys, []);
     assert.deepEqual(h.navigation, []);
   }
+  for (const start of [pages.offSite, { ...pages.codeStep, proxyError: true }, { ...pages.codeStep, challenge: "Access denied" }]) {
+    const h = harness({ start });
+    const result = await h.run(otpInput);
+    assert.equal(result.logged_in, false);
+    assert.equal(result.submission_attempted, false);
+    assert.deepEqual(h.keys, []);
+  }
+});
+
+test("otp mode enters a corrected code beside a stale code error and judges only fresh feedback", async () => {
+  const stale = { ...pages.codeStep, codeError: "Incorrect code. Please try again." };
+  const unchanged = harness({ start: stale });
+  const timedOut = await unchanged.run(otpInput);
+  failure(unchanged, timedOut, "unknown", true, "after_submit");
+  assert.equal(unchanged.keys.length, 6);
+  assert.match(timedOut.error_message, /30 seconds/);
+  const reappeared = harness({ start: stale, timeline: [[2, { codeError: null }], [4, { codeError: "Incorrect code. Please try again." }]] });
+  failure(reappeared, await reappeared.run(otpInput), "mfa_failed", true, "after_submit");
+  assert.equal(reappeared.keys.length, 6);
+  const changed = harness({ start: stale, afterCode: { codeError: "This code has expired." } });
+  const result = await changed.run(otpInput);
+  failure(changed, result, "mfa_failed", true, "after_submit");
+  assert.equal(result.error_message, "This code has expired.");
+  const accepted = harness({ start: stale, afterCode: { ...pages.loggedInHome, codeStep: false, codeLength: null, codeError: null } });
+  assert.equal((await accepted.run(otpInput)).authenticated, true);
 });
 
 test("otp mode refuses a code step for another address", async () => {
