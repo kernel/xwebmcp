@@ -155,11 +155,11 @@
         "https://kroger.com/*",
         "https://*.kroger.com/*"
       ],
-      "status": "draft",
-      "qa_agent": null,
-      "browser_session": null,
+      "status": "qa_passed",
+      "qa_agent": "agt_81701554c70a9f25b7e6",
+      "browser_session": "noihe7yj13l2isft6decjt5a",
       "last_verified": "2026-09-25",
-      "notes": "Live-verified with one residential stealth browser: DuckDuckGo entry to the login.kroger.com form, one fabricated submission returning invalid_credentials with the site's text, one real submission returning authenticated (no MFA), the already-signed-in path with the account email confirmed from the customer data token, and an account-mismatch refusal. Unverified: MFA/otp mode, lockout, CAPTCHA, wrong password for an existing account, and other proxy configurations."
+      "notes": "Three independent failure-path QA passes (agt_b45e69419d64ca15c913, agt_2abe214c89e45307dfec, agt_81701554c70a9f25b7e6) found no blockers; their findings (110-second budget, entry_path on failures, README snippet, timeout wording) were fixed and re-checked, the last pass on this exact source without submissions. Author-verified live with one residential stealth browser: DuckDuckGo entry to the login.kroger.com form, fabricated submissions returning invalid_credentials with the site's text, one real submission returning authenticated (no MFA), and the already-signed-in path with the account email confirmed from the customer data token plus an account-mismatch refusal. Unverified: MFA/otp mode, lockout, CAPTCHA, wrong password for an existing account, other proxy configurations."
     },
     {
       "domain": "southwest.com",

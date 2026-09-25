@@ -188,6 +188,9 @@ Unverified:
   and `keep_signed_in: false`.
 - Behaviour on the other proxy configurations. Only the residential `cincy` proxy
   was used; no hard block was seen, so no second configuration was needed.
+- Cosmetic: if an earlier step overruns the 110 s budget (for example a hung
+  browser call), the entry timeout messages can quote a zero or negative number of
+  seconds. The outputs stay schema-valid and nothing is submitted in that state.
 
 Best lead for the next person: the signed-in identity, store and loyalty number all
 sit in the `kroger-si-customer-data-token` JWT, and the header `RAFAEL` button is
@@ -206,7 +209,7 @@ pages with `Add to Cart: <name>` buttons, and `/cart`.
 | 4 | different email while already signed in | main browser | already_signed_in | failure `account_check`, 0 submissions |
 | 5 | independent QA pass 1 (`agt_b45e69419d64ca15c913`, browser `agtt2pr9yv4twl1ewkobsw0v`, commit `5990a80`): 8 malformed inputs rejected by the runtime schema gate, otp-only input rejected by the tool, fabricated submission from a product page via DuckDuckGo, second fabricated submission from `/cart` (server redirect to the form, `already_open`), stale `tool_ref` on example.com | QA browser, no profile | search_referrer, already_open | both submissions `invalid_credentials` "Invalid email address", exactly one `POST /SelfAsserted` each; no blockers; three findings fixed (110 s budget, README snippet, `entry_path` on failures) |
 | 6 | independent QA pass 2 (`agt_2abe214c89e45307dfec`, browser `lmu9vb5mpgn45fb5yzcq2ygt`, commit `2e764b7`): schema gate, otp-only input, one fabricated submission via DuckDuckGo, budget review, stale `tool_ref` | QA browser, no profile | search_referrer | `invalid_credentials`, one `POST /SelfAsserted`, 24.3 s; one earlier attempt stopped at `site_entry_failed` when `/signin` stalled, nothing submitted; no blockers; two wording/docs findings fixed |
-| 7 | independent QA pass 3 (no submissions) on the final commit | QA browser, no profile | none | in progress |
+| 7 | independent QA pass 3 (`agt_81701554c70a9f25b7e6`, browser `l9vvy5ve38v384wkveufq8rj`, commit `8ec94c6`, no submissions): schema gate, otp-only input, stale `tool_ref` on two unrelated pages, diff review of the timeout wording | QA browser, no profile | none | no blockers; 79/79 local tests; one low wording nit recorded under known limitations |
 
 Local contract tests (mocked helpers, no live traffic):
 
