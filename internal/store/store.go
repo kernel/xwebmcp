@@ -16,9 +16,10 @@ import (
 )
 
 const (
-	lockFileName = "lock.json"
-	toolsDirName = "tools"
-	lockVersion  = 1
+	lockFileName    = "lock.json"
+	toolsDirName    = "tools"
+	homePointerName = "home"
+	lockVersion     = 1
 )
 
 // Tool is one installed tool file.
@@ -60,7 +61,9 @@ type Store struct {
 	Dir string
 }
 
-// DefaultDir returns $XWEBMCP_HOME or ~/.xwebmcp.
+// DefaultDir returns $XWEBMCP_HOME, else the directory named in
+// ~/.xwebmcp/home (written by setup so that the native host Chrome spawns
+// without the user's environment finds the same state), else ~/.xwebmcp.
 func DefaultDir() (string, error) {
 	if dir := os.Getenv("XWEBMCP_HOME"); dir != "" {
 		return dir, nil
@@ -69,7 +72,34 @@ func DefaultDir() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return filepath.Join(home, ".xwebmcp"), nil
+	standard := filepath.Join(home, ".xwebmcp")
+	if pointer, err := os.ReadFile(filepath.Join(standard, homePointerName)); err == nil {
+		if dir := strings.TrimSpace(string(pointer)); dir != "" {
+			return dir, nil
+		}
+	}
+	return standard, nil
+}
+
+// RecordHomePointer makes dir discoverable by processes that lack
+// XWEBMCP_HOME. A standard location clears the pointer.
+func RecordHomePointer(dir string) error {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return err
+	}
+	standard := filepath.Join(home, ".xwebmcp")
+	pointer := filepath.Join(standard, homePointerName)
+	if filepath.Clean(dir) == standard {
+		if err := os.Remove(pointer); err != nil && !errors.Is(err, os.ErrNotExist) {
+			return err
+		}
+		return nil
+	}
+	if err := os.MkdirAll(standard, 0o700); err != nil {
+		return err
+	}
+	return os.WriteFile(pointer, []byte(dir+"\n"), 0o600)
 }
 
 // Open returns a store rooted at dir, creating it when missing.

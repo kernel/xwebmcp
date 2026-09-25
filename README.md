@@ -82,7 +82,8 @@ for the flow and, when it is not, navigates to the required entry point first.
 ### With the `xwebmcp` CLI
 
 The `xwebmcp` CLI installs tool files from GitHub, pins them to a commit, and pushes
-them into a browser.
+them into a browser: your own Google Chrome through the bundled extension, or a Kernel
+browser through the API.
 
 ```sh
 go install github.com/kernel/xwebmcp/cmd/xwebmcp@latest
@@ -94,9 +95,6 @@ xwebmcp add kernel/xwebmcp/domains/southwest.com@main
 xwebmcp list                      # what is installed and at which commit
 xwebmcp add kernel/xwebmcp        # update to the current commit; prints a diff of changed code
 xwebmcp remove southwest.com      # drop a namespace (or owner/repo, or namespace/tool)
-
-# register every installed tool on a Kernel browser (KERNEL_API_KEY must be set)
-xwebmcp attach --kernel <browser id or name>
 ```
 
 Tools live under `~/.xwebmcp/` (override with `XWEBMCP_HOME`). `lock.json` records the
@@ -105,8 +103,68 @@ source, resolved commit, and SHA-256 of every file. When a repository has a
 belong to; otherwise every `.js` file under the given path is a tool and its parent
 directory is the namespace.
 
-`attach --kernel` replaces each namespace atomically (the first file of a namespace is
-sent with `force_overwrite_namespace`), so re-running it after an update is safe.
+#### In your own Chrome (extension)
+
+The `extension/` directory is a Chrome MV3 extension that runs the tool files unchanged
+in your normal Chrome profile, with your real logins. `kind: "cdp"` bodies run in the
+extension (a sandboxed page drives the tab over `chrome.debugger` with the same helper
+API the Kernel browser REPL provides: `cdp`, `waitForEvent`, `gotoUrl`, `js`, `click`,
+`fillInput`, `waitForElement`, …), so they keep running while the page navigates.
+
+One-time setup (macOS and Linux; Chrome, Chromium, Beta, Dev, or Canary):
+
+```sh
+xwebmcp setup chrome        # quit Chrome first
+```
+
+This backs up Chrome's `Local State`, enables the `enable-webmcp-testing` flag
+(`document.modelContext`), registers `xwebmcp` as a native messaging host, writes the
+unpacked extension to `~/.xwebmcp/extension`, and opens `chrome://extensions`. There,
+turn on **Developer mode** and **Load unpacked** → `~/.xwebmcp/extension`. The command
+is idempotent; re-run it after upgrading `xwebmcp` to refresh the extension files.
+
+Then:
+
+```sh
+xwebmcp attach              # push the installed tools into the extension
+xwebmcp status              # flag, native host, bridge, and per-site access state
+xwebmcp tools               # every WebMCP tool open tabs expose (site-native and custom)
+xwebmcp invoke southwest.com/search_flights \
+  --input '{"origin":"DAL","destination":"HOU","departureDate":"2026-10-20","tripType":"oneway"}'
+```
+
+The extension asks for no site access up front. After `attach`, open its popup and click
+**Grant access** once so the installed tools' sites can be reached; the popup also lists
+the tools on the current tab and whether each installed tool is registered there. The
+same popup can grant a site so that its own WebMCP tools are discovered.
+
+How invocation works and what to expect:
+
+- `xwebmcp invoke namespace/tool` runs a cdp tool in a tab the extension opened itself,
+  grouped under **xwebmcp**; it opens the site's apex when no such tab exists. Tabs you
+  opened yourself are never used unless `allow_user_tabs` is passed through the API.
+- `xwebmcp invoke <tool_ref>` (refs come from `xwebmcp tools`) invokes that exact live
+  registration, native or custom, in the same shape as the Kernel API's
+  `POST /browsers/{id}/webmcp/invoke`.
+- `chrome.debugger` is attached only while a cdp tool runs and detached afterwards, so
+  the "is debugging this browser" bar appears only during a call.
+- A tool invoked from the page (`document.modelContext.executeTool`) keeps running in
+  the extension if its document navigates away, but that document can no longer receive
+  the result; the invocation log (`listInvocations`) records it as undelivered.
+- Tool inputs are never logged or stored. Failed invocations keep the thrown error with
+  its stack mapped to the tool file, the tool's console output, and timing, readable
+  through `getInvocation`.
+
+#### On a Kernel browser
+
+```sh
+# register every installed tool on a Kernel browser (KERNEL_API_KEY must be set)
+xwebmcp attach --kernel <browser id or name>
+xwebmcp tools --kernel <browser id or name>
+```
+
+`attach` replaces each namespace atomically (the first file of a namespace is sent with
+`force_overwrite_namespace`), so re-running it after an update is safe for both targets.
 
 ### By hand
 

@@ -1,0 +1,24 @@
+{
+  "manifest_version": 3,
+  "name": "xwebmcp",
+  "version": "0.1.0",
+  "description": "Runs custom WebMCP tools from kernel/xwebmcp in your own Chrome and exposes every WebMCP tool on the page to local agents.",
+  "minimum_chrome_version": "150",
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA52IqOvotnubpEEiUlgsaMd7iF9pxx3jiBd6fDtPn170/asTZAlxn+e6JsiN3o9d04Qp2NGMXL/fhRyCgs0LTm8k9+fAXLkXP0fIhVwOHi/1HSvUR/jh/I6wN8f5neXVTFYiwOn4N7x0JssN7vqOsJUjRttbzyzA4wppfIkBbXV56vr2k8f/I+C5T9SHs50ixq6hZLDZ/qE71i8aHtC2i8RxK/vVbvh83h5W4XzsiZ5zZBUV3mANMawV60EC6dbv1OyqedZ6H5VGVlxYnlyqWuGf8n738PifO2/xNXpyAXLouv1o5knFwNB5u3oseN3xgd+GpIwr4P/q1UtqrKTlXAwIDAQAB",
+  "permissions": [
+    "activeTab",
+    "alarms",
+    "debugger",
+    "nativeMessaging",
+    "offscreen",
+    "scripting",
+    "storage",
+    "tabGroups",
+    "tabs",
+    "webNavigation"
+  ],
+  "optional_host_permissions": ["http://*/*", "https://*/*"],
+  "background": {"service_worker": "background.js", "type": "module"},
+  "action": {"default_popup": "popup.html", "default_title": "xwebmcp"},
+  "sandbox": {"pages": ["sandbox/sandbox.html"]}
+}

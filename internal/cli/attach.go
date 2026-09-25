@@ -16,17 +16,22 @@ func (a *App) attachCommand() *cli.Command {
 	return &cli.Command{
 		Name:  "attach",
 		Usage: "push installed tools into a browser",
-		Description: `With --kernel, every installed namespace is registered on the Kernel browser
-through the custom WebMCP tools API, replacing any earlier registration of the
-same namespace. KERNEL_API_KEY must be set.`,
+		Description: `By default the installed tools are pushed into the xwebmcp Chrome extension
+over its native messaging bridge (run ` + "`xwebmcp setup chrome`" + ` once). Namespaces that
+are no longer installed are removed from the extension.
+
+With --kernel, every installed namespace is registered on the Kernel browser
+through the custom WebMCP tools API instead. Either way a namespace replaces
+any earlier registration of itself, so re-running is safe. KERNEL_API_KEY must
+be set for --kernel.`,
 		Flags: []cli.Flag{
 			&cli.StringFlag{Name: "kernel", Usage: "Kernel browser session ID or name"},
 		},
 		Action: func(ctx context.Context, cmd *cli.Command) error {
-			if cmd.String("kernel") == "" {
-				return errors.New("attach requires --kernel <browser id or name>")
+			if browser := cmd.String("kernel"); browser != "" {
+				return a.attachKernel(ctx, browser)
 			}
-			return a.attachKernel(ctx, cmd.String("kernel"))
+			return a.attachExtension(ctx)
 		},
 	}
 }

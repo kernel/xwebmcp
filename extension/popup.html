@@ -1,0 +1,51 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>xwebmcp</title>
+    <style>
+      body { font: 13px/1.4 system-ui, sans-serif; margin: 0; width: 360px; color: #222; }
+      section { padding: 10px 12px; border-bottom: 1px solid #e5e5e5; }
+      h1 { font-size: 14px; margin: 0 0 6px; }
+      h2 { font-size: 12px; margin: 0 0 6px; color: #555; text-transform: uppercase; letter-spacing: .04em; }
+      ul { list-style: none; margin: 0; padding: 0; }
+      li { display: flex; align-items: center; gap: 6px; padding: 3px 0; }
+      .name { font-family: ui-monospace, monospace; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; }
+      .badge { font-size: 10px; padding: 1px 6px; border-radius: 8px; background: #eee; color: #444; white-space: nowrap; }
+      .badge.native { background: #e3f2fd; color: #0d47a1; }
+      .badge.custom { background: #e8f5e9; color: #1b5e20; }
+      .badge.on { background: #e8f5e9; color: #1b5e20; }
+      .badge.off { background: #fbe9e7; color: #b71c1c; }
+      .muted { color: #777; }
+      .error { color: #b71c1c; white-space: pre-wrap; }
+      button { font: inherit; padding: 4px 10px; border-radius: 6px; border: 1px solid #bbb; background: #fafafa; cursor: pointer; }
+      button:hover { background: #f0f0f0; }
+      .row { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+    </style>
+  </head>
+  <body>
+    <section>
+      <div class="row">
+        <h1>xwebmcp</h1>
+        <span id="bridge" class="badge">bridge: …</span>
+      </div>
+      <div id="bridge-detail" class="muted"></div>
+    </section>
+    <section>
+      <h2>This tab</h2>
+      <div id="tab-url" class="muted"></div>
+      <ul id="tab-tools"></ul>
+      <div id="tab-empty" class="muted"></div>
+      <div id="tab-actions" class="row" style="margin-top:6px"></div>
+    </section>
+    <section>
+      <h2>Installed tools</h2>
+      <div id="pending" class="row"></div>
+      <ul id="installed"></ul>
+      <div id="installed-empty" class="muted"></div>
+    </section>
+    <script src="lib/url-pattern.js"></script>
+    <script src="lib/client.js"></script>
+    <script src="popup.js"></script>
+  </body>
+</html>

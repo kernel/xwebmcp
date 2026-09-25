@@ -185,6 +185,17 @@ func (c *Client) ListTools(ctx context.Context, browser string) ([]LiveTool, err
 	return res.Tools, nil
 }
 
+// ListToolsRaw returns the tools array of the live snapshot as raw JSON.
+func (c *Client) ListToolsRaw(ctx context.Context, browser string) (json.RawMessage, error) {
+	var res struct {
+		Tools json.RawMessage `json:"tools"`
+	}
+	if err := c.do(ctx, http.MethodGet, browserPath(browser, "/webmcp/tools"), nil, &res); err != nil {
+		return nil, err
+	}
+	return res.Tools, nil
+}
+
 // Invoke runs a live tool registration.
 func (c *Client) Invoke(ctx context.Context, browser, toolRef string, input json.RawMessage, timeoutSec int) (*Invocation, error) {
 	if input == nil {
