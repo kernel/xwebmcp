@@ -23,6 +23,7 @@ tools will have to be custom too.
 1. Open `https://start.duckduckgo.com/`, search `uber eats login`, click the first
    organic result. Its host must be `ubereats.com` or a subdomain.
 2. On the site, click the header `Log in` link (an `<a href="https://auth.uber.com/...">`).
+   If Uber's email step is already open in the tab, the tool submits there instead.
 3. `auth.uber.com/v2/` shows the identifier step: `#PHONE_NUMBER_or_EMAIL_ADDRESS`
    and `#forward-button` (Continue). Submitting the email leads to one of:
    - the **email code step**: four boxes `#EMAIL_OTP_CODE-0..3` under
@@ -90,6 +91,16 @@ shows one, otherwise null), and `submission_attempted`.
   `auth.uber.com` redirect came back as a Kernel proxy error page
   (HTTP 502, `provider_unreachable`) on every attempt. The `us-mobile` proxy
   reaches it; the long-lived session uses that proxy for this reason.
+- **Hydration replaces the header.** The server-rendered `Log in` link is visible while
+  the document is still loading, and client hydration swaps that node out roughly 2.5 s
+  after landing. A link resolved before the swap is detached by click time and the click
+  fails as "not actionable". The tool waits for `readyState === "complete"`, re-resolves
+  the link, requires it to survive a 1.5 s settle interval, and re-resolves again if the
+  click still misses (three attempts, no submission involved).
+- **Tool listing.** Per the repository convention, `match.url_patterns` covers
+  `ubereats.com`, its subdomains, and `auth.uber.com`, so the tool is listed only on
+  those pages. From an unrelated page such as a search engine it is not invocable at
+  all; the fixture tests that start from unrelated URLs exercise `execute` directly.
 - **Code boxes.** Each box holds one digit and focus advances automatically; entering
   the fourth digit submits the form on its own. The tool pastes the whole code into the
   first box (`fillInput`), waits, and clicks Next only if the form is still there.
@@ -113,6 +124,10 @@ shows one, otherwise null), and `submission_attempted`.
 
 ### Status and known limitations
 
+- Independent QA (agent `agt_b94bb0a4b4d20af839ae`, commit `aae5cc0`) found the
+  hydration defect above: the tool never reached Uber's email step on its own in 5 of 6
+  live runs. Fixed as described, with fixture coverage for a replaced link, but the fix
+  has not yet been re-verified live.
 - The SMS code step is classified and accepted by the tool (`enter_sms_code`, then
   `otp`), but that path has only fixture coverage. When the live password submission
   reached the SMS step, the tool at that revision did not recognize it and returned
@@ -148,6 +163,21 @@ stealth browser on the `cincy` proxy with no profile, since deleted.
 | Already signed in                                          | owner       | `authenticated: true`, 0.8 s, 0 submissions | no `Log in` link, menu present, `sid` cookie       |
 | Native tool survey (5 surfaces, signed out and in)         | n/a         | none                                     | see above                                             |
 
+Independent QA of commit `aae5cc0` (agent `agt_b94bb0a4b4d20af839ae`, two stealth browsers
+without profile or vault: `nxg4wrwoyufbgdp9qb5zfhoa` on `cincy`, replaced by
+`oax3sse568exk6dv7421o8je` on `us-mobile` after the proxy error page; both deleted):
+
+| case                                                       | account     | result                                   | evidence                                              |
+|------------------------------------------------------------|-------------|------------------------------------------|-------------------------------------------------------|
+| Six malformed inputs                                       | fabricated  | rejected by the WebMCP input-schema gate | URL and `webmcp.*` storage unchanged                  |
+| `otp` with no code step open                               | fabricated  | `invalid_input`, 0 submissions           | URL unchanged                                         |
+| Entry from home, search page, and the open email step      | fabricated  | `unknown` at `open_login`, 0 submissions (5 of 6 runs) | detached `Log in` node after hydration   |
+| Entry landing on the proxy error page (`cincy`)            | fabricated  | `unknown` at `open_login`, 0 submissions | fails closed                                          |
+| Re-invocation with the code step open                      | fabricated  | `enter_email_code`, 0 submissions        | code step opened by hand for this and the next rows   |
+| `otp` for a different email on that code step              | fabricated  | `invalid_input`, 0 submissions           |                                                       |
+| Wrong 4-digit code                                         | fabricated  | `mfa_failed`, 1 submission               | "The email passcode you've entered is incorrect."     |
+| Same wrong code again immediately                          | fabricated  | `unknown` (20 s guard), 0 submissions    |                                                       |
+
 Local contract and fixture tests:
 
 ```sh
@@ -165,5 +195,6 @@ They are not live evidence.
 - Long-lived owner session: `hs15472lgc2jt0tvewsrqs3j` (24-hour inactivity timeout,
   `personal-stuff` profile read-only, `rafs-vault` attached, `us-mobile` proxy).
   Signed in on 2026-09-25 and left signed in for the search and cart work.
-- Independent QA session: not yet run.
+- Independent QA sessions: `nxg4wrwoyufbgdp9qb5zfhoa` and `oax3sse568exk6dv7421o8je`
+  (deleted after the run).
 - Source: this repository is canonical; sessions expire but files do not.

@@ -111,8 +111,9 @@
       if (loginLink) loginLink.setAttribute("data-webmcp-login-link", "true");
       const menu = onSite ? document.querySelector('header button[data-testid="menu-button"], header button[aria-label="Main navigation menu"]') : null;
       const accountText = onSite ? [...document.querySelectorAll("header a, header button, header span, header div")].filter(onScreen).map(text).find(t => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(t) || /^(?:hi|hello|welcome),?\s+\S+/i.test(t)) || null : null;
+      const proxyError = /proxy error/i.test(document.title) || /provider_unreachable/.test((document.body?.innerText || "").slice(0, 2000));
       return {
-        url: location.href, host, onSite, onAuth,
+        url: location.href, host, onSite, onAuth, ready: document.readyState === "complete", proxyError,
         emailStep: visible(emailField), emailValue: emailField ? emailField.value.trim().toLowerCase() : "",
         codeCount: codeBoxes.length, codeFilled: codeBoxes.every(e => e.value.length === 1), codeFor, smsCode: !emailCodeBoxes.length && smsCodeBoxes.length > 0, smsHint,
         passwordStep: !!passwordField, passwordLength: passwordField ? passwordField.value.length : 0, passwordFor: passwordField ? emailIn(headings.find(t => /@/.test(t))) : null,
@@ -152,6 +153,7 @@
     });
     const disarm = async () => { try { await js(() => window.__ueLoginWatch?.cleanup()); } catch { /* the page may have navigated away */ } };
     const blocking = s => {
+      if (s.proxyError) return fail("unknown", "The browser's proxy could not reach " + s.host + " (proxy error page); nothing submitted.");
       if (s.challenge) return fail("captcha_or_challenge", s.challenge);
       const locked = s.errors.find(t => /too many|locked|temporarily (?:blocked|suspended)|try again (?:later|in)|rate limit|suspended/i.test(t));
       return locked ? fail("locked_or_throttled", locked) : null;
@@ -221,7 +223,7 @@
       }
       await click("#" + id);
       const next = await poll(async x => !!x.challenge || freshError(x) || ((await settled(x)) && !x.chooserFor), 20);
-      return finish(next, "Choosing the " + (hasPassword ? "Password" : "Email") + " method did not open its step within 20 seconds; nothing submitted.");
+      return await finish(next, "Choosing the " + (hasPassword ? "Password" : "Email") + " method did not open its step within 20 seconds; nothing submitted.");
     };
     const submitPassword = async s => {
       step = "password";
@@ -241,15 +243,32 @@
       submitted = true;
       await click("#forward-button");
       const after = await poll(async x => !!x.challenge || freshError(x) || ((await settled(x)) && !x.passwordStep), 45);
-      return finish(after, "The password submission produced no recognizable result within 45 seconds; inspect the browser before any retry.");
+      return await finish(after, "The password submission produced no recognizable result within 45 seconds; inspect the browser before any retry.");
+    };
+    const submitEmail = async s => {
+      step = "email";
+      const guard = await marker("email", false);
+      if (guard !== null && guard < 15 * 60000) return fail("unknown", "A code was already requested for this email from this tab in the last 15 minutes; call again with otp instead of requesting another code.");
+      await fillInput("#PHONE_NUMBER_or_EMAIL_ADDRESS", email);
+      s = await read();
+      if (s.emailValue !== email) return fail("unknown", "The email field did not accept the supplied address; nothing submitted.");
+      if (!s.forwardEnabled) return fail("unknown", "The Continue control is not enabled; nothing submitted.");
+      const preSubmit = blocking(s);
+      if (preSubmit) return preSubmit;
+      await marker("email", true);
+      await arm();
+      submitted = true;
+      await click("#forward-button");
+      const after = await poll(async x => !!x.challenge || freshError(x) || ((await settled(x)) && !x.emailStep), 45);
+      return await finish(after, "Submitting the email produced no recognizable result within 45 seconds; inspect the browser before any retry.");
     };
     const finish = async (s, timeoutMessage) => {
       if (!s) return fail("unknown", timeoutMessage);
       const outcome = classify(s);
       if (outcome) return outcome;
       if (await loggedIn(s)) return authenticated(s);
-      if (s.onAuth && s.passwordStep) return submitPassword(s);
-      if (s.onAuth && s.chooserFor) return chooseMethod(s);
+      if (s.onAuth && s.passwordStep) return await submitPassword(s);
+      if (s.onAuth && s.chooserFor) return await chooseMethod(s);
       if (s.onAuth && s.codeCount === 4 && s.codeFor) {
         if (s.codeFor.toLowerCase() !== email) return fail("unknown", "The code step shown belongs to " + s.codeFor + ", not the requested email; nothing further submitted.");
         return success(s, "enter_email_code", "Uber shows the 4-digit code step for " + s.codeFor + ".");
@@ -279,7 +298,7 @@
         const typed = await read();
         if (typed.onAuth && typed.codeCount === 4 && typed.codeFilled && typed.forwardEnabled && !freshError(typed) && !typed.challenge) await click("#forward-button");
         const after = await poll(async x => (await settled(x)) && !(x.codeCount === 4 && !freshError(x)), 45);
-        return finish(after, "The code submission produced no recognizable result within 45 seconds; inspect the browser before any retry.");
+        return await finish(after, "The code submission produced no recognizable result within 45 seconds; inspect the browser before any retry.");
       }
 
       if (await loggedIn(s)) return authenticated(s);
@@ -288,8 +307,9 @@
       }
       if (await smsStep(s)) return smsSuccess(s);
       // Resume a flow that already identified this account instead of requesting entry again.
-      if (s.onAuth && s.chooserFor && s.chooserFor.toLowerCase() === email) return chooseMethod(s);
-      if (s.onAuth && s.passwordStep && (s.passwordFor ? s.passwordFor.toLowerCase() === email : await identifiedRecently())) return submitPassword(s);
+      if (s.onAuth && s.chooserFor && s.chooserFor.toLowerCase() === email) return await chooseMethod(s);
+      if (s.onAuth && s.passwordStep && (s.passwordFor ? s.passwordFor.toLowerCase() === email : await identifiedRecently())) return await submitPassword(s);
+      if (s.onAuth && s.emailStep) return await submitEmail(s);
 
       step = "search_entry";
       await gotoUrl("https://start.duckduckgo.com/");
@@ -322,14 +342,30 @@
       if (!(targetHost === "ubereats.com" || targetHost.endsWith(".ubereats.com"))) return fail("unknown", "The first organic result points at " + targetHost + ", not ubereats.com; nothing submitted.");
       step = "site_entry";
       await click('[data-webmcp-entry="true"]');
-      s = await poll(async x => x.onSite && (x.loginLink || await loggedIn(x)) || !!x.challenge, 30);
+      s = await poll(async x => x.onSite && x.ready && (x.loginLink || await loggedIn(x)) || !!x.challenge || x.proxyError, 30);
       if (!s) return fail("unknown", "The search result did not land on a usable Uber Eats page; nothing submitted.");
-      if (s.challenge) return fail("captcha_or_challenge", s.challenge);
+      const landing = blocking(s);
+      if (landing) return landing;
       if (await loggedIn(s)) return authenticated(s);
 
       step = "open_login";
-      await click('[data-webmcp-login-link="true"]');
-      s = await poll(async x => (x.onAuth && (x.emailStep || x.codeCount === 4 || x.passwordStep || !!x.chooserFor)) || !!x.challenge || x.errors.length > 0, 30);
+      // Hydration replaces the server-rendered header a few seconds after load, which detaches the tagged link.
+      // The link is tagged again right before each click and only clicked once it has survived a settle interval.
+      let opened = false;
+      for (let attempt = 0; attempt < 3 && !opened; attempt++) {
+        if (!(await read()).loginLink) break;
+        await waitMs(1500);
+        const stable = await js(() => { const link = document.querySelector('[data-webmcp-login-link="true"]'); return !!link && link.isConnected; });
+        if (!stable) continue;
+        try {
+          await click('[data-webmcp-login-link="true"]');
+          opened = true;
+        } catch {
+          // The node was replaced under the click; resolve it again. Opening the sign-in page submits nothing.
+        }
+      }
+      if (!opened) return fail("unknown", "The Log in link could not be clicked; nothing submitted.");
+      s = await poll(async x => (x.onAuth && (x.emailStep || x.codeCount === 4 || x.passwordStep || !!x.chooserFor)) || !!x.challenge || x.proxyError || x.errors.length > 0, 30);
       if (!s) return fail("unknown", "The Uber sign-in page did not show its email step; nothing submitted.");
       const entryOutcome = blocking(s);
       if (entryOutcome) return entryOutcome;
@@ -338,29 +374,17 @@
         return fail("unknown", "Uber shows a code step for " + s.codeFor + ", not the requested email; nothing submitted.");
       }
       if (await smsStep(s)) return smsSuccess(s);
-      if (s.passwordStep) return submitPassword(s);
-      if (s.chooserFor) return chooseMethod(s);
+      if (s.passwordStep) return await submitPassword(s);
+      if (s.chooserFor) return await chooseMethod(s);
       if (!s.emailStep) return fail("unknown", "The Uber sign-in page did not show its email field; nothing submitted.");
-
-      step = "email";
-      const guard = await marker("email", false);
-      if (guard !== null && guard < 15 * 60000) return fail("unknown", "A code was already requested for this email from this tab in the last 15 minutes; call again with otp instead of requesting another code.");
-      await fillInput("#PHONE_NUMBER_or_EMAIL_ADDRESS", email);
-      s = await read();
-      if (s.emailValue !== email) return fail("unknown", "The email field did not accept the supplied address; nothing submitted.");
-      if (!s.forwardEnabled) return fail("unknown", "The Continue control is not enabled; nothing submitted.");
-      const preSubmit = blocking(s);
-      if (preSubmit) return preSubmit;
-      await marker("email", true);
-      await arm();
-      submitted = true;
-      await click("#forward-button");
-      const after = await poll(async x => !!x.challenge || freshError(x) || ((await settled(x)) && !x.emailStep), 45);
-      return finish(after, "Submitting the email produced no recognizable result within 45 seconds; inspect the browser before any retry.");
-    } catch {
-      return fail("unknown", submitted
+      return await submitEmail(s);
+    } catch (error) {
+      // Error text names selectors and helpers, never field values; the supplied password is redacted regardless.
+      let detail = error && error.message ? String(error.message).slice(0, 160) : "";
+      if (detail && typeof input.password === "string") detail = detail.split(input.password).join("[redacted]");
+      return fail("unknown", (submitted
         ? "Browser interaction failed after a submission was attempted; the outcome is unknown. Inspect the browser before any retry."
-        : "Browser interaction failed before any submission.");
+        : "Browser interaction failed before any submission.") + (detail ? " Cause: " + detail : ""));
     } finally {
       if (submitted) await disarm();
     }

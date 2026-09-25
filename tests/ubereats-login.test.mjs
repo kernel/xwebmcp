@@ -59,6 +59,7 @@ function harness(options = {}) {
   let pending = null;
   let submitted = false;
   let searchPolls = 0;
+  let linkReplacements = options.linkReplacedTimes ?? 0;
   const storage = new Map(options.storage ?? []);
   const window = {};
   const calls = { navigations: [], fills: [], submits: 0, clicks: [] };
@@ -73,8 +74,11 @@ function harness(options = {}) {
   const codeBoxes = () => [0, 1, 2, 3].map(i => element('', { value: scene.codeValue[i] ?? '' }));
   const document = {
     body: element(scene.bodyText ?? ''),
+    title: scene.title ?? '',
+    readyState: 'complete',
     querySelector: selector => {
       if (selector === '#PHONE_NUMBER_or_EMAIL_ADDRESS') return scene.emailStep ? element('', { value: scene.emailValue }) : null;
+      if (selector === '[data-webmcp-login-link="true"]') return scene.loginLink ? element('Log in', { isConnected: true }) : null;
       if (selector === '#forward-button') return scene.url.startsWith('https://auth.uber.com/') ? element('Next', { disabled: scene.forwardDisabled ?? false }) : null;
       if (selector.startsWith('header button')) return scene.menu ? element() : null;
       return null;
@@ -103,6 +107,7 @@ function harness(options = {}) {
   function apply(next) {
     const navigated = next.url && next.url !== scene.url;
     scene = { ...scene, ...next };
+    document.title = scene.title ?? '';
     if (navigated) delete window.__ueLoginWatch;
     else if (next.errors) observer?.([{ target: document.body, addedNodes: scene.errors.map(feedback), removedNodes: [] }]);
   }
@@ -154,7 +159,10 @@ function harness(options = {}) {
       if (typeof target === 'object') { scene.results = options.results ?? ['https://www.ubereats.com/login-redirect/']; return; }
       calls.clicks.push(target);
       if (target === '[data-webmcp-entry="true"]') return apply(options.landing ?? scenes.home());
-      if (target === '[data-webmcp-login-link="true"]') return apply(options.loginPage ?? scenes.emailStep());
+      if (target === '[data-webmcp-login-link="true"]') {
+        if (linkReplacements-- > 0) throw Error('Element was not actionable within 10s (not visible)');
+        return apply(options.loginPage ?? scenes.emailStep());
+      }
       if (target === '#alt-action-help-v2') return apply({ options: [...scene.options, ...(options.moreOptions ?? ['alt-more-options-modal-see-all-options'])] });
       if (target === '#alt-more-options-modal-see-all-options') return apply({ options: [...scene.options, ...(options.allOptions ?? ['alt-more-options-modal-email', 'alt-more-options-modal-password'])] });
       if (target === '#alt-more-options-modal-email' || target === '#alt-more-options-modal-password') return schedule(options.chosen ?? scenes.emailCode());
@@ -232,7 +240,7 @@ test('a session signed in as another account is reported, not resubmitted', asyn
 });
 
 for (const [label, scene] of [['unrelated page', { url: 'https://example.com/' }], ['store page', { url: 'https://www.ubereats.com/store/some-restaurant/abc', loginLink: true, menu: true }], ['apex host', { url: 'https://ubereats.com/', loginLink: true, menu: true }], ['blank tab', { url: 'about:blank' }]]) {
-  test(`enters through the search engine from ${label} and stops at the email code step`, async () => {
+  test(`routes ${label} through the search engine entry and stops at the email code step`, async () => {
     const h = harness({ scene });
     const result = await h.run();
     assert.deepEqual(h.calls.navigations, [searchUrl]);
@@ -247,6 +255,37 @@ for (const [label, scene] of [['unrelated page', { url: 'https://example.com/' }
     assert.equal(conforms(h.definitions[0].tool.outputSchema, { ...result, authenticated: true }), false);
   });
 }
+
+test('a Log in link replaced by hydration is resolved again before the click', async () => {
+  const h = harness({ scene: { url: 'https://example.com/' }, linkReplacedTimes: 2 });
+  const result = await h.run();
+  assert.equal(result.next_step, 'enter_email_code');
+  assert.equal(h.calls.clicks.filter(c => c === '[data-webmcp-login-link="true"]').length, 3);
+  assert.equal(h.calls.submits, 1);
+  const stuck = harness({ scene: { url: 'https://example.com/' }, linkReplacedTimes: 3 });
+  const failure = await stuck.run();
+  assert.equal(failure.error_kind, 'unknown');
+  assert.match(failure.error_message, /Log in link could not be clicked/);
+  assert.equal(stuck.calls.submits, 0);
+});
+
+test('a proxy error page in place of the sign-in page fails closed', async () => {
+  const h = harness({ scene: { url: 'https://example.com/' }, loginPage: page({ url: authUrl, title: 'proxy error', bodyText: 'provider_unreachable' }) });
+  const result = await h.run();
+  assert.equal(result.error_kind, 'unknown');
+  assert.match(result.error_message, /proxy could not reach auth\.uber\.com/);
+  assert.equal(result.submission_attempted, false);
+  assert.equal(h.calls.submits, 0);
+});
+
+test('an email step that is already open is submitted in place', async () => {
+  const h = harness({ scene: scenes.emailStep() });
+  const result = await h.run();
+  assert.equal(result.next_step, 'enter_email_code');
+  assert.deepEqual(h.calls.navigations, []);
+  assert.deepEqual(h.calls.fills, ['#PHONE_NUMBER_or_EMAIL_ADDRESS']);
+  assert.equal(h.calls.submits, 1);
+});
 
 test('the email step submission is recorded so a re-invocation does not request a second code', async () => {
   const h = harness({ scene: { url: 'https://example.com/' } });
@@ -312,11 +351,11 @@ test('feedback left from an earlier attempt is not this attempt\'s verdict', asy
   assert.equal(h.calls.submits, 1);
 });
 
-test('an uncertain click is never retried', async () => {
+test('an uncertain click is never retried and its cause is reported', async () => {
   const h = harness({ scene: scenes.emailStep(), clickError: true });
   const result = await h.run();
   assert.equal(result.error_kind, 'unknown');
-  assert.match(result.error_message, /outcome is unknown/);
+  assert.match(result.error_message, /outcome is unknown.*Cause: Click outcome unknown/);
   assert.equal(result.submission_attempted, true);
   assert.equal(h.calls.submits, 1);
 });
@@ -396,7 +435,7 @@ test('the sign-in method chooser selects the email code unless a password is sup
   const h = harness({ scene: scenes.emailStep(), result: scenes.chooser() });
   const result = await h.run();
   assert.equal(result.next_step, 'enter_email_code');
-  assert.deepEqual(h.calls.clicks.slice(-4), ['#forward-button', '#alt-action-help-v2', '#alt-more-options-modal-see-all-options', '#alt-more-options-modal-email']);
+  assert.deepEqual(h.calls.clicks, ['#forward-button', '#alt-action-help-v2', '#alt-more-options-modal-see-all-options', '#alt-more-options-modal-email']);
   const withPassword = harness({ scene: scenes.chooser(), chosen: scenes.password(), result: scenes.smsCode() });
   const next = await withPassword.run({ email, password: 'not-real-pass' });
   assert.equal(next.next_step, 'enter_sms_code');
