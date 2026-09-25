@@ -5,6 +5,15 @@ Tools for Instacart (https://www.instacart.com).
 | tool | file | status | notes |
 |------|------|--------|-------|
 | login | [login.js](login.js) | qa_passed | Passwordless email-code login. Email step, code step, already-logged-in check and wrong-account check live-verified on 2026-09-25; independent failure-path QA passed on the current source. |
+| list_stores | [list_stores.js](list_stores.js) | qa_passed | Stores serving the account's address, with the `store_slug` and shop id the other tools take. |
+| search | [search.js](search.js) | qa_passed | First-page product search in one store; exact matches first, related on request. |
+| get_item | [get_item.js](get_item.js) | qa_passed | One item's price, availability, quantity rules and rating for a store. |
+| get_cart | [get_cart.js](get_cart.js) | qa_passed | One store's cart with names, prices and subtotal, or a summary of every non-empty cart. |
+| add_to_cart | [add_to_cart.js](add_to_cart.js) | qa_passed | Adds or increases a cart line after checking availability and quantity rules; one mutation, never retried. |
+| update_cart_item | [update_cart_item.js](update_cart_item.js) | qa_passed | Sets a cart line to an exact quantity; 0 removes; one mutation, never retried. |
+
+Register all seven files together as one array with `forceOverwriteNamespace: true`;
+registering one file that way removes the others.
 
 ## Native WebMCP tools
 
@@ -125,8 +134,8 @@ are recognized; the read-only account-page navigation is retried once, submissio
 
 Status: see the table at the top and `registry.json`; the QA history is below.
 
-Live-verified on 2026-09-25 (residential `cincy` proxy, stealth, `personal-stuff`
-profile, session `q2yx9he194tv65c9k0idghnz`):
+Live-verified on 2026-09-25 (residential `cincy` proxy, stealth, the account's saved
+browser profile):
 
 | path | input | result | time |
 |------|-------|--------|------|
@@ -136,8 +145,8 @@ profile, session `q2yx9he194tv65c9k0idghnz`):
 | logged out, real address | real email | one submission → `mfa_required: true`, `next_step: enter_email_otp` | 9.0 s |
 | Verify email step open | real email + emailed code | six key presses → auto-submit → `/store/account` matched → `authenticated: true` | 6.6 s |
 
-Independent QA, round 1 (agent `agt_3fa02b3438dc8870922b`, browser
-`lp3grtyz8mclt54bev1n11ou`, stealth, `cincy` proxy, no profile, no vault, commit
+Independent QA, round 1 (agent `agt_3fa02b3438dc8870922b`, its own stealth browser,
+`cincy` proxy, no profile, no vault, commit
 `c342908`): 8 of 9 checks passed with two fabricated submissions (telemetry showed
 exactly two `GetEmailAvailability` requests and no `SendVerificationCode`). Failure
 path from `/store/costco/storefront` took 34.7 s including a 23 s solver run on a visible
@@ -193,25 +202,157 @@ Local tests (mocked helpers plus page-reader fixtures; not additional live attem
 node --test tests/instacart-login.test.mjs
 ```
 
-## Surfaces relevant to search and cart tools
+## Shopping tools
 
-Observed while logged in (not built here):
+Instacart is multi-retailer: catalogs, item ids and carts are all **per store location**.
+The flow an agent follows is
 
-- Search: `https://www.instacart.com/store/s?k=<query>` renders results client-side and
-  appends a `search_id` query parameter; the header has a `Search` textbox and button.
-  Anonymous search works too (`/store/s?k=milk` used ZIP 45410 without an account).
-- Storefronts: `https://www.instacart.com/store/<retailer-slug>/storefront`
-  (e.g. `costco`, `kroger`). Logged-out storefront visits open the login modal.
-- Cart: header button `View Cart. Items in cart: N` (disabled at 0 items). Cart state
-  is per retailer.
-- Account and delivery address: `GetLastUserLocation`, `UserAddresses` GraphQL queries
-  fire on login; the header shows the current address control.
-- No native WebMCP tools on any of these pages.
+1. `list_stores` to pick a `store_slug` (and `service_type`, delivery by default);
+2. `search` in that store to get `item_id`s with price, availability and quantity rules;
+3. `get_item` for a fresh read of one item (optional);
+4. `add_to_cart` / `update_cart_item` to change that store's cart;
+5. `get_cart` to read it back.
+
+`item_id` values look like `items_<retailer_location_id>-<product_id>` and only make sense
+for the store location that produced them: delivery and pickup variants of the same
+retailer have different locations, ids and carts. `get_item` and `add_to_cart` reject an
+id whose location does not match the resolved store. Every tool resolves the store from
+its slug on each call, so there is no hidden "current store".
+
+All shopping tools work through the site's own persisted GraphQL API
+(`https://www.instacart.com/graphql`, `x-client-identifier: web`, page cookies), called
+from page context with `fetch`; nothing is scraped from the DOM and no page navigation
+is needed beyond opening `/store` when the tab is not on instacart.com. Operations used:
+`SharedCurrentUser`, `ShopCollectionUnscoped`, `ShopCollectionScoped`,
+`SearchResultsPlacements`, `Items`, `GetProductRatings`, `ActiveCartId`, `CartData`,
+`CartTotals`, `PersonalActiveCarts` and the mutation `UpdateCartItemsMutation`. The
+persisted-query hashes are pinned in each file; when Instacart rotates one the tool
+returns `error_kind: "site_changed"` naming the operation.
+
+The shopper location (address id, zone, postal code, coordinates) is read from the
+`GetLastUserLocation` entry of the server-rendered Apollo state (`#node-apollo-state`
+on the current page, or fetched from `/store`, with one retry when that fetch fails).
+**Every shopping tool needs a logged-in session with a saved delivery address**: in an
+anonymous browser `/store` redirects to the login page, so the read-only tools return
+`not_logged_in` (redirect seen) or `location_unavailable` (no location anywhere), and
+the cart tools return `not_logged_in` before touching anything.
+
+### Usage
+
+```javascript
+const fs = await import("node:fs");
+const files = ["login", "list_stores", "search", "get_item", "get_cart", "add_to_cart", "update_cart_item"];
+const tools = files.flatMap(name => eval(fs.readFileSync(`domains/instacart.com/${name}.js`, "utf8")));
+await webmcp.addCustomTools({ namespace: "instacart.com", tools, forceOverwriteNamespace: true });
+const ref = async name => (await webmcp.listTools()).find(t => t.source.custom?.namespace === "instacart.com" && t.tool.name === name).tool_ref;
+await webmcp.invokeTool(await ref("list_stores"), { query: "kroger" }, { timeoutSec: 60 });
+await webmcp.invokeTool(await ref("search"), { store: "kroger", query: "bananas", max_results: 5 }, { timeoutSec: 60 });
+await webmcp.invokeTool(await ref("add_to_cart"), { store: "kroger", item_id: "items_165949-2748189", quantity: 1 }, { timeoutSec: 60 });
+await webmcp.invokeTool(await ref("get_cart"), { store: "kroger" }, { timeoutSec: 60 });
+await webmcp.invokeTool(await ref("update_cart_item"), { store: "kroger", item_id: "items_165949-2748189", quantity: 0 }, { timeoutSec: 60 });
+```
+
+The tools are only listed while the tab is on an `instacart.com` page; re-list after any
+navigation. Live calls took 1 to 7 seconds each.
+
+### Output contract
+
+Every tool returns either a success object with `status: "ok"` or
+`{ status: "error", error_kind, error_message }`. Shared `error_kind` values:
+`invalid_input` (rejected before any page access or, for quantity rules, before any
+mutation), `navigation_failed`, `not_logged_in`, `location_unavailable`,
+`store_not_found`, `site_changed`, `throttled`, `unknown`. `get_item` and `add_to_cart`
+add `item_not_found` and (`add_to_cart`) `item_unavailable` and
+`cart_update_rejected`; `update_cart_item` adds `not_in_cart`. The two mutating tools
+always include `mutation_attempted`, which is true once the cart update was sent even
+when the outcome is uncertain; never retry automatically after that.
+
+Items carry `price_string` as displayed (for example `$2.37 each (est.)`), `price_cents`
+parsed from the first dollar amount, `available`, `stock_level`, and `quantity`
+(`type` "each" or "weight", `min`, `max`, `increment`, `unit`). `add_to_cart` adds to the
+existing line (quantity is the increment, and the confirmed total is returned);
+`update_cart_item` sets the exact total and `0` removes the line. Both send exactly one
+`UpdateCartItemsMutation` and read the resulting cart from the mutation response.
+
+### Site quirks (shopping)
+
+- Search results arrive as ordered "placements": a header (`Results for "…"`,
+  `No results for …`, `Related items`), item grids that carry `itemIds` and sometimes
+  full items, ad placements, and a `Load more` marker without a cursor. The tool keeps
+  grid order, drops ads, hydrates missing items with `Items` (25 ids per request), and
+  returns only the first page.
+- `Items` silently omits ids it does not know, so an unknown id is `item_not_found`.
+  Asked about an id from another store location it returns the product with a null
+  price; the tools treat that as `item_not_found` up front.
+- A cart may hold lines from a store location the account is no longer assigned to
+  (for example after the retailer changed the assigned warehouse). `get_cart` still lists
+  them, with names but null prices and `line_total_cents`.
+- `UpdateCartItemsMutation` answers an unknown item with a `CartsCartUpdateError`
+  (`notFoundBasketProduct`, "Sorry, we couldn't add this item because it is no longer
+  available."); a removal of an absent line succeeds with an empty `updatedItemIds`.
+  The tools surface the former as `cart_update_rejected` and pre-empt the latter with
+  `not_in_cart`.
+- Adding certain produce through the site's own button opens a ripeness-preference
+  dialog; the API path used here does not, and the tools never set preferences.
+- Instacart's own reCAPTCHA covers login only; none of the shopping operations
+  triggered a challenge during development.
+
+### Status and known limitations (shopping)
+
+Status: `qa_passed`; see the registry and the QA summary below.
+
+Live-verified on 2026-09-25 in the author's logged-in stealth browser (`cincy` proxy),
+using the account's empty Kroger delivery cart and one cheap produce item:
+
+| tool | case | result |
+|------|------|--------|
+| list_stores | all, `service_type: pickup`, `query: "kro"` | 68 stores at the address; filters and cap applied |
+| search | `kroger` / `bananas`, `grapes`, nonsense query, pickup variant | exact matches with prices and quantity rules; a nonsense query returned `exact_match_count: 0` plus related items (the site sometimes returns fuzzy hits as exact matches instead) |
+| get_item | known id, unknown id, id under the pickup store | details with stock level; `item_not_found` for both failure cases |
+| get_cart | Kroger cart, then all carts | empty Kroger cart with `$0.00` subtotal; three other carts summarized with names and subtotals |
+| add_to_cart | add 1, add 2 more, unknown id, fractional quantity | 0→1 then 1→3, subtotal updated; `item_not_found` and `invalid_input` without a mutation |
+| update_cart_item | set 2, set 0, set 0 again | 3→2, then removed, then `not_in_cart`; cart back to empty |
+
+Independent QA (agent `agt_6e2dd5dcf4c5b4e04b31`, `smartest` preset, 2026-09-25, commit
+`c25ca64`): anonymous stealth browser for the read-only paths plus the author's logged-in
+browser for the cart paths. Every output was validated against its output schema; all
+input-schema violations were stopped by the WebMCP input gate before any page action; the
+tools were not listed on non-Instacart pages and worked from `/help` and `/store/account`.
+Cart work used only two cheap items (bananas per-each, one apple sold by weight in 0.25 lb
+steps), covered add, increment, set, out-of-stock (`item_unavailable`), wrong-location id,
+step-rule rejections, `not_in_cart`, removal, and finished with the carts deep-equal to the
+recording. Two findings, both fixed afterwards: the read-only tools' descriptions claimed a
+logged-out fallback that does not exist (now they state the login requirement, and a login
+redirect is reported as `not_logged_in`), and a transient `/store` fetch failure was
+reported as `location_unavailable` (now retried once and, if it still fails, reported as
+`unknown` with the HTTP status). The fixes changed only descriptions, the location
+fallback, and error wording. A second independent pass (agent `agt_e2b9b6bda0484789612a`,
+`smartest` preset, commit `948357c`, the current tool source) then confirmed both fixes
+live (anonymous browser returns `not_logged_in`; seven repeated logged-in `get_item` calls
+from `/help` and `/store/account` all succeeded), re-ran the cart cycle, found no defects,
+and restored the carts exactly. Sign-off for the current source: `qa_passed`.
+
+Unverified:
+
+- Ratings with non-zero review counts (only `count: 0` was seen live).
+- `throttled`, `site_changed`, and `cart_update_rejected` other than the unknown-item
+  case have fixture coverage only.
+- Search pagination: only the first page is returned; the `Load more` placement carries
+  no cursor and was not followed.
+- Extension-host portability was reasoned about (no Node globals; page work runs in the
+  page) but only the Node CDP runtime was exercised.
+- `cart_item_count` and `item_count` count distinct lines, not units.
+
+Local tests re-create each tool's page-side function in a separate context with a fake
+`fetch`, so parsing, quantity rules, single-mutation behaviour and schema conformance
+are covered without touching the live site:
+
+```sh
+node --test tests/instacart-shopping.test.mjs
+```
 
 ## Sessions
 
-- Long-lived logged-in browser: `q2yx9he194tv65c9k0idghnz` (stealth, `cincy` proxy,
-  `personal-stuff` profile without saving changes, `rafs-vault` attached, 24-hour
-  inactivity timeout). Left logged in for the next tools.
-- Source: this repository is canonical; no credentials, codes, or live-view URLs are
-  stored here.
+Browser and agent identifiers used for QA are ephemeral and are recorded in the pull
+request conversation rather than here. This repository is canonical; no credentials,
+codes, account details or live-view URLs are stored in it.
