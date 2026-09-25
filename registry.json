@@ -210,6 +210,23 @@
       "notes": "First outbound results page only, including round trips; USD per adult per direction. Independent QA and live non-homepage invocation passed. Live zero-flight behavior remains unverified; synthetic empty/error/timeout tests passed. Long Browser REPL calls can time out before delivering results; see domain README."
     },
     {
+      "domain": "ubereats.com",
+      "tool": "login",
+      "file": "domains/ubereats.com/login.js",
+      "kind": "cdp",
+      "namespace": "ubereats.com",
+      "url_patterns": [
+        "https://ubereats.com/*",
+        "https://*.ubereats.com/*",
+        "https://auth.uber.com/*"
+      ],
+      "status": "qa_passed",
+      "qa_agent": "agt_2d00f6bdd86545dc85b6",
+      "browser_session": null,
+      "last_verified": "2026-09-25",
+      "notes": "Independent failure-path QA passed on the current source (three passes; the last found no defects: two search-engine entries reached the email code step with one submission each). Live on the owner's account through the tool: method chooser, vault-filled password step, and the already-authenticated path; wrong-email-code path verified on fabricated accounts. The SMS code step after the password was entered by hand once, so otp on the SMS step is fixture-tested only; wrong password, lockout, and CAPTCHA classification are fixture-only."
+    },
+    {
       "domain": "united.com",
       "tool": "login",
       "file": "domains/united.com/login.js",
