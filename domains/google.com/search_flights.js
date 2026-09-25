@@ -202,7 +202,7 @@
         const page = await js(({ departDate, tripType, passengers, currency, maxResults }) => {
           const text = e => (e?.textContent || "").replace(/\s+/g, " ").trim();
           const visible = e => e.getClientRects().length > 0;
-          const minutes = value => { const m = (value || "").match(/(?:(\d+)\s*hr)?\s*(?:(\d+)\s*min)?/); const total = Number(m?.[1] || 0) * 60 + Number(m?.[2] || 0); return total > 0 ? total : null; };
+          const minutes = value => { const total = Number((value || "").match(/(\d+)\s*hr/)?.[1] || 0) * 60 + Number((value || "").match(/(\d+)\s*min/)?.[1] || 0); return total > 0 ? total : null; };
           const clock = value => { const m = (value || "").match(/(\d{1,2}):(\d{2})\s*([AP]M)/i); if (!m) throw new Error("PARSE_ERROR: unrecognized time " + JSON.stringify(value)); return String(Number(m[1]) % 12 + (m[3].toUpperCase() === "PM" ? 12 : 0)).padStart(2, "0") + ":" + m[2]; };
           const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
           const isoNear = (monthName, day) => {
