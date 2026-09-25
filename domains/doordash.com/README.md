@@ -82,8 +82,9 @@ because Kernel's WebMCP client does not see the polyfill.
    the Submit button **inside the dialog** (the underlying form's Sign In button is still visible
    and must not be clicked). Success is the redirect to `www.doordash.com/?...code=...&action=Login`
    followed, several seconds later, by `/home` with `dd_cx_logged_in=true` and a header Account
-   control. The tool waits for the cookie or the header control, not the footer's Account Details
-   link, which exists on signed-out pages too.
+   control. The tool waits for the header control (Account or Sign Out outside the footer) and
+   reports the cookie as supporting evidence only; the footer's Account Details link exists on
+   signed-out pages too and is ignored.
 
 Endpoints observed: `POST https://identity.doordash.com/v2/auth/guided/email` for the email step
 (HTTP 200 even for an unknown email; the outcome is in the body and the DOM). The page loads an
@@ -140,12 +141,15 @@ and `step` (`input`, `session_check`, `search_entry`, `site_entry`, `email_step`
 - Success after a submission requires a signed-in header control (Account or Sign Out, outside the
   footer) on a non-identity DoorDash page. The `dd_cx_logged_in` cookie alone is not proof: it can
   be stale from an earlier session, so it is only reported as supporting evidence.
-- A `MutationObserver` armed before each submission flags feedback that re-renders with unchanged
-  text, so an old "incorrect" message that DoorDash repaints after the new attempt is still
-  attributed to that attempt. Button and link text is stripped from `error_message`.
-- The tool tracks a 115-second budget and honours the runtime's abort signal. It refuses to click
-  the password submit when fewer than 48 seconds remain, so a caller timeout cannot leave a
-  submission running unobserved; invoke again from the current page in that case.
+- A `MutationObserver` armed before each submission records feedback-like text that DoorDash adds
+  to the page; a displayed error counts as fresh only when it was cleared, changed, or matches text
+  the observer saw added after the click, so an old "incorrect" message that is repainted after the
+  new attempt is attributed to that attempt while unrelated additions are not. Button and link
+  text is stripped from `error_message`.
+- The tool tracks a 112-second budget and honours the runtime's abort signal in every wait loop and
+  before each click. It refuses to submit the password or a code when fewer than 48 seconds remain,
+  so a caller timeout cannot leave a submission running unobserved; invoke again from the current
+  page in that case. Timeout messages say whether the site or the budget ended the wait.
 
 ## Live configuration matrix
 
@@ -182,7 +186,23 @@ Findings and what changed:
 | Code detector could match a "country code" field | risk | Fixed: the attribute match now requires verification/security/one-time/SMS/2FA code wording or `otp`, excludes "country", and prefers `autocomplete="one-time-code"`. |
 | `otp` mode could double-submit if the modal auto-submitted on paste | risk | The live modal does not auto-submit (Submit stays disabled until six digits and had to be clicked); the tool only clicks an enabled Submit inside the dialog. |
 
-Round 2 is recorded below once it completes.
+Round 2, 2026-09-25, agent `agt_b9c6f31f6f2efbffcbe9` against commit `cb75cd4` in a fresh
+profile-less stealth browser (deleted afterwards). Two fabricated email-step submissions, no
+password submissions. Confirmed fixes 2 to 6 (harness and live: the search entry from the about
+page took 12.3 s and returned the site's "Incorrect email" text without the button suffix; the
+repeat on the referred sign-in page skipped the search in 1.9 s; six invalid inputs were rejected
+by the schema gate with no navigation; `otp` mode without a code step returned `unknown` with no
+navigation; all outputs conformed). New minor findings, all addressed in the next commit:
+
+| finding | resolution |
+|---|---|
+| `otp` mode and the email step ignored an already-aborted signal | Both now stop before pasting a code or clicking Continue; regression tests added. |
+| Timeout messages blamed the site when the budget ended the wait | Messages now say whether the site or the budget/cancellation ended the wait. |
+| The feedback observer flagged any added text with an error keyword and never reset | The observer now records the added texts, and a displayed error is fresh only when it matches one of them. |
+| The `otp` submit finder accepted fewer code fields than the detector | Both use the same predicate. |
+| One-character inputs skipped the "country" exclusion; non-loop calls are not counted against the budget | The exclusion applies to every branch; the budget was lowered to 112 s to keep slack under the 120 s invocation limit. |
+
+Round 3 is recorded below once it completes.
 
 ## Status and known limitations
 

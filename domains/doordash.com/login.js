@@ -59,11 +59,12 @@
     let submitted = false;
     let step = "input";
     const started = Date.now();
-    const BUDGET_MS = 115000;
+    const BUDGET_MS = 112000;
     const OBSERVE_MS = 45000;
     const signal = context && context.signal;
     const remaining = () => BUDGET_MS - (Date.now() - started);
     const cancelled = () => (!!signal && signal.aborted) || remaining() <= 0;
+    const waited = seconds => cancelled() ? "before the invocation was cancelled or its budget ran out" : "within " + seconds + " seconds";
     const IDENTITY = "identity.doordash.com";
     const PROFILE_URL = "https://www.doordash.com/consumer/edit_profile/";
     const GUARD_KEY = "doordash.com.login.submitted.v1";
@@ -101,8 +102,9 @@
       const identity = location.hostname === "identity.doordash.com";
       const codeLike = e => {
         const attributes = [e.name, e.id, e.getAttribute("aria-label"), e.placeholder, e.getAttribute("data-testid")].join(" ");
+        if (/country/i.test(attributes)) return false;
         return e.autocomplete === "one-time-code" || (e.maxLength === 1 && /^(?:tel|text|number)$/.test(e.type))
-          || (/(?:verification|security|one.?time|sms|2fa|mfa)[ _-]?code|\botp\b/i.test(attributes) && !/country/i.test(attributes));
+          || /(?:verification|security|one.?time|sms|2fa|mfa)[ _-]?code|\botp\b/i.test(attributes);
       };
       const controls = [...document.querySelectorAll("button, a, [role=button]")].filter(visible);
       // The footer links to Account Details on signed-out pages too; only header controls prove a session.
@@ -117,8 +119,7 @@
           ? [...document.querySelectorAll('input[type="email"]')].map(e => e.value.trim()).find(v => v.includes("@")) || null : null,
         emailStep: false, emailValue: "", emailSubmit: false, phoneStep: false, usePassword: false,
         passwordStep: false, passwordLength: 0, passwordSubmit: false, boundEmail: null,
-        codeStep: false, codeCount: 0, codeHint: null, errors: [], challenge: null,
-        feedbackChanged: !!(window.__ddLoginWatch && window.__ddLoginWatch.changed)
+        codeStep: false, codeCount: 0, codeHint: null, errors: [], challenge: null, feedbackChanged: false
       };
       const frame = [...document.querySelectorAll("iframe")].find(f => visible(f) && /captcha|challenge|turnstile|perimeterx/i.test((f.title || "") + " " + (f.src || "")) && f.getBoundingClientRect().width > 100 && f.getBoundingClientRect().height > 60);
       const blocks = identity ? [...document.querySelectorAll("h1, h2, h3, p, div, span, li, label, [role=alert]")].filter(e => visible(e) && !e.closest("footer, nav, header")) : [...document.querySelectorAll("h1, h2, [role=dialog]")].filter(visible);
@@ -148,6 +149,8 @@
         for (const control of box.querySelectorAll("button, a")) message = message.replace(text(control), "");
         return message.replace(/\s+/g, " ").trim();
       }).filter(Boolean))];
+      const repainted = window.__ddLoginWatch ? window.__ddLoginWatch.texts : [];
+      state.feedbackChanged = state.errors.some(error => repainted.some(added => added.includes(error) || error.includes(added)));
       state.emailStep = !!emailInput;
       state.emailValue = emailInput ? emailInput.value.trim() : "";
       state.emailSubmit = visible(emailSubmit) && !emailSubmit.disabled;
@@ -166,11 +169,14 @@
     const armWatch = async () => js(feedback => {
       if (window.__ddLoginWatch) window.__ddLoginWatch.disconnect();
       const pattern = new RegExp(feedback, "i");
-      const watch = { changed: false };
+      const watch = { texts: [] };
       const observer = new MutationObserver(records => {
         for (const record of records) {
           const nodes = record.type === "characterData" ? [record.target] : [...record.addedNodes];
-          if (nodes.some(node => pattern.test(node.textContent || ""))) watch.changed = true;
+          for (const node of nodes) {
+            const added = (node.textContent || "").replace(/\s+/g, " ").trim();
+            if (added && added.length <= 400 && pattern.test(added)) watch.texts.push(added);
+          }
         }
       });
       observer.observe(document.body, { subtree: true, childList: true, characterData: true });
@@ -227,7 +233,7 @@
         challenge = s.challenge;
       }
       if (challenge) return fail("captcha_or_challenge", challenge);
-      return fail("unknown", "No conclusive sign-in result within " + Math.round(OBSERVE_MS / 1000) + " seconds. The submission may have reached DoorDash; inspect the browser before any further attempt.");
+      return fail("unknown", "No conclusive sign-in result " + waited(Math.round(OBSERVE_MS / 1000)) + ". The submission may have reached DoorDash; inspect the browser before any further attempt.");
     };
 
     try {
@@ -249,6 +255,7 @@
         step = "otp_step";
         if (!(s.https && s.host === IDENTITY && s.codeStep)) return fail("unknown", "No verification-code step is visible on the DoorDash sign-in page; the code was not submitted.");
         if (s.boundEmail && s.boundEmail.toLowerCase() !== wanted) return fail("unknown", "The sign-in flow belongs to " + mask(s.boundEmail) + ", not the requested account; the code was not submitted.");
+        if (cancelled() || remaining() < OBSERVE_MS + 3000) return fail("unknown", "Not enough of the invocation budget remains to observe a code submission; the code was not submitted. Invoke again from the current page.");
         const before = JSON.stringify(s.errors);
         await armWatch();
         const entered = await js(code => {
@@ -279,7 +286,11 @@
         for (let i = 0; i < 10 && !hasSubmit; i++) {
           hasSubmit = await js(() => {
             const visible = e => !!e && e.checkVisibility({ checkOpacity: true, checkVisibilityCSS: true }) && e.getClientRects().length > 0;
-            const code = [...document.querySelectorAll("input")].find(e => visible(e) && (e.autocomplete === "one-time-code" || e.maxLength === 1));
+            const code = [...document.querySelectorAll("input")].find(e => {
+              const attributes = [e.name, e.id, e.getAttribute("aria-label"), e.placeholder, e.getAttribute("data-testid")].join(" ");
+              return visible(e) && !/country/i.test(attributes) && (e.autocomplete === "one-time-code" || (e.maxLength === 1 && /^(?:tel|text|number)$/.test(e.type))
+                || /(?:verification|security|one.?time|sms|2fa|mfa)[ _-]?code|\botp\b/i.test(attributes));
+            });
             const scope = code ? code.closest('[role="dialog"], form') : null;
             if (!scope) return false;
             const button = [...scope.querySelectorAll("button")].find(b => visible(b) && !b.disabled && b.getAttribute("aria-disabled") !== "true" && /^(?:submit|verify|continue|confirm)$/i.test((b.innerText || "").trim()));
@@ -305,7 +316,7 @@
           if (query && search) break;
           await waitMs(500);
         }
-        if (!query || !search) return fail("unknown", "DuckDuckGo search controls did not become available; no sign-in was attempted.");
+        if (!query || !search) return fail("unknown", "DuckDuckGo search controls did not become available " + waited(15) + "; no sign-in was attempted.");
         await fillInput({ backendNodeId: query.backendNodeId }, "doordash login");
         await click({ backendNodeId: search.backendNodeId });
         if (!await waitForElement('[data-testid="result"] [data-testid="result-title-a"]', { timeoutSec: 15 })) return fail("unknown", "DuckDuckGo organic results did not load; no sign-in was attempted.");
@@ -349,11 +360,12 @@
         if (s.emailValue.toLowerCase() !== wanted) return fail("unknown", "The email field did not accept the address; nothing was submitted.");
         if (!s.emailSubmit) return fail("unknown", "The Continue control is missing or disabled; nothing was submitted.");
         if (s.challenge) return fail("captcha_or_challenge", s.challenge);
+        if (cancelled()) return fail("unknown", "The invocation was cancelled or its budget ran out before the email step; nothing was submitted.");
         const before = JSON.stringify(s.errors);
         await armWatch();
         await click('form[data-testid="login-form-guided-email"] #guided-submit-button');
         s = await settle(x => x.passwordStep || x.phoneStep || x.codeStep || !!x.challenge || (x.errors.length > 0 && (x.feedbackChanged || JSON.stringify(x.errors) !== before)) || x.host !== IDENTITY, 20);
-        if (!s) return fail("unknown", "DoorDash did not respond to the email step within 20 seconds; no password was submitted.");
+        if (!s) return fail("unknown", "DoorDash did not respond to the email step " + waited(20) + "; no password was submitted.");
         if (s.host !== IDENTITY) return fail("unknown", "The email step navigated away from the identity page; no password was submitted.");
         if (s.challenge && !s.passwordStep && !s.phoneStep) return fail("captcha_or_challenge", s.challenge);
         if (s.errors.length && !s.passwordStep && !s.phoneStep) return fail(classify(s.errors.join("\n"), false), s.errors.join("\n"));

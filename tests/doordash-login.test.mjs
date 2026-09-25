@@ -510,6 +510,25 @@ test("an aborted invocation signal stops before the password click", async () =>
   assert.equal(h.calls.submits, 0);
 });
 
+test("an aborted invocation signal stops otp mode before the code is pasted", async () => {
+  const h = harness({ initial: codeStep, after: [] });
+  const result = await h.run({ email: input.email, otp: "123456" }, { signal: { aborted: true } });
+  assert.equal(result.error_kind, "unknown");
+  assert.match(result.error_message, /budget/);
+  assert.equal(result.submission_attempted, false);
+  assert.equal(h.calls.otp, null);
+  assert.equal(h.calls.otpSubmits, 0);
+});
+
+test("an aborted invocation signal stops the email step before Continue is clicked", async () => {
+  const h = harness({ initial: emailStep });
+  const result = await h.run(input, { signal: { aborted: true } });
+  assert.equal(result.error_kind, "unknown");
+  assert.match(result.error_message, /cancelled/);
+  assert.equal(result.step, "email_step");
+  assert.deepEqual(h.calls.clicks, []);
+});
+
 test("an aborted invocation signal stops the search entry without navigating further", async () => {
   const h = harness({ initial: { ...base, url: "https://example.com/", host: "example.com" } });
   const result = await h.run(input, { signal: { aborted: true } });
