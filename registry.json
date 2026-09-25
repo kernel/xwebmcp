@@ -66,6 +66,22 @@
       "notes": "Independent targeted QA passed, including schema and synthetic parser/readiness regressions. A separate live DOM parse returned 20 rows; successful final full-tool invocation remains unverified due to intermittent Delta HTTP 429/SFAF001 failures. Domain migration invocation from a baggage page reached results and preserved explicit error output. Round trips return outbound options only; prices are displayed fares, not passenger totals. Real zero results and completeness beyond the 1.5-second DOM-quiescence heuristic remain unverified."
     },
     {
+      "domain": "delta.com",
+      "tool": "login",
+      "file": "domains/delta.com/login.js",
+      "kind": "cdp",
+      "namespace": "delta.com",
+      "url_patterns": [
+        "https://delta.com/*",
+        "https://*.delta.com/*"
+      ],
+      "status": "draft",
+      "qa_agent": null,
+      "browser_session": null,
+      "last_verified": "2026-09-25",
+      "notes": "Live-verified: search-result entry reaches the login form and submits exactly once, and failures report the step and whether a submission happened. Success path unverified: Delta returns 'login is unavailable right now' to every Kernel browser, including one with no profile, while the same credentials work in an ordinary browser."
+    },
+    {
       "domain": "flyfrontier.com",
       "tool": "search_flights",
       "file": "domains/flyfrontier.com/search_flights.js",
