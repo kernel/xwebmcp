@@ -15,7 +15,7 @@
       "qa_agent": "agt_64d5890885db30858fc8",
       "browser_session": null,
       "last_verified": "2026-09-25",
-      "notes": "DDG-only entry; successful authentication/MFA or failure with exactly five error kinds. CAPTCHA returns captcha_or_challenge; the built-in solver may run during bounded observation. Historical DDG navigation passed independent QA; restored schema awaiting re-test. Full authentication remains unverified."
+      "notes": "DDG-only entry; successful authentication/MFA or failure with exactly five error kinds. CAPTCHA returns captcha_or_challenge; the built-in solver may run during bounded observation. Revision d9bf1ec passed 208 repository and 22 independent local tests. Full authentication and live solver behavior remain unverified."
     },
     {
       "domain": "aa.com",

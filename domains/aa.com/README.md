@@ -131,7 +131,11 @@ A guarded live execution from `about:blank` reached the AA login form in 10.7 se
 
 The fresh QA browser and artifact were deleted, while existing sessions were untouched. The earlier direct-entry experiments remain the historical baseline, not a new comparison run.
 
-The current schema restoration retains the DDG-only route and sanitized landing URLs. The re-test above predates the restored five-value failure enum and bounded solver observation; those changes require their own regression check.
+### Independent schema-restoration re-test
+
+Independent QA re-tested commit `d9bf1ec0d5986d86efde85cdff6dc806e7a3587e`: **208 repository tests and 22 independent temporary regressions passed**, with no remaining actionable findings. Checks covered the exact five failure kinds, DDG step names in error messages, persistent CAPTCHA timeout, CAPTCHA clearing into MFA/authentication without another submission, unknown outcomes, URL sanitization, origin confinement, and the sessionStorage guard.
+
+This re-test was local/synthetic only. No browser was launched, no credentials were submitted, and no direct-navigation cases were run. The live DDG evidence above belongs to the earlier revision; full authentication and live built-in solver behavior remain unverified.
 
 ```sh
 node --test tests/aa-login.test.mjs
