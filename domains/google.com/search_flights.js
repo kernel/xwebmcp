@@ -78,12 +78,12 @@
 
   const CURRENCY_LABELS = {
     "US dollars": "USD", "euros": "EUR", "British pounds": "GBP", "Canadian dollars": "CAD", "Australian dollars": "AUD",
-    "Japanese yen": "JPY", "Swiss francs": "CHF", "Indian rupees": "INR", "Mexican pesos": "MXN", "Brazilian reais": "BRL",
+    "Japanese yen": "JPY", "Swiss francs": "CHF", "Indian rupees": "INR", "Mexican pesos": "MXN", "Brazilian reals": "BRL",
     "Swedish kronor": "SEK", "Norwegian kroner": "NOK", "Danish kroner": "DKK", "Polish zlotys": "PLN", "Czech korunas": "CZK",
-    "Hungarian forints": "HUF", "Turkish liras": "TRY", "South African rand": "ZAR", "New Zealand dollars": "NZD",
+    "Hungarian forints": "HUF", "Turkish Lira": "TRY", "South African rand": "ZAR", "New Zealand dollars": "NZD",
     "Singapore dollars": "SGD", "Hong Kong dollars": "HKD", "Chinese yuan": "CNY", "South Korean won": "KRW",
     "New Taiwan dollars": "TWD", "Thai baht": "THB", "Malaysian ringgits": "MYR", "Indonesian rupiahs": "IDR",
-    "Philippine pesos": "PHP", "Vietnamese dong": "VND", "Israeli new shekels": "ILS", "United Arab Emirates dirhams": "AED",
+    "Philippine pesos": "PHP", "Vietnamese dong": "VND", "Israeli new shekels": "ILS", "UAE dirhams": "AED",
     "Saudi riyals": "SAR", "Egyptian pounds": "EGP", "Chilean pesos": "CLP", "Colombian pesos": "COP", "Argentine pesos": "ARS",
     "Peruvian soles": "PEN", "Icelandic krónur": "ISK", "Romanian lei": "RON", "Russian rubles": "RUB"
   };
@@ -189,7 +189,7 @@
         if (readiness.state === "blocked") return fail("BLOCKED: Google served an automated-traffic challenge.");
         if (readiness.state === "site_error") return fail("SITE_ERROR: " + readiness.text.slice(0, 300));
         if (readiness.state !== "results") return fail("RESULTS_TIMEOUT: Google Flights neither announced results nor an explicit no-results state.");
-        await waitForNetworkIdle(1.5, remaining(15));
+        await waitForNetworkIdle(1, remaining(10));
 
         // Expansion and parsing run in one page call so a list re-render cannot separate the expanded nodes from the parsed ones.
         const page = await js(async ({ departDate, tripType, passengers, maxResults, deadlineMs }) => {
@@ -215,13 +215,14 @@
             const before = allCards().length;
             more.click();
             while (allCards().length <= before && Date.now() < deadlineMs) await sleep(200);
-            await sleep(500);
+            await sleep(300);
           }
-          const expanded = card => card.querySelector(".c257Jb") && !card.querySelector('button[aria-label^="Flight details"][aria-expanded="false"]');
+          const collapsed = card => card.querySelector('button[aria-label^="Flight details"][aria-expanded="false"]');
           let selected = allCards().slice(0, maxResults);
-          for (let pass = 0; pass < 3 && selected.some(({ card }) => !expanded(card)); pass++) {
-            for (const { card } of selected) if (!expanded(card)) card.querySelector('button[aria-label^="Flight details"][aria-expanded="false"]')?.click();
-            while (selected.some(({ card }) => !expanded(card)) && Date.now() < deadlineMs) await sleep(200);
+          for (let pass = 0; pass < 3 && selected.some(({ card }) => collapsed(card)); pass++) {
+            for (const { card } of selected) collapsed(card)?.click();
+            const passDeadline = Math.min(deadlineMs, Date.now() + 5000);
+            while (selected.some(({ card }) => collapsed(card)) && Date.now() < passDeadline) await sleep(200);
             selected = allCards().slice(0, maxResults);
           }
 
@@ -236,7 +237,7 @@
             const airlines = (carrierSpans[0] || "").split(/,\s*/).filter(Boolean);
             const operatedBy = summary.match(/Operated by (.+?)\. Leaves/)?.[1] || carrierSpans.find(s => /^Operated by /.test(s))?.replace(/^Operated by /, "") || null;
             const partnerAirlines = carrierSpans.slice(1).filter(s => !/^Operated by /.test(s)).flatMap(s => s.split(/,\s*/)).filter(Boolean);
-            const priceSpan = [...card.querySelectorAll("span[aria-label]")].find(s => /^[\d,]+(?:\.\d+)? [A-Za-z ]+$/.test(s.getAttribute("aria-label")) && !/CO2|emission|kilogram|minute|hour/i.test(s.getAttribute("aria-label")) && /\d/.test(text(s)));
+            const priceSpan = [...card.querySelectorAll("span[aria-label]")].find(s => /^[\d,]+(?:\.\d+)? [\p{L} ]+$/u.test(s.getAttribute("aria-label")) && !/CO2|emission|kilogram|minute|hour/i.test(s.getAttribute("aria-label")) && /\d/.test(text(s)));
             const stopsText = text(card.querySelector(".EfT7Ae")) || summary.match(/\b(Nonstop|\d+ stops?) flight/)?.[1] || "";
             const stops = /^Nonstop/i.test(stopsText) ? 0 : Number(stopsText.match(/^(\d+) stops?/)?.[1] ?? NaN);
             const durationMinutes = minutes(card.querySelector("[aria-label^='Total duration']")?.getAttribute("aria-label") || text(card.querySelector(".gvkrdb")));
@@ -248,8 +249,8 @@
               problems.push(`itinerary ${index + 1} (${summary.slice(0, 80) || "no label"})`);
               return null;
             }
-            const [, amountText, currencyLabel] = priceSpan.getAttribute("aria-label").match(/^([\d,]+(?:\.\d+)?) ([A-Za-z ]+)$/);
-            const segments = expanded(card) ? [...card.querySelectorAll(".c257Jb")].map(block => {
+            const [, amountText, currencyLabel] = priceSpan.getAttribute("aria-label").match(/^([\d,]+(?:\.\d+)?) ([\p{L} ]+)$/u);
+            const segments = [...card.querySelectorAll(".c257Jb")].map(block => {
               const labels = [...block.querySelectorAll(".Xsgmwe")].map(text).filter(Boolean);
               const flightNumber = labels.find(l => /^[A-Z0-9]{2} \d{1,4}$/.test(l));
               const from = text(block.querySelector(".ZHa2lc")).match(/\(([A-Z]{3})\)/)?.[1];
@@ -264,7 +265,7 @@
                 aircraft: labels.find(l => l !== labels[0] && l !== flightNumber && l !== cabinLabel) || null,
                 departureAirport: from, departureTime: departure, arrivalAirport: to, arrivalTime: arrival, durationMinutes: travel
               };
-            }) : [];
+            });
             const complete = segments.length === stops + 1 && segments.every(Boolean);
             const detailDurations = [...card.querySelectorAll(".tvtJdb")].map(e => minutes(text(e).match(/^(.*?)layover/)?.[1]));
             const summaryDurations = [...summary.matchAll(/Layover \(\d+ of \d+\) is an? (.+?) layover/g)].map(m => minutes(m[1]));

@@ -398,18 +398,16 @@ test("explicit no-results announcements are reported, never as an error", async 
 });
 
 test("the consent interstitial is dismissed before reading results", async () => {
-  const h = harness({ consent: true, document: Object.assign(resultsPage(), { consentButtons: true }) });
-  const page = h.tools; // keep reference for clarity
   const doc = resultsPage();
   doc.body.append(new El("button", { text: "Accept all" }));
   doc.body.append(new El("button", { text: "Reject all" }));
-  const consentHarness = harness({ consent: true, document: doc });
-  const result = await consentHarness.execute(oneWay);
+  const h = harness({ consent: true, document: doc });
+  const result = await h.execute(oneWay);
   assert.equal(result.status, "ok");
   assert.equal(doc.body.children.at(-1).clicks, 1);
   assert.equal(doc.body.children.at(-2).clicks, 0);
-  assert.equal(consentHarness.calls.filter(c => c === "wait:html:not([data-xwebmcp-stale]):attached").length, 2);
-  assert.ok(page && h);
+  assert.equal(doc.documentElement.getAttribute("data-xwebmcp-stale"), "1");
+  assert.equal(h.calls.filter(c => c === "wait:html:not([data-xwebmcp-stale]):attached").length, 2);
 });
 
 test("a consent page without a recognizable button is an explicit error", async () => {
@@ -479,6 +477,24 @@ test("price.currency comes from Google's label, and mismatches with the request 
   const unknown = await harness({ document: resultsPage({ currencyName: "Martian credits" }) }).execute({ ...oneWay, currency: "MCR" });
   assert.deepEqual(unknown.flights.map(f => f.price.currency), ["MCR", "MCR"]);
   assert.match(unknown.warnings[0], /not a recognized currency name; price.currency repeats the requested MCR unverified/);
+});
+
+test("non-ASCII currency labels are parsed", async () => {
+  const h = harness({ document: resultsPage({ currencyName: "Icelandic krónur" }) });
+  const result = await h.execute({ ...oneWay, currency: "ISK" });
+  assert.equal(result.status, "ok");
+  assert.deepEqual(result.flights.map(f => f.price.currency), ["ISK", "ISK"]);
+  assert.equal(result.flights[0].price.currencyLabel, "Icelandic krónur");
+  assert.deepEqual(result.warnings, []);
+});
+
+test("a card that never opens its details is not waited on for the whole budget", async () => {
+  const page = resultsPage();
+  page.cards.a.querySelector("button[aria-label^='Flight details']").onclick = null;
+  const started = Date.now();
+  const result = await harness({ document: page }).execute(oneWay);
+  assert.ok(Date.now() - started < 20000);
+  assert.deepEqual(result.flights[0].flightNumbers, []);
 });
 
 test("registry entry matches the file, namespace, and url patterns", () => {
