@@ -86,7 +86,7 @@ function segment({ from, fromName, dep, to, toName, arr, plus = "", travel, airl
   return block;
 }
 
-function card({ dep, arr, plus = "", arrivalDate, airline, partners = null, operatedBy = null, duration, from, to, stops, layoverSummary = "", price, currencyName = "US dollars", roundTrip = false, emissions, comparison, segments, hidden = false }) {
+function card({ dep, arr, plus = "", arrivalDate, airline, partners = null, operatedBy = null, duration, from, to, stops, layoverSummary = "", price, currencyName = "US dollars", roundTrip = false, emissions, comparison, segments, hidden = false, priceless = false }) {
   const arrivalDay = arrivalDate ? ` on  ${longDate(arrivalDate)}` : "";
   const summary = `From ${price.replace(/[^\d]/g, "")} ${currencyName}${roundTrip ? " round trip total" : ""}. ${stops ? `${stops} stop` : "Nonstop"} flight with ${airline}. ${operatedBy ? `Operated by ${operatedBy}. ` : ""}Leaves ${from} at ${dep} and arrives at ${to} at ${arr}${arrivalDay}. Total duration ${duration}.  Select flight`;
   const carrierRow = new El("div", { cls: "sSHqwe", children: [new El("span", { text: airline }), new El("span", { cls: "qeoz6e", text: "" })] });
@@ -106,7 +106,7 @@ function card({ dep, arr, plus = "", arrivalDate, airline, partners = null, oper
       new El("div", { cls: "EfT7Ae", text: stops ? `${stops} stop${stops > 1 ? "s" : ""}${layoverSummary}` : "Nonstop" }),
       new El("div", { cls: "AdWm1c", text: emissions }),
       new El("div", { cls: "rRrlfc", text: comparison }),
-      new El("div", { cls: "YMlIz", children: [new El("span", { attrs: { "aria-label": `${price.replace(/[^\d]/g, "")} ${currencyName}` }, text: price })] }),
+      new El("div", { cls: "YMlIz", children: priceless ? [new El("span", { text: "Price unavailable" })] : [new El("span", { attrs: { "aria-label": `${price.replace(/[^\d]/g, "")} ${currencyName}` }, text: price })] }),
       ...(roundTrip ? [new El("span", { text: "round trip" })] : []),
       details,
     ] }),
@@ -118,8 +118,8 @@ function card({ dep, arr, plus = "", arrivalDate, airline, partners = null, oper
   return li;
 }
 
-function resultsPage({ live = "2 results returned.", roundTripCards = false, extraCard = null } = {}) {
-  const cardA = card({
+function resultsPage({ live = "2 results returned.", roundTripCards = false, extraCard = null, currencyName = "US dollars", firstCard = null } = {}) {
+  const cardA = firstCard ?? card({ currencyName,
     dep: "6:08 PM", arr: "8:45 PM", airline: "Delta", duration: "5 hr 37 min",
     from: "CVG Cincinnati/Northern Kentucky International Airport", to: "SFO San Francisco International Airport",
     stops: 0, price: "$314", roundTrip: roundTripCards, emissions: "245 kg CO2e", comparison: "-19% emissions",
@@ -127,7 +127,7 @@ function resultsPage({ live = "2 results returned.", roundTripCards = false, ext
   });
   const cardB = card({
     dep: "4:32 PM", arr: "12:15 AM", plus: "+1", arrivalDate: plusDays(departDate, 1), airline: "United", operatedBy: "SkyWest DBA United Express",
-    partners: "Lufthansa, Air Canada", duration: "10 hr 43 min",
+    partners: "Lufthansa, Air Canada", duration: "10 hr 43 min", currencyName,
     from: "CVG Cincinnati/Northern Kentucky International Airport", to: "SFO San Francisco International Airport",
     stops: 1, layoverSummary: "4 hr 42 min layoverLong layover", price: "$1,245", roundTrip: roundTripCards, emissions: "1,416 kg CO2e", comparison: "Avg emissions",
     segments: [
@@ -178,6 +178,7 @@ function harness({ startUrl = "https://www.google.com/travel/flights?hl=en", doc
       url = consent ? `https://consent.google.com/m?continue=${encodeURIComponent(next)}` : resultsHost ?? next;
     },
     waitForElement: async (selector, options) => { calls.push(`wait:${selector}:${options.state}`); return true; },
+    waitForNetworkIdle: async () => { calls.push("idle"); return true; },
     js: async (fn, options) => {
       calls.push("js");
       const value = await vm.runInNewContext(`(${fn.toString()})`, pageGlobals())(options?.arg);
@@ -287,6 +288,7 @@ for (const startUrl of ["https://www.google.com/travel/flights?hl=en", "https://
     assert.equal(h.calls.filter(c => c.startsWith("goto:")).length, 1);
     assert.equal(h.calls.indexOf("js"), 0);
     assert.ok(h.calls.indexOf("wait:html:not([data-xwebmcp-stale]):attached") > h.calls.findIndex(c => c.startsWith("goto:")));
+    assert.ok(h.calls.includes("idle"));
   });
 }
 
@@ -317,7 +319,7 @@ test("parses best and other sections, segments, layovers, prices and overnight a
     section: "best", airline: "Delta", airlines: ["Delta"], partnerAirlines: [], operatedBy: null, flightNumbers: ["DL 1234"],
     departureAirport: "CVG", arrivalAirport: "SFO", departureDate: departDate, departureTime: "18:08", arrivalDate: departDate, arrivalTime: "20:45", arrivalDayOffset: 0,
     durationMinutes: 337, stops: 0, layovers: [], emissionsKgCo2e: 245, emissionsVsTypicalPercent: -19,
-    price: { amount: 314, currency: "USD", displayText: "$314", scope: "one_way", passengersIncluded: 1 },
+    price: { amount: 314, currency: "USD", currencyLabel: "US dollars", displayText: "$314", scope: "one_way", passengersIncluded: 1 },
     segments: [{ airline: "Delta", flightNumber: "DL 1234", operatedBy: null, aircraft: "Boeing 737", departureAirport: "CVG", departureTime: "18:08", arrivalAirport: "SFO", arrivalTime: "20:45", durationMinutes: 337 }],
   });
   assert.equal(b.section, "other");
@@ -380,7 +382,8 @@ test("missing segment details leave flightNumbers empty with a warning instead o
   assert.deepEqual(result.flights[0].flightNumbers, []);
   assert.deepEqual(result.flights[0].segments, []);
   assert.deepEqual(result.flights[1].flightNumbers, ["UA 5595", "UA 2106"]);
-  assert.match(result.warnings[0], /1 itinerary detail panel\(s\) did not expand/);
+  assert.deepEqual(result.warnings, ["1 itinerary detail panel(s) could not be read; their flightNumbers and segments are empty."]);
+  assert.deepEqual(result.flights[1].layovers, [{ airport: "DEN", durationMinutes: 282 }]);
 });
 
 test("explicit no-results announcements are reported, never as an error", async () => {
@@ -431,6 +434,51 @@ test("a page that never announces results or cards times out explicitly", async 
   const result = await h.execute(oneWay);
   assert.equal(result.status, "error");
   assert.match(result.message, /^RESULTS_TIMEOUT/);
+});
+
+test("an arrival the day before departure (eastbound date-line crossing) is kept with offset -1", async () => {
+  const early = card({ dep: "7:10 AM", arr: "6:30 PM", arrivalDate: plusDays(departDate, -1), airline: "United", duration: "7 hr 20 min", from: "GUM Guam", to: "HNL Honolulu", stops: 0, price: "$900", emissions: "500 kg CO2e", comparison: "Avg emissions",
+    segments: [segment({ from: "GUM", fromName: "Guam", dep: "7:10 AM", to: "HNL", toName: "Honolulu", arr: "6:30 PM", travel: "7 hr 20 min", airline: "United", number: "UA 200", aircraft: "Boeing 777" })] });
+  const h = harness({ document: resultsPage({ firstCard: early }) });
+  const result = await h.execute({ ...oneWay, origin: "GUM", destination: "HNL" });
+  validate(h.tools[0].tool.outputSchema, result);
+  assert.equal(result.status, "ok");
+  assert.equal(result.flights[0].arrivalDayOffset, -1);
+  assert.equal(result.flights[0].arrivalDate, plusDays(departDate, -1));
+});
+
+test("an unreadable card is skipped with a warning instead of failing the whole search", async () => {
+  const broken = card({ dep: "7:10 AM", arr: "9:30 AM", airline: "Spirit", duration: "5 hr", from: "CVG X", to: "SFO Y", stops: 0, price: "$0", priceless: true, emissions: "1 kg CO2e", comparison: "Avg emissions", segments: [] });
+  const h = harness({ document: resultsPage({ firstCard: broken }) });
+  const result = await h.execute(oneWay);
+  validate(h.tools[0].tool.outputSchema, result);
+  assert.equal(result.status, "ok");
+  assert.equal(result.resultCount, 1);
+  assert.equal(result.totalResults, 2);
+  assert.equal(result.flights[0].airline, "United");
+  assert.match(result.warnings[0], /^Skipped 1 unreadable itinerary card\(s\): itinerary 1/);
+});
+
+test("all cards unreadable is an explicit parse error", async () => {
+  const page = resultsPage();
+  for (const span of page.querySelectorAll("span[aria-label$='dollars']")) span.attrs["aria-label"] = "";
+  const result = await harness({ document: page }).execute(oneWay);
+  assert.equal(result.status, "error");
+  assert.match(result.message, /^PARSE_ERROR: Google announced results but no itinerary card was readable/);
+});
+
+test("price.currency comes from Google's label, and mismatches with the request are flagged", async () => {
+  const gbp = await harness({ document: resultsPage({ currencyName: "British pounds" }) }).execute({ ...oneWay, currency: "GBP" });
+  assert.deepEqual(gbp.flights.map(f => f.price.currency), ["GBP", "GBP"]);
+  assert.deepEqual(gbp.warnings, []);
+
+  const fallback = await harness({ document: resultsPage() }).execute({ ...oneWay, currency: "XYZ" });
+  assert.deepEqual(fallback.flights.map(f => f.price.currency), ["USD", "USD"]);
+  assert.deepEqual(fallback.warnings, ["Google labeled prices as US dollars (USD), not the requested XYZ; price.currency reports USD."]);
+
+  const unknown = await harness({ document: resultsPage({ currencyName: "Martian credits" }) }).execute({ ...oneWay, currency: "MCR" });
+  assert.deepEqual(unknown.flights.map(f => f.price.currency), ["MCR", "MCR"]);
+  assert.match(unknown.warnings[0], /not a recognized currency name; price.currency repeats the requested MCR unverified/);
 });
 
 test("registry entry matches the file, namespace, and url patterns", () => {
