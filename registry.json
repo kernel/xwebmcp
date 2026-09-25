@@ -13,9 +13,9 @@
       ],
       "status": "qa_passed",
       "qa_agent": "agt_64d5890885db30858fc8",
-      "browser_session": "bjcsg0na3ht6hklf6v2ziamo",
+      "browser_session": null,
       "last_verified": "2026-09-25",
-      "notes": "DDG-only revision ee2a19e independently passed 213 repository tests, 14 additional regressions, and guarded live search-to-login navigation with DDG referrer and zero credential submissions. Entry failures name the step; CAPTCHA requires human assistance. Full authentication and token capture remain unverified."
+      "notes": "DDG-only entry; successful authentication/MFA or failure with exactly five error kinds. CAPTCHA returns captcha_or_challenge; the built-in solver may run during bounded observation. Historical DDG navigation passed independent QA; restored schema awaiting re-test. Full authentication remains unverified."
     },
     {
       "domain": "aa.com",

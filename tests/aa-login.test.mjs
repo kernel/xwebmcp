@@ -67,7 +67,7 @@ function harness(options = {}) {
       }
       if (text.includes("const all =")) {
         reads++;
-        return { ...state, ...(clicks > priorClicks ? options.after ?? { challenge: "Challenge Content" } : {}) };
+        return { ...state, ...(clicks > priorClicks ? (typeof options.after === "function" ? options.after(clock) : options.after ?? { challenge: "Challenge Content" }) : {}) };
       }
       if (args?.arg?.username !== undefined) {
         assert.equal(new URL(url).origin, "https://login.aa.com");
@@ -104,7 +104,7 @@ test("single self-contained expression declares the domain patterns and both out
   assert.deepEqual(plain(tool.match.url_patterns), ["https://aa.com/*", "https://*.aa.com/*"]);
   assert.equal(tool.tool.inputSchema.type, "object");
   assert.equal(tool.tool.outputSchema.type, "object");
-  assert.deepEqual(plain(tool.tool.outputSchema.oneOf.map(b => b.properties.outcome.const)), ["authenticated", "mfa_required", "human_assist_required", "failure"]);
+  assert.deepEqual(plain(tool.tool.outputSchema.oneOf.map(b => b.properties.outcome.const)), ["authenticated", "mfa_required", "failure"]);
 });
 
 for (const url of ["about:blank", "https://example.org/", "https://aa.com/", "https://help.aa.com/", "https://www.aa.com/homePage.do", "https://login.aa.com/help"]) {
@@ -114,8 +114,8 @@ for (const url of ["about:blank", "https://example.org/", "https://aa.com/", "ht
     assert.deepEqual(h.navigation, [searchHome, searchUrl]);
     assert.equal(h.stats().searchClicks, 1);
     assert.equal(h.stats().clicks, 1);
-    assert.equal(result.outcome, "human_assist_required");
-    assert.equal(result.reason, "captcha_or_challenge");
+    assert.equal(result.outcome, "failure");
+    assert.equal(result.error_kind, "captcha_or_challenge");
   });
 }
 
@@ -128,9 +128,25 @@ test("reuses a suitable login form and waits for delayed button enablement", asy
   assert.equal(h.stats().filled, 1);
   assert.equal(result.submission_attempted, true);
   assert.equal(result.observation, "after_submission");
-  assert.equal(result.outcome, "human_assist_required");
-  assert.equal(h.stats().clock, 950, "stop at the first CAPTCHA observation instead of waiting for a solver");
+  assert.equal(result.outcome, "failure");
+  assert.equal(result.error_kind, "captcha_or_challenge");
+  assert.equal(h.stats().clock, 45200, "allow bounded observation while the built-in solver runs without another submission");
 });
+
+for (const mfa of [true, false]) {
+  test(`challenge clearing during observation can reach ${mfa ? "MFA" : "authentication"} without resubmission`, async () => {
+    const h = harness({
+      after: clock => clock < 3000 ? { challenge: "Challenge Content" } : { challenge: null, username: false, password: false },
+      afterNodes: mfa
+        ? [{ role: "StaticText", name: "We sent a verification code" }, { role: "textbox", name: "Verification code" }]
+        : [{ role: "button", name: "Log out" }, { role: "StaticText", name: "Available miles" }]
+    });
+    const result = await invoke(h);
+    assert.equal(result.outcome, mfa ? "mfa_required" : "authenticated");
+    assert.equal(h.stats().clicks, 1);
+    assert.equal(h.stats().clock, 3000);
+  });
+}
 
 test("permanently disabled button returns unknown after ten seconds without submitting", async () => {
   const h = harness({ enableAfter: Infinity });
@@ -155,7 +171,8 @@ test("persistent session guard blocks a second invocation", async () => {
   assert.equal((await invoke(h)).submission_attempted, true);
   h.clearResult();
   const second = await invoke(h);
-  assert.equal(second.error_kind, "submission_already_attempted");
+  assert.equal(second.error_kind, "unknown");
+  assert.match(second.error_message, /submission_already_attempted/);
   assert.equal(second.submission_attempted, false);
   assert.equal(h.stats().clicks, 1);
 });
@@ -164,7 +181,8 @@ for (const invalid of [undefined, {}, [], { username: "fixture" }, { password: "
   test(`invalid input is rejected before page access: ${JSON.stringify(invalid)}`, async () => {
     const h = harness();
     const result = await invoke(h, invalid);
-    assert.equal(result.error_kind, "invalid_input");
+    assert.equal(result.error_kind, "unknown");
+    assert.match(result.error_message, /Invalid input/);
     assert.equal(h.stats().reads, 0);
     assert.equal(h.stats().clicks, 0);
   });
@@ -174,15 +192,12 @@ test("input schema rejects missing or conflicting fields", () => {
   const schema = harness().tool.tool.inputSchema;
   assert.equal(conforms(schema, input), true);
   assert.equal(conforms(schema, { use_prefilled: true }), true);
-  assert.equal(conforms(schema, { manual_assist: true }), true);
-  assert.equal(conforms(schema, { ...input, manual_assist: true }), false);
-  assert.equal(conforms(schema, { use_prefilled: true, manual_assist: true }), false);
   for (const value of [{}, { username: "fixture" }, { ...input, use_prefilled: true }, { ...input, password: "" }]) assert.equal(conforms(schema, value), false);
 });
 
 test("prefilled mode navigates away from unsuitable pages but never invents field values", async () => {
   const h = harness({ url: "https://www.aa.com/homePage.do" });
-  assert.equal((await invoke(h, { use_prefilled: true })).error_kind, "invalid_input");
+  assert.equal((await invoke(h, { use_prefilled: true })).error_kind, "unknown");
   assert.deepEqual(h.navigation, [searchHome, searchUrl]);
   assert.equal(h.stats().filled, 0);
   assert.equal(h.stats().clicks, 0);
@@ -229,7 +244,9 @@ for (const mfa of [false, true]) {
 
 test("missing form times out without submitting", async () => {
   const h = harness({ url: "about:blank", navigationState: { username: false, password: false } });
-  assert.equal((await invoke(h)).error_kind, "login_form_unavailable");
+  const result = await invoke(h);
+  assert.equal(result.error_kind, "unknown");
+  assert.match(result.error_message, /login_form_unavailable/);
   assert.equal(h.stats().clock, 30250);
   assert.equal(h.stats().clicks, 0);
 });
@@ -255,14 +272,15 @@ test("shadow DOM fill checks lengths and dispatches input and change events", as
 });
 
 for (const [searchResult, errorKind] of [["missing", "ddg_result_missing"], ["wrong_target", "ddg_result_unapproved"]]) {
-  test(`returns ${errorKind} and stops for ${searchResult} results`, async () => {
+  test(`reports ${errorKind} and stops for ${searchResult} results`, async () => {
     const h = harness({ url: "about:blank", searchResult });
     const result = await invoke(h);
     assert.deepEqual(h.navigation, [searchHome, searchUrl]);
     assert.equal(h.stats().searchClicks, 0);
     assert.equal(h.stats().clicks, 0);
     assert.equal(h.stats().filled, 0);
-    assert.equal(result.error_kind, errorKind);
+    assert.equal(result.error_kind, "unknown");
+    assert.ok(result.error_message.includes(errorKind));
     assert.equal(result.submission_attempted, false);
     assert.equal(h.stats().clock, searchResult === "missing" ? 20000 : 250);
   });
@@ -274,9 +292,9 @@ for (const stage of ["home", "results"]) {
       const h = harness({ url: "about:blank", [stage === "home" ? "searchHomeResult" : "searchResult"]: searchState });
       const result = await invoke(h);
       assert.deepEqual(h.navigation, stage === "home" ? [searchHome] : [searchHome, searchUrl]);
-      assert.equal(result.outcome, searchState === "challenge" ? "human_assist_required" : "failure");
-      if (searchState === "challenge") assert.equal(result.reason, "captcha_or_challenge");
-      else assert.equal(result.error_kind, "ddg_unexpected_origin");
+      assert.equal(result.outcome, "failure");
+      assert.equal(result.error_kind, searchState === "challenge" ? "captcha_or_challenge" : "unknown");
+      if (searchState === "wrong_origin") assert.match(result.error_message, /ddg_unexpected_origin/);
       assert.equal(result.submission_attempted, false);
       assert.equal(h.stats().searchClicks, 0);
       assert.equal(h.stats().clicks, 0);
@@ -289,7 +307,8 @@ for (const [navigationFailure, errorKind] of [[searchHome, "ddg_home_navigation_
   test(`uncertain navigation reports ${errorKind} without retrying`, async () => {
     const h = harness({ url: "about:blank", navigationFailure });
     const result = await invoke(h);
-    assert.equal(result.error_kind, errorKind);
+    assert.equal(result.error_kind, "unknown");
+    assert.ok(result.error_message.includes(errorKind));
     assert.equal(result.submission_attempted, false);
     assert.deepEqual(h.navigation, navigationFailure === searchHome ? [searchHome] : [searchHome, searchUrl]);
     assert.equal(h.stats().filled, 0);
@@ -300,16 +319,19 @@ for (const stage of ["home", "results"]) {
   test(`search inspection failure on ${stage} names the failing step`, async () => {
     const h = harness({ url: "about:blank", searchInspectionFailure: stage });
     const result = await invoke(h);
-    assert.equal(result.error_kind, "ddg_inspection_failed");
+    assert.equal(result.error_kind, "unknown");
+    assert.match(result.error_message, /ddg_inspection_failed/);
     assert.equal(result.submission_attempted, false);
     assert.equal(h.stats().searchClicks, 0);
     assert.equal(h.stats().filled, 0);
   });
 }
 
-test("uncertain organic click returns ddg_result_click_failed", async () => {
+test("uncertain organic click names ddg_result_click_failed in the message", async () => {
   const h = harness({ url: "about:blank", searchClickFailure: true });
-  assert.equal((await invoke(h)).error_kind, "ddg_result_click_failed");
+  const result = await invoke(h);
+  assert.equal(result.error_kind, "unknown");
+  assert.match(result.error_message, /ddg_result_click_failed/);
   assert.deepEqual(h.navigation, [searchHome, searchUrl]);
   assert.equal(h.stats().clicks, 0);
 });
@@ -317,7 +339,7 @@ test("uncertain organic click returns ddg_result_click_failed", async () => {
 test("a challenge after the organic click stops before credential filling", async () => {
   const h = harness({ url: "about:blank", navigationState: { challenge: "Challenge Content" } });
   const result = await invoke(h);
-  assert.equal(result.reason, "captcha_or_challenge");
+  assert.equal(result.error_kind, "captcha_or_challenge");
   assert.equal(result.submission_attempted, false);
   assert.equal(h.stats().filled, 0);
   assert.equal(h.stats().clicks, 0);
@@ -396,13 +418,10 @@ for (const url of [loginUrl, "https://www.aa.com/homePage.do", "https://www.aa.c
   test(`pre-existing CAPTCHA stops before navigation or submission on ${url}`, async () => {
     const h = harness({ url, initial: { challenge: "Challenge Content" } });
     const result = await invoke(h);
-    assert.equal(result.outcome, "human_assist_required");
-    assert.equal(result.reason, "captcha_or_challenge");
-    assert.equal(result.human_assist_required, true);
+    assert.equal(result.outcome, "failure");
+    assert.equal(result.error_kind, "captcha_or_challenge");
     assert.equal(result.logged_in, false);
     assert.equal(result.submission_attempted, false);
-    assert.equal(result.next_step, "complete_login_manually_in_browser");
-    assert.equal(result.landing_url, new URL(url).origin + new URL(url).pathname);
     assert.deepEqual(h.navigation, []);
     assert.equal(h.stats().filled, 0);
     assert.equal(h.stats().clicks, 0);
@@ -410,69 +429,33 @@ for (const url of [loginUrl, "https://www.aa.com/homePage.do", "https://www.aa.c
   });
 }
 
-test("text-only CAPTCHA also requires immediate human assistance", async () => {
+test("text-only CAPTCHA is classified as a challenge failure", async () => {
   const h = harness({ initialNodes: [{ role: "heading", name: "Verify you are human" }] });
   const result = await invoke(h);
-  assert.equal(result.outcome, "human_assist_required");
-  assert.equal(result.reason, "captcha_or_challenge");
-  assert.equal(result.message, "Verify you are human");
-  assert.equal(h.stats().clicks, 0);
-});
-
-for (const challenge of [null, "Challenge Content"]) {
-  test(`manual-assist mode observes without navigation, filling, or submission: ${challenge}`, async () => {
-    const h = harness({ initial: { challenge } });
-    const result = await invoke(h, { manual_assist: true });
-    assert.equal(result.outcome, "human_assist_required");
-    assert.equal(result.reason, challenge ? "captcha_or_challenge" : "manual_login");
-    assert.equal(result.submission_attempted, false);
-    assert.equal(result.observation, "pre_existing");
-    assert.deepEqual(h.navigation, []);
-    assert.deepEqual(h.stats(), { checks: 0, clicks: 0, searchClicks: 0, filled: 0, reads: 1, clock: 0 });
-  });
-}
-
-test("manual inspection after human login reports authentication without returning tokens", async () => {
-  const h = harness({ initial: { username: false, password: false }, initialNodes: [
-    { role: "button", name: "Log out" }, { role: "StaticText", name: "Available miles" }
-  ] });
-  const result = await invoke(h, { manual_assist: true });
-  assert.equal(result.outcome, "authenticated");
-  assert.equal(result.submission_attempted, false);
-  assert.equal(result.observation, "pre_existing");
-  assert.equal("session_token" in result, false);
-  assert.equal("cookies" in result, false);
-  assert.deepEqual(h.navigation, []);
+  assert.equal(result.outcome, "failure");
+  assert.equal(result.error_kind, "captcha_or_challenge");
+  assert.equal(result.error_message, "Verify you are human");
   assert.equal(h.stats().clicks, 0);
 });
 
 for (const mfa of [true, false]) {
-  test(`manual ${mfa ? "MFA" : "authenticated"} results omit URL queries and fragments`, async () => {
+  test(`pre-existing ${mfa ? "MFA" : "authenticated"} results omit URL queries and fragments`, async () => {
     const h = harness({ url: "https://login.aa.com/login?flowId=synthetic#private", initial: { username: false, password: false }, initialNodes: mfa
       ? [{ role: "StaticText", name: "We sent a verification code" }, { role: "textbox", name: "Verification code" }]
       : [{ role: "button", name: "Log out" }, { role: "StaticText", name: "Available miles" }]
     });
-    const result = await invoke(h, { manual_assist: true });
+    const result = await invoke(h, { use_prefilled: true });
     assert.equal(result.outcome, mfa ? "mfa_required" : "authenticated");
     assert.equal(result.landing_url, "https://login.aa.com/login");
     assert.equal(result.submission_attempted, false);
   });
 }
 
-test("manual inspection never navigates away from an unrelated page", async () => {
-  const h = harness({ url: "https://example.org/" });
-  assert.equal((await invoke(h, { manual_assist: true })).error_kind, "unknown");
-  assert.deepEqual(h.navigation, []);
-  assert.equal(h.stats().clicks, 0);
+test("failure schema exposes exactly the five supported error kinds", () => {
+  const schema = harness().tool.tool.outputSchema;
+  assert.deepEqual(plain(schema.oneOf.find(b => b.properties.outcome.const === "failure").properties.error_kind.enum),
+    ["invalid_credentials", "captcha_or_challenge", "mfa_failed", "locked_or_throttled", "unknown"]);
 });
-
-for (const invalid of [{ ...input, manual_assist: true }, { manual_assist: true, use_prefilled: true }, { manual_assist: "yes" }, { manual_assist: false }]) {
-  test(`rejects conflicting manual-assist input: ${JSON.stringify(invalid)}`, async () => {
-    const h = harness();
-    assert.equal((await invoke(h, invalid)).error_kind, "invalid_input");
-    assert.equal(h.stats().reads, 0);
-  });
-}
 
 test("registry preserves search and indexes login under aa.com", () => {
   const registry = JSON.parse(readFileSync(new URL("../registry.json", import.meta.url), "utf8"));
