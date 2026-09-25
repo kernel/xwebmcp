@@ -492,9 +492,10 @@ test("a card that never opens its details is not waited on for the whole budget"
   const page = resultsPage();
   page.cards.a.querySelector("button[aria-label^='Flight details']").onclick = null;
   const started = Date.now();
-  const result = await harness({ document: page }).execute(oneWay);
-  assert.ok(Date.now() - started < 20000);
+  const result = await harness({ document: page, timeoutClock: true }).execute(oneWay);
+  assert.ok(Date.now() - started < 5000);
   assert.deepEqual(result.flights[0].flightNumbers, []);
+  assert.deepEqual(result.warnings, ["1 itinerary detail panel(s) could not be read; their flightNumbers and segments are empty."]);
 });
 
 test("registry entry matches the file, namespace, and url patterns", () => {
