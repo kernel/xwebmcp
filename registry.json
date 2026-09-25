@@ -301,6 +301,57 @@
     },
     {
       "domain": "kroger.com",
+      "tool": "add_to_cart",
+      "file": "domains/kroger.com/add_to_cart.js",
+      "kind": "cdp",
+      "namespace": "kroger.com",
+      "url_patterns": [
+        "https://kroger.com/*",
+        "https://*.kroger.com/*"
+      ],
+      "status": "qa_passed",
+      "last_verified": "2026-09-25",
+      "notes": "Independent QA verified a new line, incrementing an existing line by id, unavailable and not_found refusals without writes, and not_authenticated when signed out, all on a real signed-in cart that was restored afterwards. quantity_limit and adding a UPC that only exists as a saved-for-later line are fixture-tested only.",
+      "provenance": {
+        "qa_agent": "agt_def5f2f10a89acbeeec4"
+      }
+    },
+    {
+      "domain": "kroger.com",
+      "tool": "get_cart",
+      "file": "domains/kroger.com/get_cart.js",
+      "kind": "cdp",
+      "namespace": "kroger.com",
+      "url_patterns": [
+        "https://kroger.com/*",
+        "https://*.kroger.com/*"
+      ],
+      "status": "qa_passed",
+      "last_verified": "2026-09-25",
+      "notes": "Independent QA verified the active-cart read with priced lines, saved-for-later separation, subtotal, not_authenticated when signed out, and restoration checks before and after cart mutations; degraded output when the product lookup fails is fixture-tested only.",
+      "provenance": {
+        "qa_agent": "agt_def5f2f10a89acbeeec4"
+      }
+    },
+    {
+      "domain": "kroger.com",
+      "tool": "get_product",
+      "file": "domains/kroger.com/get_product.js",
+      "kind": "cdp",
+      "namespace": "kroger.com",
+      "url_patterns": [
+        "https://kroger.com/*",
+        "https://*.kroger.com/*"
+      ],
+      "status": "qa_passed",
+      "last_verified": "2026-09-25",
+      "notes": "Independent QA verified lookups by UPC, zero-padding, not_found for unknown codes and the unpriced placeholder record (returned ok with available false), signed out and signed in. Prices and availability are for the session's selected store and fulfillment method only.",
+      "provenance": {
+        "qa_agent": "agt_def5f2f10a89acbeeec4"
+      }
+    },
+    {
+      "domain": "kroger.com",
       "tool": "login",
       "file": "domains/kroger.com/login.js",
       "kind": "cdp",
@@ -314,6 +365,40 @@
       "notes": "Three independent failure-path QA passes (agt_b45e69419d64ca15c913, agt_2abe214c89e45307dfec, agt_81701554c70a9f25b7e6) found no blockers; their findings (110-second budget, entry_path on failures, README snippet, timeout wording) were fixed and re-checked, the last pass on this exact source without submissions. Author-verified live with one residential stealth browser: DuckDuckGo entry to the login.kroger.com form, fabricated submissions returning invalid_credentials with the site's text, one real submission returning authenticated (no MFA), and the already-signed-in path with the account email confirmed from the customer data token plus an account-mismatch refusal. Unverified: MFA/otp mode, lockout, CAPTCHA, wrong password for an existing account, other proxy configurations.",
       "provenance": {
         "qa_agent": "agt_81701554c70a9f25b7e6"
+      }
+    },
+    {
+      "domain": "kroger.com",
+      "tool": "search_products",
+      "file": "domains/kroger.com/search_products.js",
+      "kind": "cdp",
+      "namespace": "kroger.com",
+      "url_patterns": [
+        "https://kroger.com/*",
+        "https://*.kroger.com/*"
+      ],
+      "status": "qa_passed",
+      "last_verified": "2026-09-25",
+      "notes": "Independent QA (three passes, the last on this exact source) verified first-page results, ordering against the site's own results page (organic order identical; the site's interleaved sponsored placements are returned in place and flagged), limits, fuzzy no-match behaviour, signed-out use in a fresh browser, header-capture caching and the schema gate. Author-verified live signed in. First page only; a nonsense query returns fuzzy matches rather than no_results.",
+      "provenance": {
+        "qa_agent": "agt_def5f2f10a89acbeeec4"
+      }
+    },
+    {
+      "domain": "kroger.com",
+      "tool": "update_cart_item",
+      "file": "domains/kroger.com/update_cart_item.js",
+      "kind": "cdp",
+      "namespace": "kroger.com",
+      "url_patterns": [
+        "https://kroger.com/*",
+        "https://*.kroger.com/*"
+      ],
+      "status": "qa_passed",
+      "last_verified": "2026-09-25",
+      "notes": "Independent QA verified setting an absolute quantity, removal with quantity 0, not_in_cart for absent lines and for saved-for-later lines (left untouched), and not_authenticated when signed out, on a real signed-in cart that was restored afterwards. quantity_limit is fixture-tested only.",
+      "provenance": {
+        "qa_agent": "agt_def5f2f10a89acbeeec4"
       }
     },
     {
