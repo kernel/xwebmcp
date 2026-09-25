@@ -3,7 +3,7 @@
   match: { url_patterns: ["https://jetblue.com/*", "https://*.jetblue.com/*"] },
   tool: {
     name: "login",
-    description: "Enter JetBlue through a DuckDuckGo search for jetblue login and submit the username/password form at most once. Reports four states: authenticated, mfa_required, human_assist_required, and failed. CAPTCHAs and other challenges are reported as human_assist_required and are never solved, bypassed, or worked around; the supported path is a person signing in through the browser live view, after which mode \"capture_session\" records the resulting session. Never creates accounts and never guesses or retries credentials.",
+    description: "Enter JetBlue through a DuckDuckGo search for jetblue login, falling back to the direct sign-in URL when the search route fails, and submit the username/password form at most once. Reports four states: authenticated, mfa_required, human_assist_required, and failed. CAPTCHAs and other challenges are reported as human_assist_required and are never solved, bypassed, or worked around; the supported path is a person signing in through the browser live view, after which mode \"capture_session\" records the resulting session. Never creates accounts and never guesses or retries credentials.",
     inputSchema: {
       type: "object",
       properties: {
@@ -60,6 +60,7 @@
                 values_returned: { const: false }
               }
             },
+            entry: { type: "object", additionalProperties: false, required: ["path", "fallback_reason"], properties: { path: { enum: ["search_referral", "direct_fallback", "existing_page"] }, fallback_reason: { type: ["string", "null"] } } },
             submission_attempted: { type: "boolean" }
           }
         },
@@ -71,6 +72,7 @@
             landing_url: { type: "string", format: "uri" },
             mfa_prompt: { type: "string", minLength: 1 },
             next_step: { const: "complete_mfa" },
+            entry: { type: "object", additionalProperties: false, required: ["path", "fallback_reason"], properties: { path: { enum: ["search_referral", "direct_fallback", "existing_page"] }, fallback_reason: { type: ["string", "null"] } } },
             submission_attempted: { type: "boolean" }
           }
         },
@@ -93,6 +95,7 @@
               }
             },
             next_step: { const: "human_login_then_capture_session" },
+            entry: { type: "object", additionalProperties: false, required: ["path", "fallback_reason"], properties: { path: { enum: ["search_referral", "direct_fallback", "existing_page"] }, fallback_reason: { type: ["string", "null"] } } },
             submission_attempted: { type: "boolean" }
           }
         },
@@ -105,6 +108,7 @@
             error_message: { type: "string", minLength: 1 },
             attempts_remaining_if_shown: { type: ["integer", "null"], minimum: 0 },
             message_source: { enum: ["site", "tool"] },
+            entry: { type: "object", additionalProperties: false, required: ["path", "fallback_reason"], properties: { path: { enum: ["search_referral", "direct_fallback", "existing_page"] }, fallback_reason: { type: ["string", "null"] } } },
             submission_attempted: { type: "boolean" }
           }
         }
@@ -113,14 +117,15 @@
     annotations: { destructiveHint: false, readOnlyHint: false }
   },
   execute: async (input) => {
-    let submitted = false;
+    let submitted = false, entry = null;
+    const withEntry = result => entry ? { ...result, entry } : result;
     const failure = (kind, message, source = "tool") => {
       const remaining = message.match(/(\d+)\s+(?:sign.in\s+)?attempts?\s+(?:remaining|left)/i);
-      return { status: "failed", error_kind: kind, error_message: message,
+      return withEntry({ status: "failed", error_kind: kind, error_message: message,
         attempts_remaining_if_shown: remaining ? Number(remaining[1]) : null,
-        message_source: source, submission_attempted: submitted };
+        message_source: source, submission_attempted: submitted });
     };
-    const assist = (reason, evidence, url) => ({
+    const assist = (reason, evidence, url) => withEntry({
       status: "human_assist_required", landing_url: url, assist_reason: reason,
       challenge_evidence: evidence, automated_solving: "not_implemented",
       handoff: {
@@ -185,7 +190,7 @@
         return { cookie_read_ok: false, cookie_count: 0, cookie_names: [], values_returned: false };
       }
     };
-    const authenticated = async state => ({
+    const authenticated = async state => withEntry({
       status: "authenticated", landing_url: state.url, account_name_or_hint: state.account,
       evidence: state.account, session: await sessionFacts(), submission_attempted: submitted
     });
@@ -205,8 +210,8 @@
       }
       if (state.account && !state.hasForm) return authenticated(state);
       if (state.passkey && !state.mfa) return assist("unsupported_verification_method", state.passkey, state.url);
-      if (state.mfa) return { status: "mfa_required", landing_url: state.url, mfa_prompt: state.mfa,
-        next_step: "complete_mfa", submission_attempted: submitted };
+      if (state.mfa) return withEntry({ status: "mfa_required", landing_url: state.url, mfa_prompt: state.mfa,
+        next_step: "complete_mfa", submission_attempted: submitted });
       return null;
     };
     const hasSearchReferrer = async () => js(() => {
@@ -216,6 +221,43 @@
         return false;
       }
     });
+    // Returns why the search route could not reach the sign-in page, or null once it has.
+    const searchEntry = async () => {
+      await gotoUrl("https://start.duckduckgo.com/");
+      if (!await waitForElement('input[role="combobox"],input[type="text"]', { timeoutSec: 20 })) {
+        return "DuckDuckGo search form did not become available.";
+      }
+      const searchPage = new URL((await pageInfo()).url);
+      if (!["https://start.duckduckgo.com", "https://duckduckgo.com"].includes(searchPage.origin)) {
+        return "Search navigation left DuckDuckGo.";
+      }
+      const snapshot = await accessibilitySnapshot();
+      const query = snapshot.nodes.find(n => ["combobox", "textbox", "searchbox"].includes(n.role) && n.name === "Search with DuckDuckGo");
+      const search = snapshot.nodes.find(n => n.role === "button" && n.name === "Search");
+      if (!query || !search) return "DuckDuckGo search controls were not recognized.";
+      await fillInput({ backendNodeId: query.backendNodeId }, "jetblue login");
+      await click({ backendNodeId: search.backendNodeId });
+      if (!await waitForElement('[data-testid="result"] [data-testid="result-title-a"]', { timeoutSec: 20 })) {
+        return "DuckDuckGo organic results did not become available.";
+      }
+      const approved = await js(() => {
+        if (!["https://duckduckgo.com", "https://start.duckduckgo.com"].includes(location.origin)) return false;
+        document.querySelectorAll('[data-webmcp-jetblue-login]').forEach(e => e.removeAttribute('data-webmcp-jetblue-login'));
+        const first = document.querySelector('[data-testid="result"] [data-testid="result-title-a"]');
+        if (!first || !first.getClientRects().length) return false;
+        const destination = new URL(first.href);
+        if (destination.origin !== "https://www.jetblue.com" || !/^\/signin\/?$/.test(destination.pathname) || destination.search || destination.hash) return false;
+        first.setAttribute('data-webmcp-jetblue-login', 'true');
+        return true;
+      });
+      if (!approved) return "The first organic result was not the approved JetBlue sign-in URL.";
+      await click('[data-webmcp-jetblue-login="true"]');
+      await waitForElement('input[name="credentials.passcode"]', { timeoutSec: 20 });
+      const landed = await readState();
+      if (landed.origin !== "https://www.jetblue.com" || !/^\/signin\/?$/.test(landed.path)) return "The first organic result did not land on the JetBlue sign-in page.";
+      if (!await hasSearchReferrer()) return "The login landing page did not retain a DuckDuckGo referrer.";
+      return null;
+    };
     try {
       if (mode === "capture_session") {
         const state = await readState();
@@ -247,37 +289,19 @@
       }
       if (input.use_filled_form && !atLogin) return failure("validation_error", "Prefilled mode requires the canonical JetBlue sign-in page; no navigation or submission made.");
       if (!atLogin || (!input.use_filled_form && !await hasSearchReferrer())) {
-        await gotoUrl("https://start.duckduckgo.com/");
-        if (!await waitForElement('input[role="combobox"],input[type="text"]', { timeoutSec: 20 })) {
-          return failure("unknown", "DuckDuckGo search form did not become available; no login submission made.");
+        let problem;
+        try {
+          problem = await searchEntry();
+        } catch {
+          problem = "Search entry was interrupted.";
         }
-        const searchPage = new URL((await pageInfo()).url);
-        if (!["https://start.duckduckgo.com", "https://duckduckgo.com"].includes(searchPage.origin)) {
-          return failure("unknown", "Search navigation left DuckDuckGo; no login submission made.");
+        entry = { path: problem ? "direct_fallback" : "search_referral", fallback_reason: problem };
+        if (problem) {
+          await gotoUrl("https://www.jetblue.com/signin");
+          await waitForElement('input[name="credentials.passcode"]', { timeoutSec: 20 });
         }
-        const snapshot = await accessibilitySnapshot();
-        const query = snapshot.nodes.find(n => ["combobox", "textbox", "searchbox"].includes(n.role) && n.name === "Search with DuckDuckGo");
-        const search = snapshot.nodes.find(n => n.role === "button" && n.name === "Search");
-        if (!query || !search) return failure("unknown", "DuckDuckGo search controls were not recognized; no login submission made.");
-        await fillInput({ backendNodeId: query.backendNodeId }, "jetblue login");
-        await click({ backendNodeId: search.backendNodeId });
-        if (!await waitForElement('[data-testid="result"] [data-testid="result-title-a"]', { timeoutSec: 20 })) {
-          return failure("unknown", "DuckDuckGo organic results did not become available; no login submission made.");
-        }
-        const approved = await js(() => {
-          if (!["https://duckduckgo.com", "https://start.duckduckgo.com"].includes(location.origin)) return false;
-          document.querySelectorAll('[data-webmcp-jetblue-login]').forEach(e => e.removeAttribute('data-webmcp-jetblue-login'));
-          const first = document.querySelector('[data-testid="result"] [data-testid="result-title-a"]');
-          if (!first || !first.getClientRects().length) return false;
-          const destination = new URL(first.href);
-          if (destination.origin !== "https://www.jetblue.com" || !/^\/signin\/?$/.test(destination.pathname) || destination.search || destination.hash) return false;
-          first.setAttribute('data-webmcp-jetblue-login', 'true');
-          return true;
-        });
-        if (!approved) return failure("unknown", "The first organic result was not the approved JetBlue sign-in URL; no login submission made.");
-        await click('[data-webmcp-jetblue-login="true"]');
-        await waitForElement('input[name="credentials.passcode"]', { timeoutSec: 20 });
-        if (!await hasSearchReferrer()) return failure("unknown", "The login landing page did not retain a DuckDuckGo referrer; no login submission made.");
+      } else {
+        entry = { path: "existing_page", fallback_reason: null };
       }
       let state = await readState();
       if (state.origin !== "https://www.jetblue.com") return classify(state);

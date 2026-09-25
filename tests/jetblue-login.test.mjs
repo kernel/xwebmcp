@@ -31,7 +31,11 @@ function harness(options = {}) {
   const tools = runInNewContext(`(${source})`, {
     URL, Number, Date: { now: () => now },
     pageInfo: async () => ({ url }),
-    gotoUrl: async next => { navigation.push(next); url = options.searchUrl ?? next; },
+    gotoUrl: async next => {
+      navigation.push(next);
+      if (next === entry) { url = entry; state = { ...initial, ...options.directState }; }
+      else url = options.searchUrl ?? next;
+    },
     waitForElement: async selector => !options.missingSelector?.test(selector),
     accessibilitySnapshot: async () => ({ nodes: options.missingControls ? [] : [
       { role: "combobox", name: "Search with DuckDuckGo", backendNodeId: 1 },
@@ -43,7 +47,10 @@ function harness(options = {}) {
       return { cookies };
     },
     fillInput: async (selector, value) => {
-      if (typeof selector === "object") searchActions.push(["query", value]);
+      if (typeof selector === "object") {
+        if (options.searchInterrupted) throw new Error("Search page replaced");
+        searchActions.push(["query", value]);
+      }
       else {
         fills.push(selector);
         if (fills.length === 2 && options.beforeSubmit) state = { ...state, ...options.beforeSubmit };
@@ -97,7 +104,11 @@ function harness(options = {}) {
 function conforms(h, result, status) {
   const branch = h.tool.tool.outputSchema.oneOf[branches[status]];
   assert.equal(result.status, status);
-  assert.deepEqual(Object.keys(result).sort(), Array.from(branch.required).sort());
+  assert.deepEqual(Object.keys(result).filter(k => k !== "entry").sort(), Array.from(branch.required).sort());
+  if ("entry" in result) {
+    assert.ok(branch.properties.entry.properties.path.enum.includes(result.entry.path));
+    assert.equal(result.entry.fallback_reason === null, result.entry.path !== "direct_fallback");
+  }
   assert.equal(typeof result.submission_attempted, "boolean");
   return branch;
 }
@@ -391,16 +402,46 @@ for (const scenario of [
   { name: "first result unapproved", approvedResult: false },
   { name: "missing landing referrer", landingReferrer: false },
   { name: "landing origin changed", navigationState: { origin: "https://example.com" } },
-  { name: "landing path changed", navigationState: { path: "/other" } }
+  { name: "landing path changed", navigationState: { path: "/other" } },
+  { name: "search interrupted", searchInterrupted: true }
 ]) {
-  test(`${scenario.name} never fills credentials, submits or falls back to direct navigation`, async () => {
-    const h = harness({ url: "https://www.jetblue.com/", ...scenario });
-    failure(h, await h.tool.execute(input), "unknown", false);
-    assert.deepEqual(h.navigation, [searchEntry]);
-    assert.deepEqual(h.fills, []);
-    assert.deepEqual(h.clicks, []);
+  test(`${scenario.name} falls back to the direct sign-in URL before filling`, async () => {
+    const h = harness({ url: "https://www.jetblue.com/", after: { errors: ["Unable to sign in"] }, ...scenario });
+    const result = await h.tool.execute(input);
+    failure(h, result, "invalid_credentials", true);
+    assert.deepEqual(h.navigation, [searchEntry, entry]);
+    assert.equal(result.entry.path, "direct_fallback");
+    assert.ok(result.entry.fallback_reason.length > 0);
+    if (scenario.approvedResult === false) assert.ok(!h.searchActions.some(([action]) => action === "result"), "an unapproved result is never clicked");
+    assert.equal(h.fills.length, 2);
+    assert.deepEqual(h.clicks, ['input[type="submit"]']);
   });
 }
+
+test("a failed direct fallback stops without filling or submitting", async () => {
+  const h = harness({ url: "https://www.jetblue.com/", approvedResult: false, directState: { path: "/other", hasForm: false } });
+  const result = await h.tool.execute(input);
+  failure(h, result, "unknown", false);
+  assert.deepEqual(h.navigation, [searchEntry, entry]);
+  assert.equal(result.entry.path, "direct_fallback");
+  assert.deepEqual(h.fills, []);
+  assert.deepEqual(h.clicks, []);
+});
+
+test("a direct fallback that lands on a challenge hands off without typing", async () => {
+  const h = harness({ url: "https://www.jetblue.com/", missingControls: true, directState: { challenge: "Verify you are human" } });
+  const result = await h.tool.execute(input);
+  humanAssist(h, result, "captcha_or_challenge", false);
+  assert.equal(result.entry.path, "direct_fallback");
+  assert.deepEqual(h.fills, []);
+});
+
+test("search-referred and reused sign-in pages report their entry path", async () => {
+  const searched = harness({ url: "https://example.com/", after: { errors: ["Unable to sign in"] } });
+  assert.deepEqual(plain((await searched.tool.execute(input)).entry), { path: "search_referral", fallback_reason: null });
+  const reused = harness({ after: { errors: ["Unable to sign in"] } });
+  assert.deepEqual(plain((await reused.tool.execute(input)).entry), { path: "existing_page", fallback_reason: null });
+});
 
 test("first organic result approval rejects lookalikes, alternate destinations and redirects", async () => {
   const h = harness({ url: "https://example.com/", approvedResult: false });
