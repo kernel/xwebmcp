@@ -123,12 +123,33 @@ evidence that the search referrer defeats a site-side block. The readiness budge
 from 15 seconds to 45 seconds of polling (plus 20 seconds after an in-page login trigger), which
 is the other reason the mobile run no longer reports a false timeout.
 
+### Profile state is not what Delta is keying on
+
+Every attempt above ran in a browser with a saved, reused profile, so the obvious suspicion was
+that Delta had flagged that profile's cookies. A control run says otherwise.
+
+| profile | egress | form reached | submitted | outcome |
+| --- | --- | --- | --- | --- |
+| saved, reused | residential | yes | yes | "login is unavailable right now" |
+| saved, reused | mobile | yes | yes | "login is unavailable right now" |
+| none, clean browser | mobile | yes | yes | "login is unavailable right now" |
+
+The same account and password sign in normally in an ordinary incognito window on a personal
+machine, so neither the credentials nor Delta's login service is the problem. A profile-free
+browser carrying no cookies and no history gets the identical refusal. That rules out cookie or
+profile contamination and points the signal at something every automated run shares regardless of
+stored state: egress reputation or the browser's own fingerprint. Rotating profiles or clearing
+cookies is not a fix here, and the same control is worth running before blaming profile state on
+any other airline.
+
 ### Site quirks
 
 - Delta answers some login submissions with `We're sorry, but login is unavailable right now.`
   This is a site-side condition rather than a credential verdict; it classifies as
   `error_kind: "unknown"`, `error_source: "site"`, `submitted: true`, with Delta's exact wording
   preserved in `error_message`. Do not read it as a wrong password and do not retry in a loop.
+  It also does not mean Delta login is down: the same credentials succeed in an ordinary browser
+  at the same time. Read it as Delta declining this particular client.
 - Wrong credentials produce `Login credential is incorrect. Please try again.`, which classifies
   as `invalid_credentials`. Real accounts lock out, so the tool submits once per invocation.
 - The login page keeps a stale error banner visible after a failed attempt. Reload the entry
@@ -150,6 +171,7 @@ Not independently QA-tested; this is **draft**. What was exercised:
 | `prefilled_password` | Never navigates, requires a filled visible form, and submits once. |
 | Live, residential egress `76.46.4.177` | Search entry reached `https://www.delta.com/skymiles/login`, submitted once, site returned the login-unavailable message. |
 | Live, mobile egress `99.74.53.113` | Same, from an independent browser running the identical implementation. |
+| Live, mobile egress `172.56.29.114`, no profile | Same, from a browser with no profile attached; see the profile-state control above. |
 
 Both live runs executed this file's logic; the committed version differs from the one that ran
 only by an indentation change made afterwards. No captcha telemetry was recorded in either live session. A successful login, an MFA step, and a
