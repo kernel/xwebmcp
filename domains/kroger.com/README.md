@@ -427,6 +427,8 @@ Live verification is recorded in the table below as it happens.
 | 10 | `update_cart_item` on the saved-for-later UPC | `not_in_cart` with the saved-for-later hint, saved line unchanged |
 | 11 | `add_to_cart` for the "Bag Holder" placeholder and for an unknown code | `unavailable` and `not_found`, no writes |
 | 12 | `get_cart` at the end | 0 active lines; the saved-for-later line exactly as before the session |
+| 13 | Re-run on the final source (login-first check, degraded cart read, store-name gating, 429 retry): `search_products` cold from a product page, `add_to_cart` ×1, `update_cart_item` to 0, `get_cart` | search ok in 11.3 s including capture and settle; add ok (quantity 1); removed; final cart 0 active lines with `product_details: "complete"` and the saved-for-later line unchanged |
+| 14 | Independent QA pass 1 (`agt_58a2b36b09f3e89c56bd`, commit `e2de074`) | Akamai blocked its fresh browser on the homepage and answered one `get_cart` enrichment call with 429, so the live plan stopped before any cart write; 38 malformed inputs rejected at the schema gate, stale `tool_ref` on an unrelated page failed fast; no defects in what ran; five minor code findings, all fixed in the next commits |
 
 ### Sessions
 
