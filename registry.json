@@ -67,6 +67,22 @@
     },
     {
       "domain": "jetblue.com",
+      "tool": "login",
+      "file": "domains/jetblue.com/login.js",
+      "kind": "cdp",
+      "namespace": "jetblue.com",
+      "url_patterns": [
+        "https://jetblue.com/*",
+        "https://*.jetblue.com/*"
+      ],
+      "status": "draft",
+      "qa_agent": null,
+      "browser_session": null,
+      "last_verified": "2026-09-25",
+      "notes": "Live-verified: a fabricated login returns invalid_credentials, and real credentials reach the email-MFA first step (mfa_required) on mobile+stealth and residential+stealth. Unverified: the packaged DuckDuckGo entry end to end (its first live run stopped at the search box; fixed with an accessibility-tree lookup that is only unit-tested), MFA completion, and real CAPTCHA or lockout responses."
+    },
+    {
+      "domain": "jetblue.com",
       "tool": "search_flights",
       "file": "domains/jetblue.com/search_flights.js",
       "kind": "cdp",
