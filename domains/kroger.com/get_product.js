@@ -48,15 +48,18 @@
     const fail = (kind, message) => ({ status: "error", error_kind: kind, error_message: message });
     const cents = value => { const m = /^USD\s+(\d+)(?:\.(\d{1,2}))?$/.exec(value || ""); return m ? Number(m[1]) * 100 + Number((m[2] || "0").padEnd(2, "0")) : null; };
     const normalizeUpc = value => typeof value === "string" && /^\d{8,14}$/.test(value.trim()) ? value.trim().slice(-13).padStart(13, "0") : null;
-    const context = async () => {
+    const context = async (requireLogin) => {
+      const { cookies } = await cdp("Network.getCookies", { urls: [ORIGIN + "/"] });
+      const cookie = name => cookies.find(c => c.name === name)?.value ?? "";
+      const loggedIn = cookie("loggedIn") === "yes";
+      if (requireLogin && !loggedIn) return { error: fail("not_authenticated", "The browser is not signed in to Kroger; use the login tool first. Nothing was changed.") };
       let current = null;
       try { current = new URL((await pageInfo()).url); } catch { /* about:blank has no usable URL */ }
-      if (!current || current.origin !== ORIGIN) {
+      // Sign-in and account pages start an MSAL redirect when reloaded, so they are never used as the capture page.
+      if (!current || current.origin !== ORIGIN || /^\/(signin|account\/dashboard)(\/|$)/.test(current.pathname)) {
         await gotoUrl(ORIGIN + "/");
         if (!await waitForLoad(30)) return { error: fail("site_error", "The Kroger homepage did not finish loading; nothing was changed.") };
       }
-      const { cookies } = await cdp("Network.getCookies", { urls: [ORIGIN + "/"] });
-      const cookie = name => cookies.find(c => c.name === name)?.value ?? "";
       let modalityType = null;
       try { modalityType = JSON.parse(decodeURIComponent(cookie("x-active-modality"))).type || null; } catch { /* no fulfillment method chosen yet */ }
       const cacheName = "kroger.com.laf.v1";
@@ -83,8 +86,8 @@
       const address = active.modality.handoffAddress?.address || {};
       const location = active.modality.handoffAddress?.location || {};
       return {
-        loggedIn: cookie("loggedIn") === "yes",
-        fulfillment: { type, store_id: active.sources[0].storeId, postal_code: address.postalCode ?? null, store_name: address.name ?? null },
+        loggedIn,
+        fulfillment: { type, store_id: active.sources[0].storeId, postal_code: address.postalCode ?? null, store_name: active.modality.handoffLocation ? address.name ?? null : null },
         headers: {
           accept: "application/json, text/plain, */*", "x-kroger-channel": "WEB", "x-laf-object": laf, "x-facility-id": active.sources[0].storeId,
           "x-modality-type": type, "x-modality": JSON.stringify({ type, lat: location.lat, lng: location.lng, postalCode: address.postalCode })
@@ -125,19 +128,11 @@
       }
       return { products };
     };
-    const activeCart = async ctx => {
-      const result = await api(ctx, "/atlas/v1/carts");
-      if (result.error) return result;
-      const carts = result.body.data?.carts;
-      const cart = (Array.isArray(carts) ? carts : [carts]).find(c => c && c.type === "ACTIVE") || null;
-      if (!cart) return { error: fail("site_error", "Kroger returned no active cart for this account.") };
-      return { cart };
-    };
     if (!input || typeof input !== "object" || Array.isArray(input) || Object.keys(input).some(k => k !== "upc")) return fail("invalid_input", "Provide upc only.");
     const upc = normalizeUpc(input.upc);
     if (!upc) return fail("invalid_input", "upc must be 8 to 14 digits.");
     try {
-      const ctx = await context();
+      const ctx = await context(false);
       if (ctx.error) return ctx.error;
       const details = await lookup(ctx, [upc]);
       if (details.error) return details.error;

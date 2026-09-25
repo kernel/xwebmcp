@@ -3,14 +3,14 @@
   match: { url_patterns: ["https://kroger.com/*", "https://*.kroger.com/*"] },
   tool: {
     name: "get_cart",
-    description: "Read the signed-in Kroger account's active cart: the store and fulfillment method it is tied to, every line with its UPC, quantity, current price in cents and availability, the items the shopper has saved for later, and the estimated subtotal. Requires a signed-in session (use the login tool first). Never checks out, changes the address or applies coupons. Read-only.",
+    description: "Read the signed-in Kroger account's active cart: the store and fulfillment method it is tied to, every line with its UPC, quantity, current price in cents and availability, the items the shopper has saved for later, and the estimated subtotal. If the product lookup that adds descriptions and prices fails, the cart lines are still returned with product_details set to unavailable. Requires a signed-in session (use the login tool first). Never checks out, changes the address or applies coupons. Read-only.",
     inputSchema: { type: "object", additionalProperties: false, properties: {} },
     outputSchema: {
       type: "object",
       oneOf: [
         {
           type: "object", additionalProperties: false,
-          required: ["status", "cart_id", "fulfillment", "item_count", "subtotal_cents", "items", "saved_for_later"],
+          required: ["status", "cart_id", "fulfillment", "item_count", "subtotal_cents", "items", "saved_for_later", "product_details", "product_details_error"],
           properties: {
             status: { const: "ok" }, cart_id: { type: "string", minLength: 1 },
             fulfillment: {
@@ -41,7 +41,9 @@
               line_total_cents: { type: ["integer", "null"], description: "quantity times the current (promotional when applicable) price, in US cents." },
               available: { type: "boolean" }, url: { type: ["string", "null"] }
             }
-          }, description: "Lines the shopper parked; they are not part of the order and the cart tools never change them." }
+          }, description: "Lines the shopper parked; they are not part of the order and the cart tools never change them." },
+            product_details: { enum: ["complete", "unavailable"], description: "unavailable when the cart was read but the product lookup failed; descriptions and prices are then null and subtotal_cents is null." },
+            product_details_error: { type: ["string", "null"] }
           }
         },
         {
@@ -57,16 +59,18 @@
     const PROJECTIONS = "items.full,offers.compact,inventory.projected,variantGroupings.compact";
     const fail = (kind, message) => ({ status: "error", error_kind: kind, error_message: message });
     const cents = value => { const m = /^USD\s+(\d+)(?:\.(\d{1,2}))?$/.exec(value || ""); return m ? Number(m[1]) * 100 + Number((m[2] || "0").padEnd(2, "0")) : null; };
-    const normalizeUpc = value => typeof value === "string" && /^\d{8,14}$/.test(value.trim()) ? value.trim().slice(-13).padStart(13, "0") : null;
-    const context = async () => {
+    const context = async (requireLogin) => {
+      const { cookies } = await cdp("Network.getCookies", { urls: [ORIGIN + "/"] });
+      const cookie = name => cookies.find(c => c.name === name)?.value ?? "";
+      const loggedIn = cookie("loggedIn") === "yes";
+      if (requireLogin && !loggedIn) return { error: fail("not_authenticated", "The browser is not signed in to Kroger; use the login tool first. Nothing was changed.") };
       let current = null;
       try { current = new URL((await pageInfo()).url); } catch { /* about:blank has no usable URL */ }
-      if (!current || current.origin !== ORIGIN) {
+      // Sign-in and account pages start an MSAL redirect when reloaded, so they are never used as the capture page.
+      if (!current || current.origin !== ORIGIN || /^\/(signin|account\/dashboard)(\/|$)/.test(current.pathname)) {
         await gotoUrl(ORIGIN + "/");
         if (!await waitForLoad(30)) return { error: fail("site_error", "The Kroger homepage did not finish loading; nothing was changed.") };
       }
-      const { cookies } = await cdp("Network.getCookies", { urls: [ORIGIN + "/"] });
-      const cookie = name => cookies.find(c => c.name === name)?.value ?? "";
       let modalityType = null;
       try { modalityType = JSON.parse(decodeURIComponent(cookie("x-active-modality"))).type || null; } catch { /* no fulfillment method chosen yet */ }
       const cacheName = "kroger.com.laf.v1";
@@ -93,8 +97,8 @@
       const address = active.modality.handoffAddress?.address || {};
       const location = active.modality.handoffAddress?.location || {};
       return {
-        loggedIn: cookie("loggedIn") === "yes",
-        fulfillment: { type, store_id: active.sources[0].storeId, postal_code: address.postalCode ?? null, store_name: address.name ?? null },
+        loggedIn,
+        fulfillment: { type, store_id: active.sources[0].storeId, postal_code: address.postalCode ?? null, store_name: active.modality.handoffLocation ? address.name ?? null : null },
         headers: {
           accept: "application/json, text/plain, */*", "x-kroger-channel": "WEB", "x-laf-object": laf, "x-facility-id": active.sources[0].storeId,
           "x-modality-type": type, "x-modality": JSON.stringify({ type, lat: location.lat, lng: location.lng, postalCode: address.postalCode })
@@ -145,14 +149,15 @@
     };
     if (input !== undefined && (!input || typeof input !== "object" || Array.isArray(input) || Object.keys(input).length)) return fail("invalid_input", "get_cart takes no input.");
     try {
-      const ctx = await context();
+      const ctx = await context(true);
       if (ctx.error) return ctx.error;
-      if (!ctx.loggedIn) return fail("not_authenticated", "The browser is not signed in to Kroger; use the login tool first.");
       const result = await activeCart(ctx);
       if (result.error) return result.error;
       const lines = result.cart.lineItems || [];
+      // The cart read has already succeeded; a failed product lookup degrades the output instead of discarding it.
       const details = await lookup(ctx, [...new Set(lines.map(l => l.gtin13).filter(Boolean))]);
-      if (details.error) return details.error;
+      const enriched = !details.error;
+      if (!enriched) details.products = [];
       const describe = line => {
         const product = details.products.find(p => p.upc === line.gtin13) || null;
         const unit = product ? (product.promo_price_cents ?? product.price_cents) : null;
@@ -165,7 +170,10 @@
       const items = lines.filter(l => !l.savedForLater).map(describe);
       const saved = lines.filter(l => l.savedForLater).map(describe);
       const subtotal = items.every(i => i.line_total_cents !== null) ? items.reduce((sum, i) => sum + i.line_total_cents, 0) : null;
-      return { status: "ok", cart_id: result.cart.id, fulfillment: ctx.fulfillment, item_count: items.length, subtotal_cents: subtotal, items, saved_for_later: saved };
+      return {
+        status: "ok", cart_id: result.cart.id, fulfillment: ctx.fulfillment, item_count: items.length, subtotal_cents: subtotal, items, saved_for_later: saved,
+        product_details: enriched ? "complete" : "unavailable", product_details_error: enriched ? null : details.error.error_kind + ": " + details.error.error_message
+      };
     } catch (error) {
       return fail("site_error", "Browser interaction failed: " + (error && error.message ? error.message : String(error)));
     }

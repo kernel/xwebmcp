@@ -182,6 +182,22 @@ for (const url of ["https://example.com/", "about:blank", "https://login.kroger.
   });
 }
 
+for (const url of ["https://www.kroger.com/signin", "https://www.kroger.com/account/dashboard/"]) {
+  test(`search_products: never reloads ${url}; it opens the homepage instead`, async () => {
+    const h = harness("search_products", { url });
+    assert.equal((await h.run({ query: "bananas" })).status, "ok");
+    assert.deepEqual(h.calls.navigations, [HOME, HOME]);
+  });
+}
+
+test("get_product: a delivery entry never reports an address name as the store name", async () => {
+  const laf = fixture("laf");
+  laf[0].modality.handoffAddress.address.name = "Recipient Name";
+  const result = await harness("get_product", { laf: JSON.stringify(laf) }).run({ upc: "0000000004011" });
+  assert.equal(result.fulfillment.store_name, null);
+  assert.equal(result.fulfillment.postal_code, "45200");
+});
+
 test("search_products: stays on a kroger.com page and reloads it once to capture the store header", async () => {
   const h = harness("search_products", { url: "https://www.kroger.com/p/milk/0001111041700" });
   await h.run({ query: "bananas" });
@@ -365,11 +381,31 @@ test("get_cart: subtotal is null when a line has no price", async () => {
   assert.equal(result.items[0].price_cents, null);
 });
 
-test("get_cart: requires a signed-in session", async () => {
-  const h = harness("get_cart", { loggedIn: false });
+test("get_cart: requires a signed-in session and checks it before any navigation or capture", async () => {
+  const h = harness("get_cart", { loggedIn: false, url: "https://example.com/" });
   const result = await h.run({});
   assert.equal(result.error_kind, "not_authenticated");
   assert.deepEqual(h.calls.requests, []);
+  assert.deepEqual(h.calls.navigations, []);
+  assert.equal(h.calls.captures, 0);
+});
+
+test("get_cart: a failed product lookup degrades the output instead of discarding the cart", async () => {
+  const h = harness("get_cart", { responses: path => path.includes("/product/v2/products") ? { status: 429, body: JSON.stringify({ errors: { reason: "rate limited", code: "429" } }) } : null });
+  const result = await h.run({});
+  assert.equal(result.status, "ok");
+  assert.equal(result.product_details, "unavailable");
+  assert.match(result.product_details_error, /^challenge: /);
+  assert.equal(result.item_count, 1);
+  assert.equal(result.items[0].upc, "0001111041700");
+  assert.equal(result.items[0].description, null);
+  assert.equal(result.subtotal_cents, null);
+});
+
+test("get_cart: a complete lookup reports product_details complete", async () => {
+  const result = await harness("get_cart").run({});
+  assert.equal(result.product_details, "complete");
+  assert.equal(result.product_details_error, null);
 });
 
 test("get_cart: no active cart is an explicit site_error", async () => {
@@ -421,10 +457,12 @@ for (const [upc, kind] of [["0009999999999", "not_found"], ["0000000000001", "no
   });
 }
 
-test("add_to_cart: requires a signed-in session", async () => {
-  const h = harness("add_to_cart", { loggedIn: false });
+test("add_to_cart: requires a signed-in session, without navigating or capturing first", async () => {
+  const h = harness("add_to_cart", { loggedIn: false, url: "https://example.com/" });
   assert.equal((await h.run({ upc: "0000000004011" })).error_kind, "not_authenticated");
   assert.deepEqual(h.calls.requests, []);
+  assert.deepEqual(h.calls.navigations, []);
+  assert.equal(h.calls.captures, 0);
 });
 
 test("add_to_cart: a write the site silently ignores is reported, not claimed", async () => {

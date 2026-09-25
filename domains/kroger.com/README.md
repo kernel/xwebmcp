@@ -271,7 +271,9 @@ repl.write(JSON.stringify(await webmcp.invokeTool(tool.tool_ref, { query: "banan
    signed-in session; use `login` first.
 4. `get_cart()` returns the active cart with priced lines, the saved-for-later
    lines (which the tools never change), `item_count` and an estimated
-   `subtotal_cents`.
+   `subtotal_cents`. If the cart read succeeds but the product lookup that adds
+   descriptions and prices fails (for example a rate limit), the lines are still
+   returned with `product_details: "unavailable"` and null prices.
 5. `update_cart_item({ upc, quantity })` sets an absolute quantity; `0` removes the
    line. A UPC that is not an active line is `not_in_cart`.
 
@@ -335,13 +337,28 @@ pickup, `store_name`, because prices, availability and the cart are tied to it.
   took 2 to 5 seconds. The tools also send `x-facility-id`, `x-modality-type` and
   `x-modality` derived from that object, as the page does.
 - The active fulfillment method is read from the `x-active-modality` cookie; if it
-  is absent the first entry of the captured object is used.
+  is absent the first entry of the captured object is used. `store_name` is only
+  reported for pickup and in-store entries (those with a `handoffLocation`); the
+  delivery entry's address block is never surfaced beyond its postal code.
+- The cached header object contains the session's delivery address, as the
+  site's own header does on every request. It lives in the tab's `sessionStorage`
+  (cleared when the tab closes) for at most 30 minutes; treat that storage as
+  part of the signed-in session.
+- The cart tools check the `loggedIn` cookie before any navigation or header
+  capture, so a signed-out tab gets `not_authenticated` without a reload.
 
 ### Site quirks
 
-- If the attached tab is not on `www.kroger.com`, the tools open the homepage
-  first. They never open `/signin` or `/account/dashboard/` (see the login notes:
-  those start an MSAL redirect that dropped the session once).
+- If the attached tab is not on `www.kroger.com`, or is on `/signin` or
+  `/account/dashboard/`, the tools open the homepage first before any header
+  capture. They never reload those two paths (see the login notes: reloading them
+  starts an MSAL redirect that dropped the session once).
+- Akamai Bot Manager rate-limits the JSON endpoints per exit address. During the
+  independent QA pass a fresh browser on the same residential proxy got a
+  "Too many requests" page on the homepage, and one product lookup in the
+  signed-in session answered HTTP 429 with a challenge iframe that reloaded the
+  page; the limit cleared within about ten minutes. The tools report this as
+  `challenge`; wait before calling again rather than retrying in a loop.
 - A product search for nonsense still returns fuzzy matches, so `no_results` is
   rare; `total_count` and `available_count` come from the site.
 - `page.size` is a hint: the site returns a few paid placements beyond it. The
