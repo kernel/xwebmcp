@@ -3,6 +3,22 @@
   "tools": [
     {
       "domain": "aa.com",
+      "tool": "login",
+      "file": "domains/aa.com/login.js",
+      "kind": "cdp",
+      "namespace": "aa.com",
+      "url_patterns": [
+        "https://aa.com/*",
+        "https://*.aa.com/*"
+      ],
+      "status": "qa_passed",
+      "qa_agent": "agt_64d5890885db30858fc8",
+      "browser_session": null,
+      "last_verified": "2026-09-25",
+      "notes": "Live DDG entry reached the login form, and an earlier referred submission reached MFA; restored behavior passed independent local QA. Full authentication and live solver completion remain unverified; historical direct entry encountered CAPTCHA."
+    },
+    {
+      "domain": "aa.com",
       "tool": "search_flights",
       "file": "domains/aa.com/search_flights.js",
       "kind": "cdp",
