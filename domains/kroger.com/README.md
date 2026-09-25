@@ -5,11 +5,11 @@ Tools for Kroger (https://www.kroger.com).
 | tool | file | status | notes |
 |------|------|--------|-------|
 | login | [login.js](login.js) | qa_passed | One submission maximum; live success, already-signed-in, account mismatch and invalid credentials verified; MFA, lockout and CAPTCHA synthetic only |
-| search_products | [search_products.js](search_products.js) | draft | First results page for the selected store and fulfillment method, with prices, availability and sponsored flags; works signed out |
-| get_product | [get_product.js](get_product.js) | draft | One product by 13-digit UPC: price, promotion, availability, per-order limit |
-| get_cart | [get_cart.js](get_cart.js) | draft | Active cart with priced lines, saved-for-later lines and an estimated subtotal; requires sign-in |
-| add_to_cart | [add_to_cart.js](add_to_cart.js) | draft | Adds by UPC after checking existence, availability and the per-order limit; increments an existing line; requires sign-in |
-| update_cart_item | [update_cart_item.js](update_cart_item.js) | draft | Sets an absolute quantity by UPC, 0 removes; never touches saved-for-later lines; requires sign-in |
+| search_products | [search_products.js](search_products.js) | qa_passed | First results page for the selected store and fulfillment method, with prices, availability and sponsored flags; works signed out |
+| get_product | [get_product.js](get_product.js) | qa_passed | One product by 13-digit UPC: price, promotion, availability, per-order limit |
+| get_cart | [get_cart.js](get_cart.js) | qa_passed | Active cart with priced lines, saved-for-later lines and an estimated subtotal; requires sign-in |
+| add_to_cart | [add_to_cart.js](add_to_cart.js) | qa_passed | Adds by UPC after checking existence, availability and the per-order limit; increments an existing line; requires sign-in |
+| update_cart_item | [update_cart_item.js](update_cart_item.js) | qa_passed | Sets an absolute quantity by UPC, 0 removes; never touches saved-for-later lines; requires sign-in |
 
 The login sections below are unchanged from the login PR. The shopping tools are
 documented in [Shopping tools](#shopping-tools) at the end of this file.
@@ -399,8 +399,19 @@ pickup, `store_name`, because prices, availability and the cart are tied to it.
 - Kroger's bot protection was not triggered during testing except by the one
   `modality/preferences` probe; a `challenge` result means wait, not retry.
 - Live verification used one residential stealth browser signed in to one
-  account with a delivery address; pickup and in-store modes are covered by the
-  fixture tests only.
+  account with a delivery address; independent QA also used fresh signed-out
+  browsers with a pickup store. In-store mode is covered by the fixture tests only.
+- Sponsored placements are returned where the site's API interleaves them, so
+  they occupy `limit` slots and can rank ahead of organic hits; the organic order
+  itself matches the site's results page. Filter on `sponsored` if you only want
+  organic results.
+- In the signed-in session, 2 of 14 cart calls in the last QA pass re-captured
+  the header (one extra page reload each) although the store and fulfillment
+  cookies looked unchanged; the cause was not isolated. The cost is one reload.
+- `get_product` reports a catalog placeholder such as the "Bag Holder" record as
+  `status: "ok"` with `available: false` and no price; `add_to_cart` refuses it
+  as `unavailable`. Treat `available` and `price_cents`, not `status`, as the
+  signal that something can be bought.
 
 ### QA summary
 
@@ -437,6 +448,7 @@ Live verification is recorded in the table below as it happens.
 | 12 | `get_cart` at the end | 0 active lines; the saved-for-later line exactly as before the session |
 | 13 | Re-run on the final source (login-first check, degraded cart read, store-name gating, 429 retry): `search_products` cold from a product page, `add_to_cart` ×1, `update_cart_item` to 0, `get_cart` | search ok in 11.3 s including capture and settle; add ok (quantity 1); removed; final cart 0 active lines with `product_details: "complete"` and the saved-for-later line unchanged |
 | 16 | Re-run after the QA pass 2 fixes: `search_products` "oat milk" cold, then "bananas" warm, then `add_to_cart` ×1, `update_cart_item` to 0, `get_cart` | cold search ok in 21.7 s with the site's own order (sponsored Silk, then Planet Oat and Oatly, a promotion only on Oatly); warm search ok in 1.8 s with no reload; add ok; removed; final cart 0 active lines, saved-for-later line unchanged |
+| 17 | Independent QA pass 3 (`agt_def5f2f10a89acbeeec4`, commit `01181ae`, the signed-off source): ordering compared with the site's own results page for two queries at a pickup store (organic order identical), three consecutive signed-out calls (cache hit on the second and third), 38 malformed inputs at the gate, stale `tool_ref` on an unrelated page, product-page invocation, signed-out cart tools, then the full cart flow including an out-of-stock avocado refused as `unavailable` | no blockers, no majors; 66 outputs schema-valid; cart restored byte-identical; three minor findings recorded under known limitations |
 | 15 | Independent QA pass 2 (`agt_8b7f0522e17f2f1d16e8`, commit `07a9215`): 40 malformed inputs at the gate, stale `tool_ref` on two unrelated pages, read-only tools signed out in a fresh browser (pickup store), signed-out cart tools, then the full cart flow in the signed-in session | no blockers; 23 live outputs schema-valid; cart restored byte-identical; three findings fixed in the next commit: search order now mirrors the site's own query, the header cache no longer misses on the cookie timestamp, a promotion at the regular price is reported as none |
 | 14 | Independent QA pass 1 (`agt_58a2b36b09f3e89c56bd`, commit `e2de074`) | Akamai blocked its fresh browser on the homepage and answered one `get_cart` enrichment call with 429, so the live plan stopped before any cart write; 38 malformed inputs rejected at the schema gate, stale `tool_ref` on an unrelated page failed fast; no defects in what ran; five minor code findings, all fixed in the next commits |
 
