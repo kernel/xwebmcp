@@ -58,13 +58,9 @@ These use browser-helper stubs to check expression loading, matching, entry navi
 
 Register `login.js` with namespace `jetblue.com`. It is a single CDP tool-array expression matching the apex and all HTTPS subdomains. Loading one file with `forceOverwriteNamespace: true` removes other tools in that namespace; combine the search and login arrays when registering both.
 
-The primary entry path goes through `https://start.duckduckgo.com/`, searches `jetblue login`, and clicks the **first organic result**, not an advertisement. It accepts that result only when it is `https://www.jetblue.com/signin` (optional trailing slash, no query or fragment), then verifies that the page landed on the canonical sign-in path with an actual DuckDuckGo document referrer. The referrer is never spoofed.
+The tool enters through `https://start.duckduckgo.com/`, searches `jetblue login`, and clicks the **first organic result**, not an advertisement. It accepts that result only when it is `https://www.jetblue.com/signin` (optional trailing slash, no query or fragment), then verifies the actual DuckDuckGo document referrer before entering credentials. Unexpected results, search failures, missing referrers, and changed login destinations stop with a typed failure; there is no direct-navigation fallback or spoofed referrer.
 
-If any step of the search route fails (search form or controls missing, search leaving DuckDuckGo, no organic results, an unapproved first result, a landing page off the sign-in path, a missing referrer, or an interrupted search), the tool falls back to navigating directly to `https://www.jetblue.com/signin`. An unapproved first result is never clicked. The fallback runs before any credential is typed, and the usual origin, form, and challenge checks apply to the directly loaded page. A failed fallback stops with a typed failure.
-
-Login-mode results carry `entry` with `path` (`search_referral`, `direct_fallback`, or `existing_page`) and `fallback_reason` (the search-route failure, or null), so a caller can tell which path produced an outcome. Results returned before navigation, such as input validation failures, omit it.
-
-There are no starting-page assumptions: unrelated pages, the apex, subdomains, non-login paths, and sign-in pages without a DuckDuckGo referrer try the search route first. A canonical sign-in page already reached through DuckDuckGo is reused as `existing_page`. Existing challenges, errors, MFA, or authenticated state are reported without restarting the flow. Credentials are entered only on the canonical sign-in page. Allow 150 seconds for invocation.
+There are no starting-page assumptions: unrelated pages, the apex, subdomains, non-login paths, and direct sign-in entries use the search route. A canonical sign-in page already reached through DuckDuckGo can be reused. Existing challenges, errors, MFA, or authenticated state are reported without restarting the flow. Credentials are entered only on the canonical sign-in page. Allow 120 seconds for invocation.
 
 ### Modes
 

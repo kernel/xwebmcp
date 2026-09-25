@@ -79,7 +79,7 @@
       "qa_agent": "agt_19fb8339edef5ff82a82",
       "browser_session": "oh52hpvtipbx16z1hiqlj00n",
       "last_verified": "2026-09-25",
-      "notes": "enters through a DuckDuckGo search for jetblue login with the direct sign-in URL as fallback, reported in entry.path; four-state output (authenticated / mfa_required / human_assist_required / failed); CAPTCHA is reported as human_assist_required and automated solving is intentionally not implemented, with manual live-view sign-in plus mode capture_session as the supported path; session capture returns cookie metadata only, never values; email-MFA first step live-verified on mobile+stealth and on residential+stealth after DuckDuckGo search entry (one submission each); capture_session and await_human_login live-verified read-only; live CAPTCHA and full authentication not yet observed; see README for states, policy and limitations"
+      "notes": "four-state output (authenticated / mfa_required / human_assist_required / failed); CAPTCHA is reported as human_assist_required and automated solving is intentionally not implemented, with manual live-view sign-in plus mode capture_session as the supported path; session capture returns cookie metadata only, never values; email-MFA first step live-verified on mobile+stealth and on residential+stealth after DuckDuckGo search entry (one submission each); capture_session and await_human_login live-verified read-only; live CAPTCHA and full authentication not yet observed; see README for states, policy and limitations"
     },
     {
       "domain": "jetblue.com",
