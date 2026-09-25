@@ -101,6 +101,10 @@ shows one, otherwise null), and `submission_attempted`.
   `ubereats.com`, its subdomains, and `auth.uber.com`, so the tool is listed only on
   those pages. From an unrelated page such as a search engine it is not invocable at
   all; the fixture tests that start from unrelated URLs exercise `execute` directly.
+- **Continue starts disabled.** On `auth.uber.com` the Continue control renders disabled
+  for roughly the first second after the identifier step appears (observed enabled at
+  about 1.5 s, `readyState` complete at about 6.7 s). The email and password steps poll
+  up to 10 s for the filled field plus an enabled control before submitting.
 - **Code boxes.** Each box holds one digit and focus advances automatically; entering
   the fourth digit submits the form on its own. The tool pastes the whole code into the
   first box (`fillInput`), waits, and clicks Next only if the form is still there.
@@ -126,8 +130,10 @@ shows one, otherwise null), and `submission_attempted`.
 
 - Independent QA (agent `agt_b94bb0a4b4d20af839ae`, commit `aae5cc0`) found the
   hydration defect above: the tool never reached Uber's email step on its own in 5 of 6
-  live runs. Fixed as described, with fixture coverage for a replaced link, but the fix
-  has not yet been re-verified live.
+  live runs. A second pass (agent `agt_c4fd2ee51e0ad730bd35`, commit `84a9be7`) confirmed
+  the fix (Log in clicked on its own in 2 of 2 runs that reached the auth page) and found
+  the disabled-Continue race above, which stopped 1 of 2 runs before submitting. That fix
+  has fixture coverage and is awaiting live re-verification.
 - The SMS code step is classified and accepted by the tool (`enter_sms_code`, then
   `otp`), but that path has only fixture coverage. When the live password submission
   reached the SMS step, the tool at that revision did not recognize it and returned
@@ -178,6 +184,20 @@ without profile or vault: `nxg4wrwoyufbgdp9qb5zfhoa` on `cincy`, replaced by
 | Wrong 4-digit code                                         | fabricated  | `mfa_failed`, 1 submission               | "The email passcode you've entered is incorrect."     |
 | Same wrong code again immediately                          | fabricated  | `unknown` (20 s guard), 0 submissions    |                                                       |
 
+Independent QA of commit `84a9be7` (agent `agt_c4fd2ee51e0ad730bd35`, browsers
+`znx8n3iwk7brwumkret2vsnh` on `cincy` and `y5txeyzedfsqcxunsb8b7weo` on `us-mobile`, both
+deleted):
+
+| case                                                       | account     | result                                   | evidence                                              |
+|------------------------------------------------------------|-------------|------------------------------------------|-------------------------------------------------------|
+| Entry from home (`cincy`)                                  | fabricated  | `unknown` at `open_login`, 0 submissions | proxy error page recognized and named                 |
+| Entry from home (`us-mobile`), run 1                       | fabricated  | `unknown` at `email`, 0 submissions      | Continue still disabled when read once                |
+| Entry from home (`us-mobile`), run 2                       | fabricated  | `enter_email_code`, 26 s, 1 submission   | code step heading named the fabricated address        |
+| Re-invocation with the code step open                      | fabricated  | `enter_email_code`, 0 submissions        |                                                       |
+| Wrong 4-digit code, then the same again                    | fabricated  | `mfa_failed`, then 20 s guard            | 1 submission                                          |
+| Four malformed inputs on the home page                     | fabricated  | rejected, no page action                 | all outputs valid under Ajv                           |
+| Listing on `/search?q=pizza`                               | n/a         | listed once the page settled             | one empty listing mid-navigation                      |
+
 Local contract and fixture tests:
 
 ```sh
@@ -195,6 +215,6 @@ They are not live evidence.
 - Long-lived owner session: `hs15472lgc2jt0tvewsrqs3j` (24-hour inactivity timeout,
   `personal-stuff` profile read-only, `rafs-vault` attached, `us-mobile` proxy).
   Signed in on 2026-09-25 and left signed in for the search and cart work.
-- Independent QA sessions: `nxg4wrwoyufbgdp9qb5zfhoa` and `oax3sse568exk6dv7421o8je`
-  (deleted after the run).
+- Independent QA sessions: `nxg4wrwoyufbgdp9qb5zfhoa`, `oax3sse568exk6dv7421o8je`,
+  `znx8n3iwk7brwumkret2vsnh`, and `y5txeyzedfsqcxunsb8b7weo` (all deleted after their runs).
 - Source: this repository is canonical; sessions expire but files do not.

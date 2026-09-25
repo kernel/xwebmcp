@@ -192,7 +192,7 @@
       "qa_agent": null,
       "browser_session": "hs15472lgc2jt0tvewsrqs3j",
       "last_verified": "2026-09-25",
-      "notes": "Live on the owner's account: DuckDuckGo entry, email step, method chooser, vault-filled password step, and the already-authenticated path verified through the tool; wrong-email-code path verified on a fabricated account. Independent QA found the Log in link detached by hydration in 5 of 6 entry runs; fixed with re-resolution but not yet re-verified live. The SMS code step after the password was entered by hand once, so otp on the SMS step is fixture-tested only."
+      "notes": "Live on the owner's account: DuckDuckGo entry, email step, method chooser, vault-filled password step, and the already-authenticated path verified through the tool; wrong-email-code path verified on fabricated accounts by two independent QA passes. QA found and the tool now handles the Log in link detached by hydration (confirmed live) and Continue rendering disabled for about a second (fix awaiting live re-verification). The SMS code step after the password was entered by hand once, so otp on the SMS step is fixture-tested only."
     },
     {
       "domain": "united.com",

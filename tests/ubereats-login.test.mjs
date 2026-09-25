@@ -79,7 +79,7 @@ function harness(options = {}) {
     querySelector: selector => {
       if (selector === '#PHONE_NUMBER_or_EMAIL_ADDRESS') return scene.emailStep ? element('', { value: scene.emailValue }) : null;
       if (selector === '[data-webmcp-login-link="true"]') return scene.loginLink ? element('Log in', { isConnected: true }) : null;
-      if (selector === '#forward-button') return scene.url.startsWith('https://auth.uber.com/') ? element('Next', { disabled: scene.forwardDisabled ?? false }) : null;
+      if (selector === '#forward-button') return scene.url.startsWith('https://auth.uber.com/') ? element('Next', { disabled: (scene.forwardDisabledFor ?? 0) > 0 }) : null;
       if (selector.startsWith('header button')) return scene.menu ? element() : null;
       return null;
     },
@@ -135,6 +135,7 @@ function harness(options = {}) {
     },
     waitMs: async ms => {
       clock += ms;
+      if (scene.forwardDisabledFor) scene.forwardDisabledFor--;
       if (pending && --pending.delay <= 0) { const { result } = pending; pending = null; apply(result); }
     },
     gotoUrl: async url => {
@@ -285,6 +286,21 @@ test('an email step that is already open is submitted in place', async () => {
   assert.deepEqual(h.calls.navigations, []);
   assert.deepEqual(h.calls.fills, ['#PHONE_NUMBER_or_EMAIL_ADDRESS']);
   assert.equal(h.calls.submits, 1);
+});
+
+test('a Continue control that is still disabled after the step appears is waited for', async () => {
+  const h = harness({ scene: scenes.emailStep({ forwardDisabledFor: 3 }) });
+  const result = await h.run();
+  assert.equal(result.next_step, 'enter_email_code');
+  assert.equal(h.calls.submits, 1);
+  const never = harness({ scene: scenes.emailStep({ forwardDisabledFor: 1000 }) });
+  const failure = await never.run();
+  assert.equal(failure.error_kind, 'unknown');
+  assert.match(failure.error_message, /Continue control did not become enabled/);
+  assert.equal(never.calls.submits, 0);
+  const password = harness({ scene: scenes.password({ forwardDisabledFor: 3 }), storage: [recentMarker('email', 60_000)], result: scenes.smsCode() });
+  assert.equal((await password.run({ email, password: 'not-real-pass' })).next_step, 'enter_sms_code');
+  assert.equal(password.calls.submits, 1);
 });
 
 test('the email step submission is recorded so a re-invocation does not request a second code', async () => {

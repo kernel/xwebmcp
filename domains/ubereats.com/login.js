@@ -233,9 +233,9 @@
       const guard = await marker("password", false);
       if (guard !== null && guard < 60000) return fail("unknown", "A password was already submitted from this tab less than a minute ago; inspect the browser before submitting again.");
       if (input.password) await fillInput('input[type="password"]', input.password);
-      const before = await read();
-      const ok = input.password ? before.passwordLength === input.password.length : before.passwordLength > 0;
-      if (!ok || !before.forwardEnabled) return fail("unknown", "The password field or its submit control was not ready; password not submitted.");
+      const filled = x => input.password ? x.passwordLength === input.password.length : x.passwordLength > 0;
+      const before = await poll(async x => x.passwordStep && filled(x) && x.forwardEnabled, 10);
+      if (!before) return fail("unknown", "The password field or its submit control was not ready; password not submitted.");
       const blocked = blocking(before);
       if (blocked) return blocked;
       await marker("password", true);
@@ -250,9 +250,13 @@
       const guard = await marker("email", false);
       if (guard !== null && guard < 15 * 60000) return fail("unknown", "A code was already requested for this email from this tab in the last 15 minutes; call again with otp instead of requesting another code.");
       await fillInput("#PHONE_NUMBER_or_EMAIL_ADDRESS", email);
-      s = await read();
-      if (s.emailValue !== email) return fail("unknown", "The email field did not accept the supplied address; nothing submitted.");
-      if (!s.forwardEnabled) return fail("unknown", "The Continue control is not enabled; nothing submitted.");
+      // Uber renders Continue disabled for about a second after the step appears, so readiness is polled.
+      const ready = await poll(async x => x.emailStep && x.emailValue === email && x.forwardEnabled, 10);
+      if (!ready) {
+        s = await read();
+        return fail("unknown", s.emailValue !== email ? "The email field did not accept the supplied address; nothing submitted." : "The Continue control did not become enabled within 10 seconds; nothing submitted.");
+      }
+      s = ready;
       const preSubmit = blocking(s);
       if (preSubmit) return preSubmit;
       await marker("email", true);
