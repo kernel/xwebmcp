@@ -137,6 +137,15 @@ and `step` (`input`, `session_check`, `search_entry`, `site_entry`, `email_step`
   cannot submit again. Inspect the browser instead of retrying.
 - `attempts_remaining` parsing and the `locked_or_throttled`/`captcha_or_challenge` wording are
   synthetic; DoorDash never showed those states in testing.
+- Success after a submission requires a signed-in header control (Account or Sign Out, outside the
+  footer) on a non-identity DoorDash page. The `dd_cx_logged_in` cookie alone is not proof: it can
+  be stale from an earlier session, so it is only reported as supporting evidence.
+- A `MutationObserver` armed before each submission flags feedback that re-renders with unchanged
+  text, so an old "incorrect" message that DoorDash repaints after the new attempt is still
+  attributed to that attempt. Button and link text is stripped from `error_message`.
+- The tool tracks a 115-second budget and honours the runtime's abort signal. It refuses to click
+  the password submit when fewer than 48 seconds remain, so a caller timeout cannot leave a
+  submission running unobserved; invoke again from the current page in that case.
 
 ## Live configuration matrix
 
@@ -149,9 +158,35 @@ and `step` (`input`, `session_check`, `search_entry`, `site_entry`, `email_step`
 
 No CAPTCHA solver events and no visible challenge occurred in any run.
 
+## Independent QA
+
+Round 1, 2026-09-25, agent `agt_e173a64b720e2cb2dd59` against commit `394bda9` in its own
+profile-less stealth browser (deleted afterwards). Two fabricated email-step submissions, no
+password submissions. Passed: nine invalid inputs rejected by the WebMCP schema gate with no
+navigation; the search entry from `about.doordash.com` (DoorDash redirects `/about/` there) reached
+`identity.doordash.com` with a DuckDuckGo referrer and returned the site's "Incorrect email" text as
+`invalid_credentials` at `email_step` in 12.2 s; a repeat on the referred sign-in page skipped the
+search; `otp` mode without a code step returned `unknown` at `otp_step` with no navigation; every
+output conformed to `outputSchema`.
+
+Findings and what changed:
+
+| finding | severity | resolution |
+|---|---|---|
+| Tool is not listed on pages outside doordash.com | major | By design: `url_patterns` follow the repository convention, and the runtime only lists CDP tools on matching pages. Documented above and in the tool description; the unit tests still exercise the entry logic from unrelated URLs because `execute` itself makes no page assumptions. |
+| Stale `dd_cx_logged_in` cookie plus a momentarily form-less identity page produced `authenticated: true` | major | Fixed: success now requires a signed-in header control on a non-identity page; the cookie is evidence only. Regression tests added. |
+| Code inputs on `www.doordash.com` were invisible to the reader | related | Fixed: code inputs are detected on every DoorDash host, and a code step there is reported as `mfa_required`. |
+| `error_message` included the banner's "Create an account" button text | minor | Fixed: button and link text is removed from the message. |
+| An identical error repainted after submission returned `unknown` | minor | Fixed with the feedback `MutationObserver`; regression test added. |
+| Worst-case waits (about 190 s) exceeded the 120 s invocation timeout | minor | Fixed: shorter step waits plus the 115 s budget and abort-signal handling; the password is only submitted when the 45 s observation fits. |
+| Code detector could match a "country code" field | risk | Fixed: the attribute match now requires verification/security/one-time/SMS/2FA code wording or `otp`, excludes "country", and prefers `autocomplete="one-time-code"`. |
+| `otp` mode could double-submit if the modal auto-submitted on paste | risk | The live modal does not auto-submit (Submit stays disabled until six digits and had to be clicked); the tool only clicks an enabled Submit inside the dialog. |
+
+Round 2 is recorded below once it completes.
+
 ## Status and known limitations
 
-Status: `draft` pending the independent QA pass recorded below.
+Status: `draft` pending the independent QA pass recorded above.
 
 - **Live-verified (2026-09-25):** existing-session success without submission in the profile-backed
   browser (5.5 s, account matched on the profile page); one real email + password submission in a
@@ -171,7 +206,10 @@ Status: `draft` pending the independent QA pass recorded below.
   one password submission) and returned `mfa_required: true` with the 2-Step Verification modal in
   14.7 seconds. Its code was not submitted; the browser was deleted.
 - **Unverified:** wrong-password wording; lockout, CAPTCHA, and expired-code responses; the
-  password path in the profile-backed browser (it was already signed in, so no submission was made there).
+  password path in the profile-backed browser (it was already signed in, so no submission was made
+  there). The QA round 1 fixes (header-control success signal, feedback observer, budget) have unit
+  coverage and the existing-session live check only; no further real password submission was made
+  after them.
 - **Best lead for the next person:** DoorDash sends the 2-Step code to the phone by default. The
   modal's "Send to Email" button switches delivery to the account email, which can be read from the
   mailbox; the tool does not click it, so a caller that cannot receive SMS should click it in the

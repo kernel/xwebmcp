@@ -17,7 +17,7 @@ const base = {
   url: "https://www.doordash.com/home", host: "www.doordash.com", https: true, referrer: "", loggedInCookie: false,
   account: null, profileEmail: null, emailStep: false, emailValue: "", emailSubmit: false, phoneStep: false, usePassword: false,
   passwordStep: false, passwordLength: 0, passwordSubmit: false, boundEmail: null, codeStep: false, codeCount: 0, codeHint: null,
-  errors: [], challenge: null
+  errors: [], challenge: null, feedbackChanged: false
 };
 const emailStep = { ...base, url: identityUrl, host: "identity.doordash.com", referrer: "https://duckduckgo.com/", emailStep: true, emailSubmit: true };
 const phoneStep = { ...emailStep, emailStep: false, emailSubmit: false, phoneStep: true, usePassword: true };
@@ -59,7 +59,7 @@ function harness(options = {}) {
   let interrupted = false;
   let pending = [];
   const store = new Map(options.guarded ? [[guardKey, now - 1000]] : []);
-  const calls = { navigations: [], fills: [], clicks: [], submits: 0, otpSubmits: 0, reads: 0, guardCleared: 0, otp: null };
+  const calls = { navigations: [], fills: [], clicks: [], submits: 0, otpSubmits: 0, reads: 0, guardCleared: 0, otp: null, watches: 0 };
   const advance = () => {
     if (!pending.length) return;
     const { cookie: nextCookie, ...next } = pending.shift();
@@ -83,6 +83,8 @@ function harness(options = {}) {
         if (submitted && options.readInterrupted && !interrupted) { interrupted = true; throw new Error("Execution context replaced"); }
         return { ...state, loggedInCookie: cookie };
       }
+      if (code.includes("MutationObserver")) { calls.watches++; return undefined; }
+      if (code.includes("__ddLoginWatch")) return undefined;
       if (code.includes("result-title-a")) return options.searchResult === undefined ? { href: "https://www.doordash.com/consumer/login", host: "www.doordash.com", https: true } : options.searchResult;
       if (code.includes('"signin"')) return options.signInControl ?? true;
       if (code.includes("use-password")) return undefined;
@@ -111,7 +113,10 @@ function harness(options = {}) {
       if (typeof selector === "object") { calls.fills.push("search:" + value); return; }
       calls.fills.push(selector);
       if (selector.includes('type="email"')) state = { ...state, emailValue: options.emailAccepted === false ? "" : value };
-      if (selector.includes('type="password"')) state = { ...state, passwordLength: options.passwordAccepted === false ? 0 : value.length };
+      if (selector.includes('type="password"')) {
+        if (options.slowPasswordFill) now += options.slowPasswordFill;
+        state = { ...state, passwordLength: options.passwordAccepted === false ? 0 : value.length };
+      }
     },
     click: async selector => {
       const name = typeof selector === "object" ? "search" : selector;
@@ -136,7 +141,7 @@ function harness(options = {}) {
   return {
     tool: tools[0], calls, store,
     run: async (...args) => {
-      const result = plain(await tools[0].execute(args.length ? args[0] : input));
+      const result = plain(await tools[0].execute(args.length ? args[0] : input, args[1]));
       assert.ok(conforms(tools[0].tool.outputSchema, result), JSON.stringify(result));
       assert.ok(calls.submits <= 1, "must never retry the password submission");
       return result;
@@ -178,7 +183,7 @@ for (const invalid of [undefined, null, [], {}, { email: input.email }, { passwo
     assert.equal(result.error_kind, "invalid_input");
     assert.equal(result.step, "input");
     assert.equal(result.submission_attempted, false);
-    assert.deepEqual(h.calls, { navigations: [], fills: [], clicks: [], submits: 0, otpSubmits: 0, reads: 0, guardCleared: 0, otp: null });
+    assert.deepEqual(h.calls, { navigations: [], fills: [], clicks: [], submits: 0, otpSubmits: 0, reads: 0, guardCleared: 0, otp: null, watches: 0 });
   });
 }
 
@@ -432,8 +437,8 @@ test("a challenge that clears into a session still succeeds", async () => {
   assert.equal(result.authenticated, true);
 });
 
-test("authenticated success requires the session cookie and the form to be gone", async () => {
-  const h = harness({ initial: passwordStep, after: [{ cookie: true }, { url: "https://www.doordash.com/home", host: "www.doordash.com", passwordStep: false, passwordSubmit: false, account: "Account" }] });
+test("authenticated success requires a signed-in header control on the main site", async () => {
+  const h = harness({ initial: passwordStep, after: [{ cookie: true }, { url: "https://www.doordash.com/?state=none&code=abc&action=Login", host: "www.doordash.com", passwordStep: false, passwordSubmit: false, account: null }, {}, {}, { url: "https://www.doordash.com/home", account: "Account" }] });
   const result = await h.run();
   assert.equal(result.logged_in, true);
   assert.equal(result.authenticated, true);
@@ -454,6 +459,62 @@ test("a code step after the password is first-step success, never authenticated"
   assert.equal(result.next_step, "submit_otp");
   assert.equal(result.evidence, codeStep.codeHint);
   assert.equal(conforms(h.tool.tool.outputSchema, { ...result, authenticated: true }), false);
+});
+
+test("a stale session cookie never turns a form-less sign-in page into success", async () => {
+  const h = harness({ initial: home, cookie: true, profileRedirect: true, after: [{ passwordStep: false, passwordSubmit: false }] });
+  const result = await h.run();
+  assert.equal(result.logged_in, false);
+  assert.equal(result.error_kind, "unknown");
+  assert.match(result.error_message, /No conclusive sign-in result/);
+  assert.equal(h.calls.submits, 1);
+});
+
+test("the session cookie alone is not success while the main site shows no signed-in control", async () => {
+  const h = harness({ initial: passwordStep, after: [{ cookie: true, url: "https://www.doordash.com/?state=none&code=abc", host: "www.doordash.com", passwordStep: false, passwordSubmit: false, account: null }] });
+  const result = await h.run();
+  assert.equal(result.logged_in, false);
+  assert.equal(result.error_kind, "unknown");
+});
+
+test("a code step on the main site is first-step success, never authenticated", async () => {
+  const h = harness({ initial: passwordStep, after: [{ url: "https://www.doordash.com/?state=none&code=abc", host: "www.doordash.com", passwordStep: false, passwordSubmit: false, account: "Account", codeStep: true, codeCount: 1 }] });
+  const result = await h.run();
+  assert.equal(result.logged_in, true);
+  assert.equal(result.authenticated, false);
+  assert.equal(result.mfa_required, true);
+});
+
+test("an identical error re-rendered after submission counts as fresh when the watch saw it", async () => {
+  const h = harness({ initial: { ...passwordStep, errors: [wrongPassword] }, after: [{ errors: [wrongPassword], feedbackChanged: true }] });
+  const result = await h.run();
+  assert.equal(result.error_kind, "invalid_credentials");
+  assert.equal(h.calls.watches, 1);
+  assert.equal(h.calls.guardCleared, 1);
+});
+
+test("the password is not submitted when the remaining budget cannot cover the observation window", async () => {
+  const h = harness({ initial: passwordStep, slowPasswordFill: 80_000 });
+  const result = await h.run();
+  assert.equal(result.error_kind, "unknown");
+  assert.match(result.error_message, /budget/);
+  assert.equal(result.submission_attempted, false);
+  assert.equal(h.calls.submits, 0);
+  assert.equal(h.store.has(guardKey), false);
+});
+
+test("an aborted invocation signal stops before the password click", async () => {
+  const h = harness({ initial: passwordStep });
+  const result = await h.run(input, { signal: { aborted: true } });
+  assert.equal(result.error_kind, "unknown");
+  assert.equal(h.calls.submits, 0);
+});
+
+test("an aborted invocation signal stops the search entry without navigating further", async () => {
+  const h = harness({ initial: { ...base, url: "https://example.com/", host: "example.com" } });
+  const result = await h.run(input, { signal: { aborted: true } });
+  assert.equal(result.step, "search_entry");
+  assert.deepEqual(h.calls.clicks, []);
 });
 
 test("leaving doordash.com after submission fails closed", async () => {

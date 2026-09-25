@@ -95,7 +95,7 @@
       "qa_agent": null,
       "browser_session": null,
       "last_verified": "2026-09-25",
-      "notes": "Live-verified 2026-09-25: existing-session success through a profile-page account match (profile-backed and profile-less browsers), a mismatched account refused without submission, one real password submission (residential stealth) reached the SMS 2-Step Verification modal, and otp mode completed authentication with an emailed code. Unverified: the packaged DuckDuckGo entry end to end with a real account in one invocation, wrong-password wording, lockout and CAPTCHA responses, and the fixed code-step detection on a live password submission."
+      "notes": "Live-verified 2026-09-25: existing-session success through a profile-page account match (profile-backed and profile-less browsers), a mismatched account refused without submission, one real password submission per proxy (residential: password step reused; mobile: packaged search entry end to end) reached the SMS 2-Step Verification modal as mfa_required, and otp mode completed authentication with an emailed code. Independent QA round 1 passed the failure paths and found a stale-cookie false-success case, fixed with unit coverage. Unverified: wrong-password wording, lockout and CAPTCHA responses, and a real password submission on the post-QA source."
     },
     {
       "domain": "flyfrontier.com",

@@ -3,7 +3,7 @@
   match: { url_patterns: ["https://doordash.com/*", "https://*.doordash.com/*"] },
   tool: {
     name: "login",
-    description: "Sign in to a DoorDash consumer account with email and password, or submit a six-digit code for a verification step that is already visible. When the browser is already signed in, the tool confirms the account on the profile page and returns success without submitting anything. Entry is a DuckDuckGo search for doordash login followed by the first organic DoorDash result; there is no direct-navigation fallback. DoorDash's guided sign-in asks for the email first and then offers a phone code; the tool switches to the password option. The password is submitted at most once per invocation, a per-tab guard blocks a second submission for ten minutes, and nothing is retried. logged_in=true with mfa_required=true means the password was accepted but a code step remains; only authenticated=true is a usable session. Challenges are reported, never solved. Never registers, resets passwords, or changes settings.",
+    description: "Sign in to a DoorDash consumer account with email and password, or submit a six-digit code for a verification step that is already visible. When the browser is already signed in, the tool confirms the account on the profile page and returns success without submitting anything. Entry is a DuckDuckGo search for doordash login followed by the first organic DoorDash result; there is no direct-navigation fallback. DoorDash's guided sign-in asks for the email first and then offers a phone code; the tool switches to the password option. The password is submitted at most once per invocation, a per-tab guard blocks a second submission for ten minutes, and nothing is retried. logged_in=true with mfa_required=true means the password was accepted but a code step remains; only authenticated=true is a usable session. Challenges are reported, never solved. Never registers, resets passwords, or changes settings. Listed only on doordash.com pages (any of them) because of its URL patterns; allow 120 seconds per invocation.",
     inputSchema: {
       type: "object",
       additionalProperties: false,
@@ -55,13 +55,20 @@
     },
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false }
   },
-  execute: async (input) => {
+  execute: async (input, context) => {
     let submitted = false;
     let step = "input";
+    const started = Date.now();
+    const BUDGET_MS = 115000;
+    const OBSERVE_MS = 45000;
+    const signal = context && context.signal;
+    const remaining = () => BUDGET_MS - (Date.now() - started);
+    const cancelled = () => (!!signal && signal.aborted) || remaining() <= 0;
     const IDENTITY = "identity.doordash.com";
     const PROFILE_URL = "https://www.doordash.com/consumer/edit_profile/";
     const GUARD_KEY = "doordash.com.login.submitted.v1";
     const GUARD_TTL_MS = 600000;
+    const FEEDBACK = "incorrect|invalid|couldn't|could not|can't|cannot|doesn't match|does not match|do not match|too many|locked|try again|unable|expired|wrong|blocked|suspicious|unusual|not (?:found|recogni[sz]ed)|denied|failed";
     const onSite = host => host === "doordash.com" || host.endsWith(".doordash.com");
     const mask = address => address.replace(/^(.).*?(@.*)$/, "$1***$2");
     const fail = (kind, message) => {
@@ -88,10 +95,15 @@
     }
     const wanted = email.toLowerCase();
 
-    const read = async () => js(() => {
+    const read = async () => js(feedback => {
       const visible = e => !!e && e.checkVisibility({ checkOpacity: true, checkVisibilityCSS: true }) && e.getClientRects().length > 0;
       const text = e => (e.innerText || e.textContent || "").replace(/\s+/g, " ").trim();
       const identity = location.hostname === "identity.doordash.com";
+      const codeLike = e => {
+        const attributes = [e.name, e.id, e.getAttribute("aria-label"), e.placeholder, e.getAttribute("data-testid")].join(" ");
+        return e.autocomplete === "one-time-code" || (e.maxLength === 1 && /^(?:tel|text|number)$/.test(e.type))
+          || (/(?:verification|security|one.?time|sms|2fa|mfa)[ _-]?code|\botp\b/i.test(attributes) && !/country/i.test(attributes));
+      };
       const controls = [...document.querySelectorAll("button, a, [role=button]")].filter(visible);
       // The footer links to Account Details on signed-out pages too; only header controls prove a session.
       const chrome = controls.filter(b => !b.closest("footer"));
@@ -105,32 +117,37 @@
           ? [...document.querySelectorAll('input[type="email"]')].map(e => e.value.trim()).find(v => v.includes("@")) || null : null,
         emailStep: false, emailValue: "", emailSubmit: false, phoneStep: false, usePassword: false,
         passwordStep: false, passwordLength: 0, passwordSubmit: false, boundEmail: null,
-        codeStep: false, codeCount: 0, codeHint: null, errors: [], challenge: null
+        codeStep: false, codeCount: 0, codeHint: null, errors: [], challenge: null,
+        feedbackChanged: !!(window.__ddLoginWatch && window.__ddLoginWatch.changed)
       };
       const frame = [...document.querySelectorAll("iframe")].find(f => visible(f) && /captcha|challenge|turnstile|perimeterx/i.test((f.title || "") + " " + (f.src || "")) && f.getBoundingClientRect().width > 100 && f.getBoundingClientRect().height > 60);
       const blocks = identity ? [...document.querySelectorAll("h1, h2, h3, p, div, span, li, label, [role=alert]")].filter(e => visible(e) && !e.closest("footer, nav, header")) : [...document.querySelectorAll("h1, h2, [role=dialog]")].filter(visible);
       const texts = blocks.map(text).filter(t => t.length > 0 && t.length < 300);
       const challengeText = texts.find(t => /verify (?:that )?you(?:'re| are)(?: not a robot| a human| human)|are you a (?:robot|human)|access denied|unusual traffic|security check|checking your browser|press (?:and|&) hold|complete the captcha/i.test(t));
       state.challenge = challengeText || (frame ? "Visible challenge frame: " + (frame.title || "captcha") : null);
-      if (!identity) return state;
+      if (!identity) {
+        state.codeCount = [...document.querySelectorAll("input")].filter(e => visible(e) && codeLike(e)).length;
+        state.codeStep = state.codeCount > 0;
+        return state;
+      }
       const emailForm = document.querySelector('form[data-testid="login-form-guided-email"]');
       const emailInput = emailForm ? [...emailForm.querySelectorAll('input[type="email"]')].find(visible) : null;
       const emailSubmit = emailForm ? emailForm.querySelector("#guided-submit-button") : null;
       const passwordForm = document.querySelector("form#login-form");
       const passwordInput = passwordForm ? [...passwordForm.querySelectorAll('input[type="password"]')].find(visible) : null;
       const passwordSubmit = passwordForm ? passwordForm.querySelector("#login-submit-button") : null;
-      const codeInputs = [...document.querySelectorAll("input")].filter(e => visible(e) && (e.autocomplete === "one-time-code"
-        || /\b(?:code|otp|verification)\b/i.test([e.name, e.id, e.getAttribute("aria-label"), e.placeholder, e.getAttribute("data-testid")].join(" "))
-        || (e.maxLength === 1 && /^(?:tel|text|number)$/.test(e.type))));
+      const codeInputs = [...document.querySelectorAll("input")].filter(e => visible(e) && codeLike(e));
       const bound = texts.map(t => t.match(/logging into your account with\s+([^\s(]+@[^\s(]+)/i)).find(Boolean);
-      const errorPattern = /incorrect|invalid|couldn't|could not|can't|cannot|doesn't match|does not match|do not match|too many|locked|try again|unable|expired|wrong|blocked|suspicious|unusual|not (?:found|recogni[sz]ed)|denied|failed/i;
+      const errorPattern = new RegExp(feedback, "i");
       const candidates = blocks.filter(e => !e.querySelector("input, form") && errorPattern.test(text(e)) && text(e).length <= 300 && !/enter your password to finish/i.test(text(e)));
       const innermost = candidates.filter(e => !candidates.some(o => o !== e && e.contains(o)));
       state.errors = [...new Set(innermost.map(e => {
         let box = e;
         while (box.parentElement && box.parentElement !== document.body && !box.parentElement.querySelector("input, form") && text(box.parentElement).length <= 400) box = box.parentElement;
-        return text(box);
-      }))];
+        let message = text(box);
+        for (const control of box.querySelectorAll("button, a")) message = message.replace(text(control), "");
+        return message.replace(/\s+/g, " ").trim();
+      }).filter(Boolean))];
       state.emailStep = !!emailInput;
       state.emailValue = emailInput ? emailInput.value.trim() : "";
       state.emailSubmit = visible(emailSubmit) && !emailSubmit.disabled;
@@ -144,7 +161,22 @@
       state.codeCount = codeInputs.length;
       state.codeHint = texts.filter(t => /\b(?:6|six)[- ]digit|verification code|enter the code|code (?:we )?(?:sent|texted|emailed)|sent (?:you )?(?:a |the )?code/i.test(t)).sort((a, b) => a.length - b.length)[0] || null;
       return state;
-    });
+    }, { arg: FEEDBACK });
+    // Flags feedback that re-renders with unchanged text, which text comparison alone cannot see.
+    const armWatch = async () => js(feedback => {
+      if (window.__ddLoginWatch) window.__ddLoginWatch.disconnect();
+      const pattern = new RegExp(feedback, "i");
+      const watch = { changed: false };
+      const observer = new MutationObserver(records => {
+        for (const record of records) {
+          const nodes = record.type === "characterData" ? [record.target] : [...record.addedNodes];
+          if (nodes.some(node => pattern.test(node.textContent || ""))) watch.changed = true;
+        }
+      });
+      observer.observe(document.body, { subtree: true, childList: true, characterData: true });
+      watch.disconnect = () => { observer.disconnect(); delete window.__ddLoginWatch; };
+      window.__ddLoginWatch = watch;
+    }, { arg: FEEDBACK });
     const signedInCookie = async () => {
       try {
         const { cookies } = await cdp("Network.getCookies", { urls: ["https://www.doordash.com/"] });
@@ -155,7 +187,7 @@
     };
     const settle = async (predicate, seconds) => {
       const deadline = Date.now() + seconds * 1000;
-      while (Date.now() < deadline) {
+      while (Date.now() < deadline && !cancelled()) {
         try {
           const state = await read();
           if (predicate(state)) return state;
@@ -171,19 +203,21 @@
       landing_url: s.url, account_hint: hint, evidence, submission_attempted: submitted
     });
     const observe = async (before, codeStep) => {
-      const deadline = Date.now() + 45000;
+      const deadline = Date.now() + OBSERVE_MS;
       let cleared = before === "[]";
       let challenge = null;
-      while (Date.now() < deadline) {
+      while (Date.now() < deadline && !cancelled()) {
         await waitMs(500);
         let s;
         try { s = await read(); } catch { continue; }
-        if (await signedInCookie() && (!s.https || s.host !== IDENTITY || !(s.passwordStep || s.codeStep || s.emailStep))) {
-          return success({ ...s, codeStep: false }, mask(s.boundEmail || email), "Session cookie dd_cx_logged_in is set and the sign-in form is gone" + (s.account ? "; " + s.account + " control visible" : "") + ".");
-        }
         if (!s.https || !onSite(s.host)) return fail("unknown", "Navigation left doordash.com after submission; the outcome is unconfirmed. Inspect the browser before any further attempt.");
+        // A session cookie can be stale from before the submission, so only a signed-in header control on the main site counts.
+        if (s.host !== IDENTITY && s.account && !s.codeStep) {
+          const cookie = await signedInCookie();
+          return success(s, mask(s.boundEmail || email), "Signed-in " + s.account + " control visible on " + s.host + (cookie ? " with the dd_cx_logged_in cookie set." : "."));
+        }
         if (!s.errors.length) cleared = true;
-        const fresh = s.errors.length && (cleared || JSON.stringify(s.errors) !== before);
+        const fresh = s.errors.length && (cleared || s.feedbackChanged || JSON.stringify(s.errors) !== before);
         if (fresh) {
           const message = s.errors.join("\n");
           if (!codeStep) { try { await js(key => sessionStorage.removeItem(key), { arg: GUARD_KEY }); } catch { /* the guard only matters while the form is still open */ } }
@@ -191,10 +225,9 @@
         }
         if (!codeStep && s.codeStep) return success(s, mask(s.boundEmail || email), s.codeHint || ("Verification code step visible with " + s.codeCount + " input(s)."));
         challenge = s.challenge;
-        if (s.host !== IDENTITY && s.account) return success({ ...s, codeStep: false }, mask(email), "Signed-in " + s.account + " control visible on " + s.host + ".");
       }
       if (challenge) return fail("captcha_or_challenge", challenge);
-      return fail("unknown", "No conclusive sign-in result within 45 seconds. The submission may have reached DoorDash; inspect the browser before any further attempt.");
+      return fail("unknown", "No conclusive sign-in result within " + Math.round(OBSERVE_MS / 1000) + " seconds. The submission may have reached DoorDash; inspect the browser before any further attempt.");
     };
 
     try {
@@ -202,7 +235,7 @@
       let s = await read();
       if (mode === "password" && (await signedInCookie() || (s.https && onSite(s.host) && s.host !== IDENTITY && s.account))) {
         if (!(s.url.startsWith(PROFILE_URL) && s.profileEmail)) await gotoUrl(PROFILE_URL);
-        const profile = await settle(x => !!x.profileEmail || x.emailStep || !!x.challenge, 20);
+        const profile = await settle(x => !!x.profileEmail || x.emailStep || !!x.challenge, 15);
         if (profile && profile.profileEmail) {
           if (profile.profileEmail.toLowerCase() === wanted) return success(profile, mask(profile.profileEmail), "Existing session: the profile page shows the requested account and no sign-in was needed.");
           return fail("unknown", "The browser is already signed in as " + mask(profile.profileEmail) + ", not the requested account. Sign out before invoking again; no submission was made.");
@@ -217,11 +250,14 @@
         if (!(s.https && s.host === IDENTITY && s.codeStep)) return fail("unknown", "No verification-code step is visible on the DoorDash sign-in page; the code was not submitted.");
         if (s.boundEmail && s.boundEmail.toLowerCase() !== wanted) return fail("unknown", "The sign-in flow belongs to " + mask(s.boundEmail) + ", not the requested account; the code was not submitted.");
         const before = JSON.stringify(s.errors);
+        await armWatch();
         const entered = await js(code => {
           const visible = e => !!e && e.checkVisibility({ checkOpacity: true, checkVisibilityCSS: true }) && e.getClientRects().length > 0;
-          const inputs = [...document.querySelectorAll("input")].filter(e => visible(e) && (e.autocomplete === "one-time-code"
-            || /\b(?:code|otp|verification)\b/i.test([e.name, e.id, e.getAttribute("aria-label"), e.placeholder, e.getAttribute("data-testid")].join(" "))
-            || (e.maxLength === 1 && /^(?:tel|text|number)$/.test(e.type))));
+          const inputs = [...document.querySelectorAll("input")].filter(e => {
+            const attributes = [e.name, e.id, e.getAttribute("aria-label"), e.placeholder, e.getAttribute("data-testid")].join(" ");
+            return visible(e) && (e.autocomplete === "one-time-code" || (e.maxLength === 1 && /^(?:tel|text|number)$/.test(e.type))
+              || (/(?:verification|security|one.?time|sms|2fa|mfa)[ _-]?code|\botp\b/i.test(attributes) && !/country/i.test(attributes)));
+          });
           if (!inputs.length) return false;
           inputs[0].focus();
           if (inputs.length === 1) {
@@ -261,8 +297,8 @@
         step = "search_entry";
         await gotoUrl("https://start.duckduckgo.com/");
         let query, search;
-        const searchDeadline = Date.now() + 20000;
-        while (Date.now() < searchDeadline) {
+        const searchDeadline = Date.now() + 15000;
+        while (Date.now() < searchDeadline && !cancelled()) {
           const { nodes } = await accessibilitySnapshot();
           query = nodes.find(n => ["combobox", "textbox", "searchbox"].includes(n.role) && n.name === "Search with DuckDuckGo");
           search = nodes.find(n => n.role === "button" && n.name === "Search");
@@ -272,7 +308,7 @@
         if (!query || !search) return fail("unknown", "DuckDuckGo search controls did not become available; no sign-in was attempted.");
         await fillInput({ backendNodeId: query.backendNodeId }, "doordash login");
         await click({ backendNodeId: search.backendNodeId });
-        if (!await waitForElement('[data-testid="result"] [data-testid="result-title-a"]', { timeoutSec: 20 })) return fail("unknown", "DuckDuckGo organic results did not load; no sign-in was attempted.");
+        if (!await waitForElement('[data-testid="result"] [data-testid="result-title-a"]', { timeoutSec: 15 })) return fail("unknown", "DuckDuckGo organic results did not load; no sign-in was attempted.");
         const target = await js(() => {
           if (!["https://duckduckgo.com", "https://start.duckduckgo.com"].includes(location.origin)) return null;
           document.querySelectorAll("[data-webmcp-doordash-login]").forEach(e => e.removeAttribute("data-webmcp-doordash-login"));
@@ -285,8 +321,8 @@
         if (!target.https || !onSite(target.host)) return fail("unknown", "The first organic DuckDuckGo result was " + target.host + ", not a doordash.com page; no sign-in was attempted.");
         step = "site_entry";
         await click('[data-webmcp-doordash-login="result"]');
-        s = await settle(x => x.https && onSite(x.host) && (x.emailStep || midFlow(x) || !!x.account || !!x.challenge), 15)
-          || await settle(x => x.https && onSite(x.host), 15);
+        s = await settle(x => x.https && onSite(x.host) && (x.emailStep || midFlow(x) || !!x.account || !!x.challenge), 10)
+          || await settle(x => x.https && onSite(x.host), 10);
         if (!s) return fail("unknown", "The DoorDash result did not lead to a doordash.com page; no sign-in was attempted.");
         if (s.challenge) return fail("captcha_or_challenge", s.challenge);
         if (!s.emailStep && !midFlow(s)) {
@@ -299,7 +335,7 @@
           });
           if (!opened) return fail("unknown", "Landed on " + s.host + " without a sign-in form or Sign In control; no sign-in was attempted.");
           await click('[data-webmcp-doordash-login="signin"]');
-          s = await settle(x => (x.https && x.host === IDENTITY && (x.emailStep || midFlow(x))) || !!x.challenge, 30);
+          s = await settle(x => (x.https && x.host === IDENTITY && (x.emailStep || midFlow(x))) || !!x.challenge, 20);
           if (!s) return fail("unknown", "The Sign In control did not open the sign-in form; no sign-in was attempted.");
           if (s.challenge) return fail("captcha_or_challenge", s.challenge);
         }
@@ -314,9 +350,10 @@
         if (!s.emailSubmit) return fail("unknown", "The Continue control is missing or disabled; nothing was submitted.");
         if (s.challenge) return fail("captcha_or_challenge", s.challenge);
         const before = JSON.stringify(s.errors);
+        await armWatch();
         await click('form[data-testid="login-form-guided-email"] #guided-submit-button');
-        s = await settle(x => x.passwordStep || x.phoneStep || x.codeStep || !!x.challenge || (x.errors.length > 0 && JSON.stringify(x.errors) !== before) || x.host !== IDENTITY, 30);
-        if (!s) return fail("unknown", "DoorDash did not respond to the email step within 30 seconds; no password was submitted.");
+        s = await settle(x => x.passwordStep || x.phoneStep || x.codeStep || !!x.challenge || (x.errors.length > 0 && (x.feedbackChanged || JSON.stringify(x.errors) !== before)) || x.host !== IDENTITY, 20);
+        if (!s) return fail("unknown", "DoorDash did not respond to the email step within 20 seconds; no password was submitted.");
         if (s.host !== IDENTITY) return fail("unknown", "The email step navigated away from the identity page; no password was submitted.");
         if (s.challenge && !s.passwordStep && !s.phoneStep) return fail("captcha_or_challenge", s.challenge);
         if (s.errors.length && !s.passwordStep && !s.phoneStep) return fail(classify(s.errors.join("\n"), false), s.errors.join("\n"));
@@ -330,7 +367,7 @@
           control.setAttribute("data-webmcp-doordash-login", "use-password");
         });
         await click('[data-webmcp-doordash-login="use-password"]');
-        s = await settle(x => x.passwordStep || !!x.challenge || x.errors.length > 0, 15);
+        s = await settle(x => x.passwordStep || !!x.challenge || x.errors.length > 0, 10);
         if (!s) return fail("unknown", "The password option did not open a password form; nothing was submitted.");
         if (s.challenge && !s.passwordStep) return fail("captcha_or_challenge", s.challenge);
       }
@@ -343,7 +380,9 @@
       if (s.passwordLength !== input.password.length) return fail("unknown", "The password field did not accept the value; nothing was submitted.");
       if (!s.passwordSubmit) return fail("unknown", "The Sign In control is missing or disabled; nothing was submitted.");
       if (s.challenge) return fail("captcha_or_challenge", s.challenge);
+      if (cancelled() || remaining() < OBSERVE_MS + 3000) return fail("unknown", "Not enough of the invocation budget remains to observe a submission; nothing was submitted. Invoke again from the current page.");
       const before = JSON.stringify(s.errors);
+      await armWatch();
       const armed = await js(guard => {
         const previous = Number(sessionStorage.getItem(guard.key) || 0);
         if (previous && Date.now() - previous < guard.ttl) return false;
@@ -358,6 +397,8 @@
       return fail("unknown", submitted
         ? "Browser interaction failed after the submission started; the outcome is unknown. Inspect the browser before any further attempt."
         : "Browser interaction failed before anything was submitted. Inspect the page before continuing.");
+    } finally {
+      try { await js(() => { if (window.__ddLoginWatch) window.__ddLoginWatch.disconnect(); }); } catch { /* navigation may already have replaced the page */ }
     }
   }
 }]
