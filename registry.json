@@ -143,7 +143,23 @@
       "qa_agent": "agt_8da83a2e489269a5ff05",
       "browser_session": "fe509cugfxs9gqfs1wk1kkne",
       "last_verified": "2026-09-24",
-      "notes": "Independent search/parser QA passed; domain migration live-verified from /travel-agents. Returns initial outbound cards only, including round trips; 1–7 adults; displayed cash fares are not trip totals. Inventory failures remain explicit errors."
+      "notes": "Independent search/parser QA passed; domain migration live-verified from /travel-agents. Returns initial outbound cards only, including round trips; 1\u20137 adults; displayed cash fares are not trip totals. Inventory failures remain explicit errors."
+    },
+    {
+      "domain": "kroger.com",
+      "tool": "login",
+      "file": "domains/kroger.com/login.js",
+      "kind": "cdp",
+      "namespace": "kroger.com",
+      "url_patterns": [
+        "https://kroger.com/*",
+        "https://*.kroger.com/*"
+      ],
+      "status": "draft",
+      "qa_agent": null,
+      "browser_session": null,
+      "last_verified": "2026-09-25",
+      "notes": "Live-verified with one residential stealth browser: DuckDuckGo entry to the login.kroger.com form, one fabricated submission returning invalid_credentials with the site's text, one real submission returning authenticated (no MFA), the already-signed-in path with the account email confirmed from the customer data token, and an account-mismatch refusal. Unverified: MFA/otp mode, lockout, CAPTCHA, wrong password for an existing account, and other proxy configurations."
     },
     {
       "domain": "southwest.com",
