@@ -174,7 +174,7 @@ test("registry entry matches the canonical definition", () => {
   const domains = registry.tools.map(t => t.domain);
   assert.deepEqual(domains, [...domains].sort(), "registry entries stay grouped in domain order");
   assert.equal(entry.status, "qa_passed");
-  assert.equal(entry.browser_session, null);
+  assert.equal("browser_session" in entry, false);
 });
 
 for (const invalid of [undefined, null, [], {}, { email: input.email }, { password: input.password }, { ...input, otp: "123456" }, { ...input, password: "" }, { email: "not-an-email", password: "x" }, { email: input.email, otp: "12345" }, { email: input.email, otp: 123456 }, { ...input, remember_me: true }, { email: " ", password: "x" }]) {

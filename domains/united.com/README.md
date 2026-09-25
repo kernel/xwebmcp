@@ -5,7 +5,7 @@ Tools for United Airlines (https://www.united.com).
 | tool | file | status | notes |
 | --- | --- | --- | --- |
 | search_flights | [search_flights.js](search_flights.js) | verified | Initial outbound results, including connections and nearby-airport alternatives |
-| login | [login.js](login.js) | qa_passed | Challenge classification live-verified; successful login and MFA unverified |
+| login | [login.js](login.js) | draft | Challenge classification live-verified; successful login and MFA unverified |
 
 ## Scope and loading
 
@@ -64,6 +64,11 @@ Run the local contract/navigation tests from the repository root:
 ```sh
 node --test tests/united-search-flights.test.mjs
 ```
+
+## Known limitations
+
+- `search_flights`: initial outbound page only, including for round trips, whose fares are advertised per-person roundtrip starting fares rather than confirmed pairings. Adults only (1–9), English/US cash fares, economy. Nearby airports may be substituted and are reported explicitly. Slow searches can exceed the caller's transport deadline.
+- `login` (`qa_passed`, not `verified`): United challenges this egress with HTTP 428 on the sign-in API, so the successful-login path, real wrong-password rejection, and MFA completion are unverified; only challenge classification is live-verified. Split OTP fields and third-party SSO are not supported.
 
 ## Sessions
 

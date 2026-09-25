@@ -223,6 +223,14 @@ and non-login pages, entry failures, stale feedback, uncertain clicks, the choos
 password and prefilled-password handling, both code steps, and the per-step guards.
 They are not live evidence.
 
+## URL patterns
+
+`login` uses the default `https://ubereats.com/*` and `https://*.ubereats.com/*` plus
+`https://auth.uber.com/*`. Uber Eats signs in on Uber's shared auth service at
+`auth.uber.com`, which is on the `uber.com` registrable domain. The email-code, password,
+and SMS-code steps all render there, so the tool has to stay listed on that host for a
+follow-up call with `otp` to find it. No other `uber.com` host is matched.
+
 ## Sessions
 
 - Long-lived owner session: `hs15472lgc2jt0tvewsrqs3j` (24-hour inactivity timeout,

@@ -71,6 +71,14 @@ On 2026-09-24, re-registered under `delta.com`, removed the old `airline_tools.s
 
 Local checks also evaluate the file as one array expression, compare both schemas with the previously QA-tested source, and exercise navigation from unsuitable pages versus reuse of a clean booking form.
 
+## Known limitations
+
+- `search_flights` is `qa_passed`, not `verified`: a successful full live invocation is still blocked by intermittent Delta HTTP 429 / `SFAF001` responses. The live check reached results and preserved the explicit error shape; it did not return flights.
+- First results page only; round trips return outbound options, not outbound/return pairs. Prices are rounded display fares, not passenger totals.
+- Adults only (1–9), 330-day booking window, English desktop layout only.
+- Completeness beyond the 1.5-second DOM-quiescence heuristic and real zero-results behaviour remain unverified.
+- `login` is `draft`: not independently QA-tested. Every Kernel browser tried gets Delta's "login is unavailable right now"; a successful login, an MFA step, and a real captcha are unverified. See the login section below.
+
 ## login
 
 `login` signs in with a SkyMiles number or username and password. It performs at most one
