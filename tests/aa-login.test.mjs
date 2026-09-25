@@ -97,7 +97,7 @@ test("single self-contained expression declares the domain patterns and both out
   assert.deepEqual(plain(tool.match.url_patterns), ["https://aa.com/*", "https://*.aa.com/*"]);
   assert.equal(tool.tool.inputSchema.type, "object");
   assert.equal(tool.tool.outputSchema.type, "object");
-  assert.deepEqual(plain(tool.tool.outputSchema.oneOf.map(b => b.properties.outcome.const)), ["authenticated", "mfa_required", "failure"]);
+  assert.deepEqual(plain(tool.tool.outputSchema.oneOf.map(b => b.properties.outcome.const)), ["authenticated", "mfa_required", "human_assist_required", "failure"]);
 });
 
 for (const url of ["about:blank", "https://example.org/", "https://aa.com/", "https://help.aa.com/", "https://www.aa.com/homePage.do", "https://login.aa.com/help"]) {
@@ -107,7 +107,8 @@ for (const url of ["about:blank", "https://example.org/", "https://aa.com/", "ht
     assert.deepEqual(h.navigation, [searchHome, searchUrl]);
     assert.equal(h.stats().searchClicks, 1);
     assert.equal(h.stats().clicks, 1);
-    assert.equal(result.error_kind, "captcha_or_challenge");
+    assert.equal(result.outcome, "human_assist_required");
+    assert.equal(result.reason, "captcha_or_challenge");
   });
 }
 
@@ -120,7 +121,8 @@ test("reuses a suitable login form and waits for delayed button enablement", asy
   assert.equal(h.stats().filled, 1);
   assert.equal(result.submission_attempted, true);
   assert.equal(result.observation, "after_submission");
-  assert.ok(h.stats().clock >= 45000, "give the installed solver a bounded opportunity without resubmitting");
+  assert.equal(result.outcome, "human_assist_required");
+  assert.equal(h.stats().clock, 950, "stop at the first CAPTCHA observation instead of waiting for a solver");
 });
 
 test("permanently disabled button returns unknown after ten seconds without submitting", async () => {
@@ -165,6 +167,9 @@ test("input schema rejects missing or conflicting fields", () => {
   const schema = harness().tool.tool.inputSchema;
   assert.equal(conforms(schema, input), true);
   assert.equal(conforms(schema, { use_prefilled: true }), true);
+  assert.equal(conforms(schema, { manual_assist: true }), true);
+  assert.equal(conforms(schema, { ...input, manual_assist: true }), false);
+  assert.equal(conforms(schema, { use_prefilled: true, manual_assist: true }), false);
   for (const value of [{}, { username: "fixture" }, { ...input, use_prefilled: true }, { ...input, password: "" }]) assert.equal(conforms(schema, value), false);
 });
 
@@ -300,6 +305,75 @@ test("observed delivery-choice wording is first-step MFA success without sending
   assert.equal(result.next_step, wording);
   assert.equal(h.stats().clicks, 1);
 });
+
+for (const url of [loginUrl, "https://www.aa.com/homePage.do", "https://www.aa.com/blocked"]) {
+  test(`pre-existing CAPTCHA stops before navigation or submission on ${url}`, async () => {
+    const h = harness({ url, initial: { challenge: "Challenge Content" } });
+    const result = await invoke(h);
+    assert.equal(result.outcome, "human_assist_required");
+    assert.equal(result.reason, "captcha_or_challenge");
+    assert.equal(result.human_assist_required, true);
+    assert.equal(result.logged_in, false);
+    assert.equal(result.submission_attempted, false);
+    assert.equal(result.next_step, "complete_login_manually_in_browser");
+    assert.equal(result.landing_url, new URL(url).origin + new URL(url).pathname);
+    assert.deepEqual(h.navigation, []);
+    assert.equal(h.stats().filled, 0);
+    assert.equal(h.stats().clicks, 0);
+    assert.equal(h.stats().clock, 0);
+  });
+}
+
+test("text-only CAPTCHA also requires immediate human assistance", async () => {
+  const h = harness({ initialNodes: [{ role: "heading", name: "Verify you are human" }] });
+  const result = await invoke(h);
+  assert.equal(result.outcome, "human_assist_required");
+  assert.equal(result.reason, "captcha_or_challenge");
+  assert.equal(result.message, "Verify you are human");
+  assert.equal(h.stats().clicks, 0);
+});
+
+for (const challenge of [null, "Challenge Content"]) {
+  test(`manual-assist mode observes without navigation, filling, or submission: ${challenge}`, async () => {
+    const h = harness({ initial: { challenge } });
+    const result = await invoke(h, { manual_assist: true });
+    assert.equal(result.outcome, "human_assist_required");
+    assert.equal(result.reason, challenge ? "captcha_or_challenge" : "manual_login");
+    assert.equal(result.submission_attempted, false);
+    assert.equal(result.observation, "pre_existing");
+    assert.deepEqual(h.navigation, []);
+    assert.deepEqual(h.stats(), { checks: 0, clicks: 0, searchClicks: 0, filled: 0, reads: 1, clock: 0 });
+  });
+}
+
+test("manual inspection after human login reports authentication without returning tokens", async () => {
+  const h = harness({ initial: { username: false, password: false }, initialNodes: [
+    { role: "button", name: "Log out" }, { role: "StaticText", name: "Available miles" }
+  ] });
+  const result = await invoke(h, { manual_assist: true });
+  assert.equal(result.outcome, "authenticated");
+  assert.equal(result.submission_attempted, false);
+  assert.equal(result.observation, "pre_existing");
+  assert.equal("session_token" in result, false);
+  assert.equal("cookies" in result, false);
+  assert.deepEqual(h.navigation, []);
+  assert.equal(h.stats().clicks, 0);
+});
+
+test("manual inspection never navigates away from an unrelated page", async () => {
+  const h = harness({ url: "https://example.org/" });
+  assert.equal((await invoke(h, { manual_assist: true })).error_kind, "unknown");
+  assert.deepEqual(h.navigation, []);
+  assert.equal(h.stats().clicks, 0);
+});
+
+for (const invalid of [{ ...input, manual_assist: true }, { manual_assist: true, use_prefilled: true }, { manual_assist: "yes" }, { manual_assist: false }]) {
+  test(`rejects conflicting manual-assist input: ${JSON.stringify(invalid)}`, async () => {
+    const h = harness();
+    assert.equal((await invoke(h, invalid)).error_kind, "invalid_input");
+    assert.equal(h.stats().reads, 0);
+  });
+}
 
 test("registry preserves search and indexes login under aa.com", () => {
   const registry = JSON.parse(readFileSync(new URL("../registry.json", import.meta.url), "utf8"));

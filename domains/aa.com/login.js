@@ -3,18 +3,20 @@
   match: { url_patterns: ["https://aa.com/*", "https://*.aa.com/*"] },
   tool: {
     name: "login",
-    description: "Submit American Airlines AAdvantage login once. When entry is needed, search DuckDuckGo and follow its first organic result only if it is an approved AA login URL; never send credentials to the search engine. Provide username and password, or explicitly use fields already filled by the human or Kernel Vault. Stops at MFA or captcha; never retries. A sessionStorage guard permits one submission per login tab storage lifetime. Results identify pre-existing versus post-submission observations. logged_in is true only for an authenticated account, not an MFA interstitial. No remember-me or SSO control was observed. Do not invoke again after an uncertain submission.",
+    description: "Submit American Airlines AAdvantage login once. When entry is needed, search DuckDuckGo and follow its first organic result only if it is an approved AA login URL; never send credentials to the search engine. Provide username and password, or explicitly use fields already filled by the human or Kernel Vault. Use a solver-free browser. CAPTCHA immediately returns human_assist_required; never solve, bypass, or retry it. manual_assist:true only inspects the current page without navigation, filling, or submission. Stops at MFA; never retries. A sessionStorage guard permits one submission per login tab storage lifetime. Results identify pre-existing versus post-submission observations. logged_in is true only for an authenticated account, not an MFA interstitial. No remember-me or SSO control was observed. Do not invoke again after an uncertain submission.",
     inputSchema: {
       type: "object",
       properties: {
         username: { type: "string", minLength: 1, description: "AAdvantage number or username, not email." },
         password: { type: "string", minLength: 1 },
-        use_prefilled: { type: "boolean", description: "Submit existing username and password without reading their values into the tool." }
+        use_prefilled: { type: "boolean", description: "Submit existing username and password without reading their values into the tool." },
+        manual_assist: { type: "boolean", description: "Inspect an existing AA session for manual login, CAPTCHA, MFA, or authentication. Does not navigate, fill, submit, or return session tokens." }
       },
       additionalProperties: false,
       oneOf: [
-        { required: ["username", "password"], properties: { use_prefilled: { const: false } } },
-        { required: ["use_prefilled"], properties: { use_prefilled: { const: true } }, not: { anyOf: [{ required: ["username"] }, { required: ["password"] }] } }
+        { required: ["username", "password"], properties: { use_prefilled: { const: false }, manual_assist: { const: false } } },
+        { required: ["use_prefilled"], properties: { use_prefilled: { const: true }, manual_assist: { const: false } }, not: { anyOf: [{ required: ["username"] }, { required: ["password"] }] } },
+        { required: ["manual_assist"], properties: { manual_assist: { const: true } }, not: { anyOf: [{ required: ["username"] }, { required: ["password"] }, { required: ["use_prefilled"] }] } }
       ]
     },
     outputSchema: {
@@ -47,11 +49,22 @@
         },
         {
           type: "object", additionalProperties: false,
+          required: ["outcome", "logged_in", "human_assist_required", "reason", "message", "landing_url", "next_step"],
+          properties: {
+            observation: { enum: ["pre_existing", "after_submission"] }, submission_attempted: { type: "boolean" },
+            outcome: { const: "human_assist_required" }, logged_in: { const: false }, human_assist_required: { const: true },
+            reason: { type: "string", enum: ["captcha_or_challenge", "manual_login"] },
+            message: { type: "string", minLength: 1 }, landing_url: { type: "string" },
+            next_step: { const: "complete_login_manually_in_browser" }
+          }
+        },
+        {
+          type: "object", additionalProperties: false,
           required: ["outcome", "logged_in", "error_kind", "error_message", "error_source", "attempts_remaining_if_shown", "submission_attempted"],
           properties: {
             observation: { enum: ["pre_existing", "after_submission"] },
             outcome: { const: "failure" }, logged_in: { const: false },
-            error_kind: { enum: ["invalid_credentials", "captcha_or_challenge", "mfa_failed", "locked_or_throttled", "invalid_input", "submission_already_attempted", "unknown"] },
+            error_kind: { enum: ["invalid_credentials", "mfa_failed", "locked_or_throttled", "invalid_input", "submission_already_attempted", "unknown"] },
             error_message: { type: "string", minLength: 1 }, error_source: { enum: ["site", "tool"] },
             attempts_remaining_if_shown: { type: ["integer", "null"], minimum: 0 }, submission_attempted: { type: "boolean" }
           }
@@ -68,13 +81,22 @@
         error_source: source, attempts_remaining_if_shown: remaining ? Number(remaining[1]) : null,
         submission_attempted: submitted, observation: submitted ? "after_submission" : "pre_existing" };
     };
-    if (!input || typeof input !== "object" || Array.isArray(input) || Object.keys(input).some(k => !["username", "password", "use_prefilled"].includes(k)))
-      return fail("invalid_input", "Expected username and password, or use_prefilled: true.");
+    const humanAssist = (reason, message, url) => {
+      const landing = new URL(url);
+      return { outcome: "human_assist_required", logged_in: false, human_assist_required: true,
+        reason, message, landing_url: landing.origin + landing.pathname, next_step: "complete_login_manually_in_browser",
+        submission_attempted: submitted, observation: submitted ? "after_submission" : "pre_existing" };
+    };
+    if (!input || typeof input !== "object" || Array.isArray(input) || Object.keys(input).some(k => !["username", "password", "use_prefilled", "manual_assist"].includes(k)))
+      return fail("invalid_input", "Expected credentials, use_prefilled: true, or manual_assist: true.");
     const prefilled = input.use_prefilled === true;
+    const manual = input.manual_assist === true;
     if ((input.use_prefilled !== undefined && typeof input.use_prefilled !== "boolean") ||
-        (prefilled ? ("username" in input || "password" in input) :
+        (input.manual_assist !== undefined && typeof input.manual_assist !== "boolean") ||
+        (manual ? ("username" in input || "password" in input || "use_prefilled" in input) :
+        prefilled ? ("username" in input || "password" in input) :
         (typeof input.username !== "string" || !input.username.trim() || typeof input.password !== "string" || !input.password)))
-      return fail("invalid_input", "Supply both username and password, or only use_prefilled: true.");
+      return fail("invalid_input", "Supply credentials, only use_prefilled: true, or only manual_assist: true.");
     const inspect = async () => {
       const state = await js(() => {
         const all = [];
@@ -91,9 +113,11 @@
           challenge: challenge ? (challenge.title || "Visible CAPTCHA challenge") : null, alerts };
       });
       if (!["www.aa.com", "login.aa.com"].includes(state.host)) return { state, result: fail("unknown", "Stopped outside the approved airline hosts.") };
-      if (state.challenge) return { state, result: fail("captcha_or_challenge", state.challenge, "site") };
+      if (state.challenge) return { state, result: humanAssist("captcha_or_challenge", state.challenge, state.url) };
       const ax = await accessibilitySnapshot();
       const texts = ax.nodes.filter(n => ["StaticText", "heading", "alert"].includes(n.role)).map(n => n.name || "");
+      const challengeText = texts.find(t => /verify (?:that )?you(?:'re| are) human|complete (?:the|this) captcha|security challenge|access denied/i.test(t));
+      if (challengeText) return { state, result: humanAssist("captcha_or_challenge", challengeText, state.url) };
       const errors = [...state.alerts, ...texts.filter(t => /(?:incorrect|invalid|unrecognized) (?:username|password|credentials|code)|(?:username|password|credentials).*(?:incorrect|invalid|not match)|unable to log|could not log|account.*lock|too many (?:attempts|requests)|try again later|code.*(?:expired|incorrect|invalid)/i.test(t))];
       if (errors.length) {
         const message = [...new Set(errors)].join(" ");
@@ -119,11 +143,14 @@
       return { state, result: null };
     };
     try {
+      if (manual) {
+        const observed = await inspect();
+        return observed.result || humanAssist("manual_login", "Complete login in the browser, then inspect this session again.", observed.state.url);
+      }
       const current = new URL((await pageInfo()).url);
       const loginPage = current.origin === "https://login.aa.com" && current.pathname === "/login";
-      const accountPage = current.origin === "https://www.aa.com" && current.pathname.startsWith("/loyalty/profile/");
       let observed;
-      if (loginPage || accountPage) {
+      if (["https://www.aa.com", "https://login.aa.com"].includes(current.origin)) {
         observed = await inspect();
         if (observed.result) return observed.result;
       }
@@ -219,7 +246,7 @@
       do {
         await waitMs(750);
         try { observed = await inspect(); } catch { continue; }
-        if (observed.result && observed.result.error_kind !== "captcha_or_challenge") return observed.result;
+        if (observed.result) return observed.result;
       } while (Date.now() < deadline);
       if (observed.result) return observed.result;
       return fail("unknown", "No conclusive authentication, MFA, or error state appeared within 45 seconds. Do not automatically resubmit.");

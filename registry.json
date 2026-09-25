@@ -13,9 +13,9 @@
       ],
       "status": "qa_passed",
       "qa_agent": "agt_64d5890885db30858fc8",
-      "browser_session": "bqpgqp8xwmh46xu6addo3je1",
+      "browser_session": "bjcsg0na3ht6hklf6v2ziamo",
       "last_verified": "2026-09-25",
-      "notes": "DuckDuckGo-referrer entry reached MFA delivery selection; full authentication unverified. Direct residential ± stealth returned captcha_or_challenge. Referrer causality is unproven; see README."
+      "notes": "CAPTCHA now returns human_assist_required with reason captcha_or_challenge; automated solving/bypass intentionally unsupported. Solver-free manual browser prepared; human login and token capture pending. Historical referrer entry reached MFA; full authentication remains unverified."
     },
     {
       "domain": "aa.com",
