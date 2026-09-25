@@ -112,6 +112,22 @@
       "browser_session": "m49n8cyp3k0hzn902fof5x6t",
       "last_verified": "2026-09-24",
       "notes": "Independent QA passed; domain-namespace migration verified live from a non-homepage results page: 26 SFO-LAX itineraries in 29.309s. Adults, English/US cash fares, initial outbound page only; roundtrip starting fares are per person. Nearby airports are returned explicitly. Slow-search transport timeouts remain a risk."
+    },
+    {
+      "domain": "united.com",
+      "tool": "login",
+      "file": "domains/united.com/login.js",
+      "kind": "cdp",
+      "namespace": "united.com",
+      "url_patterns": [
+        "https://united.com/*",
+        "https://*.united.com/*"
+      ],
+      "status": "qa_passed",
+      "qa_agent": "agt_900288267257b91f1fdc",
+      "browser_session": "ffvsog7w3inx1pn4fks92a92",
+      "last_verified": "2026-09-25",
+      "notes": "live-verified captcha_or_challenge only; success path unverified — site challenges egress; solver loaded but idle"
     }
   ]
 }

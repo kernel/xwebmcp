@@ -5,6 +5,7 @@ Tools for United Airlines (https://www.united.com).
 | tool | file | status | notes |
 | --- | --- | --- | --- |
 | search_flights | [search_flights.js](search_flights.js) | verified | Initial outbound results, including connections and nearby-airport alternatives |
+| login | [login.js](login.js) | qa_passed | Challenge classification live-verified; successful login and MFA unverified |
 
 ## Scope and loading
 
@@ -12,7 +13,7 @@ Tools for United Airlines (https://www.united.com).
 
 ```js
 const source = (await import("node:fs")).readFileSync("domains/united.com/search_flights.js", "utf8");
-await webmcp.addCustomTools({ namespace: "united.com", tools: eval(source), forceOverwriteNamespace: true });
+await webmcp.addCustomTools({ namespace: "united.com", tools: eval(source) });
 const tool = (await webmcp.listTools()).find(t =>
   t.source.custom?.namespace === "united.com" && t.tool.name === "search_flights"
 );
@@ -70,3 +71,50 @@ node --test tests/united-search-flights.test.mjs
 - Independent QA browser session: `sdxghwgyazxgtfojg2sqehsk`.
 - Independent QA agent: `agt_a87837884a432de575e8`.
 - Source: this repository is canonical; sessions expire but files do not.
+
+## Login
+
+`login.js` is a single self-contained expression evaluating to a CDP tool-definition array. Register it under `united.com`, not a shared airline namespace:
+
+```js
+const source = (await import("node:fs")).readFileSync("domains/united.com/login.js", "utf8");
+await webmcp.addCustomTools({ namespace: "united.com", tools: eval(source) });
+const tool = (await webmcp.listTools()).find(t =>
+  t.source.custom?.namespace === "united.com" && t.tool.name === "login"
+);
+```
+
+Do not use `forceOverwriteNamespace: true` when adding this tool alongside `search_flights`: it would remove the other tool. Remove the previous login registration by ID before replacing it, then discover a fresh `tool_ref`.
+
+### Login scope and inputs
+
+- `mode: "credentials"` requires `identifier` (email or MileagePlus number) and `password`. It navigates to the English/US login entry from unrelated pages, the apex, or another subdomain; an already-ready identifier form is reused.
+- `mode: "prefilled_password"` requires `identifier` and a password already filled securely in the current password form. It checks the form's account identifier without returning the password. Use the account identifier shown by that step, which can be a MileagePlus number even when the first step used email.
+- `mode: "otp"` requires a six-digit `otp` and an existing single-field verification form. It does not accept a TOTP seed, select a delivery method, or resend codes. This continuation is not live-verified.
+- `remember_me` is optional and defaults to false in the two password modes. Continuation modes validate the current state and fail rather than navigating away from it.
+- Each invocation submits at most once per stage. Never automatically replay a timeout, transport error, or challenge. Pass secrets only at invocation time; do not put them in source, examples, logs, or reports.
+
+### Login output and limitations
+
+The typed output schema has two branches. `logged_in: true` means this invocation reached an authenticated or MFA state. It is **not** proof of completed authentication: check `authentication_complete`, `mfa_required`, and `next_step`. A first-step MFA result has `mfa_required: true` and `authentication_complete: false`. Existing sessions without account binding are rejected rather than reported as success for a requested identifier.
+
+Failures return `logged_in: false`, `error_kind`, `error_message`, `error_source`, and nullable `attempts_remaining_if_shown`. Kinds distinguish `invalid_credentials`, `captcha_or_challenge`, `mfa_failed`, `locked_or_throttled`, `unknown`, and local `invalid_input`. Generic site errors stay `unknown`. Invalid schema inputs may be rejected by WebMCP before execution and therefore return a gateway validation error rather than the tool's output object.
+
+United uses a staged identifier/password flow with a Remember me checkbox. Its help describes a six-digit OTP delivered through email, phone, or the United app. No third-party SSO was visible in the inspected form. Selectors and English error wording are site-dependent; split OTP fields and other verification flows are not supported. Polls are bounded, but navigation and transport deadlines can interrupt an invocation; use a caller timeout of at least 120 seconds and inspect an uncertain result rather than retrying it.
+
+### Login access limitation and QA
+
+United challenges this egress with HTTP 428 at `/xapi/auth/validate-username` in the residential (`23.136.68.188`) stealth configuration. Earlier non-stealth attempts received HTTP 428 at `/xapi/auth/signin`. CapMonster loaded but did not engage; success path unverified, challenge classification live-verified. The residential stealth test made one identifier submission and no password submission. During a subsequent 45-second passive observation, no visible CAPTCHA or solver event appeared. A mobile/stealth run could not load the form before its readiness deadline and made no credential submission. These observations do not establish that the block is exclusively IP-based.
+
+Independent failure-path QA covered fabricated input, missing/invalid fields, prefilled state checks, and schema conformance. It found account-binding, submit-targeting, and duplicate-error defects, which were fixed and regression-tested. Hidden HTTP denial handling was then verified against a captured response and live invocations. Successful authentication, real wrong-password rejection, and MFA completion remain unverified; `qa_passed` must not be read as end-to-end `verified`.
+
+Local tests use synthetic state and no network or real credentials:
+
+```sh
+node --test tests/united-login.test.mjs
+```
+
+- Independent login QA agent: `agt_900288267257b91f1fdc`.
+- Login verification browser: `ffvsog7w3inx1pn4fks92a92` (24-hour inactivity timeout).
+- Independent login QA browser: `ujmxh4dsy6p94fioon297pla`.
+- Last verification: 2026-09-25. Repository packaging/navigation changes are covered locally; they did not trigger another live login attempt.
