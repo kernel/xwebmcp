@@ -7,7 +7,7 @@
     inputSchema: {
       type: "object", additionalProperties: false,
       properties: {
-        query: { type: "string", minLength: 1, maxLength: 80, pattern: "\S", description: "Case-insensitive substring filter on store name or slug." },
+        query: { type: "string", minLength: 1, maxLength: 80, pattern: "\\S", description: "Case-insensitive substring filter on store name or slug." },
         service_type: { type: "string", enum: ["delivery", "pickup"], description: "Only stores offering this fulfilment type. Default: both." },
         max_results: { type: "integer", minimum: 1, maximum: 200, default: 50 }
       }

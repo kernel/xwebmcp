@@ -9,7 +9,7 @@
       properties: {
         store: { type: "string", pattern: "^[a-z0-9][a-z0-9-]{0,79}$", description: "Store slug as returned by list_stores (e.g. \"kroger\", \"costco\"). Also the segment after /store/ in storefront URLs." },
         service_type: { type: "string", enum: ["delivery", "pickup"], default: "delivery", description: "Which fulfilment variant of the store to use. Item ids and carts differ between delivery and pickup." },
-        query: { type: "string", minLength: 1, maxLength: 120, pattern: "\S", description: "Product search terms, e.g. \"organic bananas\"." },
+        query: { type: "string", minLength: 1, maxLength: 120, pattern: "\\S", description: "Product search terms, e.g. \"organic bananas\"." },
         max_results: { type: "integer", minimum: 1, maximum: 60, default: 20 },
         include_related: { type: "boolean", default: false, description: "Also return the store's \"Related items\" after the exact matches." }
       }
