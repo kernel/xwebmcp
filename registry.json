@@ -82,6 +82,22 @@
       "notes": "Independent targeted QA passed, including schema and synthetic parser/readiness regressions. A separate live DOM parse returned 20 rows; successful final full-tool invocation remains unverified due to intermittent Delta HTTP 429/SFAF001 failures. Domain migration invocation from a baggage page reached results and preserved explicit error output. Round trips return outbound options only; prices are displayed fares, not passenger totals. Real zero results and completeness beyond the 1.5-second DOM-quiescence heuristic remain unverified."
     },
     {
+      "domain": "doordash.com",
+      "tool": "login",
+      "file": "domains/doordash.com/login.js",
+      "kind": "cdp",
+      "namespace": "doordash.com",
+      "url_patterns": [
+        "https://doordash.com/*",
+        "https://*.doordash.com/*"
+      ],
+      "status": "qa_passed",
+      "qa_agent": "agt_5b1753eb7444ed26b1d6",
+      "browser_session": null,
+      "last_verified": "2026-09-25",
+      "notes": "Independent QA passed on the current source (three rounds; the last signed off with four minor fail-closed findings documented in the README). Live-verified 2026-09-25: existing-session success through a profile-page account match, a mismatched account refused without submission, one real password submission per proxy (residential: open password step; mobile: packaged search entry end to end) reached the SMS 2-Step Verification modal as mfa_required, and otp mode completed authentication with an emailed code. Unverified: wrong-password wording, lockout and CAPTCHA responses, and a real password submission on the post-QA source."
+    },
+    {
       "domain": "flyfrontier.com",
       "tool": "login",
       "file": "domains/flyfrontier.com/login.js",
