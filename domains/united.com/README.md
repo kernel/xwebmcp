@@ -5,7 +5,7 @@ Tools for United Airlines (https://www.united.com).
 | tool | file | status | notes |
 | --- | --- | --- | --- |
 | search_flights | [search_flights.js](search_flights.js) | verified | Initial outbound results, including connections and nearby-airport alternatives |
-| login | [login.js](login.js) | qa_passed | Challenge classification live-verified; successful login and MFA unverified |
+| login | [login.js](login.js) | draft | Challenge classification live-verified; successful login and MFA unverified |
 
 ## Scope and loading
 

@@ -5,7 +5,7 @@ Tools for JetBlue (https://www.jetblue.com).
 | tool | file | status | notes |
 |---|---|---|---|
 | search_flights | [search_flights.js](search_flights.js) | verified | Initial outbound flight cards, including round-trip searches; 1–7 adults |
-| login | [login.js](login.js) | qa_passed | Email-MFA first step live-observed; completion pending code entry |
+| login | [login.js](login.js) | draft | Email-MFA first step live-observed; completion pending code entry |
 
 ## Scope
 
