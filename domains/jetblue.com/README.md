@@ -5,7 +5,7 @@ Tools for JetBlue (https://www.jetblue.com).
 | tool | file | status | notes |
 |---|---|---|---|
 | search_flights | [search_flights.js](search_flights.js) | verified | Initial outbound flight cards, including round-trip searches; 1–7 adults |
-| login | [login.js](login.js) | qa_passed | Four-state output; CAPTCHA is a human-assist handoff, never solved. Email-MFA first step live-observed |
+| login | [login.js](login.js) | qa_passed | Email-MFA first step live-observed; completion pending code entry |
 
 ## Scope
 
@@ -60,48 +60,21 @@ Register `login.js` with namespace `jetblue.com`. It is a single CDP tool-array 
 
 The tool enters through `https://start.duckduckgo.com/`, searches `jetblue login`, and clicks the **first organic result**, not an advertisement. It accepts that result only when it is `https://www.jetblue.com/signin` (optional trailing slash, no query or fragment), then verifies the actual DuckDuckGo document referrer before entering credentials. Unexpected results, search failures, missing referrers, and changed login destinations stop with a typed failure; there is no direct-navigation fallback or spoofed referrer.
 
-There are no starting-page assumptions: unrelated pages, the apex, subdomains, non-login paths, and direct sign-in entries use the search route. A canonical sign-in page already reached through DuckDuckGo can be reused. Existing challenges, errors, MFA, or authenticated state are reported without restarting the flow. Credentials are entered only on the canonical sign-in page. Allow 120 seconds for invocation.
+There are no starting-page assumptions: unrelated pages, the apex, subdomains, non-login paths, and direct sign-in entries use the search route. A canonical sign-in page already reached through DuckDuckGo can be reused. Existing challenges, errors, MFA, or authenticated state are reported without restarting the flow. Credentials are entered only on the canonical sign-in page. Inputs are `username`, `password`, and optional `remember_me` (default false). Alternatively, `use_filled_form: true` uses an already-filled canonical sign-in page without navigating or requiring a search referrer; it cannot be combined with explicit credentials and fails on other pages. Allow 120 seconds for invocation.
 
-### Modes
+The typed output distinguishes:
 
-`mode` selects one of three behaviours and defaults to `login`.
+- `logged_in: true, authenticated: true, mfa_required: false`: a visible sign-out control and no password form.
+- `logged_in: true, authenticated: false, mfa_required: true`: first-step acceptance with a visible verification prompt and code field or verification action. `next_step` is `complete_mfa`; this is **not** completed authentication.
+- `logged_in: false`: `invalid_credentials`, `captcha_or_challenge`, `mfa_failed`, `locked_or_throttled`, `validation_error`, or `unknown`. Site wording is preserved; attempts remaining are null unless explicitly displayed. `submission_attempted` indicates whether the submit action may have started.
 
-- `login` submits credentials at most once. Supply `username` and `password` with optional `remember_me` (default false), or `use_filled_form: true` to submit an already-filled canonical sign-in page without navigating or requiring a search referrer. The two forms cannot be combined.
-- `await_human_login` watches a bounded `wait_seconds` window (10–600, default 180) while a person signs in through the live view. It never types, clicks, or navigates.
-- `capture_session` reads the current page once and records the resulting session. It accepts no credential fields and performs no interaction.
-
-### Output states
-
-The output is a four-way discriminated union on `status`, not a success/failure boolean. A challenge is a state of its own, so `captcha_or_challenge` is deliberately **not** a member of `error_kind`.
-
-- `authenticated`: a visible sign-out control and no password form. Carries `session` with `cookie_read_ok`, `cookie_count`, `cookie_names`, and `values_returned: false`.
-- `mfa_required`: first-step acceptance with a visible verification prompt and a code field or verification action. `next_step` is `complete_mfa`; this is **not** completed authentication.
-- `human_assist_required`: the flow needs a person. `assist_reason` is `captcha_or_challenge`, `unsupported_verification_method` (for example a passkey-only prompt, which Kernel browsers cannot satisfy), or `pending_human_login` when a bounded wait elapsed. Always carries `automated_solving: "not_implemented"` and a `handoff` block naming the page and the manual step.
-- `failed`: `invalid_credentials`, `mfa_failed`, `locked_or_throttled`, `validation_error`, or `unknown`. Site wording is preserved; attempts remaining are null unless explicitly displayed.
-
-Every state carries `submission_attempted`, indicating whether the submit action may have started.
-
-### CAPTCHA policy: manual assist is the only supported path
-
-Automated CAPTCHA solving is **intentionally not implemented** and is not a gap to be filled later. The tool does not call a solving service, does not retry against a challenge, does not attempt to evade or wear down a challenge, and does not register accounts or guess credentials to route around one. `mode` has no value that expresses solving, so a caller cannot request it.
-
-When a challenge appears, the supported recovery is a person:
-
-1. The tool returns `human_assist_required` with the challenge wording and the page URL.
-2. The operator opens that browser session's Kernel live view and signs in by hand, completing the challenge and any MFA.
-3. The operator calls the tool again with `mode: "capture_session"`, or uses `mode: "await_human_login"` to wait for the same result, and the session is recorded.
-
-The tool runs inside the browser and cannot know its own Kernel live-view URL, so `handoff.page_url` is the page it is on; the caller pairs it with the session's live view.
-
-**Session capture returns metadata, never secrets.** `session` lists the names and count of cookies scoped to `jetblue.com` and its subdomains, with `values_returned` pinned to `false`. Cookie values, tokens, and storage contents are never placed in tool output, because that output is relayed through chat transcripts and notifications. The authenticated credential material stays in the browser profile, which is the supported way to reuse the session; persist it with `save_profile_changes` on the browser rather than copying a token out. A test asserts that no cookie value reaches the output.
-
-The tool makes at most one password submission and never retries it. Explicit credentials receive a pre-submit password-length check; matching length is not proof of character equality. The tool does not request verification emails, enter OTPs, complete MFA, or change credentials. On an existing MFA or authenticated screen, the reported state describes the observed session, not proof that newly supplied credentials were checked.
+The tool makes at most one password submission and never retries it. Explicit credentials receive a pre-submit password-length check; matching length is not proof of character equality. Challenges stop the tool rather than being solved by it. The tool does not request verification emails, enter OTPs, complete MFA, or change credentials. On an existing MFA/authenticated screen, success describes the observed session, not proof that newly supplied credentials were checked.
 
 ### Login quirks and fixes
 
 - Both the password and email OTP use `name="credentials.passcode"`. Password selectors now also require `type="password"`, so a code field cannot be mistaken for the password form or filled with a password.
 - **Fixed:** the original classifier missed “Get a verification email” / “Send me an email” and returned `unknown` despite first-step acceptance. The repository version recognizes the email-send interstitial and the subsequent “Verify with your email” / “Enter the verification code” screen. Regression fixtures exercise the actual page-reader expression using the observed wording. The corrected classifier subsequently returned typed first-step success during the live DuckDuckGo-referrer experiment below.
-- **Fixed:** plain-text “Verify you are human” outside a heading or alert is recognized. Independent QA found this with a DOM fixture; a parent regression check passed after the fix. Challenge wording now also covers press-and-hold, “I am not a robot”, and Turnstile/Arkose/FunCaptcha frames, and routes to `human_assist_required` instead of an error kind.
+- **Fixed:** plain-text “Verify you are human” outside a heading or alert is recognized. Independent QA found this with a DOM fixture; a parent regression check passed after the fix.
 - **Open:** a residential+stealth run did not retain the password during filling and stopped before submission. Its cause remains unconfirmed; the tool does not silently retry a fill or submit incomplete credentials.
 - Expired flows display “You have been logged out due to inactivity.” This is `unknown`, not a credential judgment. An already-visible inactivity error stops before submission. A post-submit timeout also remains inconclusive; inspect the page before deciding whether a new test is appropriate.
 
@@ -145,19 +118,6 @@ A fresh residential+stealth browser opened `start.duckduckgo.com`, searched `jet
 **Interpretation:** search-referrer entry worked, but reduced bot detection is **not established**. The failed residential baseline never submitted credentials, no CAPTCHA was observed in either run, and egress IP, time, page readiness, and login URL parameters were not held constant. This is a successful alternative entry path, not a controlled proof that the referrer changed detection behavior.
 
 The live run used native search interactions followed by the registered login tool on the referred page. The repository now packages those search interactions into `execute`; its new orchestration and strict destination/referrer checks have local tests. No extra password submission was made to retest the packaged entry branch. The successful referrer session is retained at the email-MFA first step: `a17cnzyab9ape5q7k92d4a1i`. An initial blank search homepage required one read-only reload during exploration; the packaged tool instead returns `unknown` when search controls do not load.
-
-### Human-assist verification — 2026-09-25
-
-The four-state build was registered into the retained referrer session and exercised read-only against the live JetBlue sign-in page, with no credential submitted:
-
-| Invocation | Live result |
-|---|---|
-| `{"mode":"capture_session"}` | `mfa_required`, `mfa_prompt: "Get a verification email"`, `submission_attempted: false` |
-| `{"mode":"await_human_login","wait_seconds":10}` | `human_assist_required`, `assist_reason: "pending_human_login"`, `automated_solving: "not_implemented"`, page unchanged |
-| `{"mode":"capture_session","username":…,"password":…}` | Rejected by input schema before execution |
-| `{"mode":"solve_captcha"}` | Rejected by input schema; no such mode exists |
-
-A live CAPTCHA has not been observed on this account yet, so `assist_reason: "captcha_or_challenge"` is covered by unit fixtures over the real page-reader expression rather than by a live challenge. The `authenticated` state and its cookie-metadata capture are likewise verified by tests; the live account is still at the email-verification step, so no end-to-end manual-assist capture has been recorded.
 
 Run `node --test tests/jetblue-login.test.mjs` for contract, navigation, single-submit safety, failure classification, and page-reader MFA fixtures. Run `node --test tests/*.test.mjs` for the repository suite. These tests use synthetic inputs and browser-helper stubs; they do not submit real logins.
 
