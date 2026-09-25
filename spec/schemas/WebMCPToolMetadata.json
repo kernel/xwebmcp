@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/kernel/xwebmcp/spec/schemas/WebMCPToolMetadata.json",
+  "title": "WebMCPToolMetadata",
+  "type": "object",
+  "description": "Tool metadata follows the [MCP Tool definition](https://modelcontextprotocol.io/specification/2025-11-25/server/tools#tool)\nand the [WebMCP RegisteredTool definition](https://webmachinelearning.github.io/webmcp/#dictdef-registeredtool).\noutputSchema is optional for page and custom tools.\n",
+  "additionalProperties": false,
+  "required": [
+    "name",
+    "description",
+    "inputSchema"
+  ],
+  "properties": {
+    "name": {
+      "type": "string"
+    },
+    "title": {
+      "type": "string"
+    },
+    "description": {
+      "type": "string"
+    },
+    "inputSchema": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "outputSchema": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "annotations": {
+      "$ref": "WebMCPToolAnnotations.json"
+    }
+  }
+}

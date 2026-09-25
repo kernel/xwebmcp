@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/kernel/xwebmcp/spec/schemas/CustomWebMCPToolsResponse.json",
+  "title": "CustomWebMCPToolsResponse",
+  "type": "object",
+  "required": [
+    "tools"
+  ],
+  "properties": {
+    "tools": {
+      "type": "array",
+      "items": {
+        "$ref": "CustomWebMCPDefinition.json"
+      }
+    }
+  },
+  "additionalProperties": false
+}

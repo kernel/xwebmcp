@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/kernel/xwebmcp/spec/schemas/WebMCPInvocationFailure.json",
+  "title": "WebMCPInvocationFailure",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "code",
+    "message"
+  ],
+  "properties": {
+    "code": {
+      "type": "string",
+      "enum": [
+        "outcome_unknown"
+      ]
+    },
+    "message": {
+      "type": "string"
+    },
+    "invocation_id": {
+      "type": "string"
+    }
+  }
+}

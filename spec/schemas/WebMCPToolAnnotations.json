@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/kernel/xwebmcp/spec/schemas/WebMCPToolAnnotations.json",
+  "title": "WebMCPToolAnnotations",
+  "type": "object",
+  "description": "Tool-provided behavioral hints from the [MCP tool specification](https://modelcontextprotocol.io/specification/2025-11-25/server/tools#tool)\nand the [WebMCP ToolAnnotations definition](https://webmachinelearning.github.io/webmcp/#dictdef-toolannotations).\nThese hints are untrusted and are not enforced by Kernel.\n",
+  "additionalProperties": false,
+  "properties": {
+    "readOnlyHint": {
+      "type": "boolean"
+    },
+    "destructiveHint": {
+      "type": "boolean"
+    },
+    "idempotentHint": {
+      "type": "boolean"
+    },
+    "openWorldHint": {
+      "type": "boolean"
+    },
+    "consequentialHint": {
+      "type": "boolean"
+    },
+    "untrustedContentHint": {
+      "type": "boolean"
+    },
+    "autosubmit": {
+      "type": "boolean"
+    }
+  }
+}

@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/kernel/xwebmcp/spec/schemas/WebMCPToolFrame.json",
+  "title": "WebMCPToolFrame",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "frame_id",
+    "url"
+  ],
+  "properties": {
+    "frame_id": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Monotonically increasing identifier for this embedded frame during the current browser process."
+    },
+    "url": {
+      "type": "string",
+      "description": "Current frame URL with the fragment omitted."
+    }
+  }
+}

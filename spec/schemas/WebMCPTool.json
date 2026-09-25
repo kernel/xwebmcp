@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/kernel/xwebmcp/spec/schemas/WebMCPTool.json",
+  "title": "WebMCPTool",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "tool_ref",
+    "tool",
+    "source"
+  ],
+  "properties": {
+    "tool_ref": {
+      "type": "string",
+      "description": "Opaque reference for invoking this exact live registration. It becomes invalid when its document or browser process is replaced."
+    },
+    "tool": {
+      "$ref": "WebMCPToolMetadata.json"
+    },
+    "source": {
+      "$ref": "WebMCPToolSource.json"
+    }
+  }
+}

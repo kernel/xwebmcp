@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/kernel/xwebmcp/spec/schemas/AddCustomWebMCPToolsRequest.json",
+  "title": "AddCustomWebMCPToolsRequest",
+  "type": "object",
+  "required": [
+    "namespace",
+    "source"
+  ],
+  "properties": {
+    "namespace": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9_.-]{1,128}$"
+    },
+    "source": {
+      "type": "string",
+      "maxLength": 8000000,
+      "description": "JavaScript expression that evaluates to a non-empty array of custom tool definitions. Limited to 8,000,000 bytes when UTF-8 encoded, so multi-byte characters reduce the allowed character count."
+    },
+    "force_overwrite_namespace": {
+      "type": "boolean",
+      "default": false,
+      "description": "Atomically replace all existing tools in this namespace with this batch when true."
+    }
+  },
+  "additionalProperties": false
+}
