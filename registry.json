@@ -151,6 +151,62 @@
     },
     {
       "domain": "instacart.com",
+      "tool": "add_to_cart",
+      "file": "domains/instacart.com/add_to_cart.js",
+      "kind": "cdp",
+      "namespace": "instacart.com",
+      "url_patterns": [
+        "https://instacart.com/*",
+        "https://*.instacart.com/*"
+      ],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Adds an item to the logged-in account's per-store cart through the site's UpdateCartItemsMutation, increasing the quantity if the item is already there. Checks availability and the item's min/max/increment first; one mutation per invocation, never retried. Item ids must come from search or get_item for the same store and service_type."
+    },
+    {
+      "domain": "instacart.com",
+      "tool": "get_cart",
+      "file": "domains/instacart.com/get_cart.js",
+      "kind": "cdp",
+      "namespace": "instacart.com",
+      "url_patterns": [
+        "https://instacart.com/*",
+        "https://*.instacart.com/*"
+      ],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Reads one store's cart (item names, prices, quantities, subtotal) or, without a store, a summary of every non-empty cart. Prices are null for cart lines whose item id belongs to a store location other than the one currently assigned to the account."
+    },
+    {
+      "domain": "instacart.com",
+      "tool": "get_item",
+      "file": "domains/instacart.com/get_item.js",
+      "kind": "cdp",
+      "namespace": "instacart.com",
+      "url_patterns": [
+        "https://instacart.com/*",
+        "https://*.instacart.com/*"
+      ],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Reads one item's current details for a store from the site's Items query: price, availability, stock level, quantity rules and rating. Rejects item ids from a different store location."
+    },
+    {
+      "domain": "instacart.com",
+      "tool": "list_stores",
+      "file": "domains/instacart.com/list_stores.js",
+      "kind": "cdp",
+      "namespace": "instacart.com",
+      "url_patterns": [
+        "https://instacart.com/*",
+        "https://*.instacart.com/*"
+      ],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Lists the stores that deliver to or offer pickup at the account's current address, with the store_slug and shop id the other tools use."
+    },
+    {
+      "domain": "instacart.com",
       "tool": "login",
       "file": "domains/instacart.com/login.js",
       "kind": "cdp",
@@ -165,6 +221,34 @@
       "provenance": {
         "qa_agent": "agt_3fa02b3438dc8870922b"
       }
+    },
+    {
+      "domain": "instacart.com",
+      "tool": "search",
+      "file": "domains/instacart.com/search.js",
+      "kind": "cdp",
+      "namespace": "instacart.com",
+      "url_patterns": [
+        "https://instacart.com/*",
+        "https://*.instacart.com/*"
+      ],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Searches one store's catalog through the site's SearchResultsPlacements query and hydrates results with Items. Exact matches first; related items only on request or when there are no exact matches; first page only."
+    },
+    {
+      "domain": "instacart.com",
+      "tool": "update_cart_item",
+      "file": "domains/instacart.com/update_cart_item.js",
+      "kind": "cdp",
+      "namespace": "instacart.com",
+      "url_patterns": [
+        "https://instacart.com/*",
+        "https://*.instacart.com/*"
+      ],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Sets a cart line to an exact quantity (0 removes) through the site's UpdateCartItemsMutation; fails with not_in_cart when the item is absent. One mutation per invocation, never retried."
     },
     {
       "domain": "jetblue.com",
