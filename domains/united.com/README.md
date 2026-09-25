@@ -102,11 +102,7 @@ Failures return `logged_in: false`, `error_kind`, `error_message`, `error_source
 
 United uses a staged identifier/password flow with a Remember me checkbox. Its help describes a six-digit OTP delivered through email, phone, or the United app. No third-party SSO was visible in the inspected form. Selectors and English error wording are site-dependent; split OTP fields and other verification flows are not supported. Polls are bounded, but navigation and transport deadlines can interrupt an invocation; use a caller timeout of at least 120 seconds and inspect an uncertain result rather than retrying it.
 
-### Login access limitation and QA
-
-United challenges this egress with HTTP 428 at `/xapi/auth/validate-username` in the residential (`23.136.68.188`) stealth configuration. Earlier non-stealth attempts received HTTP 428 at `/xapi/auth/signin`. CapMonster loaded but did not engage; success path unverified, challenge classification live-verified. The residential stealth test made one identifier submission and no password submission. During a subsequent 45-second passive observation, no visible CAPTCHA or solver event appeared. A mobile/stealth run could not load the form before its readiness deadline and made no credential submission. These observations do not establish that the block is exclusively IP-based.
-
-Independent failure-path QA covered fabricated input, missing/invalid fields, prefilled state checks, and schema conformance. It found account-binding, submit-targeting, and duplicate-error defects, which were fixed and regression-tested. Hidden HTTP denial handling was then verified against a captured response and live invocations. Successful authentication, real wrong-password rejection, and MFA completion remain unverified; `qa_passed` must not be read as end-to-end `verified`.
+### Login tests
 
 Local tests use synthetic state and no network or real credentials:
 
@@ -114,7 +110,12 @@ Local tests use synthetic state and no network or real credentials:
 node --test tests/united-login.test.mjs
 ```
 
-- Independent login QA agent: `agt_900288267257b91f1fdc`.
-- Login verification browser: `ffvsog7w3inx1pn4fks92a92` (24-hour inactivity timeout).
-- Independent login QA browser: `ujmxh4dsy6p94fioon297pla`.
-- Last verification: 2026-09-25. Repository packaging/navigation changes are covered locally; they did not trigger another live login attempt.
+## Status and known limitations
+
+The login tool is registry status `draft`. Independent failure-path QA (`agt_900288267257b91f1fdc`) found account-binding, submit-targeting, and duplicate-error defects; all three were fixed and covered by local regression tests, but that QA pass was never re-run against the fixed tool, so nothing has independently signed off on the current source.
+
+Live-verified: challenge classification, input validation and refusal paths, and one-submission-per-stage behaviour. Unverified: successful authentication, real wrong-password rejection, and MFA/OTP continuation.
+
+United answers the identifier step with HTTP 428 at `/xapi/auth/validate-username`. As of 2026-09-25 that persists with stealth off, through both direct navigation and a search-engine referrer chain, and over both residential and mobile egress. No CAPTCHA is rendered — the page shows only a generic "Something went wrong" banner — and the stealth solver never engaged. One earlier identifier check did return 200, and its password submission then received HTTP 428 at `/xapi/auth/signin`; every attempt since has been denied at the identifier step.
+
+Best lead for the next person: browser and network changes have not moved the result, which points at a flag on the test MileagePlus account rather than the client or egress. That is unproven. Confirming it needs one attempt with a different real account, not more variations of the same one. All browser sessions from this work have been deleted, so any re-verification starts from a fresh session.
