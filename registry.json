@@ -83,6 +83,22 @@
     },
     {
       "domain": "flyfrontier.com",
+      "tool": "login",
+      "file": "domains/flyfrontier.com/login.js",
+      "kind": "cdp",
+      "namespace": "flyfrontier.com",
+      "url_patterns": [
+        "https://flyfrontier.com/*",
+        "https://*.flyfrontier.com/*"
+      ],
+      "status": "draft",
+      "qa_agent": null,
+      "browser_session": null,
+      "last_verified": "2026-09-25",
+      "notes": "Live-verified: DuckDuckGo entry and first sign-in step (residential and mobile stealth, one submission each) reach the emailed-code step. Unverified: a fully authenticated session; the single-paste code entry was only checked on the live form with the verify call stubbed, and no real code has been evaluated."
+    },
+    {
+      "domain": "flyfrontier.com",
       "tool": "search_flights",
       "file": "domains/flyfrontier.com/search_flights.js",
       "kind": "cdp",
