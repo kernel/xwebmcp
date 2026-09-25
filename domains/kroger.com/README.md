@@ -298,7 +298,8 @@ carry `error_kind` and the site's or the tool's `error_message`:
 
 All prices are integers in US cents. `price_cents` is the regular price for the
 active fulfillment method; `promo_price_cents` is set when the site shows a
-promotion, and cart line totals use it. For produce sold by weight,
+promotion below the regular price (a promotion block at the regular price is
+reported as no promotion), and cart line totals use it. For produce sold by weight,
 `sold_by_weight` is true and `price_cents` is the site's estimate for one unit
 (`price_note` carries wording such as "about $1.03 each", `unit_price_text` the
 per-pound price). `fulfillment` in every success output names the fulfillment
@@ -307,9 +308,13 @@ pickup, `store_name`, because prices, availability and the cart are tied to it.
 
 ### How the tools talk to the site
 
-- Search: `GET /atlas/v1/search/v1/products-search?filter.query=…&filter.locationId=<store>&filter.fulfillmentMethods=<type>&option.groupBy=PRODUCT_VARIANT&page.size=<limit>`.
-  Hits carry only `upc`, `description` and rank; paid placements have a
-  `placementId` and rank 0. Prices come from the product endpoint.
+- Search: `GET /atlas/v1/search/v1/products-search?filter.query=…&filter.locationId=<store>&filter.fulfillmentMethods=IN_STORE&filter.fulfillmentMethods=PICKUP&filter.fulfillmentMethods=DELIVERY&option.groupBy=PRODUCT_VARIANT&option.quickFacets=true&option.personalization=PURCHASE_HISTORY&page.size=<limit>`,
+  the same query the site's own results page sends, so the first page and its
+  order match what the shopper sees (with `option.personalization=RELEVANCE` and
+  a single method the order differed badly: independent QA saw eggs ranked first
+  for "oat milk"). Hits carry only `upc`, `description` and rank; paid placements
+  have a `placementId` and rank 0. Prices and `available` (for the active
+  fulfillment method) come from the product endpoint.
 - Products: `GET /atlas/v1/product/v2/products?filter.gtin13s=<upc>&…&projections=items.full,offers.compact,inventory.projected,variantGroupings.compact`.
   `fulfillmentSummaries[]` holds per-method `regular.price`, optional `promo.price`,
   `availability.sellable`, `availability.inventoryLevel` and `maxOrderQuantity`.
@@ -332,8 +337,11 @@ pickup, `store_name`, because prices, availability and the cart are tied to it.
   events, arm a one-shot `Network.requestWillBeSent` wait, reload the current
   kroger.com page, and read `x-laf-object` from the first `/atlas/v1/` request.
   The value is cached in `sessionStorage` (`kroger.com.laf.v1`) for 30 minutes,
-  keyed by the `x-active-modality`, `StoreCode` and `DD_modStore` cookies, so a
-  store or fulfillment change invalidates it. The capture is retried once; live it
+  keyed by the fulfillment type, location id, postal code and coordinates from
+  the `x-active-modality` cookie plus the `StoreCode` and `DD_modStore` cookies,
+  so a store or fulfillment change invalidates it. The cookie also carries a
+  timestamp that is rewritten on every load in signed-out sessions; it is
+  deliberately left out of the key, otherwise every call would reload the page. The capture is retried once; live it
   took 2 to 5 seconds. The tools also send `x-facility-id`, `x-modality-type` and
   `x-modality` derived from that object, as the page does.
 - The active fulfillment method is read from the `x-active-modality` cookie; if it
@@ -428,6 +436,7 @@ Live verification is recorded in the table below as it happens.
 | 11 | `add_to_cart` for the "Bag Holder" placeholder and for an unknown code | `unavailable` and `not_found`, no writes |
 | 12 | `get_cart` at the end | 0 active lines; the saved-for-later line exactly as before the session |
 | 13 | Re-run on the final source (login-first check, degraded cart read, store-name gating, 429 retry): `search_products` cold from a product page, `add_to_cart` ×1, `update_cart_item` to 0, `get_cart` | search ok in 11.3 s including capture and settle; add ok (quantity 1); removed; final cart 0 active lines with `product_details: "complete"` and the saved-for-later line unchanged |
+| 15 | Independent QA pass 2 (`agt_8b7f0522e17f2f1d16e8`, commit `07a9215`): 40 malformed inputs at the gate, stale `tool_ref` on two unrelated pages, read-only tools signed out in a fresh browser (pickup store), signed-out cart tools, then the full cart flow in the signed-in session | no blockers; 23 live outputs schema-valid; cart restored byte-identical; three findings fixed in the next commit: search order now mirrors the site's own query, the header cache no longer misses on the cookie timestamp, a promotion at the regular price is reported as none |
 | 14 | Independent QA pass 1 (`agt_58a2b36b09f3e89c56bd`, commit `e2de074`) | Akamai blocked its fresh browser on the homepage and answered one `get_cart` enrichment call with 429, so the live plan stopped before any cart write; 38 malformed inputs rejected at the schema gate, stale `tool_ref` on an unrelated page failed fast; no defects in what ran; five minor code findings, all fixed in the next commits |
 
 ### Sessions

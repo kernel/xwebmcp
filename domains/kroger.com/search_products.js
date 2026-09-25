@@ -83,10 +83,12 @@
         await gotoUrl(ORIGIN + "/");
         if (!await waitForLoad(30)) return { error: fail("site_error", "The Kroger homepage did not finish loading; nothing was changed.") };
       }
-      let modalityType = null;
-      try { modalityType = JSON.parse(decodeURIComponent(cookie("x-active-modality"))).type || null; } catch { /* no fulfillment method chosen yet */ }
+      let modality = {};
+      try { modality = JSON.parse(decodeURIComponent(cookie("x-active-modality"))) || {}; } catch { /* no fulfillment method chosen yet */ }
+      const modalityType = modality.type || null;
       const cacheName = "kroger.com.laf.v1";
-      const cacheKey = [cookie("x-active-modality"), cookie("StoreCode"), cookie("DD_modStore")].join("|");
+      // The modality cookie also carries a timestamp that changes on every load, so key only on the fields that identify the selection.
+      const cacheKey = [modalityType, modality.locationId, modality.postalCode, modality.lat, modality.lng, cookie("StoreCode"), cookie("DD_modStore")].join("|");
       let laf = await js(({ key, name }) => { try { const c = JSON.parse(sessionStorage.getItem(name) || "null"); return c && c.key === key && Date.now() - c.at < 1800000 ? c.laf : null; } catch { return null; } }, { arg: { key: cacheKey, name: cacheName } });
       if (!laf) {
         // The page builds its store-and-fulfillment header in memory and never persists it, so capture it from the site's own request during a reload.
@@ -149,10 +151,12 @@
         const summary = (p.fulfillmentSummaries || []).find(f => f.type === ctx.fulfillment.type) || null;
         const store = p.price?.storePrices?.regular || {};
         const image = (p.item.images || []).find(i => i.perspective === "front" && i.size === "medium") || (p.item.images || [])[0];
+        const regular = cents(summary?.regular?.price ?? store.price);
+        const promo = cents(summary?.promo?.price ?? p.price?.storePrices?.promo?.price);
         products.push({
           upc: p.id, description: p.item.description, brand: p.item.brand?.name ?? null, size: p.item.customerFacingSize ?? null,
           url: ORIGIN + "/p/" + (p.item.seoDescription || "product") + "/" + p.id, image_url: image?.url ?? null,
-          price_cents: cents(summary?.regular?.price ?? store.price), promo_price_cents: cents(summary?.promo?.price ?? p.price?.storePrices?.promo?.price),
+          price_cents: regular, promo_price_cents: promo !== null && promo !== regular ? promo : null,
           price_note: store.defaultDescription ?? null, unit_price_text: store.secondaryDescription ?? store.equivalizedUnitPriceString ?? null,
           sold_by_weight: /weight/i.test(p.price?.sellBy || ""), available: !!summary?.availability?.sellable, inventory_level: summary?.availability?.inventoryLevel ?? null,
           max_order_quantity: summary?.maxOrderQuantity ?? null, fulfillment_options: p.fulfillmentOptions || []
@@ -168,8 +172,9 @@
     try {
       const ctx = await context(false);
       if (ctx.error) return ctx.error;
-      const params = "option.groupBy=PRODUCT_VARIANT&filter.locationId=" + encodeURIComponent(ctx.fulfillment.store_id) + "&filter.query=" + encodeURIComponent(query)
-        + "&filter.fulfillmentMethods=" + encodeURIComponent(ctx.fulfillment.type) + "&page.offset=0&page.size=" + limit + "&option.personalization=RELEVANCE";
+      // Same query the site's own results page sends, so the first page and its order match what the shopper sees.
+      const params = "option.groupBy=PRODUCT_VARIANT&option.quickFacets=true&filter.locationId=" + encodeURIComponent(ctx.fulfillment.store_id) + "&filter.query=" + encodeURIComponent(query)
+        + "&filter.fulfillmentMethods=IN_STORE&filter.fulfillmentMethods=PICKUP&filter.fulfillmentMethods=DELIVERY&page.offset=0&page.size=" + limit + "&option.personalization=PURCHASE_HISTORY";
       const search = await api(ctx, "/atlas/v1/search/v1/products-search?" + params);
       if (search.error) return search.error;
       const hits = (search.body.data?.productsSearch || []).filter(h => normalizeUpc(h.upc));

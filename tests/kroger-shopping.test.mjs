@@ -55,7 +55,7 @@ function harness(name, options = {}) {
   const storage = new Map(options.storage ?? []);
   const cookies = options.cookies ?? [
     { name: "loggedIn", value: options.loggedIn === false ? "no" : "yes" },
-    { name: "x-active-modality", value: encodeURIComponent(JSON.stringify({ type: options.modality ?? "DELIVERY", postalCode: "45200" })) },
+    { name: "x-active-modality", value: encodeURIComponent(JSON.stringify({ type: options.modality ?? "DELIVERY", postalCode: "45200", createdDate: options.cookieStamp ?? 1 })) },
     { name: "StoreCode", value: "00418" }, { name: "DD_modStore", value: "540FC001" }
   ];
   const calls = { navigations: [], requests: [], captures: 0, waits: [] };
@@ -208,13 +208,28 @@ test("search_products: stays on a kroger.com page and reloads it once to capture
 });
 
 test("get_product: reuses the cached store header without reloading", async () => {
-  const key = ["", "00418", "540FC001"].join("|");
+  const key = ["", "", "", "", "", "00418", "540FC001"].join("|");
   const h = harness("get_product", { cookies: [{ name: "loggedIn", value: "yes" }, { name: "StoreCode", value: "00418" }, { name: "DD_modStore", value: "540FC001" }], storage: [["kroger.com.laf.v1", { key, laf: LAF }]] });
   const result = await h.run({ upc: "0000000004011" });
   assert.equal(result.status, "ok");
   assert.equal(h.calls.captures, 0);
   assert.deepEqual(h.calls.navigations, []);
   assert.equal(result.fulfillment.type, "DELIVERY", "falls back to the first header entry when no modality cookie is set");
+});
+
+test("get_product: the cache key ignores the modality cookie's changing timestamp", async () => {
+  const key = ["DELIVERY", "", "45200", "", "", "00418", "540FC001"].join("|");
+  const h = harness("get_product", { cookieStamp: 987654321, storage: [["kroger.com.laf.v1", { key, laf: LAF }]] });
+  assert.equal((await h.run({ upc: "0000000004011" })).status, "ok");
+  assert.equal(h.calls.captures, 0, "a cookie that only differs by timestamp must still hit the cache");
+});
+
+test("get_product: a promotion equal to the regular price is not reported as a promotion", async () => {
+  const products = fixture("products");
+  products.data.products[1].fulfillmentSummaries[0].promo.price = "USD 2.89";
+  const result = await harness("get_product", { products }).run({ upc: "0001111041700" });
+  assert.equal(result.product.price_cents, 289);
+  assert.equal(result.product.promo_price_cents, null);
 });
 
 test("get_product: a stale cache entry for another store is ignored", async () => {
@@ -322,7 +337,9 @@ test("search_products: returns priced, deduplicated results in site order with s
   assert.equal(result.products[2].inventory_level, "TEMPORARILY_OUT_OF_STOCK");
   const searchCall = h.calls.requests.find(r => r.path.includes("products-search"));
   assert.match(searchCall.path, /filter\.query=bananas/);
-  assert.match(searchCall.path, /filter\.fulfillmentMethods=DELIVERY/);
+  assert.match(searchCall.path, /filter\.fulfillmentMethods=IN_STORE&filter\.fulfillmentMethods=PICKUP&filter\.fulfillmentMethods=DELIVERY/, "same methods as the site's own results page");
+  assert.match(searchCall.path, /option\.personalization=PURCHASE_HISTORY/, "same personalization as the site's own results page, so the order matches");
+  assert.match(searchCall.path, /option\.groupBy=PRODUCT_VARIANT&option\.quickFacets=true/);
   assert.match(searchCall.path, /filter\.locationId=540FC001/);
   assert.match(searchCall.path, /page\.size=10/);
 });
