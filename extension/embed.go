@@ -13,7 +13,7 @@ import (
 	"path/filepath"
 )
 
-//go:embed manifest.json background.js offscreen.html offscreen.js popup.html popup.js background/*.js content/*.js lib/*.js sandbox/*.js sandbox/*.html
+//go:embed manifest.json background.js offscreen.html offscreen.js popup.html popup.js sidepanel.html sidepanel.js background/*.js content/*.js lib/*.js sandbox/*.js sandbox/*.html
 var files embed.FS
 
 // FS returns the extension files.

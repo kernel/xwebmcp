@@ -136,6 +136,12 @@ async function render() {
   await Promise.all([renderBridge(), renderTab(), renderInstalled()]);
 }
 
+$('open-panel').onclick = async () => {
+  const tab = await currentTab();
+  if (tab) await chrome.sidePanel.open({windowId: tab.windowId});
+  window.close();
+};
+
 client.onToolsChanged(() => {
   void render();
 });
