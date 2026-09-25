@@ -44,7 +44,7 @@
     arrivalDayOffset: { type: "integer", minimum: -1, maximum: 3, description: "-1 for eastbound date-line crossings that land the day before departure." },
     durationMinutes: { type: "integer", minimum: 1 },
     stops: { type: "integer", minimum: 0 },
-    layovers: { type: "array", items: object({ airport, durationMinutes: { type: "integer", minimum: 1 } }) },
+    layovers: { type: "array", items: object({ airport: { ...airport, description: "Arrival airport of the preceding segment; an airport change is visible in segments." }, durationMinutes: { type: "integer", minimum: 1 } }), description: "One entry per stop when the layover row or summary label could be read; otherwise empty." },
     emissionsKgCo2e: { type: ["integer", "null"] },
     emissionsVsTypicalPercent: { type: ["integer", "null"], description: "Google's emissions comparison; 0 when labeled average." },
     price: object({
@@ -266,11 +266,11 @@
               };
             }) : [];
             const complete = segments.length === stops + 1 && segments.every(Boolean);
-            const detailLayovers = [...card.querySelectorAll(".tvtJdb")].map(e => { const m = text(e).match(/^(.*?)layover.*\(([A-Z]{3})\)/); return m && minutes(m[1]) ? { airport: m[2], durationMinutes: minutes(m[1]) } : null; });
+            const detailDurations = [...card.querySelectorAll(".tvtJdb")].map(e => minutes(text(e).match(/^(.*?)layover/)?.[1]));
             const summaryDurations = [...summary.matchAll(/Layover \(\d+ of \d+\) is an? (.+?) layover/g)].map(m => minutes(m[1]));
-            const summaryAirports = [...new Set([...card.querySelectorAll(".BbR8Ec span")].map(text).filter(t => /^[A-Z]{3}$/.test(t)))];
-            const layovers = detailLayovers.length === stops && detailLayovers.every(Boolean) ? detailLayovers
-              : summaryDurations.length === stops && summaryAirports.length === stops && summaryDurations.every(Boolean) ? summaryDurations.map((durationMinutes, i) => ({ airport: summaryAirports[i], durationMinutes })) : [];
+            const durations = detailDurations.length === stops && detailDurations.every(Boolean) ? detailDurations : summaryDurations;
+            const airports = complete ? segments.slice(0, -1).map(s => s.arrivalAirport) : [...new Set([...card.querySelectorAll(".BbR8Ec span")].map(text).filter(t => /^[A-Z]{3}$/.test(t)))];
+            const layovers = durations.length === stops && airports.length === stops && durations.every(Boolean) ? durations.map((durationMinutes, i) => ({ airport: airports[i], durationMinutes })) : [];
             const emissions = card.textContent.match(/([\d,]+) kg CO2e/);
             const comparison = card.textContent.match(/([+-]\d+)% emissions/) || (/Avg emissions/.test(card.textContent) ? [null, "0"] : null);
             return {
