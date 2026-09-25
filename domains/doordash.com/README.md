@@ -102,8 +102,11 @@ const result = await webmcp.invokeTool(tool.tool_ref, { email: "qa@example.inval
 ```
 
 `forceOverwriteNamespace: true` replaces every tool in `doordash.com`; register search or cart tools
-together with `login` as one array. Take a fresh `tool_ref` after navigation. Allow 120 seconds:
-the post-submit observation window is 45 seconds.
+together with `login` as one array. Take a fresh `tool_ref` after navigation. Use `timeoutSec: 120`
+(the WebMCP maximum); the post-submit observation window is 45 seconds and a full search-entry run
+took about 15 seconds. The runtime only lists a CDP tool on pages matching its `url_patterns`, so
+`login` is invocable from any `doordash.com` page (including `help.` and `identity.`) but not from
+`about:blank` or another site; the tool itself makes no assumptions about which DoorDash page it starts on.
 
 ## Input and output
 
@@ -135,6 +138,17 @@ and `step` (`input`, `session_check`, `search_entry`, `site_entry`, `email_step`
 - `attempts_remaining` parsing and the `locked_or_throttled`/`captcha_or_challenge` wording are
   synthetic; DoorDash never showed those states in testing.
 
+## Live configuration matrix
+
+| browser | proxy | profile | start page | real submissions | result |
+|---|---|---|---|---|---|
+| long-lived (`wjdkr9p7ugcc9ui4ssf7e4mm`) | cincy residential | personal-stuff | `/home` | 0 | existing session confirmed on the profile page, `authenticated: true`, 5.5 s |
+| exploration (deleted) | cincy residential | none | password step already open | 1 password + 1 emailed code | 2-Step modal, then `otp` mode authenticated (cookie + header Account) |
+| exploration (deleted), after sign-in | cincy residential | none | `/home` | 0 | existing session confirmed; a different requested email refused with `unknown` and no submission |
+| mobile (deleted) | us-mobile | none | `/about/` | 1 password | packaged search entry end to end, `mfa_required: true`, 14.7 s |
+
+No CAPTCHA solver events and no visible challenge occurred in any run.
+
 ## Status and known limitations
 
 Status: `draft` pending the independent QA pass recorded below.
@@ -151,9 +165,13 @@ Status: `draft` pending the independent QA pass recorded below.
   first `otp` run reported success from the footer Account Details link before the cookie existed.
   Both fixes have unit coverage; the code-step detection has not had a second live password
   submission.
-- **Unverified:** the packaged DuckDuckGo entry with a real account end to end in one invocation
-  (the real submission reused an already open password step); wrong-password wording; lockout,
-  CAPTCHA, and expired-code responses; the mobile proxy configuration.
+- **Live-verified, mobile proxy (2026-09-25, same day, fixed source):** one invocation from
+  `/about/` in a profile-less stealth browser with the `us-mobile` proxy ran the packaged path end to
+  end (search entry, identity page with a DuckDuckGo referrer, email step, "Use password instead",
+  one password submission) and returned `mfa_required: true` with the 2-Step Verification modal in
+  14.7 seconds. Its code was not submitted; the browser was deleted.
+- **Unverified:** wrong-password wording; lockout, CAPTCHA, and expired-code responses; the
+  password path in the profile-backed browser (it was already signed in, so no submission was made there).
 - **Best lead for the next person:** DoorDash sends the 2-Step code to the phone by default. The
   modal's "Send to Email" button switches delivery to the account email, which can be read from the
   mailbox; the tool does not click it, so a caller that cannot receive SMS should click it in the

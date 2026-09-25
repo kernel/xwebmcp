@@ -142,7 +142,7 @@
       state.boundEmail = bound ? bound[1].replace(/[),.]+$/, "") : null;
       state.codeStep = codeInputs.length > 0;
       state.codeCount = codeInputs.length;
-      state.codeHint = texts.find(t => /\b(?:6|six)[- ]digit|verification code|enter the code|code (?:we )?(?:sent|texted|emailed)|sent (?:you )?(?:a |the )?code/i.test(t)) || null;
+      state.codeHint = texts.filter(t => /\b(?:6|six)[- ]digit|verification code|enter the code|code (?:we )?(?:sent|texted|emailed)|sent (?:you )?(?:a |the )?code/i.test(t)).sort((a, b) => a.length - b.length)[0] || null;
       return state;
     });
     const signedInCookie = async () => {
