@@ -79,6 +79,37 @@ for the flow and, when it is not, navigates to the required entry point first.
 
 ## Loading a tool
 
+### With the `xwebmcp` CLI
+
+The `xwebmcp` CLI installs tool files from GitHub, pins them to a commit, and pushes
+them into a browser.
+
+```sh
+go install github.com/kernel/xwebmcp/cmd/xwebmcp@latest
+
+# install every tool in this repo (or owner/repo/path@ref, or a github.com URL)
+xwebmcp add kernel/xwebmcp
+xwebmcp add kernel/xwebmcp/domains/southwest.com@main
+
+xwebmcp list                      # what is installed and at which commit
+xwebmcp add kernel/xwebmcp        # update to the current commit; prints a diff of changed code
+xwebmcp remove southwest.com      # drop a namespace (or owner/repo, or namespace/tool)
+
+# register every installed tool on a Kernel browser (KERNEL_API_KEY must be set)
+xwebmcp attach --kernel <browser id or name>
+```
+
+Tools live under `~/.xwebmcp/` (override with `XWEBMCP_HOME`). `lock.json` records the
+source, resolved commit, and SHA-256 of every file. When a repository has a
+`registry.json`, its entries decide which files are tools and which namespace they
+belong to; otherwise every `.js` file under the given path is a tool and its parent
+directory is the namespace.
+
+`attach --kernel` replaces each namespace atomically (the first file of a namespace is
+sent with `force_overwrite_namespace`), so re-running it after an update is safe.
+
+### By hand
+
 ```sh
 # 1. create a browser
 kernel browsers create --profile personal-stuff --proxy cincy
