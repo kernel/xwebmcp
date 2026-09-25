@@ -66,6 +66,12 @@ node --test tests/aa.com.test.mjs
 
 ## Login scope and loading
 
+### Status and known limitations
+
+`qa_passed`: independent QA passed the frozen behavior locally (208 repository tests and 22 additional checks). Last real live check: **2026-09-25**. Live DDG entry reached the login form, and an earlier referred submission reached MFA. Full authentication and live solver completion remain unverified; historical direct entry encountered CAPTCHA. All login-work browsers and their artifacts were deleted at closeout.
+
+Most useful lead: MFA delivery selection is the furthest verified credential-flow stage. A future authorized end-to-end check should retain the DDG organic-click entry and verify progression from MFA to actual account UI; do not treat MFA alone as logged in.
+
 `login.js` is a self-contained tool-definition array. Register it with namespace `aa.com`, using `tools: eval(source)` as above. Omit `forceOverwriteNamespace` when adding it alongside the search tool so the other registration is not removed. Both apex and wildcard subdomains match; the actual sign-in flow redirects from `www.aa.com/loyalty/login` to `login.aa.com/login`.
 
 The tool checks the current page before interacting. From an unsuitable page, including another subdomain or unrelated origin, it opens `https://start.duckduckgo.com/`, issues the fixed public query `american airlines login` through the search URL, and clicks the first organic result. This is the only entry path, using a real organic click rather than a spoofed referrer header. It clicks only if that first result is `https://www.aa.com/loyalty/login` or `https://login.aa.com/login`; it never skips to a later result or navigates directly to AA. Missing results time out after 20 seconds. An unsuitable result, selector miss, unexpected origin, or uncertain navigation/click returns a step-specific failure and stops. Search-page challenges return failure with `error_kind: captcha_or_challenge`; reaching a challenge, MFA, or error on AA never triggers another entry attempt. The search query contains no account input, and no referrer header is spoofed. A suitable existing login form or MFA screen is reused. A detected CAPTCHA stops the flow before any search navigation, filling, or further submission; the referrer route is never retried to work around a challenge. Supply an AAdvantage number or username and password, or explicitly set `use_prefilled: true` after a human or vault fills both fields. Prefilled mode cannot recover values lost when an unsuitable page is replaced. The tool does not support email identifiers, OTP submission, MFA-method selection, account recovery, or account registration. The stealth browser's built-in solver may run normally; the tool does not disable it. No remember-me or third-party SSO control was observed.
@@ -121,7 +127,7 @@ This run changed the observed outcome from the direct-entry baseline's `captcha_
 
 The successful manual search-entry sequence is now the only entry path for tools invoked from unsuitable pages. Local regressions cover first-result validation, step-specific failures for missing/unsuitable results and navigation/inspection/click failures, search-page challenges, and challenge classification after the organic click. The earlier direct-entry results above remain the comparison baseline; they are not re-run. No additional live credential submission was made. Improved bot-detection resistance is a goal, not a measured guarantee.
 
-Referrer experiment browser: `bqpgqp8xwmh46xu6addo3je1` (left alive at MFA with a 24-hour inactivity timeout). These experiments remain historical evidence and were not repeated for the schema restoration.
+Referrer experiment browser: `bqpgqp8xwmh46xu6addo3je1` (deleted at closeout; last observed at MFA). These experiments remain historical evidence and were not repeated for the schema restoration.
 
 ### Independent DDG-only re-test
 
