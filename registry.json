@@ -301,6 +301,48 @@
     },
     {
       "domain": "kroger.com",
+      "tool": "add_to_cart",
+      "file": "domains/kroger.com/add_to_cart.js",
+      "kind": "cdp",
+      "namespace": "kroger.com",
+      "url_patterns": [
+        "https://kroger.com/*",
+        "https://*.kroger.com/*"
+      ],
+      "status": "draft",
+      "last_verified": null,
+      "notes": ""
+    },
+    {
+      "domain": "kroger.com",
+      "tool": "get_cart",
+      "file": "domains/kroger.com/get_cart.js",
+      "kind": "cdp",
+      "namespace": "kroger.com",
+      "url_patterns": [
+        "https://kroger.com/*",
+        "https://*.kroger.com/*"
+      ],
+      "status": "draft",
+      "last_verified": null,
+      "notes": ""
+    },
+    {
+      "domain": "kroger.com",
+      "tool": "get_product",
+      "file": "domains/kroger.com/get_product.js",
+      "kind": "cdp",
+      "namespace": "kroger.com",
+      "url_patterns": [
+        "https://kroger.com/*",
+        "https://*.kroger.com/*"
+      ],
+      "status": "draft",
+      "last_verified": null,
+      "notes": ""
+    },
+    {
+      "domain": "kroger.com",
       "tool": "login",
       "file": "domains/kroger.com/login.js",
       "kind": "cdp",
@@ -315,6 +357,34 @@
       "provenance": {
         "qa_agent": "agt_81701554c70a9f25b7e6"
       }
+    },
+    {
+      "domain": "kroger.com",
+      "tool": "search_products",
+      "file": "domains/kroger.com/search_products.js",
+      "kind": "cdp",
+      "namespace": "kroger.com",
+      "url_patterns": [
+        "https://kroger.com/*",
+        "https://*.kroger.com/*"
+      ],
+      "status": "draft",
+      "last_verified": null,
+      "notes": ""
+    },
+    {
+      "domain": "kroger.com",
+      "tool": "update_cart_item",
+      "file": "domains/kroger.com/update_cart_item.js",
+      "kind": "cdp",
+      "namespace": "kroger.com",
+      "url_patterns": [
+        "https://kroger.com/*",
+        "https://*.kroger.com/*"
+      ],
+      "status": "draft",
+      "last_verified": null,
+      "notes": ""
     },
     {
       "domain": "southwest.com",

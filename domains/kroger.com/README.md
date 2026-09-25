@@ -2,16 +2,26 @@
 
 Tools for Kroger (https://www.kroger.com).
 
-| tool  | file                 | status | notes |
-|-------|----------------------|--------|-------|
+| tool | file | status | notes |
+|------|------|--------|-------|
 | login | [login.js](login.js) | qa_passed | One submission maximum; live success, already-signed-in, account mismatch and invalid credentials verified; MFA, lockout and CAPTCHA synthetic only |
+| search_products | [search_products.js](search_products.js) | draft | First results page for the selected store and fulfillment method, with prices, availability and sponsored flags; works signed out |
+| get_product | [get_product.js](get_product.js) | draft | One product by 13-digit UPC: price, promotion, availability, per-order limit |
+| get_cart | [get_cart.js](get_cart.js) | draft | Active cart with priced lines, saved-for-later lines and an estimated subtotal; requires sign-in |
+| add_to_cart | [add_to_cart.js](add_to_cart.js) | draft | Adds by UPC after checking existence, availability and the per-order limit; increments an existing line; requires sign-in |
+| update_cart_item | [update_cart_item.js](update_cart_item.js) | draft | Sets an absolute quantity by UPC, 0 removes; never touches saved-for-later lines; requires sign-in |
+
+The login sections below are unchanged from the login PR. The shopping tools are
+documented in [Shopping tools](#shopping-tools) at the end of this file.
 
 ## Native WebMCP tools
 
 None found (checked 2026-09-25 with `webmcp.listTools()` and
 `document.modelContext.getTools()` on the homepage, a search results page
 (`/search?query=milk`), a product page (`/p/...`), the cart (`/cart`), the sign-in
-redirect (`/signin`) and `/account/profile`, which is a 404).
+redirect (`/signin`) and `/account/profile`, which is a 404). Re-checked signed in
+on 2026-09-25 while building the shopping tools: still none on the homepage,
+search results, a product page and the cart.
 
 `document.modelContext` exists on every page as the browser's `ModelContext` API
 (`registerTool`, `getTools`, `executeTool`, `ontoolchange`) with zero registered
@@ -228,3 +238,177 @@ mode.
 
 - Independent QA browsers were deleted by their agents after each pass.
 - Source: this repository is canonical; sessions expire but files do not.
+
+## Shopping tools
+
+`search_products`, `get_product`, `get_cart`, `add_to_cart` and `update_cart_item`
+let an agent go from "I want X" to "X is in my cart" and inspect or adjust the cart.
+They call the JSON endpoints the site's own pages use, from page context with the
+page's cookies, rather than scraping the DOM. Register all six kroger.com tools as
+one array (`forceOverwriteNamespace` replaces the whole namespace):
+
+```javascript
+const fs = await import("node:fs");
+const names = ["login", "search_products", "get_product", "get_cart", "add_to_cart", "update_cart_item"];
+const tools = names.flatMap(n => eval(fs.readFileSync(`domains/kroger.com/${n}.js`, "utf8")));
+await webmcp.addCustomTools({ namespace: "kroger.com", tools, forceOverwriteNamespace: true });
+const tab = (await currentTab()).targetId;
+const tool = (await webmcp.listTools()).find(t => t.source.custom?.namespace === "kroger.com" && t.tool.name === "search_products" && t.source.target_id === tab);
+repl.write(JSON.stringify(await webmcp.invokeTool(tool.tool_ref, { query: "bananas", limit: 5 }, { timeoutSec: 120 })));
+```
+
+### Flow
+
+1. `search_products({ query, limit })` returns the first results page for the
+   store and fulfillment method the session has selected, each result carrying the
+   13-digit `upc`, `price_cents`, `promo_price_cents`, `available`,
+   `max_order_quantity`, `sponsored` and `rank`. It works signed out.
+2. `get_product({ upc })` returns the same record for one product (use it to
+   confirm availability or read the per-order limit before adding).
+3. `add_to_cart({ upc, quantity })` verifies the product exists and is sellable for
+   the active fulfillment method, then writes the cart. Adding a UPC that is
+   already an active line **increments** it, so two calls add twice. Requires a
+   signed-in session; use `login` first.
+4. `get_cart()` returns the active cart with priced lines, the saved-for-later
+   lines (which the tools never change), `item_count` and an estimated
+   `subtotal_cents`.
+5. `update_cart_item({ upc, quantity })` sets an absolute quantity; `0` removes the
+   line. A UPC that is not an active line is `not_in_cart`.
+
+None of the tools checks out, changes the store, address or fulfillment method,
+applies coupons or touches memberships, and none exposes those actions.
+
+### Output contract
+
+Every output has a `status`: `ok`, `no_results` (search only) or `error`. Errors
+carry `error_kind` and the site's or the tool's `error_message`:
+
+| error_kind | meaning |
+|---|---|
+| `invalid_input` | Rejected before any page access (the runtime's JSON Schema gate rejects most of these first). |
+| `not_authenticated` | The `loggedIn` cookie is not `yes`, or the site answered 401/403. Cart tools only. |
+| `not_found` | No catalog record with a description for that UPC (`get_product`, `add_to_cart`). |
+| `unavailable` | The product exists but is not sellable for the active fulfillment method at the selected store (`add_to_cart`). |
+| `quantity_limit` | The resulting quantity would exceed the site's `maxOrderQuantity` (`add_to_cart`, `update_cart_item`). |
+| `not_in_cart` | The UPC is not an active line; saved-for-later lines count as not in the cart (`update_cart_item`). |
+| `challenge` | HTTP 429 or a `cpr_chlge` body from Akamai Bot Manager. |
+| `site_error` | Any other failure: non-JSON body, HTTP error, no active cart, header capture failure, or a write the site accepted but did not apply. |
+
+All prices are integers in US cents. `price_cents` is the regular price for the
+active fulfillment method; `promo_price_cents` is set when the site shows a
+promotion, and cart line totals use it. For produce sold by weight,
+`sold_by_weight` is true and `price_cents` is the site's estimate for one unit
+(`price_note` carries wording such as "about $1.03 each", `unit_price_text` the
+per-pound price). `fulfillment` in every success output names the fulfillment
+`type` (`DELIVERY`, `PICKUP` or `IN_STORE`), `store_id`, `postal_code` and, for
+pickup, `store_name`, because prices, availability and the cart are tied to it.
+
+### How the tools talk to the site
+
+- Search: `GET /atlas/v1/search/v1/products-search?filter.query=…&filter.locationId=<store>&filter.fulfillmentMethods=<type>&option.groupBy=PRODUCT_VARIANT&page.size=<limit>`.
+  Hits carry only `upc`, `description` and rank; paid placements have a
+  `placementId` and rank 0. Prices come from the product endpoint.
+- Products: `GET /atlas/v1/product/v2/products?filter.gtin13s=<upc>&…&projections=items.full,offers.compact,inventory.projected,variantGroupings.compact`.
+  `fulfillmentSummaries[]` holds per-method `regular.price`, optional `promo.price`,
+  `availability.sellable`, `availability.inventoryLevel` and `maxOrderQuantity`.
+  The endpoint also returns placeholder records for unknown codes; the tools treat
+  a record without `item.description` as not found.
+- Cart: `GET /atlas/v1/carts` returns `data.carts[]`; the tools use the one with
+  `type: "ACTIVE"`. Writes are `PUT /atlas/v1/carts/<cartId>` with
+  `{ lineItems: [...] }`: a new line is `{ gtin13, modalityType, quantity, channel: "WEB", substitutionPolicy: "SHOPPER_CHOICE" }`,
+  an existing line is `{ id, gtin13, modalityType, quantity }`, and quantity `0`
+  removes it. The response is the whole cart, which the tools use to confirm the
+  write. A PUT for a UPC that is already a line does **not** increment; that is
+  why `add_to_cart` reads the cart first and writes by line id.
+- Required headers: `x-kroger-channel: WEB` and `x-laf-object`, a JSON array of
+  the session's location-and-fulfillment context (one entry per fulfillment
+  method, each with `sources[].storeId`). Without it the API answers
+  `LAF_OBJECTS_REQUIRED`. The page builds this object in memory from
+  `POST /atlas/v1/modality/preferences`, which answered a page-context call with
+  an Akamai challenge (HTTP 429, `cpr_chlge`), so the tools never call it. Instead
+  they capture the header from the site's own next request: enable CDP network
+  events, arm a one-shot `Network.requestWillBeSent` wait, reload the current
+  kroger.com page, and read `x-laf-object` from the first `/atlas/v1/` request.
+  The value is cached in `sessionStorage` (`kroger.com.laf.v1`) for 30 minutes,
+  keyed by the `x-active-modality`, `StoreCode` and `DD_modStore` cookies, so a
+  store or fulfillment change invalidates it. The capture is retried once; live it
+  took 2 to 5 seconds. The tools also send `x-facility-id`, `x-modality-type` and
+  `x-modality` derived from that object, as the page does.
+- The active fulfillment method is read from the `x-active-modality` cookie; if it
+  is absent the first entry of the captured object is used.
+
+### Site quirks
+
+- If the attached tab is not on `www.kroger.com`, the tools open the homepage
+  first. They never open `/signin` or `/account/dashboard/` (see the login notes:
+  those start an MSAL redirect that dropped the session once).
+- A product search for nonsense still returns fuzzy matches, so `no_results` is
+  rare; `total_count` and `available_count` come from the site.
+- `page.size` is a hint: the site returns a few paid placements beyond it. The
+  tools look up all returned UPCs and cut the list to `limit` after dropping
+  records without a description.
+- `maxOrderQuantity` is per fulfillment method and can be very large (thousands
+  for shelf-stable items); for bananas it is absent, so no limit is enforced.
+- Right after a navigation `listTools()` can be empty for a few seconds; list
+  again. Each open kroger.com tab has its own `tool_ref`.
+- The tools rely on CDP helpers (`cdp`, `waitForEvent`) for the header capture,
+  so they need a runtime that exposes those helpers to `kind: "cdp"` tools.
+
+### Known limitations
+
+- Store and fulfillment selection is read, never changed. If no store or address
+  is selected, the tools return `site_error` asking for one to be chosen on the
+  site.
+- Only the first results page is returned (`limit` up to 40).
+- Substitution preferences, special instructions, coupons, saved-for-later moves
+  and the checkout total are out of scope; `subtotal_cents` is an estimate from
+  current prices, not the checkout total.
+- `add_to_cart` for a UPC that only exists as a saved-for-later line creates a new
+  active line; whether the site merges the two was not tested live.
+- Signed-out cart behaviour was not tested; the cart tools refuse unless
+  `loggedIn=yes`.
+- Kroger's bot protection was not triggered during testing except by the one
+  `modality/preferences` probe; a `challenge` result means wait, not retry.
+- Live verification used one residential stealth browser signed in to one
+  account with a delivery address; pickup and in-store modes are covered by the
+  fixture tests only.
+
+### QA summary
+
+Fixture tests (no live traffic; fabricated address, cart and products):
+
+```sh
+node --test tests/kroger-shopping.test.mjs
+```
+
+They cover the single-expression and no-Node-globals contract, registry entries,
+input rejection before page access for every tool, homepage routing from
+unrelated pages, header capture, caching and retry, API error mapping (401, 403,
+429, non-JSON, challenge body), search ordering, deduplication, sponsored flags,
+limits and `no_results`, product lookup and not-found, cart pricing with
+promotions and saved-for-later separation, add (new line, increment, limit,
+unavailable, unknown, silently ignored write) and update (set, remove,
+not-in-cart, saved-for-later refusal, limit, ignored write).
+
+Live verification is recorded in the table below as it happens.
+
+| # | case | result |
+|---|------|--------|
+| 1 | `get_product` for a gallon of milk, signed in, delivery | ok: price, unit price text, inventory HIGH, max order quantity |
+| 2 | `get_cart`, signed in | ok: 0 active lines, 1 saved-for-later line with a promotional price |
+| 3 | `get_product` for a placeholder code | ok with `available: false` and no price (the code is a real "Bag Holder" record) |
+| 4 | `search_products` "bananas", limit 4, header cache cleared (cold) | ok in 10.0 s including the header capture: 509 matches, a sponsored yogurt first, bananas second with `sold_by_weight`, promo prices on other rows |
+| 5 | `add_to_cart` bananas, quantity 1, on an empty active cart | ok: new line, `previous_quantity` 0, `quantity` 1, 2.1 s |
+| 6 | `add_to_cart` bananas again, quantity 1 | ok: same line id, `previous_quantity` 1, `quantity` 2 (increment, written by line id) |
+| 7 | `get_cart` | ok: 1 active line at 2 × 103 cents, `subtotal_cents` 206, saved-for-later line listed separately |
+| 8 | `update_cart_item` bananas to 1, then to 0 | ok: quantity 1, then `removed: true`, `line_item_id` null, `cart_item_count` 0 |
+| 9 | `update_cart_item` bananas to 0 again | `not_in_cart`, no write |
+| 10 | `update_cart_item` on the saved-for-later UPC | `not_in_cart` with the saved-for-later hint, saved line unchanged |
+| 11 | `add_to_cart` for the "Bag Holder" placeholder and for an unknown code | `unavailable` and `not_found`, no writes |
+| 12 | `get_cart` at the end | 0 active lines; the saved-for-later line exactly as before the session |
+
+### Sessions
+
+- Browser sessions used for live verification are ephemeral and listed in the
+  hand-off report, not here.
+

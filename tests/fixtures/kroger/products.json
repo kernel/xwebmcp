@@ -1,0 +1,71 @@
+{
+  "data": {
+    "products": [
+      {
+        "id": "0000000004011",
+        "item": {
+          "description": "Fresh Bunch of Bananas",
+          "brand": { "name": "Fresh Bananas", "code": "1" },
+          "customerFacingSize": "1 Bunch",
+          "seoDescription": "fresh-bunch-of-bananas",
+          "images": [
+            { "perspective": "front", "size": "medium", "url": "https://www.kroger.com/product/images/medium/front/0000000004011" }
+          ]
+        },
+        "price": {
+          "sellBy": "Weight",
+          "storePrices": {
+            "regular": { "defaultDescription": "about $1.03 each", "secondaryDescription": "$0.49/lb", "price": "USD 1.03" }
+          }
+        },
+        "fulfillmentOptions": ["IN_STORE", "PICKUP", "DELIVERY"],
+        "fulfillmentSummaries": [
+          { "type": "PICKUP", "regular": { "price": "USD 1.03", "pricePerUnitString": "$0.49/lb" }, "availability": { "sellable": true, "inventoryLevel": "HIGH" } },
+          { "type": "DELIVERY", "regular": { "price": "USD 1.03", "pricePerUnitString": "$0.49/lb" }, "availability": { "sellable": true, "inventoryLevel": "HIGH" }, "maxOrderQuantity": 3 }
+        ]
+      },
+      {
+        "id": "0001111041700",
+        "item": {
+          "description": "Kroger 2% Reduced Fat Milk Gallon",
+          "brand": { "name": "Kroger" },
+          "customerFacingSize": "1 gal",
+          "seoDescription": "kroger-2-reduced-fat-milk-gallon",
+          "images": []
+        },
+        "price": {
+          "sellBy": "Unit",
+          "storePrices": {
+            "regular": { "defaultDescription": "$2.89", "equivalizedUnitPriceString": "$0.02/fl oz", "price": "USD 2.89" },
+            "promo": { "price": "USD 2.49" }
+          }
+        },
+        "fulfillmentOptions": ["IN_STORE", "PICKUP", "DELIVERY"],
+        "fulfillmentSummaries": [
+          { "type": "DELIVERY", "regular": { "price": "USD 2.89" }, "promo": { "price": "USD 2.49" }, "availability": { "sellable": true, "inventoryLevel": "HIGH" }, "maxOrderQuantity": 4284 }
+        ]
+      },
+      {
+        "id": "0007000000009",
+        "item": {
+          "description": "Seasonal Item Not Sold For Delivery",
+          "brand": null,
+          "customerFacingSize": "1 ct",
+          "seoDescription": "seasonal-item",
+          "images": []
+        },
+        "price": { "sellBy": "Unit", "storePrices": { "regular": { "price": "USD 4.00" } } },
+        "fulfillmentOptions": ["IN_STORE"],
+        "fulfillmentSummaries": [
+          { "type": "IN_STORE", "regular": { "price": "USD 4.00" }, "availability": { "sellable": true, "inventoryLevel": "LOW" } },
+          { "type": "DELIVERY", "regular": { "price": "USD 4.00" }, "availability": { "sellable": false, "inventoryLevel": "TEMPORARILY_OUT_OF_STOCK" } }
+        ]
+      },
+      {
+        "id": "0000000000001",
+        "price": {},
+        "fulfillmentSummaries": []
+      }
+    ]
+  }
+}
