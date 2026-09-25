@@ -123,11 +123,11 @@
         "https://united.com/*",
         "https://*.united.com/*"
       ],
-      "status": "qa_passed",
+      "status": "draft",
       "qa_agent": "agt_900288267257b91f1fdc",
-      "browser_session": "ffvsog7w3inx1pn4fks92a92",
+      "browser_session": null,
       "last_verified": "2026-09-25",
-      "notes": "live-verified captcha_or_challenge only; success path unverified — site challenges egress; solver loaded but idle"
+      "notes": "Live-verified: challenge classification, input validation, and one-submission-per-stage behaviour. Unverified: successful authentication, wrong-password rejection, and MFA; independent QA found three defects that were fixed but never re-ran against the fixed tool. United returns HTTP 428 at /xapi/auth/validate-username, persisting with stealth off, across both entry paths and both proxy types; an account-level flag is suspected but unproven."
     },
     {
       "domain": "united.com",
