@@ -123,11 +123,11 @@
         "https://instacart.com/*",
         "https://*.instacart.com/*"
       ],
-      "status": "draft",
-      "qa_agent": null,
+      "status": "qa_passed",
+      "qa_agent": "agt_3fa02b3438dc8870922b",
       "browser_session": "q2yx9he194tv65c9k0idghnz",
       "last_verified": "2026-09-25",
-      "notes": "Passwordless email-code login; password is accepted but never entered. Live-verified 2026-09-25 with one real email submission and one real code entry: DuckDuckGo entry, invalid_credentials for a fabricated address, mfa_required first step, authenticated completion, already-logged-in verification on /store/account, and wrong-account rejection. Unverified: wrong or expired codes, lockout text, unresolved captcha. No native WebMCP tools found."
+      "notes": "Passwordless email-code login; password is accepted but never entered. Live-verified 2026-09-25 with one real email submission and one real code entry: DuckDuckGo entry, invalid_credentials for a fabricated address, mfa_required first step, authenticated completion, already-logged-in verification on /store/account, and wrong-account rejection. Independent failure-path QA passed twice (two defects found and fixed, then re-verified on the current source). Unverified: wrong or expired codes, lockout text, unresolved captcha, a proxy error on the DuckDuckGo results step (reported generically, no submission). No native WebMCP tools found."
     },
     {
       "domain": "jetblue.com",

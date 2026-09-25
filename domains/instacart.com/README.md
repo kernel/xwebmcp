@@ -4,7 +4,7 @@ Tools for Instacart (https://www.instacart.com).
 
 | tool | file | status | notes |
 |------|------|--------|-------|
-| login | [login.js](login.js) | draft | Passwordless email-code login. Email step, code step, already-logged-in check and wrong-account check live-verified on 2026-09-25. |
+| login | [login.js](login.js) | qa_passed | Passwordless email-code login. Email step, code step, already-logged-in check and wrong-account check live-verified on 2026-09-25; independent failure-path QA passed on the current source. |
 
 ## Native WebMCP tools
 
@@ -153,11 +153,27 @@ non-Instacart pages. Two defects were found and fixed afterwards:
 - A proxy error page on `start.duckduckgo.com` surfaced as "search controls did not
   become available". Fixed by checking for the proxy page in the search step.
 
+Independent QA, round 2 (same agent, fresh browser with the same settings, deleted
+afterwards, commit `2e9708a`): both fixes verified, D1 live and D2 by mock because no
+proxy error occurred in that session. A full fabricated failure path from
+`/store/costco/storefront` returned schema-valid `invalid_credentials` after one
+submission (35.9 s including a solved reCAPTCHA image challenge); the tool was not
+listed on non-Instacart pages; the local suite passed. Sign-off: `qa_passed` for the
+source at that commit, which is the current source. One non-blocking note remains open
+(R1 below). After the sign-off the author re-ran the already-logged-in check and the
+`otp`-without-code-step check on the long-lived browser with this exact source:
+`authenticated: true` in 0.4 s and "No Verify email step is visible" in 0.4 s.
+
 Unverified:
 
 - Wrong or expired codes (`mfa_failed`), lockout or throttling text, a visible reCAPTCHA
   that the solver fails to clear, and a `Request a new code` resend. These branches have
   mocked coverage only.
+- R1 (QA note, not fixed to keep the signed-off source): a Kernel proxy error page on
+  the DuckDuckGo *results* page (after the query is submitted) is reported as the generic
+  "DuckDuckGo organic results did not become available" rather than as a proxy error, and
+  the proxy message says "instead of Instacart" even when the failing page is DuckDuckGo.
+  Both outcomes are still `unknown` with no submission.
 - The code-step live run (`authenticated: true`) used the revision before the hint
   selection was narrowed and before the QA fixes above; those changes only affect the
   returned hint text and the pre-typing checks, and are covered by the mocked tests.
