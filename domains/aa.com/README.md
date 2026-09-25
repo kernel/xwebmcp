@@ -125,6 +125,14 @@ The successful manual search-entry sequence is now the only entry path for tools
 
 Referrer experiment browser: `bqpgqp8xwmh46xu6addo3je1` (left alive at MFA with a 24-hour inactivity timeout). These historical matrix and referrer experiments predate the explicit no-solving policy. They were not repeated for the manual-assist change.
 
+### Independent DDG-only re-test
+
+Independent QA re-tested commit `ee2a19e614ebcf837622326c9c5d02f53c89ef5f`: **213 repository tests and 14 independent temporary regressions passed**, with no remaining actionable findings. The re-test covered DDG step-specific failures, challenge stops, URL query/fragment stripping, pre-existing MFA/authentication attribution, and the one-submission guard. No direct-entry cases were run.
+
+A guarded live execution from `about:blank` reached the AA login form in 10.7 seconds. The observed first organic href was `https://www.aa.com/loyalty/login`, followed by a link transition to `https://login.aa.com/login`; the final sanitized referrer was `https://start.duckduckgo.com/`. No direct AA navigation, credential filling, or submission occurred. The hash-verified source ran with a read-only first-link observer and a test-only early return at the form to prevent credential actions; this was not an unmodified WebMCP invocation. Full authentication remains untested.
+
+The fresh QA browser and artifact were deleted, while existing manual/MFA sessions were untouched. The earlier direct-entry experiments remain the historical baseline, not a new comparison run.
+
 ### Supported manual-assist path
 
 1. Open a dedicated headful browser with `stealth: false`, no CAPTCHA solver extension, and a 24-hour inactivity timeout. Give the human its private live view through the caller's secure browser handoff, not through repository content. Do not log credentials or enable authentication network-body capture.
@@ -135,7 +143,7 @@ Referrer experiment browser: `bqpgqp8xwmh46xu6addo3je1` (left alive at MFA with 
 
 Manual-assist browser: `bjcsg0na3ht6hklf6v2ziamo` (24-hour inactivity timeout; only the Kernel extension was observed, no CAPTCHA solver). The registry now points to this browser. Live `{ manual_assist: true }` inspection returned `human_assist_required`, `reason: manual_login`, and `submission_attempted: false`. The human has not yet completed this session's login, so token capture and full authentication are **pending**, not claimed as tested. No additional credential submission was made for this change.
 
-Local regressions cover immediate frame/text CAPTCHA handoff, no navigation from an existing challenge, manual inspection without side effects, and the authenticated-after-human-login output using synthetic UI. Live CAPTCHA evidence remains the earlier challenge observations; the new branch does not claim a new independent QA pass.
+Regressions cover immediate frame/text CAPTCHA handoff, no navigation from an existing challenge, manual inspection without side effects, and authenticated-after-human-login output using synthetic UI. Live CAPTCHA evidence remains the earlier challenge observations; the independent DDG-only re-test above verifies navigation and safety without claiming full authentication.
 
 ```sh
 node --test tests/aa-login.test.mjs

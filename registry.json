@@ -15,7 +15,7 @@
       "qa_agent": "agt_64d5890885db30858fc8",
       "browser_session": "bjcsg0na3ht6hklf6v2ziamo",
       "last_verified": "2026-09-25",
-      "notes": "DDG organic search is the only entry path; entry failures name the failed step and never navigate directly to AA. CAPTCHA requires human assistance; URL queries/fragments are omitted. DDG-only revision awaiting independent re-test; manual login and token capture pending."
+      "notes": "DDG-only revision ee2a19e independently passed 213 repository tests, 14 additional regressions, and guarded live search-to-login navigation with DDG referrer and zero credential submissions. Entry failures name the step; CAPTCHA requires human assistance. Full authentication and token capture remain unverified."
     },
     {
       "domain": "aa.com",
