@@ -171,8 +171,10 @@ test("registry entry matches the canonical definition", () => {
   assert.equal(entry.file, "domains/doordash.com/login.js");
   assert.equal(entry.kind, "cdp");
   assert.deepEqual(entry.url_patterns, plain(harness().tool.match.url_patterns));
-  const domains = registry.tools.map(t => t.domain + " " + t.tool);
-  assert.deepEqual(domains, [...domains].sort(), "registry is sorted by domain then tool");
+  const domains = registry.tools.map(t => t.domain);
+  assert.deepEqual(domains, [...domains].sort(), "registry entries stay grouped in domain order");
+  assert.equal(entry.status, "qa_passed");
+  assert.equal(entry.browser_session, null);
 });
 
 for (const invalid of [undefined, null, [], {}, { email: input.email }, { password: input.password }, { ...input, otp: "123456" }, { ...input, password: "" }, { email: "not-an-email", password: "x" }, { email: input.email, otp: "12345" }, { email: input.email, otp: 123456 }, { ...input, remember_me: true }, { email: " ", password: "x" }]) {

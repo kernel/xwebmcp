@@ -4,7 +4,7 @@ Tools for DoorDash (https://www.doordash.com).
 
 | tool | file | status | notes |
 |------|------|--------|-------|
-| login | [login.js](login.js) | draft | Email + password sign-in with a two-step guided flow; existing sessions verified against the profile page; `otp` mode for the 2-Step Verification modal |
+| login | [login.js](login.js) | qa_passed | Email + password sign-in with a two-step guided flow; existing sessions verified against the profile page; `otp` mode for the 2-Step Verification modal |
 
 ## Native WebMCP tools
 
@@ -202,11 +202,25 @@ navigation; all outputs conformed). New minor findings, all addressed in the nex
 | The `otp` submit finder accepted fewer code fields than the detector | Both use the same predicate. |
 | One-character inputs skipped the "country" exclusion; non-loop calls are not counted against the budget | The exclusion applies to every branch; the budget was lowered to 112 s to keep slack under the 120 s invocation limit. |
 
-Round 3 is recorded below once it completes.
+Round 3, 2026-09-25, agent `agt_5b1753eb7444ed26b1d6` against commit `67d367b` (`login.js` sha256
+`2c769a701733b421c2dea59716d194533bf355b0c68123889ba1542487c78980`) in a fresh profile-less stealth
+browser (deleted afterwards). One fabricated email-step submission, no password submissions.
+Sign-off: **passes independent QA**. Confirmed all four round-2 fixes (the abort checks in the
+harness; the feedback observer live on the sign-in page, where an unrelated hidden addition did not
+mark a stale error fresh but a repaint of it did; the shared code predicate by inspection). Live:
+three invalid inputs rejected by the schema gate with no navigation; the search entry from the about
+page returned `invalid_credentials` at `email_step` in 13.1 s with the observer removed and no guard
+set afterwards; `otp` mode without a code step returned `unknown` in 0.8 s with no navigation; all
+outputs conformed. Static review found no double submit, no MFA-as-authenticated path, no throw
+escaping `execute`, and no bypass of the budget check.
+
+Round 3 left four minor findings, all of which fail closed with nothing submitted. They are
+deliberately not fixed in the QA-passed source and are listed under known limitations.
 
 ## Status and known limitations
 
-Status: `draft` pending the independent QA pass recorded above.
+Status: `qa_passed` on the tool source at sha256 `2c769a70…` (commit `67d367b`); later commits on
+the branch touch only this README and the registry.
 
 - **Live-verified (2026-09-25):** existing-session success without submission in the profile-backed
   browser (5.5 s, account matched on the profile page); one real email + password submission in a
@@ -230,6 +244,13 @@ Status: `draft` pending the independent QA pass recorded above.
   there). The QA round 1 fixes (header-control success signal, feedback observer, budget) have unit
   coverage and the existing-session live check only; no further real password submission was made
   after them.
+- **Known minor issues (round 3, unfixed):** the profile, result-landing, Sign In control, and
+  password-option waits still say the site did not respond when the budget or an abort ended the
+  wait; the feedback match uses substring containment, so a hidden addition that is a substring of a
+  stale error (for example "couldn't") would mark it fresh after a submission; the `otp` paste
+  filter applies the "country" exclusion only to its wording branch; an already-aborted signal
+  still performs the DuckDuckGo navigation before stopping, and the `otp` abort message cites the
+  budget rather than the cancellation. None of these can submit anything or report a false success.
 - **Best lead for the next person:** DoorDash sends the 2-Step code to the phone by default. The
   modal's "Send to Email" button switches delivery to the account email, which can be read from the
   mailbox; the tool does not click it, so a caller that cannot receive SMS should click it in the

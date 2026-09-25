@@ -51,22 +51,6 @@
     },
     {
       "domain": "delta.com",
-      "tool": "login",
-      "file": "domains/delta.com/login.js",
-      "kind": "cdp",
-      "namespace": "delta.com",
-      "url_patterns": [
-        "https://delta.com/*",
-        "https://*.delta.com/*"
-      ],
-      "status": "draft",
-      "qa_agent": null,
-      "browser_session": null,
-      "last_verified": "2026-09-25",
-      "notes": "Live-verified: search-result entry reaches the login form and submits exactly once, and failures report the step and whether a submission happened. Success path unverified: Delta returns 'login is unavailable right now' to every Kernel browser, including one with no profile, while the same credentials work in an ordinary browser."
-    },
-    {
-      "domain": "delta.com",
       "tool": "search_flights",
       "file": "domains/delta.com/search_flights.js",
       "kind": "cdp",
@@ -82,6 +66,22 @@
       "notes": "Independent targeted QA passed, including schema and synthetic parser/readiness regressions. A separate live DOM parse returned 20 rows; successful final full-tool invocation remains unverified due to intermittent Delta HTTP 429/SFAF001 failures. Domain migration invocation from a baggage page reached results and preserved explicit error output. Round trips return outbound options only; prices are displayed fares, not passenger totals. Real zero results and completeness beyond the 1.5-second DOM-quiescence heuristic remain unverified."
     },
     {
+      "domain": "delta.com",
+      "tool": "login",
+      "file": "domains/delta.com/login.js",
+      "kind": "cdp",
+      "namespace": "delta.com",
+      "url_patterns": [
+        "https://delta.com/*",
+        "https://*.delta.com/*"
+      ],
+      "status": "draft",
+      "qa_agent": null,
+      "browser_session": null,
+      "last_verified": "2026-09-25",
+      "notes": "Live-verified: search-result entry reaches the login form and submits exactly once, and failures report the step and whether a submission happened. Success path unverified: Delta returns 'login is unavailable right now' to every Kernel browser, including one with no profile, while the same credentials work in an ordinary browser."
+    },
+    {
       "domain": "doordash.com",
       "tool": "login",
       "file": "domains/doordash.com/login.js",
@@ -91,11 +91,11 @@
         "https://doordash.com/*",
         "https://*.doordash.com/*"
       ],
-      "status": "draft",
-      "qa_agent": null,
+      "status": "qa_passed",
+      "qa_agent": "agt_5b1753eb7444ed26b1d6",
       "browser_session": null,
       "last_verified": "2026-09-25",
-      "notes": "Live-verified 2026-09-25: existing-session success through a profile-page account match (profile-backed and profile-less browsers), a mismatched account refused without submission, one real password submission per proxy (residential: password step reused; mobile: packaged search entry end to end) reached the SMS 2-Step Verification modal as mfa_required, and otp mode completed authentication with an emailed code. Independent QA round 1 passed the failure paths and found a stale-cookie false-success case, fixed with unit coverage. Unverified: wrong-password wording, lockout and CAPTCHA responses, and a real password submission on the post-QA source."
+      "notes": "Independent QA passed on the current source (three rounds; the last signed off with four minor fail-closed findings documented in the README). Live-verified 2026-09-25: existing-session success through a profile-page account match, a mismatched account refused without submission, one real password submission per proxy (residential: open password step; mobile: packaged search entry end to end) reached the SMS 2-Step Verification modal as mfa_required, and otp mode completed authentication with an emailed code. Unverified: wrong-password wording, lockout and CAPTCHA responses, and a real password submission on the post-QA source."
     },
     {
       "domain": "flyfrontier.com",
@@ -159,7 +159,7 @@
       "qa_agent": "agt_8da83a2e489269a5ff05",
       "browser_session": "fe509cugfxs9gqfs1wk1kkne",
       "last_verified": "2026-09-24",
-      "notes": "Independent search/parser QA passed; domain migration live-verified from /travel-agents. Returns initial outbound cards only, including round trips; 1\u20137 adults; displayed cash fares are not trip totals. Inventory failures remain explicit errors."
+      "notes": "Independent search/parser QA passed; domain migration live-verified from /travel-agents. Returns initial outbound cards only, including round trips; 1–7 adults; displayed cash fares are not trip totals. Inventory failures remain explicit errors."
     },
     {
       "domain": "southwest.com",
