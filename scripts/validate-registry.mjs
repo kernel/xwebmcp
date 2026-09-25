@@ -97,6 +97,15 @@ function hostWithinDomain(pattern, domain) {
   return !host.startsWith("*.") && host.endsWith(`.${domain}`);
 }
 
+// A specific host on another registrable domain is allowed when the domain README's URL patterns section names it (spec §6.3).
+function documentedExternalHost(pattern, domain) {
+  const host = pattern.slice("https://".length).split("/")[0];
+  const file = join(root, `domains/${domain}/README.md`);
+  if (host.startsWith("*.") || !existsSync(file)) return false;
+  const section = readFileSync(file, "utf8").split(/^(?=#{1,6}\s)/m).find((part) => /^#{1,6}\s+.*url.?patterns?/i.test(part));
+  return !!section && section.includes(host);
+}
+
 function checkReadme(domain, entries) {
   const file = `domains/${domain}/README.md`;
   if (!existsSync(join(root, file))) return fail(`${file}: missing`);
@@ -155,7 +164,7 @@ function main() {
     if (!existsSync(join(root, entry.file))) { fail(`${label}: ${entry.file} does not exist`); return; }
 
     for (const pattern of entry.url_patterns ?? []) {
-      if (typeof pattern === "string" && pattern.startsWith("https://") && !hostWithinDomain(pattern, entry.domain)) {
+      if (typeof pattern === "string" && pattern.startsWith("https://") && !hostWithinDomain(pattern, entry.domain) && !documentedExternalHost(pattern, entry.domain)) {
         fail(`${label}: url pattern ${pattern} is outside ${entry.domain}`);
       }
     }

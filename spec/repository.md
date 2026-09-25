@@ -227,6 +227,15 @@ The consumer trusts `url_patterns` in the registry as-is; it does not read the t
 to find them. That is why §5.3 requires the two to be identical and why the validator
 checks it.
 
+### 6.3 Sign-in hosts on another registrable domain
+
+Some sites run part of a flow on a host outside their own registrable domain (Uber Eats
+signs in on `auth.uber.com`). A tool that must stay listed while the tab is on that host,
+for example to accept a one-time code mid-flow, MAY add patterns for it. Each such
+pattern MUST name one specific host (no `*.` wildcard), and the per-domain README MUST
+have a URL patterns section (§8) that names the host and explains why the tool needs it.
+Everything else in §6 still applies; the namespace stays the site's own domain.
+
 ## 7. Repositories without `registry.json`
 
 A consumer MAY load tools from a repository, or a subdirectory of one, that has no
@@ -277,7 +286,8 @@ It SHOULD also contain:
   copes with them.
 - **QA summary**: the cases the QA pass covered and their results. For `verified` tools
   this MUST include at least one dated live case (§5.4).
-- **URL patterns**: REQUIRED when the tool's patterns are narrowed (§6.2), stating the
+- **URL patterns**: REQUIRED when the tool's patterns are narrowed (§6.2) or name a host
+  on another registrable domain (§6.3), stating the
   product and the reason.
 - **Sessions**: browser or agent identifiers used during QA, marked as ephemeral.
 
@@ -296,7 +306,8 @@ repository root. It has no dependencies beyond Node itself and checks:
 3. Every entry's `file` exists and equals `domains/<domain>/<tool>.js`; `namespace`
    equals `domain`; there are no duplicate `(domain, tool)` pairs or files.
 4. Every `url_patterns` entry is well-formed per §6 and its host lies within the
-   entry's domain.
+   entry's domain, or is a specific host that the domain README's URL patterns section
+   names (§6.3).
 5. The tool file evaluates, as a single expression, to an array of exactly one
    definition whose `kind`, `tool.name`, and `match.url_patterns` equal the entry, and
    which declares both `inputSchema` and `outputSchema`.

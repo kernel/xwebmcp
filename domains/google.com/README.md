@@ -65,6 +65,13 @@ Google Flights encodes a search in the `tfs` query parameter, a base64url protob
 - An automated-traffic challenge (`/sorry/`) is reported as `BLOCKED`; a Google error page as `SITE_ERROR`; a page that never announces results as `RESULTS_TIMEOUT`. None of these become empty successes.
 - Internal waits share a 110-second budget; invoke with `timeoutSec: 120`.
 
+## Known limitations
+
+- Outbound itineraries only. Round-trip return options need an outbound selection and are not returned.
+- Searches run on `www.google.com` with `hl=en&gl=US`. Regional Google domains are outside this namespace.
+- The consent interstitial, `/sorry/` blocks and "Price unavailable" cards are covered by local tests only.
+- Children, infants, multi-city and flexible dates are not supported. The tool never selects, books or purchases.
+
 ## QA summary
 
 Author verification on 2026-09-25 (session `j3s22gi3hj37cbptlluo351a`, stealth, US residential proxy) registered the branch file after a SHA-256 check of the fetched source and invoked it through `webmcp.invokeTool`. The first two prices and times of each populated result were compared with the card labels on the page.
