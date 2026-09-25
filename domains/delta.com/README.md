@@ -5,6 +5,7 @@ Tools for Delta Air Lines (https://www.delta.com).
 | tool | file | status | notes |
 | --- | --- | --- | --- |
 | search_flights | [search_flights.js](search_flights.js) | qa_passed | Independent targeted QA passed; successful full live invocation remains blocked by intermittent HTTP 429 responses. |
+| login | [login.js](login.js) | draft | Unit-tested and exercised live on two egresses. Both live attempts reached the form and submitted once; Delta answered with its own "login is unavailable right now" message, so no successful login has been observed. |
 
 ## Scope
 
@@ -70,8 +71,94 @@ On 2026-09-24, re-registered under `delta.com`, removed the old `airline_tools.s
 
 Local checks also evaluate the file as one array expression, compare both schemas with the previously QA-tested source, and exercise navigation from unsuitable pages versus reuse of a clean booking form.
 
+## login
+
+`login` signs in with a SkyMiles number or username and password. It performs at most one
+submission per invocation and never retries. Two modes:
+
+- `credentials` — enters the site through a DuckDuckGo search result, then fills and submits
+  the Delta login form.
+- `prefilled_password` — submits the login form that is already visible and filled on the
+  current Delta page, without reading the value and without navigating anywhere.
+
+`status: "success"` means this invocation's submission reached authenticated or verification
+UI. `authentication_complete: false` with `mfa_required: true` is a first-step success, not a
+completed session. Failures are explicit: `error_kind` plus `failed_step`, `error_source`
+(`site` or `tool`) and `submitted`, so a caller can always tell whether a password actually
+reached Delta. A captcha or bot challenge is reported as `error_kind: "captcha_or_challenge"`.
+
+### Search-result entry path
+
+In `credentials` mode the entry path is DuckDuckGo only. The tool opens
+`https://start.duckduckgo.com`, searches (default `delta skymiles login`), and clicks the
+first organic, non-ad result whose host is `delta.com` or `www.delta.com`, arriving with
+`document.referrer` set to `https://duckduckgo.com/`. The first organic result is the
+dedicated login page `https://www.delta.com/skymiles/login`, which renders `#userId-input`
+and `#password-input` directly, so no homepage login popup is involved.
+
+There is deliberately **no direct-navigation fallback**. Each entry step fails with its own
+`error_kind` — `search_engine_unreachable`, `search_box_missing`, `search_results_missing`,
+`no_delta_result`, `entry_navigation_failed` — and the tool never silently reaches Delta another
+way. Every one of those failures is returned before any credential is typed.
+
+Because `match.url_patterns` is Delta-only, the tool is listed and invocable **only while the
+browser is already on a delta.com page**. That is a registration precondition, not the login
+entry path: on invoke the tool leaves for DuckDuckGo and re-enters through the search result.
+
+### Entry-path comparison
+
+Same implementation of the form interaction, same profile, same credentials, one submission per
+run. Direct navigation is the earlier baseline; search-result entry is the current tool.
+
+| entry path | egress | form reached | submitted | outcome |
+| --- | --- | --- | --- | --- |
+| direct navigation | residential | yes | yes | Site answered "login is unavailable right now". |
+| direct navigation | mobile | no | no | Login form not ready within a 15-second budget; the form was present on later inspection. |
+| search result | residential | yes | yes | Site answered "login is unavailable right now". |
+| search result | mobile | yes | yes | Site answered "login is unavailable right now". |
+
+The search-result path is what changed the mobile-egress run from "never reached the form" to
+"reached the form and submitted". It did not change Delta's answer on either egress, so it is not
+evidence that the search referrer defeats a site-side block. The readiness budget was also raised
+from 15 seconds to 45 seconds of polling (plus 20 seconds after an in-page login trigger), which
+is the other reason the mobile run no longer reports a false timeout.
+
+### Site quirks
+
+- Delta answers some login submissions with `We're sorry, but login is unavailable right now.`
+  This is a site-side condition rather than a credential verdict; it classifies as
+  `error_kind: "unknown"`, `error_source: "site"`, `submitted: true`, with Delta's exact wording
+  preserved in `error_message`. Do not read it as a wrong password and do not retry in a loop.
+- Wrong credentials produce `Login credential is incorrect. Please try again.`, which classifies
+  as `invalid_credentials`. Real accounts lock out, so the tool submits once per invocation.
+- The login page keeps a stale error banner visible after a failed attempt. Reload the entry
+  before another attempt rather than resubmitting over a stale banner.
+- Delta exposes no remember-me control and no automatable OTP step, so neither is implemented.
+  An MFA step is reported back to the caller as a first-step success.
+
+### QA
+
+Not independently QA-tested; this is **draft**. What was exercised:
+
+| Check | Evidence |
+| --- | --- |
+| Input validation | Four rejected shapes return `invalid_input` at `failed_step: "input"` with no navigation. |
+| Entry-step failures | Five synthetic cases (unreachable engine, missing search box, missing results, no delta.com result, navigation that never reaches delta.com) each return their own `error_kind`, `submitted: false`, and only ever navigate to `https://start.duckduckgo.com`. |
+| Site-error classification | `invalid_credentials`, `locked_or_throttled`, `mfa_failed`, the login-unavailable text, and a shown attempt count classify from real Delta wording. |
+| Challenge handling | A challenge before submitting stops with no credential fill; a challenge after submitting reports `submitted: true`. |
+| Success branches | Completed authentication and a verification step map to the two success sub-branches; a pre-existing signed-in page is not reported as this invocation's success. |
+| `prefilled_password` | Never navigates, requires a filled visible form, and submits once. |
+| Live, residential egress `76.46.4.177` | Search entry reached `https://www.delta.com/skymiles/login`, submitted once, site returned the login-unavailable message. |
+| Live, mobile egress `99.74.53.113` | Same, from an independent browser running the identical implementation. |
+
+Both live runs executed this file's logic; the committed version differs from the one that ran
+only by an indentation change made afterwards. No captcha telemetry was recorded in either live session. A successful login, an MFA step, and a
+real captcha remain unverified.
+
 ## Sessions
 
 - Development browser: `blp6z5n5xt2fuw0sf0pthv8u` (86,400-second inactivity timeout; left alive).
 - Independent QA browser: `vw2lg1cj5leg275iuf5jmul1` (86,400-second inactivity timeout; left alive).
+- `login` residential-egress browser: `hjyk5yaiscetfem12ol81i4q` (86,400-second inactivity timeout; left alive).
+- `login` mobile-egress browser: `dizdvlsqakfizhlha5kt776d` (86,400-second inactivity timeout; left alive).
 - Source: this repository is canonical; sessions expire but files do not. No credential-bearing live-view URL is stored here.

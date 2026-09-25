@@ -50,6 +50,22 @@
       "notes": "Independent targeted QA passed, including schema and synthetic parser/readiness regressions. A separate live DOM parse returned 20 rows; successful final full-tool invocation remains unverified due to intermittent Delta HTTP 429/SFAF001 failures. Domain migration invocation from a baggage page reached results and preserved explicit error output. Round trips return outbound options only; prices are displayed fares, not passenger totals. Real zero results and completeness beyond the 1.5-second DOM-quiescence heuristic remain unverified."
     },
     {
+      "domain": "delta.com",
+      "tool": "login",
+      "file": "domains/delta.com/login.js",
+      "kind": "cdp",
+      "namespace": "delta.com",
+      "url_patterns": [
+        "https://delta.com/*",
+        "https://*.delta.com/*"
+      ],
+      "status": "draft",
+      "qa_agent": null,
+      "browser_session": "hjyk5yaiscetfem12ol81i4q",
+      "last_verified": "2026-09-25",
+      "notes": "Search-result entry only: the tool reaches Delta through a DuckDuckGo organic result and has no direct-navigation fallback; each entry step fails with its own error_kind before any credential is typed. Invocable only while the browser is already on delta.com, which is a registration precondition rather than the login entry path. One submission per invocation, never retried. Unit-tested locally and run live once per egress (residential and mobile): both reached the login form and submitted, and both received Delta's own 'login is unavailable right now' message, so a successful login, an MFA step and a real captcha remain unverified. Not independently QA-tested."
+    },
+    {
       "domain": "flyfrontier.com",
       "tool": "search_flights",
       "file": "domains/flyfrontier.com/search_flights.js",
