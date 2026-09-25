@@ -5,7 +5,7 @@ Tools for Frontier Airlines (https://www.flyfrontier.com).
 | tool | file | status | notes |
 |---|---|---|---|
 | search_flights | [search_flights.js](search_flights.js) | verified | Core search matrix and live invocation verified; intermittent failures remain. Use supervised searches. |
-| login | [login.js](login.js) | draft | First-step sign-in live-verified on two network configurations; the emailed-code step does not work yet. Self-QA only. |
+| login | [login.js](login.js) | draft | First-step sign-in live-verified on two network configurations; full sign-in with a real emailed code unverified. Self-QA only. |
 
 ## login
 
@@ -46,12 +46,17 @@ The same unchanged credentials produced two different site responses across atte
 
 Both search-engine attempts landed on the code step and neither reproduced the incorrect-credentials wording. Two attempts are not enough to conclude that the entry path is the cause: the account, session age, and egress address all varied too, and residential egress rotates between sessions (the same proxy presented two different addresses hours apart). Treat the cause as unknown, and treat `invalid_credentials` from this site as the site's wording rather than proof about the credentials.
 
-### Known limitations
+### Status and known limitations
 
-- **The emailed-code step does not work.** In `otp` mode the sixth code field never keeps its digit: the first five fields populate, the sixth stays empty and focused, the site shows no error, and no code is evaluated. Two entry techniques failed the same way — one `fillInput` per field, and typing the whole code into the focused first field while the component advances focus. The fields are not disabled or read-only, so the component appears to reject or reset the final synthetic keystroke. The tool now reports this as `login_form_unavailable` with the count of empty fields instead of a vague failure, and a live end-to-end sign-in therefore remains **unverified**.
-- A first-step success only means the password was accepted and a code was sent.
-- Live captcha, lockout, and wrong-code behavior were never observed; those branches are covered by mocked tests only.
-- `prefilled_password` mode was not exercised live.
+Status: `draft`. Self-QA only; no independent QA pass.
+
+- **Live-verified:** the DuckDuckGo entry and the first sign-in step. Two search-entry submissions, one on residential-stealth egress and one on mobile-stealth egress, both returned `logged_in: true, mfa_required: true, next_step: "enter_email_otp"`.
+- **Unverified:** a fully authenticated session. No real emailed code has been evaluated by the site through this tool.
+- **Code entry:** an earlier build typed one digit per box. The component's backspace handler moves focus to the previous box, so each digit landed one box early and the sixth stayed empty. `otp` mode now pastes the code into the first box. The component spreads it across all six boxes and submits once on its own. This was checked on the live form with the site's verify call stubbed out: all six boxes filled in order, one submit, no request sent. It has not been checked with a real code.
+- The same credentials sometimes return the site's incorrect-credentials wording instead of a code (see above). The cause is unknown.
+- Captcha, lockout, and wrong-code behavior were never observed live; those branches are covered by mocked tests only. `prefilled_password` mode was not exercised live.
+
+**Next lead:** do one fresh search-entry `credentials` submission, then run `otp` once with the newest emailed code. The only thing still unproven is whether the site accepts a real pasted code and shows the account menu. Browsers need the credential vault attached at creation (`vaults` on create) for secure fill; it cannot be added to a running browser.
 
 ### Site quirks
 
@@ -65,16 +70,13 @@ Both search-engine attempts landed on the code step and neither reproduced the i
 
 Self-QA, no independent QA agent.
 
-- `node --test tests/flyfrontier-login.test.mjs` — 16 tests over mocked browser helpers: input validation, each search-entry failure, search-engine challenge, site error classification, lockout precedence over a remaining-attempts count, captcha after submission, completed session, code panel without its address hint, half-rendered code panel, code fields that refuse a digit, prefilled-form account binding, and fill verification.
+- `node --test tests/flyfrontier-login.test.mjs` — 17 tests over mocked browser helpers: input validation, each search-entry failure, search-engine challenge, site error classification, lockout precedence over a remaining-attempts count, captcha after submission, completed session, code panel without its address hint, half-rendered code panel, single-paste code entry, code fields that ignore the paste, prefilled-form account binding, and fill verification.
 - Live: one submission per configuration, two total, both reaching the emailed-code step. The residential run exposed the code-panel race described above; the fix was validated by replaying the tool's page reader against that live page and by the mobile run, which returned the corrected success output directly.
 - The registered source in both live sessions was hash-checked byte-for-byte against this file.
 
 ### Sessions
 
-- Search-entry residential session: `tic6ksap9ppc5uh91wr2rg0y` (24h inactivity timeout; left alive).
-- Search-entry mobile session: `o9wmzrbmk59dx46t9l8lqiki` (24h inactivity timeout; left alive).
-- Both sessions sit on an open code panel from their single attempt; those codes have expired.
-- This repository is canonical; sessions and registration IDs expire, the source does not.
+All live sessions used for this QA have been deleted. This repository is canonical; sessions and registration IDs expire, the source does not.
 
 ## search_flights
 
