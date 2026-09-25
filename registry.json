@@ -15,7 +15,7 @@
       "qa_agent": "agt_64d5890885db30858fc8",
       "browser_session": "bjcsg0na3ht6hklf6v2ziamo",
       "last_verified": "2026-09-25",
-      "notes": "CAPTCHA now returns human_assist_required with reason captcha_or_challenge; automated solving/bypass intentionally unsupported. Solver-free manual browser prepared; human login and token capture pending. Historical referrer entry reached MFA; full authentication remains unverified."
+      "notes": "Primary entry: DuckDuckGo organic search; one direct-URL fallback for missing/unsuitable results, never after a detected challenge or uncertain navigation. CAPTCHA requires human assistance; automated solving/bypass unsupported. Fallback tested locally only; manual login and token capture pending."
     },
     {
       "domain": "aa.com",

@@ -7,6 +7,7 @@ const source = readFileSync(new URL("../domains/aa.com/login.js", import.meta.ur
 const searchHome = "https://start.duckduckgo.com/";
 const searchUrl = "https://start.duckduckgo.com/?q=american+airlines+login&ia=web";
 const loginUrl = "https://login.aa.com/login?flowId=fixture";
+const directUrl = "https://www.aa.com/loyalty/login";
 const input = { username: "qa_nonexistent", password: "synthetic-only" };
 const plain = value => JSON.parse(JSON.stringify(value));
 
@@ -37,26 +38,32 @@ function harness(options = {}) {
   let url = options.url ?? loginUrl;
   let state = { url, host: new URL(url).hostname, username: true, password: true, filled: true, challenge: null, alerts: [], ...options.initial };
   const navigation = [], pageFunctions = {}, storage = new Map();
+  const arrive = () => {
+    url = loginUrl;
+    state = { ...state, url, host: "login.aa.com", username: true, password: true, filled: false, ...options.navigationState };
+  };
   const tools = runInNewContext(`(${source})`, {
     URL, Date: { now: () => clock },
     pageInfo: async () => ({ url }),
     waitMs: async ms => { clock += ms; },
     gotoUrl: async target => {
       navigation.push(target);
+      if (options.navigationFailure === target) throw new Error("Navigation outcome uncertain");
       url = target;
+      if (target === directUrl) arrive();
     },
     click: async selector => {
       assert.equal(selector, '[data-aa-login-result="true"]');
       searchClicks++;
-      url = loginUrl;
-      state = { ...state, url, host: "login.aa.com", username: true, password: true, filled: false, ...options.navigationState };
+      if (options.searchClickFailure) throw new Error("Click outcome uncertain");
+      arrive();
     },
     accessibilitySnapshot: async () => ({ nodes: clicks > priorClicks ? options.afterNodes ?? [] : options.initialNodes ?? [] }),
     js: async (fn, args) => {
       const text = fn.toString();
       if (text.includes('article[data-testid="result"]')) {
         pageFunctions.search = fn;
-        return options.searchResult ?? "ready";
+        return args.arg.selectResult ? options.searchResult ?? "ready" : options.searchHomeResult ?? "clear";
       }
       if (text.includes("const all =")) {
         reads++;
@@ -247,16 +254,65 @@ test("shadow DOM fill checks lengths and dispatches input and change events", as
   assert.deepEqual(password.events, ["input", "change"]);
 });
 
-for (const searchResult of ["missing", "wrong_target", "wrong_origin"]) {
-  test(`unsafe or unavailable first organic result: ${searchResult}`, async () => {
+for (const searchResult of ["missing", "wrong_target"]) {
+  test(`falls back once to the direct login URL for ${searchResult} results`, async () => {
     const h = harness({ url: "about:blank", searchResult });
+    const result = await invoke(h);
+    assert.deepEqual(h.navigation, [searchHome, searchUrl, directUrl]);
+    assert.equal(h.stats().searchClicks, 0);
+    assert.equal(h.stats().clicks, 1);
+    assert.equal(h.stats().filled, 1);
+    assert.equal(result.outcome, "human_assist_required");
+    assert.equal(result.submission_attempted, true);
+    assert.equal(h.stats().clock, (searchResult === "missing" ? 20000 : 250) + 1250);
+  });
+}
+
+for (const stage of ["home", "results"]) {
+  for (const searchState of ["challenge", "wrong_origin"]) {
+    test(`does not use fallback after ${searchState} on search ${stage}`, async () => {
+      const h = harness({ url: "about:blank", [stage === "home" ? "searchHomeResult" : "searchResult"]: searchState });
+      const result = await invoke(h);
+      assert.deepEqual(h.navigation, stage === "home" ? [searchHome] : [searchHome, searchUrl]);
+      assert.equal(result.outcome, searchState === "challenge" ? "human_assist_required" : "failure");
+      if (searchState === "challenge") assert.equal(result.reason, "captcha_or_challenge");
+      else assert.equal(result.error_kind, "unknown");
+      assert.equal(result.submission_attempted, false);
+      assert.equal(h.stats().searchClicks, 0);
+      assert.equal(h.stats().clicks, 0);
+      assert.equal(h.stats().filled, 0);
+    });
+  }
+}
+
+for (const navigationFailure of [searchHome, searchUrl, directUrl]) {
+  test(`uncertain navigation to ${navigationFailure} stops without retrying`, async () => {
+    const h = harness({ url: "about:blank", searchResult: "missing", navigationFailure });
     const result = await invoke(h);
     assert.equal(result.error_kind, "unknown");
     assert.equal(result.submission_attempted, false);
-    assert.equal(h.stats().searchClicks, 0);
-    assert.equal(h.stats().clicks, 0);
+    assert.equal(h.navigation.at(-1), navigationFailure);
+    assert.equal(h.navigation.filter(url => url === directUrl).length, navigationFailure === directUrl ? 1 : 0);
     assert.equal(h.stats().filled, 0);
-    if (searchResult === "missing") assert.equal(h.stats().clock, 20000);
+  });
+}
+
+test("uncertain organic click does not trigger direct fallback", async () => {
+  const h = harness({ url: "about:blank", searchClickFailure: true });
+  assert.equal((await invoke(h)).error_kind, "unknown");
+  assert.deepEqual(h.navigation, [searchHome, searchUrl]);
+  assert.equal(h.stats().clicks, 0);
+});
+
+for (const searchResult of ["ready", "wrong_target"]) {
+  test(`a challenge at the airline entry stops both routes: ${searchResult}`, async () => {
+    const h = harness({ url: "about:blank", searchResult, navigationState: { challenge: "Challenge Content" } });
+    const result = await invoke(h);
+    assert.equal(result.reason, "captcha_or_challenge");
+    assert.equal(result.submission_attempted, false);
+    assert.equal(h.stats().filled, 0);
+    assert.equal(h.stats().clicks, 0);
+    assert.deepEqual(h.navigation, searchResult === "ready" ? [searchHome, searchUrl] : [searchHome, searchUrl, directUrl]);
   });
 }
 
@@ -283,9 +339,31 @@ test("organic result selection validates the first destination without skipping 
         querySelectorAll: () => []
       }
     });
-    assert.equal(select(), expected);
+    assert.equal(select({ selectResult: true }), expected);
     assert.equal(attrs["data-aa-login-result"], expected === "ready" ? "true" : undefined);
     assert.equal(attrs.target, expected === "ready" ? "_self" : undefined);
+  }
+});
+
+test("search inspection detects text and visible iframe challenges before selecting a result", async () => {
+  const h = harness({ url: "about:blank" });
+  await invoke(h);
+  for (const [bodyText, iframe, expected] of [
+    ["Unfortunately, bots use DuckDuckGo too.", null, "challenge"],
+    ["Select all squares containing a duck", null, "challenge"],
+    ["", { src: "https://example.org/captcha", title: "", checkVisibility: () => true }, "challenge"],
+    ["", { src: "https://example.org/captcha", title: "", checkVisibility: () => false }, "clear"]
+  ]) {
+    const inspect = runInNewContext(`(${h.pageFunctions.search})`, {
+      location: { origin: "https://start.duckduckgo.com" },
+      document: {
+        body: { innerText: bodyText },
+        querySelectorAll: () => iframe ? [iframe] : [],
+        querySelector: () => { throw new Error("Must not select a result"); }
+      }
+    });
+    assert.equal(inspect({ selectResult: false }), expected);
+    if (expected === "challenge") assert.equal(inspect({ selectResult: true }), expected);
   }
 });
 

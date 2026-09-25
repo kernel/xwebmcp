@@ -3,7 +3,7 @@
   match: { url_patterns: ["https://aa.com/*", "https://*.aa.com/*"] },
   tool: {
     name: "login",
-    description: "Submit American Airlines AAdvantage login once. When entry is needed, search DuckDuckGo and follow its first organic result only if it is an approved AA login URL; never send credentials to the search engine. Provide username and password, or explicitly use fields already filled by the human or Kernel Vault. Use a solver-free browser. CAPTCHA immediately returns human_assist_required; never solve, bypass, or retry it. manual_assist:true only inspects the current page without navigation, filling, or submission. Stops at MFA; never retries. A sessionStorage guard permits one submission per login tab storage lifetime. Results identify pre-existing versus post-submission observations. logged_in is true only for an authenticated account, not an MFA interstitial. No remember-me or SSO control was observed. Do not invoke again after an uncertain submission.",
+    description: "Submit American Airlines AAdvantage login once. When entry is needed, search DuckDuckGo for american airlines login and follow its first organic result only if it is an approved AA login URL. Fall back once to https://www.aa.com/loyalty/login if that result is missing or unsuitable, never after a challenge, uncertain navigation, or submission. Never send credentials to the search engine. Provide username and password, or explicitly use fields already filled by the human or Kernel Vault. Use a solver-free browser. CAPTCHA immediately returns human_assist_required; never solve, bypass, or retry it. manual_assist:true only inspects the current page without navigation, filling, or submission. Stops at MFA; never retries. A sessionStorage guard permits one submission per login tab storage lifetime. Results identify pre-existing versus post-submission observations. logged_in is true only for an authenticated account, not an MFA interstitial. No remember-me or SSO control was observed. Do not invoke again after an uncertain submission.",
     inputSchema: {
       type: "object",
       properties: {
@@ -155,28 +155,37 @@
         if (observed.result) return observed.result;
       }
       if (!loginPage || !observed?.state.username || !observed?.state.password) {
+        const inspectSearch = async (selectResult) => js(({ selectResult }) => {
+          if (location.origin !== "https://start.duckduckgo.com" && location.origin !== "https://duckduckgo.com") return "wrong_origin";
+          const challenge = [...document.querySelectorAll("iframe")].some(e =>
+            /captcha|challenge/i.test(e.src + " " + e.title) && e.checkVisibility({ checkVisibilityCSS: true, checkOpacity: true }));
+          if (challenge || /verify (?:that )?you(?:'re| are) human|complete (?:the|this) captcha|security challenge|bots use DuckDuckGo|select all squares containing/i.test(document.body?.innerText || "")) return "challenge";
+          if (!selectResult) return "clear";
+          const first = document.querySelector('article[data-testid="result"] [data-testid="result-title-a"]');
+          if (!first) return "missing";
+          const target = new URL(first.href);
+          if (!((target.origin === "https://www.aa.com" && target.pathname === "/loyalty/login") ||
+                (target.origin === "https://login.aa.com" && target.pathname === "/login"))) return "wrong_target";
+          document.querySelectorAll('[data-aa-login-result]').forEach(e => e.removeAttribute('data-aa-login-result'));
+          first.setAttribute("data-aa-login-result", "true");
+          first.setAttribute("target", "_self");
+          return "ready";
+        }, { arg: { selectResult } });
         await gotoUrl("https://start.duckduckgo.com/");
-        await gotoUrl("https://start.duckduckgo.com/?q=american+airlines+login&ia=web");
-        const searchDeadline = Date.now() + 20000;
-        let resultState;
-        do {
-          await waitMs(250);
-          resultState = await js(() => {
-            if (location.origin !== "https://start.duckduckgo.com" && location.origin !== "https://duckduckgo.com") return "wrong_origin";
-            const first = document.querySelector('article[data-testid="result"] [data-testid="result-title-a"]');
-            if (!first) return "missing";
-            const target = new URL(first.href);
-            if (!((target.origin === "https://www.aa.com" && target.pathname === "/loyalty/login") ||
-                  (target.origin === "https://login.aa.com" && target.pathname === "/login"))) return "wrong_target";
-            document.querySelectorAll('[data-aa-login-result]').forEach(e => e.removeAttribute('data-aa-login-result'));
-            first.setAttribute("data-aa-login-result", "true");
-            first.setAttribute("target", "_self");
-            return "ready";
-          });
-          if (resultState !== "missing") break;
-        } while (Date.now() < searchDeadline);
-        if (resultState !== "ready") return fail("unknown", "The first organic search result is unavailable or is not an approved AA login URL. Nothing was submitted.");
-        await click('[data-aa-login-result="true"]');
+        let resultState = await inspectSearch(false);
+        if (resultState === "clear") {
+          await gotoUrl("https://start.duckduckgo.com/?q=american+airlines+login&ia=web");
+          const searchDeadline = Date.now() + 20000;
+          do {
+            await waitMs(250);
+            resultState = await inspectSearch(true);
+            if (resultState !== "missing") break;
+          } while (Date.now() < searchDeadline);
+        }
+        if (resultState === "challenge") return humanAssist("captcha_or_challenge", "The search page requires human verification. Complete it manually; no fallback was attempted.", (await pageInfo()).url);
+        if (resultState === "ready") await click('[data-aa-login-result="true"]');
+        else if (["missing", "wrong_target"].includes(resultState)) await gotoUrl("https://www.aa.com/loyalty/login");
+        else return fail("unknown", "The search page left the approved search origins. Nothing was submitted and no fallback was attempted.");
         const deadline = Date.now() + 30000;
         do {
           await waitMs(500);
