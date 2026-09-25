@@ -51,6 +51,22 @@
     },
     {
       "domain": "flyfrontier.com",
+      "tool": "login",
+      "file": "domains/flyfrontier.com/login.js",
+      "kind": "cdp",
+      "namespace": "flyfrontier.com",
+      "url_patterns": [
+        "https://flyfrontier.com/*",
+        "https://*.flyfrontier.com/*"
+      ],
+      "status": "draft",
+      "qa_agent": null,
+      "browser_session": "o9wmzrbmk59dx46t9l8lqiki",
+      "last_verified": "2026-09-25",
+      "notes": "Search-engine-only entry: credentials mode always enters through a DuckDuckGo search and the first organic Frontier result, with no direct-navigation fallback and a distinct error_kind per entry step. Live first-step sign-in verified on residential-stealth and mobile-stealth egress, one submission each, both reaching the emailed-code step. The emailed-code step is broken: the sixth code field never keeps its digit, so no code is evaluated and end-to-end sign-in is unverified. Self-QA only (16 mocked tests); live captcha, lockout, and wrong-code branches unobserved. The same credentials returned the site's incorrect-credentials wording in two earlier direct-navigation attempts and a code in four others; cause unresolved, so treat that wording as site output, not a credential verdict."
+    },
+    {
+      "domain": "flyfrontier.com",
       "tool": "search_flights",
       "file": "domains/flyfrontier.com/search_flights.js",
       "kind": "cdp",
