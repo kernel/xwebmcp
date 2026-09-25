@@ -29,9 +29,9 @@ provider host `login.kroger.com` where the form lives.
 ```javascript
 const source = (await import("node:fs")).readFileSync("domains/kroger.com/login.js", "utf8");
 await webmcp.addCustomTools({ namespace: "kroger.com", tools: eval(source), forceOverwriteNamespace: true });
+const tab = (await currentTab()).targetId;
 const tool = (await webmcp.listTools()).find(t =>
-  t.source.custom?.namespace === "kroger.com" && t.tool.name === "login" &&
-  t.source.target_id === (await currentTab()).targetId
+  t.source.custom?.namespace === "kroger.com" && t.tool.name === "login" && t.source.target_id === tab
 );
 const result = await webmcp.invokeTool(tool.tool_ref, {
   email: "qa@example.invalid",
@@ -44,9 +44,11 @@ repl.write(JSON.stringify(result));
 `source.target_id` is the tab the Browser REPL is attached to, because the tool
 drives the attached tab. `forceOverwriteNamespace: true` replaces every tool in the
 namespace, so later search and cart tools must be registered together with this one
-as a single array. `invokeTool` accepts at most `timeoutSec: 120`; the tool's own
-budget (20 s search controls, 20 s results, 30 s landing, 45 s observation) fits
-inside it.
+as a single array. `invokeTool` accepts at most `timeoutSec: 120`. The tool keeps a
+110-second budget of its own: every wait (20 s search controls, 20 s results, 30 s
+landing, 30 s form, 45 s observation) is capped at the time remaining, and the form
+is not submitted when fewer than 20 s remain, so a slow entry ends with an explicit
+`unknown` before any submission rather than a runtime timeout after one.
 
 Inputs: `email` (required), and exactly one of `password` or `otp`
 (4–8 digits, for a verification step that is already visible). `keep_signed_in`
@@ -93,8 +95,9 @@ falls back to direct navigation. A DuckDuckGo bot challenge is reported as
 - Failure: `logged_in: false` with `error_kind` (`invalid_input`,
   `invalid_credentials`, `captcha_or_challenge`, `mfa_failed`,
   `locked_or_throttled`, `unknown`), the site's `error_message` when
-  `error_source` is `site`, the `step` that failed, `attempts_remaining_if_shown`
-  (only when the site prints a count) and `submission_attempted`.
+  `error_source` is `site`, the `step` that failed, the `entry_path` taken so far
+  (`none` before any page action), `attempts_remaining_if_shown` (only when the
+  site prints a count) and `submission_attempted`.
 - Account check: the `kroger-si-customer-data-token` cookie on `.kroger.com` is a
   JWT whose payload carries `emailAddress`. Success compares it (case-insensitively)
   with the supplied email; a mismatch is a failure at step `account_check` rather

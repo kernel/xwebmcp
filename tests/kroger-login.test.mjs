@@ -133,6 +133,7 @@ function harness(options = {}) {
     gotoUrl: async url => {
       calls.navigations.push(url);
       if (options.navigationError) throw new Error("Navigation failed");
+      clock += options.navigationDelay ?? 0;
       apply(page("duckduckgo"));
     },
     accessibilitySnapshot: async () => ({ nodes: options.missingControls ? [] : [
@@ -213,6 +214,7 @@ for (const args of [undefined, null, [], {}, { email: input.email }, { password:
     const result = await h.run(args);
     assert.equal(result.error_kind, "invalid_input");
     assert.equal(result.step, "input");
+    assert.equal(result.entry_path, "none");
     assert.equal(result.submission_attempted, false);
     assert.equal(h.reads(), 0);
     untouched(h);
@@ -226,6 +228,7 @@ test("an open login form is filled and submitted exactly once", async () => {
   assert.equal(result.error_message, invalidCredentials);
   assert.equal(result.error_source, "site");
   assert.equal(result.step, "after_submit");
+  assert.equal(result.entry_path, "already_open");
   assert.equal(result.submission_attempted, true);
   assert.equal(result.attempts_remaining_if_shown, null);
   assert.deepEqual(h.calls.navigations, []);
@@ -247,6 +250,7 @@ for (const start of ["offsite", "blank", "homeLoggedOut", "product", "connectAut
     const h = harness({ start });
     const result = await h.run();
     assert.equal(result.error_kind, "invalid_credentials");
+    assert.equal(result.entry_path, "search_referrer");
     assert.deepEqual(h.calls.navigations, [searchEntry]);
     assert.deepEqual(h.calls.searchActions, [["query", "kroger login"], ["search"], ["result"]]);
     assert.equal(h.submits(), 1);
@@ -288,6 +292,7 @@ test("a session belonging to a different account is not reported as success", as
   assert.equal(result.logged_in, false);
   assert.equal(result.error_kind, "unknown");
   assert.equal(result.step, "account_check");
+  assert.equal(result.entry_path, "already_signed_in");
   assert.equal(result.submission_attempted, false);
   untouched(h);
 });
@@ -310,6 +315,7 @@ test("a non-sign-in organic result opens sign-in from the site header", async ()
   const h = harness({ start: "offsite", landing: "homeLoggedOut" });
   const result = await h.run();
   assert.equal(result.error_kind, "invalid_credentials");
+  assert.equal(result.entry_path, "site_navigation");
   assert.deepEqual(h.calls.searchActions, [["query", "kroger login"], ["search"], ["result"]]);
   assert.equal(h.submits(), 1);
 });
@@ -417,6 +423,32 @@ for (const marker of [{ state: "concluded", at: 0 }, { state: "pending", at: -16
     assert.equal(h.submits(), 1);
   });
 }
+
+test("a slow entry that leaves too little budget to observe does not submit", async () => {
+  const h = harness({ start: "offsite", navigationDelay: 95000 });
+  const result = await h.run();
+  assert.equal(result.error_kind, "unknown");
+  assert.match(result.error_message, /not enough to observe/);
+  assert.equal(result.step, "before_submit");
+  assert.equal(result.submission_attempted, false);
+  assert.equal(h.submits(), 0);
+});
+
+test("the observation window shrinks to the remaining budget", async () => {
+  const h = harness({ start: "offsite", navigationDelay: 80000, timeline: [] });
+  const result = await h.run();
+  assert.equal(result.error_kind, "unknown");
+  assert.match(result.error_message, /within (?:2\d|30) seconds/);
+  assert.equal(h.submits(), 1);
+});
+
+test("entry waits are bounded by the remaining budget", async () => {
+  const h = harness({ start: "offsite", navigationDelay: 105000, missingControls: true });
+  const result = await h.run();
+  assert.equal(result.error_kind, "unknown");
+  assert.equal(result.step, "search_entry");
+  assert.equal(h.submits(), 0);
+});
 
 test("an uncertain click leaves the marker pending and is never retried", async () => {
   const h = harness({ clickError: true });

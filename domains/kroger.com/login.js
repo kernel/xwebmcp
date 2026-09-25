@@ -3,7 +3,7 @@
   match: { url_patterns: ["https://kroger.com/*", "https://*.kroger.com/*"] },
   tool: {
     name: "login",
-    description: "Sign in to a Kroger account with email and password. If the browser is already signed in on kroger.com the tool returns success without submitting anything and, when the site exposes the signed-in email, confirms it matches the supplied email. Otherwise it enters the site through a DuckDuckGo search for kroger login, follows the first organic kroger.com result, opens sign-in from the site header when that result is not the sign-in page, and submits the login.kroger.com form at most once. A sessionStorage marker blocks a second submission from the same tab. Never retries; never requests or resends codes. logged_in=true with mfa_required=true means the password was accepted and a verification-code step is showing: the session is NOT authenticated yet. Supply otp instead of password to submit a code on an already visible verification step. Does not solve CAPTCHAs: an unresolved challenge is reported as captcha_or_challenge.",
+    description: "Sign in to a Kroger account with email and password. If the browser is already signed in on kroger.com the tool returns success without submitting anything and, when the site exposes the signed-in email, confirms it matches the supplied email. Otherwise it enters the site through a DuckDuckGo search for kroger login, follows the first organic kroger.com result, opens sign-in from the site header when that result is not the sign-in page, and submits the login.kroger.com form at most once. A sessionStorage marker blocks a second submission from the same tab. The whole invocation is bounded to 110 seconds and the form is not submitted when fewer than 20 seconds remain to observe the result. Never retries; never requests or resends codes. logged_in=true with mfa_required=true means the password was accepted and a verification-code step is showing: the session is NOT authenticated yet. Supply otp instead of password to submit a code on an already visible verification step. Does not solve CAPTCHAs: an unresolved challenge is reported as captcha_or_challenge.",
     inputSchema: {
       type: "object",
       additionalProperties: false,
@@ -44,13 +44,14 @@
         },
         {
           type: "object", additionalProperties: false,
-          required: ["logged_in", "error_kind", "error_message", "error_source", "step", "attempts_remaining_if_shown", "submission_attempted"],
+          required: ["logged_in", "error_kind", "error_message", "error_source", "step", "entry_path", "attempts_remaining_if_shown", "submission_attempted"],
           properties: {
             logged_in: { const: false },
             error_kind: { enum: ["invalid_input", "invalid_credentials", "captcha_or_challenge", "mfa_failed", "locked_or_throttled", "unknown"] },
             error_message: { type: "string", minLength: 1 },
             error_source: { enum: ["site", "tool"] },
             step: { enum: ["input", "search_entry", "site_entry", "login_form", "before_submit", "after_submit", "account_check"] },
+            entry_path: { enum: ["none", "already_signed_in", "already_open", "search_referrer", "site_navigation"] },
             attempts_remaining_if_shown: { type: ["integer", "null"], minimum: 0 },
             submission_attempted: { type: "boolean" }
           }
@@ -60,11 +61,14 @@
     annotations: { destructiveHint: false, readOnlyHint: false }
   },
   execute: async (input) => {
+    const startedAt = Date.now();
+    const remaining = () => 110000 - (Date.now() - startedAt);
     let submitted = false;
     let step = "input";
+    let entryPath = "none";
     const fail = (kind, message, source = "tool") => {
-      const remaining = source === "site" ? message.match(/(\d+)\s+(?:more\s+)?(?:login\s+|sign.?in\s+)?attempts?\s+(?:remaining|left)/i) : null;
-      return { logged_in: false, error_kind: kind, error_message: message, error_source: source, step, attempts_remaining_if_shown: remaining ? Number(remaining[1]) : null, submission_attempted: submitted };
+      const attempts = source === "site" ? message.match(/(\d+)\s+(?:more\s+)?(?:login\s+|sign.?in\s+)?attempts?\s+(?:remaining|left)/i) : null;
+      return { logged_in: false, error_kind: kind, error_message: message, error_source: source, step, entry_path: entryPath, attempts_remaining_if_shown: attempts ? Number(attempts[1]) : null, submission_attempted: submitted };
     };
     if (!input || typeof input !== "object" || Array.isArray(input) || Object.keys(input).some(k => !["email", "password", "otp", "keep_signed_in"].includes(k))) {
       return fail("invalid_input", "Input must be an object with email plus either password or otp; nothing was submitted.");
@@ -140,7 +144,7 @@
     };
     let latest = null;
     const poll = async (predicate, ms) => {
-      const deadline = Date.now() + ms;
+      const deadline = Date.now() + Math.min(ms, remaining());
       while (Date.now() < deadline) {
         try {
           latest = await read();
@@ -150,7 +154,7 @@
       }
       return null;
     };
-    const succeed = (state, entryPath) => {
+    const succeed = state => {
       if (state.accountEmail && state.accountEmail !== account) {
         step = "account_check";
         return fail("unknown", "The browser is signed in to a different Kroger account than the supplied email. Sign out of that account before invoking this tool; nothing was submitted for the supplied email.");
@@ -163,7 +167,7 @@
         evidence: "loggedIn cookie present and header welcome button shows " + state.welcomeText + (state.accountEmail ? "; customer data token names the supplied email" : "; no customer data token to confirm the email")
       };
     };
-    const codePending = (state, entryPath) => ({
+    const codePending = state => ({
       logged_in: true, authenticated: false, mfa_required: true, next_step: "enter_otp",
       landing_url: state.url, account_name_or_hint: state.codeHint, account_check: "unverified",
       entry_path: entryPath, submission_attempted: submitted,
@@ -181,20 +185,21 @@
     const settle = async () => {
       try { await js(key => sessionStorage.setItem(key, JSON.stringify({ state: "concluded", at: Date.now() })), { arg: markerKey }); } catch { /* Navigation may have replaced the page. */ }
     };
-    const observe = async (state, entryPath, deadlineMs) => {
+    const observe = async (state, deadlineMs) => {
       step = "after_submit";
       const prior = JSON.stringify(state.errors);
       let sawCleared = state.errors.length === 0;
       let challenge = null;
-      const deadline = Date.now() + deadlineMs;
+      const windowMs = Math.min(deadlineMs, remaining());
+      const deadline = Date.now() + windowMs;
       while (Date.now() < deadline) {
         await waitMs(500);
         let current;
         try { current = await read(); } catch { continue; }
         if (!current.onSite) return fail("unknown", "The browser left kroger.com after the submission; the outcome is unconfirmed. Inspect the page before any further attempt.");
         if (current.challenge) { challenge = current.challenge; continue; }
-        if (current.signedIn) return succeed(current, entryPath);
-        if (current.loginHost && current.codeStep && !otpMode) { await settle(); return codePending(current, entryPath); }
+        if (current.signedIn) return succeed(current);
+        if (current.loginHost && current.codeStep && !otpMode) { await settle(); return codePending(current); }
         if (!current.errors.length) sawCleared = true;
         else if (current.loginHost && (sawCleared || JSON.stringify(current.errors) !== prior)) {
           const text = current.errors.join("\n");
@@ -204,9 +209,10 @@
         }
       }
       if (challenge) return fail("captcha_or_challenge", challenge, "site");
-      return fail("unknown", "No conclusive sign-in result within " + Math.round(deadlineMs / 1000) + " seconds; the submission may have reached Kroger. Inspect the browser before any further attempt.");
+      return fail("unknown", "No conclusive sign-in result within " + Math.round(windowMs / 1000) + " seconds; the submission may have reached Kroger. Inspect the browser before any further attempt.");
     };
     const submitForm = async (armSelector, submitSelector) => {
+      if (remaining() < 20000) return fail("unknown", "Fewer than 20 seconds of the 110-second invocation budget remain, which is not enough to observe a submission; nothing was submitted.");
       const armed = await js(({ key, selector }) => {
         if (location.hostname !== "login.kroger.com") return "origin";
         const button = document.querySelector(selector);
@@ -251,8 +257,11 @@
       let state = await read();
       // The header renders after the loggedIn cookie is readable; give it time before entering the site again.
       if (!state.signedIn && state.onSite && !state.loginHost && state.loggedInCookie) state = (await poll(s => s.signedIn || s.formVisible, 10000)) || latest;
-      if (state.signedIn) return succeed(state, "already_signed_in");
-      let entryPath = "already_open";
+      if (state.signedIn) {
+        entryPath = "already_signed_in";
+        return succeed(state);
+      }
+      entryPath = "already_open";
       if (otpMode) {
         const blocked = blockedBefore(state);
         if (blocked) return blocked;
@@ -276,14 +285,14 @@
         if (!pasted) return fail("unknown", "The verification-code field or its submit control could not be prepared; nothing was submitted.");
         const blockedSubmit = await submitForm("[data-kroger-login-code-submit]", "[data-kroger-login-code-submit]");
         if (blockedSubmit) return blockedSubmit;
-        return observe(state, entryPath, 45000);
+        return observe(state, 45000);
       }
       if (!(state.loginHost && state.formVisible)) {
         step = "search_entry";
         entryPath = "search_referrer";
         await gotoUrl("https://start.duckduckgo.com/");
         let query, search;
-        const controlsDeadline = Date.now() + 20000;
+        const controlsDeadline = Date.now() + Math.min(20000, remaining());
         while (Date.now() < controlsDeadline) {
           const snapshot = await accessibilitySnapshot();
           query = snapshot.nodes.find(n => ["combobox", "textbox", "searchbox"].includes(n.role) && n.name === "Search with DuckDuckGo");
@@ -294,7 +303,7 @@
         if (!query || !search) return fail("unknown", "search_controls_unavailable: the DuckDuckGo search box did not appear within 20 seconds; nothing was submitted.");
         await fillInput({ backendNodeId: query.backendNodeId }, "kroger login");
         await click({ backendNodeId: search.backendNodeId });
-        const listed = await waitForElement('article[data-testid="result"] a[data-testid="result-title-a"]', { timeoutSec: 20 });
+        const listed = await waitForElement('article[data-testid="result"] a[data-testid="result-title-a"]', { timeoutSec: Math.max(1, Math.min(20, Math.floor(remaining() / 1000))) });
         const results = await js(() => {
           const blocked = /unusual traffic|verify (?:that )?you(?:'re| are) human|are you a robot|bots use DuckDuckGo|select all squares/i.test((document.body?.innerText || "").slice(0, 4000));
           document.querySelectorAll("[data-kroger-login-entry]").forEach(e => e.removeAttribute("data-kroger-login-entry"));
@@ -318,7 +327,7 @@
         if (!state) return fail("unknown", "site_entry_failed: the organic result did not land on a usable kroger.com page within 30 seconds; nothing was submitted.");
         const blockedEntry = blockedBefore(state);
         if (blockedEntry) return blockedEntry;
-        if (state.signedIn) return succeed(state, entryPath);
+        if (state.signedIn) return succeed(state);
         if (!(state.loginHost && state.formVisible)) {
           step = "login_form";
           entryPath = "site_navigation";
@@ -327,7 +336,7 @@
           if (!state) return fail("unknown", "login_form_unavailable: the login.kroger.com sign-in form did not appear within 30 seconds; nothing was submitted.");
           const blockedForm = blockedBefore(state);
           if (blockedForm) return blockedForm;
-          if (state.signedIn) return succeed(state, entryPath);
+          if (state.signedIn) return succeed(state);
         }
       }
       step = "before_submit";
@@ -348,7 +357,7 @@
       if (!state.submitEnabled) return fail("unknown", "The Sign In button is disabled; nothing was submitted.");
       const blockedSubmit = await submitForm("button#continue", "button#continue");
       if (blockedSubmit) return blockedSubmit;
-      return observe(state, entryPath, 45000);
+      return observe(state, 45000);
     } catch {
       return fail("unknown", submitted
         ? "Browser interaction failed after the submission started; the outcome is unknown. Inspect the page before any further attempt."
