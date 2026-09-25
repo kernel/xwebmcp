@@ -54,6 +54,15 @@ These use browser-helper stubs to check expression loading, matching, entry navi
 - Independent QA agent: `agt_8da83a2e489269a5ff05`.
 - Source: this repository is canonical; sessions expire but files do not. No authenticated browser URLs or credentials are stored here.
 
+## Login status and known limitations
+
+Status: `draft`. The independent QA pass covered failure paths on an earlier revision; the packaged DuckDuckGo entry has not had an independent pass.
+
+- **Live-verified (2026-09-25):** a fabricated login returns `invalid_credentials` ("Unable to sign in"); real credentials reach the email-MFA first step (`mfa_required: true`) on mobile+stealth with direct entry and on residential+stealth after a manually driven DuckDuckGo entry.
+- **Unverified:** the packaged DuckDuckGo entry end to end, MFA completion, and real CAPTCHA, lockout, or MFA-error responses. Residential without stealth was never run.
+- **Known blocker:** the first live run of the packaged entry stopped at the search step with "DuckDuckGo search controls did not become available". DuckDuckGo's search box is not reachable with `document.querySelector`, although the accessibility tree exposes it as `combobox "Search with DuckDuckGo"`. The tool now waits on those accessibility nodes; that change has unit coverage only.
+- **Next lead:** register `login.js` in a residential+stealth browser and invoke it once with fabricated credentials. Expect `invalid_credentials` after search entry. If it stops at the results step instead, the `[data-testid="result"]` selector needs the same accessibility-tree treatment.
+
 ## Login scope
 
 Register `login.js` with namespace `jetblue.com`. It is a single CDP tool-array expression matching the apex and all HTTPS subdomains. Loading one file with `forceOverwriteNamespace: true` removes other tools in that namespace; combine the search and login arrays when registering both.
@@ -117,8 +126,8 @@ A fresh residential+stealth browser opened `start.duckduckgo.com`, searched `jet
 
 **Interpretation:** search-referrer entry worked, but reduced bot detection is **not established**. The failed residential baseline never submitted credentials, no CAPTCHA was observed in either run, and egress IP, time, page readiness, and login URL parameters were not held constant. This is a successful alternative entry path, not a controlled proof that the referrer changed detection behavior.
 
-The live run used native search interactions followed by the registered login tool on the referred page. The repository now packages those search interactions into `execute`; its new orchestration and strict destination/referrer checks have local tests. No extra password submission was made to retest the packaged entry branch. The successful referrer session is retained at the email-MFA first step: `a17cnzyab9ape5q7k92d4a1i`. An initial blank search homepage required one read-only reload during exploration; the packaged tool instead returns `unknown` when search controls do not load.
+The live run used native search interactions followed by the registered login tool on the referred page. The repository now packages those search interactions into `execute`; its new orchestration and strict destination/referrer checks have local tests. No extra password submission was made to retest the packaged entry branch. An initial blank search homepage required one read-only reload during exploration; the packaged tool instead returns `unknown` when search controls do not load.
 
 Run `node --test tests/jetblue-login.test.mjs` for contract, navigation, single-submit safety, failure classification, and page-reader MFA fixtures. Run `node --test tests/*.test.mjs` for the repository suite. These tests use synthetic inputs and browser-helper stubs; they do not submit real logins.
 
-Login verification session: `oh52hpvtipbx16z1hiqlj00n`. Independent failure QA agent: `agt_19fb8339edef5ff82a82`. Mobile first-step session: `qfxmqaoaejscs7qvkcln6ei9`. Session IDs are historical references and may expire.
+Login verification session: `oh52hpvtipbx16z1hiqlj00n`. Independent failure QA agent: `agt_19fb8339edef5ff82a82`. Mobile first-step session: `qfxmqaoaejscs7qvkcln6ei9`. These login sessions have been deleted.

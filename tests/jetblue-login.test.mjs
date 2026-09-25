@@ -267,7 +267,6 @@ test("prefilled mode refuses an unrelated page without discarding input or navig
 });
 
 for (const scenario of [
-  { name: "search form unavailable", missingSelector: /combobox/ },
   { name: "search controls unavailable", missingControls: true },
   { name: "unexpected search origin", searchUrl: "https://example.com/" },
   { name: "organic results unavailable", missingSelector: /result-title/ },
@@ -327,7 +326,7 @@ test("registry preserves search and adds login metadata", () => {
   const entries = tools.filter(t => t.domain === "jetblue.com" && t.tool === "login");
   assert.equal(entries.length, 1);
   assert.equal(entries[0].namespace, "jetblue.com");
-  assert.equal(entries[0].status, "qa_passed");
+  assert.equal(entries[0].status, "draft");
   assert.equal(entries[0].file, "domains/jetblue.com/login.js");
   assert.deepEqual(entries[0].url_patterns, plain(harness().tool.match.url_patterns));
 });

@@ -135,17 +135,22 @@
       if (input.use_filled_form && !atLogin) return failure("validation_error", "Prefilled mode requires the canonical JetBlue sign-in page; no navigation or submission made.");
       if (!atLogin || (!input.use_filled_form && !await hasSearchReferrer())) {
         await gotoUrl("https://start.duckduckgo.com/");
-        if (!await waitForElement('input[role="combobox"],input[type="text"]', { timeoutSec: 20 })) {
-          return failure("unknown", "DuckDuckGo search form did not become available; no login submission made.");
-        }
         const searchPage = new URL((await pageInfo()).url);
         if (!["https://start.duckduckgo.com", "https://duckduckgo.com"].includes(searchPage.origin)) {
           return failure("unknown", "Search navigation left DuckDuckGo; no login submission made.");
         }
-        const snapshot = await accessibilitySnapshot();
-        const query = snapshot.nodes.find(n => ["combobox", "textbox", "searchbox"].includes(n.role) && n.name === "Search with DuckDuckGo");
-        const search = snapshot.nodes.find(n => n.role === "button" && n.name === "Search");
-        if (!query || !search) return failure("unknown", "DuckDuckGo search controls were not recognized; no login submission made.");
+        // DuckDuckGo renders the search box outside queryable document DOM, so wait on the
+        // accessibility nodes the tool actually drives rather than a CSS selector.
+        let query, search;
+        const searchDeadline = Date.now() + 20000;
+        while (Date.now() < searchDeadline) {
+          const snapshot = await accessibilitySnapshot();
+          query = snapshot.nodes.find(n => ["combobox", "textbox", "searchbox"].includes(n.role) && n.name === "Search with DuckDuckGo");
+          search = snapshot.nodes.find(n => n.role === "button" && n.name === "Search");
+          if (query && search) break;
+          await waitMs(500);
+        }
+        if (!query || !search) return failure("unknown", "DuckDuckGo search controls did not become available; no login submission made.");
         await fillInput({ backendNodeId: query.backendNodeId }, "jetblue login");
         await click({ backendNodeId: search.backendNodeId });
         if (!await waitForElement('[data-testid="result"] [data-testid="result-title-a"]', { timeoutSec: 20 })) {

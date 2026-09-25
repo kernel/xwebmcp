@@ -75,11 +75,11 @@
         "https://jetblue.com/*",
         "https://*.jetblue.com/*"
       ],
-      "status": "qa_passed",
-      "qa_agent": "agt_19fb8339edef5ff82a82",
-      "browser_session": "oh52hpvtipbx16z1hiqlj00n",
+      "status": "draft",
+      "qa_agent": null,
+      "browser_session": null,
       "last_verified": "2026-09-25",
-      "notes": "email-MFA first-step live-verified on mobile+stealth and, after DuckDuckGo search entry, residential+stealth (one submission each); completion pending code entry; corrected MFA classifier returned typed success on the referrer run; search orchestration packaged with local regression tests; no proven bot-detection improvement; see README for matrix and limitations"
+      "notes": "Live-verified: a fabricated login returns invalid_credentials, and real credentials reach the email-MFA first step (mfa_required) on mobile+stealth and residential+stealth. Unverified: the packaged DuckDuckGo entry end to end (its first live run stopped at the search box; fixed with an accessibility-tree lookup that is only unit-tested), MFA completion, and real CAPTCHA or lockout responses."
     },
     {
       "domain": "jetblue.com",
