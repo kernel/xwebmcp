@@ -5,6 +5,7 @@ Tools for American Airlines (https://www.aa.com).
 | tool | file | status | notes |
 |---|---|---|---|
 | search_flights | [search_flights.js](search_flights.js) | verified | First-page outbound options; round-trip fares do not select a return flight. |
+| login | [login.js](login.js) | qa_passed | CAPTCHA failure live-verified; successful login and MFA remain unverified. |
 
 ## Scope and loading
 
@@ -62,3 +63,46 @@ node --test tests/aa.com.test.mjs
 - Independent QA browser: `herknyf87s7zdzhwscc6g224` (24-hour inactivity timeout, left alive).
 - Independent QA agent: `agt_dbdb039786be4bed1121`.
 - This repository is canonical; browser sessions and registrations expire, but the source does not.
+
+## Login scope and loading
+
+`login.js` is a self-contained tool-definition array. Register it with namespace `aa.com`, using `tools: eval(source)` as above. Omit `forceOverwriteNamespace` when adding it alongside the search tool so the other registration is not removed. Both apex and wildcard subdomains match; the actual sign-in flow redirects from `www.aa.com/loyalty/login` to `login.aa.com/login`.
+
+The tool checks the current page before interacting. An unsuitable page, including another subdomain or unrelated origin, is navigated to the login entry point. A suitable form is reused. Supply an AAdvantage number or username and password, or explicitly set `use_prefilled: true` after a human or vault fills both fields. Prefilled mode cannot recover values lost when an unsuitable page is replaced. The tool does not support email identifiers, OTP submission, MFA-method selection, account recovery, or CAPTCHA solving itself. No remember-me or third-party SSO control was observed.
+
+The output schema separates authenticated, MFA-required, and failure outcomes. `first_step_succeeded: true` with `mfa_required: true` means the credential stage reached MFA, not a fully authenticated session; `logged_in` stays false until authentication completes. `observation` and `submission_attempted` distinguish a pre-existing screen from this invocation's result. A pre-existing account or MFA screen is not proof that the supplied account was authenticated.
+
+Failures distinguish `invalid_credentials`, `captcha_or_challenge`, `mfa_failed`, `locked_or_throttled`, and `unknown`, plus local `invalid_input` and `submission_already_attempted`. Site evidence is returned separately from tool-generated diagnostics. Remaining attempts are null unless explicitly shown. The tool does not return filled field values.
+
+### Login quirks and safety
+
+- Inputs are nested in open `adc-text-input` shadow roots. Inner IDs are randomized; the implementation finds visible inputs by their stable `username` and `password` names, uses the native value setter, and dispatches composed input/change events. Length equality is checked before proceeding, without returning field values.
+- The `Log in` control is an `adc-button` host with an inner shadow-root button. A rendering race previously checked it before the application enabled it. The fixed implementation polls for up to 10 seconds, returning typed `unknown` without submission if readiness never arrives.
+- A sessionStorage marker is written before the single click. Re-invocation in that login tab cannot submit again. This guard does not cover another tab or cleared browser storage; callers must enforce account-wide attempt limits. Unknown outcomes must not be retried automatically.
+- Post-submission observation lasts up to 45 seconds, allowing an installed solver time to act without clicking again. The observed challenge is a visible iframe titled `Challenge Content`, served from `/challenge-assets/v7/captcha.html`; `Loading...` is not authentication success or evidence of bad credentials. Invoke with `timeoutSec: 120` and a sufficiently long enclosing REPL timeout.
+
+### Login QA and configuration matrix
+
+Independent failure-path QA rejected missing/empty/conflicting inputs without submission, checked failure-schema conformance, and made one fabricated-account submission that reached the real CAPTCHA. Two static findings were fixed: cross-invocation submission guarding and explicit pre-existing-state attribution. Author synthetic regressions covered those fixes and the readiness race. Local migration tests additionally cover entry-point navigation, shadow input writes, output branches, and timeout behavior. These synthetic checks do not verify real successful authentication.
+
+The configuration matrix on 2026-09-25 used Chrome 153.0.8010.36, separate headful browsers copied from the same requested profile, and no profile save-back. It made one tool invocation per configuration, without retries. No successful login, MFA interstitial, or confirmed invalid-credentials response occurred.
+
+| Configuration | Actual submissions | Result | Solver evidence |
+|---|---:|---|---|
+| A: residential proxy, stealth enabled | 1 | `captcha_or_challenge`; challenge persisted | CapMonster loaded; firing unconfirmed because the observation buffer overflowed. |
+| B: mobile proxy, stealth enabled | 0 | `unknown` during preparation; subsequent read-only page evaluation timed out | CapMonster loaded; no firing observed. |
+| C: residential proxy, stealth disabled | 1 | `captcha_or_challenge`; challenge persisted | No solver loaded. |
+
+All three outputs matched the schema. Residential CAPTCHA classification is live-verified with and without stealth. Successful login, MFA, invalid-credential and lockout behavior remain unverified on the real site; synthetic classification tests are not a substitute. The mobile failure does not establish that the credentials were rejected or identify the underlying browser failure. The migration was tested locally, without additional live credential submissions.
+
+Historical login test references (not credentials or live-view links):
+
+- Independent QA agent: `agt_64d5890885db30858fc8`; browser: `k9c0lcjrhbzhdh3o888bvqfp`.
+- Original development browser: `avy9sn160f5xke2jcwa0sa31`.
+- Matrix A: `jnke5q5m45anfru9og3bqjre`; B: `tzeo1hakca2ftlky6dla7n2p`; C: `tgi1xo9b54ffa22wj2lotcbp`.
+
+All three matrix browsers were deleted after testing. The registry's `browser_session` retains B as the latest stealth test reference, not an active session.
+
+```sh
+node --test tests/aa-login.test.mjs
+```

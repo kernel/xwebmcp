@@ -1,0 +1,242 @@
+import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import test from "node:test";
+import { runInNewContext } from "node:vm";
+
+const source = readFileSync(new URL("../domains/aa.com/login.js", import.meta.url), "utf8");
+const entryUrl = "https://www.aa.com/loyalty/login?uri=%2floyalty%2flogin&previousPage=%2FhomePage.do&from=comp_nav";
+const loginUrl = "https://login.aa.com/login?flowId=fixture";
+const input = { username: "qa_nonexistent", password: "synthetic-only" };
+const plain = value => JSON.parse(JSON.stringify(value));
+
+function conforms(schema, value) {
+  if ("const" in schema && schema.const !== value) return false;
+  if (schema.enum && !schema.enum.includes(value)) return false;
+  if (schema.type) {
+    const types = Array.isArray(schema.type) ? schema.type : [schema.type];
+    if (!types.some(type => type === "null" ? value === null : type === "object" ? value !== null && typeof value === "object" && !Array.isArray(value) : type === "integer" ? Number.isInteger(value) : typeof value === type)) return false;
+  }
+  if (typeof value === "string" && schema.minLength !== undefined && value.length < schema.minLength) return false;
+  if (typeof value === "number" && schema.minimum !== undefined && value < schema.minimum) return false;
+  if (value !== null && typeof value === "object" && !Array.isArray(value)) {
+    if (schema.required?.some(key => !Object.hasOwn(value, key))) return false;
+    if (schema.additionalProperties === false && Object.keys(value).some(key => !Object.hasOwn(schema.properties ?? {}, key))) return false;
+    for (const [key, property] of Object.entries(schema.properties ?? {})) {
+      if (Object.hasOwn(value, key) && !conforms(property, value[key])) return false;
+    }
+  }
+  if (schema.oneOf && schema.oneOf.filter(branch => conforms(branch, value)).length !== 1) return false;
+  if (schema.anyOf && !schema.anyOf.some(branch => conforms(branch, value))) return false;
+  if (schema.not && conforms(schema.not, value)) return false;
+  return true;
+}
+
+function harness(options = {}) {
+  let clock = 0, checks = 0, clicks = 0, filled = 0, reads = 0, priorClicks = 0;
+  let url = options.url ?? loginUrl;
+  let state = { url, host: new URL(url).hostname, username: true, password: true, filled: true, challenge: null, alerts: [], ...options.initial };
+  const navigation = [], pageFunctions = {}, storage = new Map();
+  const tools = runInNewContext(`(${source})`, {
+    URL, Date: { now: () => clock },
+    pageInfo: async () => ({ url }),
+    waitMs: async ms => { clock += ms; },
+    gotoUrl: async target => {
+      navigation.push(target);
+      url = loginUrl;
+      state = { ...state, url, host: "login.aa.com", username: true, password: true, filled: false, ...options.navigationState };
+    },
+    accessibilitySnapshot: async () => ({ nodes: clicks > priorClicks ? options.afterNodes ?? [] : options.initialNodes ?? [] }),
+    js: async (fn, args) => {
+      const text = fn.toString();
+      if (text.includes("const all =")) {
+        reads++;
+        return { ...state, ...(clicks > priorClicks ? options.after ?? { challenge: "Challenge Content" } : {}) };
+      }
+      if (args?.arg?.username !== undefined) {
+        filled++;
+        pageFunctions.fill = fn;
+        return options.fillMatches ?? true;
+      }
+      if (text.includes("const key =")) {
+        const button = { disabled: false, getAttribute: () => "false", click: () => { clicks++; } };
+        const host = { tagName: "ADC-BUTTON", textContent: "Log in", getClientRects: () => [{}], shadowRoot: { querySelector: () => button } };
+        return runInNewContext(`(${fn})()`, {
+          location: { origin: "https://login.aa.com" },
+          document: { querySelectorAll: () => [host] },
+          sessionStorage: { getItem: key => storage.get(key), setItem: (key, value) => storage.set(key, value) }
+        });
+      }
+      checks++;
+      return checks >= (options.enableAfter ?? 1);
+    }
+  });
+  return { tool: tools[0], navigation, pageFunctions, stats: () => ({ checks, clicks, filled, reads, clock }), clearResult: () => { priorClicks = clicks; } };
+}
+
+async function invoke(h, ...values) {
+  const result = await h.tool.execute(values.length ? values[0] : input);
+  assert.ok(conforms(h.tool.tool.outputSchema, result), JSON.stringify(result));
+  return result;
+}
+
+test("single self-contained expression declares the domain patterns and both outcome categories", () => {
+  const { tool } = harness();
+  assert.equal(tool.kind, "cdp");
+  assert.equal(tool.tool.name, "login");
+  assert.deepEqual(plain(tool.match.url_patterns), ["https://aa.com/*", "https://*.aa.com/*"]);
+  assert.equal(tool.tool.inputSchema.type, "object");
+  assert.equal(tool.tool.outputSchema.type, "object");
+  assert.deepEqual(plain(tool.tool.outputSchema.oneOf.map(b => b.properties.outcome.const)), ["authenticated", "mfa_required", "failure"]);
+});
+
+for (const url of ["about:blank", "https://example.org/", "https://aa.com/", "https://help.aa.com/", "https://www.aa.com/homePage.do", "https://login.aa.com/help"]) {
+  test(`navigates to the login entry from ${url}`, async () => {
+    const h = harness({ url });
+    const result = await invoke(h);
+    assert.deepEqual(h.navigation, [entryUrl]);
+    assert.equal(h.stats().clicks, 1);
+    assert.equal(result.error_kind, "captcha_or_challenge");
+  });
+}
+
+test("reuses a suitable login form and waits for delayed button enablement", async () => {
+  const h = harness({ enableAfter: 3 });
+  const result = await invoke(h);
+  assert.deepEqual(h.navigation, []);
+  assert.equal(h.stats().checks, 3);
+  assert.equal(h.stats().clicks, 1);
+  assert.equal(h.stats().filled, 1);
+  assert.equal(result.submission_attempted, true);
+  assert.equal(result.observation, "after_submission");
+  assert.ok(h.stats().clock >= 45000, "give the installed solver a bounded opportunity without resubmitting");
+});
+
+test("permanently disabled button returns unknown after ten seconds without submitting", async () => {
+  const h = harness({ enableAfter: Infinity });
+  const result = await invoke(h);
+  assert.equal(h.stats().checks, 100);
+  assert.equal(h.stats().clock, 10000);
+  assert.equal(h.stats().clicks, 0);
+  assert.equal(result.error_kind, "unknown");
+  assert.match(result.error_message, /10 seconds/);
+  assert.equal(result.submission_attempted, false);
+});
+
+test("fill length mismatch aborts before button readiness or submission", async () => {
+  const h = harness({ fillMatches: false });
+  assert.equal((await invoke(h)).error_kind, "unknown");
+  assert.equal(h.stats().checks, 0);
+  assert.equal(h.stats().clicks, 0);
+});
+
+test("persistent session guard blocks a second invocation", async () => {
+  const h = harness();
+  assert.equal((await invoke(h)).submission_attempted, true);
+  h.clearResult();
+  const second = await invoke(h);
+  assert.equal(second.error_kind, "submission_already_attempted");
+  assert.equal(second.submission_attempted, false);
+  assert.equal(h.stats().clicks, 1);
+});
+
+for (const invalid of [undefined, {}, [], { username: "fixture" }, { password: "fixture" }, { ...input, password: "" }, { ...input, username: " " }, { ...input, use_prefilled: true }, { ...input, use_prefilled: "yes" }, { ...input, extra: true }]) {
+  test(`invalid input is rejected before page access: ${JSON.stringify(invalid)}`, async () => {
+    const h = harness();
+    const result = await invoke(h, invalid);
+    assert.equal(result.error_kind, "invalid_input");
+    assert.equal(h.stats().reads, 0);
+    assert.equal(h.stats().clicks, 0);
+  });
+}
+
+test("input schema rejects missing or conflicting fields", () => {
+  const schema = harness().tool.tool.inputSchema;
+  assert.equal(conforms(schema, input), true);
+  assert.equal(conforms(schema, { use_prefilled: true }), true);
+  for (const value of [{}, { username: "fixture" }, { ...input, use_prefilled: true }, { ...input, password: "" }]) assert.equal(conforms(schema, value), false);
+});
+
+test("prefilled mode navigates away from unsuitable pages but never invents field values", async () => {
+  const h = harness({ url: "https://www.aa.com/homePage.do" });
+  assert.equal((await invoke(h, { use_prefilled: true })).error_kind, "invalid_input");
+  assert.deepEqual(h.navigation, [entryUrl]);
+  assert.equal(h.stats().filled, 0);
+  assert.equal(h.stats().clicks, 0);
+});
+
+for (const [message, kind] of [
+  ["Invalid password. 0 attempts remaining.", "invalid_credentials"],
+  ["Your account is locked. Try again later.", "locked_or_throttled"],
+  ["The verification code is incorrect.", "mfa_failed"],
+  ["The service is unavailable.", "unknown"]
+]) {
+  test(`synthetic site error: ${kind}`, async () => {
+    const h = harness({ after: { alerts: [message] } });
+    const result = await invoke(h);
+    assert.equal(result.error_kind, kind);
+    assert.equal(result.error_message, message);
+    assert.equal(result.error_source, "site");
+    assert.equal(result.attempts_remaining_if_shown, kind === "invalid_credentials" ? 0 : null);
+    assert.equal(h.stats().clicks, 1);
+  });
+}
+
+for (const mfa of [false, true]) {
+  const nodes = mfa
+    ? [{ role: "StaticText", name: "We sent a verification code" }, { role: "textbox", name: "Verification code" }]
+    : [{ role: "button", name: "Log out" }, { role: "StaticText", name: "Available miles" }];
+  test(`synthetic ${mfa ? "MFA first-step" : "authenticated"} success matches schema`, async () => {
+    const h = harness({ after: { username: false, password: false }, afterNodes: nodes });
+    const result = await invoke(h);
+    assert.equal(result.first_step_succeeded, true);
+    assert.equal(result.logged_in, !mfa);
+    assert.equal(result.mfa_required, mfa);
+    assert.equal(result.observation, "after_submission");
+    assert.equal(h.stats().clicks, 1);
+  });
+  test(`pre-existing ${mfa ? "MFA" : "authenticated"} state is explicitly attributed`, async () => {
+    const h = harness({ initial: { username: false, password: false }, initialNodes: nodes });
+    const result = await invoke(h);
+    assert.equal(result.observation, "pre_existing");
+    assert.equal(result.submission_attempted, false);
+    assert.equal(h.stats().clicks, 0);
+  });
+}
+
+test("missing form times out without submitting", async () => {
+  const h = harness({ url: "about:blank", navigationState: { username: false, password: false } });
+  assert.equal((await invoke(h)).error_kind, "unknown");
+  assert.equal(h.stats().clock, 30000);
+  assert.equal(h.stats().clicks, 0);
+});
+
+test("shadow DOM fill checks lengths and dispatches input and change events", async () => {
+  const h = harness();
+  await invoke(h);
+  class FakeInput {
+    constructor(name) { this.tagName = "INPUT"; this.name = name; this.events = []; }
+    get value() { return this.content ?? ""; }
+    set value(value) { this.content = value; }
+    getClientRects() { return [{}]; }
+    dispatchEvent(event) { this.events.push(event.type); }
+  }
+  const username = new FakeInput("username"), password = new FakeInput("password");
+  const document = { querySelectorAll: () => [{ tagName: "ADC-TEXT-INPUT", shadowRoot: { querySelectorAll: () => [username, password] } }] };
+  const fill = runInNewContext(`(${h.pageFunctions.fill})`, { document, location: { origin: "https://login.aa.com" }, HTMLInputElement: FakeInput, Event: class { constructor(type) { this.type = type; } } });
+  assert.equal(fill(input), true);
+  assert.equal(username.value.length, input.username.length);
+  assert.equal(password.value.length, input.password.length);
+  assert.deepEqual(username.events, ["input", "change"]);
+  assert.deepEqual(password.events, ["input", "change"]);
+});
+
+test("registry preserves search and indexes login under aa.com", () => {
+  const registry = JSON.parse(readFileSync(new URL("../registry.json", import.meta.url), "utf8"));
+  assert.ok(registry.tools.some(t => t.domain === "aa.com" && t.tool === "search_flights"));
+  const entries = registry.tools.filter(t => t.domain === "aa.com" && t.tool === "login");
+  assert.equal(entries.length, 1);
+  assert.equal(entries[0].namespace, "aa.com");
+  assert.equal(entries[0].file, "domains/aa.com/login.js");
+  assert.equal(entries[0].status, "qa_passed");
+  assert.deepEqual(entries[0].url_patterns, plain(harness().tool.match.url_patterns));
+});

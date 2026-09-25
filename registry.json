@@ -3,6 +3,22 @@
   "tools": [
     {
       "domain": "aa.com",
+      "tool": "login",
+      "file": "domains/aa.com/login.js",
+      "kind": "cdp",
+      "namespace": "aa.com",
+      "url_patterns": [
+        "https://aa.com/*",
+        "https://*.aa.com/*"
+      ],
+      "status": "qa_passed",
+      "qa_agent": "agt_64d5890885db30858fc8",
+      "browser_session": "tzeo1hakca2ftlky6dla7n2p",
+      "last_verified": "2026-09-25",
+      "notes": "captcha_or_challenge live-verified on residential ± stealth; success path unverified — site challenges egress"
+    },
+    {
+      "domain": "aa.com",
       "tool": "search_flights",
       "file": "domains/aa.com/search_flights.js",
       "kind": "cdp",
