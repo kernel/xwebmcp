@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import { runInNewContext } from 'node:vm';
+import { createHash } from 'node:crypto';
 
 const source = readFileSync(new URL('../domains/ubereats.com/login.js', import.meta.url), 'utf8');
 const email = 'qa@example.invalid';
@@ -113,7 +114,9 @@ function harness(options = {}) {
   }
   const schedule = (result, delay = 1) => { if (result) pending = { result, delay }; };
   const context = {
-    URL, JSON, window, document, sessionStorage, innerWidth: 1280, innerHeight: 800,
+    URL, JSON, window, document, sessionStorage, innerWidth: 1280, innerHeight: 800, TextEncoder, Uint8Array,
+    crypto: { subtle: { digest: async (algorithm, bytes) => createHash('sha256').update(bytes).digest() } },
+    fetch: options.userHash === undefined ? undefined : async () => ({ json: async () => ({ data: { isLoggedIn: true, hashedEmail: options.userHash } }) }),
     get location() { return new URL(scene.url); },
     getComputedStyle: () => ({ visibility: 'visible' }),
     MutationObserver: class {
@@ -229,6 +232,22 @@ test('an already authenticated session returns success without any page action',
   assert.equal(result.authenticated, true);
   assert.equal(result.next_step, 'none');
   assert.equal(result.submission_attempted, false);
+  assert.deepEqual(h.calls, { navigations: [], fills: [], submits: 0, clicks: [] });
+});
+
+test('the signed-in account is confirmed through the site\'s hashed email', async () => {
+  const h = harness({ scene: scenes.feed(), userHash: createHash('sha256').update(email).digest('hex') });
+  const result = await h.run();
+  assert.equal(result.authenticated, true);
+  assert.match(result.evidence, /hashed account email matches/);
+  assert.deepEqual(h.calls, { navigations: [], fills: [], submits: 0, clicks: [] });
+});
+
+test('a signed-in session whose hashed email differs is refused without a submission', async () => {
+  const h = harness({ scene: scenes.feed(), userHash: createHash('sha256').update(otherEmail).digest('hex') });
+  const result = await h.run();
+  assert.equal(result.error_kind, 'unknown');
+  assert.match(result.error_message, /different account/);
   assert.deepEqual(h.calls, { navigations: [], fills: [], submits: 0, clicks: [] });
 });
 

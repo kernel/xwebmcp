@@ -184,9 +184,21 @@
     };
     const smsStep = async s => s.onAuth && s.codeCount === 4 && s.smsCode && await identifiedRecently();
     const smsSuccess = s => success(s, "enter_sms_code", "Uber texted a 4-digit code to " + (s.smsHint || "the account's phone") + "; obtain it from the account owner and call again with otp.");
-    const authenticated = s => {
+    // The user endpoint exposes only a SHA-256 of the account email, which is enough to confirm the account
+    // without reading the address back.
+    const accountMatches = async () => js(async ({ email }) => {
+      const res = await fetch("/_p/api/getUserV1?localeCode=en-US", { method: "POST", credentials: "same-origin", headers: { "content-type": "application/json", "x-csrf-token": "x" }, body: "{}" });
+      const user = ((await res.json()) || {}).data || {};
+      if (!user.isLoggedIn || typeof user.hashedEmail !== "string" || user.hashedEmail.length !== 64) return null;
+      const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(email));
+      return [...new Uint8Array(digest)].map(b => b.toString(16).padStart(2, "0")).join("") === user.hashedEmail.toLowerCase();
+    }, { arg: { email } });
+    const authenticated = async s => {
       if (s.accountText && /@/.test(s.accountText) && s.accountText.toLowerCase() !== email) return fail("unknown", "The site is signed in as a different account (" + s.accountText + "); nothing submitted for the requested email. Sign out first.");
-      return success(s, "none", "Uber Eats header shows no Log in link, the navigation menu is present, and a session cookie exists.");
+      let match = null;
+      try { match = await accountMatches(); } catch { match = null; }
+      if (match === false) return fail("unknown", "The site is signed in as a different account than the requested email; nothing submitted. Sign out first.");
+      return success(s, "none", match ? "The session is signed in and the site's hashed account email matches the requested email." : "Uber Eats header shows no Log in link, the navigation menu is present, and a session cookie exists.");
     };
     const poll = async (predicate, seconds) => {
       const deadline = Date.now() + seconds * 1000;
@@ -270,7 +282,7 @@
       if (!s) return fail("unknown", timeoutMessage);
       const outcome = classify(s);
       if (outcome) return outcome;
-      if (await loggedIn(s)) return authenticated(s);
+      if (await loggedIn(s)) return await authenticated(s);
       if (s.onAuth && s.passwordStep) return await submitPassword(s);
       if (s.onAuth && s.chooserFor) return await chooseMethod(s);
       if (s.onAuth && s.codeCount === 4 && s.codeFor) {
@@ -305,7 +317,7 @@
         return await finish(after, "The code submission produced no recognizable result within 45 seconds; inspect the browser before any retry.");
       }
 
-      if (await loggedIn(s)) return authenticated(s);
+      if (await loggedIn(s)) return await authenticated(s);
       if (s.onAuth && s.codeCount === 4 && s.codeFor && s.codeFor.toLowerCase() === email) {
         return success(s, "enter_email_code", "A 4-digit code step for " + s.codeFor + " is already open; call again with otp instead of requesting another code.");
       }
@@ -350,7 +362,7 @@
       if (!s) return fail("unknown", "The search result did not land on a usable Uber Eats page; nothing submitted.");
       const landing = blocking(s);
       if (landing) return landing;
-      if (await loggedIn(s)) return authenticated(s);
+      if (await loggedIn(s)) return await authenticated(s);
 
       step = "open_login";
       // Hydration replaces the server-rendered header a few seconds after load, which detaches the tagged link.
