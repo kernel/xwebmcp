@@ -67,7 +67,7 @@ Google Flights encodes a search in the `tfs` query parameter, a base64url protob
 
 ## QA summary
 
-Author verification on 2026-09-25 (session `j3s22gi3hj37cbptlluo351a`, stealth, `cincy` proxy) registered the branch file after a SHA-256 check of the fetched source and invoked it through `webmcp.invokeTool`. The first two prices and times of each populated result were compared with the card labels on the page.
+Author verification on 2026-09-25 (session `j3s22gi3hj37cbptlluo351a`, stealth, US residential proxy) registered the branch file after a SHA-256 check of the fetched source and invoked it through `webmcp.invokeTool`. The first two prices and times of each populated result were compared with the card labels on the page.
 
 | Case | Result |
 | --- | --- |
@@ -81,7 +81,19 @@ Author verification on 2026-09-25 (session `j3s22gi3hj37cbptlluo351a`, stealth, 
 
 Google Search itself served an automated-traffic challenge (`/sorry/`) on this egress during the reachability check; Google Flights never did.
 
-Independent QA: see the registry entry and the table appended below.
+Independent QA (agent `agt_7ffe2dcdda2935caea70`, three rounds on 2026-09-25, each in a fresh stealth browser with the same proxy) hash-checked the registered source against the branch commit, invoked only through `webmcp.invokeTool` and the Kernel MCP invoke action, walked every output against the tool's `outputSchema`, and cross-checked the first two prices and times of every populated result against the page labels (20 of 20 matched in the final round). Round one found four defects that were fixed before round two: date-line arrivals (`arrivalDayOffset` -1) failed the whole search, detail panels were intermittently lost to a list re-render between expansion and parsing (17 of 40 empty `flightNumbers` once in five runs), `totalResults` echoed a stale announcement, and `price.currency` echoed the request even when Google fell back to US dollars. Round two found a non-ASCII currency label (`Icelandic krónur`) that failed the price regex, three label-map keys that did not match Google's wording, and a 30-second stall on cards without a readable panel; all were fixed before round three.
+
+| Independent QA case (final round, commit `59a8da7`) | Result | Time |
+| --- | --- | ---: |
+| JFK–LAX 2026-10-20 one way, ISK, maxResults 3 | ok, `ISK 24,487`, label “Icelandic krónur”, flight numbers present | 14.3 s |
+| Same in TRY, BRL, AED | ok, currency equals the request, no warnings | 12.4–12.9 s |
+| CVG–SFO 2026-10-16 one way | ok, 25 of 155, 3 best + 22 other | 17.3 s |
+| JFK–LHR 2026-11-10 → 2026-11-17 round trip, USD, maxResults 40, two fresh runs | ok, 40 of 64, 0 empty flight numbers, 0 stop/layover mismatches | 18.0–18.4 s |
+| GUM–HNL 2026-10-20 one way | ok, UA 200 with offset -1; JAL/Alaska one-stops with NRT layover and NRT→HND airport change in segments | 12.8 s |
+| LUK–SFO 2026-10-16 one way | no_results | 1.6 s |
+| CVG–SFO one way, maxResults 100 | ok, 100 of 155, all panels read | 29.6 s |
+
+Earlier rounds also passed the round-trip domestic, 3-adult business, 2-adult premium economy, first-class, GBP, invalid-input and reachability cases (see the author table above for the shapes). Known minor points left as designed: a skipped unreadable card still counts toward `maxResults`, and `resultsUrl` can differ from the final tab URL if Google rewrites it again after the read.
 
 Run the local tests from the repository root:
 
@@ -93,5 +105,7 @@ They use a small fake DOM built from the observed Google Flights markup and stub
 
 ## Sessions
 
-- Author verification browser: `j3s22gi3hj37cbptlluo351a` (24-hour inactivity timeout).
+- Author verification browser: `j3s22gi3hj37cbptlluo351a` (deleted after verification).
+- Independent QA browsers: `m0i2vxdeph6kw0l3b5xegyr1`, `hhrgvj03yt8efdl2wr59nkgu`, `msdeh31j82v60yslgp6vaflz` (deleted after each round).
+- Independent QA agent: `agt_7ffe2dcdda2935caea70`.
 - Source: this repository is canonical; sessions expire but files do not.

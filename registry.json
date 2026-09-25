@@ -75,11 +75,11 @@
         "https://google.com/travel/*",
         "https://*.google.com/travel/*"
       ],
-      "status": "draft",
-      "qa_agent": null,
-      "browser_session": "j3s22gi3hj37cbptlluo351a",
+      "status": "qa_passed",
+      "qa_agent": "agt_7ffe2dcdda2935caea70",
+      "browser_session": null,
       "last_verified": "2026-09-25",
-      "notes": "PLACEHOLDER"
+      "notes": "Google Flights via a tfs deep link (hl=en, gl=US, curr); returns outbound itineraries from the best and other sections with flight numbers, segments, layovers and total prices for the requested passengers. Three independent QA rounds passed the full matrix plus date-line, airport-change, non-USD and unsupported-currency probes; a first-round intermittent loss of expanded detail panels was fixed and did not recur in 10 runs. url_patterns are deliberately narrowed to /travel/* (see the domain README). Consent interstitial, /sorry blocks and 'Price unavailable' cards are covered by local tests only."
     },
     {
       "domain": "jetblue.com",
