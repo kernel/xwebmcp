@@ -16,4 +16,4 @@ jobs:
       - name: Validate registry.json against spec/repository.md
         run: node scripts/validate-registry.mjs
       - name: Run tool tests
-        run: node --test tests/
+        run: node --test "tests/*.test.mjs"

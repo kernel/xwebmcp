@@ -14,7 +14,7 @@ domains/
   <registrable-domain>/          # one directory per site, e.g. delta.com, aa.com
     README.md                    # status table, site quirks, known limitations
     <tool-name>.js               # one file per tool, named after the tool
-tests/                           # node --test tests/
+tests/                           # node --test "tests/*.test.mjs"
 registry.json                    # machine-readable index of every tool
 spec/                            # the rules this repo follows, and JSON Schemas
 scripts/validate-registry.mjs    # checks registry.json and domains/ against the spec
@@ -83,7 +83,7 @@ Before opening a pull request:
 
 ```sh
 node scripts/validate-registry.mjs   # registry.json, domains/, and READMEs against the spec
-node --test tests/                    # tool tests
+node --test "tests/*.test.mjs"        # tool tests
 ```
 
 CI runs both on every pull request. Adding a tool means adding the tool file, a test, a

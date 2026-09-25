@@ -40,7 +40,7 @@ domains/
     README.md                     per-domain documentation (§8)
     <tool>.js                     one tool per file, named after the tool
 tests/
-  *.test.mjs                      node --test tests/ MUST pass
+  *.test.mjs                      node --test "tests/*.test.mjs" MUST pass
 spec/                             this specification and its JSON Schemas
 scripts/validate-registry.mjs     the validator (§9)
 ```
@@ -54,7 +54,7 @@ Rules:
   because a consumer without a registry treats every `.js` file there as a tool (§7).
 - A `domains/<domain>/` directory MUST contain at least one tool file and MUST contain a
   `README.md` (§8).
-- Tests MUST live under `tests/` and MUST pass with `node --test tests/` on the current
+- Tests MUST live under `tests/` and MUST pass with `node --test "tests/*.test.mjs"` on the current
   Node LTS. Test files SHOULD evaluate the tool file with stubbed helpers rather than
   contacting the live site. Test file naming is not normative; `<domain>-<tool>.test.mjs`
   is RECOMMENDED.
@@ -305,7 +305,7 @@ repository root. It has no dependencies beyond Node itself and checks:
 8. Every domain directory has a `README.md` with the status table and the
    Known limitations section (§8), and the table's status matches the registry.
 
-CI (`.github/workflows/validate.yml`) runs the validator and `node --test tests/` on pull
+CI (`.github/workflows/validate.yml`) runs the validator and `node --test "tests/*.test.mjs"` on pull
 requests and on pushes to `main`. A pull request that fails either MUST NOT be merged.
 
 ## 10. Consuming a repository: resolve, pin, update
