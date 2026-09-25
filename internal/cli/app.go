@@ -67,6 +67,8 @@ func (a *App) Command() *cli.Command {
 			a.statusCommand(),
 			a.toolsCommand(),
 			a.invokeCommand(),
+			a.mcpCommand(),
+			a.devCommand(),
 			a.nativeHostCommand(),
 		},
 	}
