@@ -218,11 +218,12 @@
             await sleep(300);
           }
           const collapsed = card => card.querySelector('button[aria-label^="Flight details"][aria-expanded="false"]');
+          const pending = card => card.querySelector('button[aria-label^="Flight details"]') && (collapsed(card) || !card.querySelector(".c257Jb"));
           let selected = allCards().slice(0, maxResults);
-          for (let pass = 0; pass < 3 && selected.some(({ card }) => collapsed(card)); pass++) {
+          for (let pass = 0; pass < 3 && selected.some(({ card }) => pending(card)); pass++) {
             for (const { card } of selected) collapsed(card)?.click();
             const passDeadline = Math.min(deadlineMs, Date.now() + 5000);
-            while (selected.some(({ card }) => collapsed(card)) && Date.now() < passDeadline) await sleep(200);
+            while (selected.some(({ card }) => pending(card)) && Date.now() < passDeadline) await sleep(200);
             selected = allCards().slice(0, maxResults);
           }
 

@@ -447,7 +447,7 @@ test("an arrival the day before departure (eastbound date-line crossing) is kept
 
 test("an unreadable card is skipped with a warning instead of failing the whole search", async () => {
   const broken = card({ dep: "7:10 AM", arr: "9:30 AM", airline: "Spirit", duration: "5 hr", from: "CVG X", to: "SFO Y", stops: 0, price: "$0", priceless: true, emissions: "1 kg CO2e", comparison: "Avg emissions", segments: [] });
-  const h = harness({ document: resultsPage({ firstCard: broken }) });
+  const h = harness({ document: resultsPage({ firstCard: broken }), timeoutClock: true });
   const result = await h.execute(oneWay);
   validate(h.tools[0].tool.outputSchema, result);
   assert.equal(result.status, "ok");
