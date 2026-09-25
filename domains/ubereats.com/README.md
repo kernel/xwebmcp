@@ -6,12 +6,12 @@ auth service at `https://auth.uber.com/v2/`, so the login tool also matches that
 | tool             | file                                         | status    | notes                                                                                   |
 |------------------|----------------------------------------------|-----------|-----------------------------------------------------------------------------------------|
 | login            | [login.js](login.js)                         | qa_passed | One submission per step; entry, email, chooser, password, and signed-in paths live-verified; SMS code step fixture-only |
-| search           | [search.js](search.js)                       | draft     | Stores and matching items from the site's search feed, one page per call; needs a delivery address |
-| get_store        | [get_store.js](get_store.js)                 | draft     | Store details, categories, menu items, or an in-store product search                    |
-| get_item         | [get_item.js](get_item.js)                   | draft     | Price, availability, and nested option groups for one item                             |
-| add_to_cart      | [add_to_cart.js](add_to_cart.js)             | draft     | Validates against the live menu, then creates or extends the store's cart; needs sign-in |
-| get_cart         | [get_cart.js](get_cart.js)                   | draft     | Every cart with priced lines and the site's subtotal and total; needs sign-in           |
-| update_cart_item | [update_cart_item.js](update_cart_item.js)   | draft     | Set a line's quantity, 0 removes; last removal deletes the store's cart; needs sign-in  |
+| search           | [search.js](search.js)                       | qa_passed | Stores and matching items from the site's search feed, one page per call; needs a delivery address |
+| get_store        | [get_store.js](get_store.js)                 | qa_passed | Store details, categories, menu items, or an in-store product search                    |
+| get_item         | [get_item.js](get_item.js)                   | qa_passed | Price, availability, and nested option groups for one item                             |
+| add_to_cart      | [add_to_cart.js](add_to_cart.js)             | qa_passed | Validates against the live menu, then creates or extends the store's cart; needs sign-in |
+| get_cart         | [get_cart.js](get_cart.js)                   | qa_passed | Every cart with priced lines and the site's subtotal and total; needs sign-in           |
+| update_cart_item | [update_cart_item.js](update_cart_item.js)   | qa_passed | Set a line's quantity, 0 removes; last removal deletes the store's cart; needs sign-in  |
 
 ## Native WebMCP tools
 
@@ -371,8 +371,13 @@ reported quantities are what the site holds, not what was requested.
   (agent `agt_726228ec63fcc4d15c32`, commit `c42641f`) confirmed all five fixes and every
   contract case, and found that `add_to_cart` accepted an item from a restaurant menu
   section that was not being served; the store-level availability check above fixes
-  that, with fixture coverage. Status stays `draft` until a QA pass signs off the
-  current source.
+  that, with fixture coverage. A third pass (agent `agt_e6e4e3a2d543600b58b9`, commit
+  `c4467fa`, the current tool source) confirmed the fix on both the read and the write
+  side and found no defects, so all six are `qa_passed`.
+- Not `verified`: every live success so far ran from a `ubereats.com` page, and the
+  spec's `verified` status wants a live invocation started from a page of the domain
+  other than the tool's entry point; the tools have no entry page as such, so the
+  distinction is left for a later pass.
 - Live-verified on 2026-09-25 through the registered tools on the owner's signed-in
   session (`us-mobile` proxy): search for a grocery product and for a restaurant
   cuisine including a second page; a grocery store listing, a restaurant in-store
@@ -457,6 +462,24 @@ no navigation in any call. The five earlier findings were each confirmed fixed.
 | add_to_cart      | grocery item twice; restaurant item without, with, and with a foreign option | merged line; one problem per rejection |
 | add_to_cart      | item listed with `available: false` (menu not being served) | accepted (defect, fixed in the current source)         |
 | update_cart_item | 1 to 3, back to 1, unknown line, quantity 0 on each line    | applied; `not_found`; all carts deleted                |
+| get_cart         | before and after                                            | `carts: []` both times                                 |
+
+Independent QA of commit `c4467fa` (agent `agt_e6e4e3a2d543600b58b9`, same setup; this
+is the sign-off for the current source). All 25 outputs valid under Ajv; cart empty
+before and after; one URL throughout the owner session; no `/checkout`.
+
+| tool             | case                                                        | result                                                 |
+|------------------|-------------------------------------------------------------|--------------------------------------------------------|
+| get_item         | restaurant item through an unserved menu section, then through the served one | `available: false` naming the section, then `available: true` |
+| get_item         | grocery item                                                | `available: true`, `currency` set                      |
+| add_to_cart      | the unserved-section item with its option                   | `unavailable`, no cart created                         |
+| add_to_cart      | the same item through the served section, then removed      | one cart, quantity 1; `cart_deleted: true`             |
+| search           | no address; grocery; restaurant page 2; from a `/store/…` page | as documented, no navigation                        |
+| get_store        | grocery by both id forms, restaurant `query`                | listings agree; `available: false` passed through      |
+| cart tools       | signed out                                                  | `not_logged_in`                                        |
+| all              | 7 malformed inputs                                          | rejected by the input-schema gate                      |
+| add_to_cart      | grocery item twice                                          | one line, quantity 2                                   |
+| update_cart_item | 2 to 3, unknown line, quantity 0                            | applied; `not_found`; `cart_deleted: true`             |
 | get_cart         | before and after                                            | `carts: []` both times                                 |
 
 Local contract and fixture tests:

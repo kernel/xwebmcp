@@ -258,9 +258,12 @@
         "https://ubereats.com/*",
         "https://*.ubereats.com/*"
       ],
-      "status": "draft",
-      "last_verified": null,
-      "notes": ""
+      "status": "qa_passed",
+      "last_verified": "2026-09-25",
+      "notes": "Validates the item against the live menu, store availability, and every option group before creating or extending the store's cart; identical adds merge into one line. Independent QA passed three times on 2026-09-25, the last on the current source, with real adds on the owner's account and the cart restored to empty. Nested child option picks in the add payload are fixture-only; sold-out items and options were never seen live.",
+      "provenance": {
+        "qa_agent": "agt_e6e4e3a2d543600b58b9"
+      }
     },
     {
       "domain": "ubereats.com",
@@ -272,9 +275,12 @@
         "https://ubereats.com/*",
         "https://*.ubereats.com/*"
       ],
-      "status": "draft",
-      "last_verified": null,
-      "notes": ""
+      "status": "qa_passed",
+      "last_verified": "2026-09-25",
+      "notes": "Every cart with priced lines (unit price from the per-order read, totals from the presentation read) and plain option group ids. Independent QA passed three times on 2026-09-25, the last on the current source. A cart the site cannot price still lists its lines with null prices (fixture-only).",
+      "provenance": {
+        "qa_agent": "agt_e6e4e3a2d543600b58b9"
+      }
     },
     {
       "domain": "ubereats.com",
@@ -286,9 +292,12 @@
         "https://ubereats.com/*",
         "https://*.ubereats.com/*"
       ],
-      "status": "draft",
-      "last_verified": null,
-      "notes": ""
+      "status": "qa_passed",
+      "last_verified": "2026-09-25",
+      "notes": "Price, option groups (nested child groups included), and availability for one item; available is false when sold out, when the store is closed, or when a restaurant menu section is not being served now (read from the store, since the item endpoint has no such flag). Independent QA passed on the current source on 2026-09-25 including the unserved-section case; sold-out items were never seen live.",
+      "provenance": {
+        "qa_agent": "agt_e6e4e3a2d543600b58b9"
+      }
     },
     {
       "domain": "ubereats.com",
@@ -300,9 +309,12 @@
         "https://ubereats.com/*",
         "https://*.ubereats.com/*"
       ],
-      "status": "draft",
-      "last_verified": null,
-      "notes": ""
+      "status": "qa_passed",
+      "last_verified": "2026-09-25",
+      "notes": "Store details, categories, and menu items, or an in-store product search with query; accepts the UUID or the 22-character URL id. Large grocery stores return only the featured carousels without query. Section ids can differ between two reads of the same store. Independent QA passed three times on 2026-09-25, the last on the current source.",
+      "provenance": {
+        "qa_agent": "agt_e6e4e3a2d543600b58b9"
+      }
     },
     {
       "domain": "ubereats.com",
@@ -332,9 +344,12 @@
         "https://ubereats.com/*",
         "https://*.ubereats.com/*"
       ],
-      "status": "draft",
-      "last_verified": null,
-      "notes": ""
+      "status": "qa_passed",
+      "last_verified": "2026-09-25",
+      "notes": "Site search feed, one 20-entry page per call with offset paging; grocery queries carry matching items with the ids the other tools need, restaurant queries carry stores only. Needs a delivery address in the session (never changes it). Independent QA passed three times on 2026-09-25, the last on the current source, signed out on a fresh browser; live-verified from the feed, a store page, and a search page.",
+      "provenance": {
+        "qa_agent": "agt_e6e4e3a2d543600b58b9"
+      }
     },
     {
       "domain": "ubereats.com",
@@ -346,9 +361,12 @@
         "https://ubereats.com/*",
         "https://*.ubereats.com/*"
       ],
-      "status": "draft",
-      "last_verified": null,
-      "notes": ""
+      "status": "qa_passed",
+      "last_verified": "2026-09-25",
+      "notes": "Sets a line's quantity or removes it with 0; the last removal deletes the store's cart; a line not in the cart is not_found with nothing changed. Independent QA passed three times on 2026-09-25, the last on the current source, with real updates on the owner's account.",
+      "provenance": {
+        "qa_agent": "agt_e6e4e3a2d543600b58b9"
+      }
     },
     {
       "domain": "united.com",
