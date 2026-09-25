@@ -15,7 +15,7 @@
       "qa_agent": "agt_64d5890885db30858fc8",
       "browser_session": "bjcsg0na3ht6hklf6v2ziamo",
       "last_verified": "2026-09-25",
-      "notes": "Primary entry: DuckDuckGo organic search; one direct-URL fallback for missing/unsuitable results, never after a detected challenge or uncertain navigation. CAPTCHA requires human assistance; automated solving/bypass unsupported. Fallback tested locally only; manual login and token capture pending."
+      "notes": "DDG organic search is the only entry path; entry failures name the failed step and never navigate directly to AA. CAPTCHA requires human assistance; URL queries/fragments are omitted. DDG-only revision awaiting independent re-test; manual login and token capture pending."
     },
     {
       "domain": "aa.com",

@@ -3,7 +3,7 @@
   match: { url_patterns: ["https://aa.com/*", "https://*.aa.com/*"] },
   tool: {
     name: "login",
-    description: "Submit American Airlines AAdvantage login once. When entry is needed, search DuckDuckGo for american airlines login and follow its first organic result only if it is an approved AA login URL. Fall back once to https://www.aa.com/loyalty/login if that result is missing or unsuitable, never after a challenge, uncertain navigation, or submission. Never send credentials to the search engine. Provide username and password, or explicitly use fields already filled by the human or Kernel Vault. Use a solver-free browser. CAPTCHA immediately returns human_assist_required; never solve, bypass, or retry it. manual_assist:true only inspects the current page without navigation, filling, or submission. Stops at MFA; never retries. A sessionStorage guard permits one submission per login tab storage lifetime. Results identify pre-existing versus post-submission observations. logged_in is true only for an authenticated account, not an MFA interstitial. No remember-me or SSO control was observed. Do not invoke again after an uncertain submission.",
+    description: "Submit American Airlines AAdvantage login once. When entry is needed, search DuckDuckGo for american airlines login and follow its first organic result only if it is an approved AA login URL. DuckDuckGo is the only entry path; missing or unsuitable results and navigation failures return step-specific errors without direct navigation. Never send credentials to the search engine. Provide username and password, or explicitly use fields already filled by the human or Kernel Vault. Use a solver-free browser. CAPTCHA immediately returns human_assist_required; never solve, bypass, or retry it. manual_assist:true only inspects the current page without navigation, filling, or submission. Stops at MFA; never retries. A sessionStorage guard permits one submission per login tab storage lifetime. Results identify pre-existing versus post-submission observations. logged_in is true only for an authenticated account, not an MFA interstitial. No remember-me or SSO control was observed. Do not invoke again after an uncertain submission.",
     inputSchema: {
       type: "object",
       properties: {
@@ -64,7 +64,7 @@
           properties: {
             observation: { enum: ["pre_existing", "after_submission"] },
             outcome: { const: "failure" }, logged_in: { const: false },
-            error_kind: { enum: ["invalid_credentials", "mfa_failed", "locked_or_throttled", "invalid_input", "submission_already_attempted", "unknown"] },
+            error_kind: { enum: ["invalid_credentials", "mfa_failed", "locked_or_throttled", "invalid_input", "submission_already_attempted", "ddg_home_navigation_failed", "ddg_search_navigation_failed", "ddg_inspection_failed", "ddg_result_missing", "ddg_result_unapproved", "ddg_unexpected_origin", "ddg_result_click_failed", "login_form_unavailable", "unknown"] },
             error_message: { type: "string", minLength: 1 }, error_source: { enum: ["site", "tool"] },
             attempts_remaining_if_shown: { type: ["integer", "null"], minimum: 0 }, submission_attempted: { type: "boolean" }
           }
@@ -75,6 +75,7 @@
   },
   execute: async (input) => {
     let submitted = false;
+    let failureStep = "unknown";
     const fail = (kind, message, source = "tool") => {
       const remaining = message.match(/(\d+)\s+(?:login\s+)?attempts?\s+(?:remaining|left)/i);
       return { outcome: "failure", logged_in: false, error_kind: kind, error_message: message,
@@ -127,17 +128,19 @@
         return { state, result: fail(kind, message, "site") };
       }
       const mfa = texts.find(t => /(?:we(?:'ve| have)? sent|we sent|enter).*(?:verification|security|one.time) code|choose.*(?:verification|verification method)|how should we send your code/i.test(t));
+      const landing = new URL(state.url);
+      const landingUrl = landing.origin + landing.pathname;
       const otp = ax.nodes.some(n => n.role === "textbox" && /verification code|security code|one.time|otp/i.test(n.name || ""));
       if (!state.password && mfa && (otp || /sent|choose|how should we send your code/i.test(mfa))) return { state, result: {
         observation: submitted ? "after_submission" : "pre_existing", submission_attempted: submitted,
-        outcome: "mfa_required", logged_in: false, first_step_succeeded: true, landing_url: state.url,
+        outcome: "mfa_required", logged_in: false, first_step_succeeded: true, landing_url: landingUrl,
         account_name_or_hint: null, mfa_required: true, next_step: mfa
       } };
       const logout = ax.nodes.find(n => ["link", "button"].includes(n.role) && /^(?:log out|logout|sign out)$/i.test((n.name || "").trim()));
       const account = texts.find(t => /AAdvantage.*(?:#|number)|available miles|loyalty points/i.test(t));
       if (!state.password && logout && account) return { state, result: {
         observation: submitted ? "after_submission" : "pre_existing", submission_attempted: submitted,
-        outcome: "authenticated", logged_in: true, first_step_succeeded: true, landing_url: state.url,
+        outcome: "authenticated", logged_in: true, first_step_succeeded: true, landing_url: landingUrl,
         account_name_or_hint: account, mfa_required: false, next_step: "none"
       } };
       return { state, result: null };
@@ -171,10 +174,14 @@
           first.setAttribute("target", "_self");
           return "ready";
         }, { arg: { selectResult } });
+        failureStep = "ddg_home_navigation_failed";
         await gotoUrl("https://start.duckduckgo.com/");
+        failureStep = "ddg_inspection_failed";
         let resultState = await inspectSearch(false);
         if (resultState === "clear") {
+          failureStep = "ddg_search_navigation_failed";
           await gotoUrl("https://start.duckduckgo.com/?q=american+airlines+login&ia=web");
+          failureStep = "ddg_inspection_failed";
           const searchDeadline = Date.now() + 20000;
           do {
             await waitMs(250);
@@ -182,10 +189,13 @@
             if (resultState !== "missing") break;
           } while (Date.now() < searchDeadline);
         }
-        if (resultState === "challenge") return humanAssist("captcha_or_challenge", "The search page requires human verification. Complete it manually; no fallback was attempted.", (await pageInfo()).url);
-        if (resultState === "ready") await click('[data-aa-login-result="true"]');
-        else if (["missing", "wrong_target"].includes(resultState)) await gotoUrl("https://www.aa.com/loyalty/login");
-        else return fail("unknown", "The search page left the approved search origins. Nothing was submitted and no fallback was attempted.");
+        if (resultState === "challenge") return humanAssist("captcha_or_challenge", "The search page requires human verification. Complete it manually; nothing was submitted.", (await pageInfo()).url);
+        if (resultState === "missing") return fail("ddg_result_missing", "The first organic search result was not found within 20 seconds. Nothing was submitted.");
+        if (resultState === "wrong_target") return fail("ddg_result_unapproved", "The first organic search result is not an approved AA login URL. Nothing was submitted.");
+        if (resultState !== "ready") return fail("ddg_unexpected_origin", "The search page left the approved search origins. Nothing was submitted.");
+        failureStep = "ddg_result_click_failed";
+        await click('[data-aa-login-result="true"]');
+        failureStep = "login_form_unavailable";
         const deadline = Date.now() + 30000;
         do {
           await waitMs(500);
@@ -196,7 +206,8 @@
       }
       observed = await inspect();
       if (observed.result) return observed.result;
-      if (!observed.state.username || !observed.state.password) return fail("unknown", "The expected username and password form is not available.");
+      if (!observed.state.username || !observed.state.password) return fail("login_form_unavailable", "The expected username and password form is not available.");
+      failureStep = "unknown";
       if (prefilled && !observed.state.filled) return fail("invalid_input", "Both fields must already be filled by the human or vault.");
       if (!prefilled) {
         const filled = await js(({ username, password }) => {
@@ -260,7 +271,7 @@
       if (observed.result) return observed.result;
       return fail("unknown", "No conclusive authentication, MFA, or error state appeared within 45 seconds. Do not automatically resubmit.");
     } catch {
-      return fail("unknown", submitted ? "Submission outcome is uncertain. Inspect the browser; do not retry automatically." : "Browser inspection or form preparation failed; no submission was attempted.");
+      return fail(submitted ? "unknown" : failureStep, submitted ? "Submission outcome is uncertain. Inspect the browser; do not retry automatically." : `Step ${failureStep} failed; no submission was attempted.`);
     }
   }
 }]
