@@ -331,7 +331,7 @@
       "last_verified": "2026-09-25",
       "notes": "Independent failure-path QA passed on the current source (three passes; the last found no defects: two search-engine entries reached the email code step with one submission each). Live on the owner's account through the tool: method chooser, vault-filled password step, and the already-authenticated path, which now confirms the account by comparing a SHA-256 of the requested email with the site's hashed account email (match and mismatch live-verified 2026-09-25); wrong-email-code path verified on fabricated accounts. The SMS code step after the password was entered by hand once, so otp on the SMS step is fixture-tested only; wrong password, lockout, and CAPTCHA classification are fixture-only.",
       "provenance": {
-        "qa_agent": "agt_2d00f6bdd86545dc85b6"
+        "qa_agent": "agt_61207fb92423b24e591a"
       }
     },
     {

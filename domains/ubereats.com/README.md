@@ -212,8 +212,8 @@ Independent QA of commit `84a9be7` (agent `agt_c4fd2ee51e0ad730bd35`, one browse
 | Listing on `/search?q=pizza`                               | n/a         | listed once the page settled             | one empty listing mid-navigation                      |
 
 Independent QA of commit `4c544ca` (agent `agt_2d00f6bdd86545dc85b6`, one browser on
-`us-mobile`, deleted). This is the sign-off for the login tool source; the later change
-to the signed-in account check is covered by fixtures and a live owner run, see below.
+`us-mobile`, deleted). This is the sign-off for the sign-in flow. The later signed-in
+account check (commit `faae4c5`) was QA'd separately, see the next table.
 
 | case                                                       | account     | result                                   | evidence                                              |
 |------------------------------------------------------------|-------------|------------------------------------------|-------------------------------------------------------|
@@ -221,6 +221,18 @@ to the signed-in account check is covered by fixtures and a live owner run, see 
 | Re-invocation with the code step open                      | fabricated  | `enter_email_code`, 0 submissions        | email marker unchanged                                |
 | Entry from `/search?q=pizza` (second fabricated email)     | fabricated  | `enter_email_code`, 21.7 s, 1 submission | code step heading named the second address            |
 | Two malformed inputs on the home page                      | fabricated  | rejected, no page action                 | all outputs valid under Ajv                           |
+
+Independent QA of the signed-in account check at commit `05b8867` (agent
+`agt_61207fb92423b24e591a`, the owner session, already signed in). Verdict: pass.
+
+| case                                                       | account     | result                                   | evidence                                              |
+|------------------------------------------------------------|-------------|------------------------------------------|-------------------------------------------------------|
+| Signed in, requested email differs                         | fabricated  | failure `unknown`, 1.2 s, 0 submissions  | no input, click, key or unload events; still signed in |
+| Signed in, requested email matches                         | owner       | success, 1.5 s, password unused          | hashed-email evidence; no page events; URL unchanged  |
+
+When the account endpoint can't be read or has no email hash, the signed-in path still
+reports success with the older header evidence (fail-open, same as before this check).
+The two evidence strings tell a verified success from an unverified one.
 
 Local contract and fixture tests:
 
