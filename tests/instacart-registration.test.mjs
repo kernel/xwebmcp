@@ -211,6 +211,7 @@ function harness(name, options = {}) {
       else if (outcome === "rejected") page.codeError = "That code is incorrect. Please try again.";
       else if (outcome === "expired") page.alerts = ["This code has expired. Request a new code."];
       else if (outcome === "logged-out") { page.mode = "none"; page.path = "/store/hub/grocery"; }
+      else if (outcome === "banner") page.codeError = "That code is not valid for (513) 555-0142.";
       else if (outcome === "spinner-then-rejected") { page.mode = "none"; spinnerUntil = clock + 3000; }
     },
     waitMs: async ms => { clock += ms; },
@@ -585,6 +586,13 @@ for (const scenario of [
   });
 }
 
+test("complete_registration: a site banner that repeats the address is masked", async () => {
+  const h = harness("complete_registration", codeStep({ codeFor: phone, afterCode: "banner" }));
+  const result = await h.run({ phone, code: "123456" });
+  assert.equal(result.error_kind, "code_rejected");
+  assert.ok(result.error_message.includes("***-***-0142"));
+});
+
 test("complete_registration: a stale code error does not count as this code's verdict", async () => {
   const h = harness("complete_registration", codeStep({ codeError: "That code is incorrect. Please try again.", afterCode: "stale" }));
   const result = await h.run(done());
@@ -642,6 +650,15 @@ test("resume_registration: sms identity is matched on the phone number", async (
   const result = await harness("resume_registration", { path: "/store", loggedInAs: phone }).run({ phone });
   assert.equal(result.status, "registered");
   assert.equal(result.destination_hint, "***-***-0142");
+});
+
+test("resume_registration: the code-step hint in evidence is masked", async () => {
+  const sms = await harness("resume_registration", codeStep({ codeFor: phone })).run({ phone });
+  assert.equal(sms.status, "challenge_pending");
+  assert.match(sms.evidence, /\*\*\*-\*\*\*-0142/);
+  const mail = await harness("resume_registration", codeStep()).run({ email });
+  assert.ok(!mail.evidence.includes(email));
+  assert.ok(mail.evidence.includes("q***@example.invalid"));
 });
 
 test("resume_registration: another signed-in account is wrong_account with a masked hint", async () => {

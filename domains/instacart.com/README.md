@@ -510,6 +510,14 @@ mutations were all caught. It requested changes, all made afterwards:
 - Unused helpers were dropped per tool, and `register`/`resume_registration` now mirror
   the schema's email length and phone pattern.
 
+Round 2 (same reviewer, commit `4a5a782`, the current tool source) re-ran the read-only
+live checks in a new browser. `register` now rejects `a@b.c` with `invalid_input` in its
+own validation. Telemetry again showed only `CurrentUser`. The reviewer confirmed every
+round-1 fix and signed off: final source reviewed, no blocking defects. The tools stay
+`draft` until a live sign-up is allowed. Its two test-coverage nits (masking in
+`resume_registration` and `complete_registration` was only exercised through `register`)
+were closed with tests afterwards; the tool files are unchanged since `4a5a782`.
+
 Fixture tests run each page tool from its own `execute.toString()` inside a fake page
 (DOM, `sessionStorage`, GraphQL endpoint) and the cdp tool against the same page:
 

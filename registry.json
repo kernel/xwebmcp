@@ -178,7 +178,10 @@
       ],
       "status": "draft",
       "last_verified": null,
-      "notes": "kind cdp: typing the code makes Instacart replace the page (window.location.assign to the post-auth path), and the tool must verify the new account after that. Types the code once and matches the signed-in account from the site's CurrentUser / UsersPhoneNumber data; wrong_account on any other identity. Draft: wrong, expired and accepted codes are covered by fixtures only."
+      "notes": "kind cdp: typing the code makes Instacart replace the page (window.location.assign to the post-auth path), and the tool must verify the new account after that. Types the code once and matches the signed-in account from the site's CurrentUser / UsersPhoneNumber data; wrong_account on any other identity. Draft: wrong, expired and accepted codes are covered by fixtures only.",
+      "provenance": {
+        "qa_agent": "agt_19b6d7706ce5c4c53410"
+      }
     },
     {
       "domain": "instacart.com",
@@ -260,7 +263,10 @@
       ],
       "status": "draft",
       "last_verified": null,
-      "notes": "kind page: runs inside https://www.instacart.com/signup and never navigates (wrong_page elsewhere). Checks the browser is signed out and, for email, whether an account exists (read-only), then submits the email or phone form once and stops at the six-digit code step. Draft: no real sign-up has been submitted yet; the submit path, the code-step hint text and reCAPTCHA behaviour after a page-script click are covered by fixtures only."
+      "notes": "kind page: runs inside https://www.instacart.com/signup and never navigates (wrong_page elsewhere). Checks the browser is signed out and, for email, whether an account exists (read-only), then submits the email or phone form once and stops at the six-digit code step. Draft: no real sign-up has been submitted yet; the submit path, the code-step hint text and reCAPTCHA behaviour after a page-script click are covered by fixtures only.",
+      "provenance": {
+        "qa_agent": "agt_19b6d7706ce5c4c53410"
+      }
     },
     {
       "domain": "instacart.com",
@@ -274,7 +280,10 @@
       ],
       "status": "draft",
       "last_verified": null,
-      "notes": "kind page, read-only: reports challenge_pending, registered, existing_account or nothing_pending for the current tab from the page and the site's current-user data; never submits or navigates. Live-checked read-only on a signed-out /signup page (nothing_pending). Draft until a real sign-up exercises the pending and registered states."
+      "notes": "kind page, read-only: reports challenge_pending, registered, existing_account or nothing_pending for the current tab from the page and the site's current-user data; never submits or navigates. Live-checked read-only on a signed-out /signup page (nothing_pending). Draft until a real sign-up exercises the pending and registered states.",
+      "provenance": {
+        "qa_agent": "agt_19b6d7706ce5c4c53410"
+      }
     },
     {
       "domain": "instacart.com",
