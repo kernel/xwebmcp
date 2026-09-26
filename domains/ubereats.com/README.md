@@ -525,7 +525,8 @@ links go to the same URL, and the first screen asks for a phone number or email 
 way. What follows depends on whether the address already has an account.
 
 1. `register({ email })` opens `https://www.ubereats.com/` if needed, confirms the session
-   is signed out (Uber's user endpoint answers 403 then), follows the header Sign up link,
+   is signed out (Uber's user endpoint then answers HTTP 200 with a failure body carrying
+   code 403, `rtapi.forbidden`), follows the header Sign up link,
    and submits the email once. It returns `status: "challenge"` with `channel: "email"` and
    a masked `destination_hint` when Uber emails a code. If Uber instead offers sign-in
    methods, a password step, or a text-message code, the address already has an account
@@ -618,7 +619,10 @@ types (`EMAIL_OTP_CODE`, `PHONE_NUMBER`, `PHONE_NUMBER_PROGRESSIVE`, `PHONE_OTP`
 `FULL_NAME`, `LEGAL`, `NAME_LEGAL`, `NAME_PHONE_LEGAL`, plus the unsupported ones above),
 its field ids (`PHONE_NUMBER` with a country picker, `FIRST_NAME`, `LAST_NAME`), and its
 terms checkbox id (`LEGAL_ACCEPT_TERMS`, text `accept-terms-text`). The email code and SMS
-code screens were seen live earlier during the login work. Which screens a new account
+code screens, the per-box ids `EMAIL_OTP_CODE-n` and `PHONE_SMS_OTP-n`, pasting a whole code
+into the first box, and the sign-in chooser's `alt-action-help-v2` control were seen live
+during the login work; none of those appear in the static client, so they could change
+without a script change. Which screens a new account
 actually gets, and in what order, is unconfirmed.
 
 ### ClawBench and repeated use
@@ -641,6 +645,14 @@ checks in ClawBench V1 use a placeholder that no run matches.
   a session signed in to another account and `no_registration_in_progress` on Uber's first
   screen; `complete_registration` reports `no_registration_in_progress` with no recorded
   sign-up. The tools are listed on `auth.uber.com` and ubereats.com pages only.
+- Independent QA (agent `agt_5e8da1c9d9c6dfff2c05`, commit `ab75f6c`) reviewed the sources
+  statically, confirmed the screen types and ids above in Uber's client, and repeated the
+  live no-submission checks with every sign-up POST blocked (none fired): all refusals as
+  documented, the duplicate guard stopping `register` with the field empty, and eight
+  malformed inputs rejected by the schema gate. It found no blockers; its three minor
+  findings (a fixture that could not see stray checkbox clicks, the signed-out response
+  described as HTTP 403, and page text in `destination_hint` and `terms_text` not
+  scrubbed) are fixed in the current source.
 - Everything after the email submission is fixture-only: the phone, SMS, name, and terms
   handling, the conflict and rejection messages (their wording is a guess from Uber's
   error names), and account verification after sign-up.

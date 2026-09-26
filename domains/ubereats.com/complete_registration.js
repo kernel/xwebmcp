@@ -171,7 +171,8 @@
     const hash = async value => js(async v => [...new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(v)))].map(b => b.toString(16).padStart(2, "0")).join(""), { arg: value });
     const getMarker = async () => js(key => { try { return JSON.parse(sessionStorage.getItem(key) || "null"); } catch { return null; } }, { arg: markerKey });
     const setMarker = async value => js(({ key, value }) => { sessionStorage.setItem(key, JSON.stringify(value)); }, { arg: { key: markerKey, value } });
-    // Signed out, Uber's user endpoint answers 403 rather than isLoggedIn: false. Only a successful read with a
+    // Signed out, Uber's user endpoint answers HTTP 200 with a failure body carrying code 403
+    // (rtapi.forbidden) rather than isLoggedIn: false. Only a successful read with a
     // 64-character hash can confirm an account; anything else is "not confirmed", never success.
     const account = async () => js(async () => {
       if (!/(^|\.)ubereats\.com$/.test(location.hostname)) return { state: "off_site" };
@@ -250,7 +251,7 @@
         if (s.kind === "sms_code") {
           step = "sms_code";
           if (!marker.phone_at) return fail("existing_account", "Uber asked for a text-message code before any phone was entered, which is its sign-in check for an existing account. Nothing further was submitted.");
-          return ok({ status: "challenge", step: "sms_code", challenge: { channel: "sms", destination_hint: s.smsHint || ("the phone ending in " + marker.phone_last2), code_length: Math.min(8, Math.max(4, s.codeCount)) }, next_tool: "complete_registration" });
+          return ok({ status: "challenge", step: "sms_code", challenge: { channel: "sms", destination_hint: s.smsHint ? scrub(s.smsHint) : "the phone ending in " + marker.phone_last2, code_length: Math.min(8, Math.max(4, s.codeCount)) }, next_tool: "complete_registration" });
         }
         if (s.kind === "identifier") { step = "entry"; return fail("no_registration_in_progress", "Uber is back at its first step; the earlier sign-up is no longer active. Call register to start again."); }
         if (s.kind === "chooser" || s.kind === "password") {
@@ -268,7 +269,7 @@
         if (s.fields.first_name && !input.first_name) needs.push("first_name");
         if (s.fields.last_name && !input.last_name) needs.push("last_name");
         if (s.fields.accept_terms && input.accept_terms !== true) needs.push("accept_terms");
-        if (needs.length) return ok({ status: "needs_input", step, needs, terms_text: s.fields.accept_terms ? s.termsText : null, next_tool: "resume_registration" });
+        if (needs.length) return ok({ status: "needs_input", step, needs, terms_text: s.fields.accept_terms && s.termsText ? scrub(s.termsText) : null, next_tool: "resume_registration" });
         if (headingsConflict(s)) return fail("phone_conflict", "Uber reports the phone number is linked to another account. Nothing further was submitted.");
         const signatureHash = await hash(s.signature);
         if (marker.last_profile === signatureHash && Date.now() - (marker.profile_at || 0) < 60000) return fail("duplicate_submission", "This screen was already submitted from this tab less than a minute ago; call resume_registration to see where it went.");

@@ -72,6 +72,7 @@ function harness(name, options = {}) {
   const after = [...(options.after ?? [])];
   const storage = new Map((options.storage ?? []).map(([origin, key, value]) => [`${origin}|${key}`, JSON.stringify(value)]));
   const calls = { navigations: [], fills: [], submits: 0, clicks: [], fetches: 0 };
+  const boxClicks = [];
   const window = {};
   let observer;
   let clock = options.now ?? 1_700_000_000_000;
@@ -125,7 +126,7 @@ function harness(name, options = {}) {
       if (selector === 'h1,h2,h3,label,p') return scene.headings.map(t => el(t));
       if (selector.startsWith('input[id^="EMAIL_OTP_CODE-"]')) return boxes(scene.emailCode);
       if (selector.startsWith('input[id^="PHONE_SMS_OTP-"]')) return boxes(scene.smsCode);
-      if (selector === 'input[type="checkbox"]') return scene.extraBoxes.map(t => el('', { closest: () => el(t) }));
+      if (selector === 'input[type="checkbox"]') return scene.extraBoxes.map(t => { const label = el(t, { click: () => boxClicks.push(t) }); return el('', { closest: () => label, click: () => boxClicks.push(t) }); });
       if (selector === 'input[type="password"]') return scene.password ? [el()] : [];
       if (selector.startsWith('[role="alert"]')) return scene.errors.map(feedback);
       if (selector === 'iframe') return scene.challengeFrame ? [el('', { title: scene.challengeFrame, getBoundingClientRect: () => ({ ...rect, width: 320, height: 240 }) })] : [];
@@ -165,7 +166,8 @@ function harness(name, options = {}) {
       assert.match(path, /getUserV1/);
       const account = scene.account ?? 'signed_out';
       const body = account === 'signed_out' ? { status: 'failure', data: { code: 403, meta: { code: 'rtapi.forbidden' } } } : { status: 'success', data: { isLoggedIn: true, hashedEmail: sha(account) } };
-      return { status: account === 'signed_out' ? 403 : 200, json: async () => body };
+      // Uber answers HTTP 200 with a failure body when signed out.
+      return { status: 200, json: async () => body };
     },
     js: async (fn, opts) => fn(opts?.arg),
     waitMs: async ms => { clock += ms; },
@@ -186,7 +188,7 @@ function harness(name, options = {}) {
   };
   const [definition] = runInNewContext(`(${sources[name]})`, context);
   return {
-    definition, calls, storage,
+    definition, calls, storage, boxClicks,
     marker: () => JSON.parse(storage.get(`https://auth.uber.com|webmcp.ubereats.register`) ?? 'null'),
     run: async input => {
       const result = plain(await definition.execute(input));
@@ -331,6 +333,7 @@ test('complete_registration: a terms screen with a marketing box is submitted on
   assert.equal(result.status, 'registered');
   assert.deepEqual(result.steps_submitted, ['email_code', 'profile']);
   assert.deepEqual(h.calls.clicks, ['#forward-button', '#forward-button']);
+  assert.deepEqual(h.boxClicks, []);
 });
 
 test('complete_registration: a combined name and terms screen is submitted once', async () => {
