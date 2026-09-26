@@ -436,6 +436,104 @@
       }
     },
     {
+      "domain": "target.com",
+      "tool": "add_to_cart",
+      "file": "domains/target.com/add_to_cart.js",
+      "kind": "cdp",
+      "namespace": "target.com",
+      "url_patterns": [
+        "https://target.com/*",
+        "https://*.target.com/*"
+      ],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Adds an orderable variation by tcin for shipping or for pickup at the already-selected store after checking existence, variation, availability and purchase limit; guest or signed-in cart; never changes store or address, never checks out."
+    },
+    {
+      "domain": "target.com",
+      "tool": "get_cart",
+      "file": "domains/target.com/get_cart.js",
+      "kind": "cdp",
+      "namespace": "target.com",
+      "url_patterns": [
+        "https://target.com/*",
+        "https://*.target.com/*"
+      ],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Regular cart lines with cart_item_id, quantity, price, fulfillment and limits plus the site's subtotal and estimate; guest or signed-in; saved-for-later items not included."
+    },
+    {
+      "domain": "target.com",
+      "tool": "get_product",
+      "file": "domains/target.com/get_product.js",
+      "kind": "cdp",
+      "namespace": "target.com",
+      "url_patterns": [
+        "https://target.com/*",
+        "https://*.target.com/*"
+      ],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "One item by tcin: price, rating, purchase limit, variations with an optional filter, and shipping, pickup, in-store and same-day status for the selected store."
+    },
+    {
+      "domain": "target.com",
+      "tool": "get_store_context",
+      "file": "domains/target.com/get_store_context.js",
+      "kind": "cdp",
+      "namespace": "target.com",
+      "url_patterns": [
+        "https://target.com/*",
+        "https://*.target.com/*"
+      ],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Read-only: selected store, guest location, nearby store ids and guest/registered session type from the session's cookies; never changes the store."
+    },
+    {
+      "domain": "target.com",
+      "tool": "remove_cart_item",
+      "file": "domains/target.com/remove_cart_item.js",
+      "kind": "cdp",
+      "namespace": "target.com",
+      "url_patterns": [
+        "https://target.com/*",
+        "https://*.target.com/*"
+      ],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Removes one cart line by cart_item_id and confirms it is gone; returns the removed line so it can be re-added."
+    },
+    {
+      "domain": "target.com",
+      "tool": "search_products",
+      "file": "domains/target.com/search_products.js",
+      "kind": "cdp",
+      "namespace": "target.com",
+      "url_patterns": [
+        "https://target.com/*",
+        "https://*.target.com/*"
+      ],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "One results page in the site's order with the site's sorts (relevance, featured, price, guest rating, best selling, newest), sponsored flags and optional facet filters."
+    },
+    {
+      "domain": "target.com",
+      "tool": "update_cart_item",
+      "file": "domains/target.com/update_cart_item.js",
+      "kind": "cdp",
+      "namespace": "target.com",
+      "url_patterns": [
+        "https://target.com/*",
+        "https://*.target.com/*"
+      ],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Sets an absolute quantity (1-10, within the purchase limit) on one cart line by cart_item_id; writes nothing when unchanged."
+    },
+    {
       "domain": "ubereats.com",
       "tool": "add_to_cart",
       "file": "domains/ubereats.com/add_to_cart.js",
