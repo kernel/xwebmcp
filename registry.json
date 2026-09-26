@@ -445,9 +445,12 @@
         "https://target.com/*",
         "https://*.target.com/*"
       ],
-      "status": "draft",
-      "last_verified": null,
-      "notes": "Adds an orderable variation by tcin for shipping or for pickup at the already-selected store after checking existence, variation, availability and purchase limit; guest or signed-in cart; never changes store or address, never checks out."
+      "status": "qa_passed",
+      "last_verified": "2026-09-26",
+      "notes": "Independent QA verified new ship and pickup lines, increments of the same line, and quantity_limit, unavailable and variant_required refusals with no write, on a guest cart restored afterwards. Signed-in carts not live-tested.",
+      "provenance": {
+        "qa_agent": "agt_9cc0b28ff9abe2ef70d3"
+      }
     },
     {
       "domain": "target.com",
@@ -459,9 +462,12 @@
         "https://target.com/*",
         "https://*.target.com/*"
       ],
-      "status": "draft",
-      "last_verified": null,
-      "notes": "Regular cart lines with cart_item_id, quantity, price, fulfillment and limits plus the site's subtotal and estimate; guest or signed-in; saved-for-later items not included."
+      "status": "qa_passed",
+      "last_verified": "2026-09-26",
+      "notes": "Independent QA verified guest carts before, during and after cart changes (no cart, lines, empty record) against the site's own cart page. Signed-in carts not live-tested; saved-for-later items are not returned.",
+      "provenance": {
+        "qa_agent": "agt_9cc0b28ff9abe2ef70d3"
+      }
     },
     {
       "domain": "target.com",
@@ -473,9 +479,12 @@
         "https://target.com/*",
         "https://*.target.com/*"
       ],
-      "status": "draft",
-      "last_verified": null,
-      "notes": "One item by tcin: price, rating, purchase limit, variations with an optional filter, and shipping, pickup, in-store and same-day status for the selected store."
+      "status": "qa_passed",
+      "last_verified": "2026-09-26",
+      "notes": "Independent QA verified variations with shipping, pickup, in-store and same-day status, an item family with variant_filter and range price, and not_found for an unknown tcin.",
+      "provenance": {
+        "qa_agent": "agt_9cc0b28ff9abe2ef70d3"
+      }
     },
     {
       "domain": "target.com",
@@ -487,9 +496,12 @@
         "https://target.com/*",
         "https://*.target.com/*"
       ],
-      "status": "draft",
-      "last_verified": null,
-      "notes": "Read-only: selected store, guest location, nearby store ids and guest/registered session type from the session's cookies; never changes the store."
+      "status": "qa_passed",
+      "last_verified": "2026-09-26",
+      "notes": "Independent QA verified store, location, nearby stores and guest session type with no site request, and wrong_page on another target.com host. Read-only; never changes the store.",
+      "provenance": {
+        "qa_agent": "agt_9cc0b28ff9abe2ef70d3"
+      }
     },
     {
       "domain": "target.com",
@@ -501,9 +513,12 @@
         "https://target.com/*",
         "https://*.target.com/*"
       ],
-      "status": "draft",
-      "last_verified": null,
-      "notes": "Removes one cart line by cart_item_id and confirms it is gone; returns the removed line so it can be re-added."
+      "status": "qa_passed",
+      "last_verified": "2026-09-26",
+      "notes": "Independent QA verified removal of lines it created (echoing the removed line), not_found on a repeat and on an unknown id, and an empty cart afterwards.",
+      "provenance": {
+        "qa_agent": "agt_9cc0b28ff9abe2ef70d3"
+      }
     },
     {
       "domain": "target.com",
@@ -515,9 +530,12 @@
         "https://target.com/*",
         "https://*.target.com/*"
       ],
-      "status": "draft",
-      "last_verified": null,
-      "notes": "One results page in the site's order with the site's sorts (relevance, featured, price, guest rating, best selling, newest), sponsored flags and optional facet filters."
+      "status": "qa_passed",
+      "last_verified": "2026-09-26",
+      "notes": "Independent QA verified all seven site sorts, paging, limit, exclude_sponsored and facet filters against the site's grid. Bot protection can answer a single query with HTTP 435 (challenge); fallback results for misspelled queries are not flagged.",
+      "provenance": {
+        "qa_agent": "agt_9cc0b28ff9abe2ef70d3"
+      }
     },
     {
       "domain": "target.com",
@@ -529,9 +547,12 @@
         "https://target.com/*",
         "https://*.target.com/*"
       ],
-      "status": "draft",
-      "last_verified": null,
-      "notes": "Sets an absolute quantity (1-10, within the purchase limit) on one cart line by cart_item_id; writes nothing when unchanged."
+      "status": "qa_passed",
+      "last_verified": "2026-09-26",
+      "notes": "Independent QA verified up and down changes and a same-quantity call that writes nothing, and not_found for an unknown line; the per-item quantity_limit refusal is fixture-tested only.",
+      "provenance": {
+        "qa_agent": "agt_9cc0b28ff9abe2ef70d3"
+      }
     },
     {
       "domain": "ubereats.com",

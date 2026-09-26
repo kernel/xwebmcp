@@ -4,13 +4,13 @@ Tools for Target (https://www.target.com): catalog search, item details and a re
 
 | tool | file | status | notes |
 |------|------|--------|-------|
-| get_store_context | [get_store_context.js](get_store_context.js) | draft | Read-only store, location and session type; never changes the store |
-| search_products | [search_products.js](search_products.js) | draft | One results page with the site's sorts, sponsored flags and optional facet filters |
-| get_product | [get_product.js](get_product.js) | draft | Price, rating, limit, variations and fulfillment for the selected store |
-| get_cart | [get_cart.js](get_cart.js) | draft | Regular cart lines with cart_item_id, fulfillment and totals; guest or signed in |
-| add_to_cart | [add_to_cart.js](add_to_cart.js) | draft | Ship or pickup at the selected store after existence, variation, stock and limit checks |
-| update_cart_item | [update_cart_item.js](update_cart_item.js) | draft | Absolute quantity 1–10 on one line; no write when unchanged |
-| remove_cart_item | [remove_cart_item.js](remove_cart_item.js) | draft | Removes one line and returns it so it can be re-added |
+| get_store_context | [get_store_context.js](get_store_context.js) | qa_passed | Read-only store, location and session type; never changes the store |
+| search_products | [search_products.js](search_products.js) | qa_passed | One results page with the site's sorts, sponsored flags and optional facet filters |
+| get_product | [get_product.js](get_product.js) | qa_passed | Price, rating, limit, variations and fulfillment for the selected store |
+| get_cart | [get_cart.js](get_cart.js) | qa_passed | Regular cart lines with cart_item_id, fulfillment and totals; guest or signed in |
+| add_to_cart | [add_to_cart.js](add_to_cart.js) | qa_passed | Ship or pickup at the selected store after existence, variation, stock and limit checks |
+| update_cart_item | [update_cart_item.js](update_cart_item.js) | qa_passed | Absolute quantity 1–10 on one line; no write when unchanged |
+| remove_cart_item | [remove_cart_item.js](remove_cart_item.js) | qa_passed | Removes one line and returns it so it can be re-added |
 
 ## Native WebMCP tools
 
@@ -62,7 +62,7 @@ home page all work) and never navigates. On another target.com host, or on a che
 the page, so they carry the site's own cookies and the request signing that Target's scripts
 attach, and go only to `redsky.target.com` (catalog) and `carts.target.com` (cart). Nothing is
 sent anywhere else. A call takes 1–15 s; `timeoutSec: 60` is enough, 90 for `add_to_cart`,
-which makes four requests.
+which makes up to five requests.
 
 What the tools never do: select or change a store, ZIP or address; sign in or create an
 account; touch saved-for-later items, lists or registries; apply promo codes; open checkout,
@@ -97,9 +97,12 @@ Conventions:
   twenty within a few seconds while building these tools, several with malformed parameters)
   made every `redsky` call answer HTTP 435 with an "Access to this page has been denied" page,
   and the tab then showed a "Press & hold" verification. The tools make as few calls as
-  possible (search 1, product 2, add 4), report HTTP 435/429, HTML 403 and the block page as
-  `challenge`, and never retry a write. A person has to complete the verification in the
-  browser; the tools do not attempt it.
+  possible (search 1, product 2, add up to 5), report HTTP 435/429, HTML 403 and the block page
+  as `challenge`, and never retry a write. A person has to complete the verification in the
+  browser; the tools do not attempt it. A 435 can also hit one particular query while others
+  keep working: independent QA saw every attempt of one search answered with 435 while other
+  searches succeeded seconds later, after which the site challenged its own results pages in
+  that browser.
 - **Request signing.** Cart writes from the site carry F5 Shape headers (`X-GyJwza5Z-*`) that
   the page's scripts add to every `fetch`. That is why the tools must run in a loaded
   `www.target.com` page.
@@ -141,7 +144,8 @@ Conventions:
 - Signed-in carts: every cart path was exercised on a guest cart only. A signed-in account's
   cart uses the same endpoints with the account's cookies, but no signed-in session was used.
 - The tools stop at a PerimeterX challenge; they cannot get past it.
-- Status is `draft` until independent QA signs off on the final page-kind source.
+- `update_cart_item`'s `quantity_limit` refusal (a line whose per-order limit is below 10) is
+  covered by fixture tests only.
 
 ## QA summary
 
@@ -184,6 +188,25 @@ browser and invoked through the WebMCP API:
 
 An earlier independent QA pass of the `cdp` version found no functional, safety, privacy or
 schema defect; its only blocking item was this change of kind.
+
+Independent QA sign-off on the final `page` source (2026-09-26, guest session, stealth
+browser, all outputs validated against their schemas):
+
+- Static: validator and tests pass; one expression per file, `kind: "page"` with no navigation,
+  `execute` re-creatable from source, no Node globals or browser helpers, only the three Target
+  hosts referenced, `idToken` never returned, no path to checkout, orders, payment, promo,
+  store change, sign-in or lists.
+- `get_store_context` with zero site requests; all seven sorts, paging, `exclude_sponsored`
+  and facet filters (the best-selling order matched the site's grid 12 of 12); variations,
+  an item family with `variant_filter`, and `not_found`; 50 invalid inputs refused with no
+  request; `wrong_page` on `corporate.target.com`; no tool listed on an unrelated site; the tab
+  URL unchanged after every call.
+- Cart round trip from no cart: ship add and increment, updates including a same-quantity
+  call that sent no write, `quantity_limit`, `unavailable` and `variant_required` refusals with
+  no write, pickup add and increment at the selected store, `not_found` for unknown lines,
+  removals, and a final empty cart confirmed on the site's own cart page.
+- Not live-tested: signed-in carts (no signed-in session), the checkout-path refusal (code and
+  fixtures only), `update_cart_item`'s `quantity_limit`.
 
 The fixture tests in `tests/target-shopping.test.mjs` cover input validation before any page
 access, page routing (including never opening checkout), challenge handling, the store
