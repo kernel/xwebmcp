@@ -11,8 +11,11 @@ Tools for Instacart (https://www.instacart.com).
 | get_cart | [get_cart.js](get_cart.js) | qa_passed | One store's cart with names, prices and subtotal, or a summary of every non-empty cart. |
 | add_to_cart | [add_to_cart.js](add_to_cart.js) | qa_passed | Adds or increases a cart line after checking availability and quantity rules; one mutation, never retried. |
 | update_cart_item | [update_cart_item.js](update_cart_item.js) | qa_passed | Sets a cart line to an exact quantity; 0 removes; one mutation, never retried. |
+| register | [register.js](register.js) | draft | `kind: page`. On `/signup`, starts a new passwordless account and stops at the six-digit code step; existing accounts are detected read-only first. No real sign-up submitted yet. |
+| complete_registration | [complete_registration.js](complete_registration.js) | draft | `kind: cdp`. Types the sign-up code once and verifies the new account from the site's current-user data. Fixture-only. |
+| resume_registration | [resume_registration.js](resume_registration.js) | draft | `kind: page`, read-only. Reports where a sign-up stands in the current tab; never submits. |
 
-Register all seven files together as one array with `forceOverwriteNamespace: true`;
+Register all ten files together as one array with `forceOverwriteNamespace: true`;
 registering one file that way removes the others.
 
 ## Native WebMCP tools
@@ -349,6 +352,146 @@ are covered without touching the live site:
 
 ```sh
 node --test tests/instacart-shopping.test.mjs
+```
+
+## Registration tools
+
+`register`, `complete_registration` and `resume_registration` create a new Instacart
+account for a test identity. Sign-up is passwordless, like log-in: the site sends a
+six-digit code to an email address or, by text, to a US phone number, and the account
+exists once that code is accepted. The tools never place orders, check out, change
+settings, opt in to marketing or subscribe to Instacart+. `login` is unchanged.
+
+### Tool kinds
+
+| tool | kind | why |
+|------|------|-----|
+| register | `page` | Everything happens in the `/signup` document: the read-only lookups are same-origin `fetch` calls, the Email/Phone switch and the code step are rendered in place, and the submit is a same-document form submission. The tool does not navigate, so it needs no CDP. |
+| resume_registration | `page` | Reads the DOM and the site's current-user data; no navigation, no writes. |
+| complete_registration | `cdp` (narrow exception) | When the code is accepted, Instacart's sign-up code calls `window.location.assign` (or `replace`) with the post-auth path (`/store/hub/grocery` for sign-up, or the `next` parameter), which destroys the page and any page tool running in it. The tool's result is the verified identity read after that navigation (`authenticated`, `account_hint`, or `wrong_account`), so it runs outside the page. The navigation was read from the site's JavaScript (`authPageUtils`); it has not been observed live because that requires a real code. |
+
+Because `register` is a page tool it cannot open `/signup` itself. Anywhere else it
+returns `wrong_page` with `next_url: "https://www.instacart.com/signup"`; the caller
+navigates there and calls it again.
+
+### Flow (as observed, read-only)
+
+- `/signup` shows one email field and `Continue`, with `Google`, `Facebook` and `Phone`
+  alternatives. The email form has no checkboxes; its text says continuing accepts the
+  Terms of Service, Privacy Policy and Health Data Notice.
+- `Phone` swaps in a `+1` country button, a `tel-national` field and one unticked
+  checkbox whose text consents to "a text with verification code, messages from
+  Instacart related to your orders, deliveries, and account". The box sits inside an
+  empty inner `<label>`; its text is on an outer `<label>`. `Email` switches back.
+- The email field is uncontrolled (the form reads it on input events), and a page-script
+  value change plus `input` event is kept by the form; this was checked without
+  submitting.
+- The site's own log-in form checks an address with the `GetEmailAvailability` persisted
+  query (a GET; no code is sent). `register` makes the same call with the page's
+  `authConfigurationToken` (read from `#node-apollo-state` at run time) before it fills
+  anything.
+- Signed-in identity comes from the site's `CurrentUser` query (`email`, `guest`) and,
+  for phone accounts, `UsersPhoneNumber`. Signed out, `currentUser` is `null`. Both were
+  checked read-only; only the response shape was recorded.
+- From the site's bundle (not yet observed live): `SendVerificationCode` sends the code,
+  typing six digits auto-submits `CreateUserFromVerificationCode`, a success returns an
+  auth token and triggers the navigation above, and `emailTaken*` errors route the form
+  to the log-in path with "account already exists".
+
+### Usage
+
+1. Navigate the tab to `https://www.instacart.com/signup` in a browser that is not
+   signed in to Instacart.
+2. `register` with `{ email, accept_terms: true }` (or `{ phone, channel: "sms",
+   accept_terms: true, accept_sms_terms: true }`). Invoke with `timeout_sec` of at least
+   90: after the submit it waits up to 50 s while the browser solves any reCAPTCHA.
+3. On `challenge_sent`, read the newest code from the inbox or phone and call
+   `complete_registration` with the same `email`/`phone` and `code` in the same tab.
+4. After any uncertain result from either tool, call `resume_registration` instead of
+   calling them again.
+
+`existing_account` means the identity already has an account: stop and use `login`
+(same email-code flow). With a single test identity, repeated runs of a sign-up task
+therefore reach `existing_account` after the first success; the tools do not reset or
+delete accounts.
+
+### Output contract
+
+- `register`: `challenge_sent` (`channel`, masked `destination_hint`, `code_length: 6`,
+  `next_step: "complete_registration"`, `resumed`), `existing_account` (`code_sent`:
+  `false` when found before any submission, `null` when the site routed the submission
+  to its log-in path and may have sent a log-in code), or an error with `error_kind` in
+  `invalid_input`, `terms_not_accepted`, `wrong_page`, `logged_in_session`,
+  `additional_info_required` (with `missing_fields`), `captcha_or_challenge`,
+  `locked_or_throttled`, `site_changed`, `unknown`.
+- `complete_registration`: `registered` (`authenticated: true`, masked `account_hint`)
+  or an error: `no_pending_registration`, `existing_account`, `code_rejected`,
+  `code_expired`, `wrong_account`, `captcha_or_challenge`, `locked_or_throttled`,
+  `navigation_failed`, `unknown`, `invalid_input`.
+- `resume_registration`: `challenge_pending`, `registered`, `existing_account` or
+  `nothing_pending`, each with its `next_step`, or `wrong_account`,
+  `captcha_or_challenge`, `navigation_failed`, `unknown`, `invalid_input`.
+- Every error carries `stage` and `submission_attempted`. Outputs never contain the
+  code, the full phone number, or another account's full address (emails are masked to
+  the first character plus the domain, phones to the last four digits).
+
+Safety properties:
+
+- One form submission or one code entry per invocation; never a resend, never a retry.
+- `sessionStorage` markers (15 minutes for the sign-up submit, 1 minute for the code)
+  block a repeat in the same tab after an uncertain outcome. They are cleared only after
+  a conclusive rejection (an invalid address, a wrong or expired code).
+- A code step already open for the same address is reported, not resubmitted; one for a
+  different address is refused.
+- Only the channel's required consent box (and a terms-only box, if one ever appears)
+  is ticked. A pre-ticked optional box stops the submission.
+- A signed-in session is refused before anything is filled. An implicit guest session
+  (`guest: true`) counts as signed out.
+- `complete_registration` succeeds only when the signed-in account's email (or phone
+  number) equals the input; any other account is `wrong_account`, and an unreadable
+  session is `unknown`, never success.
+
+### Known limitations (registration)
+
+- All three tools are `draft`. No email, phone number or code has been submitted to
+  Instacart's sign-up form, so the submit path, the code-step hint text, wrong and
+  expired code messages, post-code prompts, and the post-navigation identity check are
+  covered by fixtures only.
+- `register` clicks `Continue` from page script, so the click is not a trusted input
+  event. The site's reCAPTCHA runs from its submit handler; whether an untrusted click
+  changes the challenge rate is unknown until a live run.
+- The phone channel has no read-only pre-check for an existing phone number (the site's
+  `PhoneNumberAvailability` query was not exercised); an existing phone is detected only
+  from the site's response after the submit.
+- If Instacart ever replaced the document after the sign-up submit, the page tool would
+  end without a result; the `sessionStorage` marker still blocks a second submit, and
+  `resume_registration` reports the state.
+- Extra fields (names, postal code) appear only in some of the site's experiments; the
+  tool fills first and last name when supplied and otherwise returns
+  `additional_info_required`. Postal code is not supported.
+- ClawBench V1 food tasks score with placeholder evaluators, so these tools do not
+  change their official score.
+
+### QA (registration)
+
+Read-only live checks on 2026-09-26 (stealth Kernel browser, `cincy` proxy, no profile,
+signed out), nothing submitted:
+
+| tool | page | result |
+|------|------|--------|
+| resume_registration | `/signup` | `nothing_pending`, `next_step: "register"` |
+| register | `/login` | `wrong_page` with `next_url`, `submission_attempted: false`; no availability lookup |
+| complete_registration | `/signup`, no code step | `no_pending_registration`; no key pressed |
+
+Also checked without submitting: Instacart's CSP allows page-tool materialization (only
+`frame-ancestors` is set); the page-tool reader returns the consent text for the phone
+form's checkbox; `CurrentUser` returns `null` signed out and `email`/`guest` signed in.
+
+Fixture tests run each page tool from its own `execute.toString()` inside a fake page
+(DOM, `sessionStorage`, GraphQL endpoint) and the cdp tool against the same page:
+
+```sh
+node --test tests/instacart-registration.test.mjs
 ```
 
 ## Sessions
