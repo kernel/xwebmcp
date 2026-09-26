@@ -454,6 +454,21 @@
     },
     {
       "domain": "ubereats.com",
+      "tool": "complete_registration",
+      "file": "domains/ubereats.com/complete_registration.js",
+      "kind": "cdp",
+      "namespace": "ubereats.com",
+      "url_patterns": [
+        "https://ubereats.com/*",
+        "https://*.ubereats.com/*",
+        "https://auth.uber.com/*"
+      ],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Submits Uber's email or SMS code once, then the phone, name, and required-terms screens, and reports registered only after the site's hashed account email matches. Screen handling after the email code is fixture-tested from Uber's sign-up client; not live-verified."
+    },
+    {
+      "domain": "ubereats.com",
       "tool": "get_cart",
       "file": "domains/ubereats.com/get_cart.js",
       "kind": "cdp",
@@ -520,6 +535,36 @@
       "provenance": {
         "qa_agent": "agt_61207fb92423b24e591a"
       }
+    },
+    {
+      "domain": "ubereats.com",
+      "tool": "register",
+      "file": "domains/ubereats.com/register.js",
+      "kind": "cdp",
+      "namespace": "ubereats.com",
+      "url_patterns": [
+        "https://ubereats.com/*",
+        "https://*.ubereats.com/*",
+        "https://auth.uber.com/*"
+      ],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Starts a new-account sign-up: follows the site's Sign up link from a signed-out session, submits the email once, and returns the email-code challenge; stops on signed-in sessions and on existing accounts. Built from Uber's sign-up client and read-only inspection; no live registration has been submitted yet."
+    },
+    {
+      "domain": "ubereats.com",
+      "tool": "resume_registration",
+      "file": "domains/ubereats.com/resume_registration.js",
+      "kind": "cdp",
+      "namespace": "ubereats.com",
+      "url_patterns": [
+        "https://ubereats.com/*",
+        "https://*.ubereats.com/*",
+        "https://auth.uber.com/*"
+      ],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Reports where a sign-up in this tab stands and continues phone, name, and terms screens without ever submitting a code. Fixture-tested only; not live-verified."
     },
     {
       "domain": "ubereats.com",

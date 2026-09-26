@@ -12,6 +12,9 @@ auth service at `https://auth.uber.com/v2/`, so the login tool also matches that
 | add_to_cart      | [add_to_cart.js](add_to_cart.js)             | qa_passed | Validates against the live menu, then creates or extends the store's cart; needs sign-in |
 | get_cart         | [get_cart.js](get_cart.js)                   | qa_passed | Every cart with priced lines and the site's subtotal and total; needs sign-in           |
 | update_cart_item | [update_cart_item.js](update_cart_item.js)   | qa_passed | Set a line's quantity, 0 removes; last removal deletes the store's cart; needs sign-in  |
+| register         | [register.js](register.js)                   | draft     | Start a new-account sign-up from a signed-out session; returns the email-code challenge; no live sign-up yet |
+| complete_registration | [complete_registration.js](complete_registration.js) | draft | Submit a code once, then phone, name, and required terms; verify the new account by hashed email; fixture-only after the email step |
+| resume_registration | [resume_registration.js](resume_registration.js) | draft  | Report and continue a sign-up without ever submitting a code; fixture-only              |
 
 ## Native WebMCP tools
 
@@ -289,12 +292,13 @@ the minor unit of the returned `currency` (`price_minor`, `unit_price_minor`,
 
 ### Loading and invoking
 
-Register all seven tools as one array under namespace `ubereats.com`, because
+Register all ten tools as one array under namespace `ubereats.com`, because
 `forceOverwriteNamespace: true` replaces every tool in the namespace:
 
 ```javascript
 const fs = await import("node:fs");
-const tools = ["login", "search", "get_store", "get_item", "add_to_cart", "get_cart", "update_cart_item"]
+const tools = ["login", "search", "get_store", "get_item", "add_to_cart", "get_cart", "update_cart_item",
+  "register", "complete_registration", "resume_registration"]
   .map(name => eval(fs.readFileSync(`domains/ubereats.com/${name}.js`, "utf8"))[0]);
 await webmcp.addCustomTools({ namespace: "ubereats.com", tools, forceOverwriteNamespace: true });
 const ref = name => (await webmcp.listTools()).find(t => t.source.custom?.namespace === "ubereats.com" && t.tool.name === name).tool_ref;
@@ -508,13 +512,169 @@ in-store search, option group parsing, every add rejection, cart creation and ex
 the option payload format, merged-line detection, priced and unpriced cart reads,
 quantity updates, removal, and cart deletion. They are not live evidence.
 
+## Registration
+
+Three tools create a new Uber Eats account for a test identity. They never touch an
+existing account: they refuse a signed-in session, stop on any sign of an account that
+already exists, and never enter a password, payment method, promo code, or address.
+
+### Flow
+
+Uber runs sign-up and sign-in as one flow on `auth.uber.com/v2`: the Sign up and Log in
+links go to the same URL, and the first screen asks for a phone number or email either
+way. What follows depends on whether the address already has an account.
+
+1. `register({ email })` opens `https://www.ubereats.com/` if needed, confirms the session
+   is signed out (Uber's user endpoint answers 403 then), follows the header Sign up link,
+   and submits the email once. It returns `status: "challenge"` with `channel: "email"` and
+   a masked `destination_hint` when Uber emails a code. If Uber instead offers sign-in
+   methods, a password step, or a text-message code, the address already has an account
+   and it returns `existing_account` without going further.
+2. `complete_registration({ email, code, phone, first_name, last_name, accept_terms: true })`
+   submits that code once. For a new address Uber then asks for a phone number; the tool
+   fills it (the E.164 number must start with the country code Uber preselects, `+1` for a
+   US session; changing the country is not supported), submits once, and returns the next
+   challenge with `channel: "sms"`.
+3. `complete_registration` again with the text-message code submits it, then fills the
+   name and terms screens. Uber can show them separately or combined. `accept_terms: true`
+   checks only the required `LEGAL_ACCEPT_TERMS` box; any other box on that screen (for
+   example marketing) is left unchecked. On landing back on ubereats.com signed in, it
+   compares a SHA-256 of the requested email with the site's hashed account email and
+   returns `status: "registered", account_verified: true` only on a match.
+4. `resume_registration({ email, ...profile })` reports the current state at any point and
+   continues phone, name, and terms screens when their fields are given. It never submits
+   a code and never navigates.
+
+Any field a screen asks for that was not given yields `status: "needs_input"` with `needs`
+(and the site's `terms_text` when it is the terms), and the caller continues with
+`resume_registration`. Every result lists `steps_submitted` for that call.
+
+### Stops without changes
+
+- `signed_in`: the tab is signed in to any Uber account (`register` only reads the account
+  endpoint to find out).
+- `existing_account`: Uber offered sign-in methods or a password for the email; Uber asked
+  for a text-message code before any phone was entered; or the email code signed the tab
+  in to an account without showing any sign-up screen. That last case is inherent to
+  Uber's single flow: an existing passwordless account also receives an email code, and it
+  is only after the code that the difference shows. The tab is then signed in to that
+  account, but nothing on it is changed.
+- `phone_conflict`: after the phone number Uber says it is in use, or offers to sign in to
+  the account that owns it. The tool does not follow Uber's offer to move the number.
+- `phone_rejected`, `email_rejected`: any other refusal of the number or address, with the
+  site's message (phone numbers and addresses in it are replaced by `[number]`/`[email]`).
+- `code_rejected`, `code_expired`: the code was wrong or old. It is not retried, and the
+  same code is refused if passed again (`duplicate_submission`).
+- `unsupported_step`: any screen the tools do not handle. Uber's sign-up client also has
+  `UBER_MARKETING_CONSENT`, `AGE_VERIFICATION`, `ADD_PASSWORD`, `ADD_PAYMENT`, `ADD_PROMO`,
+  voice or WhatsApp codes, and a Korean "consent to all" terms button; none of them is
+  answered.
+- `wrong_account`: the final signed-in account's hashed email differs, or a code screen
+  names another address. A signed-in page without a readable hashed email is `unknown`,
+  never success.
+- `captcha_or_challenge`, `locked_or_throttled`, `other_registration_in_progress`,
+  `no_registration_in_progress` as named.
+
+### Why these are CDP tools
+
+The repository default is `kind: "page"`; `cdp` is reserved for tools that trigger a
+navigation themselves and need a structured result read after it. All three qualify:
+`register` goes from any site page to ubereats.com and then, through the Sign up link, to
+a different origin (`auth.uber.com`), and its result is the challenge read there.
+`complete_registration` and `resume_registration` submit the screen (a code or the terms)
+after which Uber redirects the tab from `auth.uber.com` back to ubereats.com, and their
+result is the account verification done on that new document. A page tool would be torn
+down by those navigations before it could return. Screens that stay on the same document
+(phone to SMS code, name to terms) would suit a page tool, but the same call continues
+into the redirect, so splitting them would only move the navigation to another tool.
+
+### Duplicate and stale invocations
+
+The tools keep a marker per tab in `sessionStorage` on `auth.uber.com`
+(`webmcp.ubereats.register`) holding a SHA-256 of the email, timestamps, SHA-256s of the
+codes already submitted, and the last two digits of the phone for the SMS hint. It holds
+no email, phone number, or code in clear. With it:
+
+- `register` for the same email while its sign-up is open returns the current state
+  without submitting, and refuses to request a second email code within 15 minutes.
+- `complete_registration` refuses a code it already submitted and any second code within
+  15 seconds of the last.
+- a phone, name, or terms screen is not submitted twice within a minute.
+- `complete_registration` and `resume_registration` on any page without a recorded
+  sign-up, or after Uber returned to its first screen, report
+  `no_registration_in_progress` and do nothing.
+
+When a sign-up finishes on ubereats.com the tools also leave
+`webmcp.ubereats.register.done` in that origin's `sessionStorage` (email hash and whether
+sign-up screens were seen), which is how `resume_registration` on the site tells a new
+account from a sign-in to an existing one.
+
+### Evidence for the screens
+
+Nothing past the email step has been seen live, because no registration may be submitted
+until a supervised test slot. The screens after the email code come from Uber's own
+sign-up client, read on 2026-09-26 from the scripts `auth.uber.com/v2` loads: its screen
+types (`EMAIL_OTP_CODE`, `PHONE_NUMBER`, `PHONE_NUMBER_PROGRESSIVE`, `PHONE_OTP`,
+`FULL_NAME`, `LEGAL`, `NAME_LEGAL`, `NAME_PHONE_LEGAL`, plus the unsupported ones above),
+its field ids (`PHONE_NUMBER` with a country picker, `FIRST_NAME`, `LAST_NAME`), and its
+terms checkbox id (`LEGAL_ACCEPT_TERMS`, text `accept-terms-text`). The email code and SMS
+code screens were seen live earlier during the login work. Which screens a new account
+actually gets, and in what order, is unconfirmed.
+
+### ClawBench and repeated use
+
+The shared test mailbox and its forwarded phone number can hold one Uber account. After
+one successful registration, later runs must sign in to it with `login` (email code to
+the same inbox) instead of registering again, and they inherit that account's carts and
+saved address; Uber will also refuse the same phone number for a second account
+(`phone_conflict`). Registration only lets a browser agent reach a signed-in state on a
+test identity; it does not complete any scored task by itself, and the food-order task
+checks in ClawBench V1 use a placeholder that no run matches.
+
+### Status and known limitations
+
+- All three are `draft`: no live registration has been submitted. Live-checked on
+  2026-09-26 without submitting anything: `register` refuses a signed-in session
+  (`signed_in`); from a store page in a signed-out profile-less browser it confirmed the
+  signed-out state, followed Sign up, recognized the email screen, and stopped at its
+  duplicate guard with the field empty; `resume_registration` reports `wrong_account` on
+  a session signed in to another account and `no_registration_in_progress` on Uber's first
+  screen; `complete_registration` reports `no_registration_in_progress` with no recorded
+  sign-up. The tools are listed on `auth.uber.com` and ubereats.com pages only.
+- Everything after the email submission is fixture-only: the phone, SMS, name, and terms
+  handling, the conflict and rejection messages (their wording is a guess from Uber's
+  error names), and account verification after sign-up.
+- The phone country picker's selected code is read from text next to the field; if Uber
+  renders it differently the phone step stops with `unsupported_step` before typing.
+- Uber may refuse VoIP numbers; that shows as `phone_rejected` and is not worked around.
+- A marketing-consent or age screen stops the flow; answering them is left to a person.
+- Best lead for the next person: during the supervised live slot, record the heading and
+  input ids of each screen after the email code and compare them with the fixtures in
+  `tests/ubereats-register.test.mjs` before trusting a second run.
+
+Local fixture tests:
+
+```sh
+node --test tests/ubereats-register.test.mjs
+```
+
+They simulate each Uber screen by its element ids and cover input rejection before any
+page action, entry from unrelated pages, the signed-in refusal, every existing-account
+signal, the email and SMS challenges, phone, name, terms, and combined screens,
+`needs_input`, the preselected country code check, phone conflicts and rejections, wrong
+and expired codes and their non-retry, duplicate and stale invocations, wrong-account and
+unverifiable results, scrubbing of numbers and addresses from site messages, and that no
+output contains a code or phone number. They are not live evidence.
+
 ## URL patterns
 
 The search and cart tools use the default `https://ubereats.com/*` and
-`https://*.ubereats.com/*`. `login` uses the same pair plus `https://auth.uber.com/*`. Uber Eats signs in on Uber's shared auth service at
+`https://*.ubereats.com/*`. `login`, `register`, `complete_registration`, and
+`resume_registration` use the same pair plus `https://auth.uber.com/*`. Uber Eats signs in on Uber's shared auth service at
 `auth.uber.com`, which is on the `uber.com` registrable domain. The email-code, password,
-and SMS-code steps all render there, so the tool has to stay listed on that host for a
-follow-up call with `otp` to find it. No other `uber.com` host is matched.
+and SMS-code steps all render there, and so do the sign-up phone, name, and terms
+screens, so these tools have to stay listed on that host for a follow-up call with a
+code to find them. No other `uber.com` host is matched.
 
 ## Sessions
 
