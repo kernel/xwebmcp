@@ -1,13 +1,13 @@
 [{
   kind: "cdp",
-  match: { url_patterns: ["https://ticketmaster.com/*", "https://*.ticketmaster.com/*"] },
+  match: { url_patterns: ["https://www.ticketmaster.com/*"] },
   tool: {
     name: "get_ticket_offers",
     description: "List the ticket offers a Ticketmaster event page currently shows for a given number of tickets: section, row, seats, primary or resale, ticket type and price per ticket including fees (before taxes), plus an estimated total for the quantity. sort 'best_seats' asks for the site's Best Seats ordering (top recommended seats); 'lowest_price' matches the site's Lowest Price tab. Opens the event page in the current tab and reads the same listings the page shows; on the newer event page layout it sets the page's quantity filter, and that layout only sorts by price, so best_seats falls back to lowest price with a warning. Prices and availability change by the minute: treat results as quotes observed at observed_at. Returns no_tickets when nothing is available for the quantity (including sold-out events). Never selects a listing, reserves, holds or buys seats, never accepts the event's ticket terms, and never opens checkout. Only events sold on ticketmaster.com are supported.",
     inputSchema: {
       type: "object", additionalProperties: false, required: ["event"],
       properties: {
-        event: { type: "string", minLength: 6, maxLength: 400, description: "An event_id from search_events, or a https://www.ticketmaster.com/.../event/<id> URL." },
+        event: { type: "string", minLength: 6, maxLength: 400, description: "An event_id from search_events (letters, digits, _ or -), or a https://www.ticketmaster.com/.../event/<id> URL." },
         quantity: { type: "integer", minimum: 1, maximum: 8, default: 2, description: "Number of tickets that must be sold together." },
         sort: { enum: ["lowest_price", "best_seats"], default: "lowest_price" },
         limit: { type: "integer", minimum: 1, maximum: 40, default: 10, description: "Maximum offers to return." },
@@ -29,7 +29,7 @@
             source: { enum: ["inventory_api", "page_listing"], description: "inventory_api: the offer service the event page calls; page_listing: the listing panel text of the newer event page." },
             price_basis: { const: "per ticket, including fees, before taxes" },
             currency: { type: ["string", "null"] },
-            total_listings: { type: ["integer", "null"], description: "Listings the site reports for this quantity before max_price_per_ticket and include_resale are applied." },
+            total_listings: { type: ["integer", "null"], description: "Listings the site reports for this quantity (primary only when include_resale is false), before max_price_per_ticket." },
             observed_at: { type: "string" },
             warnings: { type: "array", items: { type: "string" } },
             offers: {
@@ -74,13 +74,13 @@
     const raw = typeof input.event === "string" ? input.event.trim() : "";
     if (raw.length < 6 || raw.length > 400) return fail("invalid_input", "event must be an event id or a Ticketmaster event URL.");
     let eventId = null;
-    if (/^[A-Za-z0-9]{6,40}$/.test(raw)) eventId = raw;
+    if (/^[A-Za-z0-9_-]{6,40}$/.test(raw)) eventId = raw;
     else {
       let url;
       try { url = new URL(raw); } catch { return fail("invalid_input", "event is neither an event id nor a URL."); }
       const host = url.hostname.toLowerCase();
       if (url.protocol !== "https:" || !(host === "ticketmaster.com" || host.endsWith(".ticketmaster.com"))) return fail("unsupported_host", "Only ticketmaster.com event pages are supported; " + host + " is a different ticketing site.");
-      eventId = /\/event\/([A-Za-z0-9]{6,40})\/?$/.exec(url.pathname)?.[1] ?? null;
+      eventId = /\/event\/([A-Za-z0-9_-]{6,40})\/?$/.exec(url.pathname)?.[1] ?? null;
       if (!eventId) return fail("invalid_input", "The URL has no /event/<id> segment.");
     }
     const quantity = input.quantity === undefined ? 2 : input.quantity;
@@ -121,7 +121,7 @@
 
       // Read the page variant and, on the classic layout, query the offer service exactly as the page does.
       // The service key and secret are the page's own public client configuration; they stay inside the page.
-      const page = await js(async ({ eventId, qty, sort, challenge, soldOut }) => {
+      const inspect = () => js(async ({ eventId, qty, sort, includeResale, maxPrice, limit, challenge, soldOut }) => {
         const title = document.title || "";
         const scan = () => { const text = document.body?.innerText || ""; return { challenged: new RegExp(challenge, "i").test(title + " " + text), soldOut: new RegExp(soldOut, "i").test(text) }; };
         let data = null;
@@ -129,15 +129,14 @@
         const variant = data?.page || null;
         const edp = data?.props?.pageProps?.edpData;
         if (variant !== "/naevent/[eventId]" || !edp?.ismdsApiKey || !edp?.ismdsPricingURL) return { variant, title, ...scan() };
-        const params = new URLSearchParams({
-          show: "places maxQuantity sections", mode: "primary:ppsectionrow resale:ga_areas platinum:all", qty: String(qty), q: "not('accessible')",
-          includeStandard: "true", includeResale: "true", includePlatinumInventoryType: "false", apikey: edp.ismdsApiKey, apisecret: edp.ismdsApiSecret,
-          resaleChannelId: edp.context?.resaleChannelId || "", limit: "40", offset: "0", sort: sort === "best_seats" ? "-quality" : "noTaxTotalprice"
-        });
-        const url = edp.ismdsPricingURL + "/event/" + encodeURIComponent(eventId) + "/quickpicks?" + params.toString() + "&embed=area&embed=offer&embed=description";
-        const response = await new Promise(resolve => {
+        const request = offset => new Promise(resolve => {
+          const params = new URLSearchParams({
+            show: "places maxQuantity sections", mode: "primary:ppsectionrow resale:ga_areas platinum:all", qty: String(qty), q: "not('accessible')",
+            includeStandard: "true", includeResale: String(includeResale), includePlatinumInventoryType: "false", apikey: edp.ismdsApiKey, apisecret: edp.ismdsApiSecret,
+            resaleChannelId: edp.context?.resaleChannelId || "", limit: "40", offset: String(offset), sort: sort === "best_seats" ? "-quality" : "noTaxTotalprice"
+          });
           const xhr = new XMLHttpRequest();
-          xhr.open("GET", url);
+          xhr.open("GET", edp.ismdsPricingURL + "/event/" + encodeURIComponent(eventId) + "/quickpicks?" + params.toString() + "&embed=area&embed=offer&embed=description");
           xhr.withCredentials = true;
           xhr.setRequestHeader("TMPS-Correlation-Id", crypto.randomUUID());
           xhr.timeout = 20000;
@@ -146,24 +145,41 @@
           xhr.ontimeout = () => resolve({ status: -1, body: null });
           xhr.send();
         });
-        const b = response.body;
-        if (!b || !Array.isArray(b.picks)) return { variant, title, ...scan(), api: { status: response.status } };
-        const offers = Object.fromEntries((b._embedded?.offer || []).map(o => [o.offerId, o]));
-        const areas = Object.fromEntries((b._embedded?.area || []).map(a => [a.areaId, a.description || a.name || null]));
-        const descriptions = Object.fromEntries((b._embedded?.description || []).map(d => [d.descriptionId, (d.descriptions || []).join(", ") || null]));
-        const picks = b.picks.map(p => {
-          const group = (p.offerGroups || [])[0] || {};
-          const candidates = (group.offers || []).map(id => offers[id]).filter(o => o && Number.isFinite(o.totalPrice));
-          const o = candidates.sort((x, y) => x.totalPrice - y.totalPrice)[0] || null;
-          return {
-            section: p.section ?? o?.section ?? null, row: p.row ?? o?.row ?? null, seats: Array.isArray(group.seats) && group.seats.length ? group.seats.map(String) : null,
-            area: descriptions[p.descriptionId] || areas[p.area] || null, quality: Number.isFinite(p.quality) ? p.quality : null,
-            offer: o && { name: o.name ?? null, inventoryType: o.inventoryType ?? null, totalPrice: o.totalPrice, listPrice: Number.isFinite(o.listPrice) ? o.listPrice : null, faceValue: Number.isFinite(o.faceValue) ? o.faceValue : null,
-              fees: Array.isArray(o.charges) ? o.charges.reduce((sum, c) => sum + (Number.isFinite(c?.amount) ? c.amount : 0), 0) : null, currency: o.currency ?? null, sellable: Array.isArray(o.sellableQuantities) ? o.sellableQuantities : null }
-          };
-        });
-        return { variant, title, ...scan(), api: { status: response.status, total: Number.isInteger(b.total) ? b.total : null, picks } };
-      }, { arg: { eventId, qty: quantity, sort, challenge: CHALLENGE.source, soldOut: SOLD_OUT.source } });
+        const picks = [];
+        let total = null, read = 0;
+        // max_price_per_ticket is applied here, so read up to three pages of 40 when it removes listings.
+        for (let offset = 0; offset < 120; offset += 40) {
+          const response = await request(offset);
+          const b = response.body;
+          if (!b || !Array.isArray(b.picks)) {
+            if (offset === 0) return { variant, title, ...scan(), api: { status: response.status } };
+            break;
+          }
+          if (Number.isInteger(b.total)) total = b.total;
+          read += b.picks.length;
+          const offers = Object.fromEntries((b._embedded?.offer || []).map(o => [o.offerId, o]));
+          const areas = Object.fromEntries((b._embedded?.area || []).map(a => [a.areaId, a.description || a.name || null]));
+          const descriptions = Object.fromEntries((b._embedded?.description || []).map(d => [d.descriptionId, (d.descriptions || []).join(", ") || null]));
+          for (const p of b.picks) {
+            const group = (p.offerGroups || [])[0] || {};
+            const candidates = (group.offers || []).map(id => offers[id]).filter(o => o && Number.isFinite(o.totalPrice));
+            const o = candidates.sort((x, y) => x.totalPrice - y.totalPrice)[0] || null;
+            if (!o || (maxPrice !== null && o.totalPrice > maxPrice)) continue;
+            picks.push({
+              section: p.section ?? o.section ?? null, row: p.row ?? o.row ?? null, seats: Array.isArray(group.seats) && group.seats.length ? group.seats.map(String) : null,
+              area: descriptions[p.descriptionId] || areas[p.area] || null, quality: Number.isFinite(p.quality) ? p.quality : null,
+              offer: { name: o.name ?? null, inventoryType: o.inventoryType ?? null, totalPrice: o.totalPrice, listPrice: Number.isFinite(o.listPrice) ? o.listPrice : null, faceValue: Number.isFinite(o.faceValue) ? o.faceValue : null,
+                fees: Array.isArray(o.charges) ? o.charges.reduce((sum, c) => sum + (Number.isFinite(c?.amount) ? c.amount : 0), 0) : null, currency: o.currency ?? null, sellable: Array.isArray(o.sellableQuantities) ? o.sellableQuantities : null }
+            });
+          }
+          if (picks.length >= limit || b.picks.length < 40 || (total !== null && read >= total)) break;
+        }
+        return { variant, title, ...scan(), api: { status: 200, total, read, picks } };
+      }, { arg: { eventId, qty: quantity, sort, includeResale, maxPrice, limit, challenge: CHALLENGE.source, soldOut: SOLD_OUT.source } });
+
+      // A flagged session can show an empty document for a moment before the bot-protection page renders.
+      let page = await inspect();
+      for (let i = 0; i < 4 && !page.variant && !CHALLENGE.test(page.title); i++) { await waitMs(1500); page = await inspect(); }
 
       if (CHALLENGE.test(page.title) || (!page.variant && page.challenged)) return fail("challenge", "Ticketmaster showed a bot-protection page instead of the event; wait a few minutes and try again. Nothing was selected.");
       if (page.variant === "/404" || /page not found|we can.t find the page/i.test(page.title)) return fail("not_found", "Ticketmaster has no event page for id " + eventId + ".");
@@ -173,9 +189,13 @@
         if (!api) return fail("unsupported_page", "The event page did not expose its offer service configuration; open the event in the browser to see listings.");
         if (api.status === 401 || api.status === 403 || api.status === 429 || api.status === 0) return fail("challenge", "Ticketmaster's offer service refused the request (HTTP " + api.status + "); wait a few minutes before trying again.");
         if (!api.picks) return fail("site_error", "Ticketmaster's offer service returned HTTP " + api.status + " without listings.");
-        if (!api.picks.length) return noTickets(eventUrl, page.soldOut ? "The event page says tickets are sold out or unavailable." : "No listings are available for " + quantity + " ticket" + (quantity > 1 ? "s" : "") + " together; a different quantity may have seats.");
-        const kept = api.picks.filter(p => p.offer && (includeResale || p.offer.inventoryType !== "resale") && (maxPrice === null || p.offer.totalPrice <= maxPrice));
-        if (!kept.length) return noTickets(eventUrl, api.picks.length + " listing(s) exist for this quantity, but none match include_resale and max_price_per_ticket.");
+        const kept = api.picks;
+        if (!kept.length) {
+          if (!api.read) return noTickets(eventUrl, page.soldOut ? "The event page says tickets are sold out or unavailable." : "No " + (includeResale ? "" : "primary ") + "listings are available for " + quantity + " ticket" + (quantity > 1 ? "s" : "") + " together; a different quantity may have seats.");
+          return noTickets(eventUrl, "None of the " + (api.total ?? api.read) + " listing(s) for this quantity is at or under max_price_per_ticket" + (sort === "best_seats" && api.total !== null && api.read < api.total ? " among the first " + api.read + " in Best Seats order" : "") + ".");
+        }
+        const warnings = sort === "best_seats" && maxPrice !== null && kept.length < limit && api.total !== null && api.read < api.total
+          ? ["Only the first " + api.read + " of " + api.total + " listings in this order were checked against max_price_per_ticket; cheaper seats may exist further down."] : [];
         const offers = kept.slice(0, limit).map((p, i) => ({
           rank: i + 1, section: p.section, row: p.row, seats: p.seats, area: p.area,
           ticket_type: p.offer.name || (p.offer.inventoryType === "resale" ? "Resale" : null), inventory_type: p.offer.inventoryType,
@@ -185,7 +205,7 @@
         }));
         return {
           status: "ok", event_id: eventId, event_url: eventUrl, quantity, sort_requested: sort, sort_applied: sort, source: "inventory_api",
-          price_basis: "per ticket, including fees, before taxes", currency: kept[0].offer.currency, total_listings: api.total, observed_at: observedAt, warnings: [], offers
+          price_basis: "per ticket, including fees, before taxes", currency: kept[0].offer.currency, total_listings: api.total, observed_at: observedAt, warnings, offers
         };
       }
 

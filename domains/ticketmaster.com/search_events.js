@@ -1,9 +1,9 @@
 [{
-  kind: "cdp",
-  match: { url_patterns: ["https://ticketmaster.com/*", "https://*.ticketmaster.com/*"] },
+  kind: "page",
+  match: { url_patterns: ["https://www.ticketmaster.com/*"] },
   tool: {
     name: "search_events",
-    description: "Search Ticketmaster (US) for live events by keyword, city or ZIP code, and local date range, using the same search the site's results page runs. Returns the event id, name, local date and time at the venue, venue, distance from the searched location, sale status flags, and the page that sells the tickets. Some results are sold by partner sites on other domains (for example ticketweb.com); they are flagged with on_ticketmaster false and cannot be passed to get_event or get_ticket_offers. Use start_date and end_date (the venue's local calendar dates) for requests like 'this Saturday', and local_time_from for 'evening'. Pass an event_id to get_event for details or to get_ticket_offers for seats and prices. Read-only; works signed out.",
+    description: "Search Ticketmaster (US) for live events by keyword, city or ZIP code, and local date range, using the same search the site's results page runs. Returns the event id, name, local date and time at the venue, venue, distance from the searched location, sale status flags, and the page that sells the tickets. Some results are sold by partner sites on other domains (for example ticketweb.com); they are flagged with on_ticketmaster false and cannot be passed to get_event or get_ticket_offers. Use start_date and end_date (the venue's local calendar dates) for requests like 'this Saturday', and local_time_from for 'evening'. Pass an event_id to get_event for details or to get_ticket_offers for seats and prices. Runs inside the current www.ticketmaster.com page without navigating. Read-only; works signed out.",
     inputSchema: {
       type: "object", additionalProperties: false,
       properties: {
@@ -74,7 +74,7 @@
         },
         {
           type: "object", additionalProperties: false, required: ["status", "error_kind", "error_message"],
-          properties: { status: { const: "error" }, error_kind: { enum: ["invalid_input", "location_not_found", "challenge", "site_error"] }, error_message: { type: "string", minLength: 1 } }
+          properties: { status: { const: "error" }, error_kind: { enum: ["invalid_input", "location_not_found", "challenge", "wrong_page", "site_error"] }, error_message: { type: "string", minLength: 1 } }
         }
       ]
     },
@@ -91,8 +91,8 @@
       return { value: v.trim().replace(/\s+/g, " ") };
     };
     const keyword = text(input.keyword, "keyword", 2, 100);
-    const location = text(input.location, "location", 2, 80);
-    for (const f of [keyword, location]) if (f.error) return fail("invalid_input", f.error);
+    const place = text(input.location, "location", 2, 80);
+    for (const f of [keyword, place]) if (f.error) return fail("invalid_input", f.error);
     const isDate = v => typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v) && !Number.isNaN(Date.parse(v + "T00:00:00Z")) && new Date(v + "T00:00:00Z").toISOString().slice(0, 10) === v;
     const isTime = v => typeof v === "string" && /^([01]\d|2[0-3]):[0-5]\d$/.test(v);
     if (input.start_date !== undefined && !isDate(input.start_date)) return fail("invalid_input", "start_date must be a real calendar date, YYYY-MM-DD.");
@@ -109,19 +109,19 @@
     if (!["relevance", "date"].includes(sort)) return fail("invalid_input", "sort must be 'relevance' or 'date'.");
     const limit = input.limit === undefined ? 10 : input.limit;
     if (!Number.isInteger(limit) || limit < 1 || limit > 40) return fail("invalid_input", "limit must be an integer from 1 to 40.");
-    if (!keyword.value && !location.value && !startDate) return fail("invalid_input", "Give at least one of keyword, location or start_date.");
+    if (!keyword.value && !place.value && !startDate) return fail("invalid_input", "Give at least one of keyword, location or start_date.");
     const timeFrom = input.local_time_from ?? null;
     const timeTo = input.local_time_to ?? null;
     if (timeFrom && timeTo && timeTo < timeFrom) return fail("invalid_input", "local_time_to is before local_time_from.");
 
-    const query = { keyword: keyword.value, location: location.value, radius_miles: location.value ? radius : null, start_date: startDate, end_date: endDate, local_time_from: timeFrom, local_time_to: timeTo, sort, limit };
+    const query = { keyword: keyword.value, location: place.value, radius_miles: place.value ? radius : null, start_date: startDate, end_date: endDate, local_time_from: timeFrom, local_time_to: timeTo, sort, limit };
     const observedAt = new Date().toISOString();
     // The site's own client headers; the page's fetch adds its bot-protection headers itself.
-    const api = path => js(async ({ path }) => {
+    const api = async path => {
       const res = await fetch(path, { credentials: "include", headers: { accept: "application/json", "x-tmplatform": "global", "x-tmclient-app": "marketplace_fe", "x-tmregion": "200", "x-tmlangcode": "en-us" } });
       const body = await res.text();
-      try { return { status: res.status, body: JSON.parse(body) }; } catch { return { status: res.status, body: null, text: body.slice(0, 160) }; }
-    }, { arg: { path } });
+      try { return { status: res.status, body: JSON.parse(body) }; } catch { return { status: res.status, body: null }; }
+    };
     const checked = response => {
       if (response.status === 429 || response.status === 403) return { error: fail("challenge", "Ticketmaster's bot protection refused the request (HTTP " + response.status + "); wait a few minutes before trying again.") };
       if (response.status >= 400 || !response.body) return { error: fail("site_error", "Ticketmaster search returned HTTP " + response.status + (response.body ? "." : " with a non-JSON body.")) };
@@ -141,25 +141,20 @@
     };
 
     try {
-      let current = null;
-      try { current = new URL((await pageInfo()).url); } catch { /* about:blank */ }
-      if (!current || current.origin !== ORIGIN) {
-        await gotoUrl(ORIGIN + "/");
-        if (!await waitForLoad(30)) return fail("site_error", "The Ticketmaster homepage did not finish loading.");
-      }
-      if (/browsing activity has been paused|pardon (the|our) interruption|access denied/i.test(await js(() => document.title || ""))) return fail("challenge", "Ticketmaster is showing its bot-protection page ('Your Browsing Activity Has Been Paused') to this browser; wait or use a different browser session.");
+      if (window.location.origin !== ORIGIN) return fail("wrong_page", "Open any https://www.ticketmaster.com page first; this tool calls the site's search from that page.");
+      if (/browsing activity has been paused|pardon (the|our) interruption|access denied/i.test(document.title || "")) return fail("challenge", "Ticketmaster is showing its bot-protection page ('Your Browsing Activity Has Been Paused') to this browser; wait or use a different browser session.");
 
       let resolved = null;
-      if (location.value) {
-        const zip = /^\d{5}$/.test(location.value);
-        const lookup = checked(await api(zip ? "/api/discovery/location/code?code=" + location.value : "/api/discovery/location/city?city=" + encodeURIComponent(location.value.replace(/,\s*[A-Za-z]{2}$/, ""))));
+      if (place.value) {
+        const zip = /^\d{5}$/.test(place.value);
+        const lookup = checked(await api(zip ? "/api/discovery/location/code?code=" + place.value : "/api/discovery/location/city?city=" + encodeURIComponent(place.value.replace(/,\s*[A-Za-z]{2}$/, ""))));
         if (lookup.error) return lookup.error;
         const matches = Array.isArray(lookup.body) ? lookup.body.filter(m => Number.isFinite(m?.latitude) && Number.isFinite(m?.longitude) && typeof m.name === "string") : [];
-        const state = /,\s*([A-Za-z]{2})$/.exec(location.value)?.[1]?.toUpperCase();
-        const city = location.value.replace(/,\s*[A-Za-z]{2}$/, "").toLowerCase();
+        const state = /,\s*([A-Za-z]{2})$/.exec(place.value)?.[1]?.toUpperCase();
+        const city = place.value.replace(/,\s*[A-Za-z]{2}$/, "").toLowerCase();
         const pick = matches.find(m => (!state || m.name.toUpperCase().endsWith(", " + state)) && m.name.toLowerCase().startsWith(city + ","))
           || matches.find(m => !state || m.name.toUpperCase().endsWith(", " + state));
-        if (!pick) return fail("location_not_found", "Ticketmaster's location lookup found no US place matching '" + location.value + "'. Try 'City, ST' or a 5-digit ZIP code.");
+        if (!pick) return fail("location_not_found", "Ticketmaster's location lookup found no US place matching '" + place.value + "'. Try 'City, ST' or a 5-digit ZIP code.");
         resolved = { name: pick.name, latitude: pick.latitude, longitude: pick.longitude, market_name: pick.marketName ?? null };
       }
 
@@ -170,8 +165,8 @@
         try { url = new URL(e?.url); } catch { return null; }
         const host = url.hostname.toLowerCase();
         const onTicketmaster = url.protocol === "https:" && (host === "ticketmaster.com" || host.endsWith(".ticketmaster.com"));
-        const pathId = /\/event\/([A-Za-z0-9]+)\/?$/.exec(url.pathname)?.[1];
-        const eventId = onTicketmaster && pathId ? pathId : (typeof e.id === "string" && e.id ? e.id : null);
+        // Ticketmaster event ids come from the URL (the index id differs for partner inventory); other sites keep their own id.
+        const eventId = onTicketmaster ? /\/event\/([A-Za-z0-9_-]{6,40})\/?$/.exec(url.pathname)?.[1] ?? null : (typeof e.id === "string" && e.id ? e.id : null);
         if (!eventId || typeof e.title !== "string") return null;
         const v = e.venue || {};
         const distance = resolved && Number.isFinite(v.latitude) && Number.isFinite(v.longitude) ? Math.round(miles(resolved, v) * 10) / 10 : null;
@@ -193,11 +188,12 @@
       const wanted = c => c.near
         && (!startDate || (c.when.date && c.when.date >= startDate && c.when.date <= endDate))
         && (!(timeFrom || timeTo) || (c.when.time && (!timeFrom || c.when.time >= timeFrom) && (!timeTo || c.when.time <= timeTo)));
-      // withDates: send the date range to the site. nearbyBlock: the location-only query, which lists nearby events
-      // first in date order and then restarts with distant ones; the site's date filter does not keep that grouping.
-      const scan = async (withDates, maxPages, nearbyBlock, sortBy) => {
+      // nearbyBlock: the location-only query lists nearby events first (in the requested order) and then restarts
+      // with distant ones. The site's date filter keeps the range but mixes distances across pages, and some nearby
+      // events only appear there, so with a location and dates both queries run and their results are merged.
+      const scan = async (withDates, maxPages, nearbyBlock) => {
         for (let page = 0; page < maxPages; page++) {
-          const params = new URLSearchParams({ region: "200", sort: sortBy, page: String(page) });
+          const params = new URLSearchParams({ region: "200", sort, page: String(page) });
           if (keyword.value) params.set("q", keyword.value);
           if (withDates) { params.set("startDate", startDate); params.set("endDate", endDate); }
           if (resolved) { params.set("latitude", String(resolved.latitude)); params.set("longitude", String(resolved.longitude)); params.set("distance", String(radius)); params.set("distanceUnit", "miles"); }
@@ -215,23 +211,14 @@
           }
           if (batch.length < 20) return { done: "exhausted" };
           if (nearbyBlock && near * 2 < batch.length) return { done: "exhausted" };
-          if (nearbyBlock && sortBy === "date" && (passedEnd || (!startDate && found.size >= limit))) return { done: "passed" };
-          // The site's date-filtered location results are not grouped by distance, so that pass reads every page it may.
-          if (!nearbyBlock && found.size >= limit && !(resolved && sortBy === "date")) return { done: "enough" };
+          if (nearbyBlock && ((sort === "date" && passedEnd) || found.size >= limit)) return { done: "enough" };
+          // With sort=date and a location, the mixed date-filtered pages are read in full and sorted afterwards.
+          if (!nearbyBlock && found.size >= limit && !(resolved && sort === "date")) return { done: "enough" };
         }
         return { done: "capped" };
       };
-      let outcome;
-      if (resolved && startDate && sort === "date") {
-        outcome = await scan(false, 10, true, "date");
-        if (!outcome.error && outcome.done === "capped") outcome = await scan(true, 6, false, "date");
-      } else if (resolved && startDate) {
-        outcome = await scan(true, 8, false, "relevance");
-      } else if (resolved) {
-        outcome = await scan(false, 10, true, sort);
-      } else {
-        outcome = await scan(!!startDate, 5, false, sort);
-      }
+      let outcome = resolved ? await scan(false, 10, true) : await scan(!!startDate, 5, false);
+      if (!outcome.error && resolved && startDate) outcome = await scan(true, 6, false);
       if (outcome.error) return outcome.error;
       let events = [...found.values()];
       if (sort === "date") events.sort((a, b) => (a.start_utc ? Date.parse(a.start_utc) : Infinity) - (b.start_utc ? Date.parse(b.start_utc) : Infinity));
@@ -239,7 +226,7 @@
       if (!events.length) return { status: "no_results", query, resolved_location: resolved, observed_at: observedAt, message: "Ticketmaster returned no events matching every filter." };
       return { status: "ok", query, resolved_location: resolved, site_total: siteTotal, observed_at: observedAt, events };
     } catch (error) {
-      return fail("site_error", "Browser interaction failed: " + (error && error.message ? error.message : String(error)));
+      return fail("site_error", "The request from the page failed: " + (error && error.message ? error.message : String(error)));
     }
   }
 }]

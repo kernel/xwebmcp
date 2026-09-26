@@ -439,11 +439,10 @@
       "domain": "ticketmaster.com",
       "tool": "get_event",
       "file": "domains/ticketmaster.com/get_event.js",
-      "kind": "cdp",
+      "kind": "page",
       "namespace": "ticketmaster.com",
       "url_patterns": [
-        "https://ticketmaster.com/*",
-        "https://*.ticketmaster.com/*"
+        "https://www.ticketmaster.com/*"
       ],
       "status": "draft",
       "last_verified": null,
@@ -456,8 +455,7 @@
       "kind": "cdp",
       "namespace": "ticketmaster.com",
       "url_patterns": [
-        "https://ticketmaster.com/*",
-        "https://*.ticketmaster.com/*"
+        "https://www.ticketmaster.com/*"
       ],
       "status": "draft",
       "last_verified": null,
@@ -467,11 +465,10 @@
       "domain": "ticketmaster.com",
       "tool": "search_events",
       "file": "domains/ticketmaster.com/search_events.js",
-      "kind": "cdp",
+      "kind": "page",
       "namespace": "ticketmaster.com",
       "url_patterns": [
-        "https://ticketmaster.com/*",
-        "https://*.ticketmaster.com/*"
+        "https://www.ticketmaster.com/*"
       ],
       "status": "draft",
       "last_verified": null,

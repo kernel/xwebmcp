@@ -1,13 +1,13 @@
 [{
-  kind: "cdp",
-  match: { url_patterns: ["https://ticketmaster.com/*", "https://*.ticketmaster.com/*"] },
+  kind: "page",
+  match: { url_patterns: ["https://www.ticketmaster.com/*"] },
   tool: {
     name: "get_event",
-    description: "Get the details of one Ticketmaster event by event id or event page URL: name, local date and time at the venue, doors time, venue and address, category, performers, on-sale and presale windows, ticket limit, age restriction, change status (cancelled, postponed, rescheduled) and any terms notice the event page shows before buying. Reads the same event record the site's event page loads. It does not report seats or prices; use get_ticket_offers for those. Only events sold on ticketmaster.com are supported. Read-only; works signed out.",
+    description: "Get the details of one Ticketmaster event by event id or event page URL: name, local date and time at the venue, doors time, venue and address, category, performers, on-sale and presale windows, ticket limit, age restriction, change status (cancelled, postponed, rescheduled) and any terms notice the event page shows before buying. Reads the same event record the site's event page loads. It does not report seats or prices; use get_ticket_offers for those. Only events sold on ticketmaster.com are supported. Runs inside the current www.ticketmaster.com page without navigating. Read-only; works signed out.",
     inputSchema: {
       type: "object", additionalProperties: false, required: ["event"],
       properties: {
-        event: { type: "string", minLength: 6, maxLength: 400, description: "An event_id from search_events, or a https://www.ticketmaster.com/.../event/<id> URL." }
+        event: { type: "string", minLength: 6, maxLength: 400, description: "An event_id from search_events (letters, digits, _ or -), or a https://www.ticketmaster.com/.../event/<id> URL." }
       }
     },
     outputSchema: {
@@ -43,7 +43,7 @@
         },
         {
           type: "object", additionalProperties: false, required: ["status", "error_kind", "error_message"],
-          properties: { status: { const: "error" }, error_kind: { enum: ["invalid_input", "unsupported_host", "not_found", "challenge", "site_error"] }, error_message: { type: "string", minLength: 1 } }
+          properties: { status: { const: "error" }, error_kind: { enum: ["invalid_input", "unsupported_host", "not_found", "challenge", "wrong_page", "site_error"] }, error_message: { type: "string", minLength: 1 } }
         }
       ]
     },
@@ -56,13 +56,13 @@
     const raw = typeof input.event === "string" ? input.event.trim() : "";
     if (raw.length < 6 || raw.length > 400) return fail("invalid_input", "event must be an event id or a Ticketmaster event URL.");
     let eventId = null;
-    if (/^[A-Za-z0-9]{6,40}$/.test(raw)) eventId = raw;
+    if (/^[A-Za-z0-9_-]{6,40}$/.test(raw)) eventId = raw;
     else {
       let url;
       try { url = new URL(raw); } catch { return fail("invalid_input", "event is neither an event id nor a URL."); }
       const host = url.hostname.toLowerCase();
       if (url.protocol !== "https:" || !(host === "ticketmaster.com" || host.endsWith(".ticketmaster.com"))) return fail("unsupported_host", "Only ticketmaster.com event pages are supported; " + host + " is a different ticketing site.");
-      eventId = /\/event\/([A-Za-z0-9]{6,40})\/?$/.exec(url.pathname)?.[1] ?? null;
+      eventId = /\/event\/([A-Za-z0-9_-]{6,40})\/?$/.exec(url.pathname)?.[1] ?? null;
       if (!eventId) return fail("invalid_input", "The URL has no /event/<id> segment.");
     }
     const local = (iso, zone) => {
@@ -75,18 +75,13 @@
     const utc = iso => { const at = new Date(iso); return iso && !Number.isNaN(at.getTime()) ? at.toISOString() : null; };
     const str = v => typeof v === "string" && v.trim() ? v.trim() : null;
     try {
-      let current = null;
-      try { current = new URL((await pageInfo()).url); } catch { /* about:blank */ }
-      if (!current || current.origin !== ORIGIN) {
-        await gotoUrl(ORIGIN + "/");
-        if (!await waitForLoad(30)) return fail("site_error", "The Ticketmaster homepage did not finish loading.");
-      }
-      if (/browsing activity has been paused|pardon (the|our) interruption|access denied/i.test(await js(() => document.title || ""))) return fail("challenge", "Ticketmaster is showing its bot-protection page ('Your Browsing Activity Has Been Paused') to this browser; wait or use a different browser session.");
-      const response = await js(async ({ path }) => {
-        const res = await fetch(path, { credentials: "include", headers: { accept: "application/json", "x-tmplatform": "global", "x-tmclient-app": "marketplace_fe", "x-tmregion": "200", "x-tmlangcode": "en-us" } });
-        const body = await res.text();
-        try { return { status: res.status, body: JSON.parse(body) }; } catch { return { status: res.status, body: null }; }
-      }, { arg: { path: "/api/eventinfo/" + encodeURIComponent(eventId) } });
+      if (window.location.origin !== ORIGIN) return fail("wrong_page", "Open any https://www.ticketmaster.com page first; this tool reads the event record from that page.");
+      if (/browsing activity has been paused|pardon (the|our) interruption|access denied/i.test(document.title || "")) return fail("challenge", "Ticketmaster is showing its bot-protection page ('Your Browsing Activity Has Been Paused') to this browser; wait or use a different browser session.");
+      const res = await fetch("/api/eventinfo/" + encodeURIComponent(eventId), { credentials: "include", headers: { accept: "application/json", "x-tmplatform": "global", "x-tmclient-app": "marketplace_fe", "x-tmregion": "200", "x-tmlangcode": "en-us" } });
+      const text = await res.text();
+      let parsed = null;
+      try { parsed = JSON.parse(text); } catch { /* not JSON */ }
+      const response = { status: res.status, body: parsed };
       if (response.status === 404 || response.status === 400) return fail("not_found", "Ticketmaster has no event with id " + eventId + ".");
       if (response.status === 429 || response.status === 403) return fail("challenge", "Ticketmaster's bot protection refused the request (HTTP " + response.status + "); wait a few minutes before trying again.");
       const e = response.body;
@@ -120,7 +115,7 @@
         observed_at: new Date().toISOString()
       };
     } catch (error) {
-      return fail("site_error", "Browser interaction failed: " + (error && error.message ? error.message : String(error)));
+      return fail("site_error", "The request from the page failed: " + (error && error.message ? error.message : String(error)));
     }
   }
 }]

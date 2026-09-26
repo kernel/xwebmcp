@@ -34,25 +34,29 @@ Pick the `tool_ref` whose `source.target_id` is the tab you drive. Use
 `timeoutSec: 60` for `search_events` and `get_event`, and `timeoutSec: 90` for
 `get_ticket_offers` (the event page load dominates; live runs took 1 to 11 s).
 
-- **search_events** calls the site's own search API (`/api/search/events`) and
-  location lookup (`/api/discovery/location/city`, `/api/discovery/location/code`)
-  from a `www.ticketmaster.com` page, with the site's client headers. It opens the
-  homepage first only when the tab is not on `www.ticketmaster.com`. Dates are the
-  venue's local calendar dates; `local_time_from`/`local_time_to` filter on the
-  venue's local start time.
-- **get_event** reads `/api/eventinfo/<id>`, the record the event page itself loads.
-  It never opens the event page.
-- **get_ticket_offers** opens `https://www.ticketmaster.com/event/<id>` (unless the
-  tab is already there) and reads the listings the page shows. Ticketmaster serves
+- **search_events** (`kind: "page"`) runs in the current `www.ticketmaster.com`
+  document and calls the site's own search API (`/api/search/events`) and location
+  lookup (`/api/discovery/location/city`, `/api/discovery/location/code`) with the
+  site's client headers. It never navigates. Dates are the venue's local calendar
+  dates; `local_time_from`/`local_time_to` filter on the venue's local start time.
+- **get_event** (`kind: "page"`) reads `/api/eventinfo/<id>`, the record the event
+  page itself loads, from the current `www.ticketmaster.com` document. It never
+  navigates.
+- **get_ticket_offers** (`kind: "cdp"`) opens `https://www.ticketmaster.com/event/<id>`
+  (unless the tab is already there) and then reads the listings that page shows. It
+  is a CDP tool because it navigates and needs the destination's structured offers
+  (section, row, seats, prices, fees, ticket type) after that navigation; a page tool
+  would be destroyed with the document it navigates away from. Ticketmaster serves
   two event page layouts:
   - *Classic* (`__NEXT_DATA__.page` `/naevent/[eventId]`, most sports and many
     concerts): the tool issues the same `quickpicks` request the page sends to
-    `offeradapter.ticketmaster.com`, with `sort=-quality` for Best Seats and
-    `sort=noTaxTotalprice` for Lowest Price. The service key and secret are the
-    page's public client configuration in `__NEXT_DATA__`; they are read and used
-    inside the page and never returned, logged or committed. The request uses
-    `XMLHttpRequest` with credentials and a `TMPS-Correlation-Id` header like the page;
-    `fetch` without that header fails CORS.
+    `offeradapter.ticketmaster.com`, with `sort=-quality` for Best Seats,
+    `sort=noTaxTotalprice` for Lowest Price and `includeResale` from the input. The
+    service key and secret are the page's public client configuration in
+    `__NEXT_DATA__`; they are read and used inside the page and never returned,
+    logged or committed. The request uses `XMLHttpRequest` with credentials and a
+    `TMPS-Correlation-Id` header like the page; `fetch` without that header fails
+    CORS. With `max_price_per_ticket` it reads up to three pages of 40 listings.
   - *Newer* (`/globalevent/[eventId]`, including partner-inventory theatre such as
     Broadway houses): listings are computed inside the page from a WebAssembly SDK, so
     the tool reads the listing panel through the accessibility tree. It clicks only the
@@ -72,16 +76,28 @@ Outputs:
 - `no_tickets` means nothing is available for that quantity (a different quantity may
   have seats) or the page says the event is sold out; the `reason` says which.
 
+## URL patterns
+
+All three tools match only `https://www.ticketmaster.com/*`, not the default
+`https://ticketmaster.com/*` and `https://*.ticketmaster.com/*`. The other hosts under
+the registrable domain are separate products: the help centre (`help.`), sign-in
+(`identity.`), Account Manager (`am.`), the waiting room and
+checkout (`checkout.`). The search and event APIs the page tools call are same-origin
+only on `www.ticketmaster.com`, so a page tool on those hosts could not work, and none
+of the tools should be listed on checkout pages. The bare `ticketmaster.com` redirects
+to `www`. The CDP tool uses the same host so the namespace stays on one host, and it
+navigates only within `www.ticketmaster.com`. If the tab is on another host, open
+`https://www.ticketmaster.com/` first.
+
 ## Safety and trust boundary
 
 - Nothing here selects a listing, clicks a "Select …" seat row, accepts the event's
   ticket terms dialog ("I Agree"), reserves, holds, adds to cart or opens
   `checkout.ticketmaster.com`. The tests fail if any listing is clicked. No tool
   exposes a mutation.
-- URL patterns are the default `https://ticketmaster.com/*` and
-  `https://*.ticketmaster.com/*`. The tools read JSON from `www.ticketmaster.com`
-  and, on classic event pages, from `offeradapter.ticketmaster.com`, both inside
-  the ticketmaster.com registrable domain, using only the page's own cookies.
+- The tools read JSON from `www.ticketmaster.com` and, on classic event pages, from
+  `offeradapter.ticketmaster.com`, both inside the ticketmaster.com registrable domain,
+  using only the page's own cookies. Nothing is sent anywhere else.
 - Some search results are sold on other sites Ticketmaster links to, for example
   `www.ticketweb.com` (Ticketmaster's partner box office) and
   `concerts.livenation.com`. Search returns them with `on_ticketmaster: false` and
@@ -108,15 +124,16 @@ Outputs:
   (HTTP 500 without them). With a location, the location-only query lists nearby
   events first in date order (about 10 pages), then restarts with distant events.
   Adding the site's `startDate`/`endDate` filter keeps the date range but interleaves
-  distant events across pages, so `search_events` reads the nearby block first and
-  falls back to up to 6 date-filtered pages only when the nearby block ends before
-  the requested dates. Results outside `radius_miles` (straight-line distance from
+  distant events across pages, and some in-radius events appear only there. With a
+  location and dates, `search_events` reads the nearby block (up to 10 pages, stopping
+  once it passes `end_date`) and up to 6 date-filtered pages, and merges them. Results outside `radius_miles` (straight-line distance from
   the site's location match) are dropped. Page 49 returned HTTP 400.
 - The search index's `soldOut`/`limitedAvailability` flags lag live inventory. A
   preseason NBA game listed as not sold out showed "Tickets are sold out now" on its
   page and zero offers; `get_ticket_offers` is the source of truth.
 - Search result ids for partner-inventory events differ from the id in their event
-  URL; the tools use the URL id.
+  URL; the tools use the URL id. About a fifth of New York theatre ids contain `_` or
+  `-` (for example `Z1r9uZ…Je0_`).
 - Classic pages show a league or venue terms dialog on load; the offer request works
   without accepting it. The newer layout offers only price orders (low to high, high
   to low), not Best Seats.
@@ -129,6 +146,8 @@ Outputs:
 - US site only (`region=200`, `en-us`, USD).
 - `search_events` reads at most 10 location-only pages and 6 date-filtered pages
   (20 events each); a very large market far in the future can miss events.
+- The page tools need a `www.ticketmaster.com` tab; on any other page they return
+  `wrong_page`. A tab showing the bot-protection page returns `challenge`.
   `site_total` is the site's rough count; it is `null` when a location and a date
   range were given and the date-filtered fallback was not needed.
 - On the newer layout `best_seats` is not available and falls back to lowest price
@@ -136,6 +155,9 @@ Outputs:
   may render fewer listings than its "N Results" count; a warning says so.
 - On the newer layout `include_resale: false` can only drop listings whose type
   mentions resale; primary/resale is otherwise unlabelled (`inventory_type: null`).
+- On the classic layout `max_price_per_ticket` checks at most 120 listings in the
+  requested order; with `best_seats` a warning says when cheaper seats may exist
+  further down.
 - Waiting rooms (`queue`) and bot-protection pages are detected and reported, not
   passed. Accessible-seating inventory is excluded, as on the site's default view.
 - Signed-in-only inventory (member presales, unlock codes) was not tested; the tools
@@ -145,4 +167,26 @@ Outputs:
 
 ## QA
 
-Pending independent QA.
+Independent QA round 1 (smartest preset) on commit `c3c9a58`: **FAIL**, with the
+following findings, all fixed in the next commit:
+
+1. Event ids containing `_` or `-` were unreachable (search fell back to the index
+   id). Ids now accept `[A-Za-z0-9_-]` everywhere and ticketmaster.com results always
+   use the URL id.
+2. `include_resale: false` on the classic layout filtered only the first 40 listings
+   client-side and could return `no_tickets` although primary seats existed. The flag
+   is now sent to the offer service, and `max_price_per_ticket` reads up to three pages.
+3. Location plus dates missed in-radius events that only the site's date-filtered
+   search lists. Both queries now run and are merged.
+4. A flagged session with a momentarily empty event document was reported as
+   `unsupported_page`; the tool now re-checks and reports `challenge`.
+5. `search_events` and `get_event` became `kind: "page"` tools (same-document fetch,
+   no navigation), with URL patterns narrowed to `www.ticketmaster.com`.
+
+Round 1 also verified live: classic-layout Best Seats and Lowest Price against the
+page's own tabs (exact match), newer-layout listings against the panel, the
+unsupported-quantity path, price filters, not-found ids, the challenge path in two
+flagged sessions, schema conformance of 35 live outputs, and no listing clicks,
+terms acceptance, checkout, cart or reserve requests.
+
+Round 2 on the fixed source: pending.

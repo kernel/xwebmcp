@@ -97,7 +97,7 @@ function harness(name, o = {}) {
   let url = o.url ?? HOME;
   const calls = { navigations: [], api: [], xhr: [], clicks: [], keys: [], js: 0 };
   let page = o.page ?? null;
-  const pageFor = u => (typeof o.pageFor === "function" ? o.pageFor(u) : null) ?? page;
+  const pageFor = u => (typeof o.pageFor === "function" ? o.pageFor(u, calls) : null) ?? page;
   const panel = o.panel ? { quantity: 2, open: false, sortOpen: false, sort: "Lowest Price", ...plain(o.panel) } : null;
   const apiRoute = path => {
     calls.api.push(path);
@@ -128,6 +128,7 @@ function harness(name, o = {}) {
         title: p.title ?? "Ticketmaster", body: { innerText: p.text ?? "" },
         getElementById: id => id === "__NEXT_DATA__" && p.next ? { textContent: JSON.stringify(p.next) } : null
       },
+      Intl, Math, Date, Number, Object, Array, String, RegExp, Map, Set, Infinity, NaN, isFinite,
       fetch: async (path, init) => {
         assert.equal(init.credentials, "include");
         assert.equal(init.headers["x-tmplatform"], "global");
@@ -179,7 +180,9 @@ function harness(name, o = {}) {
     },
     pressKey: async key => { calls.keys.push(key); if (key === "Escape" && panel) { panel.open = false; panel.sortOpen = false; } }
   };
-  const [definition] = runInNewContext(`(${sources[name]})`, context);
+  // Page tools run inside the document, so their globals are the page's; CDP tools get the runtime helpers.
+  const kind = /^\[\{\s*kind: "page"/.test(sources[name]) ? "page" : "cdp";
+  const [definition] = runInNewContext(`(${sources[name]})`, kind === "page" ? { ...pageContext(), window: { location: new URL(url) } } : context);
   return {
     definition, calls, panel,
     run: async input => {
@@ -199,9 +202,10 @@ for (const name of NAMES) {
     assert.equal(/\b(Buffer|require|process)\b/.test(sources[name]), false, "tool source must not depend on Node globals");
     assert.equal(/checkout\.ticketmaster|\/checkout|api\/reserve|addToCart|\/cart/i.test(sources[name]), false, "tool source must not reference checkout, reserve or cart endpoints");
     const { definition } = harness(name);
-    assert.equal(definition.kind, "cdp");
     assert.equal(definition.tool.name, name);
-    assert.deepEqual(plain(definition.match.url_patterns), ["https://ticketmaster.com/*", "https://*.ticketmaster.com/*"]);
+    assert.equal(definition.kind, name === "get_ticket_offers" ? "cdp" : "page");
+    assert.deepEqual(plain(definition.match.url_patterns), ["https://www.ticketmaster.com/*"]);
+    if (definition.kind === "page") assert.equal(/\b(js|gotoUrl|pageInfo|waitForLoad|accessibilitySnapshot|click|pressKey)\(/.test(definition.execute.toString()), false, "page tools cannot use runtime helpers");
     assert.equal(definition.tool.inputSchema.type, "object");
     assert.equal(definition.tool.inputSchema.additionalProperties, false);
     assert.equal(definition.tool.outputSchema.type, "object");
@@ -233,11 +237,12 @@ const invalidInputs = {
 for (const [name, inputs] of Object.entries(invalidInputs)) {
   for (const input of inputs) {
     test(`${name}: rejects ${JSON.stringify(input)} before touching the page`, async () => {
-      const h = harness(name, { url: "https://example.com/" });
+      const h = harness(name, { url: "https://www.ticketmaster.com/search?q=x" });
       const result = await h.run(input);
       assert.equal(result.status, "error");
       assert.ok(["invalid_input", "unsupported_host"].includes(result.error_kind), result.error_kind);
       assert.deepEqual(h.calls.navigations, []);
+      assert.deepEqual(h.calls.api, []);
       assert.equal(h.calls.js, 0);
     });
   }
@@ -249,6 +254,7 @@ for (const [name, input] of [["get_event", { event: "https://www.ticketweb.com/e
     const result = await h.run(input);
     assert.equal(result.error_kind, "unsupported_host");
     assert.deepEqual(h.calls.navigations, []);
+    assert.deepEqual(h.calls.api, []);
     assert.equal(h.calls.js, 0);
   });
 }
@@ -264,13 +270,15 @@ const laEvents = [
   searchEvent("AAAA0002", "Evening Show", "2026-10-04T02:00:00Z", NEAR)
 ];
 
-for (const start of ["https://example.com/", "about:blank", "https://help.ticketmaster.com/hc/en-us"]) {
-  test(`search_events: opens the homepage from ${start} before calling the site`, async () => {
-    const h = harness("search_events", { url: start, api: p => p.startsWith("/api/search/events") ? { status: 200, body: { total: 1, events: [laEvents[0]] } } : null });
-    const result = await h.run({ keyword: "comedy" });
-    assert.equal(result.status, "ok");
-    assert.deepEqual(h.calls.navigations, [HOME]);
-  });
+for (const name of ["search_events", "get_event"]) {
+  for (const start of ["https://help.ticketmaster.com/hc/en-us", "https://ticketmaster.com/", "https://example.com/"]) {
+    test(`${name}: refuses to run from ${start} without calling the site`, async () => {
+      const h = harness(name, { url: start });
+      const result = await h.run(name === "search_events" ? { keyword: "comedy" } : { event: "DDDD0001" });
+      assert.equal(result.error_kind, "wrong_page");
+      assert.deepEqual(h.calls.api, []);
+    });
+  }
 }
 
 test("search_events: stays on the current ticketmaster.com page and sends the site's own query", async () => {
@@ -375,9 +383,10 @@ test("search_events: a bot-protection page is reported as a challenge before any
   assert.deepEqual(h.calls.api, []);
 });
 
-test("search_events: a homepage that never loads is a site_error", async () => {
-  const result = await harness("search_events", { url: "https://example.com/", loads: false }).run({ keyword: "comedy" });
+test("search_events: a failing fetch is a site_error", async () => {
+  const result = await harness("search_events", { api: () => { throw new Error("network down"); } }).run({ keyword: "comedy" });
   assert.equal(result.error_kind, "site_error");
+  assert.match(result.error_message, /network down/);
 });
 
 // --- get_event -----------------------------------------------------------------------------------------
@@ -386,7 +395,6 @@ test("get_event: reads the event record by id with local times and terms notice"
   const h = harness("get_event", { url: "https://www.ticketmaster.com/search?q=comedy" });
   const result = await h.run({ event: "DDDD0001" });
   assert.equal(result.status, "ok");
-  assert.deepEqual(h.calls.navigations, []);
   assert.equal(h.calls.api[0], "/api/eventinfo/DDDD0001");
   assert.equal(result.local_date, "2026-10-03");
   assert.equal(result.local_time, "20:30");
@@ -399,10 +407,11 @@ test("get_event: reads the event record by id with local times and terms notice"
 });
 
 test("get_event: accepts an event URL, handles offset dates and partner inventory", async () => {
-  const h = harness("get_event", { url: "https://example.com/", api: p => p.startsWith("/api/eventinfo/") ? { status: 200, body: eventInfo("Z1ExampleId", { sourceName: "TMC", timeZone: "America/New_York", dates: { startDate: "2026-10-03T19:00-04:00" }, doorsTimes: undefined }) } : null });
-  const result = await h.run({ event: "https://www.ticketmaster.com/some-show-new-york-10-03-2026/event/Z1ExampleId?lang=en-us" });
-  assert.deepEqual(h.calls.navigations, [HOME]);
-  assert.equal(h.calls.api[0], "/api/eventinfo/Z1ExampleId");
+  const h = harness("get_event", { api: p => p.startsWith("/api/eventinfo/") ? { status: 200, body: eventInfo("Z1Example_Id-9", { sourceName: "TMC", timeZone: "America/New_York", dates: { startDate: "2026-10-03T19:00-04:00" }, doorsTimes: undefined }) } : null });
+  const result = await h.run({ event: "https://www.ticketmaster.com/some-show-new-york-10-03-2026/event/Z1Example_Id-9?lang=en-us" });
+  assert.deepEqual(h.calls.navigations, []);
+  assert.equal(h.calls.api[0], "/api/eventinfo/Z1Example_Id-9");
+  assert.equal(result.event_id, "Z1Example_Id-9");
   assert.equal(result.inventory_source, "partner");
   assert.equal(result.local_time, "19:00");
   assert.equal(result.start_utc, "2026-10-03T23:00:00.000Z");
@@ -459,7 +468,7 @@ test("get_ticket_offers: lowest price uses the site's price order; filters apply
 test("get_ticket_offers: filters that remove every listing are no_tickets with the reason", async () => {
   const result = await harness("get_ticket_offers", { page: classic() }).run({ event: "EEEE0001", max_price_per_ticket: 10 });
   assert.equal(result.status, "no_tickets");
-  assert.match(result.reason, /none match/);
+  assert.match(result.reason, /None of the 3 listing\(s\) for this quantity is at or under max_price_per_ticket\.$/);
 });
 
 test("get_ticket_offers: an empty offer list on a sold-out page says so", async () => {
@@ -583,4 +592,96 @@ test("get_ticket_offers: newer layout without a listing panel is a site_error, o
   assert.equal(missing.error_kind, "site_error");
   const soldOut = await harness("get_ticket_offers", { page: { ...global, text: "This event is sold out" }, panel: { listings: LISTINGS, loading: true } }).run({ event: "FFFF0001" });
   assert.equal(soldOut.status, "no_tickets");
+});
+
+// --- regressions from independent QA ------------------------------------------------------------------
+
+test("search_events: event ids come from the ticketmaster.com URL, including _ and -", async () => {
+  const withSymbols = searchEvent("999001", "Symbol Show", "2026-10-04T02:00:00Z", NEAR, { url: "https://www.ticketmaster.com/symbol-show/event/Z1ab_Cd-Ef0_" });
+  const noEventPath = searchEvent("999002", "Artist Page", "2026-10-04T02:00:00Z", NEAR, { url: "https://www.ticketmaster.com/some-artist-tickets/artist/12345" });
+  const h = harness("search_events", { api: p => p.startsWith("/api/search/events") ? { status: 200, body: { total: 2, events: [withSymbols, noEventPath] } } : null });
+  const result = await h.run({ keyword: "symbol" });
+  assert.deepEqual(result.events.map(e => e.event_id), ["Z1ab_Cd-Ef0_"]);
+});
+
+for (const name of ["get_event", "get_ticket_offers"]) {
+  for (const event of ["Z1ab_Cd-Ef0_", "https://www.ticketmaster.com/symbol-show/event/Z1ab_Cd-Ef0_"]) {
+    test(`${name}: accepts the event id with _ and - (${event.startsWith("http") ? "URL" : "id"})`, async () => {
+      const h = harness(name, { page: classic() });
+      const result = await h.run({ event });
+      assert.equal(result.status, "ok");
+      assert.equal(result.event_id, "Z1ab_Cd-Ef0_");
+      if (name === "get_event") assert.equal(h.calls.api[0], "/api/eventinfo/Z1ab_Cd-Ef0_");
+      else assert.deepEqual(h.calls.navigations, ["https://www.ticketmaster.com/event/Z1ab_Cd-Ef0_"]);
+    });
+  }
+}
+
+test("get_ticket_offers: include_resale false asks the offer service for primary seats only", async () => {
+  const h = harness("get_ticket_offers", { page: classic(), xhr: target => {
+    const q = new URLSearchParams(target.split("?")[1]);
+    assert.equal(q.get("includeResale"), "false");
+    return { status: 200, body: quickpicks([{ section: "400", row: "B", area: "2", offerGroups: [{ offers: ["O2"], seats: ["1", "2"] }] }]) };
+  } });
+  const result = await h.run({ event: "EEEE0001", include_resale: false });
+  assert.deepEqual(result.offers.map(o => [o.section, o.inventory_type]), [["400", "primary"]]);
+  const other = harness("get_ticket_offers", { page: classic() });
+  await other.run({ event: "EEEE0001" });
+  assert.equal(new URLSearchParams(other.calls.xhr[0].url.split("?")[1]).get("includeResale"), "true");
+});
+
+const pageOf = (offset, total, price) => {
+  const count = Math.max(0, Math.min(40, total - offset));
+  const picks = Array.from({ length: count }, (_, i) => ({ section: "S" + (offset + i), row: "1", quality: 1 - (offset + i) / 1000, area: "1", offerGroups: [{ offers: ["P" + (offset + i)], seats: ["1", "2"] }] }));
+  return { total, picks, _embedded: { offer: picks.map((_, i) => offer("P" + (offset + i), "resale", price(offset + i))), area: [{ areaId: "1", description: "Floor" }] } };
+};
+
+test("get_ticket_offers: max_price_per_ticket reads further pages until it has enough, then stops", async () => {
+  const h = harness("get_ticket_offers", { page: classic(), xhr: target => {
+    const offset = Number(new URLSearchParams(target.split("?")[1]).get("offset"));
+    return { status: 200, body: pageOf(offset, 200, i => (i >= 45 ? 50 : 500)) };
+  } });
+  const result = await h.run({ event: "EEEE0001", sort: "best_seats", max_price_per_ticket: 100, limit: 3 });
+  assert.deepEqual(h.calls.xhr.map(c => new URLSearchParams(c.url.split("?")[1]).get("offset")), ["0", "40"]);
+  assert.deepEqual(result.offers.map(o => o.section), ["S45", "S46", "S47"]);
+  assert.equal(result.total_listings, 200);
+  assert.deepEqual(result.warnings, []);
+});
+
+test("get_ticket_offers: max_price_per_ticket stops after three pages and says how many were checked", async () => {
+  const h = harness("get_ticket_offers", { page: classic(), xhr: target => ({ status: 200, body: pageOf(Number(new URLSearchParams(target.split("?")[1]).get("offset")), 803, i => (i === 100 ? 20 : 500)) }) });
+  const some = await h.run({ event: "EEEE0001", sort: "best_seats", max_price_per_ticket: 100, limit: 5 });
+  assert.equal(h.calls.xhr.length, 3);
+  assert.deepEqual(some.offers.map(o => o.section), ["S100"]);
+  assert.match(some.warnings[0], /first 120 of 803/);
+  const none = await harness("get_ticket_offers", { page: classic(), xhr: target => ({ status: 200, body: pageOf(Number(new URLSearchParams(target.split("?")[1]).get("offset")), 803, () => 500) }) }).run({ event: "EEEE0001", sort: "best_seats", max_price_per_ticket: 100 });
+  assert.equal(none.status, "no_tickets");
+  assert.match(none.reason, /None of the 803 listing\(s\).*among the first 120 in Best Seats order/);
+  const cheapest = await harness("get_ticket_offers", { page: classic(), xhr: target => ({ status: 200, body: pageOf(Number(new URLSearchParams(target.split("?")[1]).get("offset")), 803, () => 500) }) }).run({ event: "EEEE0001", max_price_per_ticket: 100 });
+  assert.equal(cheapest.status, "no_tickets");
+  assert.doesNotMatch(cheapest.reason, /among the first/);
+});
+
+test("get_ticket_offers: an empty document that turns into the bot-protection page is a challenge", async () => {
+  const h = harness("get_ticket_offers", { pageFor: (_, calls) => (calls.js < 3 ? { title: "", text: "" } : { title: "Your Browsing Activity Has Been Paused" }) });
+  const result = await h.run({ event: "EEEE0001" });
+  assert.equal(result.error_kind, "challenge");
+});
+
+test("search_events: with a location and dates the site's date-filtered results are merged into the nearby block", async () => {
+  const outer = venue("Outer Club", "Irvine", "CA", 33.68, -117.83);
+  const nearby = [laEvents[1], laEvents[4], ...Array.from({ length: 18 }, (_, i) => searchEvent("NEAR" + String(i).padStart(4, "0"), "Later " + i, "2026-10-10T02:00:00Z", NEAR))];
+  const h = harness("search_events", { api: p => {
+    if (!p.startsWith("/api/search/events")) return null;
+    const q = new URLSearchParams(p.split("?")[1]);
+    if (!q.get("startDate")) return { status: 200, body: { total: 10000, events: q.get("page") === "0" ? nearby : [] } };
+    return { status: 200, body: { total: 5, events: q.get("page") === "0" ? [laEvents[3], searchEvent("OUTER001", "Outer Show", "2026-10-04T01:00:00Z", outer)] : [] } };
+  } });
+  const result = await h.run({ keyword: "comedy", location: "Los Angeles", start_date: "2026-10-03", local_time_from: "17:00" });
+  assert.deepEqual(result.events.map(e => e.event_id), ["OUTER001", "AAAA0002"]);
+  assert.equal(result.site_total, 5);
+  assert.ok(result.events[0].distance_miles > 30 && result.events[0].distance_miles <= 50);
+  const searches = h.calls.api.filter(p => p.startsWith("/api/search/events"));
+  assert.equal(searches.filter(p => !p.includes("startDate")).length, 1, "the nearby block stops once it passes end_date");
+  assert.equal(searches.filter(p => p.includes("startDate")).length, 1);
 });
