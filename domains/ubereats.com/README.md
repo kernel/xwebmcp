@@ -652,7 +652,13 @@ checks in ClawBench V1 use a placeholder that no run matches.
   malformed inputs rejected by the schema gate. It found no blockers; its three minor
   findings (a fixture that could not see stray checkbox clicks, the signed-out response
   described as HTTP 403, and page text in `destination_hint` and `terms_text` not
-  scrubbed) are fixed in the current source.
+  scrubbed) were fixed in `05e5cf1`. A final pass (agent `agt_8f7178bcd04460ebdbd3`, commit
+  `05e5cf1`, the current tool source) confirmed the three fixes, repeated the static
+  review and the no-submission live checks with every sign-up POST blocked (none fired),
+  and signed the source off to stay `draft` pending a supervised live test. Its remaining
+  notes (a fixture for the scrub, the two screens and the possible double code POST
+  below) are covered by later documentation and test commits that leave the tool files
+  unchanged.
 - Everything after the email submission is fixture-only: the phone, SMS, name, and terms
   handling, the conflict and rejection messages (their wording is a guess from Uber's
   error names), and account verification after sign-up.
@@ -660,6 +666,14 @@ checks in ClawBench V1 use a placeholder that no run matches.
   renders it differently the phone step stops with `unsupported_step` before typing.
 - Uber may refuse VoIP numbers; that shows as `phone_rejected` and is not worked around.
 - A marketing-consent or age screen stops the flow; answering them is left to a person.
+- Uber's client also has `NAME_EMAIL_LEGAL` (name, email, and terms on one screen) and
+  `PHONE_MISMATCH` screens. On the first the tools fill the name and terms but not the
+  email field, so Uber's own error ends the call in `unknown`, never a false success; the
+  second is reported as `unsupported_step`.
+- After pasting a code the tools click Next only if the code screen is still showing
+  1.5 s later, the same pattern `login` uses live. If Uber's own auto-submit were still in
+  flight at that moment it would send the code twice in one call; watch for a second
+  `submit-form` request during the supervised run.
 - Best lead for the next person: during the supervised live slot, record the heading and
   input ids of each screen after the email code and compare them with the fixtures in
   `tests/ubereats-register.test.mjs` before trusting a second run.

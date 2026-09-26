@@ -465,7 +465,10 @@
       ],
       "status": "draft",
       "last_verified": null,
-      "notes": "Submits Uber's email or SMS code once, then the phone, name, and required-terms screens, and reports registered only after the site's hashed account email matches. Screen handling after the email code is fixture-tested from Uber's sign-up client; not live-verified."
+      "notes": "Submits Uber's email or SMS code once, then the phone, name, and required-terms screens, and reports registered only after the site's hashed account email matches. Screen handling after the email code is fixture-tested from Uber's sign-up client; not live-verified.",
+      "provenance": {
+        "qa_agent": "agt_8f7178bcd04460ebdbd3"
+      }
     },
     {
       "domain": "ubereats.com",
@@ -549,7 +552,10 @@
       ],
       "status": "draft",
       "last_verified": null,
-      "notes": "Starts a new-account sign-up: follows the site's Sign up link from a signed-out session, submits the email once, and returns the email-code challenge; stops on signed-in sessions and on existing accounts. Built from Uber's sign-up client and read-only inspection; no live registration has been submitted yet."
+      "notes": "Starts a new-account sign-up: follows the site's Sign up link from a signed-out session, submits the email once, and returns the email-code challenge; stops on signed-in sessions and on existing accounts. Built from Uber's sign-up client and read-only inspection; no live registration has been submitted yet.",
+      "provenance": {
+        "qa_agent": "agt_8f7178bcd04460ebdbd3"
+      }
     },
     {
       "domain": "ubereats.com",
@@ -564,7 +570,10 @@
       ],
       "status": "draft",
       "last_verified": null,
-      "notes": "Reports where a sign-up in this tab stands and continues phone, name, and terms screens without ever submitting a code. Fixture-tested only; not live-verified."
+      "notes": "Reports where a sign-up in this tab stands and continues phone, name, and terms screens without ever submitting a code. Fixture-tested only; not live-verified.",
+      "provenance": {
+        "qa_agent": "agt_8f7178bcd04460ebdbd3"
+      }
     },
     {
       "domain": "ubereats.com",

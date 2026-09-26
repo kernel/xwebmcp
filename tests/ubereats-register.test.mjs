@@ -112,7 +112,7 @@ function harness(name, options = {}) {
         box.closest = () => null;
         return el('I agree', { matches: () => false, querySelector: () => box });
       }
-      if (id === 'accept-terms-text') return scene.terms ? el("By checking the box, I agree to Uber's Terms of Use and acknowledge the Privacy Notice.") : null;
+      if (id === 'accept-terms-text') return scene.terms ? el(scene.termsText ?? "By checking the box, I agree to Uber's Terms of Use and acknowledge the Privacy Notice.") : null;
       if (id === 'alt-action-help-v2') return scene.moreOptions ? el('More options') : null;
       return null;
     },
@@ -473,4 +473,16 @@ test('error messages from the site never echo a phone number or email address', 
   const result = await h.run({ email, ...profile });
   assert.equal(result.error_kind, 'phone_conflict');
   assert.ok(!/555|qa-owner/.test(result.error_message), result.error_message);
+});
+
+test('challenge hints and terms text from the page are scrubbed of numbers and addresses', async () => {
+  const leaky = { ...scenes.smsCode(), headings: ['Enter the 4-digit code sent via SMS at +1 555 010 0199.'] };
+  const sms = await harness('resume_registration', { scene: leaky, storage: [startedMarker({ phone_at: 1, phone_last2: '99' })] }).run({ email });
+  assert.equal(sms.status, 'challenge');
+  assert.ok(!/555|0199/.test(sms.challenge.destination_hint), sms.challenge.destination_hint);
+  const terms = { ...scenes.terms(), termsText: "I agree to Uber's Terms of Use. Questions: help@uber.example or +1 555 010 0100." };
+  const needs = await harness('resume_registration', { scene: terms, storage: [startedMarker()] }).run({ email });
+  assert.equal(needs.status, 'needs_input');
+  assert.match(needs.terms_text, /Terms of Use/);
+  assert.ok(!/help@uber|555/.test(needs.terms_text), needs.terms_text);
 });
