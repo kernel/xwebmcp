@@ -110,9 +110,12 @@
       "url_patterns": [
         "https://www.etsy.com/*"
       ],
-      "status": "draft",
-      "last_verified": null,
-      "notes": "Adds one listing only with exact variation options and required personalization (text within Etsy's limit, dropdown option) or returns a typed error before submitting; presses Etsy's own button once and confirms via the cart. Handles the classic form post and the newer carts/add path. Upload-type and legacy personalization unsupported. Live-verified on guest carts only."
+      "status": "qa_passed",
+      "last_verified": "2026-09-26",
+      "notes": "Adds one listing only with exact variation options and required personalization (text within Etsy's limit, dropdown option) or returns a typed error before submitting; presses Etsy's own button once and confirms via the cart. Handles the classic form post and the newer carts/add path. Upload-type and legacy personalization unsupported. Live-verified on guest carts only. Paid add-on personalization fields are not supported (fails safely before submitting).",
+      "provenance": {
+        "qa_agent": "agt_1358f22a8d418affa8c6"
+      }
     },
     {
       "domain": "etsy.com",
@@ -123,9 +126,12 @@
       "url_patterns": [
         "https://www.etsy.com/*"
       ],
-      "status": "draft",
-      "last_verified": null,
-      "notes": "Signed-in or guest cart lines with line_id (cart|listing|inventory|customization), quantity, limit, prices, chosen options and personalization, and total texts. Live-verified on guest carts only; saved-for-later lines are skipped."
+      "status": "qa_passed",
+      "last_verified": "2026-09-26",
+      "notes": "Signed-in or guest cart lines with line_id (cart|listing|inventory|customization), quantity, limit, prices, chosen options and personalization, and total texts. Live-verified on guest carts only; saved-for-later lines are skipped. subtotal_text is usually null on guest carts (Etsy shows no Subtotal row).",
+      "provenance": {
+        "qa_agent": "agt_1358f22a8d418affa8c6"
+      }
     },
     {
       "domain": "etsy.com",
@@ -149,9 +155,12 @@
       "url_patterns": [
         "https://www.etsy.com/*"
       ],
-      "status": "draft",
-      "last_verified": null,
-      "notes": "Listing price, availability, description, images, quantity limit, every variation menu (option ids, labels, sold-out, including waitlisted options) and personalization field (type, required, Etsy limit, seller instructions) read from the listing HTML. Seller instructions can be stricter than Etsy's limit and are returned, not enforced."
+      "status": "qa_passed",
+      "last_verified": "2026-09-26",
+      "notes": "Listing price, availability, description, images, quantity limit, every variation menu (option ids, labels, sold-out, including waitlisted options) and personalization field (type, required, Etsy limit, seller instructions) read from the listing HTML. Seller instructions can be stricter than Etsy's limit and are returned, not enforced.",
+      "provenance": {
+        "qa_agent": "agt_1358f22a8d418affa8c6"
+      }
     },
     {
       "domain": "etsy.com",
@@ -162,9 +171,12 @@
       "url_patterns": [
         "https://www.etsy.com/*"
       ],
-      "status": "draft",
-      "last_verified": null,
-      "notes": "One Etsy results page (rendered grid) with price, original price, discount, shop, shop rating, badges and ad flag; min/max price, sort, free-shipping and page filters; ads excluded unless requested. Live-verified signed out; DataDome verification pages are reported as blocked."
+      "status": "qa_passed",
+      "last_verified": "2026-09-26",
+      "notes": "One Etsy results page (rendered grid) with price, original price, discount, shop, shop rating, badges and ad flag; min/max price, sort, free-shipping and page filters; ads excluded unless requested. Independent QA passed signed out; DataDome verification pages are reported as blocked.",
+      "provenance": {
+        "qa_agent": "agt_1358f22a8d418affa8c6"
+      }
     },
     {
       "domain": "etsy.com",
@@ -188,9 +200,12 @@
       "url_patterns": [
         "https://www.etsy.com/*"
       ],
-      "status": "draft",
-      "last_verified": null,
-      "notes": "Sets one cart line's quantity or removes it with 0 through Etsy's cart API with the page CSRF token; no-op when unchanged; confirms by reading the cart. Live-verified on guest carts only."
+      "status": "qa_passed",
+      "last_verified": "2026-09-26",
+      "notes": "Sets one cart line's quantity or removes it with 0 through Etsy's cart API with the page CSRF token; no-op when unchanged; confirms by reading the cart. Live-verified on guest carts only.",
+      "provenance": {
+        "qa_agent": "agt_1358f22a8d418affa8c6"
+      }
     },
     {
       "domain": "flyfrontier.com",

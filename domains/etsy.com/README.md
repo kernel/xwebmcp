@@ -4,11 +4,11 @@ Tools for Etsy (https://www.etsy.com): search, listing details with the seller's
 
 | tool | file | status | notes |
 |------|------|--------|-------|
-| search | [search.js](search.js) | draft | One results page with prices, discounts, shop, shop rating, badges and ad flag; price, sort, free-shipping and page filters. |
-| get_listing | [get_listing.js](get_listing.js) | draft | Price, availability, description, images, quantity limit, every variation menu with option ids and sold-out flags, and every personalization field with type, required flag, limit and instructions. |
-| get_cart | [get_cart.js](get_cart.js) | draft | Cart lines with line_id, quantity, limit, prices, chosen options and personalization, and cart totals; signed-in or guest cart. |
-| add_to_cart | [add_to_cart.js](add_to_cart.js) | draft | Adds one listing with exactly the required options and personalization, or returns a typed error before submitting; confirms the new line by reading the cart. |
-| update_cart_item | [update_cart_item.js](update_cart_item.js) | draft | Sets one line's quantity or removes it with 0 through Etsy's cart API; confirms by reading the cart. |
+| search | [search.js](search.js) | qa_passed | One results page with prices, discounts, shop, shop rating, badges and ad flag; price, sort, free-shipping and page filters. |
+| get_listing | [get_listing.js](get_listing.js) | qa_passed | Price, availability, description, images, quantity limit, every variation menu with option ids and sold-out flags, and every personalization field with type, required flag, limit and instructions. |
+| get_cart | [get_cart.js](get_cart.js) | qa_passed | Cart lines with line_id, quantity, limit, prices, chosen options and personalization, and cart totals; signed-in or guest cart. |
+| add_to_cart | [add_to_cart.js](add_to_cart.js) | qa_passed | Adds one listing with exactly the required options and personalization, or returns a typed error before submitting; confirms the new line by reading the cart. |
+| update_cart_item | [update_cart_item.js](update_cart_item.js) | qa_passed | Sets one line's quantity or removes it with 0 through Etsy's cart API; confirms by reading the cart. |
 | get_favorite_status | [get_favorite_status.js](get_favorite_status.js) | draft | Signed-in only. Whether listings are in Favorites. Never live-tested signed in. |
 | set_favorite | [set_favorite.js](set_favorite.js) | draft | Signed-in only. Presses the listing's favorite button on the current page (listing page or a search page showing it) after recording the initial state; no-op when already in the requested state. Never live-tested signed in. |
 
@@ -126,10 +126,11 @@ and `personalization_confirmed` (every text appears in the line as Etsy displays
 
 ## Site quirks
 
-- **Two add-to-cart paths.** Classic listings post the buy-box form to `/cart/listing.php` and
-  land on `/cart`. Listings with Etsy's newer buy box (`neu_buy_box_type: "offerings"`) add
-  through `fetch POST /api/v3/ajax/member/carts/add`, stay on the listing page and open a
-  sidebar cart. The tool watches for both and decides success only from the cart contents.
+- **Two add-to-cart paths.** Some listings post the buy-box form to `/cart/listing.php` and
+  land on `/cart`; others add through `fetch POST /api/v3/ajax/member/carts/add`, stay on the
+  listing page and open a sidebar cart. Which path a listing takes was not tied to anything
+  observable (listings on both paths reported `neu_buy_box_type: "offerings"`), so the tool
+  watches for both and decides success only from the cart contents.
 - **Menus need real events.** Etsy's newer buy box records dropdown personalization on
   `input` events and ignores a bare `change`; the tool dispatches both for every menu and
   types personalization text with key events (`fillInput`).
@@ -174,8 +175,9 @@ conflict with nothing.
 
 ## Status and known limitations
 
-Status: every tool is `draft` until the independent QA pass recorded below signs off the
-current source.
+Status: `search`, `get_listing`, `get_cart`, `add_to_cart` and `update_cart_item` are
+`qa_passed` (independent QA round 3 signed off their current source); `get_favorite_status`
+and `set_favorite` stay `draft` because no signed-in session was available.
 
 - **Favorites are unverified.** No Etsy account was available (no credential in the vault,
   and the configured browser profile has no Etsy session), so `get_favorite_status` and
@@ -196,6 +198,21 @@ current source.
   `price_text` of each option, not as the final price of a combination.
 - `add_to_cart` adds at most 10 units per call, and only 1 for listings without a quantity
   menu although the cart may allow more (add, then use `update_cart_item`).
+- **Paid add-on personalization is not modeled.** Some listings put an optional
+  personalization field behind a paid add-on checkbox (for example "Text +$3.80",
+  `li[data-add-on-amount]` with `input[data-selector="perso-add-on-checkbox"]`).
+  `get_listing` reports such a field as an ordinary optional field without its surcharge, and
+  `add_to_cart` cannot reveal it: a value for it fails with `unknown` ("not visible") before
+  anything is submitted. Leave add-on fields out.
+- `add_to_cart` reports a DataDome block during its initial cart read as `unknown` ("Could not
+  read the cart before adding (HTTP 403)") rather than `blocked`; nothing is submitted.
+- On a listing with both a required text field and a required upload field, `add_to_cart`
+  first asks for the text (`personalization_required`) and only then reports the upload as
+  `personalization_unsupported`; no input can succeed for such listings (`get_listing` shows
+  `personalization.supported: false`).
+- `get_cart.subtotal_text` is usually null for guest carts: Etsy's cart page shows "Item(s)
+  total" and a "Shop discount" row but no "Subtotal" row. Use `items_total_text` and the
+  lines' `unit_price`.
 - `add_to_cart` cannot fill upload-type personalization or Etsy's older single-box
   personalization, does not support gift options, and cannot change the options of an
   existing cart line (remove it with `update_cart_item` and add again).
@@ -268,6 +285,23 @@ empty" heading (now it cross-checks Etsy's `in_cart_count` and any unparsed line
 Author live re-check of those fixes: a listing with a required upload field returned
 `personalization_unsupported` with nothing submitted; `get_cart` read 0 lines empty and 1
 line (quantity 2) after an add, then the line was removed.
+
+Independent QA, round 3 (agent `agt_1358f22a8d418affa8c6`, `smartest` preset, its own
+browsers, guest cart, commit `630db23`, the current tool source): validator and 1031 tests
+pass; 111 live outputs, all schema-valid, plus 21 inputs stopped by the runtime schema gate;
+47 invalid inputs rejected; no tools on `example.com` or `help.etsy.com`, page tools worked
+in place from home, listing, cart and search pages; waitlisted options refused; required
+upload refused with `personalization_unsupported`; a collar (form path) and a wallet
+(`carts/add` path) added and confirmed on the cart page; quantity change, no-op, limit,
+absent line and removals with exactly one request each; `get_cart` agreed with Etsy's
+`in_cart_count` at every step; favorites signed out sent nothing; one browser was
+DataDome-blocked and every tool except `add_to_cart` reported `blocked`; the cart ended
+exactly as it started (empty). Signed off `search`, `get_listing`, `get_cart`,
+`add_to_cart`, `update_cart_item`; the favorites tools were not signed off (no account). Its
+findings (paid add-on fields, `add_to_cart`'s `blocked` reporting, requirement ordering on
+required-upload listings, the missing subtotal row, and the add-path explanation) are
+recorded under Known limitations and Site quirks rather than changed in the signed-off
+source.
 
 Local tests run every page-side function from its source against fabricated HTML in a small
 test-only DOM (`tests/etsy-dom.mjs`), with a fake `fetch` and simulated buy-box scripts:
