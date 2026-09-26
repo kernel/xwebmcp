@@ -5,11 +5,15 @@ description: Design, implement, QA, or review custom WebMCP tools in this reposi
 
 # Author xWebMCP tools
 
-Read `spec/repository.md`, the relevant domain README and tool files before changing code. Check the site's native WebMCP tools first; add only capabilities they do not cover. Design for an agent's real task, not a particular benchmark selector.
+Read the [repository specification](https://github.com/kernel/xwebmcp/blob/main/spec/repository.md), the relevant domain README and tool files before changing code. Check the site's native WebMCP tools first; add only capabilities they do not cover. Design for an agent's real task, not a particular benchmark selector.
+
+## Prerequisites
+
+Connect the Kernel MCP server before probing a site. Discover its browser lifecycle, browser REPL and WebMCP tools; create a browser with the approved profile, proxy and vault only when the flow needs them. Use the browser REPL for CDP control: start with `repl.help()`, inspect a focused `accessibilitySnapshot()`, and use `gotoUrl`, `js` and `webmcp` to reproduce the flow. Never put browser URLs or credentials in the repository.
 
 ## Choose execution kind per tool
 
-**Default to `kind: "page"`.** Decide based on the behavior of `execute`, not on the size of its schema or the fact that the source is an API call.
+**Start with a `kind: "page"` prototype.** Test a safe representative action and observe whether it navigates the registering document, whether its output survives, and whether the agent needs rich structured data only available *after* that navigation. Switch to `kind: "cdp"` only when both the navigation and post-navigation output requirements are demonstrated. Do not issue a consequential mutation merely to probe navigation. Decide based on the behavior of `execute`, not on schema size or the fact that the source is an API call.
 
 | Tool behavior | Kind | Example |
 | --- | --- | --- |
