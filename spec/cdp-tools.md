@@ -30,6 +30,7 @@ Claims about the reference implementation cite `kernel/kernel-images` at commit
 | `custom_webmcp.go` | `server/cmd/api/api/custom_webmcp.go` |
 | `webmcp.go` | `server/cmd/api/api/webmcp.go` |
 | `webmcpclient.go` | `server/lib/webmcpclient/client.go` |
+| `webmcpclient-types.go` | `server/lib/webmcpclient/types.go` |
 | `openapi.yaml` | `packages/api/openapi.yaml` in `kernel/kernel` |
 
 ## 1. Terms
@@ -54,13 +55,98 @@ A definition's `kind` is `"page"` or `"cdp"` (`definitions.ts:278`).
 |---|---|---|
 | where `execute` runs | inside the registering document's main world, as page JavaScript (`custom-webmcp.ts:435-439`, `page-runtime.ts:150-151`) | outside the page, in the runtime; the page holds only a stub that forwards the call (`page-runtime.ts:157-177`) |
 | receives | `input` and the WebMCP `{signal}` | `input` and a context `{signal, matches}` plus the browser helpers (§7) |
-| survives navigation of the registering document | no: the document, and with it the running function, is destroyed | yes: the runtime owns the execution (§6.4) |
-| can drive the tab | only through the DOM of its own document | through CDP: navigation, input, other frames, other tabs |
+| lives as long as | the registering document (§2.2) | the invocation: the runtime owns the execution (§6.4) |
+| can drive the tab | only through the DOM and JavaScript of its own document | through CDP: navigation, trusted input, other frames, other tabs |
 
-A tool that navigates, submits a form, or must observe network traffic MUST be
-`kind: "cdp"`. A tool that reads or manipulates the DOM of the page it is registered on
-without navigating MAY be `kind: "page"`. Every tool in this repository today is
-`kind: "cdp"`.
+### 2.1 Choosing a kind
+
+`page` is the default. A tool SHOULD be `kind: "page"` when its work happens in the
+document it is registered on: reading or changing the DOM, filling fields, same-document
+route changes (`history.pushState`, fragment changes), and `fetch`/XHR issued from the
+page context with the page's own cookies, including requests that mutate state through
+the site's API.
+
+A tool SHOULD be `kind: "cdp"` only when both hold:
+
+1. the tool itself replaces the document it runs against: it follows a link, assigns
+   `location`, submits a form, or reloads; and
+2. the caller materially benefits from a structured result read *after* that
+   navigation, in the same call: parsed result rows, the post-login state, a
+   confirmation read from the next page.
+
+A tool that navigates but has nothing useful to report from the next document SHOULD be
+`page` and MUST follow §2.2. A flow that needs output from the next document MAY instead
+be split into `page` tools (§2.3); choose `cdp` when one call returning the post-navigation
+result is what makes the tool useful.
+
+The exceptions in §2.4 are the only other reasons to choose `cdp`. Tools in this
+repository predate this rule and are all `kind: "cdp"`; reclassifying an existing tool is
+a change to that tool, not to this document.
+
+### 2.2 Document lifetime of a `page` tool
+
+A `page` tool's `execute` runs in its registering document and stops when that document
+is replaced. A `page` tool MUST NOT replace its registering document (navigation, form submission,
+reload) before the promise it returned has settled. To navigate, it MUST compute its
+result first and start the navigation after settling, for example
+`setTimeout(() => form.requestSubmit(), 100)` followed by `return {submitted: true}`.
+Same-document navigations do not replace the document and are not restricted.
+
+When the rule is broken, the returned value is lost and the outcome is not observable.
+The reference runtime reports such an invocation as `completed` with an empty `output`:
+that status arrives from Chrome in `WebMCP.toolResponded`, and the reference forwards
+the response unchanged (`webmcpclient-types.go:73-78`, `webmcpclient.go:184-200`,
+`webmcp.go:179-187`). Observed on a Kernel browser on 2026-09-26 (the image version was
+not pinned to the commit above): a tool that called
+`location.assign()` or `form.submit()` and then awaited returned
+`{"status":"completed","output":[]}` within 0.2 s; the same tool deferring the navigation
+with `setTimeout` returned its value. A runtime that can detect that the registering
+document was replaced before a `page` tool settled SHOULD report the invocation as
+`outcome_unknown` (§6.7) rather than as `completed`.
+
+**No page assumptions.** Wildcard URL patterns (§5) mean a tool can be invoked on any
+page of its domain, which is the rule [`repository.md`](repository.md) refers to: a tool
+MUST NOT assume it starts on its entry page, a form, or state left by an earlier call,
+and MUST check that the current page is suitable before acting. A `cdp` tool that finds
+an unsuitable page navigates to its entry point and continues. A `page` tool MUST NOT do
+that, because the continuation would run in a destroyed document; it settles with an
+explicit output instead (for example `{status: "wrong_page", entry_url}`), or narrows
+`match.url_patterns` so that it is only registered where it works.
+
+### 2.3 Phased `page` tools
+
+A flow that crosses a navigation can be built from `page` tools, one per document:
+
+1. The first tool, registered on the start document, does its same-document work,
+   settles with an output that names the next tool and the document it expects
+   (for example `{submitted: true, next_tool: "read_results", expected_url}`), and only
+   then starts the navigation (§2.2).
+2. The next tool is registered through `match.url_patterns` that match the destination
+   document and reads its result there.
+
+The caller waits for the destination tool to appear (discovery changes when documents
+change, §8) and invokes it by its new `tool_ref`; a `tool_ref` from the start document is
+not valid on the next one (§8). The destination tool MUST NOT assume that the first phase
+ran and SHOULD be read-only, so that calling it again is safe. Phased tools suit flows
+where the caller decides between steps (for example a login that may stop at MFA);
+a single `cdp` tool suits flows where the caller wants one answer.
+
+### 2.4 Technical exceptions
+
+A tool MAY be `kind: "cdp"` without meeting §2.1 when the work cannot be done from the
+registering document's JavaScript:
+
+- the site requires trusted input events (`isTrusted`, real key and pointer sequences):
+  `click`, `typeText`, `pressKey` (§7);
+- the work is inside a cross-origin frame: `iframeTarget` (§7);
+- a file must be attached from a path: `uploadFile` (§7);
+- the work spans tabs or targets: `newTab`, `switchTab`, `closeTab` (§7);
+- the tool must read responses to requests the page itself makes, as opposed to
+  requests the tool issues with `fetch`: `cdp('Network.*')`, `waitForEvent` (§7);
+- the tool needs browser-only surfaces: `captureScreenshot`, `accessibilitySnapshot` (§7).
+
+A tool that uses a `cdp` helper only for convenience, where page JavaScript would do,
+SHOULD be `page`.
 
 ## 3. Tool source format
 
@@ -230,6 +316,8 @@ a running body merely because its registering document navigated, and SHOULD kee
 result retrievable by other means (the extension keeps an invocation log). This is the
 gap tracked upstream as
 [webmachinelearning/webmcp#212](https://github.com/webmachinelearning/webmcp/issues/212).
+
+A `page` tool has no such continuation: its execution ends with its document (§2.2).
 
 ### 6.5 Timeouts
 
@@ -406,13 +494,17 @@ following deviations are conforming:
     is the only component that calls `chrome.debugger`.
 12. **`kind: "page"` under CSP.** A page whose Content-Security-Policy forbids `eval`
     blocks materializing a page tool's `execute`; the extension reports the registration
-    error instead of registering the tool.
+    error instead of registering the tool. Because `page` is the default kind (§2.1),
+    this affects every `page` tool on such a site.
 13. **Site access.** The extension holds no host permissions by default and asks the
     user once per site; tools on sites without access are not registered and their
     native tools are not discovered.
 14. **Tab ownership.** Invocations that do not come from the page run only in tabs the
     extension opened unless the caller opts in; this is a policy layer above this
     specification, not a change to invocation semantics.
+15. **`page` tool lifetime.** The extension reports a `page` invocation whose registering
+    document was replaced before the tool settled as `outcome_unknown`, as §2.2
+    recommends, where the reference reports `completed`.
 
 ## 10. Out of scope
 
