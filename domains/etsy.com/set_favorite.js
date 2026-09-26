@@ -1,10 +1,11 @@
 [{
-  kind: "cdp",
-  match: { url_patterns: ["https://etsy.com/*", "https://*.etsy.com/*"] },
+  kind: "page",
+  match: { url_patterns: ["https://www.etsy.com/*"] },
   tool: {
     name: "set_favorite",
     title: "Favorite or unfavorite an Etsy listing",
-    description: "Put one Etsy listing into, or take it out of, the signed-in account's Favorites. Pass favorited: true to add and false to remove; the tool first records the current state and does nothing when it already matches (changed: false), so previous_favorited is always the state before the call. Otherwise it opens the listing page in this tab, presses Etsy's own favorite button once, never retries, and confirms the new state with Etsy's favorites lookup. Requires a signed-in Etsy session; signed out it returns not_logged_in without pressing anything. Does not change collections, shop favorites, or any setting.",
+    description: "Put one Etsy listing into, or take it out of, the signed-in account's Favorites by pressing that listing's favorite button on the current page. Open the listing page (or a search page that shows the listing) first; otherwise the tool returns listing_not_on_page. Pass favorited: true to add and false to remove; the tool first records the current state and does nothing when it already matches (changed: false), so previous_favorited is always the state before the call. Otherwise it presses the button once, never retries, and confirms the new state with Etsy's favorites lookup. Requires a signed-in Etsy session; signed out it returns not_logged_in without pressing anything. Does not change collections, shop favorites, or any setting.",
+
     inputSchema: {
       type: "object", additionalProperties: false, required: ["listing_id", "favorited"],
       properties: {
@@ -30,7 +31,7 @@
           type: "object", additionalProperties: false, required: ["status", "error_kind", "error_message", "mutation_attempted"],
           properties: {
             status: { const: "error" },
-            error_kind: { type: "string", enum: ["invalid_input", "navigation_failed", "blocked", "not_logged_in", "listing_not_found", "site_changed", "throttled", "unknown"] },
+            error_kind: { type: "string", enum: ["invalid_input", "wrong_page", "blocked", "not_logged_in", "listing_not_on_page", "site_changed", "throttled", "unknown"] },
             error_message: { type: "string", minLength: 1 },
             mutation_attempted: { type: "boolean", description: "True once the favorite button was pressed; check get_favorite_status before retrying." },
             previous_favorited: { type: ["boolean", "null"] }
@@ -41,31 +42,33 @@
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false }
   },
   execute: async (input) => {
-    const origin = "https://www.etsy.com";
     const fail = (kind, message, extra = {}) => ({ status: "error", error_kind: kind, error_message: message, mutation_attempted: false, ...extra });
-    // Page-context requests below use relative URLs, so the tab must be on www.etsy.com itself (not help.etsy.com etc.).
-    const onSite = url => { try { const u = new URL(url); return u.protocol === "https:" && u.hostname === "www.etsy.com"; } catch { return false; } };
     if (!input || typeof input !== "object" || Array.isArray(input)) return fail("invalid_input", "Input must be an object.");
     const extra = Object.keys(input).find(k => !["listing_id", "favorited"].includes(k));
     if (extra) return fail("invalid_input", `Unrecognized input field "${extra}".`);
     if (typeof input.listing_id !== "string" || !/^[0-9]{4,15}$/.test(input.listing_id)) return fail("invalid_input", "listing_id must be the numeric Etsy listing id as a string.");
     if (typeof input.favorited !== "boolean") return fail("invalid_input", "favorited must be true or false.");
     const id = input.listing_id;
+    // Requests below are relative to this document, so it must be an Etsy shopping page (the runtime can also
+    // register a tool on another site's top document when only an embedded Etsy frame matches).
+    if (location.origin !== "https://www.etsy.com") return fail("wrong_page", "This tool works only on https://www.etsy.com pages; open the listing on www.etsy.com first. Nothing was changed.");
+    if (document.querySelector('iframe[src*="captcha-delivery.com"]')) return fail("blocked", "Etsy's bot protection is showing a verification page in this tab. Nothing was changed.");
+    const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
 
-    // Runs in the page: the favorites lookup Etsy's own favorite buttons use.
-    const lookup = async (arg) => {
+    // The favorites lookup Etsy's own favorite buttons use.
+    const lookup = async () => {
       const context = window.Etsy && window.Etsy.Context && window.Etsy.Context.data;
       if (!context || !context.user_id) return { error: "not_logged_in" };
-      const response = await fetch(`/api/v3/ajax/member/users/listings-favorites-collections-map?${new URLSearchParams([["listing_ids[]", arg.id]])}`, { credentials: "include", headers: { accept: "application/json", "x-requested-with": "XMLHttpRequest" } });
+      const response = await fetch(`/api/v3/ajax/member/users/listings-favorites-collections-map?${new URLSearchParams([["listing_ids[]", id]])}`, { credentials: "include", headers: { accept: "application/json", "x-requested-with": "XMLHttpRequest" } });
       if (response.status === 401 || response.status === 403) return { error: "not_logged_in" };
       if (response.status === 429) return { error: "throttled" };
       if (response.status >= 400) return { error: `HTTP ${response.status}` };
       let body = null;
       try { body = await response.json(); } catch { body = null; }
       if (!body || typeof body.map !== "object" || body.map === null) return { error: "shape" };
-      const lists = Array.isArray(body.map[arg.id]) ? body.map[arg.id].map(String) : null;
+      const lists = Array.isArray(body.map[id]) ? body.map[id].map(String) : null;
       const key = body.favorites_key;
-      return { favorited: key !== undefined && key !== null ? !!lists && lists.includes(String(key)) : Object.hasOwn(body.map, arg.id) };
+      return { favorited: key !== undefined && key !== null ? !!lists && lists.includes(String(key)) : Object.hasOwn(body.map, id) };
     };
     const lookupError = (state, pressed, previous) => {
       const extra = { mutation_attempted: pressed, previous_favorited: previous };
@@ -74,71 +77,34 @@
       if (state.error === "shape") return fail("site_changed", "Etsy's favorites lookup returned an unexpected shape; the tool needs updating.", extra);
       return fail("unknown", `The favorites lookup failed (${state.error}).`, extra);
     };
+    const favoriteRequests = () => performance.getEntriesByType("resource").filter(e => /\/api\/v3\/ajax\/.*(favoriteConfirmationToast|favorites\/listings|guest\/favorites)/.test(e.name)).length;
 
     let pressed = false;
     try {
-      if (!onSite((await pageInfo()).url)) {
-        try {
-          await gotoUrl(origin + "/");
-          await waitForLoad(30);
-        } catch (error) {
-          return fail("navigation_failed", "Could not open etsy.com in this tab: " + (error && error.message ? error.message : String(error)) + ". Nothing was changed.");
-        }
-        if (!onSite((await pageInfo()).url)) return fail("navigation_failed", "Could not open etsy.com in this tab. Nothing was changed.");
-      }
-      if (await js(() => !!document.querySelector('iframe[src*="captcha-delivery.com"]'))) return fail("blocked", "Etsy's bot protection is showing a verification page in this tab. Nothing was changed.");
-      const initial = await js(lookup, { arg: { id } });
+      const initial = await lookup();
       if (initial.error) return lookupError(initial, false, null);
       if (initial.favorited === input.favorited) return { status: "ok", listing_id: id, previous_favorited: initial.favorited, favorited: initial.favorited, changed: false, mutation_attempted: false };
-
-      try {
-        await gotoUrl(`${origin}/listing/${id}`);
-        await waitForLoad(30);
-      } catch (error) {
-        return fail("navigation_failed", "Could not open the listing page: " + (error && error.message ? error.message : String(error)) + ". Nothing was changed.", { previous_favorited: initial.favorited });
-      }
-      // Wait for Etsy's favorite button to finish loading its state, then mark the listing's own button.
-      let ready = null;
-      for (let i = 0; i < 20; i++) {
-        ready = await js((a) => {
-          if (document.querySelector('iframe[src*="captcha-delivery.com"]')) return { blocked: true };
-          if (!location.pathname.startsWith(`/listing/${a.id}`)) return { missing: true };
-          const buttons = [...document.querySelectorAll(`[data-ui="favorite-listing-button"][data-listing-id="${a.id}"]`)].filter(b => !b.closest("[data-listing-card-v2], [data-palette-listing-id]") && b.offsetParent !== null);
-          if (buttons.length !== 1) return { count: buttons.length };
-          buttons[0].setAttribute("data-xwebmcp-favorite", a.id);
-          const container = buttons[0].closest("[data-has-fave-info]") || buttons[0];
-          return { ok: true, loaded: container.getAttribute("data-has-fave-info") === "true" || document.readyState === "complete" };
-        }, { arg: { id } });
-        if (ready.blocked || ready.missing || (ready.ok && ready.loaded)) break;
-        await waitMs(500);
-      }
-      if (ready.blocked) return fail("blocked", "Etsy's bot protection is showing a verification page in this tab. Nothing was changed.", { previous_favorited: initial.favorited });
-      if (ready.missing) return fail("listing_not_found", `Etsy did not show listing ${id}; it is unavailable or removed. Nothing was changed.`, { previous_favorited: initial.favorited });
-      if (!ready.ok) return fail("site_changed", `Expected one favorite button for listing ${id} on its page, found ${ready.count}. Nothing was changed.`, { previous_favorited: initial.favorited });
-      // Re-check right before pressing: another tab may have changed the state meanwhile.
-      const recheck = await js(lookup, { arg: { id } });
-      if (recheck.error) return lookupError(recheck, false, initial.favorited);
-      if (recheck.favorited === input.favorited) return { status: "ok", listing_id: id, previous_favorited: recheck.favorited, favorited: recheck.favorited, changed: false, mutation_attempted: false };
-
-      const request = waitForEvent("Network.requestWillBeSent", { timeoutSec: 10, predicate: e => ["POST", "DELETE", "PUT"].includes(e.params.request.method) && /\/api\/v3\/ajax\/.*(favoriteConfirmationToast|favorites)/.test(e.params.request.url) });
+      // The listing page's own button first; otherwise a result card's button for the same listing.
+      const buttons = [...document.querySelectorAll(`[data-ui="favorite-listing-button"][data-listing-id="${id}"]`)].filter(b => b.getClientRects().length);
+      const button = buttons.find(b => !b.closest("[data-listing-card-v2], [data-palette-listing-id]")) || buttons[0];
+      if (!button) return fail("listing_not_on_page", `This page shows no favorite button for listing ${id}; open https://www.etsy.com/listing/${id} (or a search page that shows it) and call again. Nothing was changed.`, { previous_favorited: initial.favorited });
+      const before = favoriteRequests();
       pressed = true;
-      await click(`[data-xwebmcp-favorite="${id}"]`);
-      const sent = await request;
-      if (!sent) {
-        const overlay = await js(() => !!document.querySelector("#join-neu-overlay:not([aria-hidden='true']), [data-join-neu-overlay]"));
-        return fail(overlay ? "not_logged_in" : "unknown", overlay ? "Etsy asked to sign in instead of saving the favorite; nothing was saved." : "Etsy sent no favorites request after the button was pressed; check get_favorite_status before retrying.", { mutation_attempted: !overlay, previous_favorited: recheck.favorited });
-      }
-      let final = null;
-      for (let i = 0; i < 10; i++) {
-        await waitMs(800);
-        final = await js(lookup, { arg: { id } });
+      button.click();
+      let final = null, sent = false;
+      for (let i = 0; i < 12; i++) {
+        await wait(700);
+        sent = sent || favoriteRequests() > before;
+        const overlay = document.querySelector("#join-neu-overlay");
+        if (!sent && overlay && overlay.getClientRects().length) return fail("not_logged_in", "Etsy asked to sign in instead of saving the favorite; nothing was saved.", { mutation_attempted: false, previous_favorited: initial.favorited });
+        final = await lookup();
         if (!final.error && final.favorited === input.favorited) break;
       }
-      if (final.error) return lookupError(final, true, recheck.favorited);
-      if (final.favorited !== input.favorited) return fail("unknown", `The favorite button was pressed but Etsy still reports favorited=${final.favorited}; check get_favorite_status before retrying.`, { mutation_attempted: true, previous_favorited: recheck.favorited });
-      return { status: "ok", listing_id: id, previous_favorited: recheck.favorited, favorited: final.favorited, changed: true, mutation_attempted: true };
+      if (final.error) return lookupError(final, true, initial.favorited);
+      if (final.favorited !== input.favorited) return fail("unknown", `The favorite button was pressed but Etsy still reports favorited=${final.favorited}${sent ? "" : " and no favorites request was seen"}; check get_favorite_status before retrying.`, { mutation_attempted: true, previous_favorited: initial.favorited });
+      return { status: "ok", listing_id: id, previous_favorited: initial.favorited, favorited: final.favorited, changed: true, mutation_attempted: true };
     } catch (error) {
-      return fail("unknown", "Browser interaction failed: " + (error && error.message ? error.message : String(error)) + (pressed ? "; check get_favorite_status before retrying." : ". Nothing was changed."), { mutation_attempted: pressed });
+      return fail("unknown", "The request failed: " + (error && error.message ? error.message : String(error)) + (pressed ? "; check get_favorite_status before retrying." : ". Nothing was changed."), { mutation_attempted: pressed });
     }
   }
 }]

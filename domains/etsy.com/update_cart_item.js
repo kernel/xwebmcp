@@ -1,10 +1,10 @@
 [{
-  kind: "cdp",
-  match: { url_patterns: ["https://etsy.com/*", "https://*.etsy.com/*"] },
+  kind: "page",
+  match: { url_patterns: ["https://www.etsy.com/*"] },
   tool: {
     name: "update_cart_item",
     title: "Change or remove an Etsy cart line",
-    description: "Set the quantity of one line in this browser session's Etsy cart (signed-in or guest) to an exact number; quantity 0 removes the line. Identify the line by line_id from get_cart or add_to_cart (cart_id|listing_id|inventory_id|customization_id), so a specific option/personalization combination is changed and other lines of the same listing are left alone. Fails with not_in_cart when the line is absent, and with quantity_unavailable when the number exceeds what Etsy allows. Sends exactly one cart request through Etsy's own cart API with the page's session, never retries, and confirms the result by reading the cart. Changing options or personalization of a line is not supported (remove it and add again). Never checks out.",
+    description: "Set the quantity of one line in this browser session's Etsy cart (signed-in or guest) to an exact number; quantity 0 removes the line. Identify the line by line_id from get_cart or add_to_cart (cart_id|listing_id|inventory_id|customization_id), so a specific option/personalization combination is changed and other lines of the same listing are left alone. Fails with not_in_cart when the line is absent, and with quantity_unavailable when the number exceeds what Etsy allows. Works on any www.etsy.com page: sends exactly one cart request through Etsy's own cart API with the page's session, never retries, and confirms the result by reading the cart. Changing options or personalization of a line is not supported (remove it and add again). Never checks out.",
     inputSchema: {
       type: "object", additionalProperties: false, required: ["line_id", "quantity"],
       properties: {
@@ -35,7 +35,7 @@
           type: "object", additionalProperties: false, required: ["status", "error_kind", "error_message", "mutation_attempted"],
           properties: {
             status: { const: "error" },
-            error_kind: { type: "string", enum: ["invalid_input", "navigation_failed", "blocked", "not_in_cart", "quantity_unavailable", "cart_update_rejected", "throttled", "site_changed", "unknown"] },
+            error_kind: { type: "string", enum: ["invalid_input", "wrong_page", "blocked", "not_in_cart", "quantity_unavailable", "cart_update_rejected", "throttled", "site_changed", "unknown"] },
             error_message: { type: "string", minLength: 1 },
             mutation_attempted: { type: "boolean", description: "True once the cart request was sent, even if its outcome is uncertain; read the cart before retrying." },
             max_quantity: { type: ["integer", "null"] }
@@ -46,10 +46,7 @@
     annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: false }
   },
   execute: async (input) => {
-    const origin = "https://www.etsy.com";
     const fail = (kind, message, extra = {}) => ({ status: "error", error_kind: kind, error_message: message, mutation_attempted: false, ...extra });
-    // Page-context requests below use relative URLs, so the tab must be on www.etsy.com itself (not help.etsy.com etc.).
-    const onSite = url => { try { const u = new URL(url); return u.protocol === "https:" && u.hostname === "www.etsy.com"; } catch { return false; } };
     const bad = message => fail("invalid_input", message + " Nothing was changed.");
     if (!input || typeof input !== "object" || Array.isArray(input)) return bad("Input must be an object.");
     const extra = Object.keys(input).find(k => !["line_id", "quantity"].includes(k));
@@ -57,10 +54,10 @@
     if (typeof input.line_id !== "string" || !/^[0-9]+\|[0-9]+\|[0-9]+\|[0-9]+$/.test(input.line_id)) return bad("line_id must look like cart_id|listing_id|inventory_id|customization_id, as returned by get_cart.");
     if (!Number.isInteger(input.quantity) || input.quantity < 0 || input.quantity > 999) return bad("quantity must be an integer from 0 to 999.");
 
-    // Runs in the page: reads /cart, sends at most one update with the page's CSRF token, then reads /cart again.
+    // Reads /cart, sends at most one update with the page's CSRF token, then reads /cart again.
+    const state = { sent: false };
     const page = async (arg) => {
       const clean = s => (s || "").replace(/\s+/g, " ").trim();
-      const state = { sent: false };
       const failure = (kind, message, extra = {}) => ({ status: "error", error_kind: kind, error_message: message, mutation_attempted: state.sent, ...extra });
       const readCart = async () => {
         const response = await fetch("/cart", { credentials: "include" });
@@ -132,19 +129,13 @@
       return { status: "ok", mutation_attempted: true, changed: true, line_id: arg.lineId, listing_id: line.listing_id, title: line.title, previous_quantity: line.quantity, quantity: now ? now.quantity : 0, removed: !now, cart_line_count: after.lines.length };
     };
 
+    // Requests below are relative to this document, so it must be an Etsy shopping page (the runtime can also
+    // register a tool on another site's top document when only an embedded Etsy frame matches).
+    if (location.origin !== "https://www.etsy.com") return fail("wrong_page", "This tool works only on https://www.etsy.com pages; open www.etsy.com in this tab first. Nothing was read or changed.");
     try {
-      if (!onSite((await pageInfo()).url)) {
-        try {
-          await gotoUrl(origin + "/cart");
-          await waitForLoad(30);
-        } catch (error) {
-          return fail("navigation_failed", "Could not open etsy.com in this tab: " + (error && error.message ? error.message : String(error)) + ". Nothing was changed.");
-        }
-        if (!onSite((await pageInfo()).url)) return fail("navigation_failed", "Could not open etsy.com in this tab. Nothing was changed.");
-      }
-      return await js(page, { arg: { lineId: input.line_id, quantity: input.quantity } });
+      return await page({ lineId: input.line_id, quantity: input.quantity });
     } catch (error) {
-      return fail("unknown", "Browser interaction failed: " + (error && error.message ? error.message : String(error)) + ". Read the cart with get_cart before retrying.", { mutation_attempted: true });
+      return fail("unknown", "The request failed: " + (error && error.message ? error.message : String(error)) + (state.sent ? ". The cart update may have been sent; read the cart with get_cart before retrying." : ". Nothing was changed."), { mutation_attempted: state.sent });
     }
   }
 }]

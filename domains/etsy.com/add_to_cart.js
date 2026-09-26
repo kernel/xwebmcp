@@ -1,6 +1,6 @@
 [{
   kind: "cdp",
-  match: { url_patterns: ["https://etsy.com/*", "https://*.etsy.com/*"] },
+  match: { url_patterns: ["https://www.etsy.com/*"] },
   tool: {
     name: "add_to_cart",
     title: "Add an Etsy listing to the cart",
@@ -132,10 +132,10 @@
           index, element_id: select.id, name: label ? clean(label.textContent) || null : null,
           options: [...select.options].filter(o => o.value).map(o => {
             const display = clean(o.textContent);
-            let base = display.replace(/\s*\[Sold out\]\s*$/i, "");
+            let base = display.replace(/\s*\[Sold out[^\]]*\]\s*$/i, "");
             const priced = base.match(pricePattern);
             if (priced && /^[^\d()]{0,4}\d[\d.,]*\+?(\s*[-–]\s*[^\d()]{0,4}\d[\d.,]*\+?)?$/.test(priced[1].trim())) base = base.replace(pricePattern, "");
-            return { option_id: o.value, label: clean(base), display_text: display, sold_out: o.disabled || /\[Sold out\]/i.test(display) };
+            return { option_id: o.value, label: clean(base), display_text: display, sold_out: o.disabled || /\[Sold out[^\]]*\]/i.test(display) };
           })
         };
       });

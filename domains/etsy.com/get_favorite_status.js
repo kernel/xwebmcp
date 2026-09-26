@@ -1,10 +1,10 @@
 [{
-  kind: "cdp",
-  match: { url_patterns: ["https://etsy.com/*", "https://*.etsy.com/*"] },
+  kind: "page",
+  match: { url_patterns: ["https://www.etsy.com/*"] },
   tool: {
     name: "get_favorite_status",
     title: "Check whether Etsy listings are favorited",
-    description: "Check whether each given Etsy listing is in the signed-in account's Favorites. Requires a signed-in Etsy session; signed out it returns not_logged_in without opening a sign-in prompt. Uses Etsy's own favorites lookup with the page's session and does not navigate when the tab is already on etsy.com. Use it to record the initial state before set_favorite and to confirm the state afterwards. Read-only.",
+    description: "Check whether each given Etsy listing is in the signed-in account's Favorites. Requires a signed-in Etsy session; signed out it returns not_logged_in without opening a sign-in prompt. Works on any www.etsy.com page: uses Etsy's own favorites lookup with the page's session and does not navigate. Use it to record the initial state before set_favorite and to confirm the state afterwards. Read-only.",
     inputSchema: {
       type: "object", additionalProperties: false, required: ["listing_ids"],
       properties: {
@@ -26,23 +26,20 @@
         },
         {
           type: "object", additionalProperties: false, required: ["status", "error_kind", "error_message"],
-          properties: { status: { const: "error" }, error_kind: { type: "string", enum: ["invalid_input", "navigation_failed", "blocked", "not_logged_in", "site_changed", "throttled", "unknown"] }, error_message: { type: "string", minLength: 1 } }
+          properties: { status: { const: "error" }, error_kind: { type: "string", enum: ["invalid_input", "wrong_page", "blocked", "not_logged_in", "site_changed", "throttled", "unknown"] }, error_message: { type: "string", minLength: 1 } }
         }
       ]
     },
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false }
   },
   execute: async (input) => {
-    const origin = "https://www.etsy.com";
     const fail = (kind, message) => ({ status: "error", error_kind: kind, error_message: message });
-    // Page-context requests below use relative URLs, so the tab must be on www.etsy.com itself (not help.etsy.com etc.).
-    const onSite = url => { try { const u = new URL(url); return u.protocol === "https:" && u.hostname === "www.etsy.com"; } catch { return false; } };
     if (!input || typeof input !== "object" || Array.isArray(input)) return fail("invalid_input", "Input must be an object.");
     if (Object.keys(input).some(k => k !== "listing_ids")) return fail("invalid_input", "Only listing_ids is accepted.");
     const ids = input.listing_ids;
     if (!Array.isArray(ids) || !ids.length || ids.length > 50 || ids.some(v => typeof v !== "string" || !/^[0-9]{4,15}$/.test(v)) || new Set(ids).size !== ids.length) return fail("invalid_input", "listing_ids must be 1 to 50 distinct numeric listing id strings.");
 
-    // Runs in the page: the lookup Etsy's own favorite buttons use.
+    // The lookup Etsy's own favorite buttons use.
     const page = async (arg) => {
       const failure = (kind, message) => ({ status: "error", error_kind: kind, error_message: message });
       const context = window.Etsy && window.Etsy.Context && window.Etsy.Context.data;
@@ -68,20 +65,14 @@
       };
     };
 
+    // Requests below are relative to this document, so it must be an Etsy shopping page (the runtime can also
+    // register a tool on another site's top document when only an embedded Etsy frame matches).
+    if (location.origin !== "https://www.etsy.com") return fail("wrong_page", "This tool works only on https://www.etsy.com pages; open www.etsy.com in this tab first. Nothing was read or changed.");
     try {
-      if (!onSite((await pageInfo()).url)) {
-        try {
-          await gotoUrl(origin + "/");
-          await waitForLoad(30);
-        } catch (error) {
-          return fail("navigation_failed", "Could not open etsy.com in this tab: " + (error && error.message ? error.message : String(error)));
-        }
-        if (!onSite((await pageInfo()).url)) return fail("navigation_failed", "Could not open etsy.com in this tab.");
-      }
-      if (await js(() => !!document.querySelector('iframe[src*="captcha-delivery.com"]'))) return fail("blocked", "Etsy's bot protection is showing a verification page in this tab. Complete it in the browser or retry from another network.");
-      return await js(page, { arg: { ids } });
+      if (document.querySelector('iframe[src*="captcha-delivery.com"]')) return fail("blocked", "Etsy's bot protection is showing a verification page in this tab. Complete it in the browser or retry from another network.");
+      return await page({ ids });
     } catch (error) {
-      return fail("unknown", "Browser interaction failed: " + (error && error.message ? error.message : String(error)));
+      return fail("unknown", "The request failed: " + (error && error.message ? error.message : String(error)));
     }
   }
 }]

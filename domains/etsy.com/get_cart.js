@@ -1,10 +1,10 @@
 [{
-  kind: "cdp",
-  match: { url_patterns: ["https://etsy.com/*", "https://*.etsy.com/*"] },
+  kind: "page",
+  match: { url_patterns: ["https://www.etsy.com/*"] },
   tool: {
     name: "get_cart",
     title: "Read the Etsy cart",
-    description: "Read the Etsy shopping cart of this browser session (the signed-in account's cart, or the guest cart when signed out). Returns every cart line with its line_id (needed by update_cart_item), listing_id, title, shop, quantity, the most Etsy allows, unit price, availability, and the chosen options and personalization as Etsy displays them (properties), plus the cart's total texts. Reads the cart page's HTML with the page's own session without navigating; saved-for-later items are not included. Read-only: never checks out.",
+    description: "Read the Etsy shopping cart of this browser session (the signed-in account's cart, or the guest cart when signed out). Returns every cart line with its line_id (needed by update_cart_item), listing_id, title, shop, quantity, the most Etsy allows, unit price, availability, and the chosen options and personalization as Etsy displays them (properties), plus the cart's total texts. Works on any www.etsy.com page: reads the cart page's HTML with the page's own session without navigating; saved-for-later items are not included. Read-only: never checks out.",
     inputSchema: { type: "object", additionalProperties: false, properties: {} },
     outputSchema: {
       type: "object",
@@ -46,20 +46,17 @@
         },
         {
           type: "object", additionalProperties: false, required: ["status", "error_kind", "error_message"],
-          properties: { status: { const: "error" }, error_kind: { type: "string", enum: ["invalid_input", "navigation_failed", "blocked", "site_changed", "throttled", "unknown"] }, error_message: { type: "string", minLength: 1 } }
+          properties: { status: { const: "error" }, error_kind: { type: "string", enum: ["invalid_input", "wrong_page", "blocked", "site_changed", "throttled", "unknown"] }, error_message: { type: "string", minLength: 1 } }
         }
       ]
     },
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false }
   },
   execute: async (input) => {
-    const origin = "https://www.etsy.com";
     const fail = (kind, message) => ({ status: "error", error_kind: kind, error_message: message });
-    // Page-context requests below use relative URLs, so the tab must be on www.etsy.com itself (not help.etsy.com etc.).
-    const onSite = url => { try { const u = new URL(url); return u.protocol === "https:" && u.hostname === "www.etsy.com"; } catch { return false; } };
     if (input !== undefined && input !== null && (typeof input !== "object" || Array.isArray(input) || Object.keys(input).length)) return fail("invalid_input", "get_cart takes no input fields.");
 
-    // Runs in the page: fetches /cart with the page's cookies and parses the cart lines.
+    // Fetches /cart with the page's cookies and parses the cart lines.
     const page = async () => {
       const clean = s => (s || "").replace(/\s+/g, " ").trim();
       const failure = (kind, message) => ({ status: "error", error_kind: kind, error_message: message });
@@ -132,19 +129,13 @@
       };
     };
 
+    // Requests below are relative to this document, so it must be an Etsy shopping page (the runtime can also
+    // register a tool on another site's top document when only an embedded Etsy frame matches).
+    if (location.origin !== "https://www.etsy.com") return fail("wrong_page", "This tool works only on https://www.etsy.com pages; open www.etsy.com in this tab first. Nothing was read or changed.");
     try {
-      if (!onSite((await pageInfo()).url)) {
-        try {
-          await gotoUrl(origin + "/");
-          await waitForLoad(30);
-        } catch (error) {
-          return fail("navigation_failed", "Could not open etsy.com in this tab: " + (error && error.message ? error.message : String(error)));
-        }
-        if (!onSite((await pageInfo()).url)) return fail("navigation_failed", "Could not open etsy.com in this tab.");
-      }
-      return await js(page);
+      return await page();
     } catch (error) {
-      return fail("unknown", "Browser interaction failed: " + (error && error.message ? error.message : String(error)));
+      return fail("unknown", "The request failed: " + (error && error.message ? error.message : String(error)));
     }
   }
 }]

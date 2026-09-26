@@ -1,10 +1,10 @@
 [{
-  kind: "cdp",
-  match: { url_patterns: ["https://etsy.com/*", "https://*.etsy.com/*"] },
+  kind: "page",
+  match: { url_patterns: ["https://www.etsy.com/*"] },
   tool: {
     name: "get_listing",
     title: "Get Etsy listing details",
-    description: "Read one Etsy listing: title, shop, price, availability, description, images, quantity limit, and the exact purchase requirements the seller set. variations lists every option menu (all are required by Etsy) with option_id, label and sold_out; personalization lists each field with its type (text_input, dropdown, unlabeled_upload), whether it is required, Etsy's character limit and the seller's instructions (which can ask for a tighter format or length than Etsy enforces; follow them). Use these exact option labels or ids and field labels with add_to_cart; it refuses selections that do not match. Works signed in or signed out, reads the listing page's HTML with the page's own session and does not navigate. Read-only.",
+    description: "Read one Etsy listing: title, shop, price, availability, description, images, quantity limit, and the exact purchase requirements the seller set. variations lists every option menu (all are required by Etsy) with option_id, label and sold_out; personalization lists each field with its type (text_input, dropdown, unlabeled_upload), whether it is required, Etsy's character limit and the seller's instructions (which can ask for a tighter format or length than Etsy enforces; follow them). Use these exact option labels or ids and field labels with add_to_cart; it refuses selections that do not match. Works signed in or signed out on any www.etsy.com page: reads the listing page's HTML with the page's own session and does not navigate. Read-only.",
     inputSchema: {
       type: "object", additionalProperties: false, required: ["listing_id"],
       properties: {
@@ -85,17 +85,14 @@
         },
         {
           type: "object", additionalProperties: false, required: ["status", "error_kind", "error_message"],
-          properties: { status: { const: "error" }, error_kind: { type: "string", enum: ["invalid_input", "navigation_failed", "blocked", "listing_not_found", "site_changed", "throttled", "unknown"] }, error_message: { type: "string", minLength: 1 } }
+          properties: { status: { const: "error" }, error_kind: { type: "string", enum: ["invalid_input", "wrong_page", "blocked", "listing_not_found", "site_changed", "throttled", "unknown"] }, error_message: { type: "string", minLength: 1 } }
         }
       ]
     },
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true }
   },
   execute: async (input) => {
-    const origin = "https://www.etsy.com";
     const fail = (kind, message) => ({ status: "error", error_kind: kind, error_message: message });
-    // Page-context requests below use relative URLs, so the tab must be on www.etsy.com itself (not help.etsy.com etc.).
-    const onSite = url => { try { const u = new URL(url); return u.protocol === "https:" && u.hostname === "www.etsy.com"; } catch { return false; } };
     if (!input || typeof input !== "object" || Array.isArray(input)) return fail("invalid_input", "Input must be an object.");
     const extra = Object.keys(input).find(k => !["listing_id", "description_max_chars"].includes(k));
     if (extra) return fail("invalid_input", `Unrecognized input field "${extra}".`);
@@ -103,7 +100,7 @@
     const maxDescription = input.description_max_chars ?? 3000;
     if (!Number.isInteger(maxDescription) || maxDescription < 0 || maxDescription > 20000) return fail("invalid_input", "description_max_chars must be an integer from 0 to 20000.");
 
-    // Runs in the page: fetches the listing HTML with the page's cookies and parses the buy box.
+    // Fetches the listing HTML with the page's cookies and parses the buy box.
     const page = async (arg) => {
       const clean = s => (s || "").replace(/\s+/g, " ").trim();
       const failure = (kind, message) => ({ status: "error", error_kind: kind, error_message: message });
@@ -138,11 +135,11 @@
           required: true,
           options: [...select.options].filter(o => o.value).map(o => {
             const display = clean(o.textContent);
-            let base = display.replace(/\s*\[Sold out\]\s*$/i, "");
+            let base = display.replace(/\s*\[Sold out[^\]]*\]\s*$/i, "");
             const priced = base.match(pricePattern);
             const priceish = priced && /^[^\d()]{0,4}\d[\d.,]*\+?(\s*[-–]\s*[^\d()]{0,4}\d[\d.,]*\+?)?$/.test(priced[1].trim());
             if (priceish) base = base.replace(pricePattern, "");
-            return { option_id: o.value, label: clean(base), display_text: display, price_text: priceish ? clean(priced[1]) : null, sold_out: o.disabled || /\[Sold out\]/i.test(display) };
+            return { option_id: o.value, label: clean(base), display_text: display, price_text: priceish ? clean(priced[1]) : null, sold_out: o.disabled || /\[Sold out[^\]]*\]/i.test(display) };
           })
         };
       });
@@ -204,20 +201,13 @@
       };
     };
 
+    // Requests below are relative to this document, so it must be an Etsy shopping page (the runtime can also
+    // register a tool on another site's top document when only an embedded Etsy frame matches).
+    if (location.origin !== "https://www.etsy.com") return fail("wrong_page", "This tool works only on https://www.etsy.com pages; open www.etsy.com in this tab first. Nothing was read or changed.");
     try {
-      const current = (await pageInfo()).url;
-      if (!onSite(current)) {
-        try {
-          await gotoUrl(origin + "/");
-          await waitForLoad(30);
-        } catch (error) {
-          return fail("navigation_failed", "Could not open etsy.com in this tab: " + (error && error.message ? error.message : String(error)));
-        }
-        if (!onSite((await pageInfo()).url)) return fail("navigation_failed", "Could not open etsy.com in this tab.");
-      }
-      return await js(page, { arg: { id: input.listing_id, maxDescription } });
+      return await page({ id: input.listing_id, maxDescription });
     } catch (error) {
-      return fail("unknown", "Browser interaction failed: " + (error && error.message ? error.message : String(error)));
+      return fail("unknown", "The request failed: " + (error && error.message ? error.message : String(error)));
     }
   }
 }]

@@ -7,6 +7,8 @@ import { Document, DOMParser } from "./etsy-dom.mjs";
 // Harness for the etsy.com tools. Browser helpers are stubbed and every page-side function runs, from its
 // source, against fabricated HTML fixtures with a fake fetch; nothing here contacts the live site.
 const NAMES = ["search", "get_listing", "get_cart", "add_to_cart", "update_cart_item", "get_favorite_status", "set_favorite"];
+// Only tools that navigate and return rich results from the page they navigated to are cdp; the rest run in the page.
+const KINDS = { search: "cdp", add_to_cart: "cdp", get_listing: "page", get_cart: "page", update_cart_item: "page", get_favorite_status: "page", set_favorite: "page" };
 const sources = Object.fromEntries(NAMES.map(name => [name, readFileSync(new URL(`../domains/etsy.com/${name}.js`, import.meta.url), "utf8")]));
 const fixture = name => readFileSync(new URL(`./fixtures/etsy/${name}.html`, import.meta.url), "utf8");
 const plain = value => value === undefined ? undefined : JSON.parse(JSON.stringify(value));
@@ -61,7 +63,9 @@ function renderCart(lines, { signedIn = false } = {}) {
 
 function harness(name, options = {}) {
   const calls = { navigations: [], requests: [], clicks: [], fills: [], waits: 0, js: 0 };
+  const performance = { entries: [], getEntriesByType: () => performance.entries };
   const site = {
+    performanceEntries: performance.entries,
     pages: { "/": "<html><body><main>Home</main></body></html>", "/cart": null, ...(options.pages || {}) },
     cart: plain(options.cart || []),
     signedIn: options.signedIn ?? false,
@@ -118,7 +122,7 @@ function harness(name, options = {}) {
     return response(404, "not found", u.href);
   };
   const pageContext = createContext({
-    window, location, fetch, DOMParser, URL, URLSearchParams, setTimeout: (fn) => setImmediate(fn),
+    window, location, fetch, DOMParser, URL, URLSearchParams, performance, setTimeout: (fn) => setImmediate(fn),
     get document() { return doc; },
     Event: class { constructor(type, init = {}) { this.type = type; this.bubbles = !!init.bubbles; } },
     getComputedStyle: () => ({ visibility: "visible" })
@@ -151,10 +155,12 @@ function harness(name, options = {}) {
     }
   };
   const [definition] = runInNewContext(`(${sources[name]})`, helpers);
+  // Page tools run in the document, re-created from their source the way the runtime does it.
+  const execute = definition.kind === "page" ? runInContext(`(${definition.execute.toString()})`, pageContext) : definition.execute;
   return {
-    definition, calls, site, emit, doc: () => doc,
+    definition, calls, site, emit, performance, doc: () => doc,
     run: async input => {
-      const result = plain(await definition.execute(input));
+      const result = plain(await execute(input, { signal: new AbortController().signal }));
       assert.ok(conforms(definition.tool.outputSchema, result), `${name} output violates its schema: ${JSON.stringify(result)}`);
       return result;
     }
@@ -196,9 +202,10 @@ for (const name of NAMES) {
     assert.equal(sources[name].trimEnd().endsWith(";"), false);
     assert.equal(/\b(Buffer|require|process)\b/.test(sources[name]), false, "tool source must not depend on Node globals");
     const { definition } = harness(name);
-    assert.equal(definition.kind, "cdp");
+    assert.equal(definition.kind, KINDS[name]);
     assert.equal(definition.tool.name, name);
-    assert.deepEqual(plain(definition.match.url_patterns), ["https://etsy.com/*", "https://*.etsy.com/*"]);
+    assert.deepEqual(plain(definition.match.url_patterns), ["https://www.etsy.com/*"]);
+    if (definition.kind === "page") assert.doesNotThrow(() => new Function(`return (${definition.execute.toString()})`), "a page tool's execute must re-parse from its source");
     assert.equal(definition.tool.inputSchema.type, "object");
     assert.equal(definition.tool.inputSchema.additionalProperties, false);
     assert.equal(definition.tool.outputSchema.type, "object");
@@ -206,6 +213,7 @@ for (const name of NAMES) {
     const entry = registry.tools.find(t => t.domain === "etsy.com" && t.tool === name);
     assert.ok(entry, "registry entry missing");
     assert.equal(entry.file, `domains/etsy.com/${name}.js`);
+    assert.equal(entry.kind, definition.kind);
     assert.deepEqual(entry.url_patterns, plain(definition.match.url_patterns));
     assert.ok(!/\/checkout|place.?order/i.test(sources[name].replace(/\/api\/v3\/ajax\/bespoke\/member\/checkout\/cart-list/g, "")), "tools must not reference checkout pages");
   });
@@ -325,7 +333,8 @@ test("get_listing: reads price, variations, sold-out options and personalization
   assert.deepEqual(result.variations[0].options, [
     { option_id: "111", label: "S - Black", display_text: "S - Black ($18.00 - $21.00)", price_text: "$18.00 - $21.00", sold_out: false },
     { option_id: "112", label: "M - Black", display_text: "M - Black ($25.20 - $28.20)", price_text: "$25.20 - $28.20", sold_out: false },
-    { option_id: "113", label: "L - Black", display_text: "L - Black [Sold out]", price_text: null, sold_out: true }
+    { option_id: "113", label: "L - Black", display_text: "L - Black [Sold out]", price_text: null, sold_out: true },
+    { option_id: "114", label: "XL - Black", display_text: "XL - Black [Sold out, waitlist available]", price_text: null, sold_out: true }
   ]);
   assert.deepEqual(result.variations[1].options.map(o => [o.label, o.price_text]), [["No Text", null], ["Gold Text", "$3.00"], ["Set (2 pack)", null]], "a non-price parenthetical stays in the label");
   assert.deepEqual(result.personalization, {
@@ -357,13 +366,19 @@ test("get_listing: missing, redirected, throttled and blocked listings are typed
   assert.equal((await harness("get_listing", { responses: () => ({ status: 403, body: "<html><script src=\"https://ct.captcha-delivery.com/c.js\"></script></html>" }) }).run({ listing_id: "1000000001" })).error_kind, "blocked");
 });
 
-test("get_listing: moves an off-site or other-subdomain tab to www.etsy.com first", async () => {
-  for (const url of ["https://example.com/", "https://help.etsy.com/hc/en-us"]) {
-    const h = harness("get_listing", { url, pages: listingPages });
-    assert.equal((await h.run({ listing_id: "1000000001" })).status, "ok");
-    assert.deepEqual(h.calls.navigations, [`${ORIGIN}/`]);
-  }
-});
+for (const name of ["get_listing", "get_cart", "update_cart_item", "get_favorite_status", "set_favorite"]) {
+  const input = { get_listing: { listing_id: "1000000001" }, get_cart: {}, update_cart_item: { line_id: "1|2|3|4", quantity: 0 }, get_favorite_status: { listing_ids: ["1000000001"] }, set_favorite: { listing_id: "1000000001", favorited: true } }[name];
+  test(`${name}: outside www.etsy.com it is wrong_page without any request`, async () => {
+    for (const url of ["https://example.com/", "https://help.etsy.com/hc/en-us"]) {
+      const h = harness(name, { url, pages: listingPages, signedIn: true });
+      const result = await h.run(input);
+      assert.equal(result.error_kind, "wrong_page");
+      if ("mutation_attempted" in result) assert.equal(result.mutation_attempted, false);
+      assert.deepEqual(h.calls.requests, []);
+      assert.deepEqual(h.calls.navigations, []);
+    }
+  });
+}
 
 // --- get_cart -----------------------------------------------------------------------------------------
 
@@ -394,11 +409,6 @@ test("get_cart: an empty cart and an accepted empty input object", async () => {
   assert.equal((await harness("get_cart").run(undefined)).status, "ok");
 });
 
-test("get_cart: a help.etsy.com tab is moved to www.etsy.com before reading the cart", async () => {
-  const h = harness("get_cart", { url: "https://help.etsy.com/hc/en-us" });
-  assert.equal((await h.run({})).status, "ok");
-  assert.deepEqual(h.calls.navigations, [`${ORIGIN}/`]);
-});
 
 // --- add_to_cart: requirement checks never submit -------------------------------------------------------
 
@@ -407,6 +417,7 @@ const refusals = [
   ["one of two variations", { listing_id: "1000000001", variations: [COLLAR.variations[0]], personalization: COLLAR.personalization }, "variation_required"],
   ["near-miss option label", { ...COLLAR, variations: [{ name: "Size & Color", option: "M-Black" }, COLLAR.variations[1]] }, "variation_option_not_found"],
   ["sold-out option", { ...COLLAR, variations: [{ name: "Size & Color", option: "L - Black" }, COLLAR.variations[1]] }, "variation_option_unavailable"],
+  ["sold-out option with a waitlist", { ...COLLAR, variations: [{ name: "Size & Color", option: "XL - Black" }, COLLAR.variations[1]] }, "variation_option_unavailable"],
   ["unknown variation", { ...COLLAR, variations: [...COLLAR.variations, { name: "Buckle", option: "Gold" }] }, "unknown_variation"],
   ["duplicate variation", { ...COLLAR, variations: [...COLLAR.variations, { name: "size & color", option: "S - Black" }] }, "invalid_input"],
   ["missing required personalization", { ...COLLAR, personalization: [] }, "personalization_required"],
@@ -436,7 +447,7 @@ for (const [label, input, kind] of refusals) {
 
 test("add_to_cart: requirement errors return the allowed options", async () => {
   const result = await harness("add_to_cart", { pages: listingPages, onPage: onListing }).run({ ...COLLAR, variations: [{ name: "Size & Color", option: "XL" }, COLLAR.variations[1]] });
-  assert.deepEqual(result.requirements.variation.options.map(o => o.label), ["S - Black", "M - Black", "L - Black"]);
+  assert.deepEqual(result.requirements.variation.options.map(o => [o.label, o.sold_out]), [["S - Black", false], ["M - Black", false], ["L - Black", true], ["XL - Black", true]]);
   const perso = await harness("add_to_cart", { pages: listingPages, onPage: onListing }).run({ ...COLLAR, personalization: [] });
   assert.equal(perso.requirements.field.instructions, "Enter the pet name. Up to 15 characters.");
 });
@@ -609,55 +620,78 @@ test("get_favorite_status: reads Etsy's favorites map for each listing", async (
   assert.equal(h.calls.requests[0].path, "/api/v3/ajax/member/users/listings-favorites-collections-map?listing_ids%5B%5D=1000000001&listing_ids%5B%5D=1000000003");
 });
 
+// Simulates Etsy's favorite buttons on a page: a press sends the favorites request and toggles the state.
+const favoriteButtons = (behaviour = "toggle") => (doc, path, site) => {
+  for (const button of doc.querySelectorAll('[data-ui="favorite-listing-button"]')) {
+    button.addEventListener("click", function () {
+      site.presses = (site.presses || 0) + 1;
+      site.pressed = this;
+      if (behaviour === "silent") return;
+      site.performanceEntries.push({ name: `${ORIGIN}/api/v3/ajax/bespoke/member/neu/specs/favoriteConfirmationToast` });
+      if (behaviour !== "toggle") return;
+      const id = this.getAttribute("data-listing-id");
+      if (site.favorites.has(id)) site.favorites.delete(id); else site.favorites.add(id);
+    });
+  }
+};
+const favoriteHarness = options => harness("set_favorite", { pages: listingPages, url: `${ORIGIN}/listing/1000000003`, onPage: favoriteButtons(), ...options });
+
 test("set_favorite: signed out is not_logged_in and nothing is pressed", async () => {
-  const h = harness("set_favorite", { pages: listingPages });
+  const h = favoriteHarness({});
   const result = await h.run({ listing_id: "1000000003", favorited: true });
   assert.equal(result.error_kind, "not_logged_in");
   assert.equal(result.mutation_attempted, false);
-  assert.deepEqual(h.calls.clicks, []);
+  assert.equal(h.site.presses, undefined);
+  assert.deepEqual(h.calls.requests, []);
 });
 
 test("set_favorite: already in the requested state is a no-op that reports the initial state", async () => {
-  const h = harness("set_favorite", { pages: listingPages, signedIn: true, favorites: ["1000000003"] });
+  const h = favoriteHarness({ signedIn: true, favorites: ["1000000003"] });
   const result = await h.run({ listing_id: "1000000003", favorited: true });
   assert.deepEqual(result, { status: "ok", listing_id: "1000000003", previous_favorited: true, favorited: true, changed: false, mutation_attempted: false });
-  assert.deepEqual(h.calls.clicks, []);
-  assert.deepEqual(h.calls.navigations, []);
+  assert.equal(h.site.presses, undefined);
 });
 
 for (const [from, to] of [[false, true], [true, false]]) {
   test(`set_favorite: ${from} -> ${to} presses the listing's own button once and confirms`, async () => {
-    const onClick = async ({ site, emit, target }) => {
-      assert.equal(target, '[data-xwebmcp-favorite="1000000003"]');
-      emit({ method: "Network.requestWillBeSent", params: { request: { method: "POST", url: `${ORIGIN}/api/v3/ajax/bespoke/member/neu/specs/favoriteConfirmationToast` } } });
-      if (to) site.favorites.add("1000000003"); else site.favorites.delete("1000000003");
-    };
-    const h = harness("set_favorite", { pages: listingPages, signedIn: true, favorites: from ? ["1000000003"] : [], onClick });
+    const h = favoriteHarness({ signedIn: true, favorites: from ? ["1000000003"] : [] });
     const result = await h.run({ listing_id: "1000000003", favorited: to });
     assert.deepEqual(result, { status: "ok", listing_id: "1000000003", previous_favorited: from, favorited: to, changed: true, mutation_attempted: true });
-    assert.equal(h.calls.clicks.length, 1);
+    assert.equal(h.site.presses, 1);
+    assert.deepEqual(h.calls.navigations, [], "page tools never navigate");
   });
 }
 
-test("set_favorite: a press that sends nothing or does not stick is reported without retrying", async () => {
-  const silent = harness("set_favorite", { pages: listingPages, signedIn: true, onClick: async () => {} });
-  const r1 = await silent.run({ listing_id: "1000000003", favorited: true });
-  assert.equal(r1.error_kind, "unknown");
-  assert.equal(r1.mutation_attempted, true);
-  const unchanged = harness("set_favorite", { pages: listingPages, signedIn: true, onClick: async ({ emit }) => emit({ method: "Network.requestWillBeSent", params: { request: { method: "POST", url: `${ORIGIN}/api/v3/ajax/member/favorites/x` } } }) });
-  const r2 = await unchanged.run({ listing_id: "1000000003", favorited: true });
-  assert.equal(r2.error_kind, "unknown");
-  assert.equal(r2.previous_favorited, false);
-  assert.equal(unchanged.calls.clicks.length, 1);
+test("set_favorite: a listing whose button is not on this page is listing_not_on_page", async () => {
+  const h = favoriteHarness({ signedIn: true, url: `${ORIGIN}/cart` });
+  const result = await h.run({ listing_id: "1000000003", favorited: true });
+  assert.equal(result.error_kind, "listing_not_on_page");
+  assert.equal(result.mutation_attempted, false);
+  assert.equal(result.previous_favorited, false);
 });
 
-test("set_favorite: a page with other listings' buttons presses only the requested listing's button", async () => {
-  const pages = { "/listing/1000000001": fixture("listing-classic") };
-  const h = harness("set_favorite", { pages, signedIn: true, onClick: async ({ doc, site, emit }) => {
-    assert.equal(doc.querySelectorAll("[data-xwebmcp-favorite]").length, 1);
-    assert.equal(doc.querySelector("[data-xwebmcp-favorite]").hasAttribute("data-always-show"), true, "the recommendation card's button is not chosen");
-    emit({ method: "Network.requestWillBeSent", params: { request: { method: "POST", url: `${ORIGIN}/api/v3/ajax/bespoke/member/neu/specs/favoriteConfirmationToast` } } });
-    site.favorites.add("1000000001");
-  } });
-  assert.equal((await h.run({ listing_id: "1000000001", favorited: true })).changed, true);
+test("set_favorite: a press that sends nothing or does not stick is reported without retrying", async () => {
+  for (const behaviour of ["silent", "no-change"]) {
+    const h = favoriteHarness({ signedIn: true, onPage: favoriteButtons(behaviour) });
+    const result = await h.run({ listing_id: "1000000003", favorited: true });
+    assert.equal(result.error_kind, "unknown");
+    assert.equal(result.mutation_attempted, true);
+    assert.equal(result.previous_favorited, false);
+    assert.equal(h.site.presses, 1);
+    assert.equal(/no favorites request was seen/.test(result.error_message), behaviour === "silent");
+  }
+});
+
+test("set_favorite: presses the listing page's own button rather than a recommendation card's", async () => {
+  const h = favoriteHarness({ signedIn: true, url: `${ORIGIN}/listing/1000000001` });
+  const result = await h.run({ listing_id: "1000000001", favorited: true });
+  assert.equal(result.changed, true);
+  assert.equal(h.site.pressed.hasAttribute("data-always-show"), true);
+});
+
+test("set_favorite: a search result card's button is used when the listing page is not open", async () => {
+  const h = favoriteHarness({ signedIn: true, url: `${ORIGIN}/search`, pages: { ...listingPages, "/search": fixture("search").replace('<h3 id="listing-title-1000000012"', '<button data-ui="favorite-listing-button" data-listing-id="1000000012">Fave</button><h3 id="listing-title-1000000012"') } });
+  const result = await h.run({ listing_id: "1000000012", favorited: true });
+  assert.equal(result.changed, true);
+  assert.equal(h.site.presses, 1);
 });

@@ -1,6 +1,6 @@
 [{
   kind: "cdp",
-  match: { url_patterns: ["https://etsy.com/*", "https://*.etsy.com/*"] },
+  match: { url_patterns: ["https://www.etsy.com/*"] },
   tool: {
     name: "search",
     title: "Search Etsy listings",

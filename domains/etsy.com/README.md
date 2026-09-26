@@ -10,7 +10,7 @@ Tools for Etsy (https://www.etsy.com): search, listing details with the seller's
 | add_to_cart | [add_to_cart.js](add_to_cart.js) | draft | Adds one listing with exactly the required options and personalization, or returns a typed error before submitting; confirms the new line by reading the cart. |
 | update_cart_item | [update_cart_item.js](update_cart_item.js) | draft | Sets one line's quantity or removes it with 0 through Etsy's cart API; confirms by reading the cart. |
 | get_favorite_status | [get_favorite_status.js](get_favorite_status.js) | draft | Signed-in only. Whether listings are in Favorites. Never live-tested signed in. |
-| set_favorite | [set_favorite.js](set_favorite.js) | draft | Signed-in only. Adds or removes one listing from Favorites after recording the initial state; no-op when already in the requested state. Never live-tested signed in. |
+| set_favorite | [set_favorite.js](set_favorite.js) | draft | Signed-in only. Presses the listing's favorite button on the current page (listing page or a search page showing it) after recording the initial state; no-op when already in the requested state. Never live-tested signed in. |
 
 Register all seven files together as one array with `forceOverwriteNamespace: true`;
 registering one file that way removes the others.
@@ -40,27 +40,37 @@ await webmcp.invokeTool(await ref("get_cart"), {}, { timeoutSec: 60 });
 await webmcp.invokeTool(await ref("update_cart_item"), { line_id: "<line_id from get_cart>", quantity: 0 }, { timeoutSec: 60 });
 ```
 
-The tools are listed only while the tab is on an `etsy.com` page; re-list after any
-navigation. Timing seen live: `search` 4 to 8 s (it waits for the lazy-loaded grid),
+The tools are listed only while the tab is on a `www.etsy.com` page (see URL patterns);
+re-list after any navigation. Timing seen live: `search` 4 to 8 s (it waits for the lazy-loaded grid),
 `get_listing` and `get_cart` about 1 s, `add_to_cart` 10 to 15 s, `update_cart_item` 1 to 3 s.
 Use `timeoutSec` 90 for `add_to_cart` and `set_favorite`, 60 for the rest.
 
-How each tool reaches the site:
+How each tool reaches the site, and why it has its `kind`:
 
-| tool | method | navigates the tab |
-|------|--------|-------------------|
-| search | opens `/search?q=…` and reads the rendered grid (the server sends about 10 cards; the rest arrive through Etsy's lazy-load request) | yes |
-| get_listing | page-context `fetch` of `/listing/<id>`, parsed from HTML and the `Product` JSON-LD | no (only to `www.etsy.com/` when the tab is elsewhere) |
-| get_cart | page-context `fetch` of `/cart` | no (same) |
-| add_to_cart | opens `/listing/<id>`, sets the menus and fields through Etsy's own buy box, presses its Add to cart button once | yes |
-| update_cart_item | page-context `POST /api/v3/ajax/bespoke/member/checkout/cart-list/<cart>/cart/<cart>/listing/<listing>/inventory/<inventory>/customization/<customization>/(quantity\|remove)` with the page's `csrf_nonce`, the same request Etsy's cart page sends | no (same) |
-| get_favorite_status | page-context `GET /api/v3/ajax/member/users/listings-favorites-collections-map?listing_ids[]=…`, the lookup Etsy's favorite buttons use | no (same) |
-| set_favorite | the same lookup before and after, and one press of the listing page's own favorite button | yes |
+| tool | kind | method |
+|------|------|--------|
+| search | cdp | navigates the tab to `/search?q=…` and reads the rendered grid (the server sends about 10 cards; the rest arrive through Etsy's lazy-load request). It needs the navigation and returns rich results from the page it navigated to, so it runs over CDP. |
+| get_listing | page | `fetch` of `/listing/<id>` from the current document, parsed from HTML and the `Product` JSON-LD. |
+| get_cart | page | `fetch` of `/cart` from the current document. |
+| add_to_cart | cdp | navigates to `/listing/<id>`, sets the menus and fields through Etsy's own buy box with trusted input (`fillInput`, `click`), watches for the add request, and returns the confirmed cart line. Classic listings submit the buy-box form, which replaces the document, so a page tool could not deliver its result. |
+| update_cart_item | page | `POST /api/v3/ajax/bespoke/member/checkout/cart-list/<cart>/cart/<cart>/listing/<listing>/inventory/<inventory>/customization/<customization>/(quantity\|remove)` from the current document with its `csrf_nonce`, the same request Etsy's cart page sends. |
+| get_favorite_status | page | `GET /api/v3/ajax/member/users/listings-favorites-collections-map?listing_ids[]=…`, the lookup Etsy's favorite buttons use. |
+| set_favorite | page | the same lookup before and after, and one `click()` on the listing's favorite button in the current document. It does not navigate: open the listing (or a search page that shows it) first, otherwise it returns `listing_not_on_page`. |
 
-Every page-context request uses the page's own cookies and goes only to `www.etsy.com`;
-nothing is sent anywhere else. The fetch-based tools first move a tab that is on another
-Etsy host (for example `help.etsy.com`) to `https://www.etsy.com/`, because their relative
-requests would otherwise go to that host.
+Every request goes only to `www.etsy.com` with the page's own cookies; nothing is sent
+anywhere else. The page tools refuse to run (`wrong_page`) when the document they run in is
+not on `https://www.etsy.com`, which can only happen if a runtime registers them on another
+site's top document because an embedded Etsy frame matched.
+
+## URL patterns
+
+All seven tools use `["https://www.etsy.com/*"]` instead of the default
+`["https://etsy.com/*", "https://*.etsy.com/*"]`. Etsy's marketplace (search, listings, cart,
+favorites, sign-in) lives entirely on `www.etsy.com`, and `etsy.com` redirects there. Other
+subdomains are unrelated products, for example the help center on `help.etsy.com` and the
+community forums; the page tools' relative requests would go to those hosts, and a page tool
+cannot navigate the tab away to fix that. With the narrowed patterns the tools are simply not
+listed there.
 
 ## Output contract
 
@@ -70,6 +80,8 @@ Shared `error_kind` values: `invalid_input` (checked before any page access), `n
 `unknown`. The mutating tools always include `mutation_attempted`: true once a submission,
 cart request or favorite press happened, even when its outcome is uncertain. Never retry
 automatically after that; read the cart or the favorite state first.
+
+Page tools add `wrong_page`; `set_favorite` adds `listing_not_on_page`.
 
 Identifiers: `listing_id` is Etsy's numeric listing id (string). A cart line is
 `line_id = cart_id|listing_id|inventory_id|customization_id`, the same key Etsy uses in its
@@ -84,10 +96,12 @@ matches of it; it never picks an option or fills a field on its own.
 - Every variation menu (`variations[]`) must receive one entry, by `name` (or `index` for an
   unnamed menu), with `option` equal to the option's `option_id`, `label`, or `display_text`
   (case and surrounding spaces ignored; `label` is the displayed text without Etsy's trailing
-  price range or `[Sold out]`). Anything else is `variation_required`, `unknown_variation`,
-  `variation_option_not_found` (with the allowed options in `requirements`), or
-  `variation_option_unavailable` for sold-out options, including options that become sold
-  out after an earlier menu is chosen (the tool re-reads the menus after setting each one).
+  price range or `[Sold out…]` marker). Anything else is `variation_required`,
+  `unknown_variation`, `variation_option_not_found` (with the allowed options in
+  `requirements`), or `variation_option_unavailable` for sold-out options, including
+  `[Sold out, waitlist available]` options that Etsy leaves selectable and options that
+  become sold out after an earlier menu is chosen (the tool re-reads the menus after setting
+  each one).
 - Every required personalization field must be given a non-blank value
   (`personalization_required`, with the field's `instructions` in `requirements`). A
   `text_input` value must fit Etsy's `max_chars` (`personalization_too_long`); a `dropdown`
@@ -136,6 +150,8 @@ and `personalization_confirmed` (every text appears in the line as Etsy displays
   same proxy got a slider challenge that the browser's solver did not attempt. Headful
   stealth browsers on Kernel's default stealth network loaded every page without a
   challenge. The tools report a verification page as `blocked` and never try to solve it.
+- **Waitlisted options.** Some sold-out options read `… [Sold out, waitlist available]` and are
+  not disabled; both tools treat any `[Sold out…]` marker as sold out.
 - **Signed-out favorites.** Pressing a favorite button signed out opens Etsy's sign-in
   overlay (`Join_Neu_Controller`); the tools check `Etsy.Context.data.user_id` first and
   never press it signed out. Etsy's scripts also contain a guest-favorites path
@@ -146,7 +162,8 @@ and `personalization_confirmed` (every text appears in the line as Etsy displays
   its entry contains `favorites_key` (Etsy's own button code reads it the same way). Signed
   in, adding a favorite goes through `POST /api/v3/ajax/bespoke/member/neu/specs/favoriteConfirmationToast`
   (spec class `Favorites_ApiSpecs_UpdateLists`); the tool presses the button rather than
-  replaying that spec, whose arguments were not observable without an account.
+  replaying that spec, whose arguments were not observable without an account. Whether
+  Etsy's handler accepts a script `click()` (an untrusted event) signed in is unverified.
 
 ## Native WebMCP tools
 
@@ -163,9 +180,11 @@ current source.
 - **Favorites are unverified.** No Etsy account was available (no credential in the vault,
   and the configured browser profile has no Etsy session), so `get_favorite_status` and
   `set_favorite` ran live only signed out (`not_logged_in`, nothing pressed). The signed-in
-  code path, the lookup's `listing_ids[]` parameter encoding, the button press, removing a
-  favorite that belongs to other collections, and Etsy's first-favorite privacy prompt are
-  covered by mocked tests only. They stay `draft` until run against a signed-in account.
+  code path, the lookup's `listing_ids[]` parameter encoding, whether Etsy accepts the
+  script `click()` on its favorite button, removing a favorite that belongs to other
+  collections, and Etsy's first-favorite privacy prompt are covered by mocked tests only.
+  They stay `draft` until run against a signed-in account. `set_favorite` needs the
+  listing's favorite button on the current page and never navigates.
 - **Signed-in cart unverified.** Cart tools were verified live on guest carts only. The
   endpoints are the ones Etsy's signed-in pages use (`/member/` paths), but saved-for-later
   lines of a signed-in cart were not seen live; `get_cart` skips elements whose id or class
@@ -175,19 +194,22 @@ current source.
   Only 1 left).
 - `get_listing` reads the page as first rendered; per-option prices appear only in
   `price_text` of each option, not as the final price of a combination.
+- `add_to_cart` accepts only quantity 1 for listings without a quantity menu, although the
+  cart may allow more (add 1, then use `update_cart_item`).
 - `add_to_cart` cannot fill upload-type personalization or Etsy's older single-box
   personalization, does not support gift options, and cannot change the options of an
   existing cart line (remove it with `update_cart_item` and add again).
 - `update_cart_item` changes quantity only; it never saves for later or moves lines.
 - Shipping country, currency and language come from the browser session; the tools do not
   change them.
-- Only the Node CDP runtime was exercised; extension-host portability was reasoned about
-  (no Node globals, page work runs in the page) but not tested.
+- Only the Kernel browser runtime was exercised (page and cdp kinds); extension-host
+  portability was reasoned about (no Node globals, page work runs in the page) but not
+  tested. `search` and `add_to_cart` are `cdp` by design (see the kind table above).
 
 ## QA summary
 
 Live checks by the author on 2026-09-26 (headful stealth Kernel browser, default stealth
-network, signed out, guest cart that started and ended empty):
+network, signed out, guest cart that started and ended empty), first revision:
 
 | tool | case | result |
 |------|------|--------|
@@ -198,13 +220,38 @@ network, signed out, guest cart that started and ended empty):
 | add_to_cart | wallet 1 Wallet / Initials / "AB" / Bottom right; dropdown typo; quantity 2 | `carts/add` path; new line with four properties; `personalization_option_not_found`; `quantity_unavailable` |
 | update_cart_item | 1→2, 2→2, 500, unknown line, remove both lines | `changed`; no-op without a request; `quantity_unavailable` (limit 194); `not_in_cart`; removed, cart empty |
 | get_favorite_status, set_favorite | signed out | `not_logged_in`, no request, nothing pressed |
-| all | tab on `example.com`; tab on `help.etsy.com` | not listed; `get_cart` moved the tab to `www.etsy.com` and succeeded |
 
 Defects found by the author's live runs and fixed before QA: on a newer-buy-box listing the
 first version reported `mutation_attempted: false` although Etsy had added the item (it
 watched only for the classic form post); dropdown personalization was not recorded because
 only `change` was dispatched; hidden validation templates were reported as Etsy's refusal;
 fetch-based tools on `help.etsy.com` read that host's `/cart`. Each has a regression test.
+
+Independent QA, round 1 (agent `agt_33b54e2c132ec5d67552`, `smartest` preset, its own
+headful stealth browser, guest cart, commit `8efbba1`): 120 live invocations, every output
+valid against its schema; 45 invalid inputs rejected with no navigation or cart change;
+tools not listed on `example.com`; 15 `add_to_cart` requirement errors with nothing
+submitted; a personalized collar (classic form path) and an engraved wallet (`carts/add`
+path) added and confirmed against the cart page; quantity updates, no-op, limits, absent
+line, and removal; favorites signed out returned `not_logged_in` with no request; the cart
+ended exactly as it started (empty). `search` was signed off on that commit. Findings, all
+addressed in the next revision:
+
+- D1 (medium): options marked `[Sold out, waitlist available]` (not disabled by Etsy) were
+  reported as available, so `add_to_cart` would have tried them. Both tools now treat any
+  `[Sold out…]` marker as sold out; a fixture option and a refusal test cover it.
+- K1/K2: under the repository's kind rule the fetch-based tools and `set_favorite` should be
+  `kind: "page"`, and a page tool cannot move a tab off `help.etsy.com`. The five tools are
+  now page tools, all patterns are narrowed to `www.etsy.com`, and page tools return
+  `wrong_page` outside it.
+- M1 (minor): `update_cart_item` reported `mutation_attempted: true` for failures before its
+  request; it now tracks whether the request was sent.
+
+Author re-check of the revised source on 2026-09-26 (same browser setup): all seven tools
+registered, the five page tools ran on the live site (Etsy's CSP did not block them);
+`get_listing` reported the waitlisted options of a live listing as `sold_out: true`; guest
+cart 0 → add collar (form path, confirmed) → `update_cart_item` 1→2 → remove → 0; favorites
+signed out `not_logged_in`; no tools listed on `help.etsy.com`.
 
 Local tests run every page-side function from its source against fabricated HTML in a small
 test-only DOM (`tests/etsy-dom.mjs`), with a fake `fetch` and simulated buy-box scripts:
