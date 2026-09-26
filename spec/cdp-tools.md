@@ -89,8 +89,17 @@ A `page` tool's `execute` runs in its registering document and stops when that d
 is replaced. A `page` tool MUST NOT replace its registering document (navigation, form submission,
 reload) before the promise it returned has settled. To navigate, it MUST compute its
 result first and start the navigation after settling, for example
-`setTimeout(() => form.requestSubmit(), 100)` followed by `return {submitted: true}`.
-Same-document navigations do not replace the document and are not restricted.
+`setTimeout(() => form.requestSubmit(), 100)` followed by
+`return {navigation_scheduled: true}`. Same-document navigations do not replace the
+document and are not restricted.
+
+Such a result reports only what the tool did before settling. The navigation, and any
+request it sends, has not happened yet when the caller receives the result, and the tool
+cannot observe whether it succeeded. The output MUST NOT claim that the navigation
+happened or what it achieved (for example `submitted: true`, `logged_in: true`, or
+`status: "ok"` for the submission), and the tool's description and `outputSchema` SHOULD
+say that the outcome is unconfirmed. A caller that needs the outcome reads it from the
+next document (§2.3) or uses a `cdp` tool (§2.1).
 
 When the rule is broken, the returned value is lost and the outcome is not observable.
 The reference runtime reports such an invocation as `completed` with an empty `output`:
@@ -119,8 +128,8 @@ A flow that crosses a navigation can be built from `page` tools, one per documen
 
 1. The first tool, registered on the start document, does its same-document work,
    settles with an output that names the next tool and the document it expects
-   (for example `{submitted: true, next_tool: "read_results", expected_url}`), and only
-   then starts the navigation (§2.2).
+   (for example `{navigation_scheduled: true, next_tool: "read_results", expected_url}`),
+   and only then starts the navigation (§2.2).
 2. The next tool is registered through `match.url_patterns` that match the destination
    document and reads its result there.
 
