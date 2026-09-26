@@ -102,6 +102,104 @@
       }
     },
     {
+      "domain": "etsy.com",
+      "tool": "add_to_cart",
+      "file": "domains/etsy.com/add_to_cart.js",
+      "kind": "cdp",
+      "namespace": "etsy.com",
+      "url_patterns": [
+        "https://etsy.com/*",
+        "https://*.etsy.com/*"
+      ],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Adds one listing only with exact variation options and required personalization (text within Etsy's limit, dropdown option) or returns a typed error before submitting; presses Etsy's own button once and confirms via the cart. Handles the classic form post and the newer carts/add path. Upload-type and legacy personalization unsupported. Live-verified on guest carts only."
+    },
+    {
+      "domain": "etsy.com",
+      "tool": "get_cart",
+      "file": "domains/etsy.com/get_cart.js",
+      "kind": "cdp",
+      "namespace": "etsy.com",
+      "url_patterns": [
+        "https://etsy.com/*",
+        "https://*.etsy.com/*"
+      ],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Signed-in or guest cart lines with line_id (cart|listing|inventory|customization), quantity, limit, prices, chosen options and personalization, and total texts. Live-verified on guest carts only; saved-for-later lines are skipped."
+    },
+    {
+      "domain": "etsy.com",
+      "tool": "get_favorite_status",
+      "file": "domains/etsy.com/get_favorite_status.js",
+      "kind": "cdp",
+      "namespace": "etsy.com",
+      "url_patterns": [
+        "https://etsy.com/*",
+        "https://*.etsy.com/*"
+      ],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Signed-in only: whether listings are in Favorites via Etsy's favorites map lookup. Never run signed in (no Etsy account available); signed out returns not_logged_in without a request."
+    },
+    {
+      "domain": "etsy.com",
+      "tool": "get_listing",
+      "file": "domains/etsy.com/get_listing.js",
+      "kind": "cdp",
+      "namespace": "etsy.com",
+      "url_patterns": [
+        "https://etsy.com/*",
+        "https://*.etsy.com/*"
+      ],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Listing price, availability, description, images, quantity limit, every variation menu (option ids, labels, sold-out) and personalization field (type, required, Etsy limit, seller instructions) read from the listing HTML. Seller instructions can be stricter than Etsy's limit and are returned, not enforced."
+    },
+    {
+      "domain": "etsy.com",
+      "tool": "search",
+      "file": "domains/etsy.com/search.js",
+      "kind": "cdp",
+      "namespace": "etsy.com",
+      "url_patterns": [
+        "https://etsy.com/*",
+        "https://*.etsy.com/*"
+      ],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "One Etsy results page (rendered grid) with price, original price, discount, shop, shop rating, badges and ad flag; min/max price, sort, free-shipping and page filters; ads excluded unless requested. Live-verified signed out; DataDome verification pages are reported as blocked."
+    },
+    {
+      "domain": "etsy.com",
+      "tool": "set_favorite",
+      "file": "domains/etsy.com/set_favorite.js",
+      "kind": "cdp",
+      "namespace": "etsy.com",
+      "url_patterns": [
+        "https://etsy.com/*",
+        "https://*.etsy.com/*"
+      ],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Signed-in only: records the initial favorite state, no-op if it already matches, otherwise presses the listing's own favorite button once and confirms. Never run signed in (no Etsy account available); signed out returns not_logged_in and presses nothing."
+    },
+    {
+      "domain": "etsy.com",
+      "tool": "update_cart_item",
+      "file": "domains/etsy.com/update_cart_item.js",
+      "kind": "cdp",
+      "namespace": "etsy.com",
+      "url_patterns": [
+        "https://etsy.com/*",
+        "https://*.etsy.com/*"
+      ],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Sets one cart line's quantity or removes it with 0 through Etsy's cart API with the page CSRF token; no-op when unchanged; confirms by reading the cart. Live-verified on guest carts only."
+    },
+    {
       "domain": "flyfrontier.com",
       "tool": "login",
       "file": "domains/flyfrontier.com/login.js",
