@@ -3,7 +3,7 @@
   match: { url_patterns: ["https://instacart.com/*", "https://*.instacart.com/*"] },
   tool: {
     name: "complete_registration",
-    description: "Finish an Instacart sign-up started by register: type the six-digit code from the verification email or text into the open code step, once, then confirm through Instacart's own current-user data that the newly signed-in account is the one being registered (email must match exactly; for sms the account's phone number must match). Instacart replaces the page after it accepts the code, which is why this tool runs outside the page. Requires the code step that register left open in this same tab; it never navigates by itself, never resends a code and never retries. A rejected or expired code is reported as code_rejected or code_expired and the code is not entered again; ask for the newest code rather than guessing. A session for any other account is reported as wrong_account, never as success. Output never contains the code.",
+    description: "Finish an Instacart sign-up started by register: type the six-digit code from the verification email or text into the open code step, once, then confirm through Instacart's own current-user data that the newly signed-in account is the one being registered (email must match exactly; for sms the account's phone number must match). Instacart's own code replaces the page once it accepts the code (read from the site's JavaScript), which is why this tool runs outside the page. Requires the code step that register left open in this same tab; it never navigates by itself, never resends a code and never retries. A rejected or expired code is reported as code_rejected or code_expired and the code is not entered again; ask for the newest code rather than guessing. A session for any other account is reported as wrong_account, never as success. Output never contains the code.",
     inputSchema: {
       type: "object", additionalProperties: false, required: ["code"],
       properties: {
@@ -52,12 +52,13 @@
   execute: async (input) => {
     let submitted = false;
     let stage = "input";
-    const fail = (kind, message, source = "tool", extra = {}) => ({ status: "error", error_kind: kind, error_message: message, error_source: source, stage, submission_attempted: submitted, ...{}, ...extra });
-    const emailGuardKey = "instacart.com.register.submitted.v1";
+    const fail = (kind, message, source = "tool", extra = {}) => ({ status: "error", error_kind: kind, error_message: redact(message), error_source: source, stage, submission_attempted: submitted, ...extra });
     const codeGuardKey = "instacart.com.register.code_submitted.v1";
     const maskEmail = value => String(value).replace(/^(.)[^@]*@/, "$1***@");
     const maskPhone = value => { const digits = String(value).replace(/\D/g, ""); return digits.length >= 4 ? "***-***-" + digits.slice(-4) : "***"; };
     const normalizePhone = value => { const d = String(value).replace(/\D/g, ""); return d.length === 11 && d.startsWith("1") ? d.slice(1) : d; };
+    // Site text (the code-step hint, error banners) can contain the address; mask it before it leaves the tool.
+    const redact = text => String(text).replace(/[\w.+-]+@[\w-]+(?:\.[\w-]+)+/g, maskEmail).replace(/(?:\+?1[\s.-]?)?\(?\d{3}\)?[\s.-]?\d{3}[\s.-]?\d{4}/g, maskPhone);
     const classify = (message, onCodeStep) => {
       if (/too many|locked|temporarily|try again (?:later|in \d)|rate limit|slow down/i.test(message)) return "locked_or_throttled";
       if (/captcha|robot|human verification|verify (?:that )?you/i.test(message)) return "captcha_or_challenge";
@@ -178,11 +179,11 @@
     if (channel === "email") {
       if (input.phone !== undefined) return bad("Do not pass phone for the email channel.");
       const email = typeof input.email === "string" ? input.email.trim() : "";
-      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || email.length > 254) return bad("email must be a valid email address.");
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || email.length < 6 || email.length > 254) return bad("email must be a valid email address.");
       target = { channel, value: email.toLowerCase(), raw: email };
     } else {
       if (input.email !== undefined) return bad("Do not pass email for the sms channel.");
-      const phone = typeof input.phone === "string" ? normalizePhone(input.phone) : "";
+      const phone = typeof input.phone === "string" && /^\+?1?[\s.()-]*[2-9][0-9]{2}[\s.()-]*[0-9]{3}[\s.-]*[0-9]{4}$/.test(input.phone) ? normalizePhone(input.phone) : "";
       if (!/^[2-9][0-9]{9}$/.test(phone)) return bad("phone must be a 10-digit US phone number.");
       target = { channel, value: phone, raw: phone };
     }

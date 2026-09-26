@@ -57,7 +57,7 @@ function harness(name, options = {}) {
     boxes: plain(options.emailCheckboxes ?? []),
     extraFields: plain(options.extraFields ?? []),
     extraValues: {},
-    fieldError: null, codeError: options.codeError ?? null, alerts: [],
+    fieldError: null, codeError: options.codeError ?? null, alerts: options.alerts ?? [],
     challenge: options.challenge ?? null, captcha: false,
     loggedInAs: options.loggedInAs ?? null, guest: options.guest ?? false
   };
@@ -231,7 +231,8 @@ function harness(name, options = {}) {
       assert.ok(calls.submits <= 1, "at most one sign-up submission per invocation");
       assert.deepEqual(calls.navigations, [], "the registration tools never navigate");
       assert.ok(!JSON.stringify(result).includes("123456"), "the code is never echoed");
-      assert.ok(!JSON.stringify(result).includes(phone), "the full phone number is never returned");
+      assert.ok(!JSON.stringify(result).replace(/\D/g, "").includes(phone), "the full phone number is never returned, in any format");
+      assert.ok(!JSON.stringify(result).includes("555-0142") || JSON.stringify(result).includes("***-***-0142"), "phone digits appear only masked");
       return result;
     }
   };
@@ -277,7 +278,7 @@ test("registry lists the registration tools with matching kind and patterns", ()
 // ---------------------------------------------------------------- input validation
 
 const invalid = {
-  register: [undefined, {}, { email }, { email, accept_terms: false }, { email: "not-an-email", accept_terms: true }, { email, phone, accept_terms: true },
+  register: [undefined, {}, { email }, { email: "a@b.c", accept_terms: true }, { phone: "513abc5550142", channel: "sms", accept_terms: true, accept_sms_terms: true }, { email, accept_terms: false }, { email: "not-an-email", accept_terms: true }, { email, phone, accept_terms: true },
     { phone: "123", channel: "sms", accept_terms: true, accept_sms_terms: true }, { email, channel: "sms", accept_terms: true }, { email, accept_terms: true, accept_sms_terms: true },
     { email, accept_terms: true, first_name: "" }, { email, accept_terms: true, password: "x" }, { phone, channel: "sms", accept_terms: true }, { email, accept_terms: true, channel: "fax" }],
   complete_registration: [undefined, {}, { email }, { email, code: "12345" }, { email, code: 123456 }, { email, code: "12345a" }, { code: "123456" }, { email, phone, code: "123456" }, { email, code: "123456", extra: 1 }],
@@ -356,6 +357,30 @@ test("register: an open code step for the same address resumes without submittin
   assert.equal(result.submission_attempted, false);
   assert.equal(h.calls.submits, 0);
   assert.deepEqual(h.calls.fetches, []);
+});
+
+test("register: a log-in code step for another address is refused, not reported as this identity's account", async () => {
+  const h = harness("register", { mode: "code", welcome: true, codeFor: "other@example.invalid" });
+  const result = await h.run(reg());
+  assert.equal(result.status, "error");
+  assert.match(result.error_message, /different or unidentified address/);
+});
+
+test("register: a banner already on the page is not taken as this submission's verdict", async () => {
+  const stale = harness("register", { alerts: ["Something went wrong. Please try again."], afterSubmit: "nothing" });
+  const result = await stale.run(reg());
+  assert.equal(result.error_kind, "unknown");
+  assert.match(result.error_message, /no verification step appeared/);
+  const ok = harness("register", { alerts: ["Something went wrong. Please try again."] });
+  assert.equal((await ok.run(reg())).status, "challenge_sent");
+});
+
+test("register: site text that repeats the address is masked", async () => {
+  const sms = await harness("register").run(regSms());
+  assert.match(sms.evidence, /\*\*\*-\*\*\*-0142/);
+  const banner = await harness("register", { afterSubmit: "alert", siteError: `We couldn't send a code to ${email}.` }).run(reg());
+  assert.ok(!banner.error_message.includes(email));
+  assert.ok(banner.error_message.includes("q***@example.invalid"));
 });
 
 test("register: an open code step for another address is refused", async () => {

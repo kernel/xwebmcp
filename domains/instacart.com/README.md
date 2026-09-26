@@ -433,7 +433,9 @@ delete accounts.
   `captcha_or_challenge`, `navigation_failed`, `unknown`, `invalid_input`.
 - Every error carries `stage` and `submission_attempted`. Outputs never contain the
   code, the full phone number, or another account's full address (emails are masked to
-  the first character plus the domain, phones to the last four digits).
+  the first character plus the domain, phones to the last four digits). Site text that
+  is passed through (the code-step hint in `evidence`, site error banners) is masked the
+  same way.
 
 Safety properties:
 
@@ -469,8 +471,9 @@ Safety properties:
 - Extra fields (names, postal code) appear only in some of the site's experiments; the
   tool fills first and last name when supplied and otherwise returns
   `additional_info_required`. Postal code is not supported.
-- ClawBench V1 food tasks score with placeholder evaluators, so these tools do not
-  change their official score.
+- The Kernel runtime did not enforce `inputSchema` for these page tools during QA (it
+  does for the cdp tool), so `register` and `resume_registration` repeat every schema
+  constraint in their own validation before touching the page.
 
 ### QA (registration)
 
@@ -486,6 +489,26 @@ signed out), nothing submitted:
 Also checked without submitting: Instacart's CSP allows page-tool materialization (only
 `frame-ancestors` is set); the page-tool reader returns the consent text for the phone
 form's checkbox; `CurrentUser` returns `null` signed out and `email`/`guest` signed in.
+
+Independent QA, round 1 (`smartest` preset, commit `fe5ba52`): read-only live checks
+on `/signup`, `/login`, `/help` and a non-Instacart page in its own stealth browser with
+all ten files registered as one batch. Every case returned the expected result with
+`submission_attempted: false`. Network telemetry showed only `CurrentUser` lookups, with
+no availability, send-code or create-user operations. It agreed with the three kind
+choices and called the `complete_registration` exception justified but thin. Ten source
+mutations were all caught. It requested changes, all made afterwards:
+
+- The SMS `evidence` passed through the site's hint, including the formatted full phone
+  number, and the test only looked for the bare digits. Site text is now masked and the
+  test checks digits in any format.
+- A "Welcome back" code step for a different address was reported as `existing_account`
+  for the input identity; it is now refused.
+- A banner already on the page before the submit could be read as the submission's
+  verdict; only feedback that changes or reappears after the submit counts now.
+- The checkbox list used for clicking and the one used for reading used different
+  visibility filters; they now match.
+- Unused helpers were dropped per tool, and `register`/`resume_registration` now mirror
+  the schema's email length and phone pattern.
 
 Fixture tests run each page tool from its own `execute.toString()` inside a fake page
 (DOM, `sessionStorage`, GraphQL endpoint) and the cdp tool against the same page:

@@ -70,12 +70,13 @@
   execute: async (input, { signal } = {}) => {
     let submitted = false;
     let stage = "input";
-    const fail = (kind, message, source = "tool", extra = {}) => ({ status: "error", error_kind: kind, error_message: message, error_source: source, stage, submission_attempted: submitted, ...{ missing_fields: [], next_url: null }, ...extra });
+    const fail = (kind, message, source = "tool", extra = {}) => ({ status: "error", error_kind: kind, error_message: redact(message), error_source: source, stage, submission_attempted: submitted, missing_fields: [], next_url: null, ...extra });
     const emailGuardKey = "instacart.com.register.submitted.v1";
-    const codeGuardKey = "instacart.com.register.code_submitted.v1";
     const maskEmail = value => String(value).replace(/^(.)[^@]*@/, "$1***@");
     const maskPhone = value => { const digits = String(value).replace(/\D/g, ""); return digits.length >= 4 ? "***-***-" + digits.slice(-4) : "***"; };
     const normalizePhone = value => { const d = String(value).replace(/\D/g, ""); return d.length === 11 && d.startsWith("1") ? d.slice(1) : d; };
+    // Site text (the code-step hint, error banners) can contain the address; mask it before it leaves the tool.
+    const redact = text => String(text).replace(/[\w.+-]+@[\w-]+(?:\.[\w-]+)+/g, maskEmail).replace(/(?:\+?1[\s.-]?)?\(?\d{3}\)?[\s.-]?\d{3}[\s.-]?\d{4}/g, maskPhone);
     const classify = (message, onCodeStep) => {
       if (/too many|locked|temporarily|try again (?:later|in \d)|rate limit|slow down/i.test(message)) return "locked_or_throttled";
       if (/captcha|robot|human verification|verify (?:that )?you/i.test(message)) return "captcha_or_challenge";
@@ -84,19 +85,6 @@
       if (/valid (?:email|phone)|invalid/i.test(message)) return "invalid_input";
       return "unknown";
     };
-    // Compares a signed-in identity with the target; never returns the other account's full address.
-    const compare = (who, target) => {
-      if (who.error === "site_changed") return { state: "unknown", message: "Instacart no longer accepts the current-user lookup this tool relies on; the tool needs updating." };
-      if (who.error) return { state: "unknown", message: `The signed-in account could not be read (${who.error}).` };
-      if (who.state === "logged_out") return { state: "logged_out" };
-      if (target.channel === "email") {
-        if (!who.email) return { state: "unknown", message: "The signed-in account has no email address, so it could not be matched." };
-        return who.email === target.value ? { state: "match", hint: maskEmail(who.email) } : { state: "mismatch", hint: maskEmail(who.email) };
-      }
-      if (!who.phoneDigits) return { state: "unknown", message: "The signed-in account has no phone number, so it could not be matched." };
-      return normalizePhone(who.phoneDigits) === target.value ? { state: "match", hint: maskPhone(target.value) } : { state: "mismatch", hint: maskPhone(who.phoneDigits) };
-    };
-    const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
     const read = target => (expected => {
       const visible = e => !!e && e.getClientRects().length > 0 && e.checkVisibility({ checkOpacity: true, checkVisibilityCSS: true });
       const text = e => (e.innerText || e.textContent || "").replace(/\s+/g, " ").trim();
@@ -170,6 +158,7 @@
         return { error: "fetch_failed" };
       }
     };
+    const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
     const poll = async (target, predicate, ms) => {
       const deadline = Date.now() + ms;
       while (Date.now() < deadline && !signal?.aborted) {
@@ -189,11 +178,11 @@
     if (channel === "email") {
       if (input.phone !== undefined) return bad("Do not pass phone for the email channel.");
       const email = typeof input.email === "string" ? input.email.trim() : "";
-      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || email.length > 254) return bad("email must be a valid email address.");
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || email.length < 6 || email.length > 254) return bad("email must be a valid email address.");
       target = { channel, value: email.toLowerCase(), raw: email };
     } else {
       if (input.email !== undefined) return bad("Do not pass email for the sms channel.");
-      const phone = typeof input.phone === "string" ? normalizePhone(input.phone) : "";
+      const phone = typeof input.phone === "string" && /^\+?1?[\s.()-]*[2-9][0-9]{2}[\s.()-]*[0-9]{3}[\s.-]*[0-9]{4}$/.test(input.phone) ? normalizePhone(input.phone) : "";
       if (!/^[2-9][0-9]{9}$/.test(phone)) return bad("phone must be a 10-digit US phone number.");
       target = { channel, value: phone, raw: phone };
     }
@@ -224,8 +213,8 @@
       if (s.proxyError || !s.onSite) return fail("wrong_page", "This tab is not showing Instacart (proxy error or another site). Open " + signupUrl + " and call register again. Nothing was submitted.", "tool", { next_url: signupUrl });
       if (s.challenge) return fail("captcha_or_challenge", s.challenge, "site");
       if (s.codeStep) {
-        if (s.welcomeBack) return { status: "existing_account", channel: target.channel, destination_hint: hint, next_step: "login", code_sent: null, message: "A log-in code step is already open for an existing account; use the login tool. Nothing was submitted.", submission_attempted: false };
-        if (s.hintMatches === true) return { status: "challenge_sent", channel: target.channel, destination_hint: hint, code_length: 6, next_step: "complete_registration", landing_url: s.url, evidence: s.codeHint || "Verification code step is open.", submission_attempted: false, resumed: true };
+        if (s.welcomeBack && s.hintMatches !== false) return { status: "existing_account", channel: target.channel, destination_hint: hint, next_step: "login", code_sent: null, message: "A log-in code step is already open for an existing account; use the login tool. Nothing was submitted.", submission_attempted: false };
+        if (s.hintMatches === true) return { status: "challenge_sent", channel: target.channel, destination_hint: hint, code_length: 6, next_step: "complete_registration", landing_url: s.url, evidence: s.codeHint ? redact(s.codeHint) : "Verification code step is open.", submission_attempted: false, resumed: true };
         return fail("unknown", "A verification step for a different or unidentified address is already open in this tab; reload " + signupUrl + " before registering " + hint + ". Nothing was submitted.");
       }
       const who = await identity(target.channel);
@@ -297,7 +286,7 @@
         if (key && input[key] !== undefined && element) setValue(element, input[key].trim());
       }
       // Tick only the consent the chosen channel requires; leave every other box (marketing, offers) as the site set it, and refuse a pre-ticked one.
-      const boxes = [...form.querySelectorAll('input[type="checkbox"]')].filter(b => b.getClientRects().length > 0);
+      const boxes = [...form.querySelectorAll('input[type="checkbox"]')].filter(b => b.getClientRects().length > 0 && b.checkVisibility({ checkOpacity: true, checkVisibilityCSS: true }));
       for (const box of read(target).checkboxes) {
         if (consentBox(box.label) || legalBox(box.label)) {
           if (!box.checked) boxes[box.index].click();
@@ -311,6 +300,9 @@
       if (target.channel === "email" ? s.emailValue !== target.value : normalizePhone(s.phoneDigits || "") !== target.value) return fail("unknown", "The form did not receive the supplied address. Nothing was submitted.");
       if (s.checkboxes.some(b => (consentBox(b.label) || legalBox(b.label)) && !b.checked)) return fail("unknown", "A required consent box could not be ticked. Nothing was submitted.");
       if (Number(sessionStorage.getItem(emailGuardKey) || 0) > previous) return fail("unknown", "Another invocation submitted a sign-up in this tab meanwhile; call resume_registration. Nothing was submitted.");
+      const feedback = x => [x.fieldError, ...x.alerts].filter(Boolean).join(" ");
+      const previousFeedback = feedback(s);
+      let cleared = !previousFeedback;
       sessionStorage.setItem(emailGuardKey, String(Date.now()));
       submitted = true;
       stage = "after_submit";
@@ -318,7 +310,9 @@
       let sawCaptcha = false;
       const result = await poll(target, x => {
         if (x.captchaVisible) sawCaptcha = true;
-        return !x.onSite || x.proxyError || !!x.challenge || x.codeStep || x.welcomeBack || !!x.fieldError || x.alerts.length > 0;
+        const message = feedback(x);
+        if (!message) cleared = true;
+        return !x.onSite || x.proxyError || !!x.challenge || x.codeStep || x.welcomeBack || (!!message && (message !== previousFeedback || cleared));
       }, 50000);
       if (!result) {
         if (sawCaptcha) return fail("captcha_or_challenge", "A reCAPTCHA challenge was shown after submitting and was not resolved within 50 seconds. Do not resubmit; call resume_registration later.", "site");
@@ -326,15 +320,15 @@
       }
       if (result.proxyError || !result.onSite) return fail("unknown", "The page showed a proxy error or left Instacart after submitting; the outcome is unknown. Call resume_registration before any further attempt.");
       if (result.challenge) return fail("captcha_or_challenge", result.challenge, "site");
-      if (result.welcomeBack) return { status: "existing_account", channel: target.channel, destination_hint: hint, next_step: "login", code_sent: null, message: "Instacart routed this sign-up to its log-in path because an account already exists for " + hint + "; it may have sent a log-in code. Use the login tool; do not enter that code with complete_registration.", submission_attempted: true };
-      const message = [result.fieldError, ...result.alerts].filter(Boolean).join(" ");
-      if (message && !result.codeStep) {
+      if (result.welcomeBack && result.hintMatches !== false) return { status: "existing_account", channel: target.channel, destination_hint: hint, next_step: "login", code_sent: null, message: "Instacart routed this sign-up to its log-in path because an account already exists for " + hint + "; it may have sent a log-in code. Use the login tool; do not enter that code with complete_registration.", submission_attempted: true };
+      const message = feedback(result);
+      if (message && !result.codeStep && (message !== previousFeedback || cleared)) {
         const kind = classify(message, false);
         if (kind === "invalid_input") sessionStorage.removeItem(emailGuardKey);
         return fail(kind, message, "site");
       }
       if (result.hintMatches === false) return fail("unknown", "Instacart opened a verification step for a different address than " + hint + ". Do not enter a code; inspect the page.");
-      return { status: "challenge_sent", channel: target.channel, destination_hint: hint, code_length: 6, next_step: "complete_registration", landing_url: result.url, evidence: result.codeHint || "Verification code step is open.", submission_attempted: true, resumed: false };
+      return { status: "challenge_sent", channel: target.channel, destination_hint: hint, code_length: 6, next_step: "complete_registration", landing_url: result.url, evidence: result.codeHint ? redact(result.codeHint) : "Verification code step is open.", submission_attempted: true, resumed: false };
     } catch (error) {
       return fail("unknown", submitted ? "The page script failed after the sign-up was submitted; the outcome is unknown. Call resume_registration before any further attempt." : "The page script failed before anything was submitted.");
     }

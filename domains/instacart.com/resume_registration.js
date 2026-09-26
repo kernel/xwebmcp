@@ -56,20 +56,12 @@
   execute: async (input, { signal } = {}) => {
     let submitted = false;
     let stage = "input";
-    const fail = (kind, message, source = "tool", extra = {}) => ({ status: "error", error_kind: kind, error_message: message, error_source: source, stage, submission_attempted: submitted, ...{}, ...extra });
-    const emailGuardKey = "instacart.com.register.submitted.v1";
-    const codeGuardKey = "instacart.com.register.code_submitted.v1";
+    const fail = (kind, message, source = "tool", extra = {}) => ({ status: "error", error_kind: kind, error_message: redact(message), error_source: source, stage, submission_attempted: submitted, ...extra });
     const maskEmail = value => String(value).replace(/^(.)[^@]*@/, "$1***@");
     const maskPhone = value => { const digits = String(value).replace(/\D/g, ""); return digits.length >= 4 ? "***-***-" + digits.slice(-4) : "***"; };
     const normalizePhone = value => { const d = String(value).replace(/\D/g, ""); return d.length === 11 && d.startsWith("1") ? d.slice(1) : d; };
-    const classify = (message, onCodeStep) => {
-      if (/too many|locked|temporarily|try again (?:later|in \d)|rate limit|slow down/i.test(message)) return "locked_or_throttled";
-      if (/captcha|robot|human verification|verify (?:that )?you/i.test(message)) return "captcha_or_challenge";
-      if (onCodeStep && /expired/i.test(message)) return "code_expired";
-      if (onCodeStep) return "code_rejected";
-      if (/valid (?:email|phone)|invalid/i.test(message)) return "invalid_input";
-      return "unknown";
-    };
+    // Site text (the code-step hint, error banners) can contain the address; mask it before it leaves the tool.
+    const redact = text => String(text).replace(/[\w.+-]+@[\w-]+(?:\.[\w-]+)+/g, maskEmail).replace(/(?:\+?1[\s.-]?)?\(?\d{3}\)?[\s.-]?\d{3}[\s.-]?\d{4}/g, maskPhone);
     // Compares a signed-in identity with the target; never returns the other account's full address.
     const compare = (who, target) => {
       if (who.error === "site_changed") return { state: "unknown", message: "Instacart no longer accepts the current-user lookup this tool relies on; the tool needs updating." };
@@ -82,7 +74,6 @@
       if (!who.phoneDigits) return { state: "unknown", message: "The signed-in account has no phone number, so it could not be matched." };
       return normalizePhone(who.phoneDigits) === target.value ? { state: "match", hint: maskPhone(target.value) } : { state: "mismatch", hint: maskPhone(who.phoneDigits) };
     };
-    const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
     const read = target => (expected => {
       const visible = e => !!e && e.getClientRects().length > 0 && e.checkVisibility({ checkOpacity: true, checkVisibilityCSS: true });
       const text = e => (e.innerText || e.textContent || "").replace(/\s+/g, " ").trim();
@@ -156,15 +147,6 @@
         return { error: "fetch_failed" };
       }
     };
-    const poll = async (target, predicate, ms) => {
-      const deadline = Date.now() + ms;
-      while (Date.now() < deadline && !signal?.aborted) {
-        const s = read(target);
-        if (predicate(s)) return s;
-        await sleep(250);
-      }
-      return null;
-    };
     const ALLOWED = ["email", "phone", "channel"];
     const bad = message => fail("invalid_input", message + " Nothing was submitted.");
     if (!input || typeof input !== "object" || Array.isArray(input)) return bad("Input must be an object.");
@@ -175,11 +157,11 @@
     if (channel === "email") {
       if (input.phone !== undefined) return bad("Do not pass phone for the email channel.");
       const email = typeof input.email === "string" ? input.email.trim() : "";
-      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || email.length > 254) return bad("email must be a valid email address.");
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || email.length < 6 || email.length > 254) return bad("email must be a valid email address.");
       target = { channel, value: email.toLowerCase(), raw: email };
     } else {
       if (input.email !== undefined) return bad("Do not pass email for the sms channel.");
-      const phone = typeof input.phone === "string" ? normalizePhone(input.phone) : "";
+      const phone = typeof input.phone === "string" && /^\+?1?[\s.()-]*[2-9][0-9]{2}[\s.()-]*[0-9]{3}[\s.-]*[0-9]{4}$/.test(input.phone) ? normalizePhone(input.phone) : "";
       if (!/^[2-9][0-9]{9}$/.test(phone)) return bad("phone must be a 10-digit US phone number.");
       target = { channel, value: phone, raw: phone };
     }
@@ -191,8 +173,8 @@
       if (s.proxyError || !s.onSite) return fail("navigation_failed", "This tab is showing a proxy error or another site instead of Instacart; reload an Instacart page and call again.");
       if (s.challenge) return fail("captcha_or_challenge", s.challenge, "site");
       if (s.codeStep) {
-        if (s.welcomeBack && s.hintMatches !== false) return ok("existing_account", "login", s.url, s.codeHint || "Log-in code step is open.");
-        if (s.hintMatches === true) return ok("challenge_pending", "complete_registration", s.url, s.codeHint || "Verification code step is open.");
+        if (s.welcomeBack && s.hintMatches !== false) return ok("existing_account", "login", s.url, s.codeHint ? redact(s.codeHint) : "Log-in code step is open.");
+        if (s.hintMatches === true) return ok("challenge_pending", "complete_registration", s.url, s.codeHint ? redact(s.codeHint) : "Verification code step is open.");
         return fail("wrong_account", "The open code step is for a different or unidentified address, not " + hint + ".");
       }
       const account = compare(await identity(target.channel), target);
