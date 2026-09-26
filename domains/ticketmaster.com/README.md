@@ -152,12 +152,19 @@ navigates only within `www.ticketmaster.com`. If the tab is on another host, ope
 - Classic pages show a league or venue terms dialog on load; the offer request works
   without accepting it. The newer layout offers only price orders (low to high, high
   to low), not Best Seats.
-- The classic page's own BEST SEATS tab sent no new offer request when clicked in a
-  2026-09-26 check; it appears to re-sort the listings already loaded (the cheapest
-  40) and can place more primary seats near the top. `get_ticket_offers` asks the offer service for its seat-quality order instead,
-  so below the featured listings its Best Seats rows can differ from the tab (for
-  example, expensive resale seats in the best sections appear that the tab only shows
-  after scrolling).
+- When a shopper changes the tab or quantity on a classic page, the page sends a new
+  `quickpicks` query with its default price band (for example
+  `any(totalprices,$and(gte(@,42),lte(@,245)))` on tax-inclusive totals) and without
+  the featured-listing parameters. `get_ticket_offers` mirrors the page's initial-load
+  query instead, with the filter reset to `not('accessible')`, so it ranks every
+  listing: below the featured rows its Best Seats list can include expensive resale
+  seats the page's BEST SEATS tab hides behind that price band, and for other
+  quantities it can include offers (such as a four-pack) the tab omits. The page's
+  resource-timing buffer holds 250 entries, so the tool reads the initial query early
+  in the page's life; when none is found it falls back to the default query with a
+  warning.
+- Event pages for past or off-sale performances show "This event is no longer on sale"
+  instead of a listing panel; the tool returns `no_tickets` for them.
 - Ticket quantity limits are per event (the newer layout listed 1–6 for one show and
   1–8 for another); a quantity the picker does not offer returns `invalid_input` with
   the offered quantities.
@@ -179,7 +186,7 @@ navigates only within `www.ticketmaster.com`. If the tab is on another host, ope
 - On the classic layout `max_price_per_ticket` checks at most 120 listings in the
   requested order; with `best_seats` a warning says when cheaper seats may exist
   further down. `best_seats` is the offer service's seat-quality order after the
-  featured listings, not a replica of the page tab's client-side ordering.
+  featured listings, over all prices, not the page tab's price-banded list.
 - Waiting rooms (`queue`) and bot-protection pages are detected and reported, not
   passed. Accessible-seating inventory is excluded, as on the site's default view.
 - Signed-in-only inventory (member presales, unlock codes) was not tested; the tools
@@ -226,7 +233,7 @@ were confirmed fixed live; the new findings, fixed in the next commit:
 3. The dated Los Angeles search still missed two in-radius shows on date-filtered
    pages 6 and 7. The date-filtered pass now reads up to 40 pages and warns at the cap.
 4. Best Seats did not match the page tab on a promoted-primary concert: documented
-   above (the tab appears to re-sort loaded listings client-side).
+   above (round 3 corrected the explanation: the tab applies a price band).
 5. Non-ASCII page-tool output arriving as a JSON string: documented above as runtime
    behaviour.
 
@@ -236,4 +243,19 @@ other sites, 111 schema-valid live outputs, 31 invalid inputs, the unsupported
 quantity path, sold-out reporting, and no clicks other than the quantity filter, no
 terms acceptance and no checkout, cart, hold or reserve requests.
 
-Round 3 on the fixed source: pending.
+Independent QA round 3 on the third revision (`get_ticket_offers.js` blob `9e67dc4`):
+**FAIL**. All round-1 and round-2 fixes were confirmed live (the dated Los Angeles
+search returned exactly the 7 in-radius shows an independent enumeration of all 28
+date-filtered pages found; prices matched the page to the cent in New Jersey and
+Chicago; featured lawn listings came first as on the page). New findings, fixed in
+the next commit:
+
+1. Off-sale newer-layout pages ("This event is no longer on sale") returned
+   `site_error` after 25 s; they now return `no_tickets` as soon as the message shows.
+2. A bot-protection page that rendered about 10 s after navigation was reported as
+   `unsupported_page`; the empty-document re-check now waits up to 15 s.
+3. The README misdescribed why Best Seats differs from the page tab; corrected above.
+4. Dead code removed; the tool now prefers the page's initial query (with featured
+   parameters) and resets any shopper price band.
+
+Round 4 on the fixed source: pending.

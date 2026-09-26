@@ -142,6 +142,8 @@ function harness(name, o = {}) {
   const snapshot = () => {
     const nodes = [];
     if (!panel) return { nodes: [{ role: "heading", name: "Something else", backendNodeId: 1 }] };
+    if (panel.message) nodes.push({ role: "heading", name: panel.message, backendNodeId: 2 });
+    if (panel.otherDates) nodes.push({ role: "StaticText", name: "Sold Out", backendNodeId: 3 });
     if (panel.loading) return { nodes };
     const listings = (panel.listings[panel.quantity] ?? []);
     nodes.push({ role: "StaticText", name: listings.length + (listings.length === 1 ? " Result" : " Results"), backendNodeId: 10 });
@@ -729,4 +731,35 @@ test("search_events: a busy date range reads 40 date-filtered pages and warns wh
   assert.deepEqual(result.events.map(e => e.event_id), ["AAAA0002", "LATE0001"]);
   assert.equal(h.calls.api.filter(p => p.includes("startDate")).length, 40);
   assert.match(result.warnings[0], /first 800/);
+});
+
+test("get_ticket_offers: an off-sale newer-layout page is no_tickets without waiting for a panel", async () => {
+  const h = harness("get_ticket_offers", { page: global, panel: { listings: LISTINGS, loading: true, message: "THIS EVENT IS NO LONGER ON SALE" } });
+  const result = await h.run({ event: "FFFF0001" });
+  assert.equal(result.status, "no_tickets");
+  assert.match(result.reason, /no longer on sale/);
+  assert.deepEqual(h.calls.clicks, []);
+});
+
+test("get_ticket_offers: another date's Sold Out badge does not end the wait for the listing panel", async () => {
+  // The panel never loads here, so the badge alone must not be reported as no_tickets.
+  const result = await harness("get_ticket_offers", { page: global, panel: { listings: LISTINGS, loading: true, otherDates: true } }).run({ event: "FFFF0001" });
+  assert.equal(result.error_kind, "site_error");
+});
+
+test("get_ticket_offers: a bot-protection page that renders after ten seconds is still a challenge", async () => {
+  const h = harness("get_ticket_offers", { pageFor: (_, calls) => (calls.js < 9 ? { title: "", text: "" } : { title: "Your Browsing Activity Has Been Paused" }) });
+  assert.equal((await h.run({ event: "EEEE0001" })).error_kind, "challenge");
+});
+
+test("get_ticket_offers: prefers the page's initial query with featured parameters and resets its price band", async () => {
+  const later = PAGE_QUERY("EEEE0001").replace("&promoted=primary&maxNumberOfPromotions=3", "").replace("q=not(%27accessible%27)", "q=and(not(%27accessible%27)%2Cany(totalprices%2C%24and(gte(%40%2C42)%2Clte(%40%2C245))))");
+  const h = harness("get_ticket_offers", { page: classic({ resources: [later, PAGE_QUERY("EEEE0001"), later] }) });
+  await h.run({ event: "EEEE0001" });
+  const q = new URLSearchParams(h.calls.xhr[0].url.split("?")[1]);
+  assert.equal(q.get("promoted"), "primary");
+  assert.equal(q.get("q"), "not('accessible')");
+  const only = harness("get_ticket_offers", { page: classic({ resources: [later] }) });
+  await only.run({ event: "EEEE0001" });
+  assert.equal(new URLSearchParams(only.calls.xhr[0].url.split("?")[1]).get("q"), "not('accessible')");
 });

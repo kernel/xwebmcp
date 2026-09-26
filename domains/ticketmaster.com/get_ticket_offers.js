@@ -102,7 +102,9 @@
     const money = v => Math.round(v * 100) / 100;
     const noTickets = (url, reason) => ({ status: "no_tickets", event_id: eventId, event_url: url, quantity, reason, observed_at: observedAt });
     const CHALLENGE = /pardon (the|our) interruption|browsing activity has been paused|access denied|verify (that )?you are (a )?human|are you a robot/i;
-    const SOLD_OUT = /sold out|no tickets (are )?(currently )?available|tickets are not available|event has ended|sales have ended/i;
+    const SOLD_OUT = /sold out|no longer on sale|not (currently )?on sale|no tickets (are )?(currently )?available|tickets are not available|event has ended|sales have ended/i;
+    // Page-level messages that mean the event itself cannot be bought now (not a filter result or another date's badge).
+    const OFF_SALE = /no longer on sale|not (currently )?on sale|tickets are sold out|(this )?event is sold out|sales have ended|event has ended|tickets are not available/i;
 
     try {
       let here = null;
@@ -134,9 +136,12 @@
         if (variant !== "/naevent/[eventId]" || !edp?.ismdsApiKey || !edp?.ismdsPricingURL) return { variant, title, ...scan() };
         // Reuse the page's own quick-picks query when it has sent one, so event-specific parameters (ticket types,
         // featured-listing rules) match what the shopper sees; otherwise fall back to the page's usual defaults.
+        // The initial-load query carries the featured-listing parameters; queries after a shopper's filter change add a
+        // price band and drop them, so prefer the one with "promoted" and reset the filter expression.
         let pageQuery = null;
         for (let waited = 0; !pageQuery && waited <= 8000; waited += 500) {
-          pageQuery = performance.getEntriesByType("resource").map(e => e.name).filter(u => u.includes("/event/" + eventId + "/quickpicks?")).pop() || null;
+          const sent = performance.getEntriesByType("resource").map(e => e.name).filter(u => u.includes("/event/" + eventId + "/quickpicks?"));
+          pageQuery = sent.find(u => /[?&]promoted=/.test(u)) || sent[0] || null;
           if (!pageQuery) await new Promise(r => setTimeout(r, 500));
         }
         const request = offset => new Promise(resolve => {
@@ -144,7 +149,7 @@
             show: "places maxQuantity sections", mode: "primary:ppsectionrow resale:ga_areas platinum:all", q: "not('accessible')",
             includeStandard: "true", includePlatinumInventoryType: "false", apikey: edp.ismdsApiKey, apisecret: edp.ismdsApiSecret, resaleChannelId: edp.context?.resaleChannelId || ""
           }).toString() + "&embed=area&embed=offer&embed=description");
-          const set = { qty: String(qty), includeResale: String(includeResale), limit: "40", offset: String(offset), sort: sort === "best_seats" ? "-quality" : "noTaxTotalprice" };
+          const set = { qty: String(qty), q: "not('accessible')", includeResale: String(includeResale), limit: "40", offset: String(offset), sort: sort === "best_seats" ? "-quality" : "noTaxTotalprice" };
           for (const [k, v] of Object.entries(set)) url.searchParams.set(k, v);
           const xhr = new XMLHttpRequest();
           xhr.open("GET", url.href);
@@ -198,12 +203,11 @@
           if (picks.length >= limit || b.picks.length < 40 || (total !== null && read >= total)) break;
         }
         return { variant, title, ...scan(), api: { status: 200, total, read, mirrored: !!pageQuery, picks } };
-        return { variant, title, ...scan(), api: { status: 200, total, read, picks } };
       }, { arg: { eventId, qty: quantity, sort, includeResale, maxPrice, limit, challenge: CHALLENGE.source, soldOut: SOLD_OUT.source } });
 
-      // A flagged session can show an empty document for a moment before the bot-protection page renders.
+      // A flagged session can show an empty document for up to about ten seconds before the bot-protection page renders.
       let page = await inspect();
-      for (let i = 0; i < 4 && !page.variant && !CHALLENGE.test(page.title); i++) { await waitMs(1500); page = await inspect(); }
+      for (let i = 0; i < 10 && !page.variant && !CHALLENGE.test(page.title); i++) { await waitMs(1500); page = await inspect(); }
 
       if (CHALLENGE.test(page.title) || (!page.variant && page.challenged)) return fail("challenge", "Ticketmaster showed a bot-protection page instead of the event; wait a few minutes and try again. Nothing was selected.");
       if (page.variant === "/404" || /page not found|we can.t find the page/i.test(page.title)) return fail("not_found", "Ticketmaster has no event page for id " + eventId + ".");
@@ -246,7 +250,8 @@
         return {
           nodes: named,
           results: count ? Number(count.name.replace(/[^\d]/g, "")) : null,
-          empty: named.some(n => /no seats match your filters|no tickets (are )?(currently )?available|sold out/i.test(n.name)),
+          empty: named.some(n => /no seats match your filters|no tickets (are )?(currently )?available/i.test(n.name)),
+          offSale: named.some(n => ["StaticText", "heading"].includes(n.role) && OFF_SALE.test(n.name)),
           quantityButton: named.find(n => n.role === "button" && /current quantity: \d+ Tickets?/i.test(n.name)) || null,
           sortButton: named.find(n => n.role === "button" && /^(Lowest|Highest) Price$/i.test(n.name.trim())) || null,
           // The panel exposes each listing once per role (a button, and a menuitem in some states); read one role.
@@ -258,7 +263,13 @@
         for (let waited = 0; !ok(state) && waited < seconds * 1000; waited += 700) { await waitMs(700); state = await read(); }
         return ok(state) ? state : null;
       };
-      let state = await settle(s => s.results !== null || s.empty || s.listings.length > 0, 25);
+      let state = await settle(s => s.results !== null || s.empty || s.offSale || s.listings.length > 0, 25);
+      if (state && state.offSale && state.results === null && !state.listings.length) {
+        // Give a listing panel that renders alongside the message a moment to appear before trusting it.
+        await waitMs(2000);
+        state = await read();
+        if (state.results === null && !state.listings.length) return noTickets(eventUrl, "The event page says the event is sold out or no longer on sale.");
+      }
       if (!state) {
         const text = (await js(() => (document.body?.innerText || "").slice(0, 4000))) || "";
         if (CHALLENGE.test(text)) return fail("challenge", "Ticketmaster showed a bot-protection check on the event page; nothing was selected.");
