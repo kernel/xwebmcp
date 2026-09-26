@@ -193,7 +193,7 @@
       for (const match of inner.matchAll(/([a-zA-Z_:][-a-zA-Z0-9_:.]*)(?:\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`]+)))?/g)) out[match[1].toLowerCase()] = match[2] ?? match[3] ?? match[4] ?? "";
       return out;
     };
-    // The filter editor is a server-rendered form; read it the way the browser would submit it.
+    // Reads the fields of server-rendered form markup the way the browser would submit them.
     const formFields = html => {
       const fields = [];
       for (const match of String(html).matchAll(/<input\b[^>]*>|<textarea\b[^>]*>[\s\S]*?<\/textarea>|<select\b[^>]*>[\s\S]*?<\/select>/gi)) {

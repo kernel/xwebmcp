@@ -410,12 +410,9 @@
       "url_patterns": [
         "https://inbox.purelymail.com/*"
       ],
-      "status": "qa_passed",
-      "last_verified": "2026-09-26",
-      "notes": "Creates one incoming-mail filter through the Settings > Filters editor: subject/from/to/body/header tests; move, copy, flag, keep and stop actions. Idempotent by name. No forwarding, reject, discard or auto-reply actions. Independent QA passed on 2026-09-26 against the live test mailbox.",
-      "provenance": {
-        "qa_agent": "agt_81992e2c76a0fdfb190f"
-      }
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Creates one incoming-mail filter through the Settings > Filters editor: subject/from/to/body/header tests; move, copy, flag, keep and stop actions. Idempotent by name. No forwarding, reject, discard or auto-reply actions."
     },
     {
       "domain": "purelymail.com",
@@ -426,12 +423,9 @@
       "url_patterns": [
         "https://inbox.purelymail.com/*"
       ],
-      "status": "qa_passed",
-      "last_verified": "2026-09-26",
-      "notes": "Creates one folder (optionally nested) through Settings > Folders; idempotent when it already exists. Never renames or deletes. Independent QA passed on 2026-09-26 against the live test mailbox.",
-      "provenance": {
-        "qa_agent": "agt_81992e2c76a0fdfb190f"
-      }
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Creates one folder (optionally nested) through Settings > Folders; idempotent when it already exists. Never renames or deletes."
     },
     {
       "domain": "purelymail.com",
@@ -442,12 +436,9 @@
       "url_patterns": [
         "https://inbox.purelymail.com/*"
       ],
-      "status": "qa_passed",
-      "last_verified": "2026-09-26",
-      "notes": "Deletes exactly one filter by name through the Filters Delete action; a missing name changes nothing. No bulk delete. Independent QA passed on 2026-09-26 against the live test mailbox.",
-      "provenance": {
-        "qa_agent": "agt_81992e2c76a0fdfb190f"
-      }
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Deletes exactly one filter by name through the Filters Delete action; a missing name changes nothing. No bulk delete."
     },
     {
       "domain": "purelymail.com",
@@ -458,12 +449,9 @@
       "url_patterns": [
         "https://inbox.purelymail.com/*"
       ],
-      "status": "qa_passed",
-      "last_verified": "2026-09-26",
-      "notes": "Reads one filter by name from the filter editor. Read-only. Independent QA passed on 2026-09-26 against the live test mailbox.",
-      "provenance": {
-        "qa_agent": "agt_81992e2c76a0fdfb190f"
-      }
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Reads one filter by name from the filter editor. Read-only."
     },
     {
       "domain": "purelymail.com",
@@ -474,12 +462,9 @@
       "url_patterns": [
         "https://inbox.purelymail.com/*"
       ],
-      "status": "qa_passed",
-      "last_verified": "2026-09-26",
-      "notes": "Reads vacation auto-reply filters (vacation action) with message, subject, interval and enabled state. Read-only. Independent QA passed on 2026-09-26 against the live test mailbox.",
-      "provenance": {
-        "qa_agent": "agt_81992e2c76a0fdfb190f"
-      }
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Reads vacation auto-reply filters (vacation action) with message, subject, interval and enabled state. Read-only."
     },
     {
       "domain": "purelymail.com",
@@ -490,12 +475,9 @@
       "url_patterns": [
         "https://inbox.purelymail.com/*"
       ],
-      "status": "qa_passed",
-      "last_verified": "2026-09-26",
-      "notes": "Returns a one-time code only from a fresh message received after since: email must pass DMARC for the expected sender domain; SMS must be a DMARC-passing Google Voice forward mentioning expected_text. Stale, forged, excluded and ambiguous codes are not returned. Independent QA passed on 2026-09-26 against the live test mailbox.",
-      "provenance": {
-        "qa_agent": "agt_81992e2c76a0fdfb190f"
-      }
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Returns a one-time code only from a fresh message received after since: email must pass DMARC for the expected sender domain; SMS must be a DMARC-passing Google Voice forward mentioning expected_text. Stale, forged, excluded and ambiguous codes are not returned."
     },
     {
       "domain": "purelymail.com",
@@ -506,12 +488,9 @@
       "url_patterns": [
         "https://inbox.purelymail.com/*"
       ],
-      "status": "qa_passed",
-      "last_verified": "2026-09-26",
-      "notes": "Lists incoming-mail filters in run order with conditions and actions; flags filters the tools cannot rewrite. Read-only. Independent QA passed on 2026-09-26 against the live test mailbox.",
-      "provenance": {
-        "qa_agent": "agt_81992e2c76a0fdfb190f"
-      }
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Lists incoming-mail filters in run order with conditions and actions; flags filters the tools cannot rewrite. Read-only."
     },
     {
       "domain": "purelymail.com",
@@ -522,12 +501,9 @@
       "url_patterns": [
         "https://inbox.purelymail.com/*"
       ],
-      "status": "qa_passed",
-      "last_verified": "2026-09-26",
-      "notes": "Lists subscribed folders with roles and total/unread counts. Read-only. Independent QA passed on 2026-09-26 against the live test mailbox.",
-      "provenance": {
-        "qa_agent": "agt_81992e2c76a0fdfb190f"
-      }
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Lists subscribed folders with roles and total/unread counts. Read-only."
     },
     {
       "domain": "purelymail.com",
@@ -538,12 +514,9 @@
       "url_patterns": [
         "https://inbox.purelymail.com/*"
       ],
-      "status": "qa_passed",
-      "last_verified": "2026-09-26",
-      "notes": "Lists or searches one folder page (up to 50) with the webmail's own list and search; does not mark mail read. Search results may lag messages that arrived seconds ago. Independent QA passed on 2026-09-26 against the live test mailbox.",
-      "provenance": {
-        "qa_agent": "agt_81992e2c76a0fdfb190f"
-      }
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Lists or searches one folder page (up to 50) with the webmail's own list and search; does not mark mail read. Search results may lag messages that arrived seconds ago."
     },
     {
       "domain": "purelymail.com",
@@ -555,12 +528,9 @@
         "https://purelymail.com/*",
         "https://*.purelymail.com/*"
       ],
-      "status": "qa_passed",
-      "last_verified": "2026-09-26",
-      "notes": "Signs in through the Purelymail Webmail Login form once and confirms the webmail header shows the supplied address; an existing session for another address is wrong_account. No 2FA support. Independent QA passed on 2026-09-26 against the live test mailbox.",
-      "provenance": {
-        "qa_agent": "agt_81992e2c76a0fdfb190f"
-      }
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Signs in through the Purelymail Webmail Login form once and confirms the webmail header shows the supplied address; an existing session for another address is wrong_account. No 2FA support."
     },
     {
       "domain": "purelymail.com",
@@ -571,12 +541,9 @@
       "url_patterns": [
         "https://inbox.purelymail.com/*"
       ],
-      "status": "qa_passed",
-      "last_verified": "2026-09-26",
-      "notes": "Reads one message via the Show source view (stays unread): safe headers, sender_authentication, attachment names, links and a bounded plain-text body marked untrusted. Independent QA passed on 2026-09-26 against the live test mailbox.",
-      "provenance": {
-        "qa_agent": "agt_81992e2c76a0fdfb190f"
-      }
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Reads one message via the Show source view (stays unread): safe headers, sender_authentication, attachment names, links and a bounded plain-text body marked untrusted."
     },
     {
       "domain": "purelymail.com",
@@ -587,12 +554,9 @@
       "url_patterns": [
         "https://inbox.purelymail.com/*"
       ],
-      "status": "qa_passed",
-      "last_verified": "2026-09-26",
-      "notes": "Sends one plain-text email through a compose session with confirm_send; saves to Sent; refuses a same-subject, same-recipient repeat within 15 minutes unless allow_duplicate. Never retries. Independent QA passed on 2026-09-26 against the live test mailbox.",
-      "provenance": {
-        "qa_agent": "agt_81992e2c76a0fdfb190f"
-      }
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Sends one plain-text email through a compose session with confirm_send; saves to Sent; refuses a same-subject, same-recipient repeat within 15 minutes unless allow_duplicate. Never retries."
     },
     {
       "domain": "purelymail.com",
@@ -603,12 +567,9 @@
       "url_patterns": [
         "https://inbox.purelymail.com/*"
       ],
-      "status": "qa_passed",
-      "last_verified": "2026-09-26",
-      "notes": "Creates or edits the vacation auto-reply filter; can create it switched off. Enabling makes the server auto-reply; live QA never enabled it. Independent QA passed on 2026-09-26 against the live test mailbox.",
-      "provenance": {
-        "qa_agent": "agt_81992e2c76a0fdfb190f"
-      }
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Creates or edits the vacation auto-reply filter; can create it switched off. Enabling makes the server auto-reply; live QA never enabled it."
     },
     {
       "domain": "purelymail.com",
@@ -619,12 +580,9 @@
       "url_patterns": [
         "https://inbox.purelymail.com/*"
       ],
-      "status": "qa_passed",
-      "last_verified": "2026-09-26",
-      "notes": "Replaces given fields of one filter found by name, keeping its position; refuses filters with parts it cannot rewrite, including vacation replies. Independent QA passed on 2026-09-26 against the live test mailbox.",
-      "provenance": {
-        "qa_agent": "agt_81992e2c76a0fdfb190f"
-      }
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Replaces given fields of one filter found by name, keeping its position; refuses filters with parts it cannot rewrite, including vacation replies."
     },
     {
       "domain": "purelymail.com",
@@ -635,12 +593,9 @@
       "url_patterns": [
         "https://inbox.purelymail.com/*"
       ],
-      "status": "qa_passed",
-      "last_verified": "2026-09-26",
-      "notes": "Waits up to 110 s for mail received after since matching sender/subject text, using the newest folder list page; returns metadata only. Independent QA passed on 2026-09-26 against the live test mailbox.",
-      "provenance": {
-        "qa_agent": "agt_81992e2c76a0fdfb190f"
-      }
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Waits up to 110 s for mail received after since matching sender/subject text, using the newest folder list page; returns metadata only."
     },
     {
       "domain": "southwest.com",

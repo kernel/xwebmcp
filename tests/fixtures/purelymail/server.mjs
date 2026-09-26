@@ -49,7 +49,7 @@ const esc = s => String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(
 const rfcDate = ms => new Date(ms).toUTCString().replace("GMT", "+0000");
 
 // Builds a message source the way Purelymail stores it: its own headers first, then the sender's.
-export function mime({ from, to = ACCOUNT, subject, text: bodyText = null, html = null, receivedAt = NOW - 60000, date = receivedAt, auth = null, extraHeaders = [], attachment = null, subjectRaw = null, base64Text = false }) {
+export function mime({ from, to = ACCOUNT, subject, text: bodyText = null, html = null, receivedAt = NOW - 60000, date = receivedAt, auth = null, extraHeaders = [], attachment = null, subjectRaw = null, base64Text = false, received = true }) {
   const text = bodyText === null && html === null ? "" : bodyText;
   const domain = from.replace(/.*@/, "").replace(/>.*/, "");
   const results = auth === null ? `purelymail.com; dkim=pass header.i=${domain}; dmarc=pass (p=reject) header.from=${domain}` : auth;
@@ -57,8 +57,7 @@ export function mime({ from, to = ACCOUNT, subject, text: bodyText = null, html 
     "Return-Path: <bounce@" + domain + ">",
     "Delivered-To: " + ACCOUNT,
     ...(results ? ["Authentication-Results: " + results] : []),
-    "Received: from mx.example.net by purelymail.com (Purelymail SMTP) with ESMTPS id x1;",
-    "        " + rfcDate(receivedAt)
+    ...(received ? ["Received: from mx.example.net by purelymail.com (Purelymail SMTP) with ESMTPS id x1;", "        " + rfcDate(receivedAt)] : [])
   ];
   const own = [...extraHeaders, "Date: " + rfcDate(date), "Subject: " + (subjectRaw ?? subject), "From: " + from, "To: " + to, "Message-ID: <" + subject.length + "." + receivedAt + "@" + domain + ">", "MIME-Version: 1.0"];
   const textPart = text === null ? null : base64Text

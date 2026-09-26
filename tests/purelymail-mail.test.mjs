@@ -160,6 +160,10 @@ test("get_verification_code takes the newest authenticated, fresh code and ignor
   assert.equal(result.code, "246810");
   const other = await pageTool("get_verification_code", server({ messages: [good] })).run({ channel: "email", since, expected_sender_domain: "other-site.com", timeout_sec: 0 });
   assert.equal(other.status, "not_found", "a code from another sender domain is not returned");
+  const unreceived = msg({ uid: 10, from: "no-reply@accounts.example-shop.com", subject: "Your Example Shop sign-in code", text: "Use 135246 to sign in.", received: false });
+  const noReceived = server({ messages: [unreceived] });
+  assert.equal((await pageTool("read_message", noReceived).run({ uid: 10 })).sender_authentication, "unverified", "without a provider Received header the Authentication-Results header is not trusted");
+  assert.equal((await pageTool("get_verification_code", noReceived).run({ channel: "email", since, expected_sender_domain: "example-shop.com", timeout_sec: 0 })).status, "not_found");
   const lookalike = msg({ uid: 9, from: "no-reply@example-shop.com.attacker.test", subject: "Your code", text: "Code 135790" });
   assert.equal((await pageTool("get_verification_code", server({ messages: [lookalike] })).run({ channel: "email", since, expected_sender_domain: "example-shop.com", timeout_sec: 0 })).status, "not_found");
 });

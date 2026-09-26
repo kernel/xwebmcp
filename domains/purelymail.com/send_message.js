@@ -334,10 +334,11 @@
       return out;
     };
     const isoDate = value => { const time = Date.parse(String(value || "").replace(/\s*\([^)]*\)\s*$/, "").trim()); return Number.isFinite(time) ? new Date(time).toISOString() : null; };
-    // Only the Authentication-Results header Purelymail prepends (above its own first Received header) is trusted; copies inside the message are ignored.
+    // Only the Authentication-Results header Purelymail prepends (above its own first Received header) is trusted; copies inside the message, or any header on a message without a Received header, are ignored.
     const senderAuthentication = (headers, from, account) => {
       const firstReceived = headers.findIndex(h => h[0] === "received");
-      const results = headers.find((h, i) => h[0] === "authentication-results" && (firstReceived < 0 || i < firstReceived) && /^purelymail\.com\s*;/i.test(h[1]));
+      if (firstReceived < 0) return "unverified";
+      const results = headers.find((h, i) => h[0] === "authentication-results" && i < firstReceived && /^purelymail\.com\s*;/i.test(h[1]));
       if (!results || !from) return "unverified";
       const dmarc = /\bdmarc=pass\b[^;]*?\bheader\.from=(?:[^@;\s]*@)?([^;\s]+)/i.exec(results[1]);
       if (dmarc && dmarc[1].toLowerCase() === from.split("@")[1]) return "dmarc_pass";
@@ -390,7 +391,7 @@
       for (const match of inner.matchAll(/([a-zA-Z_:][-a-zA-Z0-9_:.]*)(?:\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`]+)))?/g)) out[match[1].toLowerCase()] = match[2] ?? match[3] ?? match[4] ?? "";
       return out;
     };
-    // The filter editor is a server-rendered form; read it the way the browser would submit it.
+    // Reads the fields of server-rendered form markup the way the browser would submit them.
     const formFields = html => {
       const fields = [];
       for (const match of String(html).matchAll(/<input\b[^>]*>|<textarea\b[^>]*>[\s\S]*?<\/textarea>|<select\b[^>]*>[\s\S]*?<\/select>/gi)) {
