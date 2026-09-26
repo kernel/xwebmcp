@@ -1,5 +1,5 @@
 [{
-  kind: "cdp",
+  kind: "page",
   match: { url_patterns: ["https://target.com/*", "https://*.target.com/*"] },
   tool: {
     name: "search_products",
@@ -75,7 +75,7 @@
         },
         {
           type: "object", additionalProperties: false, required: ["status", "error_kind", "error_message"],
-          properties: { status: { const: "error" }, error_kind: { enum: ["invalid_input", "no_store", "challenge", "site_error"] }, error_message: { type: "string", minLength: 1 } }
+          properties: { status: { const: "error" }, error_kind: { enum: ["invalid_input", "wrong_page", "no_store", "challenge", "site_error"] }, error_message: { type: "string", minLength: 1 } }
         }
       ]
     },
@@ -91,57 +91,51 @@
     const decode = text => typeof text !== "string" ? null : text
       .replace(/&#(\d+);/g, (_, n) => String.fromCharCode(Number(n))).replace(/&#x([0-9a-f]+);/gi, (_, n) => String.fromCharCode(parseInt(n, 16)))
       .replace(/&quot;/g, "\"").replace(/&apos;/g, "'").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&reg;/g, "\u00ae").replace(/&trade;/g, "\u2122").replace(/&nbsp;/g, " ").replace(/&ndash;/g, "–").replace(/&mdash;/g, "—").replace(/&amp;/g, "&").replace(/\s+/g, " ").trim();
-    const session = async requireStore => {
-      let current = null;
-      try { current = new URL((await pageInfo()).url); } catch { /* about:blank has no usable URL */ }
-      // Checkout, sign-in and account pages are never used; any other www.target.com page carries the scripts that sign the site's API requests.
-      if (!current || current.origin !== ORIGIN || /^\/(checkout|login|account|orders|circle\/account)(\/|$)|^\/co-/i.test(current.pathname)) {
-        await gotoUrl(ORIGIN + "/");
-        if (!await waitForLoad(30)) return { error: fail("site_error", "The Target homepage did not finish loading; nothing was changed.") };
+    const session = requireStore => {
+      // The tool runs in the page it was invoked on: only www.target.com pages carry the site's API configuration and request signing, and checkout pages are never used.
+      if (location.origin !== ORIGIN || /^\/checkout(\/|$)|^\/co-/i.test(location.pathname)) return { error: fail("wrong_page", "Open https://www.target.com/ (or any www.target.com page except checkout) in this tab, then call again. Nothing was changed.") };
+      if (/access to this page has been denied/i.test(document.title) || document.querySelector("[id^='px-captcha']")) return { error: fail("challenge", CHALLENGE) };
+      const config = window.__CONFIG__ || {};
+      const key = typeof config.defaultServicesApiKey === "string" ? config.defaultServicesApiKey : null;
+      if (!key) return { error: fail("site_error", "This Target page has not loaded its API configuration; wait for it to finish loading and call again. Nothing was changed.") };
+      const cookies = {};
+      for (const part of document.cookie.split(";")) {
+        const at = part.indexOf("=");
+        if (at < 1) continue;
+        const name = part.slice(0, at).trim();
+        let value = part.slice(at + 1).trim();
+        try { value = decodeURIComponent(value); } catch { /* keep the raw value */ }
+        if (!(name in cookies)) cookies[name] = value;
       }
-      const readPage = () => js(() => {
-        const config = window.__CONFIG__ || {};
-        const location = (window.__TGT_DATA__ || {}).serverLocationVariables || {};
-        return {
-          key: typeof config.defaultServicesApiKey === "string" ? config.defaultServicesApiKey : null,
-          blocked: /access to this page has been denied/i.test(document.title) || !!document.querySelector("[id^='px-captcha']"),
-          storeIds: typeof location.store_ids === "string" ? location.store_ids : null
-        };
-      });
-      let page = await readPage();
-      if (!page.key && !page.blocked) { await waitForLoad(20); page = await readPage(); }
-      if (page.blocked) return { error: fail("challenge", CHALLENGE) };
-      if (!page.key) return { error: fail("site_error", "The Target page did not expose its API configuration; load target.com normally and try again. Nothing was changed.") };
-      const { cookies } = await cdp("Network.getCookies", { urls: [ORIGIN + "/"] });
-      const cookie = name => { const c = cookies.find(item => item.name === name); if (!c) return ""; try { return decodeURIComponent(c.value); } catch { return c.value; } };
       const fiats = {};
-      for (const part of cookie("fiatsCookie").split("|")) { const m = /^(DS[INZ])_(.*)$/.exec(part); if (m) fiats[m[1]] = m[2]; }
-      const place = (cookie("GuestLocation") || cookie("UserLocation")).split("|");
-      const visitorId = cookie("visitorId");
-      if (!visitorId) return { error: fail("site_error", "The Target session has no visitor id yet; load target.com normally and try again. Nothing was changed.") };
+      for (const part of (cookies.fiatsCookie || "").split("|")) { const m = /^(DS[INZ])_(.*)$/.exec(part); if (m) fiats[m[1]] = m[2]; }
+      const place = (cookies.GuestLocation || cookies.UserLocation || "").split("|");
+      const visitorId = cookies.visitorId || "";
+      if (!visitorId) return { error: fail("site_error", "The Target session has no visitor id yet; load target.com normally and call again. Nothing was changed.") };
       if (requireStore && !/^\d+$/.test(fiats.DSI || "")) return { error: fail("no_store", "No Target store is selected in this browser session. Choose a store on target.com yourself; these tools never change the store or address.") };
-      const token = cookie("idToken");
-      // Only the session-type claim leaves the page; the token itself is never returned.
-      const kind = token ? await js(value => { try { return JSON.parse(atob(value.split(".")[1].replace(/-/g, "+").replace(/_/g, "/"))).sut || null; } catch { return null; } }, { arg: token }) : null;
+      // Only the session-type claim of the site's token is read; the token never leaves the page.
+      let kind = null;
+      try { kind = JSON.parse(atob((cookies.idToken || "").split(".")[1].replace(/-/g, "+").replace(/_/g, "/"))).sut || null; } catch { /* no token yet */ }
       const storeId = /^\d+$/.test(fiats.DSI || "") ? fiats.DSI : null;
-      const nearby = page.storeIds && storeId && page.storeIds.split(",")[0] === storeId ? page.storeIds.split(",").filter(id => /^\d+$/.test(id)) : (storeId ? [storeId] : []);
+      const listed = ((window.__TGT_DATA__ || {}).serverLocationVariables || {}).store_ids;
+      const nearby = typeof listed === "string" && storeId && listed.split(",")[0] === storeId ? listed.split(",").filter(id => /^\d+$/.test(id)) : (storeId ? [storeId] : []);
       return {
-        key: page.key, visitorId, nearby,
+        key, visitorId, nearby,
         sessionType: kind === "G" ? "guest" : kind === "R" ? "registered" : "unknown",
         store: storeId ? { store_id: storeId, name: fiats.DSN || null, postal_code: fiats.DSZ || null } : null,
         location: { postal_code: /^\d{5}$/.test(place[0] || "") ? place[0] : null, latitude: place[1] || null, longitude: place[2] || null, state: place[3] || null }
       };
     };
-    const call = (url, method, body) => js(async ({ url, method, body }) => {
+    const call = async (url, method, body) => {
       const headers = { accept: "application/json" };
       if (body !== undefined) headers["content-type"] = "application/json";
       if (url.indexOf("https://carts.target.com/") === 0) headers["x-application-name"] = "web";
-      const res = await fetch(url, { method, credentials: "include", headers, body });
+      const res = await fetch(url, { method: method || "GET", credentials: "include", headers, body: body === undefined ? undefined : JSON.stringify(body) });
       const text = await res.text();
       let json = null;
       try { json = text ? JSON.parse(text) : null; } catch { /* block pages are HTML */ }
       return { status: res.status, json, challenge: json === null && /access to this page has been denied|perimeterx|px-captcha/i.test(text) };
-    }, { arg: { url, method: method || "GET", body: body === undefined ? undefined : JSON.stringify(body) } });
+    };
     const blocked = r => r.challenge || r.status === 435 || r.status === 429 || (r.status === 403 && !r.json);
     const siteMessage = json => {
       if (!json || typeof json !== "object") return null;
@@ -172,7 +166,7 @@
     if (!Array.isArray(facetIds) || facetIds.length > 8 || facetIds.some(id => typeof id !== "string" || !/^[a-z0-9]{3,16}$/.test(id)) || new Set(facetIds).size !== facetIds.length) return fail("invalid_input", "facet_ids must be up to 8 distinct option ids from an include_facets response.");
     if (typeof includeFacets !== "boolean") return fail("invalid_input", "include_facets must be true or false.");
     try {
-      const ctx = await session(true);
+      const ctx = session(true);
       if (ctx.error) return ctx.error;
       const offset = (page - 1) * 24;
       // The same request the site's results grid makes, including its sponsored placements and purchasability filter.
@@ -218,7 +212,7 @@
       })) : null;
       return { status: "ok", query, sort_by: sortBy, page, total_results: total, total_pages: Number.isInteger(meta.total_pages) ? meta.total_pages : null, store: ctx.store, facet_ids: facetIds, facets, products };
     } catch (error) {
-      return fail("site_error", "Browser interaction failed: " + (error && error.message ? error.message : String(error)) + "");
+      return fail("site_error", "Request failed: " + (error && error.message ? error.message : String(error)) + "");
     }
   }
 }]

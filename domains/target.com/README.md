@@ -15,7 +15,8 @@ Tools for Target (https://www.target.com): catalog search, item details and a re
 ## Native WebMCP tools
 
 Target registers its own WebMCP tools (checked 2026-09-26 with `webmcp.listTools()`, signed
-out):
+out; an independent QA session the same day saw none on the homepage and `/cart`, so their
+presence varies by session):
 
 - `search_products` (input `searchTerm`) on every page. It navigates the tab to the results
   page and returns nothing structured.
@@ -33,10 +34,16 @@ page, adds the site's `bestselling` and `Featured` sorts (the native tool's enum
 although the site's Sort menu and search API offer them), and accepts the same facet filters
 by id.
 
+## Execution kind
+
+All seven tools are `kind: "page"`. Each one reads cookies and page configuration and calls
+the site's own JSON endpoints with `fetch` from the document it is invoked in; none navigates
+the tab, so none needs to survive a navigation and none qualifies for `cdp`.
+
 ## Scope and loading
 
-Register all seven files together under namespace `target.com`; they are CDP-backed and use
-the default patterns `https://target.com/*` and `https://*.target.com/*`.
+Register all seven files together under namespace `target.com`; they use the default patterns
+`https://target.com/*` and `https://*.target.com/*`.
 
 ```javascript
 const names = ["get_store_context", "search_products", "get_product", "get_cart", "add_to_cart", "update_cart_item", "remove_cart_item"];
@@ -48,13 +55,14 @@ const tool = (await webmcp.listTools()).find(t => t.source.custom?.namespace ===
 const result = await webmcp.invokeTool(tool.tool_ref, { query: "water bottle", sort_by: "bestselling" }, { timeoutSec: 60 });
 ```
 
-Every tool works from any page. When the attached tab is not an ordinary `www.target.com`
-page (another site, `about:blank`, or a Target checkout, sign-in, account or orders page) the
-tool opens `https://www.target.com/` first; it never opens any other URL. The API calls are
-made with `fetch` from that page, so they carry the site's own cookies and the request
-signing that Target's scripts attach, and go only to `redsky.target.com` (catalog) and
-`carts.target.com` (cart). Nothing is sent anywhere else. A call takes 1–15 s; `timeoutSec: 60`
-is enough, 90 for `add_to_cart`, which makes four requests.
+Each tool runs inside the `www.target.com` page it is invoked on (a search, product, cart or
+home page all work) and never navigates. On another target.com host, or on a checkout page
+(`/checkout`, `/co-...`), it returns `wrong_page` without calling the site; open
+`https://www.target.com/` in the tab and call again. The API calls are made with `fetch` from
+the page, so they carry the site's own cookies and the request signing that Target's scripts
+attach, and go only to `redsky.target.com` (catalog) and `carts.target.com` (cart). Nothing is
+sent anywhere else. A call takes 1–15 s; `timeoutSec: 60` is enough, 90 for `add_to_cart`,
+which makes four requests.
 
 What the tools never do: select or change a store, ZIP or address; sign in or create an
 account; touch saved-for-later items, lists or registries; apply promo codes; open checkout,
@@ -79,9 +87,9 @@ Conventions:
   `update_cart_item` or `remove_cart_item` to undo exactly what was added. `add_to_cart` adds
   to the matching line when one exists (same tcin and fulfillment) and reports
   `previous_quantity`.
-- Failures are explicit: `status: "error"` with `error_kind` (`invalid_input`, `not_found`,
-  `variant_required`, `unavailable`, `quantity_limit`, `no_store`, `challenge`, `site_error`)
-  and a message that says whether anything changed.
+- Failures are explicit: `status: "error"` with `error_kind` (`invalid_input`, `wrong_page`,
+  `not_found`, `variant_required`, `unavailable`, `quantity_limit`, `no_store`, `challenge`,
+  `site_error`) and a message that says whether anything changed.
 
 ## Site quirks
 
@@ -93,12 +101,13 @@ Conventions:
   `challenge`, and never retry a write. A person has to complete the verification in the
   browser; the tools do not attempt it.
 - **Request signing.** Cart writes from the site carry F5 Shape headers (`X-GyJwza5Z-*`) that
-  the page's scripts add to every `fetch`. That is why the tools call from a loaded
-  `www.target.com` page rather than from the CDP side.
+  the page's scripts add to every `fetch`. That is why the tools must run in a loaded
+  `www.target.com` page.
 - **Store context.** The selected store comes from the `fiatsCookie` cookie
   (`DSI_<id>|DSN_<name>|DSZ_<zip>`), the shipping location from `GuestLocation`, and the
-  visitor id from `visitorId`. The session type is the `sut` claim of the `idToken` cookie
-  (`G` guest, `R` registered); only that claim is read and the token is never returned.
+  visitor id from `visitorId`, all readable with `document.cookie`. The session type is the
+  `sut` claim of the `idToken` cookie (`G` guest, `R` registered); only that claim is read and
+  the token never leaves the page.
   Backup store ids come from `__TGT_DATA__.serverLocationVariables` on server-rendered pages
   and fall back to the selected store alone.
 - **Guest carts.** A signed-out browser has a guest cart tied to its cookies; it answers HTTP
@@ -113,10 +122,16 @@ Conventions:
 
 ## Known limitations
 
+- The tools never navigate. On a checkout page or another target.com host they return
+  `wrong_page`, and the agent has to open a `www.target.com` page first.
 - Pickup is only offered at the store the session already has selected; there is no way to
   choose another store, by design. Same-day delivery (Shipt) and scheduled delivery are shown
   in `get_product` but cannot be chosen in `add_to_cart`.
-- `search_products` returns one page (at most 24 items) per call; `page` goes up to 20.
+- `search_products` returns one page (at most 24 items) per call; `page` goes up to 20. When
+  the site answers a misspelled or nonsense query with fallback results, they come back as
+  `status: "ok"` with no spelling-correction signal.
+- For items with variations, the `tcin` in a search result is the variation the API returns
+  for that family, which is sometimes a sibling of the one the site's grid links.
 - `get_product` returns at most 100 variations and six highlights; it does not return
   reviews, specifications or Q&A.
 - `get_cart` reads the regular cart only; saved-for-later items and gift options are not
@@ -126,11 +141,12 @@ Conventions:
 - Signed-in carts: every cart path was exercised on a guest cart only. A signed-in account's
   cart uses the same endpoints with the account's cookies, but no signed-in session was used.
 - The tools stop at a PerimeterX challenge; they cannot get past it.
-- Status is `draft`: live checks so far were made by the builder only (see below).
+- Status is `draft` until independent QA signs off on the final page-kind source.
 
 ## QA summary
 
-Builder live checks on 2026-09-26, guest session, one dedicated anonymous browser:
+Builder live checks on 2026-09-26 with the earlier `cdp` version of the same logic, guest
+session, one dedicated anonymous browser:
 
 - `get_store_context` returned the selected store, location and `guest`.
 - `search_products` returned results for the four example shopping tasks with the
@@ -149,6 +165,25 @@ Builder live checks on 2026-09-26, guest session, one dedicated anonymous browse
   cheapest first; `get_product` with `variant_filter` narrowed a 122-variation family to four;
   and a further add/remove round trip started from a product page (no navigation) ended at zero
   lines.
+
+Builder rerun on 2026-09-26 with the final `page` source, registered in a fresh anonymous
+browser and invoked through the WebMCP API:
+
+- `get_store_context` and `get_cart` (no cart yet) from the homepage.
+- `search_products` for the four example tasks (`bestselling`, `highest_rated`, and
+  `price_low_to_high` with bed-size and color facet ids), matching the earlier results.
+- `get_product` on an item family with `variant_filter`: `fulfillment: null`, range price with
+  `regular_cents: null`, four matching variations of 122.
+- Cart round trip from the verified empty cart: add, add again (same line to 2), update to 1,
+  `variant_required` and `quantity_limit` refusals, remove; `get_cart` back to zero lines. The
+  tab stayed on `https://www.target.com/` throughout.
+- On `corporate.target.com` both `get_store_context` and `get_cart` returned `wrong_page`
+  without calling the site. (`help.target.com` redirects to `www.target.com/help`, where the
+  tools run normally; a line added there during this check was removed and the cart verified
+  empty again.)
+
+An earlier independent QA pass of the `cdp` version found no functional, safety, privacy or
+schema defect; its only blocking item was this change of kind.
 
 The fixture tests in `tests/target-shopping.test.mjs` cover input validation before any page
 access, page routing (including never opening checkout), challenge handling, the store

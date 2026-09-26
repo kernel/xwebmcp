@@ -3,8 +3,8 @@ import { readFileSync } from "node:fs";
 import test from "node:test";
 import { runInNewContext } from "node:vm";
 
-// Shared harness for the target.com tools. Every page and API interaction is stubbed; nothing here
-// contacts the live site, and the store, products and cart are fabricated.
+// Shared harness for the target.com page tools. The page (window, document, location, fetch) is
+// stubbed; nothing here contacts the live site, and the store, products and cart are fabricated.
 const NAMES = ["get_store_context", "search_products", "get_product", "get_cart", "add_to_cart", "update_cart_item", "remove_cart_item"];
 const sources = Object.fromEntries(NAMES.map(name => [name, readFileSync(new URL(`../domains/target.com/${name}.js`, import.meta.url), "utf8")]));
 const plain = value => JSON.parse(JSON.stringify(value));
@@ -83,7 +83,7 @@ const familyBody = () => ({
         product_description: { title: "Test Sheet Set", soft_bullets: { bullets: ["<b>Soft</b> fabricated fabric", "Machine washable"] } },
         primary_brand: { name: "Testbrand" }, fulfillment: { purchase_limit: 5 }, enrichment: { buy_url: "https://www.target.com/p/test/-/A-20000000" }
       },
-      price: { formatted_current_price: "$9.00 - $18.00" },
+      price: { formatted_current_price: "$9.00 - $18.00", current_retail_min: 9, reg_retail_max: 20 },
       variation_hierarchy: [
         { name: "Size", value: "Queen", variation_hierarchy: [
           { name: "Color", value: "Gray", tcin: "20000001", buy_url: "https://www.target.com/p/test/-/A-20000001", availability: { is_shipping_available: true } },
@@ -119,23 +119,24 @@ const cartLine = (id, tcin, quantity, type = "SHIP", location = null) => ({
   inventory_info: { availability_status: "IN_STOCK" }, item_attributes: { description: `Fabricated item ${tcin}`, max_purchase_quantity: 5 }
 });
 
+const BLOCK_PAGE = "<html><head><title>Access to this page has been denied</title></head><body>px-captcha</body></html>";
+
 function harness(name, options = {}) {
-  let url = options.url ?? HOME;
   let cart = options.cart === undefined ? { cart_id: "cart-0001", cart_items: [cartLine("line-existing", "30000001", 1)], summary: { total_product_amount: 18, grand_total: 21.5 } } : options.cart;
-  const cookies = options.cookies ?? [
-    { name: "visitorId", value: "FABRICATEDVISITOR" },
-    { name: "fiatsCookie", value: "DSI_1234|DSN_Test%20Store|DSZ_45000" },
-    { name: "GuestLocation", value: "45000|39.100|-84.500|OH|US" },
-    { name: "idToken", value: TOKEN }
-  ];
-  const calls = { navigations: [], requests: [], writes: [] };
+  const cookie = options.cookie ?? [
+    "visitorId=FABRICATEDVISITOR", "fiatsCookie=DSI_1234|DSN_Test%20Store|DSZ_45000", "GuestLocation=45000|39.100|-84.500|OH|US", `idToken=${TOKEN}`
+  ].join("; ");
+  const calls = { requests: [], writes: [] };
   let next = 1;
-  const respond = (status, json) => ({ status, json: json ?? null, challenge: false });
+  const respond = (status, json) => ({ status, text: json === undefined ? "" : JSON.stringify(json) });
   const route = (href, method, body) => {
     const u = new URL(href);
     calls.requests.push({ href, method, body: body === undefined ? undefined : JSON.parse(body) });
     if (method !== "GET") calls.writes.push({ path: u.pathname, method, body: body === undefined ? undefined : JSON.parse(body) });
-    if (options.responses) { const forced = options.responses(u, method, body); if (forced) return forced; }
+    if (options.responses) {
+      const forced = options.responses(u, method, body);
+      if (forced) return { status: forced.status, text: forced.challenge ? BLOCK_PAGE : forced.json == null ? "" : JSON.stringify(forced.json) };
+    }
     assert.equal(u.searchParams.get("key"), "fabricated-key");
     if (u.pathname.endsWith("/plp_search_v2")) return respond(200, options.search ?? searchBody());
     if (u.pathname.endsWith("/pdp_client_v1")) {
@@ -168,30 +169,27 @@ function harness(name, options = {}) {
     }
     return respond(404, { message: "no route" });
   };
+  const page = new URL(options.url ?? HOME);
   const context = {
     URL, JSON, Object, Array, String, Number, Math, Set,
-    pageInfo: async () => ({ url }),
-    gotoUrl: async target => { calls.navigations.push(target); url = target; },
-    waitForLoad: async () => options.loads !== false,
-    waitMs: async () => {},
-    cdp: async (method, params) => {
-      assert.equal(method, "Network.getCookies");
-      assert.deepEqual(plain(params), { urls: [HOME] });
-      return { cookies };
-    },
-    js: async (fn, args) => {
-      const text = fn.toString();
-      if (text.includes("__CONFIG__")) return { key: options.noKey ? null : "fabricated-key", blocked: !!options.blockedPage, storeIds: options.storeIds === undefined ? "1234,5678,abc" : options.storeIds };
-      if (text.includes("atob")) return JSON.parse(Buffer.from(args.arg.split(".")[1], "base64url").toString()).sut ?? null;
-      if (text.includes("fetch(")) return route(args.arg.url, args.arg.method, args.arg.body);
-      throw new Error("unexpected page function: " + text.slice(0, 60));
+    atob: value => Buffer.from(value, "base64").toString("binary"),
+    location: { origin: page.origin, pathname: page.pathname, href: page.href },
+    document: { title: options.blockedPage ? "Access to this page has been denied" : "Target", cookie, querySelector: selector => (options.captcha && selector.includes("px-captcha") ? {} : null) },
+    window: { __CONFIG__: options.noKey ? {} : { defaultServicesApiKey: "fabricated-key" }, __TGT_DATA__: { serverLocationVariables: { store_ids: options.storeIds === undefined ? "1234,5678,abc" : options.storeIds } } },
+    fetch: async (url, init = {}) => {
+      assert.equal(init.credentials, "include");
+      assert.ok(/^https:\/\/(redsky|carts)\.target\.com\//.test(url), "page tools may only call the site's own APIs: " + url);
+      const { status, text } = route(url, init.method || "GET", init.body);
+      return { status, text: async () => text };
     }
   };
   const [definition] = runInNewContext(`(${sources[name]})`, context);
+  // The page runtime re-creates execute from its source text inside the page, so run that copy.
+  const execute = runInNewContext(`(${definition.execute.toString()})`, context);
   return {
     definition, calls, cart: () => cart,
     run: async input => {
-      const result = plain(await definition.execute(input));
+      const result = plain(await execute(input, { signal: new AbortController().signal }));
       assert.ok(conforms(definition.tool.outputSchema, result), `${name} output violates its schema: ${JSON.stringify(result)}`);
       assert.equal(JSON.stringify(result).includes(TOKEN), false, "the session token must never be returned");
       return result;
@@ -202,12 +200,13 @@ function harness(name, options = {}) {
 const registry = JSON.parse(readFileSync(new URL("../registry.json", import.meta.url), "utf8"));
 
 for (const name of NAMES) {
-  test(`${name}: single-expression CDP tool with typed schemas and a registry entry`, () => {
+  test(`${name}: single-expression page tool with typed schemas and a registry entry`, () => {
     assert.equal(sources[name].trimEnd().endsWith(";"), false);
     assert.equal(/\b(Buffer|require|process)\b/.test(sources[name]), false, "tool source must not depend on Node globals");
     assert.equal(/\/checkout["'`]|place order/i.test(sources[name]), false, "tool source must never reference checkout pages");
+    assert.equal(/\b(gotoUrl|pageInfo|waitForLoad|waitMs|waitForEvent|cdp|js)\(/.test(sources[name]), false, "a page tool has no browser helpers");
     const { definition } = harness(name);
-    assert.equal(definition.kind, "cdp");
+    assert.equal(definition.kind, "page");
     assert.equal(definition.tool.name, name);
     assert.deepEqual(plain(definition.match.url_patterns), ["https://target.com/*", "https://*.target.com/*"]);
     assert.equal(definition.tool.inputSchema.type, "object");
@@ -249,43 +248,42 @@ for (const [name, inputs] of Object.entries(invalidInputs)) {
       const result = await h.run(input);
       assert.equal(result.status, "error");
       assert.equal(result.error_kind, "invalid_input");
-      assert.deepEqual(h.calls.navigations, []);
       assert.deepEqual(h.calls.requests, []);
     });
   }
 }
 
-// --- session: page routing, challenge and store context ----------------------------------------------
+// --- session: the page the tool runs in, challenge and store context ---------------------------------
 
-for (const url of ["https://example.com/", "about:blank", "https://www.target.com/checkout", "https://www.target.com/co-review", "https://www.target.com/login?x=1", "https://www.target.com/account/orders", "https://target.com/"]) {
-  test(`search_products: opens the homepage from ${url} and nowhere else`, async () => {
-    const h = harness("search_products", { url });
-    assert.equal((await h.run({ query: "mug" })).status, "ok");
-    assert.deepEqual(h.calls.navigations, [HOME]);
-  });
+for (const url of ["https://example.com/", "https://target.com/", "https://gsp.target.com/x", "https://www.target.com/checkout", "https://www.target.com/checkout/review", "https://www.target.com/co-review", "https://www.target.com/co-login"]) {
+  for (const name of NAMES) {
+    test(`${name}: refuses to run on ${url} without calling the site`, async () => {
+      const h = harness(name, { url });
+      const input = { search_products: { query: "mug" }, get_product: { tcin: "30000001" }, add_to_cart: { tcin: "30000001" }, update_cart_item: { cart_item_id: "line-existing", quantity: 2 }, remove_cart_item: { cart_item_id: "line-existing" } }[name] ?? {};
+      const result = await h.run(input);
+      assert.equal(result.error_kind, "wrong_page");
+      assert.deepEqual(h.calls.requests, []);
+    });
+  }
 }
 
-test("tools stay on an ordinary target.com page instead of navigating", async () => {
-  const h = harness("get_cart", { url: "https://www.target.com/s?searchTerm=mug" });
-  assert.equal((await h.run({})).status, "ok");
-  assert.deepEqual(h.calls.navigations, []);
-});
+for (const url of ["https://www.target.com/s?searchTerm=mug", "https://www.target.com/p/test/-/A-30000001", "https://www.target.com/cart", "https://www.target.com/account", "https://www.target.com/checkouts-guide"]) {
+  test(`get_cart runs on ${url}`, async () => {
+    assert.equal((await harness("get_cart", { url }).run({})).status, "ok");
+  });
+}
 
 for (const name of NAMES) {
-  test(`${name}: a bot-protection page is a challenge error with no request`, async () => {
-    const h = harness(name, { blockedPage: true });
-    const input = { search_products: { query: "mug" }, get_product: { tcin: "30000001" }, add_to_cart: { tcin: "30000001" }, update_cart_item: { cart_item_id: "line-existing", quantity: 2 }, remove_cart_item: { cart_item_id: "line-existing" } }[name] ?? {};
-    const result = await h.run(input);
-    assert.equal(result.error_kind, "challenge");
-    assert.deepEqual(h.calls.requests, []);
-  });
+  for (const flag of ["blockedPage", "captcha"]) {
+    test(`${name}: a bot-protection page (${flag}) is a challenge error with no request`, async () => {
+      const h = harness(name, { [flag]: true });
+      const input = { search_products: { query: "mug" }, get_product: { tcin: "30000001" }, add_to_cart: { tcin: "30000001" }, update_cart_item: { cart_item_id: "line-existing", quantity: 2 }, remove_cart_item: { cart_item_id: "line-existing" } }[name] ?? {};
+      const result = await h.run(input);
+      assert.equal(result.error_kind, "challenge");
+      assert.deepEqual(h.calls.requests, []);
+    });
+  }
 }
-
-test("a homepage that never loads is a site_error before any request", async () => {
-  const h = harness("get_cart", { url: "https://example.com/", loads: false });
-  assert.equal((await h.run({})).error_kind, "site_error");
-  assert.deepEqual(h.calls.requests, []);
-});
 
 test("a page without the site's API configuration is a site_error", async () => {
   const h = harness("search_products", { noKey: true });
@@ -304,7 +302,7 @@ test("get_store_context reports the store, location and session type without cal
 });
 
 test("get_store_context: no store selected and no token", async () => {
-  const result = await harness("get_store_context", { cookies: [{ name: "visitorId", value: "V" }] }).run({});
+  const result = await harness("get_store_context", { cookie: "visitorId=V" }).run({});
   assert.equal(result.store, null);
   assert.equal(result.session_type, "unknown");
   assert.deepEqual(result.nearby_store_ids, []);
@@ -315,17 +313,17 @@ test("nearby store ids fall back to the selected store when the page lists anoth
 });
 
 test("store-dependent tools refuse without a selected store; cart tools do not need one", async () => {
-  const cookies = [{ name: "visitorId", value: "V" }];
-  assert.equal((await harness("search_products", { cookies }).run({ query: "mug" })).error_kind, "no_store");
-  assert.equal((await harness("get_product", { cookies }).run({ tcin: "30000001" })).error_kind, "no_store");
-  const add = harness("add_to_cart", { cookies });
+  const cookie = "visitorId=V; other=1";
+  assert.equal((await harness("search_products", { cookie }).run({ query: "mug" })).error_kind, "no_store");
+  assert.equal((await harness("get_product", { cookie }).run({ tcin: "30000001" })).error_kind, "no_store");
+  const add = harness("add_to_cart", { cookie });
   assert.equal((await add.run({ tcin: "30000001" })).error_kind, "no_store");
   assert.deepEqual(add.calls.writes, []);
-  assert.equal((await harness("get_cart", { cookies }).run({})).status, "ok");
+  assert.equal((await harness("get_cart", { cookie }).run({})).status, "ok");
 });
 
 test("a session without a visitor id is a site_error", async () => {
-  assert.equal((await harness("get_cart", { cookies: [] }).run({})).error_kind, "site_error");
+  assert.equal((await harness("get_cart", { cookie: "" }).run({})).error_kind, "site_error");
 });
 
 // --- search_products --------------------------------------------------------------------------------
@@ -427,7 +425,8 @@ test("get_product: an item family has no fulfillment and makes no availability r
   assert.equal(result.is_variation_parent, true);
   assert.equal(result.fulfillment, null);
   assert.deepEqual(result.add_to_cart_fulfillments, []);
-  assert.equal(result.price.is_range, true);
+  // A range maximum is not a regular price for the minimum, so it is not reported as one.
+  assert.deepEqual([result.price.is_range, result.price.current_cents, result.price.regular_cents], [true, 900, null]);
   assert.equal(h.calls.requests.length, 1);
 });
 

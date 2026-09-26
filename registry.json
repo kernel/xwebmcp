@@ -439,7 +439,7 @@
       "domain": "target.com",
       "tool": "add_to_cart",
       "file": "domains/target.com/add_to_cart.js",
-      "kind": "cdp",
+      "kind": "page",
       "namespace": "target.com",
       "url_patterns": [
         "https://target.com/*",
@@ -453,7 +453,7 @@
       "domain": "target.com",
       "tool": "get_cart",
       "file": "domains/target.com/get_cart.js",
-      "kind": "cdp",
+      "kind": "page",
       "namespace": "target.com",
       "url_patterns": [
         "https://target.com/*",
@@ -467,7 +467,7 @@
       "domain": "target.com",
       "tool": "get_product",
       "file": "domains/target.com/get_product.js",
-      "kind": "cdp",
+      "kind": "page",
       "namespace": "target.com",
       "url_patterns": [
         "https://target.com/*",
@@ -481,7 +481,7 @@
       "domain": "target.com",
       "tool": "get_store_context",
       "file": "domains/target.com/get_store_context.js",
-      "kind": "cdp",
+      "kind": "page",
       "namespace": "target.com",
       "url_patterns": [
         "https://target.com/*",
@@ -495,7 +495,7 @@
       "domain": "target.com",
       "tool": "remove_cart_item",
       "file": "domains/target.com/remove_cart_item.js",
-      "kind": "cdp",
+      "kind": "page",
       "namespace": "target.com",
       "url_patterns": [
         "https://target.com/*",
@@ -509,7 +509,7 @@
       "domain": "target.com",
       "tool": "search_products",
       "file": "domains/target.com/search_products.js",
-      "kind": "cdp",
+      "kind": "page",
       "namespace": "target.com",
       "url_patterns": [
         "https://target.com/*",
@@ -523,7 +523,7 @@
       "domain": "target.com",
       "tool": "update_cart_item",
       "file": "domains/target.com/update_cart_item.js",
-      "kind": "cdp",
+      "kind": "page",
       "namespace": "target.com",
       "url_patterns": [
         "https://target.com/*",
