@@ -63,9 +63,13 @@ function renderCart(lines, { signedIn = false } = {}) {
 
 function harness(name, options = {}) {
   const calls = { navigations: [], requests: [], clicks: [], fills: [], waits: 0, js: 0 };
-  const performance = { entries: [], getEntriesByType: () => performance.entries };
+  // Resource timing: the buffer stays empty (full, as on real listing pages); only observers see new requests.
+  const observers = new Set();
+  const performance = { getEntriesByType: () => [] };
+  class PerformanceObserver { constructor(cb) { this.cb = cb; } observe() { observers.add(this); } disconnect() { observers.delete(this); } }
   const site = {
-    performanceEntries: performance.entries,
+    recordResource: name => { for (const o of observers) o.cb({ getEntries: () => [{ name }] }); },
+    observers,
     pages: { "/": "<html><body><main>Home</main></body></html>", "/cart": null, ...(options.pages || {}) },
     cart: plain(options.cart || []),
     signedIn: options.signedIn ?? false,
@@ -122,7 +126,7 @@ function harness(name, options = {}) {
     return response(404, "not found", u.href);
   };
   const pageContext = createContext({
-    window, location, fetch, DOMParser, URL, URLSearchParams, performance, setTimeout: (fn) => setImmediate(fn),
+    window, location, fetch, DOMParser, URL, URLSearchParams, performance, PerformanceObserver, setTimeout: (fn) => setImmediate(fn),
     get document() { return doc; },
     Event: class { constructor(type, init = {}) { this.type = type; this.bubbles = !!init.bubbles; } },
     getComputedStyle: () => ({ visibility: "visible" })
@@ -185,7 +189,12 @@ function etsyBuyBox(doc) {
     if (e.target.id === "listing-page-quantity-select") doc.querySelector('form[action*="/cart/listing.php"] input[name="quantity"]').value = e.target.value;
   });
 }
-const listingPages = { "/listing/1000000001": fixture("listing-classic"), "/listing/1000000002": fixture("listing-offerings"), "/listing/1000000003": fixture("listing-plain") };
+const listingPages = {
+  "/listing/1000000001": fixture("listing-classic"),
+  "/listing/1000000002": fixture("listing-offerings"),
+  "/listing/1000000003": fixture("listing-plain"),
+  "/listing/1000000004": fixture("listing-offerings").replaceAll("1000000002", "1000000004").replace('data-is-required="false" data-field-type="unlabeled_upload"', 'data-is-required="true" data-field-type="unlabeled_upload"')
+};
 const onListing = (doc, path) => { if (path.startsWith("/listing/")) etsyBuyBox(doc); };
 const COLLAR = { listing_id: "1000000001", variations: [{ name: "Size & Color", option: "M - Black" }, { name: "Text Preference", option: "Gold Text" }], personalization: [{ field: "Personalization", value: "FIDO" }] };
 // Adds a line the way Etsy does after a successful submission.
@@ -403,6 +412,13 @@ test("get_cart: parses lines, line ids, options and totals; skips saved-for-late
   assert.deepEqual(vase.properties, []);
 });
 
+test("get_cart: cart items that cannot be read are site_changed, not an empty cart", async () => {
+  const counted = "<html><head><script>Etsy.Context = {\"data\":{\"user_id\":null,\"in_cart_count\":2}};</script></head><body><main><div class=\"new-layout\">item</div><h2 hidden>Your cart is empty.</h2></main></body></html>";
+  assert.equal((await harness("get_cart", { responses: u => u.pathname === "/cart" ? { status: 200, body: counted } : null }).run({})).error_kind, "site_changed");
+  const unreadable = fixture("cart").replace('data-listing-inventory-id="6000000003"', 'data-listing-inventory-id=""');
+  assert.equal((await harness("get_cart", { responses: u => u.pathname === "/cart" ? { status: 200, body: unreadable } : null }).run({})).error_kind, "site_changed");
+});
+
 test("get_cart: an empty cart and an accepted empty input object", async () => {
   const result = await harness("get_cart").run({});
   assert.deepEqual(result, { status: "ok", signed_in: false, line_count: 0, item_count: 0, items_total_text: null, subtotal_text: null, lines: [] });
@@ -429,6 +445,7 @@ const refusals = [
   ["quantity 2 without a quantity menu", { listing_id: "1000000003", quantity: 2 }, "quantity_unavailable"],
   ["dropdown value not among options", { listing_id: "1000000002", variations: [{ name: "Engraving Style", option: "Initials" }], personalization: [{ field: "Names or Initials", value: "AB" }, { field: "Engraving location", value: "Top" }] }, "personalization_option_not_found"],
   ["value for an upload field", { listing_id: "1000000002", variations: [{ name: "Engraving Style", option: "Initials" }], personalization: [{ field: "Names or Initials", value: "AB" }, { field: "Engraving location", value: "Center" }, { field: "Upload a logo", value: "logo.png" }] }, "personalization_unsupported"],
+  ["required upload field", { listing_id: "1000000004", variations: [{ name: "Engraving Style", option: "Initials" }], personalization: [{ field: "Names or Initials", value: "AB" }, { field: "Engraving location", value: "Center" }] }, "personalization_unsupported"],
   ["unnamed value with several fields", { listing_id: "1000000002", variations: [{ name: "Engraving Style", option: "Initials" }], personalization: [{ value: "AB" }] }, "invalid_input"],
   ["listing not found", { listing_id: "1234567890" }, "listing_not_found"]
 ];
@@ -627,7 +644,7 @@ const favoriteButtons = (behaviour = "toggle") => (doc, path, site) => {
       site.presses = (site.presses || 0) + 1;
       site.pressed = this;
       if (behaviour === "silent") return;
-      site.performanceEntries.push({ name: `${ORIGIN}/api/v3/ajax/bespoke/member/neu/specs/favoriteConfirmationToast` });
+      site.recordResource(`${ORIGIN}/api/v3/ajax/bespoke/member/neu/specs/favoriteConfirmationToast`);
       if (behaviour !== "toggle") return;
       const id = this.getAttribute("data-listing-id");
       if (site.favorites.has(id)) site.favorites.delete(id); else site.favorites.add(id);
@@ -679,6 +696,7 @@ test("set_favorite: a press that sends nothing or does not stick is reported wit
     assert.equal(result.previous_favorited, false);
     assert.equal(h.site.presses, 1);
     assert.equal(/no favorites request was seen/.test(result.error_message), behaviour === "silent");
+    assert.equal(h.site.observers.size, 0, "the request observer is disconnected");
   }
 });
 

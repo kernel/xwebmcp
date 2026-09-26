@@ -77,7 +77,6 @@
       if (state.error === "shape") return fail("site_changed", "Etsy's favorites lookup returned an unexpected shape; the tool needs updating.", extra);
       return fail("unknown", `The favorites lookup failed (${state.error}).`, extra);
     };
-    const favoriteRequests = () => performance.getEntriesByType("resource").filter(e => /\/api\/v3\/ajax\/.*(favoriteConfirmationToast|favorites\/listings|guest\/favorites)/.test(e.name)).length;
 
     let pressed = false;
     try {
@@ -88,17 +87,23 @@
       const buttons = [...document.querySelectorAll(`[data-ui="favorite-listing-button"][data-listing-id="${id}"]`)].filter(b => b.getClientRects().length);
       const button = buttons.find(b => !b.closest("[data-listing-card-v2], [data-palette-listing-id]")) || buttons[0];
       if (!button) return fail("listing_not_on_page", `This page shows no favorite button for listing ${id}; open https://www.etsy.com/listing/${id} (or a search page that shows it) and call again. Nothing was changed.`, { previous_favorited: initial.favorited });
-      const before = favoriteRequests();
+      // An observer, because listing pages fill the resource-timing buffer and later entries never reach it.
+      let sent = false;
+      const observer = new PerformanceObserver(list => { if (list.getEntries().some(e => /\/api\/v3\/ajax\/.*(favoriteConfirmationToast|favorites\/listings|guest\/favorites)/.test(e.name))) sent = true; });
+      observer.observe({ type: "resource" });
       pressed = true;
       button.click();
-      let final = null, sent = false;
-      for (let i = 0; i < 12; i++) {
-        await wait(700);
-        sent = sent || favoriteRequests() > before;
-        const overlay = document.querySelector("#join-neu-overlay");
-        if (!sent && overlay && overlay.getClientRects().length) return fail("not_logged_in", "Etsy asked to sign in instead of saving the favorite; nothing was saved.", { mutation_attempted: false, previous_favorited: initial.favorited });
-        final = await lookup();
-        if (!final.error && final.favorited === input.favorited) break;
+      let final = null;
+      try {
+        for (let i = 0; i < 12; i++) {
+          await wait(700);
+          const overlay = document.querySelector("#join-neu-overlay");
+          if (!sent && overlay && overlay.getClientRects().length) return fail("not_logged_in", "Etsy asked to sign in instead of saving the favorite; nothing was saved.", { mutation_attempted: false, previous_favorited: initial.favorited });
+          final = await lookup();
+          if (!final.error && final.favorited === input.favorited) break;
+        }
+      } finally {
+        observer.disconnect();
       }
       if (final.error) return lookupError(final, true, initial.favorited);
       if (final.favorited !== input.favorited) return fail("unknown", `The favorite button was pressed but Etsy still reports favorited=${final.favorited}${sent ? "" : " and no favorites request was seen"}; check get_favorite_status before retrying.`, { mutation_attempted: true, previous_favorited: initial.favorited });

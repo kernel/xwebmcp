@@ -68,8 +68,8 @@
       const doc = new DOMParser().parseFromString(html, "text/html");
       const num = s => { const n = Number(s); return s !== null && s !== "" && Number.isFinite(n) ? n : null; };
       const lines = [];
-      for (const li of doc.querySelectorAll("li[data-cart-listing]")) {
-        if (li.closest('[id*="saved-for-later"], [class*="saved-for-later"], [data-saved-for-later]')) continue;
+      const found = [...doc.querySelectorAll("li[data-cart-listing]")].filter(li => !li.closest('[id*="saved-for-later"], [class*="saved-for-later"], [data-saved-for-later]'));
+      for (const li of found) {
         const d = li.dataset;
         const key = li.querySelector("[data-listing-key]")?.getAttribute("data-listing-key") || "";
         let cartId = /^[0-9]+\|/.test(key) ? key.split("|")[0] : "";
@@ -116,8 +116,9 @@
         return null;
       };
       const userId = (html.match(/"user_id":(null|\d+)/) || [])[1];
-      const empty = /Your cart is empty/i.test(clean(doc.body.textContent));
-      if (!lines.length && !empty && doc.querySelector("li[data-cart-listing]")) return failure("site_changed", "Cart lines were present but their ids could not be read; the cart layout may have changed.");
+      // Etsy's own cart counter guards against a layout change being read as an empty cart.
+      const counted = Number((html.match(/"in_cart_count":(\d+)/) || [])[1] || 0);
+      if (lines.length < found.length || (counted > 0 && !lines.length)) return failure("site_changed", "The cart holds items but their lines could not be read; the cart layout may have changed.");
       return {
         status: "ok",
         signed_in: !!userId && userId !== "null",

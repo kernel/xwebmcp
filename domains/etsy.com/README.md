@@ -194,8 +194,8 @@ current source.
   Only 1 left).
 - `get_listing` reads the page as first rendered; per-option prices appear only in
   `price_text` of each option, not as the final price of a combination.
-- `add_to_cart` accepts only quantity 1 for listings without a quantity menu, although the
-  cart may allow more (add 1, then use `update_cart_item`).
+- `add_to_cart` adds at most 10 units per call, and only 1 for listings without a quantity
+  menu although the cart may allow more (add, then use `update_cart_item`).
 - `add_to_cart` cannot fill upload-type personalization or Etsy's older single-box
   personalization, does not support gift options, and cannot change the options of an
   existing cart line (remove it with `update_cart_item` and add again).
@@ -252,6 +252,22 @@ registered, the five page tools ran on the live site (Etsy's CSP did not block t
 `get_listing` reported the waitlisted options of a live listing as `sold_out: true`; guest
 cart 0 → add collar (form path, confirmed) → `update_cart_item` 1→2 → remove → 0; favorites
 signed out `not_logged_in`; no tools listed on `help.etsy.com`.
+
+Independent QA, round 2 (agent `agt_a4c726c8629f206349a7`, `smartest` preset, its own
+browser, guest cart, commit `bb2f7c8`): 184 live invocations, all outputs schema-valid; D1,
+K1/K2 and M1 verified fixed (waitlisted options `sold_out: true` and refused by
+`add_to_cart`; page tools worked in place from home, listing, cart and search pages; no
+tools on `example.com` or `help.etsy.com`; exactly one request per cart change); agreed with
+every tool's kind; cart restored to empty. Signed off `search`, `get_listing`, `get_cart`,
+`add_to_cart`, `update_cart_item` on that commit. Three low findings, fixed in the next
+revision: `set_favorite` detected its request through the resource-timing buffer, which is
+full on listing pages (now a `PerformanceObserver`); a required upload field was reported as
+`personalization_required` instead of `personalization_unsupported`; `get_cart` could read an
+unrecognized layout as an empty cart because Etsy always ships the hidden "Your cart is
+empty" heading (now it cross-checks Etsy's `in_cart_count` and any unparsed line elements).
+Author live re-check of those fixes: a listing with a required upload field returned
+`personalization_unsupported` with nothing submitted; `get_cart` read 0 lines empty and 1
+line (quantity 2) after an add, then the line was removed.
 
 Local tests run every page-side function from its source against fabricated HTML in a small
 test-only DOM (`tests/etsy-dom.mjs`), with a fake `fetch` and simulated buy-box scripts:

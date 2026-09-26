@@ -198,6 +198,7 @@
       const persos = [];
       for (const field of fields) {
         const value = assigned.get(field.field_id);
+        if (!["text_input", "dropdown"].includes(field.type) && (field.required || value !== undefined)) return failure("personalization_unsupported", `Personalization field "${field.label || field.field_id}" has type ${field.type}, which this tool cannot fill${field.required ? " and the seller requires it" : ""}. Nothing was added.`, describeField(field));
         if (value === undefined || !value.trim()) {
           if (field.required) return failure("personalization_required", `The seller requires "${field.label || "personalization"}"${field.max_chars ? ` (up to ${field.max_chars} characters)` : ""}. Nothing was added.`, describeField(field));
           continue;
@@ -210,8 +211,6 @@
           const hits = (field.options || []).filter(o => o.option_id === value.trim() || norm(o.label) === norm(value));
           if (hits.length !== 1) return failure("personalization_option_not_found", `"${value}" is not ${hits.length ? "a unique" : "an"} option of "${field.label}". Use one of the listed labels or option ids exactly. Nothing was added.`, describeField(field));
           persos.push({ field_id: field.field_id, type: field.type, label: field.label, element_id: field.element_id, value: hits[0].option_id, option_label: hits[0].label });
-        } else {
-          return failure("personalization_unsupported", `Personalization field "${field.label || field.field_id}" has type ${field.type}, which this tool cannot fill. Nothing was added.`, describeField(field));
         }
       }
       const quantitySelect = document.getElementById("listing-page-quantity-select");
