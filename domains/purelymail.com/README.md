@@ -5,21 +5,21 @@ the Webmail Login page at https://purelymail.com/user/login).
 
 | tool                   | file                                                   | status    | notes |
 |------------------------|--------------------------------------------------------|-----------|-------|
-| login                  | [login.js](login.js)                                   | draft     | One form submission; succeeds only when the webmail header shows the supplied address |
-| list_folders           | [list_folders.js](list_folders.js)                     | draft     | Subscribed folders with role, total and unread counts |
-| list_messages          | [list_messages.js](list_messages.js)                   | draft     | One page of a folder list or webmail search; never marks mail read |
-| read_message           | [read_message.js](read_message.js)                     | draft     | Safe headers, sender_authentication and a bounded, untrusted plain-text body; stays unread |
-| wait_for_message       | [wait_for_message.js](wait_for_message.js)             | draft     | Bounded wait for mail received after `since` that matches sender/subject text |
-| get_verification_code  | [get_verification_code.js](get_verification_code.js)   | draft     | Fresh, sender-authenticated email or Google Voice SMS codes only |
-| send_message           | [send_message.js](send_message.js)                     | draft     | One plain-text send with `confirm_send`; duplicate guard; never retries |
-| get_vacation_responder | [get_vacation_responder.js](get_vacation_responder.js) | draft     | Reads vacation-reply filters |
-| set_vacation_responder | [set_vacation_responder.js](set_vacation_responder.js) | draft     | Creates or edits the vacation-reply filter, optionally switched off |
-| list_filters           | [list_filters.js](list_filters.js)                     | draft     | Every incoming-mail filter with conditions and actions |
-| get_filter             | [get_filter.js](get_filter.js)                         | draft     | One filter by name |
-| create_filter          | [create_filter.js](create_filter.js)                   | draft     | One filter; move, copy, flag, keep and stop actions only; idempotent by name |
-| update_filter          | [update_filter.js](update_filter.js)                   | draft     | Replaces given fields of one filter; refuses filters it cannot rewrite |
-| delete_filter          | [delete_filter.js](delete_filter.js)                   | draft     | Deletes one filter by name |
-| create_folder          | [create_folder.js](create_folder.js)                   | draft     | Creates one folder; idempotent |
+| login                  | [login.js](login.js)                                   | qa_passed | One form submission; succeeds only when the webmail header shows the supplied address |
+| list_folders           | [list_folders.js](list_folders.js)                     | qa_passed | Subscribed folders with role, total and unread counts |
+| list_messages          | [list_messages.js](list_messages.js)                   | qa_passed | One page of a folder list or webmail search; never marks mail read |
+| read_message           | [read_message.js](read_message.js)                     | qa_passed | Safe headers, sender_authentication and a bounded, untrusted plain-text body; stays unread |
+| wait_for_message       | [wait_for_message.js](wait_for_message.js)             | qa_passed | Bounded wait for mail received after `since` that matches sender/subject text |
+| get_verification_code  | [get_verification_code.js](get_verification_code.js)   | qa_passed | Fresh, sender-authenticated email or Google Voice SMS codes only |
+| send_message           | [send_message.js](send_message.js)                     | qa_passed | One plain-text send with `confirm_send`; duplicate guard; never retries |
+| get_vacation_responder | [get_vacation_responder.js](get_vacation_responder.js) | qa_passed | Reads vacation-reply filters |
+| set_vacation_responder | [set_vacation_responder.js](set_vacation_responder.js) | qa_passed | Creates or edits the vacation-reply filter, optionally switched off |
+| list_filters           | [list_filters.js](list_filters.js)                     | qa_passed | Every incoming-mail filter with conditions and actions |
+| get_filter             | [get_filter.js](get_filter.js)                         | qa_passed | One filter by name |
+| create_filter          | [create_filter.js](create_filter.js)                   | qa_passed | One filter; move, copy, flag, keep and stop actions only; idempotent by name |
+| update_filter          | [update_filter.js](update_filter.js)                   | qa_passed | Replaces given fields of one filter; refuses filters it cannot rewrite |
+| delete_filter          | [delete_filter.js](delete_filter.js)                   | qa_passed | Deletes one filter by name |
+| create_folder          | [create_folder.js](create_folder.js)                   | qa_passed | Creates one folder; idempotent |
 
 ## Native WebMCP tools
 
@@ -148,9 +148,12 @@ page and finishes on the webmail.
   addresses and From address are kept. Enabling it was tested with fixtures only: enabling
   it live would auto-reply to unrelated mail, including forwarded texts.
 - There are no delete tools for folders or messages.
-- Right after the last filter is deleted, the filters page can briefly come back without the
-  filter list; the tools then report `site_error` with `changed: false`, and an immediate
-  repeat succeeds.
+- The mail or filters page can briefly come back without its bootstrap data (seen once
+  right after the last filter was deleted and once before an update); the tools then report
+  `site_error` with `changed: false` before submitting anything, and a repeat succeeds.
+- For a message with no `Received` header, `wait_for_message` falls back to the sender's
+  `Date` for freshness; such a message is always `unverified`, and `get_verification_code`
+  never uses it because it requires the receipt time.
 - If a second code is requested, calling `get_verification_code` before the newer message is
   delivered returns the earlier, still-fresh code; set `since` just before each request.
 
@@ -191,7 +194,10 @@ tool invoked from the settings page; and byte-exact restoration of folders, mess
 unread/flag state and the filter script. It found no blocking defects. Of its
 observations, the missing-`Received` trust gap is now closed (with a fixture) and a filter
 comment copied into `send_message` is removed; the other two are listed under Known
-limitations. Those changes need a fresh independent QA pass before `qa_passed`.
+limitations. A second independent QA pass (`agt_afe6709be3b6cf36db73`) passed commit `3f4f635`
+with that change: byte-identical files in the browser, 115 live invocations schema-valid,
+sender authentication on real delivered and self-sent mail unchanged, and byte-exact
+restoration of the mailbox. Its two observations are listed under Known limitations.
 
 Fixture tests (`tests/purelymail-*.test.mjs`) check every result against its outputSchema
 and cover wrong page, signed-out sessions, empty folders and searches, stale, forged,
@@ -200,4 +206,4 @@ behaviour on unknown outcomes, idempotent repeats and wrong-account login.
 
 ## Sessions
 
-Ephemeral, for the people who ran QA: builder and QA browser `sp3pju2f00rlg1rm8b8nzgjj`.
+Ephemeral, for the people who ran QA: builder and both QA passes, browser `sp3pju2f00rlg1rm8b8nzgjj`.
