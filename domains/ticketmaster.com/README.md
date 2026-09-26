@@ -49,14 +49,19 @@ Pick the `tool_ref` whose `source.target_id` is the tab you drive. Use
   would be destroyed with the document it navigates away from. Ticketmaster serves
   two event page layouts:
   - *Classic* (`__NEXT_DATA__.page` `/naevent/[eventId]`, most sports and many
-    concerts): the tool issues the same `quickpicks` request the page sends to
-    `offeradapter.ticketmaster.com`, with `sort=-quality` for Best Seats,
-    `sort=noTaxTotalprice` for Lowest Price and `includeResale` from the input. The
-    service key and secret are the page's public client configuration in
-    `__NEXT_DATA__`; they are read and used inside the page and never returned,
-    logged or committed. The request uses `XMLHttpRequest` with credentials and a
-    `TMPS-Correlation-Id` header like the page; `fetch` without that header fails
+    concerts): the tool repeats the `quickpicks` request the page itself sent to
+    `offeradapter.ticketmaster.com` (read from the page's resource timing entries, so
+    event-specific parameters such as ticket types and featured-listing rules match),
+    changing only `qty`, `sort` (`-quality` for Best Seats, `noTaxTotalprice` for
+    Lowest Price), `includeResale`, `limit` and `offset`. If the page has not sent one
+    within 8 s it builds the same query from the page configuration and warns that
+    featured listings may be missing. The service key and secret are the page's
+    public client configuration; they are used only inside the page and never
+    returned, logged or committed. The request uses `XMLHttpRequest` with credentials
+    and a `TMPS-Correlation-Id` header like the page; `fetch` without that header fails
     CORS. With `max_price_per_ticket` it reads up to three pages of 40 listings.
+    Featured listings (the service's `promoted` picks, often general-admission lawn
+    tickets or primary seats) come first with `featured: true`, as on the page.
   - *Newer* (`/globalevent/[eventId]`, including partner-inventory theatre such as
     Broadway houses): listings are computed inside the page from a WebAssembly SDK, so
     the tool reads the listing panel through the accessibility tree. It clicks only the
@@ -67,10 +72,18 @@ Pick the `tool_ref` whose `source.target_id` is the tab you drive. Use
 Outputs:
 
 - Prices are per ticket including fees, before taxes (the site's "All In" price),
-  plus `estimated_total` = price × quantity. The classic layout also returns base
-  price, fees, face value, seat numbers, the site's seat-quality score and sellable
-  quantities; the newer layout's panel only shows ticket type, section, row and price,
-  so those fields are `null`.
+  plus `estimated_total` = price × quantity. On the classic layout the offer service's
+  `totalPrice` also includes taxes for some primary tickets; the tool subtracts
+  charges of type `tax` and reports them as `taxes_per_ticket`. The classic layout
+  also returns base price, fees, face value, seat numbers, the site's seat-quality
+  score and sellable quantities; offers that cannot be bought in the requested
+  quantity (for example a four-pack when asking for two) are skipped. The newer
+  layout's panel only shows ticket type, section, row and price, so the other fields
+  are `null`.
+- Page-tool outputs that contain non-ASCII text (accented performer names) have been
+  observed to arrive from the runtime's page bridge as a JSON string rather than an
+  object; parse the string when `typeof output === "string"`. This is runtime
+  behaviour, not tool code.
 - Every result carries `observed_at`. Inventory changes by the minute; treat prices
   as quotes at that time.
 - `no_tickets` means nothing is available for that quantity (a different quantity may
@@ -124,10 +137,12 @@ navigates only within `www.ticketmaster.com`. If the tab is on another host, ope
   (HTTP 500 without them). With a location, the location-only query lists nearby
   events first in date order (about 10 pages), then restarts with distant events.
   Adding the site's `startDate`/`endDate` filter keeps the date range but interleaves
-  distant events across pages, and some in-radius events appear only there. With a
-  location and dates, `search_events` reads the nearby block (up to 10 pages, stopping
-  once it passes `end_date`) and up to 6 date-filtered pages, and merges them. Results outside `radius_miles` (straight-line distance from
-  the site's location match) are dropped. Page 49 returned HTTP 400.
+  distant events across pages, and some in-radius events appear only there (on page
+  6 or 7 of 28 for comedy in Los Angeles on a Saturday). With a location and dates,
+  `search_events` reads the nearby block (up to 10 pages, stopping once it passes
+  `end_date`) and up to 40 date-filtered pages four at a time, merges them, and adds a
+  warning when it stops at that cap. Results outside `radius_miles` (straight-line
+  distance from the site's location match) are dropped. Page 49 returned HTTP 400.
 - The search index's `soldOut`/`limitedAvailability` flags lag live inventory. A
   preseason NBA game listed as not sold out showed "Tickets are sold out now" on its
   page and zero offers; `get_ticket_offers` is the source of truth.
@@ -137,6 +152,12 @@ navigates only within `www.ticketmaster.com`. If the tab is on another host, ope
 - Classic pages show a league or venue terms dialog on load; the offer request works
   without accepting it. The newer layout offers only price orders (low to high, high
   to low), not Best Seats.
+- The classic page's own BEST SEATS tab sent no new offer request when clicked in a
+  2026-09-26 check; it appears to re-sort the listings already loaded (the cheapest
+  40) and can place more primary seats near the top. `get_ticket_offers` asks the offer service for its seat-quality order instead,
+  so below the featured listings its Best Seats rows can differ from the tab (for
+  example, expensive resale seats in the best sections appear that the tab only shows
+  after scrolling).
 - Ticket quantity limits are per event (the newer layout listed 1–6 for one show and
   1–8 for another); a quantity the picker does not offer returns `invalid_input` with
   the offered quantities.
@@ -144,12 +165,12 @@ navigates only within `www.ticketmaster.com`. If the tab is on another host, ope
 ## Known limitations
 
 - US site only (`region=200`, `en-us`, USD).
-- `search_events` reads at most 10 location-only pages and 6 date-filtered pages
-  (20 events each); a very large market far in the future can miss events.
+- `search_events` reads at most 10 location-only pages and 40 date-filtered pages
+  (20 events each) and warns when it stops at the date-filtered cap; without dates a
+  very large market can still hide events beyond the nearby block. `site_total` is the
+  site's rough count (capped by the site at 10000).
 - The page tools need a `www.ticketmaster.com` tab; on any other page they return
   `wrong_page`. A tab showing the bot-protection page returns `challenge`.
-  `site_total` is the site's rough count; it is `null` when a location and a date
-  range were given and the date-filtered fallback was not needed.
 - On the newer layout `best_seats` is not available and falls back to lowest price
   with a warning; seat numbers, fees and face value are not shown there. The panel
   may render fewer listings than its "N Results" count; a warning says so.
@@ -157,7 +178,8 @@ navigates only within `www.ticketmaster.com`. If the tab is on another host, ope
   mentions resale; primary/resale is otherwise unlabelled (`inventory_type: null`).
 - On the classic layout `max_price_per_ticket` checks at most 120 listings in the
   requested order; with `best_seats` a warning says when cheaper seats may exist
-  further down.
+  further down. `best_seats` is the offer service's seat-quality order after the
+  featured listings, not a replica of the page tab's client-side ordering.
 - Waiting rooms (`queue`) and bot-protection pages are detected and reported, not
   passed. Accessible-seating inventory is excluded, as on the site's default view.
 - Signed-in-only inventory (member presales, unlock codes) was not tested; the tools
@@ -177,7 +199,8 @@ following findings, all fixed in the next commit:
    client-side and could return `no_tickets` although primary seats existed. The flag
    is now sent to the offer service, and `max_price_per_ticket` reads up to three pages.
 3. Location plus dates missed in-radius events that only the site's date-filtered
-   search lists. Both queries now run and are merged.
+   search lists. Both queries now run and are merged (round 2 found the 6-page cap
+   still too small; see below).
 4. A flagged session with a momentarily empty event document was reported as
    `unsupported_page`; the tool now re-checks and reports `challenge`.
 5. `search_events` and `get_event` became `kind: "page"` tools (same-document fetch,
@@ -189,4 +212,28 @@ unsupported-quantity path, price filters, not-found ids, the challenge path in t
 flagged sessions, schema conformance of 35 live outputs, and no listing clicks,
 terms acceptance, checkout, cart or reserve requests.
 
-Round 2 on the fixed source: pending.
+Independent QA round 2 on commit `7b5af96`: **FAIL**. Round-1 findings 1, 2 and 4
+were confirmed fixed live; the new findings, fixed in the next commit:
+
+1. Classic-layout primary prices included the service's `face_value_tax` while being
+   labelled "before taxes" (for example $244.29 against the page's $231.70). Taxes are
+   now subtracted and reported separately.
+2. The page's featured listings (general-admission lawn tickets, promoted primary
+   seats) were never returned, because the tool built its own query without the
+   page's `ticketTypes` and `promoted` parameters and ignored the response's
+   `promoted` picks. The tool now reuses the page's own query and lists featured
+   picks first; offers not sellable in the requested quantity are skipped.
+3. The dated Los Angeles search still missed two in-radius shows on date-filtered
+   pages 6 and 7. The date-filtered pass now reads up to 40 pages and warns at the cap.
+4. Best Seats did not match the page tab on a promoted-primary concert: documented
+   above (the tab appears to re-sort loaded listings client-side).
+5. Non-ASCII page-tool output arriving as a JSON string: documented above as runtime
+   behaviour.
+
+Round 2 also verified: kinds and the narrowed URL patterns, page tools executing
+in-page from five kinds of `www` page and not listed on `help.ticketmaster.com` or
+other sites, 111 schema-valid live outputs, 31 invalid inputs, the unsupported
+quantity path, sold-out reporting, and no clicks other than the quantity filter, no
+terms acceptance and no checkout, cart, hold or reserve requests.
+
+Round 3 on the fixed source: pending.

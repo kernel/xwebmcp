@@ -23,7 +23,7 @@
       oneOf: [
         {
           type: "object", additionalProperties: false,
-          required: ["status", "query", "resolved_location", "site_total", "observed_at", "events"],
+          required: ["status", "query", "resolved_location", "site_total", "observed_at", "warnings", "events"],
           properties: {
             status: { const: "ok" },
             query: { type: "object", description: "The normalized search that was run." },
@@ -35,6 +35,7 @@
             },
             site_total: { type: ["integer", "null"], description: "Match count the site reports; the site caps it and counts events outside the radius, so it is only a rough size." },
             observed_at: { type: "string", description: "ISO timestamp of the search; listings change constantly." },
+            warnings: { type: "array", items: { type: "string" }, description: "Limits hit while reading the site's results, such as a page cap that may hide more events." },
             events: {
               type: "array", minItems: 1,
               items: {
@@ -191,40 +192,52 @@
       // nearbyBlock: the location-only query lists nearby events first (in the requested order) and then restarts
       // with distant ones. The site's date filter keeps the range but mixes distances across pages, and some nearby
       // events only appear there, so with a location and dates both queries run and their results are merged.
-      const scan = async (withDates, maxPages, nearbyBlock) => {
-        for (let page = 0; page < maxPages; page++) {
-          const params = new URLSearchParams({ region: "200", sort, page: String(page) });
-          if (keyword.value) params.set("q", keyword.value);
-          if (withDates) { params.set("startDate", startDate); params.set("endDate", endDate); }
-          if (resolved) { params.set("latitude", String(resolved.latitude)); params.set("longitude", String(resolved.longitude)); params.set("distance", String(radius)); params.set("distanceUnit", "miles"); }
-          const result = checked(await api("/api/search/events?" + params.toString()));
-          if (result.error) return result;
-          const batch = Array.isArray(result.body.events) ? result.body.events : [];
-          if (page === 0 && (withDates || !startDate) && Number.isInteger(result.body.total)) siteTotal = result.body.total;
-          let near = 0, passedEnd = false;
-          for (const e of batch) {
-            const c = normalize(e);
-            if (!c || !c.near) continue;
-            near++;
-            if (endDate && c.when.date && c.when.date > endDate) passedEnd = true;
-            if (wanted(c) && !found.has(c.record.event_id)) found.set(c.record.event_id, c.record);
+      const fetchPage = async (withDates, page) => {
+        const params = new URLSearchParams({ region: "200", sort, page: String(page) });
+        if (keyword.value) params.set("q", keyword.value);
+        if (withDates) { params.set("startDate", startDate); params.set("endDate", endDate); }
+        if (resolved) { params.set("latitude", String(resolved.latitude)); params.set("longitude", String(resolved.longitude)); params.set("distance", String(radius)); params.set("distanceUnit", "miles"); }
+        const result = checked(await api("/api/search/events?" + params.toString()));
+        if (result.error) return result;
+        if (page === 0 && (withDates || !startDate) && Number.isInteger(result.body.total)) siteTotal = result.body.total;
+        return { batch: Array.isArray(result.body.events) ? result.body.events : [] };
+      };
+      // parallel > 1 fetches that many pages at once; results are still processed in page order.
+      const scan = async (withDates, maxPages, nearbyBlock, parallel) => {
+        for (let first = 0; first < maxPages; first += parallel) {
+          const pages = await Promise.all(Array.from({ length: Math.min(parallel, maxPages - first) }, (_, i) => fetchPage(withDates, first + i)));
+          for (const page of pages) {
+            if (page.error) return page;
+            const { batch } = page;
+            let near = 0, passedEnd = false;
+            for (const e of batch) {
+              const c = normalize(e);
+              if (!c || !c.near) continue;
+              near++;
+              if (endDate && c.when.date && c.when.date > endDate) passedEnd = true;
+              if (wanted(c) && !found.has(c.record.event_id)) found.set(c.record.event_id, c.record);
+            }
+            if (batch.length < 20) return { done: "exhausted" };
+            if (nearbyBlock && near * 2 < batch.length) return { done: "exhausted" };
+            if (nearbyBlock && ((sort === "date" && passedEnd) || found.size >= limit)) return { done: "enough" };
+            // With sort=date and a location, the mixed date-filtered pages are read in full and sorted afterwards.
+            if (!nearbyBlock && found.size >= limit && !(resolved && sort === "date")) return { done: "enough" };
           }
-          if (batch.length < 20) return { done: "exhausted" };
-          if (nearbyBlock && near * 2 < batch.length) return { done: "exhausted" };
-          if (nearbyBlock && ((sort === "date" && passedEnd) || found.size >= limit)) return { done: "enough" };
-          // With sort=date and a location, the mixed date-filtered pages are read in full and sorted afterwards.
-          if (!nearbyBlock && found.size >= limit && !(resolved && sort === "date")) return { done: "enough" };
         }
         return { done: "capped" };
       };
-      let outcome = resolved ? await scan(false, 10, true) : await scan(!!startDate, 5, false);
-      if (!outcome.error && resolved && startDate) outcome = await scan(true, 6, false);
+      const warnings = [];
+      let outcome = resolved ? await scan(false, 10, true, 1) : await scan(!!startDate, 5, false, 1);
+      // The date-filtered pages mix distances, so a busy market needs many of them: read up to 40 pages (800 events),
+      // four at a time. The site rejects pages past about 48.
+      if (!outcome.error && resolved && startDate) outcome = await scan(true, 40, false, 4);
       if (outcome.error) return outcome.error;
+      if (resolved && startDate && outcome.done === "capped") warnings.push("Read the first 800 of the site's date-filtered results; more nearby events may exist. Narrow the dates or add a keyword.");
       let events = [...found.values()];
       if (sort === "date") events.sort((a, b) => (a.start_utc ? Date.parse(a.start_utc) : Infinity) - (b.start_utc ? Date.parse(b.start_utc) : Infinity));
       events = events.slice(0, limit).map((e, i) => ({ ...e, rank: i + 1 }));
       if (!events.length) return { status: "no_results", query, resolved_location: resolved, observed_at: observedAt, message: "Ticketmaster returned no events matching every filter." };
-      return { status: "ok", query, resolved_location: resolved, site_total: siteTotal, observed_at: observedAt, events };
+      return { status: "ok", query, resolved_location: resolved, site_total: siteTotal, observed_at: observedAt, warnings, events };
     } catch (error) {
       return fail("site_error", "The request from the page failed: " + (error && error.message ? error.message : String(error)));
     }

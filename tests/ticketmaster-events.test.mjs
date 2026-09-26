@@ -73,7 +73,7 @@ const eventInfo = (id, extra = {}) => ({
   isResaleEnabled: true, currencyCode: "USD", edpPopup: { title: "By proceeding you agree to the ticket terms." }, webInfoNoHtml: "Doors open one hour early.", ...extra
 });
 
-const offer = (offerId, inventoryType, totalPrice, extra = {}) => ({ offerId, inventoryType, name: inventoryType === "primary" ? "Standard Ticket" : undefined, currency: "USD", listPrice: totalPrice - 5, faceValue: totalPrice - 5, totalPrice, charges: [{ amount: 5 }], sellableQuantities: [2, 4], ...extra });
+const offer = (offerId, inventoryType, totalPrice, extra = {}) => ({ offerId, inventoryType, name: inventoryType === "primary" ? "Standard Ticket" : undefined, currency: "USD", listPrice: totalPrice - 5, faceValue: totalPrice - 5, totalPrice, charges: [{ reason: "service", type: "fee", amount: 5 }], sellableQuantities: [1, 2, 4], ...extra });
 const quickpicks = (picks = null) => ({
   total: picks ? picks.length : 3,
   picks: picks ?? [
@@ -129,6 +129,8 @@ function harness(name, o = {}) {
         getElementById: id => id === "__NEXT_DATA__" && p.next ? { textContent: JSON.stringify(p.next) } : null
       },
       Intl, Math, Date, Number, Object, Array, String, RegExp, Map, Set, Infinity, NaN, isFinite,
+      setTimeout: fn => { fn(); return 0; },
+      performance: { getEntriesByType: type => (type === "resource" ? (p.resources ?? []).map(name => ({ name })) : []) },
       fetch: async (path, init) => {
         assert.equal(init.credentials, "include");
         assert.equal(init.headers["x-tmplatform"], "global");
@@ -427,7 +429,9 @@ for (const [status, kind] of [[404, "not_found"], [400, "not_found"], [403, "cha
 
 // --- get_ticket_offers: classic event page (offer service) -----------------------------------------------
 
-const classic = (extra = {}) => ({ next: nextData("/naevent/[eventId]"), title: "Fabricated Game Tickets", text: "Seat Map", ...extra });
+// The page's own listing query as it appears in its resource timing entries (with fabricated key values).
+const PAGE_QUERY = id => `https://offeradapter.ticketmaster.com/api/ismds/event/${id}/quickpicks?show=places+maxQuantity+sections&mode=primary%3Appsectionrow+resale%3Aga_areas+platinum%3Aall&qty=2&q=not(%27accessible%27)&includeStandard=true&includeResale=true&includePlatinumInventoryType=false&ticketTypes=000000000001%2C000000000002&embed=area&embed=offer&embed=description&apikey=${FAKE_KEY}&apisecret=${FAKE_SECRET}&resaleChannelId=fabricated.channel&limit=40&offset=0&sort=noTaxTotalprice&promoted=primary&maxNumberOfPromotions=3`;
+const classic = (extra = {}) => ({ next: nextData("/naevent/[eventId]"), title: "Fabricated Game Tickets", text: "Seat Map", resources: ["EEEE0001", "Z1ab_Cd-Ef0_"].map(PAGE_QUERY), ...extra });
 
 test("get_ticket_offers: best seats queries the page's offer service with quality order and quantity", async () => {
   const h = harness("get_ticket_offers", { url: "https://example.com/", page: classic() });
@@ -446,10 +450,14 @@ test("get_ticket_offers: best seats queries the page's offer service with qualit
   assert.equal(result.source, "inventory_api");
   assert.equal(result.sort_applied, "best_seats");
   assert.equal(result.total_listings, 3);
+  assert.equal(q.get("ticketTypes"), "000000000001,000000000002", "the page's own query parameters are reused");
+  assert.equal(q.get("promoted"), "primary");
+  assert.equal(q.get("limit"), "40");
   assert.deepEqual(result.offers[0], {
-    rank: 1, section: "101", row: "A", seats: ["1", "2", "3", "4"], area: "Lower Level, Center", ticket_type: "Resale", inventory_type: "resale",
-    price_per_ticket: 250.5, base_price_per_ticket: 245.5, fees_per_ticket: 5, face_value_per_ticket: 245.5, estimated_total: 1002, seat_quality: 0.95, sellable_quantities: [2, 4]
+    rank: 1, featured: false, section: "101", row: "A", seats: ["1", "2", "3", "4"], area: "Lower Level, Center", general_admission: false, ticket_type: "Resale", inventory_type: "resale",
+    price_per_ticket: 250.5, base_price_per_ticket: 245.5, fees_per_ticket: 5, taxes_per_ticket: 0, face_value_per_ticket: 245.5, estimated_total: 1002, seat_quality: 0.95, sellable_quantities: [1, 2, 4]
   });
+  assert.deepEqual(result.warnings, []);
   // With two offers on one listing the cheaper one is reported.
   assert.equal(result.offers[1].price_per_ticket, 60.1);
   assert.equal(result.offers[1].area, "UPPER");
@@ -683,5 +691,42 @@ test("search_events: with a location and dates the site's date-filtered results 
   assert.ok(result.events[0].distance_miles > 30 && result.events[0].distance_miles <= 50);
   const searches = h.calls.api.filter(p => p.startsWith("/api/search/events"));
   assert.equal(searches.filter(p => !p.includes("startDate")).length, 1, "the nearby block stops once it passes end_date");
-  assert.equal(searches.filter(p => p.includes("startDate")).length, 1);
+  assert.deepEqual(searches.filter(p => p.includes("startDate")).map(p => new URLSearchParams(p.split("?")[1]).get("page")), ["0", "1", "2", "3"], "date-filtered pages are fetched four at a time and stop after the short page");
+});
+
+test("get_ticket_offers: featured general-admission listings come first; taxes are not in the All In price", async () => {
+  const body = quickpicks();
+  body.promoted = [{ type: "general-seating", section: "LAWN", area: "2", descriptionId: "D1", offers: ["G4", "G2"] }, { type: "seat", section: "205", row: "K", area: "2", offerGroups: [{ offers: ["O3"], seats: ["7", "8"] }] }];
+  body._embedded.offer.push(
+    offer("G4", "primary", 26.39, { name: "Four-Pack", listPrice: 24.75, charges: [{ type: "tax", amount: 1.64 }, { type: "fee", amount: 0 }], sellableQuantities: [4, 8] }),
+    offer("G2", "primary", 42.46, { name: "Lawn Ticket", listPrice: 29.5, charges: [{ type: "fee", amount: 11 }, { type: "tax", amount: 1.96 }], sellableQuantities: [1, 2, 3, 4] })
+  );
+  const result = await harness("get_ticket_offers", { page: classic(), xhr: () => ({ status: 200, body }) }).run({ event: "EEEE0001", quantity: 2 });
+  const lawn = result.offers[0];
+  assert.deepEqual([lawn.featured, lawn.general_admission, lawn.section, lawn.row, lawn.ticket_type], [true, true, "LAWN", null, "Lawn Ticket"], "the four-pack cannot be bought as two");
+  assert.deepEqual([lawn.price_per_ticket, lawn.fees_per_ticket, lawn.taxes_per_ticket, lawn.estimated_total], [40.5, 11, 1.96, 81]);
+  assert.deepEqual(result.offers.map(o => [o.section, o.featured]), [["LAWN", true], ["205", true], ["101", false], ["301", false]], "a featured listing repeated in picks is not listed twice");
+});
+
+test("get_ticket_offers: without the page's own query it uses the default one and says so", async () => {
+  const h = harness("get_ticket_offers", { page: classic({ resources: [] }) });
+  const result = await h.run({ event: "EEEE0001" });
+  const q = new URLSearchParams(h.calls.xhr[0].url.split("?")[1]);
+  assert.equal(q.get("ticketTypes"), null);
+  assert.equal(q.get("apikey"), FAKE_KEY);
+  assert.match(result.warnings.join(" "), /default query was used/);
+});
+
+test("search_events: a busy date range reads 40 date-filtered pages and warns when it stops", async () => {
+  const far = Array.from({ length: 20 }, (_, i) => searchEvent("FAR" + String(i).padStart(5, "0"), "Far " + i, "2026-10-04T01:00:00Z", FAR));
+  const h = harness("search_events", { api: p => {
+    if (!p.startsWith("/api/search/events")) return null;
+    const q = new URLSearchParams(p.split("?")[1]);
+    if (!q.get("startDate")) return { status: 200, body: { total: 10000, events: [laEvents[1]] } };
+    return { status: 200, body: { total: 900, events: q.get("page") === "39" ? [...far.slice(1), searchEvent("LATE0001", "Late Find", "2026-10-04T04:00:00Z", NEAR)] : far } };
+  } });
+  const result = await h.run({ keyword: "comedy", location: "Los Angeles", start_date: "2026-10-03" });
+  assert.deepEqual(result.events.map(e => e.event_id), ["AAAA0002", "LATE0001"]);
+  assert.equal(h.calls.api.filter(p => p.includes("startDate")).length, 40);
+  assert.match(result.warnings[0], /first 800/);
 });

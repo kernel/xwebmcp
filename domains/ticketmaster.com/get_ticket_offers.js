@@ -3,7 +3,7 @@
   match: { url_patterns: ["https://www.ticketmaster.com/*"] },
   tool: {
     name: "get_ticket_offers",
-    description: "List the ticket offers a Ticketmaster event page currently shows for a given number of tickets: section, row, seats, primary or resale, ticket type and price per ticket including fees (before taxes), plus an estimated total for the quantity. sort 'best_seats' asks for the site's Best Seats ordering (top recommended seats); 'lowest_price' matches the site's Lowest Price tab. Opens the event page in the current tab and reads the same listings the page shows; on the newer event page layout it sets the page's quantity filter, and that layout only sorts by price, so best_seats falls back to lowest price with a warning. Prices and availability change by the minute: treat results as quotes observed at observed_at. Returns no_tickets when nothing is available for the quantity (including sold-out events). Never selects a listing, reserves, holds or buys seats, never accepts the event's ticket terms, and never opens checkout. Only events sold on ticketmaster.com are supported.",
+    description: "List the ticket offers a Ticketmaster event page currently shows for a given number of tickets: section, row, seats, primary or resale, ticket type and price per ticket including fees (before taxes), plus an estimated total for the quantity. Listings the site features (often general-admission or primary seats) come first with featured true, as on the page. sort 'best_seats' orders the rest by the site's seat-quality ranking (top recommended seats); 'lowest_price' orders them by price like the site's Lowest Price tab. Opens the event page in the current tab and reads the same listings the page shows; on the newer event page layout it sets the page's quantity filter, and that layout only sorts by price, so best_seats falls back to lowest price with a warning. Prices and availability change by the minute: treat results as quotes observed at observed_at. Returns no_tickets when nothing is available for the quantity (including sold-out events). Never selects a listing, reserves, holds or buys seats, never accepts the event's ticket terms, and never opens checkout. Only events sold on ticketmaster.com are supported.",
     inputSchema: {
       type: "object", additionalProperties: false, required: ["event"],
       properties: {
@@ -36,9 +36,11 @@
               type: "array", minItems: 1,
               items: {
                 type: "object", additionalProperties: false,
-                required: ["rank", "section", "row", "seats", "area", "ticket_type", "inventory_type", "price_per_ticket", "base_price_per_ticket", "fees_per_ticket", "face_value_per_ticket", "estimated_total", "seat_quality", "sellable_quantities"],
+                required: ["rank", "featured", "section", "row", "seats", "area", "general_admission", "ticket_type", "inventory_type", "price_per_ticket", "base_price_per_ticket", "fees_per_ticket", "taxes_per_ticket", "face_value_per_ticket", "estimated_total", "seat_quality", "sellable_quantities"],
                 properties: {
                   rank: { type: "integer", minimum: 1 },
+                  featured: { type: "boolean", description: "Listed first by the site as a featured offer (often general admission or primary seats)." },
+                  general_admission: { type: ["boolean", "null"], description: "True for general-admission areas without assigned seats; null when the page does not say." },
                   section: { type: ["string", "null"] }, row: { type: ["string", "null"] },
                   seats: { type: ["array", "null"], items: { type: "string" }, description: "Seat numbers when the site shows them." },
                   area: { type: ["string", "null"], description: "Site's description of the area, such as 'Lower Bowl, Sideline Seating'." },
@@ -46,6 +48,7 @@
                   inventory_type: { type: ["string", "null"], description: "'primary', 'resale', or null when the page does not say." },
                   price_per_ticket: { type: "number", description: "Price for one ticket including fees, before taxes." },
                   base_price_per_ticket: { type: ["number", "null"] }, fees_per_ticket: { type: ["number", "null"] }, face_value_per_ticket: { type: ["number", "null"] },
+                  taxes_per_ticket: { type: ["number", "null"], description: "Taxes the site adds at checkout, when it reports them; not included in price_per_ticket." },
                   estimated_total: { type: "number", description: "price_per_ticket times quantity, before taxes and any order fee." },
                   seat_quality: { type: ["number", "null"], description: "Site's seat-quality score from 0 to 1 when available." },
                   sellable_quantities: { type: ["array", "null"], items: { type: "integer" } }
@@ -129,14 +132,22 @@
         const variant = data?.page || null;
         const edp = data?.props?.pageProps?.edpData;
         if (variant !== "/naevent/[eventId]" || !edp?.ismdsApiKey || !edp?.ismdsPricingURL) return { variant, title, ...scan() };
+        // Reuse the page's own quick-picks query when it has sent one, so event-specific parameters (ticket types,
+        // featured-listing rules) match what the shopper sees; otherwise fall back to the page's usual defaults.
+        let pageQuery = null;
+        for (let waited = 0; !pageQuery && waited <= 8000; waited += 500) {
+          pageQuery = performance.getEntriesByType("resource").map(e => e.name).filter(u => u.includes("/event/" + eventId + "/quickpicks?")).pop() || null;
+          if (!pageQuery) await new Promise(r => setTimeout(r, 500));
+        }
         const request = offset => new Promise(resolve => {
-          const params = new URLSearchParams({
-            show: "places maxQuantity sections", mode: "primary:ppsectionrow resale:ga_areas platinum:all", qty: String(qty), q: "not('accessible')",
-            includeStandard: "true", includeResale: String(includeResale), includePlatinumInventoryType: "false", apikey: edp.ismdsApiKey, apisecret: edp.ismdsApiSecret,
-            resaleChannelId: edp.context?.resaleChannelId || "", limit: "40", offset: String(offset), sort: sort === "best_seats" ? "-quality" : "noTaxTotalprice"
-          });
+          const url = new URL(pageQuery || edp.ismdsPricingURL + "/event/" + encodeURIComponent(eventId) + "/quickpicks?" + new URLSearchParams({
+            show: "places maxQuantity sections", mode: "primary:ppsectionrow resale:ga_areas platinum:all", q: "not('accessible')",
+            includeStandard: "true", includePlatinumInventoryType: "false", apikey: edp.ismdsApiKey, apisecret: edp.ismdsApiSecret, resaleChannelId: edp.context?.resaleChannelId || ""
+          }).toString() + "&embed=area&embed=offer&embed=description");
+          const set = { qty: String(qty), includeResale: String(includeResale), limit: "40", offset: String(offset), sort: sort === "best_seats" ? "-quality" : "noTaxTotalprice" };
+          for (const [k, v] of Object.entries(set)) url.searchParams.set(k, v);
           const xhr = new XMLHttpRequest();
-          xhr.open("GET", edp.ismdsPricingURL + "/event/" + encodeURIComponent(eventId) + "/quickpicks?" + params.toString() + "&embed=area&embed=offer&embed=description");
+          xhr.open("GET", url.href);
           xhr.withCredentials = true;
           xhr.setRequestHeader("TMPS-Correlation-Id", crypto.randomUUID());
           xhr.timeout = 20000;
@@ -145,7 +156,11 @@
           xhr.ontimeout = () => resolve({ status: -1, body: null });
           xhr.send();
         });
+        const sum = (o, type) => (o.charges || []).reduce((total, c) => total + (c?.type === type && Number.isFinite(c.amount) ? c.amount : 0), 0);
+        // The page's "All In" price is the list price plus fees; the service's totalPrice also includes taxes.
+        const allIn = o => o.totalPrice - sum(o, "tax");
         const picks = [];
+        const seen = new Set();
         let total = null, read = 0;
         // max_price_per_ticket is applied here, so read up to three pages of 40 when it removes listings.
         for (let offset = 0; offset < 120; offset += 40) {
@@ -160,20 +175,29 @@
           const offers = Object.fromEntries((b._embedded?.offer || []).map(o => [o.offerId, o]));
           const areas = Object.fromEntries((b._embedded?.area || []).map(a => [a.areaId, a.description || a.name || null]));
           const descriptions = Object.fromEntries((b._embedded?.description || []).map(d => [d.descriptionId, (d.descriptions || []).join(", ") || null]));
-          for (const p of b.picks) {
+          // Featured listings (for example general-admission lawn tickets) come first, as on the page.
+          const listed = [...(offset === 0 && Array.isArray(b.promoted) ? b.promoted.map(p => ({ p, featured: true })) : []), ...b.picks.map(p => ({ p, featured: false }))];
+          for (const { p, featured } of listed) {
             const group = (p.offerGroups || [])[0] || {};
-            const candidates = (group.offers || []).map(id => offers[id]).filter(o => o && Number.isFinite(o.totalPrice));
-            const o = candidates.sort((x, y) => x.totalPrice - y.totalPrice)[0] || null;
-            if (!o || (maxPrice !== null && o.totalPrice > maxPrice)) continue;
+            const candidates = (p.offers || group.offers || []).map(id => offers[id])
+              .filter(o => o && Number.isFinite(o.totalPrice) && (!Array.isArray(o.sellableQuantities) || o.sellableQuantities.includes(qty)));
+            const o = candidates.sort((x, y) => allIn(x) - allIn(y))[0] || null;
+            if (!o || (maxPrice !== null && allIn(o) > maxPrice)) continue;
+            const seats = Array.isArray(group.seats) && group.seats.length ? group.seats.map(String) : null;
+            const key = [p.section, p.row, seats && seats.join(","), o.offerId].join("|");
+            if (seen.has(key)) continue;
+            seen.add(key);
             picks.push({
-              section: p.section ?? o.section ?? null, row: p.row ?? o.row ?? null, seats: Array.isArray(group.seats) && group.seats.length ? group.seats.map(String) : null,
+              featured, general_admission: p.type === "general-seating",
+              section: p.section ?? o.section ?? null, row: p.row ?? o.row ?? null, seats,
               area: descriptions[p.descriptionId] || areas[p.area] || null, quality: Number.isFinite(p.quality) ? p.quality : null,
-              offer: { name: o.name ?? null, inventoryType: o.inventoryType ?? null, totalPrice: o.totalPrice, listPrice: Number.isFinite(o.listPrice) ? o.listPrice : null, faceValue: Number.isFinite(o.faceValue) ? o.faceValue : null,
-                fees: Array.isArray(o.charges) ? o.charges.reduce((sum, c) => sum + (Number.isFinite(c?.amount) ? c.amount : 0), 0) : null, currency: o.currency ?? null, sellable: Array.isArray(o.sellableQuantities) ? o.sellableQuantities : null }
+              offer: { name: o.name ?? null, inventoryType: o.inventoryType ?? null, price: allIn(o), listPrice: Number.isFinite(o.listPrice) ? o.listPrice : null, faceValue: Number.isFinite(o.faceValue) ? o.faceValue : null,
+                fees: sum(o, "fee"), taxes: sum(o, "tax"), currency: o.currency ?? null, sellable: Array.isArray(o.sellableQuantities) ? o.sellableQuantities : null }
             });
           }
           if (picks.length >= limit || b.picks.length < 40 || (total !== null && read >= total)) break;
         }
+        return { variant, title, ...scan(), api: { status: 200, total, read, mirrored: !!pageQuery, picks } };
         return { variant, title, ...scan(), api: { status: 200, total, read, picks } };
       }, { arg: { eventId, qty: quantity, sort, includeResale, maxPrice, limit, challenge: CHALLENGE.source, soldOut: SOLD_OUT.source } });
 
@@ -194,14 +218,16 @@
           if (!api.read) return noTickets(eventUrl, page.soldOut ? "The event page says tickets are sold out or unavailable." : "No " + (includeResale ? "" : "primary ") + "listings are available for " + quantity + " ticket" + (quantity > 1 ? "s" : "") + " together; a different quantity may have seats.");
           return noTickets(eventUrl, "None of the " + (api.total ?? api.read) + " listing(s) for this quantity is at or under max_price_per_ticket" + (sort === "best_seats" && api.total !== null && api.read < api.total ? " among the first " + api.read + " in Best Seats order" : "") + ".");
         }
-        const warnings = sort === "best_seats" && maxPrice !== null && kept.length < limit && api.total !== null && api.read < api.total
-          ? ["Only the first " + api.read + " of " + api.total + " listings in this order were checked against max_price_per_ticket; cheaper seats may exist further down."] : [];
+        const warnings = [];
+        if (sort === "best_seats" && maxPrice !== null && kept.length < limit && api.total !== null && api.read < api.total)
+          warnings.push("Only the first " + api.read + " of " + api.total + " listings in this order were checked against max_price_per_ticket; cheaper seats may exist further down.");
+        if (!api.mirrored) warnings.push("The event page had not sent its own listing query, so the site's default query was used; featured listings may be missing.");
         const offers = kept.slice(0, limit).map((p, i) => ({
-          rank: i + 1, section: p.section, row: p.row, seats: p.seats, area: p.area,
+          rank: i + 1, featured: p.featured, section: p.section, row: p.row, seats: p.seats, area: p.area, general_admission: p.general_admission,
           ticket_type: p.offer.name || (p.offer.inventoryType === "resale" ? "Resale" : null), inventory_type: p.offer.inventoryType,
-          price_per_ticket: money(p.offer.totalPrice), base_price_per_ticket: p.offer.listPrice === null ? null : money(p.offer.listPrice),
-          fees_per_ticket: p.offer.fees === null ? null : money(p.offer.fees), face_value_per_ticket: p.offer.faceValue === null ? null : money(p.offer.faceValue),
-          estimated_total: money(p.offer.totalPrice * quantity), seat_quality: p.quality, sellable_quantities: p.offer.sellable
+          price_per_ticket: money(p.offer.price), base_price_per_ticket: p.offer.listPrice === null ? null : money(p.offer.listPrice),
+          fees_per_ticket: money(p.offer.fees), taxes_per_ticket: money(p.offer.taxes), face_value_per_ticket: p.offer.faceValue === null ? null : money(p.offer.faceValue),
+          estimated_total: money(p.offer.price * quantity), seat_quality: p.quality, sellable_quantities: p.offer.sellable
         }));
         return {
           status: "ok", event_id: eventId, event_url: eventUrl, quantity, sort_requested: sort, sort_applied: sort, source: "inventory_api",
@@ -293,8 +319,8 @@
         status: "ok", event_id: eventId, event_url: eventUrl, quantity, sort_requested: sort, sort_applied: "lowest_price", source: "page_listing",
         price_basis: "per ticket, including fees, before taxes", currency: "USD", total_listings: state.results, observed_at: observedAt, warnings,
         offers: kept.slice(0, limit).map((p, i) => ({
-          rank: i + 1, section: p.section, row: p.row, seats: null, area: null, ticket_type: p.type, inventory_type: p.resale ? "resale" : null,
-          price_per_ticket: money(p.price), base_price_per_ticket: null, fees_per_ticket: null, face_value_per_ticket: null,
+          rank: i + 1, featured: false, section: p.section, row: p.row, seats: null, area: null, general_admission: null, ticket_type: p.type, inventory_type: p.resale ? "resale" : null,
+          price_per_ticket: money(p.price), base_price_per_ticket: null, fees_per_ticket: null, taxes_per_ticket: null, face_value_per_ticket: null,
           estimated_total: money(p.price * quantity), seat_quality: null, sellable_quantities: null
         }))
       };
