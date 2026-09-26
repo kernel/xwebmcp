@@ -436,6 +436,48 @@
       }
     },
     {
+      "domain": "ticketmaster.com",
+      "tool": "get_event",
+      "file": "domains/ticketmaster.com/get_event.js",
+      "kind": "cdp",
+      "namespace": "ticketmaster.com",
+      "url_patterns": [
+        "https://ticketmaster.com/*",
+        "https://*.ticketmaster.com/*"
+      ],
+      "status": "draft",
+      "last_verified": null,
+      "notes": ""
+    },
+    {
+      "domain": "ticketmaster.com",
+      "tool": "get_ticket_offers",
+      "file": "domains/ticketmaster.com/get_ticket_offers.js",
+      "kind": "cdp",
+      "namespace": "ticketmaster.com",
+      "url_patterns": [
+        "https://ticketmaster.com/*",
+        "https://*.ticketmaster.com/*"
+      ],
+      "status": "draft",
+      "last_verified": null,
+      "notes": ""
+    },
+    {
+      "domain": "ticketmaster.com",
+      "tool": "search_events",
+      "file": "domains/ticketmaster.com/search_events.js",
+      "kind": "cdp",
+      "namespace": "ticketmaster.com",
+      "url_patterns": [
+        "https://ticketmaster.com/*",
+        "https://*.ticketmaster.com/*"
+      ],
+      "status": "draft",
+      "last_verified": null,
+      "notes": ""
+    },
+    {
       "domain": "ubereats.com",
       "tool": "add_to_cart",
       "file": "domains/ubereats.com/add_to_cart.js",
