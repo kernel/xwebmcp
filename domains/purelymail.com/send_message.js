@@ -51,8 +51,6 @@
   execute: async (input) => {
     const ORIGIN = "https://inbox.purelymail.com";
     const startedAt = Date.now();
-    const remaining = () => 110000 - (Date.now() - startedAt);
-    const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
     const stop = (kind, message) => { const error = new Error(message); error.kind = kind; throw error; };
     const enc = encodeURIComponent;
     const EMAIL = /^[^\s@<>(),;:"[\]\\]{1,64}@[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?(?:\.[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?)+$/;
@@ -154,16 +152,6 @@
     const failure = error => error && error.kind
       ? { status: "error", error_kind: error.kind, error_message: error.message }
       : { status: "error", error_kind: "site_error", error_message: "Unexpected failure: " + String((error && error.message) || error).slice(0, 200) };
-    // After a submission only a site-confirmed rejection proves nothing changed.
-    const mutationFailure = (error, submitted) => {
-      const out = failure(error);
-      out.changed = submitted ? "unknown" : false;
-      if (submitted && out.error_kind !== "outcome_unknown") {
-        out.error_kind = "outcome_unknown";
-        out.error_message += " A change had already been submitted and may have been applied; do not retry, re-read the current state first.";
-      }
-      return out;
-    };
     const people = html => {
       const out = [];
       for (const match of String(html || "").matchAll(/<span([^>]*)class="rcmContactAddress"([^>]*)>([\s\S]*?)<\/span>/g)) {
@@ -198,11 +186,12 @@
       return { messages, total: Number.isInteger(env.messagecount) ? env.messagecount : messages.length, page: Number(env.current_page) || 1, page_count: Number(env.pagecount) || (messages.length ? 1 : 0), search_request: env.search_request || null };
     };
     const listFolderPage = async (folder, page) => listing(await ajax("/?_task=mail&_action=list&_mbox=" + enc(folder) + "&_page=" + page + "&_remote=1&_unlock=0"), folder);
-    const searchFolder = async ({ folder, query = "", fields = ["subject"], filter = "ALL", interval = "", page = 1 }) => {
-      const first = listing(await ajax("/?_task=mail&_action=search&_q=" + enc(query) + "&_headers=" + enc(fields.join(",")) + "&_mbox=" + enc(folder)
-        + "&_scope=base&_filter=" + enc(filter) + (interval ? "&_interval=" + enc(interval) : "") + "&_remote=1&_unlock=0"), folder);
-      if (page <= 1 || !first.search_request) return first;
-      return listing(await ajax("/?_task=mail&_action=list&_mbox=" + enc(folder) + "&_search=" + enc(first.search_request) + "&_page=" + page + "&_remote=1&_unlock=0"), folder);
+    // The newest page of the plain folder list; search results can lag behind messages that arrived seconds ago.
+    const newestRows = async folder => {
+      const first = await listFolderPage(folder, 1);
+      const rows = first.messages;
+      if (rows.length > 1 && rows[0].uid < rows[rows.length - 1].uid && first.page_count > 1) return (await listFolderPage(folder, first.page_count)).messages;
+      return rows;
     };
     const balancedObject = (text, start) => {
       if (text[start] !== "{") return null;
@@ -441,7 +430,7 @@
       const sentFolder = folderEntries(env).find(f => f.role === "sent");
       if (!input.allow_duplicate && sentFolder) {
         const subject = input.subject.trim();
-        const rows = (await searchFolder({ folder: sentFolder.id, query: subject.slice(0, 100), fields: ["subject"], interval: "1W" })).messages
+        const rows = (await newestRows(sentFolder.id))
           .filter(m => m.subject.trim() === subject).sort((a, b) => b.uid - a.uid).slice(0, 5);
         for (const row of rows) {
           const raw = await readRaw(sentFolder.id, row.uid, 131072);
@@ -457,14 +446,14 @@
       const compose = await request("/?_task=mail&_action=compose", { as: "text", remote: false });
       if (compose.network_error) stop("site_error", "Opening a compose session failed at the network level. Nothing was sent.");
       if (compose.logged_out) stop("not_authenticated", NOT_SIGNED_IN.replace("changed", "sent"));
-      const formHtml = (/<form\b[^>]*name="form"[\s\S]*?<\/form>/.exec(compose.text || "") || [])[0] || "";
-      const fields = formFields(formHtml);
+      // Some compose controls, such as the Sent-folder select, sit outside the main form element; the first field of each name belongs to it.
+      const fields = formFields(compose.text || "");
       const value = name => { const field = fields.find(f => f.name === name); return field ? field.value : null; };
       if (value("_action") !== "send" || !value("_id") || !value("_token") || !value("_from")) stop("site_error", "The compose form did not have the expected fields; the site may have changed. Nothing was sent.");
       const entries = [["_token", value("_token")], ["_task", "mail"], ["_action", "send"], ["_id", value("_id")], ["_attachments", ""], ["_from", value("_from")],
         ["_to", lists.to.join(", ")], ["_cc", lists.cc.join(", ")], ["_bcc", lists.bcc.join(", ")], ["_replyto", ""], ["_followupto", ""], ["_subject", input.subject.trim()],
         ["_draft_saveid", ""], ["_draft", ""], ["_is_html", "0"], ["_framed", "1"], ["_message", input.body.replace(/\r\n?/g, "\n")], ["editorSelector", "plain"],
-        ["_mdn", ""], ["_dsn", ""], ["_keepformatting", ""], ["_priority", "0"], ["_store_target", value("_store_target") || ""]];
+        ["_mdn", ""], ["_dsn", ""], ["_keepformatting", ""], ["_priority", "0"], ["_store_target", value("_store_target") ?? (sentFolder ? sentFolder.id : "")]];
       submitted = true;
       const result = await request("/?_task=mail&_unlock=0&_framed=1", { method: "POST", form: entries, as: "text", remote: false });
       if (result.network_error) stop("outcome_unknown", "The send request got no response; the message may have been sent. Do not retry: check the Sent folder with list_messages.");

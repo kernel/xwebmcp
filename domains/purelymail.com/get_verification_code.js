@@ -61,7 +61,6 @@
   execute: async (input) => {
     const ORIGIN = "https://inbox.purelymail.com";
     const startedAt = Date.now();
-    const remaining = () => 110000 - (Date.now() - startedAt);
     const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
     const stop = (kind, message) => { const error = new Error(message); error.kind = kind; throw error; };
     const enc = encodeURIComponent;
@@ -142,8 +141,6 @@
     const execCalls = (exec, name) => String(exec || "").split("\n").filter(line => line.startsWith("this." + name + "(")).map(line => {
       try { return JSON.parse("[" + line.slice(name.length + 6, line.lastIndexOf(")")) + "]"); } catch { return null; }
     }).filter(Boolean);
-    const siteMessages = source => [...String(source || "").matchAll(/display_message\("((?:[^"\\]|\\.)*)","(error|warning|confirmation|notice)"/g)]
-      .map(match => { try { return { text: JSON.parse("\"" + match[1] + "\""), type: match[2] }; } catch { return { text: match[1], type: match[2] }; } });
     const currentAccount = async () => {
       const valid = value => { const v = String(value || "").trim().toLowerCase(); return EMAIL.test(v) ? v : null; };
       const element = document.querySelector(".header-title.username");
@@ -164,16 +161,6 @@
     const failure = error => error && error.kind
       ? { status: "error", error_kind: error.kind, error_message: error.message }
       : { status: "error", error_kind: "site_error", error_message: "Unexpected failure: " + String((error && error.message) || error).slice(0, 200) };
-    // After a submission only a site-confirmed rejection proves nothing changed.
-    const mutationFailure = (error, submitted) => {
-      const out = failure(error);
-      out.changed = submitted ? "unknown" : false;
-      if (submitted && out.error_kind !== "outcome_unknown") {
-        out.error_kind = "outcome_unknown";
-        out.error_message += " A change had already been submitted and may have been applied; do not retry, re-read the current state first.";
-      }
-      return out;
-    };
     const people = html => {
       const out = [];
       for (const match of String(html || "").matchAll(/<span([^>]*)class="rcmContactAddress"([^>]*)>([\s\S]*?)<\/span>/g)) {
@@ -208,11 +195,12 @@
       return { messages, total: Number.isInteger(env.messagecount) ? env.messagecount : messages.length, page: Number(env.current_page) || 1, page_count: Number(env.pagecount) || (messages.length ? 1 : 0), search_request: env.search_request || null };
     };
     const listFolderPage = async (folder, page) => listing(await ajax("/?_task=mail&_action=list&_mbox=" + enc(folder) + "&_page=" + page + "&_remote=1&_unlock=0"), folder);
-    const searchFolder = async ({ folder, query = "", fields = ["subject"], filter = "ALL", interval = "", page = 1 }) => {
-      const first = listing(await ajax("/?_task=mail&_action=search&_q=" + enc(query) + "&_headers=" + enc(fields.join(",")) + "&_mbox=" + enc(folder)
-        + "&_scope=base&_filter=" + enc(filter) + (interval ? "&_interval=" + enc(interval) : "") + "&_remote=1&_unlock=0"), folder);
-      if (page <= 1 || !first.search_request) return first;
-      return listing(await ajax("/?_task=mail&_action=list&_mbox=" + enc(folder) + "&_search=" + enc(first.search_request) + "&_page=" + page + "&_remote=1&_unlock=0"), folder);
+    // The newest page of the plain folder list; search results can lag behind messages that arrived seconds ago.
+    const newestRows = async folder => {
+      const first = await listFolderPage(folder, 1);
+      const rows = first.messages;
+      if (rows.length > 1 && rows[0].uid < rows[rows.length - 1].uid && first.page_count > 1) return (await listFolderPage(folder, first.page_count)).messages;
+      return rows;
     };
     const balancedObject = (text, start) => {
       if (text[start] !== "{") return null;
@@ -478,7 +466,7 @@
       const ignored = { stale: 0, unverified: 0, mismatch: 0, excluded: 0, no_code: 0 };
       for (;;) {
         for (const folder of folders) {
-          const rows = (await searchFolder({ folder, query: senderDomain, fields: ["from"], interval: "1W" })).messages
+          const rows = (await newestRows(folder))
             .filter(m => m.from && m.from.address && (m.from.address.endsWith("@" + senderDomain) || m.from.address.endsWith("." + senderDomain)))
             .filter(m => !examined.has(folder + "/" + m.uid)).sort((a, b) => b.uid - a.uid).slice(0, 10);
           for (const row of rows) {

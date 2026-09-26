@@ -56,9 +56,6 @@
   },
   execute: async (input) => {
     const ORIGIN = "https://inbox.purelymail.com";
-    const startedAt = Date.now();
-    const remaining = () => 110000 - (Date.now() - startedAt);
-    const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
     const stop = (kind, message) => { const error = new Error(message); error.kind = kind; throw error; };
     const enc = encodeURIComponent;
     const EMAIL = /^[^\s@<>(),;:"[\]\\]{1,64}@[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?(?:\.[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?)+$/;
@@ -138,8 +135,6 @@
     const execCalls = (exec, name) => String(exec || "").split("\n").filter(line => line.startsWith("this." + name + "(")).map(line => {
       try { return JSON.parse("[" + line.slice(name.length + 6, line.lastIndexOf(")")) + "]"); } catch { return null; }
     }).filter(Boolean);
-    const siteMessages = source => [...String(source || "").matchAll(/display_message\("((?:[^"\\]|\\.)*)","(error|warning|confirmation|notice)"/g)]
-      .map(match => { try { return { text: JSON.parse("\"" + match[1] + "\""), type: match[2] }; } catch { return { text: match[1], type: match[2] }; } });
     const currentAccount = async () => {
       const valid = value => { const v = String(value || "").trim().toLowerCase(); return EMAIL.test(v) ? v : null; };
       const element = document.querySelector(".header-title.username");
@@ -160,16 +155,6 @@
     const failure = error => error && error.kind
       ? { status: "error", error_kind: error.kind, error_message: error.message }
       : { status: "error", error_kind: "site_error", error_message: "Unexpected failure: " + String((error && error.message) || error).slice(0, 200) };
-    // After a submission only a site-confirmed rejection proves nothing changed.
-    const mutationFailure = (error, submitted) => {
-      const out = failure(error);
-      out.changed = submitted ? "unknown" : false;
-      if (submitted && out.error_kind !== "outcome_unknown") {
-        out.error_kind = "outcome_unknown";
-        out.error_message += " A change had already been submitted and may have been applied; do not retry, re-read the current state first.";
-      }
-      return out;
-    };
     const people = html => {
       const out = [];
       for (const match of String(html || "").matchAll(/<span([^>]*)class="rcmContactAddress"([^>]*)>([\s\S]*?)<\/span>/g)) {

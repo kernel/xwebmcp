@@ -402,6 +402,202 @@
       }
     },
     {
+      "domain": "purelymail.com",
+      "tool": "create_filter",
+      "file": "domains/purelymail.com/create_filter.js",
+      "kind": "page",
+      "namespace": "purelymail.com",
+      "url_patterns": [
+        "https://inbox.purelymail.com/*"
+      ],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Creates one incoming-mail filter through the Settings > Filters editor: subject/from/to/body/header tests; move, copy, flag, keep and stop actions. Idempotent by name. No forwarding, reject, discard or auto-reply actions."
+    },
+    {
+      "domain": "purelymail.com",
+      "tool": "create_folder",
+      "file": "domains/purelymail.com/create_folder.js",
+      "kind": "page",
+      "namespace": "purelymail.com",
+      "url_patterns": [
+        "https://inbox.purelymail.com/*"
+      ],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Creates one folder (optionally nested) through Settings > Folders; idempotent when it already exists. Never renames or deletes."
+    },
+    {
+      "domain": "purelymail.com",
+      "tool": "delete_filter",
+      "file": "domains/purelymail.com/delete_filter.js",
+      "kind": "page",
+      "namespace": "purelymail.com",
+      "url_patterns": [
+        "https://inbox.purelymail.com/*"
+      ],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Deletes exactly one filter by name through the Filters Delete action; a missing name changes nothing. No bulk delete."
+    },
+    {
+      "domain": "purelymail.com",
+      "tool": "get_filter",
+      "file": "domains/purelymail.com/get_filter.js",
+      "kind": "page",
+      "namespace": "purelymail.com",
+      "url_patterns": [
+        "https://inbox.purelymail.com/*"
+      ],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Reads one filter by name from the filter editor. Read-only."
+    },
+    {
+      "domain": "purelymail.com",
+      "tool": "get_vacation_responder",
+      "file": "domains/purelymail.com/get_vacation_responder.js",
+      "kind": "page",
+      "namespace": "purelymail.com",
+      "url_patterns": [
+        "https://inbox.purelymail.com/*"
+      ],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Reads vacation auto-reply filters (vacation action) with message, subject, interval and enabled state. Read-only."
+    },
+    {
+      "domain": "purelymail.com",
+      "tool": "get_verification_code",
+      "file": "domains/purelymail.com/get_verification_code.js",
+      "kind": "page",
+      "namespace": "purelymail.com",
+      "url_patterns": [
+        "https://inbox.purelymail.com/*"
+      ],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Returns a one-time code only from a fresh message received after since: email must pass DMARC for the expected sender domain; SMS must be a DMARC-passing Google Voice forward mentioning expected_text. Stale, forged, excluded and ambiguous codes are not returned."
+    },
+    {
+      "domain": "purelymail.com",
+      "tool": "list_filters",
+      "file": "domains/purelymail.com/list_filters.js",
+      "kind": "page",
+      "namespace": "purelymail.com",
+      "url_patterns": [
+        "https://inbox.purelymail.com/*"
+      ],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Lists incoming-mail filters in run order with conditions and actions; flags filters the tools cannot rewrite. Read-only."
+    },
+    {
+      "domain": "purelymail.com",
+      "tool": "list_folders",
+      "file": "domains/purelymail.com/list_folders.js",
+      "kind": "page",
+      "namespace": "purelymail.com",
+      "url_patterns": [
+        "https://inbox.purelymail.com/*"
+      ],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Lists subscribed folders with roles and total/unread counts. Read-only."
+    },
+    {
+      "domain": "purelymail.com",
+      "tool": "list_messages",
+      "file": "domains/purelymail.com/list_messages.js",
+      "kind": "page",
+      "namespace": "purelymail.com",
+      "url_patterns": [
+        "https://inbox.purelymail.com/*"
+      ],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Lists or searches one folder page (up to 50) with the webmail's own list and search; does not mark mail read. Search results may lag messages that arrived seconds ago."
+    },
+    {
+      "domain": "purelymail.com",
+      "tool": "login",
+      "file": "domains/purelymail.com/login.js",
+      "kind": "cdp",
+      "namespace": "purelymail.com",
+      "url_patterns": [
+        "https://purelymail.com/*",
+        "https://*.purelymail.com/*"
+      ],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Signs in through the Purelymail Webmail Login form once and confirms the webmail header shows the supplied address; an existing session for another address is wrong_account. No 2FA support."
+    },
+    {
+      "domain": "purelymail.com",
+      "tool": "read_message",
+      "file": "domains/purelymail.com/read_message.js",
+      "kind": "page",
+      "namespace": "purelymail.com",
+      "url_patterns": [
+        "https://inbox.purelymail.com/*"
+      ],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Reads one message via the Show source view (stays unread): safe headers, sender_authentication, attachment names, links and a bounded plain-text body marked untrusted."
+    },
+    {
+      "domain": "purelymail.com",
+      "tool": "send_message",
+      "file": "domains/purelymail.com/send_message.js",
+      "kind": "page",
+      "namespace": "purelymail.com",
+      "url_patterns": [
+        "https://inbox.purelymail.com/*"
+      ],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Sends one plain-text email through a compose session with confirm_send; saves to Sent; refuses a same-subject, same-recipient repeat within 15 minutes unless allow_duplicate. Never retries."
+    },
+    {
+      "domain": "purelymail.com",
+      "tool": "set_vacation_responder",
+      "file": "domains/purelymail.com/set_vacation_responder.js",
+      "kind": "page",
+      "namespace": "purelymail.com",
+      "url_patterns": [
+        "https://inbox.purelymail.com/*"
+      ],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Creates or edits the vacation auto-reply filter; can create it switched off. Enabling makes the server auto-reply; live QA never enabled it."
+    },
+    {
+      "domain": "purelymail.com",
+      "tool": "update_filter",
+      "file": "domains/purelymail.com/update_filter.js",
+      "kind": "page",
+      "namespace": "purelymail.com",
+      "url_patterns": [
+        "https://inbox.purelymail.com/*"
+      ],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Replaces given fields of one filter found by name, keeping its position; refuses filters with parts it cannot rewrite, including vacation replies."
+    },
+    {
+      "domain": "purelymail.com",
+      "tool": "wait_for_message",
+      "file": "domains/purelymail.com/wait_for_message.js",
+      "kind": "page",
+      "namespace": "purelymail.com",
+      "url_patterns": [
+        "https://inbox.purelymail.com/*"
+      ],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Waits up to 110 s for mail received after since matching sender/subject text, using the newest folder list page; returns metadata only."
+    },
+    {
       "domain": "southwest.com",
       "tool": "login",
       "file": "domains/southwest.com/login.js",

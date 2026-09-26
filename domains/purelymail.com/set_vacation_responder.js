@@ -51,11 +51,7 @@
   },
   execute: async (input) => {
     const ORIGIN = "https://inbox.purelymail.com";
-    const startedAt = Date.now();
-    const remaining = () => 110000 - (Date.now() - startedAt);
-    const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
     const stop = (kind, message) => { const error = new Error(message); error.kind = kind; throw error; };
-    const enc = encodeURIComponent;
     const EMAIL = /^[^\s@<>(),;:"[\]\\]{1,64}@[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?(?:\.[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?)+$/;
     const ENTITIES = { amp: "&", lt: "<", gt: ">", quot: "\"", apos: "'", nbsp: " " };
     const decodeEntities = value => String(value ?? "").replace(/&(#x[0-9a-f]+|#[0-9]+|[a-z]+);/gi, (match, name) => {
@@ -123,16 +119,6 @@
       return out;
     };
     const NOT_SIGNED_IN = "The webmail session is not signed in or has expired; run the login tool first. Nothing was changed.";
-    const ajax = async (path, options) => {
-      const result = await request(path, options);
-      if (result.network_error) stop("site_error", "A webmail request failed at the network level; nothing was changed by this read.");
-      if (result.logged_out) stop("not_authenticated", NOT_SIGNED_IN);
-      if (result.status >= 400 || !result.json) stop("site_error", "The webmail answered HTTP " + result.status + " without the expected data.");
-      return result.json;
-    };
-    const execCalls = (exec, name) => String(exec || "").split("\n").filter(line => line.startsWith("this." + name + "(")).map(line => {
-      try { return JSON.parse("[" + line.slice(name.length + 6, line.lastIndexOf(")")) + "]"); } catch { return null; }
-    }).filter(Boolean);
     const siteMessages = source => [...String(source || "").matchAll(/display_message\("((?:[^"\\]|\\.)*)","(error|warning|confirmation|notice)"/g)]
       .map(match => { try { return { text: JSON.parse("\"" + match[1] + "\""), type: match[2] }; } catch { return { text: match[1], type: match[2] }; } });
     const currentAccount = async () => {
@@ -247,12 +233,6 @@
         editable: ["allof", "anyof", "any"].includes(join) && conditions.every(c => c.editable) && actions.every(a => a.editable)
       };
     };
-    const publicFilter = (model, fid) => ({
-      position: fid, name: model.name, enabled: model.enabled, match: model.match,
-      conditions: model.conditions.map(c => ({ field: c.field, header_name: c.header_name, operator: c.operator, values: c.values })),
-      actions: model.actions.map(a => { const copy = { ...a }; delete copy.editable; return copy; }),
-      editable: model.editable
-    });
     // Mirrors the field set the filter editor serializes, one block per rule row and per action row.
     const encodeFilter = (model, fid) => {
       const entries = [["_token", token()], ["_task", "settings"], ["_action", "plugin.managesieve-save"], ["_framed", "1"], ["_fid", fid === null ? "" : String(fid)], ["_name", model.name]];
@@ -336,60 +316,6 @@
         : a.type === "other" ? { type: a.type, site_type: a.site_type } : { type: a.type })
     });
     const sameFilter = (a, b) => normalizedFilter(a) === normalizedFilter(b);
-    const FIELDS = ["subject", "from", "to", "body", "header"];
-    const ACTION_TYPES = ["move_to_folder", "copy_to_folder", "add_flags", "set_flags", "remove_flags", "keep", "stop"];
-    // Validates a filter the caller described; every problem is reported before anything is sent.
-    const checkFilterSpec = (spec, folderIds) => {
-      const bad = message => stop("invalid_input", message + " Nothing was changed.");
-      const only = (object, keys, label) => { if (!object || typeof object !== "object" || Array.isArray(object) || Object.keys(object).some(k => !keys.includes(k))) bad(label + " may only contain " + keys.join(", ") + "."); };
-      if (typeof spec.name !== "string" || !spec.name.trim() || spec.name.trim().length > 128 || /[\r\n\u0000]/.test(spec.name)) bad("name must be 1-128 characters on one line.");
-      if (typeof spec.enabled !== "boolean") bad("enabled must be a boolean.");
-      if (!["all", "any", "every_message"].includes(spec.match)) bad("match must be all, any or every_message.");
-      if (!Array.isArray(spec.conditions) || spec.conditions.length > 10) bad("conditions must be an array of at most 10 conditions.");
-      if (spec.match !== "every_message" && !spec.conditions.length) bad("At least one condition is required unless match is every_message.");
-      if (spec.match === "every_message" && spec.conditions.length) bad("match every_message takes no conditions.");
-      const conditions = spec.conditions.map((c, i) => {
-        only(c, ["field", "header_name", "operator", "values"], "conditions[" + i + "]");
-        if (!FIELDS.includes(c.field)) bad("conditions[" + i + "].field must be one of " + FIELDS.join(", ") + ".");
-        if (c.field === "header" ? (typeof c.header_name !== "string" || !/^[A-Za-z0-9-]{1,64}$/.test(c.header_name)) : c.header_name !== undefined && c.header_name !== null) bad("conditions[" + i + "].header_name is required for field header (letters, digits, hyphens) and not allowed otherwise.");
-        if (!Object.hasOwn(TOOL_OPERATORS, c.operator)) bad("conditions[" + i + "].operator must be one of " + Object.keys(TOOL_OPERATORS).join(", ") + ".");
-        const presence = /exists$/.test(c.operator);
-        if (presence && c.field === "body") bad("conditions[" + i + "]: exists and not_exists do not apply to body.");
-        const values = c.values === undefined ? [] : c.values;
-        if (!Array.isArray(values) || (presence ? values.length : !values.length || values.length > 10) || values.some(v => typeof v !== "string" || !v.trim() || v.length > 200 || /[\r\n\u0000]/.test(v))) bad("conditions[" + i + "].values must be 1-10 one-line strings (none for exists and not_exists).");
-        return { field: c.field, header_name: c.field === "header" ? c.header_name : null, operator: c.operator, values: values.map(v => v.trim()) };
-      });
-      if (!Array.isArray(spec.actions) || !spec.actions.length || spec.actions.length > 6) bad("actions must be an array of 1-6 actions.");
-      const actions = spec.actions.map((a, i) => {
-        if (!a || typeof a !== "object" || !ACTION_TYPES.includes(a.type)) bad("actions[" + i + "].type must be one of " + ACTION_TYPES.join(", ") + ".");
-        if (a.type === "move_to_folder" || a.type === "copy_to_folder") {
-          only(a, ["type", "folder"], "actions[" + i + "]");
-          if (typeof a.folder !== "string" || !folderIds.includes(a.folder)) bad("actions[" + i + "].folder must be an existing folder id from list_folders" + (typeof a.folder === "string" ? " (\"" + a.folder + "\" does not exist; create_folder can add it)" : "") + ".");
-          return { type: a.type, folder: a.folder };
-        }
-        if (/_flags$/.test(a.type)) {
-          only(a, ["type", "flags"], "actions[" + i + "]");
-          if (!Array.isArray(a.flags) || !a.flags.length || a.flags.some(f => !Object.hasOwn(SITE_FLAGS, f)) || new Set(a.flags).size !== a.flags.length) bad("actions[" + i + "].flags must list distinct values from seen, flagged, answered.");
-          return { type: a.type, flags: [...a.flags] };
-        }
-        only(a, ["type"], "actions[" + i + "]");
-        return { type: a.type };
-      });
-      const move = actions.findIndex(a => a.type === "move_to_folder");
-      if (actions.filter(a => a.type === "move_to_folder").length > 1) bad("Only one move_to_folder action is allowed; use copy_to_folder for extra copies.");
-      if (move >= 0 && actions.some((a, i) => i > move && /_flags$/.test(a.type))) bad("Flag actions must come before move_to_folder, otherwise the moved message does not get the flags.");
-      if (actions.some((a, i) => a.type === "stop" && i !== actions.length - 1)) bad("stop must be the last action.");
-      return { name: spec.name.trim(), enabled: spec.enabled, match: spec.match, conditions, actions };
-    };
-    const deleteFilterAt = async position => {
-      const result = await request("/?_task=settings&_action=plugin.managesieve-action", { method: "POST", form: [["_act", "delete"], ["_fid", String(position)], ["_remote", "1"], ["_unlock", "0"]], as: "json" });
-      if (result.network_error) return { outcome: "unknown", message: "The delete request got no response." };
-      if (result.logged_out) return { outcome: "rejected", kind: "not_authenticated", message: NOT_SIGNED_IN };
-      const exec = result.json && typeof result.json.exec === "string" ? result.json.exec : "";
-      if (/managesieve_updatelist\("del"/.test(exec)) return { outcome: "deleted" };
-      const problem = siteMessages(exec).find(m => m.type === "error" || m.type === "warning");
-      return problem ? { outcome: "rejected", kind: "site_rejected", message: problem.text } : { outcome: "unknown", message: "The delete response had neither a confirmation nor an error (HTTP " + result.status + ")." };
-    };
     const responderOf = (model, position) => {
       const vacation = model.actions.find(a => a.type === "vacation");
       return {

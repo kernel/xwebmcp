@@ -98,7 +98,7 @@ export function server(options = {}) {
     arrivals: plain(options.arrivals ?? [])
   };
   const clock = { now: options.now ?? NOW };
-  const messagesIn = folder => state.messages.filter(m => m.folder === folder).sort((a, b) => b.uid - a.uid);
+  const messagesIn = folder => state.messages.filter(m => m.folder === folder).sort((a, b) => options.oldestFirst ? a.uid - b.uid : b.uid - a.uid);
   const who = m => m.fromHtml ?? `<span class="adr"><span title="${esc(m.fromAddress)}" class="rcmContactAddress">${esc(m.fromName ?? m.fromAddress)}</span></span>`;
   const rows = (list, folder) => list.map(m => `this.add_message_row(${m.uid},${JSON.stringify({ subject: esc(m.subject), fromto: who(m), date: "2026-03-10 11:59", size: "4 KB" })},${JSON.stringify({ ...(m.seen ? { seen: 1 } : {}), ...(m.flagged ? { flagged: 1 } : {}), ctype: "text/plain", mbox: folder })},false);`);
   const listJson = (list, folder, page, extraEnv = {}) => {
@@ -186,11 +186,12 @@ export function server(options = {}) {
     }
     if (task === "mail" && action === "compose") {
       if (options.composeBroken) return { status: 200, url: u.href + "&_id=c1", body: html("<p>nothing</p>") };
-      return { status: 200, url: u.href + "&_id=c1", body: html(`<form name="form" method="post" action="/?_task=mail"><input type="hidden" name="_token" value="tok"><input type="hidden" name="_task" value="mail"><input type="hidden" name="_action" value="send"><input type="hidden" name="_id" value="c1"><select name="_from"><option value="7" selected>${esc(state.account)}</option></select><textarea name="_to"></textarea><input type="text" name="_subject" value=""><input type="hidden" name="_store_target" value="Sent"></form>`) };
+      return { status: 200, url: u.href + "&_id=c1", body: html(`<form name="form" method="post" action="/?_task=mail"><input type="hidden" name="_token" value="tok"><input type="hidden" name="_task" value="mail"><input type="hidden" name="_action" value="send"><input type="hidden" name="_id" value="c1"><select name="_from"><option value="7" selected>${esc(state.account)}</option></select><textarea name="_to"></textarea><input type="text" name="_subject" value=""></form><form name="uploadform"><input type="hidden" name="_action" value="upload"></form><select name="_store_target"><option value="">- don't save -</option><option value="INBOX">Inbox</option><option value="Sent" selected>Sent</option></select>`) };
     }
     if (method === "POST" && params && params.get("_action") === "send") {
       if (state.sendResponse === "network") return "network";
       state.sent.push(Object.fromEntries(params));
+      if (params.get("_store_target") !== "Sent") return { status: 200, url: u.href, body: html('<script>parent.rcmail.sent_successfully("confirmation","Message sent successfully.",[],false);</script>') };
       if (state.sendResponse === "error") return { status: 200, url: u.href, body: html('<script>parent.rcmail.display_message("SMTP Error (550): Recipient rejected.","error",0);</script>') };
       if (state.sendResponse === "garbage") return { status: 502, url: u.href, body: "Bad gateway" };
       const uid = (state.nextUid.Sent = (state.nextUid.Sent || 100) + 1);

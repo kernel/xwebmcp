@@ -87,11 +87,7 @@
   },
   execute: async (input) => {
     const ORIGIN = "https://inbox.purelymail.com";
-    const startedAt = Date.now();
-    const remaining = () => 110000 - (Date.now() - startedAt);
-    const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
     const stop = (kind, message) => { const error = new Error(message); error.kind = kind; throw error; };
-    const enc = encodeURIComponent;
     const EMAIL = /^[^\s@<>(),;:"[\]\\]{1,64}@[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?(?:\.[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?)+$/;
     const ENTITIES = { amp: "&", lt: "<", gt: ">", quot: "\"", apos: "'", nbsp: " " };
     const decodeEntities = value => String(value ?? "").replace(/&(#x[0-9a-f]+|#[0-9]+|[a-z]+);/gi, (match, name) => {
@@ -159,16 +155,6 @@
       return out;
     };
     const NOT_SIGNED_IN = "The webmail session is not signed in or has expired; run the login tool first. Nothing was changed.";
-    const ajax = async (path, options) => {
-      const result = await request(path, options);
-      if (result.network_error) stop("site_error", "A webmail request failed at the network level; nothing was changed by this read.");
-      if (result.logged_out) stop("not_authenticated", NOT_SIGNED_IN);
-      if (result.status >= 400 || !result.json) stop("site_error", "The webmail answered HTTP " + result.status + " without the expected data.");
-      return result.json;
-    };
-    const execCalls = (exec, name) => String(exec || "").split("\n").filter(line => line.startsWith("this." + name + "(")).map(line => {
-      try { return JSON.parse("[" + line.slice(name.length + 6, line.lastIndexOf(")")) + "]"); } catch { return null; }
-    }).filter(Boolean);
     const siteMessages = source => [...String(source || "").matchAll(/display_message\("((?:[^"\\]|\\.)*)","(error|warning|confirmation|notice)"/g)]
       .map(match => { try { return { text: JSON.parse("\"" + match[1] + "\""), type: match[2] }; } catch { return { text: match[1], type: match[2] }; } });
     const currentAccount = async () => {
@@ -416,33 +402,6 @@
       if (move >= 0 && actions.some((a, i) => i > move && /_flags$/.test(a.type))) bad("Flag actions must come before move_to_folder, otherwise the moved message does not get the flags.");
       if (actions.some((a, i) => a.type === "stop" && i !== actions.length - 1)) bad("stop must be the last action.");
       return { name: spec.name.trim(), enabled: spec.enabled, match: spec.match, conditions, actions };
-    };
-    const deleteFilterAt = async position => {
-      const result = await request("/?_task=settings&_action=plugin.managesieve-action", { method: "POST", form: [["_act", "delete"], ["_fid", String(position)], ["_remote", "1"], ["_unlock", "0"]], as: "json" });
-      if (result.network_error) return { outcome: "unknown", message: "The delete request got no response." };
-      if (result.logged_out) return { outcome: "rejected", kind: "not_authenticated", message: NOT_SIGNED_IN };
-      const exec = result.json && typeof result.json.exec === "string" ? result.json.exec : "";
-      if (/managesieve_updatelist\("del"/.test(exec)) return { outcome: "deleted" };
-      const problem = siteMessages(exec).find(m => m.type === "error" || m.type === "warning");
-      return problem ? { outcome: "rejected", kind: "site_rejected", message: problem.text } : { outcome: "unknown", message: "The delete response had neither a confirmation nor an error (HTTP " + result.status + ")." };
-    };
-    const responderOf = (model, position) => {
-      const vacation = model.actions.find(a => a.type === "vacation");
-      return {
-        filter_name: model.name, position, enabled: model.enabled,
-        applies_to: model.match === "every_message" ? "every_message" : "conditional",
-        message: vacation.message, subject: vacation.subject, days: vacation.days, from: vacation.from, addresses: vacation.addresses,
-        other_actions: model.actions.filter(a => a.type !== "vacation").map(a => a.type === "other" ? a.site_type : a.type)
-      };
-    };
-    const responders = async () => {
-      const list = await filterList();
-      const found = [];
-      for (const row of list.filters.slice(0, 50)) {
-        const model = await readFilter(row.position);
-        if (model.actions.some(a => a.type === "vacation")) found.push({ row, model });
-      }
-      return { list, found };
     };
     const balancedObject = (text, start) => {
       if (text[start] !== "{") return null;

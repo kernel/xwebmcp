@@ -121,6 +121,10 @@ test("wait_for_message returns only mail received after since and waits for late
   assert.equal(none.status, "not_found");
   assert.equal(none.stale_matches, 1);
   assert.ok(none.waited_ms <= 12000);
+  const many = Array.from({ length: 60 }, (_, i) => msg({ uid: i + 1, from: "bulk@example.org", subject: "Bulk " + i, receivedAt: NOW - 7200000 }));
+  const oldestFirst = server({ oldestFirst: true, messages: [...many, msg({ uid: 61, from: "alerts@example.org", subject: "Your report", receivedAt: NOW - 1000 })] });
+  const sorted = await pageTool("wait_for_message", oldestFirst).run({ subject: "report", since: iso(NOW - 5000), timeout_sec: 0 });
+  assert.equal(sorted.message.uid, 61, "with an oldest-first sort the newest page is the last one");
   const empty = await pageTool("wait_for_message", server()).run({ timeout_sec: 0 });
   assert.equal(empty.status, "not_found");
   for (const bad of [{ since: "yesterday" }, { since: iso(NOW - 8 * 86400000) }, { since: iso(NOW + 3600000) }, { timeout_sec: 111 }]) {
@@ -215,6 +219,7 @@ test("send_message submits the compose form once with exactly the requested fiel
   assert.equal(posted._subject, "Meeting Reschedule");
   assert.equal(posted._message, "Can we move it to 3pm?");
   assert.equal(posted._is_html, "0");
+  assert.equal(posted._store_target, "Sent", "the sent copy is filed like the Compose screen does");
   const again = await pageTool("send_message", backend).run(input);
   assert.equal(again.status, "duplicate_suspected");
   assert.equal(again.sent, false);

@@ -37,11 +37,7 @@
   },
   execute: async (input) => {
     const ORIGIN = "https://inbox.purelymail.com";
-    const startedAt = Date.now();
-    const remaining = () => 110000 - (Date.now() - startedAt);
-    const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
     const stop = (kind, message) => { const error = new Error(message); error.kind = kind; throw error; };
-    const enc = encodeURIComponent;
     const EMAIL = /^[^\s@<>(),;:"[\]\\]{1,64}@[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?(?:\.[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?)+$/;
     const ENTITIES = { amp: "&", lt: "<", gt: ">", quot: "\"", apos: "'", nbsp: " " };
     const decodeEntities = value => String(value ?? "").replace(/&(#x[0-9a-f]+|#[0-9]+|[a-z]+);/gi, (match, name) => {
@@ -109,16 +105,6 @@
       return out;
     };
     const NOT_SIGNED_IN = "The webmail session is not signed in or has expired; run the login tool first. Nothing was changed.";
-    const ajax = async (path, options) => {
-      const result = await request(path, options);
-      if (result.network_error) stop("site_error", "A webmail request failed at the network level; nothing was changed by this read.");
-      if (result.logged_out) stop("not_authenticated", NOT_SIGNED_IN);
-      if (result.status >= 400 || !result.json) stop("site_error", "The webmail answered HTTP " + result.status + " without the expected data.");
-      return result.json;
-    };
-    const execCalls = (exec, name) => String(exec || "").split("\n").filter(line => line.startsWith("this." + name + "(")).map(line => {
-      try { return JSON.parse("[" + line.slice(name.length + 6, line.lastIndexOf(")")) + "]"); } catch { return null; }
-    }).filter(Boolean);
     const siteMessages = source => [...String(source || "").matchAll(/display_message\("((?:[^"\\]|\\.)*)","(error|warning|confirmation|notice)"/g)]
       .map(match => { try { return { text: JSON.parse("\"" + match[1] + "\""), type: match[2] }; } catch { return { text: match[1], type: match[2] }; } });
     const currentAccount = async () => {
