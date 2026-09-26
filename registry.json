@@ -444,9 +444,12 @@
       "url_patterns": [
         "https://www.ticketmaster.com/*"
       ],
-      "status": "draft",
-      "last_verified": null,
-      "notes": ""
+      "status": "qa_passed",
+      "last_verified": "2026-09-26",
+      "notes": "Independent QA passed on the final source. Page tool on www.ticketmaster.com: one event record (local times, venue, category, on-sale and presale windows, limits, change status). terms_notice is null when the record has no dialog title even if the page shows one.",
+      "provenance": {
+        "qa_agent": "agt_cb155ebc4a11ce54cc4c"
+      }
     },
     {
       "domain": "ticketmaster.com",
@@ -457,9 +460,12 @@
       "url_patterns": [
         "https://www.ticketmaster.com/*"
       ],
-      "status": "draft",
-      "last_verified": null,
-      "notes": ""
+      "status": "qa_passed",
+      "last_verified": "2026-09-26",
+      "notes": "Independent QA passed on the final source. Opens the event page and returns offers for a quantity with All In prices (fees, before taxes); classic layout via the page's own offer query with featured listings first, newer layout via the listing panel (no Best Seats order there). Never selects, holds, accepts terms or opens checkout. Equal-price ties can be ordered differently from the page.",
+      "provenance": {
+        "qa_agent": "agt_cb155ebc4a11ce54cc4c"
+      }
     },
     {
       "domain": "ticketmaster.com",
@@ -470,9 +476,12 @@
       "url_patterns": [
         "https://www.ticketmaster.com/*"
       ],
-      "status": "draft",
-      "last_verified": null,
-      "notes": ""
+      "status": "qa_passed",
+      "last_verified": "2026-09-26",
+      "notes": "Independent QA passed on the final source. Page tool on www.ticketmaster.com: keyword, US city or ZIP, radius and venue-local date/time filters via the site's own search API; merges the nearby block with up to 40 date-filtered pages and warns at the cap. Flags partner-site results (on_ticketmaster false). US only.",
+      "provenance": {
+        "qa_agent": "agt_cb155ebc4a11ce54cc4c"
+      }
     },
     {
       "domain": "ubereats.com",

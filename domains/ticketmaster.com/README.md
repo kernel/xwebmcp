@@ -5,9 +5,9 @@ ticket availability with prices. All three are read-only and work signed out.
 
 | tool | file | status | notes |
 |------|------|--------|-------|
-| search_events | [search_events.js](search_events.js) | draft | Keyword, city or ZIP, radius and local date/time filters; flags events sold on partner sites |
-| get_event | [get_event.js](get_event.js) | draft | One event record by id or URL: local time, venue, category, on-sale and presale windows, limits, terms notice |
-| get_ticket_offers | [get_ticket_offers.js](get_ticket_offers.js) | draft | Section, row, seats and price per ticket for a quantity, lowest price or Best Seats; never selects, holds or buys |
+| search_events | [search_events.js](search_events.js) | qa_passed | Keyword, city or ZIP, radius and local date/time filters; flags events sold on partner sites |
+| get_event | [get_event.js](get_event.js) | qa_passed | One event record by id or URL: local time, venue, category, on-sale and presale windows, limits, terms notice |
+| get_ticket_offers | [get_ticket_offers.js](get_ticket_offers.js) | qa_passed | Section, row, seats and price per ticket for a quantity, lowest price or Best Seats; never selects, holds or buys |
 
 ## Native WebMCP tools
 
@@ -191,8 +191,18 @@ navigates only within `www.ticketmaster.com`. If the tab is on another host, ope
   passed. Accessible-seating inventory is excluded, as on the site's default view.
 - Signed-in-only inventory (member presales, unlock codes) was not tested; the tools
   do not sign in.
+- On the classic layout, listings with the same price can be ordered differently from
+  the page's Lowest Price list (the page breaks ties by seat quality; the tool keeps the
+  offer service's order). Sections, rows and prices match.
+- With `include_resale: false` the offer service returns no featured picks, so
+  `featured` is false for listings the page would feature; they still come first when
+  they are the cheapest.
+- `get_event`'s `terms_notice` comes from the event record; some pages (for example an
+  NBA game) show a terms dialog whose title is not in the record, and then it is `null`.
 - Not live-verified: the queue redirect, a highest-price starting order on the newer
-  layout, and events redirecting to another host. They are covered by stubbed tests.
+  layout, events redirecting to another host, a bot-protection page that renders late,
+  and another date's "Sold Out" badge next to a loading listing panel. They are covered
+  by stubbed tests.
 
 ## QA
 
@@ -258,4 +268,26 @@ the next commit:
 4. Dead code removed; the tool now prefers the page's initial query (with featured
    parameters) and resets any shopper price band.
 
-Round 4 on the fixed source: pending.
+Independent QA round 4 on the fourth revision (`search_events.js` blob `c13711d`,
+`get_event.js` blob `d94eb27`, `get_ticket_offers.js` blob `c66c961`): **PASS**
+(QA agent `agt_cb155ebc4a11ce54cc4c`, 2026-09-26). The registered source was checked
+byte-identical to those files. Live, signed out, from the homepage, search, discover,
+event and 404 pages:
+
+- Every round-1, round-2 and round-3 finding re-verified fixed: ids with `_`/`-`,
+  primary-only offers (32 listings), the dated Los Angeles comedy search (7 events,
+  equal to an independent enumeration of all 28 date-filtered and 14 nearby pages),
+  tax-free All In prices (New Jersey $231.70 with $12.59 tax reported separately),
+  featured lawn listings first to the cent, and off-sale matinees returning
+  `no_tickets` in about 5 s.
+- 62 live outputs schema-valid; 32 invalid inputs rejected without navigation; tools
+  not listed on `help.ticketmaster.com`, `business.ticketmaster.com` or other sites.
+- Safety: no listing selected, terms dialogs left unaccepted, tab stayed on the event
+  page, no checkout, reserve, cart or hold requests, and the page's service key never
+  appeared in output. Signed out throughout; no cart or favourites exist to restore.
+- Minor findings, documented under Known limitations rather than changed: tie order
+  among equal prices, `featured` with `include_resale: false`, and `terms_notice` on
+  pages whose record lacks the dialog title.
+
+Sessions (ephemeral): QA browsers were created and deleted by each QA agent; the
+builder's browser was deleted after the final run.
