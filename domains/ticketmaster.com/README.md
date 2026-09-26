@@ -189,7 +189,7 @@ navigates only within `www.ticketmaster.com`. If the tab is on another host, ope
 
 ## QA
 
-Independent QA round 1 (smartest preset) on commit `c3c9a58`: **FAIL**, with the
+Independent QA round 1 (smartest preset) on the first revision of the tools (`get_ticket_offers.js` blob `7fabc0a`): **FAIL**, with the
 following findings, all fixed in the next commit:
 
 1. Event ids containing `_` or `-` were unreachable (search fell back to the index
@@ -212,7 +212,7 @@ unsupported-quantity path, price filters, not-found ids, the challenge path in t
 flagged sessions, schema conformance of 35 live outputs, and no listing clicks,
 terms acceptance, checkout, cart or reserve requests.
 
-Independent QA round 2 on commit `7b5af96`: **FAIL**. Round-1 findings 1, 2 and 4
+Independent QA round 2 on the second revision (`get_ticket_offers.js` blob `50fca6d`): **FAIL**. Round-1 findings 1, 2 and 4
 were confirmed fixed live; the new findings, fixed in the next commit:
 
 1. Classic-layout primary prices included the service's `face_value_tax` while being
