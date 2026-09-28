@@ -12,9 +12,11 @@ Tools for Instacart (https://www.instacart.com).
 | add_to_cart | [add_to_cart.js](add_to_cart.js) | draft | Adds or increases a cart line after checking availability and quantity rules; one mutation, never retried. Returned item carries pack fields since 2026-09-28 (author live check; awaiting independent QA). Location read changed 2026-09-28 (follows an address switch without a reload); author live check, awaiting independent QA. |
 | get_delivery_address | [get_delivery_address.js](get_delivery_address.js) | draft | The selected delivery address and every saved address, with the `address_id` `set_delivery_address` takes. Page tool; author live check 2026-09-28. |
 | set_delivery_address | [set_delivery_address.js](set_delivery_address.js) | draft | Switches the session to one saved address; no-op when already selected; one mutation, never retried. Page tool; author live check 2026-09-28. |
+| list_payment_methods | [list_payment_methods.js](list_payment_methods.js) | draft | Saved payment methods with the one checkout will use, availability and expiry. Page tool; author live check 2026-09-28. |
+| select_payment_method | [select_payment_method.js](select_payment_method.js) | draft | Makes one saved method the one checkout charges, for a store with a non-empty cart; never places an order. Page tool; author live check 2026-09-28. |
 | update_cart_item | [update_cart_item.js](update_cart_item.js) | draft | Sets a cart line to an exact quantity; 0 removes; one mutation, never retried. Location read changed 2026-09-28 (follows an address switch without a reload); author live check, awaiting independent QA. |
 
-Register all nine files together as one array with `forceOverwriteNamespace: true`;
+Register every file in the table together as one array with `forceOverwriteNamespace: true`;
 registering one file that way removes the others.
 
 ## Native WebMCP tools
@@ -256,7 +258,7 @@ the cart tools return `not_logged_in` before touching anything.
 
 ```javascript
 const fs = await import("node:fs");
-const files = ["login", "list_stores", "search", "get_item", "get_cart", "add_to_cart", "update_cart_item", "get_delivery_address", "set_delivery_address"];
+const files = ["login", "list_stores", "search", "get_item", "get_cart", "add_to_cart", "update_cart_item", "get_delivery_address", "set_delivery_address", "list_payment_methods", "select_payment_method"];
 const tools = files.flatMap(name => eval(fs.readFileSync(`domains/instacart.com/${name}.js`, "utf8")));
 await webmcp.addCustomTools({ namespace: "instacart.com", tools, forceOverwriteNamespace: true });
 const ref = async name => (await webmcp.listTools()).find(t => t.source.custom?.namespace === "instacart.com" && t.tool.name === name).tool_ref;
@@ -479,6 +481,71 @@ independent QA pass.
 | after the review fix (no page-state fallback): switch, same-page `list_stores` / `search`, switch back | same results as above; cart unchanged |
 | numeric `address_id`, unknown input field | `invalid_input` from the tool, nothing sent |
 | a non-Instacart page | no instacart.com tools listed |
+
+## Payment method tools
+
+`list_payment_methods` and `select_payment_method` are `kind: "page"` tools: each makes
+same-origin GraphQL requests from the current instacart.com page and never navigates.
+
+- `list_payment_methods` (read-only) calls `BuyflowPaymentInstrumentsV2` with
+  `scenario: "checkoutV4Web"` and returns each saved method's `payment_method_id` (the
+  site's `instrumentReference`), `type` (`creditCard`, `paypal`, ...), the `label` and
+  `detail` lines the site shows (`Visa *1234` / `Exp. 2/30`, `PayPal` / the PayPal
+  account), `is_enabled`, `is_selected`, and `expired` (true when `detail` shows an
+  expiry month that has passed, null when it shows none). The `accountSettings`
+  scenario the account page uses returns the same list but never marks a method
+  selected, which is why the checkout scenario is used.
+- `select_payment_method` takes a `payment_method_id` and a `store` slug (plus
+  `service_type`). Instacart only changes the payment method inside a checkout session,
+  so the tool needs that store's cart to be non-empty. It re-reads the methods
+  (`payment_method_not_found`; `payment_method_unusable` for a disabled method or an
+  expired card; `changed: false` with nothing sent when the method is already selected),
+  resolves the store and cart (`store_not_found`, `cart_empty`), then sends what the
+  checkout page's "Pay with" editor sends: `InitializeCheckout` for the cart (the call
+  the checkout page makes on load; it opens a session and places nothing),
+  `UpdateBuyflowPaymentInstructionsV2` with `updatePrimaryInstrument`, and
+  `UpdateCheckout { paymentsUpdate: { paymentsUpdated: true } }`. It then re-reads the
+  methods and succeeds only if the chosen one is reported selected.
+  `mutation_attempted` becomes true when the payment update is sent; a rejected or
+  unconfirmed update is reported and never retried.
+
+Safety: neither tool places an order, adds, edits or removes a payment method, enters
+card details, applies promotions or touches the tip. The only account change is which
+saved method is selected.
+
+### Site quirks (payments)
+
+- The selection is account-wide, not per store: after choosing PayPal in one store's
+  checkout the site moved its "Default" label to PayPal, and the store-independent
+  checkout scenario reported PayPal as selected.
+- A card whose expiry has passed is still listed with `isEnabled: true`; only the
+  `Exp. M/YY` text shows that it expired, so `expired` is computed from that text.
+
+### Known limitations (payments)
+
+- A store with an empty cart cannot be used to select a method (`cart_empty`); the site
+  exposes no selection outside a checkout session that the tools found.
+- Split tender, gift cards, EBT/SNAP, FSA/HSA and the pay-later options are out of scope;
+  the update always clears split tender, as the checkout editor does.
+- `expired` relies on the displayed `Exp. M/YY` text and the browser's clock.
+- The WebMCP runtime did not apply the input schema to these page tools in the live
+  check, so both validate their own input before any request.
+- `selection_rejected`, `throttled` and `site_changed` have mocked coverage only.
+
+### Author live check (payments), 2026-09-28
+
+Logged-in stealth browser, `cincy` proxy, an account with three saved methods (a PayPal
+account, an expired card, a current card selected) and a one-line cart at one store; not
+an independent QA pass.
+
+| case | result |
+|------|--------|
+| `list_payment_methods` | three methods; the current card `is_selected`; the expired card `expired: true` |
+| select the already selected card | `changed: false`, `mutation_attempted: false` |
+| select the expired card / an unknown id / bad input | `payment_method_unusable` / `payment_method_not_found` / `invalid_input`; nothing sent |
+| select at a store with an empty cart | `cart_empty`; nothing sent |
+| select PayPal at the store with the cart | `changed: true`; `list_payment_methods` then reports PayPal selected |
+| select the original card again | `changed: true`; original selection restored; cart unchanged; no order placed |
 
 ## Sessions
 
