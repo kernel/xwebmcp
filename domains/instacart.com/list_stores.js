@@ -42,6 +42,7 @@
     const page = async (arg) => {
       const H = {
         SharedCurrentUser: "a828d85421f20d09b98fe0f044829ab245512b412e9957b5340093ebc25cb5a3",
+        GetLastUserLocation: "6c76952dbbaf5fe8b79d2ae6dc96af8ccca133285868e7efb9a81ffe624e37e1",
         ShopCollectionScoped: "f20693c3c551f0e0fbdcac9b2ca7aa6db50f9224a39967ba5ac767bb2b598f85",
         ShopCollectionUnscoped: "e4274fe3bbcb2464e3bca7be8368fdb702ca6b13b76d0042647d7470f44a8be7",
         SearchResultsPlacements: "fa21dfa1690387708c2bdb97f5157d0c73677088d99d3a173e95e60a1775ae87",
@@ -79,27 +80,35 @@
         return { data: body?.data ?? null, error };
       };
       const readLocation = async () => {
-        const parse = text => {
-          let state = null;
-          try { state = JSON.parse(decodeURIComponent(text || "")); } catch { state = null; }
-          const loc = state?.GetLastUserLocation?.["{}"]?.lastUserLocation;
+        const toLoc = loc => {
           if (!loc || !loc.postalCode || !loc.zoneId) return null;
           return { addressId: loc.addressId || null, zoneId: String(loc.zoneId), postalCode: String(loc.postalCode), coordinates: loc.coordinates ? { latitude: loc.coordinates.latitude, longitude: loc.coordinates.longitude } : null };
         };
-        // Only the store app's server-rendered pages carry the location; other pages (help, account) fall back to /store.
-        const inline = parse(document.getElementById("node-apollo-state")?.textContent);
-        if (inline) return { loc: inline };
+        const parse = text => {
+          let state = null;
+          try { state = JSON.parse(decodeURIComponent(text || "")); } catch { state = null; }
+          return toLoc(state?.GetLastUserLocation?.["{}"]?.lastUserLocation);
+        };
+        // The site's answer comes first. This page's server-rendered state is written once per load and keeps the old address after
+        // a switch (set_delivery_address or the header picker), so it is never used; a failed live read fails the call instead.
+        const fresh = await gql("GetLastUserLocation", {});
+        if (fresh.error) return { error: fresh.error };
+        const live = toLoc(fresh.data?.lastUserLocation);
+        if (live && live.addressId) return { loc: live };
+        // No address in the live answer: render /store now, which reports a login redirect and the current location.
         let last = null;
         for (let attempt = 0; attempt < 2; attempt++) {
           const response = await fetch("/store", { credentials: "include" });
           const html = await response.text();
           last = { status: response.status, url: response.url || "", proxy: /^(?:proxy proxy error|egress-proxy-mitm encountered)/i.test(html.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim()) };
           const loc = parse(html.match(/<script id="node-apollo-state"[^>]*>([\s\S]*?)<\/script>/)?.[1]);
+          if (loc && live && loc.addressId) return { error: failure("unknown", "Instacart's location query reported no delivery address but its store page reported one; retry shortly instead of shopping at a possibly outdated address.") };
           if (loc) return { loc };
           if (/\/login/.test(last.url)) return { error: failure("not_logged_in", "Instacart redirected the store page to its login page; this session is not logged in. Run the login tool first.") };
           if (response.status === 200 && !last.proxy) break;
         }
         if (last && (last.status !== 200 || last.proxy)) return { error: failure("unknown", `The Instacart store page did not load (HTTP ${last.status}${last.proxy ? ", proxy error page" : ""}); retry shortly.`) };
+        if (live) return { loc: live };
         return { error: failure("location_unavailable", "Instacart did not report a shopping location for this session. The tools need a logged-in session with a saved delivery address; run the login tool first.") };
       };
       const currentUser = async () => {
