@@ -17,6 +17,7 @@ const RECENT_LIMIT = 50;
 
 // Attached debugger targets shared by concurrent invocations.
 const attachments = new Map(); // targetId -> {users: Set<invocationId>, childSessions: Map<sessionId, {targetId, url, type}>}
+const pendingAttachments = new Map();
 const invocations = new Map(); // invocationId -> record (running)
 const recent = []; // newest first, running and finished
 const tabQueues = new Map(); // tabId -> Promise
@@ -39,9 +40,16 @@ async function sendCommand(targetId, sessionId, method, params) {
 async function attachTarget(targetId, invocationId) {
   let attachment = attachments.get(targetId);
   if (!attachment) {
-    await chrome.debugger.attach({targetId}, '1.3');
-    attachment = {users: new Set(), childSessions: new Map()};
-    attachments.set(targetId, attachment);
+    let pending = pendingAttachments.get(targetId);
+    if (!pending) {
+      pending = chrome.debugger.attach({targetId}, '1.3').then(() => {
+        const created = {users: new Set(), childSessions: new Map()};
+        attachments.set(targetId, created);
+        return created;
+      }).finally(() => pendingAttachments.delete(targetId));
+      pendingAttachments.set(targetId, pending);
+    }
+    attachment = await pending;
   }
   attachment.users.add(invocationId);
   invocations.get(invocationId)?.targets.add(targetId);
