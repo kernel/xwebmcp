@@ -31,13 +31,16 @@
             related_count: { type: "integer", minimum: 0, description: "Related items on the first page (returned only with include_related or when there are no exact matches)." },
             results: { type: "array", items: { type: "object", additionalProperties: false, required: ["match", "item"], properties: { match: { type: "string", enum: ["exact", "related"], description: "exact: in the site's primary \"Results for\" section for the query (relevance-ranked, not a guarantee the product is the one named). related: in the \"Related items\" section." }, item: {
           type: "object", additionalProperties: false,
-          required: ["item_id", "product_id", "name", "brand", "size", "price_string", "price_cents", "full_price_string", "price_per_unit_string", "available", "stock_level", "quantity", "tags", "image_url", "url"],
+          required: ["item_id", "product_id", "name", "brand", "size", "package_string", "pack_count", "unit_size", "price_string", "price_cents", "full_price_string", "price_per_unit_string", "available", "stock_level", "quantity", "tags", "image_url", "url"],
           properties: {
             item_id: { type: "string", description: "Store-specific item id (items_<location>-<product>); pass this to get_item, add_to_cart and update_cart_item together with the same store." },
             product_id: { type: ["string", "null"] },
             name: { type: ["string", "null"] },
             brand: { type: ["string", "null"] },
-            size: { type: ["string", "null"] },
+            size: { type: ["string", "null"], description: "Size as the site lists it. For a multipack this is one unit's size (\"12 fl oz\" for eight cans); read pack_count." },
+            package_string: { type: ["string", "null"], description: "The site's package line, e.g. \"8 x 12 fl oz\" or \"12 fl oz\"; null when the site shows a price per weight there instead." },
+            pack_count: { type: ["integer", "null"], minimum: 1, description: "Units in one purchasable item: N from \"N x <size>\", 1 when the package line names a single size, null when there is no package line." },
+            unit_size: { type: ["string", "null"], description: "Size of one unit from the package line, e.g. \"12 fl oz\"; null when there is no package line." },
             price_string: { type: ["string", "null"], description: "Displayed price, e.g. \"$2.37 each (est.)\"." },
             price_cents: { type: ["integer", "null"], description: "First dollar amount in price_string, in cents; estimates for weighed items." },
             full_price_string: { type: ["string", "null"], description: "Undiscounted price when a discount applies." },
@@ -149,12 +152,19 @@
       const mapItem = (it, slug) => {
         const card = it.price?.viewSection?.itemCard || {};
         const qa = it.quantityAttributes || it.quantityAttributesEach || it.quantityAttributesWeight || {};
+        // pricingUnitString is "8 x 12 fl oz" for multipacks and a plain size for single units; weighed items show a price there.
+        const unitLine = it.price?.viewSection?.itemDetails?.pricingUnitString ?? card.pricingUnitString;
+        const pkg = typeof unitLine === "string" && unitLine.trim() && !unitLine.includes("$") ? unitLine.trim() : null;
+        const multi = pkg ? pkg.match(/^(\d+)\s*[x\u00d7]\s*(\S.*)$/i) : null;
         return {
           item_id: String(it.id),
           product_id: it.productId ? String(it.productId) : null,
           name: it.name ?? null,
           brand: it.brandName ?? null,
           size: it.size ?? null,
+          package_string: pkg,
+          pack_count: multi ? Number(multi[1]) : pkg ? 1 : null,
+          unit_size: multi ? multi[2] : pkg,
           price_string: card.priceString ?? null,
           price_cents: cents(card.priceString),
           full_price_string: card.fullPriceString ?? null,

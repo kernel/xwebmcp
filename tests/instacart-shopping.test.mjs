@@ -61,6 +61,9 @@ const catalog = {
   "items_165949-1003": { id: "items_165949-1003", name: "Whole Milk", size: "1 gal", productId: "1003", brandName: "Dairy Co", tags: [], quantityAttributes: each, availability: { available: true, stockLevel: "inStock" }, price: { viewSection: { itemCard: { priceString: "$3.49" } } }, viewSection: {} },
   "items_165949-1004": { id: "items_165949-1004", name: "Deli Turkey", size: "per lb", productId: "1004", brandName: null, tags: [], quantityAttributes: { increment: 0.5, initial: 1, max: 5, min: 0.5, quantityType: "weight", viewSection: { unitString: "lb" } }, availability: { available: true, stockLevel: "inStock" }, price: { viewSection: { itemCard: { priceString: "$9.99 / lb" } } }, viewSection: {} },
   "items_165949-1005": { id: "items_165949-1005", name: "Sold Out Cookies", size: "12 ct", productId: "1005", brandName: null, tags: [], quantityAttributes: each, availability: { available: false, stockLevel: "outOfStock" }, price: { viewSection: { itemCard: { priceString: "$4.00" } } }, viewSection: {} },
+  "items_165949-1007": { id: "items_165949-1007", name: "Sparkling Soda Variety Pack", size: "12 fl oz", productId: "1007", brandName: "Fizz", tags: [], quantityAttributes: each, availability: { available: true, stockLevel: "inStock" }, price: { viewSection: { itemCard: { priceString: "$17.99", pricingUnitString: "8 x 12 fl oz", pricePerUnitString: null }, itemDetails: { pricingUnitString: "8 x 12 fl oz", pricePerUnitString: "$2.25 each" } } }, viewSection: {} },
+  "items_165949-1008": { id: "items_165949-1008", name: "Sparkling Soda Can", size: "12 fl oz", productId: "1008", brandName: "Fizz", tags: [], quantityAttributes: each, availability: { available: true, stockLevel: "inStock" }, price: { viewSection: { itemCard: { priceString: "$2.99", pricingUnitString: "12 fl oz" } } }, viewSection: {} },
+  "items_165949-1009": { id: "items_165949-1009", name: "Loose Apples", size: "per lb", productId: "1009", brandName: null, tags: [], quantityAttributes: each, availability: { available: true, stockLevel: "inStock" }, price: { viewSection: { itemCard: { priceString: "$1.99", pricingUnitString: "$1.99 / lb" } } }, viewSection: {} },
   "items_165949-1006": { id: "items_165949-1006", name: "Limited Sauce", size: "8 oz", productId: "1006", brandName: null, tags: [], quantityAttributes: { ...each, max: 2 }, availability: { available: true, stockLevel: "lowStock" }, price: { viewSection: { itemCard: { priceString: "$1.99" } } }, viewSection: {} }
 };
 const header = text => ({ content: { __typename: "SearchContentManagementSearchItemGridHeader", viewSection: { titleFormattedAttributesString: { sections: [{ text }] } } } });
@@ -303,6 +306,33 @@ test("list_stores: lists, filters and caps stores", async () => {
   assert.equal(filtered.total_stores, 1);
   assert.equal(filtered.stores[0].name, "ALDI");
   assert.deepEqual(h.state.requests[0].variables, { postalCode: "45202", coordinates: location.coordinates, addressId: "900001" });
+});
+
+// ---------------------------------------------------------------- package sizes
+
+test("get_item: a multipack reports its unit count and unit size from the site's package line", async () => {
+  const pack = (await harness("get_item").run({ store: "kroger", item_id: "items_165949-1007" })).item;
+  assert.deepEqual([pack.size, pack.package_string, pack.pack_count, pack.unit_size], ["12 fl oz", "8 x 12 fl oz", 8, "12 fl oz"]);
+  const can = (await harness("get_item").run({ store: "kroger", item_id: "items_165949-1008" })).item;
+  assert.deepEqual([can.package_string, can.pack_count, can.unit_size], ["12 fl oz", 1, "12 fl oz"]);
+});
+
+test("get_item: a price in the package line, or no package line, leaves the pack fields null", async () => {
+  for (const id of ["items_165949-1009", "items_165949-1001"]) {
+    const item = (await harness("get_item").run({ store: "kroger", item_id: id })).item;
+    assert.deepEqual([item.package_string, item.pack_count, item.unit_size], [null, null, null], id);
+  }
+});
+
+test("get_cart: cart lines carry the pack fields of their item", async () => {
+  const h = harness("get_cart", { cartLines: [{ itemId: "items_165949-1007", quantity: 6, quantityType: "each" }] });
+  const line = (await h.run({ store: "kroger" })).carts[0].items[0];
+  assert.deepEqual([line.name, line.quantity, line.package_string, line.pack_count, line.unit_size], ["Sparkling Soda Variety Pack", 6, "8 x 12 fl oz", 8, "12 fl oz"]);
+});
+
+test("add_to_cart: the returned item carries the pack fields", async () => {
+  const result = await harness("add_to_cart").run({ store: "kroger", item_id: "items_165949-1007", quantity: 2 });
+  assert.equal(result.item.pack_count, 8);
 });
 
 // ---------------------------------------------------------------- search
