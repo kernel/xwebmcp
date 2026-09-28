@@ -276,7 +276,7 @@
       ],
       "status": "draft",
       "last_verified": null,
-      "notes": "Page tool. Makes one saved payment method the one checkout charges, via InitializeCheckout for a store's non-empty cart, UpdateBuyflowPaymentInstructionsV2 and UpdateCheckout, then confirms the selection; the choice is account-wide. Rejects disabled and expired methods; no-op when already selected; never places an order or edits methods; never retries. Author live check 2026-09-28 (switch and restore); awaiting independent QA."
+      "notes": "Page tool. Makes one saved payment method the one checkout charges, via InitializeCheckout for a store's non-empty cart (a POST that opens a session and places nothing), UpdateBuyflowPaymentInstructionsV2 and UpdateCheckout; succeeds only when the refreshed checkout session and the account list both show the method. The choice is account-wide. Refuses split-tender checkouts, disabled and expired methods; no-op when already selected; never places an order or edits methods; never retries. Author live check 2026-09-28 (switch and restore); awaiting independent QA."
     },
     {
       "domain": "instacart.com",

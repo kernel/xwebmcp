@@ -3,7 +3,7 @@
   match: { url_patterns: ["https://instacart.com/*", "https://*.instacart.com/*"] },
   tool: {
     name: "select_payment_method",
-    description: "Make one of the account's saved payment methods the one Instacart checkout will charge, using the same requests as the checkout page's \"Pay with\" editor. Takes a payment_method_id from list_payment_methods and the store whose cart will be checked out (a store slug from list_stores; its cart must not be empty, because the site only changes the payment method inside a checkout session). Opens a checkout session for that cart the way loading the checkout page does, sends one payment-selection update, and confirms the result with list_payment_methods' query. Instacart applies the choice to the account, so it also becomes the default for other stores. Never places an order, never adds, edits or removes a payment method, and never enters card details. If the method is already selected, nothing is sent. Rejects disabled methods and cards whose shown expiry has passed. Never retries. Runs on an open instacart.com page with a logged-in session.",
+    description: "Make one of the account's saved payment methods the one Instacart checkout will charge, using the same requests as the checkout page's \"Pay with\" editor. Takes a payment_method_id from list_payment_methods and the store whose cart will be checked out (a store slug from list_stores; its cart must not be empty, because the site only changes the payment method inside a checkout session). Opens a checkout session for that cart with InitializeCheckout (the POST the checkout page sends on load; it places nothing and changes no payment), refuses if that session uses split tender, sends one payment-selection update plus the checkout refresh the page sends after it, and succeeds only when both the checkout session and list_payment_methods' query report the chosen method. Instacart applies the choice to the account, so it also becomes the default for other stores. Never places an order, never adds, edits or removes a payment method, and never enters card details. If the method is already selected, nothing is sent. Rejects disabled methods and cards whose shown expiry has passed. Never retries. Runs on an open instacart.com page with a logged-in session.",
     inputSchema: {
       type: "object", additionalProperties: false, required: ["store", "payment_method_id"],
       properties: {
@@ -17,11 +17,12 @@
       oneOf: [
         {
           type: "object", additionalProperties: false,
-          required: ["status", "changed", "mutation_attempted", "previous_payment_method_id", "selected_payment_method_id", "label", "detail", "cart_id"],
+          required: ["status", "changed", "mutation_attempted", "checkout_session_requested", "previous_payment_method_id", "selected_payment_method_id", "label", "detail", "cart_id"],
           properties: {
             status: { const: "ok" },
             changed: { type: "boolean", description: "False when the method was already selected and nothing was sent." },
             mutation_attempted: { type: "boolean" },
+            checkout_session_requested: { type: "boolean", description: "True when the tool sent InitializeCheckout to open a checkout session for the cart." },
             previous_payment_method_id: { type: ["string", "null"] },
             selected_payment_method_id: { type: "string", description: "The method Instacart reports as selected after the update." },
             label: { type: ["string", "null"] },
@@ -31,12 +32,13 @@
         },
         {
           type: "object", additionalProperties: false,
-          required: ["status", "error_kind", "error_message", "mutation_attempted"],
+          required: ["status", "error_kind", "error_message", "mutation_attempted", "checkout_session_requested"],
           properties: {
             status: { const: "error" },
-            error_kind: { type: "string", enum: ["invalid_input", "wrong_page", "not_logged_in", "location_unavailable", "store_not_found", "cart_empty", "payment_method_not_found", "payment_method_unusable", "selection_rejected", "site_changed", "throttled", "unknown"] },
+            error_kind: { type: "string", enum: ["invalid_input", "wrong_page", "not_logged_in", "location_unavailable", "store_not_found", "cart_empty", "payment_method_not_found", "payment_method_unusable", "split_tender_active", "selection_rejected", "site_changed", "throttled", "unknown"] },
             error_message: { type: "string", minLength: 1 },
-            mutation_attempted: { type: "boolean", description: "True once the payment-selection update was sent, even if its outcome is unknown; call list_payment_methods before trying again." }
+            mutation_attempted: { type: "boolean", description: "True once the payment-selection update was sent, even if its outcome is unknown; call list_payment_methods before trying again." },
+            checkout_session_requested: { type: "boolean", description: "True once InitializeCheckout was sent. That POST opens a checkout session the way loading the checkout page does; it places nothing and changes no payment, so it can be true while mutation_attempted is false." }
           }
         }
       ]
@@ -55,9 +57,11 @@
       UpdateCheckout: "ff98f32acdf8f1842064974699990562e867f38c35b0249d7ed190354a089213"
     };
     const clientInfo = { applePayEligible: false, googlePayEligible: false, venmoAddable: true };
-    let sent = false;
-    const failure = (kind, message) => ({ status: "error", error_kind: kind, error_message: message, mutation_attempted: sent });
+    let sent = false, sessionRequested = false;
+    const failure = (kind, message) => ({ status: "error", error_kind: kind, error_message: message, mutation_attempted: sent, checkout_session_requested: sessionRequested });
     const unchanged = " Nothing was changed.";
+    // After InitializeCheckout a checkout session exists, so "nothing was changed" is no longer literally true.
+    const noPaymentChange = () => sessionRequested ? " A checkout session was opened (as loading the checkout page does); no payment change was sent." : unchanged;
     if (!input || typeof input !== "object" || Array.isArray(input)) return failure("invalid_input", "Input must be an object." + unchanged);
     if (Object.keys(input).some(k => !["store", "service_type", "payment_method_id"].includes(k))) return failure("invalid_input", "Unrecognized input field." + unchanged);
     if (typeof input.store !== "string" || !/^[a-z0-9][a-z0-9-]{0,79}$/.test(input.store)) return failure("invalid_input", "store must be a store slug such as \"kroger\"." + unchanged);
@@ -91,9 +95,14 @@
     const savedMethods = async () => {
       const r = await gql("BuyflowPaymentInstrumentsV2", { scenario: "checkoutV4Web", clientInfo });
       if (r.error) return r;
-      const methods = r.data?.buyflowPaymentInstruments?.paymentSelection?.savedPaymentMethods?.paymentMethods;
-      if (!r.data?.buyflowPaymentInstruments) return { error: failure("not_logged_in", "Instacart returned no payment information; this session is probably not logged in.") };
-      if (!Array.isArray(methods)) return { methods: [] };
+      const instruments = r.data?.buyflowPaymentInstruments;
+      if (!instruments) return { error: failure("not_logged_in", "Instacart returned no payment information; this session is probably not logged in.") };
+      const saved = instruments.paymentSelection?.savedPaymentMethods;
+      const drift = failure("site_changed", "Instacart's payment-method response no longer has the expected shape; the tool needs updating." + noPaymentChange());
+      if (!instruments.paymentSelection || typeof instruments.paymentSelection !== "object" || saved === undefined) return { error: drift };
+      if (saved === null) return { methods: [] };
+      const methods = saved.paymentMethods;
+      if (!Array.isArray(methods)) return { error: drift };
       return { methods: methods.filter(m => m && m.instrumentReference).map(m => ({ id: String(m.instrumentReference), type: m.instrumentType ?? null, label: m.viewSection?.stringSet?.labelString ?? null, detail: m.viewSection?.stringSet?.sublabelString ?? null, selected: m.isSelected === true, enabled: m.isEnabled !== false })) };
     };
     const expired = detail => {
@@ -111,7 +120,7 @@
       if (!target.enabled) return failure("payment_method_unusable", `Instacart does not allow ${target.label || "this method"} to be used.` + unchanged);
       if (expired(target.detail)) return failure("payment_method_unusable", `${target.label || "This card"} has expired (${target.detail}).` + unchanged);
       const previous = before.methods.find(m => m.selected)?.id ?? null;
-      const ok = (changed, cartId) => ({ status: "ok", changed, mutation_attempted: sent, previous_payment_method_id: previous, selected_payment_method_id: target.id, label: target.label, detail: target.detail, cart_id: cartId });
+      const ok = (changed, cartId) => ({ status: "ok", changed, mutation_attempted: sent, checkout_session_requested: sessionRequested, previous_payment_method_id: previous, selected_payment_method_id: target.id, label: target.label, detail: target.detail, cart_id: cartId });
       if (previous === target.id) return ok(false, null);
 
       const loc = await gql("GetLastUserLocation", {});
@@ -134,10 +143,18 @@
       if (!Number(cart.data?.userCart?.itemCount ?? 0)) return failure("cart_empty", `The ${input.store} cart is empty; Instacart only changes the payment method inside a checkout, so add an item first.` + unchanged);
 
       const tracking = () => ({ pageViewId: crypto.randomUUID(), checkoutTrackingUuid: crypto.randomUUID() });
+      sessionRequested = true;
       const init = await gql("InitializeCheckout", { cartId, shopId: String(shop.id), userLocation: { addressId: String(last.addressId), postalCode: String(last.postalCode), coordinates }, serviceType: serviceType.toUpperCase(), clientInfo, checkoutCreationTrackingParams: tracking() }, true);
       if (init.error) return init.error;
       const sessionId = init.data?.initializeCheckout?.checkoutData?.checkoutSessionId;
-      if (!sessionId) return failure("unknown", "Instacart did not open a checkout session for this cart." + unchanged);
+      if (!sessionId) return failure("unknown", "Instacart did not return a checkout session for this cart." + noPaymentChange());
+      const paymentsOf = data => (data?.checkoutResourceCollection?.resources || []).find(x => x && String(x.__typename || "").endsWith("PaymentsResource"))?.buyFlowInstruments || null;
+      const sessionPayments = paymentsOf(init.data.initializeCheckout);
+      const current = sessionPayments?.payWithSection?.preselectedPaymentInstructions?.paymentInstructions;
+      if (!sessionPayments || !Array.isArray(current)) return failure("site_changed", "Instacart's checkout session no longer reports its payment state in the expected shape; the tool needs updating." + noPaymentChange());
+      // The selection update below replaces the primary instrument and turns split tender off, so never send it over an existing split.
+      if (sessionPayments.splitTenderDetails || sessionPayments.paymentSelection?.splitTender || current.length > 1 || current.some(x => x && x.userSpecifiedAmount != null))
+        return failure("split_tender_active", "This checkout uses or offers split tender (more than one payment method or a set amount); this tool does not change split-tender payments. Choose the method on the checkout page instead." + noPaymentChange());
 
       sent = true;
       const update = await gql("UpdateBuyflowPaymentInstructionsV2", { checkoutSessionId: sessionId, updatePaymentInstructions: { toggleSplitTenderInstrument: { splitTenderPaymentInstructionsToken: "", toggle: false }, updatePrimaryInstrument: { primaryInstrumentReference: target.id, paymentInstrumentType: target.type } } }, true);
@@ -145,13 +162,19 @@
       const applied = update.data?.updateBuyflowPaymentInstructions?.updatedPaymentInstructions;
       if (!Array.isArray(applied) || !applied.some(p => String(p?.instrumentReference) === target.id)) return failure("selection_rejected", "Instacart did not apply the payment method to the checkout; call list_payment_methods to see what is selected.");
       // The checkout page follows every payment change with this call; without it the session keeps the old payment state.
-      await gql("UpdateCheckout", { checkoutSessionId: sessionId, checkoutUpdates: { clientInfo, paymentsUpdate: { paymentsUpdated: true } }, checkoutCreationTrackingParams: tracking() }, true);
+      const refreshed = await gql("UpdateCheckout", { checkoutSessionId: sessionId, checkoutUpdates: { clientInfo, paymentsUpdate: { paymentsUpdated: true } }, checkoutCreationTrackingParams: tracking() }, true);
+      if (refreshed.error) return failure(refreshed.error.error_kind === "throttled" || refreshed.error.error_kind === "not_logged_in" ? refreshed.error.error_kind : "unknown", "The payment method was sent but the checkout refresh failed (" + refreshed.error.error_message + "); the checkout session may still use the old method. Call list_payment_methods before trying again.");
+      const refreshedPayments = paymentsOf(refreshed.data?.updateCheckout);
+      const siteError = refreshedPayments?.payWithSection?.errorInfo;
+      if (siteError) return failure("selection_rejected", "Instacart reported a payment error after the update" + (typeof siteError === "object" && (siteError.message || siteError.errorMessage) ? ": " + (siteError.message || siteError.errorMessage) : "") + ". Call list_payment_methods to see what is selected.");
+      const inSession = refreshedPayments?.payWithSection?.preselectedPaymentInstructions?.paymentInstructions;
+      if (!Array.isArray(inSession) || inSession.length !== 1 || String(inSession[0]?.instrumentReference) !== target.id) return failure("unknown", "The payment method was sent but the checkout session did not confirm it; it may still use the old method. Call list_payment_methods before trying again.");
       const after = await savedMethods();
       if (after.error) return failure("unknown", "The payment method was sent but the result could not be read back; call list_payment_methods.");
       if (after.methods.find(m => m.selected)?.id !== target.id) return failure("unknown", "Instacart accepted the payment update but still reports another method as selected; call list_payment_methods.");
       return ok(true, cartId);
     } catch (error) {
-      return failure("unknown", "Selecting the payment method failed" + (sent ? " after the update was sent" : "") + ": " + (error && error.message ? error.message : String(error)) + (sent ? "; call list_payment_methods before trying again." : unchanged));
+      return failure("unknown", "Selecting the payment method failed" + (sent ? " after the update was sent" : "") + ": " + (error && error.message ? error.message : String(error)) + (sent ? "; call list_payment_methods before trying again." : noPaymentChange()));
     }
   }
 }]

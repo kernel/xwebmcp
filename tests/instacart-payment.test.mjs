@@ -47,6 +47,10 @@ const methods = [
   method("credit_1003", "creditCard", "Visa *0004", "Exp. 2/30"),
   method("credit_1004", "creditCard", "Visa *0006", "Exp. 1/31", { isEnabled: false })
 ];
+const paymentsResource = (instructions, split = null, errorInfo = null) => ({
+  __typename: "CheckoutCheckoutResourcesPaymentsResource",
+  buyFlowInstruments: { splitTenderDetails: split?.details ?? null, paymentSelection: { splitTender: split?.section ?? null }, payWithSection: { errorInfo, preselectedPaymentInstructions: { paymentInstructions: instructions } } }
+});
 const shops = [{ id: "1760", serviceType: "delivery", retailer: { slug: "market" } }, { id: "1761", serviceType: "pickup", retailer: { slug: "market" } }];
 
 function page(name, options = {}) {
@@ -54,18 +58,27 @@ function page(name, options = {}) {
   const respond = (op, variables) => {
     if (options.respond) { const custom = options.respond(op, variables, state); if (custom) return custom; }
     switch (op) {
-      case "BuyflowPaymentInstrumentsV2": return { data: { buyflowPaymentInstruments: options.noPayments ? null : { paymentSelection: { savedPaymentMethods: { paymentMethods: (options.methods ?? methods).map(m => ({ ...m, isSelected: m.instrumentReference === state.selected })) } } } } };
+      case "BuyflowPaymentInstrumentsV2": {
+        if (options.noPayments) return { data: { buyflowPaymentInstruments: null } };
+        if (options.paymentShape) return { data: { buyflowPaymentInstruments: options.paymentShape } };
+        return { data: { buyflowPaymentInstruments: { paymentSelection: { savedPaymentMethods: { paymentMethods: (options.methods ?? methods).map(m => ({ ...m, isSelected: m.instrumentReference === state.selected })) } } } } };
+      }
       case "GetLastUserLocation": return { data: { lastUserLocation: options.noAddress ? { zoneId: "78", postalCode: "62701" } : { addressId: "900001", zoneId: "78", postalCode: "62701", coordinates: { latitude: 39.8, longitude: -89.6 } } } };
       case "ShopCollectionScoped": return { data: { shopCollection: { shops: variables.retailerSlug === "market" ? shops : [] } } };
       case "ActiveCartId": return { data: { shopBasket: { cartId: "777", cartType: "grocery" } } };
       case "CartData": return { data: { userCart: { id: variables.id, itemCount: options.emptyCart ? 0 : 1 } } };
-      case "InitializeCheckout": return { data: { initializeCheckout: { checkoutData: { checkoutSessionId: "checkoutsession_test_1", cartId: variables.cartId } } } };
+      case "InitializeCheckout": return { data: { initializeCheckout: { checkoutData: { checkoutSessionId: "checkoutsession_test_1", cartId: variables.cartId }, checkoutResourceCollection: { resources: options.noSessionPayments ? [{ __typename: "CheckoutCheckoutResourcesAddressResource" }] : [{ __typename: "CheckoutCheckoutResourcesAddressResource" }, paymentsResource(options.sessionInstructions ?? [{ instrumentReference: state.selected, userSpecifiedAmount: null }], options.split)] } } } };
       case "UpdateBuyflowPaymentInstructionsV2": {
         if (options.reject) return { data: { updateBuyflowPaymentInstructions: { updatedPaymentInstructions: [] } } };
         if (!options.ignore) state.selected = variables.updatePaymentInstructions.updatePrimaryInstrument.primaryInstrumentReference;
         return { data: { updateBuyflowPaymentInstructions: { updatedPaymentInstructions: [{ instrumentReference: variables.updatePaymentInstructions.updatePrimaryInstrument.primaryInstrumentReference }] } } };
       }
-      case "UpdateCheckout": return { data: { updateCheckout: { checkoutData: { checkoutSessionId: variables.checkoutSessionId } } } };
+      case "UpdateCheckout": {
+        if (options.refresh === "stale") return { data: { updateCheckout: { checkoutResourceCollection: { resources: [paymentsResource([{ instrumentReference: "credit_1003", userSpecifiedAmount: null }])] } } } };
+        if (options.refresh === "empty") return { data: { updateCheckout: { checkoutData: { checkoutSessionId: variables.checkoutSessionId } } } };
+        if (options.refresh === "site_error") return { data: { updateCheckout: { checkoutResourceCollection: { resources: [paymentsResource([{ instrumentReference: state.selected, userSpecifiedAmount: null }], null, { message: "This payment method cannot be used for this order." })] } } } };
+        return { data: { updateCheckout: { checkoutData: { checkoutSessionId: variables.checkoutSessionId }, checkoutResourceCollection: { resources: [paymentsResource([{ instrumentReference: state.selected, userSpecifiedAmount: null }])] } } } };
+      }
       default: return { errors: [{ message: "unknown op", extensions: { code: "PERSISTED_QUERY_NOT_SUPPORTED" } }], data: null };
     }
   };
@@ -142,7 +155,7 @@ test("list_payment_methods: rejects input and reports site failures", async () =
 test("select_payment_method: opens a checkout, sends one selection update and confirms it", async () => {
   const h = page("select_payment_method");
   const result = await h.run({ store: "market", payment_method_id: "credit_1001" });
-  assert.deepEqual(result, { status: "ok", changed: true, mutation_attempted: true, previous_payment_method_id: "credit_1003", selected_payment_method_id: "credit_1001", label: "PayPal", detail: "person@example.com", cart_id: "777" });
+  assert.deepEqual(result, { status: "ok", changed: true, mutation_attempted: true, checkout_session_requested: true, previous_payment_method_id: "credit_1003", selected_payment_method_id: "credit_1001", label: "PayPal", detail: "person@example.com", cart_id: "777" });
   assert.deepEqual(h.state.writes, ["InitializeCheckout", "UpdateBuyflowPaymentInstructionsV2", "UpdateCheckout"]);
   const init = h.state.requests.find(r => r.op === "InitializeCheckout").variables;
   assert.deepEqual([init.cartId, init.shopId, init.serviceType, init.userLocation.addressId], ["777", "1760", "DELIVERY", "900001"]);
@@ -161,7 +174,7 @@ test("select_payment_method: pickup uses the pickup shop", async () => {
 test("select_payment_method: the already selected method sends nothing", async () => {
   const h = page("select_payment_method");
   const result = await h.run({ store: "market", payment_method_id: "credit_1003" });
-  assert.deepEqual([result.changed, result.mutation_attempted, result.cart_id], [false, false, null]);
+  assert.deepEqual([result.changed, result.mutation_attempted, result.checkout_session_requested, result.cart_id], [false, false, false, null]);
   assert.deepEqual(h.state.writes, []);
 });
 
@@ -179,6 +192,7 @@ test("select_payment_method: invalid, unknown, disabled and expired methods are 
     const result = await h.run(input);
     assert.equal(result.error_kind, kind, JSON.stringify(input));
     assert.equal(result.mutation_attempted, false);
+    assert.equal(result.checkout_session_requested, false);
     assert.deepEqual(h.state.writes, []);
   }
 });
@@ -211,6 +225,67 @@ test("select_payment_method: a rejected, unconfirmed or failed update is reporte
   for (const h of [rejected, ignored, broken]) assert.equal(h.state.writes.filter(op => op === "UpdateBuyflowPaymentInstructionsV2").length, 1);
   const noSession = page("select_payment_method", { respond: op => op === "InitializeCheckout" ? { data: { initializeCheckout: null } } : null });
   const d = await noSession.run({ store: "market", payment_method_id: "credit_1001" });
-  assert.deepEqual([d.error_kind, d.mutation_attempted], ["unknown", false]);
+  assert.deepEqual([d.error_kind, d.mutation_attempted, d.checkout_session_requested], ["unknown", false, true]);
+  assert.match(d.error_message, /checkout session was opened/);
+  assert.doesNotMatch(d.error_message, /Nothing was changed/);
   assert.deepEqual(noSession.state.writes, ["InitializeCheckout"]);
 });
+
+test("select_payment_method: a failed, empty, stale or erroring checkout refresh is never reported as success", async () => {
+  for (const [label, options, kind] of [
+    ["HTTP 500", { http: { UpdateCheckout: 500 } }, "unknown"],
+    ["HTTP 429", { http: { UpdateCheckout: 429 } }, "throttled"],
+    ["network failure", { throwOn: "UpdateCheckout" }, "unknown"],
+    ["no payments resource", { refresh: "empty" }, "unknown"],
+    ["session still on the old method", { refresh: "stale" }, "unknown"],
+    ["payment error in the session", { refresh: "site_error" }, "selection_rejected"],
+    ["GraphQL errors without data", { respond: op => op === "UpdateCheckout" ? { errors: [{ message: "boom" }], data: null } : null }, "unknown"]
+  ]) {
+    const h = page("select_payment_method", options);
+    const result = await h.run({ store: "market", payment_method_id: "credit_1001" });
+    assert.equal(result.status, "error", label);
+    assert.equal(result.error_kind, kind, label);
+    assert.deepEqual([result.mutation_attempted, result.checkout_session_requested], [true, true], label);
+    assert.deepEqual(h.state.writes, ["InitializeCheckout", "UpdateBuyflowPaymentInstructionsV2", "UpdateCheckout"], label);
+    assert.equal(h.state.requests.filter(r => r.op === "BuyflowPaymentInstrumentsV2").length, 1, `${label}: the account-wide list is not consulted after a failed refresh`);
+  }
+});
+
+test("select_payment_method: a checkout that uses or offers split tender is refused before the payment update", async () => {
+  for (const [label, options] of [
+    ["two instructions", { sessionInstructions: [{ instrumentReference: "credit_1003", userSpecifiedAmount: null }, { instrumentReference: "credit_1001", userSpecifiedAmount: null }] }],
+    ["a set amount", { sessionInstructions: [{ instrumentReference: "credit_1003", userSpecifiedAmount: 2000 }] }],
+    ["split tender details", { split: { details: { token: "x" } } }],
+    ["a split tender section", { split: { section: { id: "s" } } }]
+  ]) {
+    const h = page("select_payment_method", options);
+    const result = await h.run({ store: "market", payment_method_id: "credit_1001" });
+    assert.equal(result.error_kind, "split_tender_active", label);
+    assert.deepEqual([result.mutation_attempted, result.checkout_session_requested], [false, true], label);
+    assert.deepEqual(h.state.writes, ["InitializeCheckout"], label);
+    assert.equal(h.state.selected, "credit_1003", label);
+  }
+});
+
+test("select_payment_method: a checkout session without payment state is site_changed before the payment update", async () => {
+  const h = page("select_payment_method", { noSessionPayments: true });
+  const result = await h.run({ store: "market", payment_method_id: "credit_1001" });
+  assert.deepEqual([result.error_kind, result.mutation_attempted, result.checkout_session_requested], ["site_changed", false, true]);
+  assert.deepEqual(h.state.writes, ["InitializeCheckout"]);
+});
+
+for (const name of ["list_payment_methods", "select_payment_method"]) {
+  test(`${name}: a missing or malformed saved-method list is site_changed, not an empty list`, async () => {
+    const input = name === "list_payment_methods" ? {} : { store: "market", payment_method_id: "credit_1001" };
+    for (const shape of [{}, { paymentSelection: null }, { paymentSelection: {} }, { paymentSelection: { savedPaymentMethods: {} } }, { paymentSelection: { savedPaymentMethods: { paymentMethods: "x" } } }]) {
+      const h = page(name, { paymentShape: shape });
+      const result = await h.run(input);
+      assert.equal(result.error_kind, "site_changed", JSON.stringify(shape));
+      assert.deepEqual(h.state.writes, []);
+    }
+    const none = page(name, { paymentShape: { paymentSelection: { savedPaymentMethods: null } } });
+    const result = await none.run(input);
+    if (name === "list_payment_methods") assert.deepEqual(result.payment_methods, []);
+    else assert.equal(result.error_kind, "payment_method_not_found");
+  });
+}

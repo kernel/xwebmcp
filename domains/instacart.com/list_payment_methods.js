@@ -68,9 +68,12 @@
       if (response.status >= 400 || !body || (body.errors && !body.data)) return failure("unknown", `BuyflowPaymentInstrumentsV2 failed with HTTP ${response.status}${body?.errors?.[0]?.message ? ": " + body.errors[0].message : ""}.`);
       const instruments = body.data?.buyflowPaymentInstruments;
       if (!instruments) return failure("not_logged_in", "Instacart returned no payment information; this session is probably not logged in.");
-      const saved = instruments.paymentSelection?.savedPaymentMethods?.paymentMethods;
-      if (saved !== undefined && saved !== null && !Array.isArray(saved)) return failure("site_changed", "Instacart's payment-method response no longer has the expected shape; the tool needs updating.");
-      const methods = (saved || []).filter(m => m && m.instrumentReference).map(m => {
+      const section = instruments.paymentSelection?.savedPaymentMethods;
+      const drift = failure("site_changed", "Instacart's payment-method response no longer has the expected shape; the tool needs updating.");
+      if (!instruments.paymentSelection || typeof instruments.paymentSelection !== "object" || section === undefined) return drift;
+      // An explicit null section is read as "no saved methods"; anything else must carry an array.
+      if (section !== null && !Array.isArray(section.paymentMethods)) return drift;
+      const methods = (section ? section.paymentMethods : []).filter(m => m && m.instrumentReference).map(m => {
         const detail = m.viewSection?.stringSet?.sublabelString ?? null;
         return { payment_method_id: String(m.instrumentReference), type: m.instrumentType ?? null, label: m.viewSection?.stringSet?.labelString ?? null, detail, is_selected: m.isSelected === true, is_enabled: m.isEnabled !== false, expired: expired(detail) };
       });

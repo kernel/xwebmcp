@@ -500,14 +500,23 @@ same-origin GraphQL requests from the current instacart.com page and never navig
   so the tool needs that store's cart to be non-empty. It re-reads the methods
   (`payment_method_not_found`; `payment_method_unusable` for a disabled method or an
   expired card; `changed: false` with nothing sent when the method is already selected),
-  resolves the store and cart (`store_not_found`, `cart_empty`), then sends what the
-  checkout page's "Pay with" editor sends: `InitializeCheckout` for the cart (the call
-  the checkout page makes on load; it opens a session and places nothing),
-  `UpdateBuyflowPaymentInstructionsV2` with `updatePrimaryInstrument`, and
-  `UpdateCheckout { paymentsUpdate: { paymentsUpdated: true } }`. It then re-reads the
-  methods and succeeds only if the chosen one is reported selected.
-  `mutation_attempted` becomes true when the payment update is sent; a rejected or
-  unconfirmed update is reported and never retried.
+  resolves the store and cart (`store_not_found`, `cart_empty`), then:
+  1. sends `InitializeCheckout` for the cart. This is a POST, the one the checkout page
+     sends on load: it opens a checkout session, places nothing and changes no payment.
+     `checkout_session_requested` becomes true here. The response carries the session's
+     payment state; if it is missing the tool stops with `site_changed`, and if the
+     session uses or offers split tender (more than one payment instruction, a set
+     amount, `splitTenderDetails`, or a split-tender section) it stops with
+     `split_tender_active`, because the update below always turns split tender off;
+  2. sends `UpdateBuyflowPaymentInstructionsV2` with `updatePrimaryInstrument`
+     (`mutation_attempted` becomes true) and checks that the response lists the method;
+  3. sends `UpdateCheckout { paymentsUpdate: { paymentsUpdated: true } }`, which the page
+     sends after every payment change, and requires its response to show the session with
+     exactly that one method and no payment `errorInfo`. A failed, empty or stale refresh
+     is `unknown` (the session may still use the old method); a payment error is
+     `selection_rejected`;
+  4. re-reads the account's methods and succeeds only if the chosen one is selected.
+  Nothing is retried after step 2.
 
 Safety: neither tool places an order, adds, edits or removes a payment method, enters
 card details, applies promotions or touches the tip. The only account change is which
@@ -525,8 +534,13 @@ saved method is selected.
 
 - A store with an empty cart cannot be used to select a method (`cart_empty`); the site
   exposes no selection outside a checkout session that the tools found.
-- Split tender, gift cards, EBT/SNAP, FSA/HSA and the pay-later options are out of scope;
-  the update always clears split tender, as the checkout editor does.
+- Split tender, gift cards, EBT/SNAP, FSA/HSA and the pay-later options are out of scope.
+  A checkout that uses or offers split tender is refused with `split_tender_active`
+  before any payment change; the refusal also covers accounts where the site merely
+  offers a split-tender section, which could not be told apart without an account that
+  has one (none of the live checks did).
+- A saved-method section that is missing or not a list is `site_changed`; an explicit
+  `null` section is read as "no saved methods", which was not seen live.
 - `expired` relies on the displayed `Exp. M/YY` text and the browser's clock.
 - The WebMCP runtime did not apply the input schema to these page tools in the live
   check, so both validate their own input before any request.
@@ -546,6 +560,7 @@ an independent QA pass.
 | select at a store with an empty cart | `cart_empty`; nothing sent |
 | select PayPal at the store with the cart | `changed: true`; `list_payment_methods` then reports PayPal selected |
 | select the original card again | `changed: true`; original selection restored; cart unchanged; no order placed |
+| after the review fix: the same switch and restore | `checkout_session_requested: true`; the `UpdateCheckout` response showed the session on the chosen method both times; pre-write rejections report `checkout_session_requested: false` |
 
 ## Sessions
 
