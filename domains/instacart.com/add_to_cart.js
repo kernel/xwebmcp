@@ -25,13 +25,16 @@
             store: { type: "object", additionalProperties: false, required: ["store_slug", "name", "shop_id", "retailer_id", "service_type", "retailer_location_id"], properties: { store_slug: { type: ["string", "null"] }, name: { type: ["string", "null"] }, shop_id: { type: "string" }, retailer_id: { type: "string" }, service_type: { type: ["string", "null"] }, retailer_location_id: { type: ["string", "null"] } } },
             item: {
           type: "object", additionalProperties: false,
-          required: ["item_id", "product_id", "name", "brand", "size", "price_string", "price_cents", "full_price_string", "price_per_unit_string", "available", "stock_level", "quantity", "tags", "image_url", "url"],
+          required: ["item_id", "product_id", "name", "brand", "size", "package_string", "pack_count", "unit_size", "price_string", "price_cents", "full_price_string", "price_per_unit_string", "available", "stock_level", "quantity", "tags", "image_url", "url"],
           properties: {
             item_id: { type: "string", description: "Store-specific item id (items_<location>-<product>); pass this to get_item, add_to_cart and update_cart_item together with the same store." },
             product_id: { type: ["string", "null"] },
             name: { type: ["string", "null"] },
             brand: { type: ["string", "null"] },
-            size: { type: ["string", "null"] },
+            size: { type: ["string", "null"], description: "Size as the site lists it. For a multipack this is one unit's size (\"12 fl oz\" for eight cans); read pack_count." },
+            package_string: { type: ["string", "null"], description: "The site's package line, e.g. \"8 x 12 fl oz\" or \"12 fl oz\"; null when the site shows a price per weight there instead." },
+            pack_count: { type: ["integer", "null"], minimum: 1, description: "Separately packed units in one purchasable item, only when the package line proves it: N from \"N x <size>\" or \"N pk\", 1 for \"1 each\" or a single measured size such as \"12 fl oz\". null for counts that may be pieces in one package (\"18 ct\", \"8 each\"), nested or unrecognized lines, and no line." },
+            unit_size: { type: ["string", "null"], description: "Size of one unit from the package line, e.g. \"12 fl oz\"; null when pack_count is null or the line gives no unit size (\"2 pk\")." },
             price_string: { type: ["string", "null"], description: "Displayed price, e.g. \"$2.37 each (est.)\"." },
             price_cents: { type: ["integer", "null"], description: "First dollar amount in price_string, in cents; estimates for weighed items." },
             full_price_string: { type: ["string", "null"], description: "Undiscounted price when a discount applies." },
@@ -148,12 +151,26 @@
       const mapItem = (it, slug) => {
         const card = it.price?.viewSection?.itemCard || {};
         const qa = it.quantityAttributes || it.quantityAttributesEach || it.quantityAttributesWeight || {};
+        // pricingUnitString is "8 x 12 fl oz" for multipacks and a plain size for single units; weighed items show a price there.
+        const unitLine = it.price?.viewSection?.itemDetails?.pricingUnitString ?? card.pricingUnitString;
+        const pkg = typeof unitLine === "string" && unitLine.trim() && !unitLine.includes("$") ? unitLine.trim() : null;
+        // pack_count is only claimed when the line proves it: "N x <size>", "N pk" / "N pack", "1 each", or one measured size.
+        // Counts such as "18 ct" or "8 each" can mean pieces in one package, so they stay null, as does anything unrecognized.
+        const measure = /^\d+(?:\.\d+)?\s*(?:fl\.?\s*oz|oz|lbs?|g|kg|mg|ml|cl|l|ltr|liters?|litres?|gal|qt|pt|sq\.?\s*ft|ft|ftk|in|yd)\.?(?:\s+(?:container|bag|box|jar|bottle|can|carton|tub|pouch|package|pkg))?$/i;
+        const perUnit = /^\d+(?:\.\d+)?\s*(?:ct|count|each|ea|pk|pack)$/i;
+        const multiMatch = pkg ? pkg.match(/^(\d+)\s*[x\u00d7]\s*(\S.*)$/i) : null;
+        const multi = multiMatch && Number(multiMatch[1]) >= 1 && (measure.test(multiMatch[2]) || perUnit.test(multiMatch[2])) ? { count: Number(multiMatch[1]), unit: multiMatch[2] } : null;
+        const packOnly = !multi && pkg ? pkg.match(/^(\d+)\s*-?\s*(?:pk|pack|packs)$/i) : null;
+        const pack = multi || (packOnly && Number(packOnly[1]) >= 1 ? { count: Number(packOnly[1]), unit: null } : null) || (pkg && (measure.test(pkg) || /^1\s*(?:each|ea)$/i.test(pkg)) ? { count: 1, unit: pkg } : null);
         return {
           item_id: String(it.id),
           product_id: it.productId ? String(it.productId) : null,
           name: it.name ?? null,
           brand: it.brandName ?? null,
           size: it.size ?? null,
+          package_string: pkg,
+          pack_count: pack ? pack.count : null,
+          unit_size: pack ? pack.unit : null,
           price_string: card.priceString ?? null,
           price_cents: cents(card.priceString),
           full_price_string: card.fullPriceString ?? null,

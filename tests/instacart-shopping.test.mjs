@@ -61,6 +61,13 @@ const catalog = {
   "items_165949-1003": { id: "items_165949-1003", name: "Whole Milk", size: "1 gal", productId: "1003", brandName: "Dairy Co", tags: [], quantityAttributes: each, availability: { available: true, stockLevel: "inStock" }, price: { viewSection: { itemCard: { priceString: "$3.49" } } }, viewSection: {} },
   "items_165949-1004": { id: "items_165949-1004", name: "Deli Turkey", size: "per lb", productId: "1004", brandName: null, tags: [], quantityAttributes: { increment: 0.5, initial: 1, max: 5, min: 0.5, quantityType: "weight", viewSection: { unitString: "lb" } }, availability: { available: true, stockLevel: "inStock" }, price: { viewSection: { itemCard: { priceString: "$9.99 / lb" } } }, viewSection: {} },
   "items_165949-1005": { id: "items_165949-1005", name: "Sold Out Cookies", size: "12 ct", productId: "1005", brandName: null, tags: [], quantityAttributes: each, availability: { available: false, stockLevel: "outOfStock" }, price: { viewSection: { itemCard: { priceString: "$4.00" } } }, viewSection: {} },
+  "items_165949-1007": { id: "items_165949-1007", name: "Sparkling Soda Variety Pack", size: "12 fl oz", productId: "1007", brandName: "Fizz", tags: [], quantityAttributes: each, availability: { available: true, stockLevel: "inStock" }, price: { viewSection: { itemCard: { priceString: "$17.99", pricingUnitString: "8 x 12 fl oz", pricePerUnitString: null }, itemDetails: { pricingUnitString: "8 x 12 fl oz", pricePerUnitString: "$2.25 each" } } }, viewSection: {} },
+  "items_165949-1008": { id: "items_165949-1008", name: "Sparkling Soda Can", size: "12 fl oz", productId: "1008", brandName: "Fizz", tags: [], quantityAttributes: each, availability: { available: true, stockLevel: "inStock" }, price: { viewSection: { itemCard: { priceString: "$2.99", pricingUnitString: "12 fl oz" } } }, viewSection: {} },
+  "items_165949-1009": { id: "items_165949-1009", name: "Loose Apples", size: "per lb", productId: "1009", brandName: null, tags: [], quantityAttributes: each, availability: { available: true, stockLevel: "inStock" }, price: { viewSection: { itemCard: { priceString: "$1.99", pricingUnitString: "$1.99 / lb" } } }, viewSection: {} },
+  ...Object.fromEntries([
+    ["1010", "2 pk"], ["1011", "18 ct"], ["1012", "2 x 8 each"], ["1013", "2 x 6 x 12 fl oz"], ["1014", "Family size"],
+    ["1015", "1 each"], ["1016", "2 lb container"], ["1017", "8 each"], ["1018", "4 x 72 ct"], ["1019", "102.7 sq ft"], ["1020", "0 x 12 fl oz"]
+  ].map(([n, line]) => [`items_165949-${n}`, { id: `items_165949-${n}`, name: `Package ${line}`, size: "varies", productId: n, brandName: null, tags: [], quantityAttributes: each, availability: { available: true, stockLevel: "inStock" }, price: { viewSection: { itemCard: { priceString: "$5.00", pricingUnitString: line } } }, viewSection: {} }])),
   "items_165949-1006": { id: "items_165949-1006", name: "Limited Sauce", size: "8 oz", productId: "1006", brandName: null, tags: [], quantityAttributes: { ...each, max: 2 }, availability: { available: true, stockLevel: "lowStock" }, price: { viewSection: { itemCard: { priceString: "$1.99" } } }, viewSection: {} }
 };
 const header = text => ({ content: { __typename: "SearchContentManagementSearchItemGridHeader", viewSection: { titleFormattedAttributesString: { sections: [{ text }] } } } });
@@ -69,7 +76,8 @@ const ad = ids => ({ content: { __typename: "AdsSearchDisplayCreativePlacement",
 const loadMore = { content: { __typename: "SearchContentManagementSearchLoadMore" } };
 const searchPlacements = {
   bananas: [header('Results for "bananas"'), grid(["items_165949-1001", "items_165949-1002"], [catalog["items_165949-1001"]]), ad(["items_165949-1006"]), header("Related items"), grid(["items_165949-1003", "items_165949-1001"]), loadMore, grid(["items_165949-1004"])],
-  nothing: [header("No results for \"zzz\""), header("Related items"), grid(["items_165949-1003"])]
+  nothing: [header("No results for \"zzz\""), header("Related items"), grid(["items_165949-1003"])],
+  packs: [header('Results for "packs"'), grid(["items_165949-1010", "items_165949-1011", "items_165949-1013", "items_165949-1007"])]
 };
 
 function fixtures(options = {}) {
@@ -303,6 +311,69 @@ test("list_stores: lists, filters and caps stores", async () => {
   assert.equal(filtered.total_stores, 1);
   assert.equal(filtered.stores[0].name, "ALDI");
   assert.deepEqual(h.state.requests[0].variables, { postalCode: "45202", coordinates: location.coordinates, addressId: "900001" });
+});
+
+// ---------------------------------------------------------------- package sizes
+
+test("get_item: a multipack reports its unit count and unit size from the site's package line", async () => {
+  const pack = (await harness("get_item").run({ store: "kroger", item_id: "items_165949-1007" })).item;
+  assert.deepEqual([pack.size, pack.package_string, pack.pack_count, pack.unit_size], ["12 fl oz", "8 x 12 fl oz", 8, "12 fl oz"]);
+  const can = (await harness("get_item").run({ store: "kroger", item_id: "items_165949-1008" })).item;
+  assert.deepEqual([can.package_string, can.pack_count, can.unit_size], ["12 fl oz", 1, "12 fl oz"]);
+});
+
+test("get_item: a price in the package line, or no package line, leaves the pack fields null", async () => {
+  for (const id of ["items_165949-1009", "items_165949-1001"]) {
+    const item = (await harness("get_item").run({ store: "kroger", item_id: id })).item;
+    assert.deepEqual([item.package_string, item.pack_count, item.unit_size], [null, null, null], id);
+  }
+});
+
+const packLines = [
+  ["items_165949-1010", "2 pk", 2, null],
+  ["items_165949-1011", "18 ct", null, null],
+  ["items_165949-1012", "2 x 8 each", 2, "8 each"],
+  ["items_165949-1013", "2 x 6 x 12 fl oz", null, null],
+  ["items_165949-1014", "Family size", null, null],
+  ["items_165949-1015", "1 each", 1, "1 each"],
+  ["items_165949-1016", "2 lb container", 1, "2 lb container"],
+  ["items_165949-1017", "8 each", null, null],
+  ["items_165949-1018", "4 x 72 ct", 4, "72 ct"],
+  ["items_165949-1019", "102.7 sq ft", 1, "102.7 sq ft"],
+  ["items_165949-1020", "0 x 12 fl oz", null, null]
+];
+
+test("get_item: pack_count is only claimed for package lines that prove it", async () => {
+  for (const [id, line, count, unit] of packLines) {
+    const item = (await harness("get_item").run({ store: "kroger", item_id: id })).item;
+    assert.deepEqual([item.package_string, item.pack_count, item.unit_size], [line, count, unit], line);
+  }
+});
+
+test("search: result items use the same pack rules, including 2 pk and ambiguous lines", async () => {
+  const result = await harness("search").run({ store: "kroger", query: "packs" });
+  assert.deepEqual(result.results.map(r => [r.item.package_string, r.item.pack_count, r.item.unit_size]), [["2 pk", 2, null], ["18 ct", null, null], ["2 x 6 x 12 fl oz", null, null], ["8 x 12 fl oz", 8, "12 fl oz"]]);
+});
+
+test("get_cart and add_to_cart: 2 pk and ambiguous count lines keep the same pack rules", async () => {
+  const h = harness("get_cart", { cartLines: [{ itemId: "items_165949-1010", quantity: 1, quantityType: "each" }, { itemId: "items_165949-1011", quantity: 2, quantityType: "each" }] });
+  const lines = (await h.run({ store: "kroger" })).carts[0].items;
+  assert.deepEqual(lines.map(l => [l.package_string, l.pack_count, l.unit_size]), [["2 pk", 2, null], ["18 ct", null, null]]);
+  const twoPack = await harness("add_to_cart").run({ store: "kroger", item_id: "items_165949-1010" });
+  assert.deepEqual([twoPack.item.pack_count, twoPack.item.unit_size], [2, null]);
+  const eggs = await harness("add_to_cart").run({ store: "kroger", item_id: "items_165949-1011" });
+  assert.deepEqual([eggs.item.package_string, eggs.item.pack_count], ["18 ct", null]);
+});
+
+test("get_cart: cart lines carry the pack fields of their item", async () => {
+  const h = harness("get_cart", { cartLines: [{ itemId: "items_165949-1007", quantity: 6, quantityType: "each" }] });
+  const line = (await h.run({ store: "kroger" })).carts[0].items[0];
+  assert.deepEqual([line.name, line.quantity, line.package_string, line.pack_count, line.unit_size], ["Sparkling Soda Variety Pack", 6, "8 x 12 fl oz", 8, "12 fl oz"]);
+});
+
+test("add_to_cart: the returned item carries the pack fields", async () => {
+  const result = await harness("add_to_cart").run({ store: "kroger", item_id: "items_165949-1007", quantity: 2 });
+  assert.equal(result.item.pack_count, 8);
 });
 
 // ---------------------------------------------------------------- search

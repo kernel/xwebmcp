@@ -6,10 +6,10 @@ Tools for Instacart (https://www.instacart.com).
 |------|------|--------|-------|
 | login | [login.js](login.js) | qa_passed | Passwordless email-code login. Email step, code step, already-logged-in check and wrong-account check live-verified on 2026-09-25; independent failure-path QA passed on the current source. |
 | list_stores | [list_stores.js](list_stores.js) | qa_passed | Stores serving the account's address, with the `store_slug` and shop id the other tools take. |
-| search | [search.js](search.js) | draft | First-page product search in one store for the literal query (site spelling correction off unless `allow_reformulation`); exact matches first, related on request. Changed 2026-09-28; author live check only, awaiting independent QA. |
-| get_item | [get_item.js](get_item.js) | qa_passed | One item's price, availability, quantity rules and rating for a store. |
-| get_cart | [get_cart.js](get_cart.js) | qa_passed | One store's cart with names, prices and subtotal, or a summary of every non-empty cart. |
-| add_to_cart | [add_to_cart.js](add_to_cart.js) | qa_passed | Adds or increases a cart line after checking availability and quantity rules; one mutation, never retried. |
+| search | [search.js](search.js) | draft | First-page product search in one store for the literal query (site spelling correction off unless `allow_reformulation`); exact matches first, related on request. Items carry `pack_count` and `unit_size`. Changed 2026-09-28; author live check only, awaiting independent QA. |
+| get_item | [get_item.js](get_item.js) | draft | One item's price, availability, quantity rules, pack size and rating for a store. Pack fields added 2026-09-28 (author live check; awaiting independent QA). |
+| get_cart | [get_cart.js](get_cart.js) | draft | One store's cart with names, prices, pack sizes and subtotal, or a summary of every non-empty cart. Pack fields added 2026-09-28 (author live check; awaiting independent QA). |
+| add_to_cart | [add_to_cart.js](add_to_cart.js) | draft | Adds or increases a cart line after checking availability and quantity rules; one mutation, never retried. Returned item carries pack fields since 2026-09-28 (author live check; awaiting independent QA). |
 | update_cart_item | [update_cart_item.js](update_cart_item.js) | qa_passed | Sets a cart line to an exact quantity; 0 removes; one mutation, never retried. |
 
 Register all seven files together as one array with `forceOverwriteNamespace: true`;
@@ -267,6 +267,24 @@ add `item_not_found` and (`add_to_cart`) `item_unavailable` and
 always include `mutation_attempted`, which is true once the cart update was sent even
 when the outcome is uncertain; never retry automatically after that.
 
+Items carry the site's `size` and three pack fields read from the item's package line
+(`price.viewSection.itemDetails.pricingUnitString`, falling back to `itemCard`):
+`package_string` (the line as shown), `pack_count` and `unit_size`. For a multipack
+`size` is **one unit's** size, so an 8-pack, a 4-pack and a single can of the same drink
+all have `size: "12 fl oz"`; read `pack_count` before choosing a quantity.
+`pack_count` is only set when the line proves it:
+
+| package line | pack_count | unit_size |
+|--------------|------------|-----------|
+| `8 x 12 fl oz`, `4 x 72 ct`, `2 x 8 each` | 8, 4, 2 | `12 fl oz`, `72 ct`, `8 each` |
+| `2 pk`, `6 pack` | 2, 6 | `null` |
+| `12 fl oz`, `1 lb`, `102.7 sq ft`, `2 lb container`, `1 each` | 1 | the line |
+| `18 ct`, `8 each` (pieces in one package or separate packs; the line does not say) | `null` | `null` |
+| nested (`2 x 6 x 12 fl oz`), unrecognized words, a price (`$0.79 / lb`), no line | `null` | `null` |
+
+`package_string` is still returned whenever the line is not a price, so a caller can
+read an ambiguous line itself. `get_cart` lines carry the same three fields.
+
 Items carry `price_string` as displayed (for example `$2.37 each (est.)`), `price_cents`
 parsed from the first dollar amount, `available`, `stock_level`, and `quantity`
 (`type` "each" or "weight", `min`, `max`, `increment`, `unit`). `add_to_cart` adds to the
@@ -309,7 +327,7 @@ existing line (quantity is the increment, and the confirmed total is returned);
 
 ### Status and known limitations (shopping)
 
-Status: per tool in the table at the top. `search` is `draft` since the 2026-09-28 change below; the others are `qa_passed` for the source the QA summary names.
+Status: per tool in the table at the top. `search`, `get_item`, `get_cart` and `add_to_cart` are `draft` since the 2026-09-28 changes below (literal search, pack fields); the others are `qa_passed` for the source the QA summary names.
 
 Live-verified on 2026-09-25 in the author's logged-in stealth browser (`cincy` proxy),
 using the account's empty Kroger delivery cart and one cheap produce item:
@@ -352,6 +370,23 @@ Unverified:
 - Extension-host portability was reasoned about (no Node globals; page work runs in the
   page) but only the Node CDP runtime was exercised.
 - `cart_item_count` and `item_count` count distinct lines, not units.
+- `pack_count` is parsed from the site's display string. Shapes other than those in the
+  table (and bare counts such as `18 ct`) give `pack_count: null`; the line is still in
+  `package_string`.
+
+Author live check, 2026-09-28 (pack fields; logged-in stealth browser, `cincy` proxy; not
+an independent QA pass):
+
+| tool | case | package_string / pack_count / unit_size |
+|------|------|------------------------------------------|
+| get_item | Meijer soda variety pack | `8 x 12 fl oz` / 8 / `12 fl oz` (`size` is `12 fl oz`) |
+| get_item | Kroger single can, Kroger 4-pack | `12 fl oz` / 1, `4 x 12 fl oz` / 4 |
+| get_item | Kroger bananas (price per lb on the line) | all `null` |
+| search | Target, `poppi` | 4-, 6- (`6 x 7.5 fl oz`) and 8-packs and a single can, each correct |
+| get_cart | Meijer cart with 6 packs | line shows `8 x 12 fl oz` / 8 |
+| add_to_cart | add 1 to that line | 6 -> 7 with `pack_count: 8`; restored to 6 with `update_cart_item`, subtotal unchanged |
+| search (after the review fix) | eggs `18 ct`, wipes `50 ct`, batteries `4 ct`, paper towels `6 each` | all `pack_count: null` with `package_string` kept |
+| search (after the review fix) | ground beef `16 oz` / `1 lb`, kiwi `2 lb container` | `pack_count: 1` |
 
 Author live check, 2026-09-28 (`search` with literal queries; logged-in stealth browser,
 `cincy` proxy; not an independent QA pass):

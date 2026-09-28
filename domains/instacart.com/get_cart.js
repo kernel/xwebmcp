@@ -20,7 +20,7 @@
           properties: {
             status: { const: "ok" },
             scope: { type: "string", enum: ["store", "all_stores"] },
-            carts: { type: "array", items: { type: "object", additionalProperties: false, required: ["cart_id", "store", "item_count", "subtotal_string", "savings_string", "items"], properties: { cart_id: { type: "string" }, store: { type: "object", additionalProperties: false, required: ["store_slug", "name", "shop_id", "retailer_id", "service_type", "retailer_location_id"], properties: { store_slug: { type: ["string", "null"] }, name: { type: ["string", "null"] }, shop_id: { type: "string" }, retailer_id: { type: "string" }, service_type: { type: ["string", "null"] }, retailer_location_id: { type: ["string", "null"] } } }, item_count: { type: "integer", minimum: 0, description: "Number of distinct lines, not units." }, subtotal_string: { type: ["string", "null"] }, savings_string: { type: ["string", "null"] }, items: { type: "array", items: { type: "object", additionalProperties: false, required: ["cart_item_id", "item_id", "product_id", "quantity", "quantity_type", "name", "size", "price_string", "price_cents", "line_total_cents", "available", "url"], properties: { cart_item_id: { type: "string" }, item_id: { type: "string" }, product_id: { type: ["string", "null"] }, quantity: { type: "number" }, quantity_type: { type: ["string", "null"] }, name: { type: ["string", "null"] }, size: { type: ["string", "null"] }, price_string: { type: ["string", "null"] }, price_cents: { type: ["integer", "null"] }, line_total_cents: { type: ["integer", "null"], description: "price_cents times quantity for per-each items; null for weighed items." }, available: { type: ["boolean", "null"] }, url: { type: ["string", "null"] } } } } } } }
+            carts: { type: "array", items: { type: "object", additionalProperties: false, required: ["cart_id", "store", "item_count", "subtotal_string", "savings_string", "items"], properties: { cart_id: { type: "string" }, store: { type: "object", additionalProperties: false, required: ["store_slug", "name", "shop_id", "retailer_id", "service_type", "retailer_location_id"], properties: { store_slug: { type: ["string", "null"] }, name: { type: ["string", "null"] }, shop_id: { type: "string" }, retailer_id: { type: "string" }, service_type: { type: ["string", "null"] }, retailer_location_id: { type: ["string", "null"] } } }, item_count: { type: "integer", minimum: 0, description: "Number of distinct lines, not units." }, subtotal_string: { type: ["string", "null"] }, savings_string: { type: ["string", "null"] }, items: { type: "array", items: { type: "object", additionalProperties: false, required: ["cart_item_id", "item_id", "product_id", "quantity", "quantity_type", "name", "size", "package_string", "pack_count", "unit_size", "price_string", "price_cents", "line_total_cents", "available", "url"], properties: { cart_item_id: { type: "string" }, item_id: { type: "string" }, product_id: { type: ["string", "null"] }, quantity: { type: "number" }, quantity_type: { type: ["string", "null"] }, name: { type: ["string", "null"] }, size: { type: ["string", "null"], description: "Per-unit size for multipacks; read pack_count." }, package_string: { type: ["string", "null"], description: "The site's package line, e.g. \"8 x 12 fl oz\"." }, pack_count: { type: ["integer", "null"], minimum: 1, description: "Separately packed units in one purchasable item when the package line proves it; null otherwise (see get_item)." }, unit_size: { type: ["string", "null"] }, price_string: { type: ["string", "null"] }, price_cents: { type: ["integer", "null"] }, line_total_cents: { type: ["integer", "null"], description: "price_cents times quantity for per-each items; null for weighed items." }, available: { type: ["boolean", "null"] }, url: { type: ["string", "null"] } } } } } } }
           }
         },
         {
@@ -120,12 +120,26 @@
       const mapItem = (it, slug) => {
         const card = it.price?.viewSection?.itemCard || {};
         const qa = it.quantityAttributes || it.quantityAttributesEach || it.quantityAttributesWeight || {};
+        // pricingUnitString is "8 x 12 fl oz" for multipacks and a plain size for single units; weighed items show a price there.
+        const unitLine = it.price?.viewSection?.itemDetails?.pricingUnitString ?? card.pricingUnitString;
+        const pkg = typeof unitLine === "string" && unitLine.trim() && !unitLine.includes("$") ? unitLine.trim() : null;
+        // pack_count is only claimed when the line proves it: "N x <size>", "N pk" / "N pack", "1 each", or one measured size.
+        // Counts such as "18 ct" or "8 each" can mean pieces in one package, so they stay null, as does anything unrecognized.
+        const measure = /^\d+(?:\.\d+)?\s*(?:fl\.?\s*oz|oz|lbs?|g|kg|mg|ml|cl|l|ltr|liters?|litres?|gal|qt|pt|sq\.?\s*ft|ft|ftk|in|yd)\.?(?:\s+(?:container|bag|box|jar|bottle|can|carton|tub|pouch|package|pkg))?$/i;
+        const perUnit = /^\d+(?:\.\d+)?\s*(?:ct|count|each|ea|pk|pack)$/i;
+        const multiMatch = pkg ? pkg.match(/^(\d+)\s*[x\u00d7]\s*(\S.*)$/i) : null;
+        const multi = multiMatch && Number(multiMatch[1]) >= 1 && (measure.test(multiMatch[2]) || perUnit.test(multiMatch[2])) ? { count: Number(multiMatch[1]), unit: multiMatch[2] } : null;
+        const packOnly = !multi && pkg ? pkg.match(/^(\d+)\s*-?\s*(?:pk|pack|packs)$/i) : null;
+        const pack = multi || (packOnly && Number(packOnly[1]) >= 1 ? { count: Number(packOnly[1]), unit: null } : null) || (pkg && (measure.test(pkg) || /^1\s*(?:each|ea)$/i.test(pkg)) ? { count: 1, unit: pkg } : null);
         return {
           item_id: String(it.id),
           product_id: it.productId ? String(it.productId) : null,
           name: it.name ?? null,
           brand: it.brandName ?? null,
           size: it.size ?? null,
+          package_string: pkg,
+          pack_count: pack ? pack.count : null,
+          unit_size: pack ? pack.unit : null,
           price_string: card.priceString ?? null,
           price_cents: cents(card.priceString),
           full_price_string: card.fullPriceString ?? null,
@@ -176,7 +190,7 @@
         const h = ids.length ? await hydrate(ids, shop, loc, slug) : { items: [] };
         if (h.error) return h;
         const byId = new Map(ids.map((id, i) => [id, h.items[i]]));
-        return { items: lines.map(l => { const d = byId.get(l.item_id); const each = d && d.quantity.type === "each" && d.price_cents != null; return { ...l, name: d?.name ?? null, size: d?.size ?? null, price_string: d?.price_string ?? null, price_cents: d?.price_cents ?? null, line_total_cents: each ? Math.round(d.price_cents * l.quantity) : null, available: d ? d.available : null, url: d?.url ?? null }; }) };
+        return { items: lines.map(l => { const d = byId.get(l.item_id); const each = d && d.quantity.type === "each" && d.price_cents != null; return { ...l, name: d?.name ?? null, size: d?.size ?? null, package_string: d?.package_string ?? null, pack_count: d?.pack_count ?? null, unit_size: d?.unit_size ?? null, price_string: d?.price_string ?? null, price_cents: d?.price_cents ?? null, line_total_cents: each ? Math.round(d.price_cents * l.quantity) : null, available: d ? d.available : null, url: d?.url ?? null }; }) };
       };
       const updateCart = async (cart, itemId, quantity, quantityType) => {
         const r = await gql("UpdateCartItemsMutation", { cartItemUpdates: [{ itemId, quantity, quantityType }], cartType: cart.type, requestTimestamp: Date.now(), cartId: cart.id }, true);
@@ -224,7 +238,7 @@
           }
           const lines = await cartLines(String(c.id));
           const names = new Map((c.cartItemCollection?.cartItems || []).map(ci => [String(ci.basketProduct?.id ?? ""), ci.basketProduct?.name ?? null]));
-          carts.push({ cart_id: String(c.id), store: { store_slug: slug, name: c.retailer?.name ?? null, shop_id: shop ? String(shop.id) : "", retailer_id: String(c.retailer?.id ?? ""), service_type: shop ? shop.serviceType ?? null : null, retailer_location_id: shop?.retailerLocationId ? String(shop.retailerLocationId) : null }, item_count: Number(c.itemCount ?? 0), subtotal_string: null, savings_string: null, items: (lines.lines || []).map(l => ({ ...l, name: names.get(l.item_id) ?? null, size: null, price_string: null, price_cents: null, line_total_cents: null, available: null, url: null })) });
+          carts.push({ cart_id: String(c.id), store: { store_slug: slug, name: c.retailer?.name ?? null, shop_id: shop ? String(shop.id) : "", retailer_id: String(c.retailer?.id ?? ""), service_type: shop ? shop.serviceType ?? null : null, retailer_location_id: shop?.retailerLocationId ? String(shop.retailerLocationId) : null }, item_count: Number(c.itemCount ?? 0), subtotal_string: null, savings_string: null, items: (lines.lines || []).map(l => ({ ...l, name: names.get(l.item_id) ?? null, size: null, package_string: null, pack_count: null, unit_size: null, price_string: null, price_cents: null, line_total_cents: null, available: null, url: null })) });
         }
         return { status: "ok", scope: "all_stores", carts };
       })();
