@@ -386,12 +386,9 @@
       await arm();
       submitted = true;
       steps.push(s.kind);
-      // Each digit advances to the next box and the last digit submits on its own.
+      // The last digit auto-submits; do not click Next while its request may still be in flight.
       await typeInto(s.kind === "email_code" ? 'input[id="EMAIL_OTP_CODE-0"]' : 'input[id="PHONE_SMS_OTP-0"]', input.code);
-      await waitMs(1500);
-      const typed = await read();
-      if (typed.kind === s.kind && typed.codeFilled && typed.forwardEnabled && !fresh(typed) && !typed.challenge) await click("#forward-button");
-      const next = await poll(async x => !!x.challenge || x.kind === "proxy_error" || fresh(x) || x.kind === "site" || (x.kind !== s.kind && settledOn(x, typed)), 45);
+      const next = await poll(async x => !!x.challenge || x.kind === "proxy_error" || fresh(x) || x.kind === "site" || (x.kind !== s.kind && settledOn(x, s)), 45);
       if (!next) return fail("unknown", "The code submission produced no recognizable result within 45 seconds; inspect the browser (resume_registration) before any retry.");
       if (next.kind === "challenge") return fail("captcha_or_challenge", next.challenge);
       if (next.kind === s.kind && fresh(next)) return classifyError(next, "code");

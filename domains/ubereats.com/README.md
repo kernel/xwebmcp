@@ -655,10 +655,12 @@ checks in ClawBench V1 use a placeholder that no run matches.
   scrubbed) were fixed in `05e5cf1`. A final pass (agent `agt_8f7178bcd04460ebdbd3`, commit
   `05e5cf1`) confirmed the three fixes, repeated the static review and the no-submission
   live checks with every sign-up POST blocked (none fired). That pass predates the inlined
-  typing helper. Independent QA on the final tool source (`f894518`) passed the full test
+  typing helper. Independent QA on tool source `f894518` passed the full test
   suite and invoked the committed helper against a local page: Control and Shift chords,
-  cadence, field clearing and auto-advancing code boxes behaved as intended. It did not
-  submit anything to Uber; all three tools remain `draft`.
+  cadence, field clearing and auto-advancing code boxes behaved as intended. A later
+  review removed the code-step fallback click and added a delayed-auto-submit fixture;
+  that change has local test coverage but no new independent live QA. Nothing was
+  submitted to Uber; all three tools remain `draft`.
 - Everything after the email submission is fixture-only: the phone, SMS, name, and terms
   handling, the conflict and rejection messages (their wording is a guess from Uber's
   error names), and account verification after sign-up.
@@ -674,10 +676,10 @@ checks in ClawBench V1 use a placeholder that no run matches.
   and codes: key events have Shift attribution and pauses between characters; no extra
   synthetic `input`/`change` pair is sent. Its behavior on Uber's forms has not been
   live-tested.
-- After entering a code the tools click Next only if the code screen is still showing
-  1.5 s later, the same pattern `login` uses live. If Uber's own auto-submit were still in
-  flight at that moment it would send the code twice in one call; watch for a second
-  `submit-form` request during the supervised run.
+- The last code digit auto-submits on Uber's code screen. `complete_registration` never
+  clicks Next afterward: a code screen that remains visible may still have a request
+  in flight. If no result appears within 45 seconds it reports `unknown` and requires
+  inspection before any retry. This guard has fixture coverage, not a live sign-up check.
 - Best lead for the next person: during the supervised live slot, record the heading and
   input ids of each screen after the email code and compare them with the fixtures in
   `tests/ubereats-register.test.mjs` before trusting a second run.

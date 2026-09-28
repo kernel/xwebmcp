@@ -88,6 +88,7 @@ function harness(name, options = {}) {
   const window = {};
   let observer;
   let clock = options.now ?? 1_700_000_000_000;
+  let pendingCodeTransition = null;
   const origin = () => new URL(scene.url).origin;
   const rect = { left: 10, top: 10, right: 200, bottom: 40, width: 190, height: 30 };
   const el = (text = '', extra = {}) => {
@@ -159,10 +160,14 @@ function harness(name, options = {}) {
     if (navigated) delete window.__ueRegWatch;
     else if (next.errors?.length) observer?.([{ target: {}, addedNodes: next.errors.map(feedback), removedNodes: [] }]);
   }
-  const submit = () => {
+  const submit = (fromCode = false) => {
     calls.submits++;
     const next = after.shift();
     if (!next) return;
+    if (fromCode && options.codeSubmissionDelayMs) {
+      pendingCodeTransition = { next, at: clock + options.codeSubmissionDelayMs };
+      return;
+    }
     if (next.stay) go({ ...scene, errors: next.errors, codeValue: '' });
     else go(typeof next === 'function' ? next() : next);
   };
@@ -182,7 +187,15 @@ function harness(name, options = {}) {
       return { status: 200, json: async () => body };
     },
     js: async (fn, opts) => fn(opts?.arg),
-    waitMs: async ms => { clock += ms; },
+    waitMs: async ms => {
+      clock += ms;
+      if (pendingCodeTransition && clock >= pendingCodeTransition.at) {
+        const { next } = pendingCodeTransition;
+        pendingCodeTransition = null;
+        if (next.stay) go({ ...scene, errors: next.errors, codeValue: '' });
+        else go(typeof next === 'function' ? next() : next);
+      }
+    },
     gotoUrl: async url => { calls.navigations.push(url); go(options.home ? options.home() : scenes.home()); },
     cdp: async (method, params) => {
       assert.equal(method, 'Input.dispatchKeyEvent');
@@ -197,6 +210,7 @@ function harness(name, options = {}) {
       const symbol = unshifted.indexOf(key);
       const typed = modifiers.includes('Shift') ? (symbol === -1 ? key.toUpperCase() : shifted[symbol]) : key;
       setField(activeField, fieldValue(activeField) + typed);
+      if (activeField?.startsWith('input[id="') && scene.codeValue.length === (scene.emailCode || scene.smsCode)) submit(true);
     },
     click: async selector => {
       if (selector.startsWith('#PHONE_NUMBER') || (selector.startsWith('[data-webmcp-') && selector !== '[data-webmcp-signup="true"]') || selector.startsWith('input[id="')) {
@@ -359,8 +373,16 @@ test('complete_registration: a terms screen with a marketing box is submitted on
   const result = await h.run({ email, code: '4821', accept_terms: true });
   assert.equal(result.status, 'registered');
   assert.deepEqual(result.steps_submitted, ['email_code', 'profile']);
-  assert.deepEqual(h.calls.clicks, ['#forward-button', '#forward-button']);
+  assert.deepEqual(h.calls.clicks, ['#forward-button']);
   assert.deepEqual(h.boxClicks, []);
+});
+
+test('complete_registration: a slow auto-submitting code never triggers a second Next click', async () => {
+  const h = harness('complete_registration', { scene: scenes.emailCode(), storage: [startedMarker()], after: [scenes.phone], codeSubmissionDelayMs: 3000 });
+  const result = await h.run({ email, code: '4821' });
+  assert.deepEqual([result.status, result.step, result.needs], ['needs_input', 'phone', ['phone']]);
+  assert.equal(h.calls.submits, 1);
+  assert.deepEqual(h.calls.clicks, []);
 });
 
 test('complete_registration: a combined name and terms screen is submitted once', async () => {
