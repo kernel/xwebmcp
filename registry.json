@@ -402,6 +402,247 @@
       }
     },
     {
+      "domain": "purelymail.com",
+      "tool": "create_filter",
+      "file": "domains/purelymail.com/create_filter.js",
+      "kind": "page",
+      "namespace": "purelymail.com",
+      "url_patterns": [
+        "https://inbox.purelymail.com/*"
+      ],
+      "status": "qa_passed",
+      "last_verified": "2026-09-26",
+      "notes": "Creates one incoming-mail filter through the Settings > Filters editor: subject/from/to/body/header tests; move, copy, flag, keep and stop actions. Idempotent by name. No forwarding, reject, discard or auto-reply actions. Independent QA passed on 2026-09-26 against the live test mailbox.",
+      "provenance": {
+        "qa_agent": "agt_afe6709be3b6cf36db73"
+      }
+    },
+    {
+      "domain": "purelymail.com",
+      "tool": "create_folder",
+      "file": "domains/purelymail.com/create_folder.js",
+      "kind": "page",
+      "namespace": "purelymail.com",
+      "url_patterns": [
+        "https://inbox.purelymail.com/*"
+      ],
+      "status": "qa_passed",
+      "last_verified": "2026-09-26",
+      "notes": "Creates one folder (optionally nested) through Settings > Folders; idempotent when it already exists. Never renames or deletes. Independent QA passed on 2026-09-26 against the live test mailbox.",
+      "provenance": {
+        "qa_agent": "agt_afe6709be3b6cf36db73"
+      }
+    },
+    {
+      "domain": "purelymail.com",
+      "tool": "delete_filter",
+      "file": "domains/purelymail.com/delete_filter.js",
+      "kind": "page",
+      "namespace": "purelymail.com",
+      "url_patterns": [
+        "https://inbox.purelymail.com/*"
+      ],
+      "status": "qa_passed",
+      "last_verified": "2026-09-26",
+      "notes": "Deletes exactly one filter by name through the Filters Delete action; a missing name changes nothing. No bulk delete. Independent QA passed on 2026-09-26 against the live test mailbox.",
+      "provenance": {
+        "qa_agent": "agt_afe6709be3b6cf36db73"
+      }
+    },
+    {
+      "domain": "purelymail.com",
+      "tool": "get_filter",
+      "file": "domains/purelymail.com/get_filter.js",
+      "kind": "page",
+      "namespace": "purelymail.com",
+      "url_patterns": [
+        "https://inbox.purelymail.com/*"
+      ],
+      "status": "qa_passed",
+      "last_verified": "2026-09-26",
+      "notes": "Reads one filter by name from the filter editor. Read-only. Independent QA passed on 2026-09-26 against the live test mailbox.",
+      "provenance": {
+        "qa_agent": "agt_afe6709be3b6cf36db73"
+      }
+    },
+    {
+      "domain": "purelymail.com",
+      "tool": "get_vacation_responder",
+      "file": "domains/purelymail.com/get_vacation_responder.js",
+      "kind": "page",
+      "namespace": "purelymail.com",
+      "url_patterns": [
+        "https://inbox.purelymail.com/*"
+      ],
+      "status": "qa_passed",
+      "last_verified": "2026-09-26",
+      "notes": "Reads vacation auto-reply filters (vacation action) with message, subject, interval and enabled state. Read-only. Independent QA passed on 2026-09-26 against the live test mailbox.",
+      "provenance": {
+        "qa_agent": "agt_afe6709be3b6cf36db73"
+      }
+    },
+    {
+      "domain": "purelymail.com",
+      "tool": "get_verification_code",
+      "file": "domains/purelymail.com/get_verification_code.js",
+      "kind": "page",
+      "namespace": "purelymail.com",
+      "url_patterns": [
+        "https://inbox.purelymail.com/*"
+      ],
+      "status": "qa_passed",
+      "last_verified": "2026-09-26",
+      "notes": "Returns a one-time code only from a fresh message received after since: email must pass DMARC for the expected sender domain; SMS must be a DMARC-passing Google Voice forward mentioning expected_text. Stale, forged, excluded and ambiguous codes are not returned. Independent QA passed on 2026-09-26 against the live test mailbox.",
+      "provenance": {
+        "qa_agent": "agt_afe6709be3b6cf36db73"
+      }
+    },
+    {
+      "domain": "purelymail.com",
+      "tool": "list_filters",
+      "file": "domains/purelymail.com/list_filters.js",
+      "kind": "page",
+      "namespace": "purelymail.com",
+      "url_patterns": [
+        "https://inbox.purelymail.com/*"
+      ],
+      "status": "qa_passed",
+      "last_verified": "2026-09-26",
+      "notes": "Lists incoming-mail filters in run order with conditions and actions; flags filters the tools cannot rewrite. Read-only. Independent QA passed on 2026-09-26 against the live test mailbox.",
+      "provenance": {
+        "qa_agent": "agt_afe6709be3b6cf36db73"
+      }
+    },
+    {
+      "domain": "purelymail.com",
+      "tool": "list_folders",
+      "file": "domains/purelymail.com/list_folders.js",
+      "kind": "page",
+      "namespace": "purelymail.com",
+      "url_patterns": [
+        "https://inbox.purelymail.com/*"
+      ],
+      "status": "qa_passed",
+      "last_verified": "2026-09-26",
+      "notes": "Lists subscribed folders with roles and total/unread counts. Read-only. Independent QA passed on 2026-09-26 against the live test mailbox.",
+      "provenance": {
+        "qa_agent": "agt_afe6709be3b6cf36db73"
+      }
+    },
+    {
+      "domain": "purelymail.com",
+      "tool": "list_messages",
+      "file": "domains/purelymail.com/list_messages.js",
+      "kind": "page",
+      "namespace": "purelymail.com",
+      "url_patterns": [
+        "https://inbox.purelymail.com/*"
+      ],
+      "status": "qa_passed",
+      "last_verified": "2026-09-26",
+      "notes": "Lists or searches one folder page (up to 50) with the webmail's own list and search; does not mark mail read. Search results may lag messages that arrived seconds ago. Independent QA passed on 2026-09-26 against the live test mailbox.",
+      "provenance": {
+        "qa_agent": "agt_afe6709be3b6cf36db73"
+      }
+    },
+    {
+      "domain": "purelymail.com",
+      "tool": "login",
+      "file": "domains/purelymail.com/login.js",
+      "kind": "cdp",
+      "namespace": "purelymail.com",
+      "url_patterns": [
+        "https://purelymail.com/*",
+        "https://*.purelymail.com/*"
+      ],
+      "status": "qa_passed",
+      "last_verified": "2026-09-26",
+      "notes": "Signs in through the Purelymail Webmail Login form once and confirms the webmail header shows the supplied address; an existing session for another address is wrong_account. No 2FA support. Independent QA passed on 2026-09-26 against the live test mailbox.",
+      "provenance": {
+        "qa_agent": "agt_afe6709be3b6cf36db73"
+      }
+    },
+    {
+      "domain": "purelymail.com",
+      "tool": "read_message",
+      "file": "domains/purelymail.com/read_message.js",
+      "kind": "page",
+      "namespace": "purelymail.com",
+      "url_patterns": [
+        "https://inbox.purelymail.com/*"
+      ],
+      "status": "qa_passed",
+      "last_verified": "2026-09-26",
+      "notes": "Reads one message via the Show source view (stays unread): safe headers, sender_authentication, attachment names, links and a bounded plain-text body marked untrusted. Independent QA passed on 2026-09-26 against the live test mailbox.",
+      "provenance": {
+        "qa_agent": "agt_afe6709be3b6cf36db73"
+      }
+    },
+    {
+      "domain": "purelymail.com",
+      "tool": "send_message",
+      "file": "domains/purelymail.com/send_message.js",
+      "kind": "page",
+      "namespace": "purelymail.com",
+      "url_patterns": [
+        "https://inbox.purelymail.com/*"
+      ],
+      "status": "qa_passed",
+      "last_verified": "2026-09-26",
+      "notes": "Sends one plain-text email through a compose session with confirm_send; saves to Sent; refuses a same-subject, same-recipient repeat within 15 minutes unless allow_duplicate. Never retries. Independent QA passed on 2026-09-26 against the live test mailbox.",
+      "provenance": {
+        "qa_agent": "agt_afe6709be3b6cf36db73"
+      }
+    },
+    {
+      "domain": "purelymail.com",
+      "tool": "set_vacation_responder",
+      "file": "domains/purelymail.com/set_vacation_responder.js",
+      "kind": "page",
+      "namespace": "purelymail.com",
+      "url_patterns": [
+        "https://inbox.purelymail.com/*"
+      ],
+      "status": "qa_passed",
+      "last_verified": "2026-09-26",
+      "notes": "Creates or edits the vacation auto-reply filter; can create it switched off. Enabling makes the server auto-reply; live QA never enabled it. Independent QA passed on 2026-09-26 against the live test mailbox.",
+      "provenance": {
+        "qa_agent": "agt_afe6709be3b6cf36db73"
+      }
+    },
+    {
+      "domain": "purelymail.com",
+      "tool": "update_filter",
+      "file": "domains/purelymail.com/update_filter.js",
+      "kind": "page",
+      "namespace": "purelymail.com",
+      "url_patterns": [
+        "https://inbox.purelymail.com/*"
+      ],
+      "status": "qa_passed",
+      "last_verified": "2026-09-26",
+      "notes": "Replaces given fields of one filter found by name, keeping its position; refuses filters with parts it cannot rewrite, including vacation replies. Independent QA passed on 2026-09-26 against the live test mailbox.",
+      "provenance": {
+        "qa_agent": "agt_afe6709be3b6cf36db73"
+      }
+    },
+    {
+      "domain": "purelymail.com",
+      "tool": "wait_for_message",
+      "file": "domains/purelymail.com/wait_for_message.js",
+      "kind": "page",
+      "namespace": "purelymail.com",
+      "url_patterns": [
+        "https://inbox.purelymail.com/*"
+      ],
+      "status": "qa_passed",
+      "last_verified": "2026-09-26",
+      "notes": "Waits up to 110 s for mail received after since matching sender/subject text, using the newest folder list page; returns metadata only. Independent QA passed on 2026-09-26 against the live test mailbox.",
+      "provenance": {
+        "qa_agent": "agt_afe6709be3b6cf36db73"
+      }
+    },
+    {
       "domain": "southwest.com",
       "tool": "login",
       "file": "domains/southwest.com/login.js",
@@ -433,6 +674,173 @@
       "notes": "First outbound results page only, including round trips; USD per adult per direction. Independent QA and live non-homepage invocation passed. Live zero-flight behavior remains unverified; synthetic empty/error/timeout tests passed. Long Browser REPL calls can time out before delivering results; see domain README.",
       "provenance": {
         "qa_agent": "agt_8afff9b68b132cd8ce86"
+      }
+    },
+    {
+      "domain": "target.com",
+      "tool": "add_to_cart",
+      "file": "domains/target.com/add_to_cart.js",
+      "kind": "page",
+      "namespace": "target.com",
+      "url_patterns": [
+        "https://target.com/*",
+        "https://*.target.com/*"
+      ],
+      "status": "qa_passed",
+      "last_verified": "2026-09-26",
+      "notes": "Independent QA verified new ship and pickup lines, increments of the same line, and quantity_limit, unavailable and variant_required refusals with no write, on a guest cart restored afterwards. Signed-in carts not live-tested.",
+      "provenance": {
+        "qa_agent": "agt_9cc0b28ff9abe2ef70d3"
+      }
+    },
+    {
+      "domain": "target.com",
+      "tool": "get_cart",
+      "file": "domains/target.com/get_cart.js",
+      "kind": "page",
+      "namespace": "target.com",
+      "url_patterns": [
+        "https://target.com/*",
+        "https://*.target.com/*"
+      ],
+      "status": "qa_passed",
+      "last_verified": "2026-09-26",
+      "notes": "Independent QA verified guest carts before, during and after cart changes (no cart, lines, empty record) against the site's own cart page. Signed-in carts not live-tested; saved-for-later items are not returned.",
+      "provenance": {
+        "qa_agent": "agt_9cc0b28ff9abe2ef70d3"
+      }
+    },
+    {
+      "domain": "target.com",
+      "tool": "get_product",
+      "file": "domains/target.com/get_product.js",
+      "kind": "page",
+      "namespace": "target.com",
+      "url_patterns": [
+        "https://target.com/*",
+        "https://*.target.com/*"
+      ],
+      "status": "qa_passed",
+      "last_verified": "2026-09-26",
+      "notes": "Independent QA verified variations with shipping, pickup, in-store and same-day status, an item family with variant_filter and range price, and not_found for an unknown tcin.",
+      "provenance": {
+        "qa_agent": "agt_9cc0b28ff9abe2ef70d3"
+      }
+    },
+    {
+      "domain": "target.com",
+      "tool": "get_store_context",
+      "file": "domains/target.com/get_store_context.js",
+      "kind": "page",
+      "namespace": "target.com",
+      "url_patterns": [
+        "https://target.com/*",
+        "https://*.target.com/*"
+      ],
+      "status": "qa_passed",
+      "last_verified": "2026-09-26",
+      "notes": "Independent QA verified store, location, nearby stores and guest session type with no site request, and wrong_page on another target.com host. Read-only; never changes the store.",
+      "provenance": {
+        "qa_agent": "agt_9cc0b28ff9abe2ef70d3"
+      }
+    },
+    {
+      "domain": "target.com",
+      "tool": "remove_cart_item",
+      "file": "domains/target.com/remove_cart_item.js",
+      "kind": "page",
+      "namespace": "target.com",
+      "url_patterns": [
+        "https://target.com/*",
+        "https://*.target.com/*"
+      ],
+      "status": "qa_passed",
+      "last_verified": "2026-09-26",
+      "notes": "Independent QA verified removal of lines it created (echoing the removed line), not_found on a repeat and on an unknown id, and an empty cart afterwards.",
+      "provenance": {
+        "qa_agent": "agt_9cc0b28ff9abe2ef70d3"
+      }
+    },
+    {
+      "domain": "target.com",
+      "tool": "search_products",
+      "file": "domains/target.com/search_products.js",
+      "kind": "page",
+      "namespace": "target.com",
+      "url_patterns": [
+        "https://target.com/*",
+        "https://*.target.com/*"
+      ],
+      "status": "qa_passed",
+      "last_verified": "2026-09-26",
+      "notes": "Independent QA verified all seven site sorts, paging, limit, exclude_sponsored and facet filters against the site's grid. Bot protection can answer a single query with HTTP 435 (challenge); fallback results for misspelled queries are not flagged.",
+      "provenance": {
+        "qa_agent": "agt_9cc0b28ff9abe2ef70d3"
+      }
+    },
+    {
+      "domain": "target.com",
+      "tool": "update_cart_item",
+      "file": "domains/target.com/update_cart_item.js",
+      "kind": "page",
+      "namespace": "target.com",
+      "url_patterns": [
+        "https://target.com/*",
+        "https://*.target.com/*"
+      ],
+      "status": "qa_passed",
+      "last_verified": "2026-09-26",
+      "notes": "Independent QA verified up and down changes and a same-quantity call that writes nothing, and not_found for an unknown line; the per-item quantity_limit refusal is fixture-tested only.",
+      "provenance": {
+        "qa_agent": "agt_9cc0b28ff9abe2ef70d3"
+      }
+    },
+    {
+      "domain": "ticketmaster.com",
+      "tool": "get_event",
+      "file": "domains/ticketmaster.com/get_event.js",
+      "kind": "page",
+      "namespace": "ticketmaster.com",
+      "url_patterns": [
+        "https://www.ticketmaster.com/*"
+      ],
+      "status": "qa_passed",
+      "last_verified": "2026-09-26",
+      "notes": "Independent QA passed on the final source. Page tool on www.ticketmaster.com: one event record (local times, venue, category, on-sale and presale windows, limits, change status). terms_notice is null when the record has no dialog title even if the page shows one.",
+      "provenance": {
+        "qa_agent": "agt_cb155ebc4a11ce54cc4c"
+      }
+    },
+    {
+      "domain": "ticketmaster.com",
+      "tool": "get_ticket_offers",
+      "file": "domains/ticketmaster.com/get_ticket_offers.js",
+      "kind": "cdp",
+      "namespace": "ticketmaster.com",
+      "url_patterns": [
+        "https://www.ticketmaster.com/*"
+      ],
+      "status": "qa_passed",
+      "last_verified": "2026-09-26",
+      "notes": "Independent QA passed on the final source. Opens the event page and returns offers for a quantity with All In prices (fees, before taxes); classic layout via the page's own offer query with featured listings first, newer layout via the listing panel (no Best Seats order there). Never selects, holds, accepts terms or opens checkout. Equal-price ties can be ordered differently from the page.",
+      "provenance": {
+        "qa_agent": "agt_cb155ebc4a11ce54cc4c"
+      }
+    },
+    {
+      "domain": "ticketmaster.com",
+      "tool": "search_events",
+      "file": "domains/ticketmaster.com/search_events.js",
+      "kind": "page",
+      "namespace": "ticketmaster.com",
+      "url_patterns": [
+        "https://www.ticketmaster.com/*"
+      ],
+      "status": "qa_passed",
+      "last_verified": "2026-09-26",
+      "notes": "Independent QA passed on the final source. Page tool on www.ticketmaster.com: keyword, US city or ZIP, radius and venue-local date/time filters via the site's own search API; merges the nearby block with up to 40 date-filtered pages and warns at the cap. Flags partner-site results (on_ticketmaster false). US only.",
+      "provenance": {
+        "qa_agent": "agt_cb155ebc4a11ce54cc4c"
       }
     },
     {
