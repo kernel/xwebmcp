@@ -301,9 +301,11 @@ For a `cdp` invocation the runtime MUST:
 1. Validate `input` against `tool.inputSchema` and fail with
    `input failed JSON Schema validation: <detail>` when it does not validate
    (`page-runtime.ts:54-55`).
-2. Call `execute(input, {signal, matches})` with the browser helpers (§7) in scope and
-   the tab that registered the tool as the attached target (`page-runtime.ts:56-59`,
-   `custom_webmcp.go:130`).
+2. Attach the tab that registered the tool before calling
+   `execute(input, {signal, matches})` with the browser helpers (§7) in scope.
+   If the target is gone or cannot be attached, fail before running the body.
+   The API resolves the registering target (`custom_webmcp.go:130`), but the
+   reference runtime currently does not perform this attachment; see §7.
 3. Validate the returned value against `tool.outputSchema` when one is declared and
    fail with `output failed JSON Schema validation: <detail>` otherwise
    (`page-runtime.ts:60-64`).
@@ -418,9 +420,15 @@ TypeScript-style; `Sec` values are seconds.
 
 Semantics shared by helpers:
 
-- The **attached tab** is the tab that registered the tool; it is attached at the start
-  of every invocation with `Page`, `DOM`, `Runtime`, and `Network` enabled and brought to
-  the foreground (`cdp-client.ts:510-547,549-566`).
+- The **attached tab** MUST be the tab that registered the tool when its body starts.
+  `cdp-client.ts:510-547,549-566` enables `Page`, `DOM`, `Runtime`, and `Network` and
+  brings a target to the foreground when `attach(targetId)` is called. The current
+  Kernel reference runtime has a known divergence: `custom-webmcp.ts:117-124`
+  passes `targetId` into `CustomWebMCPPageRuntime.invokeCDP`, but
+  `custom-webmcp-page-runtime.ts:48-72` does not attach it. If the REPL is attached
+  to another tab, omitted-session helpers can act on that tab; if unattached,
+  `browser-cdp-client.ts:595-626` may choose the first non-internal page. Do not
+  invoke CDP tools in a multi-tab reference session until that runtime is fixed.
 - Single CDP commands time out after 30 s (`cdp-client.ts:46`).
 - A modal JavaScript dialog left open is auto-dismissed on attach and reported
   (`cdp-client.ts:568-596`).
@@ -477,9 +485,10 @@ following deviations are conforming:
    only an embedded frame matched (§6.1). `context.matches` MUST still list every
    matching frame, including out-of-process iframes reached through flat child
    sessions.
-3. **Debugger attachment.** `chrome.debugger` is attached only for the duration of an
-   invocation and detached afterwards; Chrome shows its info bar while attached. The
-   attached-tab semantics of §7 hold for the duration of the call.
+3. **Debugger attachment.** `chrome.debugger` is attached during a cdp invocation,
+   or briefly to register a page tool when CSP blocks dynamic compilation. Chrome
+   may show its info bar during either operation. The attached-tab semantics of §7
+   hold for the duration of a cdp call.
 4. **Root session id.** chrome.debugger gives the tab's page session no CDP session id.
    The extension mints `root:<targetId>` for it so that `event.sessionId`,
    `waitForEvent({sessionId})`, and `cdp(method, params, sessionId)` keep the reference
@@ -501,10 +510,12 @@ following deviations are conforming:
 11. **Evaluation site.** Tool files are evaluated in a sandboxed extension page because
     MV3 forbids `eval` elsewhere; helper calls are relayed to the service worker, which
     is the only component that calls `chrome.debugger`.
-12. **`kind: "page"` under CSP.** A page whose Content-Security-Policy forbids `eval`
-    blocks materializing a page tool's `execute`; the extension reports the registration
-    error instead of registering the tool. Because `page` is the default kind (§2.1),
-    this affects every `page` tool on such a site.
+12. **`kind: "page"` under CSP.** When page CSP blocks `Function`, the extension
+    compiles the tool source in the registering document's main world using CDP
+    `Runtime.evaluate` with `allowUnsafeEvalBlockedByCSP`. Only the extension's
+    stored definition may be compiled this way; the registration is reported as
+    failed if the debugger cannot attach or the document has changed. The tool
+    remains `kind: "page"` and has the same document lifetime (§2.2).
 13. **Site access.** The extension holds no host permissions by default and asks the
     user once per site; tools on sites without access are not registered and their
     native tools are not discovered.
