@@ -294,7 +294,7 @@
       ],
       "status": "verified",
       "last_verified": "2026-09-24",
-      "notes": "Independent search/parser QA passed; domain migration live-verified from /travel-agents. Returns initial outbound cards only, including round trips; 1–7 adults; displayed cash fares are not trip totals. Inventory failures remain explicit errors.",
+      "notes": "Independent search/parser QA passed; domain migration live-verified from /travel-agents. Returns initial outbound cards only, including round trips; 1\u20137 adults; displayed cash fares are not trip totals. Inventory failures remain explicit errors.",
       "provenance": {
         "qa_agent": "agt_8da83a2e489269a5ff05"
       }
@@ -433,6 +433,125 @@
       "notes": "First outbound results page only, including round trips; USD per adult per direction. Independent QA and live non-homepage invocation passed. Live zero-flight behavior remains unverified; synthetic empty/error/timeout tests passed. Long Browser REPL calls can time out before delivering results; see domain README.",
       "provenance": {
         "qa_agent": "agt_8afff9b68b132cd8ce86"
+      }
+    },
+    {
+      "domain": "target.com",
+      "tool": "add_to_cart",
+      "file": "domains/target.com/add_to_cart.js",
+      "kind": "page",
+      "namespace": "target.com",
+      "url_patterns": [
+        "https://target.com/*",
+        "https://*.target.com/*"
+      ],
+      "status": "qa_passed",
+      "last_verified": "2026-09-26",
+      "notes": "Independent QA verified new ship and pickup lines, increments of the same line, and quantity_limit, unavailable and variant_required refusals with no write, on a guest cart restored afterwards. Signed-in carts not live-tested.",
+      "provenance": {
+        "qa_agent": "agt_9cc0b28ff9abe2ef70d3"
+      }
+    },
+    {
+      "domain": "target.com",
+      "tool": "get_cart",
+      "file": "domains/target.com/get_cart.js",
+      "kind": "page",
+      "namespace": "target.com",
+      "url_patterns": [
+        "https://target.com/*",
+        "https://*.target.com/*"
+      ],
+      "status": "qa_passed",
+      "last_verified": "2026-09-26",
+      "notes": "Independent QA verified guest carts before, during and after cart changes (no cart, lines, empty record) against the site's own cart page. Signed-in carts not live-tested; saved-for-later items are not returned.",
+      "provenance": {
+        "qa_agent": "agt_9cc0b28ff9abe2ef70d3"
+      }
+    },
+    {
+      "domain": "target.com",
+      "tool": "get_product",
+      "file": "domains/target.com/get_product.js",
+      "kind": "page",
+      "namespace": "target.com",
+      "url_patterns": [
+        "https://target.com/*",
+        "https://*.target.com/*"
+      ],
+      "status": "qa_passed",
+      "last_verified": "2026-09-26",
+      "notes": "Independent QA verified variations with shipping, pickup, in-store and same-day status, an item family with variant_filter and range price, and not_found for an unknown tcin.",
+      "provenance": {
+        "qa_agent": "agt_9cc0b28ff9abe2ef70d3"
+      }
+    },
+    {
+      "domain": "target.com",
+      "tool": "get_store_context",
+      "file": "domains/target.com/get_store_context.js",
+      "kind": "page",
+      "namespace": "target.com",
+      "url_patterns": [
+        "https://target.com/*",
+        "https://*.target.com/*"
+      ],
+      "status": "qa_passed",
+      "last_verified": "2026-09-26",
+      "notes": "Independent QA verified store, location, nearby stores and guest session type with no site request, and wrong_page on another target.com host. Read-only; never changes the store.",
+      "provenance": {
+        "qa_agent": "agt_9cc0b28ff9abe2ef70d3"
+      }
+    },
+    {
+      "domain": "target.com",
+      "tool": "remove_cart_item",
+      "file": "domains/target.com/remove_cart_item.js",
+      "kind": "page",
+      "namespace": "target.com",
+      "url_patterns": [
+        "https://target.com/*",
+        "https://*.target.com/*"
+      ],
+      "status": "qa_passed",
+      "last_verified": "2026-09-26",
+      "notes": "Independent QA verified removal of lines it created (echoing the removed line), not_found on a repeat and on an unknown id, and an empty cart afterwards.",
+      "provenance": {
+        "qa_agent": "agt_9cc0b28ff9abe2ef70d3"
+      }
+    },
+    {
+      "domain": "target.com",
+      "tool": "search_products",
+      "file": "domains/target.com/search_products.js",
+      "kind": "page",
+      "namespace": "target.com",
+      "url_patterns": [
+        "https://target.com/*",
+        "https://*.target.com/*"
+      ],
+      "status": "qa_passed",
+      "last_verified": "2026-09-26",
+      "notes": "Independent QA verified all seven site sorts, paging, limit, exclude_sponsored and facet filters against the site's grid. Bot protection can answer a single query with HTTP 435 (challenge); fallback results for misspelled queries are not flagged.",
+      "provenance": {
+        "qa_agent": "agt_9cc0b28ff9abe2ef70d3"
+      }
+    },
+    {
+      "domain": "target.com",
+      "tool": "update_cart_item",
+      "file": "domains/target.com/update_cart_item.js",
+      "kind": "page",
+      "namespace": "target.com",
+      "url_patterns": [
+        "https://target.com/*",
+        "https://*.target.com/*"
+      ],
+      "status": "qa_passed",
+      "last_verified": "2026-09-26",
+      "notes": "Independent QA verified up and down changes and a same-quantity call that writes nothing, and not_found for an unknown line; the per-item quantity_limit refusal is fixture-tested only.",
+      "provenance": {
+        "qa_agent": "agt_9cc0b28ff9abe2ef70d3"
       }
     },
     {
