@@ -16,7 +16,7 @@ function helper(failOn) {
       events.push(['key', key, modifiers ?? []]);
       if (key === failOn) throw new Error('key failed');
     },
-    cdp: async (method, params) => events.push(['cdp', method, params.type]),
+    cdp: async (method, params) => events.push(['cdp', method, params.type, params.key, params.location]),
     waitMs: async ms => events.push(['wait', ms]),
   };
   const typeInto = runInNewContext(`(() => { ${snippet}\nreturn typeInto; })()`, context);
@@ -27,11 +27,16 @@ test('typing uses trusted keys with explicit Shift events and bounded cadence', 
   const { typeInto, events } = helper();
   await typeInto('#email', 'T+@a', { random: () => 0 });
   const recorded = JSON.parse(JSON.stringify(events));
-  assert.deepEqual(recorded.slice(0, 3), [['click', '#email'], ['key', 'a', ['Control']], ['key', 'Backspace', []]]);
+  assert.deepEqual(recorded.slice(0, 5), [
+    ['click', '#email'], ['cdp', 'Input.dispatchKeyEvent', 'keyDown', 'Control', 1],
+    ['key', 'a', ['Control']], ['cdp', 'Input.dispatchKeyEvent', 'keyUp', 'Control', 1], ['key', 'Backspace', []],
+  ]);
   assert.deepEqual(recorded.filter(e => e[0] === 'key').slice(2), [
     ['key', 't', ['Shift']], ['key', '=', ['Shift']], ['key', '2', ['Shift']], ['key', 'a', []],
   ]);
-  assert.deepEqual(recorded.filter(e => e[0] === 'cdp').map(e => e[2]), ['keyDown', 'keyUp', 'keyDown', 'keyUp', 'keyDown', 'keyUp']);
+  assert.deepEqual(recorded.filter(e => e[0] === 'cdp' && e[3] === 'Shift').map(e => [e[2], e[4]]), [
+    ['keyDown', 1], ['keyUp', 1], ['keyDown', 1], ['keyUp', 1], ['keyDown', 1], ['keyUp', 1],
+  ]);
   assert.deepEqual(recorded.filter(e => e[0] === 'wait').map(e => e[1]), [50, 50, 80]);
 });
 
@@ -44,7 +49,15 @@ test('no-cadence mode preserves backendNodeId and can leave an existing value', 
 test('Shift is released when a key fails', async () => {
   const { typeInto, events } = helper('t');
   await assert.rejects(typeInto('#email', 'T', { cadence: 'none' }), /key failed/);
-  assert.deepEqual(events.filter(e => e[0] === 'cdp').map(e => e[2]), ['keyDown', 'keyUp']);
+  assert.deepEqual(events.filter(e => e[0] === 'cdp' && e[3] === 'Shift').map(e => e[2]), ['keyDown', 'keyUp']);
+});
+
+test('Control is released when selection fails', async () => {
+  const { typeInto, events } = helper('a');
+  await assert.rejects(typeInto('#email', 'x'), /key failed/);
+  assert.deepEqual(events.filter(e => e[0] === 'cdp').map(e => [e[2], e[3], e[4]]), [
+    ['keyDown', 'Control', 1], ['keyUp', 'Control', 1],
+  ]);
 });
 
 test('committed inline blocks are reproducible and malformed markers fail', () => {

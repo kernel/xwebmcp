@@ -82,7 +82,12 @@
     const typeInto = async (target, text, options = {}) => {
       await click(target);
       if (options.clear !== false) {
-        await pressKey("a", ["Control"]);
+        await cdp("Input.dispatchKeyEvent", { type: "keyDown", key: "Control", code: "ControlLeft", windowsVirtualKeyCode: 17, modifiers: 2, location: 1 });
+        try {
+          await pressKey("a", ["Control"]);
+        } finally {
+          await cdp("Input.dispatchKeyEvent", { type: "keyUp", key: "Control", code: "ControlLeft", windowsVirtualKeyCode: 17, modifiers: 0, location: 1 });
+        }
         await pressKey("Backspace");
       }
       const shifted = '~!@#$%^&*()_+{}|:"<>?';
@@ -97,11 +102,11 @@
         const uppercase = character >= "A" && character <= "Z";
         const symbol = shifted.indexOf(character);
         if (uppercase || symbol !== -1) {
-          await cdp("Input.dispatchKeyEvent", { type: "keyDown", key: "Shift", code: "ShiftLeft", windowsVirtualKeyCode: 16, modifiers: 8 });
+          await cdp("Input.dispatchKeyEvent", { type: "keyDown", key: "Shift", code: "ShiftLeft", windowsVirtualKeyCode: 16, modifiers: 8, location: 1 });
           try {
             await pressKey(uppercase ? character.toLowerCase() : unshifted[symbol], ["Shift"]);
           } finally {
-            await cdp("Input.dispatchKeyEvent", { type: "keyUp", key: "Shift", code: "ShiftLeft", windowsVirtualKeyCode: 16, modifiers: 0 });
+            await cdp("Input.dispatchKeyEvent", { type: "keyUp", key: "Shift", code: "ShiftLeft", windowsVirtualKeyCode: 16, modifiers: 0, location: 1 });
           }
         } else {
           await pressKey(character);

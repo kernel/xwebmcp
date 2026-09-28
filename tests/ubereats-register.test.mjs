@@ -186,7 +186,7 @@ function harness(name, options = {}) {
     gotoUrl: async url => { calls.navigations.push(url); go(options.home ? options.home() : scenes.home()); },
     cdp: async (method, params) => {
       assert.equal(method, 'Input.dispatchKeyEvent');
-      calls.shifts.push(params.type);
+      if (params.key === 'Shift') calls.shifts.push(params.type);
     },
     pressKey: async (key, modifiers = []) => {
       calls.keys.push({ key, modifiers });
