@@ -161,7 +161,7 @@
       ],
       "status": "draft",
       "last_verified": null,
-      "notes": "Adds an item to the logged-in account's per-store cart through the site's UpdateCartItemsMutation, increasing the quantity if the item is already there; checks availability and the item's min/max/increment first; one mutation per invocation, never retried. The source before the 2026-09-28 change was live-verified 2026-09-25 (author and independent QA): per-each and weighed items, increments, unavailable item, wrong-location id, quantity-rule rejections, restored cart. Unverified: throttling and site rejections other than the unknown-item case. Items carry package_string, pack_count and unit_size from the site's package line (size alone is per unit for multipacks); added 2026-09-28, author live check passed, awaiting independent QA."
+      "notes": "Adds an item to the logged-in account's per-store cart through the site's UpdateCartItemsMutation, increasing the quantity if the item is already there; checks availability and the item's min/max/increment first; one mutation per invocation, never retried. The source before the 2026-09-28 change was live-verified 2026-09-25 (author and independent QA): per-each and weighed items, increments, unavailable item, wrong-location id, quantity-rule rejections, restored cart. Unverified: throttling and site rejections other than the unknown-item case. Items carry package_string, pack_count and unit_size from the site's package line (size alone is per unit for multipacks); added 2026-09-28, author live check passed, awaiting independent QA. Since 2026-09-28 the shopping location is read from the site's GetLastUserLocation query first, so the tool follows an address switch without a reload; author live check passed, awaiting independent QA."
     },
     {
       "domain": "instacart.com",
@@ -175,7 +175,21 @@
       ],
       "status": "draft",
       "last_verified": null,
-      "notes": "Reads one store's cart (names, prices, quantities, subtotal) or, without a store, every non-empty cart. The source before the 2026-09-28 change was live-verified 2026-09-25 by independent QA, including not_logged_in in an anonymous browser. Lines whose item id belongs to another store location show a null price. Items carry package_string, pack_count and unit_size from the site's package line (size alone is per unit for multipacks); added 2026-09-28, author live check passed, awaiting independent QA."
+      "notes": "Reads one store's cart (names, prices, quantities, subtotal) or, without a store, every non-empty cart. The source before the 2026-09-28 change was live-verified 2026-09-25 by independent QA, including not_logged_in in an anonymous browser. Lines whose item id belongs to another store location show a null price. Items carry package_string, pack_count and unit_size from the site's package line (size alone is per unit for multipacks); added 2026-09-28, author live check passed, awaiting independent QA. Since 2026-09-28 the shopping location is read from the site's GetLastUserLocation query first, so the tool follows an address switch without a reload; author live check passed, awaiting independent QA."
+    },
+    {
+      "domain": "instacart.com",
+      "tool": "get_delivery_address",
+      "file": "domains/instacart.com/get_delivery_address.js",
+      "kind": "page",
+      "namespace": "instacart.com",
+      "url_patterns": [
+        "https://instacart.com/*",
+        "https://*.instacart.com/*"
+      ],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Page tool. Reads the selected delivery address (the one the shopping tools use) and every saved address with the address_id set_delivery_address takes, through GetLastUserLocation and UserAddresses. Read-only. Author live check 2026-09-28 on an account with 11 saved addresses; awaiting independent QA."
     },
     {
       "domain": "instacart.com",
@@ -189,7 +203,7 @@
       ],
       "status": "draft",
       "last_verified": null,
-      "notes": "Reads one item's price, availability, stock level, quantity rules and rating for a store from the site's Items query; rejects ids from another store location. The source before the 2026-09-28 change was live-verified 2026-09-25 by independent QA; ratings only seen with zero reviews. Requires a logged-in session with a saved address. Items carry package_string, pack_count and unit_size from the site's package line (size alone is per unit for multipacks); added 2026-09-28, author live check passed, awaiting independent QA."
+      "notes": "Reads one item's price, availability, stock level, quantity rules and rating for a store from the site's Items query; rejects ids from another store location. The source before the 2026-09-28 change was live-verified 2026-09-25 by independent QA; ratings only seen with zero reviews. Requires a logged-in session with a saved address. Items carry package_string, pack_count and unit_size from the site's package line (size alone is per unit for multipacks); added 2026-09-28, author live check passed, awaiting independent QA. Since 2026-09-28 the shopping location is read from the site's GetLastUserLocation query first, so the tool follows an address switch without a reload; author live check passed, awaiting independent QA."
     },
     {
       "domain": "instacart.com",
@@ -201,12 +215,9 @@
         "https://instacart.com/*",
         "https://*.instacart.com/*"
       ],
-      "status": "qa_passed",
-      "last_verified": "2026-09-25",
-      "notes": "Lists the stores serving the account's saved address with the store_slug and shop id the other tools use. Live-verified 2026-09-25 by independent QA (68 stores, filters, cap). Requires a logged-in session with a saved address; an anonymous browser returns location_unavailable.",
-      "provenance": {
-        "qa_agent": "agt_e2b9b6bda0484789612a"
-      }
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Lists the stores serving the account's saved address with the store_slug and shop id the other tools use. Live-verified 2026-09-25 by independent QA (68 stores, filters, cap). Requires a logged-in session with a saved address; an anonymous browser returns location_unavailable. Since 2026-09-28 the shopping location is read from the site's GetLastUserLocation query first, so the tool follows an address switch without a reload; author live check passed, awaiting independent QA."
     },
     {
       "domain": "instacart.com",
@@ -237,7 +248,21 @@
       ],
       "status": "draft",
       "last_verified": null,
-      "notes": "First-page product search in one store through the site's SearchResultsPlacements query, hydrated with Items; exact matches first, related on request or when there are none. Sends the literal query (the site's reformulation is off) unless allow_reformulation is set, because the site otherwise respells brand names and still labels the results as exact. Items carry package_string, pack_count and unit_size from the site's package line (size alone is per unit for multipacks). Changed 2026-09-28: author live check passed; awaiting independent QA. Requires a logged-in session with a saved address."
+      "notes": "First-page product search in one store through the site's SearchResultsPlacements query, hydrated with Items; exact matches first, related on request or when there are none. Sends the literal query (the site's reformulation is off) unless allow_reformulation is set, because the site otherwise respells brand names and still labels the results as exact. Items carry package_string, pack_count and unit_size from the site's package line (size alone is per unit for multipacks). Changed 2026-09-28: author live check passed; awaiting independent QA. Requires a logged-in session with a saved address. Since 2026-09-28 the shopping location is read from the site's GetLastUserLocation query first, so the tool follows an address switch without a reload; author live check passed, awaiting independent QA."
+    },
+    {
+      "domain": "instacart.com",
+      "tool": "set_delivery_address",
+      "file": "domains/instacart.com/set_delivery_address.js",
+      "kind": "page",
+      "namespace": "instacart.com",
+      "url_patterns": [
+        "https://instacart.com/*",
+        "https://*.instacart.com/*"
+      ],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Page tool. Switches the session to one saved address through UpdateUserLocation (the header picker's request); unknown ids are rejected and an already-selected address sends nothing; one mutation, never retried. Does not create, edit or delete addresses. Author live check 2026-09-28: switch, same-page follow-through by list_stores and search, and restore; awaiting independent QA."
     },
     {
       "domain": "instacart.com",
@@ -249,12 +274,9 @@
         "https://instacart.com/*",
         "https://*.instacart.com/*"
       ],
-      "status": "qa_passed",
-      "last_verified": "2026-09-25",
-      "notes": "Sets a cart line to an exact quantity (0 removes) through the site's UpdateCartItemsMutation; not_in_cart when the item is absent; one mutation per invocation, never retried. Live-verified 2026-09-25 (author and independent QA) with per-each and weighed items and a fully restored cart.",
-      "provenance": {
-        "qa_agent": "agt_e2b9b6bda0484789612a"
-      }
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Sets a cart line to an exact quantity (0 removes) through the site's UpdateCartItemsMutation; not_in_cart when the item is absent; one mutation per invocation, never retried. Live-verified 2026-09-25 (author and independent QA) with per-each and weighed items and a fully restored cart. Since 2026-09-28 the shopping location is read from the site's GetLastUserLocation query first, so the tool follows an address switch without a reload; author live check passed, awaiting independent QA."
     },
     {
       "domain": "jetblue.com",

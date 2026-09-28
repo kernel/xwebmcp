@@ -71,6 +71,7 @@
     const page = async (arg) => {
       const H = {
         SharedCurrentUser: "a828d85421f20d09b98fe0f044829ab245512b412e9957b5340093ebc25cb5a3",
+        GetLastUserLocation: "6c76952dbbaf5fe8b79d2ae6dc96af8ccca133285868e7efb9a81ffe624e37e1",
         ShopCollectionScoped: "f20693c3c551f0e0fbdcac9b2ca7aa6db50f9224a39967ba5ac767bb2b598f85",
         ShopCollectionUnscoped: "e4274fe3bbcb2464e3bca7be8368fdb702ca6b13b76d0042647d7470f44a8be7",
         SearchResultsPlacements: "fa21dfa1690387708c2bdb97f5157d0c73677088d99d3a173e95e60a1775ae87",
@@ -108,13 +109,19 @@
         return { data: body?.data ?? null, error };
       };
       const readLocation = async () => {
-        const parse = text => {
-          let state = null;
-          try { state = JSON.parse(decodeURIComponent(text || "")); } catch { state = null; }
-          const loc = state?.GetLastUserLocation?.["{}"]?.lastUserLocation;
+        const toLoc = loc => {
           if (!loc || !loc.postalCode || !loc.zoneId) return null;
           return { addressId: loc.addressId || null, zoneId: String(loc.zoneId), postalCode: String(loc.postalCode), coordinates: loc.coordinates ? { latitude: loc.coordinates.latitude, longitude: loc.coordinates.longitude } : null };
         };
+        const parse = text => {
+          let state = null;
+          try { state = JSON.parse(decodeURIComponent(text || "")); } catch { state = null; }
+          return toLoc(state?.GetLastUserLocation?.["{}"]?.lastUserLocation);
+        };
+        // Ask the site first: the page's server-rendered state keeps the old address after it is switched (set_delivery_address or the header picker).
+        const fresh = await gql("GetLastUserLocation", {});
+        const live = fresh.error ? null : toLoc(fresh.data?.lastUserLocation);
+        if (live && live.addressId) return { loc: live };
         // Only the store app's server-rendered pages carry the location; other pages (help, account) fall back to /store.
         const inline = parse(document.getElementById("node-apollo-state")?.textContent);
         if (inline) return { loc: inline };

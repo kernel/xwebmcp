@@ -87,6 +87,7 @@ function fixtures(options = {}) {
     if (options.respond) { const custom = options.respond(op, variables, state); if (custom) return custom; }
     switch (op) {
       case "SharedCurrentUser": return { data: { currentUser: { id: "1", guest: options.guest === true } } };
+      case "GetLastUserLocation": return { data: { lastUserLocation: options.liveLocation ?? null } };
       case "ShopCollectionScoped": return { data: { shopCollection: { shops: variables.retailerSlug === "kroger" ? shops : variables.retailerSlug === "aldi" ? [otherShop] : [] } } };
       case "ShopCollectionUnscoped": return { data: { shopCollection: { shops: [...shops, otherShop] } } };
       case "SearchResultsPlacements": return { data: { searchResultsPlacements: { placements: searchPlacements[variables.query] ?? [] } } };
@@ -310,7 +311,33 @@ test("list_stores: lists, filters and caps stores", async () => {
   const filtered = await h.run({ query: "AL", max_results: 1 });
   assert.equal(filtered.total_stores, 1);
   assert.equal(filtered.stores[0].name, "ALDI");
-  assert.deepEqual(h.state.requests[0].variables, { postalCode: "45202", coordinates: location.coordinates, addressId: "900001" });
+  assert.deepEqual(h.state.requests.find(r => r.op === "ShopCollectionUnscoped").variables, { postalCode: "45202", coordinates: location.coordinates, addressId: "900001" });
+});
+
+// ---------------------------------------------------------------- live location
+
+const switched = { addressId: "900002", zoneId: "1322", postalCode: "45118", countryId: "840", coordinates: { latitude: 39.2, longitude: -83.9 } };
+
+test("list_stores: the site's current location wins over the page's stale server-rendered state", async () => {
+  const h = harness("list_stores", { liveLocation: switched });
+  const result = await h.run({});
+  assert.deepEqual(result.location, { postal_code: "45118", zone_id: "1322", has_address: true });
+  assert.equal(h.state.storeFetches ?? 0, 0);
+  assert.deepEqual(h.state.requests.find(r => r.op === "ShopCollectionUnscoped").variables, { postalCode: "45118", coordinates: { latitude: 39.2, longitude: -83.9 }, addressId: "900002" });
+});
+
+test("add_to_cart: after an address switch the cart is opened for the new address", async () => {
+  const h = harness("add_to_cart", { liveLocation: switched });
+  assert.equal((await h.run({ store: "kroger", item_id: "items_165949-1001" })).status, "ok");
+  assert.equal(h.state.requests.find(r => r.op === "ActiveCartId").variables.addressId, "900002");
+});
+
+test("search: a live location without an address falls back to the page state and its login checks", async () => {
+  const guest = harness("search", { liveLocation: { zoneId: "78", postalCode: "45202" }, hasState: false, storePage: "login" });
+  assert.equal((await guest.run({ store: "kroger", query: "bananas" })).error_kind, "not_logged_in");
+  const inline = harness("search", { liveLocation: { zoneId: "78", postalCode: "45202" } });
+  assert.equal((await inline.run({ store: "kroger", query: "bananas" })).status, "ok");
+  assert.equal(inline.state.requests.find(r => r.op === "ActiveCartId"), undefined);
 });
 
 // ---------------------------------------------------------------- package sizes
@@ -486,7 +513,7 @@ test("get_cart: reads one store's cart with hydrated lines and totals", async ()
   assert.equal(cart.item_count, 2);
   assert.equal(cart.subtotal_string, "$4.74");
   assert.deepEqual(cart.items.map(i => [i.item_id, i.quantity, i.name, i.line_total_cents]), [["items_165949-1001", 2, "Fresh Bananas", 474], ["items_165949-1004", 1.5, "Deli Turkey", null]]);
-  assert.deepEqual(ops(h), ["SharedCurrentUser", "ShopCollectionScoped", "ActiveCartId", "CartData", "Items", "CartTotals"]);
+  assert.deepEqual(ops(h), ["SharedCurrentUser", "GetLastUserLocation", "ShopCollectionScoped", "ActiveCartId", "CartData", "Items", "CartTotals"]);
 });
 
 test("get_cart: without a store summarizes every non-empty cart", async () => {

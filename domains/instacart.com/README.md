@@ -5,14 +5,16 @@ Tools for Instacart (https://www.instacart.com).
 | tool | file | status | notes |
 |------|------|--------|-------|
 | login | [login.js](login.js) | qa_passed | Passwordless email-code login. Email step, code step, already-logged-in check and wrong-account check live-verified on 2026-09-25; independent failure-path QA passed on the current source. |
-| list_stores | [list_stores.js](list_stores.js) | qa_passed | Stores serving the account's address, with the `store_slug` and shop id the other tools take. |
-| search | [search.js](search.js) | draft | First-page product search in one store for the literal query (site spelling correction off unless `allow_reformulation`); exact matches first, related on request. Items carry `pack_count` and `unit_size`. Changed 2026-09-28; author live check only, awaiting independent QA. |
-| get_item | [get_item.js](get_item.js) | draft | One item's price, availability, quantity rules, pack size and rating for a store. Pack fields added 2026-09-28 (author live check; awaiting independent QA). |
-| get_cart | [get_cart.js](get_cart.js) | draft | One store's cart with names, prices, pack sizes and subtotal, or a summary of every non-empty cart. Pack fields added 2026-09-28 (author live check; awaiting independent QA). |
-| add_to_cart | [add_to_cart.js](add_to_cart.js) | draft | Adds or increases a cart line after checking availability and quantity rules; one mutation, never retried. Returned item carries pack fields since 2026-09-28 (author live check; awaiting independent QA). |
-| update_cart_item | [update_cart_item.js](update_cart_item.js) | qa_passed | Sets a cart line to an exact quantity; 0 removes; one mutation, never retried. |
+| list_stores | [list_stores.js](list_stores.js) | draft | Stores serving the account's address, with the `store_slug` and shop id the other tools take. Location read changed 2026-09-28 (follows an address switch without a reload); author live check, awaiting independent QA. |
+| search | [search.js](search.js) | draft | First-page product search in one store for the literal query (site spelling correction off unless `allow_reformulation`); exact matches first, related on request. Items carry `pack_count` and `unit_size`. Changed 2026-09-28; author live check only, awaiting independent QA. Location read changed 2026-09-28 (follows an address switch without a reload); author live check, awaiting independent QA. |
+| get_item | [get_item.js](get_item.js) | draft | One item's price, availability, quantity rules, pack size and rating for a store. Pack fields added 2026-09-28 (author live check; awaiting independent QA). Location read changed 2026-09-28 (follows an address switch without a reload); author live check, awaiting independent QA. |
+| get_cart | [get_cart.js](get_cart.js) | draft | One store's cart with names, prices, pack sizes and subtotal, or a summary of every non-empty cart. Pack fields added 2026-09-28 (author live check; awaiting independent QA). Location read changed 2026-09-28 (follows an address switch without a reload); author live check, awaiting independent QA. |
+| add_to_cart | [add_to_cart.js](add_to_cart.js) | draft | Adds or increases a cart line after checking availability and quantity rules; one mutation, never retried. Returned item carries pack fields since 2026-09-28 (author live check; awaiting independent QA). Location read changed 2026-09-28 (follows an address switch without a reload); author live check, awaiting independent QA. |
+| get_delivery_address | [get_delivery_address.js](get_delivery_address.js) | draft | The selected delivery address and every saved address, with the `address_id` `set_delivery_address` takes. Page tool; author live check 2026-09-28. |
+| set_delivery_address | [set_delivery_address.js](set_delivery_address.js) | draft | Switches the session to one saved address; no-op when already selected; one mutation, never retried. Page tool; author live check 2026-09-28. |
+| update_cart_item | [update_cart_item.js](update_cart_item.js) | draft | Sets a cart line to an exact quantity; 0 removes; one mutation, never retried. Location read changed 2026-09-28 (follows an address switch without a reload); author live check, awaiting independent QA. |
 
-Register all seven files together as one array with `forceOverwriteNamespace: true`;
+Register all nine files together as one array with `forceOverwriteNamespace: true`;
 registering one file that way removes the others.
 
 ## Native WebMCP tools
@@ -230,8 +232,14 @@ persisted-query hashes are pinned in each file; when Instacart rotates one the t
 returns `error_kind: "site_changed"` naming the operation.
 
 The shopper location (address id, zone, postal code, coordinates) is read from the
-`GetLastUserLocation` entry of the server-rendered Apollo state (`#node-apollo-state`
-on the current page, or fetched from `/store`, with one retry when that fetch fails).
+site's `GetLastUserLocation` query first. Only when that returns no location with an
+address id does a tool fall back to the `GetLastUserLocation` entry of the
+server-rendered Apollo state (`#node-apollo-state` on the current page, or fetched from
+`/store`, with one retry when that fetch fails). The query comes first because the
+server-rendered state is written once per page load: after `set_delivery_address` or the
+header address picker switches the address, it still holds the old one, and before
+2026-09-28 the tools kept shopping at the old address's stores until the page was
+reloaded.
 **Every shopping tool needs a logged-in session with a saved delivery address**: in an
 anonymous browser `/store` redirects to the login page, so the read-only tools return
 `not_logged_in` (redirect seen) or `location_unavailable` (no location anywhere), and
@@ -241,7 +249,7 @@ the cart tools return `not_logged_in` before touching anything.
 
 ```javascript
 const fs = await import("node:fs");
-const files = ["login", "list_stores", "search", "get_item", "get_cart", "add_to_cart", "update_cart_item"];
+const files = ["login", "list_stores", "search", "get_item", "get_cart", "add_to_cart", "update_cart_item", "get_delivery_address", "set_delivery_address"];
 const tools = files.flatMap(name => eval(fs.readFileSync(`domains/instacart.com/${name}.js`, "utf8")));
 await webmcp.addCustomTools({ namespace: "instacart.com", tools, forceOverwriteNamespace: true });
 const ref = async name => (await webmcp.listTools()).find(t => t.source.custom?.namespace === "instacart.com" && t.tool.name === name).tool_ref;
@@ -407,6 +415,62 @@ are covered without touching the live site:
 ```sh
 node --test tests/instacart-shopping.test.mjs
 ```
+
+## Delivery address tools
+
+`get_delivery_address` and `set_delivery_address` are `kind: "page"` tools: each makes
+same-origin GraphQL requests from the current instacart.com page and never navigates,
+so it runs in the page and returns there. Open any instacart.com page (for example
+`/store/account`) before invoking them.
+
+- `get_delivery_address` (read-only) calls `GetLastUserLocation` and `UserAddresses`
+  and returns `selected_address_id`, the selected address, the shopping `location`
+  (`postal_code`, `zone_id`), and every saved address with `address_id`,
+  `street_address`, `apartment`, `business_name`, the two display lines,
+  `postal_code` and `is_selected`. `selected_address_id` is `null` when the session has
+  only a postal-code location.
+- `set_delivery_address` takes one `address_id` from that list. It re-reads the saved
+  addresses and the current location, rejects an unknown id with `address_not_found`,
+  returns `changed: false` without sending anything when the address is already
+  selected, and otherwise sends one `UpdateUserLocation` mutation
+  (`{ addressId, postalCode }`, the same request the header address picker sends) and
+  returns the location Instacart confirmed. It never creates, edits or deletes an
+  address. `mutation_attempted` is true once the mutation was sent; an unconfirmed
+  outcome is `unknown` and is never retried.
+
+After a switch, other store locations serve the session (a Kroger location id changed
+from one to another in the live check), so store slugs, item ids and carts from before
+the switch may not apply; call `list_stores` and `search` again. Carts are per store
+location and were not moved or emptied by a switch and a switch back. Pages that were
+already open keep showing the old address in their header until reloaded; the tools
+themselves follow the switch (see the shopper location paragraph above).
+
+### Known limitations (delivery address)
+
+- Adding, editing or deleting saved addresses is out of scope; so is "use current
+  location".
+- The WebMCP runtime did not apply the input schema to these page tools in the live
+  check (a numeric `address_id` reached `execute`), so both tools validate their own
+  input and reject it before any request.
+- Business-account client addresses (`BusinessMemberClientAddresses`) were not seen and
+  are not listed.
+- `throttled`, `site_changed` and `not_logged_in` have mocked coverage only.
+
+### Author live check (delivery address), 2026-09-28
+
+Logged-in stealth browser, `cincy` proxy, an account with 11 saved addresses; not an
+independent QA pass.
+
+| case | result |
+|------|--------|
+| `get_delivery_address` | selected address, zip and 11 addresses, exactly one `is_selected` |
+| `set_delivery_address` to the selected address | `changed: false`, `mutation_attempted: false` |
+| unknown id `123` | `address_not_found`, no mutation |
+| switch to another saved address in another zip | `changed: true`, confirmed new zip and zone; `get_delivery_address` agrees |
+| `list_stores` and `search` right after, same page, no reload | new zip and the new Kroger location id (before the location fix: the old zip) |
+| switch back | `changed: true`; stores, zip and an existing 6-line cart exactly as before |
+| numeric `address_id`, unknown input field | `invalid_input` from the tool, nothing sent |
+| a non-Instacart page | no instacart.com tools listed |
 
 ## Sessions
 
