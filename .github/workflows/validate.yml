@@ -23,3 +23,5 @@ jobs:
         run: node scripts/validate-registry.mjs
       - name: Run tool tests
         run: node --test "tests/*.test.mjs"
+      - name: Run extension tests
+        run: node --test "extension/**/*.test.mjs"

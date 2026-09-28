@@ -74,6 +74,16 @@ chrome.runtime.onMessage.addListener((message, sender, reply) => {
       discovery.recordFrame(sender, message);
       reply({ok: true});
       return false;
+    case 'register-page-tool':
+      if (sender.frameId !== 0 || sender.tab?.id === undefined || !sender.url) return false;
+      registry.getDefinition(message.definitionId)
+        .then((definition) => {
+          if (!definition) throw new Error('page tool is no longer registered');
+          return invoker.registerPageTool(sender.tab.id, sender.url, definition);
+        })
+        .then(() => reply({ok: true}))
+        .catch((error) => reply({error: error instanceof Error ? error.message : String(error)}));
+      return true;
     case 'xwebmcp-api':
       api.call(message.method, message.params)
         .then((result) => reply({result: result === undefined ? null : result}))

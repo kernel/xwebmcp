@@ -130,8 +130,9 @@ How invocation works and what to expect:
 - `xwebmcp invoke <tool_ref>` (refs come from `xwebmcp tools`) invokes that exact live
   registration, native or custom, in the same shape as the Kernel API's
   `POST /browsers/{id}/webmcp/invoke`.
-- `chrome.debugger` is attached only while a cdp tool runs and detached afterwards, so
-  the "is debugging this browser" bar appears only during a call.
+- `chrome.debugger` attaches while a cdp tool runs, or briefly when registering a
+  page tool on a site whose CSP blocks dynamic compilation. Chrome may show its
+  debugging banner during either operation.
 - A tool invoked from the page (`document.modelContext.executeTool`) keeps running in
   the extension if its document navigates away, but that document can no longer receive
   the result; the invocation log (`listInvocations`) records it as undelivered.
