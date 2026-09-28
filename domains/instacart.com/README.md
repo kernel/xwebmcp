@@ -269,12 +269,21 @@ when the outcome is uncertain; never retry automatically after that.
 
 Items carry the site's `size` and three pack fields read from the item's package line
 (`price.viewSection.itemDetails.pricingUnitString`, falling back to `itemCard`):
-`package_string` (`"8 x 12 fl oz"`, `"12 fl oz"`), `pack_count` (8 and 1 there) and
-`unit_size` (`"12 fl oz"`). For a multipack `size` is **one unit's** size, so an 8-pack,
-a 4-pack and a single can of the same drink all have `size: "12 fl oz"`; read
-`pack_count` before choosing a quantity. Weighed produce shows a price such as
-`$0.79 / lb` on that line, and some items have no line; both give `null` pack fields.
-`get_cart` lines carry the same three fields.
+`package_string` (the line as shown), `pack_count` and `unit_size`. For a multipack
+`size` is **one unit's** size, so an 8-pack, a 4-pack and a single can of the same drink
+all have `size: "12 fl oz"`; read `pack_count` before choosing a quantity.
+`pack_count` is only set when the line proves it:
+
+| package line | pack_count | unit_size |
+|--------------|------------|-----------|
+| `8 x 12 fl oz`, `4 x 72 ct`, `2 x 8 each` | 8, 4, 2 | `12 fl oz`, `72 ct`, `8 each` |
+| `2 pk`, `6 pack` | 2, 6 | `null` |
+| `12 fl oz`, `1 lb`, `102.7 sq ft`, `2 lb container`, `1 each` | 1 | the line |
+| `18 ct`, `8 each` (pieces in one package or separate packs; the line does not say) | `null` | `null` |
+| nested (`2 x 6 x 12 fl oz`), unrecognized words, a price (`$0.79 / lb`), no line | `null` | `null` |
+
+`package_string` is still returned whenever the line is not a price, so a caller can
+read an ambiguous line itself. `get_cart` lines carry the same three fields.
 
 Items carry `price_string` as displayed (for example `$2.37 each (est.)`), `price_cents`
 parsed from the first dollar amount, `available`, `stock_level`, and `quantity`
@@ -361,8 +370,9 @@ Unverified:
 - Extension-host portability was reasoned about (no Node globals; page work runs in the
   page) but only the Node CDP runtime was exercised.
 - `cart_item_count` and `item_count` count distinct lines, not units.
-- `pack_count` is parsed from the site's display string; a package line in another shape
-  (for example `2 pk`) is returned as `package_string` with `pack_count: 1`.
+- `pack_count` is parsed from the site's display string. Shapes other than those in the
+  table (and bare counts such as `18 ct`) give `pack_count: null`; the line is still in
+  `package_string`.
 
 Author live check, 2026-09-28 (pack fields; logged-in stealth browser, `cincy` proxy; not
 an independent QA pass):
@@ -375,6 +385,8 @@ an independent QA pass):
 | search | Target, `poppi` | 4-, 6- (`6 x 7.5 fl oz`) and 8-packs and a single can, each correct |
 | get_cart | Meijer cart with 6 packs | line shows `8 x 12 fl oz` / 8 |
 | add_to_cart | add 1 to that line | 6 -> 7 with `pack_count: 8`; restored to 6 with `update_cart_item`, subtotal unchanged |
+| search (after the review fix) | eggs `18 ct`, wipes `50 ct`, batteries `4 ct`, paper towels `6 each` | all `pack_count: null` with `package_string` kept |
+| search (after the review fix) | ground beef `16 oz` / `1 lb`, kiwi `2 lb container` | `pack_count: 1` |
 
 Author live check, 2026-09-28 (`search` with literal queries; logged-in stealth browser,
 `cincy` proxy; not an independent QA pass):

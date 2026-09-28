@@ -20,7 +20,7 @@
           properties: {
             status: { const: "ok" },
             scope: { type: "string", enum: ["store", "all_stores"] },
-            carts: { type: "array", items: { type: "object", additionalProperties: false, required: ["cart_id", "store", "item_count", "subtotal_string", "savings_string", "items"], properties: { cart_id: { type: "string" }, store: { type: "object", additionalProperties: false, required: ["store_slug", "name", "shop_id", "retailer_id", "service_type", "retailer_location_id"], properties: { store_slug: { type: ["string", "null"] }, name: { type: ["string", "null"] }, shop_id: { type: "string" }, retailer_id: { type: "string" }, service_type: { type: ["string", "null"] }, retailer_location_id: { type: ["string", "null"] } } }, item_count: { type: "integer", minimum: 0, description: "Number of distinct lines, not units." }, subtotal_string: { type: ["string", "null"] }, savings_string: { type: ["string", "null"] }, items: { type: "array", items: { type: "object", additionalProperties: false, required: ["cart_item_id", "item_id", "product_id", "quantity", "quantity_type", "name", "size", "package_string", "pack_count", "unit_size", "price_string", "price_cents", "line_total_cents", "available", "url"], properties: { cart_item_id: { type: "string" }, item_id: { type: "string" }, product_id: { type: ["string", "null"] }, quantity: { type: "number" }, quantity_type: { type: ["string", "null"] }, name: { type: ["string", "null"] }, size: { type: ["string", "null"], description: "Per-unit size for multipacks; read pack_count." }, package_string: { type: ["string", "null"], description: "The site's package line, e.g. \"8 x 12 fl oz\"." }, pack_count: { type: ["integer", "null"], minimum: 1, description: "Units in one purchasable item; null when unknown." }, unit_size: { type: ["string", "null"] }, price_string: { type: ["string", "null"] }, price_cents: { type: ["integer", "null"] }, line_total_cents: { type: ["integer", "null"], description: "price_cents times quantity for per-each items; null for weighed items." }, available: { type: ["boolean", "null"] }, url: { type: ["string", "null"] } } } } } } }
+            carts: { type: "array", items: { type: "object", additionalProperties: false, required: ["cart_id", "store", "item_count", "subtotal_string", "savings_string", "items"], properties: { cart_id: { type: "string" }, store: { type: "object", additionalProperties: false, required: ["store_slug", "name", "shop_id", "retailer_id", "service_type", "retailer_location_id"], properties: { store_slug: { type: ["string", "null"] }, name: { type: ["string", "null"] }, shop_id: { type: "string" }, retailer_id: { type: "string" }, service_type: { type: ["string", "null"] }, retailer_location_id: { type: ["string", "null"] } } }, item_count: { type: "integer", minimum: 0, description: "Number of distinct lines, not units." }, subtotal_string: { type: ["string", "null"] }, savings_string: { type: ["string", "null"] }, items: { type: "array", items: { type: "object", additionalProperties: false, required: ["cart_item_id", "item_id", "product_id", "quantity", "quantity_type", "name", "size", "package_string", "pack_count", "unit_size", "price_string", "price_cents", "line_total_cents", "available", "url"], properties: { cart_item_id: { type: "string" }, item_id: { type: "string" }, product_id: { type: ["string", "null"] }, quantity: { type: "number" }, quantity_type: { type: ["string", "null"] }, name: { type: ["string", "null"] }, size: { type: ["string", "null"], description: "Per-unit size for multipacks; read pack_count." }, package_string: { type: ["string", "null"], description: "The site's package line, e.g. \"8 x 12 fl oz\"." }, pack_count: { type: ["integer", "null"], minimum: 1, description: "Separately packed units in one purchasable item when the package line proves it; null otherwise (see get_item)." }, unit_size: { type: ["string", "null"] }, price_string: { type: ["string", "null"] }, price_cents: { type: ["integer", "null"] }, line_total_cents: { type: ["integer", "null"], description: "price_cents times quantity for per-each items; null for weighed items." }, available: { type: ["boolean", "null"] }, url: { type: ["string", "null"] } } } } } } }
           }
         },
         {
@@ -123,7 +123,14 @@
         // pricingUnitString is "8 x 12 fl oz" for multipacks and a plain size for single units; weighed items show a price there.
         const unitLine = it.price?.viewSection?.itemDetails?.pricingUnitString ?? card.pricingUnitString;
         const pkg = typeof unitLine === "string" && unitLine.trim() && !unitLine.includes("$") ? unitLine.trim() : null;
-        const multi = pkg ? pkg.match(/^(\d+)\s*[x\u00d7]\s*(\S.*)$/i) : null;
+        // pack_count is only claimed when the line proves it: "N x <size>", "N pk" / "N pack", "1 each", or one measured size.
+        // Counts such as "18 ct" or "8 each" can mean pieces in one package, so they stay null, as does anything unrecognized.
+        const measure = /^\d+(?:\.\d+)?\s*(?:fl\.?\s*oz|oz|lbs?|g|kg|mg|ml|cl|l|ltr|liters?|litres?|gal|qt|pt|sq\.?\s*ft|ft|ftk|in|yd)\.?(?:\s+(?:container|bag|box|jar|bottle|can|carton|tub|pouch|package|pkg))?$/i;
+        const perUnit = /^\d+(?:\.\d+)?\s*(?:ct|count|each|ea|pk|pack)$/i;
+        const multiMatch = pkg ? pkg.match(/^(\d+)\s*[x\u00d7]\s*(\S.*)$/i) : null;
+        const multi = multiMatch && Number(multiMatch[1]) >= 1 && (measure.test(multiMatch[2]) || perUnit.test(multiMatch[2])) ? { count: Number(multiMatch[1]), unit: multiMatch[2] } : null;
+        const packOnly = !multi && pkg ? pkg.match(/^(\d+)\s*-?\s*(?:pk|pack|packs)$/i) : null;
+        const pack = multi || (packOnly && Number(packOnly[1]) >= 1 ? { count: Number(packOnly[1]), unit: null } : null) || (pkg && (measure.test(pkg) || /^1\s*(?:each|ea)$/i.test(pkg)) ? { count: 1, unit: pkg } : null);
         return {
           item_id: String(it.id),
           product_id: it.productId ? String(it.productId) : null,
@@ -131,8 +138,8 @@
           brand: it.brandName ?? null,
           size: it.size ?? null,
           package_string: pkg,
-          pack_count: multi ? Number(multi[1]) : pkg ? 1 : null,
-          unit_size: multi ? multi[2] : pkg,
+          pack_count: pack ? pack.count : null,
+          unit_size: pack ? pack.unit : null,
           price_string: card.priceString ?? null,
           price_cents: cents(card.priceString),
           full_price_string: card.fullPriceString ?? null,
