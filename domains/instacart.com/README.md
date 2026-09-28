@@ -342,7 +342,7 @@ existing line (quantity is the increment, and the confirmed total is returned);
 
 ### Status and known limitations (shopping)
 
-Status: per tool in the table at the top. `search`, `get_item`, `get_cart` and `add_to_cart` are `draft` since the 2026-09-28 changes below (literal search, pack fields); the others are `qa_passed` for the source the QA summary names.
+Status: per tool in the table at the top. Every shopping tool is `draft` since the 2026-09-28 changes below (literal search, pack fields, live location read); only `login` is still `qa_passed`, for the source its QA summary names. The shopping QA summary below describes the source before those changes.
 
 Live-verified on 2026-09-25 in the author's logged-in stealth browser (`cincy` proxy),
 using the account's empty Kroger delivery cart and one cheap produce item:
