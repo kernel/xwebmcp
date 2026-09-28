@@ -219,6 +219,7 @@ test("registry preserves search and adds the login namespace, patterns and QA st
   assert.equal(entries.length, 1);
   assert.equal(entries[0].namespace, "united.com");
   assert.equal(entries[0].file, "domains/united.com/login.js");
-  assert.equal(entries[0].status, "qa_passed");
+  assert.equal(entries[0].status, "draft");
+  assert.equal(entries[0].last_verified, null);
   assert.deepEqual(entries[0].url_patterns, plain(harness().tool.match.url_patterns));
 });

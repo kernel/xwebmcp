@@ -1,0 +1,19 @@
+{
+  "data": {
+    "productsSearch": [
+      { "upc": "0008259219415", "placementId": "KO_fixture_placement", "searchEngineRank": 0 },
+      { "upc": "0000000004011", "groupedBy": "6000000000127412", "description": "fresh bunch of bananas", "personalized": false, "relevanceScore": 2000020.9, "searchEngineRank": 1 },
+      { "upc": "0001111041700", "groupedBy": "NONE", "description": "kroger 2% reduced fat milk gallon", "personalized": false, "relevanceScore": 1000, "searchEngineRank": 2 },
+      { "upc": "0007000000009", "groupedBy": "NONE", "description": "seasonal item not sold for delivery", "personalized": false, "relevanceScore": 900, "searchEngineRank": 3 },
+      { "upc": "0000000004011", "groupedBy": "6000000000127412", "description": "fresh bunch of bananas", "personalized": true, "relevanceScore": 800, "searchEngineRank": 4 }
+    ]
+  },
+  "meta": {
+    "productsSearch": {
+      "page": { "offset": 0, "size": 10, "hasMore": true },
+      "totalCount": 509,
+      "availableCount": 250,
+      "facets": {}
+    }
+  }
+}
