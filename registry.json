@@ -313,6 +313,20 @@
     },
     {
       "domain": "instacart.com",
+      "tool": "list_payment_methods",
+      "file": "domains/instacart.com/list_payment_methods.js",
+      "kind": "page",
+      "namespace": "instacart.com",
+      "url_patterns": [
+        "https://instacart.com/*",
+        "https://*.instacart.com/*"
+      ],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Page tool. Lists saved payment methods with the payment_method_id select_payment_method takes, type, displayed label and detail, is_enabled, is_selected (from the checkout scenario of BuyflowPaymentInstrumentsV2) and an expired flag computed from the shown expiry. Read-only. Author live check 2026-09-28; awaiting independent QA."
+    },
+    {
+      "domain": "instacart.com",
       "tool": "list_stores",
       "file": "domains/instacart.com/list_stores.js",
       "kind": "cdp",
@@ -355,6 +369,20 @@
       "status": "draft",
       "last_verified": null,
       "notes": "First-page product search in one store through the site's SearchResultsPlacements query, hydrated with Items; exact matches first, related on request or when there are none. Sends the literal query (the site's reformulation is off) unless allow_reformulation is set, because the site otherwise respells brand names and still labels the results as exact. Items carry package_string, pack_count and unit_size from the site's package line (size alone is per unit for multipacks). Changed 2026-09-28: author live check passed; awaiting independent QA. Requires a logged-in session with a saved address. Since 2026-09-28 the shopping location comes from the site's GetLastUserLocation query (or a fresh /store render when it has no address), never from the page's load-time state, and a failed location read fails the call; the tool follows an address switch without a reload. Author live check passed, awaiting independent QA."
+    },
+    {
+      "domain": "instacart.com",
+      "tool": "select_payment_method",
+      "file": "domains/instacart.com/select_payment_method.js",
+      "kind": "page",
+      "namespace": "instacart.com",
+      "url_patterns": [
+        "https://instacart.com/*",
+        "https://*.instacart.com/*"
+      ],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Page tool. Makes one saved payment method the one checkout charges, via InitializeCheckout for a store's non-empty cart (a POST that opens a session and places nothing), UpdateBuyflowPaymentInstructionsV2 and UpdateCheckout; succeeds only when the refreshed checkout session and the account list both show the method. The choice is account-wide. Refuses split-tender checkouts, disabled and expired methods; no-op when already selected; never places an order or edits methods; never retries. Author live check 2026-09-28 (switch and restore); awaiting independent QA."
     },
     {
       "domain": "instacart.com",
