@@ -198,7 +198,7 @@ test("registry lists every shopping tool with matching patterns", () => {
 
 const invalidInputs = {
   list_stores: [null, [], { query: "" }, { query: 1 }, { service_type: "drone" }, { max_results: 0 }, { max_results: 1.5 }, { extra: true }],
-  search: [{}, { store: "kroger" }, { query: "milk" }, { store: "Kroger!", query: "milk" }, { store: "kroger", query: " " }, { store: "kroger", query: "milk", max_results: 61 }, { store: "kroger", query: "milk", include_related: "yes" }, { store: "kroger", query: "milk", service_type: "drone" }, { store: "kroger", query: "milk", extra: 1 }],
+  search: [{}, { store: "kroger" }, { query: "milk" }, { store: "Kroger!", query: "milk" }, { store: "kroger", query: " " }, { store: "kroger", query: "milk", max_results: 61 }, { store: "kroger", query: "milk", include_related: "yes" }, { store: "kroger", query: "milk", allow_reformulation: 1 }, { store: "kroger", query: "milk", service_type: "drone" }, { store: "kroger", query: "milk", extra: 1 }],
   get_item: [{}, { store: "kroger" }, { item_id: "items_165949-1001" }, { store: "kroger", item_id: "1001" }, { store: "kroger", item_id: "items_165949-1001", extra: 1 }],
   get_cart: [null, { store: "" }, { store: "kroger", service_type: "drone" }, { extra: 1 }],
   add_to_cart: [{}, { store: "kroger" }, { store: "kroger", item_id: "bad" }, { store: "kroger", item_id: "items_165949-1001", quantity: 0 }, { store: "kroger", item_id: "items_165949-1001", quantity: -1 }, { store: "kroger", item_id: "items_165949-1001", quantity: 100 }, { store: "kroger", item_id: "items_165949-1001", quantity: "2" }, { store: "kroger", item_id: "items_165949-1001", extra: 1 }],
@@ -325,6 +325,17 @@ test("search: returns exact matches in order with hydrated details and skips ads
   const items = h.state.requests.filter(r => r.op === "Items");
   assert.deepEqual(items.map(r => r.variables.ids), [["items_165949-1002"]]);
   assert.equal(h.state.requests.find(r => r.op === "SearchResultsPlacements").variables.shopId, "355391");
+});
+
+test("search: sends the literal query unless allow_reformulation is set, and says which it did", async () => {
+  const literal = harness("search");
+  const strict = await literal.run({ store: "kroger", query: "bananas" });
+  assert.equal(strict.reformulation_allowed, false);
+  assert.equal(literal.state.requests.find(r => r.op === "SearchResultsPlacements").variables.disableReformulation, true);
+  const loose = harness("search");
+  const rewritten = await loose.run({ store: "kroger", query: "bananas", allow_reformulation: true });
+  assert.equal(rewritten.reformulation_allowed, true);
+  assert.equal(loose.state.requests.find(r => r.op === "SearchResultsPlacements").variables.disableReformulation, false);
 });
 
 test("search: include_related appends related items after exact ones up to max_results", async () => {

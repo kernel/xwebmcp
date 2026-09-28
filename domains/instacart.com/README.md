@@ -6,7 +6,7 @@ Tools for Instacart (https://www.instacart.com).
 |------|------|--------|-------|
 | login | [login.js](login.js) | qa_passed | Passwordless email-code login. Email step, code step, already-logged-in check and wrong-account check live-verified on 2026-09-25; independent failure-path QA passed on the current source. |
 | list_stores | [list_stores.js](list_stores.js) | qa_passed | Stores serving the account's address, with the `store_slug` and shop id the other tools take. |
-| search | [search.js](search.js) | qa_passed | First-page product search in one store; exact matches first, related on request. |
+| search | [search.js](search.js) | draft | First-page product search in one store for the literal query (site spelling correction off unless `allow_reformulation`); exact matches first, related on request. Changed 2026-09-28; author live check only, awaiting independent QA. |
 | get_item | [get_item.js](get_item.js) | qa_passed | One item's price, availability, quantity rules and rating for a store. |
 | get_cart | [get_cart.js](get_cart.js) | qa_passed | One store's cart with names, prices and subtotal, or a summary of every non-empty cart. |
 | add_to_cart | [add_to_cart.js](add_to_cart.js) | qa_passed | Adds or increases a cart line after checking availability and quantity rules; one mutation, never retried. |
@@ -276,6 +276,16 @@ existing line (quantity is the increment, and the confirmed total is returned);
 
 ### Site quirks (shopping)
 
+- `SearchResultsPlacements` takes `disableReformulation`. With it `false` (the site's own
+  default) Instacart silently respells the query and still heads the results
+  `Results for "<original query>"`, with no field saying it rewrote anything: at Kroger,
+  `poppi 8 pack` and `poppi essentials` both came back as two poppy-seed items under that
+  heading. `search` therefore sends `disableReformulation: true` unless the caller sets
+  `allow_reformulation`, and returns `reformulation_allowed` so the caller knows which
+  mode produced the exact matches. With rewriting off, a misspelling such as `banannas`
+  still found bananas (2026-09-28), so ordinary typos are not lost. `match: "exact"`
+  only means "in the primary results section": that section is relevance-ranked and can
+  still contain near matches (single cans for a multipack query).
 - Search results arrive as ordered "placements": a header (`Results for "…"`,
   `No results for …`, `Related items`), item grids that carry `itemIds` and sometimes
   full items, ad placements, and a `Load more` marker without a cursor. The tool keeps
@@ -299,7 +309,7 @@ existing line (quantity is the increment, and the confirmed total is returned);
 
 ### Status and known limitations (shopping)
 
-Status: `qa_passed`; see the registry and the QA summary below.
+Status: per tool in the table at the top. `search` is `draft` since the 2026-09-28 change below; the others are `qa_passed` for the source the QA summary names.
 
 Live-verified on 2026-09-25 in the author's logged-in stealth browser (`cincy` proxy),
 using the account's empty Kroger delivery cart and one cheap produce item:
@@ -342,6 +352,18 @@ Unverified:
 - Extension-host portability was reasoned about (no Node globals; page work runs in the
   page) but only the Node CDP runtime was exercised.
 - `cart_item_count` and `item_count` count distinct lines, not units.
+
+Author live check, 2026-09-28 (`search` with literal queries; logged-in stealth browser,
+`cincy` proxy; not an independent QA pass):
+
+| input | result |
+|-------|--------|
+| `kroger` / `poppi 8 pack` | `reformulation_allowed: false`, 0 exact, Poppi cans among related (before the change: 2 poppy-seed items as exact) |
+| same with `allow_reformulation: true` | the 2 poppy-seed items as exact again |
+| `kroger` / `poppi essentials` | 10 exact, all Poppi cans (before: the same 2 poppy-seed items) |
+| `meijer` / `poppi soda essentials` | the variety pack first among 41 exact |
+| `kroger` / `bananas`, `banannas` | bananas first in both, with and without rewriting |
+| `allow_reformulation: "yes"` | rejected by the WebMCP input-schema gate |
 
 Local tests re-create each tool's page-side function in a separate context with a fake
 `fetch`, so parsing, quantity rules, single-mutation behaviour and schema conformance
