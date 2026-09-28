@@ -2,6 +2,7 @@ package mcpserver
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -39,14 +40,25 @@ type Server struct {
 	dynamic map[string]CustomTool
 }
 
-var toolNamePattern = regexp.MustCompile(`[^A-Za-z0-9_-]+`)
-
-// MCPToolName maps namespace/name to an MCP-safe tool name.
+// MCPToolName maps namespace/name to an MCP-safe tool name without collapsing
+// distinct punctuation or dropping the identity of long names.
 func MCPToolName(namespace, name string) string {
-	clean := func(s string) string { return strings.Trim(toolNamePattern.ReplaceAllString(s, "_"), "_") }
-	out := clean(namespace) + "__" + clean(name)
+	encode := func(s string) string {
+		var out strings.Builder
+		for i := 0; i < len(s); i++ {
+			c := s[i]
+			if c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9' || c == '-' {
+				out.WriteByte(c)
+			} else {
+				fmt.Fprintf(&out, "_%02x", c)
+			}
+		}
+		return out.String()
+	}
+	out := encode(namespace) + "__" + encode(name)
 	if len(out) > 64 {
-		out = out[:64]
+		sum := sha256.Sum256([]byte(namespace + "\x00" + name))
+		out = fmt.Sprintf("%s_%x", out[:47], sum[:8])
 	}
 	return out
 }
@@ -414,7 +426,12 @@ func (s *Server) RefreshToolRegistrations(ctx context.Context) {
 	defer s.mu.Unlock()
 	wanted := map[string]CustomTool{}
 	for _, tool := range tools {
-		wanted[MCPToolName(tool.Namespace, tool.Tool.Name)] = tool
+		name := MCPToolName(tool.Namespace, tool.Tool.Name)
+		if previous, exists := wanted[name]; exists && (previous.Namespace != tool.Namespace || previous.Tool.Name != tool.Tool.Name) {
+			s.opts.Logf("MCP tool name collision between %s/%s and %s/%s", previous.Namespace, previous.Tool.Name, tool.Namespace, tool.Tool.Name)
+			return
+		}
+		wanted[name] = tool
 	}
 	var removed []string
 	for name, current := range s.dynamic {

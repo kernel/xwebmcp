@@ -144,7 +144,7 @@ func TestGenericToolsAndDynamicRegistration(t *testing.T) {
 	server, cs := connect(t, target)
 
 	names := strings.Join(toolNames(t, cs), ",")
-	for _, want := range []string{"list_tools", "invoke_tool", "install_tool", "remove_tool", "open_tab", "a_test__search"} {
+	for _, want := range []string{"list_tools", "invoke_tool", "install_tool", "remove_tool", "open_tab", MCPToolName("a.test", "search")} {
 		if !strings.Contains(names, want) {
 			t.Errorf("tool %s missing from %s", want, names)
 		}
@@ -155,7 +155,7 @@ func TestGenericToolsAndDynamicRegistration(t *testing.T) {
 		t.Errorf("list_tools = %s", text(res))
 	}
 
-	res = call(t, cs, "a_test__search", map[string]any{"q": "x"})
+	res = call(t, cs, MCPToolName("a.test", "search"), map[string]any{"q": "x"})
 	if res.IsError || !strings.Contains(text(res), `"ok":true`) {
 		t.Errorf("dynamic tool = %s", text(res))
 	}
@@ -183,14 +183,14 @@ func TestGenericToolsAndDynamicRegistration(t *testing.T) {
 		t.Fatalf("install_tool = %s", text(res))
 	}
 	names = strings.Join(toolNames(t, cs), ",")
-	if !strings.Contains(names, "a_test__login") || strings.Count(names, "a_test__search") != 1 {
+	if !strings.Contains(names, MCPToolName("a.test", "login")) || strings.Count(names, MCPToolName("a.test", "search")) != 1 {
 		t.Errorf("tools after install = %s", names)
 	}
 	if len(target.custom) != 2 {
 		t.Errorf("custom after install = %+v", target.custom)
 	}
 	server.mu.Lock()
-	if server.dynamic["a_test__search"].ID == "ct_x" {
+	if server.dynamic[MCPToolName("a.test", "search")].ID == "ct_x" {
 		t.Error("dynamic registration still points at the replaced definition")
 	}
 	server.mu.Unlock()
@@ -199,7 +199,7 @@ func TestGenericToolsAndDynamicRegistration(t *testing.T) {
 	if res.IsError {
 		t.Fatalf("remove_tool = %s", text(res))
 	}
-	if strings.Contains(strings.Join(toolNames(t, cs), ","), "a_test__login") {
+	if strings.Contains(strings.Join(toolNames(t, cs), ","), MCPToolName("a.test", "login")) {
 		t.Error("removed tool still registered")
 	}
 
@@ -210,10 +210,38 @@ func TestGenericToolsAndDynamicRegistration(t *testing.T) {
 }
 
 func TestMCPToolName(t *testing.T) {
-	if got := MCPToolName("southwest.com", "search_flights"); got != "southwest_com__search_flights" {
+	if got := MCPToolName("southwest.com", "search_flights"); got != "southwest_2ecom__search_5fflights" {
 		t.Errorf("name = %q", got)
 	}
-	if got := MCPToolName("a-b.c", "x.y"); got != "a-b_c__x_y" {
-		t.Errorf("name = %q", got)
+	for _, pair := range [][2]string{
+		{"a.b", "a_b"},
+		{"a.b", "a/b"},
+		{strings.Repeat("a", 70) + "x", strings.Repeat("a", 70) + "y"},
+	} {
+		left, right := MCPToolName(pair[0], "search"), MCPToolName(pair[1], "search")
+		if left == right || len(left) > 64 || len(right) > 64 {
+			t.Errorf("names collide or exceed limit: %q %q", left, right)
+		}
+	}
+}
+
+func TestCollidingOldNamesRegisterSeparately(t *testing.T) {
+	target := &fakeTarget{custom: []CustomTool{
+		{ID: "ct_a", Namespace: "a.b", Kind: "cdp", Tool: ToolMetadata{Name: "search", InputSchema: json.RawMessage(`{"type":"object"}`)}},
+		{ID: "ct_b", Namespace: "a_b", Kind: "cdp", Tool: ToolMetadata{Name: "search", InputSchema: json.RawMessage(`{"type":"object"}`)}},
+	}}
+	_, cs := connect(t, target)
+	names := strings.Join(toolNames(t, cs), ",")
+	for _, namespace := range []string{"a.b", "a_b"} {
+		name := MCPToolName(namespace, "search")
+		if !strings.Contains(names, name) {
+			t.Errorf("%s missing from %s", name, names)
+		}
+		if result := call(t, cs, name, map[string]any{}); result.IsError {
+			t.Errorf("%s failed: %s", name, text(result))
+		}
+	}
+	if len(target.invokes) != 2 || target.invokes[0].Namespace == target.invokes[1].Namespace {
+		t.Errorf("tools invoked the wrong namespaces: %+v", target.invokes)
 	}
 }

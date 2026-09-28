@@ -161,7 +161,7 @@ The server offers generic tools and one MCP tool per installed custom tool:
 | `get_invocation` | diagnostics for a past invocation |
 | `list_custom_tools`, `install_tool`, `remove_tool` | installed tools; `install_tool` takes a local file path |
 | `open_tab`, `navigate_tab`, `close_tab`, `list_tabs` | tabs owned by the server |
-| `southwest_com__search_flights`, … | each installed tool, with its own input schema |
+| `southwest_2ecom__search_5fflights`, … | each installed tool, with its own input schema |
 
 By default the server only sees and acts on tabs it opened itself (an **xwebmcp** tab
 group); pass `allow_user_tabs` / `all_tabs` per call, or start with `--all-tabs` to list
