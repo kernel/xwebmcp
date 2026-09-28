@@ -654,10 +654,11 @@ checks in ClawBench V1 use a placeholder that no run matches.
   described as HTTP 403, and page text in `destination_hint` and `terms_text` not
   scrubbed) were fixed in `05e5cf1`. A final pass (agent `agt_8f7178bcd04460ebdbd3`, commit
   `05e5cf1`) confirmed the three fixes, repeated the static review and the no-submission
-  live checks with every sign-up POST blocked (none fired). The source has since changed
-  to use the inlined typing helper, so that pass does not sign off the current source.
-  The earlier remaining notes (a fixture for the scrub, the two screens and the possible
-  double code POST below) are covered by documentation and tests.
+  live checks with every sign-up POST blocked (none fired). That pass predates the inlined
+  typing helper. Independent QA on the final tool source (`f894518`) passed the full test
+  suite and invoked the committed helper against a local page: Control and Shift chords,
+  cadence, field clearing and auto-advancing code boxes behaved as intended. It did not
+  submit anything to Uber; all three tools remain `draft`.
 - Everything after the email submission is fixture-only: the phone, SMS, name, and terms
   handling, the conflict and rejection messages (their wording is a guess from Uber's
   error names), and account verification after sign-up.
@@ -672,7 +673,7 @@ checks in ClawBench V1 use a placeholder that no run matches.
 - The registration tools now use an inlined CDP typing helper for email, phone, names
   and codes: key events have Shift attribution and pauses between characters; no extra
   synthetic `input`/`change` pair is sent. Its behavior on Uber's forms has not been
-  live-tested, and the signed-off source predates this change.
+  live-tested.
 - After entering a code the tools click Next only if the code screen is still showing
   1.5 s later, the same pattern `login` uses live. If Uber's own auto-submit were still in
   flight at that moment it would send the code twice in one call; watch for a second
