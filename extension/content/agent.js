@@ -106,6 +106,10 @@
     });
   }
 
+  function reportRegistration(errors = []) {
+    send({type: 'registration', url: location.href, registered: [...registrations].filter(([, registration]) => registration.ready).map(([id]) => id), errors});
+  }
+
   function pageToolsPort() {
     return {
       register: (definitions) => window.postMessage({source: 'xwebmcp', type: 'register-page-tools', definitions}, '*'),
@@ -135,7 +139,7 @@
     for (const definition of desired.values()) {
       if (registrations.has(definition.id)) continue;
       const controller = new AbortController();
-      registrations.set(definition.id, {controller, revision: definition.revision, kind: definition.kind});
+      registrations.set(definition.id, {controller, revision: definition.revision, kind: definition.kind, ready: definition.kind !== 'page'});
       if (definition.kind === 'page') {
         pageDefinitions.push({id: definition.id, name: `${CUSTOM_PREFIX}${definition.id}.${definition.tool.name}`, tool: definition.tool, pageExecuteSource: definition.pageExecuteSource});
         continue;
@@ -150,7 +154,7 @@
       }
     }
     if (pageDefinitions.length) pageToolsPort().register(pageDefinitions);
-    send({type: 'registration', url, registered: [...registrations.keys()], errors});
+    reportRegistration(errors);
   }
 
   window.addEventListener('message', (event) => {
@@ -163,8 +167,27 @@
           pageToolsPort().register(wanted.map((definition) => ({id: definition.id, name: `${CUSTOM_PREFIX}${definition.id}.${definition.tool.name}`, tool: definition.tool, pageExecuteSource: definition.pageExecuteSource})));
         });
       }
+    } else if (event.data.type === 'page-tools-registered') {
+      for (const id of event.data.ids ?? []) {
+        const registration = registrations.get(id);
+        if (registration?.kind === 'page') registration.ready = true;
+      }
+      reportRegistration();
+    } else if (event.data.type === 'page-tools-csp') {
+      Promise.all((event.data.ids ?? []).map(async (id) => {
+        const registration = registrations.get(id);
+        if (registration?.kind !== 'page') return null;
+        const response = await chrome.runtime.sendMessage({type: 'register-page-tool', definitionId: id}).catch((error) => ({error: String(error)}));
+        if (!response?.ok) return `${id}: ${response?.error ?? 'page tool registration failed'}`;
+        if (registrations.get(id) !== registration) {
+          pageToolsPort().unregister([id]);
+          return null;
+        }
+        registration.ready = true;
+        return null;
+      })).then((errors) => reportRegistration(errors.filter(Boolean)));
     } else if (event.data.type === 'page-tools-error') {
-      send({type: 'registration', url: location.href, registered: [...registrations.keys()], errors: event.data.errors ?? []});
+      reportRegistration(event.data.errors ?? []);
     }
   });
 
