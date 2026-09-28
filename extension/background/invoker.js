@@ -119,6 +119,38 @@ async function targetForTab(tabId) {
   return target.targetId;
 }
 
+export async function registerPageTool(tabId, url, definition) {
+  if (definition.kind !== 'page' || !matchesAny(url, definition.match.url_patterns)) {
+    throw new Error('page tool is not available in this document');
+  }
+  const targetId = await targetForTab(tabId);
+  const registrationId = crypto.randomUUID();
+  await attachTarget(targetId, registrationId);
+  try {
+    const script = `async () => {
+      if (location.href !== ${JSON.stringify(url)} || !globalThis.__xwebmcpPageTools) {
+        throw new Error('page tool document changed before registration');
+      }
+      const execute = (${definition.pageExecuteSource});
+      if (typeof execute !== 'function') throw new Error('execute is not a function');
+      await globalThis.__xwebmcpPageTools.register(${JSON.stringify({id: definition.id, name: `custom.${definition.id}.${definition.tool.name}`, tool: definition.tool})}, execute);
+      return true;
+    }`;
+    const response = await sendCommand(targetId, undefined, 'Runtime.evaluate', {
+      expression: `(${script})()`,
+      awaitPromise: true,
+      returnByValue: true,
+      allowUnsafeEvalBlockedByCSP: true,
+    });
+    if (response.exceptionDetails) {
+      throw new Error(response.exceptionDetails.exception?.description ?? response.exceptionDetails.text ?? 'page tool registration failed');
+    }
+    if (response.result?.value !== true) throw new Error('page tool registration failed');
+  } finally {
+    await releaseTarget(targetId, registrationId);
+  }
+}
+
 async function waitForTarget(tabId) {
   const deadline = Date.now() + 5_000;
   for (;;) {

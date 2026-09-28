@@ -71,6 +71,11 @@ func TestSelectFiles(t *testing.T) {
 	if strings.Join(got, ",") != "domains/united.com/login.js" {
 		t.Errorf("prefix selection = %v", got)
 	}
+	for _, prefix := range []string{"domains/united.com/search_flights.js", "tests", "node_modules"} {
+		if got := SelectFiles(blobs, registry, prefix); len(got) != 0 {
+			t.Errorf("registry path %q selected unlisted files: %v", prefix, got)
+		}
+	}
 	got = SelectFiles(blobs, nil, "")
 	want = []string{"domains/aa.com/search_flights.js", "domains/united.com/login.js", "domains/united.com/search_flights.js"}
 	if strings.Join(got, ",") != strings.Join(want, ",") {

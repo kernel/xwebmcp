@@ -1,6 +1,10 @@
-# Alaska Airlines: search_flights
+# alaskaair.com
 
-Status: **verified** (2026-09-24).
+Tools for Alaska Airlines (https://www.alaskaair.com).
+
+| tool | file | status | notes |
+|---|---|---|---|
+| search_flights | [search_flights.js](search_flights.js) | verified | First-page outbound options; round-trip fares are per-adult starting fares, not selected return flights |
 
 ## Load
 
@@ -59,6 +63,13 @@ An invocation envelope of `completed` is not enough: inspect `output.status`.
 - Arrival labels can be one or two calendar days later. Times are local, not UTC.
 - Proxy or rendering failures remain explicit. The tool retries a proxy-error
   navigation once, and retries a detail click once only if the dialog is closed.
+
+## Known limitations
+
+- First rendered page of outbound options only; round trips return outbound choices with per-adult round-trip starting fares, not selected return flights or a total for the party.
+- 1–9 adults, dates from today through 330 days ahead; children, lap infants, award searches, later result pages, and booking are out of scope.
+- Only an explicit airline no-results notice produces `no_results`; other failures are `status: "error"`. Inspect `output.status`, not just the invocation envelope.
+- The outer request can time out before the invocation completes; inspect persistent REPL state rather than repeating an invocation with unknown outcome.
 
 ## QA evidence
 

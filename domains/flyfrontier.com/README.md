@@ -5,8 +5,82 @@ Tools for Frontier Airlines (https://www.flyfrontier.com).
 | tool | file | status | notes |
 |---|---|---|---|
 | search_flights | [search_flights.js](search_flights.js) | verified | Core search matrix and live invocation verified; intermittent failures remain. Use supervised searches. |
+| login | [login.js](login.js) | draft | First-step sign-in live-verified on two network configurations; full sign-in with a real emailed code unverified. Self-QA only. |
 
-## Scope
+## login
+
+### Scope
+
+- Signs in to FRONTIER Miles with an email address or Miles number and password, or submits a form whose password was filled by a vault or a person, or completes an already visible emailed-code step.
+- One submission per invocation, never a retry, never a code resend, no account creation, no password reset.
+- Namespace `flyfrontier.com`; matching `https://flyfrontier.com/*` and `https://*.flyfrontier.com/*`.
+- Output is a success branch (`logged_in: true`, with `authenticated`, `mfa_required`, `next_step`) or a failure branch (`logged_in: false`, with `error_kind`, `error_message`, `error_source`, `stage`, `submitted`, `attempts_remaining_if_shown`). `logged_in: true` with `mfa_required: true` means the password was accepted and the site emailed a code; it does not mean the session is authenticated.
+
+### Entry path: search engine only
+
+`credentials` mode always enters the site the same way: navigate to `https://start.duckduckgo.com`, search for the account page, and click the first organic `flyfrontier.com` result. There is deliberately **no direct-navigation fallback**. Each step of that entry has its own `error_kind` — `entry_search_failed`, `entry_result_missing`, `entry_navigation_failed` — so a broken entry is reported instead of being silently replaced by a different entry.
+
+Two consequences worth knowing before use:
+
+- The tool's `match.url_patterns` are Frontier-only, so the tool is only discoverable while the browser is already on a Frontier page. Invocation therefore begins on Frontier, leaves for the search engine, and returns through the organic result.
+- The search result link carries a `referrer` meta policy of `origin`, so Frontier receives `https://duckduckgo.com/` as the referrer on that request. The first organic result redirects (`/myfrontier` to `/frontiermiles/`), and after that redirect `document.referrer` reads empty. The sign-in panel is present on the landed page, so no further navigation is needed.
+
+### Entry-path comparison
+
+Same account, same profile, same two proxies, same browser build. Direct navigation is the earlier baseline; it was not re-run for this comparison.
+
+| entry path | proxy | stealth | outcome |
+|---|---|---|---|
+| direct | residential | off | `invalid_credentials` (site wording) |
+| direct | mobile | on | password accepted, code emailed |
+| direct | residential | on | password accepted, code emailed |
+| direct (same session, later, same exit address) | residential | on | `invalid_credentials` (site wording) |
+| search engine | residential | on | password accepted, code emailed |
+| search engine | mobile | on | password accepted, code emailed |
+
+Exit addresses were recorded per run outside this repository.
+
+### The inconsistency is unresolved
+
+The same unchanged credentials produced two different site responses across attempts: an emailed verification code in four submissions and `Your login information is incorrect. Please check your details and try again or reset your password now.` in two. Nothing in the tool's input differed between them — every submission verifies, before clicking, that the identifier field matches exactly and that each character of the password reached the password field, including a trailing punctuation character.
+
+Both search-engine attempts landed on the code step and neither reproduced the incorrect-credentials wording. Two attempts are not enough to conclude that the entry path is the cause: the account, session age, and egress address all varied too, and residential egress rotates between sessions (the same proxy presented two different addresses hours apart). Treat the cause as unknown, and treat `invalid_credentials` from this site as the site's wording rather than proof about the credentials.
+
+### Status and known limitations
+
+Status: `draft`. Self-QA only; no independent QA pass.
+
+- **Live-verified:** the DuckDuckGo entry and the first sign-in step. Two search-entry submissions, one on residential-stealth egress and one on mobile-stealth egress, both returned `logged_in: true, mfa_required: true, next_step: "enter_email_otp"`.
+- **Unverified:** a fully authenticated session. No real emailed code has been evaluated by the site through this tool.
+- **Code entry:** an earlier build typed one digit per box. The component's backspace handler moves focus to the previous box, so each digit landed one box early and the sixth stayed empty. `otp` mode now pastes the code into the first box. The component spreads it across all six boxes and submits once on its own. This was checked on the live form with the site's verify call stubbed out: all six boxes filled in order, one submit, no request sent. It has not been checked with a real code.
+- The same credentials sometimes return the site's incorrect-credentials wording instead of a code (see above). The cause is unknown.
+- Captcha, lockout, and wrong-code behavior were never observed live; those branches are covered by mocked tests only. `prefilled_password` mode was not exercised live.
+
+**Next lead:** do one fresh search-entry `credentials` submission, then run `otp` once with the newest emailed code. The only thing still unproven is whether the site accepts a real pasted code and shows the account menu. Browsers need the credential vault attached at creation (`vaults` on create) for secure fill; it cannot be added to a running browser.
+
+### Site quirks
+
+- A marketing overlay renders inside a shadow root (`[id^="wisepops-instance-"]`); its close button must be clicked through `shadowRoot` before the header is clickable. The tool does this before opening the sign-in panel.
+- Sign-in is a slide-over panel opened from `.user-background`, not a separate page. The panel's fields are scoped with `data-vv-scope="login-fields"`; several hidden sign-up and password-reset panels reuse the same field names, so unscoped selectors match the wrong form.
+- Error text lives in `.login-container .error-message` and is not inside a live region. When the code panel is open, only its own `.mfa-error-message` is read, so a stale sign-in error is never reported as a wrong-code error.
+- The code panel becomes visible before the paragraph naming the masked address renders. Treating the panel alone as the success signal is required; an earlier build waited for the address text and misreported a real first-step success as `unknown`.
+- Both proxies reached the site without a captcha; the stealth solver extension was loaded but never recorded a detection or solve event.
+
+### QA summary
+
+Self-QA, no independent QA agent.
+
+- `node --test tests/flyfrontier-login.test.mjs` — 17 tests over mocked browser helpers: input validation, each search-entry failure, search-engine challenge, site error classification, lockout precedence over a remaining-attempts count, captcha after submission, completed session, code panel without its address hint, half-rendered code panel, single-paste code entry, code fields that ignore the paste, prefilled-form account binding, and fill verification.
+- Live: one submission per configuration, two total, both reaching the emailed-code step. The residential run exposed the code-panel race described above; the fix was validated by replaying the tool's page reader against that live page and by the mobile run, which returned the corrected success output directly.
+- The registered source in both live sessions was hash-checked byte-for-byte against this file.
+
+### Sessions
+
+All live sessions used for this QA have been deleted. This repository is canonical; sessions and registration IDs expire, the source does not.
+
+## search_flights
+
+### Scope
 
 - Read-only flight search for 1–9 adults, one-way or round-trip, using uppercase IATA codes and ISO dates. No children, infants, flight selection, purchases, or personal-data entry.
 - Returns all displayed first-page flight rows, including separate outbound and return alternatives, flight numbers, local dates/times, duration, stops, and prices. Rows are not paired round-trip itineraries.
@@ -14,7 +88,7 @@ Tools for Frontier Airlines (https://www.flyfrontier.com).
 - Before searching, checks the current URL and expected form. A loaded homepage search form or booking results form is suitable; other pages, including unrelated origins, first navigate to the homepage entry point. Matching still limits normal tool discovery to Frontier hosts.
 - The file is a single self-contained expression evaluating to the definition array. Register it with `webmcp.addCustomTools({ namespace: "flyfrontier.com", tools: eval(source), forceOverwriteNamespace: true })`, following the root README. This replaces all registrations in this domain namespace.
 
-## Site quirks
+### Site quirks
 
 - Homepage airports require autocomplete selection. The UI uses calendar pickers and separate adult/child/infant counters. Search navigation goes through `booking.flyfrontier.com/Flight/InternalSelect` to `/Flight/Select`.
 - Results render asynchronously. The tool waits for document replacement and populated flight metadata, a visible no-flights message, or a visible site error. It validates the requested route, dates, trip type, and passenger count before returning rows.
@@ -22,7 +96,7 @@ Tools for Frontier Airlines (https://www.flyfrontier.com).
 - Durations may contain a `day(s)` prefix and an overnight suffix. Local timestamps come from segment sell keys because the separate display-date metadata can reflect a different calendar day.
 - A search beyond the published schedule can explicitly show no flights. Only that visible signal produces `no_results`. Timeouts, site errors, parser failures, and mismatched search state remain explicit errors. Departure-date validation uses today's UTC date.
 
-## QA summary
+### QA summary
 
 Independent QA agent: `agt_7944f6b168e2b52c685d`.
 
@@ -44,13 +118,13 @@ Migration verification on 2026-09-24 started at `https://www.flyfrontier.com/opt
 
 Local tests: `node --test tests/flyfrontier-search-flights.test.mjs`. These exercise source loading, matching, entry-point control flow, and explicit failures using mocked browser helpers; they do not replace the live DOM/parser QA above.
 
-## Known limitations
+### Known limitations
 
 - **Intermittent stale state:** 3 of 24 valid-route calls in the final independent alternation run displayed the preceding search's form. Reproduction included PHL–LAS → CVG–DEN → DEN–MCO. Validation returned an error rather than substituted flights. The document gate and `IsEdited=true` did not eliminate this issue; the namespace/entry-point migration does not claim to fix it.
 - **Intermittent timeout:** one zero-results → DEN–MCO transition returned `RESULTS_TIMEOUT` after 65.725 seconds without flight rows or a no-flights signal. Cause was unconfirmed. An earlier pass separately observed a proxy error page; generic timeouts do not identify the underlying cause.
 - The full 120-second invocation deadline, other routes/schedules, and checkout-confirmed pricing remain unverified. Invoke serially with `{ timeoutSec: 120 }`; do not automatically retry an `outcome_unknown` result.
 
-## Sessions
+### Sessions
 
 - Live verification browser: `wok7l4bkxn6ptqe0mf3rig15` (24-hour inactivity timeout; left alive).
 - Independent QA browser: `kkmt7tlnsbzkxl0kc8y78wo9` (24-hour inactivity timeout; left alive).
