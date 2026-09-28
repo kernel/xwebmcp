@@ -619,7 +619,7 @@ types (`EMAIL_OTP_CODE`, `PHONE_NUMBER`, `PHONE_NUMBER_PROGRESSIVE`, `PHONE_OTP`
 `FULL_NAME`, `LEGAL`, `NAME_LEGAL`, `NAME_PHONE_LEGAL`, plus the unsupported ones above),
 its field ids (`PHONE_NUMBER` with a country picker, `FIRST_NAME`, `LAST_NAME`), and its
 terms checkbox id (`LEGAL_ACCEPT_TERMS`, text `accept-terms-text`). The email code and SMS
-code screens, the per-box ids `EMAIL_OTP_CODE-n` and `PHONE_SMS_OTP-n`, pasting a whole code
+code screens, the per-box ids `EMAIL_OTP_CODE-n` and `PHONE_SMS_OTP-n`, entering a whole code
 into the first box, and the sign-in chooser's `alt-action-help-v2` control were seen live
 during the login work; none of those appear in the static client, so they could change
 without a script change. Which screens a new account
@@ -653,12 +653,11 @@ checks in ClawBench V1 use a placeholder that no run matches.
   findings (a fixture that could not see stray checkbox clicks, the signed-out response
   described as HTTP 403, and page text in `destination_hint` and `terms_text` not
   scrubbed) were fixed in `05e5cf1`. A final pass (agent `agt_8f7178bcd04460ebdbd3`, commit
-  `05e5cf1`, the current tool source) confirmed the three fixes, repeated the static
-  review and the no-submission live checks with every sign-up POST blocked (none fired),
-  and signed the source off to stay `draft` pending a supervised live test. Its remaining
-  notes (a fixture for the scrub, the two screens and the possible double code POST
-  below) are covered by later documentation and test commits that leave the tool files
-  unchanged.
+  `05e5cf1`) confirmed the three fixes, repeated the static review and the no-submission
+  live checks with every sign-up POST blocked (none fired). The source has since changed
+  to use the inlined typing helper, so that pass does not sign off the current source.
+  The earlier remaining notes (a fixture for the scrub, the two screens and the possible
+  double code POST below) are covered by documentation and tests.
 - Everything after the email submission is fixture-only: the phone, SMS, name, and terms
   handling, the conflict and rejection messages (their wording is a guess from Uber's
   error names), and account verification after sign-up.
@@ -670,7 +669,11 @@ checks in ClawBench V1 use a placeholder that no run matches.
   `PHONE_MISMATCH` screens. On the first the tools fill the name and terms but not the
   email field, so Uber's own error ends the call in `unknown`, never a false success; the
   second is reported as `unsupported_step`.
-- After pasting a code the tools click Next only if the code screen is still showing
+- The registration tools now use an inlined CDP typing helper for email, phone, names
+  and codes: key events have Shift attribution and pauses between characters; no extra
+  synthetic `input`/`change` pair is sent. Its behavior on Uber's forms has not been
+  live-tested, and the signed-off source predates this change.
+- After entering a code the tools click Next only if the code screen is still showing
   1.5 s later, the same pattern `login` uses live. If Uber's own auto-submit were still in
   flight at that moment it would send the code twice in one call; watch for a second
   `submit-form` request during the supervised run.

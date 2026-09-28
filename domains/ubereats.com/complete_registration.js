@@ -78,6 +78,38 @@
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false }
   },
   execute: async (input) => {
+    // @xwebmcp-inline lib/input.js
+    const typeInto = async (target, text, options = {}) => {
+      await click(target);
+      if (options.clear !== false) {
+        await pressKey("a", ["Control"]);
+        await pressKey("Backspace");
+      }
+      const shifted = '~!@#$%^&*()_+{}|:"<>?';
+      const unshifted = '`1234567890-=[]\\;\',./';
+      const random = options.random || Math.random;
+      let previous = "";
+      for (const character of text) {
+        if (previous && options.cadence !== "none") {
+          const pause = /[.@\s]/.test(previous) ? [80, 200] : [50, 120];
+          await waitMs(pause[0] + Math.floor(random() * (pause[1] - pause[0] + 1)));
+        }
+        const uppercase = character >= "A" && character <= "Z";
+        const symbol = shifted.indexOf(character);
+        if (uppercase || symbol !== -1) {
+          await cdp("Input.dispatchKeyEvent", { type: "keyDown", key: "Shift", code: "ShiftLeft", windowsVirtualKeyCode: 16, modifiers: 8 });
+          try {
+            await pressKey(uppercase ? character.toLowerCase() : unshifted[symbol], ["Shift"]);
+          } finally {
+            await cdp("Input.dispatchKeyEvent", { type: "keyUp", key: "Shift", code: "ShiftLeft", windowsVirtualKeyCode: 16, modifiers: 0 });
+          }
+        } else {
+          await pressKey(character);
+        }
+        previous = character;
+      }
+    };
+    // @xwebmcp-end
     const steps = [];
     let submitted = false;
     let step = "input";
@@ -276,15 +308,15 @@
         if (s.fields.phone) {
           if (!s.dial) return fail("unsupported_step", "The phone step's country code could not be read; nothing submitted.");
           if (!input.phone.startsWith(s.dial)) return fail("invalid_input", "Uber preselected country code " + s.dial + ", which does not match the phone number; nothing submitted. Changing the country is not supported.");
-          await fillInput("#PHONE_NUMBER", input.phone.slice(s.dial.length));
+          await typeInto("#PHONE_NUMBER", input.phone.slice(s.dial.length));
         }
         if (s.fields.first_name || s.fields.last_name) await js(() => {
           const tag = (el, name) => { if (el) el.setAttribute("data-webmcp-" + name, "true"); };
           tag(document.getElementById("FIRST_NAME") || document.querySelector('input[autocomplete="given-name"]'), "first");
           tag(document.getElementById("LAST_NAME") || document.querySelector('input[autocomplete="family-name"]'), "last");
         });
-        if (s.fields.first_name) await fillInput('[data-webmcp-first="true"]', input.first_name.trim());
-        if (s.fields.last_name) await fillInput('[data-webmcp-last="true"]', input.last_name.trim());
+        if (s.fields.first_name) await typeInto('[data-webmcp-first="true"]', input.first_name.trim());
+        if (s.fields.last_name) await typeInto('[data-webmcp-last="true"]', input.last_name.trim());
         if (s.fields.accept_terms && !s.termsChecked) await js(() => {
           const root = document.getElementById("LEGAL_ACCEPT_TERMS");
           const box = root.matches('input[type="checkbox"]') ? root : root.querySelector('input[type="checkbox"]');
@@ -350,7 +382,7 @@
       submitted = true;
       steps.push(s.kind);
       // Each digit advances to the next box and the last digit submits on its own.
-      await fillInput(s.kind === "email_code" ? 'input[id="EMAIL_OTP_CODE-0"]' : 'input[id="PHONE_SMS_OTP-0"]', input.code);
+      await typeInto(s.kind === "email_code" ? 'input[id="EMAIL_OTP_CODE-0"]' : 'input[id="PHONE_SMS_OTP-0"]', input.code);
       await waitMs(1500);
       const typed = await read();
       if (typed.kind === s.kind && typed.codeFilled && typed.forwardEnabled && !fresh(typed) && !typed.challenge) await click("#forward-button");

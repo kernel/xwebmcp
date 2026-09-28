@@ -31,7 +31,8 @@ Record the reason for any CDP tool in the domain README: which navigation occurs
 1. Keep one JS expression per `domains/<domain>/<tool>.js` evaluating to a one-element array; no trailing semicolon, import, `require`, `Buffer` or `process`. A `page` execute function is serialized into the page, so it must not depend on outer closure variables or browser-REPL helpers.
 2. Give the agent a precise description: action, prerequisites, IDs produced/consumed, side effects, and what a result does *not* prove. Define typed `inputSchema` and `outputSchema`, with explicit success/error branches. Reject invalid input before any site interaction; do not fabricate success when account identity, submission outcome or availability is uncertain.
 3. Prefer observed site behavior to guessed endpoints or selectors. Page-local `fetch` uses the current page's credentials; it is still a browser tool, not an external service API fallback. Avoid stale state, hidden navigation, duplicate writes and retries when a mutation's outcome is unknown.
-4. Update sorted `registry.json` and the domain README. `kind`, URL patterns, status and QA provenance must match the source. Register the **entire namespace together** when using `forceOverwriteNamespace`, including existing tools.
+4. For CDP tools that type identity or verification fields, use the optional `lib/input.js` snippet instead of copying typing code. Place its inline markers inside `execute`, run `node scripts/compose.mjs`, and commit the expanded tool file; consumers do not load the snippet separately. Leave page tools page-kind unless their behavior independently justifies CDP. Changes to inlined source require fresh QA.
+5. Update sorted `registry.json` and the domain README. `kind`, URL patterns, status and QA provenance must match the source. Register the **entire namespace together** when using `forceOverwriteNamespace`, including existing tools.
 
 ## Safety and QA
 

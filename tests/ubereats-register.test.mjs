@@ -71,7 +71,19 @@ function harness(name, options = {}) {
   let scene = options.scene ?? scenes.home();
   const after = [...(options.after ?? [])];
   const storage = new Map((options.storage ?? []).map(([origin, key, value]) => [`${origin}|${key}`, JSON.stringify(value)]));
-  const calls = { navigations: [], fills: [], submits: 0, clicks: [], fetches: 0 };
+  const calls = { navigations: [], fills: [], submits: 0, clicks: [], keys: [], shifts: [], fetches: 0 };
+  let activeField;
+  const fieldValue = selector => selector === '#PHONE_NUMBER_or_EMAIL_ADDRESS' ? scene.identifierValue
+    : selector === '#PHONE_NUMBER' ? scene.phoneValue
+    : selector.includes('webmcp-first') ? scene.firstValue
+    : selector.includes('webmcp-last') ? scene.lastValue : scene.codeValue;
+  const setField = (selector, value) => {
+    if (selector === '#PHONE_NUMBER_or_EMAIL_ADDRESS') scene.identifierValue = value;
+    else if (selector === '#PHONE_NUMBER') scene.phoneValue = value;
+    else if (selector.includes('webmcp-first')) scene.firstValue = value;
+    else if (selector.includes('webmcp-last')) scene.lastValue = value;
+    else scene.codeValue = value;
+  };
   const boxClicks = [];
   const window = {};
   let observer;
@@ -172,15 +184,26 @@ function harness(name, options = {}) {
     js: async (fn, opts) => fn(opts?.arg),
     waitMs: async ms => { clock += ms; },
     gotoUrl: async url => { calls.navigations.push(url); go(options.home ? options.home() : scenes.home()); },
-    fillInput: async (selector, value) => {
-      calls.fills.push(selector);
-      if (selector === '#PHONE_NUMBER_or_EMAIL_ADDRESS') scene.identifierValue = value;
-      else if (selector === '#PHONE_NUMBER') scene.phoneValue = value;
-      else if (selector.includes('webmcp-first')) scene.firstValue = value;
-      else if (selector.includes('webmcp-last')) scene.lastValue = value;
-      else if (selector.includes('OTP')) scene.codeValue = value;
+    cdp: async (method, params) => {
+      assert.equal(method, 'Input.dispatchKeyEvent');
+      calls.shifts.push(params.type);
+    },
+    pressKey: async (key, modifiers = []) => {
+      calls.keys.push({ key, modifiers });
+      if (key === 'a' && modifiers.includes('Control')) return;
+      if (key === 'Backspace') return setField(activeField, '');
+      const shifted = '~!@#$%^&*()_+{}|:"<>?';
+      const unshifted = '`1234567890-=[]\\;\',./';
+      const symbol = unshifted.indexOf(key);
+      const typed = modifiers.includes('Shift') ? (symbol === -1 ? key.toUpperCase() : shifted[symbol]) : key;
+      setField(activeField, fieldValue(activeField) + typed);
     },
     click: async selector => {
+      if (selector.startsWith('#PHONE_NUMBER') || (selector.startsWith('[data-webmcp-') && selector !== '[data-webmcp-signup="true"]') || selector.startsWith('input[id="')) {
+        activeField = selector;
+        calls.fills.push(selector);
+        return;
+      }
       calls.clicks.push(selector);
       if (selector === '[data-webmcp-signup="true"]') return go(options.signupPage ? options.signupPage() : scenes.identifier());
       if (selector === '#forward-button') return submit();
@@ -236,7 +259,7 @@ for (const [name, inputs] of Object.entries(invalid)) {
       const result = await h.run(input);
       assert.equal(result.error_kind, 'invalid_input');
       assert.equal(result.submission_attempted, false);
-      assert.deepEqual(h.calls, { navigations: [], fills: [], submits: 0, clicks: [], fetches: 0 });
+      assert.deepEqual(h.calls, { navigations: [], fills: [], submits: 0, clicks: [], keys: [], shifts: [], fetches: 0 });
     });
   }
 }
@@ -247,6 +270,8 @@ test('register: from an unrelated page it opens the site, follows Sign up, submi
   assert.deepEqual(h.calls.navigations, [homeUrl]);
   assert.deepEqual(h.calls.clicks, ['[data-webmcp-signup="true"]', '#forward-button']);
   assert.deepEqual(h.calls.fills, ['#PHONE_NUMBER_or_EMAIL_ADDRESS']);
+  assert.ok(h.calls.keys.some(({ key, modifiers }) => key === '2' && modifiers.includes('Shift')));
+  assert.deepEqual(h.calls.shifts, ['keyDown', 'keyUp']);
   assert.deepEqual([result.status, result.step, result.next_tool], ['challenge', 'email_code', 'complete_registration']);
   assert.deepEqual(result.challenge, { channel: 'email', destination_hint: 'q***@example.invalid', code_length: 4 });
   assert.deepEqual([result.steps_submitted, result.submission_attempted], [['email'], true]);
@@ -294,7 +319,7 @@ test('register: calling again while the code step is open returns it without a s
   const h = harness('register', { scene: scenes.emailCode(), storage: [startedMarker()] });
   const result = await h.run({ email });
   assert.deepEqual([result.status, result.submission_attempted], ['challenge', false]);
-  assert.deepEqual(h.calls, { navigations: [], fills: [], submits: 0, clicks: [], fetches: 0 });
+  assert.deepEqual(h.calls, { navigations: [], fills: [], submits: 0, clicks: [], keys: [], shifts: [], fetches: 0 });
 });
 
 test('register: a code requested from this tab minutes ago is not requested again', async () => {
@@ -315,6 +340,8 @@ test('complete_registration: walks phone, SMS code, name, and terms, then verifi
   const challenge = await first.run({ email, code: '4821', ...profile });
   assert.deepEqual([challenge.status, challenge.step, challenge.challenge.channel, challenge.challenge.destination_hint], ['challenge', 'sms_code', 'sms', '********99']);
   assert.deepEqual(challenge.steps_submitted, ['email_code', 'phone']);
+  assert.ok(first.calls.fills.includes('input[id="EMAIL_OTP_CODE-0"]'));
+  assert.ok(first.calls.keys.some(({ key }) => key === '4'));
   assert.ok(first.calls.fills.includes('#PHONE_NUMBER'));
   const marker = first.marker();
   assert.equal(marker.phone_last2, '99');
