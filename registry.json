@@ -862,6 +862,24 @@
     },
     {
       "domain": "ubereats.com",
+      "tool": "complete_registration",
+      "file": "domains/ubereats.com/complete_registration.js",
+      "kind": "cdp",
+      "namespace": "ubereats.com",
+      "url_patterns": [
+        "https://ubereats.com/*",
+        "https://*.ubereats.com/*",
+        "https://auth.uber.com/*"
+      ],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Submits Uber's email or SMS code once, then the phone, name, and required-terms screens, and reports registered only after the site's hashed account email matches. Screen handling after the email code is fixture-tested from Uber's sign-up client; not live-verified.",
+      "provenance": {
+        "qa_agent": "agt_8f7178bcd04460ebdbd3"
+      }
+    },
+    {
+      "domain": "ubereats.com",
       "tool": "get_cart",
       "file": "domains/ubereats.com/get_cart.js",
       "kind": "cdp",
@@ -927,6 +945,42 @@
       "notes": "Independent failure-path QA passed on the current source (three passes; the last found no defects: two search-engine entries reached the email code step with one submission each). Live on the owner's account through the tool: method chooser, vault-filled password step, and the already-authenticated path, which now confirms the account by comparing a SHA-256 of the requested email with the site's hashed account email (match and mismatch live-verified 2026-09-25); wrong-email-code path verified on fabricated accounts. The SMS code step after the password was entered by hand once, so otp on the SMS step is fixture-tested only; wrong password, lockout, and CAPTCHA classification are fixture-only.",
       "provenance": {
         "qa_agent": "agt_61207fb92423b24e591a"
+      }
+    },
+    {
+      "domain": "ubereats.com",
+      "tool": "register",
+      "file": "domains/ubereats.com/register.js",
+      "kind": "cdp",
+      "namespace": "ubereats.com",
+      "url_patterns": [
+        "https://ubereats.com/*",
+        "https://*.ubereats.com/*",
+        "https://auth.uber.com/*"
+      ],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Starts a new-account sign-up: follows the site's Sign up link from a signed-out session, submits the email once, and returns the email-code challenge; stops on signed-in sessions and on existing accounts. Built from Uber's sign-up client and read-only inspection; no live registration has been submitted yet.",
+      "provenance": {
+        "qa_agent": "agt_8f7178bcd04460ebdbd3"
+      }
+    },
+    {
+      "domain": "ubereats.com",
+      "tool": "resume_registration",
+      "file": "domains/ubereats.com/resume_registration.js",
+      "kind": "cdp",
+      "namespace": "ubereats.com",
+      "url_patterns": [
+        "https://ubereats.com/*",
+        "https://*.ubereats.com/*",
+        "https://auth.uber.com/*"
+      ],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Reports where a sign-up in this tab stands and continues phone, name, and terms screens without ever submitting a code. Fixture-tested only; not live-verified.",
+      "provenance": {
+        "qa_agent": "agt_8f7178bcd04460ebdbd3"
       }
     },
     {
