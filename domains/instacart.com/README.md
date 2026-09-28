@@ -232,14 +232,21 @@ persisted-query hashes are pinned in each file; when Instacart rotates one the t
 returns `error_kind: "site_changed"` naming the operation.
 
 The shopper location (address id, zone, postal code, coordinates) is read from the
-site's `GetLastUserLocation` query first. Only when that returns no location with an
-address id does a tool fall back to the `GetLastUserLocation` entry of the
-server-rendered Apollo state (`#node-apollo-state` on the current page, or fetched from
-`/store`, with one retry when that fetch fails). The query comes first because the
-server-rendered state is written once per page load: after `set_delivery_address` or the
-header address picker switches the address, it still holds the old one, and before
-2026-09-28 the tools kept shopping at the old address's stores until the page was
-reloaded.
+site's `GetLastUserLocation` query. The current page's server-rendered Apollo state
+(`#node-apollo-state`) is never used: it is written once per page load, so after
+`set_delivery_address` or the header address picker switches the address it still holds
+the old one (before 2026-09-28 the tools kept shopping at the old address's stores until
+the page was reloaded). The rules, all ending before any cart is opened or changed:
+
+- the query fails (throttled, unauthenticated, network or site error): the tool returns
+  that error; it does not fall back to anything;
+- the query returns a location with an address id: that location is used;
+- the query returns no location, or one without an address id: the tool fetches `/store`
+  now (one retry when that fetch fails) and reads the location that page is rendered
+  with. A login redirect is `not_logged_in`; a page that does not load is `unknown`; a
+  page that reports an address id when the query just reported none is `unknown`
+  (conflicting answers); otherwise the no-address location is used, which the read-only
+  tools accept and the cart tools reject with `not_logged_in`.
 **Every shopping tool needs a logged-in session with a saved delivery address**: in an
 anonymous browser `/store` redirects to the login page, so the read-only tools return
 `not_logged_in` (redirect seen) or `location_unavailable` (no location anywhere), and
@@ -468,7 +475,8 @@ independent QA pass.
 | unknown id `123` | `address_not_found`, no mutation |
 | switch to another saved address in another zip | `changed: true`, confirmed new zip and zone; `get_delivery_address` agrees |
 | `list_stores` and `search` right after, same page, no reload | new zip and the new Kroger location id (before the location fix: the old zip) |
-| switch back | `changed: true`; stores, zip and an existing 6-line cart exactly as before |
+| switch back | `changed: true`; stores, zip and an existing one-line cart exactly as before |
+| after the review fix (no page-state fallback): switch, same-page `list_stores` / `search`, switch back | same results as above; cart unchanged |
 | numeric `address_id`, unknown input field | `invalid_input` from the tool, nothing sent |
 | a non-Instacart page | no instacart.com tools listed |
 

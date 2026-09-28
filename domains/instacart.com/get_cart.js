@@ -87,24 +87,26 @@
           try { state = JSON.parse(decodeURIComponent(text || "")); } catch { state = null; }
           return toLoc(state?.GetLastUserLocation?.["{}"]?.lastUserLocation);
         };
-        // Ask the site first: the page's server-rendered state keeps the old address after it is switched (set_delivery_address or the header picker).
+        // The site's answer comes first. This page's server-rendered state is written once per load and keeps the old address after
+        // a switch (set_delivery_address or the header picker), so it is never used; a failed live read fails the call instead.
         const fresh = await gql("GetLastUserLocation", {});
-        const live = fresh.error ? null : toLoc(fresh.data?.lastUserLocation);
+        if (fresh.error) return { error: fresh.error };
+        const live = toLoc(fresh.data?.lastUserLocation);
         if (live && live.addressId) return { loc: live };
-        // Only the store app's server-rendered pages carry the location; other pages (help, account) fall back to /store.
-        const inline = parse(document.getElementById("node-apollo-state")?.textContent);
-        if (inline) return { loc: inline };
+        // No address in the live answer: render /store now, which reports a login redirect and the current location.
         let last = null;
         for (let attempt = 0; attempt < 2; attempt++) {
           const response = await fetch("/store", { credentials: "include" });
           const html = await response.text();
           last = { status: response.status, url: response.url || "", proxy: /^(?:proxy proxy error|egress-proxy-mitm encountered)/i.test(html.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim()) };
           const loc = parse(html.match(/<script id="node-apollo-state"[^>]*>([\s\S]*?)<\/script>/)?.[1]);
+          if (loc && live && loc.addressId) return { error: failure("unknown", "Instacart's location query reported no delivery address but its store page reported one; retry shortly instead of shopping at a possibly outdated address.") };
           if (loc) return { loc };
           if (/\/login/.test(last.url)) return { error: failure("not_logged_in", "Instacart redirected the store page to its login page; this session is not logged in. Run the login tool first.") };
           if (response.status === 200 && !last.proxy) break;
         }
         if (last && (last.status !== 200 || last.proxy)) return { error: failure("unknown", `The Instacart store page did not load (HTTP ${last.status}${last.proxy ? ", proxy error page" : ""}); retry shortly.`) };
+        if (live) return { loc: live };
         return { error: failure("location_unavailable", "Instacart did not report a shopping location for this session. The tools need a logged-in session with a saved delivery address; run the login tool first.") };
       };
       const currentUser = async () => {

@@ -142,7 +142,8 @@ function harness(name, options = {}) {
         if (options.storePage === "login") return { status: 200, url: "https://www.instacart.com/login?next=%2Fstore", text: async () => "<html>Log in</html>" };
         if (options.storePage === "proxy") return { status: 502, url: "https://www.instacart.com/store", text: async () => "<html><body>PROXY proxy error the upstream proxy provider timed out</body></html>" };
         if (options.storePage === "flaky" && fx.state.storeFetches === 1) return { status: 502, url: "https://www.instacart.com/store", text: async () => "<html><body>PROXY proxy error the upstream proxy provider timed out</body></html>" };
-        return { status: 200, url: "https://www.instacart.com/store", text: async () => hasState ? `<html><script id="node-apollo-state" type="application/json">${encodeURIComponent(JSON.stringify(apolloState))}</script></html>` : "<html></html>" };
+        const served = options.storeLocation ? { GetLastUserLocation: { "{}": { lastUserLocation: options.storeLocation } } } : apolloState;
+        return { status: 200, url: "https://www.instacart.com/store", text: async () => hasState ? `<html><script id="node-apollo-state" type="application/json">${encodeURIComponent(JSON.stringify(served))}</script></html>` : "<html></html>" };
       }
       let op, variables;
       if (init.method === "POST") { const body = JSON.parse(init.body); op = body.operationName; variables = body.variables; }
@@ -150,6 +151,7 @@ function harness(name, options = {}) {
       assert.equal(init.headers["x-client-identifier"], "web");
       fx.state.requests.push({ op, variables, method: init.method ?? "GET" });
       if (options.http?.[op]) return { status: options.http[op], text: async () => "" };
+      if (options.throwOn === op) throw new Error("network down");
       return { status: 200, text: async () => JSON.stringify(fx.respond(op, variables)) };
     }
   };
@@ -277,9 +279,6 @@ test("list_stores: a page without inline state reads the location from the store
   const result = await h.run({});
   assert.equal(result.status, "ok");
   assert.equal(h.state.storeFetches, 2);
-  const inline = harness("list_stores");
-  await inline.run({});
-  assert.equal(inline.state.storeFetches, undefined);
 });
 
 test("get_item: the store page redirecting to login is not_logged_in", async () => {
@@ -332,12 +331,14 @@ test("add_to_cart: after an address switch the cart is opened for the new addres
   assert.equal(h.state.requests.find(r => r.op === "ActiveCartId").variables.addressId, "900002");
 });
 
-test("search: a live location without an address falls back to the page state and its login checks", async () => {
-  const guest = harness("search", { liveLocation: { zoneId: "78", postalCode: "45202" }, hasState: false, storePage: "login" });
+const noAddress = { zoneId: "78", postalCode: "45202" };
+
+test("search: a live location without an address re-reads the store page and keeps its login checks", async () => {
+  const guest = harness("search", { liveLocation: noAddress, hasState: false, storePage: "login" });
   assert.equal((await guest.run({ store: "kroger", query: "bananas" })).error_kind, "not_logged_in");
-  const inline = harness("search", { liveLocation: { zoneId: "78", postalCode: "45202" } });
-  assert.equal((await inline.run({ store: "kroger", query: "bananas" })).status, "ok");
-  assert.equal(inline.state.requests.find(r => r.op === "ActiveCartId"), undefined);
+  const postalOnly = harness("search", { liveLocation: noAddress, storeLocation: noAddress });
+  assert.equal((await postalOnly.run({ store: "kroger", query: "bananas" })).status, "ok");
+  assert.equal(postalOnly.state.storeFetches, 1);
 });
 
 // ---------------------------------------------------------------- package sizes
@@ -402,6 +403,39 @@ test("add_to_cart: the returned item carries the pack fields", async () => {
   const result = await harness("add_to_cart").run({ store: "kroger", item_id: "items_165949-1007", quantity: 2 });
   assert.equal(result.item.pack_count, 8);
 });
+// The page's inline state below always holds the pre-switch address (900001); none of these may use it.
+for (const name of ["add_to_cart", "update_cart_item"]) {
+  const input = name === "add_to_cart" ? { store: "kroger", item_id: "items_165949-1001" } : { store: "kroger", item_id: "items_165949-1001", quantity: 2 };
+  const cartLines = [{ itemId: "items_165949-1001", quantity: 1, quantityType: "each" }];
+  for (const [label, options, kind] of [
+    ["a throttled location read", { http: { GetLastUserLocation: 429 } }, "throttled"],
+    ["a failed location request", { throwOn: "GetLastUserLocation" }, "unknown"],
+    ["an unauthenticated location read", { http: { GetLastUserLocation: 401 } }, "not_logged_in"],
+    ["a location without an address while the store page has one", { liveLocation: noAddress }, "unknown"],
+    ["a location without an address and no store page", { liveLocation: noAddress, storePage: "proxy" }, "unknown"],
+    ["a location without an address on both", { liveLocation: noAddress, storeLocation: noAddress }, "not_logged_in"]
+  ]) {
+    test(`${name}: after an address switch, ${label} fails closed without using the page's stale address or mutating`, async () => {
+      const h = harness(name, { ...options, cartLines });
+      const result = await h.run(input);
+      assert.equal(result.status, "error");
+      assert.equal(result.error_kind, kind);
+      assert.equal(result.mutation_attempted, false);
+      assert.equal(h.state.mutations, 0);
+      assert.equal(h.state.requests.some(r => r.op === "ActiveCartId"), false);
+      assert.equal(h.state.requests.some(r => r.variables?.addressId === "900001"), false);
+    });
+  }
+}
+
+for (const name of ["list_stores", "search", "get_item", "get_cart"]) {
+  test(`${name}: a throttled location read after an address switch is reported, not answered from the page's stale address`, async () => {
+    const input = { list_stores: {}, search: { store: "kroger", query: "bananas" }, get_item: { store: "kroger", item_id: "items_165949-1001" }, get_cart: { store: "kroger" } }[name];
+    const h = harness(name, { http: { GetLastUserLocation: 429 } });
+    assert.equal((await h.run(input)).error_kind, "throttled");
+    assert.equal(h.state.requests.some(r => r.op.startsWith("ShopCollection")), false);
+  });
+}
 
 // ---------------------------------------------------------------- search
 
