@@ -1,0 +1,29 @@
+[
+  {
+    "modality": {
+      "type": "DELIVERY",
+      "handoffAddress": {
+        "address": { "countryCode": "US", "postalCode": "45200", "cityTown": "Example City", "stateProvince": "OH", "addressLines": ["123 Example St"] },
+        "location": { "lat": 39.1, "lng": -84.5 },
+        "corrected": false,
+        "validated": true
+      }
+    },
+    "sources": [{ "storeId": "540FC001", "facilityId": "90608" }, { "storeId": "01400355", "facilityId": "14115" }],
+    "assortmentKeys": ["fixture-delivery"],
+    "listingKeys": ["01400355"]
+  },
+  {
+    "modality": {
+      "type": "PICKUP",
+      "handoffLocation": { "storeId": "01400355", "facilityId": "14115" },
+      "handoffAddress": {
+        "address": { "addressLines": ["1 Fixture Ave"], "cityTown": "Example City", "name": "Fixture Store", "postalCode": "45201", "stateProvince": "OH", "countryCode": "US" },
+        "location": { "lat": 39.14, "lng": -84.43 }
+      }
+    },
+    "sources": [{ "storeId": "01400355", "facilityId": "14115" }],
+    "assortmentKeys": ["fixture-pickup"],
+    "listingKeys": ["01400355"]
+  }
+]

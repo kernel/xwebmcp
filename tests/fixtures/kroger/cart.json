@@ -1,0 +1,17 @@
+{
+  "data": {
+    "carts": [
+      {
+        "id": "cart-fixture-1",
+        "profileId": "profile-fixture",
+        "type": "ACTIVE",
+        "lineItemCount": 2,
+        "lineItems": [
+          { "id": "line-milk", "gtin13": "0001111041700", "substitutionPolicy": "SHOPPER_CHOICE", "channel": "WEB", "modalityType": "DELIVERY", "quantity": 1, "savedForLater": false },
+          { "id": "line-saved", "gtin13": "0001299322120", "substitutionPolicy": "SHOPPER_CHOICE", "channel": "WEB", "modalityType": "DELIVERY", "quantity": 2, "savedForLater": true }
+        ],
+        "versionKey": "fixture"
+      }
+    ]
+  }
+}

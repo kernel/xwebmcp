@@ -1,0 +1,109 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/kernel/xwebmcp/spec/schemas/registry.schema.json",
+  "title": "xwebmcp registry.json",
+  "description": "Index of the WebMCP tools a repository exposes. Normative rules are in spec/repository.md; cross-file rules (file exists, patterns agree with the tool file, README status table) are enforced by scripts/validate-registry.mjs, not by this schema.",
+  "type": "object",
+  "required": ["spec_version", "tools"],
+  "additionalProperties": false,
+  "properties": {
+    "spec_version": {
+      "description": "Major version of spec/repository.md this file conforms to.",
+      "type": "integer",
+      "const": 1
+    },
+    "$comment": {
+      "type": "string"
+    },
+    "tools": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/entry" }
+    }
+  },
+  "$defs": {
+    "domain": {
+      "description": "Registrable domain (eTLD+1), lowercase, punycode for IDNs, no scheme, port, path, or www.",
+      "type": "string",
+      "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$",
+      "maxLength": 128
+    },
+    "toolName": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_]{0,63}$"
+    },
+    "urlPattern": {
+      "description": "https://<host><path>; host is the domain, *.<domain>, or one subdomain; path starts with / and may contain *.",
+      "type": "string",
+      "pattern": "^https://(\\*\\.)?[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+/[^\\s]*$"
+    },
+    "date": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])$"
+    },
+    "entry": {
+      "type": "object",
+      "required": ["domain", "tool", "file", "kind", "namespace", "url_patterns", "status", "last_verified", "notes"],
+      "additionalProperties": false,
+      "properties": {
+        "domain": { "$ref": "#/$defs/domain" },
+        "tool": { "$ref": "#/$defs/toolName" },
+        "file": {
+          "description": "Repository-relative path, always domains/<domain>/<tool>.js.",
+          "type": "string",
+          "pattern": "^domains/[^/]+/[^/]+\\.js$"
+        },
+        "kind": {
+          "type": "string",
+          "enum": ["cdp", "page"]
+        },
+        "namespace": { "$ref": "#/$defs/domain" },
+        "url_patterns": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/urlPattern" }
+        },
+        "status": {
+          "type": "string",
+          "enum": ["draft", "qa_passed", "verified", "broken"]
+        },
+        "last_verified": {
+          "description": "Date the current status was last established against the live site; null for draft.",
+          "oneOf": [
+            { "$ref": "#/$defs/date" },
+            { "type": "null" }
+          ]
+        },
+        "notes": {
+          "type": "string"
+        },
+        "provenance": {
+          "description": "Pointers to the evidence behind status. Short identifiers or URLs only.",
+          "type": "object",
+          "properties": {
+            "qa_agent": {
+              "type": ["string", "null"],
+              "pattern": "^agt_[0-9a-f]{20}$"
+            }
+          },
+          "additionalProperties": {
+            "type": ["string", "null"],
+            "maxLength": 512
+          }
+        }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "status": { "const": "draft" } } },
+          "then": { "properties": { "last_verified": { "type": "null" } } },
+          "else": {
+            "properties": {
+              "last_verified": { "$ref": "#/$defs/date" },
+              "notes": { "minLength": 1 }
+            }
+          }
+        }
+      ]
+    }
+  }
+}

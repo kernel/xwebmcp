@@ -1,34 +1,17 @@
 # domains/
 
-One directory per website, keyed by registrable domain (no scheme, port, or `www`).
+One directory per website, keyed by registrable domain (no scheme, port, or `www`),
+with one tool per file and a `README.md` per domain.
 
 ```
 domains/
   delta.com/
-    README.md           # optional but encouraged
+    README.md           # status table, known limitations, site quirks, QA summary
     search_flights.js   # one tool per file, named after the tool
     login.js
 ```
 
-## Per-domain README template
-
-```markdown
-# delta.com
-
-Tools for Delta Air Lines (https://www.delta.com).
-
-| tool            | file              | status  | notes                          |
-|-----------------|-------------------|---------|--------------------------------|
-| search_flights  | search_flights.js | verified| round trips return outbound only |
-
-## Site quirks
-- Results render client-side; wait on the results container, not a fixed sleep.
-- Aggressive 429 throttling; space out repeated invocations.
-
-## Sessions
-- QA browser session: <id> (24h timeout)
-- Source: this repo is canonical; sessions expire but files do not.
-```
-
-Keep tool files self-contained (single expression, no imports) so they can be piped
-straight into `webmcp.addCustomTools`.
+The rules for directory names, tool names, URL patterns, `registry.json` entries, and
+what a per-domain README must contain are in [`../spec/repository.md`](../spec/repository.md).
+Run `node scripts/validate-registry.mjs` from the repository root to check a change
+against them.
