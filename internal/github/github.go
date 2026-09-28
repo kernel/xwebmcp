@@ -305,9 +305,7 @@ func SelectFiles(blobs map[string]bool, registry *Registry, prefix string) []str
 				add(entry.File)
 			}
 		}
-		if len(out) > 0 || prefix == "" {
-			return out
-		}
+		return out
 	}
 	scanPrefix := prefix
 	if scanPrefix == "" && hasDir(blobs, "domains") {
