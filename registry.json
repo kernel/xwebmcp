@@ -1,6 +1,24 @@
 {
-  "$comment": "Index of custom WebMCP tools. Update this file whenever you add or change a tool. One entry per tool. namespace must equal the domain. status: draft | qa_passed | verified | broken. Entry fields: domain, tool, file (path under domains/), kind, url_patterns, status, qa_agent (agent id of the independent QA pass, or null), browser_session (live Kernel session id, or null when expired), last_verified (ISO date), notes.",
+  "$comment": "Index of every tool in this repository. Format, field rules, and status evidence: spec/repository.md; schema: spec/schemas/registry.schema.json. Validate with `node scripts/validate-registry.mjs`.",
+  "spec_version": 1,
   "tools": [
+    {
+      "domain": "aa.com",
+      "tool": "login",
+      "file": "domains/aa.com/login.js",
+      "kind": "cdp",
+      "namespace": "aa.com",
+      "url_patterns": [
+        "https://aa.com/*",
+        "https://*.aa.com/*"
+      ],
+      "status": "qa_passed",
+      "last_verified": "2026-09-25",
+      "notes": "Live DDG entry reached the login form, and an earlier referred submission reached MFA; restored behavior passed independent local QA. Full authentication and live solver completion remain unverified; historical direct entry encountered CAPTCHA.",
+      "provenance": {
+        "qa_agent": "agt_64d5890885db30858fc8"
+      }
+    },
     {
       "domain": "aa.com",
       "tool": "search_flights",
@@ -12,10 +30,11 @@
         "https://*.aa.com/*"
       ],
       "status": "verified",
-      "qa_agent": "agt_dbdb039786be4bed1121",
-      "browser_session": "qer6pzs0jzhw3r5j9bx7yse4",
       "last_verified": "2026-09-24",
-      "notes": "Independent QA of the search implementation plus a live migration check from an expired booking page: 40 exact options. First-page outbound options, per-person from-fares; nearby airports and ground transport are labeled. Challenges and connection failures remain possible. Independent repeated-transition coverage of the radio mitigation and long-haul round-trip coverage remain incomplete; see the domain README."
+      "notes": "Independent QA of the search implementation plus a live migration check from an expired booking page: 40 exact options. First-page outbound options, per-person from-fares; nearby airports and ground transport are labeled. Challenges and connection failures remain possible. Independent repeated-transition coverage of the radio mitigation and long-haul round-trip coverage remain incomplete; see the domain README.",
+      "provenance": {
+        "qa_agent": "agt_dbdb039786be4bed1121"
+      }
     },
     {
       "domain": "alaskaair.com",
@@ -28,10 +47,25 @@
         "https://*.alaskaair.com/*"
       ],
       "status": "verified",
-      "qa_agent": "agt_9e874c140265bd2a438f",
-      "browser_session": "b0djbuahqoj14q2qy8qhuln1",
       "last_verified": "2026-09-24",
-      "notes": "Independent QA checked 60 flight options across six populated searches, plus no-results, invalid-input and offline cases. Domain-namespace migration verified live from /content/travel-info: SEA-SFO round trip returned 10 of 45 options. Adults only; outbound first page; displayed fares per adult, including round-trip starting fares rather than selected return flights. See domain README for limitations."
+      "notes": "Independent QA checked 60 flight options across six populated searches, plus no-results, invalid-input and offline cases. Domain-namespace migration verified live from /content/travel-info: SEA-SFO round trip returned 10 of 45 options. Adults only; outbound first page; displayed fares per adult, including round-trip starting fares rather than selected return flights. See domain README for limitations.",
+      "provenance": {
+        "qa_agent": "agt_9e874c140265bd2a438f"
+      }
+    },
+    {
+      "domain": "delta.com",
+      "tool": "login",
+      "file": "domains/delta.com/login.js",
+      "kind": "cdp",
+      "namespace": "delta.com",
+      "url_patterns": [
+        "https://delta.com/*",
+        "https://*.delta.com/*"
+      ],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Live-verified: search-result entry reaches the login form and submits exactly once, and failures report the step and whether a submission happened. Success path unverified: Delta returns 'login is unavailable right now' to every Kernel browser, including one with no profile, while the same credentials work in an ordinary browser."
     },
     {
       "domain": "delta.com",
@@ -44,10 +78,148 @@
         "https://*.delta.com/*"
       ],
       "status": "qa_passed",
-      "qa_agent": "agt_b189571b6d300a05921c",
-      "browser_session": "blp6z5n5xt2fuw0sf0pthv8u",
       "last_verified": "2026-09-24",
-      "notes": "Independent targeted QA passed, including schema and synthetic parser/readiness regressions. A separate live DOM parse returned 20 rows; successful final full-tool invocation remains unverified due to intermittent Delta HTTP 429/SFAF001 failures. Domain migration invocation from a baggage page reached results and preserved explicit error output. Round trips return outbound options only; prices are displayed fares, not passenger totals. Real zero results and completeness beyond the 1.5-second DOM-quiescence heuristic remain unverified."
+      "notes": "Independent targeted QA passed, including schema and synthetic parser/readiness regressions. A separate live DOM parse returned 20 rows; successful final full-tool invocation remains unverified due to intermittent Delta HTTP 429/SFAF001 failures. Domain migration invocation from a baggage page reached results and preserved explicit error output. Round trips return outbound options only; prices are displayed fares, not passenger totals. Real zero results and completeness beyond the 1.5-second DOM-quiescence heuristic remain unverified.",
+      "provenance": {
+        "qa_agent": "agt_b189571b6d300a05921c"
+      }
+    },
+    {
+      "domain": "doordash.com",
+      "tool": "login",
+      "file": "domains/doordash.com/login.js",
+      "kind": "cdp",
+      "namespace": "doordash.com",
+      "url_patterns": [
+        "https://doordash.com/*",
+        "https://*.doordash.com/*"
+      ],
+      "status": "qa_passed",
+      "last_verified": "2026-09-25",
+      "notes": "Independent QA passed on the current source (three rounds; the last signed off with four minor fail-closed findings documented in the README). Live-verified 2026-09-25: existing-session success through a profile-page account match, a mismatched account refused without submission, one real password submission per proxy (residential: open password step; mobile: packaged search entry end to end) reached the SMS 2-Step Verification modal as mfa_required, and otp mode completed authentication with an emailed code. Unverified: wrong-password wording, lockout and CAPTCHA responses, and a real password submission on the post-QA source.",
+      "provenance": {
+        "qa_agent": "agt_5b1753eb7444ed26b1d6"
+      }
+    },
+    {
+      "domain": "etsy.com",
+      "tool": "add_to_cart",
+      "file": "domains/etsy.com/add_to_cart.js",
+      "kind": "cdp",
+      "namespace": "etsy.com",
+      "url_patterns": [
+        "https://www.etsy.com/*"
+      ],
+      "status": "qa_passed",
+      "last_verified": "2026-09-26",
+      "notes": "Adds one listing only with exact variation options and required personalization (text within Etsy's limit, dropdown option) or returns a typed error before submitting; presses Etsy's own button once and confirms via the cart. Handles the classic form post and the newer carts/add path. Upload-type and legacy personalization unsupported. Live-verified on guest carts only. Paid add-on personalization fields are not supported (fails safely before submitting).",
+      "provenance": {
+        "qa_agent": "agt_1358f22a8d418affa8c6"
+      }
+    },
+    {
+      "domain": "etsy.com",
+      "tool": "get_cart",
+      "file": "domains/etsy.com/get_cart.js",
+      "kind": "page",
+      "namespace": "etsy.com",
+      "url_patterns": [
+        "https://www.etsy.com/*"
+      ],
+      "status": "qa_passed",
+      "last_verified": "2026-09-26",
+      "notes": "Signed-in or guest cart lines with line_id (cart|listing|inventory|customization), quantity, limit, prices, chosen options and personalization, and total texts. Live-verified on guest carts only; saved-for-later lines are skipped. subtotal_text is usually null on guest carts (Etsy shows no Subtotal row).",
+      "provenance": {
+        "qa_agent": "agt_1358f22a8d418affa8c6"
+      }
+    },
+    {
+      "domain": "etsy.com",
+      "tool": "get_favorite_status",
+      "file": "domains/etsy.com/get_favorite_status.js",
+      "kind": "page",
+      "namespace": "etsy.com",
+      "url_patterns": [
+        "https://www.etsy.com/*"
+      ],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Signed-in only: whether listings are in Favorites via Etsy's favorites map lookup. Never run signed in (no Etsy account available); signed out returns not_logged_in without a request."
+    },
+    {
+      "domain": "etsy.com",
+      "tool": "get_listing",
+      "file": "domains/etsy.com/get_listing.js",
+      "kind": "page",
+      "namespace": "etsy.com",
+      "url_patterns": [
+        "https://www.etsy.com/*"
+      ],
+      "status": "qa_passed",
+      "last_verified": "2026-09-26",
+      "notes": "Listing price, availability, description, images, quantity limit, every variation menu (option ids, labels, sold-out, including waitlisted options) and personalization field (type, required, Etsy limit, seller instructions) read from the listing HTML. Seller instructions can be stricter than Etsy's limit and are returned, not enforced.",
+      "provenance": {
+        "qa_agent": "agt_1358f22a8d418affa8c6"
+      }
+    },
+    {
+      "domain": "etsy.com",
+      "tool": "search",
+      "file": "domains/etsy.com/search.js",
+      "kind": "cdp",
+      "namespace": "etsy.com",
+      "url_patterns": [
+        "https://www.etsy.com/*"
+      ],
+      "status": "qa_passed",
+      "last_verified": "2026-09-26",
+      "notes": "One Etsy results page (rendered grid) with price, original price, discount, shop, shop rating, badges and ad flag; min/max price, sort, free-shipping and page filters; ads excluded unless requested. Independent QA passed signed out; DataDome verification pages are reported as blocked.",
+      "provenance": {
+        "qa_agent": "agt_1358f22a8d418affa8c6"
+      }
+    },
+    {
+      "domain": "etsy.com",
+      "tool": "set_favorite",
+      "file": "domains/etsy.com/set_favorite.js",
+      "kind": "page",
+      "namespace": "etsy.com",
+      "url_patterns": [
+        "https://www.etsy.com/*"
+      ],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Signed-in only: records the initial favorite state, no-op if it already matches, otherwise presses the listing's favorite button on the current page once (listing page or a search page showing it) and confirms. Never run signed in (no Etsy account available); signed out returns not_logged_in and presses nothing."
+    },
+    {
+      "domain": "etsy.com",
+      "tool": "update_cart_item",
+      "file": "domains/etsy.com/update_cart_item.js",
+      "kind": "page",
+      "namespace": "etsy.com",
+      "url_patterns": [
+        "https://www.etsy.com/*"
+      ],
+      "status": "qa_passed",
+      "last_verified": "2026-09-26",
+      "notes": "Sets one cart line's quantity or removes it with 0 through Etsy's cart API with the page CSRF token; no-op when unchanged; confirms by reading the cart. Live-verified on guest carts only.",
+      "provenance": {
+        "qa_agent": "agt_1358f22a8d418affa8c6"
+      }
+    },
+    {
+      "domain": "flyfrontier.com",
+      "tool": "login",
+      "file": "domains/flyfrontier.com/login.js",
+      "kind": "cdp",
+      "namespace": "flyfrontier.com",
+      "url_patterns": [
+        "https://flyfrontier.com/*",
+        "https://*.flyfrontier.com/*"
+      ],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Live-verified: DuckDuckGo entry and first sign-in step (residential and mobile stealth, one submission each) reach the emailed-code step. Unverified: a fully authenticated session; the single-paste code entry was only checked on the live form with the verify call stubbed, and no real code has been evaluated."
     },
     {
       "domain": "flyfrontier.com",
@@ -60,10 +232,199 @@
         "https://*.flyfrontier.com/*"
       ],
       "status": "verified",
-      "qa_agent": "agt_7944f6b168e2b52c685d",
-      "browser_session": "wok7l4bkxn6ptqe0mf3rig15",
       "last_verified": "2026-09-24",
-      "notes": "Core QA matrix passed; all 366 returned rows validated. Domain-namespace migration verified from /optional-services with 50 round-trip rows. Supervised use only: extended QA still found 3 stale-state errors in 24 valid-route calls and one timeout; no substituted flights returned. Adult-only; leg metadata fares are not checkout quotes. See domain README."
+      "notes": "Core QA matrix passed; all 366 returned rows validated. Domain-namespace migration verified from /optional-services with 50 round-trip rows. Supervised use only: extended QA still found 3 stale-state errors in 24 valid-route calls and one timeout; no substituted flights returned. Adult-only; leg metadata fares are not checkout quotes. See domain README.",
+      "provenance": {
+        "qa_agent": "agt_7944f6b168e2b52c685d"
+      }
+    },
+    {
+      "domain": "google.com",
+      "tool": "search_flights",
+      "file": "domains/google.com/search_flights.js",
+      "kind": "cdp",
+      "namespace": "google.com",
+      "url_patterns": [
+        "https://google.com/travel/*",
+        "https://*.google.com/travel/*"
+      ],
+      "status": "qa_passed",
+      "last_verified": "2026-09-25",
+      "notes": "Google Flights via a tfs deep link (hl=en, gl=US, curr); returns outbound itineraries from the best and other sections with flight numbers, segments, layovers and total prices for the requested passengers. Three independent QA rounds passed the full matrix plus date-line, airport-change, non-USD and unsupported-currency probes; a first-round intermittent loss of expanded detail panels was fixed and did not recur in 10 runs. url_patterns are deliberately narrowed to /travel/* (see the domain README). Consent interstitial, /sorry blocks and 'Price unavailable' cards are covered by local tests only.",
+      "provenance": {
+        "qa_agent": "agt_7ffe2dcdda2935caea70"
+      }
+    },
+    {
+      "domain": "instacart.com",
+      "tool": "add_to_cart",
+      "file": "domains/instacart.com/add_to_cart.js",
+      "kind": "cdp",
+      "namespace": "instacart.com",
+      "url_patterns": [
+        "https://instacart.com/*",
+        "https://*.instacart.com/*"
+      ],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Adds an item to the logged-in account's per-store cart through the site's UpdateCartItemsMutation, increasing the quantity if the item is already there; checks availability and the item's min/max/increment first; one mutation per invocation, never retried. The source before the 2026-09-28 change was live-verified 2026-09-25 (author and independent QA): per-each and weighed items, increments, unavailable item, wrong-location id, quantity-rule rejections, restored cart. Unverified: throttling and site rejections other than the unknown-item case. Items carry package_string, pack_count and unit_size from the site's package line (size alone is per unit for multipacks); added 2026-09-28, author live check passed, awaiting independent QA. Since 2026-09-28 the shopping location comes from the site's GetLastUserLocation query (or a fresh /store render when it has no address), never from the page's load-time state, and a failed location read fails the call; the tool follows an address switch without a reload. Author live check passed, awaiting independent QA."
+    },
+    {
+      "domain": "instacart.com",
+      "tool": "get_cart",
+      "file": "domains/instacart.com/get_cart.js",
+      "kind": "cdp",
+      "namespace": "instacart.com",
+      "url_patterns": [
+        "https://instacart.com/*",
+        "https://*.instacart.com/*"
+      ],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Reads one store's cart (names, prices, quantities, subtotal) or, without a store, every non-empty cart. The source before the 2026-09-28 change was live-verified 2026-09-25 by independent QA, including not_logged_in in an anonymous browser. Lines whose item id belongs to another store location show a null price. Items carry package_string, pack_count and unit_size from the site's package line (size alone is per unit for multipacks); added 2026-09-28, author live check passed, awaiting independent QA. Since 2026-09-28 the shopping location comes from the site's GetLastUserLocation query (or a fresh /store render when it has no address), never from the page's load-time state, and a failed location read fails the call; the tool follows an address switch without a reload. Author live check passed, awaiting independent QA."
+    },
+    {
+      "domain": "instacart.com",
+      "tool": "get_delivery_address",
+      "file": "domains/instacart.com/get_delivery_address.js",
+      "kind": "page",
+      "namespace": "instacart.com",
+      "url_patterns": [
+        "https://instacart.com/*",
+        "https://*.instacart.com/*"
+      ],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Page tool. Reads the selected delivery address (the one the shopping tools use) and every saved address with the address_id set_delivery_address takes, through GetLastUserLocation and UserAddresses. Read-only. Author live check 2026-09-28 on an account with 11 saved addresses; awaiting independent QA."
+    },
+    {
+      "domain": "instacart.com",
+      "tool": "get_item",
+      "file": "domains/instacart.com/get_item.js",
+      "kind": "cdp",
+      "namespace": "instacart.com",
+      "url_patterns": [
+        "https://instacart.com/*",
+        "https://*.instacart.com/*"
+      ],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Reads one item's price, availability, stock level, quantity rules and rating for a store from the site's Items query; rejects ids from another store location. The source before the 2026-09-28 change was live-verified 2026-09-25 by independent QA; ratings only seen with zero reviews. Requires a logged-in session with a saved address. Items carry package_string, pack_count and unit_size from the site's package line (size alone is per unit for multipacks); added 2026-09-28, author live check passed, awaiting independent QA. Since 2026-09-28 the shopping location comes from the site's GetLastUserLocation query (or a fresh /store render when it has no address), never from the page's load-time state, and a failed location read fails the call; the tool follows an address switch without a reload. Author live check passed, awaiting independent QA."
+    },
+    {
+      "domain": "instacart.com",
+      "tool": "list_payment_methods",
+      "file": "domains/instacart.com/list_payment_methods.js",
+      "kind": "page",
+      "namespace": "instacart.com",
+      "url_patterns": [
+        "https://instacart.com/*",
+        "https://*.instacart.com/*"
+      ],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Page tool. Lists saved payment methods with the payment_method_id select_payment_method takes, type, displayed label and detail, is_enabled, is_selected (from the checkout scenario of BuyflowPaymentInstrumentsV2) and an expired flag computed from the shown expiry. Read-only. Author live check 2026-09-28; awaiting independent QA."
+    },
+    {
+      "domain": "instacart.com",
+      "tool": "list_stores",
+      "file": "domains/instacart.com/list_stores.js",
+      "kind": "cdp",
+      "namespace": "instacart.com",
+      "url_patterns": [
+        "https://instacart.com/*",
+        "https://*.instacart.com/*"
+      ],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Lists the stores serving the account's saved address with the store_slug and shop id the other tools use. Live-verified 2026-09-25 by independent QA (68 stores, filters, cap). Requires a logged-in session with a saved address; an anonymous browser returns location_unavailable. Since 2026-09-28 the shopping location comes from the site's GetLastUserLocation query (or a fresh /store render when it has no address), never from the page's load-time state, and a failed location read fails the call; the tool follows an address switch without a reload. Author live check passed, awaiting independent QA."
+    },
+    {
+      "domain": "instacart.com",
+      "tool": "login",
+      "file": "domains/instacart.com/login.js",
+      "kind": "cdp",
+      "namespace": "instacart.com",
+      "url_patterns": [
+        "https://instacart.com/*",
+        "https://*.instacart.com/*"
+      ],
+      "status": "qa_passed",
+      "last_verified": "2026-09-25",
+      "notes": "Passwordless email-code login; password is accepted but never entered. Live-verified 2026-09-25 with one real email submission and one real code entry: DuckDuckGo entry, invalid_credentials for a fabricated address, mfa_required first step, authenticated completion, already-logged-in verification on /store/account, and wrong-account rejection. Independent failure-path QA passed twice (two defects found and fixed, then re-verified on the current source). Unverified: wrong or expired codes, lockout text, unresolved captcha, a proxy error on the DuckDuckGo results step (reported generically, no submission). No native WebMCP tools found.",
+      "provenance": {
+        "qa_agent": "agt_3fa02b3438dc8870922b"
+      }
+    },
+    {
+      "domain": "instacart.com",
+      "tool": "search",
+      "file": "domains/instacart.com/search.js",
+      "kind": "cdp",
+      "namespace": "instacart.com",
+      "url_patterns": [
+        "https://instacart.com/*",
+        "https://*.instacart.com/*"
+      ],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "First-page product search in one store through the site's SearchResultsPlacements query, hydrated with Items; exact matches first, related on request or when there are none. Sends the literal query (the site's reformulation is off) unless allow_reformulation is set, because the site otherwise respells brand names and still labels the results as exact. Items carry package_string, pack_count and unit_size from the site's package line (size alone is per unit for multipacks). Changed 2026-09-28: author live check passed; awaiting independent QA. Requires a logged-in session with a saved address. Since 2026-09-28 the shopping location comes from the site's GetLastUserLocation query (or a fresh /store render when it has no address), never from the page's load-time state, and a failed location read fails the call; the tool follows an address switch without a reload. Author live check passed, awaiting independent QA."
+    },
+    {
+      "domain": "instacart.com",
+      "tool": "select_payment_method",
+      "file": "domains/instacart.com/select_payment_method.js",
+      "kind": "page",
+      "namespace": "instacart.com",
+      "url_patterns": [
+        "https://instacart.com/*",
+        "https://*.instacart.com/*"
+      ],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Page tool. Makes one saved payment method the one checkout charges, via InitializeCheckout for a store's non-empty cart (a POST that opens a session and places nothing), UpdateBuyflowPaymentInstructionsV2 and UpdateCheckout; succeeds only when the refreshed checkout session and the account list both show the method. The choice is account-wide. Refuses split-tender checkouts, disabled and expired methods; no-op when already selected; never places an order or edits methods; never retries. Author live check 2026-09-28 (switch and restore); awaiting independent QA."
+    },
+    {
+      "domain": "instacart.com",
+      "tool": "set_delivery_address",
+      "file": "domains/instacart.com/set_delivery_address.js",
+      "kind": "page",
+      "namespace": "instacart.com",
+      "url_patterns": [
+        "https://instacart.com/*",
+        "https://*.instacart.com/*"
+      ],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Page tool. Switches the session to one saved address through UpdateUserLocation (the header picker's request); unknown ids are rejected and an already-selected address sends nothing; one mutation, never retried. Does not create, edit or delete addresses. Author live check 2026-09-28: switch, same-page follow-through by list_stores and search, and restore; awaiting independent QA."
+    },
+    {
+      "domain": "instacart.com",
+      "tool": "update_cart_item",
+      "file": "domains/instacart.com/update_cart_item.js",
+      "kind": "cdp",
+      "namespace": "instacart.com",
+      "url_patterns": [
+        "https://instacart.com/*",
+        "https://*.instacart.com/*"
+      ],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Sets a cart line to an exact quantity (0 removes) through the site's UpdateCartItemsMutation; not_in_cart when the item is absent; one mutation per invocation, never retried. Live-verified 2026-09-25 (author and independent QA) with per-each and weighed items and a fully restored cart. Since 2026-09-28 the shopping location comes from the site's GetLastUserLocation query (or a fresh /store render when it has no address), never from the page's load-time state, and a failed location read fails the call; the tool follows an address switch without a reload. Author live check passed, awaiting independent QA."
+    },
+    {
+      "domain": "jetblue.com",
+      "tool": "login",
+      "file": "domains/jetblue.com/login.js",
+      "kind": "cdp",
+      "namespace": "jetblue.com",
+      "url_patterns": [
+        "https://jetblue.com/*",
+        "https://*.jetblue.com/*"
+      ],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Live-verified: a fabricated login returns invalid_credentials, and real credentials reach the email-MFA first step (mfa_required) on mobile+stealth and residential+stealth. Unverified: the packaged DuckDuckGo entry end to end (its first live run stopped at the search box; fixed with an accessibility-tree lookup that is only unit-tested), MFA completion, and real CAPTCHA or lockout responses."
     },
     {
       "domain": "jetblue.com",
@@ -76,10 +437,354 @@
         "https://*.jetblue.com/*"
       ],
       "status": "verified",
-      "qa_agent": "agt_8da83a2e489269a5ff05",
-      "browser_session": "fe509cugfxs9gqfs1wk1kkne",
       "last_verified": "2026-09-24",
-      "notes": "Independent search/parser QA passed; domain migration live-verified from /travel-agents. Returns initial outbound cards only, including round trips; 1–7 adults; displayed cash fares are not trip totals. Inventory failures remain explicit errors."
+      "notes": "Independent search/parser QA passed; domain migration live-verified from /travel-agents. Returns initial outbound cards only, including round trips; 1–7 adults; displayed cash fares are not trip totals. Inventory failures remain explicit errors.",
+      "provenance": {
+        "qa_agent": "agt_8da83a2e489269a5ff05"
+      }
+    },
+    {
+      "domain": "kroger.com",
+      "tool": "add_to_cart",
+      "file": "domains/kroger.com/add_to_cart.js",
+      "kind": "cdp",
+      "namespace": "kroger.com",
+      "url_patterns": [
+        "https://kroger.com/*",
+        "https://*.kroger.com/*"
+      ],
+      "status": "qa_passed",
+      "last_verified": "2026-09-25",
+      "notes": "Independent QA verified a new line, incrementing an existing line by id, unavailable and not_found refusals without writes, and not_authenticated when signed out, all on a real signed-in cart that was restored afterwards. quantity_limit and adding a UPC that only exists as a saved-for-later line are fixture-tested only.",
+      "provenance": {
+        "qa_agent": "agt_def5f2f10a89acbeeec4"
+      }
+    },
+    {
+      "domain": "kroger.com",
+      "tool": "get_cart",
+      "file": "domains/kroger.com/get_cart.js",
+      "kind": "cdp",
+      "namespace": "kroger.com",
+      "url_patterns": [
+        "https://kroger.com/*",
+        "https://*.kroger.com/*"
+      ],
+      "status": "qa_passed",
+      "last_verified": "2026-09-25",
+      "notes": "Independent QA verified the active-cart read with priced lines, saved-for-later separation, subtotal, not_authenticated when signed out, and restoration checks before and after cart mutations; degraded output when the product lookup fails is fixture-tested only.",
+      "provenance": {
+        "qa_agent": "agt_def5f2f10a89acbeeec4"
+      }
+    },
+    {
+      "domain": "kroger.com",
+      "tool": "get_product",
+      "file": "domains/kroger.com/get_product.js",
+      "kind": "cdp",
+      "namespace": "kroger.com",
+      "url_patterns": [
+        "https://kroger.com/*",
+        "https://*.kroger.com/*"
+      ],
+      "status": "qa_passed",
+      "last_verified": "2026-09-25",
+      "notes": "Independent QA verified lookups by UPC, zero-padding, not_found for unknown codes and the unpriced placeholder record (returned ok with available false), signed out and signed in. Prices and availability are for the session's selected store and fulfillment method only.",
+      "provenance": {
+        "qa_agent": "agt_def5f2f10a89acbeeec4"
+      }
+    },
+    {
+      "domain": "kroger.com",
+      "tool": "login",
+      "file": "domains/kroger.com/login.js",
+      "kind": "cdp",
+      "namespace": "kroger.com",
+      "url_patterns": [
+        "https://kroger.com/*",
+        "https://*.kroger.com/*"
+      ],
+      "status": "qa_passed",
+      "last_verified": "2026-09-25",
+      "notes": "Three independent failure-path QA passes (agt_b45e69419d64ca15c913, agt_2abe214c89e45307dfec, agt_81701554c70a9f25b7e6) found no blockers; their findings (110-second budget, entry_path on failures, README snippet, timeout wording) were fixed and re-checked, the last pass on this exact source without submissions. Author-verified live with one residential stealth browser: DuckDuckGo entry to the login.kroger.com form, fabricated submissions returning invalid_credentials with the site's text, one real submission returning authenticated (no MFA), and the already-signed-in path with the account email confirmed from the customer data token plus an account-mismatch refusal. Unverified: MFA/otp mode, lockout, CAPTCHA, wrong password for an existing account, other proxy configurations.",
+      "provenance": {
+        "qa_agent": "agt_81701554c70a9f25b7e6"
+      }
+    },
+    {
+      "domain": "kroger.com",
+      "tool": "search_products",
+      "file": "domains/kroger.com/search_products.js",
+      "kind": "cdp",
+      "namespace": "kroger.com",
+      "url_patterns": [
+        "https://kroger.com/*",
+        "https://*.kroger.com/*"
+      ],
+      "status": "qa_passed",
+      "last_verified": "2026-09-25",
+      "notes": "Independent QA (three passes, the last on this exact source) verified first-page results, ordering against the site's own results page (organic order identical; the site's interleaved sponsored placements are returned in place and flagged), limits, fuzzy no-match behaviour, signed-out use in a fresh browser, header-capture caching and the schema gate. Author-verified live signed in. First page only; a nonsense query returns fuzzy matches rather than no_results.",
+      "provenance": {
+        "qa_agent": "agt_def5f2f10a89acbeeec4"
+      }
+    },
+    {
+      "domain": "kroger.com",
+      "tool": "update_cart_item",
+      "file": "domains/kroger.com/update_cart_item.js",
+      "kind": "cdp",
+      "namespace": "kroger.com",
+      "url_patterns": [
+        "https://kroger.com/*",
+        "https://*.kroger.com/*"
+      ],
+      "status": "qa_passed",
+      "last_verified": "2026-09-25",
+      "notes": "Independent QA verified setting an absolute quantity, removal with quantity 0, not_in_cart for absent lines and for saved-for-later lines (left untouched), and not_authenticated when signed out, on a real signed-in cart that was restored afterwards. quantity_limit is fixture-tested only.",
+      "provenance": {
+        "qa_agent": "agt_def5f2f10a89acbeeec4"
+      }
+    },
+    {
+      "domain": "purelymail.com",
+      "tool": "create_filter",
+      "file": "domains/purelymail.com/create_filter.js",
+      "kind": "page",
+      "namespace": "purelymail.com",
+      "url_patterns": [
+        "https://inbox.purelymail.com/*"
+      ],
+      "status": "qa_passed",
+      "last_verified": "2026-09-26",
+      "notes": "Creates one incoming-mail filter through the Settings > Filters editor: subject/from/to/body/header tests; move, copy, flag, keep and stop actions. Idempotent by name. No forwarding, reject, discard or auto-reply actions. Independent QA passed on 2026-09-26 against the live test mailbox.",
+      "provenance": {
+        "qa_agent": "agt_afe6709be3b6cf36db73"
+      }
+    },
+    {
+      "domain": "purelymail.com",
+      "tool": "create_folder",
+      "file": "domains/purelymail.com/create_folder.js",
+      "kind": "page",
+      "namespace": "purelymail.com",
+      "url_patterns": [
+        "https://inbox.purelymail.com/*"
+      ],
+      "status": "qa_passed",
+      "last_verified": "2026-09-26",
+      "notes": "Creates one folder (optionally nested) through Settings > Folders; idempotent when it already exists. Never renames or deletes. Independent QA passed on 2026-09-26 against the live test mailbox.",
+      "provenance": {
+        "qa_agent": "agt_afe6709be3b6cf36db73"
+      }
+    },
+    {
+      "domain": "purelymail.com",
+      "tool": "delete_filter",
+      "file": "domains/purelymail.com/delete_filter.js",
+      "kind": "page",
+      "namespace": "purelymail.com",
+      "url_patterns": [
+        "https://inbox.purelymail.com/*"
+      ],
+      "status": "qa_passed",
+      "last_verified": "2026-09-26",
+      "notes": "Deletes exactly one filter by name through the Filters Delete action; a missing name changes nothing. No bulk delete. Independent QA passed on 2026-09-26 against the live test mailbox.",
+      "provenance": {
+        "qa_agent": "agt_afe6709be3b6cf36db73"
+      }
+    },
+    {
+      "domain": "purelymail.com",
+      "tool": "get_filter",
+      "file": "domains/purelymail.com/get_filter.js",
+      "kind": "page",
+      "namespace": "purelymail.com",
+      "url_patterns": [
+        "https://inbox.purelymail.com/*"
+      ],
+      "status": "qa_passed",
+      "last_verified": "2026-09-26",
+      "notes": "Reads one filter by name from the filter editor. Read-only. Independent QA passed on 2026-09-26 against the live test mailbox.",
+      "provenance": {
+        "qa_agent": "agt_afe6709be3b6cf36db73"
+      }
+    },
+    {
+      "domain": "purelymail.com",
+      "tool": "get_vacation_responder",
+      "file": "domains/purelymail.com/get_vacation_responder.js",
+      "kind": "page",
+      "namespace": "purelymail.com",
+      "url_patterns": [
+        "https://inbox.purelymail.com/*"
+      ],
+      "status": "qa_passed",
+      "last_verified": "2026-09-26",
+      "notes": "Reads vacation auto-reply filters (vacation action) with message, subject, interval and enabled state. Read-only. Independent QA passed on 2026-09-26 against the live test mailbox.",
+      "provenance": {
+        "qa_agent": "agt_afe6709be3b6cf36db73"
+      }
+    },
+    {
+      "domain": "purelymail.com",
+      "tool": "get_verification_code",
+      "file": "domains/purelymail.com/get_verification_code.js",
+      "kind": "page",
+      "namespace": "purelymail.com",
+      "url_patterns": [
+        "https://inbox.purelymail.com/*"
+      ],
+      "status": "qa_passed",
+      "last_verified": "2026-09-26",
+      "notes": "Returns a one-time code only from a fresh message received after since: email must pass DMARC for the expected sender domain; SMS must be a DMARC-passing Google Voice forward mentioning expected_text. Stale, forged, excluded and ambiguous codes are not returned. Independent QA passed on 2026-09-26 against the live test mailbox.",
+      "provenance": {
+        "qa_agent": "agt_afe6709be3b6cf36db73"
+      }
+    },
+    {
+      "domain": "purelymail.com",
+      "tool": "list_filters",
+      "file": "domains/purelymail.com/list_filters.js",
+      "kind": "page",
+      "namespace": "purelymail.com",
+      "url_patterns": [
+        "https://inbox.purelymail.com/*"
+      ],
+      "status": "qa_passed",
+      "last_verified": "2026-09-26",
+      "notes": "Lists incoming-mail filters in run order with conditions and actions; flags filters the tools cannot rewrite. Read-only. Independent QA passed on 2026-09-26 against the live test mailbox.",
+      "provenance": {
+        "qa_agent": "agt_afe6709be3b6cf36db73"
+      }
+    },
+    {
+      "domain": "purelymail.com",
+      "tool": "list_folders",
+      "file": "domains/purelymail.com/list_folders.js",
+      "kind": "page",
+      "namespace": "purelymail.com",
+      "url_patterns": [
+        "https://inbox.purelymail.com/*"
+      ],
+      "status": "qa_passed",
+      "last_verified": "2026-09-26",
+      "notes": "Lists subscribed folders with roles and total/unread counts. Read-only. Independent QA passed on 2026-09-26 against the live test mailbox.",
+      "provenance": {
+        "qa_agent": "agt_afe6709be3b6cf36db73"
+      }
+    },
+    {
+      "domain": "purelymail.com",
+      "tool": "list_messages",
+      "file": "domains/purelymail.com/list_messages.js",
+      "kind": "page",
+      "namespace": "purelymail.com",
+      "url_patterns": [
+        "https://inbox.purelymail.com/*"
+      ],
+      "status": "qa_passed",
+      "last_verified": "2026-09-26",
+      "notes": "Lists or searches one folder page (up to 50) with the webmail's own list and search; does not mark mail read. Search results may lag messages that arrived seconds ago. Independent QA passed on 2026-09-26 against the live test mailbox.",
+      "provenance": {
+        "qa_agent": "agt_afe6709be3b6cf36db73"
+      }
+    },
+    {
+      "domain": "purelymail.com",
+      "tool": "login",
+      "file": "domains/purelymail.com/login.js",
+      "kind": "cdp",
+      "namespace": "purelymail.com",
+      "url_patterns": [
+        "https://purelymail.com/*",
+        "https://*.purelymail.com/*"
+      ],
+      "status": "qa_passed",
+      "last_verified": "2026-09-26",
+      "notes": "Signs in through the Purelymail Webmail Login form once and confirms the webmail header shows the supplied address; an existing session for another address is wrong_account. No 2FA support. Independent QA passed on 2026-09-26 against the live test mailbox.",
+      "provenance": {
+        "qa_agent": "agt_afe6709be3b6cf36db73"
+      }
+    },
+    {
+      "domain": "purelymail.com",
+      "tool": "read_message",
+      "file": "domains/purelymail.com/read_message.js",
+      "kind": "page",
+      "namespace": "purelymail.com",
+      "url_patterns": [
+        "https://inbox.purelymail.com/*"
+      ],
+      "status": "qa_passed",
+      "last_verified": "2026-09-26",
+      "notes": "Reads one message via the Show source view (stays unread): safe headers, sender_authentication, attachment names, links and a bounded plain-text body marked untrusted. Independent QA passed on 2026-09-26 against the live test mailbox.",
+      "provenance": {
+        "qa_agent": "agt_afe6709be3b6cf36db73"
+      }
+    },
+    {
+      "domain": "purelymail.com",
+      "tool": "send_message",
+      "file": "domains/purelymail.com/send_message.js",
+      "kind": "page",
+      "namespace": "purelymail.com",
+      "url_patterns": [
+        "https://inbox.purelymail.com/*"
+      ],
+      "status": "qa_passed",
+      "last_verified": "2026-09-26",
+      "notes": "Sends one plain-text email through a compose session with confirm_send; saves to Sent; refuses a same-subject, same-recipient repeat within 15 minutes unless allow_duplicate. Never retries. Independent QA passed on 2026-09-26 against the live test mailbox.",
+      "provenance": {
+        "qa_agent": "agt_afe6709be3b6cf36db73"
+      }
+    },
+    {
+      "domain": "purelymail.com",
+      "tool": "set_vacation_responder",
+      "file": "domains/purelymail.com/set_vacation_responder.js",
+      "kind": "page",
+      "namespace": "purelymail.com",
+      "url_patterns": [
+        "https://inbox.purelymail.com/*"
+      ],
+      "status": "qa_passed",
+      "last_verified": "2026-09-26",
+      "notes": "Creates or edits the vacation auto-reply filter; can create it switched off. Enabling makes the server auto-reply; live QA never enabled it. Independent QA passed on 2026-09-26 against the live test mailbox.",
+      "provenance": {
+        "qa_agent": "agt_afe6709be3b6cf36db73"
+      }
+    },
+    {
+      "domain": "purelymail.com",
+      "tool": "update_filter",
+      "file": "domains/purelymail.com/update_filter.js",
+      "kind": "page",
+      "namespace": "purelymail.com",
+      "url_patterns": [
+        "https://inbox.purelymail.com/*"
+      ],
+      "status": "qa_passed",
+      "last_verified": "2026-09-26",
+      "notes": "Replaces given fields of one filter found by name, keeping its position; refuses filters with parts it cannot rewrite, including vacation replies. Independent QA passed on 2026-09-26 against the live test mailbox.",
+      "provenance": {
+        "qa_agent": "agt_afe6709be3b6cf36db73"
+      }
+    },
+    {
+      "domain": "purelymail.com",
+      "tool": "wait_for_message",
+      "file": "domains/purelymail.com/wait_for_message.js",
+      "kind": "page",
+      "namespace": "purelymail.com",
+      "url_patterns": [
+        "https://inbox.purelymail.com/*"
+      ],
+      "status": "qa_passed",
+      "last_verified": "2026-09-26",
+      "notes": "Waits up to 110 s for mail received after since matching sender/subject text, using the newest folder list page; returns metadata only. Independent QA passed on 2026-09-26 against the live test mailbox.",
+      "provenance": {
+        "qa_agent": "agt_afe6709be3b6cf36db73"
+      }
     },
     {
       "domain": "southwest.com",
@@ -92,10 +797,11 @@
         "https://*.southwest.com/*"
       ],
       "status": "qa_passed",
-      "qa_agent": "agt_b130ea47c33f86843968",
-      "browser_session": "jav7en141p05pbvrx59k9i14",
       "last_verified": "2026-09-25",
-      "notes": "live success verified (logged_in:true, one submission, no MFA); failure path live-verified invalid_credentials; MFA/lockout synthetic only"
+      "notes": "live success verified (logged_in:true, one submission, no MFA); failure path live-verified invalid_credentials; MFA/lockout synthetic only",
+      "provenance": {
+        "qa_agent": "agt_b130ea47c33f86843968"
+      }
     },
     {
       "domain": "southwest.com",
@@ -108,10 +814,352 @@
         "https://*.southwest.com/*"
       ],
       "status": "verified",
-      "qa_agent": "agt_8afff9b68b132cd8ce86",
-      "browser_session": "fx7wthoc7hk61tlbj91rhuq0",
       "last_verified": "2026-09-24",
-      "notes": "First outbound results page only, including round trips; USD per adult per direction. Independent QA and live non-homepage invocation passed. Live zero-flight behavior remains unverified; synthetic empty/error/timeout tests passed. Long Browser REPL calls can time out before delivering results; see domain README."
+      "notes": "First outbound results page only, including round trips; USD per adult per direction. Independent QA and live non-homepage invocation passed. Live zero-flight behavior remains unverified; synthetic empty/error/timeout tests passed. Long Browser REPL calls can time out before delivering results; see domain README.",
+      "provenance": {
+        "qa_agent": "agt_8afff9b68b132cd8ce86"
+      }
+    },
+    {
+      "domain": "target.com",
+      "tool": "add_to_cart",
+      "file": "domains/target.com/add_to_cart.js",
+      "kind": "page",
+      "namespace": "target.com",
+      "url_patterns": [
+        "https://target.com/*",
+        "https://*.target.com/*"
+      ],
+      "status": "qa_passed",
+      "last_verified": "2026-09-26",
+      "notes": "Independent QA verified new ship and pickup lines, increments of the same line, and quantity_limit, unavailable and variant_required refusals with no write, on a guest cart restored afterwards. Signed-in carts not live-tested.",
+      "provenance": {
+        "qa_agent": "agt_9cc0b28ff9abe2ef70d3"
+      }
+    },
+    {
+      "domain": "target.com",
+      "tool": "get_cart",
+      "file": "domains/target.com/get_cart.js",
+      "kind": "page",
+      "namespace": "target.com",
+      "url_patterns": [
+        "https://target.com/*",
+        "https://*.target.com/*"
+      ],
+      "status": "qa_passed",
+      "last_verified": "2026-09-26",
+      "notes": "Independent QA verified guest carts before, during and after cart changes (no cart, lines, empty record) against the site's own cart page. Signed-in carts not live-tested; saved-for-later items are not returned.",
+      "provenance": {
+        "qa_agent": "agt_9cc0b28ff9abe2ef70d3"
+      }
+    },
+    {
+      "domain": "target.com",
+      "tool": "get_product",
+      "file": "domains/target.com/get_product.js",
+      "kind": "page",
+      "namespace": "target.com",
+      "url_patterns": [
+        "https://target.com/*",
+        "https://*.target.com/*"
+      ],
+      "status": "qa_passed",
+      "last_verified": "2026-09-26",
+      "notes": "Independent QA verified variations with shipping, pickup, in-store and same-day status, an item family with variant_filter and range price, and not_found for an unknown tcin.",
+      "provenance": {
+        "qa_agent": "agt_9cc0b28ff9abe2ef70d3"
+      }
+    },
+    {
+      "domain": "target.com",
+      "tool": "get_store_context",
+      "file": "domains/target.com/get_store_context.js",
+      "kind": "page",
+      "namespace": "target.com",
+      "url_patterns": [
+        "https://target.com/*",
+        "https://*.target.com/*"
+      ],
+      "status": "qa_passed",
+      "last_verified": "2026-09-26",
+      "notes": "Independent QA verified store, location, nearby stores and guest session type with no site request, and wrong_page on another target.com host. Read-only; never changes the store.",
+      "provenance": {
+        "qa_agent": "agt_9cc0b28ff9abe2ef70d3"
+      }
+    },
+    {
+      "domain": "target.com",
+      "tool": "remove_cart_item",
+      "file": "domains/target.com/remove_cart_item.js",
+      "kind": "page",
+      "namespace": "target.com",
+      "url_patterns": [
+        "https://target.com/*",
+        "https://*.target.com/*"
+      ],
+      "status": "qa_passed",
+      "last_verified": "2026-09-26",
+      "notes": "Independent QA verified removal of lines it created (echoing the removed line), not_found on a repeat and on an unknown id, and an empty cart afterwards.",
+      "provenance": {
+        "qa_agent": "agt_9cc0b28ff9abe2ef70d3"
+      }
+    },
+    {
+      "domain": "target.com",
+      "tool": "search_products",
+      "file": "domains/target.com/search_products.js",
+      "kind": "page",
+      "namespace": "target.com",
+      "url_patterns": [
+        "https://target.com/*",
+        "https://*.target.com/*"
+      ],
+      "status": "qa_passed",
+      "last_verified": "2026-09-26",
+      "notes": "Independent QA verified all seven site sorts, paging, limit, exclude_sponsored and facet filters against the site's grid. Bot protection can answer a single query with HTTP 435 (challenge); fallback results for misspelled queries are not flagged.",
+      "provenance": {
+        "qa_agent": "agt_9cc0b28ff9abe2ef70d3"
+      }
+    },
+    {
+      "domain": "target.com",
+      "tool": "update_cart_item",
+      "file": "domains/target.com/update_cart_item.js",
+      "kind": "page",
+      "namespace": "target.com",
+      "url_patterns": [
+        "https://target.com/*",
+        "https://*.target.com/*"
+      ],
+      "status": "qa_passed",
+      "last_verified": "2026-09-26",
+      "notes": "Independent QA verified up and down changes and a same-quantity call that writes nothing, and not_found for an unknown line; the per-item quantity_limit refusal is fixture-tested only.",
+      "provenance": {
+        "qa_agent": "agt_9cc0b28ff9abe2ef70d3"
+      }
+    },
+    {
+      "domain": "ticketmaster.com",
+      "tool": "get_event",
+      "file": "domains/ticketmaster.com/get_event.js",
+      "kind": "page",
+      "namespace": "ticketmaster.com",
+      "url_patterns": [
+        "https://www.ticketmaster.com/*"
+      ],
+      "status": "qa_passed",
+      "last_verified": "2026-09-26",
+      "notes": "Independent QA passed on the final source. Page tool on www.ticketmaster.com: one event record (local times, venue, category, on-sale and presale windows, limits, change status). terms_notice is null when the record has no dialog title even if the page shows one.",
+      "provenance": {
+        "qa_agent": "agt_cb155ebc4a11ce54cc4c"
+      }
+    },
+    {
+      "domain": "ticketmaster.com",
+      "tool": "get_ticket_offers",
+      "file": "domains/ticketmaster.com/get_ticket_offers.js",
+      "kind": "cdp",
+      "namespace": "ticketmaster.com",
+      "url_patterns": [
+        "https://www.ticketmaster.com/*"
+      ],
+      "status": "qa_passed",
+      "last_verified": "2026-09-26",
+      "notes": "Independent QA passed on the final source. Opens the event page and returns offers for a quantity with All In prices (fees, before taxes); classic layout via the page's own offer query with featured listings first, newer layout via the listing panel (no Best Seats order there). Never selects, holds, accepts terms or opens checkout. Equal-price ties can be ordered differently from the page.",
+      "provenance": {
+        "qa_agent": "agt_cb155ebc4a11ce54cc4c"
+      }
+    },
+    {
+      "domain": "ticketmaster.com",
+      "tool": "search_events",
+      "file": "domains/ticketmaster.com/search_events.js",
+      "kind": "page",
+      "namespace": "ticketmaster.com",
+      "url_patterns": [
+        "https://www.ticketmaster.com/*"
+      ],
+      "status": "qa_passed",
+      "last_verified": "2026-09-26",
+      "notes": "Independent QA passed on the final source. Page tool on www.ticketmaster.com: keyword, US city or ZIP, radius and venue-local date/time filters via the site's own search API; merges the nearby block with up to 40 date-filtered pages and warns at the cap. Flags partner-site results (on_ticketmaster false). US only.",
+      "provenance": {
+        "qa_agent": "agt_cb155ebc4a11ce54cc4c"
+      }
+    },
+    {
+      "domain": "ubereats.com",
+      "tool": "add_to_cart",
+      "file": "domains/ubereats.com/add_to_cart.js",
+      "kind": "cdp",
+      "namespace": "ubereats.com",
+      "url_patterns": [
+        "https://ubereats.com/*",
+        "https://*.ubereats.com/*"
+      ],
+      "status": "qa_passed",
+      "last_verified": "2026-09-25",
+      "notes": "Validates the item against the live menu, store availability, and every option group before creating or extending the store's cart; identical adds merge into one line. Independent QA passed three times on 2026-09-25, the last on the current source, with real adds on the owner's account and the cart restored to empty. Nested child option picks in the add payload are fixture-only; sold-out items and options were never seen live.",
+      "provenance": {
+        "qa_agent": "agt_e6e4e3a2d543600b58b9"
+      }
+    },
+    {
+      "domain": "ubereats.com",
+      "tool": "complete_registration",
+      "file": "domains/ubereats.com/complete_registration.js",
+      "kind": "cdp",
+      "namespace": "ubereats.com",
+      "url_patterns": [
+        "https://ubereats.com/*",
+        "https://*.ubereats.com/*",
+        "https://auth.uber.com/*"
+      ],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Submits Uber's email or SMS code once, then the phone, name, and required-terms screens, and reports registered only after the site's hashed account email matches. Screen handling after the email code is fixture-tested from Uber's sign-up client; not live-verified.",
+      "provenance": {
+        "qa_agent": "agt_8f7178bcd04460ebdbd3"
+      }
+    },
+    {
+      "domain": "ubereats.com",
+      "tool": "get_cart",
+      "file": "domains/ubereats.com/get_cart.js",
+      "kind": "cdp",
+      "namespace": "ubereats.com",
+      "url_patterns": [
+        "https://ubereats.com/*",
+        "https://*.ubereats.com/*"
+      ],
+      "status": "qa_passed",
+      "last_verified": "2026-09-25",
+      "notes": "Every cart with priced lines (unit price from the per-order read, totals from the presentation read) and plain option group ids. Independent QA passed three times on 2026-09-25, the last on the current source. A cart the site cannot price still lists its lines with null prices (fixture-only).",
+      "provenance": {
+        "qa_agent": "agt_e6e4e3a2d543600b58b9"
+      }
+    },
+    {
+      "domain": "ubereats.com",
+      "tool": "get_item",
+      "file": "domains/ubereats.com/get_item.js",
+      "kind": "cdp",
+      "namespace": "ubereats.com",
+      "url_patterns": [
+        "https://ubereats.com/*",
+        "https://*.ubereats.com/*"
+      ],
+      "status": "qa_passed",
+      "last_verified": "2026-09-25",
+      "notes": "Price, option groups (nested child groups included), and availability for one item; available is false when sold out, when the store is closed, or when a restaurant menu section is not being served now (read from the store, since the item endpoint has no such flag). Independent QA passed on the current source on 2026-09-25 including the unserved-section case; sold-out items were never seen live.",
+      "provenance": {
+        "qa_agent": "agt_e6e4e3a2d543600b58b9"
+      }
+    },
+    {
+      "domain": "ubereats.com",
+      "tool": "get_store",
+      "file": "domains/ubereats.com/get_store.js",
+      "kind": "cdp",
+      "namespace": "ubereats.com",
+      "url_patterns": [
+        "https://ubereats.com/*",
+        "https://*.ubereats.com/*"
+      ],
+      "status": "qa_passed",
+      "last_verified": "2026-09-25",
+      "notes": "Store details, categories, and menu items, or an in-store product search with query; accepts the UUID or the 22-character URL id. Large grocery stores return only the featured carousels without query. Section ids can differ between two reads of the same store. Independent QA passed three times on 2026-09-25, the last on the current source.",
+      "provenance": {
+        "qa_agent": "agt_e6e4e3a2d543600b58b9"
+      }
+    },
+    {
+      "domain": "ubereats.com",
+      "tool": "login",
+      "file": "domains/ubereats.com/login.js",
+      "kind": "cdp",
+      "namespace": "ubereats.com",
+      "url_patterns": [
+        "https://ubereats.com/*",
+        "https://*.ubereats.com/*",
+        "https://auth.uber.com/*"
+      ],
+      "status": "qa_passed",
+      "last_verified": "2026-09-25",
+      "notes": "Independent failure-path QA passed on the current source (three passes; the last found no defects: two search-engine entries reached the email code step with one submission each). Live on the owner's account through the tool: method chooser, vault-filled password step, and the already-authenticated path, which now confirms the account by comparing a SHA-256 of the requested email with the site's hashed account email (match and mismatch live-verified 2026-09-25); wrong-email-code path verified on fabricated accounts. The SMS code step after the password was entered by hand once, so otp on the SMS step is fixture-tested only; wrong password, lockout, and CAPTCHA classification are fixture-only.",
+      "provenance": {
+        "qa_agent": "agt_61207fb92423b24e591a"
+      }
+    },
+    {
+      "domain": "ubereats.com",
+      "tool": "register",
+      "file": "domains/ubereats.com/register.js",
+      "kind": "cdp",
+      "namespace": "ubereats.com",
+      "url_patterns": [
+        "https://ubereats.com/*",
+        "https://*.ubereats.com/*",
+        "https://auth.uber.com/*"
+      ],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Starts a new-account sign-up: follows the site's Sign up link from a signed-out session, submits the email once, and returns the email-code challenge; stops on signed-in sessions and on existing accounts. Built from Uber's sign-up client and read-only inspection; no live registration has been submitted yet.",
+      "provenance": {
+        "qa_agent": "agt_8f7178bcd04460ebdbd3"
+      }
+    },
+    {
+      "domain": "ubereats.com",
+      "tool": "resume_registration",
+      "file": "domains/ubereats.com/resume_registration.js",
+      "kind": "cdp",
+      "namespace": "ubereats.com",
+      "url_patterns": [
+        "https://ubereats.com/*",
+        "https://*.ubereats.com/*",
+        "https://auth.uber.com/*"
+      ],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Reports where a sign-up in this tab stands and continues phone, name, and terms screens without ever submitting a code. Fixture-tested only; not live-verified.",
+      "provenance": {
+        "qa_agent": "agt_8f7178bcd04460ebdbd3"
+      }
+    },
+    {
+      "domain": "ubereats.com",
+      "tool": "search",
+      "file": "domains/ubereats.com/search.js",
+      "kind": "cdp",
+      "namespace": "ubereats.com",
+      "url_patterns": [
+        "https://ubereats.com/*",
+        "https://*.ubereats.com/*"
+      ],
+      "status": "qa_passed",
+      "last_verified": "2026-09-25",
+      "notes": "Site search feed, one 20-entry page per call with offset paging; grocery queries carry matching items with the ids the other tools need, restaurant queries carry stores only. Needs a delivery address in the session (never changes it). Independent QA passed three times on 2026-09-25, the last on the current source, signed out on a fresh browser; live-verified from the feed, a store page, and a search page.",
+      "provenance": {
+        "qa_agent": "agt_e6e4e3a2d543600b58b9"
+      }
+    },
+    {
+      "domain": "ubereats.com",
+      "tool": "update_cart_item",
+      "file": "domains/ubereats.com/update_cart_item.js",
+      "kind": "cdp",
+      "namespace": "ubereats.com",
+      "url_patterns": [
+        "https://ubereats.com/*",
+        "https://*.ubereats.com/*"
+      ],
+      "status": "qa_passed",
+      "last_verified": "2026-09-25",
+      "notes": "Sets a line's quantity or removes it with 0; the last removal deletes the store's cart; a line not in the cart is not_found with nothing changed. Independent QA passed three times on 2026-09-25, the last on the current source, with real updates on the owner's account.",
+      "provenance": {
+        "qa_agent": "agt_e6e4e3a2d543600b58b9"
+      }
     },
     {
       "domain": "united.com",
@@ -123,11 +1171,12 @@
         "https://united.com/*",
         "https://*.united.com/*"
       ],
-      "status": "qa_passed",
-      "qa_agent": "agt_900288267257b91f1fdc",
-      "browser_session": "ffvsog7w3inx1pn4fks92a92",
-      "last_verified": "2026-09-25",
-      "notes": "live-verified captcha_or_challenge only; success path unverified — site challenges egress; solver loaded but idle"
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Live-verified: challenge classification, input validation, and one-submission-per-stage behaviour. Unverified: successful authentication, wrong-password rejection, and MFA; independent QA found three defects that were fixed but never re-ran against the fixed tool. United returns HTTP 428 at /xapi/auth/validate-username, persisting with stealth off, across both entry paths and both proxy types; an account-level flag is suspected but unproven.",
+      "provenance": {
+        "qa_agent": "agt_900288267257b91f1fdc"
+      }
     },
     {
       "domain": "united.com",
@@ -140,10 +1189,11 @@
         "https://*.united.com/*"
       ],
       "status": "verified",
-      "qa_agent": "agt_a87837884a432de575e8",
-      "browser_session": "m49n8cyp3k0hzn902fof5x6t",
       "last_verified": "2026-09-24",
-      "notes": "Independent QA passed; domain-namespace migration verified live from a non-homepage results page: 26 SFO-LAX itineraries in 29.309s. Adults, English/US cash fares, initial outbound page only; roundtrip starting fares are per person. Nearby airports are returned explicitly. Slow-search transport timeouts remain a risk."
+      "notes": "Independent QA passed; domain-namespace migration verified live from a non-homepage results page: 26 SFO-LAX itineraries in 29.309s. Adults, English/US cash fares, initial outbound page only; roundtrip starting fares are per person. Nearby airports are returned explicitly. Slow-search transport timeouts remain a risk.",
+      "provenance": {
+        "qa_agent": "agt_a87837884a432de575e8"
+      }
     }
   ]
 }
