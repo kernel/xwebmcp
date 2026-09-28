@@ -3,7 +3,7 @@
   match: { url_patterns: ["https://instacart.com/*", "https://*.instacart.com/*"] },
   tool: {
     name: "search",
-    description: "Search one Instacart store's catalog for products and return the first page of results with the item_id, price, availability and quantity rules that add_to_cart needs. Read-only. Requires a logged-in session with a saved delivery address and the store slug from list_stores (Instacart catalogs and carts are per store); the saved address decides which store location is searched. Exact matches come first; related items are only included when include_related is true or there are no exact matches. No page assumptions: opens instacart.com if the tab is elsewhere.",
+    description: "Search one Instacart store's catalog for products and return the first page of results with the item_id, price, availability and quantity rules that add_to_cart needs. Read-only. Requires a logged-in session with a saved delivery address and the store slug from list_stores (Instacart catalogs and carts are per store); the saved address decides which store location is searched. Searches the literal query by default: Instacart's spelling correction is turned off, so a brand name is not respelled into a common word; set allow_reformulation to let the site rewrite the query. match \"exact\" means the item is in the site's primary \"Results for\" section, which is ranked by relevance and can still include near matches; check name and size before adding to the cart. Exact matches come first; related items are only included when include_related is true or there are no exact matches. No page assumptions: opens instacart.com if the tab is elsewhere.",
     inputSchema: {
       type: "object", additionalProperties: false, required: ["store", "query"],
       properties: {
@@ -11,7 +11,8 @@
         service_type: { type: "string", enum: ["delivery", "pickup"], default: "delivery", description: "Which fulfilment variant of the store to use. Item ids and carts differ between delivery and pickup." },
         query: { type: "string", minLength: 1, maxLength: 120, pattern: "\\S", description: "Product search terms, e.g. \"organic bananas\"." },
         max_results: { type: "integer", minimum: 1, maximum: 60, default: 20 },
-        include_related: { type: "boolean", default: false, description: "Also return the store's \"Related items\" after the exact matches." }
+        include_related: { type: "boolean", default: false, description: "Also return the store's \"Related items\" after the exact matches." },
+        allow_reformulation: { type: "boolean", default: false, description: "Let Instacart rewrite the query (spelling correction and similar) before matching. Off by default so results are for the literal query." }
       }
     },
     outputSchema: {
@@ -19,15 +20,16 @@
       oneOf: [
         {
           type: "object", additionalProperties: false,
-          required: ["status", "store", "query", "search_url", "exact_match_count", "related_count", "results"],
+          required: ["status", "store", "query", "reformulation_allowed", "search_url", "exact_match_count", "related_count", "results"],
           properties: {
             status: { const: "ok" },
             store: { type: "object", additionalProperties: false, required: ["store_slug", "name", "shop_id", "retailer_id", "service_type", "retailer_location_id"], properties: { store_slug: { type: ["string", "null"] }, name: { type: ["string", "null"] }, shop_id: { type: "string" }, retailer_id: { type: "string" }, service_type: { type: ["string", "null"] }, retailer_location_id: { type: ["string", "null"] } } },
             query: { type: "string" },
+            reformulation_allowed: { type: "boolean", description: "Whether Instacart was allowed to rewrite the query; when true, exact matches may be for a corrected or different spelling." },
             search_url: { type: "string", format: "uri" },
             exact_match_count: { type: "integer", minimum: 0, description: "Exact matches on the first page before max_results is applied." },
             related_count: { type: "integer", minimum: 0, description: "Related items on the first page (returned only with include_related or when there are no exact matches)." },
-            results: { type: "array", items: { type: "object", additionalProperties: false, required: ["match", "item"], properties: { match: { type: "string", enum: ["exact", "related"] }, item: {
+            results: { type: "array", items: { type: "object", additionalProperties: false, required: ["match", "item"], properties: { match: { type: "string", enum: ["exact", "related"], description: "exact: in the site's primary \"Results for\" section for the query (relevance-ranked, not a guarantee the product is the one named). related: in the \"Related items\" section." }, item: {
           type: "object", additionalProperties: false,
           required: ["item_id", "product_id", "name", "brand", "size", "price_string", "price_cents", "full_price_string", "price_per_unit_string", "available", "stock_level", "quantity", "tags", "image_url", "url"],
           properties: {
@@ -220,7 +222,7 @@
         const resolved = await resolveShop(arg.slug, arg.serviceType, loc);
         if (resolved.error) return resolved.error;
         const shop = resolved.shop;
-        const r = await gql("SearchResultsPlacements", { action: null, query: arg.query, pageViewId: crypto.randomUUID(), elevatedProductId: null, searchSource: "search", filters: [], disableReformulation: false, disableLlm: false, forceInspiration: false, orderBy: "bestMatch", clusterId: null, includeDebugInfo: false, clusteringStrategy: null, contentManagementSearchParams: { itemGridColumnCount: 5 }, shopId: String(shop.id), postalCode: loc.postalCode, zoneId: loc.zoneId, first: 4 });
+        const r = await gql("SearchResultsPlacements", { action: null, query: arg.query, pageViewId: crypto.randomUUID(), elevatedProductId: null, searchSource: "search", filters: [], disableReformulation: !arg.reformulate, disableLlm: false, forceInspiration: false, orderBy: "bestMatch", clusterId: null, includeDebugInfo: false, clusteringStrategy: null, contentManagementSearchParams: { itemGridColumnCount: 5 }, shopId: String(shop.id), postalCode: loc.postalCode, zoneId: loc.zoneId, first: 4 });
         if (r.error) return r.error;
         const placements = r.data?.searchResultsPlacements?.placements;
         if (!Array.isArray(placements)) return failure("site_changed", "Instacart's search response no longer has the expected placements shape; the tool needs updating.");
@@ -248,7 +250,7 @@
           if (h.error) return h.error;
           missing.forEach((id, i) => { if (h.items[i]) byId.set(id, h.items[i]); });
         }
-        return { status: "ok", store: describeShop(shop), query: arg.query, search_url: `${location.origin}/store/${shop.retailer?.slug || arg.slug}/s?k=${encodeURIComponent(arg.query)}`, exact_match_count: exactIds.length, related_count: relatedIds.length, results: chosen.filter(c => byId.has(c.id)).map(c => ({ match: c.match, item: byId.get(c.id) })) };
+        return { status: "ok", store: describeShop(shop), query: arg.query, reformulation_allowed: arg.reformulate, search_url: `${location.origin}/store/${shop.retailer?.slug || arg.slug}/s?k=${encodeURIComponent(arg.query)}`, exact_match_count: exactIds.length, related_count: relatedIds.length, results: chosen.filter(c => byId.has(c.id)).map(c => ({ match: c.match, item: byId.get(c.id) })) };
       })();
     };
     const ensureOnSite = async () => {
@@ -269,11 +271,12 @@
     if (!input || typeof input !== "object" || Array.isArray(input)) return bad("Input must be an object.");
     if (typeof input.store !== "string" || !/^[a-z0-9][a-z0-9-]{0,79}$/.test(input.store)) return bad("store must be a store slug such as \"kroger\".");
     if (input.service_type !== undefined && !["delivery", "pickup"].includes(input.service_type)) return bad("service_type must be \"delivery\" or \"pickup\".");
-    if (Object.keys(input).some(k => !["store", "service_type", "query", "max_results", "include_related"].includes(k))) return bad("Unrecognized input field.");
+    if (Object.keys(input).some(k => !["store", "service_type", "query", "max_results", "include_related", "allow_reformulation"].includes(k))) return bad("Unrecognized input field.");
     if (typeof input.query !== "string" || !input.query.trim() || input.query.length > 120) return bad("query must be a non-empty string of at most 120 characters.");
     if (input.max_results !== undefined && (!Number.isInteger(input.max_results) || input.max_results < 1 || input.max_results > 60)) return bad("max_results must be an integer from 1 to 60.");
     if (input.include_related !== undefined && typeof input.include_related !== "boolean") return bad("include_related must be a boolean.");
-    const arg = { slug: input.store, serviceType: input.service_type ?? "delivery", query: input.query.trim(), max: input.max_results ?? 20, related: input.include_related === true };
+    if (input.allow_reformulation !== undefined && typeof input.allow_reformulation !== "boolean") return bad("allow_reformulation must be a boolean.");
+    const arg = { slug: input.store, serviceType: input.service_type ?? "delivery", query: input.query.trim(), max: input.max_results ?? 20, related: input.include_related === true, reformulate: input.allow_reformulation === true };
     try {
       const blocked = await ensureOnSite();
       if (blocked) return blocked;

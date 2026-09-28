@@ -244,12 +244,9 @@
         "https://instacart.com/*",
         "https://*.instacart.com/*"
       ],
-      "status": "qa_passed",
-      "last_verified": "2026-09-25",
-      "notes": "First-page product search in one store through the site's SearchResultsPlacements query, hydrated with Items; exact matches first, related on request or when there are none. Live-verified 2026-09-25 by independent QA, including pickup variants. Requires a logged-in session with a saved address; the site sometimes returns fuzzy hits as exact results.",
-      "provenance": {
-        "qa_agent": "agt_e2b9b6bda0484789612a"
-      }
+      "status": "draft",
+      "last_verified": null,
+      "notes": "First-page product search in one store through the site's SearchResultsPlacements query, hydrated with Items; exact matches first, related on request or when there are none. Sends the literal query (the site's reformulation is off) unless allow_reformulation is set, because the site otherwise respells brand names and still labels the results as exact. Changed 2026-09-28: author live check passed; awaiting independent QA. Requires a logged-in session with a saved address."
     },
     {
       "domain": "instacart.com",
