@@ -244,7 +244,7 @@ discards a response whose flight number or origin departure date differs from th
 - Delta returns `flight_not_found` (HTTP 400, code `FLD2300`) when it has no flight for the number and
   date. Observed 2026-09-29: an unknown number (9999), one real number on a day it did not run
   (DL2910 on the previous day, though the same number returned data three days earlier), and a real
-  number on a date almost a year out. The previous day was not rejected for every number: the
+  number on a date about ten months out. The previous day was not rejected for every number: the
   reviewer got data for it for another flight. The date window Delta serves was not measured, so
   `flight_not_found` should be read as "no match for this number and date", not as "wrong date".
 - Delta's response can carry a delayed status with a null `delay` (the reviewer saw an arrival
@@ -279,16 +279,18 @@ schedule page, and not on `shop.delta.com` (its 11 native tools unaffected, no c
 Live cases, 2026-09-29, Kernel browsers, warmed with the site's own form (calls made from the pages
 named, none of them an entry point for this tool):
 - DL2910 with no route, from `/us/en/baggage/overview`: two legs and the multi-leg note, 2260 B, about
-  1.1 s. With `origin: IND`, `destination: MSP`: one leg, `leg_count: 2`, `leg_selection: filtered`.
+  1.1 s. With `origin: IND`, `destination: MSP` (from the flight-status results page): one leg,
+  `leg_count: 2`, `leg_selection: filtered`.
 - A single-leg flight (DL0404 on the next day): one leg.
 - `origin: JFK` on DL2910: `route_not_found` with `available_routes`. Number 9999: `flight_not_found`
   (`FLD2300`, HTTP 400).
 - 24 malformed inputs: `invalid_input` and zero requests to Delta (counted through fetch, XHR and
   resource timing).
-- A cold browser: `blocked` (HTTP 444), exactly one request. A warmed browser at its tenth lookup:
-  `blocked`, one request, no retry.
-- Per invocation the document, URL, dialog state, and focus were unchanged, and exactly one request
-  went to `flightinformation-api.delta.com`. With Delta's location dialog open (Canada egress) it was
+- A cold browser: `blocked` (HTTP 444), exactly one fetch. A warmed browser at its tenth lookup:
+  `blocked`, one fetch, no retry.
+- Per invocation the document, URL, dialog state, and focus were unchanged, and exactly one fetch
+  went to `flightinformation-api.delta.com` (plus the browser's CORS preflight, which the site's own
+  form also triggers). With Delta's location dialog open (Canada egress) it was
   identical before and after a lookup.
 
 Local Chrome extension (Chromium 153, throwaway profile, extension loaded unpacked, site access
@@ -299,8 +301,8 @@ request with the document unchanged. The extension success path was **not** obse
 that local browser, including its own form. Native messaging, the `xwebmcp attach` path, and the
 CSP fallback for page tools were not exercised. No extension parity beyond the above is claimed.
 
-Not observed anywhere: HTTP 429, a `site_error`, or a caller abort against the live site (fixtures
-only); a cancelled, diverted, or partner-operated flight; more than two legs; a successful non-US
+Not observed anywhere: HTTP 429, a `site_error`, an `unexpected_response`, a `network_error`, or a
+caller abort against the live site (fixtures only); a cancelled, diverted, or partner-operated flight; more than two legs; a successful non-US
 locale lookup; a signed-in session.
 
 ## URL patterns
