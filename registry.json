@@ -493,6 +493,40 @@
       "notes": "Sets a cart line to an exact quantity (0 removes) through the site's UpdateCartItemsMutation; not_in_cart when the item is absent; one mutation per invocation, never retried. Live-verified 2026-09-25 (author and independent QA) with per-each and weighed items and a fully restored cart. Since 2026-09-28 the shopping location comes from the site's GetLastUserLocation query (or a fresh /store render when it has no address), never from the page's load-time state, and a failed location read fails the call; the tool follows an address switch without a reload. Author live check passed, awaiting independent QA."
     },
     {
+      "domain": "instinct.com",
+      "tool": "get_settings",
+      "file": "domains/instinct.com/get_settings.js",
+      "kind": "page",
+      "namespace": "instinct.com",
+      "url_patterns": [
+        "https://instinct.com/*",
+        "https://*.instinct.com/*"
+      ],
+      "status": "qa_passed",
+      "last_verified": "2026-09-29",
+      "notes": "Page tool, read-only, on app.instinct.com/settings only. Returns whether the training switch is off (training_data_opt_out) and whether the iCloud email and WhatsApp number are linked (false, or null for layouts not yet observed). Never returns the display name, phone, email or number. Independent QA signed off 2026-09-29 on public signed-out surfaces, real-browser synthetic pages and fixtures, in the Kernel runtime and, for wrong-page, sign-in and malformed-input cases, a local Chrome extension. Signed-in success was only checked by the author (2026-09-29, one account with nothing linked); connected and linked layouts are unobserved.",
+      "provenance": {
+        "qa_agent": "agt_8de63a81502a3f33ffe8"
+      }
+    },
+    {
+      "domain": "instinct.com",
+      "tool": "list_connected_services",
+      "file": "domains/instinct.com/list_connected_services.js",
+      "kind": "page",
+      "namespace": "instinct.com",
+      "url_patterns": [
+        "https://instinct.com/*",
+        "https://*.instinct.com/*"
+      ],
+      "status": "qa_passed",
+      "last_verified": "2026-09-29",
+      "notes": "Page tool, read-only, on app.instinct.com/workspace only. Lists the Connectors rows with id and name; badge and description only for rows whose button says Connect (connected false). Any other row returns id and name with connected null and no text, since its layout is unobserved. Never returns text containing an email or a phone-like run of seven or more digits. Independent QA signed off 2026-09-29 on public signed-out surfaces, real-browser synthetic pages and fixtures, in the Kernel runtime and, for wrong-page, sign-in and malformed-input cases, a local Chrome extension. Signed-in success was only checked by the author (2026-09-29, one account with no connectors linked).",
+      "provenance": {
+        "qa_agent": "agt_8de63a81502a3f33ffe8"
+      }
+    },
+    {
       "domain": "jetblue.com",
       "tool": "login",
       "file": "domains/jetblue.com/login.js",
