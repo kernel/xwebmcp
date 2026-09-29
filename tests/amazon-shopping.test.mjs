@@ -50,7 +50,7 @@ function harness(name, { origin = ORIGIN, handler } = {}) {
   const location = { origin, pathname: "/", href: `${origin}/` };
   const fetch = async (target, init = {}) => {
     const url = new URL(target, location.origin);
-    requests.push({ method: (init.method || "GET").toUpperCase(), path: url.pathname + url.search, origin: url.origin });
+    requests.push({ method: (init.method || "GET").toUpperCase(), path: url.pathname + url.search, origin: url.origin, credentials: init.credentials });
     const answer = await handler(url, init);
     return { status: answer.status, ok: answer.status >= 200 && answer.status < 300, url: answer.url || url.href, text: async () => answer.body };
   };
@@ -91,11 +91,12 @@ const card = (asin, title, extra = {}) => `
 const facetGroup = (key, title, options) => `
 <div class="a-section"><div id="${key}-title" class="a-section"><span class="a-size-base">${title}</span></div>
 <ul id="filter-${key}">${options.map(o => `<li id="${key}/${o.value}"><span class="a-list-item"><a href="/s?k=fabricated&amp;rh=${encodeURIComponent(`${o.applied ? `${o.applied},` : ""}${key}:${o.value}`)}" aria-label="Apply ${o.name} filter to narrow results"><span>${o.label ?? o.name}</span></a></span></li>`).join("")}</ul></div>`;
-const searchPage = ({ cards = [], info = "1-48 of over 40,000 results for \"fabricated\"", summary = "No selected filters", pages = ["1", "2", "3", "7"], next = true, facets = "", body = "" } = {}) => `
+const searchPage = ({ cards = [], info = "1-48 of over 40,000 results for \"fabricated\"", summary = "No selected filters", pages = ["1", "2", "3", "7"], next = true, facets = "", body = "", rhEcho = [] } = {}) => `
 <html><head><title>Amazon.com : fabricated</title></head><body>
 <span id="glow-ingress-line2">${LOCATION_LABEL}</span>
 ${info ? `<div data-component-type="s-result-info-bar"><span>${info}</span></div>` : ""}
 <div id="s-refinements"><div id="s-refinements-a11y-summary">${summary}</div>${facets}</div>
+${rhEcho.map(value => `<form><input type="hidden" name="rh" value="${value}"></form>`).join("")}
 ${cards.join("\n")}${body}
 <div class="s-pagination-container">${pages.map(p => `<span class="s-pagination-item">${p}</span>`).join("")}<a class="s-pagination-item s-pagination-next${next ? "" : " s-pagination-disabled"}">Next</a></div>
 </body></html>`;
@@ -109,7 +110,7 @@ const FACETS = facetGroup("p_123", "Brands", [{ value: "185621", name: "Testbran
   + facetGroup("p_72", "Customer Reviews", [{ value: "1248915011", name: "4 Stars & Up", label: "4 Stars &amp; Up" }])
   + facetGroup("p_76", "Eligible for Free Shipping", [{ value: "1249155011", name: "Free Shipping by Amazon", label: "Free Shipping by Amazon Get FREE Shipping on eligible orders" }])
   + facetGroup("p_n_g-1004162223091", "Color", [{ value: "3254098011", name: "Black", label: "" }])
-  + facetGroup("p_36", "Price", [{ value: "1500-2500", name: "$15 to $25" }]);
+  + facetGroup("p_36", "Deals & Discounts", [{ value: "1500-2500", name: "$15 to $25" }]);
 const searchHandler = (page, { status = 200, url } = {}) => u => ({ status, body: typeof page === "function" ? page(u) : page, url });
 
 const twister = (extra = {}) => `<script type="text/javascript">P.register('twister-js-init-dpx-data', function(){ var dataToReturn = {
@@ -186,7 +187,7 @@ for (const name of NAMES) {
   test(`${name}: only www.amazon.com is ever requested, with GET, and nothing is written`, async () => {
     const { requests, run } = harness(name, { handler: () => ({ status: 200, body: name === "search_products" ? searchPage({ cards: CARDS }) : name === "get_product" ? productPage() : sellersPage() }) });
     await run(name === "get_product" ? { asin: "B0TEST0001" } : name === "search_products" ? { query: "test" } : { category: "kitchen" });
-    assert.ok(requests.length === 1 && requests.every(r => r.method === "GET" && r.origin === ORIGIN));
+    assert.ok(requests.length === 1 && requests.every(r => r.method === "GET" && r.origin === ORIGIN && r.credentials === "include"));
   });
   test(`${name}: a page outside www.amazon.com returns wrong_page without any request`, async () => {
     const { requests, run } = harness(name, { origin: "https://aws.amazon.com", handler: serve(200, "") });
@@ -195,6 +196,18 @@ for (const name of NAMES) {
     assert.equal(requests.length, 0);
   });
 }
+
+test("Amazon's AI-agent Conditions of Use notice is access_gated, never a layout change, and is not followed or dismissed", async () => {
+  const gate = "<html><head><title>Amazon.com</title></head><body><h4>Continued access by an unauthorized AI agent violates Amazon\u2019s Conditions of Use, to which our customers have agreed.</h4><a href=\"/continue\">Continue</a><a href=\"/gp/help/customer/display.html\">Conditions of Use</a></body></html>";
+  const inputs = { search_products: { query: "test" }, get_product: { asin: "B0TEST0001" }, get_best_sellers: { category: "kitchen" } };
+  for (const name of NAMES) {
+    const { requests, run } = harness(name, { handler: serve(200, gate) });
+    const result = await run(inputs[name]);
+    assert.equal(result.error_kind, "access_gated", name);
+    assert.match(result.error_message, /never accepts or dismisses it/);
+    assert.deepEqual(requests.map(r => r.method), ["GET"], `${name} made exactly one read request and no follow-up`);
+  }
+});
 
 test("registry has exactly the three amazon.com tools, sorted with the rest of the registry", () => {
   assert.deepEqual(registry.map(t => t.tool).sort(), [...NAMES].sort());
@@ -262,6 +275,16 @@ test("search_products: sponsored placements, no-price cards, exact counts, large
   assert.equal(hostile.rating_count, null, "a count label that is not exactly '<n> ratings' is not parsed");
 });
 
+test("search_products: has_next_page is false on the last page and each sponsored signal counts on its own", async () => {
+  const labelOnly = card("B0TEST0006", "Label Only Card", {}).replace("</h2>", "</h2><span class=\"puis-sponsored-label-text\">Sponsored</span>");
+  const linkOnly = card("B0TEST0007", "Link Only Card", {}).replace("/Fabricated-Slug/dp/B0TEST0007/ref=sr_1_1?dib=fabricated", "/sspa/click?ie=UTF8");
+  const { run } = harness("search_products", { handler: searchHandler(searchPage({ cards: [labelOnly, linkOnly, card("B0TEST0008", "Organic Card", {})], next: false, pages: ["1"] })) });
+  const result = await run({ query: "x" });
+  assert.equal(result.has_next_page, false);
+  assert.equal(result.total_pages, 1);
+  assert.deepEqual(result.products.map(p => p.sponsored), [true, true, false]);
+});
+
 test("search_products: exclude_sponsored keeps site positions and limit truncates", async () => {
   const { run } = harness("search_products", { handler: searchHandler(searchPage({ cards: CARDS })) });
   const kept = await run({ query: "x", exclude_sponsored: true });
@@ -280,7 +303,7 @@ test("search_products: every card sponsored and excluded is reported, not return
 test("search_products: sorts, price bounds, page and facets become the site's own query parameters", async () => {
   const seen = [];
   const { run } = harness("search_products", {
-    handler: searchHandler(u => { seen.push(u.pathname + u.search); return searchPage({ cards: CARDS, summary: "Selected filters: Testbrand, $20–$35" }); })
+    handler: searchHandler(u => { seen.push(u.pathname + u.search); return searchPage({ cards: CARDS, summary: "Selected filters: Testbrand, $20–$35", rhEcho: u.searchParams.get("rh") ? [u.searchParams.get("rh")] : [] }); })
   });
   await run({ query: "men's t-shirt & tank #1", sort_by: "price_low_to_high", min_price_cents: 2000, max_price_cents: 3500, page: 2, facet_ids: ["p_123:185621"] });
   await run({ query: "a", sort_by: "highest_rated", min_price_cents: 6000 });
@@ -310,7 +333,7 @@ test("search_products: include_facets returns filter groups with ids and leaves 
   assert.equal(result.facets[2].options[0].name, "Free Shipping by Amazon", "the aria-label names an option when the visible text carries a description");
   assert.equal(result.facets[3].options[0].name, "Black", "a swatch without visible text is named from its aria-label");
   const applied = harness("search_products", {
-    handler: searchHandler(searchPage({ cards: CARDS, summary: "Selected filters: Testbrand", facets: facetGroup("p_123", "Brands", [{ value: "151381", name: "Otherbrand", applied: "p_123:185621" }, { value: "185621", name: "Testbrand", applied: "" }]) }))
+    handler: searchHandler(searchPage({ cards: CARDS, summary: "Selected filters: Testbrand", rhEcho: ["p_123:185621"], facets: facetGroup("p_123", "Brands", [{ value: "151381", name: "Otherbrand", applied: "p_123:185621" }, { value: "185621", name: "Testbrand", applied: "" }]) }))
   });
   const again = await applied.run({ query: "x", include_facets: true, facet_ids: ["p_123:185621"] });
   assert.equal(again.applied_filters_text, "Testbrand");
@@ -334,6 +357,20 @@ test("search_products: an id Amazon silently ignores is an error, never unfilter
   assert.equal(result.error_kind, "filter_not_applied");
   const priced = await run({ query: "x", min_price_cents: 100 });
   assert.equal(priced.error_kind, "filter_not_applied");
+});
+
+test("search_products: every requested filter must be kept by the site, not just some of them", async () => {
+  const echoed = (rhEcho, summary, facet_ids, extra = {}) => harness("search_products", { handler: searchHandler(searchPage({ cards: CARDS, summary, rhEcho })) }).run({ query: "x", facet_ids, ...extra });
+  const dropped = await echoed(["p_123:185621"], "Selected filters: Testbrand", ["p_123:185621", "p_9999:1"]);
+  assert.equal(dropped.error_kind, "filter_not_applied");
+  assert.match(dropped.error_message, /ignored 1 of the requested filters \(p_9999:1\)/);
+  const price = await echoed(["p_123:185621"], "Selected filters: Testbrand", ["p_123:185621"], { min_price_cents: 2000, max_price_cents: 3500 });
+  assert.match(price.error_message, /p_36:2000-3500/, "a dropped price bound is caught the same way");
+  const kept = await echoed(["p_123:185621,p_36:2000-3500", "p_123:185621"], "Selected filters: Testbrand, $20–$35", ["p_123:185621"], { min_price_cents: 2000, max_price_cents: 3500 });
+  assert.equal(kept.status, "ok", "the filters may be split across several hidden inputs");
+  assert.deepEqual(kept.facet_ids, ["p_123:185621"]);
+  const fallback = await echoed([], "Selected filters: Testbrand", ["p_123:185621"]);
+  assert.equal(fallback.status, "ok", "without the site's echo, its own filter summary is the only signal");
 });
 
 test("search_products: no matches, a page past the end and a changed layout are distinct outcomes", async () => {
@@ -491,6 +528,23 @@ test("get_product: variant_filter matches names and options case-insensitively; 
   assert.match(unknown.error_message, /Color, Size/);
 });
 
+test("get_product: the add-to-cart control is recognized under either id the site uses", async () => {
+  const available = async input => (await harness("get_product", { handler: serve(200, productPage({ addToCart: false }).replace("</body>", `${input}</body>`)) }).run({ asin: "B0TEST0001" })).add_to_cart_available;
+  assert.equal(await available("<input id=\"add-to-cart-button-ubb\" type=\"submit\" value=\"Add to cart\">"), true);
+  assert.equal(await available("<input id=\"add-to-cart-button\" type=\"submit\">"), true);
+  assert.equal(await available("<input id=\"buy-now-button\" type=\"submit\">"), false, "Buy Now is not add to cart");
+  assert.equal(await available(""), false);
+});
+
+test("get_product: bullets are capped at 10 and option texts at 100 per dimension", async () => {
+  const bullets = Array.from({ length: 14 }, (_, i) => `Bullet ${i + 1}`);
+  const many = Array.from({ length: 130 }, (_, i) => `Option ${i + 1}`);
+  const page = productPage({ bullets }).replace(/"variationValues" : \{[^}]*\}/, `"variationValues" : {"size_name":${JSON.stringify(many)},"color_name":["Denim"]}`);
+  const result = await harness("get_product", { handler: serve(200, page) }).run({ asin: "B0TEST0001" });
+  assert.deepEqual(result.bullets, bullets.slice(0, 10));
+  assert.equal(result.variation_dimensions.find(d => d.name === "Size").values.length, 100);
+});
+
 test("get_product: a variation parent shows no price or buy box and says so", async () => {
   const page = productPage({ price: null, addToCart: false, availability: "", current: "B0TEST0004", parent: "B0TESTPAR1" });
   const result = await harness("get_product", { handler: serve(200, page) }).run({ asin: "B0TESTPAR1" });
@@ -570,6 +624,14 @@ test("get_best_sellers: without a category it lists departments and no products"
   assert.deepEqual(result.categories, [{ name: "Appliances", category: "appliances" }, { name: "Apps & Games", category: "mobile-apps" }]);
 });
 
+test("get_best_sellers: prices are rounded to whole cents and image hosts are checked", async () => {
+  const items = [["#1", "B0TEST0001", "Rounding Test", "$19.99", null]];
+  const page = sellersPage({ items }).replace("https://images-na.ssl-images-amazon.com/images/I/B0TEST0001._AC_UL300_.jpg", "https://evil.example/x.jpg");
+  const [item] = (await harness("get_best_sellers", { handler: serve(200, page) }).run({ category: "kitchen" })).items;
+  assert.equal(item.price_cents, 1999, "19.99 * 100 is 1998.9999999999998 in floating point");
+  assert.equal(item.image_url, null);
+});
+
 test("get_best_sellers: page 2 and limit; a subcategory path is passed through", async () => {
   const { requests, run } = harness("get_best_sellers", { handler: serve(200, sellersPage()) });
   const result = await run({ category: "kitchen/289913", page: 2, limit: 1 });
@@ -583,6 +645,7 @@ test("get_best_sellers: an unknown category, an empty page and a changed layout 
   assert.equal(await kind(404, "<html><head><title>Page Not Found</title></head></html>"), "not_found");
   assert.equal(await kind(200, sellersPage({ items: [], categories: [], selected: "", title: "Amazon Best Sellers: Best undefined" })), "not_found");
   assert.equal(await kind(200, sellersPage({ items: [] })), "site_changed");
+  assert.equal(await kind(200, sellersPage({ items: [], categories: [], selected: "" }), { category: "kitchen" }), "site_changed", "an empty page whose title is a normal category is not an unknown category");
   assert.equal(await kind(200, sellersPage({ items: [], categories: [] }), {}), "site_changed");
   const undefinedName = await harness("get_best_sellers", { handler: serve(200, sellersPage({ selected: "", title: "Amazon Best Sellers: Best undefined" })) }).run({ category: "kitchen" });
   assert.equal(undefinedName.category_name, null);

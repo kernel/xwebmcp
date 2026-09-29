@@ -3,14 +3,14 @@
   match: { url_patterns: ["https://www.amazon.com/*"] },
   tool: {
     name: "search_products",
-    description: "Search the Amazon US catalog (www.amazon.com) by keyword and return one page of results as data, in the site's own order for the chosen sort: relevance (default), price_low_to_high, price_high_to_low, highest_rated, newest or bestselling. Optional price bounds (US cents) and site filters by id: call once with include_facets true to get filter groups (brand, rating, delivery, seller, condition, department...) with option ids, then pass chosen ids in facet_ids, at most one per group. Each product has an asin to pass to get_product, prices as the site shows them, rating, sponsored flag and delivery wording. Read-only: it fetches the results page from the current www.amazon.com document, never navigates the tab, and never touches the cart or an account. Prices, delivery dates and availability follow the delivery location of this browser session, which the tool neither reads nor changes. Results come from the server-rendered page, so ad placements and order can differ from what the tab itself would show.",
+    description: "Search the Amazon US catalog (www.amazon.com) by keyword and return one page of results as data, in the site's own order for the chosen sort: relevance (default), price_low_to_high, price_high_to_low, highest_rated, newest or bestselling. Optional price bounds (US cents) and site filters by id: call once with include_facets true to get filter groups (brand, rating, delivery, seller, condition, department...) with option ids, then pass chosen ids in facet_ids, at most one per group. Each product has an asin to pass to get_product, prices as the site shows them (an id the site ignores is reported as an error, never returned as unfiltered results), rating, sponsored flag and delivery wording. Read-only: it fetches the results page from the current www.amazon.com document, never navigates the tab, and never touches the cart or an account. Prices, delivery dates and availability follow the delivery location of this browser session, which the tool neither reads nor changes. Results come from the server-rendered page, so ad placements and order can differ from what the tab itself would show.",
     inputSchema: {
       type: "object", additionalProperties: false, required: ["query"],
       properties: {
         query: { type: "string", minLength: 1, maxLength: 200, description: "Keywords as a shopper would type them, e.g. 'insulated water bottle 32 oz'." },
         sort_by: { enum: ["relevance", "price_low_to_high", "price_high_to_low", "highest_rated", "newest", "bestselling"], default: "relevance", description: "The site's Sort menu: Featured, Price: Low to High, Price: High to Low, Avg. Customer Review, Newest Arrivals, Best Sellers. These are the only orders the site offers." },
-        min_price_cents: { type: "integer", minimum: 0, maximum: 100000000, description: "Lowest item price in US cents (2500 is $25.00), applied through the site's price filter." },
-        max_price_cents: { type: "integer", minimum: 0, maximum: 100000000, description: "Highest item price in US cents. Must not be below min_price_cents." },
+        min_price_cents: { type: "integer", minimum: 0, maximum: 100000000, description: "Lowest item price in US cents (2500 is $25.00), applied through the site's price filter. The site filters on the price before any discount, so a returned price_cents can fall below the bound." },
+        max_price_cents: { type: "integer", minimum: 0, maximum: 100000000, description: "Highest item price in US cents, applied like min_price_cents. Must not be below min_price_cents." },
         page: { type: "integer", minimum: 1, maximum: 20, default: 1, description: "Results page. Amazon serves about 48 results per page and often stops after 7 pages; the response reports total_pages." },
         limit: { type: "integer", minimum: 1, maximum: 60, default: 20, description: "Maximum products to return from that page." },
         exclude_sponsored: { type: "boolean", default: false, description: "Drop sponsored placements from the returned list." },
@@ -73,7 +73,7 @@
         },
         {
           type: "object", additionalProperties: false, required: ["status", "error_kind", "error_message"],
-          properties: { status: { const: "error" }, error_kind: { enum: ["invalid_input", "wrong_page", "challenge", "rate_limited", "login_required", "filter_not_applied", "site_changed", "site_error"] }, error_message: { type: "string", minLength: 1 } }
+          properties: { status: { const: "error" }, error_kind: { enum: ["invalid_input", "wrong_page", "challenge", "access_gated", "rate_limited", "login_required", "filter_not_applied", "site_changed", "site_error"] }, error_message: { type: "string", minLength: 1 } }
         }
       ]
     },
@@ -154,10 +154,15 @@
     const noResults = reason => ({ status: "no_results", reason, query, sort_by: sortBy, page, total_results: totalResults, total_pages: totalPages, facet_ids: facetIds });
     const noMessage = /no results for/i.test(text(doc.body) || "");
     if (noMessage && !infoText) return noResults("no_matches");
-    if (rh && cards.length && !applied) return fail("filter_not_applied", "Amazon ignored the requested filters and showed unfiltered results, so none are returned. Ask again with fresh option ids from include_facets.");
+    if (rh && cards.length) {
+      const kept = new Set([...doc.querySelectorAll("input[name='rh']")].flatMap(el => (el.getAttribute("value") || "").split(",")));
+      const dropped = kept.size ? rh.split(",").filter(segment => !kept.has(segment)) : applied ? [] : rh.split(",");
+      if (dropped.length) return fail("filter_not_applied", `Amazon ignored ${dropped.length} of the requested filters (${dropped.join(", ")}), so no results are returned. Ask again with fresh option ids from include_facets.`);
+    }
     if (!cards.length) {
       if (infoText && totalResults !== null) return noResults("page_out_of_range");
       if (noMessage) return noResults("no_matches");
+      if (/violates Amazon.s Conditions of Use/i.test(text(doc.body) || "")) return fail("access_gated", "Amazon is showing a Conditions of Use notice about automated or AI-agent access instead of the page. A person has to read it and continue on amazon.com in this browser; the tool never accepts or dismisses it and returned no data.");
       return fail("site_changed", "The Amazon results page had no product cards and no no-results message; its layout may have changed. Nothing was changed.");
     }
 
@@ -203,7 +208,7 @@
           const name = labelled ? labelled[1] : text(item);
           if (segments.length === 1 && FACET.test(segments[0]) && name && options.length < 25) options.push({ id: segments[0], name: name.slice(0, 80) });
         }
-        if (options.length && facets.length < 30) facets.push({ group, name: text(list.parentElement && list.parentElement.querySelector("[id$='-title']")), options });
+        if (options.length && facets.length < 30) facets.push({ group, name: group === "p_36" ? "Price" : text(list.parentElement && list.parentElement.querySelector("[id$='-title']")), options });
       }
     }
     return {

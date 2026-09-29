@@ -55,7 +55,7 @@
         },
         {
           type: "object", additionalProperties: false, required: ["status", "error_kind", "error_message"],
-          properties: { status: { const: "error" }, error_kind: { enum: ["invalid_input", "wrong_page", "challenge", "rate_limited", "login_required", "not_found", "site_changed", "site_error"] }, error_message: { type: "string", minLength: 1 } }
+          properties: { status: { const: "error" }, error_kind: { enum: ["invalid_input", "wrong_page", "challenge", "access_gated", "rate_limited", "login_required", "not_found", "site_changed", "site_error"] }, error_message: { type: "string", minLength: 1 } }
         }
       ]
     },
@@ -106,6 +106,7 @@
     if (res.status === 429 || res.status === 503) return fail("rate_limited", `Amazon answered HTTP ${res.status}: too many requests from this browser. Wait a few minutes before calling again.`);
     if (!res.ok) return fail("site_error", `Amazon answered HTTP ${res.status} for the product page; nothing was changed.`);
     const title = text(doc.querySelector("#productTitle"));
+    if (!title && /violates Amazon.s Conditions of Use/i.test(text(doc.body) || "")) return fail("access_gated", "Amazon is showing a Conditions of Use notice about automated or AI-agent access instead of the page. A person has to read it and continue on amazon.com in this browser; the tool never accepts or dismisses it and returned no data.");
     if (!title) return fail("site_changed", "The Amazon product page had no product title; its layout may have changed. Nothing was changed.");
 
     const grab = (source, key) => {
@@ -170,7 +171,7 @@
       rating_average: stars ? parseFloat(stars[1]) : null, rating_count: count ? parseInt(count[1].replace(/,/g, ""), 10) : null, rating_histogram: histogram,
       bullets: [...doc.querySelectorAll("#feature-bullets li")].map(text).filter(Boolean).slice(0, 10).map(t => t.slice(0, 500)),
       ships_from: both ? seller.value : shipper.value, sold_by: seller.value || text(doc.querySelector("#sellerProfileTriggerId")),
-      delivery_text: delivery ? delivery.slice(0, 300) : null, add_to_cart_available: !!doc.querySelector("#add-to-cart-button"),
+      delivery_text: delivery ? delivery.slice(0, 300) : null, add_to_cart_available: !!doc.querySelector("#add-to-cart-button, #add-to-cart-button-ubb"),
       selected_options: optionsOf((family.find(([id]) => id === asin) || [null, []])[1]),
       variation_dimensions: names.map((name, i) => ({ name, values: (Array.isArray(listed[dimensions[i]]) ? listed[dimensions[i]] : []).filter(v => typeof v === "string").slice(0, 100) })),
       variant_count: family.length, matching_variant_count: matching.length, variants_truncated: matching.length > maxVariants,

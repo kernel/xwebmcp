@@ -41,7 +41,7 @@
         },
         {
           type: "object", additionalProperties: false, required: ["status", "error_kind", "error_message"],
-          properties: { status: { const: "error" }, error_kind: { enum: ["invalid_input", "wrong_page", "challenge", "rate_limited", "login_required", "not_found", "site_changed", "site_error"] }, error_message: { type: "string", minLength: 1 } }
+          properties: { status: { const: "error" }, error_kind: { enum: ["invalid_input", "wrong_page", "challenge", "access_gated", "rate_limited", "login_required", "not_found", "site_changed", "site_error"] }, error_message: { type: "string", minLength: 1 } }
         }
       ]
     },
@@ -117,7 +117,9 @@
       const value = path ? path[1] : /\/zgbs\/(?:ref=|$|\?)/.test(href) ? null : undefined;
       if (name && value !== undefined && !categories.some(c => c.category === value) && categories.length < 60) categories.push({ name: name.slice(0, 100), category: value });
     }
-    if (!items.length && !categories.length) return fail(category ? "not_found" : "site_changed", category ? `Amazon has no ranking list for category '${category}'.` : "The Amazon Best Sellers page listed no departments; its layout may have changed. Nothing was changed.");
+    if (!items.length && !categories.length && /violates Amazon.s Conditions of Use/i.test(text(doc.body) || "")) return fail("access_gated", "Amazon is showing a Conditions of Use notice about automated or AI-agent access instead of the page. A person has to read it and continue on amazon.com in this browser; the tool never accepts or dismisses it and returned no data.");
+    if (category && !items.length && /^Amazon Best Sellers: Best undefined/i.test(doc.title)) return fail("not_found", `Amazon has no ranking list for category '${category}'.`);
+    if (!items.length && !categories.length) return fail("site_changed", "The Amazon Best Sellers page listed no products or categories; its layout may have changed. Nothing was changed.");
     if (category && !items.length) return fail("site_changed", "The Amazon Best Sellers page listed categories but no ranked products; its layout may have changed. Nothing was changed.");
     const current = text(doc.querySelector("[class*='zg-selected']"));
     const named = current ? current.replace(/\s*\(Current\)$/, "") : ((/^Amazon Best Sellers: Best (.+)$/.exec(doc.title) || [])[1] || null);
