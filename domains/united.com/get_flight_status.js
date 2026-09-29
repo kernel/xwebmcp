@@ -34,13 +34,14 @@
       destination: { type: ["string", "null"], pattern: "^[A-Z]{3}$" }
     }
   };
+  const IN_SEQUENCE = { type: "boolean", description: "true when every segment's scheduled departure is at or after the previous segment's scheduled arrival, so the segments can be read as one journey. false when United lists segments that cannot be one journey, for example a through flight that crosses the date line: United returns each leg that departs on the requested date, so its legs can belong to different operating days. Read each segment on its own then." };
   const pageUrl = { type: "string", pattern: "^https://www\\.united\\.com/en/us/flightstatus/results/(route/[0-9]{4}-[0-9]{2}-[0-9]{2}/[A-Z]{3}/[A-Z]{3}|flightNumber/[0-9]{4}-[0-9]{2}-[0-9]{2}/[1-9][0-9]{0,3})/[A-Z0-9]{2}$", description: "United's own status page for the same lookup." };
   return [{
     kind: "page",
     match: { url_patterns: ["https://www.united.com/*"] },
     tool: {
       name: "get_flight_status",
-      description: "Look up the public flight status United shows on its Flight status page, either for one flight number on one date (flight_number) or for every flight between two airports on one date (origin and destination). Give exactly one of those two. airline defaults to UA; United's form also lists partner airlines such as AC or LH. Returns per flight: status wording, whether it is in the air, aircraft type, operating carrier, and for each end the airport, terminal, gate, baggage claim, and scheduled, estimated and actual airport-local times. A flight number that flies several legs that day returns every leg United lists; a route search returns at most 30 itineraries, each nonstop or with connections. date is YYYY-MM-DD within two days of today, the range United's form offers. Runs inside the current https://www.united.com page with two same-origin GET requests (an anonymous token, exactly as the page requests it, then the status lookup) and never navigates, so open any www.united.com page first. Public and read-only: it never signs in, opens the trip or passenger details pages, subscribes to alerts, or changes anything. It returns no passenger names, standby or upgrade lists, or tail numbers. no_results means United lists no such flight; it does not prove a flight is not scheduled. Cancelled and diverted flights have not been observed, so read status_text and leg_status rather than assuming. blocked, rate_limited and site_changed are not answers about the flight; do not retry automatically. It makes one lookup per call and never retries.",
+      description: "Look up the public flight status United shows on its Flight status page, either for one flight number on one date (flight_number) or for every flight between two airports on one date (origin and destination). Give exactly one of those two. airline defaults to UA; United's form also lists partner airlines such as AC or LH. Returns per flight: status wording, whether it is in the air, aircraft type, operating carrier, and for each end the airport, terminal, gate, baggage claim, and scheduled, estimated and actual airport-local times. A flight number that flies several legs returns every leg United lists as departing that day, listed one by one (check in_sequence before reading them as a single journey); a route search returns at most 30 itineraries, each nonstop or with connections, limited to flights the requested airline operates or sells. date is YYYY-MM-DD within two days of today, the range United's form offers. Runs inside the current https://www.united.com page with two same-origin GET requests (an anonymous token, exactly as the page requests it, then the status lookup) and never navigates, so open any www.united.com page first. Public and read-only: it never signs in, opens the trip or passenger details pages, subscribes to alerts, or changes anything. It returns no passenger names, standby or upgrade lists, or tail numbers. no_results means United lists no such flight; it does not prove a flight is not scheduled. Cancelled and diverted flights have not been observed, so read status_text and leg_status rather than assuming. blocked, rate_limited and site_changed are not answers about the flight; do not retry automatically. It makes one lookup per call and never retries.",
       inputSchema: {
         type: "object", additionalProperties: false, required: ["date"],
         properties: {
@@ -56,32 +57,35 @@
         oneOf: [
           {
             type: "object", additionalProperties: false,
-            required: ["status", "lookup", "query", "status_page_url", "leg_count", "legs", "observed_at"],
+            required: ["status", "lookup", "query", "status_page_url", "leg_count", "in_sequence", "legs", "observed_at"],
             properties: {
               status: { const: "ok" },
               lookup: { const: "flight_number" },
               query,
               status_page_url: pageUrl,
               leg_count: { type: "integer", minimum: 1, description: "Legs United returned; legs holds at most 8 of them." },
+              in_sequence: IN_SEQUENCE,
               legs: { type: "array", minItems: 1, maxItems: 8, items: segmentSchema },
               observed_at: { type: "string" }
             }
           },
           {
             type: "object", additionalProperties: false,
-            required: ["status", "lookup", "query", "status_page_url", "itinerary_count", "itineraries", "observed_at"],
+            required: ["status", "lookup", "query", "status_page_url", "itinerary_count", "possibly_truncated", "itineraries", "observed_at"],
             properties: {
               status: { const: "ok" },
               lookup: { const: "route" },
               query,
               status_page_url: pageUrl,
-              itinerary_count: { type: "integer", minimum: 1, description: "Itineraries United returned; itineraries holds at most 30 of them." },
+              itinerary_count: { type: "integer", minimum: 1, description: "Itineraries United returned that the requested airline operates or sells a segment of; itineraries holds at most 30 of them." },
+              possibly_truncated: { type: "boolean", description: "true when United returned its observed maximum of 30 itineraries for the search, so it may have left flights out. Look up a specific flight number to confirm one." },
               itineraries: {
                 type: "array", minItems: 1, maxItems: 30,
                 items: {
-                  type: "object", additionalProperties: false, required: ["stops", "duration_minutes", "segments"],
+                  type: "object", additionalProperties: false, required: ["stops", "duration_minutes", "in_sequence", "segments"],
                   properties: {
                     stops: { type: "integer", minimum: 0, maximum: 4 },
+                    in_sequence: IN_SEQUENCE,
                     duration_minutes: { type: ["integer", "null"], minimum: 1, description: "United's journey duration, including connection time." },
                     segments: { type: "array", minItems: 1, maxItems: 5, items: segmentSchema }
                   }
@@ -139,8 +143,8 @@
 
       const clean = (value, max = 80) => {
         if (typeof value !== "string") return null;
-        const text = value.replace(/[\u0000-\u001f\u007f]+/g, " ").replace(/\s+/g, " ").trim();
-        return text && !/^(undefined|null|nan)$/i.test(text) ? text.slice(0, max) : null;
+        const text = value.replace(/[\u0000-\u001f\u007f-\u009f\u200b-\u200f\u2028-\u202e\u2060-\u2064\u2066-\u2069\ufeff]+/g, " ").replace(/\s+/g, " ").trim();
+        return text && !/^(undefined|null|nan)$/i.test(text) ? Array.from(text).slice(0, max).join("").trimEnd() : null;
       };
       const clock = (value) => {
         if (typeof value !== "string") return null;
@@ -204,6 +208,8 @@
         };
       };
 
+      const inSequence = (segs) => segs.every((seg, i) => i === 0 || Date.parse(seg.departure.scheduled) >= Date.parse(segs[i - 1].arrival.scheduled));
+
       const controller = new AbortController();
       const timer = setTimeout(() => controller.abort(), 30000);
       if (context?.signal?.aborted) controller.abort();
@@ -239,8 +245,8 @@
           ? "/api/flightstatus/status/" + input.flight_number + "/" + input.date + "?carrierCode=" + airline + "&useLegDestDate=true"
           : "/api/flightstatus/trip/" + input.origin + "/" + input.destination + "/" + input.date + "?carrierCode=" + airline;
         result = await get(path, { "x-authorization-api": "bearer " + hash });
-      } catch (error) {
-        return fail("error", controller.signal.aborted ? "The request to United timed out or was cancelled; nothing was changed." : "The request to United failed: " + clean(error && error.message ? error.message : String(error), 200));
+      } catch {
+        return fail("error", controller.signal.aborted ? "The request to United timed out or was cancelled; nothing was changed." : "The request to United failed before a complete response arrived; nothing was changed.");
       } finally {
         clearTimeout(timer);
       }
@@ -265,7 +271,7 @@
           return fail("site_changed", "United answered for a different flight or date than requested, or in an unexpected shape; not returning it.", 200);
         const mapped = legs.flatMap((leg) => (Array.isArray(leg?.OperationalFlightSegments) ? leg.OperationalFlightSegments : [null]).map(segment));
         if (mapped.length === 0 || mapped.some((s) => !s)) return fail("site_changed", "United returned a leg without the fields this tool reads; not returning partial data.", 200);
-        return { status: "ok", lookup: "flight_number", query: echo, status_page_url: statusPageUrl, leg_count: mapped.length, legs: mapped.slice(0, 8), observed_at: observedAt };
+        return { status: "ok", lookup: "flight_number", query: echo, status_page_url: statusPageUrl, leg_count: mapped.length, in_sequence: inSequence(mapped), legs: mapped.slice(0, 8), observed_at: observedAt };
       }
       if (!Array.isArray(body)) return fail("site_changed", "United's route lookup did not answer with a list.", 200);
       const failure = body.find((item) => item && typeof item === "object" && item.Error);
@@ -275,14 +281,21 @@
           return fail("no_results", "United lists no flights for " + label + ". It says all flights may have departed or none were found; this does not prove none operate.", 200);
         return fail("error", "United reported the error " + (code || "unknown") + " for " + label + ".", 200);
       }
-      const itineraries = body.map((trip) => {
-        const segs = Array.isArray(trip?.FlightLegs) ? trip.FlightLegs.flatMap((leg) => (Array.isArray(leg?.OperationalFlightSegments) ? leg.OperationalFlightSegments : [null]).map(segment)) : [];
-        if (segs.length === 0 || segs.length > 5 || segs.some((s) => !s) || segs[0].departure.scheduled.slice(0, 10) !== input.date) return null;
+      const raw = body.map((trip) => (Array.isArray(trip?.FlightLegs) ? trip.FlightLegs.flatMap((leg) => (Array.isArray(leg?.OperationalFlightSegments) ? leg.OperationalFlightSegments : [null])) : []));
+      if (raw.some((segs) => segs.length === 0 || segs.length > 5 || segs.some((seg) => !seg || typeof seg !== "object")))
+        return fail("site_changed", "United returned an itinerary this tool cannot read safely; not returning partial data.", 200);
+      const sells = (seg) => seg.OperatingAirlineCode === airline || (Array.isArray(seg.MarketedFlightSegment) && seg.MarketedFlightSegment.some((m) => m?.MarketingAirlineCode === airline));
+      const kept = body.map((trip, i) => ({ trip, segs: raw[i] })).filter(({ segs }) => segs.some(sells));
+      if (kept.length === 0)
+        return fail("no_results", "United returned flights for " + input.origin + "-" + input.destination + " on " + input.date + " but none that " + airline + " operates or sells. For airline codes it does not recognise United substitutes its own flights, which are not returned.", 200);
+      const itineraries = kept.map(({ trip, segs: rawSegs }) => {
+        const segs = rawSegs.map(segment);
+        if (segs.some((seg) => !seg) || segs[0].departure.scheduled.slice(0, 10) !== input.date) return null;
         const duration = typeof trip.JourneyDuration === "string" && /^[0-9]{1,5}$/.test(trip.JourneyDuration) ? Number(trip.JourneyDuration) : 0;
-        return { stops: segs.length - 1, duration_minutes: duration > 0 ? duration : null, segments: segs };
+        return { stops: segs.length - 1, duration_minutes: duration > 0 ? duration : null, in_sequence: inSequence(segs), segments: segs };
       });
       if (itineraries.some((it) => !it)) return fail("site_changed", "United returned an itinerary this tool cannot read safely, or one that departs on a different day than requested; not returning partial data.", 200);
-      return { status: "ok", lookup: "route", query: echo, status_page_url: statusPageUrl, itinerary_count: itineraries.length, itineraries: itineraries.slice(0, 30), observed_at: observedAt };
+      return { status: "ok", lookup: "route", query: echo, status_page_url: statusPageUrl, itinerary_count: itineraries.length, possibly_truncated: body.length >= 30, itineraries: itineraries.slice(0, 30), observed_at: observedAt };
     }
   }]
 })()

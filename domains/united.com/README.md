@@ -87,7 +87,7 @@ await webmcp.invokeTool(tool.tool_ref, { origin: "SFO", destination: "LAX", date
 
 - `date` (required): `YYYY-MM-DD`, a real calendar date no more than two days before or after the browser's local date. That is the range United's own form offers; anything else is `invalid_input` and nothing is requested.
 - Exactly one lookup: `flight_number` (digits, 1-9999, no airline prefix, no leading zero) **or** `origin` with `destination` (three-letter uppercase IATA codes, different from each other). Metro codes such as `NYC` are passed through and United returns the airports it means.
-- `airline` (optional, default `UA`): two-character code. United's form lists 28 airlines (United and Star Alliance partners); `AC` and `LH` were exercised, other codes were not.
+- `airline` (optional, default `UA`): two-character code. United's form lists 28 airlines (United and Star Alliance partners); `AC`, `LH` and `YV` were exercised, other codes were not. In a route search only itineraries where that airline operates or sells (marketing carrier) at least one segment are returned, because United answers a code it does not recognise with its own flights; if none qualify the result is `no_results`. A flight-number lookup for an unknown airline is a `no_results` from United's 404.
 
 ### Output
 
@@ -95,7 +95,7 @@ Every outcome is a `status`:
 
 | status | meaning |
 | --- | --- |
-| `ok` | `lookup` is `flight_number` (`legs`, at most 8) or `route` (`itineraries`, at most 30, each with `stops`, `duration_minutes` and up to 5 `segments`). `query`, a canonical `status_page_url` on www.united.com, and `observed_at` are always present. |
+| `ok` | `lookup` is `flight_number` (`leg_count`, `in_sequence`, `legs` at most 8) or `route` (`itinerary_count`, `possibly_truncated`, `itineraries` at most 30, each with `stops`, `duration_minutes`, `in_sequence` and up to 5 `segments`). `query`, a canonical `status_page_url` on www.united.com, and `observed_at` are always present. |
 | `no_results` | United lists no such flight or route that day. It does not prove nothing operates. |
 | `invalid_input` | Rejected before any request. |
 | `wrong_page` | The tab is not on `https://www.united.com`; no request was made. |
@@ -104,7 +104,9 @@ Every outcome is a `status`:
 | `site_changed` | An unexpected shape, an answer for a different flight or day, or a segment missing a field the tool reads. No partial data is returned. |
 | `error` | 5xx, a rejected request, an unrecognised route error code, a network failure, timeout or cancellation. |
 
-A segment has `flight_number`, `operating_airline_code` and `_name` (for example `OO` for a United Express flight), `status_text`, `status_code`, `leg_status`, `aircraft_name`, `aircraft_code`, and `departure` / `arrival` with `airport_code`, `terminal`, `gate`, `scheduled`, `estimated`, `actual` and `estimated_delay_minutes` (`arrival` also has `baggage_claim`). Times are ISO 8601 with the airport's UTC offset, computed from the local and UTC times United sends for the same instant (`null` if either is missing). `estimated_delay_minutes` is derived by United from its estimated time (negative is early), so it can differ from the actual time after arrival. `status_text`, gates and terminals are United's own words (`HOLD` is a real gate value United shows), bounded to 80 characters with control characters removed; treat them as data.
+A segment has `flight_number` (the number United lists for that leg; a lookup by a marketing number can return the operating carrier's number, so a request for `UA 9876` returned Austrian flight `181`), `operating_airline_code` and `_name` (for example `OO` for a United Express flight sold as `UA`), `status_text`, `status_code`, `leg_status`, `aircraft_name`, `aircraft_code`, and `departure` / `arrival` with `airport_code`, `terminal`, `gate`, `scheduled`, `estimated`, `actual` and `estimated_delay_minutes` (`arrival` also has `baggage_claim`). Times are ISO 8601 with the airport's UTC offset, computed from the local and UTC times United sends for the same instant (`null` if either is missing). `estimated_delay_minutes` is derived by United from its estimated time (negative is early), so it can differ from the actual time after arrival. `status_text`, gates and terminals are United's own words (`HOLD` is a real gate value United shows), bounded to 80 characters (never splitting a character) with control and invisible formatting characters removed; treat them as data. The same field can differ between the two lookups: `baggage_claim` was `"Carousel 3"` from a flight-number lookup and `"3"` from a route search for the same flight.
+
+`in_sequence` is `true` when each segment's scheduled departure is at or after the previous segment's scheduled arrival. United returns, for a flight number, each leg that departs on the requested date, and it can pair legs from different operating days: a through flight that crosses the date line (observed 2026-09-29 for a San Francisco–Tokyo–Kaohsiung flight) listed the second leg departing before the first leg landed. Such a result is `in_sequence: false`; every leg is still returned, so read each on its own and do not treat the list as one journey. `possibly_truncated` is `true` when United returned 30 itineraries, the most seen in any route search, so flights may be missing; the same route and day returned 20 itineraries in one check and 30 in another.
 
 ### Why `page`
 
@@ -112,14 +114,14 @@ Both lookups are same-origin `GET` requests the Flight status page itself makes,
 
 ### URL patterns
 
-`get_flight_status` is attached to `https://www.united.com/*` only, not to the namespace default. A `page` tool's request is same-origin, so on other `united.com` hosts (careers, hotels, packages, the business program) it could only answer `wrong_page`; `cdp-tools.md` §2.2 recommends narrowing instead. `search_flights` and `login` keep the default patterns and are unchanged. `mystatus.united.com` redirects signed-out visitors to a www page, where the tool is listed.
+`get_flight_status` is attached to `https://www.united.com/*` only, not to the namespace default. A `page` tool's request is same-origin, so on other `united.com` hosts (careers, hotels, packages, the business program) it could only answer `wrong_page`; `cdp-tools.md` §2.2 recommends narrowing instead. `search_flights` and `login` keep the default patterns and are unchanged, which leaves this namespace with mixed host patterns although `repository.md` §6.2 says the tools of a narrowed namespace SHOULD share a host. Using the default patterns instead would list a tool that can only answer `wrong_page` on those hosts; that trade-off is left to the maintainers. `mystatus.united.com` redirects signed-out visitors to a www page, where the tool is listed.
 
 ### Site quirks
 
-- The route response is large (roughly 250-590 KB before the allowlist) and holds at most 30 itineraries. The same route and day returned 20 itineraries in one check and 30 in another, so the count is not stable. Output is 1-36 KB.
+- The route response is large (roughly 250-590 KB before the allowlist) and holds at most 30 itineraries, and the count is not stable. Output was 1-56 KB in checks. The schema allows up to about 217 KiB in theory (30 itineraries of 5 segments with every text field at its limit), just under the 240 KiB limit on API-originated results; a result over a runtime limit fails explicitly, it is not truncated.
 - The two endpoints format times differently (`MM/DD/YYYY HH:mm:ss` versus ISO); the flight-number one names actual arrival UTC `InUTCTime`. Both are handled.
 - United sometimes sends the literal text `undefined` as a status description. It becomes `null`.
-- A flight number that flies several legs returns the legs United lists for that date, which can be fewer than the schedule shows.
+- A flight number that flies several legs returns the legs United lists as departing on that date, which can be fewer than the schedule shows and, for flights that cross the date line, can mix operating days (see `in_sequence`).
 - Route searches with an airport United does not know, or with no flights, answer HTTP 200 with an `Error` list (`NoRecordFound`), reported as `no_results`. An unknown flight number answers 404 with `Flight not found`, also `no_results`.
 - One lookup per call, two requests. There are no retries.
 
@@ -129,7 +131,7 @@ Run by the author on 2026-09-29 on a fresh public Kernel stealth browser, US egr
 
 - The whole `united.com` namespace (all three tools) registered together with `forceOverwriteNamespace`; no existing tool was invoked. All three listed on the Flight status page; only `search_flights` and `login` listed on `careers.united.com`.
 - Flight number, multi-leg, landed flight (actual times, arrival UTC via `InUTCTime`), route with connections, partner carrier (`AC`, `LH`), from `/en/us/flightstatus`, `/en/us` and `/en/us/fly/baggage.html`. Each call made exactly two requests and left the document unchanged.
-- `no_results` for an unknown flight number, a route with no flights, an unknown airport and an unknown airline; `invalid_input` for out-of-window and impossible dates, both lookups at once, one airport, unknown keys, a leading zero and a lowercase airline code.
+- `no_results` for an unknown flight number, a route with no flights, an unknown airport, and an unknown airline (flight-number lookup); an unknown airline in a route search returned United's own flights in the first version of the tool and is now `no_results`; `invalid_input` for out-of-window and impossible dates, both lookups at once, one airport, unknown keys, a leading zero and a lowercase airline code.
 - Not observed: `blocked`, `rate_limited` and `site_changed` from the live service (fixtures only), a cancelled or diverted flight, a populated delay or cancellation reason, more than three segments, a signed-in browser, and the Chrome extension runtime.
 
 Local fixture tests (fabricated data, stubbed `fetch`, `location` and clock):
@@ -141,7 +143,7 @@ node --test tests/united-flight-status.test.mjs
 ## Known limitations
 
 - `search_flights`: initial outbound page only, including for round trips, whose fares are advertised per-person roundtrip starting fares rather than confirmed pairings. Adults only (1–9), English/US cash fares, economy. Nearby airports may be substituted and are reported explicitly. Slow searches can exceed the caller's transport deadline.
-- `get_flight_status` (`draft`): dates within two days of today only; a route search returns at most 30 itineraries; a multi-leg flight number returns the legs United lists that day; no passenger, standby, upgrade, inbound-aircraft, weather or tail-number data; cancelled and diverted flights and delay reasons were not observed, so only United's status text and codes are passed through; partner airlines other than `AC` and `LH` were not exercised; `blocked`, `rate_limited` and `site_changed` were not observed live; it relies on United's own web service and anonymous token, which can change without notice. Not run in a signed-in browser or the Chrome extension.
+- `get_flight_status` (`draft`): dates within two days of today only; a route search returns at most 30 itineraries and sets `possibly_truncated` at 30; a multi-leg flight number returns the legs United lists as departing that day, which may not form one journey (`in_sequence`); no passenger, standby, upgrade, inbound-aircraft, weather or tail-number data; cancelled and diverted flights and delay reasons were not observed, so only United's status text and codes are passed through; partner airlines other than `AC` and `LH` were not exercised; `blocked`, `rate_limited` and `site_changed` were not observed live; it relies on United's own web service and anonymous token, which can change without notice. Not run in a signed-in browser or the Chrome extension.
 - `login` (`qa_passed`, not `verified`): United challenges this egress with HTTP 428 on the sign-in API, so the successful-login path, real wrong-password rejection, and MFA completion are unverified; only challenge classification is live-verified. Split OTP fields and third-party SSO are not supported.
 
 ## Sessions

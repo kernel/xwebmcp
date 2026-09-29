@@ -67,7 +67,7 @@ const routeSegment = (over = {}) => ({
   EstimatedArrivalTime: "10/01/2026 07:42:00", EstimatedArrivalUTCTime: "10/01/2026 14:42:00",
   DepartureGate: "F21", DepartureTerminal: "Terminal 3", ArrivalGate: "72A", ArrivalTermimal: "Terminal 7", ArrivalBagClaimUnit: "3",
   EstimatedDepartureDelayMinutes: "5", EstimatedArrivalDelayMinutes: "5",
-  FlightStatuses: DEFAULT_STATUSES,
+  FlightStatuses: DEFAULT_STATUSES, MarketedFlightSegment: [{ MarketingAirlineCode: "UA" }],
   Equipment: { Model: { Genre: "7M8", Description: "Boeing 737 MAX 8", Key: "37E" }, TailNumber: "N00000", ShipNumber: "secret-ship-marker", Cabins: [{ Name: "secret-cabin-marker" }] },
   Characteristic: [{ Code: "secret-characteristic-marker" }], StandbyList: [{ Name: "DOE, J." }], DepartureFuelWeight: "NaN",
   ...over
@@ -153,7 +153,7 @@ test("definition: page tool for www.united.com with read-only annotations, typed
 
 test("definition: description states what the tool does not do", () => {
   const d = okNumber().tool.tool.description;
-  for (const phrase of [/never navigates/, /never retries/, /read-only/i, /no passenger names/, /no_results/, /blocked, rate_limited and site_changed/, /have not been observed/]) assert.match(d, phrase);
+  for (const phrase of [/in_sequence/, /never navigates/, /never retries/, /read-only/i, /no passenger names/, /no_results/, /blocked, rate_limited and site_changed/, /have not been observed/]) assert.match(d, phrase);
 });
 
 // --- requests -----------------------------------------------------------------------------------------------
@@ -365,7 +365,8 @@ test("a response for another flight or day, or with unreadable segments, is site
 test("network failure and cancellation are errors, not empty results", async () => {
   const failed = plain(await lookup(() => { throw new Error("socket closed"); }).run({ flight_number: "1234", date: "2026-10-01" }));
   assert.equal(failed.status, "error");
-  assert.match(failed.message, /socket closed/);
+  assert.match(failed.message, /failed before a complete response arrived/);
+  assert.ok(!failed.message.includes("socket closed"), "the transport error text is not passed through");
   const controller = new AbortController();
   controller.abort();
   const h = okNumber();
@@ -440,4 +441,166 @@ test("wrong page: any other origin returns wrong_page without a request; input i
   assert.equal(h.calls.length, 0);
   assert.equal(plain(await h.run({ flight_number: "12x", date: "2026-10-01" })).status, "invalid_input");
   assert.ok(conforms(outputSchema(h), out));
+});
+
+// --- reviewer findings: sequence, airline filter, truncation, sanitising, guards -------------------------
+
+const at = (local, utc) => ({ local, utc });
+const setTimes = (prefix, t) => ({ [`${prefix}DateTime`]: t.local, [`${prefix}UTCDateTime`]: t.utc });
+// A through flight that crosses the date line, as United lists it: leg 2 is a leg that departs on the requested day
+// but belongs to the previous operating day, so it leaves before leg 1 has arrived.
+const dateLineLegs = () => [
+  statusSegment({ FlightNumber: "800", DepartureAirport: { IATACode: "SFO" }, ArrivalAirport: { IATACode: "NRT" }, EstimatedDepartureTime: null, EstimatedArrivalTime: null,
+    ...setTimes("Departure", at("2026-10-01T11:55:00", "2026-10-01T18:55:00")), ...setTimes("Arrival", at("2026-10-02T15:00:00", "2026-10-02T06:00:00")) }),
+  statusSegment({ FlightNumber: "800", DepartureAirport: { IATACode: "NRT" }, ArrivalAirport: { IATACode: "KHH" }, EstimatedDepartureTime: null, EstimatedArrivalTime: null,
+    ...setTimes("Departure", at("2026-10-01T17:50:00", "2026-10-01T08:50:00")), ...setTimes("Arrival", at("2026-10-01T21:00:00", "2026-10-01T13:00:00")) })
+];
+
+test("in_sequence: true for ordinary legs, false when United lists a leg that departs before the previous one arrives", async () => {
+  const ordinary = plain(await okNumber([
+    statusSegment(),
+    statusSegment({ DepartureAirport: { IATACode: "LAX" }, ArrivalAirport: { IATACode: "EWR" }, ...setTimes("Departure", at("2026-10-01T10:15:00", "2026-10-01T17:15:00")), ...setTimes("Arrival", at("2026-10-01T18:30:00", "2026-10-01T22:30:00")), EstimatedDepartureTime: null, EstimatedArrivalTime: null })
+  ]).run({ flight_number: "1234", date: "2026-10-01" }));
+  assert.equal(ordinary.status, "ok");
+  assert.equal(ordinary.in_sequence, true);
+  const h = okNumber(dateLineLegs(), { data: { Flight: { flightNumber: "800", FlightOriginationDate: "2026-10-01" }, flightLegs: dateLineLegs().map(seg => ({ OperationalFlightSegments: [seg] })) } });
+  const crossing = plain(await h.run({ flight_number: "800", date: "2026-10-01" }));
+  assert.equal(crossing.status, "ok");
+  assert.equal(crossing.leg_count, 2);
+  assert.equal(crossing.in_sequence, false, "legs that cannot be one journey are flagged, not silently combined");
+  assert.deepEqual(crossing.legs.map(l => l.departure.airport_code), ["SFO", "NRT"], "both legs are still returned");
+  assert.equal(crossing.legs[0].arrival.scheduled, "2026-10-02T15:00:00+09:00");
+  assert.equal(crossing.legs[1].departure.scheduled, "2026-10-01T17:50:00+09:00");
+  assert.ok(conforms(outputSchema(h), crossing));
+  assert.equal(plain(await okNumber().run({ flight_number: "1234", date: "2026-10-01" })).in_sequence, true, "a single leg is in sequence");
+  const overlapping = plain(await okNumber([
+    statusSegment(),
+    statusSegment({ DepartureAirport: { IATACode: "LAX" }, ArrivalAirport: { IATACode: "EWR" }, EstimatedDepartureTime: null, EstimatedArrivalTime: null, ...setTimes("Departure", at("2026-10-01T07:00:00", "2026-10-01T14:00:00")), ...setTimes("Arrival", at("2026-10-01T15:00:00", "2026-10-01T19:00:00")) })
+  ]).run({ flight_number: "1234", date: "2026-10-01" }));
+  assert.equal(overlapping.in_sequence, false, "a leg that leaves after the previous one departed but before it arrived is out of sequence");
+});
+
+test("in_sequence is reported per route itinerary", async () => {
+  const [a, b] = dateLineLegs().map(seg => routeSegment({ ...seg, FlightNumber: "800", DepartureDateTime: isoToRoute(seg.DepartureDateTime), DepartureUTCDateTime: isoToRoute(seg.DepartureUTCDateTime), ArrivalDateTime: isoToRoute(seg.ArrivalDateTime), ArrivalUTCDateTime: isoToRoute(seg.ArrivalUTCDateTime) }));
+  const out = plain(await okRoute([trip([routeSegment()]), trip([a, b], "900")]).run({ origin: "SFO", destination: "KHH", date: "2026-10-01" }));
+  assert.equal(out.status, "ok");
+  assert.deepEqual(out.itineraries.map(i => i.in_sequence), [true, false]);
+});
+function isoToRoute(iso) { return iso.replace(/^(\d{4})-(\d{2})-(\d{2})T(.*)$/, "$2/$3/$1 $4"); }
+
+test("route: an airline code United does not recognise gets United's own flights back; they are not returned under that code", async () => {
+  const h = okRoute(Array.from({ length: 24 }, () => trip([routeSegment()])));
+  const out = plain(await h.run({ origin: "SFO", destination: "LAX", date: "2026-10-01", airline: "ZZ" }));
+  assert.equal(out.status, "no_results");
+  assert.match(out.message, /none that ZZ operates or sells/);
+  assert.equal(h.calls[1].url, "/api/flightstatus/trip/SFO/LAX/2026-10-01?carrierCode=ZZ");
+  assert.ok(conforms(outputSchema(h), out));
+});
+
+test("route: itineraries are kept when the requested airline operates or sells any segment, and only those", async () => {
+  const united = trip([routeSegment()]);
+  const express = trip([routeSegment({ FlightNumber: "5001", OperatingAirlineCode: "OO", OperatingAirlineName: "SkyWest dba United Express" })]);
+  const partnerOnly = trip([routeSegment({ FlightNumber: "77", OperatingAirlineCode: "NH", OperatingAirlineName: "ANA", MarketedFlightSegment: [{ MarketingAirlineCode: "NH" }] })]);
+  const mixed = trip([routeSegment({ FlightNumber: "77", OperatingAirlineCode: "NH", MarketedFlightSegment: [{ MarketingAirlineCode: "NH" }] }), routeSegment({ FlightNumber: "4001", ...setTimes("Departure", at("10/01/2026 09:00:00", "10/01/2026 16:00:00")), ...setTimes("Arrival", at("10/01/2026 10:30:00", "10/01/2026 17:30:00")) })]);
+  const ua = plain(await okRoute([united, express, partnerOnly, mixed]).run({ origin: "SFO", destination: "LAX", date: "2026-10-01" }));
+  assert.equal(ua.itinerary_count, 3, "United, United Express (sold as UA) and the itinerary with a UA segment");
+  assert.deepEqual(ua.itineraries.map(i => i.segments[0].flight_number), ["1234", "5001", "77"]);
+  const nh = plain(await okRoute([united, express, partnerOnly, mixed]).run({ origin: "SFO", destination: "LAX", date: "2026-10-01", airline: "NH" }));
+  assert.equal(nh.itinerary_count, 2);
+  assert.ok(nh.itineraries.every(i => i.segments.some(s => s.operating_airline_code === "NH")));
+});
+
+test("route: an unreadable itinerary that belongs to another airline does not spoil the readable ones", async () => {
+  const other = trip([routeSegment({ OperatingAirlineCode: "NH", MarketedFlightSegment: [{ MarketingAirlineCode: "NH" }], DepartureDateTime: "garbage" })]);
+  const out = plain(await okRoute([trip([routeSegment()]), other]).run({ origin: "SFO", destination: "LAX", date: "2026-10-01" }));
+  assert.equal(out.status, "ok");
+  assert.equal(out.itinerary_count, 1);
+});
+
+test("route: possibly_truncated is true only when United returned its observed maximum of 30", async () => {
+  for (const [count, expected] of [[1, false], [29, false], [30, true], [35, true]]) {
+    const out = plain(await okRoute(Array.from({ length: count }, () => trip([routeSegment()]))).run({ origin: "SFO", destination: "LAX", date: "2026-10-01" }));
+    assert.equal(out.possibly_truncated, expected, `${count} itineraries`);
+    assert.equal(out.itineraries.length, Math.min(count, 30));
+  }
+});
+
+test("time guards: offsets over 14 hours or not on a quarter hour make the segment unreadable", async () => {
+  const tooFar = statusSegment({ ...setTimes("Departure", at("2026-10-01T06:00:00", "2026-09-30T15:00:00")) });
+  assert.equal(plain(await okNumber([tooFar]).run({ flight_number: "1234", date: "2026-10-01" })).status, "site_changed");
+  const odd = statusSegment({ ...setTimes("Departure", at("2026-10-01T06:10:00", "2026-10-01T01:00:00")) });
+  assert.equal(plain(await okNumber([odd]).run({ flight_number: "1234", date: "2026-10-01" })).status, "site_changed");
+  const impossible = statusSegment({ DepartureDateTime: "2026-02-30T06:00:00", DepartureUTCDateTime: "2026-02-30T13:00:00" });
+  assert.equal(plain(await okNumber([impossible]).run({ flight_number: "1234", date: "2026-10-01" })).status, "site_changed");
+});
+
+test("actual departure UTC falls back to OutUTCTime; an actual time without any UTC counterpart is null", async () => {
+  const withOut = statusSegment({ ActualDepartureTime: "2026-10-01T05:58:00", OutUTCTime: "2026-10-01T12:58:00" });
+  assert.equal(plain(await okNumber([withOut]).run({ flight_number: "1234", date: "2026-10-01" })).legs[0].departure.actual, "2026-10-01T05:58:00-07:00");
+  const noUtc = statusSegment({ ActualDepartureTime: "2026-10-01T05:58:00" });
+  assert.equal(plain(await okNumber([noUtc]).run({ flight_number: "1234", date: "2026-10-01" })).legs[0].departure.actual, null);
+});
+
+test("delay minutes are whole numbers only; negative is early; anything else is null", async () => {
+  const cases = [["12", 12], ["-18", -18], ["0", 0], ["-0", 0], ["NaN", null], ["1e3", null], ["12345", null], ["", null], [" 5", null], ["5.5", null], [7, null], [null, null]];
+  for (const [raw, expected] of cases) {
+    const out = plain(await okNumber([statusSegment({ EstimatedDepartureDelayMinutes: raw })]).run({ flight_number: "1234", date: "2026-10-01" }));
+    assert.equal(out.legs[0].departure.estimated_delay_minutes, expected, JSON.stringify(raw));
+  }
+});
+
+test("journey duration is a positive whole number of minutes or null", async () => {
+  for (const [raw, expected] of [["97", 97], ["0", null], ["", null], ["abc", null], ["-5", null], ["123456", null], [97, null]]) {
+    const out = plain(await okRoute([trip([routeSegment()], raw)]).run({ origin: "SFO", destination: "LAX", date: "2026-10-01" }));
+    assert.equal(out.itineraries[0].duration_minutes, expected, JSON.stringify(raw));
+  }
+});
+
+test("a parsed JSON answer is never treated as a challenge page because its text mentions one", async () => {
+  const seg = statusSegment({ FlightStatuses: [{ StatusType: "FlightStatus", Description: "Access denied at the gate: challenge accepted, verify you are human", Code: "X" }] });
+  const out = plain(await okNumber([seg]).run({ flight_number: "1234", date: "2026-10-01" }));
+  assert.equal(out.status, "ok");
+  assert.match(out.legs[0].status_text, /^Access denied/);
+});
+
+test("dates that are impossible but inside the window are rejected before any request", async () => {
+  for (const date of ["2026-09-31", "2026-10-00", "2026-13-01", "2026-10-32"]) {
+    const h = okNumber();
+    assert.equal(plain(await h.run({ flight_number: "1234", date })).status, "invalid_input", date);
+    assert.equal(h.calls.length, 0, date);
+  }
+});
+
+test("site text: invisible formatting characters are stripped and truncation never splits a character", async () => {
+  const spoof = "On time\u202e gnidnal\u200b\u2066hidden\u2069\u0085\u009fend\ufeff";
+  const astral = "\u{1F6EB}".repeat(100) + "  ";
+  const out = plain(await okNumber([statusSegment({ FlightStatuses: [{ StatusType: "FlightStatus", Description: spoof, Code: "X" }, { StatusType: "LegStatus", Description: astral }], DepartureGate: "A" + astral })]).run({ flight_number: "1234", date: "2026-10-01" }));
+  const leg = out.legs[0];
+  assert.equal(leg.status_text, "On time gnidnal hidden end");
+  assert.equal(Array.from(leg.leg_status).length, 80);
+  assert.ok(!/[\ud800-\udbff](?![\udc00-\udfff])|(?<![\ud800-\udbff])[\udc00-\udfff]/.test(JSON.stringify(leg)), "no lone surrogates");
+  assert.equal(leg.leg_status, leg.leg_status.trimEnd());
+});
+
+test("baggage claim is United's own wording, which differs by lookup", async () => {
+  assert.equal(plain(await okNumber([statusSegment({ ArrivalBagClaimUnit: "Carousel 3" })]).run({ flight_number: "1234", date: "2026-10-01" })).legs[0].arrival.baggage_claim, "Carousel 3");
+  assert.equal(plain(await okRoute([trip([routeSegment({ ArrivalBagClaimUnit: "3" })])]).run({ origin: "SFO", destination: "LAX", date: "2026-10-01" })).itineraries[0].segments[0].arrival.baggage_claim, "3");
+});
+
+test("output schema pins: extra properties are rejected and the new fields are required", async () => {
+  const h = okRoute([trip([routeSegment()])]);
+  const out = plain(await h.run({ origin: "SFO", destination: "LAX", date: "2026-10-01" }));
+  assert.ok(conforms(outputSchema(h), out));
+  const extraLeg = structuredClone(out);
+  extraLeg.itineraries[0].segments[0].tail_number = "N00000";
+  assert.equal(conforms(outputSchema(h), extraLeg), false, "segments forbid extra properties");
+  const extraEnd = structuredClone(out);
+  extraEnd.itineraries[0].segments[0].departure.crew = "x";
+  assert.equal(conforms(outputSchema(h), extraEnd), false, "endpoints forbid extra properties");
+  const missing = structuredClone(out);
+  delete missing.possibly_truncated;
+  assert.equal(conforms(outputSchema(h), missing), false, "possibly_truncated is required");
+  const numberOut = plain(await okNumber().run({ flight_number: "1234", date: "2026-10-01" }));
+  delete numberOut.in_sequence;
+  assert.equal(conforms(outputSchema(h), numberOut), false, "in_sequence is required");
 });
