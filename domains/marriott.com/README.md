@@ -31,7 +31,7 @@ Use `timeoutSec: 60`; live calls took 0.2 to 2.5 s (the first call after a page 
 
 Outputs that contain non-ASCII text (for example a typographic apostrophe in a hotel description) have been observed to arrive from the runtime's page bridge as a JSON string rather than an object; parse the string when `typeof output === "string"`. This is runtime behaviour, not tool code.
 
-Not implemented (candidates from discovery): room and rate listing for one hotel (`/reservation/rateListMenu.mi` opens in a new tab and needs the site's search context), current offers, and every signed-in feature (points balance, trips). Sign-in was not attempted for this domain.
+Not implemented (candidates from discovery): room and rate listing for one hotel (`/reservation/rateListMenu.mi` opens in a new tab and needs the site's search context), current offers, and every signed-in feature (points balance, trips). Sign-in flows were not explored.
 
 ## URL patterns
 
@@ -50,7 +50,7 @@ Both tools match only `https://www.marriott.com/*`, not the default `https://mar
 
 ## Known limitations
 
-- Public, signed-out quotes only. Sign-in was not attempted. The tools always send the anonymous request (`rewardsLevel: ANONYMOUS`, empty `customerId`); what a signed-in session would see is untested, and member-only rates appear only as `members_only: true` flags.
+- Public, signed-out quotes only. Sign-in flows were not explored. The tools always send the anonymous request (`rewardsLevel: ANONYMOUS`, empty `customerId`); what a signed-in session would see is untested, and member-only rates appear only as `members_only: true` flags.
 - English United States pages only (`/en-us/` paths, `accept-language: en-US`). Other locales and Marriott's country sites are out of scope. Non-US destinations work but prices come back in whatever currency the site reports (checked for one euro city).
 - Destinations: city, airport and point of interest only. No region, state or country searches, no coordinates input, no filters (brand, amenity, price) and no order other than distance.
 - Limits set by the tools, not verified as site limits: 1 to 30 nights (31 and 100 nights returned rates with `AMP013` warnings), 1 to 9 rooms, 1 to 8 adults per room, radius 1 to 100 miles (the site accepted 1 to 200), 40 hotels per page, offset up to 1000. Check-in dates before yesterday (browser time) are rejected.
