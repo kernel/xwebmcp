@@ -107,7 +107,7 @@ function harness(name, options = {}) {
       return { frameId: "f" };
     },
     waitForLoad: async () => { calls.loads++; return true; },
-    waitMs: async ms => { calls.waits++; clock += ms ?? 1000; },
+    waitMs: async ms => { calls.waits++; clock += ms ?? 1000; if (options.onTick) options.onTick(calls.waits, install); },
     js: async (fn, opts = {}) => {
       calls.js++;
       if (pending && --pending.polls < 0) { setUrl(pending.url); pending = null; }
@@ -172,9 +172,9 @@ test("no tool opens AI answers, chat, ads or account surfaces", () => {
 
 const invalidSearch = [
   undefined, null, [], "rust", {}, { query: "" }, { query: "   " }, { query: 7 }, { query: "x".repeat(501) },
-  { query: "rust !w" }, { query: "!g rust" }, { query: "what is !important in css" }, { query: "\\rust" }, { query: "  \\ rust" },
+  { query: "rust !w" }, { query: "!g rust" }, { query: "!ш rust" }, { query: "rust\t!yt" }, { query: "what is !important in css" }, { query: "\\rust" }, { query: "  \\ rust" },
   { query: "rust", limit: 0 }, { query: "rust", limit: 51 }, { query: "rust", limit: 1.5 }, { query: "rust", limit: "5" },
-  { query: "rust", region: "US" }, { query: "rust", region: "us_en" }, { query: "rust", region: 5 },
+  { query: "rust", region: "US" }, { query: "rust", region: "us_en" }, { query: "rust", region: "us-e" }, { query: "rust", region: "us-engl" }, { query: "rust", region: "USA-en" }, { query: "rust", region: 5 },
   { query: "rust", safe_search: "on" }, { query: "rust", safe_search: 1 },
   { query: "rust", time: "hour" }, { query: "rust", time: "2026-09-01" }, { query: "rust", time: "2026-13-01..2026-13-20" },
   { query: "rust", time: "2026-02-30..2026-03-01" }, { query: "rust", time: "2026-09-20..2026-09-01" }, { query: "rust", time: 7 },
@@ -193,10 +193,10 @@ for (const input of invalidSearch) {
 test("search: the input schema alone rejects the malformed shapes it can express", () => {
   const { definition } = harness("search");
   const schema = definition.tool.inputSchema;
-  for (const input of [{}, { query: "" }, { query: "   " }, { query: 7 }, { query: "x".repeat(501) }, { query: "rust", limit: 0 }, { query: "rust", limit: 51 }, { query: "rust", region: "US" }, { query: "rust", safe_search: "on" }, { query: "rust", time: "hour" }, { query: "rust", extra: true }]) {
+  for (const input of [{}, { query: "" }, { query: "   " }, { query: 7 }, { query: "x".repeat(501) }, { query: "rust", limit: 0 }, { query: "rust", limit: 51 }, { query: "rust", region: "US" }, { query: "rust", region: "us-e" }, { query: "rust", safe_search: "on" }, { query: "rust", time: "hour" }, { query: "rust", extra: true }]) {
     assert.equal(conforms(schema, plain(input)), false, JSON.stringify(input));
   }
-  for (const input of [{ query: "rust" }, { query: "rust", limit: 50, region: "wt-wt", safe_search: "off", time: "2026-09-01..2026-09-20" }, { query: "hello! world" }, { query: "a\\b" }]) {
+  for (const input of [{ query: "rust" }, { query: "rust", limit: 50, region: "wt-wt", safe_search: "off", time: "2026-09-01..2026-09-20" }, { query: "rust", region: "tw-tzh" }, { query: "hello! world" }, { query: "a\\b" }]) {
     assert.equal(conforms(schema, plain(input)), true, JSON.stringify(input));
   }
 });
@@ -266,13 +266,16 @@ test("search: returns the knowledge panel, related searches and module names", a
   assert.deepEqual(result.knowledge_panel, {
     title: "Fabricated Thing",
     subtitle: "An invented subject for tests",
-    description: "Fabricated Thing is a made-up subject. It exists only in fixtures It has no real-world facts.",
+    description: "Fabricated Thing is a made-up subject. It exists only in fixtures It has no real-world facts.…",
     official_site_url: "https://www.fabricated-thing.example.net/",
     source_url: "https://en.example.org/wiki/Fabricated_Thing"
   });
   assert.deepEqual(result.related_searches, ["fabricated query guide", "fabricated query examples"], "zero-width characters are removed and duplicates collapse");
   assert.deepEqual(result.modules, ["currency"], "only other module names are listed, and no AI answer module");
   assert.equal(/Search Assist|Generate answer/.test(JSON.stringify(result)), false);
+  assert.equal(/hidden sentence/i.test(JSON.stringify(result)), false, "text the page hides with CSS is not returned");
+  const untruncated = await harness("search", { pageFor: () => fixture("results").replace(/<span style="display:none">[^<]*<\/span>/g, "") }).run({ query: "fabricated query" });
+  assert.equal(untruncated.knowledge_panel.description, "Fabricated Thing is a made-up subject. It exists only in fixtures It has no real-world facts.", "no ellipsis when nothing is hidden");
 });
 
 test("search: encodes region, safe search and time filters in DuckDuckGo's URL parameters", async () => {
@@ -285,6 +288,21 @@ test("search: encodes region, safe search and time filters in DuckDuckGo's URL p
     const h = harness("search");
     await h.run({ query: "a&b=c d", ...extra });
     assert.equal(h.calls.navigations[0], `https://duckduckgo.com/?q=a%26b%3Dc+d&ia=web${suffix}`);
+  }
+});
+
+test("search: accepts regions with a three-letter language part and queries with ! that is not a bang", async () => {
+  for (const [input, expected] of [
+    [{ query: "rust", region: "tw-tzh" }, "?q=rust&ia=web&kl=tw-tzh"],
+    [{ query: "rust", region: "hk-tzh" }, "?q=rust&ia=web&kl=hk-tzh"],
+    [{ query: "python != operator" }, "?q=python+%21%3D+operator&ia=web"],
+    [{ query: "a !== b" }, "?q=a+%21%3D%3D+b&ia=web"],
+    [{ query: "wow! really ! ok !!" }, "?q=wow%21+really+%21+ok+%21%21&ia=web"]
+  ]) {
+    const h = harness("search");
+    const result = await h.run(input);
+    assert.equal(result.status, "ok", JSON.stringify(input));
+    assert.deepEqual(h.calls.navigations, [`${ORIGIN}/${expected}`]);
   }
 });
 
@@ -354,6 +372,14 @@ test("search: reports a bot challenge instead of results and does not interact w
   assert.equal((await byText.run({ query: "fabricated query" })).error_kind, "challenge", "the challenge wording alone is enough");
 });
 
+test("no-results pages that echo challenge wording are no_results, not a challenge", async () => {
+  const echo = fixture("no-results").replaceAll("zzz", "select all squares containing zzz bots use DuckDuckGo too");
+  const found = await harness("search", { pageFor: () => echo }).run({ query: "select all squares containing zzz bots use DuckDuckGo too" });
+  assert.equal(found.status, "no_results");
+  const page = await harness("get_search_results", { url: `${ORIGIN}/?q=select+all+squares+containing+zzz&ia=web`, pageFor: () => echo }).run({});
+  assert.equal(page.status, "no_results");
+});
+
 test("search: a page that never shows results ends in results_timeout after 25 seconds of waiting", async () => {
   const h = harness("search", { pageFor: () => fixture("loading") });
   const result = await h.run({ query: "fabricated query" });
@@ -402,6 +428,25 @@ test("search: works from a start.duckduckgo.com result page and any other DuckDu
   }
 });
 
+// The page trims the knowledge panel text with CSS shortly after the results render.
+const untrimmed = () => fixture("results").replace(/ style="display:none"/g, "");
+test("search: waits for the knowledge panel to be trimmed before reading it", async () => {
+  const h = harness("search", { pageFor: untrimmed, onTick: (tick, install) => { if (tick === 1) install(fixture("results")); } });
+  const result = await h.run({ query: "fabricated query", limit: 4 });
+  assert.equal(result.status, "ok");
+  assert.equal(result.knowledge_panel.description, "Fabricated Thing is a made-up subject. It exists only in fixtures It has no real-world facts.…");
+  assert.equal(JSON.stringify(result).includes("hidden sentence"), false);
+});
+
+test("search: a panel that never stops changing does not stall or fail the read", async () => {
+  let flip = false;
+  const h = harness("search", { pageFor: untrimmed, onTick: (tick, install) => { flip = !flip; install(flip ? fixture("results") : untrimmed()); } });
+  const result = await h.run({ query: "fabricated query", limit: 4 });
+  assert.equal(result.status, "ok");
+  assert.ok(result.knowledge_panel);
+  assert.ok(h.clock() < 5000, `waited ${h.clock()} ms`);
+});
+
 test("search: presses nothing but More results", async () => {
   const h = harness("search", { morePresses: 99 });
   await h.run({ query: "fabricated query", limit: 25 });
@@ -427,6 +472,14 @@ test("get_search_results: reads the open results page without navigating and reb
   assert.deepEqual(h.calls.clicked, []);
   assert.equal(h.pages(), 1, "the document was never replaced");
   assert.equal(JSON.stringify(result).includes("atb"), false);
+});
+
+test("get_search_results: waits for the knowledge panel to be trimmed before reading it", async () => {
+  const h = harness("get_search_results", { pageFor: untrimmed, onTick: (tick, install) => { if (tick === 1) install(fixture("results")); } });
+  const result = await h.run({});
+  assert.equal(result.status, "ok");
+  assert.equal(result.knowledge_panel.description, "Fabricated Thing is a made-up subject. It exists only in fixtures It has no real-world facts.…");
+  assert.equal(JSON.stringify(result).includes("hidden sentence"), false);
 });
 
 test("get_search_results: defaults limit to 10 and accepts empty or missing input", async () => {

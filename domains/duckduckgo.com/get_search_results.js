@@ -105,13 +105,20 @@
       const list = document.querySelector("ol.react-results--main");
       const articles = list ? [...list.querySelectorAll("article[data-testid=result]")] : [];
       const label = (nodes, test) => nodes.map(n => clean(n.textContent)).find(t => t && test(t)) || null;
+      const about = document.querySelector("[data-testid=about]");
+      const more = about ? [...about.querySelectorAll("a")].find(a => /^Continued in /i.test(clean(a.textContent))) : null;
+      // The page shows only the first sentences of the panel text and hides the rest with CSS after it renders; the hidden text is not the description.
+      const leaves = more && more.parentElement ? [...more.parentElement.querySelectorAll("span")].filter(s => !s.querySelector("span")) : [];
+      const shown = leaves.filter(s => s.getClientRects().length > 0);
+      const noResults = !list && [...document.querySelectorAll("section[data-area=mainline]")].some(s => /^No results found for/i.test(clean(s.textContent)));
       const out = {
         host: location.hostname, marker: !!window.__xwebmcpDdgNav,
-        hasList: !!list, articles: articles.length,
-        noResults: !list && [...document.querySelectorAll("section[data-area=mainline]")].some(s => /^No results found for/i.test(clean(s.textContent))),
-        hasMore: !!document.querySelector("#more-results")
+        hasList: !!list, articles: articles.length, noResults,
+        hasMore: !!document.querySelector("#more-results"),
+        hasAbout: !!about, shownLeaves: shown.length
       };
-      out.challenge = !articles.length && (!!document.querySelector("[class*='anomaly-modal'], form[action*='anomaly']") || /bots use DuckDuckGo too|select all squares containing/i.test(clean((document.body && (document.body.innerText || document.body.textContent)) || "").slice(0, 20000)));
+      // The no-results page echoes the query, so its text is never searched for challenge wording.
+      out.challenge = !articles.length && !noResults && (!!document.querySelector("[class*='anomaly-modal'], form[action*='anomaly']") || /bots use DuckDuckGo too|select all squares containing/i.test(clean((document.body && (document.body.innerText || document.body.textContent)) || "").slice(0, 20000)));
       if (!arg.full) return out;
       out.filters = {
         region_label: label([...document.querySelectorAll("[data-testid=region-filter-label]")], () => true),
@@ -145,16 +152,15 @@
       out.ads = list ? list.querySelectorAll("article[data-testid=ad]").length : 0;
       out.related = [...new Set([...document.querySelectorAll("li[data-layout=related_searches] a")].map(a => cut(clean(a.textContent), 200)).filter(Boolean))].slice(0, 16);
       out.modules = [...new Set(list ? [...list.querySelectorAll("li[data-layout]")].filter(li => li.parentElement === list).map(li => li.getAttribute("data-layout")).filter(n => n && !["organic", "ad", "about", "wikinlp", "related_searches"].includes(n)) : [])];
-      const about = document.querySelector("[data-testid=about]");
       const heading = about ? about.querySelector("h2") : null;
       if (heading) {
         const official = about.querySelector("[data-testid=about_official-website]");
         const subtitle = official && official.parentElement ? official.parentElement.querySelector("span") : null;
-        const more = [...about.querySelectorAll("a")].find(a => /^Continued in /i.test(clean(a.textContent)));
+        const text = clean(shown.map(s => s.textContent).join(" "));
         out.about = {
           title: cut(clean(heading.textContent), 200),
           subtitle: subtitle ? cut(clean(subtitle.textContent), 300) || null : null,
-          description: more && more.parentElement ? cut(clean([...more.parentElement.querySelectorAll("span")].filter(s => !s.querySelector("span")).map(s => s.textContent).join(" ")), 800) || null : null,
+          description: text ? cut(text + (shown.length < leaves.length ? "…" : ""), 800) : null,
           official_site_url: official ? link(official.getAttribute("href")) : null,
           source_url: more ? link(more.getAttribute("href")) : null
         };
@@ -177,10 +183,18 @@
     const started = Date.now();
     try {
       let state = null;
+      let panelShown = null;
+      let seen = null;
       for (;;) {
         state = read({ full: false });
         if (state.challenge) return fail("challenge", "DuckDuckGo is showing a bot-verification challenge instead of results. A person has to complete it in this browser; nothing was read and the tool does not try to solve it.");
-        if (state.noResults || (state.hasList && state.articles > 0)) break;
+        if (state.noResults) break;
+        if (state.hasList && state.articles > 0) {
+          // The knowledge panel is trimmed by the page shortly after it renders; read once its visible text has stopped changing.
+          seen = seen ?? Date.now();
+          if (!state.hasAbout || panelShown === state.shownLeaves || Date.now() - seen > 2000) break;
+          panelShown = state.shownLeaves;
+        }
         if (Date.now() - started > 10000) {
           if (state.hasList) return fail("site_changed", "The DuckDuckGo results list loaded but no result entries were recognized; the page layout may have changed.");
           return fail("results_timeout", "This page shows no results, no-results message or challenge after 10 seconds. It may still be loading, DuckDuckGo may be throttling this browser, or the page layout changed.");
@@ -195,13 +209,13 @@
         }
       }
       const page = read({ full: true, limit });
-      const shown = new URL(location.origin + "/");
-      shown.searchParams.set("q", query);
-      for (const key of ["kl", "kp", "df"]) if (params.has(key)) shown.searchParams.set(key, params.get(key));
-      if (state.noResults) return { status: "no_results", query, results_url: shown.toString(), filters: page.filters, message: "DuckDuckGo reported no results for this query and filters." };
+      const pageUrl = new URL(location.origin + "/");
+      pageUrl.searchParams.set("q", query);
+      for (const key of ["kl", "kp", "df"]) if (params.has(key)) pageUrl.searchParams.set(key, params.get(key));
+      if (state.noResults) return { status: "no_results", query, results_url: pageUrl.toString(), filters: page.filters, message: "DuckDuckGo reported no results for this query and filters." };
       if (!page.results.length) return fail("site_changed", "DuckDuckGo showed result entries but none had a recognizable title link; the page layout may have changed.");
       return {
-        status: "ok", query, results_url: shown.toString(), filters: page.filters,
+        status: "ok", query, results_url: pageUrl.toString(), filters: page.filters,
         results: page.results, result_count: page.results.length,
         has_more: page.parsed > page.results.length || state.hasMore,
         ads_omitted: page.ads, related_searches: page.related, knowledge_panel: page.about, modules: page.modules
