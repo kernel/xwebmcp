@@ -140,9 +140,12 @@
         "https://duckduckgo.com/*",
         "https://*.duckduckgo.com/*"
       ],
-      "status": "draft",
-      "last_verified": null,
-      "notes": "Page tool: reads the open full-site web results page (organic results, knowledge panel, related searches, filter labels) without navigating; optional in-place More results. Wrong_page on html/lite hosts, other verticals and non-results pages. Never returns ads, Search Assist or Duck.ai content."
+      "status": "qa_passed",
+      "last_verified": "2026-09-29",
+      "notes": "Independent QA passed on the final source (Kernel runtime and a local Chromium extension run). Page tool: reads the open full-site web results page (organic results, knowledge panel, related searches, filter labels) without navigating; optional in-place More results. wrong_page on html/lite hosts, other tabs and non-results pages. The panel description can be null on a browser about 10x slower than normal; challenge and rate-limit paths were never seen live.",
+      "provenance": {
+        "qa_agent": "agt_ff1c9d855c958c76fed3"
+      }
     },
     {
       "domain": "duckduckgo.com",
@@ -154,9 +157,12 @@
         "https://duckduckgo.com/*",
         "https://*.duckduckgo.com/*"
       ],
-      "status": "draft",
-      "last_verified": null,
-      "notes": "Web search on the full DuckDuckGo site with region, safe search and time filters and a result limit; navigates the tab, reads the rendered results, and reports the filter labels the page shows. Rejects !bang and leading-backslash queries. Never returns ads, Search Assist or Duck.ai content."
+      "status": "verified",
+      "last_verified": "2026-09-29",
+      "notes": "Independent QA passed on the final source (Kernel runtime and a local Chromium extension run), with live invocations from the home page, the html variant and the Images tab. Navigates to the full-site web results and reads organic results, knowledge panel, related searches, module names and applied filter labels; region/safe search/time filters, limit up to 50 via in-place More results. Rejects !bang, backslash and jump-to-first-result forms before navigating. Never returns ads, Search Assist or Duck.ai content. The panel description can be null on a browser about 10x slower than normal; challenge and rate-limit paths were never seen live.",
+      "provenance": {
+        "qa_agent": "agt_ff1c9d855c958c76fed3"
+      }
     },
     {
       "domain": "etsy.com",
