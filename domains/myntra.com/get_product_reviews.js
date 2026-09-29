@@ -75,11 +75,11 @@
     const clean = (value, max) => {
       if (typeof value === "number" && Number.isFinite(value)) value = String(value);
       if (typeof value !== "string") return null;
-      const named = { nbsp: " ", lt: "<", gt: ">", quot: "\"", apos: "'", ndash: "\u2013", mdash: "\u2014", hellip: "\u2026", lsquo: "\u2018", rsquo: "\u2019", ldquo: "\u201c", rdquo: "\u201d", bull: "\u2022", middot: "\u00b7", copy: "\u00a9", reg: "\u00ae", trade: "\u2122" };
+      const named = { amp: "&", nbsp: " ", lt: "<", gt: ">", quot: "\"", apos: "'", ndash: "\u2013", mdash: "\u2014", hellip: "\u2026", lsquo: "\u2018", rsquo: "\u2019", ldquo: "\u201c", rdquo: "\u201d", bull: "\u2022", middot: "\u00b7", copy: "\u00a9", reg: "\u00ae", trade: "\u2122" };
       const point = (code) => (code > 0 && code <= 0x10ffff && (code < 0xd800 || code > 0xdfff) ? String.fromCodePoint(code) : "");
-      const text = value.replace(/<(script|style)\b[^>]*>[\s\S]*?<\/\1\s*>/gi, "").replace(/<\/?(?:br|p|div|li|ul|ol|tr|h[1-6])\b[^>]*>/gi, "\n").replace(/<[^>]*>/g, "")
-        .replace(/&#(\d{1,7});/g, (match, code) => point(Number(code))).replace(/&#x([0-9a-f]{1,6});/gi, (match, code) => point(parseInt(code, 16)))
-        .replace(/&([a-z]{2,8});/gi, (match, name) => (Object.hasOwn(named, name.toLowerCase()) ? named[name.toLowerCase()] : match)).replace(/&amp;/g, "&")
+      const entity = (match, decimal, hex, name) => (decimal !== undefined ? point(Number(decimal)) : hex !== undefined ? point(parseInt(hex, 16)) : Object.hasOwn(named, name.toLowerCase()) ? named[name.toLowerCase()] : match);
+      const text = value.slice(0, 20000).replace(/[\ud800-\udbff]$/, "").replace(/<!--[\s\S]*?-->/g, "").replace(/<(script|style)\b[^>]*>[\s\S]*?<\/\1\s*>/gi, "")
+        .replace(/<\/?(?:br|p|div|li|ul|ol|tr|h[1-6])\b[^>]*>/gi, "\n").replace(/<\/?[a-z!][^>]*>/gi, "").replace(/&(?:#(\d{1,7})|#x([0-9a-f]{1,6})|([a-z]{2,8}));/gi, entity)
         .replace(/[\u0000-\u0008\u000b-\u001f\u007f\u200b-\u200f\u2028\u2029\ufeff]/g, "").replace(/[ \t]+/g, " ").replace(/ ?\n[ \n]*/g, "\n").trim();
       return text ? (text.length > max ? text.slice(0, max - 1).replace(/[\ud800-\udbff]$/, "") + "\u2026" : text) : null;
     };
@@ -140,7 +140,7 @@
     for (const item of body.reviews.slice(0, 12)) {
       if (!isObject(item) || !Number.isInteger(item.userRating) || item.userRating < 1 || item.userRating > 5) continue;
       const bought = Array.isArray(item.styleAttribute) ? item.styleAttribute.find((entry) => isObject(entry) && entry.name === "Size bought") : null;
-      const updated = new Date(/^[0-9]{9,14}$/.test(String(item.updatedAt)) ? Number(item.updatedAt) : NaN);
+      const updated = new Date(/^[0-9]{13}$/.test(String(item.updatedAt)) ? Number(item.updatedAt) : NaN);
       reviews.push({
         review_id: clean(item.id, 80), style_id: isObject(item.style) && /^[0-9]{1,12}$/.test(String(item.style.id)) ? String(item.style.id) : null,
         stars: item.userRating, text: clean(item.review, 1500), upvotes: whole(item.upvotes), downvotes: whole(item.downvotes),

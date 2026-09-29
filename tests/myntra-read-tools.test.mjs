@@ -330,7 +330,7 @@ test("the JSON tools send the site's own headers", async () => {
   assert.equal(odd.calls[0].init.headers["x-myntra-app"], "deviceID=abc;customerID=;reqChannel=web;appFamily=MyntraRetailWeb;");
 });
 
-test("text sanitiser: block tags separate text, entities are decoded once, control characters go", async () => {
+test("text sanitiser: block tags separate text, entities are decoded once, plain angle brackets stay, control characters go", async () => {
   const cases = [
     ["<ul><li>Fill in your upper</li><li>Line carefully</li></ul>", "Fill in your upper\nLine carefully"],
     ["<p>a</p><p>b</p><div>c</div>", "a\nb\nc"],
@@ -342,6 +342,12 @@ test("text sanitiser: block tags separate text, entities are decoded once, contr
     ["&unknown; &notanentity", "&unknown; &notanentity"],
     ["line one   \n\n\n   line two", "line one\nline two"],
     ["<script>alert(1)</script><style>p{}</style>ok<SCRIPT type=x>bad</SCRIPT >", "ok"],
+    ["<h2>Title</h2>body<H3>Sub</H3>rest", "Title\nbody\nSub\nrest"],
+    ["one</li>two</p>three</ul>four", "one\ntwo\nthree\nfour"],
+    ["a&NBSP;b &Ndash; &AMP;", "a b \u2013 &"],
+    ["&#38;lt; &#38;amp; &#x26;nbsp;x &#38;#x3c;", "&lt; &amp; &nbsp;x &#x3c;"],
+    ["1 < 2 and 3 > 2, I <3 it, rating < 3", "1 < 2 and 3 > 2, I <3 it, rating < 3"],
+    ["before<!-- hidden > text -->after", "beforeafter"],
     ["  <b> </b>  ", null]
   ];
   for (const [raw, expected] of cases) {
@@ -600,6 +606,13 @@ test("get_product: attributes, description and images are allow-listed, sanitise
   assert.deepEqual([bounded.sizes.length, bounded.attributes.length, bounded.details.length, bounded.colours.length, bounded.image_urls.length], [60, 40, 6, 30, 10]);
 });
 
+test("get_product: seller addresses are not returned from any seller object", async () => {
+  const address = { address: "1 Fabricated Street", pincode: "000000", city: "Nowhere" };
+  const state = { pdpData: pdp({ selectedSeller: { sellerPartnerId: 11, sellerName: "Fabricated Seller Pvt", sellerAddress: address }, sellers: [{ sellerPartnerId: 11, sellerName: "Fabricated Seller Pvt", sellerAddress: address }] }) };
+  const text = JSON.stringify(await productWith(state).run({ style_id: "4321001" }));
+  for (const secret of ["Fabricated Street", "000000", "Nowhere"]) assert.equal(text.includes(secret), false, secret);
+});
+
 test("get_product: ratings are rounded, the MRP falls back, and conversions are capped", async () => {
   const many = Array.from({ length: 9 }, (_, i) => ({ prefix: `P${i}`, sizeValue: String(i) }));
   const result = await productWith({ pdpData: pdp({ ratings: { averageRating: 4.26499, totalCount: 5 }, price: { discounted: 5 }, mrp: 10, sizes: [{ skuId: 1, label: "M", available: true, allSizesList: many }] }) }).run({ style_id: "4321001" });
@@ -702,8 +715,20 @@ test("get_product_reviews: truncation never leaves half of an emoji", async () =
   assert.equal(/[\ud800-\udfff]/.test(result.reviews[0].text), false);
 });
 
+test("text sanitiser: hostile long text is bounded in time and size", async () => {
+  const hostile = ["<".repeat(400000), "<a".repeat(60000), "<script ".repeat(50000), "<!--".repeat(100000), "<p ".repeat(130000), "&#38;".repeat(200000), "&".repeat(400000)];
+  const started = Date.now();
+  for (const review of hostile) {
+    const result = await reviewsWith(reviewsBody([reviewItem(1, { review })])).run({ style_id: "4321001" });
+    assert.ok(result.reviews[0].text === null || result.reviews[0].text.length <= 1500);
+  }
+  assert.ok(Date.now() - started < 5000, `sanitising took ${Date.now() - started} ms`);
+  const cut = await reviewsWith(reviewsBody([reviewItem(1, { review: "x".repeat(19999) + "\ud83d\ude00" + "tail" })])).run({ style_id: "4321001" });
+  assert.equal(/[\ud800-\udfff]/.test(cut.reviews[0].text), false);
+});
+
 test("get_product_reviews: a missing or zero timestamp is null, not 1970", async () => {
-  for (const updatedAt of [null, "", false, 0, "0", "abc", undefined, {}]) {
+  for (const updatedAt of [null, "", false, 0, "0", "abc", undefined, {}, "1782944700", 1782944700, "178294470000", "17829447000000", -1782944700000]) {
     const result = await reviewsWith(reviewsBody([reviewItem(1, { updatedAt })])).run({ style_id: "4321001" });
     assert.equal(result.reviews[0].updated_at, null, JSON.stringify(updatedAt));
   }

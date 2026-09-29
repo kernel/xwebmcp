@@ -87,9 +87,12 @@ Conventions:
 - **Query characters.** `/` in the search path returns HTTP 404, and `#` returns 404 or a bogus
   empty result with a huge total, so `/`, `\` and `#` in a query are replaced by spaces. Other
   punctuation (`? ; : @ = + $ , ! * ( ) [ ] { } | ^ ~ " < > %`, apostrophes, `&`), Devanagari,
-  Tamil, Arabic and accented Latin worked. CJK characters and emoji are rejected by the site with
-  HTTP 400, which the tool reports as `site_error`. Unpaired surrogate characters are refused as
-  `invalid_input`.
+  Tamil, Arabic and accented Latin were accepted without error; that does not mean they found
+  anything (the site may answer with `query_substituted` or an empty result for a word it does not
+  know). CJK characters and emoji are rejected by the site with HTTP 400, which the tool reports as
+  `site_error`. Unpaired surrogate characters in `query` or a filter are refused as
+  `invalid_input` when they reach the tool (verified in the Chrome extension); the Kernel API
+  rewrites them to U+FFFD before the tool runs, so on Kernel they reach the site instead.
 - **Filters.** Ordinary facets use `f=Group:Value[_meta],Value2::Group2:Value`, where `_meta` is
   appended for groups that have one (colours). Price is not an `f` group: `f=Price:...` returns
   zero or HTTP 500. The site's own price slider uses a separate `rf=Price:<min>_<max>_<min> TO <max>`
@@ -103,6 +106,8 @@ Conventions:
 - **Price range and price sort.** Within a price range the site's `price_low_to_high` order is not
   strictly ascending (for example 500 to 580 and then 524); the site's own page shows the same
   sequence.
+- **Attribute order.** Multi-value attributes can list their values in a different order between
+  two site responses for the same product (`Mesh, Synthetic` against `Synthetic, Mesh`).
 - **Multiple sellers.** A size can list several sellers; the count and price come from the
   seller the page has selected.
 - **Reviews.** The reviews API answers 12 per page and returns the same empty list for a style
@@ -143,7 +148,13 @@ Conventions:
   with page 1 again. Its server-side lifetime is unknown and it was only walked four pages deep.
   CJK and emoji queries are rejected by the site (HTTP 400).
 - `get_product_reviews` returns 12 reviews per page up to page 1000, omits reviewer names and
-  images, and returns the rating summary on page 1 only.
+  images, and returns the rating summary on page 1 only. `updated_at` is null unless the site
+  gives a 13-digit epoch in milliseconds.
+- Site text (titles, descriptions, attributes, review text) is converted to plain text from its
+  first 20,000 characters only, to bound the work on very long fields; a plain `<` not followed by
+  a letter, `/` or `!` is kept as text. The named HTML entities decoded are the common ones
+  (`nbsp`, `amp`, `lt`, `gt`, `quot`, `apos`, dashes, quotes, `hellip`, `bull`, `middot`, `copy`,
+  `reg`, `trade`) plus numeric ones; any other `&name;` is left as written.
 - `get_product` depends on the embedded `window.__myx` state; if the site changes it the tool
   returns `site_changed`. It returns the default seller's stock only, no coupons, and at most 60
   sizes, 40 attributes, 6 description sections and 10 images.
