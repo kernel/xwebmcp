@@ -1284,9 +1284,12 @@
       "url_patterns": [
         "https://www.walmart.com/*"
       ],
-      "status": "draft",
-      "last_verified": null,
-      "notes": "Read-only item details for one us_item_id: price, availability, seller, fulfillment, limits, returns, specifications, descriptions and up to 100 variants, for the session's selected store. Not yet independently tested."
+      "status": "qa_passed",
+      "last_verified": "2026-09-29",
+      "notes": "Independent QA passed on the Kernel runtime (guest browsers, page API and API paths): store-sold and marketplace items with 60 variants, unknown id. Prices, availability and pickup are for the session's selected store. Local extension not verified; signed-in behavior untested.",
+      "provenance": {
+        "qa_agent": "agt_43bb0ce72ad9154374be"
+      }
     },
     {
       "domain": "walmart.com",
@@ -1297,9 +1300,12 @@
       "url_patterns": [
         "https://www.walmart.com/*"
       ],
-      "status": "draft",
-      "last_verified": null,
-      "notes": "Read-only rating summary and one page of 10 listed reviews per call (six site sorts), without reviewer identity. Only reviews with text are listed. Not yet independently tested."
+      "status": "qa_passed",
+      "last_verified": "2026-09-29",
+      "notes": "Independent QA passed on the Kernel runtime: six sorts, paging across pages 8-10 of an 82-review item, page 1000 of a large item, out-of-range and unknown ids. Only reviews with text are listed; reviewer identity is never returned. Local extension not verified.",
+      "provenance": {
+        "qa_agent": "agt_43bb0ce72ad9154374be"
+      }
     },
     {
       "domain": "walmart.com",
@@ -1310,9 +1316,12 @@
       "url_patterns": [
         "https://www.walmart.com/*"
       ],
-      "status": "draft",
-      "last_verified": null,
-      "notes": "Read-only store page data by store_id, or the session's selected store: address, weekly hours, services and nearby stores. Never selects a store. Not yet independently tested."
+      "status": "qa_passed",
+      "last_verified": "2026-09-29",
+      "notes": "Independent QA passed on the Kernel runtime: selected store, explicit ids, unknown id, nearby stores. Never selects a store; regular hours only. Local extension not verified; signed-in behavior untested.",
+      "provenance": {
+        "qa_agent": "agt_43bb0ce72ad9154374be"
+      }
     },
     {
       "domain": "walmart.com",
@@ -1323,9 +1332,12 @@
       "url_patterns": [
         "https://www.walmart.com/*"
       ],
-      "status": "draft",
-      "last_verified": null,
-      "notes": "Read-only search page: site sorts, facet filters, price bounds, sponsored flags and selected-store context. Refuses throttled responses that ignore the requested sort or page. Not yet independently tested."
+      "status": "qa_passed",
+      "last_verified": "2026-09-29",
+      "notes": "Independent QA passed on the Kernel runtime: six sorts, facet filters and price bounds, sponsored handling, paging, out-of-range and no-match queries. Refuses throttled responses that ignore the requested sort or page; returns challenge for Walmart's block page. Local extension not verified; signed-in behavior untested.",
+      "provenance": {
+        "qa_agent": "agt_43bb0ce72ad9154374be"
+      }
     }
   ]
 }

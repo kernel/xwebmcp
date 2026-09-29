@@ -4,10 +4,10 @@ Read-only tools for Walmart's retail site (https://www.walmart.com): product sea
 
 | tool | file | status | notes |
 |------|------|--------|-------|
-| search_products | [search_products.js](search_products.js) | draft | One results page with the site's six sorts, facet filters, price bounds, sponsored flags and the selected store's id; refuses throttled responses that ignore the requested sort or page |
-| get_product | [get_product.js](get_product.js) | draft | One item by us_item_id: price, availability, seller, fulfillment, limits, returns, specifications, descriptions and variants, for the selected store |
-| get_product_reviews | [get_product_reviews.js](get_product_reviews.js) | draft | Rating summary and 10 listed reviews per call (six site sorts), without reviewer names or ids |
-| get_store | [get_store.js](get_store.js) | draft | Store page data by store id or the session's selected store: address, weekly hours, services and nearby stores; never selects a store |
+| search_products | [search_products.js](search_products.js) | qa_passed | One results page with the site's six sorts, facet filters, price bounds, sponsored flags and the selected store's id; refuses throttled responses that ignore the requested sort or page |
+| get_product | [get_product.js](get_product.js) | qa_passed | One item by us_item_id: price, availability, seller, fulfillment, limits, returns, specifications, descriptions and variants, for the selected store |
+| get_product_reviews | [get_product_reviews.js](get_product_reviews.js) | qa_passed | Rating summary and 10 listed reviews per call (six site sorts), without reviewer names or ids |
+| get_store | [get_store.js](get_store.js) | qa_passed | Store page data by store id or the session's selected store: address, weekly hours, services and nearby stores; never selects a store |
 
 ## Native WebMCP tools
 
@@ -44,10 +44,18 @@ The tools are listed only while the tab is on a `www.walmart.com` page (see URL 
 `www.walmart.com` page works as the starting page, including one the agent is already on. Re-list after any navigation.
 A call takes 1 to 4 s; `timeoutSec: 60` is enough.
 
+**Kernel caveat.** On walmart.com the Kernel API's discovery call (`webmcp.listTools()` above, `kernel browsers webmcp
+list`) crashed the tab in independent QA and in the builder's runs unless it ran within about a second of the
+navigation, and a crashed tab answers later invocations with `outcome_unknown` (see Site quirks). If that happens, skip
+listing: after registering, call the tool from the page itself, for example
+`document.modelContext.executeTool(tool, JSON.stringify(input))` with `tool` taken from `await
+document.modelContext.getTools()` (hidden name `custom.<id>.<tool>`); that path did not crash in any run.
+
 What the tools never do: select or change a store, ZIP or address; sign in; touch carts, lists, registries, orders,
 subscriptions, accounts, pharmacy or payment; open checkout; vote on or write reviews. They send only plain `GET`
 requests to `www.walmart.com` with the page's own cookies. Inputs are validated by the tool before any request,
-including unknown fields and wrong-typed options, because the runtimes do not enforce a page tool's `inputSchema`.
+including unknown fields and wrong-typed options, because Kernel's API path and Chrome's page API do not enforce a page
+tool's `inputSchema` (the local extension was not checked).
 
 Conventions:
 
@@ -144,8 +152,13 @@ any request if it ever runs in a document outside `https://www.walmart.com`. Oth
   the homepage, while a late list crashed the tab. After a crash, later invocations through the API in that tab returned
   `outcome_unknown` until a new browser was used. Invoking the registered tools through the page API
   (`document.modelContext.executeTool(tool, JSON.stringify(input))`, no list call) did not crash and returned normal
-  results on the homepage, a product page, the reviews page, a search page and a store page. The local Chrome extension
-  discovers through the page API as well, but it was not run for this domain.
+  results on the homepage, a product page, the reviews page, a search page and a store page.
+- **Local Chrome extension.** Not verified. Independent QA built `xwebmcp` and ran headful Chromium 153 on Linux (not
+  stable Chrome) with a throwaway profile, the WebMCP flag, the unpacked extension and site access granted: the
+  `www.walmart.com` tab crashed at load (`RESULT_CODE_KILLED_BAD_MESSAGE`) in 3 of 3 loads with the four tools attached and
+  in 1 of 1 with a scratch no-op page tool matching walmart.com, and did not crash with the flag only (1 of 1) or with the
+  extension and no tools attached (1 of 1). So the crash follows tool registration through the extension on walmart.com
+  and does not depend on these tools' code; the trigger was not found, and no invocation could be run locally.
 - **Kernel API output encoding.** Independent QA saw `kernel browsers webmcp invoke` return a tool's output as a JSON
   string instead of an object when the output contains certain Latin-1-range characters such as `¢` or `é` (a scratch
   tool on `example.com` reproduced it). `get_product` can hit it, for example a `unit_price_text` of `74.0 ¢/lb`. This is
@@ -196,11 +209,23 @@ Builder checks on 2026-09-29 with one stealth Kernel browser per run, signed out
   bounds, deduplication, sponsored handling, facet round-tripping, out-of-range pages, unapplied sort or page, missing
   ids and stores, and that reviewer identity and session location text are never returned.
 
-Independent QA round 1 (source `c8cce03`) found two blocking defects and several minor ones, now fixed in the current
-source and covered by new tests: unknown fields and wrong-typed booleans were not rejected, `get_product_reviews`
-reported no next page one page early on an item whose `next` link was null, truncation could split a surrogate pair,
-impossible dates such as 2/31 were converted, and the README overstated the runtime and pacing observations. All four
-tools remain `draft` until a QA sign-off on the final source is recorded.
+Independent QA (agent `agt_43bb0ce72ad9154374be`, 2026-09-29, guest Kernel browsers, page API and Kernel API paths):
+
+- Round 1 (source `c8cce03`) found two blocking defects and several minor ones, fixed and covered by new tests: unknown
+  fields and wrong-typed booleans were not rejected, `get_product_reviews` reported no next page one page early on an
+  item whose `next` link was null, truncation could split a surrogate pair, impossible dates such as 2/31 were converted,
+  and the README overstated the runtime and pacing observations.
+- Round 2 signed off the tool source at `3e24a5d`. Live cases: 87 malformed inputs plus 20 non-object inputs, all
+  `invalid_input` with zero requests; `get_product_reviews` pages 8, 9 and 10 of an 82-review item (`has_next_page` true,
+  false, `page_out_of_range`) and pages 1 and 1000 of a large item; a marketplace item with 60 variants; unknown item,
+  review and store ids; the selected store and an explicit store; out-of-range search pages; sorts, facets, sponsored
+  exclusion and price bounds; the API path on the homepage with exactly four custom tools listed and no native tools; a
+  network capture showing one `GET` per call and the tab URL unchanged after every call; a `challenge` from a blocked
+  browser; and every live output valid against the declared schemas with a full JSON Schema validator. The repo's tests
+  passed and a 124-mutant run left no behavioural survivor (surviving mutants were equivalent or covered constants).
+- Not verified: the local Chrome extension (see Site quirks), `rate_limited`/`timeout`/`site_error`/`site_changed` live
+  (stubbed and fixture-tested only), signed-in behavior, and any Kernel API listing on non-home pages after the first
+  second. The sign-off is for the Kernel runtime; there is no cross-runtime parity claim.
 
 ## Sessions
 

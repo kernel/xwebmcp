@@ -63,12 +63,12 @@ const tile = (id, name, price, extra = {}) => ({
   ] } },
   ...extra
 });
-const facetOption = (type, value) => ({ id: value, title: value, name: value, isSelected: null, url: `query=towels&sort=best_match&stores=3795&ps=40&facet=${type}:${encodeURIComponent(value)}` });
+const facetOption = (type, value) => ({ id: value, title: value, name: value, isSelected: null, url: `query=towels&sort=best_match&stores=4321&ps=40&facet=${type}:${encodeURIComponent(value)}` });
 const searchProps = (options = {}) => ({
   initialData: {
     searchResult: {
       aggregatedCount: 3121, spelling: { correctedTerm: options.corrected ?? null },
-      paginationV2: { maxPage: options.maxPage ?? 13, pageProperties: { page: options.pageEcho ?? options.page ?? 1, sort: options.sortEcho ?? options.sort ?? "best_match", stores: "3795", query: "towels" } },
+      paginationV2: { maxPage: options.maxPage ?? 13, pageProperties: { page: options.pageEcho ?? options.page ?? 1, sort: options.sortEcho ?? options.sort ?? "best_match", stores: "4321", query: "towels" } },
       itemStacks: options.stacks ?? [
         { layoutEnum: "GRID", items: [
           tile("10000001", "Sponsored Test Towels", 19.99, { isSponsoredFlag: true }),
@@ -304,7 +304,7 @@ test("search_products: returns product tiles from the grid stacks, deduplicated,
   const result = await h.run({ query: "  towles  " });
   assert.equal(result.status, "ok");
   assert.equal(h.calls[0].url, "/search?q=towles");
-  assert.deepEqual([result.query, result.corrected_query, result.sort_by, result.page, result.max_page, result.total_results, result.store_id, result.has_more_pages], ["towles", "towels", "best_match", 1, 13, 3121, "3795", true]);
+  assert.deepEqual([result.query, result.corrected_query, result.sort_by, result.page, result.max_page, result.total_results, result.store_id, result.has_more_pages], ["towles", "towels", "best_match", 1, 13, 3121, "4321", true]);
   assert.deepEqual(result.products.map(p => p.us_item_id), ["10000001", "10000002", "10000003", "10000004"]);
   assert.deepEqual(result.products.map(p => p.rank), [1, 2, 3, 4]);
   assert.deepEqual(result.products.map(p => p.page_position), [1, 2, 3, 4]);
@@ -689,4 +689,32 @@ test("get_store: caps hold and malformed coordinates are dropped", async () => {
   assert.equal(result.location, null);
   const clocks = await harness("get_store", { props: storeProps({ node: { ...node, operationalHours: [{ day: "Sunday", start: "6am", end: "25:99x", closed: false }] } }) }).run({ store_id: "1234" });
   assert.deepEqual(clocks.hours, [{ day: "Sunday", opens: null, closes: null, closed: false }]);
+});
+
+test("unknown-field errors name at most three keys, truncated", async () => {
+  const input = { ...VALID.get_store, ["k".repeat(80)]: 1, b: 1, c: 1, d: 1 };
+  const result = await harness("get_store", { props: storeProps() }).run(input);
+  assert.equal(errorKind(result), "invalid_input");
+  assert.ok(result.error_message.includes("k".repeat(40)) && !result.error_message.includes("k".repeat(41)));
+  assert.equal(result.error_message.includes("d,") || /\bd\.\s/.test(result.error_message), false, "only the first three keys are named");
+});
+
+test("a normal page that merely mentions the captcha is not a challenge", async () => {
+  const body = nextData(CASES.get_store.props).replace("</body>", "<p>px-captcha robot or human</p></body>");
+  const result = await harness("get_store", { props: CASES.get_store.props, respond: () => ({ status: 200, body }) }).run({ store_id: "1234" });
+  assert.equal(result.status, "ok");
+});
+
+test("get_product_reviews: has_next_page falls back to the listed count when the site gives no total", async () => {
+  const at = async (currentSpan, page) => (await harness("get_product_reviews", { props: reviewProps({ page, pagination: { currentSpan, next: { url: null } } }) }).run({ us_item_id: "20000001", page })).has_next_page;
+  assert.equal(await at("1-10", 1), true, "900 listed reviews");
+  assert.equal(await at("891-900", 90), false);
+});
+
+test("get_product: descriptions decode hex and named quote entities and skip malformed fulfillment entries", async () => {
+  const item = family();
+  item.fulfillmentOptions = [{ type: 5 }, null, { type: "PICKUP", availabilityStatus: "AVAILABLE" }];
+  const result = await harness("get_product", { props: productProps(item, { longDescription: "&#X41;&#x42; it&apos;s &quot;fine&quot;" }) }).run({ us_item_id: "20000001" });
+  assert.equal(result.description, "AB it's \"fine\"");
+  assert.deepEqual(result.fulfillment.map(f => f.type), ["PICKUP"]);
 });
