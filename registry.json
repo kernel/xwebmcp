@@ -271,6 +271,23 @@
     },
     {
       "domain": "instacart.com",
+      "tool": "complete_registration",
+      "file": "domains/instacart.com/complete_registration.js",
+      "kind": "cdp",
+      "namespace": "instacart.com",
+      "url_patterns": [
+        "https://instacart.com/*",
+        "https://*.instacart.com/*"
+      ],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "kind cdp: typing the code makes Instacart replace the page (window.location.assign to the post-auth path), and the tool must verify the new account after that. Types the code once and matches the signed-in account from the site's CurrentUser / UsersPhoneNumber data; wrong_account on any other identity. Draft: wrong, expired and accepted codes are covered by fixtures only.",
+      "provenance": {
+        "qa_agent": "agt_19b6d7706ce5c4c53410"
+      }
+    },
+    {
+      "domain": "instacart.com",
       "tool": "get_cart",
       "file": "domains/instacart.com/get_cart.js",
       "kind": "cdp",
@@ -354,6 +371,40 @@
       "notes": "Passwordless email-code login; password is accepted but never entered. Live-verified 2026-09-25 with one real email submission and one real code entry: DuckDuckGo entry, invalid_credentials for a fabricated address, mfa_required first step, authenticated completion, already-logged-in verification on /store/account, and wrong-account rejection. Independent failure-path QA passed twice (two defects found and fixed, then re-verified on the current source). Unverified: wrong or expired codes, lockout text, unresolved captcha, a proxy error on the DuckDuckGo results step (reported generically, no submission). No native WebMCP tools found.",
       "provenance": {
         "qa_agent": "agt_3fa02b3438dc8870922b"
+      }
+    },
+    {
+      "domain": "instacart.com",
+      "tool": "register",
+      "file": "domains/instacart.com/register.js",
+      "kind": "page",
+      "namespace": "instacart.com",
+      "url_patterns": [
+        "https://instacart.com/*",
+        "https://*.instacart.com/*"
+      ],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "kind page: runs inside https://www.instacart.com/signup and never navigates (wrong_page elsewhere). Checks the browser is signed out and, for email, whether an account exists (read-only), then submits the email or phone form once and stops at the six-digit code step. Draft: no real sign-up has been submitted yet; the submit path, the code-step hint text and reCAPTCHA behaviour after a page-script click are covered by fixtures only.",
+      "provenance": {
+        "qa_agent": "agt_19b6d7706ce5c4c53410"
+      }
+    },
+    {
+      "domain": "instacart.com",
+      "tool": "resume_registration",
+      "file": "domains/instacart.com/resume_registration.js",
+      "kind": "page",
+      "namespace": "instacart.com",
+      "url_patterns": [
+        "https://instacart.com/*",
+        "https://*.instacart.com/*"
+      ],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "kind page, read-only: reports challenge_pending, registered, existing_account or nothing_pending for the current tab from the page and the site's current-user data; never submits or navigates. Live-checked read-only on a signed-out /signup page (nothing_pending). Draft until a real sign-up exercises the pending and registered states.",
+      "provenance": {
+        "qa_agent": "agt_19b6d7706ce5c4c53410"
       }
     },
     {
