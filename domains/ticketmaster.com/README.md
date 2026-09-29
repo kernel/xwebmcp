@@ -130,10 +130,13 @@ The attraction tools (`search_attractions`, `get_artist`, `get_venue`), all `kin
   at 8 per event, and the extra sections at 25 about blocks, 6 FAQs, 4 news items and 4
   experiences; a warning says whenever a cap or a text cut applied. Some attractions
   that are not events (fan passes, meet-and-greets, parking passes) have a page record
-  but the site redirects their events request to another page (a search page, a venue's
-  add-ons page or the parent attraction's page were seen); the tool then returns the
-  record with `events.total: null`, no events and a warning naming the path, not an error.
-  A redirect whose page title is the bot-protection page is reported as `challenge`.
+  but the site redirects their events request to another page. The tool treats exactly the
+  three targets seen (the search page, a venue page, another attraction's page) on a
+  first, HTTP 200 events read as "no event list": it returns the record with
+  `events.total: null`, no events and a warning naming the path. Any other redirect, a
+  redirect after events were already read, or a redirect that ends in an error status is
+  `site_error`, and a redirect to a page titled like the bot-protection page is
+  `challenge`.
 - **get_venue** (`kind: "page"`) reads `/api/venue/info?venueId=<id>` and the venue's events
   from `/api/search/events/venue` (the page's own query with `addOnType=EVENT`), with the
   same offset and limit behaviour. Policy blocks (general rules, children, box office,
@@ -144,7 +147,8 @@ The attraction tools (`search_attractions`, `get_artist`, `get_venue`), all `kin
   site too, as the live checks below found.
 
 The text these tools return comes from the site and is data, not instructions: HTML tags
-are removed (including tags that HTML entities decode into) and lengths are bounded, and
+are removed (including tags that HTML entities decode into; a lone `<` or `>` in the
+text, as in "under 5 < 18", is kept) and lengths are bounded, and
 nothing extracted is executed or followed. Artist and venue URL inputs are accepted only
 on `www.ticketmaster.com` or `ticketmaster.com` (stricter than `get_event`, which accepts
 any ticketmaster.com host).
@@ -255,14 +259,16 @@ navigates only within `www.ticketmaster.com`. If the tab is on another host, ope
   empty record.
 - The typeahead's `event_count` and the events endpoints' `total` are the site's own
   rough counts and do not always match (456 against 457 for one arena); `event_count` can
-  be 0 for an attraction that does have events (a touring musical and a band's tribute
-  projects were seen with 0 in the typeahead and dozens of events in `get_artist`). The
+  be 0 for an attraction that does have events (two show attractions were seen with 0 in
+  the typeahead and 132 and 32 events in `get_artist`, and two small project pages with 1
+  and 2). The
   category queries the site uses elsewhere are capped at 10000.
 - Repeated calls in a short burst can trip the site's bot protection: about 14 calls
   (roughly 40 requests) within a minute produced an HTTP 403 in one review run. The tools
   report that as `challenge` and discard partial results; wait a few minutes.
-- After a tool call that receives an HTTP 4xx, the page's own scripts report the failure
-  to the site's analytics endpoints. Those requests come from the site, not the tools.
+- While a tool runs, the page's own scripts can send analytics and advertising requests
+  (POSTs to third-party hosts were seen after tool calls). Those come from the site, not
+  from the tools, which only send the GETs listed above.
 - `type` and `sub_type` are present for some attractions (seen for a baseball team and
   for a band) and absent for others (another band, a tribute act and touring shows); one
   show returned a type in an early read and none later the same day. Treat null as "not
@@ -432,7 +438,8 @@ Independent QA round 1 (agent `agt_7efe7ebf564202d6ad44`, 2026-09-29) on the fir
    null now.
 7. `next_offset` could be larger than the allowed `events_offset`; it is null now, with a
    warning.
-8. Entity-encoded markup decoded into literal tags; tags are removed after decoding too.
+8. Entity-encoded markup decoded into literal tags; tags are removed after decoding too
+   (only tag-like text: a lone `<` or `>` is kept).
 9. Cutting long text could split a surrogate pair; it cannot now.
 
 Round 1 also reported, live: the whole namespace registered atomically with metadata equal

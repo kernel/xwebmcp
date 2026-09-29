@@ -119,11 +119,12 @@
     const plain = (v, max) => {
       if (typeof v !== "string") return null;
       const entities = { amp: "&", lt: "<", gt: ">", quot: '"', apos: "'", nbsp: " ", rsquo: "'", lsquo: "'", ldquo: '"', rdquo: '"', ndash: "-", mdash: "-" };
-      const text = v.replace(/<\s*(br|\/p|\/li|\/div|\/h[1-6])\b[^>]*>/gi, " ").replace(/<[^>]*>/g, "")
+      const tag = /<\/?[a-z!][^>]*>/gi;
+      const text = v.replace(/<\s*(br|\/p|\/li|\/div|\/h[1-6])\b[^>]*>/gi, " ").replace(tag, "")
         .replace(/&(#x?[0-9a-f]{1,6}|[a-z]+);/gi, (m, e) => {
           if (e[0] === "#") { const code = e[1].toLowerCase() === "x" ? parseInt(e.slice(2), 16) : parseInt(e.slice(1), 10); return code > 0 && code < 0x110000 ? String.fromCodePoint(code) : " "; }
           return entities[e.toLowerCase()] ?? m;
-        }).replace(/<[^>]*>/g, "").replace(/\s+/g, " ").trim();
+        }).replace(tag, "").replace(/\s+/g, " ").trim();
       if (!text) return null;
       if (text.length <= max) return text;
       clipped = true;

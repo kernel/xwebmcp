@@ -704,3 +704,138 @@ test("get_artist and get_venue: bare ticketmaster.com URLs are accepted, other h
   assert.equal((await harness("get_artist", { routes: artistRoutes() }).run({ artist: "https://ticketmaster.com/x-tickets/artist/1234567" })).status, "ok");
   assert.equal((await harness("get_venue", { routes: venueRoutes() }).run({ venue: "https://ticketmaster.com/x-tickets-y/venue/12345" })).status, "ok");
 });
+
+// --- second round of review hardening ----------------------------------------------------------------
+
+const redirectTo = (url, extra = {}) => () => ({ status: 200, body: undefined, redirect: url, html: "<html><head><title>Some Page | Ticketmaster</title></head></html>", ...extra });
+
+test("get_artist: a redirect on a later events page is an error, never a silent loss of events already read", async () => {
+  const list = Array.from({ length: 48 }, (_, i) => listing(i + 1));
+  const events = page => (page === 0 ? pageOf(list, 0) : redirectTo("https://www.ticketmaster.com/search?q=x")());
+  const result = await harness("get_artist", { routes: artistRoutes({ events }) }).run({ artist: "1234567", events_offset: 18, events_limit: 6 });
+  assert.equal(result.status, "error");
+  assert.equal(result.error_kind, "site_error");
+});
+
+test("get_artist: a redirect that ends in an error status is site_error, not an empty success", async () => {
+  for (const status of [500, 503, 404, 401]) {
+    const result = await harness("get_artist", { routes: artistRoutes({ events: redirectTo("https://www.ticketmaster.com/search?q=x", { status }) }) }).run({ artist: "1234567" });
+    assert.equal(result.error_kind, "site_error", String(status));
+  }
+});
+
+test("get_artist: a redirect to an unrecognized page is site_error and names the path", async () => {
+  for (const target of ["https://www.ticketmaster.com/discover/concerts", "https://www.ticketmaster.com/", "https://www.ticketmaster.com/queue/abc", "https://www.ticketmaster.com/venue/abc", "https://www.ticketmaster.com/a/b/artist/12"]) {
+    const result = await harness("get_artist", { routes: artistRoutes({ events: redirectTo(target) }) }).run({ artist: "1234567" });
+    assert.equal(result.error_kind, "site_error", target);
+    assert.match(result.error_message, /unrecognized page/);
+  }
+});
+
+test("get_artist: a very long unrecognized redirect path is cut in the error", async () => {
+  const result = await harness("get_artist", { routes: artistRoutes({ events: redirectTo("https://www.ticketmaster.com/" + "q".repeat(400)) }) }).run({ artist: "1234567" });
+  assert.equal(result.error_kind, "site_error");
+  assert.equal(result.error_message.includes("q".repeat(121)), false);
+});
+
+test("get_artist: a redirect to any of the known bot-protection pages is a challenge", async () => {
+  for (const title of ["Your Browsing Activity Has Been Paused", "Pardon Our Interruption", "Pardon The Interruption", "Access Denied"]) {
+    const events = redirectTo("https://www.ticketmaster.com/search?q=x", { html: `<html><head><title>${title}</title></head></html>` });
+    assert.equal((await harness("get_artist", { routes: artistRoutes({ events }) }).run({ artist: "1234567" })).error_kind, "challenge", title);
+  }
+});
+
+test("get_artist and get_venue: a lone < or > in the text is kept, only tag-like text is removed", async () => {
+  const text = "Kids &lt; 5 free; adults &gt; 18 pay. Under <$50 and over >$20, I <3 it. <b>Bold</b><!-- note -->";
+  const expected = "Kids < 5 free; adults > 18 pay. Under <$50 and over >$20, I <3 it. Bold";
+  const artist = await harness("get_artist", { routes: artistRoutes({ info: json(200, artistInfo({ synopsis: text })) }) }).run({ artist: "1234567" });
+  assert.equal(artist.synopsis, expected);
+  const venue = await harness("get_venue", { routes: venueRoutes({ info: json(200, venueInfo({ generalInfoBlocks: { Rules: text } })) }) }).run({ venue: "12345" });
+  assert.equal(venue.info_blocks[0].text, expected);
+});
+
+test("get_artist and get_venue: each sale status flag maps to its own field", async () => {
+  const flags = [["soldOut", "sold_out"], ["limitedAvailability", "limited_availability"], ["cancelled", "cancelled"], ["postponed", "postponed"], ["rescheduled", "rescheduled"]];
+  const list = flags.map(([key], i) => listing(i + 1, { [key]: true }));
+  for (const [name, input, routes] of [["get_artist", { artist: "1234567" }, artistRoutes({ list })], ["get_venue", { venue: "12345" }, venueRoutes({ list })]]) {
+    const result = await harness(name, { routes }).run(input);
+    flags.forEach(([, field], i) => assert.deepEqual(Object.entries(result.events.items[i].status_flags).filter(([, v]) => v).map(([k]) => k), [field], `${name} ${field}`));
+  }
+});
+
+test("get_artist and get_venue: caps warn only when something was cut", async () => {
+  const presales = n => Array.from({ length: n }, (_, i) => ({ name: `Presale ${i + 1}`, startDateTime: "2026-08-19T14:00:00Z", endDateTime: "2026-08-21T02:00:00Z" }));
+  const acts = n => Array.from({ length: n }, (_, i) => ({ name: `Act ${i + 1}`, url: `https://www.ticketmaster.com/act-${i + 1}-tickets/artist/${100 + i}` }));
+  for (const [presaleCount, actCount, presaleWarns, actWarns] of [[10, 8, false, false], [11, 8, true, false], [10, 9, false, true]]) {
+    const list = [listing(1, { presaleDates: presales(presaleCount), artists: acts(actCount) })];
+    for (const [name, input, routes] of [["get_artist", { artist: "1234567" }, artistRoutes({ list })], ["get_venue", { venue: "12345" }, venueRoutes({ list })]]) {
+      const result = await harness(name, { routes }).run(input);
+      const text = result.warnings.join(" ");
+      assert.equal(/presale windows/.test(text), presaleWarns, `${name} ${presaleCount} presales`);
+      assert.equal(/more than 8 performers/.test(text), actWarns, `${name} ${actCount} performers`);
+      assert.equal(result.events.items[0].presales.length, Math.min(presaleCount, 10));
+      assert.equal(result.events.items[0].performers.length, Math.min(actCount, 8));
+    }
+  }
+});
+
+test("get_artist: extra sections warn only past their caps", async () => {
+  const build = (about, faqs, news, exps) => enhanced({
+    about: { info: Array.from({ length: about }, (_, i) => ({ type: "paragraph", text: `Block ${i}` })) },
+    faqs: Array.from({ length: faqs }, (_, i) => ({ question: `Q${i}`, answer: [{ text: `A${i}` }] })),
+    news: Array.from({ length: news }, (_, i) => ({ title: `N${i}`, bodyText: "b" })),
+    experience: { list: Array.from({ length: exps }, (_, i) => ({ title: `E${i}`, description: [{ text: "d" }] })) }
+  });
+  const include = ["about", "faqs", "news", "experiences"];
+  const atCap = await harness("get_artist", { routes: artistRoutes({ enhanced: json(200, build(25, 6, 4, 4)) }) }).run({ artist: "1234567", include });
+  assert.deepEqual(atCap.warnings.filter(w => /limited to the first/.test(w)), []);
+  for (const [counts, label] of [[[26, 6, 4, 4], "about blocks"], [[25, 7, 4, 4], "FAQs"], [[25, 6, 5, 4], "news items"], [[25, 6, 4, 5], "experiences"]]) {
+    const result = await harness("get_artist", { routes: artistRoutes({ enhanced: json(200, build(...counts)) }) }).run({ artist: "1234567", include });
+    assert.equal(result.warnings.filter(w => /limited to the first/.test(w)).length, 1, label);
+    assert.match(result.warnings.join(" "), new RegExp(label));
+  }
+});
+
+test("get_venue: policy blocks warn only past 12", async () => {
+  const blocks = n => Object.fromEntries(Array.from({ length: n }, (_, i) => [`Block ${i + 1}`, `Text ${i + 1}`]));
+  const at = await harness("get_venue", { routes: venueRoutes({ info: json(200, venueInfo({ generalInfoBlocks: blocks(12) })) }) }).run({ venue: "12345" });
+  assert.equal(at.info_blocks.length, 12);
+  assert.doesNotMatch(at.warnings.join(" "), /policy blocks/);
+  const over = await harness("get_venue", { routes: venueRoutes({ info: json(200, venueInfo({ generalInfoBlocks: blocks(13) })) }) }).run({ venue: "12345" });
+  assert.match(over.warnings.join(" "), /first 12 of 13/);
+});
+
+test("get_artist and get_venue: next_offset stops exactly at the 900 boundary", async () => {
+  const events = page => json(200, { total: 2000, events: Array.from({ length: 20 }, (_, i) => listing(page * 20 + i + 1)) });
+  for (const [name, input, routes] of [["get_artist", { artist: "1234567" }, artistRoutes({ events })], ["get_venue", { venue: "12345" }, venueRoutes({ events })]]) {
+    const at = await harness(name, { routes }).run({ ...input, events_offset: 880, events_limit: 20 });
+    assert.equal(at.events.next_offset, 900, name);
+    assert.doesNotMatch(at.warnings.join(" "), /cannot exceed 900/);
+    const past = await harness(name, { routes }).run({ ...input, events_offset: 881, events_limit: 20 });
+    assert.equal(past.events.next_offset, null, name);
+    assert.match(past.warnings.join(" "), /cannot exceed 900/);
+  }
+});
+
+test("get_artist and get_venue: 13-digit ids in URLs are refused", async () => {
+  for (const [name, input] of [["get_artist", { artist: "https://www.ticketmaster.com/x-tickets/artist/1234567890123" }], ["get_venue", { venue: "https://www.ticketmaster.com/x-tickets-y/venue/1234567890123" }]]) {
+    const h = harness(name);
+    const result = await h.run(input);
+    assert.equal(result.error_kind, "invalid_input");
+    assert.deepEqual(h.calls.requests, []);
+  }
+});
+
+test("look-alike hosts are never treated as Ticketmaster", async () => {
+  const lookalike = listing(2, { id: "LOOKALIKE01", url: "https://www.evilticketmaster.com/x/event/EV0002ABCDEF" });
+  for (const [name, input, routes] of [["get_artist", { artist: "1234567" }, artistRoutes({ list: [listing(1), lookalike] })], ["get_venue", { venue: "12345" }, venueRoutes({ list: [listing(1), lookalike] })]]) {
+    const result = await harness(name, { routes }).run(input);
+    assert.deepEqual(result.events.items.map(e => e.on_ticketmaster), [true, false], name);
+    assert.equal(result.events.items[1].event_id, "LOOKALIKE01");
+  }
+  const good = suggestion("ARTIST", "1234567", "Fabricated Act");
+  const results = [{ ...good, url: "https://evilticketmaster.com/x-tickets/artist/1" }, { ...good, url: "https://www.ticketmaster.com.evil.example.invalid/x-tickets/artist/1" }, { ...good, url: "https://www.ticketmaster.com/x-tickets/artist/1234567890123" }, good];
+  const found = await harness("search_attractions", { routes: suggestRoutes(results) }).run({ query: "fabricated" });
+  assert.deepEqual(found.results.map(r => r.id), ["1234567"]);
+  assert.match(found.warnings.join(" "), /3 suggestion/);
+});

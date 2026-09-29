@@ -126,11 +126,12 @@
     const plain = (v, max) => {
       if (typeof v !== "string") return null;
       const entities = { amp: "&", lt: "<", gt: ">", quot: '"', apos: "'", nbsp: " ", rsquo: "'", lsquo: "'", ldquo: '"', rdquo: '"', ndash: "-", mdash: "-" };
-      const text = v.replace(/<\s*(br|\/p|\/li|\/div|\/h[1-6])\b[^>]*>/gi, " ").replace(/<[^>]*>/g, "")
+      const tag = /<\/?[a-z!][^>]*>/gi;
+      const text = v.replace(/<\s*(br|\/p|\/li|\/div|\/h[1-6])\b[^>]*>/gi, " ").replace(tag, "")
         .replace(/&(#x?[0-9a-f]{1,6}|[a-z]+);/gi, (m, e) => {
           if (e[0] === "#") { const code = e[1].toLowerCase() === "x" ? parseInt(e.slice(2), 16) : parseInt(e.slice(1), 10); return code > 0 && code < 0x110000 ? String.fromCodePoint(code) : " "; }
           return entities[e.toLowerCase()] ?? m;
-        }).replace(/<[^>]*>/g, "").replace(/\s+/g, " ").trim();
+        }).replace(tag, "").replace(/\s+/g, " ").trim();
       if (!text) return null;
       if (text.length <= max) return text;
       clipped = true;
@@ -211,12 +212,18 @@
       const readEvents = async () => {
         const raw = [];
         let total = null;
+        let pagesRead = 0;
         for (let page = Math.floor(offset / PAGE_SIZE); page * PAGE_SIZE < offset + limit; page++) {
           const r = await api("/api/search/events/artist/" + artistId + "?distance=6214&distanceUnit=miles&region=200&page=" + page);
           if (blocked(r)) return { error: challenge(r) };
           if (r.redirect !== null && /browsing activity has been paused|pardon (the|our) interruption|access denied/i.test(r.title || "")) return { error: fail("challenge", "Ticketmaster's bot protection sent the events request to its challenge page; wait a few minutes before trying again.") };
-          if (r.redirect !== null) return { raw: [], total: null, unlisted: r.redirect };
+          // Fan passes, meet-and-greets and parking passes have an artist page record but no event list: the site sends their events request to a search page, a venue page or the parent attraction's page.
+          if (r.redirect !== null && r.status === 200 && pagesRead === 0) {
+            if (!/^\/(search|venue\/[0-9]+|[^/]+\/(artist|venue)\/[0-9]+)\/?$/.test(r.redirect)) return { error: fail("site_error", "Ticketmaster redirected the artist's events request to an unrecognized page (" + r.redirect.slice(0, 120) + ").") };
+            return { raw: [], total: null, unlisted: r.redirect };
+          }
           if (r.status >= 400 || !r.body || !Array.isArray(r.body.events)) return { error: fail("site_error", "Ticketmaster did not return a JSON events list for the artist (HTTP " + r.status + ").") };
+          pagesRead++;
           if (Number.isInteger(r.body.total)) total = r.body.total;
           r.body.events.forEach((e, i) => { const at = page * PAGE_SIZE + i; if (at >= offset && at < offset + limit) raw.push(e); });
           if (r.body.events.length < PAGE_SIZE || (total !== null && (page + 1) * PAGE_SIZE >= total)) break;
