@@ -30,8 +30,8 @@ function conforms(schema, value) {
   if (value !== null && typeof value === "object" && !Array.isArray(value)) {
     if (schema.required?.some((key) => !Object.hasOwn(value, key))) return false;
     const props = schema.properties || {};
-    if (Object.entries(props).some(([key, s]) => key in value && !conforms(s, value[key]))) return false;
-    if (schema.additionalProperties === false && Object.keys(value).some((key) => !(key in props))) return false;
+    if (Object.entries(props).some(([key, s]) => Object.hasOwn(value, key) && !conforms(s, value[key]))) return false;
+    if (schema.additionalProperties === false && Object.keys(value).some((key) => !Object.hasOwn(props, key))) return false;
   }
   if (typeof value === "string") {
     if (value.length < (schema.minLength ?? 0) || value.length > (schema.maxLength ?? Infinity)) return false;
@@ -70,14 +70,17 @@ const reply = (status, body, contentType = "application/json;charset=utf-8") => 
   text: async () => (typeof body === "string" ? body : JSON.stringify(body))
 });
 
-function setup({ origin = WWW, title = "American Airlines", challengeFrame = false, respond = () => reply(200, { flights: [flightRow()] }) } = {}) {
+function setup({ origin = WWW, title = "American Airlines", challengeFrame = false, respond = () => reply(200, { flights: [flightRow()] }), timers } = {}) {
   const calls = [];
   const navigations = [];
+  const location = { origin, assign: (u) => navigations.push(u), replace: (u) => navigations.push(u), reload: () => navigations.push("reload") };
+  Object.defineProperty(location, "href", { get: () => origin + "/", set: (u) => navigations.push(u) });
   const globals = {
-    location: { origin, assign: (u) => navigations.push(u), href: origin + "/" },
+    location,
     document: { title, querySelector: (selector) => (selector.includes("challenge-assets") && challengeFrame ? {} : null) },
     fetch: async (url, init) => { calls.push({ url, init }); return respond(url, init); },
-    AbortController, setTimeout, clearTimeout
+    AbortController, clearTimeout,
+    setTimeout: timers ? (fn, ms) => { timers.push({ fn, ms }); return timers.length; } : setTimeout
   };
   const [tool] = runInNewContext(`(${source}\n)`, globals);
   return { tool, calls, navigations, globals, run: (input, context) => tool.execute(input, context).then(plain) };
@@ -188,7 +191,7 @@ test("a published flight maps to the allowlisted fields and conforms to the sche
     arrival: { airportCode: "ORD", city: "Chicago", terminal: "3", gate: "H4", baggageClaim: "7", scheduled: "2026-10-01T10:30:00.000-05:00", estimated: "2026-10-01T10:41:00.000-05:00", actual: null },
     aircraft: { name: "Airbus A321", code: "321" },
     amenities: { wifi: true, power: true },
-    incomingFlight: { flightNumber: "0567", originDate: "2026-10-01" }
+    incomingFlight: { flightNumber: "567", originDate: "2026-10-01" }
   });
 });
 
@@ -325,4 +328,47 @@ test("the tool never navigates or issues anything but its one POST", async () =>
   assert.equal(page.calls.length, 2);
   assert.ok(page.calls.every((c) => c.init.method === "POST" && c.url === "/flightinfo/v1.2/"));
   assert.deepEqual(page.navigations, []);
+});
+
+test("the incoming flight drops leading zeros and the site's 0000 placeholder", async () => {
+  const cases = [
+    [{ priorLegFlightNumber: "0101", priorLegOriginDate: "2026-09-22" }, { flightNumber: "101", originDate: "2026-09-22" }],
+    [{ priorLegFlightNumber: "2464", priorLegOriginDate: null }, { flightNumber: "2464", originDate: null }],
+    [{ priorLegFlightNumber: "0000", priorLegOriginDate: null }, null],
+    [{ priorLegFlightNumber: "0000", priorLegOriginDate: "2026-09-22" }, null],
+    [{ priorLegFlightNumber: null, priorLegOriginDate: "2026-09-22" }, null],
+    [{ priorLegFlightNumber: "12345", priorLegOriginDate: "2026-09-22" }, null],
+    [{ priorLegFlightNumber: "1e3", priorLegOriginDate: "2026-09-22" }, null]
+  ];
+  for (const [previousFlightInfo, expected] of cases) {
+    const page = setup({ respond: () => reply(200, { flights: [flightRow({ previousFlightInfo })] }) });
+    const out = await page.run(good);
+    assert.ok(conforms(page.tool.tool.outputSchema, out), JSON.stringify(previousFlightInfo));
+    assert.deepEqual(out.flights[0].incomingFlight, expected, JSON.stringify(previousFlightInfo));
+  }
+});
+
+test("the 20 second guard aborts a hung request and reports an unknown outcome", async () => {
+  const timers = [];
+  const page = setup({
+    timers,
+    respond: (_url, init) => new Promise((_resolve, reject) => init.signal.addEventListener("abort", () => reject(new Error("aborted"))))
+  });
+  const pending = page.run(good);
+  while (!timers.length) await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(timers.length, 1);
+  assert.equal(timers[0].ms, 20000);
+  timers[0].fn();
+  const out = await pending;
+  assert.equal(out.status, "error");
+  assert.match(out.message, /timed out or was cancelled/);
+  assert.equal(out.httpStatus, null);
+  assert.equal(page.calls.length, 1);
+});
+
+test("the schema checker only counts own keys, so inherited names cannot hide extras", () => {
+  const schema = { type: "object", additionalProperties: false, properties: { a: { type: "string" } } };
+  assert.equal(conforms(schema, { a: "x" }), true);
+  assert.equal(conforms(schema, { a: "x", constructor: "y" }), false);
+  assert.equal(conforms(schema, JSON.parse('{"a":"x","__proto__":"y"}')), false);
 });
