@@ -24,6 +24,8 @@ type App struct {
 	StoreDir string
 	GitHub   *github.Client
 	Kernel   func() (*kernelapi.Client, error)
+	// Executable overrides the path written into the native host manifest.
+	Executable string
 }
 
 // Default returns an App wired to the real environment.
@@ -61,6 +63,11 @@ func (a *App) Command() *cli.Command {
 			a.listCommand(),
 			a.removeCommand(),
 			a.attachCommand(),
+			a.setupCommand(),
+			a.statusCommand(),
+			a.toolsCommand(),
+			a.invokeCommand(),
+			a.nativeHostCommand(),
 		},
 	}
 }

@@ -232,6 +232,6 @@ func TestAttachKernel(t *testing.T) {
 	}
 
 	if err := run(t, app, "attach"); err == nil {
-		t.Error("attach without a target should fail")
+		t.Error("attach without a running extension should fail")
 	}
 }

@@ -17,17 +17,22 @@ func (a *App) attachCommand() *cli.Command {
 	return &cli.Command{
 		Name:  "attach",
 		Usage: "push installed tools into a browser",
-		Description: `With --kernel, every installed namespace is registered on the Kernel browser
-through the custom WebMCP tools API, replacing any earlier registration of the
-same namespace. KERNEL_API_KEY must be set.`,
+		Description: `By default the installed tools are pushed into the xwebmcp Chrome extension
+over its native messaging bridge (run ` + "`xwebmcp setup chrome`" + ` once). Namespaces that
+are no longer installed are removed from the extension.
+
+With --kernel, every installed namespace is registered on the Kernel browser
+through the custom WebMCP tools API instead. Either way a namespace replaces
+any earlier registration of itself, so re-running is safe. KERNEL_API_KEY must
+be set for --kernel.`,
 		Flags: []cli.Flag{
 			&cli.StringFlag{Name: "kernel", Usage: "Kernel browser session ID or name"},
 		},
 		Action: func(ctx context.Context, cmd *cli.Command) error {
-			if cmd.String("kernel") == "" {
-				return errors.New("attach requires --kernel <browser id or name>")
+			if browser := cmd.String("kernel"); browser != "" {
+				return a.attachKernel(ctx, browser)
 			}
-			return a.attachKernel(ctx, cmd.String("kernel"))
+			return a.attachExtension(ctx)
 		},
 	}
 }
@@ -57,6 +62,18 @@ func (a *App) namespaces(st *store.Store) ([]namespaceSource, error) {
 	return out, nil
 }
 
+func namespaceBatch(st *store.Store, ns namespaceSource) (string, error) {
+	parts := make([]string, 0, len(ns.Tools))
+	for _, item := range ns.Tools {
+		source, err := st.ReadToolSource(item.Source, item.Tool)
+		if err != nil {
+			return "", err
+		}
+		parts = append(parts, "...("+toolsource.Normalize(source)+")")
+	}
+	return "[" + strings.Join(parts, ",") + "]", nil
+}
+
 func (a *App) attachKernel(ctx context.Context, browser string) error {
 	client, err := a.Kernel()
 	if err != nil {
@@ -75,15 +92,11 @@ func (a *App) attachKernel(ctx context.Context, browser string) error {
 	}
 	total := 0
 	for _, ns := range namespaces {
-		parts := make([]string, 0, len(ns.Tools))
-		for _, item := range ns.Tools {
-			source, err := st.ReadToolSource(item.Source, item.Tool)
-			if err != nil {
-				return err
-			}
-			parts = append(parts, "...("+toolsource.Normalize(source)+")")
+		source, err := namespaceBatch(st, ns)
+		if err != nil {
+			return err
 		}
-		added, err := client.AddCustomTools(ctx, browser, ns.Namespace, "["+strings.Join(parts, ",")+"]", true)
+		added, err := client.AddCustomTools(ctx, browser, ns.Namespace, source, true)
 		if err != nil {
 			var apiErr *kernelapi.APIError
 			if errors.As(err, &apiErr) {
