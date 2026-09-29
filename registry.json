@@ -55,6 +55,19 @@
     },
     {
       "domain": "delta.com",
+      "tool": "get_flight_status",
+      "file": "domains/delta.com/get_flight_status.js",
+      "kind": "page",
+      "namespace": "delta.com",
+      "url_patterns": [
+        "https://www.delta.com/*"
+      ],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Public, read-only lookup of one Delta flight number and date from any www.delta.com page, using the same single request Delta's Flight Status page sends; returns every leg with status, local times, gates and aircraft, and checks optional origin/destination against the returned legs. Fixture-tested and exercised live in Kernel browsers; Delta's bot protection denies the lookup (reported as error_kind blocked) on cold sessions and after a handful of lookups, so it is unreliable without a warm session. Not independently QA'd."
+    },
+    {
+      "domain": "delta.com",
       "tool": "get_page_context",
       "file": "domains/delta.com/get_page_context.js",
       "kind": "page",
