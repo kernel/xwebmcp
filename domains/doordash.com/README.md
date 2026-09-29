@@ -5,18 +5,25 @@ Tools for DoorDash (https://www.doordash.com).
 | tool | file | status | notes |
 |------|------|--------|-------|
 | login | [login.js](login.js) | qa_passed | Email + password sign-in with a two-step guided flow; existing sessions verified against the profile page; `otp` mode for the 2-Step Verification modal |
+| get_store | [get_store.js](get_store.js) | draft | Page tool: store hours, service modes, delivery and pickup availability with estimates and fee strings, and menu ids, with the delivery basis (selected address, none selected, unknown) stated explicitly and unreliable delivery figures withheld; never changes the address |
 
 ## Native WebMCP tools
 
 Checked on 2026-09-25 in a stealth browser with a signed-in profile. DoorDash ships its own
 tools through a `[WebMCP Polyfill]` that it installs on `navigator.modelContext`
 (`registerTool`, `unregisterTool`, `callTool`, `listTools`, plus a `_registeredTools` map).
-The polyfill is page JavaScript, not the browser's `document.modelContext` API, so
-`webmcp.listTools()` in the Kernel REPL returns **no native tools** on any page; read them with
-`await navigator.modelContext.listTools()` from page context instead. The polyfill can take a few
-seconds to load after `load`; poll for `navigator.modelContext` before reading. Tool names are
-therefore not visible to Kernel's WebMCP client, but the custom `login` name still does not
-collide with any of them.
+On that date the polyfill was page JavaScript that `webmcp.listTools()` in the Kernel REPL did not
+list, so the tools had to be read with `await navigator.modelContext.listTools()` from page context.
+**That has changed (rechecked 2026-09-29, see below).** The polyfill can take a few seconds to load
+after `load`. The custom tool names in this namespace do not collide with any native name.
+
+Rechecked 2026-09-29 on the Kernel runtime, signed out, on `/store/29417/`: `kernel browsers webmcp
+list` and the REPL's `webmcp.listTools()` list the page's native tools (`add_to_cart`,
+`get_item_details`, `get_page_context`, `get_restaurant_menu`, `navigate_to_page`) from about 3 to
+5 seconds after the page loads (none at 3 s in the first poll, five at 5 s), and `document.modelContext`
+exposes `registerTool`, `getTools` and `executeTool`. Rechecked the same day through
+`navigator.modelContext.listTools()`, the lists per page type in the table were unchanged. The earlier "not visible" reading was either a timing artifact or a runtime difference; it
+is not the case now.
 
 | page | URL checked | native tools |
 |------|-------------|--------------|
@@ -43,10 +50,10 @@ Schemas as read from the polyfill (inputs only; the polyfill exposes no output s
 - `add_to_cart({ storeId, menuId, itemId, itemName, quantity, unitPrice, specialInstructions?, cartId?, options?, purchaseTypeOptions? })`
   with nested option selections; `unitPrice` is in cents.
 
-None of the native tools sign in, so `login` is custom. Search and cart are already covered
-natively; the next phase should evaluate those tools before writing custom ones, and it must
-call them through `navigator.modelContext.callTool` (or register the site-provided definitions)
-because Kernel's WebMCP client does not see the polyfill.
+None of the native tools sign in, so `login` is custom. Search, item options and adding to the cart
+are covered natively. The native tools give no store details (hours, address, availability, fees,
+estimates) and no cart read or edit, address, or order tools; `get_store` below covers the first
+gap only.
 
 ## Entry path and flow
 
@@ -94,16 +101,17 @@ challenge appeared in any run.
 ## Loading
 
 ```javascript
-const source = (await import("node:fs")).readFileSync("domains/doordash.com/login.js", "utf8");
-await webmcp.addCustomTools({ namespace: "doordash.com", tools: eval(source), forceOverwriteNamespace: true });
+const fs = await import("node:fs");
+const tools = ["login", "get_store"].map(name => eval(fs.readFileSync(`domains/doordash.com/${name}.js`, "utf8"))[0]);
+await webmcp.addCustomTools({ namespace: "doordash.com", tools, forceOverwriteNamespace: true });
 const tool = (await webmcp.listTools()).find(t => t.source.custom?.namespace === "doordash.com" && t.tool.name === "login");
 const result = await webmcp.invokeTool(tool.tool_ref, { email: "qa@example.invalid", password: "fabricated" }, { timeoutSec: 120 });
 // Second step, once the code arrives:
 // await webmcp.invokeTool(tool.tool_ref, { email: "qa@example.invalid", otp: "123456" }, { timeoutSec: 120 });
 ```
 
-`forceOverwriteNamespace: true` replaces every tool in `doordash.com`; register search or cart tools
-together with `login` as one array. Take a fresh `tool_ref` after navigation. Use `timeoutSec: 120`
+`forceOverwriteNamespace: true` replaces every tool in `doordash.com`, so register `login` and `get_store`
+together as one array. Take a fresh `tool_ref` after navigation. Use `timeoutSec: 120`
 (the WebMCP maximum); the post-submit observation window is 45 seconds and a full search-entry run
 took about 15 seconds. The runtime only lists a CDP tool on pages matching its `url_patterns`, so
 `login` is invocable from any `doordash.com` page (including `help.` and `identity.`) but not from
@@ -255,6 +263,142 @@ the branch touch only this README and the registry.
   modal's "Send to Email" button switches delivery to the account email, which can be read from the
   mailbox; the tool does not click it, so a caller that cannot receive SMS should click it in the
   browser before invoking `otp` mode.
+
+## get_store
+
+`get_store({ store_id })` reads one DoorDash store and reports the things the native tools do not:
+open status and hours, the services the store offers, whether delivery and pickup can be ordered
+**right now**, an estimate range only when the site marks the mode available, the site's own
+delivery-fee strings, and the store's menus, together with the delivery basis those figures rest on. It never returns menu items
+(use the native `get_restaurant_menu` on the store page), reviews, or a fee quote. `store_id` is the
+digits from `search_restaurants` or from a `doordash.com/store/<name>-<id>/` URL. The result also
+carries `menu.menu_id`, the `menuId` the native `add_to_cart` requires.
+
+Name: `get_store` follows `ubereats.com/get_store`, and a DoorDash store can be a restaurant or a
+convenience store, so the restaurant-only names were not used. Convenience and grocery stores return
+their header details with `store_type: "convenience"` and `menu: null`; their catalog is a different
+surface (native `get_convenience_store`, `search_retail_products`).
+
+### Delivery context
+
+DoorDash computes delivery availability, estimate and distance for the delivery address selected in
+the session, not for the store alone. With no address selected it does **not** use the egress IP: on
+2026-09-29 two guest browsers, one whose `getGeoByIP` answered with a point in the middle of the
+United States and one behind a New York residential proxy whose `getGeoByIP` answered with the Bronx,
+got the identical distance to the same New York store (5385 mi) and "Too far away" for it. Those figures
+describe a placeholder location, not the customer, and they read "Too far away" for every store. The
+output says which case applies in `delivery_context.basis`:
+
+- `selected_address`: the header address control shows an address; delivery `available`, its reason,
+  `estimate_minutes`, `distance` and `too_far_from_consumer` are DoorDash's answer for that address.
+- `no_address_selected`: the header shows the site's "Your Address" placeholder. Delivery `available`,
+  `unavailable_reason`, `unavailable_message`, `estimate_minutes`, `distance` and `too_far_from_consumer`
+  are `null` (withheld), because reporting `available: false` there would say the store does not deliver
+  when nothing is known. Store details, hours, pickup and the fee strings are still returned.
+- `unknown`: the page has no header address control (the signed-out landing page and `/home`); the
+  figures are passed through unverified. Invoke from a store, search, DashPass or grocery page for a
+  definite basis.
+
+Other fields:
+
+- `delivery_context.address_selected` is the boolean behind `basis` (`data-testid="addressTextButton"`
+  text other than "Your Address" is `true`). The tool never returns the address text and never opens,
+  changes or selects an address.
+- `delivery_context.signed_in` is from the `dd_cx_logged_in=true` cookie, a hint only; fees and
+  promotions can differ by account (first-order and DashPass messages).
+- `delivery.estimate_minutes` and `pickup.estimate_minutes` are `null` unless that mode is available,
+  because the site sends a range even for a mode it reports unavailable.
+- `delivery.fee_display` returns the site's `title`, `subtitle` and `text` unparsed; the strings differ
+  by store type ("$0 delivery fee over $12" on a restaurant, "$0.00" plus "delivery fee on $12+" on a
+  convenience store) and are not a quote. They are returned in every basis.
+
+### Why a page tool
+
+The tool makes one same-origin `fetch` from the registering document and returns; it does not
+navigate, so it is `kind: "page"` per the authoring skill and `spec/cdp-tools.md` §2.1. It is invocable
+from any `www.doordash.com` page (verified from a search page, the home page, a store page, a DashPass
+page and a grocery tab) without leaving it. Registered by the Kernel API, a page tool's input is **not**
+checked against `inputSchema` (observed 2026-09-29: malformed input reached `execute`), so `execute`
+validates `store_id` itself and returns `invalid_input` before any request.
+
+### Mechanism (observed 2026-09-29)
+
+The store page calls `POST /graphql/storepageFeed?operation=storepageFeed` from its own JavaScript, with
+headers `x-csrftoken` (the `csrf_token` cookie when signed in, an empty string signed out),
+`x-channel-id: marketplace` and `x-experience-id: doordash`, and a 22 KB query. The tool sends a
+trimmed query for the same operation that selects only the fields listed in the output. The trimmed
+query was checked live from `/home` and from other store, search, DashPass and grocery pages,
+returning HTTP 200 and about 3.4 KB per store, in about 0.6 to 0.9 s. Unknown ids return HTTP 200 with a
+GraphQL `NOT_FOUND` error and a null feed; some ids (for example a one-digit id) return a header with an
+empty name, which the tool also reports as `not_found`. The server-rendered store HTML carries the same
+header, but inside a Next.js payload in which a leading `$` in a string is escaped as `$$` (for example
+`"$$0 delivery fee"`); it was compared field by field with the GraphQL response and rejected as the
+source because of that encoding and its 2.5 to 3 MB size.
+
+### Errors
+
+Every failure is `{ status: "error", error_kind, error_message }`: `invalid_input`, `wrong_page`
+(not on `www.doordash.com`; nothing was requested), `not_found`, `login_required` (HTTP 401 or an
+unauthenticated GraphQL error), `challenge` (a non-JSON bot-check page), `rate_limited` (HTTP 429),
+`site_changed` (the query was rejected as invalid, the header is missing, or another store came back)
+and `site_error` (anything else, including timeout after 25 s). A permission, challenge or rate-limit
+response is never turned into an empty success, and nothing is retried.
+
+### Live evidence for get_store
+
+Kernel runtime (`kernel` CLI 0.41.0), 2026-09-29, one profile-less stealth browser signed out with a
+default egress far from the sampled stores, registering the whole `doordash.com` namespace
+(`login` and `get_store`) in one `force_overwrite_namespace` batch:
+
+| case | result |
+|---|---|
+| store 29417 from a search page, `/home`, its own store page, a DashPass page | `ok`, 0.6 to 0.8 s, no navigation (a marker on `window` survived), output valid under Ajv against the schema the runtime lists |
+| store 36030759 (convenience) from a grocery tab | `store_type: convenience`, `menu: null`, `pickup.available: false` with `estimate_minutes: null` |
+| unknown id 99999999999 and empty-header id 1 | `not_found` |
+| eight malformed inputs (`abc`, `{}`, 13 digits, a number, an extra field, a space, `-1`, `""`) | `invalid_input`; CDP network events showed no `storepageFeed` request, while one valid call showed exactly one |
+| help., merchants., identity.doordash.com | `get_store` is not listed (only `login`); the apex redirects to `www` where it is listed |
+| signed out, no address, central-US egress and New York residential egress | identical: `basis: no_address_selected` on search, store, DashPass and grocery pages, delivery figures `null`, pickup and store data returned; on `/home` (no header control) `basis: unknown` and DoorDash's own "Too far away" passed through. The same store read 5385 mi from both egress locations before the figures were withheld |
+
+The same calls in the approved signed-in browser (read only; the custom tools were registered for the
+check and removed afterwards, and no address text or account data was recorded): a store in range of
+the account's address returned `basis: selected_address`, `signed_in: true`, and delivery and pickup
+available with estimate ranges; a store outside that range returned `too_far_from_consumer: true` with
+pickup still available; a convenience store in range returned delivery available and pickup
+unavailable. Store ids and distances from this account are deliberately not recorded.
+
+### Known limitations of get_store
+
+- Draft. No independent QA has signed off; the live checks above are the author's.
+- Not verified live: `login_required`, `challenge`, `rate_limited` and `site_changed` responses (fixture
+  coverage only, with response shapes assumed from GraphQL conventions and the observed `NOT_FOUND` shape).
+  The `challenge` detection looks only at non-JSON bodies.
+- `basis` depends on a header control that is absent on the signed-out landing pages and `/home` (then
+  `unknown`) and on the placeholder text "Your Address" (English; another locale would read as a selected
+  address). A guest-entered address (never exercised: the tool and its testing never set one) is assumed to
+  show as address text, and that a guest address changes DoorDash's figures is unobserved. Signed in without
+  any saved address is unobserved. That the placeholder location is the same for every guest is inferred from
+  two egress locations only.
+- The delivery estimate and availability are for one moment and one context. `fulfillmentType` is fixed to
+  Delivery in the request; the same response carries the pickup status. Scheduled orders are not modelled.
+- `operation_status` is a pass-through string; only `OPEN` was observed. There is deliberately no
+  `open_now` boolean.
+- The trimmed query names fields and types taken from the site's own query on 2026-09-29. If DoorDash
+  renames them the tool returns `site_changed`; the query is not a public API.
+- Loading a store page or this query may register a store view in DoorDash's own analytics, as any visit does.
+- Only stores DoorDash reports under `/store/<id>` were sampled, plus one convenience store; other store
+  types (for example shipping-only) are unobserved. Single-digit ids return an empty header rather than an error.
+- Delivery figures depend on the session's address; the egress location did not change them in the two
+  locations tried. Coordinates and street in `address` are the store's own.
+
+### URL patterns
+
+`get_store` is narrowed to `https://www.doordash.com/*`; `login` keeps the default pair. The tool calls
+`www.doordash.com`'s own GraphQL endpoint with a relative URL, and the other `*.doordash.com` hosts are
+unrelated products (`merchants.`, `dasher.`, `business.`, `help.`, `developer.`, `about.`, `identity.`)
+that do not serve it; they were observed on 2026-09-29 to have no native tools and a different purpose.
+`login` cannot be narrowed the same way because sign-in runs on `identity.doordash.com`. The namespace
+therefore mixes both forms, against the `SHOULD` in `spec/repository.md` §6.2 that one host be used per
+namespace; this is flagged for review.
 
 ## Sessions
 

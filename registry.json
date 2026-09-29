@@ -115,6 +115,19 @@
     },
     {
       "domain": "doordash.com",
+      "tool": "get_store",
+      "file": "domains/doordash.com/get_store.js",
+      "kind": "page",
+      "namespace": "doordash.com",
+      "url_patterns": [
+        "https://www.doordash.com/*"
+      ],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Page tool. Store details the site's native menu tools lack: hours, address, service modes, open status, and delivery and pickup availability with estimate range and the site's own fee strings, plus the menus with the menu_id the native add_to_cart needs. Delivery figures are only meaningful for a selected address, so the output states its basis (selected address, none selected, or unknown) and withholds DoorDash's placeholder-location delivery answer when no address is selected; it never selects or changes an address and never returns address text. One same-origin read of the site's storepageFeed query, no navigation; works signed out. Author live checks 2026-09-29 on the Kernel runtime; awaiting independent QA."
+    },
+    {
+      "domain": "doordash.com",
       "tool": "login",
       "file": "domains/doordash.com/login.js",
       "kind": "cdp",
