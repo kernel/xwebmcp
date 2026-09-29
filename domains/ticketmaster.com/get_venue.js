@@ -3,13 +3,13 @@
   match: { url_patterns: ["https://www.ticketmaster.com/*"] },
   tool: {
     name: "get_venue",
-    description: "Get a Ticketmaster (US) venue page by numeric venue id or page URL: name, address, coordinates, time zone, the venue's own policy text (bag and entry rules, children, parking, accessible seating, box office hours and payment, as short plain-text blocks), optionally the list of seat-map images, and the venue's upcoming events with local date and time, performer ids, sale status flags, on-sale time and presale windows (dates only). Events come in the site's order and are read 20 per site page; events_offset and events_limit move through them. It does not report seats or prices; pass an event_id to get_event or get_ticket_offers. Runs inside the current www.ticketmaster.com page without navigating. Read-only; works signed out.",
+    description: "Get a Ticketmaster (US) venue page by numeric venue id or page URL: name, address, coordinates, time zone, the venue's own policy text (bag and entry rules, children, parking, accessible seating, box office hours and payment, as short plain-text blocks), optionally the list of seat-map images, and the venue's upcoming events with local date and time, performer ids, sale status flags, on-sale time and presale windows (dates only). Events come in the site's own order (mostly by date) and are read 20 per site page; events_offset (up to 900) and events_limit move through them. Listings sold elsewhere, such as other Ticketmaster country sites, partner sites and travel pages, are flagged on_ticketmaster false. It does not report seats or prices; pass an event_id to get_event or get_ticket_offers. Runs inside the current www.ticketmaster.com page without navigating. Read-only; works signed out.",
     inputSchema: {
       type: "object", additionalProperties: false, required: ["venue"],
       properties: {
         venue: { type: "string", minLength: 1, maxLength: 400, description: "Numeric venue id from search_attractions or an event's venue (digits only), or a https://www.ticketmaster.com/<name>-tickets-<city>/venue/<id> URL." },
         include_seat_maps: { type: "boolean", default: false, description: "Also list the venue's seat-map images (name and image URL, at most 25). Omitted by default to keep the result small." },
-        events_offset: { type: "integer", minimum: 0, maximum: 900, default: 0, description: "Number of events to skip, in the site's order." },
+        events_offset: { type: "integer", minimum: 0, maximum: 900, default: 0, description: "Number of events to skip, in the site's order. Events beyond offset 900 cannot be reached." },
         events_limit: { type: "integer", minimum: 1, maximum: 20, default: 10, description: "Maximum events to return." }
       }
     },
@@ -32,7 +32,7 @@
             latitude: { type: ["number", "null"] },
             longitude: { type: ["number", "null"] },
             info_blocks: {
-              type: "array", description: "The venue's policy notes as the site shows them, each cut at 1500 characters.",
+              type: "array", description: "The venue's policy notes as the site shows them, at most the first 12, each cut at 1500 characters.",
               items: { type: "object", additionalProperties: false, required: ["title", "text"], properties: { title: { type: "string" }, text: { type: "string" } } }
             },
             seat_maps: {
@@ -52,11 +52,11 @@
                     type: "object", additionalProperties: false,
                     required: ["event_id", "name", "url", "ticketing_host", "on_ticketmaster", "local_date", "local_time", "weekday", "start_utc", "time_zone", "onsale_utc", "status_flags", "presales", "performers"],
                     properties: {
-                      event_id: { type: "string", description: "Id from the event URL; pass it to get_event and get_ticket_offers when on_ticketmaster is true." },
+                      event_id: { type: "string", description: "Id from the event URL when on_ticketmaster is true: pass it to get_event and get_ticket_offers. Otherwise the site's own listing id, which those tools cannot use." },
                       name: { type: "string" },
-                      url: { type: "string", format: "uri" },
+                      url: { type: "string", format: "uri", description: "The event page. For other sites the link as listed, with tracking ids removed." },
                       ticketing_host: { type: "string" },
-                      on_ticketmaster: { type: "boolean", description: "False when tickets are not sold on a ticketmaster.com event page, for example a Ticketmaster country site or a travel.ticketmaster.com page; event_id is then the site's own listing id and get_event does not accept it." },
+                      on_ticketmaster: { type: "boolean", description: "False when tickets are not sold on a ticketmaster.com event page, for example a Ticketmaster country site, a partner site or a travel.ticketmaster.com page." },
                       local_date: { type: ["string", "null"], description: "YYYY-MM-DD at the venue; null when the date is to be announced." },
                       local_time: { type: ["string", "null"], description: "HH:MM 24-hour at the venue; null when not announced." },
                       weekday: { type: ["string", "null"] },
@@ -68,15 +68,15 @@
                         properties: { sold_out: { type: "boolean" }, limited_availability: { type: "boolean" }, cancelled: { type: "boolean" }, postponed: { type: "boolean" }, rescheduled: { type: "boolean" } },
                         description: "Flags from the search index; they lag live inventory, so confirm with get_ticket_offers."
                       },
-                      presales: { type: "array", items: { type: "object", additionalProperties: false, required: ["name", "start_utc", "end_utc"], properties: { name: { type: "string" }, start_utc: { type: ["string", "null"] }, end_utc: { type: ["string", "null"] } } } },
-                      performers: { type: "array", items: { type: "object", additionalProperties: false, required: ["name", "id"], properties: { name: { type: "string" }, id: { type: ["string", "null"], description: "Numeric artist id for get_artist." } } } }
+                      presales: { type: "array", description: "At most the first 10 windows; a warning says when more exist.", items: { type: "object", additionalProperties: false, required: ["name", "start_utc", "end_utc"], properties: { name: { type: "string" }, start_utc: { type: ["string", "null"] }, end_utc: { type: ["string", "null"] } } } },
+                      performers: { type: "array", description: "At most the first 8; a warning says when more exist.", items: { type: "object", additionalProperties: false, required: ["name", "id"], properties: { name: { type: "string" }, id: { type: ["string", "null"], description: "Numeric artist id for get_artist." } } } }
                     }
                   }
                 }
               }
             },
             observed_at: { type: "string", description: "ISO timestamp of the reads; listings change constantly." },
-            warnings: { type: "array", items: { type: "string" }, description: "Truncated text, skipped listings or omitted seat maps." }
+            warnings: { type: "array", items: { type: "string" }, description: "Truncated text, capped lists, skipped listings or omitted seat maps." }
           }
         },
         {
@@ -101,7 +101,7 @@
       let url;
       try { url = new URL(raw); } catch { return fail("invalid_input", "venue is neither a numeric venue id nor a URL."); }
       const host = url.hostname.toLowerCase();
-      if (url.protocol !== "https:" || !(host === "ticketmaster.com" || host.endsWith(".ticketmaster.com"))) return fail("unsupported_host", "Only ticketmaster.com venue pages are supported; " + host + " is a different site.");
+      if (url.protocol !== "https:" || !["ticketmaster.com", "www.ticketmaster.com"].includes(host)) return fail("unsupported_host", "Only www.ticketmaster.com venue pages are supported; " + host + " is a different site.");
       venueId = /\/venue\/([0-9]{1,12})\/?$/.exec(url.pathname)?.[1] ?? null;
       if (!venueId) return fail("invalid_input", "The URL has no /venue/<numeric id> segment.");
     }
@@ -123,11 +123,13 @@
         .replace(/&(#x?[0-9a-f]{1,6}|[a-z]+);/gi, (m, e) => {
           if (e[0] === "#") { const code = e[1].toLowerCase() === "x" ? parseInt(e.slice(2), 16) : parseInt(e.slice(1), 10); return code > 0 && code < 0x110000 ? String.fromCodePoint(code) : " "; }
           return entities[e.toLowerCase()] ?? m;
-        }).replace(/\s+/g, " ").trim();
+        }).replace(/<[^>]*>/g, "").replace(/\s+/g, " ").trim();
       if (!text) return null;
       if (text.length <= max) return text;
       clipped = true;
-      return text.slice(0, max - 1).trimEnd() + "…";
+      let head = text.slice(0, max - 1);
+      if (/[\ud800-\udbff]$/.test(head)) head = head.slice(0, -1);
+      return head.trimEnd() + "…";
     };
     const local = (iso, zone) => {
       const at = new Date(iso);
@@ -138,7 +140,10 @@
     };
     const utc = iso => { const at = new Date(iso); return iso && !Number.isNaN(at.getTime()) ? at.toISOString() : null; };
     const pageId = (href, kind) => { try { return new RegExp("^/[^/]+/" + kind + "/([0-9]{1,12})/?$").exec(new URL(href).pathname)?.[1] ?? null; } catch { return null; } };
-    const siteUrl = path => { try { const u = new URL(path, ORIGIN); return u.origin === ORIGIN ? u.origin + u.pathname : null; } catch { return null; } };
+    const siteUrl = path => { if (typeof path !== "string" || !path) return null; try { const u = new URL(path, ORIGIN); return u.origin === ORIGIN ? u.origin + u.pathname : null; } catch { return null; } };
+    // Links to other sites can carry per-response tracking ids; drop those but keep the rest so distinct performances stay distinct.
+    const untracked = url => { const clean = new URL(url.href); for (const key of [...clean.searchParams.keys()]) if (key === "_uid" || key.startsWith("utm_")) clean.searchParams.delete(key); return clean.href; };
+    const cut = { presales: 0, performers: 0 };
     const normalizeEvent = e => {
       let url;
       try { url = new URL(e?.url); } catch { return null; }
@@ -155,12 +160,16 @@
       const tba = e.tba === true || dates.dateDisplay === "tba" || dates.dateDisplay === "showNone";
       const when = tba ? { date: null, time: null, weekday: null } : local(dates.startDate, zone);
       if (dates.dateDisplay === "showDate") when.time = null;
+      const presales = (Array.isArray(e.presaleDates) ? e.presaleDates : []).filter(p => str(p?.name));
+      const performers = (Array.isArray(e.artists) ? e.artists : []).filter(a => str(a?.name));
+      if (presales.length > 10) cut.presales++;
+      if (performers.length > 8) cut.performers++;
       return {
-        event_id: eventId, name, url: url.origin + url.pathname, ticketing_host: host, on_ticketmaster: onTicketmaster,
+        event_id: eventId, name, url: onTicketmaster ? url.origin + url.pathname : untracked(url), ticketing_host: host, on_ticketmaster: onTicketmaster,
         local_date: when.date, local_time: when.time, weekday: when.weekday, start_utc: tba ? null : utc(dates.startDate), time_zone: zone, onsale_utc: utc(dates.onsaleDate),
         status_flags: { sold_out: e.soldOut === true, limited_availability: e.limitedAvailability === true, cancelled: e.cancelled === true, postponed: e.postponed === true, rescheduled: e.rescheduled === true },
-        presales: (Array.isArray(e.presaleDates) ? e.presaleDates : []).filter(p => str(p?.name)).slice(0, 10).map(p => ({ name: str(p.name), start_utc: utc(p.startDateTime), end_utc: utc(p.endDateTime) })),
-        performers: (Array.isArray(e.artists) ? e.artists : []).filter(a => str(a?.name)).slice(0, 8).map(a => ({ name: str(a.name), id: pageId(a.url, "artist") }))
+        presales: presales.slice(0, 10).map(p => ({ name: str(p.name), start_utc: utc(p.startDateTime), end_utc: utc(p.endDateTime) })),
+        performers: performers.slice(0, 8).map(a => ({ name: str(a.name), id: pageId(a.url, "artist") }))
       };
     };
     const headers = { accept: "application/json", "x-tmplatform": "global", "x-tmclient-app": "marketplace_fe", "x-tmregion": "200", "x-tmlangcode": "en-us" };
@@ -189,18 +198,24 @@
       for (let page = Math.floor(offset / PAGE_SIZE); page * PAGE_SIZE < offset + limit; page++) {
         const r = await api("/api/search/events/venue?venueId=" + venueId + "&region=200&addOnType=EVENT&page=" + page);
         if (blocked(r)) return challenge(r);
-        if (r.status >= 400 || !r.body || !Array.isArray(r.body.events)) return fail("site_error", "Ticketmaster returned HTTP " + r.status + " for the venue's events.");
+        if (r.status >= 400 || !r.body || !Array.isArray(r.body.events)) return fail("site_error", "Ticketmaster did not return a JSON events list for the venue (HTTP " + r.status + ").");
         if (Number.isInteger(r.body.total)) total = r.body.total;
         r.body.events.forEach((e, i) => { const at = page * PAGE_SIZE + i; if (at >= offset && at < offset + limit) listings.push(e); });
         if (r.body.events.length < PAGE_SIZE || (total !== null && (page + 1) * PAGE_SIZE >= total)) break;
       }
       const items = listings.map(normalizeEvent).filter(Boolean);
       if (items.length < listings.length) warnings.push((listings.length - items.length) + " listing(s) were left out because they have no usable event URL or id.");
+      if (cut.presales) warnings.push(cut.presales + " event(s) list more than 10 presale windows; only the first 10 are shown.");
+      if (cut.performers) warnings.push(cut.performers + " event(s) list more than 8 performers; only the first 8 are shown.");
       if (offset > 0 && !listings.length) warnings.push("events_offset is past the last event the site lists.");
       const end = offset + listings.length;
+      const more = listings.length > 0 && (total === null || end < total);
+      if (more && end > 900) warnings.push("The site lists more events, but events_offset cannot exceed 900.");
 
       const blocks = v.generalInfoBlocks && typeof v.generalInfoBlocks === "object" && !Array.isArray(v.generalInfoBlocks) ? Object.entries(v.generalInfoBlocks) : [];
-      const infoBlocks = blocks.map(([title, text]) => ({ title: plain(title, 80), text: plain(text, 1500) })).filter(b => b.title && b.text).slice(0, 12);
+      const readable = blocks.map(([title, text]) => ({ title: plain(title, 80), text: plain(text, 1500) })).filter(b => b.title && b.text);
+      if (readable.length > 12) warnings.push("The policy blocks were limited to the first 12 of " + readable.length + ".");
+      const infoBlocks = readable.slice(0, 12);
       const a = v.address || {};
       const result = {
         status: "ok", venue_id: venueId, name: v.name, url: siteUrl(v.canonicalUrl), time_zone: str(v.timeZone),
@@ -216,7 +231,7 @@
       if (clipped) warnings.push("Some long text was cut to keep the result small; the venue page has the full text.");
       return {
         ...result,
-        events: { total, offset, returned: items.length, next_offset: listings.length && (total === null || end < total) ? end : null, items },
+        events: { total, offset, returned: items.length, next_offset: more && end <= 900 ? end : null, items },
         observed_at: new Date().toISOString(), warnings
       };
     } catch (error) {

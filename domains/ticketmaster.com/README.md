@@ -115,25 +115,39 @@ The attraction tools (`search_attractions`, `get_artist`, `get_venue`), all `kin
   `/api/search/events/artist/<id>` (the page's own events query, 20 per site page). With
   `include` it also reads `/api/artist/<id>/enhanced/details` for short plain-text
   excerpts of the about text, FAQs, news blurbs and VIP or experience descriptions; the
-  gallery (video markup) is never returned. Events keep the site's order, which lists
-  US events by date and then events sold on other Ticketmaster country sites; those
-  carry `on_ticketmaster: false` and their own host and are not accepted by `get_event`
-  or `get_ticket_offers`. `events_offset` and `events_limit` (at most 20) address that
-  order, reading at most two site pages per call; `next_offset` is null on the last
-  events. Each event carries the venue id and performer ids parsed from the site's own
-  page URLs, plus the sale window and presale names and dates from the listing (dates
-  only; nothing here enters, checks or registers for a presale).
+  gallery (video markup) is never returned. Events keep the site's own order, which is
+  mostly by date; listings sold elsewhere (other Ticketmaster country sites, partner
+  sites, travel pages) are interleaved or come last and carry `on_ticketmaster: false`
+  and their own host. Pass an `event_id` to `get_event` or `get_ticket_offers` only when
+  `on_ticketmaster` is true: for other listings it is the site's own listing id, and
+  those tools would accept it as a bare id without it meaning anything on
+  ticketmaster.com. `events_offset` (at most 900) and `events_limit` (at most 20) address
+  that order, reading at most two site pages per call; `next_offset` is null on the last
+  events or when the next offset would exceed 900 (a warning says so). Each event
+  carries the venue id and performer ids parsed from the site's own page URLs, plus the
+  sale window and presale names and dates from the listing (dates only; nothing here
+  enters, checks or registers for a presale). Presales are capped at 10 and performers
+  at 8 per event, and the extra sections at 25 about blocks, 6 FAQs, 4 news items and 4
+  experiences; a warning says whenever a cap or a text cut applied. Some attractions
+  that are not events (fan passes, meet-and-greets, parking passes) have a page record
+  but the site redirects their events request to another page (a search page, a venue's
+  add-ons page or the parent attraction's page were seen); the tool then returns the
+  record with `events.total: null`, no events and a warning naming the path, not an error.
+  A redirect whose page title is the bot-protection page is reported as `challenge`.
 - **get_venue** (`kind: "page"`) reads `/api/venue/info?venueId=<id>` and the venue's events
   from `/api/search/events/venue` (the page's own query with `addOnType=EVENT`), with the
   same offset and limit behaviour. Policy blocks (general rules, children, box office,
   parking, accessible seating and so on) are the venue's own text, returned as plain
-  text cut at 1500 characters each. `include_seat_maps` adds the seat-map image list
+  text cut at 1500 characters each (at most the first 12 blocks). `include_seat_maps` adds the seat-map image list
   (name and image URL, at most 25). Ids taken from a listing on another Ticketmaster
   country site (for example a Toronto arena listed on ticketmaster.ca) resolve on the US
   site too, as the live checks below found.
 
-The text these tools return comes from the site and is data, not instructions: markup is
-removed and lengths are bounded, and nothing extracted is executed or followed.
+The text these tools return comes from the site and is data, not instructions: HTML tags
+are removed (including tags that HTML entities decode into) and lengths are bounded, and
+nothing extracted is executed or followed. Artist and venue URL inputs are accepted only
+on `www.ticketmaster.com` or `ticketmaster.com` (stricter than `get_event`, which accepts
+any ticketmaster.com host).
 
 ## URL patterns
 
@@ -228,20 +242,31 @@ navigates only within `www.ticketmaster.com`. If the tab is on another host, ope
   is capped at 900 (page 45) to stay below that.
 - Artist and venue events include listings sold on other Ticketmaster country sites
   (Canadian shows appeared in a US artist's list with `www.ticketmaster.ca` URLs and
-  absolute venue URLs). They come after the US events; the tools mark them
-  `on_ticketmaster: false`. So are listings that point at `travel.ticketmaster.com` (one
-  was seen for a touring show), which have no `/event/<id>` path; they keep the site's
-  own listing id and their tracking query parameters are removed.
+  absolute venue URLs). Other hosts seen in these lists include `.dk`, `.pl` and
+  `theatre.ticketmaster.co.uk` pages, partner sites such as `www.gofevo.com` (interleaved
+  by date with the US events), and `travel.ticketmaster.com` pages, which have no
+  `/event/<id>` path. The tools mark all of these `on_ticketmaster: false`, keep the
+  site's own listing id, and return the link as listed with only per-response tracking
+  parameters (`_uid`, `utm_*`) removed, so one link never stands for many performances
+  (a London show listed each performance as a fragment of the same page).
 - The artist `synopsis` and the enhanced-details prose can contain HTML paragraphs;
   venue policy blocks were plain text. All prose is reduced to plain text and bounded.
   The enhanced details for some attractions (a touring show was seen) are an almost
   empty record.
 - The typeahead's `event_count` and the events endpoints' `total` are the site's own
-  rough counts and do not always match (456 against 457 for one arena); the category
-  queries the site uses elsewhere are capped at 10000.
-- `type` and `sub_type` are present for teams and bands but were absent for some touring
-  shows; one show returned a type in an early read and none later the same day, so treat
-  null as "not given" and use `category` for grouping.
+  rough counts and do not always match (456 against 457 for one arena); `event_count` can
+  be 0 for an attraction that does have events (a touring musical and a band's tribute
+  projects were seen with 0 in the typeahead and dozens of events in `get_artist`). The
+  category queries the site uses elsewhere are capped at 10000.
+- Repeated calls in a short burst can trip the site's bot protection: about 14 calls
+  (roughly 40 requests) within a minute produced an HTTP 403 in one review run. The tools
+  report that as `challenge` and discard partial results; wait a few minutes.
+- After a tool call that receives an HTTP 4xx, the page's own scripts report the failure
+  to the site's analytics endpoints. Those requests come from the site, not the tools.
+- `type` and `sub_type` are present for some attractions (seen for a baseball team and
+  for a band) and absent for others (another band, a tribute act and touring shows); one
+  show returned a type in an early read and none later the same day. Treat null as "not
+  given" and use `category` for grouping.
 - The site's search suggestions include more than performers: sports teams, shows,
   tribute acts, parking passes and stadium tours are all typed `ARTIST`.
 
@@ -282,9 +307,10 @@ navigates only within `www.ticketmaster.com`. If the tab is on another host, ope
 - `search_attractions` sees at most 10 suggestions per query and cannot page; a type
   filter applies after that. It does not surface trending attractions or category
   browsing (a category events query exists on the site and was not built here).
-- `get_artist` and `get_venue` accept numeric ids only. Ids in the site's other URL
-  forms were not seen. `events_offset` is capped at 900 and each call reads at most two
-  site pages. Date filters on the artist events endpoint appear in the site's own
+- `get_artist` and `get_venue` accept numeric ids only (an id with leading zeros is
+  `not_found`). Ids in the site's other URL forms were not seen. `events_offset` is capped
+  at 900, so an attraction with more events than that is only partly reachable, and each
+  call reads at most two site pages. Date filters on the artist events endpoint appear in the site's own
   queries but were not verified, so there is no date filter; use `search_events` for a
   date range. Review ratings on the artist page were not built (endpoint not verified).
 - Listing status flags come from the search index and lag live inventory.
@@ -385,6 +411,49 @@ builder's browser was deleted after the final run.
 
 Status `draft`: no independent QA has signed off yet.
 
+Independent QA round 1 (agent `agt_7efe7ebf564202d6ad44`, 2026-09-29) on the first revision
+(commit `20829bf`): **FAIL**, with 1 major and 8 minor findings, fixed in the next commit:
+
+1. (major) Lists were capped without a warning: presales at 10 and performers at 8 per
+   event, the extra sections, and the policy blocks. Every cap now adds a warning, and
+   the README lists the caps.
+2. `get_artist` returned `site_error` for attractions such as fan passes, meet-and-greets
+   and parking passes, whose events request the site redirects to another HTML page (a
+   search page, a venue add-ons page, the parent attraction's page). It now returns the
+   record with `events.total: null`, no events and a warning.
+3. The `event_count` description said 0 means nothing on sale; the site's count can be 0
+   for attractions that have events. Corrected.
+4. Links to other sites lost their query and fragment, so 218 London performances shared
+   one URL. Only `_uid` and `utm_*` are removed now.
+5. Overstated documentation: the ordering of events (partner listings are interleaved),
+   which attractions carry a `type`, and that `get_event` "does not accept" other-site ids
+   (it accepts any bare id; the id is just not meaningful there). Corrected.
+6. A missing `canonicalUrl` produced `https://www.ticketmaster.com/undefined`; the url is
+   null now.
+7. `next_offset` could be larger than the allowed `events_offset`; it is null now, with a
+   warning.
+8. Entity-encoded markup decoded into literal tags; tags are removed after decoding too.
+9. Cutting long text could split a surrogate pair; it cannot now.
+
+Round 1 also reported, live: the whole namespace registered atomically with metadata equal
+to the checked-out files; no site-registered tools and no name collisions on six page
+types; 37 `search_attractions` cases; artist, team and touring-show inputs; pagination
+compared with the raw endpoint for five entities with no skipped or duplicated events at
+page boundaries; 209 events compared field by field with the raw records (no
+differences); 147 outputs validated against the output schemas (error branches
+included); the largest output was 30.9 KB; 139 invocations issued only GETs to the
+documented endpoints; no keys, tokens or tracking ids in outputs; the tab never navigated
+from six starting pages; one real HTTP 403 mapped to `challenge`. Round 1 could not
+exercise `wrong_page` or HTTP 429 live (fixtures only).
+
+Local Chrome extension, round 1: **partial**. The CLI was built from the checkout, the six
+tools were installed pinned to the commit, site access was granted, and all six tools
+registered (the page tools only after a reload following the grant). The new tools returned
+`invalid_input` for bad input with no requests, and `challenge` on the site's
+"Your Browsing Activity Has Been Paused" page, which the site served to that VM's
+datacenter IP. No success path could run in the extension. Kernel results do not transfer
+to the extension.
+
 Builder checks, 2026-09-29, signed out, on a fresh Kernel stealth browser. The whole
 `ticketmaster.com` namespace (all six tools) was registered atomically with
 `forceOverwriteNamespace`, and the three existing tools were not invoked.
@@ -409,5 +478,5 @@ Builder checks, 2026-09-29, signed out, on a fresh Kernel stealth browser. The w
 - Fixture tests (`tests/ticketmaster-attractions.test.mjs`) cover schemas, malformed
   input, challenge and error mapping, pagination, other-country listings, text bounds
   and that no unlisted field leaves the page.
-- Not exercised live: the bot-protection page and HTTP 403/429 paths (stubbed tests
-  only), signed-in use, and the Chrome extension runtime.
+- Not exercised live by the builder: the bot-protection page and HTTP 403/429 paths
+  (stubbed tests only), signed-in use, and the Chrome extension runtime.

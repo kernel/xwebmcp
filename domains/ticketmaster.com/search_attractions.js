@@ -40,7 +40,7 @@
                   city: { type: ["string", "null"], description: "Venue city; null for artists." },
                   state: { type: ["string", "null"], description: "Venue state or province; null for artists." },
                   country: { type: ["string", "null"], description: "Venue country name; null for artists." },
-                  event_count: { type: ["integer", "null"], minimum: 0, description: "Events the site's index lists for it; a rough count, 0 means none on sale." }
+                  event_count: { type: ["integer", "null"], minimum: 0, description: "The site's rough count of matching events from its suggestion index. It can be 0 for an attraction that does have events, so confirm with get_artist or get_venue." }
                 }
               }
             }

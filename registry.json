@@ -1030,7 +1030,7 @@
       ],
       "status": "draft",
       "last_verified": null,
-      "notes": "Page tool on www.ticketmaster.com: artist/attraction record by id or URL with type, category, plain-text synopsis, optional about/FAQ/news/experience excerpts, and the attraction's events in the site's order (offset/limit, on_ticketmaster flag for other country sites). Read-only; no seats or prices."
+      "notes": "Page tool on www.ticketmaster.com: artist/attraction record by id or URL with type, category, plain-text synopsis, optional about/FAQ/news/experience excerpts, and the attraction's events in the site's order (offset/limit, on_ticketmaster flag for listings sold elsewhere). Read-only; no seats or prices."
     },
     {
       "domain": "ticketmaster.com",
