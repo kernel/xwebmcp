@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { runInNewContext } from "node:vm";
-import { conforms, loadTool, makeClock } from "./google-support.mjs";
+import { conforms, loadTool, makeClock, makeTimers } from "./google-support.mjs";
 
 // Harness for google.com/get_stock_quote. fetch, location and the clock are stubbed; every quote, name and
 // number below is fabricated, so nothing here reflects or contacts the live site.
@@ -20,12 +20,15 @@ const page = ({ quote = quoteRecord(), title = "Example Corp (EXMP) Stock Price 
 
 function run(input, o = {}) {
   const clock = makeClock();
+  const timers = o.timers ?? makeTimers();
   const calls = { fetch: [] };
   const url = o.url ?? `${FINANCE}/finance/quote/EXMP:NASDAQ`;
   const context = {
     URL, JSON, Promise, Object, Array, String, Number, Math, RegExp, Infinity, isFinite, decodeURIComponent, queueMicrotask,
-    Date: clock.Date, setTimeout: clock.setTimeout, clearTimeout: clock.clearTimeout,
-    AbortController: class { constructor() { this.signal = { aborted: false }; } abort() { this.signal.aborted = true; } },
+    Date: clock.Date, setTimeout: timers.setTimeout, clearTimeout: timers.clearTimeout,
+    AbortController: class {
+      constructor() { const listeners = []; this.signal = { aborted: false, addEventListener: (type, fn) => listeners.push(fn) }; this.abort = () => { this.signal.aborted = true; listeners.forEach(fn => fn()); }; }
+    },
     location: { origin: o.origin ?? FINANCE, pathname: o.pathname ?? "/finance/" },
     fetch: async (path, init) => {
       calls.fetch.push({ path, init });
@@ -40,7 +43,7 @@ const ok = async (input, o) => { const { result } = run(input, o); const out = J
 test("definition matches the registry: a page tool on the Finance product only", () => {
   const entry = registry.tools.find(t => t.domain === "google.com" && t.tool === "get_stock_quote");
   assert.equal(tool.kind, "page");
-  assert.deepEqual([...tool.match.url_patterns], ["https://www.google.com/finance/*"]);
+  assert.deepEqual([...tool.match.url_patterns], ["https://www.google.com/finance*"]);
   assert.equal(entry?.kind, "page");
   assert.deepEqual(entry?.url_patterns, [...tool.match.url_patterns]);
   assert.equal(tool.tool.annotations.readOnlyHint, true);
@@ -98,7 +101,7 @@ test("a page with no statistics rows still returns the quote, with a warning", a
 });
 
 test("rejects malformed input before any request", async () => {
-  for (const input of [undefined, null, [], {}, { symbol: "" }, { symbol: "MSFT" }, { symbol: "AAPL:" }, { symbol: ":NASDAQ" }, { symbol: "A B:NASDAQ" }, { symbol: "AAPL:NAS/DAQ" }, { symbol: "AAPL:NASDAQ?x=1" }, { symbol: "../etc:NASDAQ" }, { symbol: 5 }, { symbol: "AAPL:NASDAQ", extra: 1 }, { symbol: "A".repeat(40) + ":NASDAQ" }]) {
+  for (const input of [undefined, null, [], {}, { symbol: "" }, { symbol: "MSFT" }, { symbol: "AAPL:" }, { symbol: ":NASDAQ" }, { symbol: "A B:NASDAQ" }, { symbol: "AAPL:NAS/DAQ" }, { symbol: "AAPL:NASDAQ?x=1" }, { symbol: "../etc:NASDAQ" }, { symbol: 5 }, { symbol: "AAPL:NASDAQ", extra: 1 }, { symbol: "A".repeat(40) + ":NASDAQ" }, { symbol: "\u0131BM:NYSE" }, { symbol: "\u017fPY:NYSEARCA" }, { symbol: "AAPL\u00df:NASDAQ" }, { symbol: "\uff21APL:NASDAQ" }, { symbol: "A/B:NASDAQ" }, { symbol: "AAPL/../x:NASDAQ" }]) {
     const { calls, result } = run(input);
     const out = await result;
     assert.equal(out.error_kind, "invalid_input", JSON.stringify(input));
@@ -132,9 +135,12 @@ test("challenge, consent, rate limit and server errors are explicit, never empty
 test("a failed or hung request becomes network_error", async () => {
   const failed = await ok({ symbol: "EXMP:NASDAQ" }, { fetch: async () => { throw new TypeError("Failed to fetch"); } });
   assert.equal(failed.error_kind, "network_error");
-  const hung = await ok({ symbol: "EXMP:NASDAQ" }, { fetch: (path, init, clock) => new Promise((_, reject) => { clock.schedule(25000, () => { init.signal.aborted = true; reject(new Error("aborted")); }); clock.setTimeout(() => {}, 25000); }) });
-  assert.equal(hung.error_kind, "network_error");
-  assert.match(hung.error_message, /25 seconds/);
+  const timers = makeTimers();
+  const hung = run({ symbol: "EXMP:NASDAQ" }, { timers, fetch: (path, init) => new Promise((_, reject) => { init.signal.addEventListener("abort", () => reject(new Error("aborted"))); setImmediate(() => timers.advance(25000)); }) });
+  const out = await Promise.race([hung.result, new Promise(resolve => setTimeout(() => resolve("HUNG"), 300))]);
+  assert.notEqual(out, "HUNG", "the request timeout never fired");
+  assert.equal(out.error_kind, "network_error");
+  assert.match(out.error_message, /25 seconds/);
 });
 
 test("data the tool cannot trust is not returned: changed markup and numbers that do not reconcile", async () => {
@@ -155,4 +161,21 @@ test("a quote for the wrong instrument shape is skipped in favor of the matching
   const decoy = block(9, [[[["/g/x", ["EXMP", "NASDAQ"], "Decoy", 0, "USD", ["not a price"], null, 1]]]]);
   const out = await ok({ symbol: "EXMP:NASDAQ" }, { html: page({ extra: decoy }) });
   assert.equal(out.name, "Example Corp");
+});
+
+test("only a quote block that names the requested symbol as its own identity is accepted", async () => {
+  const decoy = [[[["/g/x", ["ZZZZ", "NASDAQ"], "Decoy Corp", 0, "USD", [110, 10, 10, 2, 2, 2], null, 100, "#666", "US", "/m/x", [1790000000], "America/New_York", -14400, ["EXMP", "NASDAQ"]]]]];
+  const out = await ok({ symbol: "EXMP:NASDAQ" }, { html: page({ quote: decoy, title: "Decoy Corp - Google Finance" }) });
+  assert.equal(out.error_kind, "site_changed");
+});
+
+test("out-of-range numeric entities in the page do not break the tool", async () => {
+  const out = await ok({ symbol: "EXMP:NASDAQ" }, { html: page({ stats: [["Note", "a&#x110000;b&#0;c&#99999999999;d"]] }) });
+  assert.equal(out.status, "ok");
+  assert.deepEqual(out.stats, [{ label: "Note", value: "a b c d" }]);
+});
+
+test("a price that disagrees with change and previous close is refused even when the percent matches the change", async () => {
+  const out = await ok({ symbol: "EXMP:NASDAQ" }, { html: page({ quote: quoteRecord({ price: 110, change: 5, pct: 5, prev: 100 }) }) });
+  assert.equal(out.error_kind, "site_changed");
 });

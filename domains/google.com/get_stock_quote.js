@@ -1,9 +1,9 @@
 [{
   kind: "page",
-  match: { url_patterns: ["https://www.google.com/finance/*"] },
+  match: { url_patterns: ["https://www.google.com/finance*"] },
   tool: {
     name: "get_stock_quote",
-    description: "Get the current Google Finance quote for one stock, ETF or index: last price, change and percent change against the previous close, previous close, the quote time, currency, and the key-statistics rows Google shows (for example Open, High, Low, Mkt. cap, Avg. vol., P/E ratio, 52-wk high and low). symbol must be TICKER:EXCHANGE exactly as Google Finance writes it, for example AAPL:NASDAQ, BRK.B:NYSE, VOO:NYSEARCA or .INX:INDEXSP; a bare ticker such as MSFT is rejected because Google Finance cannot resolve it. Currency pairs and crypto pages are not supported. Runs on any google.com/finance page and reads the quote page with one same-origin request; it never navigates the tab. Prices are shown as Google publishes them and can be delayed by the exchange: compare quote_time_utc with retrieved_at, and treat the result as informational, not trading advice. stats values are display strings in the quote's currency, copied as shown. Read-only.",
+    description: "Get the current Google Finance quote for one stock, ETF or index: last price, change and percent change against the previous close, previous close, the quote time, currency, and the key-statistics rows Google shows (for example Open, High, Low, Mkt. cap, Avg. vol., P/E ratio, 52-wk high and low). symbol must be TICKER:EXCHANGE exactly as Google Finance writes it, for example AAPL:NASDAQ, BRK.B:NYSE, VOO:NYSEARCA or .INX:INDEXSP; a bare ticker such as MSFT is rejected because Google Finance cannot resolve it. Currency pairs and crypto pages are not supported. Runs on any www.google.com/finance page and reads the quote page with one same-origin request; it never navigates the tab. Prices are shown as Google publishes them and can be delayed by the exchange: compare quote_time_utc with retrieved_at, and treat the result as informational, not trading advice. stats values are display strings in the quote's currency, copied as shown. Read-only.",
     inputSchema: {
       type: "object", additionalProperties: false, required: ["symbol"],
       properties: {
@@ -54,10 +54,9 @@
     const ORIGIN = "https://www.google.com";
     const fail = (kind, message) => ({ status: "error", error_kind: kind, error_message: message });
     if (!input || typeof input !== "object" || Array.isArray(input) || Object.keys(input).some(k => k !== "symbol")) return fail("invalid_input", "Provide only symbol, written TICKER:EXCHANGE, for example AAPL:NASDAQ.");
-    const raw = typeof input.symbol === "string" ? input.symbol.trim().toUpperCase() : "";
-    const parts = /^(\.?[A-Z0-9][A-Z0-9._-]{0,19}):([A-Z0-9_]{2,20})$/.exec(raw);
+    const parts = /^(\.?[A-Za-z0-9][A-Za-z0-9._-]{0,19}):([A-Za-z0-9_]{2,20})$/.exec(typeof input.symbol === "string" ? input.symbol.trim() : "");
     if (!parts) return fail("invalid_input", "symbol must be TICKER:EXCHANGE, for example AAPL:NASDAQ or .INX:INDEXSP; a bare ticker is not accepted.");
-    const [, ticker, exchange] = parts;
+    const ticker = parts[1].toUpperCase(), exchange = parts[2].toUpperCase();
     const symbol = `${ticker}:${exchange}`;
     if (location.origin !== ORIGIN || !location.pathname.startsWith("/finance")) return fail("wrong_page", "Run this on a https://www.google.com/finance page.");
 
@@ -101,7 +100,10 @@
     }
 
     const decode = s => s.replace(/&(#x[0-9a-f]+|#\d+|amp|lt|gt|quot|apos|nbsp);/gi, (m, e) => {
-      if (e[0] === "#") return String.fromCodePoint(e[1] === "x" || e[1] === "X" ? parseInt(e.slice(2), 16) : Number(e.slice(1)));
+      if (e[0] === "#") {
+        const code = e[1] === "x" || e[1] === "X" ? parseInt(e.slice(2), 16) : Number(e.slice(1));
+        return code > 0 && code <= 0x10ffff ? String.fromCodePoint(code) : " ";
+      }
       return { amp: "&", lt: "<", gt: ">", quot: "\"", apos: "'", nbsp: " " }[e.toLowerCase()];
     }).replace(/[\u0000-\u001f\u007f]/g, " ").replace(/\s+/g, " ").trim();
     const stats = [];

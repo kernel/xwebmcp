@@ -66,27 +66,38 @@ export function makeClock(start = Date.parse("2026-09-29T12:00:00Z")) {
   return clock;
 }
 
+// Timers that fire only when the test advances the clock: for code under test that arms a long timeout.
+export function makeTimers() {
+  let now = 0;
+  const timers = new Set();
+  return {
+    setTimeout(fn, ms) { const timer = { fn, at: now + ms }; timers.add(timer); return timer; },
+    clearTimeout(timer) { timers.delete(timer); },
+    advance(ms) { now += ms; for (const timer of [...timers].filter(t => t.at <= now)) { timers.delete(timer); timer.fn(); } }
+  };
+}
+
 // --- fake DOM ---------------------------------------------------------------------------------------------
 const BLOCK = new Set(["div", "p", "li", "ul", "tr", "table", "h1", "h2", "h3"]);
 
 export class El {
   constructor(tag, attrs = {}, children = []) {
     this.localName = tag; this.tagName = tag.toUpperCase(); this.attrs = { ...attrs };
-    this.children = []; this.parentElement = null; this.hiddenFlag = false; this.handlers = {};
+    this.nodes = []; this.parentElement = null; this.hiddenFlag = false; this.handlers = {};
     for (const child of children) this.append(child);
   }
   append(child) {
-    if (typeof child === "string") this.children.push(child);
-    else { child.parentElement = this; this.children.push(child); }
+    if (typeof child !== "string") child.parentElement = this;
+    this.nodes.push(child);
     return this;
   }
-  get elementChildren() { return this.children.filter(c => typeof c !== "string"); }
+  get children() { return this.nodes.filter(c => typeof c !== "string"); }
   getAttribute(name) { return name in this.attrs ? String(this.attrs[name]) : null; }
   get className() { return this.attrs.class || ""; }
-  get textContent() { return this.children.map(c => (typeof c === "string" ? c : c.textContent)).join(""); }
+  get textContent() { return this.nodes.map(c => (typeof c === "string" ? c : c.textContent)).join(""); }
   get innerText() {
     const walk = e => {
-      const inner = e.children.map(c => (typeof c === "string" ? c : walk(c))).join("");
+      const inner = e.nodes.map(c => (typeof c === "string" ? c : walk(c))).join("");
       return BLOCK.has(e.localName) ? `\n${inner}\n` : inner;
     };
     return walk(this).replace(/\n{2,}/g, "\n").replace(/^\n|\n$/g, "");
@@ -101,7 +112,7 @@ export class El {
   get value() { return this._value ?? ""; }
   set value(v) { this._value = String(v); }
 }
-const walk = (root, fn) => { for (const child of root.elementChildren) { fn(child); walk(child, fn); } };
+const walk = (root, fn) => { for (const child of root.children) { fn(child); walk(child, fn); } };
 
 // Compound selectors of tag, .class and [attr], [attr="v"], [attr^="v"]; the descendant combinator.
 function matches(el, selector) {
@@ -118,8 +129,8 @@ function matches(el, selector) {
 function compound(text) {
   const tests = [];
   let s = text;
-  const tag = /^[a-zA-Z][a-zA-Z0-9]*/.exec(s);
-  if (tag) { tests.push(e => e.localName === tag[0].toLowerCase()); s = s.slice(tag[0].length); }
+  const tag = /^([a-zA-Z][a-zA-Z0-9]*|\*)/.exec(s);
+  if (tag) { if (tag[0] !== "*") tests.push(e => e.localName === tag[0].toLowerCase()); s = s.slice(tag[0].length); }
   while (s) {
     let m;
     if ((m = /^\.([\w-]+)/.exec(s))) tests.push(e => e.className.split(/\s+/).includes(m[1]));
