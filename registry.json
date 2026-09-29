@@ -1243,6 +1243,19 @@
     },
     {
       "domain": "united.com",
+      "tool": "get_flight_status",
+      "file": "domains/united.com/get_flight_status.js",
+      "kind": "page",
+      "namespace": "united.com",
+      "url_patterns": [
+        "https://www.united.com/*"
+      ],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Public status for one flight number or one route on one date within two days of today. Page tool: an anonymous-token GET then one status GET from a www.united.com page; never navigates and never opens the details pages that list passengers. Independent QA has not signed off."
+    },
+    {
+      "domain": "united.com",
       "tool": "login",
       "file": "domains/united.com/login.js",
       "kind": "cdp",
