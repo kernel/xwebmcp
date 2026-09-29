@@ -70,6 +70,7 @@ const SUGGESTIONS = {
   Exampleland: ["ChIJExampleRegion0001", "ChIJExampleCity000001"],
   Exampleprefecture: ["ChIJExampleRegion0002", "ChIJExampleCity000001", "ChIJExamplePoi0000001"],
   Examplestan: ["ChIJExampleCountry001"],
+  Manyplaces: ["ChIJExampleCity000001", "ChIJExampleAirport001", "ChIJExamplePoi0000001", "ChIJExampleRegion0001", "ChIJExampleRegion0002", "ChIJExampleCountry001", "ChIJExampleCity000001"],
   Nowhere: []
 };
 const suggestionNode = id => ({ placeId: id, description: PLACES[id].description + " (suggestion)", primaryDescription: "x", secondaryDescription: "y", __typename: "SuggestedPlace" });
@@ -311,6 +312,12 @@ test("search_hotels: rooms, adults, radius, paging and point-of-interest type ma
   assert.equal(airportResult.resolved_destination.type, "airport");
 });
 
+test("search_hotels: at most four other suggestions are reported", async () => {
+  const result = await harness("search_hotels").run({ ...VALID, destination: "Manyplaces" });
+  assert.equal(result.status, "ok");
+  assert.deepEqual(result.other_destinations.map(d => d.place_id), ["ChIJExampleAirport001", "ChIJExamplePoi0000001", "ChIJExampleRegion0001", "ChIJExampleRegion0002"]);
+});
+
 test("search_hotels: place_id skips the text lookup and reports no alternatives", async () => {
   const h = harness("search_hotels");
   const result = await h.run({ place_id: "ChIJExampleCity000001", check_in: "2026-10-20", check_out: "2026-10-22" });
@@ -420,6 +427,11 @@ test("search_hotels: markup in a site warning is stripped to plain text", async 
   const h = harness("search_hotels", { respond: c => c.body?.operationName === "phoenixShopDatedSearchByGeoQuery" ? { body: searchBody(DEFAULT_EDGES(), { warnings }) } : null });
   const result = await h.run(VALID);
   assert.deepEqual(result.warnings, [{ code: "WARN-SEARCH-1002", message: "Let's try something else. Check our search tips." }]);
+});
+
+test("search_hotels: tags without surrounding whitespace do not glue words together", async () => {
+  const h = harness("search_hotels", { respond: c => c.body?.operationName === "phoenixShopDatedSearchByGeoQuery" ? { body: searchBody(DEFAULT_EDGES(), { warnings: [{ code: "W1", message: "Check<br>our<b>search</b>tips" }] }) } : null });
+  assert.equal((await h.run(VALID)).warnings[0].message, "Check our search tips");
 });
 
 test("search_hotels: an empty result page is no_results, not an error", async () => {
@@ -600,6 +612,7 @@ test("get_hotel: a plain http URL asks for https; a non-URL scheme is another ho
   assert.match(httpResult.error_message, /https/);
   const js = await harness("get_hotel").run({ hotel: "javascript:alert(1)" });
   assert.equal(js.error_kind, "unsupported_host");
+  assert.match(js.error_message, /javascript:alert\(1\) is a different site/, "an empty host falls back to the input text");
   assert.deepEqual(http.calls, []);
 });
 
