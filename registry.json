@@ -867,6 +867,32 @@
       }
     },
     {
+      "domain": "shopify.com",
+      "tool": "get_app",
+      "file": "domains/shopify.com/get_app.js",
+      "kind": "page",
+      "namespace": "shopify.com",
+      "url_patterns": [
+        "https://apps.shopify.com/*"
+      ],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Page tool on apps.shopify.com: one public App Store listing (developer, launch date, pricing summary and plans, rating and per-star counts, headline, description, highlights, languages, works-with, categories). Read-only; works signed out. Does not return install state, requested permissions (filled in by script after load) or reviews. English pages only; not_found, rate_limited, challenge and site_changed are explicit outcomes."
+    },
+    {
+      "domain": "shopify.com",
+      "tool": "search_apps",
+      "file": "domains/shopify.com/search_apps.js",
+      "kind": "page",
+      "namespace": "shopify.com",
+      "url_patterns": [
+        "https://apps.shopify.com/*"
+      ],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Page tool on apps.shopify.com: one App Store results page through the store's own results frame (Turbo-Frame request), with works-with and category filters, ad and Built for Shopify flags, rating, review count, pricing text and tagline. Read-only; works signed out. Paging via page, total_pages and has_next. apps.shopify.com rate-limits bursts; 429 is reported as rate_limited without a retry."
+    },
+    {
       "domain": "southwest.com",
       "tool": "login",
       "file": "domains/southwest.com/login.js",
