@@ -635,9 +635,12 @@
         "https://myntra.com/*",
         "https://*.myntra.com/*"
       ],
-      "status": "draft",
-      "last_verified": null,
-      "notes": "Guest-session product page read by style_id: price and MRP in rupees, per-size SKU id, availability and stock count, seller, colour variants, attributes, description sections, images, return and cash-on-delivery flags. Unknown style ids return not_found. Prices are not pincode-specific."
+      "status": "verified",
+      "last_verified": "2026-09-29",
+      "notes": "Guest-session product page read by style_id: price and MRP in rupees, per-size SKU id, availability and stock count, seller, colour variants, attributes, description sections, images, return and cash-on-delivery flags. Unknown style ids return not_found. Prices are not pincode-specific. Signed-in behaviour not tested.",
+      "provenance": {
+        "qa_agent": "agt_14295d5c1a9f9887b0e9"
+      }
     },
     {
       "domain": "myntra.com",
@@ -649,9 +652,12 @@
         "https://myntra.com/*",
         "https://*.myntra.com/*"
       ],
-      "status": "draft",
-      "last_verified": null,
-      "notes": "Public reviews by style_id, 12 per page, most helpful or most recent, optional exact star filter; page 1 adds the rating summary. Reviewer names are not returned. A style with no reviews and an unknown style id both return no_results."
+      "status": "verified",
+      "last_verified": "2026-09-29",
+      "notes": "Public reviews by style_id, 12 per page, most helpful or most recent, optional exact star filter; page 1 adds the rating summary. Reviewer names are not returned. A style with no reviews and an unknown style id both return no_results. Most-recent order and the star filter can return HTTP 400 on styles with many thousands of reviews.",
+      "provenance": {
+        "qa_agent": "agt_14295d5c1a9f9887b0e9"
+      }
     },
     {
       "domain": "myntra.com",
@@ -663,9 +669,12 @@
         "https://myntra.com/*",
         "https://*.myntra.com/*"
       ],
-      "status": "draft",
-      "last_verified": null,
-      "notes": "Guest-session organic search with the site's sorts, Group:Value filters, a rupee price range and an opaque cursor; reports query_substituted when the site searches different words. Sponsored placements are not requested. Prices are not pincode-specific."
+      "status": "verified",
+      "last_verified": "2026-09-29",
+      "notes": "Guest-session organic search with the site's sorts, Group:Value filters, a rupee price range and an opaque cursor; reports query_substituted when the site searches different words. Sponsored placements are not requested. CJK and emoji queries are rejected by the site. Prices are not pincode-specific. Signed-in behaviour not tested.",
+      "provenance": {
+        "qa_agent": "agt_14295d5c1a9f9887b0e9"
+      }
     },
     {
       "domain": "purelymail.com",

@@ -4,9 +4,9 @@ Tools for Myntra (https://www.myntra.com), an Indian fashion, beauty and home re
 
 | tool | file | status | notes |
 |------|------|--------|-------|
-| search_products | [search_products.js](search_products.js) | draft | One page of organic results with the site's sorts, `Group:Value` filters, a rupee price range and an opaque cursor; reports `query_substituted` when the site searches different words |
-| get_product | [get_product.js](get_product.js) | draft | Price and MRP in rupees, every size with SKU id, availability and stock, seller, colour variants, attributes, description sections, images, return and cash-on-delivery flags; unknown ids return `not_found` |
-| get_product_reviews | [get_product_reviews.js](get_product_reviews.js) | draft | Public reviews, 12 per page, most helpful or most recent, optional exact star filter; page 1 adds the rating summary; reviewer names are not returned |
+| search_products | [search_products.js](search_products.js) | verified | One page of organic results with the site's sorts, `Group:Value` filters, a rupee price range and an opaque cursor; reports `query_substituted` when the site searches different words |
+| get_product | [get_product.js](get_product.js) | verified | Price and MRP in rupees, every size with SKU id, availability and stock, seller, colour variants, attributes, description sections, images, return and cash-on-delivery flags; unknown ids return `not_found` |
+| get_product_reviews | [get_product_reviews.js](get_product_reviews.js) | verified | Public reviews, 12 per page, most helpful or most recent, optional exact star filter; page 1 adds the rating summary; reviewer names are not returned |
 
 ## Native WebMCP tools
 
@@ -150,9 +150,15 @@ Conventions:
 - `get_product_reviews` returns 12 reviews per page up to page 1000, omits reviewer names and
   images, and returns the rating summary on page 1 only. `updated_at` is null unless the site
   gives a 13-digit epoch in milliseconds.
+- `get_product_reviews` `sort_by: "most_recent"` and `stars` can fail with HTTP 400 (reported as
+  `site_error`) on styles with many thousands of written reviews (checked live on styles with
+  16,589 and 19,194 reviews, while the default sort worked, including page 2); they worked on
+  styles with a few hundred to about 2,000. If they fail, use the default sort.
 - Site text (titles, descriptions, attributes, review text) is converted to plain text from its
-  first 20,000 characters only, to bound the work on very long fields; a plain `<` not followed by
-  a letter, `/` or `!` is kept as text. The named HTML entities decoded are the common ones
+  first 20,000 characters only, to bound the work on each field, so a response with very many
+  hostile fields could still take seconds. A plain `<` not followed by a letter, `/` or `!` is
+  kept as text, but a span that looks like a tag (`x<y and z>w`) is deleted as one. A lone
+  surrogate that arrives inside site text is passed through. The named HTML entities decoded are the common ones
   (`nbsp`, `amp`, `lt`, `gt`, `quot`, `apos`, dashes, quotes, `hellip`, `bull`, `middot`, `copy`,
   `reg`, `trade`) plus numeric ones; any other `&name;` is left as written.
 - `get_product` depends on the embedded `window.__myx` state; if the site changes it the tool
@@ -165,42 +171,65 @@ Conventions:
 
 ## QA summary
 
-Builder live checks, 2026-09-29, guest sessions on fresh Kernel stealth browsers, the three
-files registered as one batch with `forceOverwriteNamespace` and invoked through the WebMCP API:
+Independent QA (agent `agt_14295d5c1a9f9887b0e9`, recorded in `registry.json` provenance) signed
+off all three tools on the final tool source, commit `a46a1e2368bdad8bbec745b7fa0368eae8ab4d0c`,
+after two fix rounds. Later commits change only this README, `registry.json` and the tests. The
+review found no blocking or major defects; the minor ones are recorded above as limitations.
 
-- The tools were listed on the homepage, a listing, a product page and the reviews page and not
-  on an unrelated site; no native tool was listed on any of them; the tab URL was unchanged
-  after every call.
-- `search_products`: default, all seven sorts (price orders verified, first prices ascending and
-  descending), facets, single and two-value filters, brand plus colour, size, price ranges in
-  both sort directions, brand plus price, the four-page cursor walk above, cursor rejection for
-  another sort or query and for garbage, substitution, empty results, `/` and punctuation in the
-  query, and apparel, beauty, home, kids and Devanagari queries. Every output validated against
-  its `outputSchema`.
-- `get_product`: footwear, beauty, home and apparel products, and `not_found`.
-- `get_product_reviews`: helpful and recent, each star filter, page 2, past the end, an unknown
-  style, and rating summaries on page 1.
-- Malformed input for all three tools was refused without a request.
+Live cases run by the reviewer on `a46a1e2`, 2026-09-29, guest sessions on a Kernel stealth browser
+with default egress, tools registered as one batch with `forceOverwriteNamespace`, each invoked
+from a page other than the homepage:
+
+- `get_product` from the product page of each of 14 products across footwear, beauty, home,
+  kids, apparel, bags, watches and accessories; the text fields were compared with the page's own
+  product data, including `&nbsp;`, `&amp;`, lists and `<br>`, with no differences beyond the
+  documented attribute cap and order. Also from the listing page for 5 products, and an unknown
+  id (`not_found`).
+- `get_product_reviews` for three styles from their `/reviews/<style_id>` pages: 12 of 12 texts
+  matched the page and `updated_at` values were real dates; about 300 reviews were scanned in
+  all. `stars` 5, 1 and 2, page 2 and page 400 (`no_results`) from the listing page.
+- `search_products` from the listing page: `socks` with `include_facets` and
+  `sort_by: "popularity"` (3 products, 19 facet groups); every sort; brands plus a colour; price
+  range 500 to 1500 in both sort directions with every result in range; a `kurta` cursor walk with
+  the filters reordered between pages (identical results, no overlap, a changed limit continued
+  cleanly) and a cursor refused after a filter was removed; `tee#1` searched as `tee 1`;
+  substitution, empty results, and 17 punctuation, non-English and CJK queries.
+- 174 live outputs validated against each tool's `outputSchema` with no violation; every request
+  was a `GET` to `www.myntra.com`; the tab URL never changed; tools were not listed on an unrelated
+  site and no native tool was listed anywhere.
+- Malformed input for all three tools was refused without a request, except the two unpaired
+  surrogate cases, which the Kernel API rewrites before the tool runs.
+
+Builder live checks on the same final source, 2026-09-29: 77 invocations covering every sort,
+filters, price ranges, a four-page cursor walk with limits 7, 13, 5 and 50 (75 distinct products,
+contiguous ranks), cursor rejection, substitution, empty results, apparel, beauty, home, kids and
+Devanagari queries, `get_product` in four verticals and `not_found`, and reviews with each sort
+and star filter, all schema-valid. Installing commit `a46a1e2` with `xwebmcp add` and
+`xwebmcp attach --kernel` and invoking a tool by `tool_ref` also worked.
 
 Fixture tests (`tests/myntra-read-tools.test.mjs`) cover input validation before any request,
-`wrong_page`, the request shape and headers, every sort, filters, the price range, cursor
-round trips and forgery, substitution, `no_results`, facets, text sanitising, bounds, every error
-branch, and that no tool sends anything but `GET`.
+`wrong_page`, the request shape and headers, every sort, filters, the price range, cursor round
+trips, filter order and forgery, substitution, `no_results`, facets, the text sanitiser (tags,
+entities, hostile long text), timestamps, bounds, every error branch, and that no tool sends
+anything but `GET`. Independent QA also applied scratch mutations to the source and reported the
+survivors, which the tests now cover.
+
+Not covered: signed-in sessions and wrong-account cases (no account was used), live requests from
+other `myntra.com` hosts, an Indian egress, and the `challenge`, `rate_limited`, `login_required`
+and `site_changed` branches, which no live request triggered.
 
 Local Chrome extension, 2026-09-29 (Chromium 153 headless with an isolated profile, set up with
-`xwebmcp setup chrome`, tools pushed with `xwebmcp dev` and invoked through `xwebmcp mcp`): the three
-tools registered on a myntra.com tab and ran there as page tools. The extension
-code was not modified; the only change to the throwaway copy was adding Myntra to the manifest's
-`host_permissions`, because the extension's grant popup cannot be clicked headless. From the
-builder machine's network the site answered with the refusal page above, so live Myntra data was
-not obtained through the extension: against the real site the tools returned `site_error` naming
-the page and malformed input was refused. The success paths (search with the cursor and the
-pagination-context header replayed, substitution, facets, product, `not_found`, reviews) ran against
-fabricated responses supplied by CDP request interception. All 12 outputs matched their schemas
-and the tools sent only `GET` requests. This shows the tools run in the extension runtime; it does
-not show live-site parity there.
-
-Independent QA has not signed off yet, so every tool stays `draft`.
+`xwebmcp setup chrome`, tools pushed with `xwebmcp dev` and invoked through `xwebmcp mcp`), by the
+builder and again by the reviewer: the three tools registered on a myntra.com tab and ran there as
+page tools. The extension code was not modified; the only change to the throwaway copy was adding
+Myntra to the manifest's `host_permissions`, because the extension's grant popup cannot be clicked
+headless. From the builder machine's network the site answered with the refusal page above, so
+live Myntra data was not obtained through the extension: against the real site the tools returned
+`site_error` naming the page. The success paths ran against fabricated responses supplied by CDP
+request interception (the builder's 12 invocations; the reviewer's 70, including the sanitiser
+cases, lone-surrogate refusal with no request, and hostile 400 KB to 1 MB texts in under 200 ms).
+All outputs matched their schemas and the tools sent only `GET` requests. This shows the tools run
+in the extension runtime; it does not show live-site parity there.
 
 ## URL patterns
 

@@ -348,6 +348,10 @@ test("text sanitiser: block tags separate text, entities are decoded once, plain
     ["&#38;lt; &#38;amp; &#x26;nbsp;x &#38;#x3c;", "&lt; &amp; &nbsp;x &#x3c;"],
     ["1 < 2 and 3 > 2, I <3 it, rating < 3", "1 < 2 and 3 > 2, I <3 it, rating < 3"],
     ["before<!-- hidden > text -->after", "beforeafter"],
+    ["<B>bold</B> <SPAN class=x>span</SPAN> <A HREF=y>link</A>", "bold span link"],
+    ["<div>one</div><DIV>two</DIV>", "one\ntwo"],
+    ["<!DOCTYPE html>text", "text"],
+    ["&#12345678; &#1234567;", "&#12345678;"],
     ["  <b> </b>  ", null]
   ];
   for (const [raw, expected] of cases) {
@@ -723,8 +727,10 @@ test("text sanitiser: hostile long text is bounded in time and size", async () =
     assert.ok(result.reviews[0].text === null || result.reviews[0].text.length <= 1500);
   }
   assert.ok(Date.now() - started < 5000, `sanitising took ${Date.now() - started} ms`);
-  const cut = await reviewsWith(reviewsBody([reviewItem(1, { review: "x".repeat(19999) + "\ud83d\ude00" + "tail" })])).run({ style_id: "4321001" });
-  assert.equal(/[\ud800-\udfff]/.test(cut.reviews[0].text), false);
+  const cut = await reviewsWith(reviewsBody([reviewItem(1, { review: "<b>".repeat(6666) + "x\ud83d\ude00tail" })])).run({ style_id: "4321001" });
+  assert.equal(cut.reviews[0].text, "x");
+  const plain = await reviewsWith(reviewsBody([reviewItem(1, { review: "x".repeat(19999) + "\ud83d\ude00tail" })])).run({ style_id: "4321001" });
+  assert.equal(/[\ud800-\udfff]/.test(plain.reviews[0].text), false);
 });
 
 test("get_product_reviews: a missing or zero timestamp is null, not 1970", async () => {
