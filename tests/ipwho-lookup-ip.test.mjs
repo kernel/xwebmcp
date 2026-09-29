@@ -311,7 +311,7 @@ test("HTTP 429 reports the wait, then refuses further requests without sending t
   assert.equal(invalid.error_kind, "invalid_input");
 
   assert.equal(h.calls.fetch.length, 1);
-  h.clock.now += 89500;
+  h.clock.now += 89900;
   const last = await h.execute({});
   assert.equal(last.error_kind, "rate_limited");
   assert.equal(last.retry_after_seconds, 1);
@@ -338,6 +338,9 @@ test("a missing, non-numeric or absurd Retry-After falls back to a bounded coold
     [{ "Retry-After": "0" }, null, 300],
     [{ "Retry-After": "-5" }, null, 300],
     [{ "Retry-After": "12abc" }, null, 300],
+    [{ "Retry-After": "2.5" }, null, 300],
+    [{ "Retry-After": "3.0" }, null, 300],
+    [{ "Retry-After": " 7 " }, 7, 7],
     [{ "Retry-After": "999999999" }, 86400, 86400]
   ];
   for (const [headers, reported, cooldown] of cases) {
@@ -500,4 +503,23 @@ test("a body that ends in an incomplete UTF-8 sequence is not accepted", async (
   withTail[valid.length] = 0xc3;
   const { result } = await run({ ip: "192.0.2.1" }, { fetch: () => reply(200, "", {}, [withTail]) });
   assert.equal(result.error_kind, "site_changed");
+});
+
+test("a returned address of the other family, or a body without success, is site_changed", async () => {
+  const family = await run({ ip: "192.0.2.9" }, { fetch: () => reply(200, siteBody({ ip: "2001:db8::9", type: "IPv6" })) });
+  assert.equal(family.result.error_kind, "site_changed");
+  const complete = siteBody({ ip: "192.0.2.9" });
+  for (const success of [undefined, "true", 1, null]) {
+    const body = { ...complete, success };
+    if (success === undefined) delete body.success;
+    const { result } = await run({ ip: "192.0.2.9" }, { fetch: () => reply(200, body) });
+    assert.equal(result.error_kind, "site_changed", String(success));
+  }
+});
+
+test("empty chunks inside a body are skipped", async () => {
+  const bytes = new TextEncoder().encode(JSON.stringify(siteBody({ ip: "192.0.2.1" })));
+  const pieces = [new Uint8Array(0), bytes.slice(0, 30), new Uint8Array(0), bytes.slice(30), new Uint8Array(0)];
+  const { result } = await run({ ip: "192.0.2.1" }, { fetch: () => reply(200, "", {}, pieces) });
+  assert.equal(result.status, "ok");
 });

@@ -110,7 +110,8 @@ any origin, so it does not depend on which ipwho.is page is open.
 
 Observed 2026-09-29 (public requests, no API key):
 
-- `Content-Type: application/json`; the egress form (`/`) is pretty-printed, the `/<ip>` form is compact.
+- `Content-Type: application/json`; the bare `/` without a query string is pretty-printed, and every form
+  with `?lang=` (which is what the tool sends) is compact.
 - Invalid address (`/1.2.3`, `/01.2.3.4`) → HTTP 200 `{"success":false,"message":"Invalid IP address"}`.
 - Private, loopback, unspecified and IPv4-mapped IPv6 addresses (`192.168.1.1`, `127.0.0.1`,
   `0.0.0.0`, `::1`, `::ffff:8.8.8.8`) → HTTP 200 `{"success":false,"message":"Reserved range"}`.
@@ -149,9 +150,9 @@ and length-capped, and unrecognized error text is not echoed.
   `ticketmaster.com` README records the same effect.
 - Fields the free endpoint does not return for an address come back as `null`; they were not seen
   missing for a successful lookup.
-- A data field the site renames comes back as `null`. `site_changed` or `site_error` is reported only
-  when the response is not a JSON object, `success` or `ip` is missing, or an error message is not one
-  of the two known strings.
+- A data field the site renames comes back as `null`, except the ones an `ok` result depends on: `ip`,
+  `type` and a country name or code (see the error list above). A renamed or dropped field of those three
+  is `site_changed`, so a partial rename can turn every lookup into `site_changed`.
 - The local-extension check drove the extension's own message API in Chromium 153, not the `xwebmcp` CLI,
   its native messaging host or branded Google Chrome; those paths were not exercised.
 
@@ -162,7 +163,7 @@ so the tool is `draft`. An earlier revision was reviewed once and failed; its fi
 success body accepted as `ok`, an unbounded body read, an untested IPv6 injection guard, undocumented
 runtime string delivery and several documentation gaps) are fixed in this revision.
 
-- **Stubbed tests** (`tests/ipwho-lookup-ip.test.mjs`, 32 cases): input validation before any request
+- **Stubbed tests** (`tests/ipwho-lookup-ip.test.mjs`, 34 cases): input validation before any request
   (including whitespace and path/query injection strings), request shape, every error kind, single
   request without retry, timeout including a stalled body, the 429 cooldown and its bounds, the byte
   cap and its 16 KiB boundary, chunked and multibyte decoding, address matching, allowlisted and capped
