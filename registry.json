@@ -114,6 +114,48 @@
       "notes": "Back to draft after a source change on 2026-09-29: airport boxes are now cleared through the page and typed with the inlined lib/input.js cadence, and the typed code is checked before choosing (fixes 'CVCVG' on macOS Chrome, where CDP Meta+A does not select all). First successful full live invocation: CVG-SFO one way, 1 adult, regular Chrome 154 on macOS via the xwebmcp extension, status ok with first-page flights. Needs fresh independent QA; earlier qa_passed sign-off (agt_b189571b6d300a05921c) covered the previous source."
     },
     {
+      "domain": "dfm.ae",
+      "tool": "get_price_history",
+      "file": "domains/dfm.ae/get_price_history.js",
+      "kind": "page",
+      "namespace": "dfm.ae",
+      "url_patterns": [
+        "https://www.dfm.ae/*",
+        "https://marketwatch.dfm.ae/*"
+      ],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Daily OHLCV for one symbol between two dates (newest first, limit 500). Public feed serves a limited window; on 2026-09-29 the earliest equity row was 2024-12-31. Empty history is split into no_results vs not_found with a profile lookup. Data timing is reported as unknown (real-time vs delayed cannot be determined). Fixture-tested; live-invoked on a Kernel browser. Not yet independently QA'd."
+    },
+    {
+      "domain": "dfm.ae",
+      "tool": "get_security",
+      "file": "domains/dfm.ae/get_security.js",
+      "kind": "page",
+      "namespace": "dfm.ae",
+      "url_patterns": [
+        "https://www.dfm.ae/*",
+        "https://marketwatch.dfm.ae/*"
+      ],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Identity plus the published quote for one symbol from DFM's company-profile feed, with quote.status for absent/zero prices and timing.last_trade_date; real-time vs delayed is always reported as unknown. Fixture-tested; live-invoked on a Kernel browser. Not yet independently QA'd."
+    },
+    {
+      "domain": "dfm.ae",
+      "tool": "search_securities",
+      "file": "domains/dfm.ae/search_securities.js",
+      "kind": "page",
+      "namespace": "dfm.ae",
+      "url_patterns": [
+        "https://www.dfm.ae/*",
+        "https://marketwatch.dfm.ae/*"
+      ],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Symbol/name search over the six directory lists the site publishes (equities, bonds, sukuk, funds, ETFs, REITs), ranked, with failed lists named in failed_types. The directory's Active flag is unreliable and some symbols are absent from it. Fixture-tested; live-invoked on a Kernel browser. Not yet independently QA'd."
+    },
+    {
       "domain": "doordash.com",
       "tool": "login",
       "file": "domains/doordash.com/login.js",
