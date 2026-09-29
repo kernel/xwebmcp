@@ -4,9 +4,9 @@ Tools for Reddit (https://www.reddit.com): read a community feed, search posts, 
 
 | tool | file | status | notes |
 |------|------|--------|-------|
-| list_posts | [list_posts.js](list_posts.js) | draft | One page of a community feed (hot, new, top, rising, controversial) with an `after` cursor; no front-page or account feeds |
-| search | [search.js](search.js) | draft | Posts by keyword, site-wide or inside one community, with the site's sorts and time window |
-| get_thread | [get_thread.js](get_thread.js) | draft | One post plus up to 100 comments flattened with depth and parent; collapsed branches reported, not expanded |
+| list_posts | [list_posts.js](list_posts.js) | verified | One page of a community feed (hot, new, top, rising, controversial) with an `after` cursor; no front-page or account feeds |
+| search | [search.js](search.js) | verified | Posts by keyword, site-wide or inside one community, with the site's sorts and time window |
+| get_thread | [get_thread.js](get_thread.js) | verified | One post plus up to 100 comments flattened with depth and parent; collapsed branches reported, not expanded |
 
 ## Native WebMCP tools
 
@@ -114,8 +114,8 @@ distributing or hosting them should confirm that their use is within those terms
 - `get_thread` returns at most 100 comments to depth 8 and does not expand `more`. Reading the rest
   of a large thread needs another call with a different `sort`, or a person on the site.
 - Quarantined, private, age-gated and banned communities are not readable by a session that cannot
-  read them: `forbidden` or `not_found`. Only the `gold_only` restriction was seen live; other
-  `forbidden` reasons and NSFW handling are covered by fixtures only, and were never requested live.
+  read them: `forbidden` or `not_found`. Only `gold_only` and `quarantined` (both signed out) were seen
+  live; other `forbidden` reasons and NSFW handling are covered by fixtures only, and were never requested live.
 - `[deleted]` / `[removed]` handling, archived and locked threads, and threads with very long or
   non-Latin comment bodies are covered by fixtures only.
 - The tools were exercised signed out and, in a read-only check, in a signed-in browser whose account
@@ -124,7 +124,7 @@ distributing or hosting them should confirm that their use is within those terms
 
 ## QA summary
 
-Builder checks on 2026-09-29, fresh Kernel browsers, through the Kernel API (`webmcp custom-tools add`,
+Builder checks on 2026-09-29 (first source revision), fresh Kernel browsers, through the Kernel API (`webmcp custom-tools add`,
 `webmcp list`, `webmcp invoke`), all three tools registered together:
 
 - Live success: `list_posts` hot/new/top+time/controversial/rising on a subreddit, `popular` and `all`, with
@@ -132,8 +132,8 @@ Builder checks on 2026-09-29, fresh Kernel browsers, through the Kernel API (`we
   community with relevance, hot, top, new and comments sorts; `get_thread` by id, `t3_` id, and
   `www.reddit.com` and `reddit.com` URLs, with `top` and default sort, depth 1 and 3.
 - Live failure: a `challenge` result from all three tools while the document was the bot check page;
-  `not_found` for an unknown post id; `forbidden` with `reason: "gold_only"`; `no_results` for a query
-  that matches nothing and for an unknown community; every `invalid_input` branch (bad names, limits,
+  `not_found` for an unknown post id and for an unknown community; `forbidden` with `reason: "gold_only"`;
+  `no_results` for a query that matches nothing; every `invalid_input` branch (bad names, limits,
   sorts, cursors, ids, hosts and schemes, unknown fields, empty input) with no request sent.
 - Navigation lifetime: the tab URL was unchanged after invoking from a search page and a profile page;
   the tools were listed on `www.reddit.com` pages and not on `developers.reddit.com` or `about:blank`.
@@ -146,7 +146,27 @@ before any request, the exact URLs requested, the allowlist (viewer fields never
 branch against its schema, challenge, rate-limit, forbidden, not-found and site-changed handling, comment
 flattening, clipping and the response size cap.
 
-Independent QA has not run yet; every tool is `draft`.
+Independent QA, 2026-09-29, by a separate agent (`provenance.qa_agent`) that read the spec, skill and sources
+and tested on fresh Kernel browsers it created. A first review found one blocking defect (`url` values with raw
+non-ASCII characters violated their declared `uri` format) and several smaller ones; all were fixed, and the
+same reviewer re-checked and signed off on the final source, commit `b85574c`, with two README nits fixed
+afterwards (no tool source changed). On that source it confirmed:
+
+- Kernel runtime, whole namespace registered in one call: live success for every tool and sort, page-2 cursors
+  with no overlap, by-id, `t3_` id and URL forms giving identical threads, a 5,697-comment thread capped at 99
+  comments in 74 KB, `challenge` on the bot-check page, `not_found` (unknown post and unknown community),
+  `forbidden` (`gold_only`, `quarantined`), `no_results`, 154 invalid inputs refused with zero requests, and every
+  live output valid against its `outputSchema` with a real JSON Schema validator including `format: "uri"` on
+  non-ASCII data (German, Japanese, Russian, Chinese and accented searches).
+- Invoked from a thread page, a search page and a profile page (pages other than any entry point): tab URL
+  unchanged, tools not listed on `developers.reddit.com` or `about:blank`, old `tool_ref` rejected after navigation.
+  Only `GET` requests to `www.reddit.com` JSON URLs were made by the tools.
+- Local Chrome extension runtime (Ubuntu Chromium 153, unpacked extension, `xwebmcp add` pinned to the commit,
+  driven with `xwebmcp mcp --all-tabs`): the same results and output keys as the Kernel runtime, including
+  `challenge`, `not_found`, `forbidden` and the `res.redirected` / `res.url` detection. Branded Google Chrome was not available.
+- Not tested live: signed-in or wrong-account behavior, HTTP 429, NSFW and private communities, truncation-flag
+  true paths, archived and locked threads, `[removed]` content, redirects to other hosts, crosspost, poll and
+  `redd.it` short links. These are covered by fixtures or the source only.
 
 ## URL patterns
 
