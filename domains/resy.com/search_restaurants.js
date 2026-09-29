@@ -10,7 +10,7 @@
         query: { type: "string", minLength: 1, maxLength: 100, description: "Restaurant name or keyword. Without location or coordinates the search covers every Resy city." },
         location: { type: "string", minLength: 2, maxLength: 80, description: "Resy city slug (new-york-ny, los-angeles-ca) or code (ny). Exact match only; not free text. Do not combine with latitude/longitude." },
         latitude: { type: "number", minimum: -90, maximum: 90, description: "Search center latitude; requires longitude." },
-        longitude: { type: "number", minimum: -180, maximum: 180, description: "Search center longitude; requires latitude." },
+        longitude: { type: "number", minimum: -179, maximum: 179, description: "Search center longitude; requires latitude. Beyond +/-179 Resy's search fails, so it is rejected." },
         radius_meters: { type: "integer", minimum: 100, maximum: 100000, default: 16100, description: "Search radius in meters around location or coordinates (site default 16100, about 10 miles)." },
         cuisine: { type: "string", minLength: 1, maxLength: 60, description: "One cuisine spelled exactly as the site lists it (case-sensitive), for example Italian, Japanese, Sushi." },
         date: { type: "string", pattern: "^\\d{4}-\\d{2}-\\d{2}$", description: "Check availability for this local date, YYYY-MM-DD, from yesterday (UTC) to one year ahead." },
@@ -132,7 +132,7 @@
           });
           raw = await res.text();
         } catch {
-          return { error: fail("site_error", controller.signal.aborted ? "Resy's API did not answer within 25 seconds." : "The request to Resy's API failed before a response arrived.") };
+          return { error: fail("site_error", controller.signal.aborted ? "Resy's API did not answer within 25 seconds." : "The request to Resy's API failed before a response arrived. This can be a network fault or Resy's bot protection blocking the request; its block pages carry no cross-origin headers, so the status is not visible to the page.") };
         } finally { clearTimeout(timer); }
         let json = null;
         try { json = JSON.parse(raw); } catch { json = null; }
@@ -163,14 +163,14 @@
     const hasLat = input.latitude !== undefined;
     const hasLon = input.longitude !== undefined;
     if (hasLat !== hasLon) return fail("invalid_input", "latitude and longitude must be given together.");
-    if (hasLat && (typeof input.latitude !== "number" || !(input.latitude >= -90 && input.latitude <= 90) || typeof input.longitude !== "number" || !(input.longitude >= -180 && input.longitude <= 180))) return fail("invalid_input", "latitude must be between -90 and 90 and longitude between -180 and 180.");
+    if (hasLat && (typeof input.latitude !== "number" || !(input.latitude >= -90 && input.latitude <= 90) || typeof input.longitude !== "number" || !(input.longitude >= -179 && input.longitude <= 179))) return fail("invalid_input", "latitude must be between -90 and 90 and longitude between -179 and 179 (Resy's search fails closer to the antimeridian).");
     if (hasLat && locationSlug) return fail("invalid_input", "Give location or latitude/longitude, not both.");
     const hasGeo = hasLat || locationSlug !== null;
     if (!query.value && !hasGeo) return fail("invalid_input", "Give at least one of query, location, or latitude with longitude.");
     if (input.radius_meters !== undefined && (!Number.isInteger(input.radius_meters) || input.radius_meters < 100 || input.radius_meters > 100000)) return fail("invalid_input", "radius_meters must be an integer from 100 to 100000.");
     if (input.radius_meters !== undefined && !hasGeo) return fail("invalid_input", "radius_meters needs location or latitude/longitude.");
     const date = input.date === undefined ? null : input.date;
-    if (date !== null) { const problem = dateProblem(date, "date"); if (problem) return fail("invalid_input", problem); }
+    if (input.date !== undefined) { const problem = dateProblem(input.date, "date"); if (problem) return fail("invalid_input", problem); }
     if (date === null && (input.party_size !== undefined || input.time !== undefined)) return fail("invalid_input", "party_size and time need date.");
     const partySize = input.party_size === undefined ? 2 : input.party_size;
     if (!Number.isInteger(partySize) || partySize < 1 || partySize > 20) return fail("invalid_input", "party_size must be an integer from 1 to 20.");
@@ -213,7 +213,7 @@
     if (found.error) return found.error;
     if (found.status === 400) return fail("invalid_input", "Resy rejected the search parameters (HTTP 400).");
     if (found.status !== 200 || !isPlain(found.json) || !isPlain(found.json.search) || !Array.isArray(found.json.search.hits)) return fail("site_changed", "Resy's search response did not have the expected shape (HTTP " + found.status + ").");
-    const hits = found.json.search.hits;
+    const hits = found.json.search.hits.slice(0, perPage);
     if (!hits.length) return { status: "no_results", observed_at: observedAt, query: normalized, resolved_location: resolved, message: page > 1 ? "No venues on this page; the search has fewer pages." : "Resy found no venues for this search." + (cuisine.value ? " The cuisine filter is case-sensitive and must match the site's spelling, for example Italian." : "") };
 
     const miles = (a, b) => {

@@ -9,7 +9,7 @@
       properties: {
         url: { type: "string", minLength: 20, maxLength: 300, description: "Venue page URL on resy.com, e.g. https://resy.com/cities/new-york-ny/venues/example-restaurant. Do not combine with city_slug/url_slug." },
         city_slug: { type: "string", minLength: 2, maxLength: 100, pattern: "^[a-z0-9][a-z0-9-]*$", description: "Resy city slug from search_restaurants, e.g. new-york-ny. Needs url_slug." },
-        url_slug: { type: "string", minLength: 1, maxLength: 120, pattern: "^[a-z0-9][a-z0-9-]*$", description: "Venue slug from search_restaurants, e.g. example-restaurant. Needs city_slug." }
+        url_slug: { type: "string", minLength: 1, maxLength: 120, pattern: "^[A-Za-z0-9][A-Za-z0-9-]*$", description: "Venue slug from search_restaurants, exactly as returned (some contain capital letters), e.g. example-restaurant. Needs city_slug." }
       }
     },
     outputSchema: {
@@ -88,7 +88,7 @@
           });
           raw = await res.text();
         } catch {
-          return { error: fail("site_error", controller.signal.aborted ? "Resy's API did not answer within 25 seconds." : "The request to Resy's API failed before a response arrived.") };
+          return { error: fail("site_error", controller.signal.aborted ? "Resy's API did not answer within 25 seconds." : "The request to Resy's API failed before a response arrived. This can be a network fault or Resy's bot protection blocking the request; its block pages carry no cross-origin headers, so the status is not visible to the page.") };
         } finally { clearTimeout(timer); }
         let json = null;
         try { json = JSON.parse(raw); } catch { json = null; }
@@ -109,13 +109,13 @@
       if (input.city_slug !== undefined || input.url_slug !== undefined) return fail("invalid_input", "Give url, or city_slug with url_slug, not both.");
       let parsed = null;
       try { parsed = typeof input.url === "string" && input.url.length <= 300 ? new URL(input.url) : null; } catch { parsed = null; }
-      const m = parsed && parsed.protocol === "https:" && (parsed.hostname === "resy.com" || parsed.hostname === "www.resy.com") ? /^\/cities\/([a-z0-9][a-z0-9-]*)\/venues\/([a-z0-9][a-z0-9-]*)(?:\/|$)/.exec(parsed.pathname) : null;
+      const m = parsed && parsed.protocol === "https:" && (parsed.hostname === "resy.com" || parsed.hostname === "www.resy.com") ? /^\/cities\/([a-z0-9][a-z0-9-]*)\/venues\/([A-Za-z0-9][A-Za-z0-9-]*)(?:\/|$)/.exec(parsed.pathname) : null;
       if (!m) return fail("invalid_input", "url must be a https://resy.com/cities/<city_slug>/venues/<url_slug> venue page.");
       citySlug = m[1];
       urlSlug = m[2];
     } else {
       if (typeof input.city_slug !== "string" || typeof input.url_slug !== "string") return fail("invalid_input", "Give url, or both city_slug and url_slug.");
-      if (!/^[a-z0-9][a-z0-9-]{1,99}$/.test(input.city_slug) || !/^[a-z0-9][a-z0-9-]{0,119}$/.test(input.url_slug)) return fail("invalid_input", "city_slug and url_slug must be lowercase Resy slugs such as new-york-ny and example-restaurant.");
+      if (!/^[a-z0-9][a-z0-9-]{1,99}$/.test(input.city_slug) || !/^[A-Za-z0-9][A-Za-z0-9-]{0,119}$/.test(input.url_slug)) return fail("invalid_input", "city_slug must be a lowercase Resy city slug such as new-york-ny and url_slug a venue slug such as example-restaurant.");
       citySlug = input.city_slug;
       urlSlug = input.url_slug;
     }

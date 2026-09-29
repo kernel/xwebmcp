@@ -185,18 +185,20 @@ test("registry lists every resy.com tool exactly once", () => {
 const ok = { venue_id: 1001, date: "2026-10-09" };
 const invalid = {
   search_restaurants: [undefined, null, [], {}, { extra: 1, query: "x" }, { query: "" }, { query: 5 }, { query: "x".repeat(101) }, { location: "not a slug!" }, { location: "a" }, { location: 5 },
-    { latitude: 40 }, { longitude: -74 }, { latitude: 91, longitude: 0 }, { latitude: 0, longitude: 181 }, { latitude: "40", longitude: -74 }, { latitude: 40, longitude: -74, location: "ny" },
+    { latitude: 40 }, { longitude: -74 }, { latitude: 91, longitude: 0 }, { latitude: 0, longitude: 181 }, { latitude: 45, longitude: 179.5 }, { latitude: 45, longitude: -180 }, { latitude: 45, longitude: 180 }, { latitude: "40", longitude: -74 }, { latitude: 40, longitude: -74, location: "ny" },
     { query: "x", radius_meters: 99 }, { query: "x", radius_meters: 100001 }, { query: "x", radius_meters: 5000.5 },
     { location: "ny", date: "2026-02-30" }, { location: "ny", date: "10/09/2026" }, { location: "ny", date: "2026-09-27" }, { location: "ny", date: "2027-12-31" }, { location: "ny", party_size: 2 }, { location: "ny", time: "19:00" },
     { location: "ny", date: "2026-10-09", party_size: 0 }, { location: "ny", date: "2026-10-09", party_size: 21 }, { location: "ny", date: "2026-10-09", party_size: "2" }, { location: "ny", date: "2026-10-09", time: "7pm" }, { location: "ny", date: "2026-10-09", time: "24:00" },
-    { location: "ny", cuisine: "" }, { location: "ny", page: 0 }, { location: "ny", page: 101 }, { location: "ny", per_page: 0 }, { location: "ny", per_page: 21 }, { location: "ny", per_page: 2.5 }],
+    { location: "ny", date: null }, { location: "ny", date: "2026-10-09", time: null }, { location: "ny", date: "2026-10-09", party_size: null }, { location: "ny", cuisine: null }, { location: "ny", page: null }, { location: "ny", per_page: null },
+    { query: null }, { query: "x", location: null }, { query: "x", radius_meters: null }, { latitude: null, longitude: null }, { location: "ny", cuisine: "" }, { location: "ny", page: 0 }, { location: "ny", page: 101 }, { location: "ny", per_page: 0 }, { location: "ny", per_page: 21 }, { location: "ny", per_page: 2.5 }],
   get_restaurant: [undefined, null, [], {}, { url: "" }, { url: 5 }, { url: "https://resy.com/" }, { url: "https://resy.com/cities/ny" }, { url: "http://resy.com/cities/ny/venues/x" }, { url: "https://resy.com.evil.example/cities/ny/venues/x" },
     { url: "https://evil.example/cities/ny/venues/x" }, { url: "https://blog.resy.com/cities/ny/venues/x" }, { url: "https://resy.com/cities/NY/venues/x" }, { url: "https://resy.com/cities/ny/venues/x", city_slug: "ny" },
     { city_slug: "ny" }, { url_slug: "x" }, { city_slug: "N Y", url_slug: "x" }, { city_slug: "ny", url_slug: "../x" }, { city_slug: "ny", url_slug: 5 }, { city_slug: "ny", url_slug: "x", extra: 1 }],
   get_availability: [undefined, null, {}, { date: "2026-10-09" }, { venue_id: 1001 }, { ...ok, venue_id: 0 }, { ...ok, venue_id: "1001" }, { ...ok, venue_id: 1.5 }, { ...ok, venue_id: 2147483648 }, { ...ok, date: "2026-13-01" }, { ...ok, date: "2026-09-27" },
-    { ...ok, date: "2027-10-01" }, { ...ok, party_size: 0 }, { ...ok, party_size: 21 }, { ...ok, party_size: "2" }, { ...ok, extra: 1 }],
+    { ...ok, date: "2027-10-01" }, { ...ok, party_size: 0 }, { ...ok, party_size: 21 }, { ...ok, party_size: "2" }, { ...ok, party_size: null }, { ...ok, date: null }, { ...ok, extra: 1 }],
   get_availability_calendar: [undefined, null, {}, { venue_id: 1001 }, { start_date: "2026-10-09" }, { venue_id: 0, start_date: "2026-10-09" }, { venue_id: 1001, start_date: "2026-09-27" }, { venue_id: 1001, start_date: "2026-10-09", end_date: "2026-10-08" },
     { venue_id: 1001, start_date: "2026-10-09", end_date: "2027-11-01" }, { venue_id: 1001, start_date: "2026-10-09", end_date: "soon" }, { venue_id: 1001, start_date: "2026-10-09", party_size: 0 }, { venue_id: 1001, start_date: "2026-10-09", party_size: 21 },
+    { venue_id: 1001, start_date: "2026-10-09", end_date: null }, { venue_id: 1001, start_date: "2026-10-09", party_size: null }, { venue_id: 1001, start_date: null },
     { venue_id: 1001, start_date: "2026-10-09", extra: 1 }]
 };
 for (const [name, inputs] of Object.entries(invalid)) {
@@ -252,7 +254,9 @@ for (const name of NAMES) {
   }
   test(`${name}: a network failure is site_error and a hung request is aborted after 25 seconds`, async () => {
     const failing = harness(name, { networkError: true });
-    assert.equal((await failing.run(name === "search_restaurants" ? { latitude: 40, longitude: -74 } : good)).error_kind, "site_error");
+    const failed = await failing.run(name === "search_restaurants" ? { latitude: 40, longitude: -74 } : good);
+    assert.equal(failed.error_kind, "site_error");
+    assert.match(failed.error_message, /bot protection/, "a rejected cross-origin request may be a WAF block the page cannot see");
     const hung = harness(name, { hang: true });
     const result = await hung.run(name === "search_restaurants" ? { latitude: 40, longitude: -74 } : good);
     assert.equal(result.error_kind, "site_error");
@@ -360,6 +364,12 @@ test("search_restaurants: has_more follows the site total", async () => {
   assert.equal(result.has_more, true);
 });
 
+test("search_restaurants: never returns more venues than per_page even if the site sends more", async () => {
+  const h = harness("search_restaurants", { route: (m, path) => (path === "/3/venuesearch/search" ? { status: 200, body: searchBody(Array.from({ length: 25 }, (_, i) => hit(3000 + i, "Fabricated Place " + i)), 25) } : null) });
+  const result = await h.run({ latitude: 40, longitude: -74, per_page: 20 });
+  assert.equal(result.venues.length, 20);
+});
+
 test("search_restaurants: results without an id or name are skipped with a warning; none usable is site_changed", async () => {
   const mixed = harness("search_restaurants", { route: (m, path) => (path === "/3/venuesearch/search" ? { status: 200, body: searchBody([{ name: "No id" }, hit(2001, "Fabricated Osteria"), null]) } : null) });
   const result = await mixed.run({ latitude: 40, longitude: -74 });
@@ -413,6 +423,17 @@ test("get_restaurant: maps the venue record and never returns account fields", a
   assert.equal(result.is_resy_credit_eligible, false);
   assert.equal(JSON.stringify(result).includes("private"), false, "favorites and list membership are not returned");
   assert.equal("favorite" in result, false);
+});
+
+test("get_restaurant: a venue slug with capital letters, as search can return it, is accepted by slug and by URL and sent exactly", async () => {
+  const bySlug = harness("get_restaurant");
+  const a = await bySlug.run({ city_slug: "exampleton-xa", url_slug: "Fabricated-Trattoria-NYC" });
+  assert.equal(a.status, "ok");
+  assert.equal(bySlug.calls.requests[0].path, "/3/venue?url_slug=Fabricated-Trattoria-NYC&location=exampleton-xa");
+  const byUrl = harness("get_restaurant");
+  const b = await byUrl.run({ url: "https://resy.com/cities/exampleton-xa/venues/Fabricated-Trattoria-NYC?seats=2" });
+  assert.equal(b.status, "ok");
+  assert.equal(byUrl.calls.requests[0].path, "/3/venue?url_slug=Fabricated-Trattoria-NYC&location=exampleton-xa");
 });
 
 test("get_restaurant: city_slug and url_slug are encoded into the request", async () => {
@@ -471,6 +492,13 @@ test("get_availability: posts the site's find request and maps slots with their 
   assert.deepEqual(result.slots[2].policy, { requires_payment: true, cancellation_fee: null, cancel_cutoff_secs: 0, cancel_cutoff_time: "12:00:00", deposit_fee: 50, service_charge: "0%" });
 });
 
+test("get_availability: party_size defaults to 2", async () => {
+  const h = harness("get_availability");
+  const result = await h.run(ok);
+  assert.equal(h.calls.requests[0].body.party_size, 2);
+  assert.equal(result.party_size, 2);
+});
+
 test("get_availability: a slot whose template is missing has a null policy", async () => {
   const h = harness("get_availability", { route: (m, path) => (path === "/4/find" ? { status: 200, body: findBody([slot("18:30", "20:00", "Dining Room", 999)]) } : null) });
   const result = await h.run(ok);
@@ -520,12 +548,17 @@ test("get_availability: unexpected bodies are site_changed and unreadable slots 
   assert.match(none.message, /none had a readable time/);
 });
 
-test("get_availability: at most 100 slots are returned and the flag says so", async () => {
-  const many = Array.from({ length: 130 }, (_, i) => slot(`${String(8 + Math.floor(i / 12)).padStart(2, "0")}:${String((i % 12) * 5).padStart(2, "0")}`, null));
-  const h = harness("get_availability", { route: (m, path) => (path === "/4/find" ? { status: 200, body: findBody(many) } : null) });
-  const result = await h.run(ok);
-  assert.equal(result.slot_count, 130);
-  assert.equal(result.slots.length, 100);
+test("get_availability: a venue with a slot every five minutes all day fits; more than 300 slots are cut with the flag", async () => {
+  const at = i => `${String(Math.floor(i / 12)).padStart(2, "0")}:${String((i % 12) * 5).padStart(2, "0")}`;
+  const allDay = harness("get_availability", { route: (m, path) => (path === "/4/find" ? { status: 200, body: findBody(Array.from({ length: 288 }, (_, i) => slot(at(i), null))) } : null) });
+  const full = await allDay.run(ok);
+  assert.equal(full.slot_count, 288);
+  assert.equal(full.slots.length, 288);
+  assert.equal(full.slots_truncated, false);
+  const many = harness("get_availability", { route: (m, path) => (path === "/4/find" ? { status: 200, body: findBody(Array.from({ length: 320 }, (_, i) => slot(at(i % 288), null))) } : null) });
+  const result = await many.run(ok);
+  assert.equal(result.slot_count, 320);
+  assert.equal(result.slots.length, 300);
   assert.equal(result.slots_truncated, true);
 });
 
@@ -550,6 +583,13 @@ test("get_availability_calendar: default end date is 30 days after the start and
   assert.deepEqual(result.days, [{ date: "2026-10-09", reservation: "available", event: "not available", walk_in: "available" }, { date: "2026-10-10", reservation: "sold-out", event: "not available", walk_in: "available" }]);
 });
 
+test("get_availability_calendar: party_size defaults to 2", async () => {
+  const h = harness("get_availability_calendar");
+  const result = await h.run({ venue_id: 1001, start_date: "2026-10-09" });
+  assert.match(h.calls.requests[0].path, /num_seats=2&/);
+  assert.equal(result.party_size, 2);
+});
+
 test("get_availability_calendar: an explicit range up to 366 days is passed through", async () => {
   const h = harness("get_availability_calendar");
   await h.run({ venue_id: 1001, start_date: "2026-10-01", end_date: "2027-10-02" });
@@ -561,10 +601,18 @@ test("get_availability_calendar: nothing inside the booking window is no_results
   const past = await h.run({ venue_id: 1001, start_date: "2027-06-01" });
   assert.equal(past.status, "no_results");
   assert.match(past.message, /2026-10-31/);
-  const other = harness("get_availability_calendar", { route: (m, path) => (path.startsWith("/4/venue/calendar?") ? { status: 200, body: { scheduled: [] } } : null) });
+  const other = harness("get_availability_calendar", { route: (m, path) => (path.startsWith("/4/venue/calendar?") ? { status: 200, body: { scheduled: [], last_calendar_day: null } } : null) });
   const result = await other.run({ venue_id: 1001, start_date: "2026-10-09" });
   assert.equal(result.status, "no_results");
   assert.equal(result.last_bookable_date, null);
+  assert.match(result.message, /no booking window/);
+  assert.match(result.message, /Tock/);
+});
+
+test("get_availability_calendar: closed days are passed through as the site states them", async () => {
+  const h = harness("get_availability_calendar", { route: (m, path) => (path.startsWith("/4/venue/calendar?") ? { status: 200, body: calendarBody([["2026-10-12", "closed"], ["2026-10-13", "available"]]) } : null) });
+  const result = await h.run({ venue_id: 1001, start_date: "2026-10-12" });
+  assert.deepEqual(result.days.map(d => d.reservation), ["closed", "available"]);
 });
 
 test("get_availability_calendar: 404 is not_found, malformed bodies are site_changed, bad entries are skipped and states may be null", async () => {

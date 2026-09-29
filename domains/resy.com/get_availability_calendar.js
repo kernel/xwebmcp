@@ -3,7 +3,7 @@
   match: { url_patterns: ["https://resy.com/*"] },
   tool: {
     name: "get_availability_calendar",
-    description: "For one Resy (resy.com) restaurant and party size, list per-date booking state across a date range, to find which days have reservations open. Each day carries the site's reservation, event and walk-in states (observed values: available, sold-out, not available). The site only reports days inside the venue's booking window and returns nothing past last_bookable_date. A day marked available means some slot exists for that party size; call get_availability for the times. Get venue_id from search_restaurants or get_restaurant. Venues booked through Tock, closed or unknown venue ids return not_found. Runs inside the current resy.com page without navigating; read-only, works signed out, never books or joins a wait list. States are a snapshot; they do not prove a table can still be booked.",
+    description: "For one Resy (resy.com) restaurant and party size, list per-date booking state across a date range, to find which days have reservations open. Each day carries the site's reservation, event and walk-in states (observed values: available, sold-out, closed, not available). The site only reports days inside the venue's booking window and returns nothing past last_bookable_date. A day marked available means some slot exists for that party size; call get_availability for the times. Get venue_id from search_restaurants or get_restaurant. Unknown venue ids return not_found. Venues booked through Tock either return not_found or, for some, no_results with last_bookable_date null (no booking window); a null last_bookable_date with no days is how the site reports a venue it has no calendar for. Runs inside the current resy.com page without navigating; read-only, works signed out, never books or joins a wait list. States are a snapshot; they do not prove a table can still be booked.",
     inputSchema: {
       type: "object", additionalProperties: false, required: ["venue_id", "start_date"],
       properties: {
@@ -35,7 +35,7 @@
                 type: "object", additionalProperties: false, required: ["date", "reservation", "event", "walk_in"],
                 properties: {
                   date: { type: "string", pattern: "^\\d{4}-\\d{2}-\\d{2}$" },
-                  reservation: { type: ["string", "null"], description: "Reservation state; observed values available and sold-out." },
+                  reservation: { type: ["string", "null"], description: "Reservation state; observed values available, sold-out and closed." },
                   event: { type: ["string", "null"], description: "Special-event state; observed values include not available." },
                   walk_in: { type: ["string", "null"], description: "Walk-in state; the site reports available even when reservations are sold out." }
                 }
@@ -89,7 +89,7 @@
           });
           raw = await res.text();
         } catch {
-          return { error: fail("site_error", controller.signal.aborted ? "Resy's API did not answer within 25 seconds." : "The request to Resy's API failed before a response arrived.") };
+          return { error: fail("site_error", controller.signal.aborted ? "Resy's API did not answer within 25 seconds." : "The request to Resy's API failed before a response arrived. This can be a network fault or Resy's bot protection blocking the request; its block pages carry no cross-origin headers, so the status is not visible to the page.") };
         } finally { clearTimeout(timer); }
         let json = null;
         try { json = JSON.parse(raw); } catch { json = null; }
@@ -131,7 +131,7 @@
       const inv = isPlain(d.inventory) ? d.inventory : {};
       days.push({ date: d.date, reservation: text(inv.reservation, 40), event: text(inv.event, 40), walk_in: text(inv["walk-in"], 40) });
     }
-    if (!days.length) return { status: "no_results", observed_at: observedAt, venue_id: input.venue_id, party_size: partySize, start_date: input.start_date, end_date: endDate, last_bookable_date: last, message: last && input.start_date > last ? "The requested dates are after the last date Resy reports for this venue (" + last + ")." : "Resy reported no calendar days for this range." };
+    if (!days.length) return { status: "no_results", observed_at: observedAt, venue_id: input.venue_id, party_size: partySize, start_date: input.start_date, end_date: endDate, last_bookable_date: last, message: last === null ? "Resy reports no booking window for this venue (its last calendar day is null). Venues booked through Tock, or ones with no online reservations, look like this." : input.start_date > last ? "The requested dates are after the last date Resy reports for this venue (" + last + ")." : "Resy reported no calendar days for this range." };
     return { status: "ok", observed_at: observedAt, venue_id: input.venue_id, party_size: partySize, start_date: input.start_date, end_date: endDate, last_bookable_date: last, days_returned: Math.min(days.length, 400), warnings: days.length > 400 ? warnings.concat("Result capped at 400 days.") : warnings, days: days.slice(0, 400) };
   }
 }]

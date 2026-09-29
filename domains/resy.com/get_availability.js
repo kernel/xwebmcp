@@ -3,7 +3,7 @@
   match: { url_patterns: ["https://resy.com/*"] },
   tool: {
     name: "get_availability",
-    description: "List the open reservation slots Resy (resy.com) shows for one restaurant on one date for a party size: venue-local start and end times, seating type, and each slot's cancellation and payment terms as the site's raw policy fields. Get venue_id from search_restaurants or get_restaurant. It never selects a slot, holds a table, books or joins a wait list, and it does not return the booking handles the site needs to book. A slot is a snapshot; it does not prove the table is still free, and no_availability does not say why (fully booked, party size outside what the venue takes, date outside its booking window, or reservations closed). Use get_availability_calendar to find open dates. Venues booked through Tock, closed or unknown venue ids return not_found. Runs inside the current resy.com page without navigating; read-only, works signed out.",
+    description: "List the open reservation slots Resy (resy.com) shows for one restaurant on one date for a party size: venue-local start and end times, seating type, and each slot's cancellation and payment terms as the site's raw policy fields. Get venue_id from search_restaurants or get_restaurant. It never selects a slot, holds a table, books or joins a wait list, and it does not return the booking handles the site needs to book. A slot is a snapshot; it does not prove the table is still free, and no_availability does not say why (fully booked, party size outside what the venue takes, date outside its booking window, or reservations closed). Lists at most the first 300 slots, earliest first (a venue with five-minute slots all day has about 288). Use get_availability_calendar to find open dates. Venues booked through Tock, closed or unknown venue ids return not_found. Runs inside the current resy.com page without navigating; read-only, works signed out.",
     inputSchema: {
       type: "object", additionalProperties: false, required: ["venue_id", "date"],
       properties: {
@@ -29,11 +29,11 @@
             time_zone: { type: ["string", "null"], description: "The site's time zone label for the venue; slot times are in this zone." },
             currency: { type: ["string", "null"], description: "Currency code for the fee amounts in each slot's policy." },
             notify_offered: { type: "boolean", description: "Resy offers Notify for this venue and date." },
-            slot_count: { type: "integer", minimum: 1 },
+            slot_count: { type: "integer", minimum: 1, description: "Readable slots the site listed; slots holds at most the first 300, earliest first." },
             slots_truncated: { type: "boolean" },
             warnings: { type: "array", items: { type: "string" } },
             slots: {
-              type: "array", minItems: 1, maxItems: 100,
+              type: "array", minItems: 1, maxItems: 300,
               items: {
                 type: "object", additionalProperties: false, required: ["local_time", "end_local_time", "seating_type", "global_dining_access", "policy"],
                 properties: {
@@ -118,7 +118,7 @@
           });
           raw = await res.text();
         } catch {
-          return { error: fail("site_error", controller.signal.aborted ? "Resy's API did not answer within 25 seconds." : "The request to Resy's API failed before a response arrived.") };
+          return { error: fail("site_error", controller.signal.aborted ? "Resy's API did not answer within 25 seconds." : "The request to Resy's API failed before a response arrived. This can be a network fault or Resy's bot protection blocking the request; its block pages carry no cross-origin headers, so the status is not visible to the page.") };
         } finally { clearTimeout(timer); }
         let json = null;
         try { json = JSON.parse(raw); } catch { json = null; }
@@ -179,7 +179,7 @@
       status: "ok", observed_at: observedAt, venue_id: input.venue_id, name, url, date: input.date, party_size: partySize,
       time_zone: isPlain(venue.location) ? text(venue.location.time_zone, 60) : null,
       currency: isPlain(venue.currency) ? text(venue.currency.code, 10) : null,
-      notify_offered: notifyOffered, slot_count: slots.length, slots_truncated: slots.length > 100, warnings, slots: slots.slice(0, 100)
+      notify_offered: notifyOffered, slot_count: slots.length, slots_truncated: slots.length > 300, warnings, slots: slots.slice(0, 300)
     };
   }
 }]

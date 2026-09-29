@@ -33,7 +33,8 @@ await webmcp.addCustomTools({ namespace: "resy.com", tools, forceOverwriteNamesp
 Pick the `tool_ref` whose `source.target_id` is the tab you drive. Runs took 0.1 to 0.8 s; `timeoutSec: 60`
 is plenty. Typical flow: `search_restaurants` (returns `venue_id`, `city_slug`, `url_slug`) →
 `get_availability_calendar` to find open days → `get_availability` for the times. `get_restaurant`
-takes the venue URL or `city_slug` plus `url_slug` and returns `venue_id`.
+takes the venue URL or `city_slug` plus `url_slug` and returns `venue_id`. Venue slugs are case-sensitive as
+returned (some contain capital letters); city slugs are lowercase.
 
 All four are `kind: "page"`. Each runs inside the current `resy.com` document, reads the site's API client key
 from `window.apiConfig.Config.apiKey` at run time, and calls `api.resy.com` with the same header set the site's
@@ -45,16 +46,20 @@ own requests use. None of them navigates, so no CDP exception applies.
   city's map center from `GET /3/location/config`, which is Resy's whole city list (about 2 MB); pass
   `latitude` and `longitude` to skip it. `resolved_location` in the output gives the coordinates to reuse.
   Distances are straight-line miles computed from the search center. Page size is at most 20 and at most 12
-  slots are listed per venue, with the full `slot_count`.
+  slots are listed per venue, with the full `slot_count`. A longitude beyond +/-179 is rejected because the
+  site's search answers 502 there.
 - **get_restaurant** reads `GET /3/venue?url_slug=&location=`. It returns a fixed allowlist of fields; the
   venue payload also carries announcements, images, social links, venue group and, when signed in, favorite
   and list membership, none of which are returned. Text fields are truncated to 4000 characters.
 - **get_availability** posts `POST /4/find` with the venue id, date and party size (`lat` and `long` are 0, as
   the venue page sends them). Each slot has venue-local `local_time` and `end_local_time`, `seating_type` and a
   `policy` object with the site's raw fields for that slot's template (`requires_payment`,
-  `cancellation_fee`, `cancel_cutoff_secs`, `cancel_cutoff_time`, `deposit_fee`, `service_charge`).
+  `cancellation_fee`, `cancel_cutoff_secs`, `cancel_cutoff_time`, `deposit_fee`, `service_charge`). At most the
+  first 300 slots are returned, earliest first, with the full `slot_count` and `slots_truncated`; a venue with a slot
+  every five minutes all day has about 288.
 - **get_availability_calendar** reads `GET /4/venue/calendar` and returns each date's `reservation`,
-  `event` and `walk_in` state plus `last_bookable_date`.
+  `event` and `walk_in` state plus `last_bookable_date`. Observed reservation values are `available`, `sold-out`
+  and `closed`; the strings are passed through as the site sends them.
 
 Every result carries `observed_at` where it reports data. Slots and states are snapshots.
 
@@ -81,8 +86,10 @@ redirects to `resy.com`. The check `window.location.origin === "https://resy.com
   only returned when they are `http(s)`, and slugs are only put into a URL when they match a conservative
   pattern.
 - Dates are validated before any request: the site accepts past dates and out-of-range values and answers with
-  empty results rather than errors, and some malformed values (a huge radius, page 0, an invalid latitude)
-  make its API answer with a 502 error page. The tools reject those inputs themselves.
+  empty results rather than errors, and some malformed values (a huge radius, page 0, an invalid latitude, a
+  longitude beyond +/-179) make its API answer with a 502 error page. The tools reject those inputs themselves.
+  Other unusual combinations of coordinates and radius near the antimeridian or the poles can still make the
+  site answer 502; no Resy city is near them, and the tool reports that as `site_error`.
 
 ## Site quirks
 
@@ -95,12 +102,21 @@ redirects to `resy.com`. The check `window.location.origin === "https://resy.com
 - The calendar only reports days inside the venue's booking window (`last_calendar_day`, observed 30 to 33 days
   ahead); a request for later dates returns no days rather than an error.
 - Some venues list their tables through Tock. Search returns them with `is_tock_inventory: true` and lists
-  informational slot times without a Resy booking handle, but the venue, find and calendar endpoints answer
-  with 404/400 for them exactly as for a nonexistent id, so `get_restaurant`, `get_availability` and
-  `get_availability_calendar` return `not_found` with that caveat. Closed venues and wrong slugs look the same.
+  informational slot times without a Resy booking handle. The venue and find endpoints answer with 404/400 for
+  them exactly as for a nonexistent id, so `get_restaurant` and `get_availability` return `not_found` with that
+  caveat; closed venues and wrong slugs look the same. The calendar endpoint answers 404 for about half of the
+  Tock venues tried and 200 with no days and a null `last_calendar_day` for the rest, which
+  `get_availability_calendar` reports as `no_results` with `last_bookable_date` null and a message saying so.
 - A search with a `query` and no `location` covers every Resy city. With a location the default radius is
   16100 m (about 10 miles). `radius_meters` of 0 means no limit on the site, so the tools do not accept it.
 - The `cuisine` filter is case-sensitive: `Italian` matches, `italian` returns nothing.
+- Resy's bot protection (Imperva) can answer a request with a 403 page that carries no cross-origin headers. The
+  browser then rejects the `fetch` and the page never sees the status, so such blocks surface as `site_error`
+  ("failed before a response arrived"), not `challenge`. A few inputs with markup or SQL-like text were blocked
+  this way consistently in QA, and one ordinary query failed once and then passed.
+- On the Kernel runtime, `webmcp.invokeTool` returns a page tool's output as a JSON string when the value
+  contains non-ASCII characters (restaurant names with accents); parse it when `typeof output === "string"`.
+  This is runtime behavior, not tool code.
 - Search can list the same restaurant name more than once when a group has several venue ids.
 
 ## Known limitations
@@ -118,7 +134,8 @@ redirects to `resy.com`. The check `window.location.origin === "https://resy.com
 - Tock-booked venues can be found by `search_restaurants` but nothing else in this namespace works for them.
 - `gated` (the site's `gating_errors` object) was never observed live; it is covered by stubbed tests only.
   `login_required`, `challenge` and `rate_limited` were never triggered live either, and only the statuses
-  the API is known to use for them (401/419, 403, 429) are mapped.
+  the API is known to use for them (401/419, 403, 429) are mapped. Because the page cannot read a bot-protection
+  403 (see Site quirks), `challenge` is only reachable when a readable response says so.
 - `search_restaurants` reads at most 20 venues per call and pages up to 100; very broad searches need
   narrowing. The site's `total` can shrink between pages.
 - `get_availability_calendar` returns at most 400 days.
@@ -127,9 +144,35 @@ redirects to `resy.com`. The check `window.location.origin === "https://resy.com
 
 ## QA
 
-Draft: fixture tests only so far, plus a live read-only smoke run on a Kernel browser on 2026-09-29 from resy.com
-search, venue and home pages (all four tools succeeded; the failure paths for an unknown location, an unknown or
-Tock-backed venue id, a sold-out day, a booking-window miss and malformed input returned the documented
-statuses). No independent QA has run yet, so no tool has a QA status above `draft`.
+Independent QA round 1 (QA agent `agt_221f5a5f11361477ff09`, on the first revision, `2a97e7e`): **FAIL**. It ran the
+whole namespace live on a Kernel browser (24 tool/page combinations across five resy.com starting pages, 322
+schema-validated outputs, about 226 captured requests) and in a local headless Chromium 153 with the repo
+extension. Findings, all fixed in the next commit and covered by new tests:
 
-Sessions (ephemeral): builder browsers were created and deleted during the build.
+1. `get_restaurant` rejected venue slugs with capital letters, which `search_restaurants` can return.
+2. `get_availability_calendar` returned `no_results` (200, no days, null last day) rather than `not_found` for
+   about half of the Tock-listed venues, contradicting the docs. The docs and the result message now describe both
+   outcomes.
+3. `search_restaurants` accepted `date: null` as if omitted.
+4. A bot-protection block on the API is invisible to the page (no cross-origin headers) and surfaces as
+   `site_error`; the error message and this README now say so.
+5. Longitudes beyond +/-179 made the site answer 502; they are rejected.
+6. The 100-slot cap in `get_availability` cut off the evening for a venue with 144 slots; the cap is now 300 and
+   documented, with `slot_count` and `slots_truncated`.
+
+Also recorded from round 1: calendar states include `closed`; Kernel's `invokeTool` returns non-ASCII page-tool
+output as a JSON string; on the Kernel runtime, navigating away mid-call leaves the caller waiting until the call
+timeout and then `outcome_unknown` (the extension reports it in about 0.15 s).
+
+Round 1 verified live (signed out, 2026-09-29): discovery of exactly four custom page tools, no native tools on
+five resy.com pages, tools not listed on `blog.`, `widgets.`, `helpdesk.` or an unrelated site, all four tools from
+five different starting pages, 105 of 106 malformed inputs rejected with no network request (the exception was
+finding 3), slot times and profile fields against four public venue pages (New York, Los Angeles, Chicago),
+venue-local times, no cookies or account headers sent and no key or booking handle in any output, and largest
+output about 43 KB. Kernel-runtime and local-extension results are kept separate. In the extension, the four tools
+registered and returned completed results on resy.com, with the same findings 1 to 3 reproducing; headed mode,
+`xwebmcp setup chrome`, the native-messaging bridge and the popup grant UI were not tested.
+
+No tool has a QA status above `draft` yet; a re-review of the fixed source is pending.
+
+Sessions (ephemeral): builder and QA browsers were created and deleted.
