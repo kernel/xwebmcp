@@ -888,7 +888,7 @@
       ],
       "status": "draft",
       "last_verified": null,
-      "notes": "Not independently QA'd. Page tool on the SevenRooms guest booking hosts (www, fp, eu): bookable times for one venue, date and party size as venue-local and UTC starts with seating area, shift, card and payment fields and deduplicated venue policy text. Lists only the site's book entries (what the widget shows as time buttons); request entries are counted, not listed. Never selects, holds or books, and drops booking handles."
+      "notes": "Not independently QA'd. Page tool on the SevenRooms guest booking hosts (www, fp, eu): bookable times for one venue, date and party size as venue-local and UTC starts with the widget label, shift, card and payment fields and deduplicated plain-text venue policy text. Lists only the site's book entries (what the widget shows as time buttons); request entries are counted, not listed. Never selects, holds or books, and drops booking handles."
     },
     {
       "domain": "sevenrooms.com",
