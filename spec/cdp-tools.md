@@ -304,8 +304,9 @@ For a `cdp` invocation the runtime MUST:
 2. Attach the tab that registered the tool before calling
    `execute(input, {signal, matches})` with the browser helpers (§7) in scope.
    If the target is gone or cannot be attached, fail before running the body.
-   The API resolves the registering target (`custom_webmcp.go:130`), but the
-   reference runtime currently does not perform this attachment; see §7.
+   The reference runtime resolves the registering target (`custom_webmcp.go:130`),
+   attaches it without bringing it to the foreground, and restores the previous
+   attachment after execution (`custom-webmcp-page-runtime.ts`).
 3. Validate the returned value against `tool.outputSchema` when one is declared and
    fail with `output failed JSON Schema validation: <detail>` otherwise
    (`page-runtime.ts:60-64`).
@@ -377,9 +378,11 @@ when the runtime can no longer observe the body (`webmcpclient.go:376-383`).
 ### 6.9 Concurrency
 
 The reference REPL serializes executions (`openapi.yaml`, `/repl`: "Executions are
-serialized"). Tool descriptions in this repository assume serial use per tab. A runtime
-MAY run invocations for different tabs concurrently and MUST NOT run two invocations
-that share a tab concurrently.
+serialized"). While a page-originated CDP invocation is running, the reference runtime
+rejects incoming REPL cells and API invocations as busy rather than queueing them behind
+the page call; it also rejects nested page or CDP calls. Tool descriptions in this
+repository assume serial use per tab. A runtime MAY run invocations for different tabs
+concurrently and MUST NOT run two invocations that share a tab concurrently.
 
 ## 7. Helpers available to a `cdp` body
 
@@ -421,14 +424,11 @@ TypeScript-style; `Sec` values are seconds.
 Semantics shared by helpers:
 
 - The **attached tab** MUST be the tab that registered the tool when its body starts.
-  `cdp-client.ts:510-547,549-566` enables `Page`, `DOM`, `Runtime`, and `Network` and
-  brings a target to the foreground when `attach(targetId)` is called. The current
-  Kernel reference runtime has a known divergence: `custom-webmcp.ts:117-124`
-  passes `targetId` into `CustomWebMCPPageRuntime.invokeCDP`, but
-  `custom-webmcp-page-runtime.ts:48-72` does not attach it. If the REPL is attached
-  to another tab, omitted-session helpers can act on that tab; if unattached,
-  `browser-cdp-client.ts:595-626` may choose the first non-internal page. Do not
-  invoke CDP tools in a multi-tab reference session until that runtime is fixed.
+  The reference runtime attaches that target without activating it, then restores
+  the previous REPL attachment after the body finishes. If the previous tab closed,
+  restoration failure is reported without replacing a successful tool result.
+  Direct `switchTab` calls may bring their target to the foreground; invoking a
+  custom CDP tool alone does not.
 - Single CDP commands time out after 30 s (`cdp-client.ts:46`).
 - A modal JavaScript dialog left open is auto-dismissed on attach and reported
   (`cdp-client.ts:568-596`).
