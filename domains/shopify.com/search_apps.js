@@ -161,7 +161,7 @@
       const countMatch = reviewsSpan ? /^(\d[\d,]*) total reviews/.exec(text(reviewsSpan)) : null;
       const nameBlock = card.querySelector("a") ? card.querySelector("a").parentElement : null;
       const siblings = nameBlock && nameBlock.parentElement ? Array.from(nameBlock.parentElement.children) : [];
-      const blocks = siblings.slice(siblings.indexOf(nameBlock) + 1).filter(block => text(block) && !block.querySelector("[data-element]"));
+      const blocks = siblings.slice(siblings.indexOf(nameBlock) + 1).filter(block => text(block) && !block.querySelector("[data-element]") && !(isAd && text(block) === "Ad"));
       let pricing = null;
       let priceBlock = row;
       if (row) {

@@ -132,6 +132,18 @@ test("search_apps reads one results page and returns canonical, allowlisted fiel
   assert.equal(requests[0].init.method, undefined, "a plain GET");
 });
 
+test("search_apps does not read a sponsored card's Ad label as its pricing or tagline", async () => {
+  const card = (handle, extra) => `<div data-app-card-handle-value="${handle}" data-app-card-name-value="Sponsored ${handle}" data-app-card-app-link-value="https://apps.shopify.com/${handle}?surface_type=search_ad"><div><div>
+    <div><a href="https://apps.shopify.com/${handle}">Sponsored ${handle}</a></div>${extra}<div><span>Free plan available</span></div><div>Fabricated tagline</div></div></div></div>`;
+  const body = `<html><body><turbo-frame id="search_page"><section id="search-page-component">${card("ad-own-block", "<div><span>Ad</span></div>")}${card("ad-in-name", "")}</section></turbo-frame></body></html>`;
+  const { output } = await run("search_apps", { query: "sponsored" }, { respond: () => ({ status: 200, body }) });
+  assertConforms("search_apps", output);
+  assert.deepEqual(output.apps.map(a => [a.handle, a.is_ad, a.pricing_text, a.tagline]), [
+    ["ad-own-block", true, "Free plan available", "Fabricated tagline"],
+    ["ad-in-name", true, "Free plan available", "Fabricated tagline"]
+  ]);
+});
+
 test("search_apps warns when the site answered in another language, and never reads a translated rating row as pricing", async () => {
   const body = fixture("search-results").replace(/out of 5 stars/g, "sur 5 étoiles").replace(/total reviews/g, "avis au total").replace("Free trial available", "Essai gratuit").replace("Free plan available", "Forfait gratuit");
   const { output } = await run("search_apps", { query: "widgets" }, { respond: () => ({ status: 200, body, url: `${ORIGIN}/search?q=widgets&page=1&locale=fr` }) });

@@ -40,7 +40,7 @@ Both read a same-origin GET from the registering document and settle without nav
 | search_apps | `GET /search?q=…&page=…[&features[]=…][&categories[]=…]` with the header `Turbo-Frame: search_page`, which the store's own results frame sends. Without that header the site answers with a loading skeleton and no results, so the tool treats a response with no `search_page` frame as `site_changed`. The tool parses the frame's app cards (`data-app-card-*` attributes) and pagination links. |
 | get_app | `GET /<handle>` as a normal page, parsed by section id (`adp-hero`, `app-details`, `adp-pricing`, `adp-reviews`, `adp-developer`, `adp-details-section`) plus the page's `SoftwareApplication` structured data for the rating. |
 
-Every request goes only to `apps.shopify.com` with the page's own cookies; nothing is sent anywhere else and the tools set no state.
+Every request goes only to `apps.shopify.com` with the page's own cookies; nothing is sent anywhere else. The tools write nothing themselves (no cookies, storage or form state); as with any page view, the site may refresh its own first-party session cookies in its response.
 
 ## URL patterns
 
@@ -67,8 +67,8 @@ Text from listings and plan features is written by app developers and is untrust
 
 ## Site quirks
 
-- `apps.shopify.com` rate-limits bursts. On 2026-09-29 one session received `429 Too Many Requests` after about a dozen page loads and fetches in a few minutes; two independent QA sessions each received one after roughly 17 to 19 requests in 4 to 5 minutes even with 8 to 14 seconds between them. Each recovered after one to two minutes. The site sends no `Retry-After`, so `retry_after_sec` is normally absent. The limit was not measured: for more than a handful of calls, space them well over 15 seconds apart, and after a `rate_limited` result wait at least two minutes.
-- Ads (`is_ad`) are recognised by the listing link's `surface_type=search_ad`. They appeared on some queries during discovery and on none in later runs; whether they are shown depends on the visitor and time.
+- `apps.shopify.com` rate-limits requests, and the limit is not characterised. On 2026-09-29, from Kernel browsers and one local Chromium: the author saw `429 Too Many Requests` after about a dozen page loads and fetches in a few minutes; the first independent QA round saw two after about 17 to 19 requests in 4 to 5 minutes at 8 to 14 seconds spacing; the second saw more at an average spacing of 25 to 30 seconds (about 30 requests in 13 minutes), including on a browser's very first page load ten minutes after the previous session ended. It looks tied to the network address rather than one browser session. Recovery took one to a few minutes. The site sends no `Retry-After`, so `retry_after_sec` is normally absent. Treat every call as rate-limit-prone: make few calls, spread them out, and stop for at least three minutes after a `rate_limited` result.
+- Ads (`is_ad`) are recognised by the listing link's `surface_type=search_ad`. They appeared on some queries during discovery and on none in later runs; whether they are shown depends on the visitor and time. The store's result pages can also show an error page for very high page numbers (seen at page 300 of a 307-page search); `page` is limited to 200.
 - The listing's "Popular with stores like yours: Based in …" line changes with the visitor's location, so it is not returned.
 - The "Permissions" (data access) section of a listing is filled in by script after the page loads and is empty in the fetched HTML, so `get_app` does not report the permissions an app requests.
 - Labels such as Pricing, Languages, Works with, Categories and Launched, and the card texts "out of 5 stars" and "total reviews", are matched in English. The site follows the browser's `Accept-Language` (the `?locale=en` parameter does not override it) and redirects to a `?locale=<code>` URL. On another site language the affected fields come back empty or null and `warnings` says so for both tools (`get_app` also reports `page_language`); `search_apps` still returns handle, name, URL, ad and badge flags, and the tagline. The search response is a fragment with no `<html lang>`, so `search_apps` detects the language from the final URL's `locale` parameter. The tool does not translate or switch languages.
@@ -78,14 +78,14 @@ Text from listings and plan features is written by app developers and is untrust
 
 ## Known limitations
 
-- Draft: written and fixture-tested, not yet independently QA'd (see QA summary).
+- Draft until an independent reviewer signs off on the final source (see QA summary).
 - Public listing data only. No signed-in behaviour was verified: whether the results or listing differ for a signed-in Shopify account, or for a store with the app installed, is untested.
 - `search_apps` reads one results page per call, needs a query (browsing a category without a query is not implemented), and has no sort options because the store shows none.
 - `get_app` does not return permissions, compatibility, install state, reviews, screenshots, a monthly/yearly toggle beyond the yearly price note some plans show, or the "featured in" and "similar apps" sections.
 - Plan-level notes such as a free-trial length are not captured; `additional_charges` holds only the note under the price (for example an order cap or an introductory discount).
 - Plan `price_text` is the displayed text (for example `$16/month` or `Free to install`), not parsed into amount and currency.
 - English pages only; other site languages give null or empty fields plus a warning.
-- Sponsored (`is_ad`) results were not reproduced in the author's or the independent QA sessions, so the ad branch is covered by fixtures and by raw card links seen once during discovery. A sponsored card without reviews has never been seen; its pricing and tagline parsing is unverified.
+- Sponsored (`is_ad`) results were not reproduced in the author's or the independent QA sessions, so the ad branch is covered by fixtures and by raw card links seen once during discovery. A sponsored card without reviews has never been seen; its pricing and tagline parsing is unverified (the tool skips a block that is exactly the label `Ad` on sponsored cards, in case the store renders it as its own block, but that layout was not observed).
 - The parsers depend on the store's current markup and on the `Turbo-Frame` behaviour above; a redesign will surface as `site_changed` or `warnings`, not as wrong data, but the tools will need updating.
 - Rate limiting: no retry or back-off is built in.
 
@@ -97,7 +97,8 @@ Author checks (2026-09-29):
 - Live, on a Kernel browser with the namespace registered as one batch through the custom-tools API: tools absent on `www.shopify.com` and listed on `apps.shopify.com` pages; `search_apps` for a common query (24 apps, 57 pages, Built for Shopify flags), with a `point-of-sale` filter and page 2, with category and checkout filters, a query with no matches, page 200 of a 57-page search (`page_out_of_range`) and invalid input; `get_app` for two apps with three plans each, an app with no reviews, and two unknown handles (`not_found`). The tool's list matched the rendered page for the same query in the same order. Invocations did not change the tab's URL.
 - Not exercised live: 429, challenge and site-changed responses, redirects, non-English pages, a signed-in session, and a sponsored result.
 
-Independent QA:
+Independent QA (reviewer `agt_8238a5b300a6f1ac6892`, separate agent from the author):
 
-- Round 1 (2026-09-29, `agt_8238a5b300a6f1ac6892`, source `6af3976`): FAIL. Findings: pricing and tagline dropped for search cards without a reviews row, languages returned as one truncated string, `launched_text` including the changelog link label, and no non-English warning in `search_apps`. All four reproduced on the live site and are fixed in the next revision, whose fixtures now use the live markup. The reviewer also ran the tools in Chromium 153 through the extension; results matched the Kernel runtime.
-- Round 2: pending on the fixed source.
+- Round 1, source `6af3976`: FAIL. Four defects reproduced on the live site and fixed: pricing and tagline dropped for search cards without a reviews row, languages returned as one truncated string, `launched_text` including the changelog link label, and no non-English warning in `search_apps`. The reviewer also ran the tools in Chromium 153 through the extension; results matched the Kernel runtime.
+- Round 2, source `89b7aba`: FAIL for exactly two README inaccuracies (a stale limitation line and an inaccurate rate-limit paragraph), both corrected in this revision; no code defects. The four round 1 defects were confirmed fixed against rendered pages, including unreviewed cards on five result pages, one- and multi-language listings, and French `Accept-Language`. It also noted that a sponsored unreviewed card with a separate `Ad` block would have read `Ad` as pricing; that case is now guarded and tested.
+- Round 3: pending on the final source.
