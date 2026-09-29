@@ -86,21 +86,25 @@ const assertNoLeak = result => { const text = JSON.stringify(result); for (const
 // ---- search_products -------------------------------------------------------------------------------------------------
 const FACETS = { p_123: [["111", "Acme"], ["222", "Zenith"], ["333", "Orbit"]], p_72: [["1318476031", "4 Stars &amp; Up"]], p_n_free_shipping_eligible: [["205563695031", "Free Shipping"]], p_90: [["6741117031", "Get It Today"]], "p_n_size_two_browse-vebin": [["1975317031", "Black"]] };
 // Filter links behave as the live site's do: an unselected option adds itself to its key's ORed values, a selected one removes itself,
-// a department search carries an implicit browse-node token in every link, and an ORed value is percent-encoded twice (%257C).
-function refinements(applied, implicit) {
+// a department search carries an implicit browse-node token in every link, price bounds an implicit p_36 range token, and an ORed value is percent-encoded twice (%257C).
+function refinements(applied, implicit, department) {
   const link = (key, value) => {
     const next = new Map([...applied].map(([k, v]) => [k, [...v]]));
     const values = next.get(key) || [];
     next.set(key, values.includes(value) ? values.filter(x => x !== value) : [value, ...values]);
     const rh = [implicit, ...[...next].filter(([, v]) => v.length).map(([k, v]) => `${k}:${v.join("%7C")}`)].filter(Boolean).join(",");
-    return `/s?k=water+bottle&amp;rh=${encodeURIComponent(rh)}&amp;dc&amp;qid=1&amp;ref=sr_nr_${key}&amp;ds=v1%3AFAKE`;
+    // The link that removes the only applied filter carries no rh at all.
+    return `/s?k=water+bottle${department ? `&amp;i=${department}` : ""}${rh ? `&amp;rh=${encodeURIComponent(rh)}` : ""}&amp;dc&amp;qid=1&amp;rnid=2&amp;ref=sr_nr_${key}&amp;ds=v1%3AFAKE`;
   };
   const list = (key, title, swatch = false) => `<div id="${key}-title" role="heading"><span>${title}</span></div><ul aria-labelledby="${key}-title">${FACETS[key].map(([value, label]) => swatch
     ? `<li><span class="a-list-item"><a class="s-navigation-item" href="${link(key, value)}" title="${label}" aria-label="Apply the filter ${label} to narrow results"><span class="a-declarative"><div class="colorsprite"></div></span></a></span></li>`
-    : `<li><span class="a-list-item"><a class="s-navigation-item" href="${link(key, value)}"><span>${label}</span></a></span></li>`).join("")}</ul>`;
+    : `<li><span class="a-list-item"><a class="s-navigation-item" href="${link(key, value)}"><span>${label}</span></a></span></li>`).join("")}${key === "p_123" ? "<li><a href=\"javascript:void(0)\"><span>See more</span></a></li>" : ""}</ul>`;
   return `<div id="deliveryRefinements" role="group">${list("p_90", "Delivery Day")}${list("p_n_free_shipping_eligible", "Eligible for Free Delivery")}</div>`
     + `<div id="brandsRefinements" role="group"><a href="${link("p_123", "111")}">Clear</a>${list("p_123", "Brands")}</div>`
     + `<div id="reviewsRefinements" role="group">${list("p_72", "Customer Reviews").replace("<span>4 Stars &amp; Up</span>", "<i class=\"a-icon\"><span class=\"a-icon-alt\">4 Stars</span></i> <span>&amp; Up</span>")}</div>`
+    + (!department ? "" : `<div id="categoryRefinements" role="group"><div id="cat-title" role="heading"><span>Category</span></div><ul aria-labelledby="cat-title"><li><a href="/s?k=water+bottle&amp;ref=sr_nr_n_0"><span>Any Department</span></a></li>`
+    + [["Accessories", "n:1388867031"], ["Cameras", "n:1388977031"]].map(([label, node]) => `<li><a href="/s?k=water+bottle&amp;i=electronics&amp;rh=${encodeURIComponent([implicit || "n:976419031", node, ...[...applied].filter(([, v]) => v.length).map(([k, v]) => `${k}:${v.join("%7C")}`)].join(","))}&amp;rnid=1&amp;ref=sr_nr_n_1"><span>${label}</span></a></li>`).join("")
+    + "</ul></div>")
     + `<div id="colourRefinements" role="group">${list("p_n_size_two_browse-vebin", "Colour", true)}</div>`
     + "<div id=\"priceRefinements\" role=\"group\"><div id=\"p_36-title\" role=\"heading\"></div><ul aria-labelledby=\"p_36-title\"><li><a href=\"/s?k=water+bottle&amp;rh=p_36%3A-30000\"><span>Up to 300</span></a></li></ul></div>";
 }
@@ -108,7 +112,7 @@ function searchSite({ info = "1-16 of over 50,000 results for", cards = fixture(
   return url => {
     const rh = url.searchParams.get("rh") || "";
     const applied = new Map(rh.split(",").filter(Boolean).map(part => [part.slice(0, part.indexOf(":")), part.slice(part.indexOf(":") + 1).split("|")]));
-    let body = fixture("search").replace("{{INFO}}", info).replace("{{REFINEMENTS}}", facetsHtml ?? refinements(applied, url.searchParams.get("i") ? "n:976419031" : "")).replace("{{CARDS}}", cards);
+    let body = fixture("search").replace("{{INFO}}", info).replace("{{REFINEMENTS}}", facetsHtml ?? refinements(applied, [url.searchParams.get("i") ? "n:976419031" : "", url.searchParams.has("low-price") || url.searchParams.has("high-price") ? "p_36:10000-200000" : ""].filter(Boolean).join(","), url.searchParams.get("i"))).replace("{{CARDS}}", cards);
     if (!container) body = body.replace("data-component-type=\"s-search-results\"", "data-component-type=\"other\"");
     return { body };
   };
@@ -583,4 +587,106 @@ test("list_bestsellers bounds subcategories, ignores badges that are not ranks u
   assert.deepEqual(result.items.map(i => i.rank), [999, 7], "a four-digit badge is not a rank");
   const bare = (await chart({}, chartSite({ "/gp/bestsellers": "<html><body>nothing here</body></html>" }))).result;
   assert.deepEqual([bare.status, bare.error_kind], ["error", "site_changed"], "a page without a department list is not an empty success");
+});
+
+// ---- second review round: lone applied filter, price bounds, underivable links, output size, input schemas -----------------
+
+const groupNames = ["Eligible for Free Delivery", "Brands", "Customer Reviews", "Colour"];
+const selectedOf = facets => facets.flatMap(g => g.options.filter(o => o.selected).map(o => o.id));
+
+test("search_products lists the option that is the only applied filter as selected", async () => {
+  const alone = (await search({ query: "water bottle", include_facets: true, facet_ids: ["p_123:111"] })).result;
+  assert.deepEqual(alone.facets.map(g => g.name), groupNames);
+  assert.deepEqual(alone.facets[1].options.map(o => [o.id, o.selected]), [["p_123:111", true], ["p_123:222", false], ["p_123:333", false]], "the site's remove link has no rh, yet the option is reported as selected");
+  assert.equal(alone.facets_truncated, false, "'See more' toggles are not options and do not count as truncation");
+  const rating = (await search({ query: "water bottle", include_facets: true, facet_ids: ["p_72:1318476031"] })).result;
+  assert.deepEqual(selectedOf(rating.facets), ["p_72:1318476031"]);
+  const withDepartment = (await search({ query: "water bottle", department: "kitchen", include_facets: true, facet_ids: ["p_123:222"] })).result;
+  assert.deepEqual(selectedOf(withDepartment.facets), ["p_123:222"]);
+});
+
+test("search_products still derives option ids when price bounds add a range token to every link", async () => {
+  const plain = (await search({ query: "water bottle", include_facets: true })).result;
+  const bounded = (await search({ query: "water bottle", min_price_inr: 100, max_price_inr: 2000, include_facets: true })).result;
+  assert.deepEqual(bounded.facets, plain.facets, "price bounds do not change the offered filters");
+  assert.equal(bounded.facets_truncated, false);
+  const brand = (await search({ query: "water bottle", min_price_inr: 100, max_price_inr: 2000, include_facets: true, facet_ids: ["p_123:111"] })).result;
+  assert.deepEqual(selectedOf(brand.facets), ["p_123:111"]);
+  assert.deepEqual(brand.facets.map(g => g.name), groupNames);
+  const band = (await search({ query: "water bottle", include_facets: true, facet_ids: ["p_36:-30000", "p_123:111"] })).result;
+  assert.deepEqual(band.facets.map(g => g.name), groupNames, "a hand-supplied price-band id does not disturb option ids");
+  assert.deepEqual(selectedOf(band.facets), ["p_123:111"]);
+  const two = (await search({ query: "water bottle", max_price_inr: 500, include_facets: true, facet_ids: ["p_123:111", "p_123:222", "p_72:1318476031"] })).result;
+  assert.deepEqual(selectedOf(two.facets).sort(), ["p_123:111", "p_123:222", "p_72:1318476031"]);
+});
+
+test("search_products reports a filter link it cannot identify instead of dropping it silently", async () => {
+  const list = links => `<div id="g-title" role="heading"><span>Group</span></div><ul aria-labelledby="g-title"><li><a href="/s?k=x&amp;rh=p_123%3A1"><span>Known</span></a></li>${links}</ul>`;
+  const twoAdded = (await search({ query: "x", include_facets: true }, searchSite({ facetsHtml: list("<li><a href=\"/s?k=x&amp;rh=p_123%3A2%2Cp_72%3A9\"><span>Ambiguous</span></a></li>") }))).result;
+  assert.deepEqual([twoAdded.facets[0].options.map(o => o.id), twoAdded.facets_truncated], [["p_123:1"], true]);
+  const toggles = (await search({ query: "x", include_facets: true }, searchSite({ facetsHtml: list("<li><a href=\"javascript:void(0)\"><span>See more</span></a></li><li><a href=\"#\"><span>Top</span></a></li><li><a href=\"https://example.com/s?rh=p_123%3A5\"><span>Elsewhere</span></a></li>") }))).result;
+  assert.deepEqual([toggles.facets[0].options.map(o => o.id), toggles.facets_truncated], [["p_123:1"], false], "toggles and off-site links are ignored without a flag");
+  const priceBand = (await search({ query: "x", include_facets: true }, searchSite({ facetsHtml: "<div id=\"p_36-title\" role=\"heading\"></div><ul aria-labelledby=\"p_36-title\"><li><a href=\"/s?k=x&amp;rh=p_36%3A-30000\"><span>Up to 300</span></a></li></ul>" }))).result;
+  assert.deepEqual([priceBand.facets, priceBand.facets_truncated], [[], false], "the heading-less price-band list is not offered and is not a truncation");
+});
+
+test("search_products keeps its largest possible output well under the 240 KiB API limit", async () => {
+  const groups = Array.from({ length: 45 }, (_, g) => `<div id="g${g}-title" role="heading"><span>${"G".repeat(80)}</span></div><ul aria-labelledby="g${g}-title">${Array.from({ length: 45 }, (_, o) => `<li><a href="/s?k=x&amp;rh=${"k".repeat(38)}${g}%3A${"9".repeat(28)}${String(o).padStart(2, "0")}"><span>${"O".repeat(80)}</span></a></li>`).join("")}</ul>`).join("");
+  const card = i => `<div data-asin="B0${String(i).padStart(8, "0")}" data-component-type="s-search-result" class="AdHolder"><a href="/x/dp/B0${String(i).padStart(8, "0")}"><h2><span>${"T".repeat(600)}</span></h2></a><div>${"B".repeat(80)}</div>`
+    + "<span class=\"a-badge-label-inner\">" + "b".repeat(60) + "</span><span class=\"a-badge-label-inner\">" + "c".repeat(60) + "</span><span class=\"a-badge-label-inner\">" + "d".repeat(60) + "</span>"
+    + `<img class="s-image" src="https://m.media-amazon.com/images/I/${"i".repeat(120)}.jpg"><div data-cy="reviews-block"><span>999.9K+ bought in past month</span></div><span class="a-price"><span class="a-offscreen">&#8377;${"9".repeat(50)}</span></span></div>`;
+  const big = (await search({ query: "x", limit: 60, include_facets: true }, searchSite({ facetsHtml: groups, cards: Array.from({ length: 60 }, (_, i) => card(i)).join("") }))).result;
+  assert.equal(big.results.length, 60);
+  assert.equal(big.facets.length, 15, "600 options in all, 40 per group");
+  assert.equal(big.facets.reduce((n, g) => n + g.options.length, 0), 600);
+  assert.equal(big.facets_truncated, true);
+  const size = Buffer.byteLength(JSON.stringify(big));
+  assert.ok(size < 200 * 1024, `worst-case output is ${size} bytes`);
+});
+
+// The runtime may check input against inputSchema before execute runs, so the schema has to agree with the code.
+const SCHEMA_REJECTS = {
+  search_products: [
+    {}, { query: "" }, { query: 5 }, { query: null }, { query: "x".repeat(201) }, { query: "x", extra: 1 },
+    { query: "x", department: "nope" }, { query: "x", department: null }, { query: "x", sort_by: "cheapest" }, { query: "x", sort_by: null },
+    { query: "x", min_price_inr: -1 }, { query: "x", min_price_inr: 1.5 }, { query: "x", max_price_inr: 10000001 }, { query: "x", min_price_inr: null }, { query: "x", max_price_inr: "9" },
+    { query: "x", page: 0 }, { query: "x", page: 21 }, { query: "x", page: null }, { query: "x", limit: 0 }, { query: "x", limit: 61 }, { query: "x", limit: null },
+    { query: "x", exclude_sponsored: "yes" }, { query: "x", include_facets: 1 },
+    { query: "x", facet_ids: "p_123:1" }, { query: "x", facet_ids: null }, { query: "x", facet_ids: ["bad id"] }, { query: "x", facet_ids: ["P_123:1"] }, { query: "x", facet_ids: ["p_123:1", "p_123:1"] },
+    { query: "x", facet_ids: Array.from({ length: 9 }, (_, i) => `p_123:${i}`) }, { query: "x", facet_ids: ["p_90:6741117031"] }
+  ],
+  get_product: [{}, { asin: "" }, { asin: "b0testaaa1" }, { asin: "SHORT" }, { asin: "B0TESTAAA1X" }, { asin: 5 }, { asin: null }, { asin: "B0TESTAAA1", extra: 1 }],
+  list_bestsellers: [{ category: "Kitchen" }, { category: "k" }, { category: "kitchen/" }, { category: "kitchen/abc" }, { category: "kitchen/1379960031/extra" }, { category: null }, { category: 5 }, { page: 0 }, { page: 3 }, { page: null }, { limit: 0 }, { limit: 31 }, { limit: null }, { extra: 1 }]
+};
+const SCHEMA_ACCEPTS = {
+  search_products: [
+    { query: "water bottle" }, { query: "a&b=c#d", department: "kitchen", sort_by: "newest", min_price_inr: 0, max_price_inr: 10000000, page: 20, limit: 60, exclude_sponsored: true, include_facets: true },
+    { query: "x", facet_ids: ["p_123:111", "p_72:1318476031", "p_n_g-1003512784111:49989874031", "p_n_free_shipping_eligible:205563695031", "p_36:-30000", "p_9:1"] },
+    { query: "x", facet_ids: Array.from({ length: 8 }, (_, i) => `p_123:${i}`) }
+  ],
+  get_product: [{ asin: "B0CXNSCCVW" }, { asin: "0123456789" }],
+  list_bestsellers: [{}, { category: "kitchen" }, { category: "kitchen/1379960031", page: 2, limit: 30 }, { category: "boost", limit: 1 }]
+};
+for (const name of NAMES) {
+  test(`${name} input schema accepts what the tool accepts and rejects what it refuses`, () => {
+    const [definition] = runInNewContext(`(${sources[name]})`, {});
+    const schema = plain(definition.tool.inputSchema);
+    for (const input of SCHEMA_REJECTS[name]) assert.equal(conforms(schema, input), false, `schema accepts ${JSON.stringify(input)}`);
+    for (const input of SCHEMA_ACCEPTS[name]) assert.equal(conforms(schema, input), true, `schema rejects ${JSON.stringify(input)}`);
+  });
+}
+
+test("search_products does not mistake the department's category links for filter options", async () => {
+  for (const input of [
+    { query: "water bottle", department: "electronics", include_facets: true, facet_ids: ["p_123:111"] },
+    { query: "water bottle", department: "electronics", include_facets: true },
+    { query: "water bottle", include_facets: true, facet_ids: ["p_123:111"] },
+    { query: "water bottle", department: "electronics", sort_by: "price_low_to_high", min_price_inr: 100, max_price_inr: 900, include_facets: true, facet_ids: ["p_123:111"] }
+  ]) {
+    const { result } = await search(input);
+    assert.deepEqual(result.facets.map(g => g.name), groupNames, "the Category list is not offered as a filter group");
+    assert.ok(!JSON.stringify(result.facets).includes("Any Department") && !JSON.stringify(result.facets).includes("Accessories"));
+    assert.deepEqual(selectedOf(result.facets), input.facet_ids || [], JSON.stringify(input));
+    assert.equal(result.facets_truncated, false, "navigation links are not truncation");
+  }
 });
