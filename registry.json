@@ -122,9 +122,12 @@
       "url_patterns": [
         "https://www.doordash.com/*"
       ],
-      "status": "draft",
-      "last_verified": null,
-      "notes": "Page tool. Store details the site's native menu tools lack: hours, address, service modes, open status, and delivery and pickup availability with estimate range and the site's own fee strings, plus the menus with the menu_id the native add_to_cart needs. Delivery figures are meaningful only for a selected address, so the output states its basis (selected address, none selected, or unknown) and returns delivery availability and estimate only when an address is positively recognised; it never selects or changes an address and returns neither address text nor customer distance. One same-origin read of the site's storepageFeed query, no navigation; works signed out. Author live checks 2026-09-29 on the Kernel runtime and a local Chromium extension; independent QA round 1 found defects that are fixed; awaiting re-review."
+      "status": "qa_passed",
+      "last_verified": "2026-09-29",
+      "notes": "Page tool. Store details the site's native menu tools lack: hours, address, service modes, open status, and delivery and pickup availability with estimate range and the site's own fee strings, plus the menus with the menu_id the native add_to_cart needs. Delivery figures are meaningful only for a selected address, so the output states its basis (selected address, none selected, or unknown) and returns delivery availability and estimate only when an address is positively recognised; it never selects or changes an address and returns neither address text nor customer distance. One same-origin read of the site's storepageFeed query, no navigation; works signed out. Independent QA (two rounds, 2026-09-29) signed off on the current source on the Kernel runtime and a local Chromium extension; the selected-address path was live-checked only by the author in one signed-in session, and the 401, 429, challenge and site-changed branches are stub-driven only.",
+      "provenance": {
+        "qa_agent": "agt_e3cd254315c78d609b12"
+      }
     },
     {
       "domain": "doordash.com",

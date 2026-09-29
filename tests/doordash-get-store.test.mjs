@@ -164,6 +164,7 @@ test("restaurant: maps the allowlisted fields and issues exactly one read", asyn
   assert.deepEqual(call.init.body.variables, { storeId: "1001", fulfillmentType: "Delivery", isMerchantPreview: false, entryPoint: "External" });
   assert.match(call.init.body.query, /^query storepageFeed\(/);
   assert.doesNotMatch(call.init.body.query, /mutation/i);
+  assert.doesNotMatch(call.init.body.query, /distanceFromConsumer/, "the customer's distance is never requested");
 });
 
 test("signed out: empty csrf header, signed_in false", async () => {
@@ -245,6 +246,10 @@ test("basis is recognised positively, in any locale, and the header text is neve
   assert.equal(unrecognised.basis, "unknown", "an unrecognised placeholder must not read as a selected address");
   assert.equal(unrecognised.address_selected, null);
   assert.equal((await basisOf({ button: { innerText: "Main Street" } })).basis, "unknown");
+  for (const mixed of ["set your address", "your address please", "Your Address, Suite", "Tu dirección aquí"]) {
+    assert.equal((await basisOf({ button: { innerText: mixed } })).basis, "unknown", "a placeholder is matched as the whole text: " + mixed);
+  }
+  assert.equal((await basisOf({ button: { innerText: "Your Address 2" } })).basis, "selected_address", "any digit counts as an address");
   assert.equal((await basisOf({ button: { innerText: "12 Rue Fabriquée" } })).basis, "selected_address");
   assert.equal((await basisOf({ button: { innerText: "  " } })).basis, "unknown");
   assert.equal((await basisOf({ button: null })).basis, "unknown");
@@ -319,6 +324,29 @@ test("malformed input is rejected before any request", async () => {
     assert.ok(validOutput(definition, out));
   }
   assert.equal(calls.length, 0);
+});
+
+test("execute accepts exactly the ids the input schema pattern accepts", async () => {
+  const { definition, calls, run } = harness();
+  const pattern = new RegExp(definition.tool.inputSchema.properties.store_id.pattern);
+  for (const id of ["1", "1001", "123456789012", "0", "01", "029417", "1234567890123", "", " 1001", "1001 ", "1001\n", "10.1", "1e3", "\u0661\u0662"]) {
+    const before = calls.length;
+    const out = plain(await run({ store_id: id }));
+    const accepted = out.error_kind !== "invalid_input";
+    assert.equal(accepted, pattern.test(id), JSON.stringify(id));
+    assert.equal(calls.length - before, accepted ? 1 : 0, JSON.stringify(id));
+  }
+});
+
+test("signed_in reads exactly dd_cx_logged_in=true", async () => {
+  const signedIn = async cookie => plain(await harness({ cookie }).run({ store_id: "1001" })).delivery_context.signed_in;
+  assert.equal(await signedIn("dd_cx_logged_in=true"), true);
+  assert.equal(await signedIn("a=1; dd_cx_logged_in=true; b=2"), true);
+  assert.equal(await signedIn("a=1; dd_cx_logged_in=true"), true);
+  assert.equal(await signedIn("dd_cx_logged_in=false"), false);
+  assert.equal(await signedIn("dd_cx_logged_in=truex"), false);
+  assert.equal(await signedIn("xdd_cx_logged_in=true"), false);
+  assert.equal(await signedIn(""), false);
 });
 
 test("a page outside www.doordash.com is refused without a request", async () => {

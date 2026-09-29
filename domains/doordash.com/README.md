@@ -5,7 +5,7 @@ Tools for DoorDash (https://www.doordash.com).
 | tool | file | status | notes |
 |------|------|--------|-------|
 | login | [login.js](login.js) | qa_passed | Email + password sign-in with a two-step guided flow; existing sessions verified against the profile page; `otp` mode for the 2-Step Verification modal |
-| get_store | [get_store.js](get_store.js) | draft | Page tool: store hours, service modes, delivery and pickup availability with estimates and fee strings, and menu ids, with the delivery basis (selected address, none selected, unknown) stated explicitly and delivery figures returned only for a selected address; never changes the address |
+| get_store | [get_store.js](get_store.js) | qa_passed | Page tool: store hours, service modes, delivery and pickup availability with estimates and fee strings, and menu ids, with the delivery basis (selected address, none selected, unknown) stated explicitly and delivery figures returned only for a selected address; never changes the address |
 
 ## Native WebMCP tools
 
@@ -407,6 +407,32 @@ blocker. Findings and what changed:
 | seven surviving source mutants (padded ids, `signed_in: true`, the convenience guard, the timeout, the error-text bound) | minor | Tests added; a local re-run of 15 mutants of the new logic and of those gaps found all caught. |
 | distance plus the store coordinates could be combined across stores to estimate the customer's location | privacy judgement | The numeric distance is no longer returned or requested. |
 
+Round 2, 2026-09-29, same agent `agt_e3cd254315c78d609b12` against commit `27aedc3` (`get_store.js` sha256
+`f5223a9ef3fa82d5552605c5d57fb1d979cab05f115ebdfabf28e7679bd30a1d`, unchanged in the later commits) in two
+new profile-less stealth browsers (deleted) and the same throwaway local Chromium method. Verdict: **no
+defects; signed off on that source as ready for `qa_passed`**. It re-verified all seven round 1 findings;
+probed the header on en-US, es-US, en-CA, fr-CA, en-AU, en-NZ and en-GB (every other locale path it tried
+returned 404 or redirected to en-US) and on `/`, `/home`, search, store, DashPass and grocery pages plus an
+emulated mobile viewport, with no signed-out case reading `selected_address` and none reading
+`no_address_selected` while an address was showing; sent 21 malformed inputs (0 requests) and 11 valid calls
+(exactly 11 requests); swept 57 stores (0 schema failures, every delivery field `null`); checked 73 cookie
+values for leakage (none; one false positive from a cookie whose value is `doordash.com`); and ran 77
+source mutants, of which 68 were killed. Of the 9 survivors, four were equivalent, two were the unanchored
+placeholder regex and three were test gaps; the tests now cover the gaps (request omits
+`distanceFromConsumer`, `execute` agrees with the schema pattern, exact `dd_cx_logged_in=true` cookie
+boundary, a placeholder is matched only as the whole text) and a re-run of those mutants finds all caught.
+Its minor nits: the description's "not recognised" does not mention that `unknown` also covers a page with
+neither a header control nor the landing form (seen live on a mobile `/home`; the schema text says "or
+absent"), and one Known limitations line still said two egress locations (fixed). Not checked by the
+reviewer: any signed-in state, a real selected address, the NY-proxy egress in the extension, and real
+401, 429 or challenge responses (stub-driven only). It also noted that `"Your Address 2"`-style text reads
+as `selected_address` because any digit counts, which is unreachable with real placeholders.
+
+Status: `qa_passed`, not `verified`. The `selected_address` branch and the delivery figures it releases have
+only the author's live evidence, from one signed-in session, and no independent live check, so the
+"live end-to-end success" bar of `spec/repository.md` §5.4 for the tool's central claim is not met even
+though independent live successes exist from several pages.
+
 The review also confirmed live that `menu_id` equals the id the native `get_restaurant_menu` reports for
 five stores, that six concurrent invocations in one tab succeed, that a document replaced mid-call is
 reported by the runtime as `outcome_unknown` (the extension reports an unobservable outcome after 5 s),
@@ -417,8 +443,8 @@ site responses.
 
 ### Known limitations of get_store
 
-- Draft. Round 1 of independent QA found defects that are fixed in the current source; no sign-off has been
-  recorded, so the status stays `draft`.
+- `qa_passed` on `get_store.js` sha256 `f5223a9e…` (commit `ab34f98`; later commits touch only this README, the
+  tests and the registry). Not `verified`: see "Independent QA".
 - Not verified live: `login_required`, `challenge`, `rate_limited` and `site_changed` responses (fixture
   coverage only, with response shapes assumed from GraphQL conventions and the observed `NOT_FOUND` shape).
   The `challenge` detection looks only at non-JSON bodies.
@@ -429,6 +455,8 @@ site responses.
   guest address changes DoorDash's figures is unobserved. Signed in without any saved address is unobserved. That
   the placeholder location is the same for every guest was seen from four egress locations in total (two by the
   author, two by the reviewer).
+- `unknown` also covers a page with neither a header control nor the landing form (seen live on a mobile
+  `/home`), which the tool description does not spell out.
 - `selected_address` is the only basis with delivery figures, and it was live-verified only in the one signed-in
   session described above; `delivery.available: true` for a guest-selected address is not verified.
 - The delivery estimate and availability are for one moment and one context. `fulfillmentType` is fixed to
@@ -440,7 +468,7 @@ site responses.
 - Loading a store page or this query may register a store view in DoorDash's own analytics, as any visit does.
 - Only stores DoorDash reports under `/store/<id>` were sampled, plus one convenience store; other store
   types (for example shipping-only) are unobserved.
-- Delivery figures depend on the session's address; the egress location did not change them in the two
+- Delivery figures depend on the session's address; the egress location did not change them in the four
   locations tried. Coordinates and street in `address` are the store's own.
 
 ### URL patterns
