@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 import { runInNewContext } from "node:vm";
-import { DOMParser } from "./etsy-dom.mjs";
+import { DOMParser, Document } from "./etsy-dom.mjs";
 
 // Harness for the github.com read tools. Each page tool is re-created from execute.toString(), as the runtime
 // does inside the page, and run against a fake fetch that serves fabricated data; nothing here contacts the
@@ -44,11 +44,12 @@ function conforms(schema, value) {
 }
 
 // Runs one tool. route(pathAndSearch, init) returns { status, body, url? } (url is the final URL after redirects).
-function run(name, input, { route, origin = ORIGIN } = {}) {
+function run(name, input, { route, origin = ORIGIN, user = "" } = {}) {
   const [definition] = runInNewContext(sources[name]);
   const calls = [];
   const context = {
     location: { origin },
+    document: new Document(`<html><head><meta name="user-login" content="${user}"></head><body></body></html>`),
     DOMParser,
     URL,
     JSON,
@@ -67,7 +68,7 @@ function run(name, input, { route, origin = ORIGIN } = {}) {
   });
 }
 // GitHub escapes "<" inside the embedded JSON so that markup in a value cannot end the script element.
-const page = (payload, body = "") => `<html><head><title>x</title></head><body><script type="application/json" data-target="react-app.embeddedData">${JSON.stringify({ payload }).replace(/</g, "\\u003c")}</script>${body}</body></html>`;
+const page = (payload, body = "", head = "") => `<html><head><title>x</title>${head}</head><body><script type="application/json" data-target="react-app.embeddedData">${JSON.stringify({ payload }).replace(/</g, "\\u003c")}</script>${body}</body></html>`;
 
 // --- registry and contract ----------------------------------------------------------------------------
 
@@ -242,7 +243,8 @@ const repoPayload = (extra = {}) => ({
   },
   ...extra
 });
-const repoRoute = (payload, status = 200) => () => ({ status, body: page(payload) });
+const REPO_META = '<meta name="route-pattern" content="/:user_id/:repository">';
+const repoRoute = (payload, status = 200) => () => ({ status, body: page(payload, "", REPO_META) });
 
 test("get_repository returns the whitelisted overview and README text", async () => {
   const { output, calls } = await run("get_repository", { owner: "example-org", repo: "widgets" }, { route: repoRoute(repoPayload()) });
@@ -250,7 +252,7 @@ test("get_repository returns the whitelisted overview and README text", async ()
   assert.deepEqual({ ...output, root_entries: undefined, readme: undefined }, {
     status: "ok", full_name: "example-org/widgets", url: "https://github.com/example-org/widgets", redirected_from: null, description: "Widget toolkit", website: "https://widgets.example.test", topics: ["cli", "go"],
     stars: 1500, forks: 210, watchers: 40, license: { spdx_id: "MIT", name: "MIT License" }, default_branch: "main", latest_commit_sha: "a".repeat(40), commit_count: 1215, release_count: 12, tag_count: 15,
-    visibility: "public", is_archived: false, is_fork: false, is_mirror: false, is_template: false, is_empty: false, created_at: "2019-10-03T15:24:53.000Z", root_entries: undefined, root_entries_total: 2, readme: undefined
+    visibility: "public", is_archived: false, is_fork: false, is_mirror: false, is_template: false, created_at: "2019-10-03T15:24:53.000Z", root_entries: undefined, root_entries_total: 2, readme: undefined
   });
   assert.deepEqual(output.root_entries, [{ name: "src", type: "directory" }, { name: "README.md", type: "file" }]);
   assert.equal(output.readme.file_name, "README.md");
@@ -276,7 +278,7 @@ test("get_repository truncates or omits the README and caps the root listing", a
 });
 
 test("get_repository handles renames, missing optional data and non-repository pages", async () => {
-  const renamed = await run("get_repository", { owner: "old-org", repo: "widgets" }, { route: () => ({ status: 200, body: page(repoPayload()), url: `${ORIGIN}/example-org/widgets` }) });
+  const renamed = await run("get_repository", { owner: "old-org", repo: "widgets" }, { route: () => ({ status: 200, body: page(repoPayload(), "", REPO_META), url: `${ORIGIN}/example-org/widgets` }) });
   assert.equal(renamed.output.redirected_from, "old-org/widgets");
   const cased = await run("get_repository", { owner: "EXAMPLE-ORG", repo: "Widgets" }, { route: repoRoute(repoPayload()) });
   assert.equal(cased.output.redirected_from, null);
@@ -287,12 +289,11 @@ test("get_repository handles renames, missing optional data and non-repository p
   delete bare.sidebarAbout.sections;
   bare.sidebarAbout.website = "javascript:alert(1)";
   bare.sidebarAbout.description = "";
-  bare.codeViewLayoutRoute.repo.isEmpty = true;
   bare.sidebarAbout.repo.isArchived = true;
   bare.codeViewRepoRoute = undefined;
   const empty = await run("get_repository", { owner: "example-org", repo: "widgets" }, { route: repoRoute(bare) });
-  assert.deepEqual([empty.output.license, empty.output.release_count, empty.output.tag_count, empty.output.website, empty.output.description, empty.output.is_empty, empty.output.is_archived, empty.output.root_entries, empty.output.readme, empty.output.commit_count, empty.output.latest_commit_sha],
-    [null, null, null, null, null, true, true, [], null, null, null]);
+  assert.deepEqual([empty.output.license, empty.output.release_count, empty.output.tag_count, empty.output.website, empty.output.description, empty.output.is_archived, empty.output.root_entries, empty.output.readme, empty.output.commit_count, empty.output.latest_commit_sha],
+    [null, null, null, null, null, true, [], null, null, null]);
   const broken = repoPayload();
   delete broken.sidebarAbout.stargazerCount;
   assert.equal((await run("get_repository", { owner: "example-org", repo: "widgets" }, { route: repoRoute(broken) })).output.error_kind, "site_changed");
@@ -424,7 +425,7 @@ test("get_pull_request returns metadata, labels and the description from the fir
   assert.deepEqual(output, {
     status: "ok", full_name: "example-org/widgets", number: 9, url: "https://github.com/example-org/widgets/pull/9", redirected_from: null, title: "Fix widget crash", state: "merged", author: "alice",
     base_branch: "main", head_branch: "fix/crash", head_repository: "alice/widgets", head_sha: "b".repeat(40), merge_commit_sha: "c".repeat(40), merged_by: "bob", commits: 3,
-    created_at: "2026-09-28T14:06:19.000Z", closed_at: "2026-09-29T10:34:00.000Z", merged_at: "2026-09-29T10:34:00.000Z", locked: false, labels: ["bug", "needs review"],
+    created_at: "2026-09-28T14:06:19.000Z", closed_at: "2026-09-29T10:34:00.000Z", merged_at: "2026-09-29T10:34:00.000Z", labels: ["bug", "needs review"],
     body: "Fixes the crash.\n\na", body_truncated: false,
     urls: { files: "https://github.com/example-org/widgets/pull/9/files", commits: "https://github.com/example-org/widgets/pull/9/commits", checks: "https://github.com/example-org/widgets/pull/9/checks" }
   });
@@ -446,7 +447,7 @@ test("get_pull_request maps every state and reports drafts, closed and empty des
   assert.equal(noBody.output.body, null);
   const omitted = await run("get_pull_request", { owner: "example-org", repo: "widgets", number: 9, body_max_chars: 0 }, { route: pullRoute(pullPayload(), pullBody("<p>x</p>")) });
   assert.deepEqual([omitted.output.body, omitted.output.body_truncated], [null, false]);
-  const cut = await run("get_pull_request", { owner: "example-org", repo: "widgets", number: 9, body_max_chars: 2 }, { route: pullRoute(pullPayload(), pullBody("<p>ab😀</p>")) });
+  const cut = await run("get_pull_request", { owner: "example-org", repo: "widgets", number: 9, body_max_chars: 3 }, { route: pullRoute(pullPayload(), pullBody("<p>ab😀</p>")) });
   assert.deepEqual([cut.output.body, cut.output.body_truncated], ["ab", true]);
 });
 
@@ -460,4 +461,147 @@ test("get_pull_request distinguishes issues, renames and unexpected states", asy
   const noRepo = pullPayload();
   delete noRepo.pullRequestsLayoutRoute.repository;
   assert.equal((await run("get_pull_request", { owner: "example-org", repo: "widgets", number: 9 }, { route: pullRoute(noRepo, "") })).output.error_kind, "site_changed");
+});
+
+// --- regressions from independent review ---------------------------------------------------------------
+
+test("a login-like owner name is not mistaken for GitHub's login redirect", async () => {
+  const at = `${ORIGIN}/login-securite/widgets`;
+  const repo = repoPayload();
+  repo.sidebarAbout.ownerLogin = "login-securite";
+  const cases = [
+    ["get_repository", { owner: "login-securite", repo: "widgets" }, () => ({ status: 200, body: page(repo, "", REPO_META), url: at })],
+    ["get_issue", { owner: "login-securite", repo: "widgets", number: 7 }, () => ({ status: 200, body: page(issuePayload([])), url: `${at}/issues/7` })],
+    ["get_pull_request", { owner: "login-securite", repo: "widgets", number: 9 }, () => ({ status: 200, body: page(pullPayload(), pullBody("<p>x</p>")), url: `${at}/pull/9` })]
+  ];
+  for (const [name, input, route] of cases) {
+    const { output } = await run(name, input, { route });
+    assert.notEqual(output.error_kind, "login_required", name);
+    assert.equal(output.status === "ok" || output.error_kind === "site_changed", true, name);
+  }
+  for (const url of [`${ORIGIN}/login`, `${ORIGIN}/login/`, `${ORIGIN}/login/oauth?x=1`]) {
+    assert.equal((await run("get_issue", { owner: "a", repo: "r", number: 1 }, { route: () => ({ status: 200, body: "", url }) })).output.error_kind, "login_required", url);
+  }
+});
+
+test("get_issue refuses in a signed-in tab, before any request, and works signed out", async () => {
+  const refused = await run("get_issue", { owner: "example-org", repo: "widgets", number: 7 }, { user: "carol", route: () => assert.fail("no request expected") });
+  assert.equal(refused.output.error_kind, "signed_in_side_effect");
+  assert.equal(refused.calls.length, 0);
+  assert.ok(!JSON.stringify(refused.output).includes("carol"));
+  const open = await run("get_issue", { owner: "example-org", repo: "widgets", number: 7 }, { user: "", route: issueRoute(issuePayload([])) });
+  assert.equal(open.output.status, "ok");
+  assert.equal(open.calls.length, 1);
+  for (const name of ["get_repository", "get_pull_request", "search_repositories", "search_issues"]) {
+    const input = { get_repository: { owner: "a", repo: "r" }, get_pull_request: { owner: "a", repo: "r", number: 1 }, search_repositories: { query: "x" }, search_issues: { query: "x" } }[name];
+    const signedIn = await run(name, input, { user: "carol", route: () => ({ status: 404, body: "" }) });
+    assert.notEqual(signedIn.output.error_kind, "signed_in_side_effect", name);
+    assert.equal(signedIn.calls.length, 1, name);
+  }
+});
+
+test("get_repository tells repository pages, empty repositories and other pages apart", async () => {
+  const other = await run("get_repository", { owner: "topics", repo: "cli" }, { route: () => ({ status: 200, body: page({}, "", '<meta name="route-pattern" content="/topics/:topic_name(.:format)">'), url: `${ORIGIN}/topics/cli` }) });
+  assert.equal(other.output.error_kind, "not_found");
+  const emptyPage = `<html><head><meta name="route-pattern" content="/:user_id/:repository"><meta name="octolytics-dimension-repository_nwo" content="example-org/widgets"><meta name="octolytics-dimension-repository_public" content="true"></head><body><h3>This repository is empty.</h3></body></html>`;
+  const empty = await run("get_repository", { owner: "Example-Org", repo: "widgets" }, { route: () => ({ status: 200, body: emptyPage }) });
+  assert.deepEqual(empty.output, { status: "empty_repository", full_name: "example-org/widgets", url: "https://github.com/example-org/widgets", redirected_from: null, visibility: "public" });
+  const privateEmpty = await run("get_repository", { owner: "old-org", repo: "widgets" }, { route: () => ({ status: 200, body: emptyPage.replace('content="true"', 'content="false"'), url: `${ORIGIN}/example-org/widgets` }) });
+  assert.deepEqual([privateEmpty.output.redirected_from, privateEmpty.output.visibility], ["old-org/widgets", "private"]);
+  const noMarker = await run("get_repository", { owner: "example-org", repo: "widgets" }, { route: () => ({ status: 200, body: `<html><head><meta name="route-pattern" content="/:user_id/:repository"></head><body>changed layout</body></html>` }) });
+  assert.equal(noMarker.output.error_kind, "site_changed");
+  const noName = await run("get_repository", { owner: "example-org", repo: "widgets" }, { route: () => ({ status: 200, body: emptyPage.replace(/<meta name="octolytics-dimension-repository_nwo"[^>]*>/, "") }) });
+  assert.equal(noName.output.error_kind, "site_changed");
+});
+
+test("get_repository maps the repository flags and free-form visibility", async () => {
+  const flags = repoPayload();
+  Object.assign(flags.sidebarAbout.repo, { isFork: true, isTemplate: true, isMirror: true, isArchived: true, visibilityLabel: "Public mirror" });
+  const { output } = await run("get_repository", { owner: "example-org", repo: "widgets" }, { route: repoRoute(flags) });
+  assert.deepEqual([output.is_fork, output.is_template, output.is_mirror, output.is_archived, output.visibility, output.root_entries_total, "is_empty" in output], [true, true, true, true, "public mirror", 2, false]);
+  const noLabel = repoPayload();
+  delete noLabel.sidebarAbout.repo.visibilityLabel;
+  assert.equal((await run("get_repository", { owner: "example-org", repo: "widgets" }, { route: repoRoute(noLabel) })).output.error_kind, "site_changed");
+});
+
+test("rendered text keeps task-list checkbox state", async () => {
+  const list = `<ul class="contains-task-list"><li class="task-list-item"><input type="checkbox" class="task-list-item-checkbox" checked disabled> Tests added</li><li class="task-list-item"><input type="checkbox" class="task-list-item-checkbox" disabled> Docs updated</li></ul>`;
+  const pull = await run("get_pull_request", { owner: "example-org", repo: "widgets", number: 9 }, { route: pullRoute(pullPayload(), pullBody(list)) });
+  assert.equal(pull.output.body, "[x] Tests added\n[ ] Docs updated");
+  const withReadme = repoPayload();
+  withReadme.codeViewRepoRoute.overview.overviewFiles[0].richText = list;
+  const repo = await run("get_repository", { owner: "example-org", repo: "widgets" }, { route: repoRoute(withReadme) });
+  assert.equal(repo.output.readme.text, "[x] Tests added\n[ ] Docs updated");
+});
+
+test("get_pull_request does not report a lock state the page data cannot confirm", async () => {
+  const locked = pullPayload({}, { locked: true });
+  const { output } = await run("get_pull_request", { owner: "example-org", repo: "widgets", number: 9 }, { route: pullRoute(locked, pullBody("<p>x</p>")) });
+  assert.equal("locked" in output, false);
+  const [definition] = runInNewContext(sources.get_pull_request);
+  assert.ok(!Object.hasOwn(definition.tool.outputSchema.oneOf[0].properties, "locked"));
+});
+
+test("sort must be a string and query length counts characters like the schema", async () => {
+  for (const name of ["search_repositories", "search_issues"]) {
+    for (const sort of [["stars"], { toString: () => "stars" }, 1, null]) {
+      const { output, calls } = await run(name, { query: "cli", sort }, { route: () => assert.fail("no request expected") });
+      assert.equal(output.error_kind, "invalid_input", `${name} ${JSON.stringify(sort)}`);
+      assert.equal(calls.length, 0);
+    }
+    const emoji = await run(name, { query: "😀".repeat(200) }, { route: () => ({ status: 200, body: JSON.stringify(searchBody("issues", [])) }) });
+    assert.equal(emoji.output.status, "no_results", name);
+    const tooLong = await run(name, { query: "😀".repeat(257) }, { route: () => assert.fail("no request expected") });
+    assert.equal(tooLong.output.error_kind, "invalid_input", name);
+  }
+});
+
+test("owner, repo and numbers are validated strictly before they reach a request path", async () => {
+  const route = () => assert.fail("no request expected");
+  for (const name of ["get_repository", "get_issue", "get_pull_request"]) {
+    const base = name === "get_repository" ? {} : { number: 1 };
+    for (const owner of ["a/b", "a?x=1", "a#x", "../x", "a b", "-a", "a".repeat(40), "", ".", "a%2Fb"]) {
+      assert.equal((await run(name, { ...base, owner, repo: "r" }, { route })).output.error_kind, "invalid_input", `${name} owner ${owner}`);
+    }
+    for (const repo of ["r/x", "r?x", "r#x", "..", ".", "", "a b", "r".repeat(101), "r%2Fx"]) {
+      assert.equal((await run(name, { ...base, owner: "a", repo }, { route })).output.error_kind, "invalid_input", `${name} repo ${JSON.stringify(repo)}`);
+    }
+    assert.equal((await run(name, { ...base, owner: "a", repo: "r", unexpected: true }, { route })).output.error_kind, "invalid_input", `${name} unknown field`);
+  }
+  for (const name of ["get_issue", "get_pull_request"]) {
+    for (const number of [1000000001, 0, -1, 2.5, NaN, "7"]) {
+      assert.equal((await run(name, { owner: "a", repo: "r", number }, { route })).output.error_kind, "invalid_input", `${name} ${number}`);
+    }
+  }
+  assert.equal((await run("search_issues", { query: "a", surprise: 1 }, { route })).output.error_kind, "invalid_input");
+  assert.equal((await run("search_issues", { query: "   " }, { route })).output.error_kind, "invalid_input");
+});
+
+test("searches map help-wanted sorting, state reasons, warning limits and invalid dates", async () => {
+  const repos = await run("search_repositories", { query: "cli", sort: "help_wanted_issues" }, { route: () => ({ status: 200, body: JSON.stringify(searchBody("repositories", [repoHit("a", "b", { repo: { repository: { name: "b", owner_login: "a", updated_at: "not a date" } } })])) }) });
+  assert.equal(repos.calls[0].target, "/search?q=cli&type=repositories&s=help-wanted-issues&o=desc");
+  assert.equal(repos.output.results[0].updated_at, null);
+  const errors = Array.from({ length: 8 }, (_, i) => ({ message: `problem ${i} ` + "x".repeat(400), suggestion: "" }));
+  const issues = await run("search_issues", { query: "a", sort: "created", order: "asc" }, { route: () => ({ status: 200, body: JSON.stringify(searchBody("issues", [issueHit(3, { state: "closed", state_reason: "not_planned", created: "garbage" })], { errors })) }) });
+  assert.equal(issues.calls[0].target, "/search?q=a&type=issues&s=created&o=asc");
+  assert.deepEqual([issues.output.results[0].state_reason, issues.output.results[0].created_at, issues.output.order], ["not_planned", null, "asc"]);
+  assert.equal(issues.output.warnings.length, 5);
+  assert.ok(issues.output.warnings.every(w => w.length <= 300));
+  const best = await run("search_issues", { query: "a" }, { route: () => ({ status: 200, body: JSON.stringify(searchBody("issues", [issueHit(3)])) }) });
+  assert.equal(best.output.order, null);
+});
+
+test("get_issue and get_pull_request enforce their state enums, defaults and kind checks", async () => {
+  const bad = issuePayload([]);
+  bad.preloadedQueries[0].result.data.repository.issue.state = "MERGED";
+  assert.equal((await run("get_issue", { owner: "example-org", repo: "widgets", number: 7 }, { route: issueRoute(bad) })).output.error_kind, "site_changed");
+  const long = issuePayload([], { body: "b".repeat(5000), locked: true });
+  const { output } = await run("get_issue", { owner: "example-org", repo: "widgets", number: 7 }, { route: issueRoute(long) });
+  assert.deepEqual([output.body.length, output.body_truncated, output.locked], [4000, true, true]);
+  const invalidDate = issuePayload([], { createdAt: "garbage" });
+  assert.equal((await run("get_issue", { owner: "example-org", repo: "widgets", number: 7 }, { route: issueRoute(invalidDate) })).output.created_at, null);
+  const arrayState = pullPayload({ state: ["OPEN"] });
+  assert.equal((await run("get_pull_request", { owner: "example-org", repo: "widgets", number: 9 }, { route: pullRoute(arrayState, pullBody("<p>x</p>")) })).output.error_kind, "site_changed");
+  const notPull = await run("get_pull_request", { owner: "example-org", repo: "widgets", number: 9 }, { route: () => ({ status: 200, body: "<html></html>", url: `${ORIGIN}/example-org/widgets/discussions/9` }) });
+  assert.equal(notPull.output.error_kind, "not_found");
 });

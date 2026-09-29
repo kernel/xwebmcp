@@ -69,8 +69,8 @@
     const sort = input.sort === undefined ? "best_match" : input.sort;
     const order = input.order === undefined ? "desc" : input.order;
     const page = input.page === undefined ? 1 : input.page;
-    if (!query || query.length > 256) return fail("invalid_input", "query must be 1 to 256 characters of search text. Nothing was requested.");
-    if (!Object.hasOwn(SORTS, sort)) return fail("invalid_input", "sort must be one of best_match, stars, forks, updated, help_wanted_issues. Nothing was requested.");
+    if (!query || Array.from(query).length > 256) return fail("invalid_input", "query must be 1 to 256 characters of search text. Nothing was requested.");
+    if (typeof sort !== "string" || !Object.hasOwn(SORTS, sort)) return fail("invalid_input", "sort must be one of best_match, stars, forks, updated, help_wanted_issues. Nothing was requested.");
     if (order !== "desc" && order !== "asc") return fail("invalid_input", "order must be desc or asc. Nothing was requested.");
     if (!Number.isInteger(page) || page < 1 || page > 100) return fail("invalid_input", "page must be an integer from 1 to 100. Nothing was requested.");
     if (location.origin !== "https://github.com") return fail("wrong_page", "This tool works only on https://github.com pages; open github.com in this tab first. Nothing was requested.");
@@ -92,7 +92,7 @@
       const response = await fetch(url.pathname + url.search, { headers: { Accept: "application/json" } });
       if (response.status === 429) return fail("throttled", "GitHub rate-limited this browser (HTTP 429). Wait a minute or more before searching again; nothing was changed.");
       if (response.status === 403) return fail("blocked", "GitHub refused the search request (HTTP 403). Nothing was changed.");
-      if (new URL(response.url).pathname.startsWith("/login")) return fail("login_required", "GitHub asked for sign-in before answering this search.");
+      if (/^\/login(\/|$)/.test(new URL(response.url).pathname)) return fail("login_required", "GitHub asked for sign-in before answering this search.");
       if (!response.ok) return fail("unknown", "GitHub's search answered HTTP " + response.status + ".");
       let route;
       try { route = JSON.parse(await response.text()).payload.blackbirdSearchRoute; } catch { throw changed(); }
