@@ -354,9 +354,14 @@ test("check_store_availability tolerates missing fields on a store", async () =>
 });
 
 test("check_store_availability passes unfamiliar statuses through with available false", async () => {
-  const stores = [location("1234", "Test Store", 1, { order_pickup: { availability_status: "OUT_OF_STOCK" }, in_store_only: { availability_status: "PRE_ORDER_SELLABLE" } })];
+  const stores = [
+    location("1234", "Test Store", 1, { order_pickup: { availability_status: "OUT_OF_STOCK" }, in_store_only: { availability_status: "PRE_ORDER_SELLABLE" } }),
+    location("5678", "Other Test Store", 2, { in_store_only: { availability_status: "NOT_SOLD_IN_STORE" } }),
+    location("9012", "Third Test Store", 3, { in_store_only: { availability_status: "OUT_OF_STOCK" } })
+  ];
   const result = await harness("check_store_availability", { fiats: fiatsBody(stores) }).run(valid.check_store_availability);
   assert.deepEqual([result.stores[0].pickup.status, result.stores[0].pickup.available, result.stores[0].in_store.status, result.stores[0].in_store.available], ["OUT_OF_STOCK", false, "PRE_ORDER_SELLABLE", true]);
+  assert.deepEqual(result.stores.slice(1).map(s => [s.in_store.status, s.in_store.available]), [["NOT_SOLD_IN_STORE", false], ["OUT_OF_STOCK", false]]);
 });
 
 // --- get_product_reviews --------------------------------------------------------------------------
