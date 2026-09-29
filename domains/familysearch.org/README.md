@@ -30,7 +30,7 @@ const tool = (await webmcp.listTools()).find(t => t.source.custom?.namespace ===
 const result = await webmcp.invokeTool(tool.tool_ref, { given_name: "ada", surname: "example", birth_year_from: 1855, birth_year_to: 1865 }, { timeoutSec: 60 });
 ```
 
-Each tool works from any `www.familysearch.org` page and never navigates the tab. On any other origin (the runtime registers a tool on a tab's top document when only an embedded frame matched, `spec/cdp-tools.md` §6.1) it returns `wrong_page` without a request; open `https://www.familysearch.org/` and call again. A call takes 0.5 to 3 s; `timeoutSec: 60` is enough.
+Each tool works from any `www.familysearch.org` page and never navigates the tab. On any other origin (the runtime registers a tool on a tab's top document when only an embedded frame matched, `spec/cdp-tools.md` §6.1) it returns `wrong_page` without a request; open `https://www.familysearch.org/` and call again. A call takes 0.5 to 3 s, plus up to 10 s when `search_records` waits for the site's session cookie; `timeoutSec: 60` is enough.
 
 Typical use: `list_collections` to find collections for a place and period, `search_records` (optionally with `collection_id`), then `get_record` with a hit's `record_url`.
 
@@ -50,19 +50,19 @@ All three tools match only `https://www.familysearch.org/*`, not the default `ht
 - Every request is a same-origin `GET` to `www.familysearch.org` (`/service/search/hr/v2/personas`, `/ark:/61903/1:1:<id>` or `1:2:<id>`, `/search/orchestration/collectionListData`). The tools never sign in, save, attach, cite, follow, edit or delete anything, never open Family Tree, images, hints or matches, and never navigate.
 - `get_record` sends the page's `fssessionid` cookie value as the bearer token, exactly as the site's own scripts do: records outside the public set are refused without it (HTTP 401 in a signed-in browser). The token is read from `document.cookie`, sent only to the same origin, and never returned or logged. The other two tools send no token.
 - `signed_in` in `search_records` is read from the current page's header (a Sign Out link means signed in, a Sign Up link means signed out) with no request; it is `null` when the header shows neither, for example on wiki pages or before it has rendered.
-- Record text is untrusted page data. Strings are stripped of control, bidirectional and zero-width characters, length-bounded and returned as data; `citation` has literal and entity-encoded markup removed. Nothing in a record is executed or followed.
+- Record text is untrusted page data. Strings are stripped of control and format characters (bidirectional, zero-width, tag and variation-selector characters included), length-bounded and returned as data; `citation` has literal and entity-encoded markup removed. Nothing in a record is executed or followed.
 - Only an allowlist of fields is returned. Record-level internal fields (batch ids, operator notes, image and film identifiers, sort keys) and unlisted person fields are dropped. No document image, image URL or account identifier is returned.
 - People in newer collections (for example the 1950 US census) may still be living. The tools return only what FamilySearch itself shows this browser; use the results for research, not to profile individuals, and do not store them.
 
 ## Site quirks
 
 - Search results depend on the session. The same query returned 941 hits signed out and 299,883 signed in; signed-out searches are dominated by a few open collections (for example the 1950 US census).
-- The search API answers HTTP 401 when the page has no FamilySearch session cookie, even signed out; the site's scripts set an anonymous one shortly after a page loads (a page stuck on a bot-protection screen never gets one). `search_records` waits up to 10 s for it and returns `site_error` if it never appears, so it does not tell an agent to sign in when the browser only lacks the anonymous session.
+- The search API answers HTTP 401 when the page has no FamilySearch session cookie, even signed out. The site's scripts set an anonymous one after a page loads, and the delay varied in independent QA from under 2 s in one browser to more than 12 s in another; a tab that showed a bot-protection page had none after 12 s and got one only after a minute or two. `search_records` waits up to 10 s for it and returns `site_error` if it does not appear, so it does not tell an agent to sign in when the browser only lacks the anonymous session.
 - Filtering by collection is refused with HTTP 401 for some collections when signed out (the 1950 US census and unknown ids answered 401) and allowed for others (independent QA searched a New Zealand passenger list collection signed out); `search_records` reports `login_required` for the refused ones.
 - The results page sends `m.defaultFacets`, `m.facetNestCollectionInCategory` and `m.queryRequireDefault`; the tool sends the same. Without the three flags one name query matched about 1.6 million records instead of 941.
 - The search API rejects `count` above 100 and `offset + count` of 5000 or more (HTTP 400). The tool caps `limit` at 50 and `offset + limit` at 4999.
 - Place and date terms are the site's "like" terms: a place can also match a related event in the record (for example a census residence), which is the site's behavior. Only the terms on the site's default search form are exposed; the API also accepts death, marriage and residence terms, sex and a spouse name, which are not exposed because their "like" semantics were not characterised.
-- The collection list is one ~1.2 MB JSON document (about 3,500 collections) that the page itself filters in the browser; `list_collections` fetches it on each call and filters locally; `query` words match whole words only, ignoring case, accents and punctuation. Collections are matched to places through the site's Place filter, so a state name leaves out nationwide collections; use `United States` for those. `record_count` 0 means the collection has images but is not name-searchable.
+- The collection list is one ~1.2 MB JSON document (about 3,500 collections) that the page itself filters in the browser; `list_collections` fetches it on each call and filters locally; `query` words match whole words only, ignoring case, accents (including đ, ß, ø, ł, æ, œ) and punctuation. Collections are matched to places through the site's Place filter, so a state name leaves out nationwide collections; use `United States` for those. `record_count` 0 means the collection has images but is not name-searchable.
 - When a result contains accented Latin text (for example the collection titles returned for the query `Córdoba` or `Liège`), the Kernel runtime observed on 2026-09-29 delivered `output` as a JSON string instead of an object; results with only ASCII text, or an en dash, arrived as objects. This is runtime behavior, not tool code: parse `output` when `typeof output === "string"`.
 
 ## Known limitations
@@ -76,13 +76,13 @@ All three tools match only `https://www.familysearch.org/*`, not the default `ht
 - Rate limits were not measured; the tools do not retry. HTTP 429 returns `rate_limited`.
 - Whether FamilySearch's terms permit automated reading was not reviewed.
 - `wrong_page` was exercised by fixtures and, in independent QA, live on a page whose top document was `https://example.com/` with an embedded `www.familysearch.org` frame (the Kernel runtime registers the tools there). The Chrome extension registers a tool only when the top document matches (`spec/cdp-tools.md` §9), so `wrong_page` is not reachable in it.
-- Local Chrome extension: independent QA ran the tools in Chromium 153 with the unpacked extension on signed-out pages only and observed the same results as on Kernel for identical inputs. Google Chrome itself and signed-in flows were not run.
+- Local Chrome extension: independent QA ran the tools in Chromium 153 with the unpacked extension on signed-out pages only. For 16 identical inputs, 13 gave the same result as on Kernel; the other 3 differed only in `signed_in`, which was `null` in the extension on a tab that showed a bot-protection page without the site header and `false` on Kernel. Google Chrome itself and signed-in flows were not run.
 
 ## QA summary
 
-No independent QA has been recorded yet, so all three tools are `draft`. Authoring-time live checks (2026-09-29, Kernel browser, page-tool invocation through `POST /browsers/{id}/webmcp/invoke`):
+Independent QA (a separate reviewer, two rounds on earlier revisions) found defects that are fixed in this revision; no sign-off is recorded for this revision yet, so all three tools are `draft`. Authoring-time live checks (2026-09-29, Kernel browser, page-tool invocation through `POST /browsers/{id}/webmcp/invoke`):
 
-- Signed out: `search_records` (name, place, years, keyword, exact, `collection_id` refused with `login_required`), `get_record` (persona and household arks, unknown id, malformed input), `list_collections` (title, place, type, years, size, sort, unknown place).
+- Signed out: `search_records` (name, place, years, keyword, exact, wildcards, `collection_id` refused with `login_required` for the 1950 census), `get_record` (persona and household arks, unknown id, malformed input), `list_collections` (title, place, type, years, size, sort, unknown place).
 - Signed in (one approved account, read-only calls): `search_records` with and without `collection_id`, `get_record` on a church-register record.
 
 ## Sessions

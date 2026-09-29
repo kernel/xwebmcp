@@ -101,7 +101,7 @@
     const fail = (kind, message) => ({ status: "error", error_kind: kind, error_message: message });
     const clip = (value, max) => {
       if (typeof value !== "string") return null;
-      const text = value.replace(/[\u0000-\u001f\u007f-\u009f\u200b-\u200f\u2028-\u202e\u2060-\u2064\ufeff]/g, " ").replace(/\s+/g, " ").trim();
+      const text = value.replace(/[\p{Cc}\p{Cf}\u034f\u2028\u2029\u2060-\u206f\ufe00-\ufe0f]/gu, " ").replace(/\s+/g, " ").trim();
       if (!text) return null;
       return text.length > max ? text.slice(0, max - 1) + "…" : text;
     };
@@ -112,7 +112,7 @@
     const terms = {};
     for (const key of ["given_name", "surname", "birth_place", "keyword"]) {
       if (input[key] === undefined) continue;
-      const value = typeof input[key] === "string" ? input[key].replace(/[\u0000-\u001f\u007f-\u009f\u200b-\u200f\u2028-\u202e\u2060-\u2064\ufeff]/g, " ").replace(/\s+/g, " ").trim() : "";
+      const value = typeof input[key] === "string" ? input[key].replace(/[\p{Cc}\p{Cf}\u034f\u2028\u2029\u2060-\u206f\ufe00-\ufe0f]/gu, " ").replace(/\s+/g, " ").trim() : "";
       if (value.length < 1 || value.length > 100) return fail("invalid_input", key + " must be a text of 1 to 100 characters. Nothing was sent to FamilySearch.");
       terms[key] = value;
     }

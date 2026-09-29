@@ -210,6 +210,7 @@ const invalidInputs = {
     { surname: "smith", collection_id: "abc" }, { surname: "smith", collection_id: 4464515 }, { surname: "smith", collection_id: "12345678901" }, { surname: "smith", limit: 0 }, { surname: "smith", limit: 51 },
     { surname: "smith", limit: "5" }, { surname: "smith", offset: -1 }, { surname: "smith", offset: 4999 }, { surname: "smith", limit: 50, offset: 4950 }, { surname: "smith", limit: 2, offset: 4998 }],
   get_record: [undefined, null, [], {}, { record: "" }, { record: 5 }, { record: "   " }, { record: "abc" }, { record: "AAAA-BB" }, { record: "aaaa-bbbb" }, { record: "1:3:AAAA-BBBB" }, { record: "3:1:AAAA-BBBB-CCCC" },
+    { record: "https://familysearch.org1:1:AAAA-CCCC" }, { record: "https://www.familysearch.org1:1:AAAA-CCCC" }, { record: "https://www.familysearch.org/1:1:AAAA-CCCC" }, { record: "https://familysearch.orgark:/61903/1:1:AAAA-CCCC" },
     { record: "AAAA-CCCC" }, { record: "KWCJ-RN4" }, { record: "4:1:AAAA-CCCC" }, { record: "https://www.familysearch.org/ark:/61903/4:1:AAAA-CCCC" }, { record: "1:1:aaaa-cccc" }, { record: "https://www.familysearch.org/ark:/61903/1:1:AAAA-CCCC?" + "x".repeat(300) },
     { record: "https://ancestors.familysearch.org/ark:/61903/1:1:AAAA-BBBB" }, { record: "https://familysearch.org.example.net/ark:/61903/1:1:AAAA-BBBB" }, { record: "http://www.familysearch.org/ark:/61903/1:1:AAAA-BBBB" },
     { record: "https://www.familysearch.org/en/tree/person/details/AAAA-BBB" }, { record: "AAAA-BBBB", extra: 1 }, { record: "x".repeat(301) }],
@@ -670,20 +671,24 @@ test("search_records: lists at most 10 collections, largest first", async () => 
   assert.deepEqual(result.collections.map(c => c.hit_count), [12, 11, 10, 9, 8, 7, 6, 5, 4, 3]);
 });
 
-test("every tool strips control, bidirectional and zero-width characters from site text", async () => {
-  const dirty = "Ada\u0085 \u202eExa\u200bmple \ufeff";
+test("every tool strips control, format, bidirectional, zero-width, tag and variation-selector characters from site text", async () => {
+  const invisible = ["\u0085", "\u202e", "\u200b", "\ufeff", "\u2060", "\u2061", "\u2064", "\u2065", "\u2066", "\u2067", "\u2068", "\u2069", "\u206f", "\u061c", "\u00ad", "\u034f", "\u180e", "\ufe00", "\ufe0e", "\ufe0f", "\u{e0041}", "\u{e007f}", "\u2028", "\u0007"];
+  const dirty = "Ada" + invisible.join("") + " Exa" + invisible.join("x") + "mple";
   const entry = searchEntry();
   entry.content.gedcomx.persons[0].display.name = dirty;
   const search = await harness("search_records", { route: () => ({ status: 200, body: searchBody([entry], 1) }) }).run({ surname: "Example" });
-  assert.equal(search.hits[0].name, "Ada Exa mple");
+  assert.equal(search.hits[0].name, "Ada Exa " + "x ".repeat(invisible.length - 1) + "mple");
   const body = recordBody();
   body.persons[0].display.name = dirty;
   const record = await harness("get_record", { route: recordRoute(body) }).run({ record: "1:1:AAAA-CCCC" });
-  assert.equal(record.persons[0].name, "Ada Exa mple");
+  assert.equal(record.persons[0].name, search.hits[0].name);
   const list = await harness("list_collections", { route: () => ({ status: 200, body: listBody([listEntry("9000001", dirty)]) }) }).run({});
-  assert.equal(list.collections[0].title, "Ada Exa mple");
-  const blank = await harness("list_collections", { route: () => ({ status: 200, body: listBody([listEntry("9000001", "\u200b\u202e \u0085")]) }) }).run({});
+  assert.equal(list.collections[0].title, search.hits[0].name);
+  const blank = await harness("list_collections", { route: () => ({ status: 200, body: listBody([listEntry("9000001", invisible.join(""))]) }) }).run({});
   assert.equal(blank.collections[0].title, "(untitled)");
+  const term = harness("search_records", { route: () => ({ status: 200, body: searchBody() }) });
+  await term.run({ surname: "Ex\u202eam\u200bple" });
+  assert.equal(query(term.calls[0]).get("q.surname"), "Ex am ple");
 });
 
 const crowd = (count, subjectAt) => Array.from({ length: count }, (_, i) => person(`p_${i}`, i === subjectAt ? "AAAA-CCCC" : `BBBB-${String(1000 + i)}`, `Person ${i}`, "Male"));
@@ -791,5 +796,92 @@ test("list_collections: collection ids that are not plain digits are a site_chan
   for (const collectionId of ["../../evil", "123456789012", "12a", ""]) {
     const h = harness("list_collections", { route: () => ({ status: 200, body: listBody([listEntry(collectionId, "Odd")]) }) });
     assert.equal((await h.run({})).error_kind, "site_changed", collectionId);
+  }
+});
+
+// --- second review round --------------------------------------------------------------------------------
+
+test("list_collections: folds letters without a decomposition and keeps other scripts intact", async () => {
+  const list = listBody([
+    listEntry("9000041", "Croatia, Međimurje, Church Records"), listEntry("9000042", "Deutschland, Ahnenpäße"), listEntry("9000043", "Norge, Øvre Æble, Łódź"),
+    listEntry("9000044", "Ελλάδα, Μητρώα")
+  ]);
+  assert.deepEqual(ids((await listRun({ query: "medimurje" }, list)).result), ["9000041"]);
+  assert.deepEqual(ids((await listRun({ query: "Međimurje" }, list)).result), ["9000041"]);
+  assert.deepEqual(ids((await listRun({ query: "ahnenpasse" }, list)).result), ["9000042"]);
+  assert.deepEqual(ids((await listRun({ query: "ovre aeble lodz" }, list)).result), ["9000043"]);
+  assert.deepEqual(ids((await listRun({ query: "ΕΛΛΆΔΑ" }, list)).result), ["9000044"]);
+});
+
+test("search_records: only a cookie named exactly fssessionid counts as the session", async () => {
+  const h = harness("search_records", { cookie: "xfssessionid=abc; fssessionid_old=1", route: () => ({ status: 200, body: searchBody() }) });
+  await h.run({ surname: "Example" });
+  assert.equal(h.sleeps(), 20);
+  const ok = harness("search_records", { cookie: "a=1; fssessionid=abc", route: () => ({ status: 200, body: searchBody() }) });
+  await ok.run({ surname: "Example" });
+  assert.equal(ok.sleeps(), 0);
+});
+
+test("search_records: a persistent id with trailing text does not identify the hit's person", async () => {
+  const entry = searchEntry("AAAA-CCCC");
+  entry.content.gedcomx.persons[0].identifiers["http://gedcomx.org/Persistent"] = ["https://www.familysearch.org/ark:/61903/1:1:AAAA-CCCCZZ"];
+  const h = harness("search_records", { route: () => ({ status: 200, body: searchBody([entry], 1) }) });
+  assert.equal((await h.run({ surname: "Example" })).error_kind, "site_changed");
+});
+
+test("search_records: collection_id accepts up to 10 digits and rejects 11", async () => {
+  const ok = harness("search_records", { route: () => ({ status: 200, body: searchBody() }) });
+  assert.equal((await ok.run({ surname: "Example", collection_id: "1234567890" })).status, "ok");
+  assert.equal(query(ok.calls[0]).get("f.collectionId"), "1234567890");
+  for (const collection_id of ["12345678901", "", "1 2"]) assert.equal((await harness("search_records").run({ surname: "Example", collection_id })).error_kind, "invalid_input");
+});
+
+test("list_collections: collection ids of 10 digits are kept and 11 digits are a site_changed error", async () => {
+  const ok = await harness("list_collections", { route: () => ({ status: 200, body: listBody([listEntry("1234567890", "Ten")]) }) }).run({});
+  assert.equal(ok.collections[0].url, "https://www.familysearch.org/en/search/collection/1234567890");
+  const bad = harness("list_collections", { route: () => ({ status: 200, body: listBody([listEntry("12345678901", "Eleven")]) }) });
+  assert.equal((await bad.run({})).error_kind, "site_changed");
+});
+
+test("get_record: the record length limit is exactly 300 characters and the host must be followed by a slash", async () => {
+  const base = "https://www.familysearch.org/ark:/61903/1:1:AAAA-CCCC?";
+  for (const [length, ok] of [[299, true], [300, true], [301, false]]) {
+    const h = harness("get_record", { route: recordRoute() });
+    const result = await h.run({ record: base + "x".repeat(length - base.length) });
+    assert.equal(result.status === "ok", ok, `length ${length}`);
+    if (!ok) assert.equal(result.error_kind, "invalid_input");
+  }
+  for (const record of ["https://familysearch.org1:1:AAAA-CCCC", "https://www.familysearch.org1:1:AAAA-CCCC", "https://familysearch.orgark:/61903/1:1:AAAA-CCCC", "https://www.familysearch.org/1:1:AAAA-CCCC"]) {
+    const result = await harness("get_record", { route: recordRoute() }).run({ record });
+    assert.equal(result.error_kind, "invalid_input", record);
+  }
+});
+
+test("get_record: entities are decoded once and only real tags are removed from the citation", async () => {
+  const cases = [
+    ["&amp;lt;b&amp;gt;kept&amp;lt;/b&amp;gt;", "&lt;b&gt;kept&lt;/b&gt;"],
+    ["Value 1 < 2 and 3 > 1", "Value 1 < 2 and 3 > 1"],
+    ["Cited <b>work</b> <br/> here", "Cited work here"],
+    ["Cited <unclosed and more", "Cited"],
+    ["a &lt; b &amp;&amp; c &gt; d", "a < b && c > d"]
+  ];
+  for (const [value, expected] of cases) {
+    const body = recordBody();
+    body.sourceDescriptions[0].citations[0].value = value;
+    const result = await harness("get_record", { route: recordRoute(body) }).run({ record: "1:1:AAAA-CCCC" });
+    assert.equal(result.citation, expected, value);
+  }
+});
+
+test("get_record: a truncated record lists the requested person once and ignores links to dropped people", async () => {
+  const body = recordBody({ persons: crowd(60, 55), relationships: [] });
+  const result = await harness("get_record", { route: recordRoute(body) }).run({ record: "1:1:AAAA-CCCC" });
+  assert.equal(result.persons.filter(p => p.persona_id === "AAAA-CCCC").length, 1);
+  assert.equal(new Set(result.persons.map(p => p.name)).size, 40);
+  for (const [valid, dropped, truncated] of [[79, 21, false], [80, 20, false], [81, 19, true]]) {
+    const links = Array.from({ length: valid }, (_, i) => rel("ParentChild", "p_55", `p_${i % 39}`)).concat(Array.from({ length: dropped }, (_, i) => rel("ParentChild", "p_55", `p_${45 + (i % 10)}`)));
+    const many = await harness("get_record", { route: recordRoute(recordBody({ persons: crowd(60, 55), relationships: links })) }).run({ record: "1:1:AAAA-CCCC" });
+    assert.equal(many.relationships.length, Math.min(valid, 80), `${valid} valid links`);
+    assert.equal(many.relationships_truncated, truncated, `${valid} valid links`);
   }
 });

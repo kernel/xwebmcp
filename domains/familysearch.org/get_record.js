@@ -81,7 +81,7 @@
     const fail = (kind, message) => ({ status: "error", error_kind: kind, error_message: message });
     const clip = (value, max) => {
       if (typeof value !== "string") return null;
-      const text = value.replace(/[\u0000-\u001f\u007f-\u009f\u200b-\u200f\u2028-\u202e\u2060-\u2064\ufeff]/g, " ").replace(/\s+/g, " ").trim();
+      const text = value.replace(/[\p{Cc}\p{Cf}\u034f\u2028\u2029\u2060-\u206f\ufe00-\ufe0f]/gu, " ").replace(/\s+/g, " ").trim();
       if (!text) return null;
       return text.length > max ? text.slice(0, max - 1) + "…" : text;
     };
@@ -90,7 +90,7 @@
     }
     const ID = "[0-9A-Z]{4}-[0-9A-Z]{3,4}";
     const raw = input.record.trim();
-    const parsed = raw.length <= 300 ? new RegExp("^(?:https://(?:www\\.)?familysearch\\.org)?/?(?:ark:/61903/)?(1:[12]):(" + ID + ")(?:[?#].*)?$").exec(raw) : null;
+    const parsed = raw.length <= 300 ? new RegExp("^(?:(?:https://(?:www\\.)?familysearch\\.org)?/|)ark:/61903/(1:[12]):(" + ID + ")(?:[?#].*)?$").exec(raw) || new RegExp("^(1:[12]):(" + ID + ")$").exec(raw) : null;
     if (!parsed) return fail("invalid_input", "record must be a record_url from search_records, or a 1:1:XXXX-XXXX or 1:2:XXXX-XXXX ark path or familysearch.org ark URL of at most 300 characters. Bare ids, Family Tree person ids, image arks and other hosts are not supported. Nothing was sent to FamilySearch.");
     const arkKind = parsed[1];
     const id = parsed[2];
@@ -190,7 +190,7 @@
     const event = coverage ? { date: clip(coverage.temporal && coverage.temporal.original, 80), place: clip(coverage.spatial && coverage.spatial.original, 200) } : null;
     const cited = sources.find(source => Array.isArray(source.citations) && source.citations[0] && typeof source.citations[0].value === "string");
     const subjectIndex = arkKind === "1:1" ? persons.findIndex(person => personaOf(person) === id) : -1;
-    const stripMarkup = text => text.replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, "\"").replace(/&#0?39;|&apos;/g, "'").replace(/&amp;/g, "&").replace(/<[^>]*>/g, "");
+    const stripMarkup = text => text.replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, "\"").replace(/&#0?39;|&apos;/g, "'").replace(/&amp;/g, "&").replace(/<\/?[A-Za-z][^>]*(?:>|$)/g, "");
     return {
       status: "ok", record_url: recordUrl, ark_kind: arkKind === "1:1" ? "persona" : "record",
       record_title: clip(record && record.titles && record.titles[0] && record.titles[0].value, 200),
