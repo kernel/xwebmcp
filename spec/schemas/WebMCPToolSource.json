@@ -1,0 +1,52 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/kernel/xwebmcp/spec/schemas/WebMCPToolSource.json",
+  "title": "WebMCPToolSource",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "window_id",
+    "tab_id",
+    "page_title",
+    "page_url",
+    "frame"
+  ],
+  "properties": {
+    "window_id": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Monotonically increasing identifier for the browser window during the current browser process."
+    },
+    "tab_id": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Monotonically increasing identifier for the tab during the current browser process."
+    },
+    "target_id": {
+      "type": "string",
+      "description": "CDP target ID for a custom tool's registration tab; omitted for page-provided tools."
+    },
+    "page_title": {
+      "type": "string",
+      "description": "Current title of the top-level page."
+    },
+    "page_url": {
+      "type": "string",
+      "description": "Current URL of the top-level page with the fragment omitted."
+    },
+    "frame": {
+      "oneOf": [
+        {
+          "$ref": "WebMCPToolFrame.json"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "Embedded frame that registered the tool, or null when the top-level page registered it."
+    },
+    "custom": {
+      "$ref": "WebMCPCustomToolSource.json"
+    }
+  }
+}

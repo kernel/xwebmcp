@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/kernel/xwebmcp/spec/schemas/CustomWebMCPDefinition.json",
+  "title": "CustomWebMCPDefinition",
+  "type": "object",
+  "required": [
+    "id",
+    "namespace",
+    "kind",
+    "match",
+    "tool"
+  ],
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^ct_[a-z][a-z0-9]{23}$"
+    },
+    "namespace": {
+      "type": "string"
+    },
+    "kind": {
+      "type": "string",
+      "pattern": "^(page|cdp)$"
+    },
+    "match": {
+      "$ref": "CustomWebMCPMatch.json"
+    },
+    "tool": {
+      "$ref": "WebMCPToolMetadata.json"
+    }
+  },
+  "additionalProperties": false
+}

@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/kernel/xwebmcp/spec/schemas/CustomWebMCPMatch.json",
+  "title": "CustomWebMCPMatch",
+  "type": "object",
+  "required": [
+    "url_patterns"
+  ],
+  "properties": {
+    "url_patterns": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "string"
+      }
+    }
+  },
+  "additionalProperties": false
+}
