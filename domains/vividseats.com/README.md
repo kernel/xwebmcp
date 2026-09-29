@@ -4,8 +4,8 @@ Tools for the Vivid Seats US marketplace (https://www.vividseats.com): event sea
 
 | tool | file | status | notes |
 |------|------|--------|-------|
-| get_ticket_offers | [get_ticket_offers.js](get_ticket_offers.js) | draft | Listings for one event, cheapest first, with quantity, all-in price range, zone and section filters, zone/section grouping and the site's stated price basis |
-| search_events | [search_events.js](search_events.js) | draft | Events by text, place, dates, category, performer, venue and lowest-price ceiling, one bounded page at a time |
+| get_ticket_offers | [get_ticket_offers.js](get_ticket_offers.js) | verified | Listings for one event, cheapest first, with quantity, all-in price range, zone and section filters, zone/section grouping and the site's stated price basis |
+| search_events | [search_events.js](search_events.js) | verified | Events by text, place, dates, category, performer, venue and lowest-price ceiling, one bounded page at a time |
 
 ## Native WebMCP tools
 
@@ -72,7 +72,7 @@ Both tools match only `https://www.vividseats.com/*`, not the default `https://v
 
 ## QA
 
-Not yet signed off by an independent reviewer; both tools are `draft`.
+Both tools are `verified` as of 2026-09-29: an independent reviewer (`agt_0257fb751e04553b9365`) signed off on the final source (`search_events.js` and `get_ticket_offers.js` as of `62722a2`) after three review rounds, and live success was shown on the real site from pages other than an event page. The status describes the Kernel browser runtime; the Chrome extension was only exercised headlessly with a simulated site grant (below).
 
 Independent QA round 1 (Hypeship reviewer `agt_0257fb751e04553b9365`, 2026-09-29) on `d759de8`: **FAIL**. About 230 live invocations on Kernel browsers (US residential, default stealth and Japan residential egress), 23 more through the Chrome extension, and 168 outputs validated against the output schemas with no violations. Findings, all fixed in the next commit:
 
@@ -84,6 +84,10 @@ Independent QA round 1 (Hypeship reviewer `agt_0257fb751e04553b9365`, 2026-09-29
 6. README and schema text that live behavior contradicted (`RESCHEDULED` and TBD events do occur; the direction of the price-group difference varies by event; the page collapses same-section general-admission rows so its listing count can be smaller; the bare apex redirects to `www`) were corrected. `purchasable_quantities` is no longer cut off at 20.
 
 Independent QA round 2 (same reviewer, 2026-09-29) on `7300723`: **PASS**. All six round-1 findings reproduced as fixed on Kernel and, for 1, 2 and 5, in the extension; about 280 more outputs validated against the output schemas with no violations; paging was checked at the window edges and at exact-multiple totals. One minor finding, fixed in the next commit: the "already started" warning also fired for time-TBD events, whose placeholder start instant (23:59Z on the local date) is not a stated start time. The past-the-end message also now reads "N page(s) at page_size M".
+
+Independent QA round 3 (same reviewer, 2026-09-29) on `62722a2`: **PASS**, no defects. The time-TBD warning fix was checked by frozen-clock replay of a live response and by scanning 797 live events for today through 1 October (the warning count equalled the events with a stated start time before the observation on every page); a time-TBD event whose placeholder instant is already past could not be found live, so that suppression is proven by replay and the unit test only. The past-the-end message, window edges and `has_more` arithmetic were unchanged. `get_ticket_offers.js` was byte-identical to round 2.
+
+Live end-to-end success cases (2026-09-29, Kernel, signed out): `search_events {query: "olivia rodrigo", page_size: 3}` and `get_ticket_offers {event: "6969246", limit: 3}` from `/explore`; both tools from a performer page (`/olivia-rodrigo-tickets/performer/130861`), from a 404 page, and from the home page; in the extension, both from `/explore` (`get_ticket_offers {event: "6969246", quantity: 2}` returned 3 offers from 44 matching listings). Page-versus-tool comparison: the reviewer matched the event page's first 12 rows (section, row, price) at quantity 1 and 2 on event 6969246, and the page's listing counts on two theatre events (136 for any quantity and 112 for two tickets on one, 44 and 44 on the other); the builder matched 41 of 41 listings and the first 12 rows at quantity 2 on another event. The page groups same-section general-admission rows, so its count is smaller than the tool's on events that have them.
 
 The reviewer's Kernel and extension results matched each other apart from two runtime differences: non-ASCII output reaches the caller as a JSON string on Kernel and as an object in the extension, and a navigation that interrupts a call ends as `outcome_unknown` immediately in the extension and after the full timeout on Kernel. The extension run was headless Chromium 153 with the site-access grant simulated by a `host_permissions` entry in a scratch copy of the manifest, so the interactive grant, the popup and the side panel are unverified.
 

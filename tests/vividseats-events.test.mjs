@@ -166,10 +166,15 @@ for (const name of NAMES) {
   });
 }
 
-test("registry lists exactly the two vividseats.com tools, sorted, as drafts", () => {
+test("registry lists exactly the two vividseats.com tools, sorted, with their QA provenance", () => {
   const entries = registry.tools.filter(t => t.domain === "vividseats.com");
   assert.deepEqual(entries.map(t => t.tool), ["get_ticket_offers", "search_events"]);
-  for (const entry of entries) { assert.equal(entry.status, "draft"); assert.equal(entry.last_verified, null); assert.equal(entry.namespace, "vividseats.com"); }
+  for (const entry of entries) {
+    assert.equal(entry.status, "verified");
+    assert.match(entry.last_verified, /^\d{4}-\d{2}-\d{2}$/);
+    assert.match(entry.provenance.qa_agent, /^agt_[0-9a-f]{20}$/);
+    assert.equal(entry.namespace, "vividseats.com");
+  }
 });
 
 test("the schema checker is not vacuous", () => {

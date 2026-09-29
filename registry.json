@@ -1284,9 +1284,12 @@
       "url_patterns": [
         "https://www.vividseats.com/*"
       ],
-      "status": "draft",
-      "last_verified": null,
-      "notes": "Public, read-only page tool on www.vividseats.com: an event's listings with all-in USD price per ticket (cheapest first), optional quantity, price-range, zone and section filters and zone/section grouping, plus the price components the site says the all-in price includes. Not yet independently QA'd. Never selects, carts or buys."
+      "status": "verified",
+      "last_verified": "2026-09-29",
+      "notes": "Independent QA passed on the final source; live success from the home, Explore, performer and 404 pages on Kernel. Public, read-only page tool on www.vividseats.com: an event's listings with all-in USD price per ticket (cheapest first), optional quantity, price-range, zone and section filters and zone/section grouping, plus the price components the site says the all-in price includes. Rows and prices matched the event page on the events compared; the page collapses same-section general-admission rows. Never selects, carts or buys.",
+      "provenance": {
+        "qa_agent": "agt_0257fb751e04553b9365"
+      }
     },
     {
       "domain": "vividseats.com",
@@ -1297,9 +1300,12 @@
       "url_patterns": [
         "https://www.vividseats.com/*"
       ],
-      "status": "draft",
-      "last_verified": null,
-      "notes": "Public, read-only page tool on www.vividseats.com: events by text, place, dates, category, performer, venue and lowest-price ceiling with bounded pages. Prices and counts come from the site's search index and can be stale. Not yet independently QA'd."
+      "status": "verified",
+      "last_verified": "2026-09-29",
+      "notes": "Independent QA passed on the final source; live success from the home, Explore, performer and 404 pages on Kernel. Public, read-only page tool on www.vividseats.com: events by text, place (city lookup or coordinates), dates, category, performer, venue and lowest-price ceiling, one page at a time within the site's 1000-match window. Prices and counts come from the site's search index and can be stale; the radius is approximate (the tool warns); USD only.",
+      "provenance": {
+        "qa_agent": "agt_0257fb751e04553b9365"
+      }
     }
   ]
 }
