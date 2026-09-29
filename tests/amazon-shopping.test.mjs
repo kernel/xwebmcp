@@ -199,11 +199,11 @@ for (const name of NAMES) {
 
 test("Amazon's AI-agent Conditions of Use notice is access_gated, never a layout change, and is not followed or dismissed", async () => {
   const gate = "<html><head><title>Amazon.com</title></head><body><h4>Continued access by an unauthorized AI agent violates Amazon\u2019s Conditions of Use, to which our customers have agreed.</h4><a href=\"/continue\">Continue</a><a href=\"/gp/help/customer/display.html\">Conditions of Use</a></body></html>";
-  const inputs = { search_products: { query: "test" }, get_product: { asin: "B0TEST0001" }, get_best_sellers: { category: "kitchen" } };
-  for (const name of NAMES) {
+  const cases = [["search_products", { query: "test" }], ["get_product", { asin: "B0TEST0001" }], ["get_best_sellers", { category: "kitchen" }], ["get_best_sellers", {}]];
+  for (const [name, input] of cases) {
     const { requests, run } = harness(name, { handler: serve(200, gate) });
-    const result = await run(inputs[name]);
-    assert.equal(result.error_kind, "access_gated", name);
+    const result = await run(input);
+    assert.equal(result.error_kind, "access_gated", `${name} ${JSON.stringify(input)}`);
     assert.match(result.error_message, /never accepts or dismisses it/);
     assert.deepEqual(requests.map(r => r.method), ["GET"], `${name} made exactly one read request and no follow-up`);
   }
@@ -369,6 +369,8 @@ test("search_products: every requested filter must be kept by the site, not just
   const kept = await echoed(["p_123:185621,p_36:2000-3500", "p_123:185621"], "Selected filters: Testbrand, $20–$35", ["p_123:185621"], { min_price_cents: 2000, max_price_cents: 3500 });
   assert.equal(kept.status, "ok", "the filters may be split across several hidden inputs");
   assert.deepEqual(kept.facet_ids, ["p_123:185621"]);
+  const later = await echoed(["p_123:185621", "p_123:185621,p_36:2000-3500"], "Selected filters: Testbrand, $20–$35", ["p_123:185621"], { min_price_cents: 2000, max_price_cents: 3500 });
+  assert.equal(later.status, "ok", "a requested filter that only a later hidden input holds still counts as kept");
   const fallback = await echoed([], "Selected filters: Testbrand", ["p_123:185621"]);
   assert.equal(fallback.status, "ok", "without the site's echo, its own filter summary is the only signal");
 });

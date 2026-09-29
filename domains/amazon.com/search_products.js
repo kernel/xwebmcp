@@ -9,7 +9,7 @@
       properties: {
         query: { type: "string", minLength: 1, maxLength: 200, description: "Keywords as a shopper would type them, e.g. 'insulated water bottle 32 oz'." },
         sort_by: { enum: ["relevance", "price_low_to_high", "price_high_to_low", "highest_rated", "newest", "bestselling"], default: "relevance", description: "The site's Sort menu: Featured, Price: Low to High, Price: High to Low, Avg. Customer Review, Newest Arrivals, Best Sellers. These are the only orders the site offers." },
-        min_price_cents: { type: "integer", minimum: 0, maximum: 100000000, description: "Lowest item price in US cents (2500 is $25.00), applied through the site's price filter. The site filters on the price before any discount, so a returned price_cents can fall below the bound." },
+        min_price_cents: { type: "integer", minimum: 0, maximum: 100000000, description: "Lowest item price in US cents (2500 is $25.00), applied through the site's price filter. The site's price filter can still return items whose shown price is outside the bounds, so check price_cents. Bounds outside the range the site offers for the query are clamped; applied_filters_text shows what was applied." },
         max_price_cents: { type: "integer", minimum: 0, maximum: 100000000, description: "Highest item price in US cents, applied like min_price_cents. Must not be below min_price_cents." },
         page: { type: "integer", minimum: 1, maximum: 20, default: 1, description: "Results page. Amazon serves about 48 results per page and often stops after 7 pages; the response reports total_pages." },
         limit: { type: "integer", minimum: 1, maximum: 60, default: 20, description: "Maximum products to return from that page." },
