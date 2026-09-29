@@ -3,7 +3,7 @@
   match: { url_patterns: ["https://www.dfm.ae/*", "https://marketwatch.dfm.ae/*"] },
   tool: {
     name: "search_securities",
-    description: "Find instruments in the Dubai Financial Market (dfm.ae) listed-securities directory by symbol or part of a name, e.g. 'emaar', 'DEWA' or 'takaful'. Searches the directory lists the site itself publishes (equities, bonds, sukuk, funds, ETFs, REITs; all six unless security_type is given) and returns matches ranked exact symbol, symbol prefix, name prefix, then any other match. Each match has the symbol to pass to get_security or get_price_history, name, exchange (DFM or Nasdaq Dubai), sector, the site's listing date and the site's 'Active' flag. The Active flag is the directory's own and is not reliable on its own: a matured bond and a fund flagged active in the directory were labelled 'DELISTED' on their DFM company page. The directory does not contain every symbol the site can quote (a retail sukuk resolved by get_security was absent from every list), so 'no_results' does not prove a symbol does not exist; try get_security with the exact symbol. If one list cannot be loaded the others are still searched and the failed list is named in failed_types, so treat results as incomplete when failed_types is not empty. Read-only, public, no sign-in; sends one request per searched list to api2.dfm.ae and never navigates the tab. Exchange listing data only: it does not rate, recommend or rank securities for investing.",
+    description: "Find instruments in the Dubai Financial Market (dfm.ae) listed-securities directory by symbol or part of a name, e.g. 'emaar', 'DEWA' or 'takaful'. Searches the directory lists the site itself publishes (equities, bonds, sukuk, funds, ETFs, REITs; all six unless security_type is given) and returns matches ranked exact symbol, symbol prefix, name prefix, then any other match. Each match has the symbol to pass to get_security or get_price_history, name, exchange (DFM or Nasdaq Dubai), sector, the site's listing date and the site's 'Active' flag. The Active flag is the directory's own and is not reliable on its own: a matured bond and a fund flagged active in the directory were labelled 'DELISTED' on their DFM company page. The directory does not contain every symbol the site can quote (a retail sukuk resolved by get_security was absent from every list), so 'no_results' does not prove a symbol does not exist; try get_security with the exact symbol. If one list cannot be loaded the others are still searched and the failed list is named in failed_types, so treat results as incomplete when failed_types is not empty. Read-only, public, no sign-in; sends one request per searched list to api2.dfm.ae (sequentially, within an overall 45 second budget; lists not reached are named in failed_types) and never navigates the tab. Exchange listing data only: it does not rate, recommend or rank securities for investing.",
     inputSchema: {
       type: "object", additionalProperties: false, required: ["query"],
       properties: {
@@ -44,7 +44,7 @@
                   listing_date: { type: ["string", "null"], description: "YYYY-MM-DD, from the directory's listing date." },
                   active: { type: ["boolean", "null"], description: "The directory's own Active flag; see the tool description for why it is not proof of current listing." },
                   foreign_ownership_allowed: { type: ["boolean", "null"], description: "The directory's ForeignOwnershipAllowed flag." },
-                  profile_url: { type: ["string", "null"], description: "DFM company page, only for exchange DFM; null for other exchanges." }
+                  profile_url: { type: ["string", "null"], description: "DFM company page for a DFM or Nasdaq Dubai instrument; null for any other exchange string." }
                 }
               }
             }
@@ -88,11 +88,14 @@
     if (!Number.isInteger(limit) || limit < 1 || limit > 50) return fail("invalid_input", "limit must be an integer from 1 to 50.");
     const types = args.security_type === undefined ? Object.keys(LISTS) : [args.security_type];
 
+    const deadline = Date.now() + 45000;
     const load = async type => {
+      const remaining = deadline - Date.now();
+      if (remaining < 1000) return { kind: "site_error", message: "The 45 second search budget ran out before this list could be requested." };
       let res;
       try {
         res = await fetch(API, {
-          method: "POST", credentials: "omit", signal: AbortSignal.timeout(20000),
+          method: "POST", credentials: "omit", signal: AbortSignal.timeout(Math.min(20000, remaining)),
           headers: { accept: "application/json", "content-type": "application/x-www-form-urlencoded" },
           body: "Command=FreshSecuritiesLists&Language=en&lang=en&securitytype=" + LISTS[type]
         });
@@ -145,7 +148,7 @@
         item: {
           symbol, name, exchange, security_type: type, sector: text(row.Sector), listing_date: listingDate(row.ListingDate),
           active: flag(row.Active), foreign_ownership_allowed: flag(row.ForeignOwnershipAllowed),
-          profile_url: exchange === "DFM" ? "https://www.dfm.ae/the-exchange/market-information/company/" + encodeURIComponent(symbol) : null
+          profile_url: exchange && /^(dfm|nasdaq dubai)$/i.test(exchange) ? "https://www.dfm.ae/the-exchange/market-information/company/" + encodeURIComponent(symbol) : null
         }
       });
     }

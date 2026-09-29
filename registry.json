@@ -125,7 +125,7 @@
       ],
       "status": "draft",
       "last_verified": null,
-      "notes": "Daily OHLCV for one symbol between two dates (newest first, limit 500). Public feed serves a limited window; on 2026-09-29 the earliest equity row was 2024-12-31. Empty history is split into no_results vs not_found with a profile lookup. Data timing is reported as unknown (real-time vs delayed cannot be determined). Fixture-tested; live-invoked on a Kernel browser. Not yet independently QA'd."
+      "notes": "Daily OHLCV for one symbol between two dates (newest first, limit 500). Public feed serves a limited window; on 2026-09-29 the earliest equity row was 2024-12-31. Empty history is split into no_results vs not_found with a profile lookup. Data timing is reported as unknown (real-time vs delayed cannot be determined). Fixture-tested; live-invoked on a Kernel browser. Independent QA round 1 found no defect in this tool's data (matched the company page's Daily Summary on three symbols) and flagged a wrong Nasdaq Dubai claim in its description, now corrected; awaiting re-review of the fixed source."
     },
     {
       "domain": "dfm.ae",
@@ -139,7 +139,7 @@
       ],
       "status": "draft",
       "last_verified": null,
-      "notes": "Identity plus the published quote for one symbol from DFM's company-profile feed, with quote.status for absent/zero prices and timing.last_trade_date; real-time vs delayed is always reported as unknown. Fixture-tested; live-invoked on a Kernel browser. Not yet independently QA'd."
+      "notes": "Identity from DFM's company-profile feed plus the quote block from the Trading-tab feed the company page renders (the profile feed's own quote is zero for some live instruments), with quote.status for absent/zero prices, trades, and timing.last_trade_date; real-time vs delayed is always reported as unknown. Fixture-tested; live-invoked on a Kernel browser and checked against the rendered page on 16 instruments. Independent QA round 1 failed the earlier source; awaiting re-review of the fix."
     },
     {
       "domain": "dfm.ae",
@@ -153,7 +153,7 @@
       ],
       "status": "draft",
       "last_verified": null,
-      "notes": "Symbol/name search over the six directory lists the site publishes (equities, bonds, sukuk, funds, ETFs, REITs), ranked, with failed lists named in failed_types. The directory's Active flag is unreliable and some symbols are absent from it. Fixture-tested; live-invoked on a Kernel browser. Not yet independently QA'd."
+      "notes": "Symbol/name search over the six directory lists the site publishes (equities, bonds, sukuk, funds, ETFs, REITs), ranked, with failed lists named in failed_types and an overall 45 s request budget. The directory's Active flag is unreliable and some symbols are absent from it. Fixture-tested; live-invoked on a Kernel browser. Independent QA round 1 found no blocking defect here; awaiting re-review of the fixed source."
     },
     {
       "domain": "doordash.com",
