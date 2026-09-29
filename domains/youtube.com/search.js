@@ -217,7 +217,7 @@
         const label = labels[input[key]];
         const group = (groupsOf(step.json) || []).find(g => g.title === title);
         const option = group && group.options.find(o => o.label === label);
-        if ((!option || (option.disabled && !option.selected)) && isEmptyPage(step.json)) return noResults(step.json);
+        if ((!option || option.disabled) && isEmptyPage(step.json)) return noResults(step.json);
         if (!option) return fail("filter_unavailable", "The site offers no '" + label + "' option in its '" + title + "' filter for this search" + (group ? " (offered: " + group.options.map(o => o.label).join(", ") + ")" : " (the filter group is not offered)") + ". Nothing was changed.");
         if (option.selected) continue;
         if (option.disabled) return fail("filter_unavailable", "The site shows the '" + label + "' option in its '" + title + "' filter but disables it for this search: the site offers some filters only for some result types (for example neither Duration nor Upload date for channels or playlists, and no Duration for Shorts). Nothing was changed.");
