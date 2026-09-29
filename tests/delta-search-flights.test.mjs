@@ -11,8 +11,8 @@ const input = { origin: "CVG", destination: "SFO", depart_date: day, trip_type: 
 // opens prefilled with the geolocated origin and the caret lands inside it, which is how the
 // macOS run produced "CVCVG". The harness stops at the trip-type combobox, which it omits.
 function harness(options = {}) {
-  const box = { value: "", label: null };
-  const events = { clears: 0, typed: [], chosen: [], keys: [] };
+  const box = { value: "", label: null, selected: false };
+  const events = { selectAll: 0, typed: [], chosen: [], keys: [] };
   const nodes = () => [
     { role: "button", name: "Origin, CVG, Cincinnati, OH", backendDOMNodeId: 1 },
     { role: "button", name: "One Way Route Picker Destination", backendDOMNodeId: 2 },
@@ -25,7 +25,10 @@ function harness(options = {}) {
     gotoUrl: async () => {},
     waitForElement: async () => true,
     waitMs: async () => {},
-    cdp: async () => ({}),
+    cdp: async (method, params) => {
+      if (params?.commands?.includes("selectAll")) { events.selectAll++; if (!options.clearFails) box.selected = true; }
+      return {};
+    },
     accessibilitySnapshot: async () => ({ nodes: nodes() }),
     click: async n => {
       if (n?.role === "button") box.label = n.name.startsWith("Origin") ? "Origin" : "Destination";
@@ -34,13 +37,15 @@ function harness(options = {}) {
     },
     pressKey: async key => {
       events.keys.push(key);
-      if (key === "Backspace") box.value = box.value.slice(0, -1);
-      else if (key.length === 1) box.value += options.doubled ? key.toUpperCase().repeat(2) : key.toUpperCase();
+      if (key === "Backspace") box.value = box.selected ? "" : box.value.slice(0, -1);
+      else if (key.length === 1) box.value = (box.selected ? "" : box.value) + (options.doubled ? key.toUpperCase().repeat(2) : key.toUpperCase());
+      box.selected = false;
     },
     js: async (fn) => {
       const body = fn.toString();
       if (body.includes("findFilghtsCta")) return true;
-      if (body.includes("HTMLInputElement")) { events.clears++; if (!options.clearFails) box.value = ""; return !options.clearFails; }
+      if (body.includes("isContentEditable")) return box.value;
+      if (body.includes("select()")) return null;
       if (body.includes("activeElement?.value")) { events.typed.push(box.value); return box.value; }
       return null;
     }
@@ -54,8 +59,8 @@ test("clears the prefilled airport box before typing and chooses the typed airpo
   const out = await h.run();
   assert.deepEqual(h.events.typed, ["CVG", "SFO"]);
   assert.deepEqual(h.events.chosen, ["CVG", "SFO"]);
-  assert.equal(h.events.clears, 2);
-  assert.ok(!h.events.keys.includes("Backspace"), "no keyboard select-all/backspace clear");
+  assert.equal(h.events.selectAll, 2);
+  assert.equal(h.events.keys.filter(k => k === "Backspace").length, 2);
   assert.equal(out.status, "error");
   assert.match(out.message, /UI_CHANGED: missing combobox/);
 });
@@ -72,6 +77,6 @@ test("stops when the airport box cannot be cleared", async () => {
   const h = harness({ clearFails: true });
   const out = await h.run();
   assert.equal(out.status, "error");
-  assert.match(out.message, /could not clear the Origin airport box/);
+  assert.match(out.message, /typeInto: could not clear the field, it still holds 1 character\(s\)/);
   assert.deepEqual(h.events.chosen, []);
 });
