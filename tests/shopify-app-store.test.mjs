@@ -134,7 +134,7 @@ test("search_apps reads one results page and returns canonical, allowlisted fiel
 
 test("search_apps does not read a sponsored card's Ad label as its pricing or tagline", async () => {
   const card = (handle, extra) => `<div data-app-card-handle-value="${handle}" data-app-card-name-value="Sponsored ${handle}" data-app-card-app-link-value="https://apps.shopify.com/${handle}?surface_type=search_ad"><div><div>
-    <div><a href="https://apps.shopify.com/${handle}">Sponsored ${handle}</a></div>${extra}<div><span>Free plan available</span></div><div>Fabricated tagline</div></div></div></div>`;
+    <div><a href="https://apps.shopify.com/${handle}">Sponsored ${handle}</a>${handle === "ad-in-name" ? "<span>Ad</span>" : ""}</div>${extra}<div><span>Free plan available</span></div><div>Fabricated tagline</div></div></div></div>`;
   const body = `<html><body><turbo-frame id="search_page"><section id="search-page-component">${card("ad-own-block", "<div><span>Ad</span></div>")}${card("ad-in-name", "")}</section></turbo-frame></body></html>`;
   const { output } = await run("search_apps", { query: "sponsored" }, { respond: () => ({ status: 200, body }) });
   assertConforms("search_apps", output);
@@ -142,6 +142,17 @@ test("search_apps does not read a sponsored card's Ad label as its pricing or ta
     ["ad-own-block", true, "Free plan available", "Fabricated tagline"],
     ["ad-in-name", true, "Free plan available", "Fabricated tagline"]
   ]);
+});
+
+test("search_apps skips a built-in Shopify feature result, keeps positions, and says so", async () => {
+  const feature = `<div data-app-card-handle-value="bif:example-feature" data-app-card-name-value="Example feature" data-app-card-app-link-value="https://apps.shopify.com/built-in-features/example-feature?surface_type=search"><div><div><div><a href="https://apps.shopify.com/built-in-features/example-feature">Example feature</a></div><div></div><div>Recover lost sales</div><div data-test-id="built-in-feature"><span>Included with Shopify</span></div></div><div><a data-element="built_in_feature_search_card_cta" href="https://admin.example.test/x">Get started</a></div></div></div>`;
+  const app = `<div data-app-card-handle-value="real-app" data-app-card-name-value="Real App" data-app-card-app-link-value="https://apps.shopify.com/real-app?surface_type=search"><div><div><div><a href="https://apps.shopify.com/real-app">Real App</a></div><div><span>Free</span></div><div>Fabricated tagline</div></div></div></div>`;
+  const body = `<html><body><turbo-frame id="search_page"><section id="search-page-component">${feature}${app}</section></turbo-frame></body></html>`;
+  const { output } = await run("search_apps", { query: "recover" }, { respond: () => ({ status: 200, body }) });
+  assertConforms("search_apps", output);
+  assert.deepEqual(output.apps.map(a => [a.position, a.handle]), [[2, "real-app"]]);
+  assert.deepEqual(output.warnings, ["skipped result 1: no readable handle or name"]);
+  assert.doesNotMatch(JSON.stringify(output), /admin\.example|built-in-features/, "the feature's admin link is not returned");
 });
 
 test("search_apps warns when the site answered in another language, and never reads a translated rating row as pricing", async () => {
