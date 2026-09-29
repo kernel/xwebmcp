@@ -82,7 +82,7 @@ function maps(o = {}) {
   const searchButton = new El("button", { "aria-label": "Search" });
   if (!o.noSearchBox) { body.append(box); body.append(searchButton); }
   body.append(results);
-  const resetFeed = (cards, query) => { feed.nodes = []; feed.attrs["aria-label"] = query === undefined || o.noFeedLabel ? "" : `Results for ${query}`; cards.forEach(p => feed.append(cardEl(p, app))); };
+  const resetFeed = (cards, query) => { feed.nodes = []; feed.attrs["aria-label"] = query === undefined || o.noFeedLabel ? "" : o.labelSpaces ? `Results  for   ${query} \n` : `Results for ${query}`; cards.forEach(p => feed.append(cardEl(p, app))); };
   const setPath = (kind, slug, extra = "") => { state.path = `/maps/${kind}/${slug}/@10.0,-20.0,15z/data=${extra}`; };
   const dropPane = () => { if (state.pane) { body.nodes = body.nodes.filter(c => c !== state.pane); state.pane = null; } };
   app.openPlace = p => {
@@ -342,6 +342,23 @@ test("search_places still tells stale from fresh when the list carries no usable
   assert.equal((await call("search_places", never, { query: "new query" })).error_kind, "timeout");
   const repeat = maps({ noFeedLabel: true, path: "/maps/search/same+query/@10.0,-20.0,12z/data=!3m1", initialFeed: [place(6)], results: () => ({ type: "feed", places: [place(6)] }) });
   assert.deepEqual((await call("search_places", repeat, { query: "same query" })).places.map(p => p.name), ["Example Place 6"]);
+});
+
+test("search_places compares the list's label as a whole, ignoring case and spacing, never as a prefix or substring", async () => {
+  const [old, next] = [place(110), place(111)];
+  const prefix = maps({ initialFeed: [old], feedQuery: "coffee shops in Cincinnati OH", path: "/maps/search/coffee+shops+in+Cincinnati+OH/@10.0,-20.0,12z/data=!3m1", renderDelay: 9000, results: () => ({ type: "feed", places: [next] }) });
+  const out = await call("search_places", prefix, { query: "coffee shops" });
+  assert.deepEqual(out.places.map(p => p.name), ["Example Place 111"]);
+
+  const spaced = maps({ initialFeed: [old], feedQuery: "first query", labelSpaces: true, path: "/maps/search/first+query/@10.0,-20.0,12z/data=!3m1", renderDelay: 2000, results: () => ({ type: "feed", places: [old] }) });
+  await call("search_places", spaced, { query: "SECOND   Query" });
+  assert.ok(spaced.clock.now - Date.parse("2026-09-29T12:00:00Z") < 6000, "did not recognise a label that differs only in case and spacing");
+});
+
+test("search_places answers with a place whose pane Maps updates in place", async () => {
+  const [open, target] = [place(112), place(113)];
+  const out = await call("search_places", maps({ initialPlace: open, path: openAt(open), reusePane: true, results: () => ({ type: "place", place: target }) }), { query: "the next landmark" });
+  assert.deepEqual([out.name, out.feature_id], ["Example Place 113", target.fid]);
 });
 
 test("search_places treats an 'Ad' label as sponsored and drops symbol-only detail parts", async () => {

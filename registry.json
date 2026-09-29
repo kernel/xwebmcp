@@ -278,9 +278,12 @@
         "https://www.google.com/maps/*",
         "https://www.google.com/maps?*"
       ],
-      "status": "draft",
-      "last_verified": null,
-      "notes": "Google Maps place details (name, category, rating, address, phone, website, Plus Code, coordinates, open-status line, weekly hours when the pane lists them) for the open place or for a place_url from search_places results the tab is showing. Same-document page tool on Maps only; never navigates. Draft: two independent QA rounds found defects that were fixed; awaiting a final re-check."
+      "status": "qa_passed",
+      "last_verified": "2026-09-29",
+      "notes": "Google Maps place details (name, category, rating, address, phone, website, Plus Code, coordinates, open-status line, weekly hours when the pane lists them) for the open place or for a place_url from search_places results the tab is showing. Same-document page tool on Maps only; never navigates. Independent QA (three rounds, signed off on the final tool source) covered header ratings, hours, address-style panes, same-name places and switching places on the Kernel runtime, signed out. A call by place_url can return the Kernel runtime's empty output for places whose pane loads a child frame; call again with no input. Signed-in behavior and the Chrome extension for the final source are untested.",
+      "provenance": {
+        "qa_agent": "agt_58cec00f988e4fa5f852"
+      }
     },
     {
       "domain": "google.com",
@@ -293,9 +296,12 @@
         "https://www.google.com/finance/*",
         "https://www.google.com/finance?*"
       ],
-      "status": "draft",
-      "last_verified": null,
-      "notes": "Google Finance quote for a TICKER:EXCHANGE symbol (price, change against previous close, quote time, key statistics as displayed) read from one same-origin request to the quote page; page tool on Finance only. Currency pairs and crypto are not supported. Does not register in the Chrome extension on Finance while its Trusted Types check rejects the extension's page-tool compile. Draft: two independent QA rounds found defects that were fixed; awaiting a final re-check."
+      "status": "qa_passed",
+      "last_verified": "2026-09-29",
+      "notes": "Google Finance quote for a TICKER:EXCHANGE symbol (price, change against previous close, quote time, key statistics as displayed) from one same-origin request; page tool on Finance only. Independent QA (three rounds, signed off on the final tool source) covered success from several Finance pages, not_found, malformed and look-alike input, and schema conformance on the Kernel runtime, signed out. Stocks, ETFs and indices only. Does not register in the Chrome extension on Finance while the extension's page-tool compile is rejected by Finance's Trusted Types policy (an extension gap).",
+      "provenance": {
+        "qa_agent": "agt_58cec00f988e4fa5f852"
+      }
     },
     {
       "domain": "google.com",
@@ -325,9 +331,12 @@
         "https://www.google.com/maps/*",
         "https://www.google.com/maps?*"
       ],
-      "status": "draft",
-      "last_verified": null,
-      "notes": "Google Maps place search through the tab's own Maps search box: up to 20 loaded results with category, address, rating, price range, status text, sponsored flag, coordinates and a canonical place_url; single-place and no-results outcomes are explicit. Page tool on Maps only; does not scroll or page. Draft: two independent QA rounds found defects that were fixed; awaiting a final re-check."
+      "status": "qa_passed",
+      "last_verified": "2026-09-29",
+      "notes": "Google Maps place search through the tab's own Maps search box: up to 20 loaded results with category, address, rating, price range, status text, sponsored flag, coordinates and a canonical place_url; single-place, bare-map-point and no-results outcomes are explicit. Page tool on Maps only; does not scroll or page. Independent QA (three rounds, signed off on the final tool source) covered success, staleness under network latency, malformed input and unsuitable pages on the Kernel runtime, signed out. Bounded on purpose (see the README's terms note, which a maintainer should confirm). Signed-in behavior and the Chrome extension for the final source are untested.",
+      "provenance": {
+        "qa_agent": "agt_58cec00f988e4fa5f852"
+      }
     },
     {
       "domain": "instacart.com",
