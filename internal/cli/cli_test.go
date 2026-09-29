@@ -190,13 +190,22 @@ func TestAttachKernel(t *testing.T) {
 		var c call
 		json.NewDecoder(r.Body).Decode(&c)
 		calls = append(calls, c)
-		name := strings.Trim(c.Source, "[]")
+		var names []string
+		if c.Namespace == "aa.com" {
+			names = []string{"aa"}
+		} else {
+			names = []string{"login", "search"}
+		}
+		var tools []map[string]any
+		for _, name := range names {
+			tools = append(tools, map[string]any{
+				"id": "ct_" + name, "namespace": c.Namespace, "kind": "cdp",
+				"match": map[string]any{"url_patterns": []string{}},
+				"tool":  map[string]any{"name": name, "description": "", "inputSchema": map[string]any{}},
+			})
+		}
 		w.WriteHeader(http.StatusCreated)
-		json.NewEncoder(w).Encode(map[string]any{"tools": []map[string]any{{
-			"id": "ct_" + name, "namespace": c.Namespace, "kind": "cdp",
-			"match": map[string]any{"url_patterns": []string{}},
-			"tool":  map[string]any{"name": name, "description": "", "inputSchema": map[string]any{}},
-		}}})
+		json.NewEncoder(w).Encode(map[string]any{"tools": tools})
 	})
 	srv := httptest.NewServer(mux)
 	defer srv.Close()
@@ -208,14 +217,15 @@ func TestAttachKernel(t *testing.T) {
 	if err := run(t, app, "attach", "--kernel", "abc"); err != nil {
 		t.Fatal(err)
 	}
-	if len(calls) != 3 {
+	if len(calls) != 2 {
 		t.Fatalf("calls = %+v", calls)
 	}
-	if calls[0].Namespace != "aa.com" || !calls[0].Force {
+	if calls[0].Namespace != "aa.com" || !calls[0].Force || calls[0].Source != "[...([aa])]" {
 		t.Errorf("first call = %+v", calls[0])
 	}
-	if calls[1].Namespace != "southwest.com" || !calls[1].Force || calls[2].Namespace != "southwest.com" || calls[2].Force {
-		t.Errorf("southwest calls = %+v %+v", calls[1], calls[2])
+	if calls[1].Namespace != "southwest.com" || !calls[1].Force ||
+		!strings.Contains(calls[1].Source, "...([login])") || !strings.Contains(calls[1].Source, "...([search])") {
+		t.Errorf("southwest batch = %+v", calls[1])
 	}
 	if !strings.Contains(out.String(), "attached 3 tool(s) to Kernel browser abc") {
 		t.Errorf("attach output:\n%s", out.String())
