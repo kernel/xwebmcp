@@ -1,14 +1,4 @@
 (() => {
-  const sessionCurrencySchema = {
-    type: ["object", "null"], additionalProperties: false, required: ["requested", "previous", "switched", "restored"],
-    properties: {
-      requested: { type: "string" },
-      previous: { type: ["string", "null"], description: "Currency the page showed before the tool ran; null when it was not a single currency code." },
-      switched: { type: "boolean", description: "True when the tool asked the site for a currency other than the previous one." },
-      restored: { type: ["boolean", "null"], description: "True when the previous currency was confirmed back; false when restoring failed; null when nothing needed restoring or it could not be attempted." }
-    },
-    description: "How the tool treated the site's session-wide display currency; null when no request was sent."
-  };
   const querySchema = {
     type: "object", additionalProperties: false,
     required: ["destination", "check_in", "check_out", "adults", "children_ages", "currency", "sort", "star_ratings", "min_review_score", "free_cancellation_only", "breakfast_included", "limit"],
@@ -43,17 +33,17 @@
     match: { url_patterns: ["https://www.booking.com/*"] },
     tool: {
       name: "search_stays",
-      description: "Search Booking.com stays (hotels, apartments and other properties) for a destination, dates and party, and read the first results page. Requires explicit check_in, check_out, adults and currency; runs the same search as the site's results page for one room and returns each property with its canonical URL, review score, the recommended unit and the site's displayed total for the whole stay. Use property_url with get_property for room-by-room rates. The output echoes the effective dates, guests and currency the site applied and a price_basis; a search the site did not apply as asked is an error, not a result. Read-only: it never selects a room or rate, saves to a list, reserves or opens checkout. Side effects: Booking.com records the search like any search, and the site's display currency is a browser-session setting, so the tool switches it to the requested currency and restores the previous one (session_currency says what happened). Prices can differ by session (member discounts when signed in), and a result page does not prove availability at booking time. Run it on any https://www.booking.com page in an English-language session. Returns at most one page of up to 25 properties; total_found is the site's full match count.",
+      description: "Search Booking.com stays (hotels, apartments and other properties) for a destination, dates and party, and read the first results page. Requires explicit check_in, check_out, adults and currency; runs the same search as the site's results page for one room and returns each property with its canonical URL, review score, the recommended unit and the site's displayed total for the whole stay. Use property_url with get_property for room-by-room rates. currency must be the currency the site is already showing (its header currency picker): the tool never changes the site's currency and fails with currency_mismatch, naming what the site shows, when they differ. The output echoes the effective dates, guests and currency the site applied and a price_basis; a search the site did not apply as asked is an error, not a result. Read-only: it never selects a room or rate, saves to a list, reserves or opens checkout, and changes no browser or account setting; Booking.com records the search like any search. Prices can differ by session (member discounts when signed in), and a result page does not prove availability at booking time. Run it on any https://www.booking.com page in an English-language session and do not navigate the tab while it runs. Returns at most one page of up to 25 properties; total_found is the site's full match count.",
       inputSchema: {
         type: "object", additionalProperties: false,
         required: ["destination", "check_in", "check_out", "adults", "currency"],
         properties: {
           destination: { type: "string", minLength: 2, maxLength: 100, description: "City, region, landmark or address as you would type it in the site's search box, for example 'Lisbon' or 'Springfield, Illinois'. The site picks the best match; check destination in the output, and add a region or country to disambiguate." },
-          check_in: { type: "string", pattern: "^\\d{4}-\\d{2}-\\d{2}$", description: "Check-in date, YYYY-MM-DD. Not earlier than yesterday (UTC); the site only accepts dates about a year ahead." },
+          check_in: { type: "string", pattern: "^\\d{4}-\\d{2}-\\d{2}$", description: "Check-in date, YYYY-MM-DD. Not earlier than yesterday (UTC); the site only accepts dates within its bookable window (observed to end about 16 months ahead)." },
           check_out: { type: "string", pattern: "^\\d{4}-\\d{2}-\\d{2}$", description: "Check-out date, YYYY-MM-DD, after check_in, at most 30 nights later." },
           adults: { type: "integer", minimum: 1, maximum: 30, description: "Number of adults in the single room searched." },
           children_ages: { type: "array", maxItems: 10, items: { type: "integer", minimum: 0, maximum: 17 }, description: "Age of each child at check-out, 0 to 17. Omit or leave empty for no children. The results page echoes only the number of children." },
-          currency: { type: "string", pattern: "^[A-Z]{3}$", description: "ISO 4217 code of a currency Booking.com offers, for example USD or EUR. All prices in the output are in this currency; an unsupported code is refused (currency_not_applied)." },
+          currency: { type: "string", pattern: "^[A-Z]{3}$", description: "ISO 4217 code of the currency the site is currently showing, for example USD. All prices in the output are in this currency. If the site shows another currency the call fails with currency_mismatch and says which." },
           sort: { type: "string", enum: ["recommended", "price_low_to_high", "review_score", "star_rating", "distance_from_center"], default: "recommended", description: "The site's ordering: 'Our top picks', 'Price (lowest first)', 'Best reviewed & lowest price', 'Property rating (high to low)' or 'Distance from downtown'." },
           star_ratings: { type: "array", maxItems: 5, uniqueItems: true, items: { type: "integer", minimum: 1, maximum: 5 }, description: "Keep only properties with these ratings (1 to 5 stars or squares)." },
           min_review_score: { type: "integer", enum: [6, 7, 8, 9], description: "Keep only properties scored at least this on the site's 10-point scale (6 Pleasant, 7 Good, 8 Very good, 9 Wonderful)." },
@@ -67,7 +57,7 @@
         oneOf: [
           {
             type: "object", additionalProperties: false,
-            required: ["status", "observed_at", "query", "effective", "price_basis", "destination", "total_found", "returned", "has_more", "results_url", "session_currency", "warnings", "properties"],
+            required: ["status", "observed_at", "query", "effective", "price_basis", "destination", "total_found", "returned", "has_more", "results_url", "warnings", "properties"],
             properties: {
               status: { const: "ok" },
               observed_at: { type: "string", description: "ISO timestamp of the search; prices and availability change constantly." },
@@ -87,7 +77,6 @@
               returned: { type: "integer", minimum: 1 },
               has_more: { type: "boolean", description: "True when more properties matched than were returned; later pages are not read." },
               results_url: { type: "string", format: "uri", description: "Booking.com results URL for this search without tracking parameters." },
-              session_currency: sessionCurrencySchema,
               warnings: { type: "array", items: { type: "string" } },
               properties: {
                 type: "array", minItems: 1,
@@ -119,7 +108,7 @@
                     price: {
                       type: ["object", "null"], additionalProperties: false, required: ["total", "original_total", "per_night_average", "total_text", "additional_charges_may_apply"],
                       properties: {
-                        total: { type: ["number", "null"], description: "Displayed price for the whole stay in effective.currency (the discounted price when original_total is set)." },
+                        total: { type: ["number", "null"], description: "Displayed price for the whole stay in effective.currency (the discounted price when original_total is set); null when the text could not be read as a number." },
                         original_total: { type: ["number", "null"], description: "Struck-through price before a deal or discount." },
                         per_night_average: { type: ["number", "null"], description: "The card's per-night figure; the site rounds it." },
                         total_text: { type: "string", description: "The total exactly as the card shows it." },
@@ -136,20 +125,19 @@
           },
           {
             type: "object", additionalProperties: false,
-            required: ["status", "observed_at", "query", "effective", "destination", "total_found", "session_currency", "message"],
+            required: ["status", "observed_at", "query", "effective", "destination", "total_found", "message"],
             properties: {
               status: { const: "no_results" }, observed_at: { type: "string" }, query: querySchema,
               effective: effectiveSchema, destination: destinationSchema, total_found: { const: 0 },
-              session_currency: sessionCurrencySchema, message: { type: "string" }
+              message: { type: "string" }
             }
           },
           {
-            type: "object", additionalProperties: false, required: ["status", "error_kind", "error_message", "session_currency"],
+            type: "object", additionalProperties: false, required: ["status", "error_kind", "error_message"],
             properties: {
               status: { const: "error" },
-              error_kind: { enum: ["invalid_input", "wrong_page", "unsupported_language", "challenge", "gated", "rate_limited", "search_not_accepted", "search_not_applied", "currency_not_applied", "site_changed", "site_error"] },
-              error_message: { type: "string", minLength: 1 },
-              session_currency: sessionCurrencySchema
+              error_kind: { enum: ["invalid_input", "wrong_page", "unsupported_language", "challenge", "gated", "rate_limited", "search_not_accepted", "search_not_applied", "currency_mismatch", "site_changed", "site_error"] },
+              error_message: { type: "string", minLength: 1 }
             }
           }
         ]
@@ -158,8 +146,7 @@
     },
     execute: async (input) => {
       const ORIGIN = "https://www.booking.com";
-      const sessionCurrency = { value: null };
-      const fail = (kind, message) => ({ status: "error", error_kind: kind, error_message: message, session_currency: sessionCurrency.value });
+      const fail = (kind, message) => ({ status: "error", error_kind: kind, error_message: message });
       const allowed = ["destination", "check_in", "check_out", "adults", "children_ages", "currency", "sort", "star_ratings", "min_review_score", "free_cancellation_only", "breakfast_included", "limit"];
       if (!input || typeof input !== "object" || Array.isArray(input) || Object.keys(input).some(k => !allowed.includes(k))) return fail("invalid_input", "Unknown or missing input; allowed fields are " + allowed.join(", ") + ".");
 
@@ -193,14 +180,12 @@
       };
       const params = new URLSearchParams({ ss: destination, checkin: query.check_in, checkout: query.check_out, group_adults: String(query.adults), no_rooms: "1", group_children: String(ages.length) });
       for (const age of ages) params.append("age", String(age));
-      params.set("selected_currency", query.currency);
       if (sortModes[sort]) params.set("order", sortModes[sort]);
       const filters = [...query.star_ratings.map(s => "class=" + s)];
       if (query.min_review_score) filters.push("review_score=" + query.min_review_score * 10);
       if (query.free_cancellation_only) filters.push("fc=2");
       if (query.breakfast_included) filters.push("mealplan=1");
       if (filters.length) params.set("nflt", filters.join(";"));
-      const resultsUrl = ORIGIN + "/searchresults.html?" + params.toString();
 
       if (window.location.origin !== ORIGIN) return fail("wrong_page", "Open any https://www.booking.com page first; this tool runs the site's search from that page.");
       if (!/^en(-|$)/i.test(document.documentElement.getAttribute("lang") || "")) return fail("unsupported_language", "This tool reads English labels; switch the Booking.com page language to English first.");
@@ -213,40 +198,36 @@
         return /^(\d{1,3}(,\d{3})+|\d+)(\.\d+)?$/.test(token[0]) ? Number(token[0].replace(/,/g, "")) : null;
       };
       const cfg = (html, re) => (re.exec(html) || [])[1] ?? null;
-      const previous = text(pickTid(document, "header-currency-picker-trigger"));
-      const previousCurrency = /^[A-Z]{3}$/.test(previous) ? previous : null;
-      const timeout = () => AbortSignal.timeout(25000);
       const observedAt = new Date().toISOString();
 
-      const run = async () => {
-        sessionCurrency.value = { requested: query.currency, previous: previousCurrency, switched: query.currency !== previousCurrency, restored: null };
-        const res = await fetch(ORIGIN + "/searchresults.html?" + params.toString(), { credentials: "include", headers: { accept: "text/html" }, signal: timeout() });
+      try {
+        const res = await fetch(ORIGIN + "/searchresults.html?" + params.toString(), { credentials: "include", headers: { accept: "text/html" }, signal: AbortSignal.timeout(25000) });
         const html = await res.text();
+        const botPage = /awswaf|AwsWafIntegration/i.test(html.slice(0, 20000));
         if (res.status === 429) return fail("rate_limited", "Booking.com returned HTTP 429; wait a few minutes before searching again.");
         if (res.status !== 200) {
-          if ([202, 403, 405].includes(res.status) || /awswaf|AwsWafIntegration|captcha/i.test(html.slice(0, 20000))) return fail("challenge", "Booking.com's bot protection answered with HTTP " + res.status + " instead of results; complete the check in the browser or wait before retrying.");
+          if ([202, 403, 405].includes(res.status) || botPage) return fail("challenge", "Booking.com's bot protection answered with HTTP " + res.status + " instead of results; complete the check in the browser or wait before retrying.");
           return fail("site_error", "Booking.com returned HTTP " + res.status + ".");
         }
         const final = new URL(res.url);
         if (/\/(sign-?in|login|consent)\b/i.test(final.pathname)) return fail("gated", "Booking.com asked for sign-in or consent (" + final.pathname + ") instead of showing results.");
-        if (res.redirected && !final.pathname.includes("searchresults")) return fail("search_not_accepted", "Booking.com redirected the search to " + final.pathname + ". It does that when it cannot resolve the destination or the dates are outside its bookable window (about one year ahead).");
+        if (res.redirected && !final.pathname.includes("searchresults")) return fail("search_not_accepted", "Booking.com redirected the search to " + final.pathname + ". It does that for a destination it cannot resolve and for dates in the past or beyond its bookable window (observed to end about 16 months ahead), and it may also do it when it treats the request as automated; the tool cannot tell which applied.");
         const doc = new DOMParser().parseFromString(html, "text/html");
-        if (/awswaf|AwsWafIntegration/i.test(html.slice(0, 20000)) && !doc.querySelector("h1")) return fail("challenge", "Booking.com served a bot-protection page instead of results; complete the check in the browser or wait before retrying.");
-
         const heading = /^(.*?):\s*([\d,]+)\s+propert(?:y|ies)\s+found/i.exec(text(doc.querySelector("h1")));
-        const cardEls = [...doc.querySelectorAll("[data-testid=\"property-card\"]")];
-        if (!heading) return fail("site_changed", "The results page has no 'N properties found' heading; Booking.com's markup may have changed.");
+        if (!heading) return botPage ? fail("challenge", "Booking.com served a bot-protection page instead of results; complete the check in the browser or wait before retrying.") : fail("site_changed", "The results page has no 'N properties found' heading; Booking.com's markup may have changed.");
         const totalFound = Number(heading[2].replace(/,/g, ""));
+        const cardEls = [...doc.querySelectorAll("[data-testid=\"property-card\"]")];
 
-        const effectiveCurrency = text(pickTid(doc, "header-currency-picker-trigger"));
+        const shownCurrency = text(pickTid(doc, "header-currency-picker-trigger"));
         const configCurrency = cfg(html, /\bb_selected_currency\s*:\s*'([A-Za-z_]+)'/);
         const checkIn = cfg(html, /"b_checkin_date"\s*:\s*'(\d{4}-\d{2}-\d{2})'/);
         const checkOut = cfg(html, /"b_checkout_date"\s*:\s*'(\d{4}-\d{2}-\d{2})'/);
         const interval = Number(cfg(html, /"b_checkin_checkout_interval"\s*:\s*(\d+)\s*,/));
         const occupancy = text(pickTid(doc, "occupancy-config"));
         const occ = { adults: Number((/(\d+)\s+adults?/i.exec(occupancy) || [])[1]), children: Number((/(\d+)\s+child(?:ren)?/i.exec(occupancy) || [])[1] || 0), rooms: Number((/(\d+)\s+rooms?/i.exec(occupancy) || [])[1]) };
-        if (!checkIn || !checkOut || !interval || !occ.adults || !occ.rooms || !configCurrency) return fail("site_changed", "The results page does not expose the dates, guests and currency it searched; Booking.com's markup may have changed.");
-        if (effectiveCurrency !== query.currency || configCurrency !== query.currency) return fail("currency_not_applied", "Booking.com did not apply currency " + query.currency + " (the page shows " + (effectiveCurrency || configCurrency || "an unknown currency") + "). Use a currency code the site's currency picker offers.");
+        if (!configCurrency || !occ.adults || !occ.rooms) return fail("site_changed", "The results page does not expose the currency and guests it searched; Booking.com's markup may have changed.");
+        if (shownCurrency !== query.currency || configCurrency !== query.currency) return fail("currency_mismatch", "Booking.com is showing " + (/^[A-Z]{3}$/.test(shownCurrency) && shownCurrency === configCurrency ? shownCurrency : "prices in a mix of currencies or one it does not label with a code") + ", not " + query.currency + ". This tool never changes the site's currency: pass the currency the site shows, or change it in the site's currency picker first.");
+        if (!checkIn || !checkOut || !interval) return fail("search_not_applied", "Booking.com did not apply the dates " + query.check_in + " to " + query.check_out + " (it ignores dates it cannot book, such as dates in the past) and returned an undated search.");
         if (checkIn !== query.check_in || checkOut !== query.check_out || occ.adults !== query.adults || occ.children !== ages.length || occ.rooms !== 1) {
           return fail("search_not_applied", "Booking.com searched " + checkIn + " to " + checkOut + " for " + occupancy + ", not the " + query.check_in + " to " + query.check_out + ", " + query.adults + " adults, " + ages.length + " children, 1 room requested.");
         }
@@ -255,9 +236,9 @@
         const dest = {
           name: heading[1].trim(), dest_id: cfg(html, /\bb_dest_id\s*:\s*'(-?\d+)'/), dest_type: cfg(html, /\bb_dest_type\s*:\s*'([a-z_]+)'/), country_code: cfg(html, /"b_countrycode"\s*:\s*'([a-z]{2})'/), breadcrumb: crumbs
         };
-        const effective = { check_in: checkIn, check_out: checkOut, nights: interval, adults: occ.adults, children: occ.children, rooms: occ.rooms, currency: effectiveCurrency, signed_in: signedIn };
+        const effective = { check_in: checkIn, check_out: checkOut, nights: interval, adults: occ.adults, children: occ.children, rooms: occ.rooms, currency: shownCurrency, signed_in: signedIn };
         if (totalFound === 0 && cardEls.length) return fail("site_changed", "The heading reports 0 properties but the page lists property cards; Booking.com's markup may have changed.");
-        if (totalFound === 0) return { status: "no_results", observed_at: observedAt, query, effective, destination: dest, total_found: 0, session_currency: sessionCurrency.value, message: "Booking.com found no properties for this destination, dates and filters." };
+        if (totalFound === 0) return { status: "no_results", observed_at: observedAt, query, effective, destination: dest, total_found: 0, message: "Booking.com found no properties for this destination, dates and filters." };
         if (!cardEls.length) return fail("site_changed", "The heading reports " + totalFound + " properties but no property cards were readable; Booking.com's markup may have changed.");
 
         const warnings = [];
@@ -323,31 +304,13 @@
         if (skipped) warnings.push(skipped + " result cards were skipped because they had no name or a non-property URL, or repeated a property.");
         return {
           status: "ok", observed_at: observedAt, query, effective,
-          price_basis: { scope: "stay_total", nights: interval, adults: occ.adults, children: occ.children, currency: effectiveCurrency, taxes_and_fees: "not_itemized_on_results_card" },
-          destination: dest, total_found: totalFound, returned: properties.length, has_more: totalFound > properties.length, results_url: resultsUrl,
-          session_currency: sessionCurrency.value, warnings, properties
+          price_basis: { scope: "stay_total", nights: interval, adults: occ.adults, children: occ.children, currency: shownCurrency, taxes_and_fees: "not_itemized_on_results_card" },
+          destination: dest, total_found: totalFound, returned: properties.length, has_more: totalFound > properties.length,
+          results_url: ORIGIN + "/searchresults.html?" + params.toString(), warnings, properties
         };
-      };
-
-      // The site keeps the chosen display currency for the whole browser session, so put the previous one back.
-      const restoreCurrency = async () => {
-        const state = sessionCurrency.value;
-        if (!state || !state.switched) return;
-        if (!state.previous) return;
-        try {
-          const res = await fetch(ORIGIN + "/index.html?selected_currency=" + state.previous, { credentials: "include", headers: { accept: "text/html" }, signal: timeout() });
-          const back = text(pickTid(new DOMParser().parseFromString(await res.text(), "text/html"), "header-currency-picker-trigger"));
-          state.restored = res.status === 200 && back === state.previous;
-        } catch (e) { state.restored = false; }
-      };
-
-      let outcome;
-      try { outcome = await run(); } catch (error) {
-        outcome = fail("site_error", "The request from the page failed: " + (error && error.message ? error.message : String(error)));
+      } catch (error) {
+        return fail("site_error", "The request from the page failed: " + (error && error.message ? error.message : String(error)));
       }
-      await restoreCurrency();
-      if (sessionCurrency.value && sessionCurrency.value.switched && !sessionCurrency.value.previous && outcome.status === "ok") outcome.warnings.push("The page did not show a single currency before the search, so the site's display currency could not be restored.");
-      return outcome;
     }
   }];
 })()

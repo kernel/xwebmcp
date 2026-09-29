@@ -172,7 +172,9 @@ const run = async (name, input, options = {}) => {
 
 const searchRoute = (reply) => ({ match: u => u.pathname === "/searchresults.html", reply });
 const propertyRoute = (reply) => ({ match: u => u.pathname.startsWith("/hotel/"), reply });
-const homeRoute = (reply) => ({ match: u => u.pathname === "/index.html", reply });
+
+// Observed live on a request without cookies: HTTP 202, a small page titled "JavaScript is disabled", and an AWS WAF script.
+const BOT_PAGE = "<!DOCTYPE html><html><head><title>Booking.com</title></head><body><h1>JavaScript is disabled</h1><p>Enable JavaScript to continue.</p><script>window.awsWafCookieDomainList = ['booking.com'];</script><script src=\"https://x.token.awswaf.com/challenge.js\"></script></body></html>";
 
 const SEARCH = { destination: "Example Harbor", check_in: "2026-11-10", check_out: "2026-11-12", adults: 2, currency: "USD" };
 const PROPERTY = { property_url: "https://www.booking.com/hotel/xx/harbor-view-studios.html", check_in: "2026-11-10", check_out: "2026-11-12", adults: 2, currency: "USD" };
@@ -238,7 +240,6 @@ for (const [label, input] of invalidSearch) {
     const { output, calls } = await run("search_stays", input, { routes: [] });
     assert.equal(output.status, "error");
     assert.equal(output.error_kind, "invalid_input");
-    assert.equal(output.session_currency, null);
     assert.equal(calls.length, 0);
   });
 }
@@ -280,7 +281,6 @@ test("search_stays returns the first page with effective dates, guests, currency
   assert.equal(output.total_found, 2978);
   assert.equal(output.returned, 3);
   assert.equal(output.has_more, true);
-  assert.equal(output.session_currency.switched, false);
   const [a, b, c] = output.properties;
   assert.deepEqual(a, {
     rank: 1, name: "Harbor View Studios", property_url: "https://www.booking.com/hotel/xx/harbor-view-studios.html", area: "Old Quarter, Example Harbor", distance_from_center: "0.6 miles from downtown",
@@ -327,7 +327,7 @@ test("search_stays sends the exact search and builds a tracking-free results_url
   assert.equal(p.get("no_rooms"), "1");
   assert.equal(p.get("group_children"), "2");
   assert.deepEqual(p.getAll("age"), ["5", "11"]);
-  assert.equal(p.get("selected_currency"), "USD");
+  assert.equal(p.get("selected_currency"), null, "the tool never asks the site to change its currency");
   assert.equal(p.get("order"), "price");
   assert.equal(p.get("nflt"), "class=3;class=4;review_score=80;fc=2;mealplan=1");
   assert.equal(p.get("lang"), null, "the tool never changes the session language");
@@ -380,14 +380,14 @@ test("search_stays returns no_results only for a search the site applied and fou
 test("search_stays maps blocking and failure responses to distinct errors", async () => {
   const cases = [
     ["429", { status: 429, body: "" }, "rate_limited"],
-    ["WAF challenge 202", { status: 202, body: "<html><script src=\"https://x.awswaf.com/challenge.js\"></script></html>" }, "challenge"],
+    ["WAF challenge 202 (observed shape)", { status: 202, body: BOT_PAGE }, "challenge"],
     ["403", { status: 403, body: "denied" }, "challenge"],
     ["405", { status: 405, body: "" }, "challenge"],
     ["500", { status: 500, body: "oops" }, "site_error"],
-    ["challenge markup with 200", { status: 200, body: "<html lang=\"en-us\"><body><script>AwsWafIntegration.saveReferrer();</script></body></html>" }, "challenge"],
+    ["challenge page served with 200", { status: 200, body: BOT_PAGE }, "challenge"],
     ["sign-in wall", { status: 200, body: "<html></html>", finalPath: "/sign-in.html", redirected: true }, "gated"],
     ["consent wall", { status: 200, body: "<html></html>", finalPath: "/consent", redirected: true }, "gated"],
-    ["redirect home (unknown destination or dates out of range)", { status: 200, body: home(), finalPath: "/index.html", redirected: true }, "search_not_accepted"]
+    ["redirect home (unknown destination, dates out of range, or treated as automated)", { status: 200, body: home(), finalPath: "/index.html", redirected: true }, "search_not_accepted"]
   ];
   for (const [label, reply, kind] of cases) {
     const { output } = await run("search_stays", SEARCH, { routes: [searchRoute(reply)] });
@@ -427,49 +427,40 @@ test("search_stays refuses a search the site applied differently than asked", as
   assert.equal(r.output.error_kind, "search_not_applied");
 });
 
-// --- session currency ----------------------------------------------------------------------------------------
+// --- currency: the tools never change the site's currency ------------------------------------------------------
 
-test("search_stays switches the display currency, prices in it, and restores the previous one", async () => {
-  const routes = [
-    searchRoute({ body: searchPage({ currency: "EUR", cards: [card({ price: { perNight: "€ 60", total: "€ 121" } })] }) }),
-    homeRoute({ body: home({ currency: "USD" }) })
-  ];
-  const { output, calls } = await run("search_stays", { ...SEARCH, currency: "EUR" }, { routes });
+test("search_stays prices in the currency the site shows and sends no currency change", async () => {
+  const page = searchPage({ currency: "EUR", cards: [card({ price: { perNight: "€ 60", total: "€ 121" } })] });
+  const { output, calls } = await run("search_stays", { ...SEARCH, currency: "EUR" }, { liveCurrency: "EUR", routes: [searchRoute({ body: page })] });
   assert.equal(output.status, "ok");
   assert.equal(output.effective.currency, "EUR");
   assert.equal(output.price_basis.currency, "EUR");
   assert.equal(output.properties[0].price.total, 121);
-  assert.deepEqual(output.session_currency, { requested: "EUR", previous: "USD", switched: true, restored: true });
-  assert.deepEqual(calls.map(c => c.path), ["/searchresults.html", "/index.html"]);
-  assert.equal(calls[0].params.get("selected_currency"), "EUR");
-  assert.equal(calls[1].params.get("selected_currency"), "USD");
+  assert.equal(calls.length, 1, "no request to switch or restore the currency");
+  assert.equal(calls[0].params.get("selected_currency"), null);
 });
 
-test("search_stays refuses a currency the site did not apply and still restores the session", async () => {
-  // Booking.com silently switches to per-property currencies for an unsupported code.
-  const unsupported = searchPage({ currency: "€$£", cfg: config({ currency: "USD" }) });
-  const { output, calls } = await run("search_stays", { ...SEARCH, currency: "XYZ" }, { routes: [searchRoute({ body: unsupported }), homeRoute({ body: home() })] });
+test("search_stays refuses a currency the site is not showing and names the one it shows", async () => {
+  const { output, calls } = await run("search_stays", { ...SEARCH, currency: "EUR" }, { routes: [searchRoute({ body: searchPage({ currency: "USD" }) })] });
   assert.equal(output.status, "error");
-  assert.equal(output.error_kind, "currency_not_applied");
-  assert.equal(output.session_currency.restored, true);
-  assert.equal(calls[1].params.get("selected_currency"), "USD");
-});
-
-test("search_stays reports when the previous currency could not be restored", async () => {
-  const stuck = homeRoute({ body: home({ currency: "EUR" }) });
-  let r = await run("search_stays", { ...SEARCH, currency: "EUR" }, { routes: [searchRoute({ body: searchPage({ currency: "EUR" }) }), stuck] });
-  assert.equal(r.output.status, "ok");
-  assert.equal(r.output.session_currency.restored, false, "picker still shows EUR after the restore request");
-  r = await run("search_stays", { ...SEARCH, currency: "EUR" }, { routes: [searchRoute({ body: searchPage({ currency: "EUR" }) }), homeRoute(new TypeError("Failed to fetch"))] });
-  assert.equal(r.output.session_currency.restored, false);
-});
-
-test("search_stays cannot restore a page currency that is not one code, and says so", async () => {
-  const { output, calls } = await run("search_stays", { ...SEARCH, currency: "EUR" }, { liveCurrency: "€$£", routes: [searchRoute({ body: searchPage({ currency: "EUR" }) })] });
-  assert.equal(output.session_currency.previous, null);
-  assert.equal(output.session_currency.restored, null);
-  assert.match(output.warnings.join(" "), /could not be restored/);
+  assert.equal(output.error_kind, "currency_mismatch");
+  assert.match(output.error_message, /showing USD, not EUR/);
   assert.equal(calls.length, 1);
+});
+
+test("search_stays refuses a page that shows each property's own currency", async () => {
+  // Booking.com's "hotel currency" mode: the header shows a symbol mix and prices are in mixed currencies.
+  const mixed = searchPage({ currency: "€$£", cfg: config({ currency: "USD" }) });
+  const { output } = await run("search_stays", SEARCH, { routes: [searchRoute({ body: mixed })] });
+  assert.equal(output.error_kind, "currency_mismatch");
+  assert.match(output.error_message, /mix of currencies/);
+});
+
+test("search_stays reports dates the site dropped instead of blaming its markup", async () => {
+  const undated = searchPage({ cfg: "<script>window.booking = { b_selected_currency: 'USD', b_dest_id: '-1000001' };</script>" });
+  const { output } = await run("search_stays", { ...SEARCH, check_in: "2026-09-28", check_out: "2026-09-29" }, { routes: [searchRoute({ body: undated })] });
+  assert.equal(output.error_kind, "search_not_applied");
+  assert.match(output.error_message, /did not apply the dates 2026-09-28 to 2026-09-29/);
 });
 
 // --- get_property ---------------------------------------------------------------------------------------------
@@ -485,6 +476,7 @@ const invalidProperty = [
   ["not a hotel path", { ...PROPERTY, property_url: "https://www.booking.com/searchresults.html" }],
   ["extra path segment", { ...PROPERTY, property_url: "https://www.booking.com/hotel/xx/harbor/../../x.html" }],
   ["not a URL", { ...PROPERTY, property_url: "harbor-view-studios" }],
+  ["over-long URL", { ...PROPERTY, property_url: "https://www.booking.com/hotel/xx/" + "a".repeat(300) + ".html" }],
   ["bad dates", { ...PROPERTY, check_in: "next week" }],
   ["past check_in", { ...PROPERTY, check_in: "2026-09-01", check_out: "2026-09-03" }],
   ["31 nights", { ...PROPERTY, check_out: "2026-12-11" }],
@@ -510,7 +502,7 @@ test("get_property reads rooms, rates, cancellation, meal, taxes and the page's 
   assert.equal(calls[0].params.get("checkin"), "2026-11-10");
   assert.equal(calls[0].params.get("group_adults"), "2");
   assert.equal(calls[0].params.get("no_rooms"), "1");
-  assert.equal(calls[0].params.get("selected_currency"), "USD");
+  assert.equal(calls[0].params.get("selected_currency"), null);
   assert.deepEqual(output.effective, { check_in: "2026-11-10", check_out: "2026-11-12", nights: 2, adults: 2, children: 0, children_ages_confirmed: false, rooms: 1, currency: "USD", signed_in: false });
   assert.deepEqual(output.price_basis, { scope: "stay_total", nights: 2, adults: 2, children: 0, currency: "USD", taxes_and_fees: "excluded_as_listed_per_rate" });
   assert.equal(output.query.property_url, "https://www.booking.com/hotel/xx/harbor-view-studios.html");
@@ -523,6 +515,7 @@ test("get_property reads rooms, rates, cancellation, meal, taxes and the page's 
   assert.equal(output.rates_total, 3);
   assert.equal(output.rates_returned, 3);
   assert.equal(output.truncated, false);
+  assert.deepEqual(output.rates_left_out, { party_too_large: 0, unreadable: 0 });
   assert.deepEqual(output.rooms.map(r => [r.room_id, r.name, r.rates.length]), [["1001", "Studio", 2], ["1002", "Executive One-Bedroom Apartment", 1]]);
   const [studio, suite] = output.rooms;
   assert.equal(studio.beds, "1 queen bed");
@@ -530,7 +523,7 @@ test("get_property reads rooms, rates, cancellation, meal, taxes and the page's 
   assert.equal(studio.units_left, 1);
   assert.deepEqual(studio.highlights, ["Entire studio", "441 feet²", "Private bathroom"]);
   assert.deepEqual(studio.rates[0], {
-    max_guests: 2,
+    max_guests: 2, max_adults: null,
     price: { total: 316, original_total: 352, per_night_average: 158, total_before_taxes: 316.46, taxes_and_fees_excluded: "6 % VAT, € 4 City tax per person per night", total_text: "$316" },
     cancellation: "Non-refundable", free_cancellation: false, non_refundable: true, prepayment: "Pay the property before arrival", meal_plan: "Wonderful breakfast $16", member_discount_applied: false
   });
@@ -599,7 +592,8 @@ test("get_property distinguishes a missing property, blocks, gates and changed m
   const cases = [
     ["404", { status: 404, body: "not found" }, "property_not_found"],
     ["429", { status: 429, body: "" }, "rate_limited"],
-    ["challenge", { status: 202, body: "<script src=\"https://x.awswaf.com/challenge.js\"></script>" }, "challenge"],
+    ["challenge (observed shape)", { status: 202, body: BOT_PAGE }, "challenge"],
+    ["challenge page served with 200", { status: 200, body: BOT_PAGE }, "challenge"],
     ["500", { status: 500, body: "" }, "site_error"],
     ["gated", { status: 200, body: "<html></html>", finalPath: "/login", redirected: true }, "gated"],
     ["redirected away", { status: 200, body: home(), finalPath: "/index.html", redirected: true }, "search_not_accepted"],
@@ -616,23 +610,88 @@ test("get_property distinguishes a missing property, blocks, gates and changed m
   assert.equal(network.output.error_kind, "site_error");
 });
 
-test("get_property refuses pages that applied other dates or guests, and unsupported currencies", async () => {
+test("get_property refuses pages that applied other dates or guests", async () => {
   let r = await run("get_property", PROPERTY, { routes: [propertyRoute({ body: propertyPage({ cfg: config({ checkIn: "2026-11-11", checkOut: "2026-11-13", hotelId: "1" }) }) })] });
   assert.equal(r.output.error_kind, "search_not_applied");
   r = await run("get_property", PROPERTY, { routes: [propertyRoute({ body: propertyPage({ occupancy: "3 adults · 0 children · 1 room" }) })] });
   assert.equal(r.output.error_kind, "search_not_applied");
-  r = await run("get_property", { ...PROPERTY, currency: "XYZ" }, { routes: [propertyRoute({ body: propertyPage({ currency: "€$£", cfg: config({ currency: "USD", hotelId: "1" }) }) }), homeRoute({ body: home() })] });
-  assert.equal(r.output.error_kind, "currency_not_applied");
-  assert.equal(r.output.session_currency.restored, true);
+  r = await run("get_property", PROPERTY, { routes: [propertyRoute({ body: propertyPage({ cfg: "<script>window.booking = { b_selected_currency: 'USD', b_hotel_id: '1' };</script>" }) })] });
+  assert.equal(r.output.error_kind, "search_not_applied");
+  assert.match(r.output.error_message, /did not apply the dates/);
 });
 
-test("get_property switches and restores the display currency", async () => {
-  const routes = [propertyRoute({ body: propertyPage({ currency: "EUR", rows: [rateRow({ head: ROOM_A, total: "€ 290", original: "€ 320", perNight: "€ 145" })] }) }), homeRoute({ body: home() })];
-  const { output, calls } = await run("get_property", { ...PROPERTY, currency: "EUR" }, { routes });
-  assert.equal(output.effective.currency, "EUR");
-  assert.equal(output.rooms[0].rates[0].price.total, 290);
-  assert.deepEqual(output.session_currency, { requested: "EUR", previous: "USD", switched: true, restored: true });
-  assert.deepEqual(calls.map(c => c.path), ["/hotel/xx/harbor-view-studios.html", "/index.html"]);
+test("get_property never changes the site's currency: it prices in the shown one or refuses", async () => {
+  const eur = propertyPage({ currency: "EUR", rows: [rateRow({ head: ROOM_A, total: "€ 290", original: "€ 320", perNight: "€ 145" })] });
+  const ok = await run("get_property", { ...PROPERTY, currency: "EUR" }, { liveCurrency: "EUR", routes: [propertyRoute({ body: eur })] });
+  assert.equal(ok.output.effective.currency, "EUR");
+  assert.equal(ok.output.rooms[0].rates[0].price.total, 290);
+  assert.equal(ok.calls.length, 1);
+  assert.equal(ok.calls[0].params.get("selected_currency"), null);
+  const mismatch = await run("get_property", { ...PROPERTY, currency: "EUR" }, { routes: [propertyRoute({ body: propertyPage({ currency: "USD" }) })] });
+  assert.equal(mismatch.output.error_kind, "currency_mismatch");
+  assert.match(mismatch.output.error_message, /showing USD, not EUR/);
+  const mixed = await run("get_property", PROPERTY, { routes: [propertyRoute({ body: propertyPage({ currency: "€$£", cfg: config({ currency: "USD", hotelId: "1" }) }) })] });
+  assert.equal(mixed.output.error_kind, "currency_mismatch");
+});
+
+test("get_property leaves out rates that cannot host the party and counts them", async () => {
+  const rows = [
+    rateRow({ head: ROOM_A, guests: "Max. people: 2" }),
+    rateRow({ head: { ...ROOM_B, name: "Dorm Bed" }, blockId: "1002_1_2_1_0", guests: "Max. people: 1 Only for 1 guest", total: "$17", original: null, perNight: "$9", before: "$17.10" }),
+    rateRow({ blockId: "1002_2_2_1_0", guests: "Max. people: 1 Only for 1 guest", total: "$19", original: null, perNight: "$10", before: "$19.00" })
+  ];
+  const { output } = await run("get_property", PROPERTY, { routes: [propertyRoute({ body: propertyPage({ rows }) })] });
+  assert.equal(output.rates_total, 1);
+  assert.equal(output.rates_returned, 1);
+  assert.deepEqual(output.rates_left_out, { party_too_large: 2, unreadable: 0 });
+  assert.deepEqual(output.rooms.map(r => r.name), ["Studio"]);
+  assert.equal(output.rooms[0].rates[0].max_guests, 2);
+  assert.match(output.warnings.join(" "), /2 rates that the page limits to fewer guests than this party were left out/);
+});
+
+test("get_property reads 'Max adults' when children are in the party and checks adults against it", async () => {
+  const rows = [
+    rateRow({ head: ROOM_A, guests: "Max adults: 3" }),
+    rateRow({ head: { ...ROOM_B, name: "Single Room" }, blockId: "1002_1_2_1_0", guests: "Max adults: 1 Only for 1 guest" })
+  ];
+  const page = propertyPage({ rows, occupancy: "2 adults · 1 child · 1 room", room1: "A,A,7" });
+  const { output } = await run("get_property", { ...PROPERTY, children_ages: [7] }, { routes: [propertyRoute({ body: page })] });
+  assert.equal(output.rooms.length, 1);
+  assert.equal(output.rooms[0].rates[0].max_adults, 3);
+  assert.equal(output.rooms[0].rates[0].max_guests, null);
+  assert.deepEqual(output.rates_left_out, { party_too_large: 1, unreadable: 0 });
+});
+
+test("get_property says so when every rate is for a smaller party", async () => {
+  const rows = [rateRow({ head: ROOM_A, guests: "Max. people: 1 Only for 1 guest" })];
+  const { output } = await run("get_property", PROPERTY, { routes: [propertyRoute({ body: propertyPage({ rows }) })] });
+  assert.equal(output.status, "no_availability");
+  assert.match(output.message, /only for fewer guests than this party \(1 rates left out\)/);
+});
+
+test("get_property does not silently drop rows it cannot attribute to a room", async () => {
+  const stray = rateRow({ head: null, blockId: "0_0_2_2_0" });
+  const rows = [stray, rateRow({ head: ROOM_A })];
+  const { output } = await run("get_property", PROPERTY, { routes: [propertyRoute({ body: propertyPage({ rows }) })] });
+  assert.equal(output.rates_returned, 1);
+  assert.deepEqual(output.rates_left_out, { party_too_large: 0, unreadable: 1 });
+  assert.match(output.warnings.join(" "), /1 rate rows in a room or with a price the tool could not read were left out/);
+  const headWithoutRoomLink = rateRow({ head: ROOM_A }).replace(/<a data-room-id="1001" id="room_type_id_1001"><span> Studio <\/span><\/a>/, "<a href=\"#\"><span>Studio</span></a>");
+  const fallback = await run("get_property", PROPERTY, { routes: [propertyRoute({ body: propertyPage({ rows: [headWithoutRoomLink] }) })] });
+  assert.equal(fallback.output.rooms[0].name, "Studio");
+  assert.equal(fallback.output.rooms[0].room_id, null);
+});
+
+test("get_property warns when a rate lists no excluded taxes, and reads the alternate under-price line", async () => {
+  const noTaxes = rateRow({ head: ROOM_A, excluded: null });
+  let r = await run("get_property", PROPERTY, { routes: [propertyRoute({ body: propertyPage({ rows: [noTaxes] }) })] });
+  assert.equal(r.output.rooms[0].rates[0].price.taxes_and_fees_excluded, null);
+  assert.match(r.output.warnings.join(" "), /1 rates listed no excluded taxes and fees in a form this tool reads/);
+  const under = noTaxes.replace("</div></td><td class=\"hprt-table-cell hprt-table-cell-conditions\">", "<div class=\"prd-taxes-and-fees-under-price\">+US$18 taxes and fees</div></div></td><td class=\"hprt-table-cell hprt-table-cell-conditions\">");
+  assert.notEqual(under, noTaxes);
+  r = await run("get_property", PROPERTY, { routes: [propertyRoute({ body: propertyPage({ rows: [under] }) })] });
+  assert.equal(r.output.rooms[0].rates[0].price.taxes_and_fees_excluded, "US$18 taxes and fees");
+  assert.deepEqual(r.output.warnings, []);
 });
 
 test("get_property needs a www.booking.com page and an English page", async () => {
@@ -648,6 +707,7 @@ test("get_property needs a www.booking.com page and an English page", async () =
 test("neither tool submits forms, posts, or touches booking, save or account endpoints", async () => {
   for (const name of NAMES) {
     assert.doesNotMatch(sources[name], /method:\s*["'](?:POST|PUT|PATCH|DELETE)/i);
+    assert.doesNotMatch(sources[name], /selected_currency|index\.html/, "the tools must not change or restore the site's currency");
     assert.doesNotMatch(sources[name], /\.click\(|requestSubmit|\.submit\(|book\.html|mywishlist|wishlist|mytrips|myaccount|location\.(?:assign|href\s*=)|history\./);
   }
   const env = makeEnv({ routes: [searchRoute({ body: searchPage() }), propertyRoute({ body: propertyPage() })] });
