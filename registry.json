@@ -54,6 +54,32 @@
       }
     },
     {
+      "domain": "cloudflare.com",
+      "tool": "get_domain_info",
+      "file": "domains/cloudflare.com/get_domain_info.js",
+      "kind": "page",
+      "namespace": "cloudflare.com",
+      "url_patterns": [
+        "https://radar.cloudflare.com/*"
+      ],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Page tool on radar.cloudflare.com. Public, read-only: Radar's category, ASN, DNSSEC and Top 100 position, DNS records, post-quantum TLS support and (opt-in, heavily rate-limited) WHOIS for one hostname. Sections Radar cannot answer are reported, never returned empty."
+    },
+    {
+      "domain": "cloudflare.com",
+      "tool": "list_internet_outages",
+      "file": "domains/cloudflare.com/list_internet_outages.js",
+      "kind": "page",
+      "namespace": "cloudflare.com",
+      "url_patterns": [
+        "https://radar.cloudflare.com/*"
+      ],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Page tool on radar.cloudflare.com. Public, read-only: Outage Center outages and traffic anomalies for a window, worldwide or for one country, continent or ASN, with the applied filter read back from Radar's response."
+    },
+    {
       "domain": "delta.com",
       "tool": "get_page_context",
       "file": "domains/delta.com/get_page_context.js",
