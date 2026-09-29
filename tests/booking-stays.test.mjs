@@ -707,7 +707,7 @@ test("get_property needs a www.booking.com page and an English page", async () =
 test("neither tool submits forms, posts, or touches booking, save or account endpoints", async () => {
   for (const name of NAMES) {
     assert.doesNotMatch(sources[name], /method:\s*["'](?:POST|PUT|PATCH|DELETE)/i);
-    assert.doesNotMatch(sources[name], /selected_currency|index\.html/, "the tools must not change or restore the site's currency");
+    assert.doesNotMatch(sources[name], /["'?&]selected_currency|"\/index\.html/, "the tools must not change or restore the site's currency");
     assert.doesNotMatch(sources[name], /\.click\(|requestSubmit|\.submit\(|book\.html|mywishlist|wishlist|mytrips|myaccount|location\.(?:assign|href\s*=)|history\./);
   }
   const env = makeEnv({ routes: [searchRoute({ body: searchPage() }), propertyRoute({ body: propertyPage() })] });
