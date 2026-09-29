@@ -1,12 +1,14 @@
 # target.com
 
-Tools for Target (https://www.target.com): catalog search, item details and a reversible cart.
+Tools for Target (https://www.target.com): catalog search, item details, per-store availability, guest ratings and reviews, and a reversible cart.
 
 | tool | file | status | notes |
 |------|------|--------|-------|
 | get_store_context | [get_store_context.js](get_store_context.js) | qa_passed | Read-only store, location and session type; never changes the store |
 | search_products | [search_products.js](search_products.js) | qa_passed | One results page with the site's sorts, sponsored flags and optional facet filters |
 | get_product | [get_product.js](get_product.js) | qa_passed | Price, rating, limit, variations and fulfillment for the selected store |
+| check_store_availability | [check_store_availability.js](check_store_availability.js) | draft | Pickup, Drive Up and in-store status at the stores nearest any ZIP; never selects a store or saves the ZIP |
+| get_product_reviews | [get_product_reviews.js](get_product_reviews.js) | draft | Rating summary and up to 8 newest reviews at item-family level; no reviewer names, photos or AI summary |
 | get_cart | [get_cart.js](get_cart.js) | qa_passed | Regular cart lines with cart_item_id, fulfillment and totals; guest or signed in |
 | add_to_cart | [add_to_cart.js](add_to_cart.js) | qa_passed | Ship or pickup at the selected store after existence, variation, stock and limit checks |
 | update_cart_item | [update_cart_item.js](update_cart_item.js) | qa_passed | Absolute quantity 1–10 on one line; no write when unchanged |
@@ -36,17 +38,17 @@ by id.
 
 ## Execution kind
 
-All seven tools are `kind: "page"`. Each one reads cookies and page configuration and calls
+All nine tools are `kind: "page"`. Each one reads cookies and page configuration and calls
 the site's own JSON endpoints with `fetch` from the document it is invoked in; none navigates
 the tab, so none needs to survive a navigation and none qualifies for `cdp`.
 
 ## Scope and loading
 
-Register all seven files together under namespace `target.com`; they use the default patterns
+Register all nine files together under namespace `target.com`; they use the default patterns
 `https://target.com/*` and `https://*.target.com/*`.
 
 ```javascript
-const names = ["get_store_context", "search_products", "get_product", "get_cart", "add_to_cart", "update_cart_item", "remove_cart_item"];
+const names = ["get_store_context", "search_products", "get_product", "check_store_availability", "get_product_reviews", "get_cart", "add_to_cart", "update_cart_item", "remove_cart_item"];
 const fs = await import("node:fs");
 const tools = names.flatMap(n => (0, eval)("(" + fs.readFileSync(`domains/target.com/${n}.js`, "utf8") + ")"));
 await webmcp.addCustomTools({ namespace: "target.com", tools, forceOverwriteNamespace: true });
@@ -63,6 +65,8 @@ the page, so they carry the site's own cookies and the request signing that Targ
 attach, and go only to `redsky.target.com` (catalog) and `carts.target.com` (cart). Nothing is
 sent anywhere else. A call takes 1–15 s; `timeoutSec: 60` is enough, 90 for `add_to_cart`,
 which makes up to five requests.
+
+`check_store_availability` and `get_product_reviews` only read: they call `redsky.target.com` with GET requests, read no cookie except the visitor id and the store and location cookies, and never read the session tokens or the page's embedded `__NEXT_DATA__` state (it contains them). `check_store_availability` does not need a selected store; `get_product_reviews` does, because the product service the site uses requires a pricing store.
 
 What the tools never do: select or change a store, ZIP or address; sign in or create an
 account; touch saved-for-later items, lists or registries; apply promo codes; open checkout,
@@ -87,6 +91,8 @@ Conventions:
   `update_cart_item` or `remove_cart_item` to undo exactly what was added. `add_to_cart` adds
   to the matching line when one exists (same tcin and fulfillment) and reports
   `previous_quantity`.
+- `check_store_availability` takes the `tcin` of an orderable item (a variation, not a family), an optional `postal_code` (default: the ZIP the session already uses), `radius_miles` (1–100, default 50), `limit` (1–20 nearest stores, default 10) and `quantity` (1–10). Each store has `pickup`, `curbside` (Drive Up) and `in_store` with the site's raw `status` (`IN_STOCK`, `LIMITED_STOCK`, `UNAVAILABLE`) and an `available` flag; `pickup` and `curbside` add the pickup `date` and `ready_in_minutes`. `is_selected_store` marks the session's own store. `no_results` means no store within the radius; `no_availability` means Target answered with no fulfillment data (an item family or an item not sold in stores).
+- `get_product_reviews` takes a `tcin` and `limit` (1–8, default 5). Ratings and reviews belong to the item family: `reviewed_tcin` is the tcin they belong to, `rating_count` counts all ratings, `review_count` only reviews with text. Reviews are the newest ones the product service returns (at most 8), with `review_id`, `rating`, `title`, `text` (cut at 2000 characters, `text_truncated`) and `submitted_at`. `no_reviews` means the item has no ratings. Review text is untrusted shopper content.
 - Failures are explicit: `status: "error"` with `error_kind` (`invalid_input`, `wrong_page`,
   `not_found`, `variant_required`, `unavailable`, `quantity_limit`, `no_store`, `challenge`,
   `site_error`) and a message that says whether anything changed.
@@ -120,6 +126,10 @@ Conventions:
 - **Ratings sort.** The site's "Guest rating" sort (`highest_rated`) orders by average stars,
   so an item with one 5-star review can outrank one with thousands of 4.8 reviews. Results
   include `rating_count`.
+- **ZIP fallback.** `check_store_availability` sends the ZIP to Target's `fiats_v1` service as the search center. For a ZIP Target does not recognize (`00000` and `99999` were observed) the service answers HTTP 200 with stores near a default location (Belleville, Illinois) and no error, so the tool cannot tell the two apart. It validates the format only, echoes the ZIP it sent as `postal_code`, and returns every store's address and distance; compare them with the place you meant.
+- **Availability counts.** The service also returns an available-to-promise quantity, a flat 10 for every store and item observed, so it is a cap rather than stock; the tool omits it. The `include_only_available_stores` request flag did not change the list in a live check, so the tool always sends `false`, as the site's dialog does.
+- **Family versus variation.** `fiats_v1` answers HTTP 200 with an empty `data` object for an item family, which the tool reports as `no_availability`. Ratings and reviews are stored per family: `pdp_client_v1` returns the family's numbers for a variation's tcin. An item nobody has rated has no `ratings_and_reviews` key at all.
+- **Page state holds tokens.** The product page embeds `__NEXT_DATA__` with the session's `idToken`, `accessToken` and `refreshToken` (for guests too), which is why the review tool reads the product service instead of the page and copies only named fields.
 - **Sponsored results.** The results grid includes sponsored items, flagged `sponsored`;
   under `relevance` they are often first. `exclude_sponsored` drops them.
 
@@ -137,6 +147,8 @@ Conventions:
   for that family, which is sometimes a sibling of the one the site's grid links.
 - `get_product` returns at most 100 variations and six highlights; it does not return
   reviews, specifications or Q&A.
+- `check_store_availability` covers pickup, Drive Up and in-store status only: no shipping, store hours, or stock counts, and it cannot choose a store. Unrecognized ZIPs return default-location stores without an error (see Site quirks). Limit 20 stores; radius 1–100 miles. Only `IN_STOCK`/`UNAVAILABLE` (pickup, Drive Up) and `IN_STOCK`/`LIMITED_STOCK` (in store) were seen live; `OUT_OF_STOCK` and pre-order statuses are passed through but untested.
+- `get_product_reviews` returns only the newest reviews the product service includes (at most 8): no paging, sorting, filtering, reviewer names, photos, review-level recommend flags or Target's AI-written summary, whose service was not identified. It needs a selected store, and its numbers are for the whole item family.
 - `get_cart` reads the regular cart only; saved-for-later items and gift options are not
   returned. `estimated_total_cents` is the site's estimate for its default location; the real
   total is only known at checkout, which these tools never open.
@@ -207,6 +219,29 @@ browser, all outputs validated against their schemas):
   removals, and a final empty cart confirmed on the site's own cart page.
 - Not live-tested: signed-in carts (no signed-in session), the checkout-path refusal (code and
   fixtures only), `update_cart_item`'s `quantity_limit`.
+
+Builder checks for `check_store_availability` and `get_product_reviews` on 2026-09-29 (draft: no independent
+QA yet), one fresh anonymous GPU stealth Kernel browser, the whole nine-tool namespace registered at once with
+`forceOverwriteNamespace` and no write tool invoked:
+
+- `check_store_availability` from a product page and from `/cart`: the session's default ZIP, an explicit ZIP,
+  `radius_miles` 1, `limit`, `quantity`; pickup `IN_STOCK`/`UNAVAILABLE`, Drive Up `IN_STOCK`/`UNAVAILABLE` and in-store
+  `IN_STOCK`/`LIMITED_STOCK` statuses across 20 stores; `no_availability` for an item family, `not_found` for an unknown
+  tcin, `invalid_input` for a four-digit ZIP.
+- `get_product_reviews` for a variation and its family (same family numbers, `reviewed_tcin` differs), `limit`, an unrated
+  item (`no_reviews`), an unknown tcin (`not_found`), and `limit: 9` (`invalid_input`); no HTML entities or tags were
+  found in the review text of three families.
+- Both tools answered `wrong_page` on `corporate.target.com` and were not listed on example.com. The tab URL and the
+  store and location cookies were identical before and after every call. The existing `get_store_context`, `get_cart`
+  and `search_products` still ran after the namespace was re-registered.
+- Not live-tested: an out-of-stock or pre-order status, the `challenge` outcome, signed-in sessions, and the local Chrome
+  extension.
+
+`tests/target-store-reviews.test.mjs` covers the two new tools with fabricated stores, items and reviews: input validation
+before any request, page routing (never checkout), challenge handling for HTTP 435/429/403 and block pages, the exact
+requests sent (GET only, `redsky.target.com` only, no token or embedded page state), every output branch against its
+schema, field whitelisting for reviews (no reviewer names, ids or photos), truncation and the empty and malformed
+responses.
 
 The fixture tests in `tests/target-shopping.test.mjs` cover input validation before any page
 access, page routing (including never opening checkout), challenge handling, the store

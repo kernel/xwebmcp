@@ -919,6 +919,20 @@
     },
     {
       "domain": "target.com",
+      "tool": "check_store_availability",
+      "file": "domains/target.com/check_store_availability.js",
+      "kind": "page",
+      "namespace": "target.com",
+      "url_patterns": [
+        "https://target.com/*",
+        "https://*.target.com/*"
+      ],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Read-only per-store pickup, Drive Up and in-store status for one orderable item near a ZIP; never selects a store or saves the ZIP. Target substitutes a default location for a ZIP it does not recognize without reporting an error. Not independently QA'd yet."
+    },
+    {
+      "domain": "target.com",
       "tool": "get_cart",
       "file": "domains/target.com/get_cart.js",
       "kind": "page",
@@ -950,6 +964,20 @@
       "provenance": {
         "qa_agent": "agt_9cc0b28ff9abe2ef70d3"
       }
+    },
+    {
+      "domain": "target.com",
+      "tool": "get_product_reviews",
+      "file": "domains/target.com/get_product_reviews.js",
+      "kind": "page",
+      "namespace": "target.com",
+      "url_patterns": [
+        "https://target.com/*",
+        "https://*.target.com/*"
+      ],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Read-only rating summary plus the up to 8 newest reviews the product service returns, at item-family level; no reviewer names, photos or AI summary. Needs a selected store. Not independently QA'd yet."
     },
     {
       "domain": "target.com",
