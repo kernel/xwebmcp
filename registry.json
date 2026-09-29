@@ -123,9 +123,12 @@
         "https://www.dfm.ae/*",
         "https://marketwatch.dfm.ae/*"
       ],
-      "status": "draft",
-      "last_verified": null,
-      "notes": "Daily OHLCV for one symbol between two dates (newest first, limit 500). Public feed serves a limited window; on 2026-09-29 the earliest equity row was 2024-12-31. Empty history is split into no_results vs not_found with a profile lookup. Data timing is reported as unknown (real-time vs delayed cannot be determined). Fixture-tested; live-invoked on a Kernel browser. Independent QA round 1 found no defect in this tool's data (matched the company page's Daily Summary on three symbols) and flagged a wrong Nasdaq Dubai claim in its description, now corrected; awaiting re-review of the fixed source."
+      "status": "qa_passed",
+      "last_verified": "2026-09-29",
+      "notes": "Daily OHLCV for one symbol between two dates (newest first, limit 500); the public feed served rows from 2024-12-31 on 2026-09-29. An empty history is split into no_results vs not_found with a profile lookup; timing.realtime is always unknown. Independent QA on 2026-09-29 matched 66-row ranges against the Daily Summary tab on three symbols with no differences. Not exercised: trading hours, headful Chrome, the extension grant flow.",
+      "provenance": {
+        "qa_agent": "agt_6305576496a3aa4284fd"
+      }
     },
     {
       "domain": "dfm.ae",
@@ -137,9 +140,12 @@
         "https://www.dfm.ae/*",
         "https://marketwatch.dfm.ae/*"
       ],
-      "status": "draft",
-      "last_verified": null,
-      "notes": "Identity from DFM's company-profile feed plus the quote block from the Trading-tab feed the company page renders (the profile feed's own quote is zero for some live instruments), with quote.status for absent/zero prices, trades, and timing.last_trade_date; real-time vs delayed is always reported as unknown. Fixture-tested; live-invoked on a Kernel browser and checked against the rendered page on 16 instruments. Independent QA round 1 failed the earlier source; awaiting re-review of the fix."
+      "status": "qa_passed",
+      "last_verified": "2026-09-29",
+      "notes": "Identity from DFM's company-profile feed plus the quote block from the Trading-tab feed the company page renders (the profile feed's own quote is zero for some live instruments); quote.status marks absent or zero prices and timing.realtime is always unknown. Independent QA on 2026-09-29 matched the quote field by field against the rendered company page for 15 instruments and swept all 72 symbols on the live price feed. Not exercised: trading hours, headful Chrome, the extension grant flow.",
+      "provenance": {
+        "qa_agent": "agt_6305576496a3aa4284fd"
+      }
     },
     {
       "domain": "dfm.ae",
@@ -151,9 +157,12 @@
         "https://www.dfm.ae/*",
         "https://marketwatch.dfm.ae/*"
       ],
-      "status": "draft",
-      "last_verified": null,
-      "notes": "Symbol/name search over the six directory lists the site publishes (equities, bonds, sukuk, funds, ETFs, REITs), ranked, with failed lists named in failed_types and an overall 45 s request budget. The directory's Active flag is unreliable and some symbols are absent from it. Fixture-tested; live-invoked on a Kernel browser. Independent QA round 1 found no blocking defect here; awaiting re-review of the fixed source."
+      "status": "qa_passed",
+      "last_verified": "2026-09-29",
+      "notes": "Symbol/name search over the six directory lists the site publishes (equities, bonds, sukuk, funds, ETFs, REITs), ranked, with an overall 45 s request budget and failed lists named in failed_types. The directory's Active flag is unreliable and some symbols are absent from it. Independent QA on 2026-09-29 (signed-out Kernel browser, plus a headless local-extension run with a pre-granted manifest) matched search totals against the raw directory and exercised the time budget under simulated slow and hung fetches. Not exercised: trading hours, headful Chrome, the extension grant flow.",
+      "provenance": {
+        "qa_agent": "agt_6305576496a3aa4284fd"
+      }
     },
     {
       "domain": "doordash.com",

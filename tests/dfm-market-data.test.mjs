@@ -58,8 +58,10 @@ function load(name, { now = "2026-09-29T09:00:00Z", handler }) {
     const text = typeof reply.body === "string" ? reply.body : JSON.stringify(reply.body);
     return { status: reply.status ?? 200, ok: (reply.status ?? 200) >= 200 && (reply.status ?? 200) < 300, text: async () => text };
   };
-  const [definition] = runInNewContext(`(${sources[name]})`, { fetch, Date: FakeDate, Intl, AbortSignal });
-  return { definition, calls, clock, run: async input => plain(await definition.execute(input)) };
+  const timeouts = [];
+  const Signal = { timeout: ms => { timeouts.push(ms); return new AbortController().signal; } };
+  const [definition] = runInNewContext(`(${sources[name]})`, { fetch, Date: FakeDate, Intl, AbortSignal: Signal });
+  return { definition, calls, clock, timeouts, run: async input => plain(await definition.execute(input)) };
 }
 const okReply = body => ({ status: 200, body });
 const field = (body, key) => new URLSearchParams(body).get(key);
@@ -357,7 +359,7 @@ test("get_security accepts symbols with an inner space, encodes them, and encode
 });
 
 test("get_security gives a profile URL for DFM and Nasdaq Dubai instruments only", async () => {
-  for (const [exchange, expected] of [["DFM", true], ["NASDAQ Dubai", true], ["Nasdaq Dubai", true], ["Some Other Exchange", false], [null, false]]) {
+  for (const [exchange, expected] of [["DFM", true], ["NASDAQ Dubai", true], ["Nasdaq Dubai", true], ["Some Other Exchange", false], ["Not DFM", false], ["DFM Exchange", false], ["Nasdaq Dubai Extra", false], ["", false], [null, false]]) {
     const env = load("get_security", { handler: securityHandler({ profile: { ...PROFILE, Exchange: exchange } }) });
     const out = await env.run({ symbol: "TESTCO" });
     assert.equal(out.profile_url !== null, expected, String(exchange));
@@ -443,7 +445,7 @@ test("get_security reports not_found, site changes and transport failures explic
 // --- get_price_history ---------------------------------------------------------------------------
 
 test("get_price_history rejects bad input before any request", async () => {
-  const bad = [undefined, null, [], {}, { symbol: "" }, { symbol: " TESTCO" }, { symbol: "TESTCO " }, { symbol: "TESTCO\n" }, { symbol: "TEST  CO" }, { symbol: "ﬀ" }, { symbol: "ſ" }, { symbol: "TESTCO", from_date: "2026-9-1" }, { symbol: "TESTCO", from_date: "01/09/2026" }, { symbol: "TESTCO", from_date: "2026-02-30" },
+  const bad = [undefined, null, [], {}, { symbol: "" }, { symbol: " TESTCO" }, { symbol: "TESTCO " }, { symbol: "TESTCO\n" }, { symbol: "TEST  CO" }, { symbol: "ﬀ" }, { symbol: "ſ" }, { symbol: "A".repeat(41) }, { symbol: "A".repeat(500) }, { symbol: "TESTCO", from_date: "2026-9-1" }, { symbol: "TESTCO", from_date: "01/09/2026" }, { symbol: "TESTCO", from_date: "2026-02-30" },
     { symbol: "TESTCO", to_date: "2026-13-01" }, { symbol: "TESTCO", from_date: 20260901 }, { symbol: "TESTCO", from_date: "2026-09-29", to_date: "2026-09-01" },
     { symbol: "TESTCO", limit: 0 }, { symbol: "TESTCO", limit: 501 }, { symbol: "TESTCO", limit: 2.5 }, { symbol: "TESTCO", period: "1month" }];
   for (const input of bad) {
@@ -634,7 +636,7 @@ test("search_securities stops requesting lists once its 45 second budget is spen
 });
 
 test("search_securities gives a profile URL for DFM and Nasdaq Dubai rows only", async () => {
-  const rows = { equities: [dirRow("AAA1", "Alpha One", { Exchange: "DFM" }), dirRow("AAA2", "Alpha Two", { Exchange: "Nasdaq Dubai" }), dirRow("AAA3", "Alpha Three", { Exchange: "Elsewhere" }), dirRow("AAA 4", "Alpha Four", { Exchange: "DFM" }), dirRow("AAA5", "Alpha Five", { Exchange: null })] };
+  const rows = { equities: [dirRow("AAA1", "Alpha One", { Exchange: "DFM" }), dirRow("AAA2", "Alpha Two", { Exchange: "Nasdaq Dubai" }), dirRow("AAA3", "Alpha Three", { Exchange: "Elsewhere" }), dirRow("AAA 4", "Alpha Four", { Exchange: "DFM" }), dirRow("AAA5", "Alpha Five", { Exchange: null }), dirRow("AAA6", "Alpha Six", { Exchange: "Not DFM" }), dirRow("AAA7", "Alpha Seven", { Exchange: "Nasdaq Dubai Extra" })] };
   const env = load("search_securities", { handler: body => okReply(rows[field(body, "securitytype")] ?? []) });
   const out = await env.run({ query: "alpha", limit: 10 });
   const by = Object.fromEntries(out.results.map(r => [r.symbol, r.profile_url]));
@@ -643,5 +645,38 @@ test("search_securities gives a profile URL for DFM and Nasdaq Dubai rows only",
   assert.equal(by.AAA3, null);
   assert.equal(by["AAA 4"], "https://www.dfm.ae/the-exchange/market-information/company/AAA%204");
   assert.equal(by.AAA5, null);
+  assert.equal(by.AAA6, null, "exchange names are matched whole, not as substrings");
+  assert.equal(by.AAA7, null);
   assertConforms(env.definition, out);
+});
+
+test("get_security treats a quote of empty strings as not published", async () => {
+  const blanks = Object.fromEntries(Object.keys(TRADING).map(key => [key, key === "ChartData" ? "[]" : ""]));
+  const out = await load("get_security", { handler: securityHandler({ trading: blanks }) }).run({ symbol: "TESTCO" });
+  assert.equal(out.quote.status, "not_published");
+  assert.equal(out.quote.last_price, null);
+  assert.equal(out.quote.volume, null);
+});
+
+test("get_price_history encodes the symbol in its empty-history lookup", async () => {
+  const env = load("get_price_history", { handler: body => field(body, "Command") === "SearchProfileDailyTab" ? okReply([]) : okReply({ ...PROFILE, Symbol: "TEST FUND" }) });
+  const out = await env.run({ symbol: "test fund", from_date: "2026-09-01", to_date: "2026-09-29" });
+  assert.equal(out.status, "no_results");
+  assert.ok(env.calls[0].body.includes("Company=TEST%20FUND"));
+  assert.ok(env.calls[1].body.includes("symbol=TEST%20FUND"));
+});
+
+test("each request is capped at 20 seconds and search never asks for more time than its budget has left", async () => {
+  const sec = load("get_security", { handler: securityHandler() });
+  await sec.run({ symbol: "TESTCO" });
+  assert.deepEqual(sec.timeouts, [20000, 20000]);
+  const hist = load("get_price_history", { handler: () => okReply([dailyRow("29-09-2026")]) });
+  await hist.run({ symbol: "TESTCO", from_date: "2026-09-01", to_date: "2026-09-29" });
+  assert.deepEqual(hist.timeouts, [20000]);
+  const fast = load("search_securities", { handler: directoryHandler() });
+  await fast.run({ query: "testco" });
+  assert.deepEqual(fast.timeouts, [20000, 20000, 20000, 20000, 20000, 20000]);
+  const slow = load("search_securities", { handler: (body, n, url, clock) => { clock.t += 30000; return okReply(DIRECTORY[field(body, "securitytype")] ?? []); } });
+  await slow.run({ query: "testco" });
+  assert.deepEqual(slow.timeouts, [20000, 15000], "45 s budget minus 30 s already spent");
 });
