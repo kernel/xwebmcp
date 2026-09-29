@@ -237,6 +237,58 @@
       }
     },
     {
+      "domain": "fandango.com",
+      "tool": "get_movie_showtimes",
+      "file": "domains/fandango.com/get_movie_showtimes.js",
+      "kind": "page",
+      "namespace": "fandango.com",
+      "url_patterns": [
+        "https://www.fandango.com/*"
+      ],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Page tool on www.fandango.com: one movie's showtimes on one local date at theaters near a required US ZIP, grouped by theater and format, with status per showtime. Reads only the site's own /napi showtimes and calendar endpoints; no ticket pages, seat maps or prices. US only."
+    },
+    {
+      "domain": "fandango.com",
+      "tool": "get_theater_showtimes",
+      "file": "domains/fandango.com/get_theater_showtimes.js",
+      "kind": "page",
+      "namespace": "fandango.com",
+      "url_patterns": [
+        "https://www.fandango.com/*"
+      ],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Page tool on www.fandango.com: every movie and showtime at one theater on one local date, plus theater details and the dates with showtimes. Reads only the site's own /napi showtimes and calendar endpoints; no ticket pages, seat maps or prices. US only."
+    },
+    {
+      "domain": "fandango.com",
+      "tool": "search",
+      "file": "domains/fandango.com/search.js",
+      "kind": "page",
+      "namespace": "fandango.com",
+      "url_patterns": [
+        "https://www.fandango.com/*"
+      ],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Page tool on www.fandango.com: the header search box's suggestions (movies, theaters, cities, people) as ids and canonical URLs. About four suggestions per type; not the full results page. US only."
+    },
+    {
+      "domain": "fandango.com",
+      "tool": "search_theaters",
+      "file": "domains/fandango.com/search_theaters.js",
+      "kind": "page",
+      "namespace": "fandango.com",
+      "url_patterns": [
+        "https://www.fandango.com/*"
+      ],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Page tool on www.fandango.com: theaters near a US ZIP or city and state as the site's nearby-theaters list shows them, with distance, chain, amenities and whether tickets are sold online. Unknown places return an empty list from the site. US only."
+    },
+    {
       "domain": "flyfrontier.com",
       "tool": "login",
       "file": "domains/flyfrontier.com/login.js",
