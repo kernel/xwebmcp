@@ -379,6 +379,16 @@ available with estimate ranges; a store outside that range returned `too_far_fro
 pickup still available; a convenience store in range returned delivery available and pickup
 unavailable. Store ids and distances from this account are deliberately not recorded.
 
+Local Chrome extension runtime (Chromium 153.0.8010.52 under Xvfb, throwaway profile and state directory),
+2026-09-29, author check of `get_store.js` at commit `ab34f98`: installed with `xwebmcp add` pinned to that
+commit, attached with `xwebmcp attach` (both tools in one batch), site access granted in the popup. Both
+tools were listed on a store page; `get_store` calls made from the page (`document.modelContext.executeTool`)
+and through `xwebmcp mcp` (`open_tab` then `invoke_tool`) returned the same outputs as on Kernel, including
+`no_address_selected` on `/es-US/`, `not_found`, and `invalid_input` for `abc`, an extra field and `029417`,
+with no navigation. `xwebmcp invoke <tool_ref>` refused a tab it had not opened (`tab_not_allowed`), as the
+README describes. DoorDash's native tools were not listed by `getTools()` in this Chromium, unlike on
+Kernel; the cause was not investigated. Not run locally: a signed-in profile and real address.
+
 ### Independent QA
 
 Round 1, 2026-09-29, agent `agt_e3cd254315c78d609b12` against commit `3488ced` in two profile-less
