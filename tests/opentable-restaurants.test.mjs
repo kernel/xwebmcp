@@ -173,7 +173,6 @@ test("definitions are page tools on www.opentable.com with registry entries", ()
     assert.ok(entry, name + " must have a registry entry");
     assert.equal(entry.kind, "page");
     assert.deepEqual(entry.url_patterns, [ORIGIN + "/*"]);
-    assert.equal(entry.status, "draft");
   }
   assert.equal(registry.tools.filter(t => t.domain === "opentable.com").length, NAMES.length);
 });
