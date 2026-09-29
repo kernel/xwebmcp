@@ -1250,9 +1250,12 @@
       "url_patterns": [
         "https://www.united.com/*"
       ],
-      "status": "draft",
-      "last_verified": null,
-      "notes": "Public status for one flight number or one route on one date within two days of today. Page tool: an anonymous-token GET then one status GET from a www.united.com page; never navigates and never opens the details pages that list passengers. Independent QA has not signed off."
+      "status": "verified",
+      "last_verified": "2026-09-29",
+      "notes": "Independent QA passed; live successes from www.united.com pages other than the entry page on Kernel and in the Chrome extension. Public status for one flight number or one route on one date within two days of today. Page tool: an anonymous-token GET then one status GET; never navigates and never opens the details pages that list passengers. Multi-leg results carry in_sequence; a route search returns at most 30 itineraries (possibly_truncated). Cancelled and diverted flights and blocked/rate_limited responses were not observed live.",
+      "provenance": {
+        "qa_agent": "agt_11fb3fa488a39a5807eb"
+      }
     },
     {
       "domain": "united.com",

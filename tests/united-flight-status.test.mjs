@@ -705,3 +705,35 @@ test("output schema pin: in_sequence is required on every route itinerary", asyn
   delete stripped.itineraries[0].in_sequence;
   assert.equal(conforms(outputSchema(h), stripped), false);
 });
+
+// --- pins for gaps the reviewer listed after sign-off (tool source unchanged) --------------------------------
+
+test("the date guard looks at departure dates: a leg that only arrives on the requested day does not count, and any leg may satisfy it", async () => {
+  const arrivesOnly = statusSegment({ DepartureDateTime: "2026-09-30T20:00:00", DepartureUTCDateTime: "2026-10-01T03:00:00", ArrivalDateTime: "2026-10-01T06:00:00", ArrivalUTCDateTime: "2026-10-01T13:00:00" });
+  const wrong = plain(await okNumber([arrivesOnly]).run({ flight_number: "1234", date: "2026-10-01" }));
+  assert.equal(wrong.status, "site_changed");
+  const earlier = statusSegment({ DepartureDateTime: "2026-09-30T20:00:00", DepartureUTCDateTime: "2026-10-01T03:00:00", ArrivalDateTime: "2026-09-30T23:00:00", ArrivalUTCDateTime: "2026-10-01T06:00:00", EstimatedDepartureTime: null, EstimatedArrivalTime: null });
+  const later = statusSegment({ EstimatedDepartureTime: null, EstimatedArrivalTime: null, ...setTimes("Departure", at("2026-10-01T09:00:00", "2026-10-01T16:00:00")), ...setTimes("Arrival", at("2026-10-01T10:30:00", "2026-10-01T17:30:00")) });
+  const ok = plain(await okNumber([earlier, later]).run({ flight_number: "1234", date: "2026-10-01" }));
+  assert.equal(ok.status, "ok", "the later leg departs on the requested day, the first does not");
+  assert.equal(ok.leg_count, 2);
+});
+
+test("site text: runs of whitespace collapse to one space and the ends are trimmed", async () => {
+  const out = plain(await okNumber([statusSegment({ FlightStatuses: [{ StatusType: "FlightStatus", Description: "  On \t\n   time   ", Code: "  X  " }] })]).run({ flight_number: "1234", date: "2026-10-01" }));
+  assert.equal(out.legs[0].status_text, "On time");
+  assert.equal(out.legs[0].status_code, "X");
+});
+
+test("route: the airline-field drift guard accepts either field alone, and one identifiable segment among unidentifiable ones", async () => {
+  const marketingOnly = () => { const seg = routeSegment(); delete seg.OperatingAirlineCode; return seg; };
+  const operatingOnly = () => { const seg = routeSegment(); delete seg.MarketedFlightSegment; return seg; };
+  const bare = () => { const seg = routeSegment(); delete seg.OperatingAirlineCode; delete seg.MarketedFlightSegment; return seg; };
+  const input = { origin: "SFO", destination: "LAX", date: "2026-10-01" };
+  assert.equal(plain(await okRoute([trip([marketingOnly()])]).run(input)).status, "ok", "marketing carrier alone identifies the airline");
+  assert.equal(plain(await okRoute([trip([operatingOnly()])]).run(input)).status, "ok", "operating carrier alone identifies the airline");
+  const connecting = trip([bare(), routeSegment({ FlightNumber: "6021", ...setTimes("Departure", at("10/01/2026 08:00:00", "10/01/2026 15:00:00")), ...setTimes("Arrival", at("10/01/2026 09:30:00", "10/01/2026 16:30:00")) })]);
+  const out = plain(await okRoute([connecting]).run(input));
+  assert.equal(out.status, "ok", "one identifiable segment in an itinerary is enough");
+  assert.equal(out.itineraries[0].segments.length, 2);
+});
