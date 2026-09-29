@@ -222,7 +222,7 @@
       if (!body.i18n || body.i18n.to !== "USD" || body.i18n.applyCurrencyConversion === true) return fail("site_changed", "Vivid Seats returned prices that need a currency conversion; only USD prices are supported.");
       if (!body.items.length) return { status: "no_results", query: echo(), resolved_location: resolved, observed_at: observedAt, message: "Vivid Seats found no events matching every filter." };
       // Past the last page the site answers with the last page again, which would repeat events under new ranks.
-      if (page > body.numberOfPages || (Number.isInteger(body.page) && body.page !== page)) return { status: "no_results", query: echo(), resolved_location: resolved, observed_at: observedAt, message: "The search has " + body.numberOfPages + " page(s) of " + pageSize + " events; page " + page + " is past the last one." };
+      if (page > body.numberOfPages || (Number.isInteger(body.page) && body.page !== page)) return { status: "no_results", query: echo(), resolved_location: resolved, observed_at: observedAt, message: "The search has " + body.numberOfPages + " page(s) at page_size " + pageSize + "; page " + page + " is past the last one." };
 
       const normalize = (e, index) => {
         if (!e || !Number.isInteger(e.id) || typeof e.name !== "string" || !e.name.trim()) return null;
@@ -256,7 +256,8 @@
       if (checks.ceiling.value && events.some(e => e.listing_count === 0)) warnings.push("Some events under the price ceiling have no listings (listing_count 0); the site's price filter keeps them.");
       const beyond = place ? events.filter(e => e.distance_miles !== null && e.distance_miles > radius + 0.05).length : 0;
       if (beyond) warnings.push(beyond + " event(s) are farther than radius_miles; the site's radius is approximate, so filter on distance_miles when a hard limit matters.");
-      const started = events.filter(e => e.start_utc && Date.parse(e.start_utc) < Date.parse(observedAt)).length;
+      // A time-TBD event carries a placeholder instant, so only events with a stated start time can be called started.
+      const started = events.filter(e => !e.time_tbd && e.start_utc && Date.parse(e.start_utc) < Date.parse(observedAt)).length;
       if (started) warnings.push(started + " event(s) have already started; the index prices and listing counts for them can be stale, and get_ticket_offers shows whether any tickets remain.");
       return {
         status: "ok", query: echo(), resolved_location: resolved, currency: "USD",

@@ -608,7 +608,7 @@ test("search_events does not repeat the last page under new ranks when the page 
   const clamped = harness("search_events", { route: p => (p.startsWith("/hermes/api/v1/productions?") ? { status: 200, body: productions([production(6001, "Example Band")], { total: 83, numberOfPages: 17, page: 17 }) } : null) });
   const result = await clamped.run({ performer_id: 130861, page: 21, page_size: 5 });
   assert.equal(result.status, "no_results");
-  assert.match(result.message, /17 page\(s\) of 5 events; page 21 is past the last one/);
+  assert.match(result.message, /17 page\(s\) at page_size 5; page 21 is past the last one/);
   const noPageField = harness("search_events", { route: p => (p.startsWith("/hermes/api/v1/productions?") ? { status: 200, body: { total: 83, numberOfPages: 17, items: productions([production(6001, "Example Band")]).items, i18n: productions([]).i18n } } : null) });
   assert.equal((await noPageField.run({ page: 21, page_size: 5 })).status, "no_results", "numberOfPages alone is enough to detect a page past the end");
   const last = harness("search_events", { route: p => (p.startsWith("/hermes/api/v1/productions?") ? { status: 200, body: productions([production(6001, "Example Band")], { total: 83, numberOfPages: 17, page: 17 }) } : null) });
@@ -625,6 +625,8 @@ test("search_events warns that the site's radius is approximate and that started
   assert.ok(result.warnings.some(w => /1 event\(s\) have already started/.test(w)), JSON.stringify(result.warnings));
   const quiet = harness("search_events", { route: p => (p.startsWith("/hermes/api/v1/productions?") ? { status: 200, body: productions([production(6001, "Near", { distance: 25 * 1609.344 })]) } : null) });
   assert.deepEqual((await quiet.run({ latitude: 39.8, longitude: -89.65, radius_miles: 25 })).warnings, [], "an event at exactly the radius, in the future, needs no warning");
+  const placeholder = harness("search_events", { route: p => (p.startsWith("/hermes/api/v1/productions?") ? { status: 200, body: productions([production(6004, "Time Pending", { timeTbd: true, utcDate: "2020-01-01T23:59:00Z", localDate: "2020-01-01T23:59:00-06:00[America/Chicago]" })]) } : null) });
+  assert.deepEqual((await placeholder.run({})).warnings, [], "a time-TBD event's placeholder instant is not a start time");
   const noPlace = harness("search_events", { route: p => (p.startsWith("/hermes/api/v1/productions?") ? { status: 200, body: productions([production(6001, "Anywhere", { distance: null })]) } : null) });
   assert.deepEqual((await noPlace.run({})).warnings, []);
 });
