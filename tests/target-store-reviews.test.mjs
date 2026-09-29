@@ -255,7 +255,7 @@ test("check_store_availability maps stores, statuses, pickup timing and the sele
   assert.equal(result.stores.length, 3);
   assert.deepEqual(result.stores[0], {
     store_id: "1234", name: "Test Store", address_line1: "1 Fabricated Way", city: "Testville", state: "Ohio", postal_code: "45000-0001", phone: "555-010-0100", distance_miles: 1.5,
-    is_selected_store: true,
+    available_to_promise: 10, is_selected_store: true,
     pickup: { status: "IN_STOCK", available: true, date: "2030-01-02", ready_in_minutes: 120 },
     curbside: { status: "UNAVAILABLE", available: false, date: null, ready_in_minutes: null },
     in_store: { status: "LIMITED_STOCK", available: true }
@@ -299,11 +299,18 @@ test("check_store_availability without any ZIP or store needs postal_code and do
   assert.equal(ok.stores.every(s => s.is_selected_store === false), true, "no store is selected in this session");
 });
 
-test("check_store_availability does not need a selected store and never returns a stock count", async () => {
+test("check_store_availability does not need a selected store and never returns store hours", async () => {
   const h = harness("check_store_availability", { cookie: "visitorId=V; GuestLocation=45001|39.1|-84.5|OH|US" });
   const result = await h.run(valid.check_store_availability);
   assert.equal(result.status, "ok");
-  assert.equal(/available_to_promise|quantity_available|hours|rolling/i.test(JSON.stringify(result.stores)), false);
+  assert.equal(/hours|rolling|begin_time/i.test(JSON.stringify(result.stores)), false);
+});
+
+test("check_store_availability passes the site's unit count through and nulls anything that is not a count", async () => {
+  const counted = (id, count) => location(id, "Store " + id, 1, { location_available_to_promise_quantity: count });
+  const stores = [counted("1", 0), counted("2", 3), counted("3", 10), counted("4", -1), counted("5", 2.5), counted("6", "7"), counted("7", null), counted("8", undefined)];
+  const result = await harness("check_store_availability", { fiats: fiatsBody(stores) }).run({ tcin: "30000001", limit: 20 });
+  assert.deepEqual(result.stores.map(s => s.available_to_promise), [0, 3, 10, null, null, null, null, null]);
 });
 
 test("check_store_availability returns at most limit stores even when the site returns more", async () => {
@@ -339,7 +346,7 @@ test("check_store_availability tolerates missing fields on a store", async () =>
   const h = harness("check_store_availability", { fiats: fiatsBody([{ location_id: "77", store: { store_id: "77" } }]) });
   const result = await h.run(valid.check_store_availability);
   assert.deepEqual(result.stores, [{
-    store_id: "77", name: null, address_line1: null, city: null, state: null, postal_code: null, phone: null, distance_miles: null, is_selected_store: false,
+    store_id: "77", name: null, address_line1: null, city: null, state: null, postal_code: null, phone: null, distance_miles: null, available_to_promise: null, is_selected_store: false,
     pickup: { status: null, available: false, date: null, ready_in_minutes: null },
     curbside: { status: null, available: false, date: null, ready_in_minutes: null },
     in_store: { status: null, available: false }

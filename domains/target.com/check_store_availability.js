@@ -3,7 +3,7 @@
   match: { url_patterns: ["https://target.com/*", "https://*.target.com/*"] },
   tool: {
     name: "check_store_availability",
-    description: "List the Target (target.com) stores nearest a ZIP code with one item's order-pickup, Drive Up (the site's 'curbside') and in-store stock status at each: the data behind the 'Check stores' dialog on a product page, without selecting a store or changing the session's ZIP. tcin must be an orderable item, not an item family: get_product lists a family's variations and their tcins, and a family tcin answers no_availability. postal_code defaults to the ZIP the session already uses; radius_miles (default 50) and limit (nearest stores, default 10, at most 20) bound the query. Each store has its id, name, address, phone, distance in miles, is_selected_store, and for pickup, curbside and in_store the site's raw status (IN_STOCK, LIMITED_STOCK, UNAVAILABLE...) with an available flag; pickup and curbside also carry the pickup date and how many minutes the site says preparation takes. Target substitutes a default location for a ZIP it does not recognize and reports no error (00000 and 99999 returned Illinois stores), so compare the returned addresses and distances with the place you asked about. A status is the site's answer at the moment of the call, not a reservation or a guarantee: the site gives the same status whatever quantity it is asked about, so it cannot say whether several units are on hand (LIMITED_STOCK in store is its only low-stock signal); it says nothing about shipping (use get_product) and never selects a store. Read-only; works as a guest or signed in.",
+    description: "List the Target (target.com) stores nearest a ZIP code with one item's order-pickup, Drive Up (the site's 'curbside') and in-store stock status at each: the data behind the 'Check stores' dialog on a product page, without selecting a store or changing the session's ZIP. tcin must be an orderable item, not an item family: get_product lists a family's variations and their tcins, and a family tcin answers no_availability. postal_code defaults to the ZIP the session already uses; radius_miles (default 50) and limit (nearest stores, default 10, at most 20) bound the query. Each store has its id, name, address, phone, distance in miles, is_selected_store, available_to_promise (the unit count the site's availability service reports for that store, 0 to 10 observed; target.com shows low counts as 'Only N left'), and for pickup, curbside and in_store the site's raw status (IN_STOCK, LIMITED_STOCK, OUT_OF_STOCK, NOT_SOLD_IN_STORE, UNAVAILABLE...) with an available flag; pickup and curbside also carry the pickup date and how many minutes the site says preparation takes. Target substitutes a default location for a ZIP it does not recognize and reports no error (00000 and 99999 returned Illinois stores), so compare the returned addresses and distances with the place you asked about. Statuses and counts are the site's answer at the moment of the call, not a reservation or a guarantee. They did not change with the quantity the site was asked about, so the tool takes no quantity: compare available_to_promise with the number of units you need. A count can be positive while pickup is UNAVAILABLE, and 0 went with an in-store status of OUT_OF_STOCK or NOT_SOLD_IN_STORE. The tool says nothing about shipping (use get_product) and never selects a store. Read-only; works as a guest or signed in.",
     inputSchema: {
       type: "object", additionalProperties: false, required: ["tcin"],
       properties: {
@@ -27,7 +27,7 @@
               type: "array", minItems: 1, maxItems: 20, description: "Nearest first.",
               items: {
                 type: "object", additionalProperties: false,
-                required: ["store_id", "name", "address_line1", "city", "state", "postal_code", "phone", "distance_miles", "is_selected_store", "pickup", "curbside", "in_store"],
+                required: ["store_id", "name", "address_line1", "city", "state", "postal_code", "phone", "distance_miles", "available_to_promise", "is_selected_store", "pickup", "curbside", "in_store"],
                 properties: {
                   store_id: { type: "string", pattern: "^[0-9]+$" },
                   name: { type: ["string", "null"] },
@@ -37,6 +37,7 @@
                   postal_code: { type: ["string", "null"], description: "The store's own ZIP, possibly ZIP+4." },
                   phone: { type: ["string", "null"] },
                   distance_miles: { type: ["number", "null"], description: "Straight-line distance from the search center." },
+                  available_to_promise: { type: ["integer", "null"], minimum: 0, description: "Units the site's availability service reports for this store (0 to 10 observed; target.com shows low counts as 'Only N left'). Not a reservation; it does not depend on a requested quantity and can be positive while pickup is UNAVAILABLE." },
                   is_selected_store: { type: "boolean", description: "True for the store this browser session has selected; the tool never changes that selection." },
                   pickup: {
                     type: "object", additionalProperties: false, required: ["status", "available", "date", "ready_in_minutes"],
@@ -180,6 +181,7 @@
         stores.push({
           store_id: storeId, name: text(store.location_name), address_line1: text(address.address_line1), city: text(address.city), state: text(address.state),
           postal_code: text(address.postal_code), phone: text(store.main_voice_phone_number), distance_miles: typeof loc.distance === "number" ? loc.distance : null,
+          available_to_promise: Number.isInteger(loc.location_available_to_promise_quantity) && loc.location_available_to_promise_quantity >= 0 ? loc.location_available_to_promise_quantity : null,
           is_selected_store: storeId === ctx.selectedStoreId,
           pickup: option(loc.order_pickup, true), curbside: option(loc.curbside, true), in_store: option(loc.in_store_only, false)
         });

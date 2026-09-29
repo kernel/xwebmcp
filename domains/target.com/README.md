@@ -91,7 +91,7 @@ Conventions:
   `update_cart_item` or `remove_cart_item` to undo exactly what was added. `add_to_cart` adds
   to the matching line when one exists (same tcin and fulfillment) and reports
   `previous_quantity`.
-- `check_store_availability` takes the `tcin` of an orderable item (a variation, not a family), an optional `postal_code` (default: the ZIP the session already uses), `radius_miles` (1–100, default 50) and `limit` (1–20 nearest stores, default 10). Each store has `pickup`, `curbside` (Drive Up) and `in_store` with the site's raw `status` (`IN_STOCK`, `LIMITED_STOCK`, `UNAVAILABLE`) and an `available` flag; `pickup` and `curbside` add the pickup `date` and `ready_in_minutes`. `is_selected_store` marks the session's own store. `no_results` means no store within the radius; `no_availability` means Target answered with no fulfillment data (an item family or an item not sold in stores).
+- `check_store_availability` takes the `tcin` of an orderable item (a variation, not a family), an optional `postal_code` (default: the ZIP the session already uses), `radius_miles` (1–100, default 50) and `limit` (1–20 nearest stores, default 10). Each store has `available_to_promise` (the site's unit count for the store, 0–10 seen), and `pickup`, `curbside` (Drive Up) and `in_store` with the site's raw `status` (`IN_STOCK`, `LIMITED_STOCK`, `OUT_OF_STOCK`, `NOT_SOLD_IN_STORE`, `UNAVAILABLE`) and an `available` flag; `pickup` and `curbside` add the pickup `date` and `ready_in_minutes`. `is_selected_store` marks the session's own store. `no_results` means no store within the radius; `no_availability` means Target answered with no fulfillment data (an item family or an item not sold in stores).
 - `get_product_reviews` takes a `tcin` and `limit` (1–8, default 5). Ratings and reviews belong to the item family: `reviewed_tcin` is the tcin they belong to, `rating_count` counts all ratings, `review_count` only reviews with text. Reviews are the newest ones the product service returns (at most 8), with `review_id`, `rating`, `title`, `text` (cut at 2000 characters, `text_truncated`) and `submitted_at`. `no_reviews` means the item has no ratings. Review text is untrusted shopper content.
 - Failures are explicit: `status: "error"` with `error_kind` (`invalid_input`, `wrong_page`,
   `not_found`, `variant_required`, `unavailable`, `quantity_limit`, `no_store`, `challenge`,
@@ -127,7 +127,8 @@ Conventions:
   so an item with one 5-star review can outrank one with thousands of 4.8 reviews. Results
   include `rating_count`.
 - **ZIP fallback.** `check_store_availability` sends the ZIP to Target's `fiats_v1` service as the search center. For a ZIP Target does not recognize (`00000` and `99999` were observed) the service answers HTTP 200 with stores near a default location (Belleville, Illinois) and no error, so the tool cannot tell the two apart. It validates the format only, echoes the ZIP it sent as `postal_code`, and returns every store's address and distance; compare them with the place you meant.
-- **Availability counts and quantity.** The service also returns a per-store available-to-promise count (1–10 in a live check of one item across 20 stores, so capped at 10). Target.com does not show it and it does not line up with the statuses (the same count appeared with both `IN_STOCK` and `UNAVAILABLE` pickup), so the tool omits it rather than guess its meaning. The request's `requested_quantity` had no effect: statuses and counts for 1 and 10 units were identical, including for stores whose count was 3, so the tool always sends 1 and offers no quantity input. The `include_only_available_stores` flag did not change the list in a live check either, so the tool always sends `false`, as the site's dialog does.
+- **Availability counts and quantity.** The service returns a per-store available-to-promise count, which the tool passes through as `available_to_promise`. Values 0–10 were seen (10 the largest). Target.com shows low counts on a product page as "Only N left" (seen for counts of 1 and 3). Across 60 store rows from two items, a count of 0 always came with in-store `OUT_OF_STOCK` and a positive count with in-store `IN_STOCK`; independent QA's wider sample agreed, and a count of 0 was also seen with in-store `NOT_SOLD_IN_STORE`. The count is not tied to the pickup status: counts of 2, 3 and 4 appeared with both `IN_STOCK` and `UNAVAILABLE` pickup. The request's `requested_quantity` had no effect: statuses and counts for 1 and 10 units were identical, including for stores whose count was 3, so the tool always sends 1 and offers no quantity input; compare `available_to_promise` with the units you need. The `include_only_available_stores` flag did not change the list in a live check either, so the tool always sends `false`, as the site's dialog does.
+- **Non-ASCII output on the Kernel API.** When a tool's output contains some non-ASCII characters (`é`, `®`, `ü`, a non-breaking space; observed with a review text), the Kernel API returned `output` as a JSON string instead of an object (it parses and conforms to the schema); `’`, `™`, `€`, `—` and emoji came back as objects, and the local extension returned an object in the same case. This is runtime behavior, not tool behavior, and any tool that returns shopper text can hit it: parse a string `output` before use.
 - **Family versus variation.** `fiats_v1` answers HTTP 200 with an empty `data` object for an item family, which the tool reports as `no_availability`. Ratings and reviews are stored per family: `pdp_client_v1` returns the family's numbers for a variation's tcin. An item nobody has rated has no `ratings_and_reviews` key at all.
 - **Page state holds tokens.** The product page embeds `__NEXT_DATA__` with the session's `idToken`, `accessToken` and `refreshToken` (for guests too), which is why the review tool reads the product service instead of the page and copies only named fields.
 - **Sponsored results.** The results grid includes sponsored items, flagged `sponsored`;
@@ -147,7 +148,7 @@ Conventions:
   for that family, which is sometimes a sibling of the one the site's grid links.
 - `get_product` returns at most 100 variations and six highlights; it does not return
   reviews, specifications or Q&A.
-- `check_store_availability` covers pickup, Drive Up and in-store status only: no shipping, store hours, stock counts or per-quantity availability (the site returns the same status for any quantity, so it cannot say whether several units are on hand), and it cannot choose a store. Unrecognized ZIPs return default-location stores without an error (see Site quirks). Limit 20 stores; radius 1–100 miles. Only `IN_STOCK`/`UNAVAILABLE` (pickup, Drive Up) and `IN_STOCK`/`LIMITED_STOCK` (in store) were seen live; `OUT_OF_STOCK` and pre-order statuses are passed through but untested.
+- `check_store_availability` covers pickup, Drive Up and in-store status only: no shipping or store hours and no per-quantity request (the site returns the same statuses and counts for any quantity; compare `available_to_promise` with the units needed), and it cannot choose a store. Unrecognized ZIPs return default-location stores without an error (see Site quirks). Limit 20 stores; radius 1–100 miles. Seen live: `IN_STOCK`, `LIMITED_STOCK`, `OUT_OF_STOCK`, `NOT_SOLD_IN_STORE` and `UNAVAILABLE` (pickup, Drive Up and in store, in different combinations); pre-order statuses are passed through but untested. `available_to_promise` is null when the site omits it.
 - `get_product_reviews` returns only the newest reviews the product service includes (at most 8): no paging, sorting, filtering, reviewer names, photos, review-level recommend flags or Target's AI-written summary, whose service was not identified. It needs a selected store, and its numbers are for the whole item family.
 - `get_cart` reads the regular cart only; saved-for-later items and gift options are not
   returned. `estimated_total_cents` is the site's estimate for its default location; the real
@@ -226,8 +227,9 @@ QA yet), one fresh anonymous GPU stealth Kernel browser, the whole nine-tool nam
 
 - `check_store_availability` from a product page and from `/cart`: the session's default ZIP, an explicit ZIP,
   `radius_miles` 1, `limit`; pickup `IN_STOCK`/`UNAVAILABLE`, Drive Up `IN_STOCK`/`UNAVAILABLE` and in-store
-  `IN_STOCK`/`LIMITED_STOCK` statuses across 20 stores; `no_availability` for an item family, `not_found` for an unknown
-  tcin, `invalid_input` for a four-digit ZIP.
+  `IN_STOCK`/`LIMITED_STOCK`/`OUT_OF_STOCK`/`NOT_SOLD_IN_STORE` statuses across 20 stores, with `available_to_promise`
+  matching the raw service counts; `no_availability` for an item family, `not_found` for an unknown tcin,
+  `invalid_input` for a four-digit ZIP or a `quantity` key.
 - `get_product_reviews` for a variation and its family (same family numbers, `reviewed_tcin` differs), `limit`, an unrated
   item (`no_reviews`), an unknown tcin (`not_found`), and `limit: 9` (`invalid_input`); no HTML entities or tags were
   found in the review text of three families.
@@ -235,8 +237,12 @@ QA yet), one fresh anonymous GPU stealth Kernel browser, the whole nine-tool nam
   store and location cookies were identical before and after the product-page calls, and the tab URL was unchanged
   after the calls from `/cart`. The existing `get_store_context`, `get_cart` and `search_products` still ran after
   the namespace was re-registered.
-- Not live-tested: an out-of-stock or pre-order status, the `challenge` outcome, signed-in sessions, and the local Chrome
-  extension.
+- One read-only run of both tools in a signed-in (registered) session on the same day returned `ok`, with the store and
+  location cookies and the tab URL unchanged; no account data is recorded here.
+- Local Chrome extension (scratch Chromium 153 profile, guest, site access granted in its permission dialog, tools installed
+  with `xwebmcp add` at the reviewed commit and invoked through `xwebmcp mcp` with `open_tab`): both tools were listed next to
+  the site's native `search_products` and returned the same shapes and values as on the Kernel browser.
+- Not live-tested: pre-order statuses, the `challenge` outcome, wrong-account behavior and an item not sold in stores.
 
 `tests/target-store-reviews.test.mjs` covers the two new tools with fabricated stores, items and reviews: input validation
 before any request, page routing (never checkout), challenge handling for HTTP 435/429/403 and block pages, the exact
