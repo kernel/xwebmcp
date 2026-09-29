@@ -13,6 +13,7 @@ const INVOKE_TIMEOUT_SEC = 120;
 // ?tab=<id> pins the panel to a tab, which is how it is exercised outside a
 // real side panel (for example loaded in a tab during development).
 const pinnedTabId = Number(new URLSearchParams(location.search).get('tab')) || null;
+let reloadVersion = 0;
 
 const state = {
   tabId: null,
@@ -59,9 +60,13 @@ function updateDraft(ref, update) {
 }
 
 async function reload() {
-  state.tab = await activeTab();
-  state.tabId = state.tab?.id ?? null;
-  state.tools = state.tabId ? await client.listTools({tab_id: state.tabId}).catch(() => []) : [];
+  const version = ++reloadVersion;
+  const tab = await activeTab();
+  const tools = tab?.id ? await client.listTools({tab_id: tab.id}).catch(() => []) : [];
+  if (version !== reloadVersion) return;
+  state.tab = tab;
+  state.tabId = tab?.id ?? null;
+  state.tools = tools;
   if (state.selectedRef && !state.tools.some((tool) => tool.tool_ref === state.selectedRef) && state.running !== state.selectedRef) {
     const previous = state.drafts.get(state.selectedRef);
     if (!previous?.result) state.selectedRef = null;
