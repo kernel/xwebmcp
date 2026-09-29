@@ -43,9 +43,12 @@ type LiveTool struct {
 	ToolRef string       `json:"tool_ref"`
 	Tool    ToolMetadata `json:"tool"`
 	Source  struct {
-		PageURL  string `json:"page_url"`
-		TargetID string `json:"target_id,omitempty"`
-		Custom   *struct {
+		WindowID  int    `json:"window_id"`
+		TabID     int    `json:"tab_id"`
+		PageTitle string `json:"page_title"`
+		PageURL   string `json:"page_url"`
+		TargetID  string `json:"target_id,omitempty"`
+		Custom    *struct {
 			ID        string `json:"id"`
 			Namespace string `json:"namespace"`
 		} `json:"custom,omitempty"`
@@ -227,6 +230,9 @@ func (c *Client) ExecuteRepl(ctx context.Context, browser, code string, timeoutS
 	var res ReplResult
 	if err := c.do(ctx, http.MethodPost, browserPath(browser, "/repl"), body, &res); err != nil {
 		return nil, err
+	}
+	if !res.Success {
+		return nil, fmt.Errorf("browser REPL: %s", res.Error)
 	}
 	return &res, nil
 }

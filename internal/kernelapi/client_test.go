@@ -58,6 +58,19 @@ func TestClient(t *testing.T) {
 	}
 }
 
+func TestExecuteReplReportsExecutionFailure(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("POST /browsers/b1/repl", func(w http.ResponseWriter, _ *http.Request) {
+		w.Write([]byte(`{"success":false,"error":"tab closed"}`))
+	})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+	client := &Client{BaseURL: srv.URL, APIKey: "k", HTTP: srv.Client()}
+	if _, err := client.ExecuteRepl(context.Background(), "b1", `await newTab()`, 30); err == nil || err.Error() != "browser REPL: tab closed" {
+		t.Fatalf("REPL failure: %v", err)
+	}
+}
+
 func TestFromEnv(t *testing.T) {
 	t.Setenv("KERNEL_API_KEY", "")
 	if _, err := FromEnv(); err == nil {

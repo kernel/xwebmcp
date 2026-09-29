@@ -1,0 +1,489 @@
+package mcpserver
+
+import (
+	"context"
+	"crypto/sha256"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"os"
+	"path/filepath"
+	"regexp"
+	"sort"
+	"strings"
+	"sync"
+
+	"github.com/modelcontextprotocol/go-sdk/mcp"
+
+	"github.com/kernel/xwebmcp/internal/toolsource"
+)
+
+// Options configure the MCP server.
+type Options struct {
+	Target Target
+	// AllTabs makes list_tools and list_tabs include tabs the user opened;
+	// invocations still need allow_user_tabs.
+	AllTabs bool
+	// DevRoots are local checkouts whose tool files are being edited; their
+	// paths are shown to the agent.
+	DevRoots []string
+	Version  string
+	Logf     func(format string, args ...any)
+}
+
+// Server is an MCP server over a Target.
+type Server struct {
+	opts   Options
+	server *mcp.Server
+	mu     sync.Mutex
+	// dynamic is the set of per-tool MCP tools currently registered.
+	dynamic map[string]CustomTool
+}
+
+// MCPToolName maps namespace/name to an MCP-safe tool name without collapsing
+// distinct punctuation or dropping the identity of long names.
+func MCPToolName(namespace, name string) string {
+	encode := func(s string) string {
+		var out strings.Builder
+		for i := 0; i < len(s); i++ {
+			c := s[i]
+			if c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9' || c == '-' {
+				out.WriteByte(c)
+			} else {
+				fmt.Fprintf(&out, "_%02x", c)
+			}
+		}
+		return out.String()
+	}
+	out := encode(namespace) + "__" + encode(name)
+	if len(out) > 64 {
+		sum := sha256.Sum256([]byte(namespace + "\x00" + name))
+		out = fmt.Sprintf("%s_%x", out[:47], sum[:8])
+	}
+	return out
+}
+
+// New builds the server with the generic tools registered.
+func New(opts Options) *Server {
+	if opts.Logf == nil {
+		opts.Logf = func(string, ...any) {}
+	}
+	s := &Server{opts: opts, dynamic: map[string]CustomTool{}}
+	instructions := fmt.Sprintf(`xwebmcp exposes the WebMCP tools of a browser (%s).
+
+Use list_tools to see what the open tabs expose (site-native and installed custom tools) and
+invoke_tool to run one by tool_ref or, for an installed cdp tool, by namespace and name.
+Installed custom tools are also registered here as their own MCP tools (namespace__name).
+Failed invocations include diagnostics: the thrown error with its stack mapped to the tool file,
+the tool's console output, and timing. By default tools only act on tabs this server opened
+(open_tab); pass allow_user_tabs to act on the user's own tabs. Never log or repeat tool inputs:
+login tools take passwords.`, opts.Target.Name())
+	if len(opts.DevRoots) > 0 {
+		instructions += fmt.Sprintf("\n\nLocal tool checkouts being watched: %s. Editing a tool file there reinstalls it into the browser automatically; invoke again after editing.", strings.Join(opts.DevRoots, ", "))
+	}
+	s.server = mcp.NewServer(&mcp.Implementation{Name: "xwebmcp", Version: opts.Version}, &mcp.ServerOptions{Instructions: instructions})
+	s.registerGenericTools()
+	return s
+}
+
+// MCP returns the underlying server for transports and tests.
+func (s *Server) MCP() *mcp.Server { return s.server }
+
+// Run serves stdio until ctx ends.
+func (s *Server) Run(ctx context.Context) error {
+	return s.server.Run(ctx, &mcp.StdioTransport{})
+}
+
+func schema(props map[string]any, required ...string) json.RawMessage {
+	doc := map[string]any{"type": "object", "properties": props, "additionalProperties": false}
+	if len(required) > 0 {
+		doc["required"] = required
+	}
+	data, _ := json.Marshal(doc)
+	return data
+}
+
+func prop(typ, description string) map[string]any {
+	return map[string]any{"type": typ, "description": description}
+}
+
+func textResult(value any) *mcp.CallToolResult {
+	data, err := json.MarshalIndent(value, "", "  ")
+	if err != nil {
+		data = []byte(fmt.Sprintf("%v", value))
+	}
+	return &mcp.CallToolResult{Content: []mcp.Content{&mcp.TextContent{Text: string(data)}}, StructuredContent: value}
+}
+
+func errorResult(err error) *mcp.CallToolResult {
+	return &mcp.CallToolResult{Content: []mcp.Content{&mcp.TextContent{Text: err.Error()}}, IsError: true}
+}
+
+func decodeArgs(req *mcp.CallToolRequest, out any) error {
+	if len(req.Params.Arguments) == 0 {
+		return nil
+	}
+	return json.Unmarshal(req.Params.Arguments, out)
+}
+
+func (s *Server) add(name, description string, input json.RawMessage, handler func(context.Context, *mcp.CallToolRequest) (any, error)) {
+	s.server.AddTool(&mcp.Tool{Name: name, Description: description, InputSchema: input}, func(ctx context.Context, req *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		value, err := handler(ctx, req)
+		if err != nil {
+			return errorResult(err), nil
+		}
+		return textResult(value), nil
+	})
+}
+
+func (s *Server) registerGenericTools() {
+	s.add("list_tools",
+		"List the WebMCP tools currently exposed by open tabs, site-native and installed custom tools, in the Kernel API's WebMCPTool shape (tool_ref, tool, source). By default only tabs opened by this server are included.",
+		schema(map[string]any{
+			"tab_id":   prop("integer", "only this tab"),
+			"all_tabs": prop("boolean", "include tabs the user opened"),
+		}),
+		func(ctx context.Context, req *mcp.CallToolRequest) (any, error) {
+			var args struct {
+				TabID   int  `json:"tab_id"`
+				AllTabs bool `json:"all_tabs"`
+			}
+			if err := decodeArgs(req, &args); err != nil {
+				return nil, err
+			}
+			raw, err := s.opts.Target.ListTools(ctx, ListToolsParams{TabID: args.TabID, OwnedOnly: !(args.AllTabs || s.opts.AllTabs)})
+			if err != nil {
+				return nil, err
+			}
+			return map[string]any{"tools": raw}, nil
+		})
+
+	s.add("invoke_tool",
+		"Invoke a WebMCP tool. Pass tool_ref (from list_tools) for an exact live registration, or namespace and name for an installed cdp tool (a tab on the site is opened when none exists). Returns the Kernel API's WebMCPInvocationResult (invocation_id, status, output, error_text) plus diagnostics when it did not complete: the error with its stack mapped to the tool file, the tool's console output, and timing.",
+		schema(map[string]any{
+			"tool_ref":        prop("string", "tool_ref from list_tools"),
+			"namespace":       prop("string", "installed tool namespace, e.g. southwest.com"),
+			"name":            prop("string", "installed tool name, e.g. search_flights"),
+			"input":           map[string]any{"type": "object", "description": "tool input; validated against the tool's inputSchema", "additionalProperties": true},
+			"timeout_sec":     prop("integer", "seconds to wait (default 120)"),
+			"tab_id":          prop("integer", "run in this tab instead of choosing one"),
+			"allow_user_tabs": prop("boolean", "allow running in a tab the user opened"),
+		}),
+		func(ctx context.Context, req *mcp.CallToolRequest) (any, error) {
+			var args struct {
+				ToolRef       string          `json:"tool_ref"`
+				Namespace     string          `json:"namespace"`
+				Name          string          `json:"name"`
+				Input         json.RawMessage `json:"input"`
+				TimeoutSec    int             `json:"timeout_sec"`
+				TabID         int             `json:"tab_id"`
+				AllowUserTabs bool            `json:"allow_user_tabs"`
+			}
+			if err := decodeArgs(req, &args); err != nil {
+				return nil, err
+			}
+			if args.ToolRef == "" && (args.Namespace == "" || args.Name == "") {
+				return nil, errors.New("pass tool_ref, or namespace and name")
+			}
+			if len(args.Input) == 0 {
+				args.Input = json.RawMessage("{}")
+			}
+			return s.opts.Target.Invoke(ctx, InvokeParams{ToolRef: args.ToolRef, Namespace: args.Namespace, Name: args.Name, Input: args.Input, TimeoutSec: args.TimeoutSec, TabID: args.TabID, AllowUserTabs: args.AllowUserTabs})
+		})
+
+	s.add("get_invocation",
+		"Return a past invocation with its diagnostics (error with mapped stack, console output, timing, final tab URL).",
+		schema(map[string]any{"invocation_id": prop("string", "invocation_id from invoke_tool")}, "invocation_id"),
+		func(ctx context.Context, req *mcp.CallToolRequest) (any, error) {
+			var args struct {
+				InvocationID string `json:"invocation_id"`
+			}
+			if err := decodeArgs(req, &args); err != nil {
+				return nil, err
+			}
+			raw, err := s.opts.Target.GetInvocation(ctx, args.InvocationID)
+			if err != nil {
+				return nil, err
+			}
+			return raw, nil
+		})
+
+	s.add("list_custom_tools",
+		"List the custom tools installed in the browser (CustomWebMCPDefinition shape) and, for the extension, sites that still need access granted in the popup.",
+		schema(map[string]any{}),
+		func(ctx context.Context, req *mcp.CallToolRequest) (any, error) {
+			tools, pending, err := s.opts.Target.ListCustomTools(ctx)
+			if err != nil {
+				return nil, err
+			}
+			return map[string]any{"tools": tools, "pending_origins": pending}, nil
+		})
+
+	s.add("install_tool",
+		"Install or update a tool from a local tool file (a single JavaScript expression evaluating to an array of definitions). The namespace defaults to the file's parent directory name. Existing tools with the same namespace and name are replaced; other tools in the namespace are kept.",
+		schema(map[string]any{
+			"path":      prop("string", "absolute path of the tool file"),
+			"namespace": prop("string", "namespace (default: parent directory name)"),
+		}, "path"),
+		func(ctx context.Context, req *mcp.CallToolRequest) (any, error) {
+			var args struct {
+				Path      string `json:"path"`
+				Namespace string `json:"namespace"`
+			}
+			if err := decodeArgs(req, &args); err != nil {
+				return nil, err
+			}
+			added, pending, err := s.InstallFile(ctx, args.Path, args.Namespace)
+			if err != nil {
+				return nil, err
+			}
+			return map[string]any{"tools": added, "pending_origins": pending}, nil
+		})
+
+	s.add("remove_tool",
+		"Remove an installed custom tool by id, or by namespace and name.",
+		schema(map[string]any{
+			"id":        prop("string", "custom tool id (ct_…)"),
+			"namespace": prop("string", "namespace"),
+			"name":      prop("string", "tool name"),
+		}),
+		func(ctx context.Context, req *mcp.CallToolRequest) (any, error) {
+			var args struct {
+				ID        string `json:"id"`
+				Namespace string `json:"namespace"`
+				Name      string `json:"name"`
+			}
+			if err := decodeArgs(req, &args); err != nil {
+				return nil, err
+			}
+			id := args.ID
+			if id == "" {
+				tools, _, err := s.opts.Target.ListCustomTools(ctx)
+				if err != nil {
+					return nil, err
+				}
+				for _, tool := range tools {
+					if tool.Namespace == args.Namespace && tool.Tool.Name == args.Name {
+						id = tool.ID
+					}
+				}
+				if id == "" {
+					return nil, fmt.Errorf("no installed tool %s/%s", args.Namespace, args.Name)
+				}
+			}
+			if err := s.opts.Target.RemoveCustomTool(ctx, id); err != nil {
+				return nil, err
+			}
+			s.RefreshToolRegistrations(ctx)
+			return map[string]any{"removed": id}, nil
+		})
+
+	s.add("list_tabs",
+		"List browser tabs. By default only tabs opened by this server.",
+		schema(map[string]any{"all_tabs": prop("boolean", "include tabs the user opened")}),
+		func(ctx context.Context, req *mcp.CallToolRequest) (any, error) {
+			var args struct {
+				AllTabs bool `json:"all_tabs"`
+			}
+			if err := decodeArgs(req, &args); err != nil {
+				return nil, err
+			}
+			tabs, err := s.opts.Target.ListTabs(ctx, args.AllTabs || s.opts.AllTabs)
+			if err != nil {
+				return nil, err
+			}
+			return map[string]any{"tabs": tabs}, nil
+		})
+
+	s.add("open_tab",
+		"Open a new tab owned by this server (grouped under \"xwebmcp\" in the extension) and return it.",
+		schema(map[string]any{"url": prop("string", "http(s) URL")}, "url"),
+		func(ctx context.Context, req *mcp.CallToolRequest) (any, error) {
+			var args struct {
+				URL string `json:"url"`
+			}
+			if err := decodeArgs(req, &args); err != nil {
+				return nil, err
+			}
+			return s.opts.Target.OpenTab(ctx, args.URL)
+		})
+
+	s.add("navigate_tab",
+		"Navigate a tab owned by this server to a URL.",
+		schema(map[string]any{
+			"tab_id":          prop("integer", "tab id"),
+			"url":             prop("string", "http(s) URL"),
+			"allow_user_tabs": prop("boolean", "allow navigating a tab the user opened"),
+		}, "tab_id", "url"),
+		func(ctx context.Context, req *mcp.CallToolRequest) (any, error) {
+			var args struct {
+				TabID         int    `json:"tab_id"`
+				URL           string `json:"url"`
+				AllowUserTabs bool   `json:"allow_user_tabs"`
+			}
+			if err := decodeArgs(req, &args); err != nil {
+				return nil, err
+			}
+			return s.opts.Target.NavigateTab(ctx, args.TabID, args.URL, args.AllowUserTabs)
+		})
+
+	s.add("close_tab",
+		"Close a tab owned by this server.",
+		schema(map[string]any{
+			"tab_id":          prop("integer", "tab id"),
+			"allow_user_tabs": prop("boolean", "allow closing a tab the user opened"),
+		}, "tab_id"),
+		func(ctx context.Context, req *mcp.CallToolRequest) (any, error) {
+			var args struct {
+				TabID         int  `json:"tab_id"`
+				AllowUserTabs bool `json:"allow_user_tabs"`
+			}
+			if err := decodeArgs(req, &args); err != nil {
+				return nil, err
+			}
+			if err := s.opts.Target.CloseTab(ctx, args.TabID, args.AllowUserTabs); err != nil {
+				return nil, err
+			}
+			return map[string]any{"closed": args.TabID}, nil
+		})
+}
+
+// InstallFile installs one local tool file, replacing tools of the same
+// namespace and name and keeping the namespace's other tools.
+func (s *Server) InstallFile(ctx context.Context, path, namespace string) ([]CustomTool, []string, error) {
+	absolute, err := filepath.Abs(path)
+	if err != nil {
+		return nil, nil, err
+	}
+	data, err := os.ReadFile(absolute)
+	if err != nil {
+		return nil, nil, err
+	}
+	if namespace == "" {
+		namespace = filepath.Base(filepath.Dir(absolute))
+	}
+	return s.InstallSource(ctx, namespace, string(data), absolute)
+}
+
+// InstallSource installs a tool source under a namespace with the same
+// replace-by-name semantics as InstallFile. Neither target can replace a
+// single tool in place, so a conflict names the colliding tool, which is
+// removed before trying again.
+func (s *Server) InstallSource(ctx context.Context, namespace, source, file string) ([]CustomTool, []string, error) {
+	normalized := toolsource.Normalize(source)
+	for attempt := 0; attempt < maxReplaceAttempts; attempt++ {
+		added, pending, err := s.opts.Target.AddCustomTools(ctx, namespace, normalized, file, false)
+		if err == nil {
+			s.RefreshToolRegistrations(ctx)
+			return added, pending, nil
+		}
+		conflict := conflictingName(err, namespace)
+		if conflict == "" {
+			return nil, nil, err
+		}
+		if err := s.removeByName(ctx, namespace, conflict); err != nil {
+			return nil, nil, err
+		}
+	}
+	return nil, nil, fmt.Errorf("could not replace tools in namespace %s after %d attempts", namespace, maxReplaceAttempts)
+}
+
+const maxReplaceAttempts = 32
+
+var conflictPattern = regexp.MustCompile(`custom tool already exists: (\S+)/(\S+)`)
+
+// conflictingName extracts the tool name from a custom_tool_conflict error.
+func conflictingName(err error, namespace string) string {
+	match := conflictPattern.FindStringSubmatch(err.Error())
+	if match == nil || match[1] != namespace {
+		return ""
+	}
+	return match[2]
+}
+
+func (s *Server) removeByName(ctx context.Context, namespace, name string) error {
+	tools, _, err := s.opts.Target.ListCustomTools(ctx)
+	if err != nil {
+		return err
+	}
+	for _, tool := range tools {
+		if tool.Namespace == namespace && tool.Tool.Name == name {
+			return s.opts.Target.RemoveCustomTool(ctx, tool.ID)
+		}
+	}
+	return fmt.Errorf("conflicting tool %s/%s not found", namespace, name)
+}
+
+// RefreshToolRegistrations re-registers one MCP tool per installed custom
+// tool so agents can call them directly with schema validation.
+func (s *Server) RefreshToolRegistrations(ctx context.Context) {
+	tools, _, err := s.opts.Target.ListCustomTools(ctx)
+	if err != nil {
+		s.opts.Logf("list custom tools: %v", err)
+		return
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	wanted := map[string]CustomTool{}
+	for _, tool := range tools {
+		name := MCPToolName(tool.Namespace, tool.Tool.Name)
+		if previous, exists := wanted[name]; exists && (previous.Namespace != tool.Namespace || previous.Tool.Name != tool.Tool.Name) {
+			s.opts.Logf("MCP tool name collision between %s/%s and %s/%s", previous.Namespace, previous.Tool.Name, tool.Namespace, tool.Tool.Name)
+			return
+		}
+		wanted[name] = tool
+	}
+	var removed []string
+	for name, current := range s.dynamic {
+		next, ok := wanted[name]
+		if !ok || next.ID != current.ID {
+			removed = append(removed, name)
+			delete(s.dynamic, name)
+		}
+	}
+	if len(removed) > 0 {
+		s.server.RemoveTools(removed...)
+	}
+	names := make([]string, 0, len(wanted))
+	for name := range wanted {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	for _, name := range names {
+		tool := wanted[name]
+		if _, ok := s.dynamic[name]; ok {
+			continue
+		}
+		s.dynamic[name] = tool
+		s.registerCustomTool(name, tool)
+	}
+}
+
+func (s *Server) registerCustomTool(name string, tool CustomTool) {
+	input := tool.Tool.InputSchema
+	if len(input) == 0 {
+		input = json.RawMessage(`{"type":"object"}`)
+	}
+	description := fmt.Sprintf("[%s/%s, kind %s] %s", tool.Namespace, tool.Tool.Name, tool.Kind, tool.Tool.Description)
+	namespace, toolName := tool.Namespace, tool.Tool.Name
+	s.server.AddTool(&mcp.Tool{Name: name, Description: description, InputSchema: input, OutputSchema: tool.Tool.OutputSchema}, func(ctx context.Context, req *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		input := req.Params.Arguments
+		if len(input) == 0 {
+			input = json.RawMessage("{}")
+		}
+		result, err := s.opts.Target.Invoke(ctx, InvokeParams{Namespace: namespace, Name: toolName, Input: input})
+		if err != nil {
+			return errorResult(err), nil
+		}
+		if result.Status != "completed" {
+			out := textResult(result)
+			out.IsError = true
+			return out, nil
+		}
+		var structured any
+		if len(result.Output) > 0 {
+			structured = result.Output
+		}
+		return &mcp.CallToolResult{Content: []mcp.Content{&mcp.TextContent{Text: string(result.Output)}}, StructuredContent: structured}, nil
+	})
+}

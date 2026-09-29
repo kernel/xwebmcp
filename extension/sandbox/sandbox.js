@@ -63,11 +63,12 @@
   }
 
   // mapStack rewrites stack frames that point into the wrapped tool file so
-  // line numbers match the file on disk.
+  // line numbers match the file on disk. Frames from page-side evaluation
+  // (<anonymous>) are left alone; their numbers belong to the page.
   function mapStack(stack, file) {
     if (typeof stack !== 'string') return null;
-    const pattern = new RegExp(`(xwebmcp://${file.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}|<anonymous>):(\\d+):(\\d+)`, 'g');
-    return stack.replace(pattern, (whole, _source, line, column) => `${file}:${Number(line) - SOURCE_LINE_OFFSET}:${column}`);
+    const pattern = new RegExp(`xwebmcp://${file.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}:(\\d+):(\\d+)`, 'g');
+    return stack.replace(pattern, (whole, line, column) => `${file}:${Number(line) - SOURCE_LINE_OFFSET}:${column}`);
   }
 
   const MAX_CONSOLE_ENTRIES = 200;

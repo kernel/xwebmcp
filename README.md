@@ -141,6 +141,88 @@ How invocation works and what to expect:
   individually retains its filename in mapped stacks; `attach` combines installed
   files per namespace, so those stacks point to the namespace batch instead.
 
+#### Connect an agent: `xwebmcp mcp`
+
+`xwebmcp mcp` is a stdio MCP server that exposes the browser's tools to Claude Code,
+Codex, Cursor, or any MCP client:
+
+```sh
+claude mcp add xwebmcp -- xwebmcp mcp            # Claude Code
+codex mcp add xwebmcp -- xwebmcp mcp             # Codex
+```
+
+or in an `mcpServers` JSON config: `{"command": "xwebmcp", "args": ["mcp"]}`.
+
+The server offers generic tools and one MCP tool per installed custom tool:
+
+| tool | does |
+|---|---|
+| `list_tools` | WebMCP tools exposed by open tabs, site-native and custom, in the Kernel API's `WebMCPTool` shape |
+| `invoke_tool` | run a tool by `tool_ref`, or an installed cdp tool by `namespace` + `name` (opens the site when no tab has it); returns `WebMCPInvocationResult` plus `diagnostics` on failure (error with stack mapped to the tool file, console output, timing) |
+| `get_invocation` | diagnostics for a past invocation |
+| `list_custom_tools`, `install_tool`, `remove_tool` | installed tools; `install_tool` takes a local file path |
+| `open_tab`, `navigate_tab`, `close_tab`, `list_tabs` | extension-owned tabs; with `--kernel`, only `list_tabs` is available and lists tabs that expose tools |
+| `southwest_2ecom__search_5fflights`, … | each installed tool, with its own input schema |
+
+By default the server only sees and acts on tabs it opened itself (an **xwebmcp** tab
+group); pass `allow_user_tabs` / `all_tabs` per call, or start with `--all-tabs` to list
+the user's tabs too. Tool inputs are never logged or stored by the server or the
+extension. `--kernel <browser>` points the same server at a Kernel browser, but it
+cannot map a numeric `tab_id` to a REPL target for `open_tab`, `navigate_tab`, or
+`close_tab`, so those operations return an error rather than acting on the wrong tab.
+For a custom tool invoked by namespace without a matching registration, the Kernel
+target opens a new tab; pass `tab_id` to require an existing matching registration.
+
+### Develop tools locally
+
+This is the loop for iterating on a tool file against your normal, logged-in Chrome with
+a coding agent driving it.
+
+1. Install the extension and register the native host (once):
+   `xwebmcp setup chrome`, then Load unpacked → `~/.xwebmcp/extension` in
+   `chrome://extensions`. `xwebmcp status` should report `bridge: connected`.
+2. Point the MCP server at your checkout:
+
+   ```sh
+   claude mcp add xwebmcp -- xwebmcp mcp --dev ~/src/xwebmcp
+   ```
+
+   `--dev` accepts a repository root (uses its `registry.json`), a `domains/<namespace>`
+   directory, or a single tool file, and can be repeated. Every tool file under it is
+   installed when the server starts and reinstalled whenever its content changes; tools
+   installed with `xwebmcp add` keep working next to them. `xwebmcp dev <path>` runs the
+   same watcher without an MCP server.
+3. Grant the site once in the extension popup (**Grant access**) when the server reports
+   pending origins.
+4. Loop: the agent calls `invoke_tool` (`namespace` + `name`), reads the failure's
+   `diagnostics.error.stack` (lines map to the tool file), edits the file, waits for the
+   reinstall (`xwebmcp mcp` logs `installed <namespace>/<tool>` on stderr), and invokes
+   again. `open_tab` / `navigate_tab` put a tab on the right page first when needed.
+
+A prompt that works with Claude Code:
+
+```
+The tool file domains/probe.test/page_title.js is watched by the xwebmcp MCP server.
+Invoke probe.test/page_title with input {} via invoke_tool. If it fails, use the
+diagnostics to fix the file, then invoke again until it completes.
+```
+
+**Page inspection.** `xwebmcp mcp` deliberately has no screenshot, DOM-snapshot, or
+network tools. Pair it with
+[chrome-devtools-mcp](https://github.com/ChromeDevTools/chrome-devtools-mcp), which
+can attach to the same running Chrome: enable remote debugging once at
+`chrome://inspect/#remote-debugging` (Chrome 144+) and add it with `--autoConnect`:
+
+```sh
+claude mcp add chrome-devtools -- npx -y chrome-devtools-mcp@latest --autoConnect
+```
+
+Both servers then see the same tabs; use chrome-devtools-mcp's `take_screenshot`,
+`take_snapshot`, `list_network_requests`, and `list_console_messages` on the tab an
+xwebmcp invocation left behind. `chrome.debugger` (used while a cdp tool runs) and a
+DevTools client can be attached to one tab at the same time; only the DevTools UI panel
+open on that tab blocks the extension from attaching.
+
 #### On a Kernel browser
 
 ```sh
