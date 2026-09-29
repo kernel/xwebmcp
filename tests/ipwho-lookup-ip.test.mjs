@@ -46,11 +46,22 @@ const siteBody = (extra = {}) => ({
   timezone: { id: "Etc/Example", abbr: "EXT", is_dst: false, offset: 3600, utc: "+01:00" },
   readme: "https://example.test/docs", ...extra
 });
-const reply = (status, body, headers = {}) => ({
-  status,
-  headers: { get: name => headers[Object.keys(headers).find(k => k.toLowerCase() === name.toLowerCase())] ?? null },
-  text: async () => (typeof body === "string" ? body : JSON.stringify(body))
-});
+// The tool reads the body through getReader() only, so a response that offers nothing else proves it never uses text().
+// state.reads counts read() calls and state.cancelled records reader.cancel().
+const reply = (status, body, headers = {}, chunks) => {
+  const bytes = new TextEncoder().encode(typeof body === "string" ? body : JSON.stringify(body));
+  const iterator = (chunks ?? [bytes])[Symbol.iterator]();
+  const state = { reads: 0, cancelled: false };
+  const reader = {
+    read: async () => { state.reads++; const next = iterator.next(); return next.done ? { done: true, value: undefined } : { done: false, value: next.value }; },
+    cancel: async () => { state.cancelled = true; }
+  };
+  return {
+    status, state,
+    headers: { get: name => headers[Object.keys(headers).find(k => k.toLowerCase() === name.toLowerCase())] ?? null },
+    body: { getReader: () => reader }
+  };
+};
 
 // The page runtime re-creates execute from its source inside the page, so the function is rebuilt here from
 // toString() in a context that only holds the browser globals a page would have.
@@ -69,15 +80,16 @@ function harness(o = {}) {
   const fetch = async (url, init) => {
     calls.fetch.push({ url, init });
     if (o.fetch) return o.fetch(url, init, calls);
-    return reply(200, siteBody());
+    const asked = new URL(url).pathname.slice(1);
+    return reply(200, asked ? siteBody({ ip: asked, type: asked.includes(":") ? "IPv6" : "IPv4" }) : siteBody());
   };
   const context = {
-    window, fetch, URL, AbortController, Date: FakeDate,
+    window, fetch, URL, AbortController, TextDecoder, Date: FakeDate,
     setTimeout: (fn, ms) => { const id = nextTimer++; timers.set(id, { fn, ms }); return id; },
     clearTimeout: id => timers.delete(id)
   };
   const execute = runInNewContext(`(${definition.execute.toString()})`, context);
-  return { execute: input => execute(input).then(plain), calls, clock, window, timers };
+  return { execute: input => execute(input).then(plain), executeUnconverted: input => execute(input), calls, clock, window, timers };
 }
 const run = async (input, o) => { const h = harness(o); return { ...h, result: await h.execute(input) }; };
 
@@ -128,7 +140,7 @@ test("request carries no cookies, no cache and no redirects, and is a GET with a
 });
 
 test("a requested address is returned in the fixed shape with only allowlisted fields", async () => {
-  const { result, calls } = await run({ ip: "  192.0.2.44 ", lang: "ja" });
+  const { result, calls } = await run({ ip: "192.0.2.44", lang: "ja" });
   assert.equal(calls.fetch[0].url, "https://ipwho.is/192.0.2.44?lang=ja");
   assert.deepEqual(result, {
     status: "ok",
@@ -170,7 +182,9 @@ test("valid address forms reach the site", async () => {
 
 test("malformed input is rejected before any request", async () => {
   const bad = [
-    { ip: "" }, { ip: "   " }, { ip: "1.2.3" }, { ip: "1.2.3.4.5" }, { ip: "256.1.1.1" }, { ip: "01.2.3.4" }, { ip: "1.2.3.04" },
+    { ip: "" }, { ip: "   " }, { ip: " 192.0.2.44" }, { ip: "192.0.2.44 " }, { ip: "\t192.0.2.44\n" }, { ip: "\ufeff192.0.2.44" }, { ip: "2001:db8::1 " },
+    { ip: "::1]/x[::1" }, { ip: "::1]?a=b[::1" }, { ip: "::1]#[::1" }, { ip: "::1]:80/[::1" }, { ip: "::1]@evil.example[::1" }, { ip: "[::1]/x" },
+    { ip: "١٩٢.٠.٢.٤٤" }, { ip: "192.0.2.44".padEnd(87, " ") }, { ip: "1.2.3" }, { ip: "1.2.3.4.5" }, { ip: "256.1.1.1" }, { ip: "01.2.3.4" }, { ip: "1.2.3.04" },
     { ip: "1.2.3.4/24" }, { ip: "1.2.3.4:80" }, { ip: "[::1]" }, { ip: "::1%eth0" }, { ip: "2001:db8::g" }, { ip: ":::" }, { ip: "1::2::3" },
     { ip: "1:2:3:4:5:6:7:8:9" }, { ip: "1.2.3.4:" }, { ip: "example.com" }, { ip: "192.0.2.1?x=1" }, { ip: "192.0.2.1#a" },
     { ip: "192.0.2.1\n198.51.100.1" }, { ip: "192.0.2.1,198.51.100.1" }, { ip: "https://ipwho.is/192.0.2.1" }, { ip: "../x" }, { ip: "1".repeat(46) },
@@ -236,7 +250,12 @@ test("a changed response shape is site_changed, never an empty success", async (
     reply(200, { success: true }),
     reply(200, { success: "true", ip: "192.0.2.1" }),
     reply(200, { success: true, ip: 5 }),
-    reply(200, JSON.stringify(siteBody({ readme: "x".repeat(17000) })))
+    reply(200, { success: true, ip: "" , type: "IPv4", country_code: "XX" }),
+    reply(200, { success: true, ip: "not an address", type: "IPv4", country_code: "XX" }),
+    reply(200, { success: true, ip: "192.0.2.1" }),
+    reply(200, { success: true, ip: "192.0.2.1", type: "IPv5", country_code: "XX" }),
+    reply(200, { success: true, ip: "192.0.2.1", type: "IPv4" }),
+    reply(200, { success: true, ip: "192.0.2.1", type: "IPv4", country: "", country_code: null })
   ];
   for (const r of shapes) {
     const { result } = await run({ ip: "192.0.2.1" }, { fetch: () => r });
@@ -292,6 +311,10 @@ test("HTTP 429 reports the wait, then refuses further requests without sending t
   assert.equal(invalid.error_kind, "invalid_input");
 
   assert.equal(h.calls.fetch.length, 1);
+  h.clock.now += 89500;
+  const last = await h.execute({});
+  assert.equal(last.error_kind, "rate_limited");
+  assert.equal(last.retry_after_seconds, 1);
   assert.equal((await harness().execute({})).status, "ok");
 });
 
@@ -333,7 +356,7 @@ test("values of the wrong type or length become null or are capped", async () =>
   const body = siteBody({
     city: 5, region: "", postal: null, latitude: "12.5", longitude: Infinity, is_eu: "no", country: "C".repeat(500),
     connection: { asn: "64500", org: ["x"], isp: null, domain: "d.example" },
-    timezone: "UTC", type: "IPv5"
+    timezone: "UTC"
   });
   const { result } = await run({ ip: "192.0.2.44" }, { fetch: () => reply(200, body) });
   assert.equal(result.status, "ok");
@@ -346,8 +369,29 @@ test("values of the wrong type or length become null or are capped", async () =>
   assert.equal(result.location.country.length, 200);
   assert.deepEqual(result.connection, { asn: null, organization: null, isp: null, domain: "d.example" });
   assert.deepEqual(result.timezone, { id: null, abbreviation: null, is_dst: null, offset_seconds: null, utc_offset: null });
-  assert.equal(result.type, null);
+  assert.equal(result.type, "IPv4");
   assert.ok(conforms(definition.tool.outputSchema, result));
+});
+
+test("a fractional ASN and an out-of-range number become null", async () => {
+  const fractional = await run({ ip: "192.0.2.44" }, { fetch: () => reply(200, siteBody({ connection: { asn: 64500.5, org: "Example", isp: "Example", domain: "example.test" } })) });
+  assert.equal(fractional.result.connection.asn, null);
+  // JSON.parse turns 1e999 into Infinity; JSON.stringify in reply() would hide it, so the body is raw text.
+  const raw = JSON.stringify(siteBody({ latitude: 0 })).replace('"latitude":0', '"latitude":1e999');
+  // plain() would turn Infinity into null by itself, so the unconverted result is checked.
+  const unconverted = await harness({ fetch: () => reply(200, raw) }).executeUnconverted({ ip: "192.0.2.44" });
+  assert.equal(unconverted.status, "ok");
+  assert.equal(unconverted.location.latitude, null);
+});
+
+test("long strings are cut by code point without splitting a surrogate pair", async () => {
+  const cut = "a".repeat(199) + "\u{1F600}" + "b";
+  const { result } = await run({ ip: "192.0.2.44" }, { fetch: () => reply(200, siteBody({ city: cut, region: "\u{1F600}".repeat(300) })) });
+  assert.equal([...result.location.city].length, 200);
+  assert.ok(result.location.city.isWellFormed());
+  assert.ok(result.location.city.endsWith("\u{1F600}"));
+  assert.equal([...result.location.region].length, 200);
+  assert.ok(result.location.region.isWellFormed());
 });
 
 test("page content and the starting page do not affect the request", async () => {
@@ -363,4 +407,97 @@ test("output schema rejects extra fields and success results without location", 
   assert.equal(conforms(definition.tool.outputSchema, good), false);
   assert.equal(conforms(definition.tool.outputSchema, { status: "error", error_kind: "rate_limited", error_message: "x", extra: 1 }), false);
   assert.equal(conforms(definition.tool.outputSchema, { status: "error", error_kind: "nope", error_message: "x" }), false);
+});
+
+test("data for a different address than requested is site_changed", async () => {
+  const other = await run({ ip: "192.0.2.9" }, { fetch: () => reply(200, siteBody({ ip: "198.51.100.1" })) });
+  assert.equal(other.result.error_kind, "site_changed");
+  assert.match(other.result.error_message, /different address/);
+  assert.ok(conforms(definition.tool.outputSchema, other.result));
+  const empty = await run({ ip: "192.0.2.9" }, { fetch: () => reply(200, { success: true, ip: "1.2.3.4" }) });
+  assert.equal(empty.result.error_kind, "site_changed");
+  const egress = await run({}, { fetch: () => reply(200, siteBody({ ip: "definitely not an address" })) });
+  assert.equal(egress.result.error_kind, "site_changed");
+});
+
+test("the same IPv6 address in another spelling is accepted", async () => {
+  const spellings = [["2001:DB8::1", "2001:db8::1"], ["2001:db8:0:0:0:0:0:1", "2001:db8::1"], ["2001:0db8:0000:0000:0000:0000:0000:0001", "2001:DB8::1"], ["2001:db8::1", "2001:0db8::0001"]];
+  for (const [asked, answered] of spellings) {
+    const { result } = await run({ ip: asked }, { fetch: () => reply(200, siteBody({ ip: answered, type: "IPv6" })) });
+    assert.equal(result.status, "ok", asked);
+    assert.equal(result.ip, answered);
+  }
+});
+
+test("a country name alone or a country code alone is enough data", async () => {
+  for (const extra of [{ country: null }, { country_code: null }]) {
+    const { result } = await run({ ip: "192.0.2.44" }, { fetch: () => reply(200, siteBody(extra)) });
+    assert.equal(result.status, "ok", JSON.stringify(extra));
+  }
+});
+
+test("the body is read through a byte cap and only for HTTP 200", async () => {
+  const huge = function* () { for (let i = 0; i < 96; i++) yield new Uint8Array(1 << 20); };
+  const big = reply(200, "", {}, huge());
+  const { result, calls } = await run({ ip: "192.0.2.1" }, { fetch: () => big });
+  assert.equal(result.error_kind, "site_changed");
+  assert.match(result.error_message, /16 KiB/);
+  assert.equal(big.state.reads, 1);
+  assert.equal(big.state.cancelled, true);
+  assert.equal(calls.fetch.length, 1);
+  assert.ok(conforms(definition.tool.outputSchema, result));
+
+  for (const status of [204, 400, 403, 404, 429, 500]) {
+    const r = reply(status, "x".repeat(50000), { "Retry-After": "5" });
+    await run({ ip: "192.0.2.1" }, { fetch: () => r });
+    assert.equal(r.state.reads, 0, String(status));
+  }
+});
+
+test("a body of exactly 16 KiB is read and one byte more is refused", async () => {
+  const fit = total => {
+    const base = new TextEncoder().encode(JSON.stringify(siteBody({ ip: "192.0.2.1", readme: "" }))).length;
+    return JSON.stringify(siteBody({ ip: "192.0.2.1", readme: "r".repeat(total - base) }));
+  };
+  assert.equal(new TextEncoder().encode(fit(16384)).length, 16384);
+  const exact = await run({ ip: "192.0.2.1" }, { fetch: () => reply(200, fit(16384)) });
+  assert.equal(exact.result.status, "ok");
+  const over = await run({ ip: "192.0.2.1" }, { fetch: () => reply(200, fit(16385)) });
+  assert.equal(over.result.error_kind, "site_changed");
+});
+
+test("a body split across chunks, even inside a multibyte character, is decoded whole", async () => {
+  const bytes = new TextEncoder().encode(JSON.stringify(siteBody({ ip: "192.0.2.1", city: "Zürich 東京" })));
+  const at = bytes.indexOf(0xc3) + 1;
+  const pieces = [bytes.slice(0, at), bytes.slice(at, at + 40), bytes.slice(at + 40)];
+  const { result } = await run({ ip: "192.0.2.1" }, { fetch: () => reply(200, "", {}, pieces) });
+  assert.equal(result.status, "ok");
+  assert.equal(result.location.city, "Zürich 東京");
+});
+
+test("a body read that stalls after the headers hits the same timeout", async () => {
+  const h = harness({
+    fetch: (url, init) => {
+      const r = reply(200, "");
+      r.body = { getReader: () => ({ read: () => new Promise((_, reject) => init.signal.addEventListener("abort", () => reject(new Error("aborted")))), cancel: async () => {} }) };
+      return r;
+    }
+  });
+  const pending = h.execute({ ip: "192.0.2.1" });
+  await new Promise(resolve => setImmediate(resolve));
+  const [{ fn }] = h.timers.values();
+  fn();
+  const result = await pending;
+  assert.equal(result.error_kind, "network_error");
+  assert.match(result.error_message, /10 seconds/);
+  assert.equal(h.timers.size, 0);
+});
+
+test("a body that ends in an incomplete UTF-8 sequence is not accepted", async () => {
+  const valid = new TextEncoder().encode(JSON.stringify(siteBody({ ip: "192.0.2.1" })));
+  const withTail = new Uint8Array(valid.length + 1);
+  withTail.set(valid);
+  withTail[valid.length] = 0xc3;
+  const { result } = await run({ ip: "192.0.2.1" }, { fetch: () => reply(200, "", {}, [withTail]) });
+  assert.equal(result.error_kind, "site_changed");
 });
