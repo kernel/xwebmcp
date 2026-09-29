@@ -901,6 +901,19 @@
       }
     },
     {
+      "domain": "stubhub.com",
+      "tool": "search_events",
+      "file": "domains/stubhub.com/search_events.js",
+      "kind": "page",
+      "namespace": "stubhub.com",
+      "url_patterns": [
+        "https://www.stubhub.com/*"
+      ],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Page tool on www.stubhub.com: keyword search of the site's results page, first page only (up to 20 events, relevance order), optional UTC date window, venue-local date and time per event. No prices or listings. Bot-protection pages are reported as challenge, not bypassed."
+    },
+    {
       "domain": "target.com",
       "tool": "add_to_cart",
       "file": "domains/target.com/add_to_cart.js",
