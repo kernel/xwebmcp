@@ -237,6 +237,45 @@
       }
     },
     {
+      "domain": "familysearch.org",
+      "tool": "get_record",
+      "file": "domains/familysearch.org/get_record.js",
+      "kind": "page",
+      "namespace": "familysearch.org",
+      "url_patterns": [
+        "https://www.familysearch.org/*"
+      ],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Read-only. Reads one record entry by persona id or ark: people, dated events, allowlisted attributes, links and citation. Fixture-tested; live on a signed-out and one signed-in Kernel browser during authoring. Not independently QA'd yet."
+    },
+    {
+      "domain": "familysearch.org",
+      "tool": "list_collections",
+      "file": "domains/familysearch.org/list_collections.js",
+      "kind": "page",
+      "namespace": "familysearch.org",
+      "url_patterns": [
+        "https://www.familysearch.org/*"
+      ],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Read-only. Filters the site's public list of about 3,500 record collections by title words, place, type, years, size and images. Fixture-tested; live on a signed-out Kernel browser during authoring. Not independently QA'd yet."
+    },
+    {
+      "domain": "familysearch.org",
+      "tool": "search_records",
+      "file": "domains/familysearch.org/search_records.js",
+      "kind": "page",
+      "namespace": "familysearch.org",
+      "url_patterns": [
+        "https://www.familysearch.org/*"
+      ],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Read-only. Records search by name, birth place and years, keyword and (signed in) collection; one page of allowlisted hit fields. Fixture-tested; live on a signed-out and one signed-in Kernel browser during authoring. Not independently QA'd yet."
+    },
+    {
       "domain": "flyfrontier.com",
       "tool": "login",
       "file": "domains/flyfrontier.com/login.js",
