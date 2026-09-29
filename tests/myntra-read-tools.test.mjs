@@ -52,7 +52,7 @@ const card = (id, extra = {}) => ({
   landingPageUrl: `sports-shoes/testbrand/testbrand-test-shoe-${id}/${id}/buy`, searchImage: `http://assets.myntassets.com/assets/images/fab/${id}.jpg`, isPLA: false, ...extra
 });
 const searchBody = (options = {}) => ({
-  responseType: "LIST", totalCount: options.total ?? 120, hasNextPage: options.hasNext ?? true, querySubstitution: options.substitution ?? null, templateMessage: options.message ?? null,
+  responseType: "LIST", totalCount: "total" in options ? options.total : 120, hasNextPage: options.hasNext ?? true, querySubstitution: options.substitution ?? null, templateMessage: options.message ?? null,
   products: options.products ?? [card(1001), card(1002, { brand: "Otherbrand", rating: 0, ratingCount: 0, sizes: "S,M,L" }), card(1003, { isPLA: true })],
   filters: options.filters ?? {
     primaryFilters: [
@@ -174,6 +174,7 @@ const invalidInputs = {
     null, [], "shoes", {}, { query: 5 }, { query: "" }, { query: "   " }, { query: "///" }, { query: "..." }, { query: "a".repeat(121) }, { query: "shoes\u0000" }, { query: "shoes\n" }, { query: "shoes", extra: 1 },
     { query: "shoes", sort_by: "cheapest" }, { query: "shoes", sort_by: "toString" }, { query: "shoes", limit: 0 }, { query: "shoes", limit: 51 }, { query: "shoes", limit: 1.5 }, { query: "shoes", limit: "5" },
     { query: "shoes", filters: "Brand:Puma" }, { query: "shoes", filters: ["Brand"] }, { query: "shoes", filters: ["Brand:"] }, { query: "shoes", filters: [":Puma"] }, { query: "shoes", filters: ["Brand:Puma:x"] },
+    { query: "shoes \ud800" }, { query: "\udc00shoes" }, { query: "shoes", filters: ["Brand:\ud800x"] }, { query: "shoes", filters: ["price:1.0_2.0"] }, { query: "shoes", filters: [" PRICE :1.0_2.0"] }, { query: "shoes", filters: ["rating:4.0"] }, { query: "shoes", filters: ["discount range:10.0"] },
     { query: "shoes", filters: ["Brand:Puma,Reebok"] }, { query: "shoes", filters: ["Brand:Puma", "Brand:Puma"] }, { query: "shoes", filters: [5] }, { query: "shoes", filters: ["Price:1.0,2.0"] }, { query: "shoes", filters: ["Rating:4.0"] },
     { query: "shoes", filters: ["Discount Range:10.0"] }, { query: "shoes", filters: Array.from({ length: 13 }, (_, i) => `G${i}:v`) }, { query: "shoes", filters: ["Brand:Pu\nma"] }, { query: "shoes", filters: ["B".repeat(61) + ":x"] },
     { query: "shoes", min_price: 100 }, { query: "shoes", max_price: 100 }, { query: "shoes", min_price: 200, max_price: 100 }, { query: "shoes", min_price: -1, max_price: 5 }, { query: "shoes", min_price: 1.5, max_price: 5 }, { query: "shoes", min_price: 0, max_price: 1000001 },
@@ -273,6 +274,80 @@ test("search_products: padding around a filter's group and value is dropped befo
   const result = await h.run({ query: "shoes", filters: [" Brand : Puma ", "Brand:Reebok"] });
   assert.equal(new URL(h.calls[0].path, "https://www.myntra.com").searchParams.get("f"), "Brand:Puma,Reebok");
   assert.deepEqual(result.filters, [" Brand : Puma ", "Brand:Reebok"]);
+});
+
+test("search_products: '#' is treated as a space because the site cannot search for it", async () => {
+  for (const [query, expected] of [["tee#1", "tee 1"], ["#tee", "tee"], ["a # b", "a b"]]) {
+    const h = searchWith(okSearch());
+    const result = await h.run({ query });
+    assert.equal(result.query, expected);
+    assert.equal(h.calls[0].path.includes("%23"), false);
+    assert.equal(new URL(h.calls[0].path, "https://www.myntra.com").searchParams.get("rawQuery"), expected);
+  }
+  assert.equal((await searchWith(okSearch()).run({ query: "###" })).error_kind, "invalid_input");
+});
+
+test("search_products: a filter value is percent-encoded so it cannot add request parameters", async () => {
+  const h = searchWith(okSearch());
+  await h.run({ query: "shoes", filters: ["Brand:Puma&sort=price_asc#x"] });
+  const url = new URL(h.calls[0].path, "https://www.myntra.com");
+  assert.equal(url.searchParams.get("f"), "Brand:Puma&sort=price_asc#x");
+  assert.equal(url.searchParams.get("sort"), null);
+});
+
+test("search_products: a cursor does not depend on the order of the filters", async () => {
+  const h = searchWith(okSearch());
+  const first = await h.run({ query: "shoes", filters: ["Brand:Puma", "Color:Black_36454f", "Brand:Reebok"] });
+  const second = await h.run({ query: "shoes", filters: ["Color:Black_36454f", "Brand:Reebok", "Brand:Puma"], cursor: first.next_cursor });
+  assert.equal(second.status, "ok");
+  const other = await h.run({ query: "shoes", filters: ["Color:Black_36454f", "Brand:Reebok"], cursor: first.next_cursor });
+  assert.equal(other.error_kind, "invalid_input");
+});
+
+test("search_products: size labels, totals and ratings are bounded and sanitised", async () => {
+  const big = card(11, { sizes: Array.from({ length: 60 }, (_, i) => `S${i}`).join(",") });
+  const result = await searchWith(okSearch(searchBody({ products: [big, card(12, { rating: 4.999, price: "899", mrp: null })], total: "many" }))).run({ query: "shoes" });
+  assert.equal(result.products[0].size_labels.length, 40);
+  assert.equal(result.total_count, null);
+  assert.equal(result.products[1].rating, 5);
+  assert.equal(result.products[1].price, null);
+  for (const total of [-5, 1.5, null]) assert.equal((await searchWith(okSearch(searchBody({ total }))).run({ query: "shoes" })).total_count, null, String(total));
+});
+
+test("the JSON tools send the site's own headers", async () => {
+  const search = searchWith(okSearch());
+  await search.run({ query: "shoes" });
+  const reviews = reviewsWith(reviewsBody([reviewItem(1)]));
+  await reviews.run({ style_id: "4321001" });
+  for (const { init } of [search.calls[0], reviews.calls[0]]) {
+    assert.deepEqual(plain(init.headers), {
+      "Accept": "application/json", "Content-Type": "application/json", "X-myntraweb": "Yes", "X-Requested-With": "browser", "app": "web", "x-meta-app": "channel=web",
+      "x-myntra-app": `deviceID=${DEVICE};customerID=;reqChannel=web;appFamily=MyntraRetailWeb;`
+    });
+  }
+  const odd = harness("get_product_reviews", { cookie: "_d_id=a b\r\nc; x=1", respond: () => ({ body: reviewsBody([reviewItem(1)]) }) });
+  await odd.run({ style_id: "4321001" });
+  assert.equal(odd.calls[0].init.headers["x-myntra-app"], "deviceID=abc;customerID=;reqChannel=web;appFamily=MyntraRetailWeb;");
+});
+
+test("text sanitiser: block tags separate text, entities are decoded once, control characters go", async () => {
+  const cases = [
+    ["<ul><li>Fill in your upper</li><li>Line carefully</li></ul>", "Fill in your upper\nLine carefully"],
+    ["<p>a</p><p>b</p><div>c</div>", "a\nb\nc"],
+    ["Warranty:&nbsp;Warranty provided", "Warranty: Warranty provided"],
+    ["&#x27;&#039;&apos;&ndash;&mdash;&hellip;&rsquo;", "\u0027\u0027\u0027\u2013\u2014\u2026\u2019"],
+    ["&amp;lt; &amp;amp; &amp;#39;", "&lt; &amp; &#39;"],
+    ["tab\there", "tab here"],
+    ["a &#0; b &#xD800; c &#1114112; d", "a b c d"],
+    ["&unknown; &notanentity", "&unknown; &notanentity"],
+    ["line one   \n\n\n   line two", "line one\nline two"],
+    ["<script>alert(1)</script><style>p{}</style>ok<SCRIPT type=x>bad</SCRIPT >", "ok"],
+    ["  <b> </b>  ", null]
+  ];
+  for (const [raw, expected] of cases) {
+    const result = await reviewsWith(reviewsBody([reviewItem(1, { review: raw })])).run({ style_id: "4321001" });
+    assert.equal(result.reviews[0].text, expected, JSON.stringify(raw));
+  }
 });
 
 test("search_products: '/' and '\\' in the query become spaces and other characters are encoded", async () => {
@@ -525,6 +600,15 @@ test("get_product: attributes, description and images are allow-listed, sanitise
   assert.deepEqual([bounded.sizes.length, bounded.attributes.length, bounded.details.length, bounded.colours.length, bounded.image_urls.length], [60, 40, 6, 30, 10]);
 });
 
+test("get_product: ratings are rounded, the MRP falls back, and conversions are capped", async () => {
+  const many = Array.from({ length: 9 }, (_, i) => ({ prefix: `P${i}`, sizeValue: String(i) }));
+  const result = await productWith({ pdpData: pdp({ ratings: { averageRating: 4.26499, totalCount: 5 }, price: { discounted: 5 }, mrp: 10, sizes: [{ skuId: 1, label: "M", available: true, allSizesList: many }] }) }).run({ style_id: "4321001" });
+  assert.deepEqual([result.rating, result.price, result.mrp], [4.26, 5, 10]);
+  assert.equal(result.sizes[0].conversions.length, 6);
+  const none = await productWith({ pdpData: pdp({ ratings: { averageRating: 0, totalCount: 0 }, price: undefined, mrp: undefined }) }).run({ style_id: "4321001" });
+  assert.deepEqual([none.rating, none.price, none.mrp], [null, null, null]);
+});
+
 test("get_product: no private or seller-address fields are returned", async () => {
   const state = { pdpData: pdp({ manufacturer: "Fabricated Manufacturer Address Line", sellers: [{ sellerPartnerId: 11, sellerName: "Fabricated Seller Pvt", sellerAddress: { address: "1 Fabricated Street", pincode: "000000" } }] }), user: { email: "person@example.invalid" }, token: "fabricated-token" };
   const text = JSON.stringify(await productWith(state).run({ style_id: "4321001" }));
@@ -616,6 +700,21 @@ test("get_product_reviews: truncation never leaves half of an emoji", async () =
   const result = await reviewsWith(reviewsBody([reviewItem(1, { review: text })])).run({ style_id: "4321001" });
   assert.equal(result.reviews[0].text, "a".repeat(1498) + "\u2026");
   assert.equal(/[\ud800-\udfff]/.test(result.reviews[0].text), false);
+});
+
+test("get_product_reviews: a missing or zero timestamp is null, not 1970", async () => {
+  for (const updatedAt of [null, "", false, 0, "0", "abc", undefined, {}]) {
+    const result = await reviewsWith(reviewsBody([reviewItem(1, { updatedAt })])).run({ style_id: "4321001" });
+    assert.equal(result.reviews[0].updated_at, null, JSON.stringify(updatedAt));
+  }
+});
+
+test("get_product_reviews: the summary is only returned on page 1 and the review style id is checked", async () => {
+  const later = await reviewsWith(reviewsBody([reviewItem(1)], summaryMeta())).run({ style_id: "4321001", page: 2 });
+  assert.equal(later.summary, null);
+  const first = await reviewsWith(reviewsBody([reviewItem(1, { style: { id: "abc" } }), reviewItem(2, { style: { id: 4321005 } })], summaryMeta())).run({ style_id: "4321001" });
+  assert.notEqual(first.summary, null);
+  assert.deepEqual(first.reviews.map(r => r.style_id), [null, "4321005"]);
 });
 
 test("get_product_reviews: never returns more than a page of reviews", async () => {

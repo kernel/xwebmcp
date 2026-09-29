@@ -8,7 +8,7 @@
     inputSchema: {
       type: "object", additionalProperties: false, required: ["query"],
       properties: {
-        query: { type: "string", minLength: 1, maxLength: 120, description: "Keywords as a shopper would type them, e.g. 'men running shoes' or 'lipstick'. '/' and '\\' are treated as spaces." },
+        query: { type: "string", minLength: 1, maxLength: 120, description: "Keywords as a shopper would type them, e.g. 'men running shoes' or 'lipstick'. '/', '\\' and '#' are treated as spaces. The site rejects queries with CJK characters or emoji with HTTP 400, reported as site_error." },
         sort_by: { enum: ["recommended", "newest", "popularity", "better_discount", "price_low_to_high", "price_high_to_low", "customer_rating"], default: "recommended", description: "The site's Sort menu entries. customer_rating is the site's own ordering and can rank items with very few ratings first." },
         filters: { type: "array", maxItems: 12, uniqueItems: true, items: { type: "string", minLength: 3, maxLength: 200 }, description: "Filter strings 'Group:Value' taken from a previous include_facets response (its filter field), e.g. ['Brand:Puma', 'Color:Black_36454f']. Price is not a filter here; use min_price and max_price." },
         min_price: { type: "integer", minimum: 0, maximum: 1000000, description: "Lowest price in rupees. Must be given together with max_price." },
@@ -25,7 +25,7 @@
           type: "object", additionalProperties: false,
           required: ["status", "query", "query_substituted", "site_message", "sort_by", "filters", "min_price", "max_price", "currency", "total_count", "has_next_page", "next_cursor", "facets", "products"],
           properties: {
-            status: { const: "ok" }, query: { type: "string", description: "The query as searched, after '/' and '\\' were replaced by spaces." },
+            status: { const: "ok" }, query: { type: "string", description: "The query as searched, after '/', '\\' and '#' were replaced by spaces." },
             query_substituted: {
               type: ["object", "null"], additionalProperties: false, required: ["input", "used"],
               description: "Present when the site searched different words than asked for.",
@@ -95,8 +95,12 @@
     const clean = (value, max) => {
       if (typeof value === "number" && Number.isFinite(value)) value = String(value);
       if (typeof value !== "string") return null;
-      const text = value.replace(/<(script|style)\b[^>]*>[\s\S]*?<\/\1\s*>/gi, "").replace(/<br\s*\/?>/gi, "\n").replace(/<[^>]*>/g, "").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, "\"").replace(/&#39;/g, "'").replace(/&amp;/g, "&")
-        .replace(/[\u0000-\u0009\u000b-\u001f\u007f\u200b-\u200f\u2028\u2029\ufeff]/g, "").replace(/[ \t]+/g, " ").replace(/\n\s*\n+/g, "\n").trim();
+      const named = { nbsp: " ", lt: "<", gt: ">", quot: "\"", apos: "'", ndash: "\u2013", mdash: "\u2014", hellip: "\u2026", lsquo: "\u2018", rsquo: "\u2019", ldquo: "\u201c", rdquo: "\u201d", bull: "\u2022", middot: "\u00b7", copy: "\u00a9", reg: "\u00ae", trade: "\u2122" };
+      const point = (code) => (code > 0 && code <= 0x10ffff && (code < 0xd800 || code > 0xdfff) ? String.fromCodePoint(code) : "");
+      const text = value.replace(/<(script|style)\b[^>]*>[\s\S]*?<\/\1\s*>/gi, "").replace(/<\/?(?:br|p|div|li|ul|ol|tr|h[1-6])\b[^>]*>/gi, "\n").replace(/<[^>]*>/g, "")
+        .replace(/&#(\d{1,7});/g, (match, code) => point(Number(code))).replace(/&#x([0-9a-f]{1,6});/gi, (match, code) => point(parseInt(code, 16)))
+        .replace(/&([a-z]{2,8});/gi, (match, name) => (Object.hasOwn(named, name.toLowerCase()) ? named[name.toLowerCase()] : match)).replace(/&amp;/g, "&")
+        .replace(/[\u0000-\u0008\u000b-\u001f\u007f\u200b-\u200f\u2028\u2029\ufeff]/g, "").replace(/[ \t]+/g, " ").replace(/ ?\n[ \n]*/g, "\n").trim();
       return text ? (text.length > max ? text.slice(0, max - 1).replace(/[\ud800-\udbff]$/, "") + "\u2026" : text) : null;
     };
     const num = (value) => (typeof value === "number" && Number.isFinite(value) ? value : null);
@@ -108,7 +112,9 @@
     if (unknown) return fail("invalid_input", "Unknown input field '" + unknown + "'.");
     if (typeof input.query !== "string") return fail("invalid_input", "query must be a string.");
     if (/[\u0000-\u001f\u007f]/.test(input.query)) return fail("invalid_input", "query must not contain control characters.");
-    const query = input.query.replace(/[\\/]+/g, " ").replace(/\s+/g, " ").trim();
+    const wellFormed = (text) => { try { encodeURIComponent(text); return true; } catch (error) { return false; } };
+    if (!wellFormed(input.query)) return fail("invalid_input", "query must be well-formed text without unpaired surrogate characters.");
+    const query = input.query.replace(/[\\/#]+/g, " ").replace(/\s+/g, " ").trim();
     if (query.length < 1 || query.length > 120 || !/[\p{L}\p{N}]/u.test(query)) return fail("invalid_input", "query must be 1 to 120 characters and contain a letter or digit.");
     const SORTS = { recommended: "", newest: "new", popularity: "popularity", better_discount: "discount", price_low_to_high: "price_asc", price_high_to_low: "price_desc", customer_rating: "Customer Rating" };
     const sortBy = input.sort_by === undefined ? "recommended" : input.sort_by;
@@ -117,10 +123,10 @@
     if (!Array.isArray(filters) || filters.length > 12 || new Set(filters).size !== filters.length) return fail("invalid_input", "filters must be an array of at most 12 distinct 'Group:Value' strings.");
     const groups = [];
     for (const entry of filters) {
-      const parts = typeof entry === "string" && entry.length <= 200 && !/[\u0000-\u001f\u007f,]/.test(entry) ? entry.split(":") : [];
-      if (parts.length !== 2 || !parts[0].trim() || !parts[1].trim() || parts[0].length > 60) return fail("invalid_input", "Each filter must be a 'Group:Value' string without commas, as returned in facets.");
-      if (["Price", "Rating", "Discount Range"].includes(parts[0])) return fail("invalid_input", "Range groups are not filters; use min_price and max_price for price.");
+      const parts = typeof entry === "string" && entry.length <= 200 && !/[\u0000-\u001f\u007f,]/.test(entry) && wellFormed(entry) ? entry.split(":") : [];
+      if (parts.length !== 2 || !parts[0].trim() || !parts[1].trim() || parts[0].length > 60) return fail("invalid_input", "Each filter must be a well-formed 'Group:Value' string without commas, as returned in facets.");
       const name = parts[0].trim(), value = parts[1].trim();
+      if (["price", "rating", "discount range"].includes(name.toLowerCase())) return fail("invalid_input", "Range groups are not filters; use min_price and max_price for price.");
       const group = groups.find((item) => item.name === name);
       if (group) group.values.push(value); else groups.push({ name, values: [value] });
     }
@@ -132,7 +138,8 @@
     if (!Number.isInteger(limit) || limit < 1 || limit > 50) return fail("invalid_input", "limit must be an integer from 1 to 50.");
     if (input.include_facets !== undefined && typeof input.include_facets !== "boolean") return fail("invalid_input", "include_facets must be a boolean.");
 
-    const signature = encodeURIComponent(query) + "|" + sortBy + "|" + encodeURIComponent(groups.map((item) => item.name + ":" + item.values.join(",")).join("::")) + "|" + (input.min_price === undefined ? "" : input.min_price + "-" + input.max_price);
+    const canonical = groups.map((item) => item.name + ":" + item.values.slice().sort().join(",")).sort().join("::");
+    const signature = encodeURIComponent(query) + "|" + sortBy + "|" + encodeURIComponent(canonical) + "|" + (input.min_price === undefined ? "" : input.min_price + "-" + input.max_price);
     let page = 1, offset = 0, context = null;
     if (input.cursor !== undefined) {
       const invalid = fail("invalid_input", "cursor is not a next_cursor from this tool for the same query, sort_by, filters and price range.");

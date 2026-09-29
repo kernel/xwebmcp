@@ -44,7 +44,7 @@ Each tool runs inside the `www.myntra.com` page it is invoked on (any page works
 homepage, a listing, a product page or the reviews page) and never navigates. On another
 `myntra.com` host it returns `wrong_page` without calling the site; open `https://www.myntra.com/`
 in the tab and call again. Requests go only to `www.myntra.com`, use the page's own cookies and
-are plain `GET`s. A call takes about 0.4 to 1.4 s; `timeoutSec: 60` is plenty.
+are plain `GET`s. A call takes about 0.3 to 1.4 s; `timeoutSec: 60` is plenty.
 
 What the tools never do: sign in, use or change an account, touch the bag, wishlist, addresses,
 orders, coupons or payment, set a delivery pincode, or open checkout. Nothing is written.
@@ -54,7 +54,7 @@ Conventions:
 - Products are identified by `style_id`, the number before `/buy` in a product URL.
   `search_products` produces it; `get_product` and `get_product_reviews` consume it.
 - Prices are rupees (INR) as the site shows them, before coupons and bank offers. They are not
-  tied to a delivery pincode. `sizes` in a search result names whatever the card lists (apparel
+  tied to a delivery pincode. `size_labels` in a search result names whatever the card lists (apparel
   sizes, `10-15 ML`, `Double King`), and only `get_product` says which sizes are available.
 - `search_products` sorts: `recommended` (default), `newest`, `popularity`, `better_discount`,
   `price_low_to_high`, `price_high_to_low`, `customer_rating`. They map to the site's own Sort
@@ -70,7 +70,7 @@ Conventions:
 - Sponsored placements are not requested, so `rank` is the position among organic results.
 - Failures are explicit: `status: "error"` with `error_kind` (`invalid_input`, `wrong_page`,
   `challenge`, `rate_limited`, `login_required`, `site_error`, `site_changed`) and a message that
-  says nothing was changed. Text from the site is sanitised to plain text and is untrusted.
+  says nothing was changed. Text from the site is reduced to plain text (tags removed, block tags become line breaks, entities decoded once) and is untrusted.
 
 ## Site quirks
 
@@ -84,8 +84,12 @@ Conventions:
   offset advanced by the items consumed, there was no overlap. The offset counts consumed items,
   so the limit can change between pages. A four-page walk with limits 7, 13, 5 and 50 (plus a
   filter, a price range and a sort) returned 75 distinct products with contiguous ranks.
-- **Query characters.** `/` in the search path returns HTTP 404, so `/` and `\` in a query are
-  replaced by spaces. Apostrophes, `&`, `%` and Devanagari worked.
+- **Query characters.** `/` in the search path returns HTTP 404, and `#` returns 404 or a bogus
+  empty result with a huge total, so `/`, `\` and `#` in a query are replaced by spaces. Other
+  punctuation (`? ; : @ = + $ , ! * ( ) [ ] { } | ^ ~ " < > %`, apostrophes, `&`), Devanagari,
+  Tamil, Arabic and accented Latin worked. CJK characters and emoji are rejected by the site with
+  HTTP 400, which the tool reports as `site_error`. Unpaired surrogate characters are refused as
+  `invalid_input`.
 - **Filters.** Ordinary facets use `f=Group:Value[_meta],Value2::Group2:Value`, where `_meta` is
   appended for groups that have one (colours). Price is not an `f` group: `f=Price:...` returns
   zero or HTTP 500. The site's own price slider uses a separate `rf=Price:<min>_<max>_<min> TO <max>`
@@ -96,6 +100,9 @@ Conventions:
   `window.__myx = {...}` with `pdpData`; `get_product` fetches the page (about 400 KB) and reads
   it. An unknown numeric id still answers HTTP 200 with `pdpData: null`, which is reported as
   `not_found`. A non-numeric path is treated as a search and never reaches the tool.
+- **Price range and price sort.** Within a price range the site's `price_low_to_high` order is not
+  strictly ascending (for example 500 to 580 and then 524); the site's own page shows the same
+  sequence.
 - **Multiple sellers.** A size can list several sellers; the count and price come from the
   seller the page has selected.
 - **Reviews.** The reviews API answers 12 per page and returns the same empty list for a style
@@ -104,9 +111,14 @@ Conventions:
   stars. Rating totals and stock counts change between calls.
 - **Refused networks.** From a datacenter network the site refuses, every myntra.com page and
   API answered HTTP 200 with a 483-byte HTML "Site Maintenance" page, including the homepage (a
-  plain `curl` got the same), while Kernel's stealth browsers were served normally. The tools
+  plain `curl` got the same); another datacenter network failed at the connection level with
+  `ERR_HTTP2_PROTOCOL_ERROR`. Kernel's stealth browsers were served normally. The tools
   report such a page as `site_error` naming its title, and put the page title in `site_changed`
   messages for any other unexpected HTML.
+- **Kernel runtime output type.** When the Kernel API returns an invocation whose output contains
+  a character from U+0080 to U+00FF (for example `café` in the echoed `query`), it
+  gives `output` as a JSON string instead of an object, independent of these tools. Consumers
+  should accept either form.
 - **Bot protection.** Myntra runs Akamai Bot Manager. No challenge appeared in any of the live
   checks, which ran from one Kernel stealth browser at a time, but the tools make exactly one
   request per call and stop at a block instead of retrying.
@@ -126,7 +138,10 @@ Conventions:
   rating ranges are not supported. `include_facets` returns at most 20 groups of 30 options
   (`option_count` gives the site's total, and any `Group:Value` string can still be passed);
   options whose value contains `:` or `,` are omitted because the filter syntax cannot express
-  them. The cursor's server-side lifetime is unknown and it was only walked four pages deep.
+  them. The cursor is not signed: it is only checked against the query, sort, filters and price
+  range it was made for, so a hand-made cursor is sent to the site as is and the site may answer
+  with page 1 again. Its server-side lifetime is unknown and it was only walked four pages deep.
+  CJK and emoji queries are rejected by the site (HTTP 400).
 - `get_product_reviews` returns 12 reviews per page up to page 1000, omits reviewer names and
   images, and returns the rating summary on page 1 only.
 - `get_product` depends on the embedded `window.__myx` state; if the site changes it the tool
@@ -163,7 +178,7 @@ branch, and that no tool sends anything but `GET`.
 
 Local Chrome extension, 2026-09-29 (Chromium 153 headless with an isolated profile, set up with
 `xwebmcp setup chrome`, tools pushed with `xwebmcp dev` and invoked through `xwebmcp mcp`): the three
-tools registered on a myntra.com tab and ran as page tools under the site's real CSP. The extension
+tools registered on a myntra.com tab and ran there as page tools. The extension
 code was not modified; the only change to the throwaway copy was adding Myntra to the manifest's
 `host_permissions`, because the extension's grant popup cannot be clicked headless. From the
 builder machine's network the site answered with the refusal page above, so live Myntra data was
