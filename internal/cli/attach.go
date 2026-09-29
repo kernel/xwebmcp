@@ -62,6 +62,18 @@ func (a *App) namespaces(st *store.Store) ([]namespaceSource, error) {
 	return out, nil
 }
 
+func namespaceBatch(st *store.Store, ns namespaceSource) (string, error) {
+	parts := make([]string, 0, len(ns.Tools))
+	for _, item := range ns.Tools {
+		source, err := st.ReadToolSource(item.Source, item.Tool)
+		if err != nil {
+			return "", err
+		}
+		parts = append(parts, "...("+toolsource.Normalize(source)+")")
+	}
+	return "[" + strings.Join(parts, ",") + "]", nil
+}
+
 func (a *App) attachKernel(ctx context.Context, browser string) error {
 	client, err := a.Kernel()
 	if err != nil {
@@ -80,15 +92,11 @@ func (a *App) attachKernel(ctx context.Context, browser string) error {
 	}
 	total := 0
 	for _, ns := range namespaces {
-		parts := make([]string, 0, len(ns.Tools))
-		for _, item := range ns.Tools {
-			source, err := st.ReadToolSource(item.Source, item.Tool)
-			if err != nil {
-				return err
-			}
-			parts = append(parts, "...("+toolsource.Normalize(source)+")")
+		source, err := namespaceBatch(st, ns)
+		if err != nil {
+			return err
 		}
-		added, err := client.AddCustomTools(ctx, browser, ns.Namespace, "["+strings.Join(parts, ",")+"]", true)
+		added, err := client.AddCustomTools(ctx, browser, ns.Namespace, source, true)
 		if err != nil {
 			var apiErr *kernelapi.APIError
 			if errors.As(err, &apiErr) {

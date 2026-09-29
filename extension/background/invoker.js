@@ -20,7 +20,7 @@ const attachments = new Map(); // targetId -> {users: Set<invocationId>, childSe
 const pendingAttachments = new Map();
 const invocations = new Map(); // invocationId -> record (running)
 const recent = []; // newest first, running and finished
-const tabQueues = new Map(); // tabId -> Promise
+const runningTabs = new Set(); // tab IDs with an active CDP invocation
 const tabTargets = new Map(); // tabId -> targetId
 let platformPromise = null;
 
@@ -407,18 +407,21 @@ export async function invoke({definitionId, input, tabId, timeoutSec, origin, al
   }
   const {tab, created} = picked;
   entry.tabId = tab.id;
-  const previous = tabQueues.get(tab.id) ?? Promise.resolve();
-  const run = previous.then(() => execute(entry, definition, input, tab, created, seconds).catch((error) => {
-    // Failures before the body ran (debugger attach refused, tab gone) are
-    // recorded like any other so getInvocation can explain them.
+  if (runningTabs.has(tab.id)) {
+    entry.status = 'error';
+    entry.errorText = 'another custom CDP invocation is running in this tab; retry after it finishes';
+    entry.finishedAt = new Date().toISOString();
+    invocations.delete(entry.id);
+    return {invocation_id: entry.id, status: 'error', error_text: entry.errorText};
+  }
+  runningTabs.add(tab.id);
+  try {
+    return await execute(entry, definition, input, tab, created, seconds);
+  } catch (error) {
     entry.errorText ??= error instanceof Error ? error.message : String(error);
     throw error;
-  }));
-  tabQueues.set(tab.id, run.catch(() => undefined));
-  try {
-    return await run;
   } finally {
-    if (tabQueues.get(tab.id) === run) tabQueues.delete(tab.id);
+    runningTabs.delete(tab.id);
   }
 }
 
