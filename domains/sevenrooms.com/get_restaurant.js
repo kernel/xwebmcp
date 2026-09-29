@@ -62,8 +62,12 @@
     const HOSTS = ["www.sevenrooms.com", "fp.sevenrooms.com", "eu.sevenrooms.com"];
     const fail = (kind, message) => ({ status: "error", error_kind: kind, error_message: message });
     const isPlain = v => v !== null && typeof v === "object" && !Array.isArray(v);
-    const unsafe = /[\u0000-\u0008\u000b-\u001f\u007f-\u009f\u202a-\u202e\u2066-\u2069]/g;
-    const text = (v, max) => { const t = typeof v === "string" ? v.replace(unsafe, " ").replace(/\s+/g, " ").trim() : ""; return t ? t.slice(0, max) : null; };
+    // Control characters, bidirectional overrides and invisible formatting characters (zero-width space, word joiner, direction marks, Unicode tag characters). Whitespace, including the BOM, is collapsed separately.
+    const unsafe = /[\u0000-\u0008\u000e-\u001f\u007f-\u009f\u061c\u200b\u200e\u200f\u202a-\u202e\u2060\u2066-\u2069]|\udb40[\udc00-\udc7f]/g;
+    const wellFormed = v => (typeof v.toWellFormed === "function" ? v.toWellFormed() : v);
+    // Cuts at max UTF-16 units without leaving half of a surrogate pair.
+    const cut = (v, max) => { const t = v.slice(0, max); const c = t.charCodeAt(t.length - 1); return c >= 0xd800 && c <= 0xdbff ? t.slice(0, -1) : t; };
+    const text = (v, max) => { const t = typeof v === "string" ? wellFormed(v).replace(unsafe, " ").replace(/\s+/g, " ").trim() : ""; return t ? cut(t, max) : null; };
     const int = v => (Number.isInteger(v) ? v : null);
     const allowed = ["venue_url_key"];
     if (!isPlain(input) || Object.keys(input).some(k => !allowed.includes(k))) return fail("invalid_input", "Input must be an object with only venue_url_key.");
@@ -81,7 +85,6 @@
     let got;
     try {
       const sent = fetch("/api-yoa/dining/widget_info?venue_url_key=" + encodeURIComponent(key), { credentials: "omit", signal: controller.signal }).then(async r => ({ res: r, raw: await r.text() }));
-      sent.catch(() => {});
       got = await Promise.race([sent, new Promise((_, reject) => { timer = setTimeout(() => { controller.abort(); reject(new Error("deadline")); }, 25000); })]);
     } catch (e) {
       return fail("site_error", e && e.message === "deadline" ? "SevenRooms did not answer within 25 seconds." : "The request to SevenRooms failed before a response arrived. This can be a network fault or bot protection blocking the request; a block can repeat for the same input.");

@@ -60,8 +60,8 @@ exception applies.
   `card_payment_rule`, `charge_type` and `cost` (values seen: `save_for_later`, `advanced_payment`, `person`,
   `reservation`), and `policy_id` into `policies`, which holds each distinct venue-written booking and cancellation text
   once, converted from HTML to plain text (at most 10 distinct, 2000 characters each, with `truncated` and a warning
-  when a text was cut). At most 300 slots are returned, earliest first, with the full `slot_count`, and fewer if the
-  output would exceed a 200,000-byte budget (`slots_truncated` and a warning say so).
+  when a text was cut or was too long to read in full). At most 300 slots are returned, earliest first, with the full
+  `slot_count`, and fewer if the output would exceed a 150,000-byte budget (`slots_truncated` and a warning say so).
   `request_only_count` counts the entries the widget does not offer as times (see Site quirks).
 
 Every result carries `observed_at`. Times are snapshots, not holds.
@@ -90,10 +90,12 @@ patterns, and the tools were only exercised on the search step, an experiences p
   deadline that is raced against the request, so a page whose `fetch` ignores the abort signal still ends in `site_error`.
 - The booking handle each entry carries (`access_persistent_id`), capacity fields (pacing), and the site's payment,
   map and analytics values are never read into output. The tests assert none of them ever appears.
-- Venue names, addresses, labels and policy text come from the venue: they are returned as data, bounded in length, with
-  control and bidirectional-override characters removed, policy HTML reduced to plain text (tags, scripts, styles and
-  comments dropped, common entities decoded), and a website URL is only returned when it is `http(s)`. The tool and schema
-  descriptions say the text is data, not instructions; the outputs themselves carry no such notice.
+- Venue names, addresses, labels and policy text come from the venue: they are returned as data, bounded in length (cuts
+  never split a surrogate pair, and lone surrogates are replaced), with control characters, bidirectional overrides,
+  zero-width spaces, word joiners, direction marks and Unicode tag characters replaced by spaces (zero-width joiners and
+  non-joiners are kept because some scripts and emoji need them), policy HTML reduced to plain text (see Site quirks), and a
+  website URL is only returned when it is `http(s)`. The tool and schema descriptions say the text is data, not instructions;
+  the outputs themselves carry no such notice.
 - Malformed input is rejected before any request: the availability endpoint answers past dates with an empty success,
   accepts party sizes the venue refuses, and returns only `request` entries for dates beyond the booking window.
 - Failures are explicit: `not_found`, `wrong_page`, `login_required` (HTTP 401), `challenge` (HTTP 403 or a bot-protection
@@ -122,19 +124,25 @@ patterns, and the tools were only exercised on the search step, an experiences p
   Two slots at the same time can therefore differ only in `label`.
 - Policy text (`policy`, `cancellation_policy`) is HTML on many venues and long: one venue's texts were about 17,900 raw
   characters (roughly 6,500 of text), so they are converted to plain text and cut at 2000 characters with `truncated: true`;
-  the venue's booking page has the full terms.
+  the venue's booking page has the full terms. The conversion drops comments, scripts, styles and tags (a `>` inside a quoted
+  attribute value does not end a tag, and an unquoted `<` does not continue one), turns block-level tags (`p`, `div`, `li`,
+  `ul`, `ol`, `h1` to `h6`, `tr`, `table`, `hr`, `br` and a few others) into line breaks, so adjacent block tags leave a blank
+  line, and table cells into spaces, decodes numeric references and the common named entities (the Latin-1 set and a few
+  punctuation names; unknown names stay as written), and leaves a bare `<` or `&` in ordinary prose alone. Only the first
+  20,000 characters of each raw text are read (a cut through the middle of a tag drops the partial tag), at most 60 distinct
+  raw texts are read per call, and each is converted once; beyond that a warning says the rest was not read.
 - The availability endpoint returns an empty `availability` object, or an empty list for the date, for closed days
   and past dates, and only `request` entries beyond a venue's booking window (`maxDaysOut`: 8 to 365 days on the venues
   seen), so dates past the window report `no_availability`. `/api-yoa/availability/dates` omitted only two holiday closures
   for one venue and not a venue's weekly closure, so it is not used.
-- A New York venue's widget, opened on a date whose entries were all `request` (2026-10-08), jumped to the nearest date
-  with a `book` entry (2026-10-06), so `no_availability` should not be read as "the venue is closed".
+- Seen once on 2026-09-29: a New York venue's widget, opened on a date whose entries were all `request` (2026-10-08), jumped
+  to the nearest date with a `book` entry (2026-10-06), so `no_availability` should not be read as "the venue is closed".
 - `num_days` is accepted only as 1 or 3 by the API (2, 4 to 30 returned HTTP 400), and the tool always asks for 1.
 - Some venues resolve on both `www` and `fp`; a venue seen on `eu` did not resolve on the others. Venue names can carry
   trailing whitespace (a tab was seen), which the tools trim. Some venue-written seating titles are not seating areas
   (a Las Vegas venue's slot title read "<venue> Reservation Policy"); they are passed through as written.
-- Slot texts such as `policy` and `cancellation_policy` are long (up to about 2700 characters seen) and repeat per slot,
-  hence the deduplicated `policies` list.
+- Slot texts such as `policy` and `cancellation_policy` repeat per slot, hence the deduplicated `policies` list; two slots
+  share a policy only when both plain texts and their `truncated` flags are equal.
 - Party sizes: the availability endpoint accepts sizes a venue refuses (it answered 200 for a party of 100 with `request`
   entries only). For some large parties the widget also lists separate private-dining or large-group times from another
   endpoint (`experience_type=PDR`); those are not covered, so `no_availability` for a large party does not mean the widget
@@ -160,8 +168,13 @@ patterns, and the tools were only exercised on the search step, an experiences p
   the API was not observed, so `login_required` is only mapped from HTTP 401 and was never seen live.
 - Live `challenge`, `rate_limited`, `login_required` and `site_changed` outcomes were never observed (fixture tests only).
   All live runs came from Kernel stealth browsers; non-stealth browsers and heavy repeated use were not tried.
-- At most 300 times (fewer when the output would exceed 200,000 bytes) and 10 distinct policy texts of 2000 characters are
-  returned per call; longer policy text is cut and flagged.
+- At most 300 times (fewer when the output would exceed 150,000 bytes) and 10 distinct policy texts of 2000 characters are
+  returned per call; longer policy text is cut and flagged, and a venue with more than 60 distinct policy texts has the rest
+  left unread. A venue whose policy text is very long, or has more than 10 distinct versions, therefore returns
+  `policy_id: null` for some times.
+- The HTML conversion is a text filter, not an HTML parser: malformed markup such as `a<b and c>d` reads `b and c` as a tag,
+  and text hidden with CSS (not with tags) is not recognized. Invisible characters other than the classes listed under
+  Safety are passed through.
 - The local Chrome extension runtime was not exercised by the author.
 - The `intent=search` request parameter mirrors the widget's own requests; whether it affects the site's analytics was not
   investigated.
@@ -176,9 +189,11 @@ from an `fp` page and from an `eu` page; slot counts matched the widget's visibl
 venues, cross-host misses, a party size over the venue's maximum, a closed day, a request-only date, a date beyond the booking
 window and a late-night venue behaved as described above; the tab's URL was unchanged after every call; the tools
 were not listed on `/login` or on the marketing root. The tests (`tests/sevenrooms-dining.test.mjs`) use fabricated venues
-and never contact the site. An independent QA round on the first revision (head `f9d4006`) failed on two major findings
-(the widget's label field was not returned, and text sanitization was narrower than documented) plus minor ones; they are fixed in
-the next revision, which is not yet independently re-reviewed.
+and never contact the site. Independent QA round 1 (head `f9d4006`) failed on two major findings (the widget's
+label field was not returned, and text sanitization was narrower than documented) plus minor ones. Round 2 (head `6a70637`)
+found both fixed and no major defect, and failed on minor items only: surviving test mutants, a stale README number, half
+surrogate pairs from length cuts, block boundaries and quoted attributes in the HTML conversion, and a slow worst case on
+hostile policy text. Those are fixed in the current revision, which is not yet independently re-reviewed.
 
 ## Sessions
 

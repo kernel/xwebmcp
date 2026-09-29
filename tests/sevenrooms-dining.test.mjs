@@ -121,6 +121,7 @@ function harness(name, o = {}) {
       });
     }
     if (o.neverSettles) {
+      calls.signal = init.signal;
       queueMicrotask(() => calls.timers.find(t => t.ms === 25000)?.fn());
       return new Promise(() => {});
     }
@@ -150,7 +151,7 @@ function harness(name, o = {}) {
       const text = JSON.stringify(result);
       for (const secret of SECRETS) assert.ok(!text.includes(secret), `${secret} must not leave the page`);
       assert.ok(!/access_persistent_id|pacing_|persistent/.test(text), "internal booking fields must not be returned");
-      assert.ok(text.length < 200000, "output must stay well under the API's 240 KiB limit");
+      assert.ok(text.length < 150000, "output must stay well under the API's 240 KiB limit");
       return result;
     }
   };
@@ -492,7 +493,7 @@ test("get_availability keeps its output inside the byte budget even for the larg
   for (const [ch, n] of [["a", 100], ["\u6f22", 100]]) {
     const { r } = await ok("get_availability", { venue_url_key: "fabricatedtrattoria", date: "2026-10-09" }, { route: p => (p.startsWith("/api-yoa/availability/") ? { status: 200, body: rangeBody([shift(build(ch, n), { name: ch.repeat(100), shift_category: ch.repeat(50) })]) } : null) });
     assert.equal(r.status, "ok");
-    assert.ok(bytes(r) <= 200000, `${ch} output is ${bytes(r)} bytes`);
+    assert.ok(bytes(r) <= 150000, `${ch} output is ${bytes(r)} bytes`);
     assert.ok(bytes(r) <= 240 * 1024);
     assert.equal(r.slot_count, 350);
     assert.equal(r.slots_truncated, true);
@@ -655,5 +656,191 @@ for (const name of NAMES) {
     assert.match(r.error_message, /within 25 seconds/);
     assert.equal(h.calls.timers.filter(t => t.ms === 25000).length, 1);
     assert.equal(h.calls.requests.length, 1, "the request is not retried");
+    assert.equal(h.calls.signal.aborted, true, "the pending request is aborted at the deadline");
+  });
+}
+
+// --- round 2: sanitization, truncation and conversion details ----------------------------------------------
+
+const UNSAFE_CODE_POINTS = [0x00, 0x07, 0x08, 0x0b, 0x0c, 0x0d, 0x1b, 0x1f, 0x7f, 0x80, 0x85, 0x9f, 0x061c, 0x200b, 0x200e, 0x200f, 0x202a, 0x202b, 0x202c, 0x202d, 0x202e, 0x2060, 0x2066, 0x2067, 0x2068, 0x2069, 0xfeff, 0xe0001, 0xe0020, 0xe007f];
+const lonely = /[\ud800-\udbff](?![\udc00-\udfff])|(?<![\ud800-\udbff])[\udc00-\udfff]/;
+
+test("each control, bidirectional and invisible character is replaced by a space in every short field of both tools", async () => {
+  for (const cp of UNSAFE_CODE_POINTS) {
+    const value = "ab" + String.fromCodePoint(cp) + "cd";
+    const restaurant = await ok("get_restaurant", { venue_url_key: "fabricatedtrattoria" }, { route: p => (p.startsWith("/api-yoa/dining/") ? { status: 200, body: widgetInfo({ name: value, address: value, city: value, state: value, postal_code: value, country_code: value, phone_number: value, locale: value, venue_languages: [{ name: value, value, is_enabled: true, is_default: true }] }) } : null) });
+    const r = restaurant.r;
+    for (const [field, got] of Object.entries({ name: r.name, address_1: r.address.address_1, locality: r.address.locality, region: r.address.region, postal_code: r.address.postal_code, country_code: r.address.country_code, phone: r.phone, locale: r.locale, language_name: r.languages[0].name, language_code: r.languages[0].code })) {
+      assert.equal(got, "ab cd", `${field} for U+${cp.toString(16)}`);
+    }
+    const shifts = [shift([time("2026-10-09T17:00", { public_time_slot_description: value, public_description_title: value, cc_payment_rule: value, charge_type: value })], { name: value, shift_category: value })];
+    const a = await ok("get_availability", { venue_url_key: "fabricatedtrattoria", date: "2026-10-09" }, { route: p => (p.startsWith("/api-yoa/dining/") ? { status: 200, body: widgetInfo({ name: value }) } : { status: 200, body: rangeBody(shifts) }) });
+    const slot = a.r.slots[0];
+    for (const [field, got] of Object.entries({ name: a.r.name, label: slot.label, description_title: slot.description_title, shift: slot.shift, service: slot.service, card_payment_rule: slot.card_payment_rule, charge_type: slot.charge_type })) {
+      assert.equal(got, "ab cd", `${field} for U+${cp.toString(16)}`);
+    }
+  }
+});
+
+test("get_restaurant caps postal code, country code, locale, phone and language fields", async () => {
+  const long = "y".repeat(300);
+  const { r } = await ok("get_restaurant", { venue_url_key: "fabricatedtrattoria" }, { route: p => (p.startsWith("/api-yoa/dining/") ? { status: 200, body: widgetInfo({ postal_code: long, country_code: long, locale: long, phone_number: long, state: long, city: long, venue_languages: [{ name: long, value: long, is_enabled: true, is_default: true }] }) } : null) });
+  assert.deepEqual([r.address.postal_code.length, r.address.country_code.length, r.locale.length, r.phone.length, r.address.region.length, r.address.locality.length, r.languages[0].name.length, r.languages[0].code.length], [20, 5, 20, 40, 100, 100, 60, 12]);
+});
+
+test("cuts never leave half of a surrogate pair, and lone surrogates from the site are replaced", async () => {
+  const emoji = "\u{1F600}";
+  const restaurant = await ok("get_restaurant", { venue_url_key: "fabricatedtrattoria" }, { route: p => (p.startsWith("/api-yoa/dining/") ? { status: 200, body: widgetInfo({ name: "a".repeat(199) + emoji + "z", city: "b\ud83dc", state: "d\ude00e" }) } : null) });
+  assert.doesNotMatch(restaurant.r.name, lonely);
+  assert.equal(restaurant.r.name.length, 199);
+  assert.doesNotMatch(restaurant.r.address.locality, lonely);
+  assert.doesNotMatch(restaurant.r.address.region, lonely);
+  const times = [
+    time("2026-10-09T17:00", { public_time_slot_description: "a".repeat(79) + emoji + "z", policy: "p".repeat(1999) + emoji + "q", cancellation_policy: "c\ud83dd" }),
+    time("2026-10-09T17:15", { public_time_slot_description: "x".repeat(78) + emoji + "z", policy: "<p>" + "p".repeat(1999) + emoji + "</p>", cancellation_policy: null })
+  ];
+  const { r } = await ok("get_availability", { venue_url_key: "fabricatedtrattoria", date: "2026-10-09" }, shiftsOf([shift(times)]));
+  assert.equal(r.slots[0].label.length, 79);
+  assert.equal(r.slots[1].label.length, 80);
+  assert.equal(r.policies[0].booking_policy.length, 1999);
+  assert.equal(r.policies[1].booking_policy.length, 1999);
+  assert.deepEqual(r.policies.map(p => p.truncated), [true, true]);
+  assert.doesNotMatch(JSON.stringify(r), lonely);
+});
+
+test("get_availability flags truncation from either policy text and only when the text really exceeds 2000 characters", async () => {
+  const cases = [
+    [{ policy: "a".repeat(2000), cancellation_policy: "b".repeat(2000) }, false],
+    [{ policy: "a".repeat(2001), cancellation_policy: "b" }, true],
+    [{ policy: "a", cancellation_policy: "b".repeat(2001) }, true],
+    [{ policy: "a".repeat(2000), cancellation_policy: null }, false],
+    [{ policy: null, cancellation_policy: "b".repeat(2001) }, true]
+  ];
+  for (const [fields, truncated] of cases) {
+    const { r } = await ok("get_availability", { venue_url_key: "fabricatedtrattoria", date: "2026-10-09" }, shiftsOf([shift([time("2026-10-09T17:00", fields)])]));
+    assert.equal(r.policies[0].truncated, truncated, JSON.stringify([fields.policy && fields.policy.length, fields.cancellation_policy && fields.cancellation_policy.length]));
+    assert.equal(r.warnings.some(w => /cut at 2000 characters/.test(w)), truncated);
+  }
+});
+
+test("get_availability breaks lines and cells at block-level tags and reads quoted attributes containing >", async () => {
+  const cases = [
+    ["First line<div>Second line</div>", "First line\nSecond line"],
+    ["Intro<p>Para</p>tail", "Intro\nPara\ntail"],
+    ["x<hr>y", "x\ny"],
+    ["<table><tr><td>Adult</td><td>$5</td></tr><tr><th>Child</th><td>$2</td></tr></table>", "Adult $5\n\nChild $2"],
+    ['<a title="a>b" href=\'x>y\'>link</a> text', "link text"],
+    ["one<br>two<BR/>three", "one\ntwo\nthree"],
+    ["<ul><li>a</li><li>b</li></ul><pre>c</pre><h2>d</h2>", "a\n\nb\n\nc\n\nd"],
+    ["<param name=x>keep <header>h</header>", "keep\nh"],
+    ["8 < 10 and 5<6 & tom&jerry; ok", "8 < 10 and 5<6 & tom&jerry; ok"]
+  ];
+  for (const [html, expected] of cases) {
+    const { r } = await ok("get_availability", { venue_url_key: "fabricatedtrattoria", date: "2026-10-09" }, shiftsOf([shift([time("2026-10-09T17:00", { policy: html, cancellation_policy: null })])]));
+    assert.equal(r.policies[0].booking_policy, expected, html);
+  }
+});
+
+test("get_availability does not treat an unquoted < as part of a tag, which keeps tag stripping linear", async () => {
+  const { r } = await ok("get_availability", { venue_url_key: "fabricatedtrattoria", date: "2026-10-09" }, shiftsOf([shift([time("2026-10-09T17:00", { policy: "x <a <b>text</b> y", cancellation_policy: '<a title="p<q">ok</a>' })])]));
+  assert.equal(r.policies[0].booking_policy, "x <a text y");
+  assert.equal(r.policies[0].cancellation_policy, "ok");
+});
+
+test("get_availability decodes only known entities: prototype names, lone surrogates and out-of-range references stay inert", async () => {
+  const html = "&valueOf; &constructor; &__proto__; &toString; &hasOwnProperty; &#55296; &#57343; &#xD800; &#xDFFF; &#1114112; &#1114111; &#31; &#32; &#x41;&#X42;";
+  const { r } = await ok("get_availability", { venue_url_key: "fabricatedtrattoria", date: "2026-10-09" }, shiftsOf([shift([time("2026-10-09T17:00", { policy: html, cancellation_policy: null })])]));
+  assert.equal(r.policies[0].booking_policy, "&valueOf; &constructor; &__proto__; &toString; &hasOwnProperty; \u{10FFFF} AB");
+});
+
+test("get_availability ignores policy input beyond 20000 characters, says so, and converts hostile input quickly", async () => {
+  const hostile = ["<script ".repeat(4000), "<a ".repeat(7000), "<a title=\"".repeat(2500), "<!--".repeat(6000), "&".repeat(30000)];
+  for (const raw of hostile) {
+    const started = Date.now();
+    const { r } = await ok("get_availability", { venue_url_key: "fabricatedtrattoria", date: "2026-10-09" }, shiftsOf([shift([time("2026-10-09T17:00", { policy: raw, cancellation_policy: raw + "x" })])]));
+    assert.ok(Date.now() - started < 1500, `conversion took ${Date.now() - started} ms for ${raw.slice(0, 12)}`);
+    assert.ok(r.policies.length >= 0 && r.slots.length === 1);
+  }
+  const long = "Visible. " + "<b></b>".repeat(3600) + "TAIL-BEYOND-LIMIT";
+  assert.ok(long.length > 20000);
+  const { r } = await ok("get_availability", { venue_url_key: "fabricatedtrattoria", date: "2026-10-09" }, shiftsOf([shift([time("2026-10-09T17:00", { policy: long, cancellation_policy: null })])]));
+  assert.equal(r.policies[0].booking_policy, "Visible.", "text beyond the read limit is ignored");
+  assert.equal(r.policies[0].truncated, true);
+});
+
+test("get_availability converts a repeated hostile policy once, not once per slot", async () => {
+  const hostile = "<!--".repeat(5000);
+  const times = Array.from({ length: 300 }, (_, i) => time(at(i), { policy: hostile, cancellation_policy: hostile }));
+  const started = Date.now();
+  const { r } = await ok("get_availability", { venue_url_key: "fabricatedtrattoria", date: "2026-10-09" }, shiftsOf([shift(times)]));
+  assert.ok(Date.now() - started < 3000, `took ${Date.now() - started} ms`);
+  assert.equal(r.slot_count, 300);
+  assert.equal(r.policies.length, 1);
+});
+
+test("get_availability flags a policy whose raw HTML exceeded the read limit even when the converted text is short", async () => {
+  const raw = "Short policy. " + "<b></b>".repeat(5000);
+  assert.ok(raw.length > 20000);
+  const { r } = await ok("get_availability", { venue_url_key: "fabricatedtrattoria", date: "2026-10-09" }, shiftsOf([shift([time("2026-10-09T17:00", { policy: raw, cancellation_policy: null }), time("2026-10-09T17:15", { policy: "Short policy. " + "<b></b>".repeat(100), cancellation_policy: null })])]));
+  assert.equal(r.policies[0].booking_policy, "Short policy.");
+  assert.equal(r.policies[0].truncated, true);
+  assert.equal(r.policies[1].booking_policy, "Short policy.");
+  assert.equal(r.policies[1].truncated, false);
+  assert.ok(r.warnings.some(w => /too long to read in full/.test(w)));
+});
+
+test("get_availability converts each distinct policy once and stops reading after 60 distinct texts", async () => {
+  const times = Array.from({ length: 150 }, (_, i) => time(`2026-10-09T${String(8 + Math.floor(i / 4)).padStart(2, "0")}:${String((i % 4) * 15).padStart(2, "0")}`, { policy: "distinct policy " + i, cancellation_policy: null }));
+  const { r } = await ok("get_availability", { venue_url_key: "fabricatedtrattoria", date: "2026-10-09" }, shiftsOf([shift(times)]));
+  assert.equal(r.policies.length, 10);
+  assert.equal(r.slots.filter(s => s.policy_id !== null).length, 10);
+  assert.ok(r.warnings.some(w => /More than 10 distinct/.test(w)));
+  assert.ok(r.warnings.some(w => /More than 60 distinct policy texts exist; those beyond the first 60 were not read/.test(w)), JSON.stringify(r.warnings));
+  const same = Array.from({ length: 150 }, (_, i) => time(`2026-10-09T${String(8 + Math.floor(i / 4)).padStart(2, "0")}:${String((i % 4) * 15).padStart(2, "0")}`, { policy: "shared policy", cancellation_policy: "shared cancellation" }));
+  const shared = await ok("get_availability", { venue_url_key: "fabricatedtrattoria", date: "2026-10-09" }, shiftsOf([shift(same)]));
+  assert.equal(shared.r.policies.length, 1);
+  assert.ok(shared.r.slots.every(s => s.policy_id === 1));
+  assert.ok(!shared.r.warnings.some(w => /not read/.test(w)));
+});
+
+test("get_availability sorts equal times by label and then by description title", async () => {
+  const shifts = [shift([
+    time("2026-10-09T17:00", { public_time_slot_description: "B", public_description_title: "z" }), time("2026-10-09T17:00", { public_time_slot_description: "B", public_description_title: "a" }),
+    time("2026-10-09T17:00", { public_time_slot_description: "", public_description_title: "m" }), time("2026-10-09T17:00", { public_time_slot_description: "A", public_description_title: "q" })
+  ])];
+  const { r } = await ok("get_availability", { venue_url_key: "fabricatedtrattoria", date: "2026-10-09" }, shiftsOf(shifts));
+  assert.deepEqual(r.slots.map(s => [s.label, s.description_title]), [[null, "m"], ["A", "q"], ["B", "a"], ["B", "z"]]);
+});
+
+test("get_availability caps the venue name at 200 characters", async () => {
+  const { r } = await ok("get_availability", { venue_url_key: "fabricatedtrattoria", date: "2026-10-09" }, { route: p => (p.startsWith("/api-yoa/dining/") ? { status: 200, body: widgetInfo({ name: "N".repeat(500) }) } : null) });
+  assert.equal(r.name.length, 200);
+});
+
+test("shortening for the output budget keeps as many of the earliest slots as fit", async () => {
+  const bytes = r => new TextEncoder().encode(JSON.stringify(r)).length;
+  const fixture = n => Array.from({ length: n }, (_, i) => time(at(i), { public_time_slot_description: "漢".repeat(80), public_description_title: "漢".repeat(80), cc_payment_rule: "漢".repeat(30), charge_type: "漢".repeat(30), policy: "漢".repeat(300) + i % 3, cancellation_policy: null }));
+  const run = n => ok("get_availability", { venue_url_key: "fabricatedtrattoria", date: "2026-10-09" }, { route: p => (p.startsWith("/api-yoa/availability/") ? { status: 200, body: rangeBody([shift(fixture(n), { name: "漢".repeat(80), shift_category: "漢".repeat(30) })]) } : null) });
+  const full = await run(350);
+  assert.equal(full.r.slots_truncated, true);
+  assert.ok(bytes(full.r) <= 150000);
+  let fits = 0;
+  for (let n = 300; n >= 1; n -= 1) { const r = (await run(n)).r; if (!r.warnings.some(w => /size budget/.test(w))) { fits = n; break; } }
+  assert.ok(fits > 20 && fits < 300, `the largest list that fits unshortened is ${fits}`);
+  assert.ok(full.r.slots.length <= fits, "never more than fits");
+  assert.ok(full.r.slots.length > fits * 0.85, `kept ${full.r.slots.length} of ${fits} that fit`);
+  assert.deepEqual(full.r.slots.map(s => s.local_start), (await run(fits)).r.slots.map(s => s.local_start).slice(0, full.r.slots.length));
+  assert.ok(full.r.slots.every(s => s.policy_id === null || full.r.policies.some(p => p.policy_id === s.policy_id)));
+});
+
+const CHALLENGE_BODIES = ["captcha required", "please solve the challenge", "Access Denied", "protected by Cloudflare", "Incapsula incident", "Imperva security", "PerimeterX block", "DataDome captcha"];
+for (const name of NAMES) {
+  test(`${name} recognizes bot-protection pages by vendor wording and reports anything else non-JSON as site_error`, async () => {
+    for (const body of CHALLENGE_BODIES) {
+      const r = await harness(name, { route: () => ({ status: 200, raw: "<html>" + body + "</html>" }) }).run(validInput(name));
+      assert.equal(r.error_kind, "challenge", body);
+    }
+    const r = await harness(name, { route: () => ({ status: 200, raw: "<html>ordinary page</html>" }) }).run(validInput(name));
+    assert.equal(r.error_kind, "site_error");
   });
 }

@@ -93,25 +93,45 @@
   },
   execute: async (input) => {
     const HOSTS = ["www.sevenrooms.com", "fp.sevenrooms.com", "eu.sevenrooms.com"];
-    const BUDGET = 200000;
+    const BUDGET = 150000;
+    const RAW_MAX = 20000;
+    const MAX_CONVERSIONS = 60;
     const fail = (kind, message) => ({ status: "error", error_kind: kind, error_message: message });
     const isPlain = v => v !== null && typeof v === "object" && !Array.isArray(v);
-    const unsafe = /[\u0000-\u0008\u000b-\u001f\u007f-\u009f\u202a-\u202e\u2066-\u2069]/g;
-    const text = (v, max) => { const t = typeof v === "string" ? v.replace(unsafe, " ").replace(/\s+/g, " ").trim() : ""; return t ? t.slice(0, max) : null; };
+    // Control characters, bidirectional overrides and invisible formatting characters (zero-width space, word joiner, direction marks, Unicode tag characters). Whitespace, including the BOM, is collapsed separately.
+    const unsafe = /[\u0000-\u0008\u000e-\u001f\u007f-\u009f\u061c\u200b\u200e\u200f\u202a-\u202e\u2060\u2066-\u2069]|\udb40[\udc00-\udc7f]/g;
+    const wellFormed = v => (typeof v.toWellFormed === "function" ? v.toWellFormed() : v);
+    // Cuts at max UTF-16 units without leaving half of a surrogate pair.
+    const cut = (v, max) => { const t = v.slice(0, max); const c = t.charCodeAt(t.length - 1); return c >= 0xd800 && c <= 0xdbff ? t.slice(0, -1) : t; };
+    const text = (v, max) => { const t = typeof v === "string" ? wellFormed(v).replace(unsafe, " ").replace(/\s+/g, " ").trim() : ""; return t ? cut(t, max) : null; };
     const entities = { amp: "&", lt: "<", gt: ">", quot: '"', apos: "'", rsquo: "\u2019", lsquo: "\u2018", rdquo: "\u201d", ldquo: "\u201c", ndash: "\u2013", mdash: "\u2014", hellip: "\u2026", euro: "\u20ac", trade: "\u2122", bull: "\u2022" };
     // HTML's Latin-1 named entities are the code points 160 to 255 in this order.
     "nbsp iexcl cent pound curren yen brvbar sect uml copy ordf laquo not shy reg macr deg plusmn sup2 sup3 acute micro para middot cedil sup1 ordm raquo frac14 frac12 frac34 iquest Agrave Aacute Acirc Atilde Auml Aring AElig Ccedil Egrave Eacute Ecirc Euml Igrave Iacute Icirc Iuml ETH Ntilde Ograve Oacute Ocirc Otilde Ouml times Oslash Ugrave Uacute Ucirc Uuml Yacute THORN szlig agrave aacute acirc atilde auml aring aelig ccedil egrave eacute ecirc euml igrave iacute icirc iuml eth ntilde ograve oacute ocirc otilde ouml divide oslash ugrave uacute ucirc uuml yacute thorn yuml".split(" ").forEach((name, i) => { entities[name] = String.fromCharCode(160 + i); });
-    // Venue policy text is HTML; return plain text, cut at max characters, and say when it was cut.
+    // Venue policy text is HTML; return plain text, cut at max characters, and say when it was cut. Input beyond RAW_MAX characters is ignored
+    // so a hostile text cannot make the conversion slow.
+    const attrs = "(?:[^<>\"']|\"[^\"]*\"|'[^']*')*";
+    const blockTag = new RegExp("</?(?:p|div|li|ul|ol|h[1-6]|tr|table|hr|br|blockquote|section|article|header|footer|pre)\\b" + attrs + ">", "gi");
+    const cellTag = new RegExp("</?(?:td|th)\\b" + attrs + ">", "gi");
+    const anyTag = new RegExp("</?[A-Za-z]" + attrs + ">", "g");
     const block = (v, max) => {
       if (typeof v !== "string") return null;
-      const t = v.replace(/<!--[\s\S]*?-->/g, " ").replace(/<(script|style)\b[\s\S]*?<\/\1\s*>/gi, " ")
-        .replace(/<\s*br\s*\/?\s*>|<\/\s*(p|div|li|h[1-6]|tr)\s*>/gi, "\n").replace(/<\/?[A-Za-z][^>]*>/g, "")
+      let raw = v;
+      if (v.length > RAW_MAX) { raw = v.slice(0, RAW_MAX); const open = raw.lastIndexOf("<"); if (open > raw.lastIndexOf(">")) raw = raw.slice(0, open); }
+      const t = wellFormed(raw).replace(/<!--[\s\S]*?-->/g, " ").replace(/<(script|style)\b[\s\S]*?<\/\1\s*>/gi, " ")
+        .replace(blockTag, "\n").replace(cellTag, " ").replace(anyTag, "")
         .replace(/&(#[xX][0-9a-fA-F]{1,6}|#\d{1,7}|[A-Za-z][A-Za-z0-9]{1,8});/g, (m, e) => {
           if (e[0] === "#") { const c = e[1] === "x" || e[1] === "X" ? parseInt(e.slice(2), 16) : parseInt(e.slice(1), 10); return c >= 32 && c <= 0x10ffff && !(c >= 0xd800 && c <= 0xdfff) ? String.fromCodePoint(c) : " "; }
           return Object.hasOwn(entities, e) ? entities[e] : m;
         })
         .replace(unsafe, " ").replace(/[^\S\n]+/g, " ").replace(/ ?\n ?/g, "\n").replace(/\n{3,}/g, "\n\n").trim();
-      return t ? { text: t.slice(0, max), truncated: t.length > max } : null;
+      return t ? { text: cut(t, max), truncated: t.length > max || v.length > RAW_MAX } : null;
+    };
+    // Each distinct raw text is converted once, and at most MAX_CONVERSIONS distinct texts are converted per call.
+    const converted = new Map();
+    const convert = raw => {
+      if (typeof raw !== "string") return null;
+      if (!converted.has(raw)) converted.set(raw, converted.size < MAX_CONVERSIONS ? block(raw, 2000) : undefined);
+      return converted.get(raw);
     };
     const num = v => (typeof v === "number" && Number.isFinite(v) ? v : null);
     const isDate = v => typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v) && !Number.isNaN(Date.parse(v + "T00:00:00Z")) && new Date(v + "T00:00:00Z").toISOString().slice(0, 10) === v;
@@ -139,7 +159,6 @@
       let got;
       try {
         const sent = fetch(path, { credentials: "omit", signal: controller.signal }).then(async r => ({ res: r, raw: await r.text() }));
-        sent.catch(() => {});
         got = await Promise.race([sent, new Promise((_, reject) => { timer = setTimeout(() => { controller.abort(); reject(new Error("deadline")); }, 25000); })]);
       } catch (e) {
         return { error: fail("site_error", e && e.message === "deadline" ? "SevenRooms did not answer within 25 seconds." : "The request to SevenRooms failed before a response arrived. This can be a network fault or bot protection blocking the request; a block can repeat for the same input.") };
@@ -199,7 +218,7 @@
           duration_minutes: Number.isInteger(t.duration) && t.duration > 0 ? t.duration : null,
           label: text(t.public_time_slot_description, 80), description_title: text(t.public_description_title, 80), shift: text(shift.name, 80), service: text(shift.shift_category, 30),
           card_required: t.require_credit_card === true, card_payment_rule: text(t.cc_payment_rule, 30), charge_type: text(t.charge_type, 30), cost: num(t.cost),
-          booking_policy: block(t.policy, 2000), cancellation_policy: block(t.cancellation_policy, 2000)
+          booking_raw: t.policy, cancellation_raw: t.cancellation_policy
         });
       }
     }
@@ -215,22 +234,28 @@
       const ids = new Map();
       const notes = warnings.slice();
       let overflow = false;
+      let skipped = false;
       const slots = list.map(f => {
-        const { booking_policy: booking, cancellation_policy: cancellation, ...slot } = f;
+        const { booking_raw: bookingRaw, cancellation_raw: cancellationRaw, ...slot } = f;
+        const booking = convert(bookingRaw);
+        const cancellation = convert(cancellationRaw);
         let policyId = null;
-        if (booking !== null || cancellation !== null) {
-          const id = JSON.stringify([booking && booking.text, cancellation && cancellation.text]);
+        if (booking === undefined || cancellation === undefined) skipped = true;
+        else if (booking !== null || cancellation !== null) {
+          const cutShort = !!((booking && booking.truncated) || (cancellation && cancellation.truncated));
+          const id = JSON.stringify([booking && booking.text, cancellation && cancellation.text, cutShort]);
           if (ids.has(id)) policyId = ids.get(id);
           else if (policies.length < 10) {
             policyId = policies.length + 1;
             ids.set(id, policyId);
-            policies.push({ policy_id: policyId, booking_policy: booking && booking.text, cancellation_policy: cancellation && cancellation.text, truncated: !!((booking && booking.truncated) || (cancellation && cancellation.truncated)) });
+            policies.push({ policy_id: policyId, booking_policy: booking && booking.text, cancellation_policy: cancellation && cancellation.text, truncated: cutShort });
           } else overflow = true;
         }
         return { ...slot, policy_id: policyId };
       });
       if (overflow) notes.push("More than 10 distinct policy texts exist; slots whose text is beyond the first 10 have policy_id null.");
-      if (policies.some(p => p.truncated)) notes.push("Some policy text was cut at 2000 characters; the venue's booking page has the full terms.");
+      if (skipped) notes.push("More than " + MAX_CONVERSIONS + " distinct policy texts exist; those beyond the first " + MAX_CONVERSIONS + " were not read and have policy_id null.");
+      if (policies.some(p => p.truncated)) notes.push("Some policy text was cut at 2000 characters or was too long to read in full; the venue's booking page has the full terms.");
       if (list.length < Math.min(found.length, 300)) notes.push("Output shortened to " + list.length + " times to stay within its size budget.");
       return {
         status: "ok", observed_at: observedAt, venue_url_key: urlKey, venue_id: venueId, name, url, date: input.date, party_size: partySize,
