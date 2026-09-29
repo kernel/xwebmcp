@@ -5,7 +5,7 @@ Tools for DoorDash (https://www.doordash.com).
 | tool | file | status | notes |
 |------|------|--------|-------|
 | login | [login.js](login.js) | qa_passed | Email + password sign-in with a two-step guided flow; existing sessions verified against the profile page; `otp` mode for the 2-Step Verification modal |
-| get_store | [get_store.js](get_store.js) | draft | Page tool: store hours, service modes, delivery and pickup availability with estimates and fee strings, and menu ids, with the delivery basis (selected address, none selected, unknown) stated explicitly and unreliable delivery figures withheld; never changes the address |
+| get_store | [get_store.js](get_store.js) | draft | Page tool: store hours, service modes, delivery and pickup availability with estimates and fee strings, and menu ids, with the delivery basis (selected address, none selected, unknown) stated explicitly and delivery figures returned only for a selected address; never changes the address |
 
 ## Native WebMCP tools
 
@@ -266,7 +266,7 @@ the branch touch only this README and the registry.
 
 ## get_store
 
-`get_store({ store_id })` reads one DoorDash store and reports the things the native tools do not:
+`get_store({ store_id })` reads one DoorDash store (`store_id`: digits without a leading zero) and reports the things the native tools do not:
 open status and hours, the services the store offers, whether delivery and pickup can be ordered
 **right now**, an estimate range only when the site marks the mode available, the site's own
 delivery-fee strings, and the store's menus, together with the delivery basis those figures rest on. It never returns menu items
@@ -281,36 +281,45 @@ surface (native `get_convenience_store`, `search_retail_products`).
 
 ### Delivery context
 
-DoorDash computes delivery availability, estimate and distance for the delivery address selected in
-the session, not for the store alone. With no address selected it does **not** use the egress IP: on
+DoorDash computes delivery availability and estimate for the delivery address selected in the
+session, not for the store alone. With no address selected it does **not** use the egress IP: on
 2026-09-29 two guest browsers, one whose `getGeoByIP` answered with a point in the middle of the
 United States and one behind a New York residential proxy whose `getGeoByIP` answered with the Bronx,
-got the identical distance to the same New York store (5385 mi) and "Too far away" for it. Those figures
-describe a placeholder location, not the customer, and they read "Too far away" for every store. The
-output says which case applies in `delivery_context.basis`:
+got the identical distance to the same New York store (5385 mi) and "Too far away" for it, and an
+independent review saw the same identical values from two other egress locations. Those figures
+describe a placeholder location, not the customer, and read "Too far away" for every store. The output
+therefore carries `delivery_context.basis` and returns the delivery figures **only** when an address is
+positively recognised:
 
-- `selected_address`: the header address control shows an address; delivery `available`, its reason,
-  `estimate_minutes`, `distance` and `too_far_from_consumer` are DoorDash's answer for that address.
-- `no_address_selected`: the header shows the site's "Your Address" placeholder. Delivery `available`,
-  `unavailable_reason`, `unavailable_message`, `estimate_minutes`, `distance` and `too_far_from_consumer`
-  are `null` (withheld), because reporting `available: false` there would say the store does not deliver
-  when nothing is known. Store details, hours, pickup and the fee strings are still returned.
-- `unknown`: the page has no header address control (the signed-out landing page and `/home`); the
-  figures are passed through unverified. Invoke from a store, search, DashPass or grocery page for a
-  definite basis.
+- `selected_address`: the header address control (`data-testid="addressTextButton"`) shows text that
+  is not a known placeholder and contains a digit (a street number or ZIP). Delivery `available`,
+  `unavailable_reason`, `unavailable_message`, `estimate_minutes` and `too_far_from_consumer` are
+  DoorDash's answer for that address.
+- `no_address_selected`: the header shows a known placeholder ("Your Address", "Tu dirección") or, when
+  the page has no header control, the signed-out landing page's address form
+  (`data-testid="LandingPageAddressSearch"`) is present.
+- `unknown`: anything else, such as a header text in a locale whose placeholder is not recognised and
+  that has no digit, or a page with neither signal.
+
+For `no_address_selected` and `unknown` the five delivery fields above are `null` (withheld): reporting
+`available: false` would say a store does not deliver when nothing is known. Store details, hours,
+pickup and the fee strings are still returned. The placeholder text is localised, so it is matched
+narrowly and everything unrecognised falls to `unknown` rather than to `selected_address`.
 
 Other fields:
 
-- `delivery_context.address_selected` is the boolean behind `basis` (`data-testid="addressTextButton"`
-  text other than "Your Address" is `true`). The tool never returns the address text and never opens,
-  changes or selects an address.
-- `delivery_context.signed_in` is from the `dd_cx_logged_in=true` cookie, a hint only; fees and
-  promotions can differ by account (first-order and DashPass messages).
+- `delivery_context.address_selected` is the boolean behind `basis` (`true`, `false`, `null`). The tool
+  never returns the address text and never opens, changes or selects an address.
+- No distance is returned. DoorDash's distance from the customer, together with the store coordinates
+  in `address`, could be combined across stores to estimate where the customer is.
+- `delivery_context.signed_in` is from the `dd_cx_logged_in=true` cookie, a hint only (the cookie can be
+  stale); fees and promotions can differ by account (first-order and DashPass messages).
 - `delivery.estimate_minutes` and `pickup.estimate_minutes` are `null` unless that mode is available,
   because the site sends a range even for a mode it reports unavailable.
 - `delivery.fee_display` returns the site's `title`, `subtitle` and `text` unparsed; the strings differ
   by store type ("$0 delivery fee over $12" on a restaurant, "$0.00" plus "delivery fee on $12+" on a
   convenience store) and are not a quote. They are returned in every basis.
+- `rating.average` is `null` for a store with no ratings (the site sends 0).
 
 ### Why a page tool
 
@@ -329,8 +338,9 @@ headers `x-csrftoken` (the `csrf_token` cookie when signed in, an empty string s
 trimmed query for the same operation that selects only the fields listed in the output. The trimmed
 query was checked live from `/home` and from other store, search, DashPass and grocery pages,
 returning HTTP 200 and about 3.4 KB per store, in about 0.6 to 0.9 s. Unknown ids return HTTP 200 with a
-GraphQL `NOT_FOUND` error and a null feed; some ids (for example a one-digit id) return a header with an
-empty name, which the tool also reports as `not_found`. The server-rendered store HTML carries the same
+GraphQL `NOT_FOUND` error and a null feed; id 1 returns a header with an empty name, which the tool also
+reports as `not_found`. `store_id` must not start with a zero: DoorDash normalises `029417` to `29417`, and id `0`
+returns an internal-looking record, so both are rejected as `invalid_input`. The server-rendered store HTML carries the same
 header, but inside a Next.js payload in which a leading `$` in a string is escaped as `$$` (for example
 `"$$0 delivery fee"`); it was compared field by field with the GraphQL response and rejected as the
 source because of that encoding and its 2.5 to 3 MB size.
@@ -346,18 +356,21 @@ response is never turned into an empty success, and nothing is retried.
 
 ### Live evidence for get_store
 
-Kernel runtime (`kernel` CLI 0.41.0), 2026-09-29, one profile-less stealth browser signed out with a
-default egress far from the sampled stores, registering the whole `doordash.com` namespace
-(`login` and `get_store`) in one `force_overwrite_namespace` batch:
+Kernel runtime (`kernel` CLI 0.41.0), 2026-09-29, profile-less stealth browsers signed out, registering
+the whole `doordash.com` namespace (`login` and `get_store`) in one `force_overwrite_namespace` batch.
+Results are for the final source of this PR; the findings of the independent review that led to the
+current `basis` rules are listed under "Independent QA".
 
 | case | result |
 |---|---|
-| store 29417 from a search page, `/home`, its own store page, a DashPass page | `ok`, 0.6 to 0.8 s, no navigation (a marker on `window` survived), output valid under Ajv against the schema the runtime lists |
+| stores 29417, 46989, 1227820 from `/`, `/home`, a search page, a store page, a DashPass page | `ok`, 0.6 to 0.9 s, no navigation (a marker on `window` survived), output valid under Ajv against the schema the runtime lists; `basis: no_address_selected` everywhere (landing address form on `/` and `/home`, placeholder text elsewhere); delivery figures `null`, pickup and store data returned |
+| `/es-US/`, `/en-CA/` and `/fr-CA/` store pages | header "Tu dirección" and "Your Address" give `no_address_selected`; fr-CA's "Votre adresse" (no digit, not a known placeholder) gives `unknown`; delivery figures `null` in all three |
 | store 36030759 (convenience) from a grocery tab | `store_type: convenience`, `menu: null`, `pickup.available: false` with `estimate_minutes: null` |
+| unrated store 37757465 | `rating.average: null`, `count: 0` |
 | unknown id 99999999999 and empty-header id 1 | `not_found` |
-| eight malformed inputs (`abc`, `{}`, 13 digits, a number, an extra field, a space, `-1`, `""`) | `invalid_input`; CDP network events showed no `storepageFeed` request, while one valid call showed exactly one |
+| malformed inputs (`abc`, `{}`, 13 digits, a number, an extra field, a space, `-1`, `""`, `029417`, `0`, padded and newline-terminated ids) | `invalid_input`; CDP network events showed no `storepageFeed` request, while one valid call showed exactly one |
 | help., merchants., identity.doordash.com | `get_store` is not listed (only `login`); the apex redirects to `www` where it is listed |
-| signed out, no address, central-US egress and New York residential egress | identical: `basis: no_address_selected` on search, store, DashPass and grocery pages, delivery figures `null`, pickup and store data returned; on `/home` (no header control) `basis: unknown` and DoorDash's own "Too far away" passed through. The same store read 5385 mi from both egress locations before the figures were withheld |
+| two guest egress locations (central US and New York residential) | identical results; before the delivery figures were withheld both showed the same distance (5385 mi) to a New York store |
 
 The same calls in the approved signed-in browser (read only; the custom tools were registered for the
 check and removed afterwards, and no address text or account data was recorded): a store in range of
@@ -366,27 +379,57 @@ available with estimate ranges; a store outside that range returned `too_far_fro
 pickup still available; a convenience store in range returned delivery available and pickup
 unavailable. Store ids and distances from this account are deliberately not recorded.
 
+### Independent QA
+
+Round 1, 2026-09-29, agent `agt_e3cd254315c78d609b12` against commit `3488ced` in two profile-less
+stealth browsers (one default egress, one New York proxy; both deleted) and in a throwaway local
+Chromium 153 with the extension runtime. Static review, the full test suite, live matrix, 57-store
+sweep, 71-cookie leakage check, 44 source mutants against the tests. Verdict: defects found, none a
+blocker. Findings and what changed:
+
+| finding | severity | resolution |
+|---|---|---|
+| `addressText !== "Your Address"` read any non-English placeholder ("Tu dirección" on `/es-US/`) as `selected_address`, so placeholder figures were labelled as a real address's | major | An address is now recognised positively only (text with a digit that is not a known placeholder); known placeholders are `no_address_selected`; everything else is `unknown`. Tests cover es-US, an unrecognised locale, a digit-less address and an empty header. |
+| `basis: unknown` on `/` and `/home` passed DoorDash's placeholder figures through as definite values | major (design) | Delivery figures are now withheld for `unknown` as well; only `selected_address` returns them. The signed-out landing address form is recognised as `no_address_selected`. |
+| a leading-zero id (`029417`) was accepted and then reported as `site_changed` | minor | The id pattern rejects leading zeros (`invalid_input`); id `0` is rejected too. |
+| `rating.average: 0` for unrated stores | minor | `null` when the site reports zero ratings. |
+| README and description inaccuracies (single-digit ids, only `OPEN` observed, `signed_in` wording) | minor | Corrected below and in the tool description. |
+| seven surviving source mutants (padded ids, `signed_in: true`, the convenience guard, the timeout, the error-text bound) | minor | Tests added; a local re-run of 15 mutants of the new logic and of those gaps found all caught. |
+| distance plus the store coordinates could be combined across stores to estimate the customer's location | privacy judgement | The numeric distance is no longer returned or requested. |
+
+The review also confirmed live that `menu_id` equals the id the native `get_restaurant_menu` reports for
+five stores, that six concurrent invocations in one tab succeed, that a document replaced mid-call is
+reported by the runtime as `outcome_unknown` (the extension reports an unobservable outcome after 5 s),
+and that the delivery placeholder values were identical across the two egress locations. Its synthetic
+checks (a selected address, `delivery.available: true`, and the 401, 429, challenge, non-JSON,
+site-changed and timeout branches, driven with stubs in throwaway browsers) are not live evidence of real
+site responses.
+
 ### Known limitations of get_store
 
-- Draft. No independent QA has signed off; the live checks above are the author's.
+- Draft. Round 1 of independent QA found defects that are fixed in the current source; no sign-off has been
+  recorded, so the status stays `draft`.
 - Not verified live: `login_required`, `challenge`, `rate_limited` and `site_changed` responses (fixture
   coverage only, with response shapes assumed from GraphQL conventions and the observed `NOT_FOUND` shape).
   The `challenge` detection looks only at non-JSON bodies.
-- `basis` depends on a header control that is absent on the signed-out landing pages and `/home` (then
-  `unknown`) and on the placeholder text "Your Address" (English; another locale would read as a selected
-  address). A guest-entered address (never exercised: the tool and its testing never set one) is assumed to
-  show as address text, and that a guest address changes DoorDash's figures is unobserved. Signed in without
-  any saved address is unobserved. That the placeholder location is the same for every guest is inferred from
-  two egress locations only.
+- `basis` rests on the header address control, the landing address form and two localised placeholders
+  ("Your Address", "Tu dirección"). Other locales fall to `unknown` (fr-CA was seen live), so delivery figures
+  are missing there even for a guest who has an address without a digit in it. A guest-entered address (never
+  exercised: the tool and its testing never set one) is assumed to show as text containing a digit, and that a
+  guest address changes DoorDash's figures is unobserved. Signed in without any saved address is unobserved. That
+  the placeholder location is the same for every guest was seen from four egress locations in total (two by the
+  author, two by the reviewer).
+- `selected_address` is the only basis with delivery figures, and it was live-verified only in the one signed-in
+  session described above; `delivery.available: true` for a guest-selected address is not verified.
 - The delivery estimate and availability are for one moment and one context. `fulfillmentType` is fixed to
   Delivery in the request; the same response carries the pickup status. Scheduled orders are not modelled.
-- `operation_status` is a pass-through string; only `OPEN` was observed. There is deliberately no
-  `open_now` boolean.
+- `operation_status` is a pass-through string: `OPEN` was seen by the author, and `OPEN_CLOSING_SOON` and
+  `UNAVAILABLE` in the reviewer's 57-store sweep. There is deliberately no `open_now` boolean.
 - The trimmed query names fields and types taken from the site's own query on 2026-09-29. If DoorDash
   renames them the tool returns `site_changed`; the query is not a public API.
 - Loading a store page or this query may register a store view in DoorDash's own analytics, as any visit does.
 - Only stores DoorDash reports under `/store/<id>` were sampled, plus one convenience store; other store
-  types (for example shipping-only) are unobserved. Single-digit ids return an empty header rather than an error.
+  types (for example shipping-only) are unobserved.
 - Delivery figures depend on the session's address; the egress location did not change them in the two
   locations tried. Coordinates and street in `address` are the store's own.
 

@@ -3,11 +3,11 @@
   match: { url_patterns: ["https://www.doordash.com/*"] },
   tool: {
     name: "get_store",
-    description: "Get one DoorDash (www.doordash.com) store by store_id (the id from search_restaurants or the number at the end of a doordash.com/store/<name>-<id>/ URL): name, cuisines, price level, rating, address and coordinates, timezone, whether it offers delivery, pickup, group orders, catering and scheduling, open-hours schedules, its menus (menu_id is the menuId that the site's own add_to_cart tool needs), and whether delivery and pickup can be ordered right now with an estimate range and the site's delivery-fee text. Delivery availability, estimate and distance are computed by DoorDash for the delivery address selected in this browser session, not for the store alone, so delivery_context.basis states which case applies: selected_address (figures are for that address), no_address_selected (the figures DoorDash returns then describe a placeholder location, not the customer, and every store reads 'Too far away', so delivery.available, its reason and estimate, distance and too_far_from_consumer are withheld as null), or unknown (the page has no header address control, as on the signed-out landing page and /home; figures are passed through unverified, so open a store, search or DashPass page first for a definite basis). signed_in says whether the account is signed in. This tool never selects or changes an address and never returns address text. It does not return menu items (use the site's get_restaurant_menu on the store page), reviews, or a fee quote: the fee text depends on the address, the account's benefits and the basket. Convenience and grocery stores return their header details with menu null. Read-only; works signed out; runs from any www.doordash.com page without navigating.",
+    description: "Get one DoorDash (www.doordash.com) store by store_id (the id from search_restaurants or the number at the end of a doordash.com/store/<name>-<id>/ URL, without leading zeros): name, cuisines, price level, rating, the store's own address and coordinates, timezone, whether it offers delivery, pickup, group orders, catering and scheduling, open-hours schedules, its menus (menu_id is the menuId that the site's own add_to_cart tool needs), and whether delivery and pickup can be ordered right now with an estimate range and the site's delivery-fee text. Delivery availability and estimate are computed by DoorDash for the delivery address selected in this browser session, not for the store alone, so delivery_context.basis states which case applies: selected_address (the page header shows an address, so the delivery figures are for that address) or no_address_selected (the header shows the site's placeholder or the signed-out landing page shows its address form: DoorDash then answers for a placeholder location and every store reads 'Too far away') or unknown (the header text is not recognised). Delivery available, its reason and estimate, and too_far_from_consumer are returned only for selected_address and are null otherwise; pickup, hours and store details do not depend on it. signed_in is a cookie-based hint, not proof. This tool never selects or changes an address, never returns address text, and returns no customer distance. It does not return menu items (use the site's get_restaurant_menu on the store page), reviews, or a fee quote: the fee text depends on the address, the account's benefits and the basket. Convenience and grocery stores return their header details with menu null. Read-only; works signed out; runs from any www.doordash.com page without navigating.",
     inputSchema: {
       type: "object", additionalProperties: false, required: ["store_id"],
       properties: {
-        store_id: { type: "string", pattern: "^[0-9]{1,12}$", description: "DoorDash store id, digits only, e.g. the id field returned by search_restaurants." }
+        store_id: { type: "string", pattern: "^[1-9][0-9]{0,11}$", description: "DoorDash store id, digits only and without leading zeros, e.g. the id field returned by search_restaurants." }
       }
     },
     outputSchema: {
@@ -18,9 +18,9 @@
           required: ["status", "store_id", "name", "url", "store_type", "description", "cuisines", "price_range", "rating", "address", "timezone", "offers", "operation_status", "operation_text", "hours", "delivery", "pickup", "delivery_context", "menu"],
           properties: {
             status: { const: "ok" },
-            store_id: { type: "string", pattern: "^[0-9]{1,12}$" },
+            store_id: { type: "string", pattern: "^[1-9][0-9]{0,11}$" },
             name: { type: "string", minLength: 1 },
-            url: { type: "string", pattern: "^https://www\\.doordash\\.com/(convenience/)?store/[0-9]+/$", description: "Canonical store URL; the site redirects it to the slugged form." },
+            url: { type: "string", pattern: "^https://www\\.doordash\\.com/(convenience/)?store/[1-9][0-9]*/$", description: "Canonical store URL; the site redirects it to the slugged form." },
             store_type: { enum: ["restaurant", "convenience"], description: "convenience covers grocery and retail stores, whose catalog is not a menu." },
             description: { type: ["string", "null"] },
             cuisines: { type: "array", maxItems: 10, items: { type: "string" }, description: "The site's business tags, e.g. Italian, Pizza." },
@@ -59,9 +59,9 @@
               type: "object", additionalProperties: false, required: ["available", "unavailable_reason", "unavailable_message", "estimate_minutes", "fee_display"],
               description: "Delivery to the session's delivery context (see delivery_context).",
               properties: {
-                available: { type: ["boolean", "null"], description: "True when DoorDash reports delivery can be ordered now to the selected address. Null when no address is selected (delivery_context.basis no_address_selected) or the site did not say." },
-                unavailable_reason: { type: ["string", "null"], description: "The site's reason when not available, e.g. Too far away. Null when withheld." },
-                unavailable_message: { type: ["string", "null"], description: "Null when withheld." },
+                available: { type: ["boolean", "null"], description: "True when DoorDash reports delivery can be ordered now to the selected address. Null unless delivery_context.basis is selected_address, or when the site did not say." },
+                unavailable_reason: { type: ["string", "null"], description: "The site's reason when not available, e.g. Too far away. Null unless the basis is selected_address." },
+                unavailable_message: { type: ["string", "null"], description: "Null unless the basis is selected_address." },
                 estimate_minutes: { type: ["string", "null"], description: "The site's estimate range, e.g. 27 - 37. Null unless delivery is available: the site sends a range even for unavailable delivery." },
                 fee_display: {
                   type: "object", additionalProperties: false, required: ["title", "subtitle", "text", "is_surging"],
@@ -79,19 +79,12 @@
               }
             },
             delivery_context: {
-              type: "object", additionalProperties: false, required: ["basis", "address_selected", "signed_in", "distance", "too_far_from_consumer", "note"],
+              type: "object", additionalProperties: false, required: ["basis", "address_selected", "signed_in", "too_far_from_consumer", "note"],
               properties: {
-                basis: { enum: ["selected_address", "no_address_selected", "unknown"], description: "What the delivery figures describe. selected_address: the address chosen in this browser. no_address_selected: DoorDash used a placeholder location, so delivery available, reason, estimate, distance and too_far_from_consumer are withheld (null). unknown: this page has no header address control; the figures are passed through unverified." },
-                address_selected: { type: ["boolean", "null"], description: "True when this document's header shows a delivery address, false when it shows the site's 'Your Address' placeholder, null when this page has no header address control. The address text is never returned." },
-                signed_in: { type: "boolean", description: "From the dd_cx_logged_in cookie; a hint only. Fees and promotions can differ by account." },
-                distance: {
-                  anyOf: [{ type: "null" }, {
-                    type: "object", additionalProperties: false, required: ["value", "unit"],
-                    properties: { value: { type: "number" }, unit: { type: "string" } }
-                  }],
-                  description: "Distance from the location DoorDash used to the store. Null when withheld (no address selected)."
-                },
-                too_far_from_consumer: { type: ["boolean", "null"], description: "DoorDash's own flag that the store is outside delivery range of that location. Null when withheld." },
+                basis: { enum: ["selected_address", "no_address_selected", "unknown"], description: "What the delivery figures describe. selected_address: the header of this page shows an address (text containing a digit that is not the placeholder), so delivery figures are DoorDash's answer for that address. no_address_selected: the header shows a known placeholder ('Your Address', 'Tu dirección') or the signed-out landing page shows its address form; DoorDash answered for a placeholder location. unknown: the header text is not recognised or absent. Delivery available, reason, estimate and too_far_from_consumer are null unless the basis is selected_address." },
+                address_selected: { type: ["boolean", "null"], description: "True for basis selected_address, false for no_address_selected, null for unknown. The address text is never returned." },
+                signed_in: { type: "boolean", description: "From the dd_cx_logged_in cookie; a hint only, since the cookie can be stale. Fees and promotions can differ by account." },
+                too_far_from_consumer: { type: ["boolean", "null"], description: "DoorDash's own flag that the store is outside delivery range of the selected address. Null unless the basis is selected_address." },
                 note: { type: "string" }
               }
             },
@@ -131,8 +124,8 @@
   },
   execute: async (input, context) => {
     const ORIGIN = "https://www.doordash.com";
-    const QUERY = "query storepageFeed($storeId: ID!, $fulfillmentType: FulfillmentType, $isMerchantPreview: Boolean, $entryPoint: StoreEntryPoint) { storepageFeed(storeId: $storeId, fulfillmentType: $fulfillmentType, isMerchantPreview: $isMerchantPreview, entryPoint: $entryPoint) { storeHeader { id name description timezone priceRange priceRangeDisplayString offersDelivery offersPickup offersGroupOrder offersCatering offersScheduling isConvenience isDashpassPartner address { lat lng city state street } businessTags { name } ratings { numRatings numRatingsDisplayString averageRating isNewlyAdded } distanceFromConsumer { value label } deliveryFeeLayout { title subtitle isSurging displayDeliveryFee } asapStatus { displayUnavailableReason { title } } status { delivery { isAvailable minutes unavailableReason isTooFarFromConsumer } pickup { isAvailable minutes unavailableReason } } } mxInfo { operationInfo { operationStatusInfo { description operationStatus } storeOperationHourInfo { operationSchedule { dayOfWeek timeSlotList } } doordashOperationHourInfo { operationSchedule { dayOfWeek timeSlotList } } } } menuBook { id name displayOpenHours menuList { id name displayOpenHours } } } }";
-    const NOTE = "Delivery availability, estimates and distance are computed by DoorDash for the delivery address selected in this browser session. With no address selected they describe a placeholder location, not the customer, and are withheld. This tool never changes the address.";
+    const QUERY = "query storepageFeed($storeId: ID!, $fulfillmentType: FulfillmentType, $isMerchantPreview: Boolean, $entryPoint: StoreEntryPoint) { storepageFeed(storeId: $storeId, fulfillmentType: $fulfillmentType, isMerchantPreview: $isMerchantPreview, entryPoint: $entryPoint) { storeHeader { id name description timezone priceRange priceRangeDisplayString offersDelivery offersPickup offersGroupOrder offersCatering offersScheduling isConvenience isDashpassPartner address { lat lng city state street } businessTags { name } ratings { numRatings numRatingsDisplayString averageRating isNewlyAdded } deliveryFeeLayout { title subtitle isSurging displayDeliveryFee } asapStatus { displayUnavailableReason { title } } status { delivery { isAvailable minutes unavailableReason isTooFarFromConsumer } pickup { isAvailable minutes unavailableReason } } } mxInfo { operationInfo { operationStatusInfo { description operationStatus } storeOperationHourInfo { operationSchedule { dayOfWeek timeSlotList } } doordashOperationHourInfo { operationSchedule { dayOfWeek timeSlotList } } } } menuBook { id name displayOpenHours menuList { id name displayOpenHours } } } }";
+    const NOTE = "Delivery availability and estimates are computed by DoorDash for the delivery address selected in this browser session. Without a recognised selected address they describe a placeholder location, not the customer, and are withheld. This tool never changes the address.";
     const CHALLENGE = /just a moment|challenge-platform|cf-chl|captcha|turnstile|verify (?:that )?you(?:'re| are) (?:a )?human|access denied|px-captcha/i;
     const fail = (kind, message) => ({ status: "error", error_kind: kind, error_message: message });
     const text = (value, max = 300) => typeof value === "string" && value.trim() ? value.trim().slice(0, max) : null;
@@ -147,8 +140,8 @@
       }));
     };
 
-    if (!input || typeof input !== "object" || Array.isArray(input) || Object.keys(input).some(k => k !== "store_id") || typeof input.store_id !== "string" || !/^[0-9]{1,12}$/.test(input.store_id)) {
-      return fail("invalid_input", "store_id must be a string of 1 to 12 digits and is the only accepted field. No request was made.");
+    if (!input || typeof input !== "object" || Array.isArray(input) || Object.keys(input).some(k => k !== "store_id") || typeof input.store_id !== "string" || !/^[1-9][0-9]{0,11}$/.test(input.store_id)) {
+      return fail("invalid_input", "store_id must be a string of 1 to 12 digits without a leading zero and is the only accepted field. No request was made.");
     }
     if (location.origin !== ORIGIN) return fail("wrong_page", "Open a https://www.doordash.com/ page in this tab, then call again. Nothing was changed.");
     const storeId = input.store_id;
@@ -203,12 +196,14 @@
     const convenience = header.isConvenience === true;
     const menuBook = convenience ? null : feed.menuBook;
     const menuList = menuBook && Array.isArray(menuBook.menuList) ? menuBook.menuList.filter(m => m && id(m.id)) : [];
-    const distance = header.distanceFromConsumer;
     const addressButton = document.querySelector("[data-testid='addressTextButton']");
     const addressText = addressButton ? (addressButton.innerText || "").trim() : "";
-    const addressSelected = addressText ? addressText !== "Your Address" : null;
-    // With no address selected DoorDash answers for a placeholder location, so its delivery figures are withheld.
-    const withheld = addressSelected === false;
+    // Placeholder text is localised, so an address is only recognised positively (a street number or ZIP); anything else is unknown.
+    const basis = addressText
+      ? (/^(?:your address|tu direcci[oó]n)$/i.test(addressText) ? "no_address_selected" : /\d/.test(addressText) ? "selected_address" : "unknown")
+      : (document.querySelector("[data-testid='LandingPageAddressSearch']") ? "no_address_selected" : "unknown");
+    // Without a selected address DoorDash answers for a placeholder location, so its delivery figures are withheld.
+    const withheld = basis !== "selected_address";
     const storeAddress = header.address || {};
 
     return {
@@ -221,7 +216,7 @@
       cuisines: (Array.isArray(header.businessTags) ? header.businessTags : []).map(t => text(t && t.name, 60)).filter(Boolean).slice(0, 10),
       price_range: { level: Number.isInteger(header.priceRange) && header.priceRange >= 1 && header.priceRange <= 4 ? header.priceRange : null, text: text(header.priceRangeDisplayString, 10) },
       rating: {
-        average: number(header.ratings && header.ratings.averageRating),
+        average: Number.isInteger(header.ratings && header.ratings.numRatings) && header.ratings.numRatings === 0 ? null : number(header.ratings && header.ratings.averageRating),
         count: Number.isInteger(header.ratings && header.ratings.numRatings) ? header.ratings.numRatings : null,
         count_text: text(header.ratings && header.ratings.numRatingsDisplayString, 30),
         is_new: bool(header.ratings && header.ratings.isNewlyAdded)
@@ -248,10 +243,9 @@
         estimate_minutes: pickup.isAvailable === true ? text(pickup.minutes, 30) : null
       },
       delivery_context: {
-        basis: addressSelected === true ? "selected_address" : withheld ? "no_address_selected" : "unknown",
-        address_selected: addressSelected,
+        basis,
+        address_selected: basis === "selected_address" ? true : basis === "no_address_selected" ? false : null,
         signed_in: /(?:^|;\s*)dd_cx_logged_in=true(?:;|$)/.test(document.cookie),
-        distance: !withheld && distance && number(distance.value) !== null && text(distance.label, 10) ? { value: number(distance.value), unit: text(distance.label, 10) } : null,
         too_far_from_consumer: withheld ? null : bool(delivery.isTooFarFromConsumer),
         note: NOTE
       },

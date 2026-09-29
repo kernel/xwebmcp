@@ -53,7 +53,6 @@ const feed = (overrides = {}) => ({
     address: { lat: "40.5", lng: "-73.5", city: "Testville", state: "NY", street: "5 Test Road" },
     businessTags: [{ name: "Noodles" }, { name: "Asian" }],
     ratings: { numRatings: 1234, numRatingsDisplayString: "(1k+)", averageRating: 4.6, isNewlyAdded: false },
-    distanceFromConsumer: { value: 2.5, label: "mi" },
     deliveryFeeLayout: { title: "$0 delivery fee on $12+", subtitle: "pricing & fees", isSurging: false, displayDeliveryFee: "$0 delivery fee over $12" },
     asapStatus: { displayUnavailableReason: { title: "" } },
     status: {
@@ -85,16 +84,18 @@ function harness(options = {}) {
     return { status: reply.status, ok: reply.status >= 200 && reply.status < 300, text: async () => body };
   };
   const button = options.button === undefined ? { innerText: HEADER_STREET } : options.button;
+  const signalSpy = { timeouts: [], anys: 0 };
+  const SpiedAbortSignal = { timeout: ms => { signalSpy.timeouts.push(ms); return AbortSignal.timeout(ms); }, any: list => { signalSpy.anys += 1; return AbortSignal.any(list); } };
   const context = {
     location: { origin: options.origin ?? HOME, pathname: "/home" },
     document: {
       cookie: options.cookie ?? "a=1; csrf_token=fabricated-csrf; dd_cx_logged_in=true",
-      querySelector: selector => selector === "[data-testid='addressTextButton']" ? button : null
+      querySelector: selector => selector === "[data-testid='addressTextButton']" ? button : selector === "[data-testid='LandingPageAddressSearch']" && options.landing ? {} : null
     },
-    fetch: stubFetch, AbortSignal, JSON, Object, Array, Number, String, Boolean, Math, Promise, Error, RegExp, isFinite
+    fetch: stubFetch, AbortSignal: SpiedAbortSignal, JSON, Object, Array, Number, String, Boolean, Math, Promise, Error, RegExp, isFinite
   };
   const [definition] = runInNewContext(`(${source})`, context);
-  return { definition, calls, run: (input, signal) => definition.execute(input, signal ? { signal } : undefined) };
+  return { definition, calls, signalSpy, run: (input, signal) => definition.execute(input, signal ? { signal } : undefined) };
 }
 const validOutput = (definition, value) => conforms(definition.tool.outputSchema, value);
 
@@ -142,8 +143,11 @@ test("restaurant: maps the allowlisted fields and issues exactly one read", asyn
   assert.equal(out.operation_status, "OPEN");
   assert.equal(out.hours.store.length, 7);
   assert.deepEqual(out.hours.doordash_orders[0], { day: "MONDAY", slots: ["10 AM - 9 PM"] });
+  assert.equal(out.delivery_context.basis, "selected_address");
+  assert.equal(out.delivery_context.signed_in, true);
   assert.equal(out.delivery.available, true);
   assert.equal(out.delivery.estimate_minutes, "27 - 37");
+  assert.equal("distance" in out.delivery_context, false);
   assert.deepEqual(out.delivery.fee_display, { title: "$0 delivery fee on $12+", subtitle: "pricing & fees", text: "$0 delivery fee over $12", is_surging: false });
   assert.equal(out.pickup.estimate_minutes, "19 - 29");
   assert.deepEqual(out.menu.menus.map(m => m.menu_id), ["5001", "5002"]);
@@ -170,7 +174,6 @@ test("signed out: empty csrf header, signed_in false", async () => {
 });
 
 const farStore = () => ok(feed({ storeHeader: {
-  distanceFromConsumer: { value: 5385, label: "mi" },
   asapStatus: { displayUnavailableReason: { title: "Your address is not in this store's delivery area" } },
   status: {
     delivery: { isAvailable: false, minutes: "51 - 61", unavailableReason: "Too far away", isTooFarFromConsumer: true },
@@ -189,7 +192,6 @@ test("selected address, store out of range: the reason is reported and no estima
   assert.equal(out.delivery.unavailable_message, "Your address is not in this store's delivery area");
   assert.equal(out.pickup.available, false);
   assert.equal(out.pickup.estimate_minutes, null);
-  assert.deepEqual(out.delivery_context.distance, { value: 5385, unit: "mi" });
   assert.equal(out.delivery_context.too_far_from_consumer, true);
   assert.match(out.delivery_context.note, /never changes the address/);
 });
@@ -201,13 +203,12 @@ test("no address selected: the placeholder-location delivery figures are withhel
   assert.equal(out.delivery_context.basis, "no_address_selected");
   assert.equal(out.delivery_context.address_selected, false);
   assert.deepEqual(out.delivery, { available: null, unavailable_reason: null, unavailable_message: null, estimate_minutes: null, fee_display: out.delivery.fee_display });
-  assert.equal(out.delivery_context.distance, null);
   assert.equal(out.delivery_context.too_far_from_consumer, null);
   assert.equal(out.name, "Fabricated Noodle House");
   assert.equal(out.operation_status, "OPEN");
   assert.equal(out.hours.store.length, 7);
   assert.equal(out.delivery.fee_display.text, "$0 delivery fee over $12");
-  assert.doesNotMatch(JSON.stringify(out), /Too far away|5385/);
+  assert.doesNotMatch(JSON.stringify(out), /Too far away/);
   assert.match(out.delivery_context.note, /withheld/);
 
   const available = harness({ button: { innerText: "Your Address" } });
@@ -217,36 +218,54 @@ test("no address selected: the placeholder-location delivery figures are withhel
   assert.equal(open.pickup.estimate_minutes, "19 - 29");
 });
 
-test("unknown basis (no header address control): DoorDash's figures pass through, labelled unverified", async () => {
+test("unknown basis: delivery figures are withheld like the no-address case, not passed through", async () => {
   const { definition, run } = harness({ button: null, respond: farStore });
   const out = plain(await run({ store_id: "1001" }));
   assert.ok(validOutput(definition, out), JSON.stringify(out));
   assert.equal(out.delivery_context.basis, "unknown");
   assert.equal(out.delivery_context.address_selected, null);
-  assert.equal(out.delivery.available, false);
-  assert.equal(out.delivery.unavailable_reason, "Too far away");
-  assert.deepEqual(out.delivery_context.distance, { value: 5385, unit: "mi" });
+  assert.equal(out.delivery.available, null);
+  assert.equal(out.delivery.unavailable_reason, null);
+  assert.equal(out.delivery_context.too_far_from_consumer, null);
+  assert.equal(out.pickup.available, false);
+  assert.doesNotMatch(JSON.stringify(out), /Too far away/);
 });
 
-test("address_selected reads the header control and never returns its text", async () => {
-  const selected = harness();
-  const withAddress = plain(await selected.run({ store_id: "1001" }));
-  assert.equal(withAddress.delivery_context.address_selected, true);
-  assert.equal(withAddress.delivery_context.basis, "selected_address");
-  assert.ok(!JSON.stringify(withAddress).includes("Fabricated Header Street"));
+test("basis is recognised positively, in any locale, and the header text is never returned", async () => {
+  const basisOf = async options => plain(await harness(options).run({ store_id: "1001" })).delivery_context;
+  const selected = await basisOf({});
+  assert.equal(selected.basis, "selected_address");
+  assert.equal(selected.address_selected, true);
+  assert.ok(!JSON.stringify(plain(await harness().run({ store_id: "1001" }))).includes("Fabricated Header Street"));
 
-  assert.equal(plain(await harness({ button: { innerText: "Your Address" } }).run({ store_id: "1001" })).delivery_context.address_selected, false);
-  assert.equal(plain(await harness({ button: null }).run({ store_id: "1001" })).delivery_context.address_selected, null);
-  assert.equal(plain(await harness({ button: { innerText: "  " } }).run({ store_id: "1001" })).delivery_context.address_selected, null);
+  assert.equal((await basisOf({ button: { innerText: "Your Address" } })).basis, "no_address_selected");
+  assert.equal((await basisOf({ button: { innerText: " your address " } })).basis, "no_address_selected");
+  assert.equal((await basisOf({ button: { innerText: "Tu dirección" } })).basis, "no_address_selected");
+  const unrecognised = await basisOf({ button: { innerText: "Votre adresse" } });
+  assert.equal(unrecognised.basis, "unknown", "an unrecognised placeholder must not read as a selected address");
+  assert.equal(unrecognised.address_selected, null);
+  assert.equal((await basisOf({ button: { innerText: "Main Street" } })).basis, "unknown");
+  assert.equal((await basisOf({ button: { innerText: "12 Rue Fabriquée" } })).basis, "selected_address");
+  assert.equal((await basisOf({ button: { innerText: "  " } })).basis, "unknown");
+  assert.equal((await basisOf({ button: null })).basis, "unknown");
+  assert.equal((await basisOf({ button: null, landing: true })).basis, "no_address_selected");
+  assert.equal((await basisOf({ button: null, landing: true })).address_selected, false);
 });
 
 test("convenience store: header details, canonical convenience URL, no menu", async () => {
-  const { definition, run } = harness({ respond: () => ok(feed({ storeHeader: { id: "2002", name: "Fabricated Market", isConvenience: true }, rest: { menuBook: null } })) });
+  const { definition, run } = harness({ respond: () => ok(feed({ storeHeader: { id: "2002", name: "Fabricated Market", isConvenience: true } })) });
   const out = plain(await run({ store_id: "2002" }));
   assert.ok(validOutput(definition, out), JSON.stringify(out));
   assert.equal(out.store_type, "convenience");
   assert.equal(out.url, "https://www.doordash.com/convenience/store/2002/");
-  assert.equal(out.menu, null);
+  assert.equal(out.menu, null, "a convenience store never reports a menu, even if the site sends one");
+});
+
+test("a store with no ratings reports no average instead of 0", async () => {
+  const { definition, run } = harness({ respond: () => ok(feed({ storeHeader: { ratings: { numRatings: 0, numRatingsDisplayString: "", averageRating: 0, isNewlyAdded: true } } })) });
+  const out = plain(await run({ store_id: "1001" }));
+  assert.ok(validOutput(definition, out));
+  assert.deepEqual(out.rating, { average: null, count: 0, count_text: null, is_new: true });
 });
 
 test("optional and missing fields become nulls, not errors", async () => {
@@ -262,7 +281,6 @@ test("optional and missing fields become nulls, not errors", async () => {
   assert.equal(out.operation_status, null);
   assert.deepEqual(out.hours, { store: [], doordash_orders: [] });
   assert.equal(out.delivery.available, null);
-  assert.equal(out.delivery_context.distance, null);
   assert.equal(out.delivery_context.too_far_from_consumer, null);
   assert.deepEqual(out.menu.menus, []);
   assert.equal(out.menu.menu_id, null);
@@ -294,7 +312,7 @@ test("output is bounded: menus, cuisines, hours slots and long strings are cappe
 
 test("malformed input is rejected before any request", async () => {
   const { definition, calls, run } = harness();
-  for (const input of [undefined, null, [], "1001", {}, { store_id: 1001 }, { store_id: "" }, { store_id: "abc" }, { store_id: "12 34" }, { store_id: "-1" }, { store_id: "1234567890123" }, { store_id: "1001", extra: true }]) {
+  for (const input of [undefined, null, [], "1001", {}, { store_id: 1001 }, { store_id: "" }, { store_id: "abc" }, { store_id: "12 34" }, { store_id: "-1" }, { store_id: "1234567890123" }, { store_id: "029417" }, { store_id: "0" }, { store_id: " 1001" }, { store_id: "1001 " }, { store_id: "1001\n" }, { store_id: "١٢٣" }, { store_id: "1001", extra: true }]) {
     const out = plain(await run(input));
     assert.equal(out.status, "error", JSON.stringify(input));
     assert.equal(out.error_kind, "invalid_input");
@@ -344,6 +362,19 @@ test("permission, rate-limit, challenge, site-change and generic failures are di
     assert.ok(validOutput(definition, out), label);
     assert.equal(calls.length, 1, label + " must not retry");
   }
+});
+
+test("the request is bounded by a 25 second timeout and error text from the site is bounded", async () => {
+  const { signalSpy, run } = harness();
+  await run({ store_id: "1001" });
+  assert.deepEqual(signalSpy.timeouts, [25000]);
+  assert.equal(signalSpy.anys, 1);
+  const noisy = harness({ respond: () => ({ status: 200, json: { errors: [{ message: "internal failure " + "x".repeat(50000) }] } }) });
+  const out = plain(await noisy.run({ store_id: "1001" }));
+  assert.equal(out.error_kind, "site_error");
+  assert.ok(out.error_message.length < 300, String(out.error_message.length));
+  const invalid = harness({ respond: () => ({ status: 200, json: { errors: [{ message: "Cannot query field " + "y".repeat(50000), extensions: { code: "GRAPHQL_VALIDATION_FAILED" } }] } }) });
+  assert.ok(plain(await invalid.run({ store_id: "1001" })).error_message.length < 400);
 });
 
 test("network failure and timeout are site_error and are not retried", async () => {
