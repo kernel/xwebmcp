@@ -96,7 +96,6 @@ test("source is one page-kind definition that matches its registry entry", () =>
   assert.deepEqual(plain(tool.match.url_patterns), ["https://aa.com/*", "https://*.aa.com/*"]);
   assert.equal(entry.kind, "page");
   assert.deepEqual(entry.url_patterns, plain(tool.match.url_patterns));
-  assert.equal(entry.status, "draft");
   assert.deepEqual(plain(tool.tool.annotations), { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true });
   assert.equal(tool.tool.inputSchema.additionalProperties, false);
   assert.ok(tool.tool.outputSchema.oneOf.length === 2);

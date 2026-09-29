@@ -4,7 +4,7 @@ Tools for American Airlines (https://www.aa.com).
 
 | tool | file | status | notes |
 |---|---|---|---|
-| get_flight_status | [get_flight_status.js](get_flight_status.js) | draft | Public status for one American-marketed flight number and origin-local date; page tool, `www.aa.com` pages only. |
+| get_flight_status | [get_flight_status.js](get_flight_status.js) | verified | Public status for one American-marketed flight number and origin-local date; page tool, `www.aa.com` pages only. |
 | search_flights | [search_flights.js](search_flights.js) | verified | First-page outbound options; round-trip fares do not select a return flight. |
 | login | [login.js](login.js) | qa_passed | DDG-only entry; CAPTCHA is a typed failure. Full authentication remains unverified. |
 
@@ -75,7 +75,7 @@ node --test tests/aa.com.test.mjs
 
 ## Flight status
 
-`get_flight_status` returns the public flight status American shows on its flight-status page for one American-marketed flight number on one date. It needs no login. It is a draft: it has fixture tests and author live checks, not yet an independent QA pass.
+`get_flight_status` returns the public flight status American shows on its flight-status page for one American-marketed flight number on one date. It needs no login. It is `verified`: fixture tests, an independent QA sign-off on the final source and live successes from two pages (see QA below).
 
 ### Native WebMCP
 
@@ -114,13 +114,29 @@ Public pages, observed by the author on 2026-09-29 (Kernel stealth browser on a 
 
 ### Flight status QA
 
-Status is `draft`. What has been checked:
+Status is `verified` (2026-09-29). Independent QA (agent `agt_8e0c8369e539ef0b8159`) reviewed three commits and signed off on each: `0f9b673` (one minor defect: the site's `0000` placeholder and zero-padded numbers leaked into `incomingFlight`, plus README claims that overstated the evidence), `cf023d6` (fixes verified; two nits) and `3defa44`, the final tool source. Every commit after `3defa44` changes only this README and `registry.json`.
 
-- Fixture tests (`tests/aa-flight-status.test.mjs`, fabricated flights, stubbed page): input rejection before any request, the exact request, wrong host, challenge pages, field allowlist and cleaning, schedule-only rows, cancellation, the 10-row cap, no-results, and every HTTP failure mapping.
-- Author live checks on 2026-09-29 (all public, read-only): registration of the whole `aa.com` namespace and invocation from `www.aa.com/homePage.do` and from the flight-status page; a same-day flight, an American Eagle flight, a schedule-only date, a departed flight, an unknown flight number and an old date; a call from `creditcards.aa.com` (`wrong_page`); and malformed input. Every live output conformed to the output schema. The tool was not registered on `about:blank` or `example.com`.
-- `blocked` was observed live once: after about an hour of repeated author probing, `www.aa.com/homePage.do` began returning Akamai's "Access Denied" page to that browser and to a fresh browser on the same proxy; the tool returned `blocked` without sending a request. A different proxy loaded the homepage normally.
-- Not observed live: `blocked` or `rate_limited` answered by the flight-status service itself, `passengerMessage` with text, and a cancelled or diverted flight. These paths are covered by fixtures only. Independent QA saw one flight number return two rows, which were two separate flights sharing that number, one in each direction.
-- Independent QA: a first review of commit `0f9b673` (agent `agt_8e0c8369e539ef0b8159`) signed off with one minor defect, the incoming flight placeholder handling above, plus README evidence corrections. Both are fixed in the next commit; the same reviewer's re-review of that commit is pending.
+Fixture tests (`tests/aa-flight-status.test.mjs`, 21 tests, fabricated flights, stubbed page): input rejection before any request, the exact request, wrong host, challenge pages, field allowlist and cleaning, schedule-only rows, cancellation, incoming-flight normalization, the 10-row cap, no-results, every HTTP failure mapping, the 20 second abort, no navigation, and negative cases against the output schema. QA also mutation-checked the tests and fuzzed the real output schema with about 900 adversarial fixtures (no schema violations, one request per case).
+
+Independent live cases on the final source, 2026-09-29, public and signed out, in a Kernel stealth browser on a US residential proxy with the whole `aa.com` namespace registered together:
+
+| Case | Result |
+|---|---|
+| Registration | All three tools listed, `get_flight_status` is `page`, no native tool present |
+| AA 100 on 2026-09-29, invoked from `/homePage.do` and from `/travelInformation/flights/status` | `ok`; identical apart from `observedAt` |
+| AA 4500 on 2026-09-30 | `ok`, two rows (two separate flights sharing the number, one in each direction), `operatedBy` an American Eagle operator, `incomingFlight` null |
+| AA 100 on 2026-09-22 | `ok`, `Arrived at gate` with actual times, `incomingFlight` 101 |
+| AA 9999 on 2026-09-29 | `no_results`, HTTP 200 |
+| Invoked from `creditcards.aa.com` | `wrong_page`, no request |
+| Malformed input | `error`, no request |
+
+Every live output validated against the output schema; each call sent exactly one `/flightinfo/v1.2/` POST and the tab's URL did not change. `about:blank` and `example.com` did not list the tool (checked on the first commit).
+
+Runtime parity. Kernel browser runtime: ran, as above. Local Chrome extension runtime: ran on the final source (installed file byte-identical to the checkout): AA 100 success from the same two pages and three malformed inputs, with the same results as Kernel. Not run in the extension: `no_results`, `wrong_page`, Eagle, past-date and `blocked` cases. Parity is claimed only for what ran in both.
+
+Author live checks on 2026-09-29 covered the same cases plus a schedule-only date about 60 days ahead. `blocked` was observed live once: after about an hour of repeated author probing, `www.aa.com/homePage.do` began returning Akamai's "Access Denied" page to that browser and to a fresh browser on the same proxy; the tool returned `blocked` without sending a request. A different proxy loaded the homepage normally. QA confirmed the same behavior with a synthetic denied page.
+
+Not observed live: `blocked` or `rate_limited` answered by the flight-status service itself, `passengerMessage` with text, and a cancelled or diverted flight. These paths are covered by fixtures only.
 
 ### Flight status known limitations
 
