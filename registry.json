@@ -131,6 +131,32 @@
       }
     },
     {
+      "domain": "espn.com",
+      "tool": "get_scoreboard",
+      "file": "domains/espn.com/get_scoreboard.js",
+      "kind": "page",
+      "namespace": "espn.com",
+      "url_patterns": [
+        "https://www.espn.com/*"
+      ],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "NFL, NBA and NHL games for one date (NBA, NHL) or one week (NFL): start time, state, score, record, broadcasters, venue; echoes the effective date or week and reports no_games separately from errors. Public, read-only, no navigation. Other leagues unsupported; live-game shape unverified."
+    },
+    {
+      "domain": "espn.com",
+      "tool": "search",
+      "file": "domains/espn.com/search.js",
+      "kind": "page",
+      "namespace": "espn.com",
+      "url_patterns": [
+        "https://www.espn.com/*"
+      ],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "ESPN site search for teams, players, articles and upcoming Watch ESPN events, capped per type, with ESPN page URLs and uids; video clips, replays and films are omitted. Public, read-only, no navigation."
+    },
+    {
       "domain": "etsy.com",
       "tool": "add_to_cart",
       "file": "domains/etsy.com/add_to_cart.js",
