@@ -112,7 +112,7 @@
 
     const clean = (value, max) => {
       if (typeof value !== "string") return null;
-      const text = value.replace(/[\u0000-\u001f\u007f]+/g, " ").replace(/\s+/g, " ").trim();
+      const text = value.replace(/[\u0000-\u001f\u007f-\u009f]+/g, " ").replace(/\s+/g, " ").trim();
       // Cut at a UTF-16 boundary without leaving half of a surrogate pair.
       return text ? text.slice(0, max).replace(/[\ud800-\udbff]$/, "") : null;
     };
@@ -145,7 +145,7 @@
     const isLive = details.isLive === true;
     const isUpcoming = details.isUpcoming === true;
     const length = count(details.lengthSeconds);
-    const description = typeof details.shortDescription === "string" ? details.shortDescription.replace(/[\u0000-\u0008\u000b-\u001f\u007f]+/g, " ").replace(/\r\n?/g, "\n").trim() : "";
+    const description = typeof details.shortDescription === "string" ? details.shortDescription.replace(/[\u0000-\u0008\u000b-\u001f\u007f-\u009f]+/g, " ").replace(/\r\n?/g, "\n").trim() : "";
     const allKeywords = (Array.isArray(details.keywords) ? details.keywords : []).map(k => clean(k, 100)).filter(Boolean);
     const keywords = allKeywords.slice(0, 25);
     if (allKeywords.length > keywords.length) warnings.push("The video has " + allKeywords.length + " keywords; only the first 25 are returned.");
@@ -175,7 +175,6 @@
       } catch {
         owner = null;
         isVerified = null;
-        chapters.length = 0;
         warnings.push("The watch-page data had an unexpected structure; subscriber text, verification and chapters are unavailable.");
       }
     }

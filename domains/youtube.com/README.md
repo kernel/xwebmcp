@@ -39,7 +39,7 @@ from that document, and never navigates, so neither meets the `cdp` conditions i
   it: the response lists every option with its own request token, and the tool posts the chosen
   option's token, once per filter in the fixed order type, duration, upload date, sort, then reads
   the selected options back from the final response (`applied_filters`). It never builds a filter
-  token itself. One call returns one results page: about 20 videos plus the Shorts shelves the site adds (41 to 48 items on ten sample queries, 12 to 75 in independent QA), at most 100. `next_page_token`
+  token itself. One call returns one results page: about 20 videos plus the Shorts shelves the site adds (41 to 48 items on ten sample queries; independent QA saw 12 to 100 items, and a page of more than 100 once in about 20 runs of one query). `next_page_token`
   is the site's continuation token, passed back alone as `page_token`.
 - **get_video** posts `videoId` to `/youtubei/v1/player` (details) and `/youtubei/v1/next` (channel
   block and chapters) in parallel. It does not open the watch page, so the page is never navigated
@@ -57,7 +57,7 @@ Outputs:
   text; `get_video` returns `view_count` and `like_count` as integers only when the site gives an
   exact number.
 - Text fields are uploader-written and untrusted. They are trimmed of control characters and
-  bounded (titles 300, snippets 300, description 5000 characters, 25 keywords, 60 chapters, 100 search results). The tool
+  bounded (titles 300, snippets 300, description 5000 characters, 25 keywords, 60 chapters, 200 search results and a size limit that keeps the serialized output under the runtime's 240 KiB limit). The tool
   returns them as data and never acts on them.
 - Every result carries `observed_at`. Counts and rankings change by the minute.
 - `rank` is the position within one response and restarts at 1 on every page. The tool drops a result
@@ -129,15 +129,21 @@ scope, although `get_video` accepts a `youtu.be` link as input.
   `filter_unavailable`. When the query itself has no matches the site disables every option, and the
   tool returns `no_results` instead. Some filter and sort combinations have no matches (observed:
   Videos, 3 - 20 minutes, This month, Popularity returned only the site's empty-state card), which is
-  `no_results`. With type Shorts plus Upload date the site answered with ordinary short videos
-  (`kind: "video"`, some over a minute) while its filter menu still read Shorts; each result's `kind`
-  says what the row is.
+  `no_results`. With type Shorts plus Upload date, or Shorts plus Popularity, the site answered with
+  ordinary short videos (`kind: "video"`, some over a minute) or with nothing, while its filter menu
+  still read Shorts; each result's `kind` says what the row is. Shorts with the relevance sort returned
+  25 to 28 Shorts.
+- For a query the site spell-corrects ("Showing results for ..."), the results are for the corrected
+  text; the tool keeps `query` as sent and adds a warning naming the corrected query. A "did you mean"
+  card adds a warning too. Both cards sit next to the results, and next to the empty-state card on a
+  zero-match page, which is still `no_results`.
 - Filter labels are English (`hl` is fixed to `en` so labels and count text are stable); `gl` follows the
   page. Observed labels: Type (Videos, Shorts, Channels, Playlists, Movies), Duration (Under 3 minutes,
   3 - 20 minutes, Over 20 minutes), Upload date (Today, This week, This month, This year), Prioritize
   (Relevance, Popularity). The tool does not expose Movies, Features or the last-hour option.
 - The mixed results page contains videos, playlists and courses (`lockupViewModel`), a Shorts shelf
-  (`gridShelfViewModel`). Sponsored blocks (`searchPyvRenderer`) appeared only when the full page client
+  (`gridShelfViewModel`); some queries add a "Mix" playlist whose id is shorter than the 10-character minimum
+  the tool accepts for playlists, and it is counted in `omitted`. Sponsored blocks (`searchPyvRenderer`) appeared only when the full page client
   context was sent, not with the tool's reduced context; the tool would still omit and count them.
   Courses are returned as playlists with `playlist_type: "course"`. Movie results and other shelves are
   counted in `omitted`.
@@ -148,12 +154,14 @@ scope, although `get_video` accepts a `youtu.be` link as input.
   and the ids already shown, no session data.
 - A full navigation while an invocation is running ends in `outcome_unknown` after the whole timeout
   (spec §2.2); an in-app route change does not interrupt it.
+- The site's results are not stable between identical requests: the same multi-word nonsense query
+  returned three videos and a suggestion on one run and no results on another.
 
 ## Known limitations
 
 - English text and the site's region only; other locales, consent interstitials (EU) and other egress
   regions were not tested.
-- One results page per call (a page over 100 items would be cut with a warning; none was seen). `estimated_results` is the site's rough count; deep paging was not tested
+- One results page per call. A page is cut at 200 items or at a size limit, with a warning, and the cut items cannot be reached with `next_page_token` (the token is for the page after the whole site page); only a page of about 100 items was seen, so neither bound was reached live. `estimated_results` is the site's rough count; deep paging was not tested
   beyond a second page.
 - `get_video` uses the description's chapter list only. Videos with auto-generated chapters or none
   return `chapters: []`. `like_count` is null when the site omits it.
@@ -217,5 +225,23 @@ the tests killed 45 of 47 mutants. Fixed in the next revision:
    unreadable page, or a `player` response without a playability block, is `site_changed`.
 10. Truncation no longer leaves half of a surrogate pair.
 11. README accuracy: age-restricted `login_required`, timings, item counts, non-ASCII output runtime quirk.
+
+Independent QA round 2 (same agent, revision `c412a08`): **FAIL**, no blockers and three minor findings; nine of
+the ten round 1 fixes were confirmed live (98 further live outputs validated with Ajv; about 320 more requests
+observed by network telemetry, all anonymous POSTs to the three endpoints; a mutation run killed 29 of 39
+mutants, the survivors being test gaps). Fixed in the next revision:
+
+1. A zero-match page can carry a "did you mean" card next to the empty-state card, which kept the empty-page
+   check from matching and left `filter_unavailable`; suggestion and correction cards no longer count as
+   results there. The tests now cover it, and a page with real results is still not treated as empty.
+2. A page of more than 100 items was seen (the README said none was), and items cut from it are
+   unreachable. The count bound is now 200, a size bound keeps the output under the runtime's 240 KiB
+   limit, and the warning says the cut items cannot be reached with `next_page_token`.
+3. `sort_by: "popularity"` with type Shorts is documented in the tool description and here.
+
+Also changed from the non-blocking observations: a spelling correction or "did you mean" card is reported as a
+warning, paging past the last page says so, C1 control characters are rejected or stripped, an HTML 400 on a
+continuation is `invalid_page_token`, and the surviving mutants were closed with tests (all 22 mutants of
+the new paths are killed).
 
 Independent QA of the revision that fixes these: pending. Status stays `draft` until it passes.

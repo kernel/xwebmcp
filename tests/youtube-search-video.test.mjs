@@ -293,19 +293,32 @@ test("search sanitizes and bounds untrusted text, and counts blocks it cannot re
   assert.ok(out.warnings.some(w => /4 result block/.test(w)));
 });
 
-test("search returns a full mixed page (videos plus Shorts shelves), caps one page at 100 and drops a malformed next-page token", async () => {
+test("search returns a full mixed page (videos plus Shorts shelves) and bounds count and size with an honest warning", async () => {
   const mixed = harness("search", { items: [...Array.from({ length: 20 }, (_, i) => videoBlock(i + 1)), shortsShelf(...Array.from({ length: 25 }, (_, i) => i + 1)), shortsShelf(...Array.from({ length: 25 }, (_, i) => i + 30))] });
   const full = await mixed.ok({ query: "x" });
   assert.equal(full.results.length, 70, "typical mixed pages exceed 40 results and must not be truncated");
   assert.deepEqual(full.warnings, []);
-  const many = harness("search", { items: Array.from({ length: 150 }, (_, i) => videoBlock(i + 1)) });
-  const out = await many.ok({ query: "x" });
-  assert.equal(out.results.length, 100);
-  assert.ok(out.warnings.some(w => /more than 100/.test(w)));
+  const big = harness("search", { items: [shortsShelf(...Array.from({ length: 250 }, (_, i) => i + 1))] });
+  const capped = await big.ok({ query: "x" });
+  assert.equal(capped.results.length, 200);
+  assert.ok(capped.warnings.some(w => /held 250 results; only the first 200 .*cannot be reached with next_page_token/.test(w)), JSON.stringify(capped.warnings));
+  const wide = harness("search", { items: Array.from({ length: 150 }, (_, i) => videoBlock(i + 1, { title: { runs: [{ text: "\u6f22".repeat(300) }] }, detailedMetadataSnippets: [{ snippetText: { runs: [{ text: "\u6f22".repeat(300) }] } }] })) });
+  const sized = await wide.ok({ query: "x" });
+  assert.ok(sized.results.length > 0 && sized.results.length < 150, "the size guard cuts a page of long text: " + sized.results.length);
+  assert.ok(Buffer.byteLength(JSON.stringify(sized)) < 240 * 1024, "output stays under the runtime's 240 KiB limit even with three-byte characters");
+  assert.ok(sized.warnings.some(w => /only the first \d+ are returned to keep the response small/.test(w)));
   const bad = harness("search", { route: endpoint => endpoint === "search" ? { status: 200, text: JSON.stringify({ ...firstPage({}, [videoBlock(1)]), contents: { twoColumnSearchResultsRenderer: { primaryContents: { sectionListRenderer: { contents: [{ itemSectionRenderer: { contents: [videoBlock(1)] } }, { continuationItemRenderer: { continuationEndpoint: { continuationCommand: { token: "has spaces and <tags>" } } } }] } } } } }) } : null });
   const cleaned = await bad.ok({ query: "x" });
   assert.equal(cleaned.next_page_token, null);
   assert.ok(cleaned.warnings.some(w => /token/.test(w)));
+  const objectToken = harness("search", { route: endpoint => endpoint === "search" ? { status: 200, text: JSON.stringify({ ...firstPage({}, [videoBlock(1)]), contents: { twoColumnSearchResultsRenderer: { primaryContents: { sectionListRenderer: { contents: [{ itemSectionRenderer: { contents: [videoBlock(1)] } }, { continuationItemRenderer: { continuationEndpoint: { continuationCommand: { token: { nested: "x" } } } } }] } } } } }) } : null });
+  const dropped = await objectToken.ok({ query: "x" });
+  assert.equal(dropped.next_page_token, null);
+  assert.ok(dropped.warnings.some(w => /token/.test(w)));
+  const arrayToken = harness("search", { route: endpoint => endpoint === "search" ? { status: 200, text: JSON.stringify({ ...firstPage({}, [videoBlock(1)]), contents: { twoColumnSearchResultsRenderer: { primaryContents: { sectionListRenderer: { contents: [{ itemSectionRenderer: { contents: [videoBlock(1)] } }, { continuationItemRenderer: { continuationEndpoint: { continuationCommand: { token: ["CONTPAD0123456789.AAAA"] } } } }] } } } } }) } : null });
+  const notString = await arrayToken.ok({ query: "x" });
+  assert.equal(notString.next_page_token, null, "a token that is not a string is never returned, even if it stringifies to a valid-looking token");
+  assert.ok(notString.warnings.some(w => /token/.test(w)));
 });
 
 test("search chains the site's own filter tokens in a fixed order and reports what the site applied", async () => {
@@ -365,7 +378,7 @@ test("search pages with an opaque token passed alone and reads the continuation 
 test("search rejects malformed input before any request", async () => {
   const h = harness("search");
   const bad = [
-    undefined, null, [], "query", {}, { query: "" }, { query: "   " }, { query: 5 }, { query: "a".repeat(201) }, { query: "\u0000" }, { query: "a\u0007b" }, { query: null }, { type: null, query: "x" }, { query: "x", page_token: null }, { page_token: null },
+    undefined, null, [], "query", {}, { query: "" }, { query: "   " }, { query: 5 }, { query: "a".repeat(201) }, { query: "\u0000" }, { query: "a\u0007b" }, { query: "a\u000bb" }, { query: "a\u000cb" }, { query: "a\u0085b" }, { query: "a\u009fb" }, { query: "\n\t \r" }, { query: null }, { type: null, query: "x" }, { query: "x", page_token: null }, { page_token: null },
     { query: "x", type: "movie" }, { query: "x", type: 1 }, { query: "x", duration: "short" }, { query: "x", upload_date: "last_hour" }, { query: "x", sort_by: "newest" },
     { query: "x", extra: 1 }, { query: "x", page_token: "CONTPAD0123456789.AAAA" }, { type: "video" }, { page_token: "short" }, { page_token: "has spaces in it, definitely" },
     { page_token: 5 }, { page_token: "A".repeat(2001) }, { page_token: "CONTPAD0123456789.AAAA", type: "video" }
@@ -393,6 +406,8 @@ test("search maps rate limits, bot checks, bad bodies and network failures to ex
   await harness("search", { route: () => ({ status: 502, text: "<html>Bad gateway</html>" }) }).err({ query: "x" }, "site_error");
   await harness("search", { route: () => ({ status: 400, text: JSON.stringify({ error: { message: "Precondition check failed." } }) }) }).err({ query: "x" }, "site_error");
   await harness("search", { route: () => ({ status: 400, text: JSON.stringify({ error: { message: "Precondition check failed." } }) }) }).err({ page_token: "CONTPAD0123456789.AAAA" }, "invalid_page_token");
+  await harness("search", { route: () => ({ status: 400, text: "<html>Bad Request</html>" }) }).err({ page_token: "CONTPAD0123456789.AAAA" }, "invalid_page_token");
+  await harness("search", { route: () => ({ status: 400, text: "<html>Bad Request</html>" }) }).err({ query: "x" }, "site_error");
   await harness("search", { throws: true }).err({ query: "x" }, "site_error");
   const failing = harness("search", { route: (endpoint, body) => (endpoint === "search" && body.params ? { status: 429, text: "" } : null) });
   await failing.err({ query: "x", type: "video" }, "rate_limited");
@@ -470,6 +485,61 @@ test("search never leaves half of a surrogate pair when it truncates text", asyn
   const out = await harness("search", { items: [videoBlock(1, { title: { runs: [{ text: title }] } })] }).ok({ query: "x" });
   assert.equal(out.results[0].title, "A".repeat(299));
   assert.doesNotMatch(out.results[0].title, /[\ud800-\udbff]$/);
+});
+
+test("search treats suggestion cards next to the empty-state card as an empty page, and only that", async () => {
+  const suggestion = { didYouMeanRenderer: { didYouMean: { runs: [{ text: "Did you mean:" }] }, correctedQuery: { runs: [{ text: "example" }] } } };
+  const emptyWith = extra => {
+    const page = firstPage({}, [...extra, { backgroundPromoRenderer: { title: { runs: [{ text: "No results found" }] } } }], false);
+    for (const g of page.header.searchHeaderRenderer.searchFilterButton.buttonRenderer.command.openPopupAction.popup.searchFilterOptionsDialogRenderer.groups) {
+      for (const f of g.searchFilterGroupRenderer.filters) if (f.searchFilterRenderer.status !== "FILTER_STATUS_SELECTED") { f.searchFilterRenderer.status = "FILTER_STATUS_DISABLED"; delete f.searchFilterRenderer.navigationEndpoint; }
+    }
+    return page;
+  };
+  const withSuggestion = harness("search", { route: endpoint => (endpoint === "search" ? { status: 200, text: JSON.stringify(emptyWith([suggestion])) } : null) });
+  const out = plain(await withSuggestion.definition.execute({ query: "zzzz", type: "video" }, {}));
+  assert.equal(out.status, "no_results", JSON.stringify(out).slice(0, 200));
+  assert.equal(withSuggestion.calls.length, 1);
+  assert.deepEqual(out.applied_filters, { type: null, duration: null, upload_date: null, sort_by: "Relevance" });
+  const withCorrection = harness("search", { route: endpoint => (endpoint === "search" ? { status: 200, text: JSON.stringify(emptyWith([{ showingResultsForRenderer: { correctedQuery: { runs: [{ text: "example" }] } } }])) } : null) });
+  assert.equal(plain(await withCorrection.definition.execute({ query: "zzzz", duration: "over_20_min" }, {})).status, "no_results");
+  // A page that also holds real results is not empty: a disabled filter there is still filter_unavailable.
+  const mixed = harness("search", { route: endpoint => (endpoint === "search" ? { status: 200, text: JSON.stringify(emptyWith([videoBlock(1)])) } : null) });
+  await mixed.err({ query: "zzzz", type: "video" }, "filter_unavailable");
+  // A missing option on an empty page is also an empty result, not an unavailable filter.
+  const missing = harness("search", { route: endpoint => (endpoint === "search" ? { status: 200, text: JSON.stringify({ ...emptyWith([]), header: undefined }) } : null) });
+  const none = plain(await missing.definition.execute({ query: "zzzz", type: "video" }, {}));
+  assert.equal(none.status, "no_results");
+  assert.equal(none.applied_filters, null);
+});
+
+test("search reports a spelling correction or suggestion as a warning, not as an unsupported block", async () => {
+  const corrected = harness("search", { items: [{ showingResultsForRenderer: { showingResultsFor: { runs: [{ text: "Showing results for" }] }, correctedQuery: { runs: [{ text: "example query" }] }, originalQuery: { simpleText: "exmple qury" } } }, videoBlock(1)] });
+  const out = await corrected.ok({ query: "exmple qury" });
+  assert.equal(out.query, "exmple qury");
+  assert.deepEqual(out.omitted, { sponsored: 0, unsupported: 0 });
+  assert.ok(out.warnings.some(w => /corrected query \('example query'\), not the exact text searched/.test(w)), JSON.stringify(out.warnings));
+  const suggest = harness("search", { items: [{ didYouMeanRenderer: { correctedQuery: { runs: [{ text: "example" }] } } }, videoBlock(1)] });
+  const suggested = await suggest.ok({ query: "exmple" });
+  assert.ok(suggested.warnings.some(w => /suggests a different query \('example'\); these results are for the text searched/.test(w)), JSON.stringify(suggested.warnings));
+  const unreadable = harness("search", { items: [{ showingResultsForRenderer: {} }, videoBlock(1)] });
+  assert.ok((await unreadable.ok({ query: "x" })).warnings.some(w => /corrected query, not the exact text/.test(w)));
+});
+
+test("search says so when a page token runs past the last page", async () => {
+  const end = harness("search", { route: (endpoint, body) => (body.continuation ? { status: 200, text: JSON.stringify(laterPage({}, [{ backgroundPromoRenderer: { title: { runs: [{ text: "No more results" }] } } }], false)) } : null) });
+  const out = plain(await end.definition.execute({ page_token: "CONTPAD0123456789.AAAA" }, {}));
+  assert.equal(out.status, "no_results");
+  assert.equal(out.query, null);
+  assert.match(out.message, /no more results for this page_token/);
+});
+
+test("search keeps a video and a playlist that happen to share an id string, and strips C1 control characters from text", async () => {
+  const h = harness("search", { items: [videoBlock(1, { title: { runs: [{ text: "A\u0085B\u009fC" }] } }), playlistBlock(1, "LOCKUP_CONTENT_TYPE_PLAYLIST", { contentId: vid(1) })] });
+  const out = await h.ok({ query: "x" });
+  assert.deepEqual(out.results.map(r => r.kind), ["video", "playlist"]);
+  assert.equal(out.results[0].title, "A B C");
+  assert.deepEqual(out.warnings, []);
 });
 
 // --- get_video ---------------------------------------------------------------------------------------
@@ -636,6 +706,8 @@ test("get_video treats a player response without a playability block as a layout
   await harness("get_video", { player: {} }).err({ video: vid(1) }, "site_changed");
   await harness("get_video", { player: [] }).err({ video: vid(1) }, "site_changed");
   await harness("get_video", { player: { playabilityStatus: "OK", videoDetails: {} } }).err({ video: vid(1) }, "site_changed");
+  await harness("get_video", { player: { ...playerBody(vid(1)), playabilityStatus: "OK" } }).err({ video: vid(1) }, "site_changed");
+  await harness("get_video", { player: { ...playerBody(vid(1)), playabilityStatus: null } }).err({ video: vid(1) }, "site_changed");
 });
 
 test("get_video keeps the metadata and warns when the watch-page data has an unexpected type", async () => {
@@ -661,6 +733,12 @@ test("get_video never leaves half of a surrogate pair when it truncates text", a
   assert.equal(out.title, "A".repeat(299));
   assert.equal(out.description, "D".repeat(4999));
   assert.equal(out.description_truncated, true);
+});
+
+test("get_video strips C1 control characters from text", async () => {
+  const out = await harness("get_video", { player: playerBody(vid(1), { details: { title: "A\u0085B", shortDescription: "one\u009ftwo\nthree" } }) }).ok({ video: vid(1) });
+  assert.equal(out.title, "A B");
+  assert.equal(out.description, "one two\nthree");
 });
 
 test("get_video rejects URLs without a scheme", async () => {
