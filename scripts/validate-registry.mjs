@@ -5,6 +5,7 @@
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { join, relative, resolve } from "node:path";
 import { runInNewContext } from "node:vm";
+import { compose } from "./compose.mjs";
 
 const SUPPORTED_SPEC_VERSION = 1;
 const root = resolve(process.argv[2] ?? ".");
@@ -194,6 +195,7 @@ function main() {
     }
   }
   for (const [domain, entries] of byDomain) checkReadme(domain, entries);
+  for (const error of compose(root, true)) fail(error);
 }
 
 main();

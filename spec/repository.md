@@ -43,6 +43,8 @@ tests/
   *.test.mjs                      node --test "tests/*.test.mjs" MUST pass
 spec/                             this specification and its JSON Schemas
 scripts/validate-registry.mjs     the validator (§9)
+lib/input.js                      optional CDP typing snippet (§2)
+scripts/compose.mjs               inlines the snippet into tool sources (§2)
 ```
 
 Rules:
@@ -60,6 +62,13 @@ Rules:
   is RECOMMENDED.
 - Files that are neither tool files, tests, documentation, nor tooling (build output,
   `node_modules/`) MUST NOT be committed.
+
+A CDP tool MAY use `lib/input.js` for trusted, paced typing. Since consumers fetch only
+registered tool files (§10.2), the tool MUST commit the snippet inside its `execute`
+function between `// @xwebmcp-inline lib/input.js` and `// @xwebmcp-end`. The snippet is
+not imported at runtime. Run `node scripts/compose.mjs` to refresh marked tools; the
+validator rejects stale or unpaired blocks. Page tools cannot use this CDP helper and
+must still obey the page-first kind rule in `cdp-tools.md`.
 
 ## 3. Namespace: the registrable domain
 
@@ -315,6 +324,7 @@ repository root. It has no dependencies beyond Node itself and checks:
 7. Every `.js` file under `domains/` has a registry entry.
 8. Every domain directory has a `README.md` with the status table and the
    Known limitations section (§8), and the table's status matches the registry.
+9. Any inlined CDP typing snippet matches `lib/input.js` byte-for-byte after indentation.
 
 CI (`.github/workflows/validate.yml`) runs the validator and `node --test "tests/*.test.mjs"` on pull
 requests and on pushes to `main`. A pull request that fails either MUST NOT be merged.

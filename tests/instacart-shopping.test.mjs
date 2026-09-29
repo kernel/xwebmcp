@@ -61,6 +61,13 @@ const catalog = {
   "items_165949-1003": { id: "items_165949-1003", name: "Whole Milk", size: "1 gal", productId: "1003", brandName: "Dairy Co", tags: [], quantityAttributes: each, availability: { available: true, stockLevel: "inStock" }, price: { viewSection: { itemCard: { priceString: "$3.49" } } }, viewSection: {} },
   "items_165949-1004": { id: "items_165949-1004", name: "Deli Turkey", size: "per lb", productId: "1004", brandName: null, tags: [], quantityAttributes: { increment: 0.5, initial: 1, max: 5, min: 0.5, quantityType: "weight", viewSection: { unitString: "lb" } }, availability: { available: true, stockLevel: "inStock" }, price: { viewSection: { itemCard: { priceString: "$9.99 / lb" } } }, viewSection: {} },
   "items_165949-1005": { id: "items_165949-1005", name: "Sold Out Cookies", size: "12 ct", productId: "1005", brandName: null, tags: [], quantityAttributes: each, availability: { available: false, stockLevel: "outOfStock" }, price: { viewSection: { itemCard: { priceString: "$4.00" } } }, viewSection: {} },
+  "items_165949-1007": { id: "items_165949-1007", name: "Sparkling Soda Variety Pack", size: "12 fl oz", productId: "1007", brandName: "Fizz", tags: [], quantityAttributes: each, availability: { available: true, stockLevel: "inStock" }, price: { viewSection: { itemCard: { priceString: "$17.99", pricingUnitString: "8 x 12 fl oz", pricePerUnitString: null }, itemDetails: { pricingUnitString: "8 x 12 fl oz", pricePerUnitString: "$2.25 each" } } }, viewSection: {} },
+  "items_165949-1008": { id: "items_165949-1008", name: "Sparkling Soda Can", size: "12 fl oz", productId: "1008", brandName: "Fizz", tags: [], quantityAttributes: each, availability: { available: true, stockLevel: "inStock" }, price: { viewSection: { itemCard: { priceString: "$2.99", pricingUnitString: "12 fl oz" } } }, viewSection: {} },
+  "items_165949-1009": { id: "items_165949-1009", name: "Loose Apples", size: "per lb", productId: "1009", brandName: null, tags: [], quantityAttributes: each, availability: { available: true, stockLevel: "inStock" }, price: { viewSection: { itemCard: { priceString: "$1.99", pricingUnitString: "$1.99 / lb" } } }, viewSection: {} },
+  ...Object.fromEntries([
+    ["1010", "2 pk"], ["1011", "18 ct"], ["1012", "2 x 8 each"], ["1013", "2 x 6 x 12 fl oz"], ["1014", "Family size"],
+    ["1015", "1 each"], ["1016", "2 lb container"], ["1017", "8 each"], ["1018", "4 x 72 ct"], ["1019", "102.7 sq ft"], ["1020", "0 x 12 fl oz"]
+  ].map(([n, line]) => [`items_165949-${n}`, { id: `items_165949-${n}`, name: `Package ${line}`, size: "varies", productId: n, brandName: null, tags: [], quantityAttributes: each, availability: { available: true, stockLevel: "inStock" }, price: { viewSection: { itemCard: { priceString: "$5.00", pricingUnitString: line } } }, viewSection: {} }])),
   "items_165949-1006": { id: "items_165949-1006", name: "Limited Sauce", size: "8 oz", productId: "1006", brandName: null, tags: [], quantityAttributes: { ...each, max: 2 }, availability: { available: true, stockLevel: "lowStock" }, price: { viewSection: { itemCard: { priceString: "$1.99" } } }, viewSection: {} }
 };
 const header = text => ({ content: { __typename: "SearchContentManagementSearchItemGridHeader", viewSection: { titleFormattedAttributesString: { sections: [{ text }] } } } });
@@ -69,7 +76,8 @@ const ad = ids => ({ content: { __typename: "AdsSearchDisplayCreativePlacement",
 const loadMore = { content: { __typename: "SearchContentManagementSearchLoadMore" } };
 const searchPlacements = {
   bananas: [header('Results for "bananas"'), grid(["items_165949-1001", "items_165949-1002"], [catalog["items_165949-1001"]]), ad(["items_165949-1006"]), header("Related items"), grid(["items_165949-1003", "items_165949-1001"]), loadMore, grid(["items_165949-1004"])],
-  nothing: [header("No results for \"zzz\""), header("Related items"), grid(["items_165949-1003"])]
+  nothing: [header("No results for \"zzz\""), header("Related items"), grid(["items_165949-1003"])],
+  packs: [header('Results for "packs"'), grid(["items_165949-1010", "items_165949-1011", "items_165949-1013", "items_165949-1007"])]
 };
 
 function fixtures(options = {}) {
@@ -79,6 +87,7 @@ function fixtures(options = {}) {
     if (options.respond) { const custom = options.respond(op, variables, state); if (custom) return custom; }
     switch (op) {
       case "SharedCurrentUser": return { data: { currentUser: { id: "1", guest: options.guest === true } } };
+      case "GetLastUserLocation": return { data: { lastUserLocation: options.liveLocation ?? null } };
       case "ShopCollectionScoped": return { data: { shopCollection: { shops: variables.retailerSlug === "kroger" ? shops : variables.retailerSlug === "aldi" ? [otherShop] : [] } } };
       case "ShopCollectionUnscoped": return { data: { shopCollection: { shops: [...shops, otherShop] } } };
       case "SearchResultsPlacements": return { data: { searchResultsPlacements: { placements: searchPlacements[variables.query] ?? [] } } };
@@ -133,7 +142,8 @@ function harness(name, options = {}) {
         if (options.storePage === "login") return { status: 200, url: "https://www.instacart.com/login?next=%2Fstore", text: async () => "<html>Log in</html>" };
         if (options.storePage === "proxy") return { status: 502, url: "https://www.instacart.com/store", text: async () => "<html><body>PROXY proxy error the upstream proxy provider timed out</body></html>" };
         if (options.storePage === "flaky" && fx.state.storeFetches === 1) return { status: 502, url: "https://www.instacart.com/store", text: async () => "<html><body>PROXY proxy error the upstream proxy provider timed out</body></html>" };
-        return { status: 200, url: "https://www.instacart.com/store", text: async () => hasState ? `<html><script id="node-apollo-state" type="application/json">${encodeURIComponent(JSON.stringify(apolloState))}</script></html>` : "<html></html>" };
+        const served = options.storeLocation ? { GetLastUserLocation: { "{}": { lastUserLocation: options.storeLocation } } } : apolloState;
+        return { status: 200, url: "https://www.instacart.com/store", text: async () => hasState ? `<html><script id="node-apollo-state" type="application/json">${encodeURIComponent(JSON.stringify(served))}</script></html>` : "<html></html>" };
       }
       let op, variables;
       if (init.method === "POST") { const body = JSON.parse(init.body); op = body.operationName; variables = body.variables; }
@@ -141,6 +151,7 @@ function harness(name, options = {}) {
       assert.equal(init.headers["x-client-identifier"], "web");
       fx.state.requests.push({ op, variables, method: init.method ?? "GET" });
       if (options.http?.[op]) return { status: options.http[op], text: async () => "" };
+      if (options.throwOn === op) throw new Error("network down");
       return { status: 200, text: async () => JSON.stringify(fx.respond(op, variables)) };
     }
   };
@@ -198,7 +209,7 @@ test("registry lists every shopping tool with matching patterns", () => {
 
 const invalidInputs = {
   list_stores: [null, [], { query: "" }, { query: 1 }, { service_type: "drone" }, { max_results: 0 }, { max_results: 1.5 }, { extra: true }],
-  search: [{}, { store: "kroger" }, { query: "milk" }, { store: "Kroger!", query: "milk" }, { store: "kroger", query: " " }, { store: "kroger", query: "milk", max_results: 61 }, { store: "kroger", query: "milk", include_related: "yes" }, { store: "kroger", query: "milk", service_type: "drone" }, { store: "kroger", query: "milk", extra: 1 }],
+  search: [{}, { store: "kroger" }, { query: "milk" }, { store: "Kroger!", query: "milk" }, { store: "kroger", query: " " }, { store: "kroger", query: "milk", max_results: 61 }, { store: "kroger", query: "milk", include_related: "yes" }, { store: "kroger", query: "milk", allow_reformulation: 1 }, { store: "kroger", query: "milk", service_type: "drone" }, { store: "kroger", query: "milk", extra: 1 }],
   get_item: [{}, { store: "kroger" }, { item_id: "items_165949-1001" }, { store: "kroger", item_id: "1001" }, { store: "kroger", item_id: "items_165949-1001", extra: 1 }],
   get_cart: [null, { store: "" }, { store: "kroger", service_type: "drone" }, { extra: 1 }],
   add_to_cart: [{}, { store: "kroger" }, { store: "kroger", item_id: "bad" }, { store: "kroger", item_id: "items_165949-1001", quantity: 0 }, { store: "kroger", item_id: "items_165949-1001", quantity: -1 }, { store: "kroger", item_id: "items_165949-1001", quantity: 100 }, { store: "kroger", item_id: "items_165949-1001", quantity: "2" }, { store: "kroger", item_id: "items_165949-1001", extra: 1 }],
@@ -268,9 +279,6 @@ test("list_stores: a page without inline state reads the location from the store
   const result = await h.run({});
   assert.equal(result.status, "ok");
   assert.equal(h.state.storeFetches, 2);
-  const inline = harness("list_stores");
-  await inline.run({});
-  assert.equal(inline.state.storeFetches, undefined);
 });
 
 test("get_item: the store page redirecting to login is not_logged_in", async () => {
@@ -302,8 +310,132 @@ test("list_stores: lists, filters and caps stores", async () => {
   const filtered = await h.run({ query: "AL", max_results: 1 });
   assert.equal(filtered.total_stores, 1);
   assert.equal(filtered.stores[0].name, "ALDI");
-  assert.deepEqual(h.state.requests[0].variables, { postalCode: "45202", coordinates: location.coordinates, addressId: "900001" });
+  assert.deepEqual(h.state.requests.find(r => r.op === "ShopCollectionUnscoped").variables, { postalCode: "45202", coordinates: location.coordinates, addressId: "900001" });
 });
+
+// ---------------------------------------------------------------- live location
+
+const switched = { addressId: "900002", zoneId: "1322", postalCode: "45118", countryId: "840", coordinates: { latitude: 39.2, longitude: -83.9 } };
+
+test("list_stores: the site's current location wins over the page's stale server-rendered state", async () => {
+  const h = harness("list_stores", { liveLocation: switched });
+  const result = await h.run({});
+  assert.deepEqual(result.location, { postal_code: "45118", zone_id: "1322", has_address: true });
+  assert.equal(h.state.storeFetches ?? 0, 0);
+  assert.deepEqual(h.state.requests.find(r => r.op === "ShopCollectionUnscoped").variables, { postalCode: "45118", coordinates: { latitude: 39.2, longitude: -83.9 }, addressId: "900002" });
+});
+
+test("add_to_cart: after an address switch the cart is opened for the new address", async () => {
+  const h = harness("add_to_cart", { liveLocation: switched });
+  assert.equal((await h.run({ store: "kroger", item_id: "items_165949-1001" })).status, "ok");
+  assert.equal(h.state.requests.find(r => r.op === "ActiveCartId").variables.addressId, "900002");
+});
+
+const noAddress = { zoneId: "78", postalCode: "45202" };
+
+test("search: a live location without an address re-reads the store page and keeps its login checks", async () => {
+  const guest = harness("search", { liveLocation: noAddress, hasState: false, storePage: "login" });
+  assert.equal((await guest.run({ store: "kroger", query: "bananas" })).error_kind, "not_logged_in");
+  const postalOnly = harness("search", { liveLocation: noAddress, storeLocation: noAddress });
+  assert.equal((await postalOnly.run({ store: "kroger", query: "bananas" })).status, "ok");
+  assert.equal(postalOnly.state.storeFetches, 1);
+});
+
+// ---------------------------------------------------------------- package sizes
+
+test("get_item: a multipack reports its unit count and unit size from the site's package line", async () => {
+  const pack = (await harness("get_item").run({ store: "kroger", item_id: "items_165949-1007" })).item;
+  assert.deepEqual([pack.size, pack.package_string, pack.pack_count, pack.unit_size], ["12 fl oz", "8 x 12 fl oz", 8, "12 fl oz"]);
+  const can = (await harness("get_item").run({ store: "kroger", item_id: "items_165949-1008" })).item;
+  assert.deepEqual([can.package_string, can.pack_count, can.unit_size], ["12 fl oz", 1, "12 fl oz"]);
+});
+
+test("get_item: a price in the package line, or no package line, leaves the pack fields null", async () => {
+  for (const id of ["items_165949-1009", "items_165949-1001"]) {
+    const item = (await harness("get_item").run({ store: "kroger", item_id: id })).item;
+    assert.deepEqual([item.package_string, item.pack_count, item.unit_size], [null, null, null], id);
+  }
+});
+
+const packLines = [
+  ["items_165949-1010", "2 pk", 2, null],
+  ["items_165949-1011", "18 ct", null, null],
+  ["items_165949-1012", "2 x 8 each", 2, "8 each"],
+  ["items_165949-1013", "2 x 6 x 12 fl oz", null, null],
+  ["items_165949-1014", "Family size", null, null],
+  ["items_165949-1015", "1 each", 1, "1 each"],
+  ["items_165949-1016", "2 lb container", 1, "2 lb container"],
+  ["items_165949-1017", "8 each", null, null],
+  ["items_165949-1018", "4 x 72 ct", 4, "72 ct"],
+  ["items_165949-1019", "102.7 sq ft", 1, "102.7 sq ft"],
+  ["items_165949-1020", "0 x 12 fl oz", null, null]
+];
+
+test("get_item: pack_count is only claimed for package lines that prove it", async () => {
+  for (const [id, line, count, unit] of packLines) {
+    const item = (await harness("get_item").run({ store: "kroger", item_id: id })).item;
+    assert.deepEqual([item.package_string, item.pack_count, item.unit_size], [line, count, unit], line);
+  }
+});
+
+test("search: result items use the same pack rules, including 2 pk and ambiguous lines", async () => {
+  const result = await harness("search").run({ store: "kroger", query: "packs" });
+  assert.deepEqual(result.results.map(r => [r.item.package_string, r.item.pack_count, r.item.unit_size]), [["2 pk", 2, null], ["18 ct", null, null], ["2 x 6 x 12 fl oz", null, null], ["8 x 12 fl oz", 8, "12 fl oz"]]);
+});
+
+test("get_cart and add_to_cart: 2 pk and ambiguous count lines keep the same pack rules", async () => {
+  const h = harness("get_cart", { cartLines: [{ itemId: "items_165949-1010", quantity: 1, quantityType: "each" }, { itemId: "items_165949-1011", quantity: 2, quantityType: "each" }] });
+  const lines = (await h.run({ store: "kroger" })).carts[0].items;
+  assert.deepEqual(lines.map(l => [l.package_string, l.pack_count, l.unit_size]), [["2 pk", 2, null], ["18 ct", null, null]]);
+  const twoPack = await harness("add_to_cart").run({ store: "kroger", item_id: "items_165949-1010" });
+  assert.deepEqual([twoPack.item.pack_count, twoPack.item.unit_size], [2, null]);
+  const eggs = await harness("add_to_cart").run({ store: "kroger", item_id: "items_165949-1011" });
+  assert.deepEqual([eggs.item.package_string, eggs.item.pack_count], ["18 ct", null]);
+});
+
+test("get_cart: cart lines carry the pack fields of their item", async () => {
+  const h = harness("get_cart", { cartLines: [{ itemId: "items_165949-1007", quantity: 6, quantityType: "each" }] });
+  const line = (await h.run({ store: "kroger" })).carts[0].items[0];
+  assert.deepEqual([line.name, line.quantity, line.package_string, line.pack_count, line.unit_size], ["Sparkling Soda Variety Pack", 6, "8 x 12 fl oz", 8, "12 fl oz"]);
+});
+
+test("add_to_cart: the returned item carries the pack fields", async () => {
+  const result = await harness("add_to_cart").run({ store: "kroger", item_id: "items_165949-1007", quantity: 2 });
+  assert.equal(result.item.pack_count, 8);
+});
+// The page's inline state below always holds the pre-switch address (900001); none of these may use it.
+for (const name of ["add_to_cart", "update_cart_item"]) {
+  const input = name === "add_to_cart" ? { store: "kroger", item_id: "items_165949-1001" } : { store: "kroger", item_id: "items_165949-1001", quantity: 2 };
+  const cartLines = [{ itemId: "items_165949-1001", quantity: 1, quantityType: "each" }];
+  for (const [label, options, kind] of [
+    ["a throttled location read", { http: { GetLastUserLocation: 429 } }, "throttled"],
+    ["a failed location request", { throwOn: "GetLastUserLocation" }, "unknown"],
+    ["an unauthenticated location read", { http: { GetLastUserLocation: 401 } }, "not_logged_in"],
+    ["a location without an address while the store page has one", { liveLocation: noAddress }, "unknown"],
+    ["a location without an address and no store page", { liveLocation: noAddress, storePage: "proxy" }, "unknown"],
+    ["a location without an address on both", { liveLocation: noAddress, storeLocation: noAddress }, "not_logged_in"]
+  ]) {
+    test(`${name}: after an address switch, ${label} fails closed without using the page's stale address or mutating`, async () => {
+      const h = harness(name, { ...options, cartLines });
+      const result = await h.run(input);
+      assert.equal(result.status, "error");
+      assert.equal(result.error_kind, kind);
+      assert.equal(result.mutation_attempted, false);
+      assert.equal(h.state.mutations, 0);
+      assert.equal(h.state.requests.some(r => r.op === "ActiveCartId"), false);
+      assert.equal(h.state.requests.some(r => r.variables?.addressId === "900001"), false);
+    });
+  }
+}
+
+for (const name of ["list_stores", "search", "get_item", "get_cart"]) {
+  test(`${name}: a throttled location read after an address switch is reported, not answered from the page's stale address`, async () => {
+    const input = { list_stores: {}, search: { store: "kroger", query: "bananas" }, get_item: { store: "kroger", item_id: "items_165949-1001" }, get_cart: { store: "kroger" } }[name];
+    const h = harness(name, { http: { GetLastUserLocation: 429 } });
+    assert.equal((await h.run(input)).error_kind, "throttled");
+    assert.equal(h.state.requests.some(r => r.op.startsWith("ShopCollection")), false);
+  });
+}
 
 // ---------------------------------------------------------------- search
 
@@ -325,6 +457,17 @@ test("search: returns exact matches in order with hydrated details and skips ads
   const items = h.state.requests.filter(r => r.op === "Items");
   assert.deepEqual(items.map(r => r.variables.ids), [["items_165949-1002"]]);
   assert.equal(h.state.requests.find(r => r.op === "SearchResultsPlacements").variables.shopId, "355391");
+});
+
+test("search: sends the literal query unless allow_reformulation is set, and says which it did", async () => {
+  const literal = harness("search");
+  const strict = await literal.run({ store: "kroger", query: "bananas" });
+  assert.equal(strict.reformulation_allowed, false);
+  assert.equal(literal.state.requests.find(r => r.op === "SearchResultsPlacements").variables.disableReformulation, true);
+  const loose = harness("search");
+  const rewritten = await loose.run({ store: "kroger", query: "bananas", allow_reformulation: true });
+  assert.equal(rewritten.reformulation_allowed, true);
+  assert.equal(loose.state.requests.find(r => r.op === "SearchResultsPlacements").variables.disableReformulation, false);
 });
 
 test("search: include_related appends related items after exact ones up to max_results", async () => {
@@ -404,7 +547,7 @@ test("get_cart: reads one store's cart with hydrated lines and totals", async ()
   assert.equal(cart.item_count, 2);
   assert.equal(cart.subtotal_string, "$4.74");
   assert.deepEqual(cart.items.map(i => [i.item_id, i.quantity, i.name, i.line_total_cents]), [["items_165949-1001", 2, "Fresh Bananas", 474], ["items_165949-1004", 1.5, "Deli Turkey", null]]);
-  assert.deepEqual(ops(h), ["SharedCurrentUser", "ShopCollectionScoped", "ActiveCartId", "CartData", "Items", "CartTotals"]);
+  assert.deepEqual(ops(h), ["SharedCurrentUser", "GetLastUserLocation", "ShopCollectionScoped", "ActiveCartId", "CartData", "Items", "CartTotals"]);
 });
 
 test("get_cart: without a store summarizes every non-empty cart", async () => {
