@@ -4,10 +4,10 @@ Public read tools for Fandango US (https://www.fandango.com): search, theaters n
 
 | tool | file | status | notes |
 |------|------|--------|-------|
-| get_movie_showtimes | [get_movie_showtimes.js](get_movie_showtimes.js) | draft | One movie's showtimes on one local date at theaters near a required ZIP, grouped by theater and format, with a status per showtime |
-| get_theater_showtimes | [get_theater_showtimes.js](get_theater_showtimes.js) | draft | Every movie and showtime at one theater on one local date, plus theater details and the dates that have showtimes |
-| search | [search.js](search.js) | draft | Header-search suggestions (movies, theaters, cities, people) as ids and canonical URLs; about four per type |
-| search_theaters | [search_theaters.js](search_theaters.js) | draft | Theaters near a ZIP or city and state with distance, chain, amenities and whether tickets are sold online |
+| get_movie_showtimes | [get_movie_showtimes.js](get_movie_showtimes.js) | verified | One movie's showtimes on one local date at theaters near a required ZIP, grouped by theater and format, with a status per showtime |
+| get_theater_showtimes | [get_theater_showtimes.js](get_theater_showtimes.js) | verified | Every movie and showtime at one theater on one local date, plus theater details and the dates that have showtimes |
+| search | [search.js](search.js) | verified | Header-search suggestions (movies, theaters, cities, people) as ids and canonical URLs; about four per type |
+| search_theaters | [search_theaters.js](search_theaters.js) | verified | Theaters near a ZIP or city and state with distance, chain, amenities and whether tickets are sold online |
 
 ## Native WebMCP tools
 
@@ -97,13 +97,18 @@ Round 1 on the first revision (`search.js` blob `0ef6b98`, `search_theaters.js` 
 Round 2 on `8243fb1` (blobs `78827d6`, `53f15c0`, `37ac694`, `ced08a2`): **PASS**, with minor items: `search` passed through the site's own 404 links for city names with an apostrophe (fixed by dropping the apostrophe, which resolved for every such city checked), an internally inconsistent QA paragraph in this README, and six surviving mutants in the tests (tests added; all seven mutants of that set are now killed). What round 2 verified live, on the Kernel runtime and in a local Chromium 153 with the unpacked extension:
 
 - Outputs matched the site: 77 and 95 showtimes at one theater on two days, identical to the theater page; nine theaters for one movie near one ZIP, identical to the movie page including times, formats and states; `time_text` and `local_time` agreed on all 1386 showtimes checked.
-- 88 saved Kernel outputs and 13 extension outputs all validated against their output schemas with a real JSON Schema validator, covering `ok`, `no_results`, `no_showtimes`, `invalid_input`, `not_found` and `theater_not_found`.
-- From the home, a movie, a theater and a 404 page on `www.fandango.com`, all four tools returned success and the tab URL never changed; on `/region-error` all four returned `region_blocked` with no request; no tool was listed on the `tickets.` or `athome.` landing pages; CDP network events showed only `GET /napi/...` fetches with no body and no navigation, and cookies and storage were unchanged.
+- 88 saved Kernel outputs and 30 extension outputs all validated against their output schemas with a real JSON Schema validator, covering `ok`, `no_results`, `no_showtimes`, `invalid_input`, `not_found` and `theater_not_found`.
+- From the home, a movie, a theater and a 404 page on `www.fandango.com`, all four tools returned success and the tab URL never changed; on `/region-error` all four returned `region_blocked` with no request; no tool was listed on the `tickets.` or `athome.` landing pages; the tools' own requests were only `GET /napi/...` with no body and no navigation (measured with an in-page fetch/XHR wrapper; the CDP log on content pages also shows the page's own ad and analytics traffic, which the tools do not produce), and cookie and storage key names and counts were unchanged.
 - The largest output was about 61 KB (110 KB as the Kernel API wraps it), under the 240 KiB API limit.
-- The extension run used a scratch copy of the extension whose manifest lists `https://www.fandango.com/*` as a host permission, because the site-access prompt cannot be driven headlessly; it otherwise matched the repository and gave the same outputs as the Kernel runtime for the same inputs.
+- The extension run used a scratch copy of the extension whose manifest lists `https://www.fandango.com/*` as a host permission, because the site-access prompt cannot be driven headlessly; it otherwise matched the repository. Of 12 cases diffed against the Kernel runtime, 10 were identical, one differed only in amenity order and one was not comparable; the other extension outputs were schema-checked only.
 
-Not exercised in any round: live HTTP 403 and 429 responses and bot-protection pages (stubbed only), a real non-US network location (only the `/region-error` page), signed-in tabs, theaters with `ticketing_available: false`, and a live `restricted` status in round 2 (seen live earlier, fixture-covered).
+Not exercised in any round: live HTTP 403 and 429 responses and bot-protection pages (stubbed only), a real non-US network location (only the `/region-error` page), signed-in tabs, and theaters with `ticketing_available: false`. The `restricted` status was seen live in round 1 and not re-observed live in rounds 2 or 3; its mapping was checked on the live runtime with an overridden response and by tests.
 
-Round 3 (`search.js` after the apostrophe change): pending.
+Round 3 on the final source (`search.js` blob `7569261`; the other three tools unchanged and byte-identical to round 2): **PASS** for all four tools, with no code defects (three README wording corrections, applied here). Live, 2026-09-29, signed out, US network:
+
+- 21 `search` queries returned 46 city links and 20 theater links; fetching all 66 returned URLs without following redirects gave 66 responses of 200, and the 24 apostrophe cities the tool returned (for example `/coeur-dalene_id_movietimes`) resolve, while the site's own `+` links for the same cities are 404. No returned URL contains an apostrophe, a `+` or an upper-case theater path.
+- A smoke pass of all four tools from a movie page, the home page, a theater page and a 404 page succeeded with the tab URL unchanged; `/region-error` gave `region_blocked` with no request; 21 outputs validated against their schemas; the largest output was about 61 KB; `time_text` matched `local_time` on all 469 showtimes checked.
+- 61 mutants were run against the tests; five survived (three equivalent, the movie tool's default `limit` and the `search_theaters` amenity cap), which are documented gaps rather than defects.
+- In the local extension, 16 cases run from a movie page were `completed`, byte-identical to the Kernel outputs for the same inputs apart from `observed_at`, schema-valid, with the tab URL unchanged, and all four tools returned `region_blocked` on `/region-error`.
 
 Sessions (ephemeral): builder and QA browsers were created and deleted by their owners.

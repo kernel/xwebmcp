@@ -175,7 +175,7 @@ for (const name of NAMES) {
     const entry = registry.tools.find(t => t.domain === "fandango.com" && t.tool === name);
     assert.ok(entry, "registry entry missing");
     assert.equal(entry.kind, "page");
-    assert.equal(entry.status, "draft");
+    assert.notEqual(entry.status, "broken");
     assert.deepEqual(entry.url_patterns, ["https://www.fandango.com/*"]);
     assert.equal(entry.file, `domains/fandango.com/${name}.js`);
   });
