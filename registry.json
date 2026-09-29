@@ -54,6 +54,32 @@
       }
     },
     {
+      "domain": "booking.com",
+      "tool": "get_property",
+      "file": "domains/booking.com/get_property.js",
+      "kind": "page",
+      "namespace": "booking.com",
+      "url_patterns": [
+        "https://www.booking.com/*"
+      ],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Public read of one property page for explicit dates, one room, adults, child ages and currency: name, address, review score, check-in/out times and every listed rate with total, discount, taxes and fees excluded, cancellation, prepayment and meal terms. Echoes the dates, guests and currency the page applied and refuses a page that applied others. Switches the site's session display currency and restores it. Never selects a rate or opens checkout. Independent QA pending."
+    },
+    {
+      "domain": "booking.com",
+      "tool": "search_stays",
+      "file": "domains/booking.com/search_stays.js",
+      "kind": "page",
+      "namespace": "booking.com",
+      "url_patterns": [
+        "https://www.booking.com/*"
+      ],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Public first results page (up to 25 properties) for a destination, explicit dates, one room, adults, child ages and currency, with sort and filters. Returns canonical property URLs, review scores, the recommended unit and the displayed stay total, and echoes the dates, guests and currency the site applied. Distinguishes no_results, unaccepted searches, challenges, gates and rate limits. Switches the site's session display currency and restores it. Independent QA pending."
+    },
+    {
       "domain": "delta.com",
       "tool": "get_page_context",
       "file": "domains/delta.com/get_page_context.js",
