@@ -196,10 +196,20 @@
       // Events are read in site pages of 20 in the site's order; the requested window may span two pages.
       const listings = [];
       let total = null;
+      const eventsPath = "/api/search/events/venue?venueId=" + venueId + "&region=200&addOnType=EVENT&page=";
       for (let page = Math.floor(offset / PAGE_SIZE); page * PAGE_SIZE < offset + limit; page++) {
-        const r = await api("/api/search/events/venue?venueId=" + venueId + "&region=200&addOnType=EVENT&page=" + page);
+        const r = await api(eventsPath + page);
         if (blocked(r)) return challenge(r);
         if (r.status >= 400 || !r.body || !Array.isArray(r.body.events)) return fail("site_error", "Ticketmaster did not return a JSON events list for the venue (HTTP " + r.status + ").");
+        // The site sometimes answers a page in the middle of a list with total 0 and no events; page 0 holds the real total.
+        if (page > 0 && !r.body.events.length) {
+          const first = await api(eventsPath + "0");
+          if (blocked(first)) return challenge(first);
+          if (first.status >= 400 || !first.body || !Array.isArray(first.body.events)) return fail("site_error", "Ticketmaster did not return a JSON events list for the venue (HTTP " + first.status + ").");
+          if (Number.isInteger(first.body.total) && first.body.total > page * PAGE_SIZE) return fail("site_error", "Ticketmaster returned an empty events page although it reports " + first.body.total + " events; try again.");
+          if (Number.isInteger(first.body.total)) total = first.body.total;
+          break;
+        }
         if (Number.isInteger(r.body.total)) total = r.body.total;
         r.body.events.forEach((e, i) => { const at = page * PAGE_SIZE + i; if (at >= offset && at < offset + limit) listings.push(e); });
         if (r.body.events.length < PAGE_SIZE || (total !== null && (page + 1) * PAGE_SIZE >= total)) break;

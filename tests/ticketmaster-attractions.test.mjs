@@ -839,3 +839,88 @@ test("look-alike hosts are never treated as Ticketmaster", async () => {
   assert.deepEqual(found.results.map(r => r.id), ["1234567"]);
   assert.match(found.warnings.join(" "), /3 suggestion/);
 });
+
+// --- an empty page in the middle of a list (seen live: total 0, no events, HTTP 200) --------------------
+
+const flakyEvents = (flake, count = 457) => page => (page === flake ? json(200, { total: 0, totalLocal: 0, totalInternational: 0, singleVenue: false, events: [] }) : json(200, { total: count, events: Array.from({ length: Math.max(0, Math.min(20, count - page * 20)) }, (_, i) => listing(page * 20 + i + 1)) }));
+
+test("get_artist and get_venue: an empty page inside the list is an error, never a silently short result", async () => {
+  for (const [name, key, routesFor] of [["get_artist", "artist", artistRoutes], ["get_venue", "venue", venueRoutes]]) {
+    const id = name === "get_artist" ? "1234567" : "12345";
+    for (const [events_offset, events_limit] of [[60, 5], [58, 5], [50, 20], [79, 1], [41, 20]]) {
+      const h = harness(name, { routes: routesFor({ events: flakyEvents(3) }) });
+      const result = await h.run({ [key]: id, events_offset, events_limit });
+      assert.equal(result.status, "error", `${name} ${events_offset}/${events_limit}`);
+      assert.equal(result.error_kind, "site_error");
+      assert.match(result.error_message, /empty events page although it reports 457 events/);
+    }
+  }
+});
+
+test("get_artist and get_venue: a healthy page next to the flaky one is still returned", async () => {
+  for (const [name, key, routesFor] of [["get_artist", "artist", artistRoutes], ["get_venue", "venue", venueRoutes]]) {
+    const id = name === "get_artist" ? "1234567" : "12345";
+    const spanning = await harness(name, { routes: routesFor({ events: flakyEvents(3) }) }).run({ [key]: id, events_offset: 41, events_limit: 20 });
+    assert.equal(spanning.status, "error", "offset 41 limit 20 needs pages 2 and 3");
+    const before = await harness(name, { routes: routesFor({ events: flakyEvents(3) }) }).run({ [key]: id, events_offset: 40, events_limit: 20 });
+    assert.deepEqual([before.status, before.events.total, before.events.returned, before.events.next_offset], ["ok", 457, 20, 60], "offset 40 limit 20 needs only page 2");
+    const ok = await harness(name, { routes: routesFor({ events: flakyEvents(3) }) }).run({ [key]: id, events_offset: 20, events_limit: 20 });
+    assert.equal(ok.status, "ok");
+    assert.deepEqual([ok.events.total, ok.events.returned, ok.events.next_offset], [457, 20, 40]);
+  }
+});
+
+test("get_artist and get_venue: a genuine end of the list is still ok, with the real total from page 0", async () => {
+  for (const [name, key, routesFor] of [["get_artist", "artist", artistRoutes], ["get_venue", "venue", venueRoutes]]) {
+    const id = name === "get_artist" ? "1234567" : "12345";
+    const list = Array.from({ length: 5 }, (_, i) => listing(i + 1));
+    const h = harness(name, { routes: routesFor({ list }) });
+    const past = await h.run({ [key]: id, events_offset: 60, events_limit: 5 });
+    assert.equal(past.status, "ok");
+    assert.deepEqual([past.events.total, past.events.returned, past.events.next_offset], [5, 0, null]);
+    assert.match(past.warnings.join(" "), /past the last event/);
+    assert.deepEqual(h.calls.requests.filter(r => r.includes("/events/")).map(r => r.slice(-6)), ["page=3", "page=0"]);
+    const wide = harness(name, { routes: routesFor({ list }) });
+    assert.equal((await wide.run({ [key]: id, events_offset: 50, events_limit: 20 })).status, "ok");
+    assert.deepEqual(wide.calls.requests.filter(r => r.includes("/events/")).map(r => r.slice(-6)), ["page=2", "page=0"], "the loop stops at the end of the list");
+    const exact = Array.from({ length: 40 }, (_, i) => listing(i + 1));
+    const edge = await harness(name, { routes: routesFor({ list: exact }) }).run({ [key]: id, events_offset: 40, events_limit: 5 });
+    assert.equal(edge.status, "ok");
+    assert.deepEqual([edge.events.total, edge.events.returned, edge.events.next_offset], [40, 0, null]);
+  }
+});
+
+test("get_artist and get_venue: the cross-check request is challenged or failed like any other", async () => {
+  for (const [name, key, routesFor] of [["get_artist", "artist", artistRoutes], ["get_venue", "venue", venueRoutes]]) {
+    const id = name === "get_artist" ? "1234567" : "12345";
+    const blockedFirst = calls => page => (page === 3 ? json(200, { total: 0, events: [] }) : (calls.n++, json(403, { response: "block" })));
+    assert.equal((await harness(name, { routes: routesFor({ events: blockedFirst({ n: 0 }) }) }).run({ [key]: id, events_offset: 60, events_limit: 5 })).error_kind, "challenge");
+    const brokenFirst = page => (page === 3 ? json(200, { total: 0, events: [] }) : json(200, undefined));
+    const broken = await harness(name, { routes: routesFor({ events: brokenFirst }) }).run({ [key]: id, events_offset: 60, events_limit: 5 });
+    assert.equal(broken.error_kind, "site_error");
+    assert.match(broken.error_message, /did not return a JSON events list/);
+    const failingFirst = page => (page === 3 ? json(200, { total: 0, events: [] }) : json(500, {}));
+    const failed = await harness(name, { routes: routesFor({ events: failingFirst }) }).run({ [key]: id, events_offset: 60, events_limit: 5 });
+    assert.equal(failed.error_kind, "site_error");
+    assert.match(failed.error_message, /did not return a JSON events list.*HTTP 500/);
+  }
+});
+
+test("get_artist and get_venue: an empty first page is a legitimate empty list and costs no extra request", async () => {
+  for (const [name, key, routesFor] of [["get_artist", "artist", artistRoutes], ["get_venue", "venue", venueRoutes]]) {
+    const id = name === "get_artist" ? "1234567" : "12345";
+    const h = harness(name, { routes: routesFor({ list: [] }) });
+    const result = await h.run({ [key]: id });
+    assert.deepEqual([result.status, result.events.total, result.events.returned], ["ok", 0, 0]);
+    assert.equal(h.calls.requests.filter(r => r.includes("/events/")).length, 1);
+  }
+});
+
+test("get_artist and get_venue: an empty page is caught even when the real total ends inside that page", async () => {
+  for (const [name, key, routesFor] of [["get_artist", "artist", artistRoutes], ["get_venue", "venue", venueRoutes]]) {
+    const id = name === "get_artist" ? "1234567" : "12345";
+    const result = await harness(name, { routes: routesFor({ events: flakyEvents(2, 45) }) }).run({ [key]: id, events_offset: 40, events_limit: 5 });
+    assert.equal(result.error_kind, "site_error", name);
+    assert.match(result.error_message, /reports 45 events/);
+  }
+});

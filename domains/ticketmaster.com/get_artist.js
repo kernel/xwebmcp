@@ -213,8 +213,9 @@
         const raw = [];
         let total = null;
         let pagesRead = 0;
+        const eventsPath = "/api/search/events/artist/" + artistId + "?distance=6214&distanceUnit=miles&region=200&page=";
         for (let page = Math.floor(offset / PAGE_SIZE); page * PAGE_SIZE < offset + limit; page++) {
-          const r = await api("/api/search/events/artist/" + artistId + "?distance=6214&distanceUnit=miles&region=200&page=" + page);
+          const r = await api(eventsPath + page);
           if (blocked(r)) return { error: challenge(r) };
           if (r.redirect !== null && /browsing activity has been paused|pardon (the|our) interruption|access denied/i.test(r.title || "")) return { error: fail("challenge", "Ticketmaster's bot protection sent the events request to its challenge page; wait a few minutes before trying again.") };
           // Fan passes, meet-and-greets and parking passes have an artist page record but no event list: the site sends their events request to a search page, a venue page or the parent attraction's page.
@@ -224,6 +225,15 @@
           }
           if (r.status >= 400 || !r.body || !Array.isArray(r.body.events)) return { error: fail("site_error", "Ticketmaster did not return a JSON events list for the artist (HTTP " + r.status + ").") };
           pagesRead++;
+          // The site sometimes answers a page in the middle of a list with total 0 and no events; page 0 holds the real total.
+          if (page > 0 && !r.body.events.length) {
+            const first = await api(eventsPath + "0");
+            if (blocked(first)) return { error: challenge(first) };
+            if (first.status >= 400 || !first.body || !Array.isArray(first.body.events)) return { error: fail("site_error", "Ticketmaster did not return a JSON events list for the artist (HTTP " + first.status + ").") };
+            if (Number.isInteger(first.body.total) && first.body.total > page * PAGE_SIZE) return { error: fail("site_error", "Ticketmaster returned an empty events page although it reports " + first.body.total + " events; try again.") };
+            if (Number.isInteger(first.body.total)) total = first.body.total;
+            break;
+          }
           if (Number.isInteger(r.body.total)) total = r.body.total;
           r.body.events.forEach((e, i) => { const at = page * PAGE_SIZE + i; if (at >= offset && at < offset + limit) raw.push(e); });
           if (r.body.events.length < PAGE_SIZE || (total !== null && (page + 1) * PAGE_SIZE >= total)) break;

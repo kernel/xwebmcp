@@ -244,6 +244,14 @@ navigates only within `www.ticketmaster.com`. If the tab is on another host, ope
   one is HTTP 200 with an empty list, and a page index of 49 or more is HTTP 400 (pages
   46 to 48 were empty 200s for a venue with 457 events, page 50 was 400). `events_offset`
   is capped at 900 (page 45) to stay below that.
+- The events endpoints intermittently answer HTTP 200 with `total: 0` and no events for a
+  page in the middle of a list (seen live for page 3 of a 457-event arena, on and off
+  within minutes; the neighbouring pages were normal). A page after the first that comes
+  back empty is therefore checked against page 0's total: if page 0 says that page should
+  hold events, the tool returns `site_error` ("empty events page although it reports N
+  events; try again") instead of a short or empty result; if page 0's total is at or
+  below the page's start, it is a genuine end of list and costs one extra request. A flake
+  on page 0 itself (or on a page with events) cannot be detected this way.
 - Artist and venue events include listings sold on other Ticketmaster country sites
   (Canadian shows appeared in a US artist's list with `www.ticketmaster.ca` URLs and
   absolute venue URLs). Other hosts seen in these lists include `.dk`, `.pl` and
@@ -441,6 +449,26 @@ Independent QA round 1 (agent `agt_7efe7ebf564202d6ad44`, 2026-09-29) on the fir
 8. Entity-encoded markup decoded into literal tags; tags are removed after decoding too
    (only tag-like text: a lone `<` or `>` is kept).
 9. Cutting long text could split a surrogate pair; it cannot now.
+
+Independent QA round 2 (same agent) on `2a252a4`: **FAIL**, 3 minor fixture-only findings
+in the code added for fixes 2 and 8, plus one README overstatement, all fixed in the next
+commit: a redirect on a later events page discarded events already read (now `site_error`);
+a redirect ending in an error status was reported `ok` (now `site_error`, and only the
+three redirect targets seen live count as "no event list"); tag stripping removed text
+between a literal `<` and `>` (only tag-like text is removed now); the `event_count`
+example was overstated. Its mutation run also listed 17 surviving mutants, which new tests
+now cover.
+
+Independent QA round 3 (same agent) on `323e029`: **FAIL**, one major finding. Everything
+changed in round 2 checked out (the redirect allow-list rejected none of 111 sampled
+attraction ids; 8 redirected ids all returned the documented `ok`/`total: null` result;
+live synopses, policy blocks and about/FAQ text had no differences from an independent
+parse), but the reviewer found that the site's intermittent empty-page response (see Site
+quirks) made both list tools return a wrong `ok` with a shortened list and a zero total.
+The builder fixed it in the next commit (cross-check against page 0, with fixture tests
+and mutation checks) after the two allowed recheck rounds had been used, so **that final
+change has no independent sign-off**; the tools stay `draft` and need a fresh independent
+review before `qa_passed`.
 
 Round 1 also reported, live: the whole namespace registered atomically with metadata equal
 to the checked-out files; no site-registered tools and no name collisions on six page
