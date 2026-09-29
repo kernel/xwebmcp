@@ -349,6 +349,33 @@ test("search_restaurants: slots after midnight keep their calendar date and the 
   ]);
 });
 
+test("search_restaurants: the 12-slot cap keeps the earliest slots whatever order the site sends, and 12 is not truncated", async () => {
+  const at = i => `2026-10-09 ${String(10 + Math.floor(i / 4)).padStart(2, "0")}:${String((i % 4) * 15).padStart(2, "0")}`;
+  const route = count => (m, path) => (path === "/3/venuesearch/search" ? { status: 200, body: searchBody([hit(2001, "Fabricated Osteria", { availability: { ...hit(1, "x").availability, slots: Array.from({ length: count }, (_, i) => slot(at(count - 1 - i), null)) } })]) } : null);
+  const many = await harness("search_restaurants", { route: route(30) }).run({ latitude: 40, longitude: -74, date: "2026-10-09" });
+  assert.deepEqual(many.venues[0].availability.slots.map(s => s.local_start.slice(11)), ["10:00", "10:15", "10:30", "10:45", "11:00", "11:15", "11:30", "11:45", "12:00", "12:15", "12:30", "12:45"]);
+  assert.equal(many.venues[0].availability.slots_truncated, true);
+  const twelve = await harness("search_restaurants", { route: route(12) }).run({ latitude: 40, longitude: -74, date: "2026-10-09" });
+  assert.equal(twelve.venues[0].availability.slots_truncated, false);
+});
+
+test("search_restaurants: slots that start together keep the site's order and at most five cuisines are listed", async () => {
+  const tied = [slot("19:00", null, "Bar"), slot("19:00", null, "Dining Room"), slot("19:00", null, "Chef Counter")];
+  const h = harness("search_restaurants", { route: (m, path) => (path === "/3/venuesearch/search" ? { status: 200, body: searchBody([hit(2001, "Fabricated Osteria", { cuisine: ["A", "B", "C", "D", "E", "F"], availability: { ...hit(1, "x").availability, slots: tied } })]) } : null) });
+  const v = (await h.run({ latitude: 40, longitude: -74, date: "2026-10-09" })).venues[0];
+  assert.deepEqual(v.availability.slots.map(s => s.seating_type), ["Bar", "Dining Room", "Chef Counter"]);
+  assert.deepEqual(v.cuisine, ["A", "B", "C", "D", "E"]);
+});
+
+for (const [input, accepted] of [[{ latitude: 60, longitude: 179.5 }, true], [{ latitude: 60, longitude: 179.8 }, false], [{ latitude: 80, longitude: 178 }, true], [{ latitude: 80, longitude: 179.3 }, false], [{ latitude: 45, longitude: 178.5, radius_meters: 100000 }, true], [{ latitude: 45, longitude: 179, radius_meters: 100000 }, false], [{ latitude: 89, longitude: 0 }, true], [{ latitude: 89.5, longitude: 0 }, false], [{ latitude: -89, longitude: 10 }, true], [{ latitude: -89.5, longitude: 10 }, false]]) {
+  test(`search_restaurants: the antimeridian and pole guard ${accepted ? "accepts" : "rejects"} ${JSON.stringify(input)} (the search circle's longitude reach grows with latitude)`, async () => {
+    const h = harness("search_restaurants");
+    const result = await h.run(input);
+    assert.equal(result.status === "ok" || result.status === "no_results", accepted, JSON.stringify(result));
+    assert.equal(h.calls.requests.length, accepted ? 1 : 0);
+  });
+}
+
 test("search_restaurants: a location code resolves and the default radius and party size apply", async () => {
   const h = harness("search_restaurants");
   const result = await h.run({ location: "xb", date: "2026-10-09" });
@@ -620,6 +647,17 @@ test("get_availability: slots after midnight keep their calendar date, and the l
   assert.equal(result.slots[1].policy.requires_payment, true, "sorting keeps each slot with its own policy");
 });
 
+test("get_availability: with more than 300 slots the earliest 300 are kept whatever order the site sends, and equal starts keep the site's order", async () => {
+  const at = i => `2026-10-09 ${String(Math.floor(i / 60)).padStart(2, "0")}:${String(i % 60).padStart(2, "0")}`;
+  const reversed = Array.from({ length: 400 }, (_, i) => slot(at(399 - i), null));
+  const h = harness("get_availability", { route: (m, path) => (path === "/4/find" ? { status: 200, body: findBody(reversed) } : null) });
+  const result = await h.run(ok);
+  assert.equal(result.slots[0].local_start, "2026-10-09T00:00");
+  assert.equal(result.slots[299].local_start, "2026-10-09T04:59");
+  const tied = harness("get_availability", { route: (m, path) => (path === "/4/find" ? { status: 200, body: findBody([slot("19:00", null, "Bar"), slot("19:00", null, "Dining Room"), slot("19:00", null, "Chef Counter")]) } : null) });
+  assert.deepEqual((await tied.run(ok)).slots.map(s => s.seating_type), ["Bar", "Dining Room", "Chef Counter"]);
+});
+
 test("get_availability: exactly 300 slots are not truncated and 301 are", async () => {
   const at = i => `2026-10-09 ${String(Math.floor(i / 60)).padStart(2, "0")}:${String(i % 60).padStart(2, "0")}`;
   for (const [count, truncated] of [[300, false], [301, true]]) {
@@ -638,6 +676,18 @@ test("get_availability: yesterday (UTC) and dates up to a year ahead are accepte
 });
 
 // --- get_availability_calendar ----------------------------------------------------------------------------
+
+test("search_restaurants and get_availability_calendar accept dates up to 366 days ahead and reject the next day", async () => {
+  for (const date of ["2027-09-30"]) {
+    assert.equal((await harness("search_restaurants").run({ latitude: 40, longitude: -74, date })).status, "ok");
+    assert.equal((await harness("get_availability_calendar").run({ venue_id: 1001, start_date: date, end_date: date })).status, "ok");
+  }
+  for (const input of [["search_restaurants", { latitude: 40, longitude: -74, date: "2027-10-01" }], ["get_availability_calendar", { venue_id: 1001, start_date: "2027-10-01" }]]) {
+    const h = harness(input[0]);
+    assert.equal((await h.run(input[1])).error_kind, "invalid_input");
+    assert.deepEqual(h.calls.requests, []);
+  }
+});
 
 test("get_availability_calendar: default end date is 30 days after the start and days are mapped", async () => {
   const h = harness("get_availability_calendar");

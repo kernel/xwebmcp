@@ -6,10 +6,10 @@ signed out, and do not sign in, book, hold a table or join a wait list.
 
 | tool | file | status | notes |
 |------|------|--------|-------|
-| search_restaurants | [search_restaurants.js](search_restaurants.js) | draft | Keyword, cuisine and place search with optional date, party size and time; lists open slot times per venue; flags Tock-booked venues |
-| get_restaurant | [get_restaurant.js](get_restaurant.js) | draft | Venue profile by resy.com venue URL or city and venue slug: cuisine, rating, address, contact, About and Need to Know text, party-size limits |
-| get_availability | [get_availability.js](get_availability.js) | draft | Open slots for one venue, date and party size: venue-local times, seating type and each slot's raw cancellation and payment fields; never returns booking handles |
-| get_availability_calendar | [get_availability_calendar.js](get_availability_calendar.js) | draft | Per-date reservation, event and walk-in state for one venue and party size inside the venue's booking window |
+| search_restaurants | [search_restaurants.js](search_restaurants.js) | verified | Keyword, cuisine and place search with optional date, party size and time; lists open slots per venue as venue-local date-times; flags Tock-booked venues |
+| get_restaurant | [get_restaurant.js](get_restaurant.js) | verified | Venue profile by resy.com venue URL or city and venue slug: cuisine, rating, address, contact, About and Need to Know text, party-size limits |
+| get_availability | [get_availability.js](get_availability.js) | verified | Open slots for one venue, date and party size as venue-local date-times, seating type and each slot's raw cancellation and payment fields; never returns booking handles |
+| get_availability_calendar | [get_availability_calendar.js](get_availability_calendar.js) | verified | Per-date reservation, event and walk-in state for one venue and party size inside the venue's booking window |
 
 ## Native WebMCP tools
 
@@ -91,8 +91,9 @@ redirects to `resy.com`. The check `window.location.origin === "https://resy.com
   empty results rather than errors, and some malformed values (a huge radius, page 0, an invalid latitude, a
   search circle that reaches longitude +/-180 or a pole) make its API answer with a 502 error page. The tools
   reject those inputs themselves. The circle rule is an approximation of where the site failed in testing: it also
-  rejects a few coordinates the site accepts (for example exactly on +/-180 at the equator) and may still miss an
-  odd combination, which the tool reports as `site_error`. No Resy city is near the antimeridian or the poles.
+  rejects a few coordinates the site accepts (a narrow band of the equator within about 0.9 degrees of +/-180, and
+  `latitude: 89.5` with a small radius) and lets at least one odd combination through (`latitude: 89` with
+  `longitude: +/-179` and a small radius), which the site answers with 502 and the tool reports as `site_error`. No Resy city is near the antimeridian or the poles.
 
 ## Site quirks
 
@@ -101,7 +102,8 @@ redirects to `resy.com`. The check `window.location.origin === "https://resy.com
 - Slot times (`date.start`, `date.end`) are the venue's local wall-clock times, and late-night slots after
   midnight are dated the next calendar day, so a request for one date can list slots on the next. The tools return
   the full date-time for that reason and sort by it. A request with a time returns slots roughly an hour either
-  side of it.
+  side of it, interpreted within the service date: `time: "00:30"` with date D listed slots around the end of D
+  (for example D 23:45 and D+1 00:00), not the early morning of D.
 - `notify_offered` reports whether Resy offers Notify for that venue and date. It does not say whether the
   date is sold out.
 - The calendar only reports days inside the venue's booking window (`last_calendar_day`, observed 30 to 33 days
@@ -145,7 +147,7 @@ redirects to `resy.com`. The check `window.location.origin === "https://resy.com
   narrowing. The site's `total` can shrink between pages.
 - `get_availability_calendar` returns at most 400 days.
 - Nothing signs in, so wait-list, Notify, favorites, reservations and payment surfaces are out of scope.
-- Not verified in the local Chrome extension runtime; see QA.
+- The local Chrome extension runtime was only exercised headless, from a manifest copy with resy.com host access added; headed mode, `xwebmcp setup chrome`, the native-messaging bridge and the popup grant UI were not tested (see QA).
 
 ## QA
 
@@ -190,6 +192,29 @@ mode, `xwebmcp setup chrome`, the native-messaging bridge and the popup grant UI
 all: signed-in behavior, live `challenge`, `rate_limited`, `login_required` and `gated` outside the bot-protection
 case, and a live venue with more than 300 slots (the cap is stub-tested).
 
-No tool has a QA status above `draft` yet; a re-review of the fixed source is pending.
+Independent QA round 3 (same agent, revision `b176ac8`): **PASS**, with a sign-off on that exact source: no
+concrete defect found in any of the four tools, and all findings from rounds 1 and 2 confirmed fixed. Sign-off
+covers these tool sources (first 16 hex characters of their SHA-256): `get_availability_calendar.js`
+`df1b79e14cf1f1ca`, `get_availability.js` `f65ff50d4edfa7b2`, `get_restaurant.js` `a3ef9ed3c9d6bf15`,
+`search_restaurants.js` `3b0a6cc338b70fa0`; a change to any of them needs fresh QA. Live cases from that round
+(signed out, Kernel browser, 2026-09-29, invoked from a venue page and from `/global-dining-access`, not the home
+page): `search_restaurants` by city slug with `date` and a late `time` (venues carrying next-day slots, all
+sorted), `get_restaurant` by mixed-case venue slug, `get_availability` for venues with 33, 144 and 186 slots (the
+last with post-midnight slots ending `2026-10-10T03:15`), and `get_availability_calendar` for an open venue and for
+two Tock-listed venues (`no_results`, null last day). All 32 stored live outputs, 6 stub outputs and 2 late-`time`
+outputs validated against their `outputSchema` with Ajv. In the local headless Chromium 153 with the repo
+extension, the four tools registered and 10 invocations returned the same results and validated (headed mode,
+`xwebmcp setup chrome`, the native-messaging bridge and the popup grant UI not tested). QA also confirmed 30 wire
+requests, all to the five allowlisted endpoints, with no cookies, no `x-resy-*` headers and no client key or
+booking handle in any output.
+
+Not covered by QA: signed-in behavior, live `challenge`, `rate_limited`, `login_required` and `gated`, a live
+venue with more than 300 slots (the cap is fixture-tested), and mid-call navigation (unchanged since round 1,
+where a navigation during a call left the Kernel caller waiting until the call timeout and then `outcome_unknown`).
+Tests added after the sign-off cover more of the boundary behavior it listed as untested by fixtures; the tool
+sources did not change.
+
+All four tools are `verified` as of 2026-09-29: independent QA passed on the final source and each returned its
+success output live on the real site from a page other than the home page.
 
 Sessions (ephemeral): builder and QA browsers were created and deleted.

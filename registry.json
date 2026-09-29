@@ -875,9 +875,12 @@
       "url_patterns": [
         "https://resy.com/*"
       ],
-      "status": "draft",
-      "last_verified": null,
-      "notes": "Open slots for one venue, date and party size: venue-local times, seating type and each slot's raw cancellation and payment fields; never returns booking handles; Tock-backed venues return not_found"
+      "status": "verified",
+      "last_verified": "2026-09-29",
+      "notes": "Independent QA passed on the final source. Page tool on resy.com: open slots for one venue, date and party size as venue-local date-times, earliest first (up to 300), with each slot's raw cancellation and payment fields; never returns booking handles. no_availability does not say why; Tock-booked and unknown venues return not_found.",
+      "provenance": {
+        "qa_agent": "agt_221f5a5f11361477ff09"
+      }
     },
     {
       "domain": "resy.com",
@@ -888,9 +891,12 @@
       "url_patterns": [
         "https://resy.com/*"
       ],
-      "status": "draft",
-      "last_verified": null,
-      "notes": "Per-date reservation, event and walk-in state for one venue and party size inside the venue's booking window"
+      "status": "verified",
+      "last_verified": "2026-09-29",
+      "notes": "Independent QA passed on the final source. Page tool on resy.com: per-date reservation, event and walk-in state inside the venue's booking window. Tock-booked venues return not_found or an empty no_results with a null last_bookable_date.",
+      "provenance": {
+        "qa_agent": "agt_221f5a5f11361477ff09"
+      }
     },
     {
       "domain": "resy.com",
@@ -901,9 +907,12 @@
       "url_patterns": [
         "https://resy.com/*"
       ],
-      "status": "draft",
-      "last_verified": null,
-      "notes": "Venue profile by resy.com venue URL or city and venue slug: cuisine, rating, address, contact, About and Need to Know text, party-size limits"
+      "status": "verified",
+      "last_verified": "2026-09-29",
+      "notes": "Independent QA passed on the final source. Page tool on resy.com: venue profile by venue URL or city and venue slug (venue slugs are case-sensitive as search returns them). Tock-booked, closed and unknown venues return not_found.",
+      "provenance": {
+        "qa_agent": "agt_221f5a5f11361477ff09"
+      }
     },
     {
       "domain": "resy.com",
@@ -914,9 +923,12 @@
       "url_patterns": [
         "https://resy.com/*"
       ],
-      "status": "draft",
-      "last_verified": null,
-      "notes": "Keyword, cuisine and place search with optional date, party size and time; lists open slot times per venue; flags Tock-booked venues"
+      "status": "verified",
+      "last_verified": "2026-09-29",
+      "notes": "Independent QA passed on the final source. Page tool on resy.com: keyword, cuisine and place search with optional date, party size and time; lists open slots per venue as venue-local date-times, earliest first (12 per venue); flags Tock-booked venues, whose listed slots are informational. A rejected cross-origin request, which can be a bot-protection block, is reported as site_error.",
+      "provenance": {
+        "qa_agent": "agt_221f5a5f11361477ff09"
+      }
     },
     {
       "domain": "southwest.com",
