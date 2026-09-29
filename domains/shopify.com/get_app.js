@@ -52,7 +52,7 @@
                   name: { type: ["string", "null"] },
                   price_text: { type: ["string", "null"], description: "Plan price as displayed, for example 'Free' or '$16/month'." },
                   yearly_price_text: { type: ["string", "null"], description: "Yearly price note, for example 'or $99.60/year and save 17%'." },
-                  additional_charges: { type: ["string", "null"], description: "Usage-based or introductory charge note, at most 300 characters." },
+                  additional_charges: { type: ["string", "null"], description: "The note under the price, such as an order cap, usage-based pricing or an introductory discount, at most 300 characters." },
                   features: { type: "array", maxItems: 12, items: { type: "string", maxLength: 200 } }
                 }
               }
@@ -173,6 +173,8 @@
     }
     const launchedLabel = developerSection ? Array.from(developerSection.querySelectorAll("p")).find(el => text(el) === "Launched") : null;
     const launched = launchedLabel && launchedLabel.parentElement ? Array.from(launchedLabel.parentElement.children).find(el => el !== launchedLabel && el.localName === "p") : null;
+    const launchedLink = launched ? launched.querySelector("a") : null;
+    const launchedText = launched ? clean(text(launched).replace(text(launchedLink), "")).replace(/[\s·•|]+$/, "") : "";
 
     const details = doc.getElementById("app-details");
     const headline = details ? text(details.querySelector("h2")) || null : null;
@@ -225,7 +227,7 @@
       name,
       page_language: language,
       developer,
-      launched_text: text(launched) || null,
+      launched_text: launchedText || null,
       pricing_summary: pricingSummary,
       rating,
       review_count: reviewCount,
@@ -234,7 +236,7 @@
       description,
       highlights,
       plans,
-      languages: languagesRow ? unique(Array.from(languagesRow.row.querySelectorAll("p")).filter(el => el !== languagesRow.labelEl).map(text)) : [],
+      languages: languagesRow ? unique(Array.from(languagesRow.row.querySelectorAll("p")).filter(el => el !== languagesRow.labelEl).flatMap(el => text(el).split(/\s*,\s*(?:and\s+)?|\s+and\s+/))) : [],
       works_with: worksWithRow ? unique(Array.from(worksWithRow.row.querySelectorAll("li")).map(text)) : [],
       categories: unique(categoryNames),
       observed_at: new Date().toISOString(),

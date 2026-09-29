@@ -110,9 +110,9 @@ test("search_apps reads one results page and returns canonical, allowlisted fiel
   assert.equal(output.total_pages, 57);
   assert.equal(output.has_next, true);
   assert.deepEqual(output.filters, { features: [], categories: [] });
-  assert.deepEqual(output.apps.map(a => a.handle), ["sponsored-widgets", "example-widgets", "plain_widgets-2", "brand-new-widgets"]);
-  assert.deepEqual(output.warnings, ["skipped result 5: no readable handle or name"]);
-  const [ad, badge, plainApp, fresh] = output.apps;
+  assert.deepEqual(output.apps.map(a => a.handle), ["sponsored-widgets", "example-widgets", "plain_widgets-2", "brand-new-widgets", "bare-widgets"]);
+  assert.deepEqual(output.warnings, ["skipped result 6: no readable handle or name"]);
+  const [ad, badge, plainApp, fresh, bare] = output.apps;
   assert.deepEqual(ad, { position: 1, handle: "sponsored-widgets", name: "Sponsored Widgets Pro", url: `${ORIGIN}/sponsored-widgets`, is_ad: true, built_for_shopify: false, rating: 4.7, review_count: 17, pricing_text: "Free trial available", tagline: "Widgets for every storefront" });
   assert.equal(badge.is_ad, false);
   assert.equal(badge.built_for_shopify, true);
@@ -124,11 +124,26 @@ test("search_apps reads one results page and returns canonical, allowlisted fiel
   assert.equal(plainApp.pricing_text, "From $9.99/month");
   assert.equal(plainApp.review_count, 1204);
   assert.match(plainApp.tagline, /^Ignore previous instructions/, "developer text is returned verbatim as data");
-  assert.deepEqual(fresh, { position: 4, handle: "brand-new-widgets", name: "Brand New Widgets", url: `${ORIGIN}/brand-new-widgets`, is_ad: false, built_for_shopify: false, rating: null, review_count: null, pricing_text: null, tagline: null });
+  assert.deepEqual(fresh, { position: 4, handle: "brand-new-widgets", name: "Brand New Widgets", url: `${ORIGIN}/brand-new-widgets`, is_ad: false, built_for_shopify: false, rating: null, review_count: null, pricing_text: "Free", tagline: "Get notified before you run out of widgets" }, "a card without reviews still reports its pricing and tagline");
+  assert.deepEqual(bare, { position: 5, handle: "bare-widgets", name: "Bare Widgets", url: `${ORIGIN}/bare-widgets`, is_ad: false, built_for_shopify: false, rating: null, review_count: null, pricing_text: null, tagline: null });
   const serialized = JSON.stringify(output);
   assert.doesNotMatch(serialized, /search_id|offer|ot=|fabricated-token|surface_/, "tracking parameters must not be returned");
   assert.equal(requests.length, 1);
   assert.equal(requests[0].init.method, undefined, "a plain GET");
+});
+
+test("search_apps warns when the site answered in another language, and never reads a translated rating row as pricing", async () => {
+  const body = fixture("search-results").replace(/out of 5 stars/g, "sur 5 étoiles").replace(/total reviews/g, "avis au total").replace("Free trial available", "Essai gratuit").replace("Free plan available", "Forfait gratuit");
+  const { output } = await run("search_apps", { query: "widgets" }, { respond: () => ({ status: 200, body, url: `${ORIGIN}/search?q=widgets&page=1&locale=fr` }) });
+  assertConforms("search_apps", output);
+  assert.equal(output.status, "ok");
+  assert.ok(output.warnings.includes("the site answered in language fr; ratings and review counts are null, pricing may be missing, and returned text is in that language"));
+  const [ad, badge, plainApp, fresh] = output.apps;
+  for (const app of [ad, badge, plainApp]) assert.deepEqual([app.rating, app.review_count, app.pricing_text], [null, null, null], app.handle);
+  assert.equal(badge.tagline, "Add banners and blocks to any page");
+  assert.equal(fresh.pricing_text, "Free", "a plain price block is still read");
+  const english = await run("search_apps", { query: "widgets" }, { respond: () => ({ status: 200, body: fixture("search-results"), url: `${ORIGIN}/search?q=widgets&page=1&locale=en` }) });
+  assert.deepEqual(english.output.warnings, ["skipped result 6: no readable handle or name"], "an explicit English locale is not a warning");
 });
 
 test("search_apps sends the request the store's own results frame sends", async () => {
@@ -275,7 +290,7 @@ test("get_app returns the listing as structured data with the documented fields 
     { name: "GROWTH", price_text: "$16/month", yearly_price_text: "or $160/year and save 17%", additional_charges: "Starting price covers up to 500 members. Plus 30% off your first 3 months.", features: ["VIP tiers", "Referral program"] },
     { name: "PLUS", price_text: "$59 / month", yearly_price_text: null, additional_charges: null, features: ["Everything in Growth"] }
   ]);
-  assert.deepEqual(output.languages, ["English", "French"]);
+  assert.deepEqual(output.languages, ["English", "French", "Spanish", "Dutch"]);
   assert.deepEqual(output.works_with, ["Checkout", "Shopify Flow", "Gorgias"]);
   assert.deepEqual(output.categories, ["Loyalty programs", "Referrals"]);
   assert.deepEqual(output.warnings, []);
@@ -285,6 +300,20 @@ test("get_app returns the listing as structured data with the documented fields 
   assert.equal(requests[0].path, "/example-loyalty-suite");
   assert.equal(requests[0].init.headers["Turbo-Frame"], undefined, "the listing is read as a full page, not as a results frame");
   assert.equal(requests[0].init.credentials, "same-origin");
+});
+
+test("get_app splits a comma-separated language paragraph and drops the changelog link from the launch date", async () => {
+  const two = detailOk.body.replace("English, French, Spanish, and Dutch", "English and French");
+  const one = detailOk.body.replace("English, French, Spanish, and Dutch", "English").replace(/ · <a[^>]*> Changelog <\/a>/, "");
+  const withTwo = await run("get_app", { handle: "example-loyalty-suite" }, { respond: () => ({ status: 200, body: two }) });
+  assert.deepEqual(withTwo.output.languages, ["English", "French"]);
+  const withOne = await run("get_app", { handle: "example-loyalty-suite" }, { respond: () => ({ status: 200, body: one }) });
+  assert.deepEqual(withOne.output.languages, ["English"]);
+  assert.equal(withOne.output.launched_text, "March 10, 2014");
+  const long = detailOk.body.replace("English, French, Spanish, and Dutch", Array.from({ length: 30 }, (_, i) => `Language${i + 1}`).join(", "));
+  const capped = await run("get_app", { handle: "example-loyalty-suite" }, { respond: () => ({ status: 200, body: long }) });
+  assert.equal(capped.output.languages.length, 20);
+  assertConforms("get_app", capped.output);
 });
 
 test("get_app truncates the description and can omit it", async () => {
