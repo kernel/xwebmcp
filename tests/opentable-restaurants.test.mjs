@@ -362,7 +362,8 @@ test("get_restaurant accepts only /r/<slug> and /restaurant/profile/<id> pages a
   const notProfiles = [
     "/private-dining", "/s", "/logout", "/user/favorites", "/restref", "/restref/client/?rid=1", "/booking/details", "/authenticate/start", "/dapi/v1/session", "/nearby",
     "/the-hamilton", "https://www.opentable.com/the-hamilton", "/r", "/r/", "/r/a/b", "/r/../s", "/r/..%2Fuser", "/r/caf%C3%A9", "/private-dining/profile/x", "/restaurant/profile/", "/restaurant/profile/abc",
-    "/restaurant/profile/0", "/restaurant/profile/2147483648", "/restaurant/profile/99999999999", "/restaurant/profile/5/extra", "/"
+    "/restaurant/profile/0", "/restaurant/profile/2147483648", "/restaurant/profile/99999999999", "/restaurant/profile/5/extra", "/",
+    "/foo/r/x", "/private-dining/r/x", "/x/restaurant/profile/5", "/r/" + "a".repeat(121), "/r/-leading-dash", "/r/_x"
   ];
   for (const url of notProfiles) {
     const { output, calls } = await run("get_restaurant", { url }, html);
@@ -370,6 +371,14 @@ test("get_restaurant accepts only /r/<slug> and /restaurant/profile/<id> pages a
     assert.equal(calls.fetch.length, 0, "no request for " + url);
     assertConforms("get_restaurant", output);
   }
+  const longestSlug = await run("get_restaurant", { url: "/r/" + "a".repeat(120) }, html);
+  assert.equal(longestSlug.calls.fetch.length, 1, "a 120 character slug is accepted");
+  for (const url of ["https://user:pw@www.opentable.com/r/fake", "https://www.opentable.com:8443/r/fake", "https://www.opentable.com:443@evil.example.test/r/fake"]) {
+    const r = await run("get_restaurant", { url }, html);
+    assert.equal(r.calls.fetch.length, 0, "no request for " + url);
+    assert.ok(["invalid_input", "unsupported_host"].includes(r.output.error_kind), url);
+  }
+  assert.equal((await run("get_restaurant", { url: "https://www.opentable.com:443/r/fake" }, html)).calls.fetch[0].path, "/r/fake", "the default port is fine");
   assert.match((await run("get_restaurant", { url: "/the-hamilton" }, html)).output.error_message, /restaurant_id/, "the message points legacy links to restaurant_id");
   const bad = [
     [{}, "invalid_input"], [{ restaurant_id: 5, url: "/r/x" }, "invalid_input"], [{ restaurant_id: 0 }, "invalid_input"], [{ restaurant_id: 1.5 }, "invalid_input"], [{ restaurant_id: "7" }, "invalid_input"],
@@ -416,6 +425,8 @@ test("get_restaurant caps every string field and only returns query-free http(s)
   assert.equal(output.external_menu_url, "https://bistro.example.test/eat");
   assert.ok(!JSON.stringify(output).includes("SECRET-"), "tracking parameters are not returned");
   assertConforms("get_restaurant", output);
+  const fragmentOnly = await run("get_restaurant", { restaurant_id: 555 }, ok(pageHtml(profileState(555, {}, {}, { website: "https://bistro.example.test/menu#SECRET-FRAGMENT" }))));
+  assert.equal(fragmentOnly.output.website, "https://bistro.example.test/menu", "a fragment without a query is removed too");
   for (const website of ["bistro.example.test", "javascript:alert(1)", "ftp://bistro.example.test/", "", 5, null]) {
     const r = await run("get_restaurant", { restaurant_id: 555 }, ok(pageHtml(profileState(555, {}, {}, { website }))));
     assert.equal(r.output.website, null, "only http(s) links are returned: " + website);
@@ -546,7 +557,9 @@ test("get_reviews rejects malformed input and reports site problems explicitly",
     [{ restaurant_id: 555, page: "2" }, "invalid_input"], [{ restaurant_id: 555, page: 1.5 }, "invalid_input"], [{ restaurant_id: 555, sort: "oldest" }, "invalid_input"],
     [{ url: "https://evil.example.test/r/x" }, "unsupported_host"], [{ url: "/private-dining/profile/x" }, "invalid_input"], [{ url: "http://www.opentable.com/r/x" }, "invalid_input"],
     [{ url: "/private-dining" }, "invalid_input"], [{ url: "/s" }, "invalid_input"], [{ url: "/logout" }, "invalid_input"], [{ url: "/restref" }, "invalid_input"], [{ url: "/the-hamilton" }, "invalid_input"],
-    [{ url: "https://www.opentable.com/user/favorites", page: 2 }, "invalid_input"], [{ url: "/r/../s" }, "invalid_input"], [{ url: "javascript:alert(1)" }, "invalid_input"], [{ url: "/restaurant/profile/2147483648" }, "invalid_input"]
+    [{ url: "https://www.opentable.com/user/favorites", page: 2 }, "invalid_input"], [{ url: "/r/../s" }, "invalid_input"], [{ url: "javascript:alert(1)" }, "invalid_input"], [{ url: "/restaurant/profile/2147483648" }, "invalid_input"],
+    [{ url: "/restaurant/profile/0" }, "invalid_input"], [{ url: "/foo/r/x" }, "invalid_input"], [{ url: "/r/" + "a".repeat(121) }, "invalid_input"], [{ url: "https://user:pw@www.opentable.com/r/x" }, "invalid_input"],
+    [{ url: "https://www.opentable.com:8443/r/x" }, "invalid_input"]
   ];
   for (const [input, kind] of bad) {
     const { output, calls } = await run("get_reviews", input, html);
@@ -592,6 +605,57 @@ test("get_reviews accepts /r/<slug> and id URLs, caps and trims review text, and
   const slug = await run("get_reviews", { url: "/r/fake-bistro-fakeville", page: 2 }, ok(pageHtml(profileState(555, {}, { reviewSearchResults: { reviews: [review("R-2")], totalPages: 3, page: 2, totalCount: 25 } }))));
   assert.equal(slug.calls.fetch[0].path, "/r/fake-bistro-fakeville?page=2");
   assert.equal(slug.output.status, "ok");
+});
+
+const CHALLENGE_PAGE = '<html><head></head><body><div id="sec-if-cpt-container" role="main"><div class="sec-bc-tile-parent"></div></div></body></html>';
+
+test("a bot-protection challenge served with HTTP 200 and no state is reported as challenge, other stateless pages as site_changed", async () => {
+  for (const [name, input] of [["search_restaurants", { query: "pizza chicago" }], ["get_restaurant", { restaurant_id: 555 }], ["get_reviews", { restaurant_id: 555 }]]) {
+    const blocked = await run(name, input, { respond: () => ({ status: 200, html: CHALLENGE_PAGE }) });
+    assert.equal(blocked.output.error_kind, "challenge", name);
+    assert.match(blocked.output.error_message, /challenge page/);
+    assertConforms(name, blocked.output);
+    const plainPage = await run(name, input, { respond: () => ({ status: 200, html: "<html><head></head><body><p>hello</p></body></html>" }) });
+    assert.equal(plainPage.output.error_kind, "site_changed", name);
+    // A real page that merely mentions the marker inside its state is not a challenge.
+    const withState = name === "search_restaurants" ? searchState([searchRestaurant(1, "sec-if-cpt-container")]) : profileState(555, {}, {}, { name: "sec-bc-tile-parent" });
+    const fine = await run(name, input, ok(pageHtml(withState)));
+    assert.equal(fine.output.status, "ok", name);
+  }
+});
+
+test("blank names are treated as missing, and ids, urls and timestamps are bounded", async () => {
+  const blank = await run("search_restaurants", { query: "pizza" }, ok(pageHtml(searchState([searchRestaurant(1, "   "), searchRestaurant(2, "Real Name")]))));
+  assert.deepEqual(blank.output.restaurants.map(r => r.name), ["Real Name"]);
+  assert.equal((await run("get_restaurant", { restaurant_id: 555 }, ok(pageHtml(profileState(555, {}, {}, { name: "   " }))))).output.error_kind, "site_changed");
+  assert.equal((await run("get_reviews", { restaurant_id: 555 }, ok(pageHtml(profileState(555, {}, {}, { name: "   " }))))).output.error_kind, "site_changed");
+  const longPath = "https://www.opentable.com/r/" + "p".repeat(400);
+  const search = await run("search_restaurants", { query: "pizza" }, ok(pageHtml(searchState([searchRestaurant(3, "Long Url", { urls: { profileLink: { link: longPath } } })]))));
+  assert.equal(search.output.restaurants[0].url, "https://www.opentable.com/restaurant/profile/3", "an over-long profile link falls back to the id URL");
+  const state = profileState(555, { metaLinks: { canonical: longPath } }, { reviewSearchResults: { reviews: [review("I".repeat(5000)), review("R-DATES", { dinedDateTime: "2026-09-26T16:30:00." + "0".repeat(3000) + "-04:00", submittedDateTime: "2026-09-27T16:36:29.123456789Z" }), review("R-BAD", { dinedDateTime: "2026-09-26 16:30", submittedDateTime: "yesterday" })], totalPages: 1, page: 1, totalCount: 3 } });
+  const prof = await run("get_restaurant", { restaurant_id: 555 }, ok(pageHtml(state)));
+  assert.equal(prof.output.url, "https://www.opentable.com/restaurant/profile/555", "an over-long canonical falls back to the id URL");
+  const revs = await run("get_reviews", { restaurant_id: 555 }, ok(pageHtml(state)));
+  assert.equal(revs.output.url, "https://www.opentable.com/restaurant/profile/555");
+  assert.equal(revs.output.reviews[0].review_id.length, 100);
+  assert.equal(revs.output.reviews[0].dined_at, "2026-09-26T16:30:00-04:00");
+  assert.equal(revs.output.reviews[1].dined_at, null, "an over-long fractional part is dropped");
+  assert.equal(revs.output.reviews[1].submitted_at, "2026-09-27T16:36:29.123456789Z");
+  assert.deepEqual([revs.output.reviews[2].dined_at, revs.output.reviews[2].submitted_at], [null, null]);
+  for (const [name, output] of [["get_restaurant", prof.output], ["get_reviews", revs.output], ["search_restaurants", search.output]]) assertConforms(name, output);
+});
+
+test("get_reviews requires the returned page to equal the requested page and holds at most 10 reviews", async () => {
+  const mismatch = profileState(555, {}, { reviewSearchResults: { reviews: [review("R1")], totalPages: 5, page: 1, totalCount: 50 } });
+  const wrongPage = await run("get_reviews", { restaurant_id: 555, page: 3 }, ok(pageHtml(mismatch)));
+  assert.equal(wrongPage.output.status, "no_results", "a returned page that differs from the requested one is not page data");
+  const tooMany = profileState(555, {}, { reviewSearchResults: { reviews: Array.from({ length: 11 }, (_, i) => review("R" + i)), totalPages: 5, page: 2, totalCount: 50 } });
+  const oversized = await run("get_reviews", { restaurant_id: 555, page: 2 }, ok(pageHtml(tooMany)));
+  assert.equal(oversized.output.status, "no_results", "a page holding more than the page size is not trusted");
+  const exactlyTen = profileState(555, {}, { reviewSearchResults: { reviews: Array.from({ length: 10 }, (_, i) => review("R" + i)), totalPages: 5, page: 2, totalCount: 50 } });
+  const ten = await run("get_reviews", { restaurant_id: 555, page: 2 }, ok(pageHtml(exactlyTen)));
+  assert.equal(ten.output.status, "ok");
+  assert.equal(ten.output.reviews.length, 10);
 });
 
 test("the tools never navigate, click, submit, or send anything but page GETs", async () => {

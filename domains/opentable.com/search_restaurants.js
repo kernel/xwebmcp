@@ -46,7 +46,7 @@
                   rank: { type: "integer", minimum: 1, description: "Position in the site's ordering across pages." },
                   restaurant_id: { type: "integer", description: "OpenTable's numeric restaurant id." },
                   name: { type: "string", maxLength: 200 },
-                  url: { type: "string", format: "uri", description: "Profile page on www.opentable.com. Older restaurants use /<slug> links, which the other tools do not accept; pass restaurant_id to them." },
+                  url: { type: "string", format: "uri", maxLength: 400, description: "Profile page on www.opentable.com. Older restaurants use /<slug> links, which the other tools do not accept; pass restaurant_id to them." },
                   cuisine: { type: ["string", "null"] },
                   price_level: { type: ["integer", "null"], description: "The site's price band id; higher is more expensive." },
                   price_label: { type: ["string", "null"], description: "The site's price band text, e.g. '$31 to $50'." },
@@ -138,7 +138,10 @@
       if (res.status === 403 || /access denied/i.test(title)) return fail("challenge", "OpenTable's bot protection refused the request (HTTP " + res.status + ", 'Access Denied'); wait a few minutes and avoid rapid repeated calls.");
       if (res.status >= 400) return fail("site_error", "OpenTable search returned HTTP " + res.status + ".");
       const tag = /<script\b[^>]*\bid="primary-window-vars"[^>]*>([\s\S]*?)<\/script>/.exec(html);
-      if (!tag) return fail("site_changed", "The search page had no result data (title: " + (title.trim().slice(0, 80) || "none") + ").");
+      if (!tag) {
+        if (/sec-if-cpt-container|sec-bc-tile-parent/.test(html)) return fail("challenge", "OpenTable returned a bot-protection challenge page (HTTP " + res.status + ") instead of results; wait a few minutes and avoid rapid repeated calls.");
+        return fail("site_changed", "The search page had no result data (title: " + (title.trim().slice(0, 80) || "none") + ").");
+      }
       let state = null;
       try { state = JSON.parse(tag[1])?.windowVariables?.__INITIAL_STATE__; } catch { state = null; }
       const search = state?.multiSearch;
@@ -153,7 +156,7 @@
         const name = str(r?.name, 200);
         if (!Number.isInteger(r?.restaurantId) || !name) continue;
         let url = null;
-        try { const u = new URL(r.urls?.profileLink?.link); if (u.protocol === "https:" && u.hostname === "www.opentable.com") url = u.origin + u.pathname; } catch { url = null; }
+        try { const u = new URL(r.urls?.profileLink?.link); if (u.protocol === "https:" && u.hostname === "www.opentable.com" && u.pathname.length <= 300) url = u.origin + u.pathname; } catch { url = null; }
         restaurants.push({
           rank: (page - 1) * pageSize + i + 1, restaurant_id: r.restaurantId, name, url: url || ORIGIN + "/restaurant/profile/" + r.restaurantId,
           cuisine: str(r.primaryCuisine?.name), price_level: int(r.priceBand?.priceBandId), price_label: str(r.priceBand?.name), neighborhood: str(r.neighborhood?.name),

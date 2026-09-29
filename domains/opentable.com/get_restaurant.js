@@ -23,7 +23,7 @@
             status: { const: "ok" },
             restaurant_id: { type: "integer" },
             name: { type: "string", maxLength: 200 },
-            url: { type: "string", format: "uri", description: "Canonical profile URL on www.opentable.com." },
+            url: { type: "string", format: "uri", maxLength: 400, description: "Canonical profile URL on www.opentable.com." },
             description: { type: ["string", "null"], description: "Restaurant blurb, at most 1500 characters." },
             cuisines: { type: "array", items: { type: "string" } },
             dining_style: { type: ["string", "null"] },
@@ -143,6 +143,7 @@
       try { u = new URL(input.url.trim(), ORIGIN); } catch { return fail("invalid_input", "url is not a valid URL or path."); }
       if (u.protocol !== "https:") return fail("invalid_input", "url must be an https://www.opentable.com restaurant page or a path such as /r/<slug>.");
       if (u.hostname.toLowerCase() !== "www.opentable.com") return fail("unsupported_host", "Only https://www.opentable.com restaurant pages are supported; " + u.hostname + " is a different site.");
+      if (u.username || u.password || u.port) return fail("invalid_input", "url must not include credentials or a port.");
       const byId = /^\/restaurant\/profile\/(\d{1,10})\/?$/.exec(u.pathname);
       if (!/^\/r\/[A-Za-z0-9][A-Za-z0-9_-]{0,119}\/?$/.test(u.pathname) && !(byId && Number(byId[1]) >= 1 && Number(byId[1]) <= 2147483647)) return fail("invalid_input", "url must be /r/<slug> or /restaurant/profile/<id> on www.opentable.com. Older /<slug> profile links are not accepted because they look like any other site page; pass restaurant_id (from search_restaurants) instead.");
       path = u.pathname.replace(/\/$/, "");
@@ -172,7 +173,10 @@
       if (res.status === 404) return fail("not_found", "OpenTable has no restaurant page at " + path + ".");
       if (res.status >= 400) return fail("site_error", "OpenTable returned HTTP " + res.status + " for the restaurant page.");
       const tag = /<script\b[^>]*\bid="primary-window-vars"[^>]*>([\s\S]*?)<\/script>/.exec(html);
-      if (!tag) return fail("site_changed", "The page had no restaurant data (title: " + (title.trim().slice(0, 80) || "none") + ").");
+      if (!tag) {
+        if (/sec-if-cpt-container|sec-bc-tile-parent/.test(html)) return fail("challenge", "OpenTable returned a bot-protection challenge page (HTTP " + res.status + ") instead of the restaurant page; wait a few minutes and avoid rapid repeated calls.");
+        return fail("site_changed", "The page had no restaurant data (title: " + (title.trim().slice(0, 80) || "none") + ").");
+      }
       let state = null;
       try { state = JSON.parse(tag[1])?.windowVariables?.__INITIAL_STATE__; } catch { state = null; }
       if (!state || typeof state !== "object") return fail("site_changed", "The page data could not be read.");
@@ -183,7 +187,7 @@
       if (wantedId !== null && r.restaurantId !== wantedId) return fail("site_error", "OpenTable returned restaurant " + r.restaurantId + " for id " + wantedId + "; nothing was returned.");
 
       let url = ORIGIN + "/restaurant/profile/" + r.restaurantId;
-      try { const c = new URL(profile.metaLinks?.canonical); if (c.protocol === "https:" && c.hostname === "www.opentable.com") url = c.origin + c.pathname; } catch { /* keep the id URL */ }
+      try { const c = new URL(profile.metaLinks?.canonical); if (c.protocol === "https:" && c.hostname === "www.opentable.com" && c.pathname.length <= 300) url = c.origin + c.pathname; } catch { /* keep the id URL */ }
       const stats = r.statistics?.reviews;
       const ratings = stats?.ratings;
       const dist = ratings?.overallRatingsDistribution;
