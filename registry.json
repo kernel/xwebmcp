@@ -909,9 +909,12 @@
       "url_patterns": [
         "https://www.stubhub.com/*"
       ],
-      "status": "draft",
-      "last_verified": null,
-      "notes": "Page tool on www.stubhub.com: keyword search of the site's results page, first page only (up to 20 events, relevance order), optional UTC date window, venue-local date and time per event. No prices or listings. Bot-protection pages are reported as challenge, not bypassed."
+      "status": "verified",
+      "last_verified": "2026-09-29",
+      "notes": "Independent QA passed on the final source; live success from non-entry pages on Kernel and one extension run. First results page only (up to 20 events, relevance order); date window is in UTC, so check each result's local_date/local_time; events at exactly 00:00 UTC after end_date_utc are included. Local time is null when the site gives no usable offset. No prices or listings. Challenge, rate-limit and changed-page paths are covered by stubbed tests only; bot-protection pages are reported, not bypassed.",
+      "provenance": {
+        "qa_agent": "agt_b9e333f8bafdb9dbb2fb"
+      }
     },
     {
       "domain": "target.com",

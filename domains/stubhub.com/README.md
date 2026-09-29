@@ -4,7 +4,7 @@ Tools for StubHub US (https://www.stubhub.com): event search. Read-only; works s
 
 | tool | file | status | notes |
 |------|------|--------|-------|
-| search_events | [search_events.js](search_events.js) | draft | Keyword search, first results page only (up to 20 events, site relevance order), optional UTC date window, venue-local date and time per event; no prices, seats or listings |
+| search_events | [search_events.js](search_events.js) | verified | Keyword search, first results page only (up to 20 events, site relevance order), optional UTC date window, venue-local date and time per event; no prices, seats or listings |
 
 ## Native WebMCP tools
 
@@ -35,7 +35,7 @@ Nothing here selects a listing, opens an event page, follows a link, favorites, 
 - **Venue-local dates are not what is filtered.** An evening event in the Americas starts on the next UTC day, and a late-night one in Asia or Oceania on the previous one. Widen the range by a day and read each result's `local_date` and `local_time`. A venue-local filter was not built: the site orders results by relevance and only the first page is read, so filtering afterwards would return an unpredictable subset.
 - Without dates the tool sends `dates=0,null,null` explicitly. The site remembers a date filter applied through its own UI in that browser (a plain visit to the search URL kept "Oct 10 - Oct 17" until cleared); a fetch with an explicit `dates` value does not change that memory (a plain visit afterwards still showed "All dates").
 - `local_date`, `local_time` and `weekday` are computed from the result's start instant plus the venue's UTC offset that the site includes. In a sample of 152 results from eight keyword queries, all 144 that are not multi-day matched the site's own `formattedDate` and `formattedTime` text (the site appends the year for dates outside the current year).
-- **Venues on UTC have no offset in the data.** The site leaves `venueTimeZoneOffset` out when the offset is zero (London events after the late-October clock change, 21 of 289 events in an independent sample; the builder's 152-result sample happened to contain none). For those events the tool reads the start instant as local time only when the site's own text agrees: `formattedDate` must begin with the UTC month and day and, for single-day events, `formattedTime` must equal the UTC clock time. Otherwise `local_date`, `local_time` and `weekday` are null and `start_utc` and the display text are still returned. An explicit offset of `"0"` is used as given.
+- **Venues on UTC have no offset in the data.** The site leaves `venueTimeZoneOffset` out when the offset is zero: London events after the late-October clock change, and Portugal, Ireland and Iceland in the same period (69 of 265 events in the second QA round's sample, 21 of 289 in the first; the builder's 152-result sample happened to contain none). For those events the tool reads the start instant as local time only when the site's own text agrees: `formattedDate` must begin with the UTC month and day and, for single-day events, `formattedTime` must equal the UTC clock time. Otherwise `local_date`, `local_time` and `weekday` are null and `start_utc` and the display text are still returned. An explicit offset of `"0"` is used as given.
 - An event that starts exactly at 00:00 UTC on the day after `end_date_utc` is returned as well, because the site's upper bound is an inclusive instant. This is common for US Eastern evening starts (7 PM standard time, 8 PM daylight time), whose `local_date` is the last day requested.
 
 ### Outputs
@@ -66,10 +66,27 @@ The tool matches only `https://www.stubhub.com/*`, not the default `https://stub
 - No prices, seats, listings, quantity or fees; no event, performer, venue or Explore pages; no account, order, favorites or seller flows. Those were investigated only for discovery and are not implemented.
 - Search-index flags (`has_active_listings`, `availability_message`) can lag the event page.
 - Not live-verified: the `challenge` and `rate_limited` paths (no search request was ever refused), the `site_changed` paths, other country editions, and behaviour in a signed-in browser (public results were read signed out; the signed-in page was not compared). These are covered by stubbed tests only.
+- Local time for an event whose offset is omitted relies on the site's English 12-hour text (`7:30 PM`); text in another format or locale would make those fields null. The omitted-offset path for multi-day events was never seen live (all 16 multi-day results sampled had explicit offsets) and is covered by tests only.
 - AWS WAF is documented to answer its challenge and CAPTCHA actions with HTTP 202 or 405 rather than 403. No such response was ever seen from `/secure/Search`; if one appears the tool reports `site_error` with the status, not `challenge`.
 
 ## QA
 
-No independent QA yet; the tool is `draft`.
+Independent QA by a separate reviewer agent (`agt_b9e333f8bafdb9dbb2fb`), 2026-09-29, against the PR head.
 
-Sessions (ephemeral): the builder's public-QA browser was created and deleted by the builder.
+**Round 1** (PR head `eef4dcd`): **FAIL**, two findings, both fixed:
+
+1. Every venue on UTC had null `local_date`, `local_time` and `weekday`, because the site omits `venueTimeZoneOffset` when it is zero (London in winter). Fixed by reading the start instant as local time when the site's own date and time text agrees with the UTC clock (see "Venues on UTC" above); a fixture for the omitted offset was added.
+2. Events starting exactly at 00:00 UTC after `end_date_utc` are returned by the site but the agent-visible description did not say so. Kept as the site's behaviour and stated in the tool description, the `end_date_utc` schema text and this README, with a test.
+
+**Round 2** (PR head `9b99b62`, `search_events.js` blob `8036e70`): **PASS**, no defects. The registered source was checked against that file. The sign-off covers this source only; any change to `search_events.js` needs a new review.
+
+- Repo: diff touches only the four expected files, existing registry entries untouched; `node scripts/validate-registry.mjs` valid; full suite 1628 pass, 0 fail (67 in `tests/stubhub-search-events.test.mjs`), also under three non-UTC `TZ` values.
+- Mutants: 23 mutants of the omitted-offset logic (18 caught; the 5 survivors change nothing visible on real data) after 45 in round 1 (40 caught, 4 survivors of no visible effect).
+- Kernel runtime, live, signed out, fresh browser (2026-09-29, 42 site requests in round 2, none refused): whole-namespace registration with `--force-overwrite-namespace`; successful invocations from the homepage, a search results page, an event page, a performer page and `/explore` (the last four are pages other than an entry page) with the tab URL unchanged each time; not listed on `my.stubhub.com` or another site; no native tools on any of the five page types; `limit` 1, 3 and 20; UTC windows, no-match windows, no-results, keywords with `&`, `#`, `?`, accents and CJK; every malformed input rejected as `invalid_input`; 34 live outputs valid against the tool's own `outputSchema` (ajv, strict) plus 45 outputs (419 real events) from running the source offline; `local_date` and `local_time` agreed with the site's text for 248 of 248 single-day events, and all 69 events with an omitted offset were corroborated with none null or wrong.
+- Side effects: exactly one `GET /secure/Search` request per call (CDP network log), no navigation, cookie names and web-storage keys identical before and after, no tracking values in outputs, a plain visit afterwards still showed "All dates".
+- Output size about 11 KB at `limit` 20.
+- Local Chrome extension runtime (Chromium 153, throwaway profile, extension loaded with `--load-extension`, `xwebmcp attach`, site access granted on the real permission dialog, driven through `xwebmcp mcp` because `xwebmcp invoke <tool_ref>` refuses tabs the user opened): 6 invocations from an extension-owned homepage tab, five identical to the Kernel outputs apart from `observed_at` and one `invalid_input`, all schema-valid. Other page types in the extension, the extension's own test suite and desktop Chrome were not run; no parity beyond these cases is claimed.
+- StubHub's homepage and search response carry no Content-Security-Policy, so the CSP compile path in `spec/cdp-tools.md` §9 item 12 does not apply; event-page CSP was not read.
+- Not verified live: `challenge`, `rate_limited`, `site_error` and `site_changed` outputs (stubbed tests only), signed-in behaviour, other country editions, Node 22 (CI's version; QA ran Node 26).
+
+Sessions (ephemeral, all deleted or expired): QA browsers `dz7vsc5lyqqx6zjerrffxl6f` (round 1) and `bn8h5x7toqmz44g944843osg` (round 2); builder public-QA browsers `c2ztbhvwrdcg1fomlr13p5l9` and `e05tb8zvts0ofsgg7vm3yq2y`.
