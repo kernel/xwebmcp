@@ -136,7 +136,7 @@ const reviewProps = (options = {}) => ({
       activeSort: options.sortEcho ?? options.sort ?? "relevancy", averageOverallRating: 4.1, totalReviewCount: 5000, filteredReviewsCount: 900, recommendedPercentage: 24,
       ratingValueOneCount: 10, ratingValueTwoCount: 20, ratingValueThreeCount: 30, ratingValueFourCount: 40, ratingValueFiveCount: 50,
       customerReviews: options.reviews ?? [review("r1"), review("r2", { rating: 1, reviewSubmissionTime: "13/40/2026", badges: [], photos: null, reviewTitle: null })],
-      pagination: options.pagination ?? { currentSpan: `${((options.page ?? 1) - 1) * 10 + 1}-${(options.page ?? 1) * 10}`, next: { url: "sort=relevancy&page=2" } }
+      pagination: options.pagination ?? { currentSpan: `${((options.page ?? 1) - 1) * 10 + 1}-${(options.page ?? 1) * 10}`, total: options.total ?? 25, next: { url: null } }
     }
   } }
 });
@@ -489,10 +489,10 @@ test("get_product_reviews: returns the rating summary and reviews without review
 });
 
 test("get_product_reviews: sort, page and text length are honoured", async () => {
-  const h = harness("get_product_reviews", { props: reviewProps({ sort: "rating-asc", page: 3, pagination: { currentSpan: "21-30", next: { url: null } } }) });
+  const h = harness("get_product_reviews", { props: reviewProps({ sort: "rating-asc", page: 3, pagination: { currentSpan: "21-30", total: 30, next: { url: "sort=rating-asc&page=4" } } }) });
   const result = await h.run({ us_item_id: "20000001", sort: "rating-asc", page: 3, text_max_chars: 5 });
   assert.equal(h.calls[0].url, "/reviews/product/20000001?sort=rating-asc&page=3");
-  assert.equal(result.has_next_page, false);
+  assert.equal(result.has_next_page, false, "the span ends at the total, whatever the site's next link says");
   assert.equal(result.reviews[0].text, "Works");
   const noText = await harness("get_product_reviews", { props: reviewProps() }).run({ us_item_id: "20000001", text_max_chars: 0 });
   assert.equal(noText.reviews[0].text, null);
@@ -509,7 +509,7 @@ test("get_product_reviews: missing items, empty lists, out-of-range pages and un
   const laterEmpty = await harness("get_product_reviews", { props: reviewProps({ reviews: [], page: 4 }) }).run({ us_item_id: "20000001", page: 4 });
   assert.equal(laterEmpty.reason, "page_out_of_range");
   // Observed live: a page past the end is answered with page 1 rather than an error.
-  const clamped = await harness("get_product_reviews", { props: reviewProps({ pagination: { currentSpan: "1-10", next: { url: "x" } } }) }).run({ us_item_id: "20000001", page: 500 });
+  const clamped = await harness("get_product_reviews", { props: reviewProps({ pagination: { currentSpan: "1-10", total: 30, next: { url: "x" } } }) }).run({ us_item_id: "20000001", page: 500 });
   assert.deepEqual([clamped.status, clamped.reason, clamped.page], ["no_results", "page_out_of_range", 500]);
   assert.equal(errorKind(await harness("get_product_reviews", { props: reviewProps({ sortEcho: "relevancy" }) }).run({ us_item_id: "20000001", sort: "helpful" })), "site_changed");
   assert.equal(errorKind(await harness("get_product_reviews", { props: reviewProps({ pagination: {} }) }).run({ us_item_id: "20000001" })), "site_changed");
@@ -571,4 +571,122 @@ test("get_store: malformed input is rejected before any request", async () => {
     assert.equal(errorKind(await h.run(input)), "invalid_input", JSON.stringify(input));
     assert.equal(h.calls.length, 0);
   }
+});
+
+// --- input strictness, text handling and regression cases from independent review ---------------
+
+const VALID = { search_products: { query: "towels" }, get_product: { us_item_id: "20000001" }, get_product_reviews: { us_item_id: "20000001" }, get_store: { store_id: "1234" } };
+
+for (const name of NAMES) {
+  test(`${name}: unknown fields, non-objects and wrong-typed options are rejected before any request`, async () => {
+    const bad = [null, undefined, [], "text", 5, { ...VALID[name], bogus: 1 }, { ...VALID[name], minPrice: 5 }, { ...VALID[name], __proto__x: 1 }];
+    if (name === "search_products") bad.push({ query: "x", exclude_sponsored: "yes" }, { query: "x", include_facets: "true" }, { query: "x", exclude_sponsored: 1 }, { query: "x", page: null });
+    for (const input of bad) {
+      const h = harness(name, { props: CASES[name].props });
+      assert.equal(errorKind(await h.run(input)), "invalid_input", JSON.stringify(input));
+      assert.equal(h.calls.length, 0, "no request for " + JSON.stringify(input));
+    }
+  });
+
+  test(`${name}: a blocked redirect is a challenge even when the body looks like a normal page, and HTTP 403 always is`, async () => {
+    const withData = nextData(CASES[name].props);
+    assert.equal(errorKind(await harness(name, { props: CASES[name].props, respond: () => ({ status: 200, finalUrl: ORIGIN + "/blocked?url=abc", body: withData }) }).run(CASES[name].input)), "challenge");
+    assert.equal(errorKind(await harness(name, { props: CASES[name].props, respond: () => ({ status: 403, body: withData }) }).run(CASES[name].input)), "challenge");
+  });
+
+  test(`${name}: only a caller abort can cancel the request when no timer fires, and no request option omits cookies`, async () => {
+    const controller = new AbortController();
+    const h = harness(name, { props: CASES[name].props, respond: () => "hang", setTimeout: () => 1 });
+    const pending = h.run(CASES[name].input, controller.signal);
+    await new Promise(resolve => setTimeout(resolve, 5));
+    controller.abort();
+    const outcome = await Promise.race([pending, new Promise(resolve => setTimeout(() => resolve("hung"), 1000))]);
+    assert.notEqual(outcome, "hung", "a caller abort must cancel the request");
+    assert.equal(errorKind(outcome), "timeout");
+    const ok = harness(name, { props: CASES[name].props });
+    await ok.run(CASES[name].input);
+    assert.ok(ok.calls[0].init.credentials === undefined || ok.calls[0].init.credentials === "same-origin", "the page's own cookies must be sent");
+  });
+}
+
+test("text from the site never carries control, bidi or zero-width characters and is never cut inside a surrogate pair", async () => {
+  const tricky = "ab\u202edcba\u200b\ufeff\ud83d\ude00cd";
+  const h = harness("get_product_reviews", { props: reviewProps({ reviews: [review("r1", { reviewText: tricky, reviewTitle: tricky })] }) });
+  const cut = await h.run({ us_item_id: "20000001", text_max_chars: 5 });
+  assert.equal(/[\u202e\u200b\ufeff]/.test(JSON.stringify(cut)), false);
+  assert.equal(/[\ud800-\udbff](?![\udc00-\udfff])/.test(cut.reviews[0].text), false, "no lone high surrogate: " + JSON.stringify(cut.reviews[0].text));
+  const emoji = await harness("get_product_reviews", { props: reviewProps({ reviews: [review("r1", { reviewText: "ab\ud83d\ude00cd" })] }) }).run({ us_item_id: "20000001", text_max_chars: 3 });
+  assert.equal(emoji.reviews[0].text, "ab");
+});
+
+test("get_product_reviews: has_next_page comes from the listed span, not from the site's next link", async () => {
+  const at = async (currentSpan, total, page, next) => (await harness("get_product_reviews", { props: reviewProps({ page, pagination: { currentSpan, total, next: { url: next } } }) }).run({ us_item_id: "20000001", page })).has_next_page;
+  assert.equal(await at("71-80", 82, 8, null), true, "the site's next link can be null before the last page");
+  assert.equal(await at("81-82", 82, 9, "sort=x&page=10"), false);
+  assert.equal(await at("9991-10000", 10000, 1000, "sort=x"), false);
+  assert.equal(await at("1-10", 25, 1, null), true);
+});
+
+test("get_product_reviews: impossible dates, non-integer ratings and other badges do not pass through", async () => {
+  const reviews = [
+    review("a", { reviewSubmissionTime: "2/31/2025", rating: 5.5, badges: [{ id: "SomethingElse" }] }),
+    review("b", { reviewSubmissionTime: "2/29/2024", rating: 0, badges: undefined }),
+    review("c", { reviewSubmissionTime: "12/31/2025", rating: "5", positiveFeedback: -1, negativeFeedback: "2", photos: undefined })
+  ];
+  const result = await harness("get_product_reviews", { props: reviewProps({ reviews }) }).run({ us_item_id: "20000001" });
+  assert.deepEqual(result.reviews.map(r => [r.submitted_date, r.rating, r.verified_purchase]), [[null, null, false], ["2024-02-29", null, false], ["2025-12-31", null, true]]);
+  assert.deepEqual([result.reviews[2].helpful_votes, result.reviews[2].unhelpful_votes, result.reviews[2].photo_count], [null, null, 0]);
+});
+
+test("get_product_reviews: the no_results branches carry the counts", async () => {
+  const none = await harness("get_product_reviews", { props: reviewProps({ reviews: [] }) }).run({ us_item_id: "20000001" });
+  assert.deepEqual([none.total_review_count, none.listed_review_count], [5000, 900]);
+  const past = await harness("get_product_reviews", { props: reviewProps({ pagination: { currentSpan: "1-10", total: 25, next: { url: null } } }) }).run({ us_item_id: "20000001", page: 3 });
+  assert.deepEqual([past.reason, past.total_review_count, past.listed_review_count], ["page_out_of_range", 5000, 900]);
+});
+
+test("search_products: has_more_pages respects the tool's own page limit and the last page", async () => {
+  const more = async (page, maxPage) => (await harness("search_products", { props: searchProps({ page, maxPage }) }).run({ query: "towels", page })).has_more_pages;
+  assert.equal(await more(1, 13), true);
+  assert.equal(await more(13, 13), false);
+  assert.equal(await more(25, 30), false, "page 25 is the last page this tool can request");
+  assert.equal(await more(24, 30), true);
+});
+
+test("get_product: variants mark the described item, identifiers are validated and caps hold", async () => {
+  const item = family();
+  item.sellerId = "bad id!"; item.upc = "12ab"; item.returnPolicy = { returnable: true, freeReturns: false, returnWindow: { value: 3, unitType: "Month" }, returnPolicyText: "Free 3-month returns" };
+  item.imageInfo = { allImages: [] };
+  const idml = { specifications: Array.from({ length: 60 }, (_, i) => ({ name: "Spec " + i, value: "x".repeat(400) })), longDescription: "a &#8482; b &#x1F600; &#0; &#xD800; c" };
+  const result = await harness("get_product", { props: productProps(item, idml) }).run({ us_item_id: "20000001", description_max_chars: 100 });
+  assert.equal(result.variants[0].selected, true);
+  assert.equal(result.variants[1].selected, false);
+  assert.deepEqual([result.seller.id, result.upc, result.returns.window_days, result.returns.free_returns], [null, null, null, false]);
+  assert.equal(result.specifications.length, 40);
+  assert.ok(result.specifications.every(s => s.value.length === 300));
+  assert.equal(result.description, "a \u2122 b \ud83d\ude00 c");
+});
+
+test("the selected store comes only from the assortmentStoreId cookie itself", async () => {
+  const product = productProps();
+  const spoof = await harness("get_product", { props: product, cookie: "xassortmentStoreId=999; assortmentStoreId=1234" }).run({ us_item_id: "20000001" });
+  assert.equal(spoof.store_id, "1234");
+  const lookalike = await harness("get_product", { props: product, cookie: "notassortmentStoreId=5; assortmentStoreIdX=6" }).run({ us_item_id: "20000001" });
+  assert.equal(lookalike.store_id, null);
+  assert.equal(errorKind(await harness("get_store", { props: storeProps(), cookie: "notassortmentStoreId=5" }).run({})), "no_store");
+});
+
+test("get_store: caps hold and malformed coordinates are dropped", async () => {
+  const node = storeProps().initialData.initialDataNodeDetail.data.nodeDetail;
+  const day = i => ({ day: "Day " + i, start: "06:00", end: "23:00", closed: false });
+  node.operationalHours = Array.from({ length: 12 }, (_, i) => day(i));
+  node.services = Array.from({ length: 60 }, (_, i) => ({ name: "SERVICE_" + i, displayName: "Service " + i, operationalHours: Array.from({ length: 12 }, (_, j) => day(j)) }));
+  node.geoPoint = { latitude: "10.5", longitude: -20.25 };
+  const result = await harness("get_store", { props: storeProps({ node }) }).run({ store_id: "1234" });
+  assert.equal(result.hours.length, 7);
+  assert.equal(result.services.length, 40);
+  assert.ok(result.services.every(s => s.hours.length === 7));
+  assert.equal(result.location, null);
+  const clocks = await harness("get_store", { props: storeProps({ node: { ...node, operationalHours: [{ day: "Sunday", start: "6am", end: "25:99x", closed: false }] } }) }).run({ store_id: "1234" });
+  assert.deepEqual(clocks.hours, [{ day: "Sunday", opens: null, closes: null, closed: false }]);
 });

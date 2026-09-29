@@ -32,7 +32,7 @@
             sort_by: { type: "string" },
             page: { type: "integer", minimum: 1 },
             max_page: { type: ["integer", "null"], description: "Last results page the site offers for this search." },
-            has_more_pages: { type: "boolean" },
+            has_more_pages: { type: "boolean", description: "True when a further page (up to this tool's limit of 25) exists." },
             total_results: { type: ["integer", "null"], description: "Matches the site reports across all pages; the site shows large counts as '1000+'." },
             store_id: { type: ["string", "null"], description: "Walmart store id the results were computed for (the session's selected store)." },
             filters: { type: "array", items: { type: "string" }, description: "Facet filters applied to these results." },
@@ -116,7 +116,8 @@
     const CHALLENGE = "Walmart's bot protection is blocking requests from this browser (the site redirected to its verification page). Nothing was changed. A person has to clear the verification on walmart.com in this browser; wait a few minutes and do not retry automatically.";
     const text = (value, max) => {
       if (typeof value !== "string") return null;
-      const out = value.replace(/[\u0000-\u001f\u007f]+/g, " ").replace(/\s+/g, " ").trim().slice(0, max);
+      let out = value.replace(/[\u0000-\u001f\u007f\u200b-\u200f\u202a-\u202e\u2066-\u2069\ufeff]+/g, " ").replace(/\s+/g, " ").trim().slice(0, max);
+      if (/[\ud800-\udbff]$/.test(out)) out = out.slice(0, -1);
       return out || null;
     };
     const int = value => typeof value === "number" && Number.isInteger(value) && value >= 0 ? value : null;
@@ -142,7 +143,7 @@
         res = await fetch(path, { headers: { accept: "text/html" }, signal: ctl.signal });
         body = await res.text();
       } catch {
-        return { error: fail(ctl.signal.aborted ? "timeout" : "site_error", ctl.signal.aborted ? "Walmart did not answer within 25 seconds. Nothing was changed." : "The request to walmart.com failed before a response arrived. Nothing was changed.") };
+        return { error: fail(ctl.signal.aborted ? "timeout" : "site_error", ctl.signal.aborted ? "The request was aborted before Walmart answered (25 second limit or the caller canceled). Nothing was changed." : "The request to walmart.com failed before a response arrived. Nothing was changed.") };
       } finally {
         clearTimeout(timer);
         if (context && context.signal) context.signal.removeEventListener("abort", abort);
@@ -151,7 +152,7 @@
       try { final = new URL(res.url); } catch { final = null; }
       const start = body.indexOf("<script id=\"__NEXT_DATA__\"");
       if (!final || final.origin !== ORIGIN) return { error: fail("site_changed", "walmart.com answered from an unexpected address. Nothing was changed.") };
-      if (/^\/blocked(\/|$)/.test(final.pathname) || res.status === 418 || (start < 0 && (res.status === 403 || /px-captcha|robot or human/i.test(body.slice(0, 30000))))) return { error: fail("challenge", CHALLENGE) };
+      if (/^\/blocked(\/|$)/.test(final.pathname) || res.status === 418 || res.status === 403 || (start < 0 && /px-captcha|robot or human/i.test(body.slice(0, 30000)))) return { error: fail("challenge", CHALLENGE) };
       if (res.status === 429) return { error: fail("rate_limited", "Walmart is rate limiting this browser. Wait a few minutes before calling again. Nothing was changed.") };
       if (res.status >= 500) return { error: fail("site_error", `walmart.com answered HTTP ${res.status}. Nothing was changed.`) };
       if (start < 0) return { error: fail("site_changed", "The page has no embedded result data (the site's layout may have changed). Nothing was changed.") };
@@ -163,6 +164,9 @@
       }
     };
 
+    if (!input || typeof input !== "object" || Array.isArray(input)) return fail("invalid_input", "input must be an object. Nothing was requested.");
+    const unknown = Object.keys(input).filter(key => !["query", "sort_by", "page", "limit", "exclude_sponsored", "filters", "min_price", "max_price", "include_facets"].includes(key));
+    if (unknown.length) return fail("invalid_input", "Unknown input field(s): " + unknown.slice(0, 3).map(key => String(key).slice(0, 40)).join(", ") + ". Nothing was requested.");
     const query = typeof input.query === "string" ? input.query.replace(/\s+/g, " ").trim() : "";
     const sortBy = input.sort_by === undefined ? "best_match" : input.sort_by;
     const page = input.page === undefined ? 1 : input.page;
@@ -175,6 +179,9 @@
     if (!Array.isArray(filters) || filters.length > 8 || new Set(filters).size !== filters.length || filters.some(f => typeof f !== "string" || !/^[a-z0-9_]{2,64}:[^|\u0000-\u001f]{1,100}$/.test(f))) return fail("invalid_input", "filters must be up to 8 distinct strings like 'brand:Scott', taken from an include_facets response. Nothing was requested.");
     for (const key of ["min_price", "max_price"]) {
       if (input[key] !== undefined && (typeof input[key] !== "number" || !isFinite(input[key]) || input[key] < 0 || input[key] > 100000)) return fail("invalid_input", key + " must be a number from 0 to 100000. Nothing was requested.");
+    }
+    for (const key of ["exclude_sponsored", "include_facets"]) {
+      if (input[key] !== undefined && typeof input[key] !== "boolean") return fail("invalid_input", key + " must be true or false. Nothing was requested.");
     }
     if (input.min_price !== undefined && input.max_price !== undefined && input.min_price > input.max_price) return fail("invalid_input", "min_price must not exceed max_price. Nothing was requested.");
 
@@ -269,6 +276,6 @@
         if (options.length && facets.length < 30) facets.push({ type: group.type, title: text(group.title, 80) || group.type, options_total: total, options });
       }
     }
-    return { status: "ok", ...base, has_more_pages: maxPage !== null && page < maxPage, facets, products };
+    return { status: "ok", ...base, has_more_pages: maxPage !== null && page < Math.min(maxPage, 25), facets, products };
   }
 }]

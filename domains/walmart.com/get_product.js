@@ -121,12 +121,14 @@
     const CHALLENGE = "Walmart's bot protection is blocking requests from this browser (the site redirected to its verification page). Nothing was changed. A person has to clear the verification on walmart.com in this browser; wait a few minutes and do not retry automatically.";
     const text = (value, max) => {
       if (typeof value !== "string") return null;
-      const out = value.replace(/[\u0000-\u001f\u007f]+/g, " ").replace(/\s+/g, " ").trim().slice(0, max);
+      let out = value.replace(/[\u0000-\u001f\u007f\u200b-\u200f\u202a-\u202e\u2066-\u2069\ufeff]+/g, " ").replace(/\s+/g, " ").trim().slice(0, max);
+      if (/[\ud800-\udbff]$/.test(out)) out = out.slice(0, -1);
       return out || null;
     };
     const plain = (html, max) => typeof html !== "string" || max === 0 ? null : text(
       html.replace(/<\s*(br|\/p|\/li|\/div|\/h[1-6])[^>]*>/gi, " ").replace(/<[^>]*>/g, " ")
-        .replace(/&nbsp;/g, " ").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, "\"").replace(/&#39;|&apos;/g, "'").replace(/&amp;/g, "&"), max);
+        .replace(/&#(x[0-9a-f]{1,6}|[0-9]{1,7});/gi, (_, code) => { const n = code[0] === "x" || code[0] === "X" ? parseInt(code.slice(1), 16) : Number(code); return n > 0 && n <= 0x10ffff && !(n >= 0xd800 && n <= 0xdfff) ? String.fromCodePoint(n) : " "; })
+        .replace(/&nbsp;/g, " ").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, "\"").replace(/&apos;/g, "'").replace(/&amp;/g, "&"), max);
     const int = value => typeof value === "number" && Number.isInteger(value) && value >= 0 ? value : null;
     const cents = value => typeof value === "number" && isFinite(value) && value > 0 ? Math.round(value * 100) : null;
     const number = value => typeof value === "number" && isFinite(value) ? value : null;
@@ -152,7 +154,7 @@
         res = await fetch(path, { headers: { accept: "text/html" }, signal: ctl.signal });
         body = await res.text();
       } catch {
-        return { error: fail(ctl.signal.aborted ? "timeout" : "site_error", ctl.signal.aborted ? "Walmart did not answer within 25 seconds. Nothing was changed." : "The request to walmart.com failed before a response arrived. Nothing was changed.") };
+        return { error: fail(ctl.signal.aborted ? "timeout" : "site_error", ctl.signal.aborted ? "The request was aborted before Walmart answered (25 second limit or the caller canceled). Nothing was changed." : "The request to walmart.com failed before a response arrived. Nothing was changed.") };
       } finally {
         clearTimeout(timer);
         if (context && context.signal) context.signal.removeEventListener("abort", abort);
@@ -161,7 +163,7 @@
       try { final = new URL(res.url); } catch { final = null; }
       const start = body.indexOf("<script id=\"__NEXT_DATA__\"");
       if (!final || final.origin !== ORIGIN) return { error: fail("site_changed", "walmart.com answered from an unexpected address. Nothing was changed.") };
-      if (/^\/blocked(\/|$)/.test(final.pathname) || res.status === 418 || (start < 0 && (res.status === 403 || /px-captcha|robot or human/i.test(body.slice(0, 30000))))) return { error: fail("challenge", CHALLENGE) };
+      if (/^\/blocked(\/|$)/.test(final.pathname) || res.status === 418 || res.status === 403 || (start < 0 && /px-captcha|robot or human/i.test(body.slice(0, 30000)))) return { error: fail("challenge", CHALLENGE) };
       if (res.status === 429) return { error: fail("rate_limited", "Walmart is rate limiting this browser. Wait a few minutes before calling again. Nothing was changed.") };
       if (res.status >= 500) return { error: fail("site_error", `walmart.com answered HTTP ${res.status}. Nothing was changed.`) };
       if (start < 0) return { error: fail("site_changed", "The page has no embedded product data (the site's layout may have changed). Nothing was changed.") };
@@ -173,6 +175,9 @@
       }
     };
 
+    if (!input || typeof input !== "object" || Array.isArray(input)) return fail("invalid_input", "input must be an object. Nothing was requested.");
+    const unknown = Object.keys(input).filter(key => !["us_item_id", "variant_limit", "description_max_chars"].includes(key));
+    if (unknown.length) return fail("invalid_input", "Unknown input field(s): " + unknown.slice(0, 3).map(key => String(key).slice(0, 40)).join(", ") + ". Nothing was requested.");
     const id = input.us_item_id;
     const variantLimit = input.variant_limit === undefined ? 25 : input.variant_limit;
     const describe = input.description_max_chars === undefined ? 1000 : input.description_max_chars;

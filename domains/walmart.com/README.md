@@ -46,7 +46,8 @@ A call takes 1 to 4 s; `timeoutSec: 60` is enough.
 
 What the tools never do: select or change a store, ZIP or address; sign in; touch carts, lists, registries, orders,
 subscriptions, accounts, pharmacy or payment; open checkout; vote on or write reviews. They send only plain `GET`
-requests to `www.walmart.com` with the page's own cookies. Inputs are validated before any request.
+requests to `www.walmart.com` with the page's own cookies. Inputs are validated by the tool before any request,
+including unknown fields and wrong-typed options, because the runtimes do not enforce a page tool's `inputSchema`.
 
 Conventions:
 
@@ -75,7 +76,7 @@ Conventions:
 string such as `brand:Scott` that is passed back in `filters`. Only options whose own link confirms the exact string are
 offered. Filters from different groups narrow the results (AND) and several from one group widen them (OR); the tool
 sends them as the site does, joined with `||`. `min_price` and `max_price` (dollars) use the site's price filter, which
-matches on any variant's price, so a shown price can fall outside the bounds. `page` goes to 25; a page past the end
+matches on any variant's price, so a shown price can fall outside the bounds. `page` goes to 25 (`has_more_pages` is false on page 25 even when the site has more); a page past the end
 returns `no_results` with `page_out_of_range`. When Walmart corrects a misspelling, `corrected_query` says what was
 searched. Only the grid results are returned, in the site's order with `page_position` counting sponsored tiles;
 carousels are skipped because they repeat grid items.
@@ -90,7 +91,8 @@ bounds the short and long descriptions (HTML is reduced to text). Unknown items 
 
 Walmart lists only reviews that have text, ten per page, and at most 10,000 per sort. `sort` uses the site's ids:
 `relevancy` (default), `helpful`, `submission-desc`, `submission-asc`, `rating-desc`, `rating-asc`. Dates are converted
-from the site's month/day/year text to ISO dates. Reviewer names, ids and locations are not returned. A page past the
+from the site's month/day/year text to ISO dates. `has_next_page` is computed from the listed span and the site's total,
+because the site's own `next` link was observed to be null on page 8 of an 82-review item while page 9 existed. Reviewer names, ids and locations are not returned. A page past the
 end is answered by Walmart with page 1, which the tool detects from the listed span and reports as `no_results` with
 `page_out_of_range`.
 
@@ -113,10 +115,11 @@ any request if it ever runs in a document outside `https://www.walmart.com`. Oth
 
 - **Bot protection.** Walmart runs HUMAN (PerimeterX). Live, one guest browser was redirected to
   `https://www.walmart.com/blocked?url=...` after about 12 same-origin page fetches in 30 seconds and again after about 15
-  tool calls in five minutes, and the block lasted a few minutes. A blocked fetch still answers HTTP 200, so the tools
-  detect the `/blocked` redirect, HTTP 418, and captcha pages without embedded data, and return `error_kind: "challenge"`.
-  A person has to clear it; the tools do not attempt it. Each call makes exactly one request, and callers should pace
-  calls (a few per minute) and never retry a `challenge` automatically.
+  tool calls in five minutes, and the block lasted a few minutes; independent QA had one browser blocked at its 10th call
+  (about 3 calls a minute). No safe rate was found. A blocked fetch still answers HTTP 200, so the tools detect the
+  `/blocked` redirect, HTTP 418 and 403, and captcha pages without embedded data, and return `error_kind: "challenge"`.
+  A person has to clear it; the tools do not attempt it. Each call makes exactly one request; callers should keep calls
+  sparse, use a fresh browser after a block, and never retry a `challenge` automatically.
 - **Degraded search responses.** Shortly after a burst, and before any redirect, the same-origin search answered HTTP 200
   with a much smaller result set (about 100 matches instead of about 3,100) that ignored the requested `sort` and `page`.
   `search_products` compares the page's echoed sort and page with the request and returns `site_changed` instead of
@@ -133,19 +136,25 @@ any request if it ever runs in a document outside `https://www.walmart.com`. Oth
 - **Sessions.** A signed-in session read the same store id from the `assortmentStoreId` cookie as the results' own `stores`
   parameter; only that equality was checked, and no account data was read or recorded.
 - **Kernel runtime discovery on walmart.com.** In Kernel browsers, `GET /browsers/{id}/webmcp/tools` (`kernel browsers
-  webmcp list`) was observed to crash the tab's renderer (`Aw, Snap!`, `RESULT_CODE_KILLED_BAD_MESSAGE`) on several
-  walmart.com page types: a product page, a search results page and a store page each crashed in a control browser with no
-  custom tools registered, so the tools do not cause it. Listing on the homepage worked in three separate browsers and on a
-  search page in one. After a crash, later invocations through the API in that tab returned `outcome_unknown` until a new
-  browser was used. Invoking the registered tools through the page API
-  (`document.modelContext.executeTool(tool, JSON.stringify(input))`) did not crash and returned normal results on the
-  homepage, a product page, the reviews page and a search page. The local Chrome extension discovers through the page API
-  as well, but it was not run for this domain.
+  webmcp list`) was observed to crash the tab's renderer (`Aw, Snap!`, `RESULT_CODE_KILLED_BAD_MESSAGE`) on walmart.com
+  pages, with and without custom tools registered, so the tools do not cause it (a control browser with none crashed on a
+  product page, a search page and a store page; independent QA saw it on the homepage too, while `example.com` survived
+  the same call). It depends on timing: listing on the homepage worked in three of the builder's browsers and on a search
+  page in one, and QA found listing about 300 ms after navigation and invoking immediately worked for all four tools on
+  the homepage, while a late list crashed the tab. After a crash, later invocations through the API in that tab returned
+  `outcome_unknown` until a new browser was used. Invoking the registered tools through the page API
+  (`document.modelContext.executeTool(tool, JSON.stringify(input))`, no list call) did not crash and returned normal
+  results on the homepage, a product page, the reviews page, a search page and a store page. The local Chrome extension
+  discovers through the page API as well, but it was not run for this domain.
+- **Kernel API output encoding.** Independent QA saw `kernel browsers webmcp invoke` return a tool's output as a JSON
+  string instead of an object when the output contains certain Latin-1-range characters such as `¢` or `é` (a scratch
+  tool on `example.com` reproduced it). `get_product` can hit it, for example a `unit_price_text` of `74.0 ¢/lb`. This is
+  the runtime's behavior, not something the tools control; parse the string when the output is not an object.
 
 ## Known limitations
 
 - Read-only public data only. There are no cart, account, order, list, store-selection, address, pharmacy or payment
-  tools, and none of those pages was read.
+  tools, and the tools never request those pages.
 - Everything depends on the store the session has selected; there is no way to choose another store or ZIP.
 - `search_products` returns one page (at most 40 products) per call and skips carousels; `page` goes to 25. `price_cents`
   can be `null`, tiles rarely have a brand, and multi-value filter behavior was only observed for two brands (OR) and for
@@ -166,8 +175,9 @@ any request if it ever runs in a document outside `https://www.walmart.com`. Oth
 Builder checks on 2026-09-29 with one stealth Kernel browser per run, signed out, registered as one namespace with
 `kernel browsers webmcp custom-tools add --force-overwrite-namespace`:
 
-- `search_products`: all six sorts returned their expected order (`price_low` ascending, `price_high` descending,
-  `rating_high` all 5-star, `best_seller` with the site's best-seller badges, `new`); page 2 with 40 products; a facet
+- `search_products`: all six sorts returned plausible orders (`price_low` mostly ascending and `price_high` descending by
+  tile price, `rating_high` all 5-star, `best_seller` with the site's best-seller badges, `new`; QA found marketplace
+  tiles out of price order under `price_low`, so the site's sort key is not always the tile price); page 2 with 40 products; a facet
   brand filter and a two-brand filter (292 matches, more than either brand alone); `include_facets` groups; a
   misspelling (`corrected_query`); a nonsense query (`no_results`, `no_matches`); page 25 (`no_results`,
   `page_out_of_range`). Discovery and invocation through the API worked on the homepage.
@@ -186,7 +196,11 @@ Builder checks on 2026-09-29 with one stealth Kernel browser per run, signed out
   bounds, deduplication, sponsored handling, facet round-tripping, out-of-range pages, unapplied sort or page, missing
   ids and stores, and that reviewer identity and session location text are never returned.
 
-Independent QA has not yet run; all four tools are `draft`.
+Independent QA round 1 (source `c8cce03`) found two blocking defects and several minor ones, now fixed in the current
+source and covered by new tests: unknown fields and wrong-typed booleans were not rejected, `get_product_reviews`
+reported no next page one page early on an item whose `next` link was null, truncation could split a surrogate pair,
+impossible dates such as 2/31 were converted, and the README overstated the runtime and pacing observations. All four
+tools remain `draft` until a QA sign-off on the final source is recorded.
 
 ## Sessions
 
