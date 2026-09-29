@@ -62,9 +62,12 @@
       "url_patterns": [
         "https://www.delta.com/*"
       ],
-      "status": "draft",
-      "last_verified": null,
-      "notes": "Public, read-only lookup of one Delta flight number and date from any www.delta.com page, using the same single request Delta's Flight Status page sends; returns every leg with status, local times, gates and aircraft, and checks optional origin/destination against the returned legs. Fixture-tested and exercised live in Kernel browsers; Delta's bot protection denies the lookup (reported as error_kind blocked) on cold sessions and after a handful of lookups, so it is unreliable without a warm session. Not independently QA'd."
+      "status": "verified",
+      "last_verified": "2026-09-29",
+      "notes": "Public, read-only lookup of one Delta flight number and date from any www.delta.com page, using the same single request Delta's Flight Status page sends; returns every leg with status, local times, gates and aircraft, and checks optional origin/destination against the returned legs. Independent QA passed and live success was observed from several www.delta.com pages in Kernel browsers on 2026-09-29. Delta's bot protection denies the lookup (error_kind blocked) on cold sessions and after six to ten lookups, so it is unreliable without a warm session. In the xwebmcp Chrome extension, registration and the blocked path were observed but the success path was not.",
+      "provenance": {
+        "qa_agent": "agt_18586dcff5a8cb64565a"
+      }
     },
     {
       "domain": "delta.com",

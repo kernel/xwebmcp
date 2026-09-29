@@ -4,7 +4,7 @@ Tools for Delta Air Lines (https://www.delta.com).
 
 | tool | file | status | notes |
 | --- | --- | --- | --- |
-| get_flight_status | [get_flight_status.js](get_flight_status.js) | draft | Public, read-only status lookup for one Delta flight number and date from any www.delta.com page (`page` kind, no navigation). Returns every leg and checks optional origin/destination against them. Fixture-tested and exercised live; Delta's bot protection makes it unreliable without a warm session. Not independently QA'd. |
+| get_flight_status | [get_flight_status.js](get_flight_status.js) | verified | Public, read-only status lookup for one Delta flight number and date from any www.delta.com page (`page` kind, no navigation). Returns every leg and checks optional origin/destination against them. Independently QA'd and live-verified in Kernel browsers on 2026-09-29; Delta's bot protection makes it unreliable without a warm session. Extension success path untested. |
 | get_page_context | [get_page_context.js](get_page_context.js) | draft | Read-only page summary with live tool names and suggested next steps. Unit-tested; exercised live on the homepage and booking form. |
 | search_flights | [search_flights.js](search_flights.js) | draft | Airport entry fixed for macOS Chrome on 2026-09-29 and first successful full live invocation recorded; needs fresh independent QA because the source changed. |
 | login | [login.js](login.js) | draft | Homepage-only page tool: opens the top-nav Log in flyout, fills it, and schedules one submit. No output schema; outcome not observed. Live-checked with fabricated credentials and the submit click blocked in-page; no real submission. |
@@ -12,7 +12,7 @@ Tools for Delta Air Lines (https://www.delta.com).
 
 ## Scope
 
-- Namespace: `delta.com`. Match patterns: `https://delta.com/*` and `https://*.delta.com/*`.
+- Namespace: `delta.com`. Default match patterns: `https://delta.com/*` and `https://*.delta.com/*`; `login` and `get_flight_status` are narrowed (see URL patterns).
 - CDP-backed, read-only flight shopping for one-way and round-trip cash fares, 1–9 adults, within a 330-day booking window. No fare selection, purchases, payments, or personal-data entry.
 - On invocation, check for an idle, usable booking form at the exact entry URL. Otherwise navigate to `https://www.delta.com/flightsearch/book-a-flight` before interacting. An unrelated page, a baggage page, results, query-bearing booking state, or an open form overlay does not satisfy this check.
 - Return structured first-page outbound options: marketing airline and flight numbers, airports, local times, displayed overnight-arrival date, duration, stops, and lowest available displayed fare per row. Round trips do not return selected outbound/return pairs. Prices are rounded display fares, not passenger totals or guaranteed quotes; the currency symbol is preserved without guessing its ISO code.
@@ -114,7 +114,7 @@ Local checks also evaluate the file as one array expression, compare both schema
 - First results page only; round trips return outbound options, not outbound/return pairs. Prices are rounded display fares, not passenger totals.
 - Adults only (1–9), 330-day booking window, English desktop layout only.
 - Completeness beyond the 1.5-second DOM-quiescence heuristic and real zero-results behaviour remain unverified.
-- `get_flight_status` is `draft` and not independently QA'd. Delta's bot protection returns HTTP 444 (reported as `blocked`) to cold sessions and to a session after roughly six or seven lookups, and the block persisted for minutes in every case tried; a `blocked` result says nothing about the flight. It covers Delta-marketed flight numbers only, reads Delta's response as-is (no cancelled, diverted, or partner-operated example has been observed), and does not cover flights by route, fares, seats, trips, credits, check-in, or notifications.
+- `get_flight_status` is `verified` for the Kernel runtime only. Delta's bot protection returns HTTP 444 (reported as `blocked`) to cold sessions and to a session after six to ten lookups (it varied), and the block persisted for minutes in every case tried; a `blocked` result says nothing about the flight. Its success path has not been observed in the xwebmcp Chrome extension (Delta denied that browser). It covers Delta-marketed flight numbers only, reads Delta's response as-is (no cancelled, diverted, or partner-operated example has been observed), and does not cover flights by route, fares, seats, trips, credits, check-in, or notifications.
 - `login` is `draft` and homepage-only. It never reports the outcome (no output schema): a successful login, a wrong-password message, an MFA step, and a captcha are all unobserved by the tool and unverified live. It has not submitted real or fabricated credentials to Delta; the only live run blocked the click in-page.
 - `get_page_context` is `draft`. `signed_in: true` relies on a visible "Log out"/"Sign out" header control and has not been observed on a signed-in page; it may report `null` there. `page_type` is path-based and `page_messages` is a best-effort scan of alert-like elements.
 - `navigate_to_page` is `draft`. It only accepts www.delta.com paths and reports that navigation was scheduled, not that the page loaded. The site map in its description is a starting list, not exhaustive.
@@ -231,7 +231,7 @@ discards a response whose flight number or origin departure date differs from th
 - Delta's bot protection denies this endpoint (HTTP 444, an "Access Denied" HTML body) to cold
   sessions: a fresh Kernel browser's first direct lookup, and the site's own page request on a cold
   deep link, both returned 444. After the site's own flight-status form had been used normally,
-  lookups succeeded for about six or seven calls in a row and then returned 444 again, and once
+  lookups succeeded for six to ten calls in a row (it varied by session) and then returned 444 again, and once
   blocked, a session stayed blocked for at least several minutes (25 minutes in one browser) with
   the site's own form failing too ("An unexpected error occurred"). The tool reports this as
   `blocked`, never retries, and its message tells the caller not to loop. Normal use of the site in a
@@ -241,28 +241,67 @@ discards a response whose flight number or origin departure date differs from th
   The tool never clicks it and never changes the location setting. Whether that dialog changes the
   lookup's outcome was not established: the Canada-egress browser that showed it was already denied
   by the bot protection, and the France-egress one was moved to US egress before any lookup.
-- Delta returns `flight_not_found` (HTTP 400, code `FLD2300`) both for an unknown number and for a
-  date it no longer serves: yesterday's date for a flight that operates today returned it. Other
-  date windows were not measured because the session was blocked.
+- Delta returns `flight_not_found` (HTTP 400, code `FLD2300`) when it has no flight for the number and
+  date. Observed 2026-09-29: an unknown number (9999), one real number on a day it did not run
+  (DL2910 on the previous day, though the same number returned data three days earlier), and a real
+  number on a date almost a year out. The previous day was not rejected for every number: the
+  reviewer got data for it for another flight. The date window Delta serves was not measured, so
+  `flight_not_found` should be read as "no match for this number and date", not as "wrong date".
+- Delta's response can carry a delayed status with a null `delay` (the reviewer saw an arrival
+  event with status "Delayed" and no delay duration); the tool passes Delta's fields through and
+  does not derive a delay.
+- Each lookup updates Delta's own bot-management cookies (`_abck`, `bm_sv`, `bm_sz`), the same as
+  the site's own lookup does. The tool reads and writes no cookies or storage itself.
 
 ### QA (get_flight_status)
 
-Draft; no independent QA pass yet. `tests/delta-flight-status.test.mjs` uses fabricated data and a
-stubbed `fetch`: the exact request, schema conformance of every branch, all-legs / filtered /
-`route_not_found`, flight-number normalization, 19 invalid inputs rejected with no request, every
-site outcome above with one request and no retry, timeout and caller abort, sanitization, and that
-the document and location are never read.
+Independent QA agent `agt_18586dcff5a8cb64565a`, 2026-09-29 (about 21:18-21:40 UTC), reviewed head
+`5b3f8950c472b0cf19a2c5394262da58804ac032` and signed off **PASS** for it (no blocker or major
+defect; three minor findings, fixed afterwards and re-checked). The tool source has not changed
+since that review.
 
-Live, 2026-09-29, fresh Kernel browsers on US egress, invoked from `/us/en/baggage/overview` after the
-whole `delta.com` namespace was registered together with `forceOverwriteNamespace` (no existing tool
-was invoked): DL2910 with no route returned both legs (MSP-IND complete, IND-MSP in flight) in
-about 1.2 s; `origin: IND, destination: MSP` returned only the second leg with `leg_count: 2`;
-`origin: JFK` returned `route_not_found` with both routes; an unknown number returned
-`flight_not_found` with `FLD2300`; malformed and impossible-date inputs returned `invalid_input`;
-two sessions already denied by Delta returned `blocked`. On `shop.delta.com` the tool is not listed
-(its 11 native tools are unaffected). Not observed: a cancelled, delayed, diverted, or
-partner-operated flight, more than two legs, a signed-in session, non-US locale behavior, and the
-xwebmcp Chrome extension.
+`tests/delta-flight-status.test.mjs` uses fabricated data and a stubbed `fetch`: the exact request
+(also with a route filter), schema conformance of every branch, all-legs / filtered /
+`route_not_found`, flight-number normalization, 19 invalid inputs rejected with no request, every
+site outcome above with one request and no retry, 444/403 without an "Access Denied" body, timeout
+value and caller abort, sanitization, that the serialized `execute` runs with no outer scope, and
+that the document and location are never read. The reviewer mutation-tested the suite (44 mutants,
+36 killed at review time); the five survivors that were real gaps are now covered and killed.
+
+Reviewer checks, all against the source or live: strict Ajv compile of both schemas; 30,000 hostile
+responses with no schema violation and no throw; the tool's request is identical on the wire to the
+site's own form request (method, URL, header names and values, body, credentials, preflight); the
+whole `delta.com` namespace registered atomically (5 tools, no other tool invoked); the tool is
+listed on `/us/en/baggage/overview`, the homepage, `/flightstatus/search`, the results page, and the
+schedule page, and not on `shop.delta.com` (its 11 native tools unaffected, no collision); an old
+`tool_ref` is refused after navigation.
+
+Live cases, 2026-09-29, Kernel browsers, warmed with the site's own form (calls made from the pages
+named, none of them an entry point for this tool):
+- DL2910 with no route, from `/us/en/baggage/overview`: two legs and the multi-leg note, 2260 B, about
+  1.1 s. With `origin: IND`, `destination: MSP`: one leg, `leg_count: 2`, `leg_selection: filtered`.
+- A single-leg flight (DL0404 on the next day): one leg.
+- `origin: JFK` on DL2910: `route_not_found` with `available_routes`. Number 9999: `flight_not_found`
+  (`FLD2300`, HTTP 400).
+- 24 malformed inputs: `invalid_input` and zero requests to Delta (counted through fetch, XHR and
+  resource timing).
+- A cold browser: `blocked` (HTTP 444), exactly one request. A warmed browser at its tenth lookup:
+  `blocked`, one request, no retry.
+- Per invocation the document, URL, dialog state, and focus were unchanged, and exactly one request
+  went to `flightinformation-api.delta.com`. With Delta's location dialog open (Canada egress) it was
+  identical before and after a lookup.
+
+Local Chrome extension (Chromium 153, throwaway profile, extension loaded unpacked, site access
+granted through its own prompt): the namespace registered, `get_flight_status` was listed on
+`www.delta.com/flightstatus/search` and `login` was not (homepage-only), 10 malformed inputs returned
+`invalid_input` with no requests, and one real invocation returned `blocked` after exactly one
+request with the document unchanged. The extension success path was **not** observed: Delta denied
+that local browser, including its own form. Native messaging, the `xwebmcp attach` path, and the
+CSP fallback for page tools were not exercised. No extension parity beyond the above is claimed.
+
+Not observed anywhere: HTTP 429, a `site_error`, or a caller abort against the live site (fixtures
+only); a cancelled, diverted, or partner-operated flight; more than two legs; a successful non-US
+locale lookup; a signed-in session.
 
 ## URL patterns
 

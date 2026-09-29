@@ -81,17 +81,18 @@ function response(status, body) {
 function harness(handler) {
   const calls = [];
   const timers = [];
+  const delays = [];
   const fetch = async (url, init) => { calls.push({ url, init: plain({ ...init, signal: undefined }), signal: init.signal }); return handler(url, init, calls.length); };
   const context = {
     fetch, AbortController,
-    setTimeout: fn => { timers.push(fn); return timers.length; },
+    setTimeout: (fn, ms) => { timers.push(fn); delays.push(ms); return timers.length; },
     clearTimeout: () => {},
     // The tool must not touch the document, navigate, or read the location.
     get document() { throw new Error("document must not be used"); },
     get location() { throw new Error("location must not be used"); }
   };
   const [tool] = runInNewContext(source, context);
-  return { tool, calls, timers, run: (input, ctx = {}) => tool.execute(input, ctx) };
+  return { tool, calls, timers, delays, run: (input, ctx = {}) => tool.execute(input, ctx) };
 }
 
 const okHarness = body => harness(() => response(200, body));
@@ -107,7 +108,9 @@ test("definition: page tool for www.delta.com with read-only annotations and typ
   assert.deepEqual(plain(tool.match.url_patterns), ["https://www.delta.com/*"]);
   assert.equal(tool.tool.annotations.readOnlyHint, true);
   assert.equal(entry.kind, "page");
-  assert.equal(entry.status, "draft");
+  assert.equal(entry.status, "verified");
+  assert.equal(entry.last_verified, "2026-09-29");
+  assert.equal(entry.provenance.qa_agent, "agt_18586dcff5a8cb64565a");
   assert.deepEqual(entry.url_patterns, plain(tool.match.url_patterns));
   assert.ok(!JSON.stringify(tool.tool.outputSchema).includes("$ref"));
   assert.deepEqual(plain(tool.tool.inputSchema.required), ["flight_number", "date"]);
@@ -164,6 +167,28 @@ test("single leg: sends exactly one observed request and returns an allowlisted,
   assert.ok(conforms(outputSchema(h.tool), out), "output must satisfy outputSchema");
   const serialized = JSON.stringify(out);
   for (const leaked of ["000999", "secret-marker-not-for-output", "KXXX", "GMT", "latitude", "flightPositions", "Z\""]) assert.ok(!serialized.includes(leaked), `output must not include ${leaked}`);
+});
+
+test("route filter is applied locally: the request is identical with and without origin/destination", async () => {
+  const plainCall = okHarness(TWO_LEGS);
+  await plainCall.run({ flight_number: "1234", date: "2026-10-01" });
+  const filtered = okHarness(TWO_LEGS);
+  await filtered.run({ flight_number: "1234", date: "2026-10-01", origin: "ATL", destination: "BOS" });
+  assert.deepEqual(filtered.calls[0].init, plainCall.calls[0].init);
+  assert.deepEqual(JSON.parse(filtered.calls[0].init.body), { flightNumber: "1234", airlineCode: "DL", departureDate: "2026-10-01", legDepartureDate: "", originAirportCode: "" });
+});
+
+test("execute is self-contained: the serialized function runs with no reference to the tool file's scope", async () => {
+  const { tool } = okHarness(ONE_LEG);
+  const calls = [];
+  const bare = {
+    fetch: async (url, init) => { calls.push(url); return response(200, ONE_LEG); },
+    AbortController, setTimeout: () => 0, clearTimeout: () => {}
+  };
+  const execute = runInNewContext(`(${tool.execute.toString()})`, bare);
+  const out = plain(await execute({ flight_number: "1234", date: "2026-10-01" }, {}));
+  assert.equal(out.status, "ok");
+  assert.deepEqual(calls, [ENDPOINT]);
 });
 
 test("multi-leg: all legs returned with a warning when no route is given", async () => {
@@ -309,6 +334,24 @@ for (const [name, respond, kind, httpStatus, code] of OUTCOMES) {
   });
 }
 
+for (const [status, body] of [[444, ""], [444, "no body"], [403, ""], [403, "Forbidden"]]) {
+  test(`HTTP ${status} with body ${JSON.stringify(body)} is blocked, not a generic site error`, async () => {
+    const out = plain(await harness(() => response(status, body)).run({ flight_number: "1234", date: "2026-10-01" }));
+    assert.equal(out.error_kind, "blocked");
+    assert.equal(out.http_status, status);
+  });
+}
+
+test("FLD2300 message is sanitized and capped, with a default when Delta sends none", async () => {
+  const noisy = plain(await harness(() => response(400, { code: "FLD2300", message: "No\u0000 flight\n" + "x".repeat(900) })).run({ flight_number: "1234", date: "2026-10-01" }));
+  assert.equal(noisy.error_kind, "flight_not_found");
+  assert.ok(noisy.error_message.length <= 300);
+  assert.ok(!/[\u0000-\u001f]/.test(noisy.error_message));
+  assert.ok(noisy.error_message.startsWith("No flight xxx"));
+  const bare = plain(await harness(() => response(400, { code: "FLD2300" })).run({ flight_number: "1234", date: "2026-10-01" }));
+  assert.match(bare.error_message, /no flight matching/i);
+});
+
 test("blocked message says it is a session block, not a missing flight", async () => {
   const out = plain(await harness(() => response(444, DENIED)).run({ flight_number: "1234", date: "2026-10-01" }));
   assert.match(out.error_message, /not proof that the flight does not exist/);
@@ -328,6 +371,7 @@ test("the 20 second timer aborts a hung request", async () => {
   const pending = h.run({ flight_number: "1234", date: "2026-10-01" });
   await new Promise(resolve => setImmediate(resolve));
   assert.equal(h.timers.length, 1);
+  assert.equal(h.delays[0], 20000);
   h.timers[0]();
   const out = plain(await pending);
   assert.equal(out.error_kind, "network_error");
