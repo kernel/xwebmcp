@@ -54,6 +54,45 @@
       }
     },
     {
+      "domain": "amazon.in",
+      "tool": "get_product",
+      "file": "domains/amazon.in/get_product.js",
+      "kind": "page",
+      "namespace": "amazon.in",
+      "url_patterns": [
+        "https://www.amazon.in/*"
+      ],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Public product page by asin: price and M.R.P. in rupees, rating, availability, seller, bullets, spec tables and variation asins. Live-checked as a guest only; no delivery estimates, reviews or account data."
+    },
+    {
+      "domain": "amazon.in",
+      "tool": "list_bestsellers",
+      "file": "domains/amazon.in/list_bestsellers.js",
+      "kind": "page",
+      "namespace": "amazon.in",
+      "url_patterns": [
+        "https://www.amazon.in/*"
+      ],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Public Best Sellers chart for a department or category node with subcategories to drill into; ranks 1-30 and 51-80 only (the rest lazy-load). Live-checked as a guest only."
+    },
+    {
+      "domain": "amazon.in",
+      "tool": "search_products",
+      "file": "domains/amazon.in/search_products.js",
+      "kind": "page",
+      "namespace": "amazon.in",
+      "url_patterns": [
+        "https://www.amazon.in/*"
+      ],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Public catalog search with the site's departments, sorts, rupee price bounds and filter option ids (include_facets, then facet_ids); sponsored flag and exclude_sponsored. Live-checked as a guest only."
+    },
+    {
       "domain": "delta.com",
       "tool": "get_page_context",
       "file": "domains/delta.com/get_page_context.js",
