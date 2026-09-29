@@ -210,7 +210,7 @@ const invalidInputs = {
     { surname: "smith", collection_id: "abc" }, { surname: "smith", collection_id: 4464515 }, { surname: "smith", collection_id: "12345678901" }, { surname: "smith", limit: 0 }, { surname: "smith", limit: 51 },
     { surname: "smith", limit: "5" }, { surname: "smith", offset: -1 }, { surname: "smith", offset: 4999 }, { surname: "smith", limit: 50, offset: 4950 }, { surname: "smith", limit: 2, offset: 4998 }],
   get_record: [undefined, null, [], {}, { record: "" }, { record: 5 }, { record: "   " }, { record: "abc" }, { record: "AAAA-BB" }, { record: "aaaa-bbbb" }, { record: "1:3:AAAA-BBBB" }, { record: "3:1:AAAA-BBBB-CCCC" },
-    { record: "https://familysearch.org1:1:AAAA-CCCC" }, { record: "https://www.familysearch.org1:1:AAAA-CCCC" }, { record: "https://www.familysearch.org/1:1:AAAA-CCCC" }, { record: "https://familysearch.orgark:/61903/1:1:AAAA-CCCC" },
+    { record: "https://www.familysearch.org/ark:/61903/1:3:AAAA-CCCC" }, { record: "ark:/61904/1:1:AAAA-CCCC" }, { record: "1:1:AAAA-CCCC?x=1" }, { record: "1:1:AAAA-CCCC#x" }, { record: "1:3:AAAA-CCCC" }, { record: "https://familysearch.org1:1:AAAA-CCCC" }, { record: "https://www.familysearch.org1:1:AAAA-CCCC" }, { record: "https://www.familysearch.org/1:1:AAAA-CCCC" }, { record: "https://familysearch.orgark:/61903/1:1:AAAA-CCCC" },
     { record: "AAAA-CCCC" }, { record: "KWCJ-RN4" }, { record: "4:1:AAAA-CCCC" }, { record: "https://www.familysearch.org/ark:/61903/4:1:AAAA-CCCC" }, { record: "1:1:aaaa-cccc" }, { record: "https://www.familysearch.org/ark:/61903/1:1:AAAA-CCCC?" + "x".repeat(300) },
     { record: "https://ancestors.familysearch.org/ark:/61903/1:1:AAAA-BBBB" }, { record: "https://familysearch.org.example.net/ark:/61903/1:1:AAAA-BBBB" }, { record: "http://www.familysearch.org/ark:/61903/1:1:AAAA-BBBB" },
     { record: "https://www.familysearch.org/en/tree/person/details/AAAA-BBB" }, { record: "AAAA-BBBB", extra: 1 }, { record: "x".repeat(301) }],
@@ -671,24 +671,38 @@ test("search_records: lists at most 10 collections, largest first", async () => 
   assert.deepEqual(result.collections.map(c => c.hit_count), [12, 11, 10, 9, 8, 7, 6, 5, 4, 3]);
 });
 
-test("every tool strips control, format, bidirectional, zero-width, tag and variation-selector characters from site text", async () => {
-  const invisible = ["\u0085", "\u202e", "\u200b", "\ufeff", "\u2060", "\u2061", "\u2064", "\u2065", "\u2066", "\u2067", "\u2068", "\u2069", "\u206f", "\u061c", "\u00ad", "\u034f", "\u180e", "\ufe00", "\ufe0e", "\ufe0f", "\u{e0041}", "\u{e007f}", "\u2028", "\u0007"];
-  const dirty = "Ada" + invisible.join("") + " Exa" + invisible.join("x") + "mple";
+test("every tool removes default-ignorable characters and turns other control characters into spaces", async () => {
+  const ignorable = ["\u00ad", "\u034f", "\u061c", "\u115f", "\u1160", "\u17b4", "\u17b5", "\u180b", "\u180d", "\u180e", "\u180f", "\u200b", "\u200c", "\u200d", "\u200e", "\u200f", "\u202a", "\u202e", "\u2060", "\u2064", "\u2065", "\u2066", "\u2069", "\u206f", "\u3164", "\ufe00", "\ufe0e", "\ufe0f", "\ufeff", "\uffa0", "\ufff0", "\u{e0000}", "\u{e0041}", "\u{e007f}", "\u{e0100}", "\u{e01ef}"];
+  const spaced = ["\u0085", "\u2028", "\u2029", "\u2800", "\u0007", "\t", "\n"];
+  const dirty = "Ada" + ignorable.join("") + " Exa" + ignorable.join("x") + "mple " + spaced.join("z") + "!";
+  const cleaned = "Ada Exa" + "x".repeat(ignorable.length - 1) + "mple " + "z ".repeat(spaced.length - 1) + "!";
   const entry = searchEntry();
   entry.content.gedcomx.persons[0].display.name = dirty;
   const search = await harness("search_records", { route: () => ({ status: 200, body: searchBody([entry], 1) }) }).run({ surname: "Example" });
-  assert.equal(search.hits[0].name, "Ada Exa " + "x ".repeat(invisible.length - 1) + "mple");
+  assert.equal(search.hits[0].name, cleaned);
   const body = recordBody();
   body.persons[0].display.name = dirty;
   const record = await harness("get_record", { route: recordRoute(body) }).run({ record: "1:1:AAAA-CCCC" });
-  assert.equal(record.persons[0].name, search.hits[0].name);
+  assert.equal(record.persons[0].name, cleaned);
   const list = await harness("list_collections", { route: () => ({ status: 200, body: listBody([listEntry("9000001", dirty)]) }) }).run({});
-  assert.equal(list.collections[0].title, search.hits[0].name);
-  const blank = await harness("list_collections", { route: () => ({ status: 200, body: listBody([listEntry("9000001", invisible.join(""))]) }) }).run({});
-  assert.equal(blank.collections[0].title, "(untitled)");
-  const term = harness("search_records", { route: () => ({ status: 200, body: searchBody() }) });
-  await term.run({ surname: "Ex\u202eam\u200bple" });
-  assert.equal(query(term.calls[0]).get("q.surname"), "Ex am ple");
+  assert.equal(list.collections[0].title, cleaned);
+  for (const blankTitle of [ignorable.join(""), spaced.join(""), ignorable.join("") + spaced.join("")]) {
+    const blank = await harness("list_collections", { route: () => ({ status: 200, body: listBody([listEntry("9000001", blankTitle)]) }) }).run({});
+    assert.equal(blank.collections[0].title, "(untitled)");
+  }
+});
+
+test("search_records and list_collections delete invisible characters in input terms instead of splitting words", async () => {
+  const search = harness("search_records", { route: () => ({ status: 200, body: searchBody() }) });
+  await search.run({ surname: "Sch\u00admidt", given_name: "Ali\u200crez\u200da", birth_place: "Ex\u202eam\u200bple", keyword: "wea\u2060ver\u0007x" });
+  const params = query(search.calls[0]);
+  assert.deepEqual([params.get("q.surname"), params.get("q.givenName"), params.get("q.birthLikePlace"), params.get("q.miscKeyword")], ["Schmidt", "Alireza", "Example", "weaver x"]);
+  assert.equal((await harness("search_records").run({ surname: "\u00ad\u200b" })).error_kind, "invalid_input");
+  const list = listBody([listEntry("9000001", "Ire\u00adland, Civil Registration"), listEntry("9000002", "Ireland Census")]);
+  assert.deepEqual(ids((await listRun({ query: "Ire\u00adland civil\u200b" }, list)).result), ["9000001"]);
+  assert.deepEqual(ids((await listRun({ query: "ireland" }, list)).result).sort(), ["9000001", "9000002"]);
+  assert.equal((await harness("list_collections").run({ query: "\u00ad\u200b\u2060" })).error_kind, "invalid_input");
+  assert.equal((await harness("list_collections").run({ place: "\u00ad" })).error_kind, "invalid_input");
 });
 
 const crowd = (count, subjectAt) => Array.from({ length: count }, (_, i) => person(`p_${i}`, i === subjectAt ? "AAAA-CCCC" : `BBBB-${String(1000 + i)}`, `Person ${i}`, "Male"));
@@ -813,6 +827,15 @@ test("list_collections: folds letters without a decomposition and keeps other sc
   assert.deepEqual(ids((await listRun({ query: "ΕΛΛΆΔΑ" }, list)).result), ["9000044"]);
 });
 
+test("list_collections: every folded letter matches its ASCII spelling", async () => {
+  const pairs = [["Hođić", "hodic"], ["Ðorđe", "dorde"], ["Łódź", "lodz"], ["Ørsted", "orsted"], ["Æsir", "aesir"], ["Œuvre", "oeuvre"], ["Straße", "strasse"], ["Þór", "thor"], ["Ħal", "hal"], ["Ismaıl", "ismail"]];
+  const list = listBody(pairs.map(([title], i) => listEntry(String(9000100 + i), title)));
+  for (const [i, [title, ascii]] of pairs.entries()) {
+    assert.deepEqual(ids((await listRun({ query: ascii }, list)).result), [String(9000100 + i)], title);
+    assert.deepEqual(ids((await listRun({ query: title }, list)).result), [String(9000100 + i)], title);
+  }
+});
+
 test("search_records: only a cookie named exactly fssessionid counts as the session", async () => {
   const h = harness("search_records", { cookie: "xfssessionid=abc; fssessionid_old=1", route: () => ({ status: 200, body: searchBody() }) });
   await h.run({ surname: "Example" });
@@ -863,7 +886,12 @@ test("get_record: entities are decoded once and only real tags are removed from 
     ["Value 1 < 2 and 3 > 1", "Value 1 < 2 and 3 > 1"],
     ["Cited <b>work</b> <br/> here", "Cited work here"],
     ["Cited <unclosed and more", "Cited"],
-    ["a &lt; b &amp;&amp; c &gt; d", "a < b && c > d"]
+    ["a &lt; b &amp;&amp; c &gt; d", "a < b && c > d"],
+    ["&#60;script&#62;alert(1)&#60;/script&#62;kept &#x3c;b&#x3e;bold&#x3c;/b&#x3e;", "alert(1)kept bold"],
+    ["&#0;x&#1114112;y&#55296;z&#8238;w", "xyzw"],
+    ["Cited <B>work</B> <!-- hidden --> and <!-- unterminated", "Cited work and"],
+    ["See <http://example.com/a> for &lt;http://example.com/b&gt;", "See <http://example.com/a> for <http://example.com/b>"],
+    ["x <a href=\"u\">link</a> y <br> z", "x link y z"]
   ];
   for (const [value, expected] of cases) {
     const body = recordBody();

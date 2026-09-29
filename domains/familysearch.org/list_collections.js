@@ -74,9 +74,10 @@
   },
   execute: async (input) => {
     const fail = (kind, message) => ({ status: "error", error_kind: kind, error_message: message });
+    const scrub = text => text.replace(/\p{Default_Ignorable_Code_Point}/gu, "").replace(/[\p{Cc}\u2028\u2029\u2800]/gu, " ").replace(/\s+/g, " ").trim();
     const clip = (value, max) => {
       if (typeof value !== "string") return null;
-      const text = value.replace(/[\p{Cc}\p{Cf}\u034f\u2028\u2029\u2060-\u206f\ufe00-\ufe0f]/gu, " ").replace(/\s+/g, " ").trim();
+      const text = scrub(value);
       if (!text) return null;
       return text.length > max ? text.slice(0, max - 1) + "…" : text;
     };
@@ -88,7 +89,7 @@
     const words = {};
     for (const key of ["query", "place"]) {
       if (input[key] === undefined) continue;
-      const value = typeof input[key] === "string" ? input[key].replace(/[\p{Cc}\p{Cf}\u034f\u2028\u2029\u2060-\u206f\ufe00-\ufe0f]/gu, " ").replace(/\s+/g, " ").trim() : "";
+      const value = typeof input[key] === "string" ? scrub(input[key]) : "";
       if (value.length < 1 || value.length > 100) return fail("invalid_input", key + " must be a text of 1 to 100 characters. Nothing was sent to FamilySearch.");
       words[key] = value;
     }
@@ -107,7 +108,7 @@
     if (!(Number.isInteger(offset) && offset >= 0 && offset <= 3500)) return fail("invalid_input", "offset must be an integer from 0 to 3500. Nothing was sent to FamilySearch.");
 
     const FOLD = { "\u0111": "d", "\u00f0": "d", "\u0142": "l", "\u00f8": "o", "\u00e6": "ae", "\u0153": "oe", "\u00df": "ss", "\u00fe": "th", "\u0127": "h", "\u0131": "i" };
-    const norm = text => text.normalize("NFD").replace(/\p{M}/gu, "").toLowerCase().replace(/[\u0111\u00f0\u0142\u00f8\u00e6\u0153\u00df\u00fe\u0127\u0131]/g, letter => FOLD[letter]).replace(/[^\p{L}\p{N}]+/gu, " ").trim();
+    const norm = text => text.replace(/\p{Default_Ignorable_Code_Point}/gu, "").normalize("NFD").replace(/\p{M}/gu, "").toLowerCase().replace(/[\u0111\u00f0\u0142\u00f8\u00e6\u0153\u00df\u00fe\u0127\u0131]/g, letter => FOLD[letter]).replace(/[^\p{L}\p{N}]+/gu, " ").trim();
     const queryText = words.query ? norm(words.query) : "";
     if (words.query && !queryText) return fail("invalid_input", "query must contain at least one letter or digit. Nothing was sent to FamilySearch.");
     if (location.origin !== "https://www.familysearch.org") return fail("wrong_page", "This tab is on " + location.host + ", not www.familysearch.org. Open https://www.familysearch.org/ in this tab and call again. Nothing was sent to FamilySearch.");

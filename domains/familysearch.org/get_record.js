@@ -79,9 +79,10 @@
   },
   execute: async (input) => {
     const fail = (kind, message) => ({ status: "error", error_kind: kind, error_message: message });
+    const scrub = text => text.replace(/\p{Default_Ignorable_Code_Point}/gu, "").replace(/[\p{Cc}\u2028\u2029\u2800]/gu, " ").replace(/\s+/g, " ").trim();
     const clip = (value, max) => {
       if (typeof value !== "string") return null;
-      const text = value.replace(/[\p{Cc}\p{Cf}\u034f\u2028\u2029\u2060-\u206f\ufe00-\ufe0f]/gu, " ").replace(/\s+/g, " ").trim();
+      const text = scrub(value);
       if (!text) return null;
       return text.length > max ? text.slice(0, max - 1) + "…" : text;
     };
@@ -190,7 +191,12 @@
     const event = coverage ? { date: clip(coverage.temporal && coverage.temporal.original, 80), place: clip(coverage.spatial && coverage.spatial.original, 200) } : null;
     const cited = sources.find(source => Array.isArray(source.citations) && source.citations[0] && typeof source.citations[0].value === "string");
     const subjectIndex = arkKind === "1:1" ? persons.findIndex(person => personaOf(person) === id) : -1;
-    const stripMarkup = text => text.replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, "\"").replace(/&#0?39;|&apos;/g, "'").replace(/&amp;/g, "&").replace(/<\/?[A-Za-z][^>]*(?:>|$)/g, "");
+    const decode = text => text.replace(/&(?:#(\d{1,7})|#x([0-9a-fA-F]{1,6})|(lt|gt|quot|apos|amp));/g, (match, dec, hex, name) => {
+      if (name) return { lt: "<", gt: ">", quot: "\"", apos: "'", amp: "&" }[name];
+      const code = dec !== undefined ? Number(dec) : parseInt(hex, 16);
+      return code > 0 && code <= 0x10ffff && !(code >= 0xd800 && code <= 0xdfff) ? String.fromCodePoint(code) : "";
+    });
+    const stripMarkup = text => decode(text).replace(/<!--[\s\S]*?(?:-->|$)/g, "").replace(/<\/?[A-Za-z][A-Za-z0-9]*(?=[\s\/>]|$)[^>]*(?:>|$)/g, "");
     return {
       status: "ok", record_url: recordUrl, ark_kind: arkKind === "1:1" ? "persona" : "record",
       record_title: clip(record && record.titles && record.titles[0] && record.titles[0].value, 200),

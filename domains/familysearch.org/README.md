@@ -50,7 +50,7 @@ All three tools match only `https://www.familysearch.org/*`, not the default `ht
 - Every request is a same-origin `GET` to `www.familysearch.org` (`/service/search/hr/v2/personas`, `/ark:/61903/1:1:<id>` or `1:2:<id>`, `/search/orchestration/collectionListData`). The tools never sign in, save, attach, cite, follow, edit or delete anything, never open Family Tree, images, hints or matches, and never navigate.
 - `get_record` sends the page's `fssessionid` cookie value as the bearer token, exactly as the site's own scripts do: records outside the public set are refused without it (HTTP 401 in a signed-in browser). The token is read from `document.cookie`, sent only to the same origin, and never returned or logged. The other two tools send no token.
 - `signed_in` in `search_records` is read from the current page's header (a Sign Out link means signed in, a Sign Up link means signed out) with no request; it is `null` when the header shows neither, for example on wiki pages or before it has rendered.
-- Record text is untrusted page data. Strings are stripped of control and format characters (bidirectional, zero-width, tag and variation-selector characters included), length-bounded and returned as data; `citation` has literal and entity-encoded markup removed. Nothing in a record is executed or followed.
+- Record text is untrusted page data. Strings have Unicode default-ignorable characters (soft hyphens, zero-width and bidirectional characters, tag characters, variation selectors, fillers) removed and other control characters replaced by a space, are length-bounded and are returned as data; input terms get the same cleaning, so a soft hyphen pasted into a name does not split it. `citation` also has HTML comments, tags and named or numeric entity-encoded tags removed. Nothing in a record is executed or followed.
 - Only an allowlist of fields is returned. Record-level internal fields (batch ids, operator notes, image and film identifiers, sort keys) and unlisted person fields are dropped. No document image, image URL or account identifier is returned.
 - People in newer collections (for example the 1950 US census) may still be living. The tools return only what FamilySearch itself shows this browser; use the results for research, not to profile individuals, and do not store them.
 
@@ -63,7 +63,7 @@ All three tools match only `https://www.familysearch.org/*`, not the default `ht
 - The search API rejects `count` above 100 and `offset + count` of 5000 or more (HTTP 400). The tool caps `limit` at 50 and `offset + limit` at 4999.
 - Place and date terms are the site's "like" terms: a place can also match a related event in the record (for example a census residence), which is the site's behavior. Only the terms on the site's default search form are exposed; the API also accepts death, marriage and residence terms, sex and a spouse name, which are not exposed because their "like" semantics were not characterised.
 - The collection list is one ~1.2 MB JSON document (about 3,500 collections) that the page itself filters in the browser; `list_collections` fetches it on each call and filters locally; `query` words match whole words only, ignoring case, accents (including đ, ß, ø, ł, æ, œ) and punctuation. Collections are matched to places through the site's Place filter, so a state name leaves out nationwide collections; use `United States` for those. `record_count` 0 means the collection has images but is not name-searchable.
-- When a result contains accented Latin text (for example the collection titles returned for the query `Córdoba` or `Liège`), the Kernel runtime observed on 2026-09-29 delivered `output` as a JSON string instead of an object; results with only ASCII text, or an en dash, arrived as objects. This is runtime behavior, not tool code: parse `output` when `typeof output === "string"`.
+- Independent QA found that the Kernel runtime (2026-09-29) delivers `output` as a JSON string instead of an object exactly when the result contains a character from U+0080 to U+00FF (for example é, ñ, ß, as in the collection titles returned for `Córdoba` or `Liège`); results with only ASCII text, an en dash, đ, ł or CJK text arrived as objects. The local extension always returned objects. This is runtime behavior, not tool code: parse `output` when `typeof output === "string"`.
 
 ## Known limitations
 
@@ -76,11 +76,18 @@ All three tools match only `https://www.familysearch.org/*`, not the default `ht
 - Rate limits were not measured; the tools do not retry. HTTP 429 returns `rate_limited`.
 - Whether FamilySearch's terms permit automated reading was not reviewed.
 - `wrong_page` was exercised by fixtures and, in independent QA, live on a page whose top document was `https://example.com/` with an embedded `www.familysearch.org` frame (the Kernel runtime registers the tools there). The Chrome extension registers a tool only when the top document matches (`spec/cdp-tools.md` §9), so `wrong_page` is not reachable in it.
-- Local Chrome extension: independent QA ran the tools in Chromium 153 with the unpacked extension on signed-out pages only. For 16 identical inputs, 13 gave the same result as on Kernel; the other 3 differed only in `signed_in`, which was `null` in the extension on a tab that showed a bot-protection page without the site header and `false` on Kernel. Google Chrome itself and signed-in flows were not run.
+- Local Chrome extension: independent QA ran the tools in Chromium 153 with the unpacked extension on signed-out pages only. For 18 identical inputs on the last reviewed revision, 15 gave the same result as on Kernel once parsed; the other 3 differed only in `signed_in`, which was `null` in the extension on a tab that showed a bot-protection page without the site header and `false` on Kernel. Google Chrome itself and signed-in flows were not run.
 
 ## QA summary
 
-Independent QA (a separate reviewer, two rounds on earlier revisions) found defects that are fixed in this revision; no sign-off is recorded for this revision yet, so all three tools are `draft`. Authoring-time live checks (2026-09-29, Kernel browser, page-tool invocation through `POST /browsers/{id}/webmcp/invoke`):
+Independent QA (Hypeship agent `agt_3c46f73a3268da8f5354`, Kernel runtime and a local Chromium 153 extension, signed-out surfaces only) reviewed three revisions of this PR and returned FAIL each time; it gave no sign-off. The last review, on head `4bc44b36098a73b1d2bee0d838984842b1044b65`, found no blocking defects and these should-fix ones, all fixed in the commit after it:
+
+- Some default-ignorable characters (variation selectors 17 to 256, Mongolian variation selectors, Hangul and Khmer fillers) survived the text cleaning.
+- Invisible format characters in input terms were replaced by a space, so a pasted soft hyphen split a name and changed the search.
+
+Its nits (JSON-string wording, citation cleanup of numeric entities, comments and autolinks, missing fixture cases) are also addressed. The review-round limit was reached, so the commit that fixes these was not independently re-reviewed and all three tools stay `draft`.
+
+Authoring-time live checks (2026-09-29, Kernel browser, page-tool invocation through `POST /browsers/{id}/webmcp/invoke`):
 
 - Signed out: `search_records` (name, place, years, keyword, exact, wildcards, `collection_id` refused with `login_required` for the 1950 census), `get_record` (persona and household arks, unknown id, malformed input), `list_collections` (title, place, type, years, size, sort, unknown place).
 - Signed in (one approved account, read-only calls): `search_records` with and without `collection_id`, `get_record` on a church-register record.
