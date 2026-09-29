@@ -4,13 +4,13 @@ Tools for Amazon's US store (https://www.amazon.com): search, product details an
 
 | tool | file | status | notes |
 |------|------|--------|-------|
-| search_products | [search_products.js](search_products.js) | draft | One results page with the site's sorts, price bounds and filters by id; ASIN, price, list price, rating, sponsored flag and delivery wording per product |
-| get_product | [get_product.js](get_product.js) | draft | Price, availability, rating, bullets, shipper and seller, delivery wording and variations with the ASIN of each combination for one ASIN |
-| get_best_sellers | [get_best_sellers.js](get_best_sellers.js) | draft | A department or category ranking (the ranks the page itself contains) and the categories to open next; without a category, the department list |
+| search_products | [search_products.js](search_products.js) | verified | One results page with the site's sorts, price bounds and filters by id; ASIN, price, list price, rating, sponsored flag and delivery wording per product |
+| get_product | [get_product.js](get_product.js) | verified | Price, availability, rating, bullets, shipper and seller, delivery wording and variations with the ASIN of each combination for one ASIN |
+| get_best_sellers | [get_best_sellers.js](get_best_sellers.js) | verified | A department or category ranking (the ranks the page itself contains) and the categories to open next; without a category, the department list |
 
 ## Native WebMCP tools
 
-Amazon registers none. `webmcp.listTools()` returned no tools on the homepage, a search results page, a product page, `/cart` and the Fresh storefront (checked 2026-09-29 signed out, with the same result in a signed-in session). The browser exposes `document.modelContext.registerTool`, so the API exists; the site does not use it. These tools therefore do not collide with or duplicate native tools.
+Amazon registers none. `webmcp.listTools()` returned no tools on the homepage, a search results page, a product page, `/cart` and the Fresh storefront (checked 2026-09-29 signed out; a signed-in session showed the same result, which independent QA did not repeat). The browser exposes `document.modelContext.registerTool`, so the API exists; the site does not use it. These tools therefore do not collide with or duplicate native tools.
 
 ## Execution kind
 
@@ -71,13 +71,16 @@ All three tools use `["https://www.amazon.com/*"]` instead of the default `["htt
 
 ## QA summary
 
-Not yet independently reviewed; all three tools are `draft`.
+Independent QA signed off all three tools on 2026-09-29 at the final tool source (the commit that introduced the last `domains/amazon.com/*.js` change), after two rounds of fixes. The first round found and the builder fixed: Amazon's AI-agent notice reported as `site_changed` or `not_found` instead of `access_gated`; `add_to_cart_available` false on a page whose control uses a second element id; a valid filter id hiding an ignored one (now checked per id against the site's own echo); a mislabelled price filter group; README and description inaccuracies; and test gaps found by mutation testing (75 of 76 mutants killed; the survivor is equivalent). The reviewer ran signed out on the Kernel runtime with the whole namespace registered atomically.
 
-Builder checks (2026-09-29, signed out, US, Kernel stealth browsers, all three files registered together as namespace `amazon.com` through the Kernel API and invoked through the WebMCP API):
+Live cases (2026-09-29, Kernel runtime, signed out, US), each invoked through the WebMCP API:
 
-- `search_products`: keyword search from the homepage with `include_facets` (25 groups, exact rating counts, badges, delivery wording); brand facet id plus price bounds plus low-to-high sort returned the site's own "Selected filters" summary and prices inside the bounds in that check; an unknown facet group returned `filter_not_applied`; a nonsense query returned `no_matches`; page 20 of a filtered query returned `page_out_of_range` with the total.
-- `get_product`: a variation child, its family parent (`is_variation_parent`, null price, no buy box), a discounted item (list price), a plain item, a third-party-seller item, `variant_filter` narrowing 117 variations to one, an unknown variation name (`invalid_input`) and an unknown ASIN (`not_found`).
-- `get_best_sellers`: the department list, a department (ranks 1-30) and a subcategory page 2 (ranks 51-80), and an unknown category node and an unknown department (`not_found`).
-- Starting pages: homepage, a product page, a Best Sellers page, `/cart` and the sign-in page all work and leave the tab URL unchanged; the tools are not listed on `aws.amazon.com` or an unrelated site; a tool reference from an earlier page is rejected after navigation.
-- Largest outputs seen: 40 KB (48 products with all filter groups), 18 KB (117 variations), 14 KB (a full Best Sellers page), each in under 3 s.
-- Fixture tests in `tests/amazon-shopping.test.mjs` (fabricated pages shaped like the observed markup) cover input validation before any request, every output branch against its schema, request construction for sorts, price bounds, paging and filters, that only `GET` requests to `www.amazon.com` are made, and that the delivery-location label never appears in output. Several of the live checks above found real defects that the fixtures now cover (total-count wordings, out-of-range pages, blank buy-box price text, glued delivery text).
+- Start pages: every tool from the homepage, a product page, a Best Sellers page, `/cart` and the sign-in page (15 of 15 calls); the tab URL and cart count never changed; the tools are not listed on `aws.amazon.com` or an unrelated site; a tool reference from an earlier page is rejected after navigation.
+- `search_products`: all six sorts; price bounds; page 2 and `limit`; facet ids from two groups plus price bounds (results and the site's "Selected filters" summary narrowed as asked); an ignored filter id, alone or beside a valid one, returned `filter_not_applied` naming it; a nonsense query and a page past the end returned `no_results`; queries containing `&`, `#`, quotes and Unicode.
+- `get_product`: a variation child, its parent, a discounted item, a plain item and a third-party-seller item; price, availability, rating, seller and delivery matched the live tab on two products; `variant_filter`, `max_variants`, an unknown variation name and an unknown ASIN.
+- `get_best_sellers`: the department list, a department, a subcategory and its page 2, and unknown categories.
+- 50 malformed inputs across the tools (including `__proto__` and wrong types) returned `invalid_input` with no request to Amazon; 44 live outputs validated against their `outputSchema`; a network log showed only `GET` requests to `www.amazon.com` from the tools; outputs contained no location label, session, cookie, CSRF or tracking strings; largest outputs were about 40 KB.
+
+Builder checks that led to fixes: the live runs also found single-page totals worded "31 results", out-of-range pages that carry the "No results" wording, blank buy-box price text in the server HTML, and delivery messages glued together; the fixtures in `tests/amazon-shopping.test.mjs` now cover each.
+
+Not tested: signed-in behaviour; other Amazon country sites; a real robot-check page; the `access_gated` notice on the Kernel runtime (it never appeared there; it was seen once in a plain local Chromium and is otherwise covered by fixtures); a currently unavailable product's add-to-cart control; and the success paths of all three tools in the local Chrome extension. In the extension only registration on the granted `www.amazon.com` tab, page-tool execution and typed error outcomes (validation errors and `access_gated`) were checked, so cross-runtime parity is not claimed.

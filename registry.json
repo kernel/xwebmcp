@@ -62,9 +62,12 @@
       "url_patterns": [
         "https://www.amazon.com/*"
       ],
-      "status": "draft",
-      "last_verified": null,
-      "notes": "One page of a department or category Best Sellers ranking (ranks 1-30 of each page of 50 that Amazon server-renders) plus navigable categories; without a category it lists departments. Read-only; does not return ranks that only load through page scripts."
+      "status": "verified",
+      "last_verified": "2026-09-29",
+      "notes": "One page of a department or category Best Sellers ranking plus navigable categories; without a category it lists departments. Independent QA verified the department list, categories, page 2 and unknown-category handling live on the Kernel runtime. Only ranks 1-30 (page 1) and 51-80 (page 2) are server-rendered, so ranks are not contiguous; the access_gated notice is reported and never dismissed.",
+      "provenance": {
+        "qa_agent": "agt_ad94863d92ee1a4357a1"
+      }
     },
     {
       "domain": "amazon.com",
@@ -75,9 +78,12 @@
       "url_patterns": [
         "https://www.amazon.com/*"
       ],
-      "status": "draft",
-      "last_verified": null,
-      "notes": "Product page fields for one ASIN: title, brand, current and list price, availability, rating and histogram, bullets, shipper and seller, delivery wording, add-to-cart availability, and variations with the ASIN of each combination (variant_filter narrows large families). Read-only; prices and delivery follow the session delivery location."
+      "status": "verified",
+      "last_verified": "2026-09-29",
+      "notes": "Product page fields for one ASIN: title, brand, current and list price, availability, rating and histogram, bullets, shipper and seller, delivery wording, add-to-cart availability, and variations with the ASIN of each combination (variant_filter narrows large families). Independent QA compared price, availability, rating, seller and delivery with the live tab on two products. Prices and delivery follow the session delivery location; a variation parent has no price; the access_gated notice is reported and never dismissed.",
+      "provenance": {
+        "qa_agent": "agt_ad94863d92ee1a4357a1"
+      }
     },
     {
       "domain": "amazon.com",
@@ -88,9 +94,12 @@
       "url_patterns": [
         "https://www.amazon.com/*"
       ],
-      "status": "draft",
-      "last_verified": null,
-      "notes": "One results page of Amazon search with the site sorts, price bounds and filters by id (include_facets lists them); products carry ASIN, price, list price, rating, sponsored flag and delivery wording. Read-only; results come from the server-rendered page so ad placements can differ from the tab; an ignored filter id is reported, not returned unfiltered."
+      "status": "verified",
+      "last_verified": "2026-09-29",
+      "notes": "One results page with the site sorts, price bounds and filters by id (include_facets lists them); products carry ASIN, price, list price, rating, sponsored flag and delivery wording. Independent QA verified sorts, filters, facets, paging and outputs live on the Kernel runtime. The price filter can still return items priced outside the bounds; an ignored filter id is reported, not returned unfiltered; results come from the server-rendered page so ad placements can differ from the tab; Amazon's AI-agent Conditions of Use notice is reported as access_gated and never dismissed.",
+      "provenance": {
+        "qa_agent": "agt_ad94863d92ee1a4357a1"
+      }
     },
     {
       "domain": "delta.com",
