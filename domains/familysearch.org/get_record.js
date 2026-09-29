@@ -87,7 +87,7 @@
       return text.length > max ? text.slice(0, max - 1) + "…" : text;
     };
     if (!input || typeof input !== "object" || Array.isArray(input) || Object.keys(input).some(key => key !== "record") || typeof input.record !== "string") {
-      return fail("invalid_input", "Input must be an object with a record string (a persona_id, a 1:1:/1:2: ark path or a familysearch.org ark URL). Nothing was sent to FamilySearch.");
+      return fail("invalid_input", "Input must be an object with a record string (a record_url, a 1:1:/1:2: ark path or a familysearch.org ark URL). Nothing was sent to FamilySearch.");
     }
     const ID = "[0-9A-Z]{4}-[0-9A-Z]{3,4}";
     const raw = input.record.trim();
