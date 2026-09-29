@@ -636,7 +636,7 @@ test("search_securities stops requesting lists once its 45 second budget is spen
 });
 
 test("search_securities gives a profile URL for DFM and Nasdaq Dubai rows only", async () => {
-  const rows = { equities: [dirRow("AAA1", "Alpha One", { Exchange: "DFM" }), dirRow("AAA2", "Alpha Two", { Exchange: "Nasdaq Dubai" }), dirRow("AAA3", "Alpha Three", { Exchange: "Elsewhere" }), dirRow("AAA 4", "Alpha Four", { Exchange: "DFM" }), dirRow("AAA5", "Alpha Five", { Exchange: null }), dirRow("AAA6", "Alpha Six", { Exchange: "Not DFM" }), dirRow("AAA7", "Alpha Seven", { Exchange: "Nasdaq Dubai Extra" })] };
+  const rows = { equities: [dirRow("AAA1", "Alpha One", { Exchange: "DFM" }), dirRow("AAA2", "Alpha Two", { Exchange: "Nasdaq Dubai" }), dirRow("AAA3", "Alpha Three", { Exchange: "Elsewhere" }), dirRow("AAA 4", "Alpha Four", { Exchange: "DFM" }), dirRow("AAA5", "Alpha Five", { Exchange: null }), dirRow("AAA6", "Alpha Six", { Exchange: "Not DFM" }), dirRow("AAA7", "Alpha Seven", { Exchange: "Nasdaq Dubai Extra" }), dirRow("AAA8", "Alpha Eight", { Exchange: "NASDAQ DUBAI" }), dirRow("AAA9", "Alpha Nine", { Exchange: "dfm" })] };
   const env = load("search_securities", { handler: body => okReply(rows[field(body, "securitytype")] ?? []) });
   const out = await env.run({ query: "alpha", limit: 10 });
   const by = Object.fromEntries(out.results.map(r => [r.symbol, r.profile_url]));
@@ -647,6 +647,8 @@ test("search_securities gives a profile URL for DFM and Nasdaq Dubai rows only",
   assert.equal(by.AAA5, null);
   assert.equal(by.AAA6, null, "exchange names are matched whole, not as substrings");
   assert.equal(by.AAA7, null);
+  assert.equal(by.AAA8, "https://www.dfm.ae/the-exchange/market-information/company/AAA8", "exchange names are matched case-insensitively");
+  assert.equal(by.AAA9, "https://www.dfm.ae/the-exchange/market-information/company/AAA9");
   assertConforms(env.definition, out);
 });
 
