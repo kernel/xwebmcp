@@ -867,6 +867,45 @@
       }
     },
     {
+      "domain": "reddit.com",
+      "tool": "get_thread",
+      "file": "domains/reddit.com/get_thread.js",
+      "kind": "page",
+      "namespace": "reddit.com",
+      "url_patterns": [
+        "https://www.reddit.com/*"
+      ],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Reads one post and up to 100 comments (site sort, depth 1-8) through the site's own thread JSON; comments the site collapses are reported in more, not expanded. Public content only; viewer-specific fields are not returned."
+    },
+    {
+      "domain": "reddit.com",
+      "tool": "list_posts",
+      "file": "domains/reddit.com/list_posts.js",
+      "kind": "page",
+      "namespace": "reddit.com",
+      "url_patterns": [
+        "https://www.reddit.com/*"
+      ],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Reads one page of a community feed (hot, new, top, rising, controversial) through the site's own feed JSON. Public content only; no front-page or account feeds; viewer-specific fields are not returned."
+    },
+    {
+      "domain": "reddit.com",
+      "tool": "search",
+      "file": "domains/reddit.com/search.js",
+      "kind": "page",
+      "namespace": "reddit.com",
+      "url_patterns": [
+        "https://www.reddit.com/*"
+      ],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Searches posts site-wide or inside one community through the site's own search JSON. Posts only; no comment, community or user search. Public content only; viewer-specific fields are not returned."
+    },
+    {
       "domain": "southwest.com",
       "tool": "login",
       "file": "domains/southwest.com/login.js",
