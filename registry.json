@@ -1274,6 +1274,45 @@
       "provenance": {
         "qa_agent": "agt_a87837884a432de575e8"
       }
+    },
+    {
+      "domain": "whatsapp.com",
+      "tool": "get_session_status",
+      "file": "domains/whatsapp.com/get_session_status.js",
+      "kind": "page",
+      "namespace": "whatsapp.com",
+      "url_patterns": [
+        "https://web.whatsapp.com/*"
+      ],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "WhatsApp Web only. Reports logged_in, logged_out (QR / linking screen) or unknown from the page's own markup; never links a device or reads the QR code. Read-only."
+    },
+    {
+      "domain": "whatsapp.com",
+      "tool": "list_chats",
+      "file": "domains/whatsapp.com/list_chats.js",
+      "kind": "page",
+      "namespace": "whatsapp.com",
+      "url_patterns": [
+        "https://web.whatsapp.com/*"
+      ],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "WhatsApp Web only. Chat titles and the sidebar's time text for the rendered rows, in sidebar order. Never opens a chat and does not read previews, message text, unread counts or read state. The selected sidebar filter chip is not detectable."
+    },
+    {
+      "domain": "whatsapp.com",
+      "tool": "search_chats",
+      "file": "domains/whatsapp.com/search_chats.js",
+      "kind": "page",
+      "namespace": "whatsapp.com",
+      "url_patterns": [
+        "https://web.whatsapp.com/*"
+      ],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "WhatsApp Web only. Types a query into the sidebar search box (synthetic input, never Enter), reads chat titles that match, and empties the box again. Address-book contacts and message hits are skipped without being read. Never opens a chat."
     }
   ]
 }
