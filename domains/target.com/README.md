@@ -232,8 +232,9 @@ QA yet), one fresh anonymous GPU stealth Kernel browser, the whole nine-tool nam
   item (`no_reviews`), an unknown tcin (`not_found`), and `limit: 9` (`invalid_input`); no HTML entities or tags were
   found in the review text of three families.
 - Both tools answered `wrong_page` on `corporate.target.com` and were not listed on example.com. The tab URL and the
-  store and location cookies were identical before and after every call. The existing `get_store_context`, `get_cart`
-  and `search_products` still ran after the namespace was re-registered.
+  store and location cookies were identical before and after the product-page calls, and the tab URL was unchanged
+  after the calls from `/cart`. The existing `get_store_context`, `get_cart` and `search_products` still ran after
+  the namespace was re-registered.
 - Not live-tested: an out-of-stock or pre-order status, the `challenge` outcome, signed-in sessions, and the local Chrome
   extension.
 
