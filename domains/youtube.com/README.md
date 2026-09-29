@@ -166,10 +166,17 @@ scope, although `get_video` accepts a `youtu.be` link as input.
 - `get_video` uses the description's chapter list only. Videos with auto-generated chapters or none
   return `chapters: []`. `like_count` is null when the site omits it.
 - `login_required` was seen live only for age-restricted videos ("Sign in to confirm your age", two videos
-  found in public search results by independent QA). `gated`, `challenge` and `rate_limited` are covered by
-  fixtures only: no private, members-only or content-warning video and no bot check or HTTP 429 was
-  available to test. The mapping from the site's `CONTENT_CHECK_REQUIRED`, `AGE_CHECK_REQUIRED` and
+  found in public search results by independent QA). `gated` and `rate_limited` are covered by fixtures
+  only: no private, members-only or content-warning video and no HTTP 429 was available to test. The mapping from the site's `CONTENT_CHECK_REQUIRED`, `AGE_CHECK_REQUIRED` and
   `AGE_VERIFICATION_REQUIRED` statuses is from documentation and prior knowledge, not observation.
+- **`get_video` can be bot-checked.** After a long session of repeated test runs (on the order of a hundred
+  `get_video` calls, alongside several hundred `search` calls, in one browser), YouTube's anonymous `player`
+  endpoint began answering that browser with `LOGIN_REQUIRED` and "Sign in to confirm you're not a bot"
+  while `search` and `next` kept working, and every valid id returned `challenge` (an unknown id still
+  returned `video_unavailable`). A fresh browser was unaffected at the same time. The tool reports
+  `challenge` and does not retry, and it does not fall back to `next` for partial metadata, because that
+  would work around a check the site just raised. Callers must not retry automatically. Any use of the
+  `player` endpoint at volume should be expected to hit this.
 - Chapters are capped at 60 and keywords at 25, with a warning when the video has more; only the
   description sets a truncated flag.
 - **Chrome extension: does not work on youtube.com at this revision.** Independent QA (2026-09-29)
@@ -259,6 +266,7 @@ warning is third-party text, and corrects the Shorts count above. It has tests a
 `draft`, and the registry carries no `qa_passed` or `verified` status.
 
 Open items: the Chrome extension cannot register the tools on youtube.com (see Known limitations); the
-revision after round 3 needs an independent review before either tool can be `qa_passed`; `gated`, `challenge`,
+revision after round 3 needs an independent review before either tool can be `qa_passed`; `gated`,
 `rate_limited`, a live page over the size bounds, and a live continuation 400 with a bot-check body were never
-observed.
+observed. The `challenge` mapping was observed live once for `get_video` (see Known limitations), after the
+last independent review, by the builder.
