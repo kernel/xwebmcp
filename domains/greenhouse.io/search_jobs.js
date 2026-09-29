@@ -181,12 +181,15 @@
       total: posts.total, page: posts.page, total_pages: posts.total_pages
     };
     const observedAt = new Date().toISOString();
+    const bounded = result => (JSON.stringify(result).length > 150000
+      ? fail("output_too_large", "The result is larger than this tool returns (150000 characters); leave include_filters off or narrow the search.")
+      : result);
     if (posts.data.length === 0) {
       const outOfRange = posts.total > 0;
-      return {
+      return bounded({
         status: "no_results", reason: outOfRange ? "page_out_of_range" : "no_matches", ...base, filters, warnings, observed_at: observedAt,
         message: outOfRange ? "The search has " + posts.total + " matches on " + posts.total_pages + " pages; page " + page + " is past the last one." : "No open job on this board matches the search."
-      };
+      });
     }
     if (posts.data.length > 100) warnings.push("The site returned " + posts.data.length + " jobs on one page; only the first 100 are returned.");
     const jobs = [];
@@ -208,8 +211,6 @@
         url: boardUrl + "/jobs/" + jobId
       });
     }
-    const result = { status: "ok", ...base, jobs, filters, warnings, untrusted_content: true, observed_at: observedAt };
-    if (JSON.stringify(result).length > 150000) return fail("output_too_large", "The result is larger than this tool returns (150000 characters); leave include_filters off or narrow the search.");
-    return result;
+    return bounded({ status: "ok", ...base, jobs, filters, warnings, untrusted_content: true, observed_at: observedAt });
   }
 }]

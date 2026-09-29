@@ -555,6 +555,26 @@ eachCarrier("converts the site's HTML the way a browser lays it out", async desc
     ["<p>unterminated <b", "unterminated <b"],
     ["<p>a</p><br><p>b</p>", "a\n\nb"],
     ["<li><br>x</li>", "- x"],
+    ["<section>Intro</section><section>Next</section>", "Intro\n\nNext"],
+    ["<dl><dt>Term</dt><dd>Definition</dd></dl>", "Term\n\nDefinition"],
+    ["<header>Head</header><article>Body</article><footer>Foot</footer>", "Head\n\nBody\n\nFoot"],
+    ["<aside>a</aside><nav>b</nav><main>c</main><figure>d<figcaption>e</figcaption></figure><address>f</address><details><summary>g</summary>h</details><pre>i</pre><fieldset>j</fieldset><form>k</form>", "a\n\nb\n\nc\n\nd\n\ne\n\nf\n\ng\n\nh\n\ni\n\nj\n\nk"],
+    ["Above<hr>Below", "Above\n\nBelow"],
+    ["<p>a<br />b<hr/>c</p>", "a\nb\n\nc"],
+    ["<p>x<!-->y</p><p>z</p>", "xy\n\nz"],
+    ["<p>x<!--->y</p>", "xy"],
+    ["<p>x<!---->y<!-- a -- b -->z</p>", "xyz"],
+    ["<ul><li>A<li>B</ul><p>After one</p><p>After two</p>", "- A\n- B\n\nAfter one\n\nAfter two"],
+    ["<ul><li>A<ul><li>B<li>C</ul>D</ul><p>E</p>", "- A\n- B\n- C\nD\n\nE"],
+    ["<ul><li>A</ul><ol><li>B<li>C</ol><p>E</p>", "- A\n\n- B\n- C\n\nE"],
+    ["</li><p>a</p><p>b</p>", "a\n\nb"],
+    ["<li>outside a list<p>one</p></li><p>two</p><p>three</p>", "- outside a list\none\n\ntwo\n\nthree"],
+    ["</ul></ol><p>a</p><p>b</p>", "a\n\nb"],
+    ["<ul><li>A</li></ul><ul><li>B<p>c</p><p>d</p></li></ul>", "- A\n\n- B\nc\nd"],
+    ["<ul><li>A</li></li></ul><ul><li>B<p>c</p><p>d</p></li></ul>", "- A\n\n- B\nc\nd"],
+    ["<ul><li>A</li></ul></ul></ul><ul><li>B<p>c</p></li></ul><p>e</p><p>f</p>", "- A\n\n- B\nc\n\ne\n\nf"],
+    ["<b>a</b> <i>b</i>", "a b"],
+    ["<table><tr><th>H1</th><th>H2</th></tr></table><h6>x</h6>y", "H1 H2\n\nx\n\ny"],
     ["", ""], ["   \n ", ""], ["<p></p>", ""]
   ];
   for (const [html, expected] of cases) assert.equal(await describe(html), expected, JSON.stringify(html));
@@ -564,6 +584,21 @@ eachCarrier("decodes numeric and the common named entities and leaves unknown on
   assert.equal(await describe("&eacute; &Eacute; &euro; &rarr; &times; &sect; &frac12; &ntilde; &szlig; &yuml; &copy; &reg; &deg; &iquest; &shy;|&ensp;|&hellip;"), "é É € → × § ½ ñ ß ÿ © ® ° ¿ ­| |…");
   assert.equal(await describe("&#X41; &#65; &#x41; &#X4a; &#1114111; &#1114112; &#0; &#xD7FF; &#xD800; &#xDFFF; &#xE000;"), "A A A J \u{10ffff} � � \ud7ff � � \ue000");
   assert.equal(await describe("&unknown; &constructor; &amp;lt; &lt;b&gt; &amp &#; &#x; &nbsp;x"), "&unknown; &constructor; &lt; <b> &amp &#; &#x; x");
+});
+
+eachCarrier("keeps a surrogate pair whole when the markup is cut at its reading limit", async describe => {
+  const limit = describe === carriers.get_job ? 200000 : 50000;
+  for (const wide of ["\u{1F600}", "\u{10000}", "\u{10FFFF}"]) {
+    for (const lead of [limit - 1, limit - 2]) {
+      const out = await describe(" ".repeat(lead) + wide);
+      assert.ok(out.isWellFormed(), "well-formed with the pair starting at " + lead);
+      assert.equal(out, lead === limit - 2 ? wide : "");
+    }
+  }
+});
+
+eachCarrier("decodes a supplementary-plane numeric entity", async describe => {
+  assert.equal(await describe("&#x1F600; &#128512;"), "\u{1F600} \u{1F600}");
 });
 
 eachCarrier("stays linear-time on pathological markup", async describe => {
@@ -693,6 +728,47 @@ test("a redirect address is returned up to 2000 characters and refused beyond", 
     assert.equal(result.error_kind, kind, String(length));
     if (kind === "board_redirects") assert.equal(result.redirect_url, target);
   }
+});
+
+test("the size guard also covers empty results and sits exactly at 150000 characters", async () => {
+  const nested = { id: 1, name: "root", children: [] };
+  let cursor = nested;
+  for (let i = 0; i < 300; i++) { const child = { id: 100 + i, name: "d".repeat(200), children: [] }; cursor.children.push(child); cursor = child; }
+  const huge = await harness("search_jobs", { respond: () => ({ body: boardBody({ jobs: [], total: 0, total_pages: 0, departments: [nested] }) }) }).run({ board: "acme", include_filters: true });
+  assert.deepEqual([huge.status, huge.error_kind], ["error", "output_too_large"], "deeply nested filters on an empty result");
+
+  // Results are sized by running the tool without the schema check; the exact-limit results are then checked in full.
+  const size = async (name, body, input) => {
+    const result = plain(await harness(name, { respond: () => ({ body }) }).definition.execute(input));
+    return result.status === "ok" ? JSON.stringify(result).length : null;
+  };
+  const largestFit = async (fits, high) => { let lo = 1, hi = high; while (lo < hi) { const mid = Math.ceil((lo + hi) / 2); if (await fits(mid)) lo = mid; else hi = mid - 1; } return lo; };
+
+  // search_jobs: the most filter entries that fit, then one job title padded so the result is exactly 150000 characters.
+  const names = k => Array.from({ length: k }, (_, i) => ({ id: 1000 + i, name: "n".repeat(200), children: [] }));
+  const searchBody = (k, pad) => boardBody({ jobs: [job(1, { title: "t".repeat(pad) }), ...Array.from({ length: 99 }, (_, i) => job(2 + i, { title: "x", location: "y".repeat(300) }))], total: 100, departments: names(k), offices: names(k) });
+  const searchInput = { board: "acme", include_filters: true };
+  const k = await largestFit(async n => (await size("search_jobs", searchBody(n, 1), searchInput)) !== null, 300);
+  assert.ok(k < 300, "the lists fill the limit before their own cap");
+  const pad = 1 + 150000 - await size("search_jobs", searchBody(k, 1), searchInput);
+  assert.ok(pad > 1 && pad <= 300, "the title can absorb " + pad);
+  const exact = await harness("search_jobs", { respond: () => ({ body: searchBody(k, pad) }) }).run(searchInput);
+  assert.deepEqual([exact.status, JSON.stringify(exact).length], ["ok", 150000]);
+  assert.equal((await harness("search_jobs", { respond: () => ({ body: searchBody(k, pad + 1) }) }).run(searchInput)).error_kind, "output_too_large");
+
+  // get_application_form: the most full questions that fit, then a filler question sized to land exactly on the limit.
+  const full = (i, bump) => question("Q" + i + "x".repeat(990), [textField("f" + i + (i === 0 ? "z".repeat(bump) : ""))], { description: "<p>" + "d".repeat(1000) + "</p>" });
+  const formBody = (count, label, description, bump = 0) => jobBody({ post: { questions: [...Array.from({ length: count }, (_, i) => full(i, bump)), question("F" + "l".repeat(label), [textField("g")], { description: description ? "<p>" + "e".repeat(description) + "</p>" : null })] } });
+  const formInput = { board: "acme", job_id: "1001" };
+  const n = await largestFit(async count => (await size("get_application_form", formBody(count, 1, 0), formInput)) !== null, 99);
+  assert.ok(n < 99, "the questions fill the limit before their own cap");
+  const need = 150000 - await size("get_application_form", formBody(n, 1, 0), formInput);
+  assert.ok(need > 0 && need <= 1996, "the filler can absorb " + need);
+  // A description string replaces a null (4 characters) with the text plus two quotes, so it adds two fewer characters than its length.
+  const label = Math.min(need, 998), description = need > label ? need - label + 2 : 0;
+  const exactForm = await harness("get_application_form", { respond: () => ({ body: formBody(n, 1 + label, description) }) }).run(formInput);
+  assert.deepEqual([exactForm.status, JSON.stringify(exactForm).length], ["ok", 150000]);
+  assert.equal((await harness("get_application_form", { respond: () => ({ body: formBody(n, 1 + label, description, 1) }) }).run(formInput)).error_kind, "output_too_large");
 });
 
 // --- response shape checks: each expectation on its own ---------------------------------------------------------------

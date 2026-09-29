@@ -108,9 +108,10 @@
     });
     const toText = (html, limit) => {
       if (typeof html !== "string") return "";
-      const src = html.slice(0, limit);
+      const src = cut(html, limit);
       const lower = src.replace(/[A-Z]/g, c => c.toLowerCase());
       let out = "", pendingBreaks = 0, pendingSpace = false, pendingBullet = false, openItems = 0, i = 0;
+      const lists = [];
       const wants = level => { if (!pendingBullet) pendingBreaks = Math.max(pendingBreaks, level); };
       const text = raw => {
         const chunk = decode(raw).replace(/\s+/g, " ");
@@ -127,7 +128,7 @@
         if (lt < 0) { text(src.slice(i)); break; }
         if (lt > i) text(src.slice(i, lt));
         if (src.startsWith("<!--", lt)) {
-          const end = src.indexOf("-->", lt + 4);
+          const end = src.indexOf("-->", lt + 2);
           if (end < 0) break;
           i = end + 3;
           continue;
@@ -147,9 +148,21 @@
         } else if (name === "br") {
           if (!pendingBullet) pendingBreaks = Math.min(pendingBreaks + 1, 2);
         } else if (name === "li") {
-          if (closing) { openItems = Math.max(0, openItems - 1); pendingBullet = false; wants(1); }
-          else { wants(1); openItems++; pendingBullet = true; }
-        } else if (/^(p|div|h[1-6]|ul|ol|table|tr|blockquote)$/.test(name)) {
+          if (closing) {
+            if (lists.length && lists[lists.length - 1]) { lists[lists.length - 1] = false; openItems--; }
+            pendingBullet = false;
+            wants(1);
+          } else {
+            wants(1);
+            if (!lists.length) lists.push(false);
+            if (!lists[lists.length - 1]) { lists[lists.length - 1] = true; openItems++; }
+            pendingBullet = true;
+          }
+        } else if (/^(p|div|h[1-6]|ul|ol|table|tr|blockquote|section|article|aside|header|footer|nav|main|dl|dt|dd|hr|pre|figure|figcaption|address|details|summary|fieldset|form)$/.test(name)) {
+          if (name === "ul" || name === "ol") {
+            if (!closing) lists.push(false);
+            else if (lists.length && lists.pop()) openItems--;
+          }
           wants(openItems > 0 ? 1 : 2);
         } else if (closing && (name === "td" || name === "th")) {
           pendingSpace = true;
