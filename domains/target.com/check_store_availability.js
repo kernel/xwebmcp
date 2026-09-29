@@ -3,28 +3,26 @@
   match: { url_patterns: ["https://target.com/*", "https://*.target.com/*"] },
   tool: {
     name: "check_store_availability",
-    description: "List the Target (target.com) stores nearest a ZIP code with one item's order-pickup, Drive Up (the site's 'curbside') and in-store stock status at each: the data behind the 'Check stores' dialog on a product page, without selecting a store or changing the session's ZIP. tcin must be an orderable item, not an item family: get_product lists a family's variations and their tcins, and a family tcin answers no_availability. postal_code defaults to the ZIP the session already uses; radius_miles (default 50), limit (nearest stores, default 10, at most 20) and quantity (default 1) bound the query. Each store has its id, name, address, phone, distance in miles, is_selected_store, and for pickup, curbside and in_store the site's raw status (IN_STOCK, LIMITED_STOCK, UNAVAILABLE...) with an available flag; pickup and curbside also carry the pickup date and how many minutes the site says preparation takes. Target substitutes a default location for a ZIP it does not recognize and reports no error (00000 and 99999 returned Illinois stores), so compare the returned addresses and distances with the place you asked about. A status is the site's answer at the moment of the call, not a reservation or a guarantee; it says nothing about shipping (use get_product) and never selects a store. Read-only; works as a guest or signed in.",
+    description: "List the Target (target.com) stores nearest a ZIP code with one item's order-pickup, Drive Up (the site's 'curbside') and in-store stock status at each: the data behind the 'Check stores' dialog on a product page, without selecting a store or changing the session's ZIP. tcin must be an orderable item, not an item family: get_product lists a family's variations and their tcins, and a family tcin answers no_availability. postal_code defaults to the ZIP the session already uses; radius_miles (default 50) and limit (nearest stores, default 10, at most 20) bound the query. Each store has its id, name, address, phone, distance in miles, is_selected_store, and for pickup, curbside and in_store the site's raw status (IN_STOCK, LIMITED_STOCK, UNAVAILABLE...) with an available flag; pickup and curbside also carry the pickup date and how many minutes the site says preparation takes. Target substitutes a default location for a ZIP it does not recognize and reports no error (00000 and 99999 returned Illinois stores), so compare the returned addresses and distances with the place you asked about. A status is the site's answer at the moment of the call, not a reservation or a guarantee: the site gives the same status whatever quantity it is asked about, so it cannot say whether several units are on hand (LIMITED_STOCK in store is its only low-stock signal); it says nothing about shipping (use get_product) and never selects a store. Read-only; works as a guest or signed in.",
     inputSchema: {
       type: "object", additionalProperties: false, required: ["tcin"],
       properties: {
         tcin: { type: "string", pattern: "^[0-9]{5,12}$", description: "Target item id of an orderable item (a variation when the product has variations), e.g. from search_products or get_product." },
         postal_code: { type: "string", pattern: "^[0-9]{5}$", description: "Five-digit US ZIP to search around. Defaults to the ZIP of the session's location or selected store. It is only sent to Target as the search center; it is never saved." },
         radius_miles: { type: "integer", minimum: 1, maximum: 100, default: 50, description: "Search radius in miles; the site's own dialog uses 50." },
-        limit: { type: "integer", minimum: 1, maximum: 20, default: 10, description: "Maximum stores to return, nearest first." },
-        quantity: { type: "integer", minimum: 1, maximum: 10, default: 1, description: "Units the shopper wants; the site evaluates availability for this quantity." }
+        limit: { type: "integer", minimum: 1, maximum: 20, default: 10, description: "Maximum stores to return, nearest first." }
       }
     },
     outputSchema: {
       type: "object",
       oneOf: [
         {
-          type: "object", additionalProperties: false, required: ["status", "tcin", "postal_code", "radius_miles", "quantity", "stores"],
+          type: "object", additionalProperties: false, required: ["status", "tcin", "postal_code", "radius_miles", "stores"],
           properties: {
             status: { const: "ok" },
             tcin: { type: "string" },
             postal_code: { type: "string", description: "The ZIP sent to Target as the search center. Target does not confirm that it recognized it; check the store addresses." },
             radius_miles: { type: "integer" },
-            quantity: { type: "integer" },
             stores: {
               type: "array", minItems: 1, maxItems: 20, description: "Nearest first.",
               items: {
@@ -70,13 +68,12 @@
           }
         },
         {
-          type: "object", additionalProperties: false, required: ["status", "tcin", "postal_code", "radius_miles", "quantity"],
+          type: "object", additionalProperties: false, required: ["status", "tcin", "postal_code", "radius_miles"],
           properties: {
             status: { const: "no_results" },
             tcin: { type: "string" },
             postal_code: { type: "string" },
-            radius_miles: { type: "integer" },
-            quantity: { type: "integer" }
+            radius_miles: { type: "integer" }
           },
           description: "Target answered but lists no store within the radius."
         },
@@ -146,24 +143,22 @@
       }
       return out;
     };
-    if (!input || typeof input !== "object" || Array.isArray(input) || Object.keys(input).some(k => !["tcin", "postal_code", "radius_miles", "limit", "quantity"].includes(k))) return fail("invalid_input", "Provide tcin and optionally postal_code, radius_miles, limit and quantity.");
+    if (!input || typeof input !== "object" || Array.isArray(input) || Object.keys(input).some(k => !["tcin", "postal_code", "radius_miles", "limit"].includes(k))) return fail("invalid_input", "Provide tcin and optionally postal_code, radius_miles and limit.");
     const tcin = typeof input.tcin === "string" ? input.tcin.trim() : "";
     const zip = input.postal_code === undefined ? null : typeof input.postal_code === "string" ? input.postal_code.trim() : "";
     const radius = input.radius_miles === undefined ? 50 : input.radius_miles;
     const limit = input.limit === undefined ? 10 : input.limit;
-    const quantity = input.quantity === undefined ? 1 : input.quantity;
     if (!/^[0-9]{5,12}$/.test(tcin)) return fail("invalid_input", "tcin must be 5 to 12 digits.");
     if (zip !== null && !/^[0-9]{5}$/.test(zip)) return fail("invalid_input", "postal_code must be a five-digit US ZIP.");
     if (!Number.isInteger(radius) || radius < 1 || radius > 100) return fail("invalid_input", "radius_miles must be an integer from 1 to 100.");
     if (!Number.isInteger(limit) || limit < 1 || limit > 20) return fail("invalid_input", "limit must be an integer from 1 to 20.");
-    if (!Number.isInteger(quantity) || quantity < 1 || quantity > 10) return fail("invalid_input", "quantity must be an integer from 1 to 10.");
     try {
       const ctx = session();
       if (ctx.error) return ctx.error;
       const nearby = zip || ctx.defaultZip;
       if (!nearby) return fail("no_location", "This session has no ZIP yet. Pass postal_code, or load a www.target.com page so the site sets one. Nothing was changed.");
       const r = await redsky("fiats_v1", {
-        key: ctx.key, channel: "WEB", tcin, nearby, radius, limit, include_only_available_stores: "false", requested_quantity: quantity,
+        key: ctx.key, channel: "WEB", tcin, nearby, radius, limit, include_only_available_stores: "false", requested_quantity: 1,
         visitor_id: ctx.visitorId, page: "/p/A-" + tcin
       });
       if (r.error) return r.error;
@@ -191,9 +186,9 @@
       }
       if (!stores.length) {
         if (listed.length) return fail("site_error", "Target listed stores but none had a usable id; the site may have changed.");
-        return { status: "no_results", tcin, postal_code: nearby, radius_miles: radius, quantity };
+        return { status: "no_results", tcin, postal_code: nearby, radius_miles: radius };
       }
-      return { status: "ok", tcin, postal_code: nearby, radius_miles: radius, quantity, stores };
+      return { status: "ok", tcin, postal_code: nearby, radius_miles: radius, stores };
     } catch (error) {
       return fail("site_error", "Request failed: " + (error && error.message ? error.message : String(error)) + "");
     }
