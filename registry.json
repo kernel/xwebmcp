@@ -1274,6 +1274,32 @@
       "provenance": {
         "qa_agent": "agt_a87837884a432de575e8"
       }
+    },
+    {
+      "domain": "vividseats.com",
+      "tool": "get_ticket_offers",
+      "file": "domains/vividseats.com/get_ticket_offers.js",
+      "kind": "page",
+      "namespace": "vividseats.com",
+      "url_patterns": [
+        "https://www.vividseats.com/*"
+      ],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Public, read-only page tool on www.vividseats.com: an event's listings with all-in USD price per ticket (cheapest first), optional quantity, price-range, zone and section filters and zone/section grouping, plus the price components the site says the all-in price includes. Not yet independently QA'd. Never selects, carts or buys."
+    },
+    {
+      "domain": "vividseats.com",
+      "tool": "search_events",
+      "file": "domains/vividseats.com/search_events.js",
+      "kind": "page",
+      "namespace": "vividseats.com",
+      "url_patterns": [
+        "https://www.vividseats.com/*"
+      ],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Public, read-only page tool on www.vividseats.com: events by text, place, dates, category, performer, venue and lowest-price ceiling with bounded pages. Prices and counts come from the site's search index and can be stale. Not yet independently QA'd."
     }
   ]
 }
