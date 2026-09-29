@@ -54,6 +54,42 @@
       }
     },
     {
+      "domain": "bfi.org.uk",
+      "tool": "get_event",
+      "file": "domains/bfi.org.uk/get_event.js",
+      "kind": "page",
+      "namespace": "bfi.org.uk",
+      "url_patterns": [
+        "https://whatson.bfi.org.uk/Online/default.asp*",
+        "https://whatson.bfi.org.uk/Online/article/*",
+        "https://whatson.bfi.org.uk/imax/Online/default.asp*",
+        "https://whatson.bfi.org.uk/imax/Online/article/*",
+        "https://whatson.bfi.org.uk/lff/Online/default.asp*",
+        "https://whatson.bfi.org.uk/lff/Online/article/*"
+      ],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Read-only page tool for one film or event page on the tab's own BFI ticketing programme (Southbank, IMAX or London Film Festival): credits, description text and every upcoming performance with sales status, availability band and signed-out price range. Cookieless requests; a different programme is rejected before any request. Never opens booking. Not yet independently QA'd."
+    },
+    {
+      "domain": "bfi.org.uk",
+      "tool": "search_events",
+      "file": "domains/bfi.org.uk/search_events.js",
+      "kind": "page",
+      "namespace": "bfi.org.uk",
+      "url_patterns": [
+        "https://whatson.bfi.org.uk/Online/default.asp*",
+        "https://whatson.bfi.org.uk/Online/article/*",
+        "https://whatson.bfi.org.uk/imax/Online/default.asp*",
+        "https://whatson.bfi.org.uk/imax/Online/article/*",
+        "https://whatson.bfi.org.uk/lff/Online/default.asp*",
+        "https://whatson.bfi.org.uk/lff/Online/article/*"
+      ],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Read-only page tool that searches the tab's own BFI ticketing programme (Southbank, IMAX or London Film Festival) by keyword and date range; one 50-row site page per call with pagination; signed-out prices and availability bands. Cookieless requests; a different programme is rejected before any request. Never opens booking. Not yet independently QA'd."
+    },
+    {
       "domain": "delta.com",
       "tool": "get_page_context",
       "file": "domains/delta.com/get_page_context.js",
