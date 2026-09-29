@@ -285,6 +285,45 @@
       }
     },
     {
+      "domain": "greenhouse.io",
+      "tool": "get_application_form",
+      "file": "domains/greenhouse.io/get_application_form.js",
+      "kind": "page",
+      "namespace": "greenhouse.io",
+      "url_patterns": [
+        "https://job-boards.greenhouse.io/*"
+      ],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Page tool on job-boards.greenhouse.io: the questions one job application asks (labels, help text, required flag, field names and types, choices) plus education fields, demographic-section size and consent settings. Never opens, fills, uploads or submits the form. Untrusted employer text; not yet independently QAed."
+    },
+    {
+      "domain": "greenhouse.io",
+      "tool": "get_job",
+      "file": "domains/greenhouse.io/get_job.js",
+      "kind": "page",
+      "namespace": "greenhouse.io",
+      "url_patterns": [
+        "https://job-boards.greenhouse.io/*"
+      ],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Page tool on job-boards.greenhouse.io: one posting as plain text (at most 30000 characters) with published pay ranges and deadline. A closed job, a missing board and a board served elsewhere all give the same site redirect and return job_not_found. Untrusted employer text; not yet independently QAed."
+    },
+    {
+      "domain": "greenhouse.io",
+      "tool": "search_jobs",
+      "file": "domains/greenhouse.io/search_jobs.js",
+      "kind": "page",
+      "namespace": "greenhouse.io",
+      "url_patterns": [
+        "https://job-boards.greenhouse.io/*"
+      ],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Page tool on job-boards.greenhouse.io: one page (50) of a tenant board by keyword, department and office ids, with an optional filter list. Reports board_not_found and board_redirects (employer serves its careers page elsewhere; not followed). Untrusted employer text; not yet independently QAed."
+    },
+    {
       "domain": "instacart.com",
       "tool": "add_to_cart",
       "file": "domains/instacart.com/add_to_cart.js",
