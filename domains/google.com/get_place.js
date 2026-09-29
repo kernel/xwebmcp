@@ -1,9 +1,9 @@
 [{
   kind: "page",
-  match: { url_patterns: ["https://www.google.com/maps*"] },
+  match: { url_patterns: ["https://www.google.com/maps", "https://www.google.com/maps/*", "https://www.google.com/maps?*"] },
   tool: {
     name: "get_place",
-    description: "Read the details Google Maps shows for one place: name, category, rating and review count, address, phone number, website, Plus Code, coordinates, the open-status line and, when the place pane lists them, the weekly opening hours (some places show only a collapsed hours row, which the tool does not open, so hours is empty and open_status_text still gives today's status). Runs in the current Maps tab, which must be on a https://www.google.com/maps page with an English interface. With no input it reads the place already open in the tab. With place_url (from search_places) it opens that place first by selecting its card in the search results the tab is showing; a place that is neither open nor in those results returns not_open, and you then open place_url in the tab yourself and call again. In a narrow browser window Maps replaces the result list with the opened place, so only one place per result list can be opened this way: run search_places again for the next one. Never navigates the tab. Business details are whatever the business or Google publishes and can be out of date, and a field Maps has not rendered yet is null (call again if a detail you expect is missing); open_status_text and hours are relative to when the page was read. Reviews, photos, popular times, menus, prices and sponsored panels are not returned. Signed in, Google may record the place view in the account's Maps history as it does for any manual visit. Read-only.",
+    description: "Read the details Google Maps shows for one place: name, category, rating and review count, address, phone number, website, Plus Code, coordinates, the open-status line and, when the place pane lists them, the weekly opening hours (some places show only a collapsed hours row, which the tool does not open, so hours is empty and open_status_text still gives today's status). Runs in the current Maps tab, which must be on a https://www.google.com/maps page with an English interface. With no input it reads the place already open in the tab. With place_url (from search_places) it opens that place first by selecting its card in the search results the tab is showing; a place that is neither open nor in those results returns not_open, and you then open place_url in the tab yourself and call again. In a narrow browser window Maps replaces the result list with the opened place, so only one place per result list can be opened this way: run search_places again for the next one. Never navigates the tab. Business details are whatever the business or Google publishes and can be out of date, and a field Maps has not rendered yet is null (call again if a detail you expect is missing); open_status_text and hours are relative to when the page was read. If a call by place_url comes back with an empty output, the runtime dropped the result while Maps loaded a frame for the place; the place is then open, so call get_place again with no input. Reviews, photos, popular times, menus, prices and sponsored panels are not returned. Signed in, Google may record the place view in the account's Maps history as it does for any manual visit. Read-only.",
     inputSchema: {
       type: "object", additionalProperties: false,
       properties: {
@@ -61,7 +61,7 @@
       wanted = url && url.origin === ORIGIN && url.pathname.startsWith("/maps/place/") ? fidOf(url.pathname) : null;
       if (typeof input.place_url !== "string" || input.place_url.length > 1000 || !wanted) return fail("invalid_input", "place_url must be a https://www.google.com/maps/place/ URL from search_places.");
     }
-    if (location.origin !== ORIGIN || !location.pathname.startsWith("/maps")) return fail("wrong_page", "Run this on a https://www.google.com/maps page.");
+    if (location.origin !== ORIGIN || (location.pathname !== "/maps" && !location.pathname.startsWith("/maps/"))) return fail("wrong_page", "Run this on a https://www.google.com/maps page.");
     if (!/^en(-|$)/i.test(document.documentElement.lang)) return fail("unsupported_language", "The Maps interface is not English. Open https://www.google.com/maps?hl=en and retry.");
 
     const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
@@ -100,11 +100,12 @@
       if (!card) return fail("not_open", "That place is not open in this tab and is not in the search results the tab is showing. Open place_url in the tab, then call get_place again.");
       const cardName = (card.getAttribute("aria-label") || "").replace(/\s+/g, " ").trim().toLowerCase();
       const previous = signature();
+      const previousPane = paneOf();
       card.click();
       const opened = await settle(sig => {
         const name = sig.name.toLowerCase();
         return (name === cardName || name.startsWith(cardName) || cardName.startsWith(name)) && currentFid() === wanted && (!sig.dataFid || sig.dataFid === wanted)
-          && (!previous || previous.name.toLowerCase() !== name || previous.street !== sig.street);
+          && (!previous || paneOf() !== previousPane || previous.name.toLowerCase() !== name || previous.street !== sig.street);
       });
       if (!opened) return fail("timeout", "Maps did not open the place within 15 seconds.");
     } else if (!currentFid()) {
@@ -151,7 +152,7 @@
       if (value) hours.push({ day: parts[0], hours: value.slice(0, 120), note: parts.length > 1 ? parts.slice(1).join(" ").slice(0, 80) : null });
     }
     const lines = (pane.innerText || "").split("\n").map(l => l.replace(/\s+/g, " ").trim()).filter(Boolean);
-    const firstDay = lines.findIndex(l => DAYS.test(l.replace(/\(.*$/, "")));
+    const firstDay = lines.findIndex(l => DAYS.test(l));
     const statusLine = (firstDay < 0 ? lines : lines.slice(0, firstDay)).find(l => l.length < 80 && /^(Open|Closed|Closes|Opens|Temporarily closed|Permanently closed)\b/.test(l));
     return {
       status: "ok", name, feature_id: fid,

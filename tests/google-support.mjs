@@ -43,6 +43,17 @@ export function conforms(schema, value) {
   return true;
 }
 
+// Does the runtime list a tool with these patterns at this URL? Scheme and host match exactly and the path pattern is
+// matched against pathname + search, with * standing for any run of characters (cdp-tools.md section 5).
+export function listedAt(patterns, url) {
+  const target = new URL(url);
+  return patterns.some(pattern => {
+    const [, scheme, host, path] = /^(https?):\/\/([^/]+)(\/.*)$/.exec(pattern);
+    const source = path.split("*").map(part => part.replace(/[.+?^${}()|[\]\\]/g, "\\$&")).join(".*");
+    return `${target.protocol}//${target.host}` === `${scheme}://${host}` && new RegExp(`^${source}$`).test(target.pathname + target.search);
+  });
+}
+
 // A clock that only moves when the tool sleeps. setTimeout(fn, ms) advances it, runs any app-scheduled work that
 // became due, and then resolves the tool's own timer.
 export function makeClock(start = Date.parse("2026-09-29T12:00:00Z")) {

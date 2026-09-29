@@ -1,6 +1,6 @@
 [{
   kind: "page",
-  match: { url_patterns: ["https://www.google.com/finance*"] },
+  match: { url_patterns: ["https://www.google.com/finance", "https://www.google.com/finance/*", "https://www.google.com/finance?*"] },
   tool: {
     name: "get_stock_quote",
     description: "Get the current Google Finance quote for one stock, ETF or index: last price, change and percent change against the previous close, previous close, the quote time, currency, and the key-statistics rows Google shows (for example Open, High, Low, Mkt. cap, Avg. vol., P/E ratio, 52-wk high and low). symbol must be TICKER:EXCHANGE exactly as Google Finance writes it, for example AAPL:NASDAQ, BRK.B:NYSE, VOO:NYSEARCA or .INX:INDEXSP; a bare ticker such as MSFT is rejected because Google Finance cannot resolve it. Currency pairs and crypto pages are not supported. Runs on any www.google.com/finance page and reads the quote page with one same-origin request; it never navigates the tab. Prices are shown as Google publishes them and can be delayed by the exchange: compare quote_time_utc with retrieved_at, and treat the result as informational, not trading advice. stats values are display strings in the quote's currency, copied as shown. Read-only.",
@@ -58,7 +58,7 @@
     if (!parts) return fail("invalid_input", "symbol must be TICKER:EXCHANGE, for example AAPL:NASDAQ or .INX:INDEXSP; a bare ticker is not accepted.");
     const ticker = parts[1].toUpperCase(), exchange = parts[2].toUpperCase();
     const symbol = `${ticker}:${exchange}`;
-    if (location.origin !== ORIGIN || !location.pathname.startsWith("/finance")) return fail("wrong_page", "Run this on a https://www.google.com/finance page.");
+    if (location.origin !== ORIGIN || (location.pathname !== "/finance" && !location.pathname.startsWith("/finance/"))) return fail("wrong_page", "Run this on a https://www.google.com/finance page.");
 
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 25000);

@@ -1,13 +1,14 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { runInNewContext } from "node:vm";
-import { conforms, loadTool, makeClock, makeTimers } from "./google-support.mjs";
+import { conforms, listedAt, loadTool, makeClock, makeTimers } from "./google-support.mjs";
 
 // Harness for google.com/get_stock_quote. fetch, location and the clock are stubbed; every quote, name and
 // number below is fabricated, so nothing here reflects or contacts the live site.
 const tool = loadTool("get_stock_quote");
 const registry = JSON.parse((await import("node:fs")).readFileSync(new URL("../registry.json", import.meta.url), "utf8"));
 const FINANCE = "https://www.google.com";
+const FINANCE_PATTERNS = ["https://www.google.com/finance", "https://www.google.com/finance/*", "https://www.google.com/finance?*"];
 
 const block = (key, data) => `<script nonce="x">AF_initDataCallback({key: 'ds:${key}', hash: '${key}', data:${JSON.stringify(data)}, sideChannel: {}});</script>`;
 const quoteRecord = ({ ticker = "EXMP", exchange = "NASDAQ", name = "Example Corp", type = 0, currency = "USD", price = 110, change = 10, pct = 10, prev = 100, seconds = 1790000000, zone = "America/New_York" } = {}) =>
@@ -43,9 +44,11 @@ const ok = async (input, o) => { const { result } = run(input, o); const out = J
 test("definition matches the registry: a page tool on the Finance product only", () => {
   const entry = registry.tools.find(t => t.domain === "google.com" && t.tool === "get_stock_quote");
   assert.equal(tool.kind, "page");
-  assert.deepEqual([...tool.match.url_patterns], ["https://www.google.com/finance*"]);
+  assert.deepEqual([...tool.match.url_patterns], FINANCE_PATTERNS);
   assert.equal(entry?.kind, "page");
   assert.deepEqual(entry?.url_patterns, [...tool.match.url_patterns]);
+  for (const url of ["https://www.google.com/finance", "https://www.google.com/finance?hl=en", "https://www.google.com/finance/", "https://www.google.com/finance/quote/EXMP:NASDAQ?hl=en"]) assert.ok(listedAt(FINANCE_PATTERNS, url), url);
+  for (const url of ["https://www.google.com/financex", "https://www.google.com/finance-news", "https://www.google.com/", "https://www.google.com/maps", "https://news.google.com/finance", "https://example.com/finance"]) assert.ok(!listedAt(FINANCE_PATTERNS, url), url);
   assert.equal(tool.tool.annotations.readOnlyHint, true);
 });
 
@@ -111,7 +114,7 @@ test("rejects malformed input before any request", async () => {
 });
 
 test("refuses to run outside a Finance page", async () => {
-  for (const o of [{ origin: "https://example.com" }, { pathname: "/maps" }]) {
+  for (const o of [{ origin: "https://example.com" }, { pathname: "/maps" }, { pathname: "/financex" }]) {
     const { calls, result } = run({ symbol: "EXMP:NASDAQ" }, o);
     assert.equal((await result).error_kind, "wrong_page");
     assert.equal(calls.fetch.length, 0);
@@ -119,7 +122,9 @@ test("refuses to run outside a Finance page", async () => {
 });
 
 test("reports a symbol Google Finance cannot resolve, a 404 and an unexpected redirect as not_found", async () => {
-  assert.equal((await ok({ symbol: "NOPE:NASDAQ" }, { html: page({ quote: null, title: "Google Finance", stats: [] }) })).error_kind, "not_found");
+  assert.equal((await ok({ symbol: "NOPE:NASDAQ" }, { url: `${FINANCE}/finance/quote/NOPE:NASDAQ`, html: page({ quote: null, title: "Google Finance", stats: [] }) })).error_kind, "not_found");
+  const changedTitle = await ok({ symbol: "NOPE:NASDAQ" }, { url: `${FINANCE}/finance/quote/NOPE:NASDAQ`, html: page({ quote: null, title: "Something Else", stats: [] }) });
+  assert.equal(changedTitle.error_kind, "site_changed");
   assert.equal((await ok({ symbol: "EXMP:NASDAQ" }, { fetch: async () => ({ url: `${FINANCE}/finance/quote/EXMP:NASDAQ`, status: 404, ok: false, text: async () => "" }) })).error_kind, "not_found");
   assert.equal((await ok({ symbol: "EXMP:NASDAQ" }, { url: `${FINANCE}/finance/quote/OTHER:NASDAQ` })).error_kind, "not_found");
 });

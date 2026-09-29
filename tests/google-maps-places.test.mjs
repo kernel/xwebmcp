@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 import { runInNewContext } from "node:vm";
-import { El, conforms, loadTool, makeClock } from "./google-support.mjs";
+import { El, conforms, listedAt, loadTool, makeClock } from "./google-support.mjs";
 
 // Harness for google.com/search_places and get_place. A fake Maps app reproduces the behavior observed on the
 // live site: the search box changes the URL immediately but the result list re-renders later, cards open the
@@ -10,6 +10,7 @@ import { El, conforms, loadTool, makeClock } from "./google-support.mjs";
 const tools = { search_places: loadTool("search_places"), get_place: loadTool("get_place") };
 const registry = JSON.parse(readFileSync(new URL("../registry.json", import.meta.url), "utf8"));
 const ORIGIN = "https://www.google.com";
+const MAPS_PATTERNS = ["https://www.google.com/maps", "https://www.google.com/maps/*", "https://www.google.com/maps?*"];
 const fidFor = n => `0x${(0x8841000000000000n + BigInt(n)).toString(16)}:0x${(0xf000000000000000n + BigInt(n)).toString(16)}`;
 
 const place = (n, extra = {}) => ({
@@ -25,7 +26,7 @@ function cardEl(p, app) {
   const a = new El("a", { class: "hfpxzc", "aria-label": p.name, href: p.hrefOverride ?? href(p) }, [new El("span", {}, [p.name])]);
   a.handlers.click = () => app.openPlace(p);
   const lines = [div(p.name)];
-  if (p.sponsored) lines.push(div(new El("span", {}, ["Sponsored"])));
+  if (p.sponsored) lines.push(div(new El("span", {}, [p.adLabel ?? "Sponsored"])));
   if (p.rating != null) lines.push(div(new El("span", { role: "img", "aria-label": p.ratingLabel ?? `${p.rating} stars ${p.reviews} Reviews` }, [`${p.rating}(${p.reviews})`]), " · ", p.priceLabel ? new El("span", { role: "img", "aria-label": p.priceLabel }, ["$1–10"]) : ""));
   if (p.detail !== undefined) lines.push(div(p.detail));
   else if (p.category) lines.push(div(`${p.category} ·  · ${p.address}`));
@@ -43,7 +44,7 @@ function paneEl(p) {
     : [];
   const kids = [
     div(...(p.sponsoredFirst ? [new El("h1", { class: "kpih0e" }, ["Sponsored By Example Booking"])] : []), new El("h1", { class: "DUwDvf" }, [p.name])),
-    div(...rating, p.category ? new El("button", { class: "DkEaL" }, [p.category]) : ""),
+    div(...(p.decoyRating ? [new El("button", { "aria-label": "1.0 stars " }), new El("button", { "aria-label": "9 reviews" })] : []), ...rating, p.category ? new El("button", { class: "DkEaL" }, [p.category]) : ""),
     div(new El("button", { role: "tab" }, ["Overview"]), new El("button", { role: "tab", "aria-label": `Reviews for ${p.name}` }, ["Reviews"])),
     ...(p.status ? [div(p.status)] : []),
     ...(p.dataFid ? [new El("button", { "data-feature-id": p.dataFid })] : [])
@@ -81,16 +82,18 @@ function maps(o = {}) {
   const searchButton = new El("button", { "aria-label": "Search" });
   if (!o.noSearchBox) { body.append(box); body.append(searchButton); }
   body.append(results);
-  const resetFeed = cards => { feed.nodes = []; cards.forEach(p => feed.append(cardEl(p, app))); };
+  const resetFeed = (cards, query) => { feed.nodes = []; feed.attrs["aria-label"] = query === undefined || o.noFeedLabel ? "" : `Results for ${query}`; cards.forEach(p => feed.append(cardEl(p, app))); };
   const setPath = (kind, slug, extra = "") => { state.path = `/maps/${kind}/${slug}/@10.0,-20.0,15z/data=${extra}`; };
   const dropPane = () => { if (state.pane) { body.nodes = body.nodes.filter(c => c !== state.pane); state.pane = null; } };
   app.openPlace = p => {
     calls.clicks.push(p.name);
     if (o.cardsDoNothing) return;
     const swapPane = () => {
-      dropPane();
-      state.pane = paneEl({ ...p, ...(o.lateHours ? { hours: [] } : {}), ...(o.latePlus ? { noPlus: true } : {}) });
-      body.append(state.pane);
+      const fresh = paneEl({ ...p, ...(o.lateHours ? { hours: [] } : {}), ...(o.latePlus ? { noPlus: true } : {}) });
+      if (o.reusePane && state.pane) {
+        state.pane.nodes = fresh.nodes; state.pane.attrs = fresh.attrs;
+        fresh.children.forEach(child => { child.parentElement = state.pane; });
+      } else { dropPane(); state.pane = fresh; body.append(state.pane); }
       if (o.lateHours) { const pane = state.pane; clock.schedule(o.lateHours, () => pane.append(paneEl(p).querySelector("table.eK4R0e"))); }
       if (o.latePlus) { const pane = state.pane; clock.schedule(o.latePlus, () => pane.append(new El("button", { "data-item-id": "oloc", "aria-label": `Plus code: ${p.plus}` }))); }
       if (o.dataFidFlip) { const pane = state.pane; clock.schedule(o.dataFidFlip, () => { for (const button of pane.querySelectorAll("[data-feature-id]")) button.attrs["data-feature-id"] = p.fid; }); }
@@ -109,13 +112,13 @@ function maps(o = {}) {
     setPath("search", o.slugFor ? o.slugFor(query) : encodeURIComponent(query).replace(/%20/g, "+"), "!3m1!4b1");
     clock.schedule(o.renderDelay ?? 1200, () => {
       dropPane();
-      if (outcome.type === "none") { resetFeed([]); results.nodes = [new El("h1", {}, ["Results"]), `Google Maps can't find ${query}`, feed]; return; }
+      if (outcome.type === "none") { resetFeed([], query); results.nodes = [new El("h1", {}, ["Results"]), `Google Maps can't find ${query}`, feed]; return; }
       results.nodes = [new El("h1", {}, ["Results"]), feed];
-      resetFeed(o.progressive ? outcome.places.slice(0, o.progressive) : outcome.places);
+      resetFeed(o.progressive ? outcome.places.slice(0, o.progressive) : outcome.places, query);
       if (o.progressive) clock.schedule(600, () => outcome.places.slice(o.progressive).forEach(p => feed.append(cardEl(p, app))));
     });
   };
-  if (o.initialFeed) resetFeed(o.initialFeed);
+  if (o.initialFeed) resetFeed(o.initialFeed, o.feedQuery ?? "old query");
   if (o.initialNone) results.nodes = [new El("h1", {}, ["Results"]), `Google Maps can't find ${o.initialNone}`, feed];
   if (o.initialPlace) { state.pane = paneEl(o.initialPlace); body.append(state.pane); }
   const document = {
@@ -143,7 +146,9 @@ test("definitions match the registry: page tools on the Maps product only", () =
   for (const name of ["search_places", "get_place"]) {
     const entry = registry.tools.find(t => t.domain === "google.com" && t.tool === name);
     assert.equal(tools[name].kind, "page");
-    assert.deepEqual([...tools[name].match.url_patterns], ["https://www.google.com/maps*"]);
+    assert.deepEqual([...tools[name].match.url_patterns], MAPS_PATTERNS);
+    for (const url of ["https://www.google.com/maps", "https://www.google.com/maps?hl=en", "https://www.google.com/maps/", "https://www.google.com/maps/@40.7,-74,12z", "https://www.google.com/maps/place/x/data=!1s0x1:0x2"]) assert.ok(listedAt(MAPS_PATTERNS, url), url);
+    for (const url of ["https://www.google.com/mapsx", "https://www.google.com/maps-legacy", "https://www.google.com/", "https://www.google.com/finance", "https://www.google.com/travel/flights", "https://mail.google.com/maps"]) assert.ok(!listedAt(MAPS_PATTERNS, url), url);
     assert.equal(entry?.kind, "page");
     assert.deepEqual(entry?.url_patterns, [...tools[name].match.url_patterns]);
     assert.equal(tools[name].tool.annotations.readOnlyHint, true);
@@ -229,6 +234,10 @@ test("search_places reports no results, a single place, a bare map point and a t
   const lagged = await call("search_places", lagging, { query: "lagging landmark" });
   assert.deepEqual([lagged.status, lagged.name], ["single_place", "Example Place 6"]);
 
+  const [twinA, twinB] = [place(107, { name: "Twin Bridge", address: "Twin Brg" }), place(108, { name: "Twin Bridge", address: "Twin Brg" })];
+  const twin = await call("search_places", maps({ initialPlace: twinA, path: openAt(twinA), searchLag: 1500, results: () => ({ type: "place", place: twinB }) }), { query: "the other bridge" });
+  assert.deepEqual([twin.name, twin.feature_id], ["Twin Bridge", twinB.fid]);
+
   const paneFirst = maps({ initialPlace: open, path: openAt(open), paneFirst: true, urlDelay: 2500, results: () => ({ type: "place", place: target }) });
   const early = await call("search_places", paneFirst, { query: "pane changes first" });
   assert.deepEqual([early.name, early.feature_id], ["Example Place 6", target.fid]);
@@ -302,12 +311,52 @@ test("search_places rejects malformed input before touching the page", async () 
 });
 
 test("search_places refuses pages it cannot work on", async () => {
-  for (const [o, kind] of [[{ origin: "https://example.com" }, "wrong_page"], [{ path: "/search" }, "wrong_page"], [{ noSearchBox: true, path: "/maps/dir/A/B/" }, "wrong_page"], [{ lang: "fr" }, "unsupported_language"], [{ lang: "en-GB" }, null]]) {
+  for (const [o, kind] of [[{ origin: "https://example.com" }, "wrong_page"], [{ path: "/search" }, "wrong_page"], [{ path: "/mapsx" }, "wrong_page"], [{ noSearchBox: true, path: "/maps/dir/A/B/" }, "wrong_page"], [{ lang: "fr" }, "unsupported_language"], [{ lang: "en-GB" }, null]]) {
     const app = maps(o);
     const out = await call("search_places", app, { query: "coffee" });
     assert.equal(out.error_kind ?? null, kind, JSON.stringify(o));
     if (kind) assert.deepEqual(app.calls.clicks, []);
   }
+});
+
+test("search_places answers the same query again while a place from its list is open", async () => {
+  const [a, b] = [place(93), place(94)];
+  const app = maps({ initialFeed: [a, b], feedQuery: "coffee near here", initialPlace: a, path: openAt(a), results: () => ({ type: "feed", places: [a, b] }) });
+  const out = await call("search_places", app, { query: "Coffee near   here" });
+  assert.deepEqual(out.places.map(p => p.name), ["Example Place 93", "Example Place 94"]);
+});
+
+test("search_places trusts the list's own label: an identical set of cards for a new query is still fresh", async () => {
+  const [a, b] = [place(95), place(96)];
+  const app = maps({ initialFeed: [a, b], feedQuery: "first query", path: "/maps/search/first+query/@10.0,-20.0,12z/data=!3m1", renderDelay: 2000, results: () => ({ type: "feed", places: [a, b] }) });
+  const out = await call("search_places", app, { query: "second query" });
+  assert.deepEqual(out.places.map(p => p.name), ["Example Place 95", "Example Place 96"]);
+  assert.ok(app.clock.now - Date.parse("2026-09-29T12:00:00Z") < 6000);
+});
+
+test("search_places still tells stale from fresh when the list carries no usable label", async () => {
+  const stale = maps({ noFeedLabel: true, path: "/maps/search/old+query/@10.0,-20.0,12z/data=!3m1", initialFeed: [place(90)], results: () => ({ type: "feed", places: [place(4)] }), renderDelay: 9000 });
+  const fresh = await call("search_places", stale, { query: "new query" });
+  assert.deepEqual(fresh.places.map(p => p.name), ["Example Place 4"]);
+  const never = maps({ noFeedLabel: true, path: "/maps/search/old+query/@10.0,-20.0,12z/data=!3m1", initialFeed: [place(90)], results: () => ({ type: "feed", places: [place(4)] }), renderDelay: 60000 });
+  assert.equal((await call("search_places", never, { query: "new query" })).error_kind, "timeout");
+  const repeat = maps({ noFeedLabel: true, path: "/maps/search/same+query/@10.0,-20.0,12z/data=!3m1", initialFeed: [place(6)], results: () => ({ type: "feed", places: [place(6)] }) });
+  assert.deepEqual((await call("search_places", repeat, { query: "same query" })).places.map(p => p.name), ["Example Place 6"]);
+});
+
+test("search_places treats an 'Ad' label as sponsored and drops symbol-only detail parts", async () => {
+  const out = await call("search_places", maps({ results: () => ({ type: "feed", places: [place(97, { detail: "Restaurant · $$" }), place(98)] }) }), { query: "labels" });
+  assert.deepEqual([out.places[0].category, out.places[0].address], ["Restaurant", null]);
+  const adCard = place(99, { sponsored: true, adLabel: "Ad" });
+  const ad = await call("search_places", maps({ results: () => ({ type: "feed", places: [adCard] }) }), { query: "ad label" });
+  assert.equal(ad.places[0].sponsored, true);
+});
+
+test("search_places returns a repeated single-place query without waiting for a search state it never sees", async () => {
+  const p = place(100);
+  const app = maps({ initialPlace: p, path: openAt(p), results: () => ({ type: "place", place: p }) });
+  const out = await call("search_places", app, { query: "the same landmark" });
+  assert.deepEqual([out.status, out.feature_id], ["single_place", p.fid]);
 });
 
 // --- get_place ---------------------------------------------------------------------------------------------
@@ -391,6 +440,24 @@ test("get_place never reports the previous place's pane under the new place's id
   }
 });
 
+test("get_place tells apart two places that share a name and a street, and two that only differ inside a reused pane", async () => {
+  const [twinA, twinB] = [place(101, { name: "Twin Bridge", address: "Twin Brg" }), place(102, { name: "TWIN BRIDGE", address: "Twin Brg" })];
+  const fresh = maps({ initialFeed: [twinA, twinB], initialPlace: twinA, path: openAt(twinA) });
+  const out = await call("get_place", fresh, { place_url: `${ORIGIN}/maps/place/x/data=!4m2!3m1!1s${twinB.fid}` });
+  assert.deepEqual([out.name, out.feature_id], ["TWIN BRIDGE", twinB.fid]);
+
+  const [a, b] = [place(103), place(104)];
+  const reused = maps({ initialFeed: [a, b], initialPlace: a, path: openAt(a), reusePane: true });
+  const second = await call("get_place", reused, { place_url: `${ORIGIN}/maps/place/x/data=!4m2!3m1!1s${b.fid}` });
+  assert.deepEqual([second.name, second.feature_id], ["Example Place 104", b.fid]);
+});
+
+test("get_place ignores aria-labels that are not image labels when reading the header rating", async () => {
+  const p = place(105, { rating: 4.4, reviews: 88, decoyRating: true });
+  const out = await call("get_place", maps({ path: openAt(p), initialPlace: p }), {});
+  assert.deepEqual([out.rating, out.review_count], [4.4, 88]);
+});
+
 test("get_place waits while the pane's own feature id names another place", async () => {
   const [a, b] = [place(47), place(48)];
   const app = maps({ initialFeed: [a, { ...b, dataFid: a.fid }], initialPlace: a, path: openAt(a), dataFidFlip: 2500 });
@@ -462,7 +529,7 @@ test("get_place rejects malformed input and unsuitable pages before doing anythi
     assert.equal((await call("get_place", app, input)).error_kind, "invalid_input", JSON.stringify(input)?.slice(0, 60));
     assert.deepEqual(app.calls.clicks, []);
   }
-  for (const [o, kind] of [[{ origin: "https://example.com" }, "wrong_page"], [{ lang: "de" }, "unsupported_language"]]) {
+  for (const [o, kind] of [[{ origin: "https://example.com" }, "wrong_page"], [{ path: "/mapsx" }, "wrong_page"], [{ lang: "de" }, "unsupported_language"]]) {
     assert.equal((await call("get_place", maps(o), {})).error_kind, kind);
   }
 });

@@ -1,6 +1,6 @@
 [{
   kind: "page",
-  match: { url_patterns: ["https://www.google.com/maps*"] },
+  match: { url_patterns: ["https://www.google.com/maps", "https://www.google.com/maps/*", "https://www.google.com/maps?*"] },
   tool: {
     name: "search_places",
     description: "Search Google Maps for places from a Maps page and return the first results Maps loads: name, category, street address, rating, review count, price range, opening-status text, coordinates, whether the card is a sponsored placement, and a place_url. Put the location in the query ('coffee shops in Cincinnati OH'); without one Maps biases results toward its current map view. Works in the current Maps tab by using Maps' own search box, so the tab must already be on a https://www.google.com/maps page with an English interface (open https://www.google.com/maps?hl=en first). It does not scroll or page: at most 20 results, the ones Maps shows for one query, meant for answering a user's question, not for collecting listings in bulk. A query that names one specific place or address can open it directly and return status 'single_place' with its place_url (null for a bare map point such as coordinates); use get_place for its details. Pass a place_url to get_place to read one place. Sponsored placements come first in Maps' order and are flagged sponsored: true. The Maps tab is left on the search results. Signed in, Google may record the search in the account's Maps or search history as it does for any manual search. Read-only.",
@@ -81,7 +81,7 @@
     const limit = input.limit === undefined ? 10 : input.limit;
     if (!query || query.length > 200 || /[\u0000-\u001f\u007f]/.test(input.query) || !query.replace(/[\p{Cc}\p{Cf}\p{Z}]/gu, "")) return fail("invalid_input", "query must be 1-200 characters of visible text.");
     if (!Number.isInteger(limit) || limit < 1 || limit > 20) return fail("invalid_input", "limit must be an integer from 1 to 20.");
-    if (location.origin !== ORIGIN || !location.pathname.startsWith("/maps")) return fail("wrong_page", "Run this on a https://www.google.com/maps page.");
+    if (location.origin !== ORIGIN || (location.pathname !== "/maps" && !location.pathname.startsWith("/maps/"))) return fail("wrong_page", "Run this on a https://www.google.com/maps page.");
     if (!/^en(-|$)/i.test(document.documentElement.lang)) return fail("unsupported_language", "The Maps interface is not English. Open https://www.google.com/maps?hl=en and retry.");
 
     const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
@@ -91,6 +91,10 @@
     const kindOf = () => location.pathname.split("/")[2] || "";
     const rawSlug = () => location.pathname.split("/")[3] || "";
     const safeSlug = seg => (/^[^/?#@][^/?#]{0,299}$/.test(seg) ? seg : "x");
+    const feedLabel = () => {
+      const feed = [...document.querySelectorAll('div[role="feed"]')].find(visible);
+      return feed ? (feed.getAttribute("aria-label") || "").replace(/\s+/g, " ").trim().toLowerCase() : "";
+    };
     const cardsKey = () => feedAnchors().map(a => fidOf(a.getAttribute("href") || "") || "?").join(",");
     const coordsOf = href => { const m = /!3d(-?\d+(?:\.\d+)?)!4d(-?\d+(?:\.\d+)?)/.exec(href); return m ? [Number(m[1]), Number(m[2])] : [null, null]; };
     const slugOf = () => { try { return decodeURIComponent(rawSlug().replace(/\+/g, " ")).toLowerCase(); } catch (error) { return ""; } };
@@ -107,14 +111,15 @@
     if (!box || !button) return fail("wrong_page", "No Maps search box on this page; open https://www.google.com/maps (not a directions or Street View page).");
 
     const want = query.toLowerCase();
-    const before = { kind: kindOf(), slug: slugOf(), key: cardsKey(), fid: fidOf(location.pathname), pane: kindOf() === "place" ? paneSig() ?? "" : null };
+    const before = { kind: kindOf(), slug: slugOf(), key: cardsKey(), fid: fidOf(location.pathname), pane: kindOf() === "place" ? paneSig() ?? "" : null, paneEl: kindOf() === "place" ? paneOf() : null };
     box.focus();
     box.value = query;
     box.dispatchEvent(new Event("input", { bubbles: true }));
     button.click();
 
-    // Maps changes the URL at once but re-renders the list later, so a list counts as this query's only when it
-    // differs from the one shown before, or the previous query was the same.
+    // Maps changes the URL at once but re-renders the list later. The list says which query it answers in its own
+    // label ("Results for ..."), and the label changes together with the cards; failing that, a list counts as this
+    // query's only when its cards differ from the ones shown before.
     const started = Date.now();
     let count = -1, countSince = 0, sawSearch = false;
     for (;;) {
@@ -125,7 +130,8 @@
       if (kindOf() === "place" && paneOf()) {
         const fid = fidOf(location.pathname);
         // A place counts as this query's answer once URL and pane have both left the place that was open before.
-        const fresh = before.pane === null || (paneSig() !== before.pane && fid !== before.fid) || (paneSig() === before.pane && fid === before.fid && (sawSearch || elapsed > 3000));
+        const sigChanged = paneSig() !== before.pane;
+        const fresh = before.pane === null || (fid !== before.fid ? sigChanged || paneOf() !== before.paneEl : !sigChanged && (sawSearch || elapsed > 3000));
         if (fresh) {
           const pane = paneOf();
           const name = nameOf(pane);
@@ -142,7 +148,7 @@
         if (main && main.toLowerCase().includes(want) && elapsed > 1500) return { status: "no_results", query, message: `Google Maps found no places for "${query}".` };
         const cards = feedAnchors();
         if (cards.length !== count) { count = cards.length; countSince = elapsed; }
-        const fresh = cardsKey() !== before.key || (slugOf() === want && before.kind === "search" && before.slug === want);
+        const fresh = feedLabel() === `results for ${want}` || cardsKey() !== before.key || (slugOf() === want && before.kind === "search" && before.slug === want);
         if (cards.length && fresh && elapsed - countSince >= 1000) break;
       }
     }

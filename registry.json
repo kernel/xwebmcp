@@ -274,11 +274,13 @@
       "kind": "page",
       "namespace": "google.com",
       "url_patterns": [
-        "https://www.google.com/maps*"
+        "https://www.google.com/maps",
+        "https://www.google.com/maps/*",
+        "https://www.google.com/maps?*"
       ],
       "status": "draft",
       "last_verified": null,
-      "notes": "Google Maps place details (name, category, rating, address, phone, website, Plus Code, coordinates, open-status line, weekly hours when the pane lists them) for the open place or for a place_url from search_places results the tab is showing. Same-document page tool on Maps only; never navigates. Draft: first independent QA round found defects that were fixed; awaiting re-check."
+      "notes": "Google Maps place details (name, category, rating, address, phone, website, Plus Code, coordinates, open-status line, weekly hours when the pane lists them) for the open place or for a place_url from search_places results the tab is showing. Same-document page tool on Maps only; never navigates. Draft: two independent QA rounds found defects that were fixed; awaiting a final re-check."
     },
     {
       "domain": "google.com",
@@ -287,11 +289,13 @@
       "kind": "page",
       "namespace": "google.com",
       "url_patterns": [
-        "https://www.google.com/finance*"
+        "https://www.google.com/finance",
+        "https://www.google.com/finance/*",
+        "https://www.google.com/finance?*"
       ],
       "status": "draft",
       "last_verified": null,
-      "notes": "Google Finance quote for a TICKER:EXCHANGE symbol (price, change against previous close, quote time, key statistics as displayed) read from one same-origin request to the quote page; page tool on Finance only. Currency pairs and crypto are not supported. Does not register in the Chrome extension on Finance while its Trusted Types check rejects the extension's page-tool compile. Draft: first independent QA round found defects that were fixed; awaiting re-check."
+      "notes": "Google Finance quote for a TICKER:EXCHANGE symbol (price, change against previous close, quote time, key statistics as displayed) read from one same-origin request to the quote page; page tool on Finance only. Currency pairs and crypto are not supported. Does not register in the Chrome extension on Finance while its Trusted Types check rejects the extension's page-tool compile. Draft: two independent QA rounds found defects that were fixed; awaiting a final re-check."
     },
     {
       "domain": "google.com",
@@ -317,11 +321,13 @@
       "kind": "page",
       "namespace": "google.com",
       "url_patterns": [
-        "https://www.google.com/maps*"
+        "https://www.google.com/maps",
+        "https://www.google.com/maps/*",
+        "https://www.google.com/maps?*"
       ],
       "status": "draft",
       "last_verified": null,
-      "notes": "Google Maps place search through the tab's own Maps search box: up to 20 loaded results with category, address, rating, price range, status text, sponsored flag, coordinates and a canonical place_url; single-place and no-results outcomes are explicit. Page tool on Maps only; does not scroll or page. Draft: first independent QA round found defects that were fixed; awaiting re-check."
+      "notes": "Google Maps place search through the tab's own Maps search box: up to 20 loaded results with category, address, rating, price range, status text, sponsored flag, coordinates and a canonical place_url; single-place and no-results outcomes are explicit. Page tool on Maps only; does not scroll or page. Draft: two independent QA rounds found defects that were fixed; awaiting a final re-check."
     },
     {
       "domain": "instacart.com",
@@ -557,7 +563,7 @@
       ],
       "status": "verified",
       "last_verified": "2026-09-24",
-      "notes": "Independent search/parser QA passed; domain migration live-verified from /travel-agents. Returns initial outbound cards only, including round trips; 1\u20137 adults; displayed cash fares are not trip totals. Inventory failures remain explicit errors.",
+      "notes": "Independent search/parser QA passed; domain migration live-verified from /travel-agents. Returns initial outbound cards only, including round trips; 1–7 adults; displayed cash fares are not trip totals. Inventory failures remain explicit errors.",
       "provenance": {
         "qa_agent": "agt_8da83a2e489269a5ff05"
       }
