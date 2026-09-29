@@ -107,15 +107,17 @@
       const label = (nodes, test) => nodes.map(n => clean(n.textContent)).find(t => t && test(t)) || null;
       const about = document.querySelector("[data-testid=about]");
       const more = about ? [...about.querySelectorAll("a")].find(a => /^Continued in /i.test(clean(a.textContent))) : null;
-      // The page shows only the first sentences of the panel text and hides the rest with CSS after it renders; the hidden text is not the description.
-      const leaves = more && more.parentElement ? [...more.parentElement.querySelectorAll("span")].filter(s => !s.querySelector("span")) : [];
-      const shown = leaves.filter(s => s.getClientRects().length > 0);
+      const panel = more ? more.parentElement : null;
+      // The page shows only the first sentences of the panel text and hides the rest with CSS after it renders; innerText is the text as displayed.
+      const withoutLink = text => { const t = clean(text), link = clean(more.textContent); return t.endsWith(link) ? t.slice(0, -link.length).trim() : t; };
+      const panelText = panel ? withoutLink(panel.innerText) : "";
+      const panelHidden = panel ? withoutLink(panel.textContent).length > panelText.length : false;
       const noResults = !list && [...document.querySelectorAll("section[data-area=mainline]")].some(s => /^No results found for/i.test(clean(s.textContent)));
       const out = {
         host: location.hostname, marker: !!window.__xwebmcpDdgNav,
         hasList: !!list, articles: articles.length, noResults,
         hasMore: !!document.querySelector("#more-results"),
-        hasAbout: !!about, shownLeaves: shown.length
+        hasAbout: !!about, panelChars: panelText.length, panelHidden
       };
       // The no-results page echoes the query, so its text is never searched for challenge wording.
       out.challenge = !articles.length && !noResults && (!!document.querySelector("[class*='anomaly-modal'], form[action*='anomaly']") || /bots use DuckDuckGo too|select all squares containing/i.test(clean((document.body && (document.body.innerText || document.body.textContent)) || "").slice(0, 20000)));
@@ -156,11 +158,10 @@
       if (heading) {
         const official = about.querySelector("[data-testid=about_official-website]");
         const subtitle = official && official.parentElement ? official.parentElement.querySelector("span") : null;
-        const text = clean(shown.map(s => s.textContent).join(" "));
         out.about = {
           title: cut(clean(heading.textContent), 200),
           subtitle: subtitle ? cut(clean(subtitle.textContent), 300) || null : null,
-          description: text ? cut(text + (shown.length < leaves.length ? "…" : ""), 800) : null,
+          description: panelText ? cut(panelText + (panelHidden && !/(…|\.\.\.)$/.test(panelText) ? "…" : ""), 800) : null,
           official_site_url: official ? link(official.getAttribute("href")) : null,
           source_url: more ? link(more.getAttribute("href")) : null
         };
@@ -183,17 +184,19 @@
     const started = Date.now();
     try {
       let state = null;
-      let panelShown = null;
+      let lastPanel = null;
+      let unchanged = 0;
       let seen = null;
       for (;;) {
         state = read({ full: false });
         if (state.challenge) return fail("challenge", "DuckDuckGo is showing a bot-verification challenge instead of results. A person has to complete it in this browser; nothing was read and the tool does not try to solve it.");
         if (state.noResults) break;
         if (state.hasList && state.articles > 0) {
-          // The knowledge panel is trimmed by the page shortly after it renders; read once its visible text has stopped changing.
+          // The page trims the knowledge panel text shortly after it renders: read once the displayed text stops changing (one quiet interval once text is hidden, two before that).
           seen = seen ?? Date.now();
-          if (!state.hasAbout || panelShown === state.shownLeaves || Date.now() - seen > 2000) break;
-          panelShown = state.shownLeaves;
+          unchanged = state.panelChars === lastPanel ? unchanged + 1 : 0;
+          lastPanel = state.panelChars;
+          if (!state.hasAbout || unchanged >= (state.panelHidden ? 1 : 2) || Date.now() - seen > 2500) break;
         }
         if (Date.now() - started > 10000) {
           if (state.hasList) return fail("site_changed", "The DuckDuckGo results list loaded but no result entries were recognized; the page layout may have changed.");

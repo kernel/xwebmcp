@@ -47,6 +47,12 @@ function conforms(schema, value) {
   return true;
 }
 
+// The fake DOM's innerText is its textContent. Browsers return only the rendered text, so model hidden elements and
+// line breaks around block elements (enough for the knowledge panel, whose hidden sentences the page trims with CSS).
+const BLOCKS = new Set(["div", "p", "ul", "li"]);
+const rendered = node => node.nodeType === 3 ? node.textContent : node.hidden() ? "" : (BLOCKS.has(node.localName) ? "\n" : "") + node.childNodes.map(rendered).join("") + (BLOCKS.has(node.localName) ? "\n" : "");
+Object.defineProperty(Object.getPrototypeOf(new Document("<p></p>").querySelector("p")), "innerText", { get() { return rendered(this); }, configurable: true });
+
 // Extra organic result entries, appended when the fake site's More results button is pressed.
 const moreCards = (from, count) => Array.from({ length: count }, (_, i) => `<li data-layout="organic"><article data-testid="result">
   <div><div><p>Site ${from + i}</p><a href="https://site${from + i}.example.org/" data-testid="result-extras-url-link"><div><p><span>https://site${from + i}.example.org</span></p></div></a></div></div>
@@ -172,7 +178,8 @@ test("no tool opens AI answers, chat, ads or account surfaces", () => {
 
 const invalidSearch = [
   undefined, null, [], "rust", {}, { query: "" }, { query: "   " }, { query: 7 }, { query: "x".repeat(501) },
-  { query: "rust !w" }, { query: "!g rust" }, { query: "!ш rust" }, { query: "rust\t!yt" }, { query: "what is !important in css" }, { query: "\\rust" }, { query: "  \\ rust" },
+  { query: "rust !w" }, { query: "!g rust" }, { query: "!ш rust" }, { query: "rust\t!yt" }, { query: "rust!w" }, { query: "rust1!w" }, { query: "what is !important in css" },
+  { query: "\\rust" }, { query: "  \\ rust" }, { query: "! rust" }, { query: "rust !" }, { query: "  rust  !  " },
   { query: "rust", limit: 0 }, { query: "rust", limit: 51 }, { query: "rust", limit: 1.5 }, { query: "rust", limit: "5" },
   { query: "rust", region: "US" }, { query: "rust", region: "us_en" }, { query: "rust", region: "us-e" }, { query: "rust", region: "us-engl" }, { query: "rust", region: "USA-en" }, { query: "rust", region: 5 },
   { query: "rust", safe_search: "on" }, { query: "rust", safe_search: 1 },
@@ -266,7 +273,7 @@ test("search: returns the knowledge panel, related searches and module names", a
   assert.deepEqual(result.knowledge_panel, {
     title: "Fabricated Thing",
     subtitle: "An invented subject for tests",
-    description: "Fabricated Thing is a made-up subject. It exists only in fixtures It has no real-world facts.…",
+    description: "Fabricated Thing is a made-up subject. It exists only in fixtures. It has no real-world facts.…",
     official_site_url: "https://www.fabricated-thing.example.net/",
     source_url: "https://en.example.org/wiki/Fabricated_Thing"
   });
@@ -275,7 +282,7 @@ test("search: returns the knowledge panel, related searches and module names", a
   assert.equal(/Search Assist|Generate answer/.test(JSON.stringify(result)), false);
   assert.equal(/hidden sentence/i.test(JSON.stringify(result)), false, "text the page hides with CSS is not returned");
   const untruncated = await harness("search", { pageFor: () => fixture("results").replace(/<span style="display:none">[^<]*<\/span>/g, "") }).run({ query: "fabricated query" });
-  assert.equal(untruncated.knowledge_panel.description, "Fabricated Thing is a made-up subject. It exists only in fixtures It has no real-world facts.", "no ellipsis when nothing is hidden");
+  assert.equal(untruncated.knowledge_panel.description, "Fabricated Thing is a made-up subject. It exists only in fixtures. It has no real-world facts.", "no ellipsis when nothing is hidden");
 });
 
 test("search: encodes region, safe search and time filters in DuckDuckGo's URL parameters", async () => {
@@ -297,7 +304,13 @@ test("search: accepts regions with a three-letter language part and queries with
     [{ query: "rust", region: "hk-tzh" }, "?q=rust&ia=web&kl=hk-tzh"],
     [{ query: "python != operator" }, "?q=python+%21%3D+operator&ia=web"],
     [{ query: "a !== b" }, "?q=a+%21%3D%3D+b&ia=web"],
-    [{ query: "wow! really ! ok !!" }, "?q=wow%21+really+%21+ok+%21%21&ia=web"]
+    [{ query: "wow! really ! ok !!" }, "?q=wow%21+really+%21+ok+%21%21&ia=web"],
+    [{ query: "rust (!w)" }, "?q=rust+%28%21w%29&ia=web"],
+    [{ query: "\"!w\" rust" }, "?q=%22%21w%22+rust&ia=web"],
+    [{ query: "rust !!w" }, "?q=rust+%21%21w&ia=web"],
+    [{ query: "rust.!w" }, "?q=rust.%21w&ia=web"],
+    [{ query: "what?! rust" }, "?q=what%3F%21+rust&ia=web"],
+    [{ query: "!" }, "?q=%21&ia=web"]
   ]) {
     const h = harness("search");
     const result = await h.run(input);
@@ -434,8 +447,23 @@ test("search: waits for the knowledge panel to be trimmed before reading it", as
   const h = harness("search", { pageFor: untrimmed, onTick: (tick, install) => { if (tick === 1) install(fixture("results")); } });
   const result = await h.run({ query: "fabricated query", limit: 4 });
   assert.equal(result.status, "ok");
-  assert.equal(result.knowledge_panel.description, "Fabricated Thing is a made-up subject. It exists only in fixtures It has no real-world facts.…");
+  assert.equal(result.knowledge_panel.description, "Fabricated Thing is a made-up subject. It exists only in fixtures. It has no real-world facts.…");
   assert.equal(JSON.stringify(result).includes("hidden sentence"), false);
+});
+
+test("search: the panel description is the displayed text, including list items, and marks hidden text", async () => {
+  const list = fixture("results").replace(/<div><span><span>Fabricated Thing is[\s\S]*?<\/span><\/span> <a href/, '<div><span>Fabricated Thing has two parts:</span><ul><li>The first part;</li><li style="display:none">A hidden part.</li></ul> <a href');
+  const result = await harness("search", { pageFor: () => list }).run({ query: "fabricated query", limit: 4 });
+  assert.equal(result.knowledge_panel.description, "Fabricated Thing has two parts: The first part;…");
+  assert.equal(JSON.stringify(result).includes("hidden part"), false);
+  const shown = await harness("search", { pageFor: () => list.replace(' style="display:none"', "") }).run({ query: "fabricated query", limit: 4 });
+  assert.equal(shown.knowledge_panel.description, "Fabricated Thing has two parts: The first part; A hidden part.", "nothing hidden, so no ellipsis");
+});
+
+test("search: a trim that lands after the first quiet interval is still waited for", async () => {
+  const h = harness("search", { pageFor: untrimmed, onTick: (tick, install) => { if (tick === 2) install(fixture("results")); } });
+  const result = await h.run({ query: "fabricated query", limit: 4 });
+  assert.equal(result.knowledge_panel.description, "Fabricated Thing is a made-up subject. It exists only in fixtures. It has no real-world facts.…");
 });
 
 test("search: a panel that never stops changing does not stall or fail the read", async () => {
@@ -478,8 +506,14 @@ test("get_search_results: waits for the knowledge panel to be trimmed before rea
   const h = harness("get_search_results", { pageFor: untrimmed, onTick: (tick, install) => { if (tick === 1) install(fixture("results")); } });
   const result = await h.run({});
   assert.equal(result.status, "ok");
-  assert.equal(result.knowledge_panel.description, "Fabricated Thing is a made-up subject. It exists only in fixtures It has no real-world facts.…");
+  assert.equal(result.knowledge_panel.description, "Fabricated Thing is a made-up subject. It exists only in fixtures. It has no real-world facts.…");
   assert.equal(JSON.stringify(result).includes("hidden sentence"), false);
+});
+
+test("get_search_results: a trim that lands after the first quiet interval is still waited for", async () => {
+  const h = harness("get_search_results", { pageFor: untrimmed, onTick: (tick, install) => { if (tick === 2) install(fixture("results")); } });
+  const result = await h.run({});
+  assert.equal(result.knowledge_panel.description, "Fabricated Thing is a made-up subject. It exists only in fixtures. It has no real-world facts.…");
 });
 
 test("get_search_results: defaults limit to 10 and accepts empty or missing input", async () => {
