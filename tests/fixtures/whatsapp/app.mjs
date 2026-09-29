@@ -6,7 +6,7 @@
 //
 // Two guards keep the tools honest about what they read. Text the tools must never read (message
 // previews, contact names, message hits) records every read of textContent or of an attribute, whether
-// by getAttribute or by a selector that tests it. And the tools only see elements through a strict view
+// by getAttribute or by a [name="v"] / [name^="v"] / [name] selector that returns it. And the tools only see elements through a strict view
 // that records, then throws on, any member outside the small set they use, so a read through innerText,
 // innerHTML, dataset, attributes and the like fails a test even if the tool swallows the error. The
 // fixture models no unread, pinned or muted markup, so those are not covered by these guards.
@@ -54,6 +54,8 @@ function parseSelector(selector) {
     const match = /^([a-z]+)?((?:\[[^\]]+\])*)$/.exec(part);
     if (!match) throw new Error("unsupported selector: " + selector);
     const attrs = [...match[2].matchAll(/\[([a-z-]+)(?:(\^?=)"([^"]*)")?\]/g)].map(m => ({ name: m[1], op: m[2] || null, value: m[3] }));
+    // Only [name], [name="v"] and [name^="v"] are modelled; any other attribute syntax must fail loudly, not match everything.
+    if (attrs.length !== (match[2].match(/\[/g) || []).length) throw new Error("unsupported attribute selector: " + selector);
     return { tag: match[1] || null, attrs };
   });
 }

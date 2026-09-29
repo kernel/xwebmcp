@@ -3,8 +3,9 @@ import test from "node:test";
 import { CONTACTS, El, createApp } from "./fixtures/whatsapp/app.mjs";
 
 // Every name, number, time and message below is fabricated. The fixture app records any read of a
-// message preview, a contact name or a message hit (by textContent, getAttribute or an attribute
-// selector) and records and throws on any element member the tools have no reason to use. Unread,
+// message preview, a contact name or a message hit (by textContent, getAttribute, or a selector
+// using [name], [name="v"] or [name^="v"] that returns it) and records and throws on any element
+// member the tools have no reason to use. A selector that returns no forbidden node is not recorded. Unread,
 // pinned and muted markup is not modelled, so that those are not read is a property of the sources,
 // not of these tests.
 const titles = result => result.chats.map(chat => chat.title);
@@ -32,6 +33,9 @@ test("the fixture's read guards fire on reads the tools must not make", () => {
     const probe = createApp({ initialSearch: "dana" });
     probe.probe(`document.querySelector('[data-testid="chat-list"]').querySelectorAll('${selector}')`);
     assert.ok(probe.forbidden.includes("contact name"), `a selector that tests an attribute value reads it: ${selector}`);
+  }
+  for (const selector of ['span[title*="ana"]', 'span[title$="Contact"]', 'span[title~="Dana"]', 'span[title|="Dana"]', 'span[title^=Dana]', "span[title^='Dana']", 'span[Title^="Dana"]']) {
+    assert.throws(() => createApp({ initialSearch: "dana" }).probe(`document.querySelector('[data-testid="chat-list"]').querySelectorAll('${selector.replaceAll("'", "\\'")}')`), /unsupported attribute selector/, selector);
   }
   const structural = createApp({ initialSearch: "dana" });
   structural.probe('document.querySelector(\'[data-testid="chat-list"]\').querySelectorAll(\'[role="row"] [data-testid="cell-frame-title"]\')');

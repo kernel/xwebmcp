@@ -1286,7 +1286,7 @@
       ],
       "status": "draft",
       "last_verified": null,
-      "notes": "WhatsApp Web only. Reports logged_in, logged_out (QR / linking screen) or unknown from the page's own markup; never links a device or reads the QR code. Read-only.",
+      "notes": "WhatsApp Web only. Reports logged_in, logged_out (QR / linking screen) or unknown from the page's own markup; never links a device or reads the QR code. Read-only. Independent review covered the logged-out surface and fixtures only; nothing on an authenticated account was independently checked.",
       "provenance": {
         "qa_agent": "agt_739c76521225a0c3ead9"
       }
@@ -1302,7 +1302,7 @@
       ],
       "status": "draft",
       "last_verified": null,
-      "notes": "WhatsApp Web only. Chat titles and the sidebar's time text for the rendered rows, in sidebar order. Never opens a chat and does not read previews, message text, unread counts or read state. The selected sidebar filter chip is not detectable.",
+      "notes": "WhatsApp Web only. Chat titles and the sidebar's time text for the rendered rows, in sidebar order. Never opens a chat and does not read previews, message text, unread counts or read state. The selected sidebar filter chip is not detectable. Independent review covered the logged-out surface and fixtures only; nothing on an authenticated account was independently checked.",
       "provenance": {
         "qa_agent": "agt_739c76521225a0c3ead9"
       }
@@ -1318,7 +1318,7 @@
       ],
       "status": "draft",
       "last_verified": null,
-      "notes": "WhatsApp Web only. Types a query into the sidebar search box (synthetic input, never Enter), reads chat titles that match, and empties the box again. Address-book contacts and message hits are skipped without being read. Never opens a chat.",
+      "notes": "WhatsApp Web only. Types a query into the sidebar search box (synthetic input, never Enter), reads chat titles that match, and empties the box again. Address-book contacts and message hits are skipped without being read. Never opens a chat. Independent review covered the logged-out surface and fixtures only; nothing on an authenticated account was independently checked.",
       "provenance": {
         "qa_agent": "agt_739c76521225a0c3ead9"
       }
