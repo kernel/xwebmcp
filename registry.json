@@ -626,6 +626,45 @@
       }
     },
     {
+      "domain": "opentable.com",
+      "tool": "get_restaurant",
+      "file": "domains/opentable.com/get_restaurant.js",
+      "kind": "page",
+      "namespace": "opentable.com",
+      "url_patterns": [
+        "https://www.opentable.com/*"
+      ],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Page tool on www.opentable.com: one restaurant profile by id or profile URL from the page's server-rendered profile state (address, hours text, amenities, ratings by category, awards, tags, optional published menus). No bookable times, reviews or account data. Not yet independently QA'd."
+    },
+    {
+      "domain": "opentable.com",
+      "tool": "get_reviews",
+      "file": "domains/opentable.com/get_reviews.js",
+      "kind": "page",
+      "namespace": "opentable.com",
+      "url_patterns": [
+        "https://www.opentable.com/*"
+      ],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Page tool on www.opentable.com: one page of 10 diner reviews, newest first, read from the profile page's server-rendered state for that page number. Omits reviewer names and photos and restaurant reply text. Out-of-range pages are reported as no_results. Not yet independently QA'd."
+    },
+    {
+      "domain": "opentable.com",
+      "tool": "search_restaurants",
+      "file": "domains/opentable.com/search_restaurants.js",
+      "kind": "page",
+      "namespace": "opentable.com",
+      "url_patterns": [
+        "https://www.opentable.com/*"
+      ],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Page tool on www.opentable.com: free-text restaurant search with optional date, time and party size, one results page of up to 50 per call, from the search page's server-rendered state. Returns no bookable time slots. Akamai 'Access Denied' after rapid repeated requests is reported as challenge. Not yet independently QA'd."
+    },
+    {
       "domain": "purelymail.com",
       "tool": "create_filter",
       "file": "domains/purelymail.com/create_filter.js",
