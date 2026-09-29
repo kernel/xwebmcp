@@ -626,6 +626,32 @@
       }
     },
     {
+      "domain": "marriott.com",
+      "tool": "get_hotel",
+      "file": "domains/marriott.com/get_hotel.js",
+      "kind": "page",
+      "namespace": "marriott.com",
+      "url_patterns": [
+        "https://www.marriott.com/*"
+      ],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Page tool on www.marriott.com: one hotel's public overview facts (address, phone, check-in/out times, amenities, coordinates, FAQ answers) from the overview page's structured data, by property code, slug or overview URL. Unit-tested; not yet independently QA'd. Bot protection (Access Denied) is reported as challenge."
+    },
+    {
+      "domain": "marriott.com",
+      "tool": "search_hotels",
+      "file": "domains/marriott.com/search_hotels.js",
+      "kind": "page",
+      "namespace": "marriott.com",
+      "url_patterns": [
+        "https://www.marriott.com/*"
+      ],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Page tool on www.marriott.com: signed-out hotel search by destination text or place_id, dates, rooms, adults per room and radius, with per-night cash rates and optional points per room, via the site's own persisted GraphQL operations. City, airport and point-of-interest destinations only. Unit-tested; not yet independently QA'd. Persisted-query drift is reported as site_changed."
+    },
+    {
       "domain": "purelymail.com",
       "tool": "create_filter",
       "file": "domains/purelymail.com/create_filter.js",
