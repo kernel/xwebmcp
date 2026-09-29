@@ -867,6 +867,58 @@
       }
     },
     {
+      "domain": "resy.com",
+      "tool": "get_availability",
+      "file": "domains/resy.com/get_availability.js",
+      "kind": "page",
+      "namespace": "resy.com",
+      "url_patterns": [
+        "https://resy.com/*"
+      ],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Open slots for one venue, date and party size: venue-local times, seating type and each slot's raw cancellation and payment fields; never returns booking handles; Tock-backed venues return not_found"
+    },
+    {
+      "domain": "resy.com",
+      "tool": "get_availability_calendar",
+      "file": "domains/resy.com/get_availability_calendar.js",
+      "kind": "page",
+      "namespace": "resy.com",
+      "url_patterns": [
+        "https://resy.com/*"
+      ],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Per-date reservation, event and walk-in state for one venue and party size inside the venue's booking window"
+    },
+    {
+      "domain": "resy.com",
+      "tool": "get_restaurant",
+      "file": "domains/resy.com/get_restaurant.js",
+      "kind": "page",
+      "namespace": "resy.com",
+      "url_patterns": [
+        "https://resy.com/*"
+      ],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Venue profile by resy.com venue URL or city and venue slug: cuisine, rating, address, contact, About and Need to Know text, party-size limits"
+    },
+    {
+      "domain": "resy.com",
+      "tool": "search_restaurants",
+      "file": "domains/resy.com/search_restaurants.js",
+      "kind": "page",
+      "namespace": "resy.com",
+      "url_patterns": [
+        "https://resy.com/*"
+      ],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Keyword, cuisine and place search with optional date, party size and time; lists open slot times per venue; flags Tock-booked venues"
+    },
+    {
       "domain": "southwest.com",
       "tool": "login",
       "file": "domains/southwest.com/login.js",
