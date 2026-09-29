@@ -4,6 +4,7 @@ Tools for American Airlines (https://www.aa.com).
 
 | tool | file | status | notes |
 |---|---|---|---|
+| get_flight_status | [get_flight_status.js](get_flight_status.js) | draft | Public status for one American-marketed flight number and origin-local date; page tool, `www.aa.com` pages only. |
 | search_flights | [search_flights.js](search_flights.js) | verified | First-page outbound options; round-trip fares do not select a return flight. |
 | login | [login.js](login.js) | qa_passed | DDG-only entry; CAPTCHA is a typed failure. Full authentication remains unverified. |
 
@@ -71,6 +72,64 @@ node --test tests/aa.com.test.mjs
 - Independent QA browser: `herknyf87s7zdzhwscc6g224` (24-hour inactivity timeout, left alive).
 - Independent QA agent: `agt_dbdb039786be4bed1121`.
 - This repository is canonical; browser sessions and registrations expire, but the source does not.
+
+## Flight status
+
+`get_flight_status` returns the public flight status American shows on its flight-status page for one American-marketed flight number on one date. It needs no login. It is a draft: it has fixture tests and author live checks, not yet an independent QA pass.
+
+### Native WebMCP
+
+American registers no WebMCP tools of its own. `webmcp.listTools()` returned an empty list on 2026-09-29 on the homepage, the flight-status search page and the travel-alerts page, before and after registering this namespace. Nothing collides with the custom tool names.
+
+### Execution kind
+
+`kind: "page"`. The tool reads the answer with one same-origin `fetch` from the document it is invoked in and never navigates, so it has nothing to survive and does not meet the `cdp` rule (a navigation plus a structured result read after it). American's own page reads the same data by loading a results page and then issuing that request; the tool skips the navigation and issues the request directly.
+
+### Scope and loading
+
+Register the whole namespace together. The patterns are the domain default (`https://aa.com/*`, `https://*.aa.com/*`), so the tool is also listed on other aa.com hosts (for example `login.aa.com`), but it only works on a `https://www.aa.com` page and returns `wrong_page` elsewhere without sending anything.
+
+```js
+const names = ["get_flight_status", "login", "search_flights"];
+const fs = await import("node:fs");
+const tools = names.flatMap(n => (0, eval)("(" + fs.readFileSync(`domains/aa.com/${n}.js`, "utf8") + ")"));
+await webmcp.addCustomTools({ namespace: "aa.com", tools, forceOverwriteNamespace: true });
+const live = (await webmcp.listTools()).find(t => t.source.custom?.namespace === "aa.com" && t.tool.name === "get_flight_status");
+const result = await webmcp.invokeTool(live.tool_ref, { flightNumber: "1938", date: "2026-10-15" }, { timeoutSec: 60 });
+```
+
+Input: `flightNumber` (1–9999, optionally prefixed `AA`, the form `search_flights` returns in `flightNumbers`) and `date` (the flight's departure date at its origin airport, `YYYY-MM-DD`). Other carriers, airport pairs and reservation data are not accepted. The tool rejects malformed input itself before any request; American's service answers a malformed date with HTTP 500, so a bad date must not reach it.
+
+Output on success: `flights[]` (at most 10 rows; `flightCount` is the number American returned) with status text and key, `canceled`/`diverted`/`landed`/`inFlight`, departure and arrival airport, city, terminal, gate, baggage claim, scheduled/estimated/actual times as ISO 8601 with the airport's UTC offset, aircraft name and code, `operatedBy` for American Eagle flights, wifi and power flags, the incoming flight number and date, and `statusPageUrl`, American's own page for the flight. Fields outside this list, including tail number and everything the site returns about the signed-in member, are dropped. Other outcomes are `no_results`, `blocked`, `rate_limited`, `site_changed`, `wrong_page` and `error`, each with a message and the HTTP status when a request was made. The tool sends exactly one request per call and never retries.
+
+### Observed mechanism
+
+Public pages, observed 2026-09-29 (Kernel stealth browser on a US residential proxy):
+
+- `https://www.aa.com/travelInformation/flights/status` → **Flight number** tab → Search loads `https://www.aa.com/travelInformation/flights/status/detail?search=AA|100|2026,9,29&ref=search`. That page issues `POST https://www.aa.com/flightinfo/v1.2/` with the JSON body `[{"airlineCode":"AA","destAirportCode":"","flightNumber":"100","fltOrgDate":"2026-09-29","orgAirportCode":""}]` and answers `{"flights":[…]}`.
+- The same request sent with `fetch` from a `www.aa.com` page returned the same shape. American's service answered HTTP 400 unless both the `locale: en` and `Client-Details: aa-ct-aacom/flifoui` request headers were present, so the tool sends them; the second is the flight-status page's own client identifier.
+- `fltOrgDate` is the origin-local departure date (a flight departing New York at 18:20 local matched its local date). A date about 60 days ahead returned the scheduled times with `Flight status not available`; dates a year or more ahead also returned rows. A date 7 days back returned `Arrived at gate` with actual departure and arrival times and a baggage claim; a date 60 days back returned an empty list. An unknown flight number returned an empty list with HTTP 200. An unparseable date returned HTTP 500.
+- The detail page shows no flight unless the `ref=search` parameter is present, so `statusPageUrl` includes it.
+- An American Eagle flight returned `codeShareInfo.operatedBy: "American Eagle"`.
+
+### Flight status QA
+
+Status is `draft`. What has been checked:
+
+- Fixture tests (`tests/aa-flight-status.test.mjs`, fabricated flights, stubbed page): input rejection before any request, the exact request, wrong host, challenge pages, field allowlist and cleaning, schedule-only rows, cancellation, the 10-row cap, no-results, and every HTTP failure mapping.
+- Author live checks on 2026-09-29 (all public, read-only): registration of the whole `aa.com` namespace and invocation from `www.aa.com/homePage.do` and from the flight-status page; a same-day flight, an American Eagle flight, a schedule-only date, a departed flight, an unknown flight number and an old date; a call from `creditcards.aa.com` (`wrong_page`); and malformed input. Every live output conformed to the output schema. The tool was not registered on `about:blank` or `example.com`.
+- `blocked` was observed live once: after about an hour of repeated author probing, `www.aa.com/homePage.do` began returning Akamai's "Access Denied" page to that browser and to a fresh browser on the same proxy; the tool returned `blocked` without sending a request. A different proxy loaded the homepage normally.
+- Not observed live: `blocked` or `rate_limited` answered by the flight-status service itself, `passengerMessage` with text, a cancelled or diverted flight, and a flight number with several rows. These paths are covered by fixtures only.
+- Independent QA: not yet run.
+
+### Flight status known limitations
+
+- American-marketed flight numbers only, by number and date. There is no route or airport search; use `search_flights` to find flight numbers.
+- The service is American's own web endpoint, not a documented API. Both required request headers were found by observation and could change; the tool reports `site_changed` when the answer is not in the observed shape.
+- `Flight status not available` means American publishes only the schedule; it is not evidence of a delay or cancellation. `no_results` is not proof that the flight never operates: American keeps only a limited window of past dates.
+- Wifi and power flags are American's values. `false` was seen on schedule-only rows and on a departed flight, so it does not prove the aircraft lacks them.
+- Only `www.aa.com` pages work. The tool is listed on other aa.com hosts because the namespace uses the domain default patterns.
+- Bot protection can block the page or the request. This is reported as `blocked` and is not an answer about the flight. The page-level denial was seen during the author checks; a denial of the flight-status request itself was not.
 
 ## Login scope and loading
 

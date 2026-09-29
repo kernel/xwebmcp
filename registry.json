@@ -4,6 +4,20 @@
   "tools": [
     {
       "domain": "aa.com",
+      "tool": "get_flight_status",
+      "file": "domains/aa.com/get_flight_status.js",
+      "kind": "page",
+      "namespace": "aa.com",
+      "url_patterns": [
+        "https://aa.com/*",
+        "https://*.aa.com/*"
+      ],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Public flight status for one American-marketed flight number and origin-local date, from American's own flight-status service through one same-origin request; page tool that never navigates. Works only on https://www.aa.com pages (wrong_page elsewhere on aa.com). Not independently tested."
+    },
+    {
+      "domain": "aa.com",
       "tool": "login",
       "file": "domains/aa.com/login.js",
       "kind": "cdp",
