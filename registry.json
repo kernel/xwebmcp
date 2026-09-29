@@ -131,6 +131,34 @@
       }
     },
     {
+      "domain": "duckduckgo.com",
+      "tool": "get_search_results",
+      "file": "domains/duckduckgo.com/get_search_results.js",
+      "kind": "page",
+      "namespace": "duckduckgo.com",
+      "url_patterns": [
+        "https://duckduckgo.com/*",
+        "https://*.duckduckgo.com/*"
+      ],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Page tool: reads the open full-site web results page (organic results, knowledge panel, related searches, filter labels) without navigating; optional in-place More results. Wrong_page on html/lite hosts, other verticals and non-results pages. Never returns ads, Search Assist or Duck.ai content."
+    },
+    {
+      "domain": "duckduckgo.com",
+      "tool": "search",
+      "file": "domains/duckduckgo.com/search.js",
+      "kind": "cdp",
+      "namespace": "duckduckgo.com",
+      "url_patterns": [
+        "https://duckduckgo.com/*",
+        "https://*.duckduckgo.com/*"
+      ],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Web search on the full DuckDuckGo site with region, safe search and time filters and a result limit; navigates the tab, reads the rendered results, and reports the filter labels the page shows. Rejects !bang and leading-backslash queries. Never returns ads, Search Assist or Duck.ai content."
+    },
+    {
       "domain": "etsy.com",
       "tool": "add_to_cart",
       "file": "domains/etsy.com/add_to_cart.js",
