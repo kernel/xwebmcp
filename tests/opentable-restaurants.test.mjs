@@ -216,6 +216,17 @@ test("search_restaurants builds the site's search URL and maps an allowlist of f
   assertConforms("search_restaurants", output);
 });
 
+test("search_restaurants caps every string field", async () => {
+  const long = "z".repeat(5000);
+  const state = searchState([searchRestaurant(101, "  " + long, { primaryCuisine: { name: long }, neighborhood: { name: long }, diningStyle: long, priceBand: { priceBandId: 2, name: long }, description: long, contactInformation: { formattedPhoneNumber: long }, address: { line1: long, line2: long, city: long, state: long, postCode: long } })]);
+  const { output } = await run("search_restaurants", { query: "pizza chicago" }, ok(pageHtml(state)));
+  const r = output.restaurants[0];
+  assert.equal(r.name.length, 200);
+  assert.ok([r.cuisine, r.neighborhood, r.dining_style, r.price_label, r.phone, ...Object.values(r.address)].every(v => v.length === 300));
+  assert.equal(r.description.length, 300);
+  assertConforms("search_restaurants", output);
+});
+
 test("search_restaurants defaults the time, omits absent filters, and reports has_more false on the last page", async () => {
   const state = searchState([searchRestaurant(101, "Fake Pizza")]);
   const dated = await run("search_restaurants", { query: "pizza", date: "2026-10-16" }, ok(pageHtml(state)));
@@ -332,26 +343,40 @@ test("get_restaurant reads the profile by id and maps an allowlist of fields", a
   assertConforms("get_restaurant", output);
 });
 
-test("get_restaurant accepts profile URLs and paths, drops query and fragment, and rejects everything else before fetching", async () => {
+test("get_restaurant accepts only /r/<slug> and /restaurant/profile/<id> pages and rejects every other path before fetching", async () => {
   const html = ok(pageHtml(profileState(555)));
-  const cases = [
+  const accepted = [
     ["https://www.opentable.com/r/fake-bistro-fakeville?covers=2&dateTime=x#reviews", "/r/fake-bistro-fakeville"],
-    ["/fake-bistro/", "/fake-bistro"],
+    ["/r/fake-bistro/", "/r/fake-bistro"],
     ["  /r/fake_bistro-2  ", "/r/fake_bistro-2"],
-    ["https://www.opentable.com/restaurant/profile/555", "/restaurant/profile/555"]
+    ["https://www.opentable.com/restaurant/profile/555", "/restaurant/profile/555"],
+    ["/restaurant/profile/2147483647/", "/restaurant/profile/2147483647"]
   ];
-  for (const [url, path] of cases) {
+  for (const [url, path] of accepted) {
     const { output, calls } = await run("get_restaurant", { url }, html);
     assert.equal(calls.fetch.length, 1, url);
     assert.equal(calls.fetch[0].path, path, url);
     assert.equal(output.status, "ok", url);
   }
+  // Site pages that are not restaurant profiles must never be fetched, including account and booking paths and legacy /<slug> links.
+  const notProfiles = [
+    "/private-dining", "/s", "/logout", "/user/favorites", "/restref", "/restref/client/?rid=1", "/booking/details", "/authenticate/start", "/dapi/v1/session", "/nearby",
+    "/the-hamilton", "https://www.opentable.com/the-hamilton", "/r", "/r/", "/r/a/b", "/r/../s", "/r/..%2Fuser", "/r/caf%C3%A9", "/private-dining/profile/x", "/restaurant/profile/", "/restaurant/profile/abc",
+    "/restaurant/profile/0", "/restaurant/profile/2147483648", "/restaurant/profile/99999999999", "/restaurant/profile/5/extra", "/"
+  ];
+  for (const url of notProfiles) {
+    const { output, calls } = await run("get_restaurant", { url }, html);
+    assert.equal(output.error_kind, "invalid_input", url);
+    assert.equal(calls.fetch.length, 0, "no request for " + url);
+    assertConforms("get_restaurant", output);
+  }
+  assert.match((await run("get_restaurant", { url: "/the-hamilton" }, html)).output.error_message, /restaurant_id/, "the message points legacy links to restaurant_id");
   const bad = [
     [{}, "invalid_input"], [{ restaurant_id: 5, url: "/r/x" }, "invalid_input"], [{ restaurant_id: 0 }, "invalid_input"], [{ restaurant_id: 1.5 }, "invalid_input"], [{ restaurant_id: "7" }, "invalid_input"],
-    [{ restaurant_id: 2147483648 }, "invalid_input"], [{ url: "" }, "invalid_input"], [{ url: 5 }, "invalid_input"], [{ url: "x".repeat(301) }, "invalid_input"], [{ url: "/r/a/b" }, "invalid_input"],
-    [{ url: "/private-dining/profile/x" }, "invalid_input"], [{ url: "/r/caf%C3%A9" }, "invalid_input"], [{ url: "/" }, "invalid_input"],
+    [{ restaurant_id: 2147483648 }, "invalid_input"], [{ url: "" }, "invalid_input"], [{ url: 5 }, "invalid_input"], [{ url: "x".repeat(301) }, "invalid_input"],
     [{ url: "https://evil.example.test/r/fake" }, "unsupported_host"], [{ url: "https://www.opentable.ca/r/fake" }, "unsupported_host"], [{ url: "https://help.opentable.com/r/fake" }, "unsupported_host"],
-    [{ url: "http://www.opentable.com/r/fake" }, "unsupported_host"], [{ url: "//evil.example.test/r/fake" }, "unsupported_host"], [{ url: "https://www.opentable.com.evil.example.test/r/fake" }, "unsupported_host"],
+    [{ url: "//evil.example.test/r/fake" }, "unsupported_host"], [{ url: "https://www.opentable.com.evil.example.test/r/fake" }, "unsupported_host"],
+    [{ url: "http://www.opentable.com/r/fake" }, "invalid_input"], [{ url: "javascript:alert(1)" }, "invalid_input"], [{ url: "ftp://www.opentable.com/r/fake" }, "invalid_input"],
     [{ url: "/r/fake", include_menus: "yes" }, "invalid_input"], [{ url: "/r/fake", extra: true }, "invalid_input"]
   ];
   for (const [input, kind] of bad) {
@@ -360,13 +385,40 @@ test("get_restaurant accepts profile URLs and paths, drops query and fragment, a
     assert.equal(calls.fetch.length, 0, "no request for " + JSON.stringify(input));
     assertConforms("get_restaurant", output);
   }
-  const dotted = await run("get_restaurant", { url: "/r/../s" }, ok(pageHtml(searchState([]))));
-  assert.equal(dotted.calls.fetch[0].path, "/s", "dot segments are normalized before the path is checked");
-  assert.equal(dotted.output.error_kind, "not_found");
+  assert.doesNotMatch((await run("get_restaurant", { url: "javascript:alert(1)" }, html)).output.error_message, /different site/, "a non-https URL is not called a different site");
   for (const input of [undefined, null, [], "/r/fake"]) {
     const { output, calls } = await run("get_restaurant", input, html);
     assert.equal(output.error_kind, "invalid_input");
     assert.equal(calls.fetch.length, 0);
+  }
+});
+
+test("get_restaurant caps every string field and only returns query-free http(s) links", async () => {
+  const long = "x".repeat(5000);
+  const state = profileState(555, {}, {}, {
+    name: "  " + long, primaryCuisine: { name: long }, diningStyle: long, neighborhood: { name: long }, address: { line1: long, line2: long, city: long, state: long, postCode: long, country: long },
+    contactInformation: { formattedPhoneNumber: long }, website: "https://bistro.example.test/menu/?utm_source=ot&token=SECRET-TOKEN#frag", dressCode: long, executiveChef: long, parkingInfo: long, description: long, restaurantReviewSummary: { summary: long },
+    additionalDetails: [long], awards: undefined
+  });
+  state.restaurantProfile.menus.menuInfo = { url: "https://bistro.example.test/eat?y_source=SECRET-SOURCE" };
+  const { output } = await run("get_restaurant", { restaurant_id: 555 }, ok(pageHtml(state)));
+  assert.equal(output.status, "ok");
+  assert.equal(output.name.length, 200);
+  assert.equal(output.dining_style.length, 300);
+  assert.equal(output.neighborhood.length, 300);
+  assert.ok(Object.values(output.address).every(v => v.length === 300));
+  assert.equal(output.phone.length, 300);
+  assert.equal(output.dress_code.length, 200);
+  assert.equal(output.description.length, 1500);
+  assert.equal(output.review_summary_ai.length, 1500);
+  assert.equal(output.amenities[0].length, 120);
+  assert.equal(output.website, "https://bistro.example.test/menu/");
+  assert.equal(output.external_menu_url, "https://bistro.example.test/eat");
+  assert.ok(!JSON.stringify(output).includes("SECRET-"), "tracking parameters are not returned");
+  assertConforms("get_restaurant", output);
+  for (const website of ["bistro.example.test", "javascript:alert(1)", "ftp://bistro.example.test/", "", 5, null]) {
+    const r = await run("get_restaurant", { restaurant_id: 555 }, ok(pageHtml(profileState(555, {}, {}, { website }))));
+    assert.equal(r.output.website, null, "only http(s) links are returned: " + website);
   }
 });
 
@@ -410,7 +462,7 @@ test("get_restaurant reports missing pages, wrong pages, id mismatches and bot p
   const state = profileState(555);
   const missing = await run("get_restaurant", { url: "/r/no-such-place" }, { respond: () => ({ status: 404, html: "<html><head><title>OpenTable</title></head></html>" }) });
   assert.equal(missing.output.error_kind, "not_found");
-  const notProfile = await run("get_restaurant", { url: "/s" }, ok(pageHtml(searchState([]))));
+  const notProfile = await run("get_restaurant", { restaurant_id: 5 }, ok(pageHtml(searchState([]))));
   assert.equal(notProfile.output.error_kind, "not_found");
   const mismatch = await run("get_restaurant", { restaurant_id: 999 }, ok(pageHtml(state)));
   assert.equal(mismatch.output.error_kind, "site_error");
@@ -492,7 +544,9 @@ test("get_reviews rejects malformed input and reports site problems explicitly",
   const bad = [
     [{}, "invalid_input"], [{ restaurant_id: 5, url: "/r/x" }, "invalid_input"], [{ restaurant_id: 0 }, "invalid_input"], [{ restaurant_id: 555, page: 0 }, "invalid_input"], [{ restaurant_id: 555, page: 5001 }, "invalid_input"],
     [{ restaurant_id: 555, page: "2" }, "invalid_input"], [{ restaurant_id: 555, page: 1.5 }, "invalid_input"], [{ restaurant_id: 555, sort: "oldest" }, "invalid_input"],
-    [{ url: "https://evil.example.test/r/x" }, "unsupported_host"], [{ url: "/private-dining/profile/x" }, "invalid_input"], [{ url: "http://www.opentable.com/r/x" }, "unsupported_host"]
+    [{ url: "https://evil.example.test/r/x" }, "unsupported_host"], [{ url: "/private-dining/profile/x" }, "invalid_input"], [{ url: "http://www.opentable.com/r/x" }, "invalid_input"],
+    [{ url: "/private-dining" }, "invalid_input"], [{ url: "/s" }, "invalid_input"], [{ url: "/logout" }, "invalid_input"], [{ url: "/restref" }, "invalid_input"], [{ url: "/the-hamilton" }, "invalid_input"],
+    [{ url: "https://www.opentable.com/user/favorites", page: 2 }, "invalid_input"], [{ url: "/r/../s" }, "invalid_input"], [{ url: "javascript:alert(1)" }, "invalid_input"], [{ url: "/restaurant/profile/2147483648" }, "invalid_input"]
   ];
   for (const [input, kind] of bad) {
     const { output, calls } = await run("get_reviews", input, html);
@@ -522,6 +576,22 @@ test("get_reviews rejects malformed input and reports site problems explicitly",
   assertConforms("get_reviews", reported.output);
   const mismatch = await run("get_reviews", { restaurant_id: 999 }, html);
   assert.equal(mismatch.output.error_kind, "site_error");
+});
+
+test("get_reviews accepts /r/<slug> and id URLs, caps and trims review text, and bounds other strings", async () => {
+  const long = "y".repeat(5000);
+  const state = profileState(555, {}, { reviewSearchResults: { reviews: [review("R-LONG", { text: "  " + long + "  " }), review("R-BLANK", { text: "   " }), review("R-NOISE", { rating: { overall: 3, noise: long } })], totalPages: 1, page: 1, totalCount: 3 } }, { name: "  " + long });
+  const { output } = await run("get_reviews", { url: "https://www.opentable.com/restaurant/profile/555/?x=1" }, ok(pageHtml(state)));
+  assert.equal(output.status, "ok");
+  assert.equal(output.name.length, 200);
+  assert.equal(output.reviews[0].text.length, 3000);
+  assert.ok(output.reviews[0].text.startsWith("y") && output.reviews[0].text.endsWith("y"), "review text is trimmed before it is cut");
+  assert.equal(output.reviews[1].text, null);
+  assert.equal(output.reviews[2].noise.length, 300);
+  assertConforms("get_reviews", output);
+  const slug = await run("get_reviews", { url: "/r/fake-bistro-fakeville", page: 2 }, ok(pageHtml(profileState(555, {}, { reviewSearchResults: { reviews: [review("R-2")], totalPages: 3, page: 2, totalCount: 25 } }))));
+  assert.equal(slug.calls.fetch[0].path, "/r/fake-bistro-fakeville?page=2");
+  assert.equal(slug.output.status, "ok");
 });
 
 test("the tools never navigate, click, submit, or send anything but page GETs", async () => {

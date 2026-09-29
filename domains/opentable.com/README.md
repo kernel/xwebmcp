@@ -5,7 +5,7 @@ Tools for the OpenTable US diner site (https://www.opentable.com): restaurant se
 | tool | file | status | notes |
 |------|------|--------|-------|
 | search_restaurants | [search_restaurants.js](search_restaurants.js) | draft | Free-text search with optional date, time and party size; one site results page (up to 50) per call with id, url, cuisine, price band, address, coordinates, rating and review count. No bookable time slots. |
-| get_restaurant | [get_restaurant.js](get_restaurant.js) | draft | One profile by restaurant_id or profile URL: address, hours text, amenities, ratings by category with distribution, awards, tags, AI review summary, optional published menus. |
+| get_restaurant | [get_restaurant.js](get_restaurant.js) | draft | One profile by restaurant_id or /r/<slug> URL: address, hours text, amenities, ratings by category with distribution, awards, tags, AI review summary, optional published menus. |
 | get_reviews | [get_reviews.js](get_reviews.js) | draft | One page of 10 diner reviews, newest first, with ratings, text, dates and vote counts. No reviewer names or photos. |
 
 Register all three files together as one array with `forceOverwriteNamespace: true`; registering one file that way removes the others.
@@ -16,7 +16,7 @@ None found (checked 2026-09-29, signed out, with `webmcp.listTools()` and `docum
 
 ## Scope and loading
 
-The tools read public restaurant information. They never select a time slot, request or hold a table, book, modify or cancel a reservation, set an availability alert, save a favorite, write a review, sign in, or open any account, payment, checkout or private-dining page. Availability (bookable time slots) is deliberately not covered: the site loads it through a persisted GraphQL query with a CSRF token and a slot click can take a hold, which needs its own design.
+The tools read public restaurant information. They never select a time slot, request or hold a table, book, modify or cancel a reservation, set an availability alert, save a favorite, write a review, sign in, or open any account, payment, checkout or private-dining page. The only paths the tools ever request are `/s` (search), `/restaurant/profile/<id>` and `/r/<slug>`; a `url` input that is anything else is rejected before any request. Availability (bookable time slots) is deliberately not covered: the site loads it through a persisted GraphQL query with a CSRF token and a slot click can take a hold, which needs its own design.
 
 ```javascript
 const fs = await import("node:fs");
@@ -32,14 +32,14 @@ await webmcp.invokeTool(await ref("get_reviews"), { restaurant_id: 107461, page:
 Use future dates. Pick the `tool_ref` whose `source.target_id` is the tab you drive, and use `timeoutSec: 60`.
 
 - **search_restaurants** (`kind: "page"`) fetches the site's own results page (`/s?term=...`, plus `dateTime`, `covers` and `page` when given) from the current `www.opentable.com` document and reads the `multiSearch` results the server rendered into the page. It never navigates. `query` carries the place as words ("pizza Chicago"); the site resolved that to the Chicago metro in live checks. Without a place the site uses the browser's approximate location. `date` alone means 19:00, the site's default. `party_size` (1 to 20, the site's picker) changes which restaurants are returned: a party of 25 cut one query from 117 results to 50. `rank` is the position in the site's ordering across pages of 50.
-- **get_restaurant** (`kind: "page"`) fetches the restaurant's profile page (`/restaurant/profile/<id>` for an id, or the given `/r/<slug>` or legacy `/<slug>` path) and reads `restaurantProfile`. The id path serves the profile directly, without a redirect. A returned id that differs from the requested one is an error.
-- **get_reviews** (`kind: "page"`) fetches the same profile page with `?page=N` and reads the page of 10 reviews the server rendered for it. The site sorts newest first and this tool exposes no other order.
+- **get_restaurant** (`kind: "page"`) fetches the restaurant's profile page (`/restaurant/profile/<id>` for an id, or the given `/r/<slug>` path) and reads `restaurantProfile`. The id path serves the profile directly, without a redirect. A returned id that differs from the requested one is an error. Older restaurants link to `/<slug>` instead of `/r/<slug>`; those links are refused because a single-segment path cannot be told apart from any other site page (`/private-dining`, `/logout`, and so on) and the request carries the browser's cookies, so pass `restaurant_id` for them. `search_restaurants` returns the id for every restaurant.
+- **get_reviews** (`kind: "page"`) fetches the same profile page with `?page=N` and reads the page of 10 reviews the server rendered for it. The site's default "newest" order follows the dining date, not the posting date (independent QA checked 20 reviews: `dined_at` never increased, `submitted_at` did), and this tool exposes no other order.
 
 All three are `kind: "page"` because each one only reads a same-origin document and returns a structured result without navigating the tab; none of them needs post-navigation output.
 
 Outputs:
 
-- Text from the site (descriptions, hours, review summaries, menu items and diner reviews) is untrusted data. HTML tags are stripped, entities decoded, and every text field is length-capped.
+- Text from the site (descriptions, hours, review summaries, menu items and diner reviews) is untrusted data. Free-text fields such as descriptions, hours, transit, parking, menu items and the review summary have HTML tags stripped and entities decoded; names, cuisines, addresses and review text are returned as the site gives them. Every string field is length-capped: names 200, descriptions 1500 (300 in search), review text 3000, everything else 300 or less. `website` and `external_menu_url` are returned only when the site gives an http(s) URL, with the query string and fragment removed.
 - `observed_at` is on every result. Ratings, counts, "booked today" numbers and the ordering change constantly.
 - The tools return only an allowlist of fields. The page state also contains account data when signed in (header profile, loyalty status), tracking identifiers, photo URLs, contact email fields, a Google Maps API key inside `coordinates.mapUrl`, and reviewer names and photos; none of it is returned.
 
@@ -49,14 +49,14 @@ All three tools match only `https://www.opentable.com/*`, not the default `https
 
 ## Site quirks
 
-- **Bot protection.** OpenTable runs Akamai Bot Manager. After roughly 40 page fetches in about ten minutes from one stealth browser session (unpaced, while probing), the site answered HTTP 403 with an "Access Denied" page and a `Reference #`, and kept doing so for at least five minutes for that session. A new session on Kernel's default stealth egress was not blocked: several dozen calls spaced 6 or more seconds apart went through. From an ordinary cloud VM's IP in a plain Chromium, `/s` searches returned 403 on all three attempts while a profile page and a review page succeeded (a later probe of an unknown slug was also refused). The tools report a refusal as `challenge` and HTTP 429 as `rate_limited`; they never retry. Avoid rapid repeated calls.
-- **Same page, different data.** Every read is a server-rendered HTML page (200 to 400 KB) whose `<script id="primary-window-vars">` holds JSON with `windowVariables.__INITIAL_STATE__`. A 200 without that script is reported as `site_changed`, and a 404 is `not_found`.
+- **Bot protection.** OpenTable runs Akamai Bot Manager. After roughly 40 page fetches in about ten minutes from one stealth browser session (unpaced, while probing), the site answered HTTP 403 with an "Access Denied" page and a `Reference #`, and kept doing so for at least five minutes for that session. A new session on Kernel's default stealth egress was not blocked: several dozen calls spaced 6 or more seconds apart went through. From an ordinary cloud VM's IP in a plain Chromium, `/s` searches returned 403 on all three attempts while a profile page and a review page succeeded (a later probe of an unknown slug was also refused). Independent QA on another network got 200 for `/s`, so whether a request is refused depends on the network and the browser. The tools report a refusal as `challenge` and HTTP 429 as `rate_limited`; they never retry. Avoid rapid repeated calls.
+- **Same page, different data.** Every read is a server-rendered HTML page (search about 230 to 400 KB, profiles about 370 to 570 KB) whose `<script id="primary-window-vars">` holds JSON with `windowVariables.__INITIAL_STATE__`. A 200 without that script is reported as `site_changed`, and a 404 is `not_found`.
 - **Review paging past the end.** For `?page=N` beyond the last page the site does not fail: it answered HTTP 200 with page 1, 40 reviews and a different `totalPages`. `get_reviews` therefore requires the returned page number to equal the requested one and returns `no_results` otherwise.
 - **Result counts vary with the request.** `total_count` in search changed with date, time and party size (117, 112 and 50 for one query). A `page` past the last one returns an empty list with a total of 0 (not page 1, unlike review pages), reported as `no_results`.
-- **Restaurant URLs.** Newer restaurants live at `/r/<slug>`; older ones at `/<slug>` (for example a downtown DC restaurant). `restaurant_id` is the stable key and works with `/restaurant/profile/<id>`. `/restref/...` links redirect into an availability path and are never used.
+- **Restaurant URLs.** Newer restaurants live at `/r/<slug>`; older ones at `/<slug>` (for example a downtown DC restaurant), which the tools do not accept as `url`. `restaurant_id` is the stable key and works with `/restaurant/profile/<id>`. `/restref/...` links redirect into an availability path and are never used.
 - **Menus.** Many restaurants have no menu on OpenTable (`menus` is null) and only link one on their own site; that link is `external_menu_url` with its query string removed.
 - **Non-ASCII text.** Other repository page tools have seen outputs with non-ASCII text arrive from the page bridge as a JSON string instead of an object. It did not happen here (a search for "café Montréal" returned a normal object on the Kernel runtime); if a caller sees a string, parse it when `typeof output === "string"`.
-- **Transient responses.** One live `get_reviews` call for an out-of-range page came back without review data and was reported `site_changed`; three repeats and the same call again returned the normal `no_results`, and the response state was not captured. Retry once before treating `site_changed` as a real site change. A response with the site's own `reviewsData.error` flag set is reported as `site_error`.
+- **Transient responses.** One live `get_reviews` call for an out-of-range page came back without review data and was reported `site_changed`; three repeats and the same call again returned the normal `no_results`, and the response state was not captured; independent QA could not reproduce it in 8 out-of-range calls. Retry once before treating `site_changed` as a real site change. A response with the site's own `reviewsData.error` flag set is reported as `site_error`.
 
 ## Known limitations
 
@@ -64,22 +64,31 @@ All three tools match only `https://www.opentable.com/*`, not the default `https
 - No availability. The tools cannot say whether a table is free; `recent_reservation_count` is only the number the site says were booked today.
 - `search_restaurants` returns one site page (up to 50) per call, at most 100 pages, and has no cuisine, price, neighborhood or sort filters; the filter parameter names were not verified.
 - The `date` and `time` inputs only steer the site's own ranking and filtering. A past date was accepted by the site and gave the same count as no date on one query; the tool does not reject past dates.
-- `get_restaurant` returns hours as the site's free text, not a schedule. Menu item prices are passed through as the site gives them; the menu price format was not observed on a priced menu, so treat `price` as unverified. Menus are capped at 300 items.
-- `get_reviews` shows newest-first only, omits reviewer identity and the text of restaurant replies (the reply shape was not observed in 80 reviews), and reports `verified_by_opentable` only as whether the site tags the review `OPENTABLEVERIFIED`; other tag values were not seen.
-- Every call fetches a whole HTML page (search about 230 KB, profile about 550 KB), so latency is that of a page fetch (0.3 to 2.3 s per call in live checks on a Kernel browser) and heavy use can trigger the bot protection.
+- `get_restaurant` returns hours as the site's free text, not a schedule. Menu item prices are passed through as the site gives them: strings such as `"12.00"` on the one priced menu independent QA checked, `null` for most items elsewhere, with no currency per item. Menus are capped at 300 items.
+- `get_reviews` shows the site's newest order only (by dining date), returns `dined_at` as the site gives it (one review showed a +00:00 offset for a Chicago restaurant), omits reviewer identity and the text of restaurant replies (the reply shape was not observed in 80 reviews), and reports `verified_by_opentable` only as whether the site tags the review `OPENTABLEVERIFIED`; other tag values were not seen.
+- Every call fetches a whole HTML page (see above), so latency is that of a page fetch (0.3 to 2.3 s per call in live checks on a Kernel browser) and heavy use can trigger the bot protection.
 - Signed-in behavior was not tested: pages fetched while signed in carry account data in the same state object. The tools ignore it, but no independent check has confirmed that with a real account.
-- Not live-verified: a permanently closed restaurant, a restaurant with zero reviews, a profile with a priced menu, and redirects to another host. They are covered by stubbed tests only.
+- Not live-verified: a permanently closed restaurant and redirects to another host. They are covered by stubbed tests only. A restaurant with zero reviews was checked live by independent QA and returns `no_results`.
 
 ## QA
 
-Draft. No independent QA has run yet, so all three tools stay `draft`.
+Draft. All three tools stay `draft` until an independent pass signs off on the final source.
 
 Author checks on 2026-09-29, signed out, on a stealth Kernel browser (`webmcp custom-tools add` with the whole namespace in one call, `webmcp list`, `webmcp invoke`):
 
 - Registration: the three tools were listed once each on `www.opentable.com` pages, and on no tab of `example.com` or `help.opentable.com`.
-- Live success: `search_restaurants` (with date, time and party size, page 2, no-results and non-ASCII queries), `get_restaurant` (by id with menus, by URL for a legacy `/<slug>` restaurant), `get_reviews` (pages 1 to 3 and an out-of-range page). Seven live outputs were validated against their `outputSchema` with a JSON Schema 2020-12 validator.
-- Live failure: unknown slug and unknown id (`not_found`), out-of-range review page (`no_results`), malformed input (`invalid_input`, no request sent).
+- Live success: `search_restaurants` (with date, time and party size, pages 2 and 3, no-results and non-ASCII queries), `get_restaurant` (by id with menus), `get_reviews` (pages 1 to 3 and an out-of-range page). Seven live outputs were validated against their `outputSchema` with a JSON Schema 2020-12 validator.
+- Live failure: unknown slug and unknown id (`not_found`), out-of-range review and search pages (`no_results`), malformed input (`invalid_input`, no request sent).
 - Starting pages: invoked from `/private-dining`, a 404 page and another restaurant's profile page. A marker set on the document before each call was still there after it, and the URL did not change, so the calls do not navigate.
-- Local Chrome extension (`xwebmcp setup chrome` and `mcp`, Chromium 153, an isolated profile granted only `www.opentable.com`): live, `get_restaurant` and `get_reviews` succeeded and `search_restaurants` returned `challenge` because that network's requests to `/s` were refused with 403. Against fabricated pages served locally for `www.opentable.com`, all three tools returned their success, `not_found` and `no_results` outputs and leaked nothing from the fabricated state. The live search success path was therefore not shown in the extension.
+- Local Chrome extension (`xwebmcp setup chrome` and `mcp`, Chromium 153, an isolated profile granted only `www.opentable.com`): live, `get_restaurant` and `get_reviews` succeeded and `search_restaurants` returned `challenge` because that network's requests to `/s` were refused with 403. Against fabricated pages served locally for `www.opentable.com`, all three tools returned their success, `not_found` and `no_results` outputs and leaked nothing from the fabricated state.
 
-Not covered: signed-in behavior, the extension against live search results, and everything in Known limitations marked not live-verified.
+Independent QA round 1 (agent `agt_af9a78c90e1647b33555`, first revision `4f0f109`): **FAIL**. About 45 live outputs on Kernel and 13 in the extension conformed to their schemas, the automated suites passed, and no account data, tokens, photo URLs, maps key, reviewer identity or contact email appeared in any output. Findings, all fixed in the next revision:
+
+1. (major) `url` accepted any single-segment path (`/private-dining`, `/s`, `/logout`) and fetched it with the browser's cookies before reporting `not_found`, so the tools could request account and booking pages, contrary to this README and the authoring skill. `url` now accepts only `/r/<slug>` and `/restaurant/profile/<id>`, rejecting everything else, including older `/<slug>` links, before any request; `restaurant_id` covers those restaurants.
+2. The README claimed all text fields were tag-stripped and length-capped. Names, addresses and review text were returned as given with no cap (a 20,000-character name passed through), and `website` kept tracking parameters. Every string field is now capped, links lose their query string, and the README says which fields are cleaned.
+3. The review order follows the dining date, not the posting date, and one `dined_at` carried a +00:00 offset for a Chicago restaurant; the description promised the restaurant's offset. Both are now described as observed.
+4. The `unsupported_host` message for a non-https URL said the site was a different one. Non-https URLs now get their own `invalid_input` message.
+5. README facts were stale: page sizes, and two "never seen live" cases (a priced menu and a zero-review restaurant) that work live.
+6. The 3000-character review text cap had no test; it does now, along with the string caps and the URL allowlist.
+
+Not covered: signed-in behavior and the exact Akamai behavior at volume.

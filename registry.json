@@ -636,7 +636,7 @@
       ],
       "status": "draft",
       "last_verified": null,
-      "notes": "Page tool on www.opentable.com: one restaurant profile by id or profile URL from the page's server-rendered profile state (address, hours text, amenities, ratings by category, awards, tags, optional published menus). No bookable times, reviews or account data. Not yet independently QA'd."
+      "notes": "Page tool on www.opentable.com: one restaurant profile by id or /r/<slug> URL from the page's server-rendered profile state (address, hours text, amenities, ratings by category, awards, tags, optional published menus). No bookable times, reviews or account data. Not yet independently QA'd."
     },
     {
       "domain": "opentable.com",
