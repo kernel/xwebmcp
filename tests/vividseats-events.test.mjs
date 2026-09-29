@@ -54,12 +54,12 @@ function conforms(schema, value, path = "$") {
 // --- fabricated site data ---------------------------------------------------------------------------
 
 const production = (id, name, extra = {}) => ({
-  id, name, localDate: "2026-10-10T19:30:00-05:00[America/Chicago]", utcDate: "2026-10-11T00:30:00Z",
+  id, name, localDate: "2099-10-10T19:30:00-05:00[America/Chicago]", utcDate: "2099-10-11T00:30:00Z",
   venue: { id: 501, name: "Example Hall", city: "Springfield", state: "IL", countryCode: "US", latitude: 39.8, longitude: -89.65 },
   minPrice: 40, maxPrice: 120, avgPrice: 70, medianPrice: 65, minAipPrice: 55.5, maxAipPrice: 160, showAip: true,
   lastPricingRefresh: "2026-10-01T08:00:00-05:00[America/Chicago]", listingCount: 12, ticketCount: 40, categoryId: 2, subCategoryId: 14,
   dateTbd: false, timeTbd: false, ifNecessary: false, productionDelayType: "NONE", distance: 8046.72,
-  webPath: `/example-band-tickets-springfield-example-hall-10-10-2026/production/${id}`, hidden: false,
+  webPath: `/example-band-tickets-springfield-example-hall-10-10-2099/production/${id}`, hidden: false,
   performers: [{ id: 9001, name: "Example Band", master: true }], ...extra
 });
 const productions = (items, extra = {}) => ({ page: 1, total: items.length, numberOfPages: 1, items, i18n: { from: "USD", to: "USD", rate: 1, applyCurrencyConversion: false }, ...extra });
@@ -192,7 +192,9 @@ const BAD_SEARCH = [
   [{ start_date: "2026-10-12", end_date: "2026-10-10" }, "reversed dates"], [{ category: "movies" }, "category"], [{ sort: "price" }, "sort"],
   [{ performer_id: 0 }, "performer id"], [{ performer_id: "5" }, "performer id type"], [{ venue_id: 1.5 }, "venue id"], [{ max_lowest_all_in_price: 0 }, "ceiling zero"],
   [{ max_lowest_all_in_price: 99.5 }, "ceiling fraction"], [{ exclude_parking: "yes" }, "parking flag"], [{ page: 0 }, "page zero"], [{ page: 1001 }, "page high"],
-  [{ page_size: 51 }, "page size high"], [{ page_size: 0 }, "page size zero"]
+  [{ page_size: 51 }, "page size high"], [{ page_size: 0 }, "page size zero"],
+  [{ page: 21, page_size: 50 }, "page past the 1000-match window"], [{ page: 35, page_size: 30 }, "page past the window at another size"], [{ page: 144, page_size: 7 }, "page just past the window"],
+  ...["query", "location", "latitude", "longitude", "radius_miles", "start_date", "end_date", "category", "performer_id", "venue_id", "max_lowest_all_in_price", "sort", "exclude_parking", "page", "page_size"].map(key => [{ [key]: null }, "null " + key])
 ];
 for (const [input, label] of BAD_SEARCH) {
   test(`search_events rejects ${label} before touching the site`, async () => {
@@ -297,7 +299,7 @@ test("search_events normalizes events, units and price basis", async () => {
     production(6004, "Time Pending", { timeTbd: true, showAip: false }),
     production(6005, "Odd Path", { webPath: "/x/../checkout/production/6005", performers: Array.from({ length: 12 }, (_, i) => ({ id: i + 1, name: "P" + i })) })
   ];
-  const h = harness("search_events", { route: p => (p.startsWith("/hermes/api/v1/productions?") ? { status: 200, body: productions(items, { total: 1200, numberOfPages: 60 }) } : null) });
+  const h = harness("search_events", { route: p => (p.startsWith("/hermes/api/v1/productions?") ? { status: 200, body: productions(items, { total: 1200, numberOfPages: 60, page: 2 }) } : null) });
   const result = await h.run({ page: 2, page_size: 20 });
   assert.equal(result.status, "ok");
   assert.equal(result.has_more, true);
@@ -306,8 +308,8 @@ test("search_events normalizes events, units and price basis", async () => {
   const [a, b, c, d, e] = result.events;
   assert.equal(a.rank, 21);
   assert.equal(a.production_id, 6001);
-  assert.equal(a.url, "https://www.vividseats.com/example-band-tickets-springfield-example-hall-10-10-2026/production/6001");
-  assert.deepEqual([a.local_date, a.local_time, a.weekday, a.time_zone, a.start_utc], ["2026-10-10", "19:30", "Saturday", "America/Chicago", "2026-10-11T00:30:00.000Z"]);
+  assert.equal(a.url, "https://www.vividseats.com/example-band-tickets-springfield-example-hall-10-10-2099/production/6001");
+  assert.deepEqual([a.local_date, a.local_time, a.weekday, a.time_zone, a.start_utc], ["2099-10-10", "19:30", "Saturday", "America/Chicago", "2099-10-11T00:30:00.000Z"]);
   assert.equal(a.distance_miles, 5, "distance is in meters on the wire");
   assert.deepEqual([a.lowest_all_in_price, a.highest_all_in_price, a.listing_count, a.ticket_count], [55.5, 160, 12, 40]);
   assert.equal(a.pricing_refreshed_at, "2026-10-01T13:00:00.000Z");
@@ -316,7 +318,7 @@ test("search_events normalizes events, units and price basis", async () => {
   assert.deepEqual([a.category_id, a.subcategory_id, a.delay_type], [2, 14, "NONE"]);
   assert.deepEqual([b.listing_count, b.lowest_all_in_price, b.highest_all_in_price], [0, null, null], "no listings means no price");
   assert.deepEqual([c.date_tbd, c.time_tbd, c.local_date, c.local_time, c.weekday, c.start_utc, c.distance_miles], [true, true, null, null, null, null, null]);
-  assert.deepEqual([d.local_date, d.local_time, d.lowest_all_in_price], ["2026-10-10", null, null], "prices are withheld when the site does not show all-in prices");
+  assert.deepEqual([d.local_date, d.local_time, d.lowest_all_in_price], ["2099-10-10", null, null], "prices are withheld when the site does not show all-in prices");
   assert.equal(e.url, null, "only canonical /<slug>/production/<id> paths become URLs");
   assert.equal(e.performers.length, 10);
   assert.match(result.price_basis, /USD/);
@@ -387,7 +389,8 @@ const BAD_OFFERS = [
   [{ event: "6001", quantity: 2.5 }, "quantity fraction"], [{ event: "6001", quantity: "2" }, "quantity type"], [{ event: "6001", min_price_per_ticket: 0 }, "min zero"],
   [{ event: "6001", max_price_per_ticket: -1 }, "max negative"], [{ event: "6001", max_price_per_ticket: "5" }, "max type"], [{ event: "6001", max_price_per_ticket: 100001 }, "max high"],
   [{ event: "6001", min_price_per_ticket: 50, max_price_per_ticket: 40 }, "inverted range"], [{ event: "6001", zone: "" }, "empty zone"], [{ event: "6001", section: 5 }, "section type"],
-  [{ event: "6001", zone: "z".repeat(101) }, "long zone"], [{ event: "6001", group_by: "row" }, "group_by"], [{ event: "6001", limit: 0 }, "limit zero"], [{ event: "6001", limit: 51 }, "limit high"]
+  [{ event: "6001", zone: "z".repeat(101) }, "long zone"], [{ event: "6001", group_by: "row" }, "group_by"], [{ event: "6001", limit: 0 }, "limit zero"], [{ event: "6001", limit: 51 }, "limit high"],
+  ...["event", "quantity", "min_price_per_ticket", "max_price_per_ticket", "zone", "section", "group_by", "limit"].map(key => [{ event: "6001", [key]: null }, "null " + key])
 ];
 for (const [input, label] of BAD_OFFERS) {
   test(`get_ticket_offers rejects ${label} before touching the site`, async () => {
@@ -588,4 +591,47 @@ test("neither tool sends a request other than GET reads to the listing, search a
   assert.deepEqual([...new Set(paths)].sort(), [
     "/hermes/api/v1/listings", "/hermes/api/v1/location/ChIJ*", "/hermes/api/v1/location/search/query", "/hermes/api/v1/location/search/token", "/hermes/api/v1/productions"
   ]);
+});
+
+// --- review findings: paging window, past-the-end pages, soft radius, started events, quantity null ------------
+
+test("search_events accepts the last pages inside the site's 1000-match window", async () => {
+  for (const [page, page_size] of [[20, 50], [34, 30], [143, 7], [1000, 1]]) {
+    const h = harness("search_events", { route: p => (p.startsWith("/hermes/api/v1/productions?") ? { status: 200, body: productions([production(6001, "Example Band")], { total: 1000, numberOfPages: Math.ceil(1000 / page_size), page }) } : null) });
+    const result = await h.run({ page, page_size });
+    assert.equal(result.status, "ok", `${page}/${page_size}`);
+    assert.equal(h.calls.fetches.length, 1);
+  }
+});
+
+test("search_events does not repeat the last page under new ranks when the page is past the end", async () => {
+  const clamped = harness("search_events", { route: p => (p.startsWith("/hermes/api/v1/productions?") ? { status: 200, body: productions([production(6001, "Example Band")], { total: 83, numberOfPages: 17, page: 17 }) } : null) });
+  const result = await clamped.run({ performer_id: 130861, page: 21, page_size: 5 });
+  assert.equal(result.status, "no_results");
+  assert.match(result.message, /17 page\(s\) of 5 events; page 21 is past the last one/);
+  const noPageField = harness("search_events", { route: p => (p.startsWith("/hermes/api/v1/productions?") ? { status: 200, body: { total: 83, numberOfPages: 17, items: productions([production(6001, "Example Band")]).items, i18n: productions([]).i18n } } : null) });
+  assert.equal((await noPageField.run({ page: 21, page_size: 5 })).status, "no_results", "numberOfPages alone is enough to detect a page past the end");
+  const last = harness("search_events", { route: p => (p.startsWith("/hermes/api/v1/productions?") ? { status: 200, body: productions([production(6001, "Example Band")], { total: 83, numberOfPages: 17, page: 17 }) } : null) });
+  const ok = await last.run({ performer_id: 130861, page: 17, page_size: 5 });
+  assert.equal(ok.status, "ok");
+  assert.equal(ok.events[0].rank, 81);
+});
+
+test("search_events warns that the site's radius is approximate and that started events may have stale index data", async () => {
+  const items = [production(6001, "Near", { distance: 5 * 1609.344 }), production(6002, "Far", { distance: 33.7 * 1609.344 }), production(6003, "Underway", { utcDate: "2020-01-01T00:00:00Z", localDate: "2019-12-31T18:00:00-06:00[America/Chicago]" })];
+  const h = harness("search_events", { route: p => (p.startsWith("/hermes/api/v1/productions?") ? { status: 200, body: productions(items) } : null) });
+  const result = await h.run({ latitude: 39.8, longitude: -89.65, radius_miles: 25 });
+  assert.ok(result.warnings.some(w => /1 event\(s\) are farther than radius_miles/.test(w)), JSON.stringify(result.warnings));
+  assert.ok(result.warnings.some(w => /1 event\(s\) have already started/.test(w)), JSON.stringify(result.warnings));
+  const quiet = harness("search_events", { route: p => (p.startsWith("/hermes/api/v1/productions?") ? { status: 200, body: productions([production(6001, "Near", { distance: 25 * 1609.344 })]) } : null) });
+  assert.deepEqual((await quiet.run({ latitude: 39.8, longitude: -89.65, radius_miles: 25 })).warnings, [], "an event at exactly the radius, in the future, needs no warning");
+  const noPlace = harness("search_events", { route: p => (p.startsWith("/hermes/api/v1/productions?") ? { status: 200, body: productions([production(6001, "Anywhere", { distance: null })]) } : null) });
+  assert.deepEqual((await noPlace.run({})).warnings, []);
+});
+
+test("get_ticket_offers keeps the full list of quantities a listing can be bought in", async () => {
+  const wide = ticket("VB1", "Orchestra", "A", 30, 100, { m: Array.from({ length: 30 }, (_, i) => i + 1).join(",") });
+  const result = await harness("get_ticket_offers", { route: p => (p.startsWith("/hermes/api/v1/listings?") ? { status: 200, body: listings([wide]) } : null) }).run({ event: "6001", quantity: 8 });
+  assert.equal(result.offers[0].purchasable_quantities.length, 30);
+  assert.equal(result.offers[0].purchasable_quantities[29], 30);
 });

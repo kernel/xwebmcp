@@ -11,7 +11,7 @@
         location: { type: "string", minLength: 2, maxLength: 80, description: "Place name resolved with the site's place lookup, for example 'Chicago, IL' or 'London'; the first match is used and returned as resolved_location. Not combinable with latitude/longitude." },
         latitude: { type: "number", minimum: -90, maximum: 90, description: "Search-centre latitude; needs longitude." },
         longitude: { type: "number", minimum: -180, maximum: 180, description: "Search-centre longitude; needs latitude." },
-        radius_miles: { type: "integer", minimum: 5, maximum: 300, default: 50, description: "Search radius around the place, in miles. Only valid with location or latitude/longitude." },
+        radius_miles: { type: "integer", minimum: 5, maximum: 300, default: 50, description: "Approximate search radius around the place, in miles: the site also returns some venues beyond it, so check distance_miles when a hard limit matters. Only valid with location or latitude/longitude." },
         start_date: { type: "string", pattern: "^\\d{4}-\\d{2}-\\d{2}$", description: "First local event date to include, YYYY-MM-DD. Without end_date, every later date is included." },
         end_date: { type: "string", pattern: "^\\d{4}-\\d{2}-\\d{2}$", description: "Last local event date to include (inclusive), YYYY-MM-DD." },
         category: { enum: ["concerts", "sports", "theater"], description: "The site's event type; comedy is listed under theater." },
@@ -20,7 +20,7 @@
         max_lowest_all_in_price: { type: "integer", minimum: 1, maximum: 100000, description: "Keep events whose lowest all-in ticket price in the search index is at or below this many US dollars. Events with no listings can still match; they report null prices and listing_count 0." },
         sort: { enum: ["popular", "date"], default: "date", description: "The site's popularity ranking or soonest first." },
         exclude_parking: { type: "boolean", default: true, description: "True hides the parking passes the site sells as separate events." },
-        page: { type: "integer", minimum: 1, maximum: 1000, default: 1, description: "1-based results page." },
+        page: { type: "integer", minimum: 1, maximum: 1000, default: 1, description: "1-based results page. The site serves only the first 1000 matches, so (page - 1) * page_size must be below 1000." },
         page_size: { type: "integer", minimum: 1, maximum: 50, default: 20, description: "Events per page." }
       }
     },
@@ -66,7 +66,7 @@
                   date_tbd: { type: "boolean" },
                   time_tbd: { type: "boolean" },
                   if_necessary: { type: "boolean", description: "The site's flag for a game played only if the series needs it." },
-                  delay_type: { type: ["string", "null"], description: "The site's productionDelayType; only NONE has been observed." },
+                  delay_type: { type: ["string", "null"], description: "The site's productionDelayType, for example NONE or RESCHEDULED." },
                   venue: {
                     type: "object", additionalProperties: false, required: ["id", "name", "city", "state", "country_code"],
                     properties: { id: { type: ["integer", "null"] }, name: { type: ["string", "null"] }, city: { type: ["string", "null"] }, state: { type: ["string", "null"] }, country_code: { type: ["string", "null"] } }
@@ -144,6 +144,7 @@
     if (input.exclude_parking !== undefined && typeof input.exclude_parking !== "boolean") return fail("invalid_input", "exclude_parking must be true or false.");
     const sort = input.sort ?? "date", excludeParking = input.exclude_parking ?? true, category = input.category ?? null;
     const page = checks.page.value, pageSize = checks.pageSize.value;
+    if ((page - 1) * pageSize >= 1000) return fail("invalid_input", "The site serves only the first 1000 matches; (page - 1) * page_size must be below 1000, so with page_size " + pageSize + " the last page is " + Math.ceil(1000 / pageSize) + ".");
     const observedAt = new Date().toISOString();
     const echo = () => ({
       query, location, latitude: latitude ?? null, longitude: longitude ?? null, radius_miles: location || latitude !== undefined ? radius : null, start_date: startDate, end_date: endDate,
@@ -220,6 +221,8 @@
       if (!Array.isArray(body.items) || !Number.isInteger(body.total) || !Number.isInteger(body.numberOfPages)) return fail("site_changed", "Vivid Seats' search response no longer has the expected items, total and numberOfPages fields.");
       if (!body.i18n || body.i18n.to !== "USD" || body.i18n.applyCurrencyConversion === true) return fail("site_changed", "Vivid Seats returned prices that need a currency conversion; only USD prices are supported.");
       if (!body.items.length) return { status: "no_results", query: echo(), resolved_location: resolved, observed_at: observedAt, message: "Vivid Seats found no events matching every filter." };
+      // Past the last page the site answers with the last page again, which would repeat events under new ranks.
+      if (page > body.numberOfPages || (Number.isInteger(body.page) && body.page !== page)) return { status: "no_results", query: echo(), resolved_location: resolved, observed_at: observedAt, message: "The search has " + body.numberOfPages + " page(s) of " + pageSize + " events; page " + page + " is past the last one." };
 
       const normalize = (e, index) => {
         if (!e || !Number.isInteger(e.id) || typeof e.name !== "string" || !e.name.trim()) return null;
@@ -251,6 +254,10 @@
       if (events.length < body.items.length) warnings.push((body.items.length - events.length) + " result(s) without an id or name were skipped.");
       if (body.total >= 1000) warnings.push("The site reports at most 1000 matches; narrow the search to reach events beyond them.");
       if (checks.ceiling.value && events.some(e => e.listing_count === 0)) warnings.push("Some events under the price ceiling have no listings (listing_count 0); the site's price filter keeps them.");
+      const beyond = place ? events.filter(e => e.distance_miles !== null && e.distance_miles > radius + 0.05).length : 0;
+      if (beyond) warnings.push(beyond + " event(s) are farther than radius_miles; the site's radius is approximate, so filter on distance_miles when a hard limit matters.");
+      const started = events.filter(e => e.start_utc && Date.parse(e.start_utc) < Date.parse(observedAt)).length;
+      if (started) warnings.push(started + " event(s) have already started; the index prices and listing counts for them can be stale, and get_ticket_offers shows whether any tickets remain.");
       return {
         status: "ok", query: echo(), resolved_location: resolved, currency: "USD",
         price_basis: "Prices are per ticket in USD as the site's search index shows them: the listing price plus the fees the site includes in its all-in price, not taxes. The index refreshes periodically (pricing_refreshed_at) and can differ from the event page; get_ticket_offers reads the live listings.",

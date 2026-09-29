@@ -60,7 +60,7 @@
                   row: { type: ["string", "null"] },
                   zone: { type: ["string", "null"], description: "The site's zone for the section; null when the listing has none." },
                   tickets_in_listing: { type: "integer", minimum: 1 },
-                  purchasable_quantities: { type: "array", maxItems: 20, items: { type: "integer", minimum: 1 }, description: "Ticket counts the listing can be bought in; a listing of 4 may not allow 3." },
+                  purchasable_quantities: { type: "array", maxItems: 50, items: { type: "integer", minimum: 1 }, description: "Ticket counts the listing can be bought in; a listing of 4 may not allow 3." },
                   all_in_price_per_ticket: { type: "number", exclusiveMinimum: 0 },
                   estimated_total: { type: ["number", "null"], description: "All-in price times the requested quantity; null when no quantity was requested." },
                   delivery_type: { type: ["string", "null"] },
@@ -116,7 +116,7 @@
     }
     if (!Number.isSafeInteger(productionId) || productionId < 1) return fail("invalid_input", "production_id must be a positive number.");
     const quantity = input.quantity === undefined ? null : input.quantity;
-    if (quantity !== null && (!Number.isInteger(quantity) || quantity < 1 || quantity > 8)) return fail("invalid_input", "quantity must be an integer from 1 to 8.");
+    if (input.quantity !== undefined && (!Number.isInteger(quantity) || quantity < 1 || quantity > 8)) return fail("invalid_input", "quantity must be an integer from 1 to 8.");
     const bound = (value, name) => {
       if (value === undefined) return { value: null };
       if (typeof value !== "number" || !Number.isFinite(value) || value <= 0 || value > 100000) return { error: fail("invalid_input", name + " must be a number above 0 and up to 100000.") };
@@ -188,7 +188,7 @@
         const tickets = Number.parseInt(t && t.quantity, 10);
         const section = t ? str(t.sectionName, 100) : null;
         if (!t || !section || !Number.isFinite(all) || all <= 0 || !Number.isInteger(tickets) || tickets < 1) { malformed++; continue; }
-        const can = String(t.m ?? "").split(",").map(s => Number.parseInt(s, 10)).filter(n => Number.isInteger(n) && n >= 1).slice(0, 20);
+        const can = String(t.m ?? "").split(",").map(s => Number.parseInt(s, 10)).filter(n => Number.isInteger(n) && n >= 1).slice(0, 50);
         listings.push({
           id: typeof t.i === "string" && /^[A-Za-z0-9_-]{1,40}$/.test(t.i) ? t.i : null, section, row: str(t.row, 20), zone: zones.get(String(t.c)) ?? null,
           tickets, can, price: money(all), delivery: str(t.stp, 60), badges: labels((Array.isArray(t.badges) ? t.badges : []).map(b => b && b.title), 5), perks: labels(t.perks, 5)
