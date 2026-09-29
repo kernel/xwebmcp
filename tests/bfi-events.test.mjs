@@ -427,6 +427,11 @@ const articleSite = (n = 3, extra = {}) => makeSite({
   articles: {
     "/Online": {
       [ARTICLE]: { article: ARTICLE, slug: "fabricated-noir", title: "Fabricated Noir", summary: "A fabricated detective story.", details: [["Director", "Ada Example"], [null, "USA 1949. 90min"], ["Certificate", "PG"], ["Director", "Ada Example"], ["Language", ""]], paragraphs: ["First paragraph &amp; more.", "Second paragraph."], perfs: ownPerfs(n), ...extra },
+      [guid(24, "A")]: { article: guid(24, "A"), slug: "prefix-check", title: "Prefix Check", summary: "Rows link to other ids.", details: [["Director", "Ada Example"]], paragraphs: ["Text."], booking: false, perfs: [perf({ id: 600, article: 24, title: "Prefix Show", start: "Saturday 03 October 2026 12:00", info: `default.asp?doWork::WScontent::loadArticle=Load&BOparam::WScontent::loadArticle::article_id=${guid(24, "A").slice(0, 8)}-9999-4999-8999-999999999999` }), perf({ id: 601, article: 24, title: "Own Show", start: "Saturday 03 October 2026 14:00" })] },
+      [guid(25, "A")]: { article: guid(25, "A"), slug: "cross-link", title: "Cross Link", summary: "Rows link to another programme.", details: [["Director", "Ada Example"]], paragraphs: ["Text."], booking: false, perfs: [perf({ id: 610, article: 25, title: "Elsewhere Show", start: "Saturday 03 October 2026 12:00", info: "https://whatson.bfi.org.uk/imax/Online/article/cross-link" })] },
+      [guid(26, "A")]: { article: guid(26, "A"), slug: "case-check", title: "Case Check", summary: "Rows link by a differently cased name.", details: [["Director", "Ada Example"]], paragraphs: ["Text."], booking: false, perfs: [perf({ id: 620, article: 26, title: "Cased Show", start: "Saturday 03 October 2026 12:00", venue: "Short label", venueLong: "Longer venue description", info: "https://whatson.bfi.org.uk/Online/article/Case-Check" })] },
+      [guid(27, "A")]: { article: guid(27, "A"), slug: "exact-check", title: "Exact Check", summary: "Rows link to a longer name.", details: [["Director", "Ada Example"]], paragraphs: ["Text."], booking: false, perfs: [perf({ id: 630, article: 27, title: "Longer Name Show", start: "Saturday 03 October 2026 12:00", info: "https://whatson.bfi.org.uk/Online/article/exact-check-extra" })] },
+      [guid(28, "A")]: { article: guid(28, "A"), slug: "mixed-rows", title: "Mixed Rows", summary: "Booking widget listing two other events.", details: [["Director", "Ada Example"]], paragraphs: ["Text."], perfs: [perf({ id: 640, article: 12, title: "Other One", start: "Saturday 03 October 2026 12:00" }), perf({ id: 641, article: 13, title: "Other Two", start: "Saturday 03 October 2026 14:00" })] },
       [guid(23, "A")]: { article: guid(23, "A"), slug: "fabricated-booking", title: "Book tickets for Fabricated Booking", summary: "Booking page.", details: [], paragraphs: [], pageSize: 100, perfs: Array.from({ length: 120 }, (_, i) => perf({ id: 500 + i, article: 23, title: "Booking Page Show", start: `Saturday ${String(3 + (i % 20)).padStart(2, "0")} October 2026 ${String(10 + (i % 9)).padStart(2, "0")}:00`, info: "https://whatson.bfi.org.uk/Online/article/fabricated-booking" })) },
       [guid(22, "A")]: { article: guid(22, "A"), slug: "no-own-showings", title: "Fabricated Archive Title", summary: "Credits but no listed showings.", details: [["Director", "Ada Example"]], paragraphs: ["Text."], perfs: [], booking: false, reportedPages: 4, extraRows: [perf({ id: 310, article: 12, title: "Other Show", start: "Saturday 03 October 2026 14:30" })] },
       [guid(20, "A")]: { article: guid(20, "A"), slug: "season-list", title: "Fabricated Season", summary: "A season page.", details: [], paragraphs: ["Season text."], perfs: [], booking: false, extraRows: [perf({ id: 300, article: 12, title: "Other Show", start: "Saturday 03 October 2026 14:30" })] }
@@ -561,6 +566,31 @@ test("get_event: unknown events, information pages and site failures are explici
   assert.match(named.error_message, /can also mean a site error/);
 });
 
+test("get_event: rows are claimed only by an exact id or an exact same-programme name", async () => {
+  const site = articleSite(1);
+  const tool = load("get_event", { site });
+  const prefix = await tool.run({ event: guid(24, "A") });
+  assert.deepEqual(prefix.performances.map(p => p.performance_id), [guid(601)], "a row whose id shares only its first 8 characters is not this event's");
+  const cross = await tool.run({ event: `${ORIGIN}/Online/article/cross-link` });
+  assert.deepEqual(cross.performances, [], "a name link into another programme is never claimed");
+  const cased = await tool.run({ event: `${ORIGIN}/Online/article/case-check` });
+  assert.deepEqual(cased.performances.map(p => p.performance_id), [guid(620)], "names compare case-insensitively");
+  assert.equal(cased.performances[0].venue, "Short label", "the rendered short venue label is used");
+  const mixed = await tool.run({ event: `${ORIGIN}/Online/article/mixed-rows` });
+  assert.deepEqual(mixed.performances, [], "a booking widget that lists several other events is not adopted as this event's");
+  const exact = await tool.run({ event: `${ORIGIN}/Online/article/exact-check` });
+  assert.deepEqual(exact.performances, [], "a longer name that merely contains the requested one is not claimed");
+  assertSafeRequests(site, "/Online");
+});
+
+test("search_events: pages up to 50 are requested and 51 is rejected", async () => {
+  const tool = load("search_events");
+  const far = await tool.run({ page: 50 });
+  assert.equal(far.status, "no_results");
+  assert.equal(tool.site.calls.at(-1).params["BOset::WScontent::SearchResultsInfo::current_page"], "50");
+  assert.equal((await tool.run({ page: 51 })).error_kind, "invalid_input");
+});
+
 test("get_event: a page with credits but none of its own performances is not paged for other events' rows", async () => {
   const site = articleSite(1);
   const tool = load("get_event", { site });
@@ -581,9 +611,12 @@ test("get_event: a booking page whose rows link by name returns its performances
   assert.equal(result.performances.length, 50);
   assert.match(result.warnings.join(" "), /more performances than the 50 returned/);
   assert.deepEqual(site.calls.map(c => c.path), ["/Online/article/fabricated-booking"], "the first page already holds 100 rows, so no further page is read");
-  const byId = await tool.run({ event: guid(23, "A") });
-  assert.equal(byId.performances.length, 0, "a GUID lookup cannot claim rows that link by name, and says so");
-  assert.match(byId.warnings.join(" "), /lists no performances/);
+  const byId = await tool.run({ event: result.event_id });
+  assert.equal(byId.performances.length, 50, "the event_id the tool returned reads the same booking page");
+  assert.doesNotMatch(byId.warnings.join(" "), /lists no performances/);
+  const byUrl = await tool.run({ event: result.url });
+  assert.equal(byUrl.performances.length, 50, "and so does the url the tool returned");
+  assert.deepEqual(byUrl.performances.map(p => p.performance_id), result.performances.map(p => p.performance_id));
   assertSafeRequests(site, "/Online");
 });
 

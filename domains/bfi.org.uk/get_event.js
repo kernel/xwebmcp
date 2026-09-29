@@ -216,9 +216,14 @@
       const gbp = s => { const m = /^£(\d+(?:\.\d{1,2})?)$/.exec(typeof s === "string" ? s.trim() : ""); return m ? Number(m[1]) : null; };
       const byTag = (a, b) => { const x = a.toLowerCase(), y = b.toLowerCase(); return x < y ? -1 : x > y ? 1 : a < b ? -1 : a > b ? 1 : 0; };
       const nameOf = info => { const m = /^(?:https:\/\/whatson\.bfi\.org\.uk)?\/(?:(imax|lff)\/)?Online\/article\/([A-Za-z0-9][A-Za-z0-9._-]{0,120})\/?$/i.exec(typeof info === "string" ? info.trim() : ""); return m && (m[1] || "southbank").toLowerCase() === programme ? m[2].toLowerCase() : null; };
-      const wantedName = lookup.kind === "id" ? null : lookup.value.toLowerCase();
+      // A row links to its event by article id or, for some festival events, by an /article/<name> URL; the key is whichever it uses.
+      const keyOf = info => { const byId = typeof info === "string" ? /article_id=([0-9A-Fa-f-]{36})/.exec(info) : null; if (byId) return "id:" + byId[1].toUpperCase(); const name = nameOf(info); return name ? "name:" + name : null; };
+      const hasBooking = !!main.querySelector(".Booking");
       const pageId = /articleId\s*:\s*"([0-9A-Fa-f]{8}(?:-[0-9A-Fa-f]{4}){3}-[0-9A-Fa-f]{12})"/.exec(html)?.[1] ?? null;
       const eventId = pageId || (lookup.kind === "id" ? lookup.value : null);
+      const ownKeys = new Set();
+      if (eventId) ownKeys.add("id:" + eventId.toUpperCase());
+      if (lookup.kind !== "id") ownKeys.add("name:" + lookup.value.toLowerCase());
       const warnings = [];
       // Reads this article's performances and pagination from one response body.
       const readPerformances = text => {
@@ -234,13 +239,13 @@
         if (missing.length) return { error: fail("site_changed", "The performances table no longer has the columns this tool reads (missing: " + missing.join(", ") + ").") };
         const list = [];
         let skipped = 0;
+        // The booking widget shows exactly the rows a page embeds. When it is present and every row points at one event, that event is this page's own even if its id or name is not the one asked for (a booking page reached by id, or by the name of its information page).
+        const keys = rows.map(r => Array.isArray(r) ? keyOf(r[col("Additional Info")]) : null);
+        if (hasBooking && keys.length && keys[0] && keys.every(k => k === keys[0])) ownKeys.add(keys[0]);
         for (const r of rows) {
           if (!Array.isArray(r)) { skipped++; continue; }
-          const info = r[col("Additional Info")];
-          const byId = typeof info === "string" ? /article_id=([0-9A-Fa-f-]{36})/.exec(info) : null;
-          // Only this event's own performances: a page can also embed listings for other events. Rows link to an event by article id or, for some festival events, by /article/<name>.
-          const own = (byId && eventId && byId[1].toUpperCase() === eventId.toUpperCase()) || (wantedName && nameOf(info) === wantedName);
-          if (!own) continue;
+          // Only this event's own performances: a page can also embed listings for other events.
+          if (!ownKeys.has(keyOf(r[col("Additional Info")]))) continue;
           const id = r[col("Id")];
           if (typeof id !== "string" || !GUID.test(id)) { skipped++; continue; }
           const start = when(r[col("-")]), onSale = when(r[col("On Sale Date")]);
