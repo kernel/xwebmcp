@@ -135,7 +135,7 @@
     const sectionReaders = {
       details: async () => {
         const r = await chart("DomainDetailsPanel");
-        if (!r.body) return r;
+        if (r.unavailable) return r;
         const b = r.body;
         if (!isObject(b) || !(Array.isArray(b.categories) || b.categories === null) || !(isObject(b.asn) || b.asn === null)) return shape("domain details");
         if (b.categories === null && b.asn === null) return bad("no_data", "Radar has no category or ASN data for this host; it may not exist or resolve.");
@@ -151,23 +151,23 @@
       },
       dns: async () => {
         const r = await chart("DnsRecordsTable");
-        if (!r.body) return r;
+        if (r.unavailable) return r;
         if (!isObject(r.body) || !Array.isArray(r.body.records)) return shape("DNS records");
-        const records = r.body.records.filter(x => x && typeof x.type === "string" && typeof x.name === "string" && typeof x.data === "string");
+        const records = r.body.records.filter(x => x && typeof x.type === "string" && typeof x.name === "string" && x.name !== "" && typeof x.data === "string");
         if (!records.length) return bad("no_data", "Radar lists no DNS records for this hostname.");
         const shortened = records.slice(0, recordLimit).map(x => ({ type: x.type, name: x.name, data: x.data.slice(0, 512) }));
         return { value: { total: records.length, truncated: records.length > recordLimit || shortened.some((x, i) => x.data !== records[i].data), records: shortened } };
       },
       pq: async () => {
         const r = await chart("DomainPqSupport");
-        if (!r.body) return r;
+        if (r.unavailable) return r;
         if (!isObject(r.body) || !("pq" in r.body)) return shape("post-quantum support");
         if (typeof r.body.pq !== "boolean") return bad("no_data", "Radar could not test TLS key exchange for this host" + (str(r.body.error) ? " (" + r.body.error + ")." : "."));
         return { value: { supported: r.body.pq, key_exchange: str(r.body.kexName) } };
       },
       whois: async () => {
         const r = await chart("WhoisPanel");
-        if (!r.body) return r;
+        if (r.unavailable) return r;
         const b = r.body;
         if (!isObject(b)) return shape("WHOIS");
         if (!str(b.registrar) && !str(b.created_date) && !(Array.isArray(b.nameservers) && b.nameservers.length)) return bad("no_data", "Radar has no WHOIS data for this domain.");

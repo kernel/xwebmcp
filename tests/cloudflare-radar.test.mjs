@@ -153,9 +153,9 @@ test("tool names do not collide with Radar's native tools", () => {
 // --- input validation happens before any request ---------------------------------------------------------
 
 const invalidInputs = {
-  list_internet_outages: [null, [], "US", { extra: 1 }, { location: "" }, { location: "united states" }, { location: "USA" }, { location: "AS12345678901" }, { location: "AS0" }, { location: "AS013335" }, { location: "antarctica" }, { location: "Europe" }, { location: 5 },
+  list_internet_outages: [null, [], "US", { extra: 1 }, { location: "" }, { location: "united states" }, { location: "USA" }, { location: "AS12345678901" }, { location: "AS0" }, { location: "AS013335" }, { location: "antarctica" }, { location: "Europe" }, { location: "europe" }, { location: "north-america" }, { location: 5 },
     { date_range: "5d" }, { date_range: 7 }, { date_range: "7d", date_start: "2026-09-01", date_end: "2026-09-02" }, { date_start: "2026-09-01" }, { date_end: "2026-09-02" },
-    { date_start: "2026-02-30", date_end: "2026-03-01" }, { date_start: "09/01/2026", date_end: "09/02/2026" }, { date_start: "2026-09-05", date_end: "2026-09-01" }, { date_start: "2025-01-01", date_end: "2026-06-01" },
+    { date_start: "2026-02-30", date_end: "2026-03-01" }, { date_start: "2026-13-01", date_end: "2026-13-05" }, { date_start: "2026-01-00", date_end: "2026-01-05" }, { date_start: "2026-01-01", date_end: "2026-00-10" }, { date_start: "09/01/2026", date_end: "09/02/2026" }, { date_start: "2026-09-05", date_end: "2026-09-01" }, { date_start: "2025-01-01", date_end: "2026-06-01" },
     { include: "all" }, { limit: 0 }, { limit: 51 }, { limit: 2.5 }, { limit: "5" }],
   get_domain_info: [undefined, null, [], {}, "example.com", { domain: 5 }, { domain: "" }, { domain: "example" }, { domain: "localhost" }, { domain: "1.1.1.1" }, { domain: "http://example.com" }, { domain: "example.com/path" },
     { domain: "example.com:443" }, { domain: "example.com." }, { domain: "exa mple.com" }, { domain: "-bad.example.com" }, { domain: "bücher.example.com" }, { domain: "x".repeat(64) + ".com" }, { domain: "a.".repeat(130) + "com" },
@@ -214,7 +214,6 @@ test("list_internet_outages: filters go to the site as Radar's own query paramet
   for (const [input, expected, state] of [
     [{ location: "US" }, { location: "us" }, { location: { type: "country", code: "US", name: "United States" }, dateRange: "7d" }],
     [{ location: "As13335", date_range: "28d" }, { location: "as13335", dateRange: "28d" }, { location: { type: "asn", asn: "13335" }, dateRange: "28d" }],
-    [{ location: "europe", date_range: "12w" }, { location: "europe", dateRange: "12w" }, { location: { type: "continent", slug: "europe", name: "Europe" }, dateRange: "12w" }],
     [{ date_start: "2026-09-01", date_end: "2026-09-15" }, { dateStart: "2026-09-01", dateEnd: "2026-09-15" }, { location: { type: "global" }, dateRange: "", dateStart: "2026-09-01", dateEnd: "2026-09-15" }]
   ]) {
     const h = harness("list_internet_outages", { routes: { OutagesMap: () => ({ status: 200, body: outageBody({ state: { ...state, params: {} } }) }) } });
@@ -366,6 +365,27 @@ test("get_domain_info: DNS records are bounded and long data is cut", async () =
   assert.equal(small.dns_records.truncated, false);
   const mixed = await harness("get_domain_info", { routes: { DnsRecordsTable: () => ({ status: 200, body: { records: [{ type: "A", name: "host.example.net", data: "192.0.2.1" }, { type: "A" }, null] } }) } }).run({ domain: "host.example.net", sections: ["dns"] });
   assert.equal(mixed.dns_records.total, 1);
+});
+
+test("get_domain_info: root-zone answers for unassigned names are not DNS records, CNAME chains are kept", async () => {
+  const root = { records: ["a", "b", "c"].map(x => ({ type: "NS", name: "", data: x + ".root-servers.net." })) };
+  const unassigned = await harness("get_domain_info", { routes: { DnsRecordsTable: () => ({ status: 200, body: root }) } }).run({ domain: "printer.lan", sections: ["dns"] });
+  assert.equal(unassigned.status, "no_data");
+  assert.equal(unassigned.unavailable[0].section, "dns");
+  const chain = { records: [{ type: "CNAME", name: "www.host.example.net", data: "edge.cdn.example.net." }, { type: "CNAME", name: "edge.cdn.example.net", data: "node1.cdn.example.net." }, { type: "A", name: "node1.cdn.example.net", data: "192.0.2.9" }, ...root.records] };
+  const kept = await harness("get_domain_info", { routes: { DnsRecordsTable: () => ({ status: 200, body: chain }) } }).run({ domain: "www.host.example.net", sections: ["dns"] });
+  assert.equal(kept.dns_records.total, 3);
+  assert.deepEqual(kept.dns_records.records.map(r => r.name), ["www.host.example.net", "edge.cdn.example.net", "node1.cdn.example.net"]);
+});
+
+test("get_domain_info: a valid but falsy JSON body is a shape change, not an empty success", async () => {
+  for (const body of [false, 0, "", []]) {
+    for (const [route, section] of [["DomainDetailsPanel", "details"], ["DnsRecordsTable", "dns"], ["DomainPqSupport", "pq"], ["WhoisPanel", "whois"]]) {
+      const result = await harness("get_domain_info", { routes: { [route]: () => ({ status: 200, text: JSON.stringify(body) }) } }).run({ domain: "host.example.net", sections: [section] });
+      assert.equal(result.status, "error", route + " " + JSON.stringify(body));
+      assert.equal(result.error_kind, "site_changed", route + " " + JSON.stringify(body));
+    }
+  }
 });
 
 test("get_domain_info: WHOIS is opt-in, allowlisted, and a rate limit is reported per section", async () => {

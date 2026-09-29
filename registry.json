@@ -77,7 +77,7 @@
       ],
       "status": "draft",
       "last_verified": null,
-      "notes": "Page tool on radar.cloudflare.com. Public, read-only: Outage Center outages and traffic anomalies for a window, worldwide or for one country, continent or ASN, with the applied filter read back from Radar's response."
+      "notes": "Page tool on radar.cloudflare.com. Public, read-only: Outage Center outages and traffic anomalies for a window, worldwide or for one country or ASN, with the applied filter read back from Radar's response. Continents are rejected because Radar returns worldwide data for them."
     },
     {
       "domain": "delta.com",
