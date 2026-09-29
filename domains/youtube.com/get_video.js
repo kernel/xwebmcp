@@ -7,7 +7,7 @@
     inputSchema: {
       type: "object", additionalProperties: false, required: ["video"],
       properties: {
-        video: { type: "string", minLength: 11, maxLength: 400, description: "An 11-character video_id from search (letters, digits, _ or -), or a https://www.youtube.com/watch?v=<id>, https://youtu.be/<id>, or www.youtube.com/shorts/<id>, /live/<id> or /embed/<id> URL. Playlist and time parameters in a URL are ignored." }
+        video: { type: "string", minLength: 11, maxLength: 400, description: "An 11-character video_id from search (letters, digits, _ or -), or an https URL of the form https://www.youtube.com/watch?v=<id>, https://youtu.be/<id>, or https://www.youtube.com/shorts/<id>, /live/<id> or /embed/<id> (youtube.com and m.youtube.com hosts also work). URLs without https:// are rejected. Playlist and time parameters in a URL are ignored." }
       }
     },
     outputSchema: {
@@ -113,7 +113,8 @@
     const clean = (value, max) => {
       if (typeof value !== "string") return null;
       const text = value.replace(/[\u0000-\u001f\u007f]+/g, " ").replace(/\s+/g, " ").trim();
-      return text ? text.slice(0, max) : null;
+      // Cut at a UTF-16 boundary without leaving half of a surrogate pair.
+      return text ? text.slice(0, max).replace(/[\ud800-\udbff]$/, "") : null;
     };
     const count = value => {
       if (typeof value === "string" && /^\d{1,15}$/.test(value)) return Number(value);
@@ -125,8 +126,10 @@
       return match ? match[1] : null;
     };
 
-    const status = player.json.playabilityStatus?.status;
-    const reason = clean(player.json.playabilityStatus?.reason, 200);
+    const playability = player.json.playabilityStatus;
+    if (!playability || typeof playability !== "object") return fail("site_changed", "YouTube's player response had no playability block; the response layout may have changed.");
+    const status = playability.status;
+    const reason = clean(playability.reason, 200);
     // Sign-in, age and content-warning screens are reported, never passed. Other non-OK statuses are not treated as gates:
     // the anonymous request reports ordinary public videos as UNPLAYABLE, so playability is not part of the result.
     if (status === "LOGIN_REQUIRED") return /not a bot|unusual traffic|automated/i.test(reason || "") ? fail("challenge", "YouTube asked this browser to prove it is not a bot" + (reason ? " (" + reason + ")" : "") + "; a person has to clear it. Do not retry automatically.") : fail("login_required", "YouTube requires signing in to see this video" + (reason ? " (" + reason + ")" : "") + ". This tool never signs in.");
@@ -143,23 +146,38 @@
     const isUpcoming = details.isUpcoming === true;
     const length = count(details.lengthSeconds);
     const description = typeof details.shortDescription === "string" ? details.shortDescription.replace(/[\u0000-\u0008\u000b-\u001f\u007f]+/g, " ").replace(/\r\n?/g, "\n").trim() : "";
-    const keywords = (Array.isArray(details.keywords) ? details.keywords : []).map(k => clean(k, 100)).filter(Boolean).slice(0, 25);
+    const allKeywords = (Array.isArray(details.keywords) ? details.keywords : []).map(k => clean(k, 100)).filter(Boolean);
+    const keywords = allKeywords.slice(0, 25);
+    if (allKeywords.length > keywords.length) warnings.push("The video has " + allKeywords.length + " keywords; only the first 25 are returned.");
 
     let owner = null;
+    let isVerified = null;
     const chapters = [];
+    let chapterTotal = 0;
     if (next.error) warnings.push("The watch-page data request failed (" + next.error.error_kind + "); subscriber text, verification and chapters are unavailable.");
     else {
-      const rows = next.json.contents?.twoColumnWatchNextResults?.results?.results?.contents || [];
-      owner = rows.find(r => r && r.videoSecondaryInfoRenderer)?.videoSecondaryInfoRenderer?.owner?.videoOwnerRenderer ?? null;
-      const panel = (next.json.engagementPanels || []).map(p => p?.engagementPanelSectionListRenderer).find(p => p?.panelIdentifier === "engagement-panel-macro-markers-description-chapters");
-      for (const entry of panel?.content?.macroMarkersListRenderer?.contents || []) {
-        const item = entry?.macroMarkersListItemRenderer;
-        const chapterTitle = clean(item?.title?.simpleText, 200);
-        const timeText = clean(item?.timeDescription?.simpleText, 12);
-        const start = count(item?.onTap?.watchEndpoint?.startTimeSeconds);
-        if (chapterTitle && timeText && start !== null && chapters.length < 60) chapters.push({ title: chapterTitle, start_seconds: start, time_text: timeText });
+      try {
+        const rows = next.json.contents?.twoColumnWatchNextResults?.results?.results?.contents || [];
+        owner = rows.find(r => r && r.videoSecondaryInfoRenderer)?.videoSecondaryInfoRenderer?.owner?.videoOwnerRenderer ?? null;
+        if (owner) isVerified = (owner.badges || []).some(b => b?.metadataBadgeRenderer?.style === "BADGE_STYLE_TYPE_VERIFIED");
+        const panel = (next.json.engagementPanels || []).map(p => p?.engagementPanelSectionListRenderer).find(p => p?.panelIdentifier === "engagement-panel-macro-markers-description-chapters");
+        for (const entry of panel?.content?.macroMarkersListRenderer?.contents || []) {
+          const item = entry?.macroMarkersListItemRenderer;
+          const chapterTitle = clean(item?.title?.simpleText, 200);
+          const timeText = clean(item?.timeDescription?.simpleText, 12);
+          const start = count(item?.onTap?.watchEndpoint?.startTimeSeconds);
+          if (!chapterTitle || !timeText || start === null) continue;
+          chapterTotal++;
+          if (chapters.length < 60) chapters.push({ title: chapterTitle, start_seconds: start, time_text: timeText });
+        }
+        if (!owner) warnings.push("The watch-page data had no channel block; subscriber text and verification are unavailable.");
+        if (chapterTotal > chapters.length) warnings.push("The video has " + chapterTotal + " chapters; only the first 60 are returned.");
+      } catch {
+        owner = null;
+        isVerified = null;
+        chapters.length = 0;
+        warnings.push("The watch-page data had an unexpected structure; subscriber text, verification and chapters are unavailable.");
       }
-      if (!owner) warnings.push("The watch-page data had no channel block; subscriber text and verification are unavailable.");
     }
     let handle = handleFrom(owner?.navigationEndpoint?.browseEndpoint?.canonicalBaseUrl);
     if (!handle && typeof meta.ownerProfileUrl === "string") {
@@ -169,11 +187,11 @@
     const publishedAt = typeof meta.publishDate === "string" && /^\d{4}-\d{2}-\d{2}(T[\d:.]+(Z|[+-]\d{2}:\d{2}))?$/.test(meta.publishDate) ? meta.publishDate : null;
     return {
       status: "ok", video_id: id, url: ORIGIN + "/watch?v=" + id, title,
-      description: description.slice(0, 5000), description_truncated: description.length > 5000,
+      description: description.slice(0, 5000).replace(/[\ud800-\udbff]$/, ""), description_truncated: description.length > 5000,
       channel: {
         name: clean(details.author, 200), channel_id: channelId, handle, url: handle ? ORIGIN + "/" + handle : channelId ? ORIGIN + "/channel/" + channelId : null,
         subscriber_text: clean(owner?.subscriberCountText?.simpleText, 60),
-        is_verified: owner ? (owner.badges || []).some(b => b?.metadataBadgeRenderer?.style === "BADGE_STYLE_TYPE_VERIFIED") : null
+        is_verified: isVerified
       },
       published_at: publishedAt, duration_seconds: isLive || isUpcoming || !length ? null : length,
       view_count: count(details.viewCount), like_count: count(meta.likeCount), category: clean(meta.category, 100), keywords,

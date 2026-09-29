@@ -33,13 +33,13 @@ Both tools are `kind: "page"`. Each runs inside the `www.youtube.com` page it is
 results, watch, channel and Shorts pages all work), calls the site's own JSON endpoints with `fetch`
 from that document, and never navigates, so neither meets the `cdp` conditions in
 [`spec/cdp-tools.md`](../../spec/cdp-tools.md) §2.1 and neither needs a §2.4 exception. Live runs took
-0.5 to 2.1 s (`search` with four filters is five requests); `timeoutSec: 60` is enough.
+0.4 to 3.1 s (`search` with four filters is five requests and took 2.4 to 3.1 s); `timeoutSec: 60` is enough.
 
 - **search** posts to `/youtubei/v1/search`. Filters are applied the way the site's Filters menu does
   it: the response lists every option with its own request token, and the tool posts the chosen
   option's token, once per filter in the fixed order type, duration, upload date, sort, then reads
   the selected options back from the final response (`applied_filters`). It never builds a filter
-  token itself. One call returns one results page: about 20 videos plus the Shorts shelves the site adds, 41 to 48 items on ten sample queries, at most 100. `next_page_token`
+  token itself. One call returns one results page: about 20 videos plus the Shorts shelves the site adds (41 to 48 items on ten sample queries, 12 to 75 in independent QA), at most 100. `next_page_token`
   is the site's continuation token, passed back alone as `page_token`.
 - **get_video** posts `videoId` to `/youtubei/v1/player` (details) and `/youtubei/v1/next` (channel
   block and chapters) in parallel. It does not open the watch page, so the page is never navigated
@@ -49,7 +49,7 @@ Outputs:
 
 - Every result has `status`: `ok`, `no_results` (search only), or `error` with `error_kind` and
   `error_message`. Shared kinds: `invalid_input` (checked before any request), `wrong_page`,
-  `challenge`, `rate_limited`, `site_error`, `site_changed`. `search` adds `filter_unavailable`;
+  `challenge`, `rate_limited`, `site_error`, `site_changed`. `search` adds `filter_unavailable` and `invalid_page_token`;
   `get_video` adds `video_unavailable`, `login_required` and `gated`.
 - Ids, canonical URLs and the fields that are ids are validated and rebuilt from the id
   (`https://www.youtube.com/watch?v=<id>`, `/shorts/<id>`, `/@<handle>`); no URL from the page is
@@ -60,6 +60,12 @@ Outputs:
   bounded (titles 300, snippets 300, description 5000 characters, 25 keywords, 60 chapters, 100 search results). The tool
   returns them as data and never acts on them.
 - Every result carries `observed_at`. Counts and rankings change by the minute.
+- `rank` is the position within one response and restarts at 1 on every page. The tool drops a result
+  that repeats within a page (and warns), but the site also repeats results across later pages, so
+  callers de-duplicate by `video_id`, `channel_id` or `playlist_id`.
+- Some runtimes hand page-tool output to the caller as a JSON string instead of an object. Independent QA
+  saw this on Kernel only when every non-ASCII character in the output was U+00FF or below (3 of 3 such
+  outputs, 0 of 13 others); parse the string when `typeof output === "string"`.
 
 ## URL patterns
 
@@ -119,9 +125,13 @@ scope, although `get_video` accepts a `youtu.be` link as input.
 - In channel results the site's `subscriberCountText` holds the `@handle` and `videoCountText` holds the
   subscriber count. The parser classifies both strings by content.
 - The Filters menu changes with the search: after choosing Channels or Playlists the Duration and
-  Upload date options stay listed but disabled with no token, which is `filter_unavailable`. Some
-  filter and sort combinations have no matches (observed: Videos, 3 - 20 minutes, This month,
-  Popularity returned only the site's empty-state card), which is `no_results`.
+  Upload date options stay listed but disabled with no token, and Shorts disables Duration; that is
+  `filter_unavailable`. When the query itself has no matches the site disables every option, and the
+  tool returns `no_results` instead. Some filter and sort combinations have no matches (observed:
+  Videos, 3 - 20 minutes, This month, Popularity returned only the site's empty-state card), which is
+  `no_results`. With type Shorts plus Upload date the site answered with ordinary short videos
+  (`kind: "video"`, some over a minute) while its filter menu still read Shorts; each result's `kind`
+  says what the row is.
 - Filter labels are English (`hl` is fixed to `en` so labels and count text are stable); `gl` follows the
   page. Observed labels: Type (Videos, Shorts, Channels, Playlists, Movies), Duration (Under 3 minutes,
   3 - 20 minutes, Over 20 minutes), Upload date (Today, This week, This month, This year), Prioritize
@@ -132,7 +142,12 @@ scope, although `get_video` accepts a `youtu.be` link as input.
   Courses are returned as playlists with `playlist_type: "course"`. Movie results and other shelves are
   counted in `omitted`.
 - Live streams: `is_live` is true, `duration_seconds` is null, and the view count is whatever the site
-  reports at that moment.
+  reports at that moment. Upcoming streams report `view_count` and `like_count` of 0.
+- A page token the site does not accept comes back either as HTTP 400 (truncated or foreign token) or as
+  an empty page (a token altered in the middle); both are `invalid_page_token`. Tokens hold the query
+  and the ids already shown, no session data.
+- A full navigation while an invocation is running ends in `outcome_unknown` after the whole timeout
+  (spec §2.2); an in-app route change does not interrupt it.
 
 ## Known limitations
 
@@ -142,24 +157,65 @@ scope, although `get_video` accepts a `youtu.be` link as input.
   beyond a second page.
 - `get_video` uses the description's chapter list only. Videos with auto-generated chapters or none
   return `chapters: []`. `like_count` is null when the site omits it.
-- `login_required`, `gated`, `challenge` and `rate_limited` are covered by fixtures only: no age-restricted,
-  private, members-only or content-warning video and no bot check was available to test. The mapping from
-  the site's `LOGIN_REQUIRED`, `CONTENT_CHECK_REQUIRED`, `AGE_CHECK_REQUIRED` and `AGE_VERIFICATION_REQUIRED`
-  statuses is from documentation and prior knowledge, not observation.
+- `login_required` was seen live only for age-restricted videos ("Sign in to confirm your age", two videos
+  found in public search results by independent QA). `gated`, `challenge` and `rate_limited` are covered by
+  fixtures only: no private, members-only or content-warning video and no bot check or HTTP 429 was
+  available to test. The mapping from the site's `CONTENT_CHECK_REQUIRED`, `AGE_CHECK_REQUIRED` and
+  `AGE_VERIFICATION_REQUIRED` statuses is from documentation and prior knowledge, not observation.
+- Chapters are capped at 60 and keywords at 25, with a warning when the video has more; only the
+  description sets a truncated flag.
+- **Chrome extension: does not work on youtube.com at this revision.** Independent QA (2026-09-29)
+  found that neither tool registers on any `www.youtube.com` page in the xwebmcp extension. YouTube sends
+  `content-security-policy: require-trusted-types-for 'script'` (checked on the homepage response), and
+  the extension's page-tool compile step throws a Trusted Types `TypeError` that its CSP fallback
+  (spec §9, item 12) does not handle; a trivial page tool registered on another site in the same setup.
+  The fix belongs in `extension/`, not in these files, and the tools are unchanged by it. The Kernel
+  runtime registers and runs both tools.
 - Upcoming streams and premieres (`is_upcoming`) and videos with hidden likes are covered by fixtures only.
 - The Movies filter, Features filters and the site's other Filters menu options are not exposed.
 - The site changes its page data often (channel tab rows are `lockupViewModel` where search rows are still
   `videoRenderer`). Unreadable layouts return `site_changed`, not an empty result.
-- Not tested: request volume, rate-limit thresholds, and the extension runtime (see QA).
+- Not tested: request volume beyond a few hundred requests, rate-limit thresholds, private, members-only
+  or content-warning videos, other regions or locales, descriptions near 5000 characters, and videos with
+  more than 60 chapters.
 
 ## QA
 
 Author checks (not independent QA), 2026-09-29, fresh signed-out Kernel stealth browser, registered
 through `webmcp.addCustomTools` and invoked through `webmcp.invokeTool` from the homepage and a results
 page: mixed search with all four result kinds; type, duration, upload-date and sort filters chained;
-channel, playlist and Shorts searches; a second results page (no repeated videos); `filter_unavailable`
-for channel plus duration; `no_results` for a nonsense query; `get_video` for an ordinary video, a Short, a
-live stream, an unknown id, and the URL forms; malformed inputs rejected without a request. The tool tests
-in `tests/youtube-search-video.test.mjs` cover the same paths and the error mappings with stubbed pages.
+channel, playlist and Shorts searches; a second results page; `filter_unavailable` for channel plus
+duration; `no_results` for a nonsense query; `get_video` for an ordinary video, a Short, a live stream, an
+unknown id, and the URL forms; malformed inputs rejected without a request; both tools once on a signed-in
+tab with a `fetch` wrapper (requests carried no account data). The tool tests in
+`tests/youtube-search-video.test.mjs` cover the same paths and the error mappings with stubbed pages.
 
-Independent QA: not yet run. Status stays `draft` until it is.
+Independent QA round 1 (agent `agt_fa327864b9b0e6484a8a`, first revision `0781398`): **FAIL**, no blockers on
+the Kernel runtime, one major and ten minor findings. Live on a fresh signed-out Kernel browser, 2026-09-29:
+119 outputs validated against `outputSchema` with Ajv, no schema violations; the registered source matched the
+files by sha256; both tools listed on `www.youtube.com` pages (including `/embed`, where they return
+`wrong_page`) and not on `music.youtube.com`, `example.com`, `accounts.google.com` or `about:blank`; about
+400 requests observed by an in-page monitor and Kernel network telemetry were all POSTs to
+`/youtubei/v1/search`, `/player` and `/next` with `credentials: "omit"`, a `content-type` header only and a
+four-field client context, with no cookie, authorization or `x-goog-*` header and no clicks, navigation or
+storage writes by the tools; no signed media, caption or thumbnail URL or session identifier in any output;
+about 40 malformed inputs rejected with no request; concurrent invocations in three tabs; an in-app route
+change mid-call completed, a stale `tool_ref` after a full navigation was refused. A mutation run against
+the tests killed 45 of 47 mutants. Fixed in the next revision:
+
+1. Extension: not fixed here, see Known limitations (the fix belongs in `extension/`).
+2. A zero-match query with type or duration filters returned `filter_unavailable`; it now returns `no_results`.
+3. Type Shorts with other filters: documented (the site's own behavior) and the filter messages and
+   descriptions no longer say only channels and playlists lack filters.
+4. Repeated ids within a page are dropped with a warning; repeats across pages and per-page `rank` are
+   documented.
+5. `page_token: null` is rejected.
+6. `query` length is counted in code points, and tabs and newlines are normalized instead of rejected.
+7. The `get_video` input description no longer implies scheme-less URLs work.
+8. A page token the site does not accept returns the new `invalid_page_token` instead of `site_changed`.
+9. Type-shifted site data no longer throws: an unreadable result block is counted as unsupported and an
+   unreadable page, or a `player` response without a playability block, is `site_changed`.
+10. Truncation no longer leaves half of a surrogate pair.
+11. README accuracy: age-restricted `login_required`, timings, item counts, non-ASCII output runtime quirk.
+
+Independent QA of the revision that fixes these: pending. Status stays `draft` until it passes.

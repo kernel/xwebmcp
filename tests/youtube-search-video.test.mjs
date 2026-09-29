@@ -68,7 +68,8 @@ const playlistBlock = (n, type = "LOCKUP_CONTENT_TYPE_PLAYLIST", extra = {}) => 
     contentImage: { collectionThumbnailViewModel: { primaryThumbnail: { thumbnailViewModel: { overlays: [{ thumbnailOverlayBadgeViewModel: { thumbnailBadges: [{ thumbnailBadgeViewModel: { text: "12 videos" } }] } }] } } } }, ...extra
   }
 });
-const shortCell = n => ({ shortsLockupViewModel: { entityId: "shorts-shelf-item-" + vid(n), onTap: { innertubeCommand: { reelWatchEndpoint: { videoId: vid(n) } } }, overlayMetadata: { primaryText: { content: `Example short ${n}` }, secondaryText: { content: "9.9K views" } } } });
+const shortId = n => vid(500 + n);
+const shortCell = n => ({ shortsLockupViewModel: { entityId: "shorts-shelf-item-" + shortId(n), onTap: { innertubeCommand: { reelWatchEndpoint: { videoId: shortId(n) } } }, overlayMetadata: { primaryText: { content: `Example short ${n}` }, secondaryText: { content: "9.9K views" } } } });
 const shortsShelf = (...ns) => ({ gridShelfViewModel: { contents: ns.map(shortCell) } });
 const adBlock = () => ({ searchPyvRenderer: { ads: [{ adRenderer: { clickUrl: "https://ads.example.invalid/?SECRETADCLICK" } }] } });
 
@@ -237,7 +238,7 @@ test("search returns typed results, omits sponsored blocks and sends only an ano
   assert.deepEqual(video, { rank: 1, kind: "video", video_id: vid(1), url: `https://www.youtube.com/watch?v=${vid(1)}`, title: "Example video 1", channel: { name: "Example Channel", channel_id: chId(1), handle: "@examplechannel" }, views_text: "1,234 views", published_text: "2 years ago", duration_text: "12:34", snippet: "A fabricated snippet.", badges: [], is_live: false });
   assert.deepEqual(channel, { rank: 2, kind: "channel", channel_id: chId(1), url: "https://www.youtube.com/@examplechannel1", title: "Example Channel 1", handle: "@examplechannel1", subscriber_text: "1.5M subscribers", video_count_text: null, description_snippet: "About the fabricated channel.", is_verified: true });
   assert.deepEqual(playlist, { rank: 3, kind: "playlist", playlist_id: "PLexample00000001", url: "https://www.youtube.com/playlist?list=PLexample00000001", title: "Example playlist 1", playlist_type: "playlist", channel_name: "Example Channel", video_count_text: "12 videos" });
-  assert.deepEqual(short, { rank: 4, kind: "short", video_id: vid(1), url: `https://www.youtube.com/shorts/${vid(1)}`, title: "Example short 1", views_text: "9.9K views" });
+  assert.deepEqual(short, { rank: 4, kind: "short", video_id: shortId(1), url: `https://www.youtube.com/shorts/${shortId(1)}`, title: "Example short 1", views_text: "9.9K views" });
   assert.equal(h.calls.length, 1);
   assert.deepEqual(h.calls[0].body, { context: { client: { clientName: "WEB", clientVersion: "2.20260925.08.00", hl: "en", gl: "FR" } }, query: "fabricated topic" });
   const text = JSON.stringify(out);
@@ -364,7 +365,7 @@ test("search pages with an opaque token passed alone and reads the continuation 
 test("search rejects malformed input before any request", async () => {
   const h = harness("search");
   const bad = [
-    undefined, null, [], "query", {}, { query: "" }, { query: "   " }, { query: 5 }, { query: "a".repeat(201) }, { query: "a\nb" }, { query: "\u0000" },
+    undefined, null, [], "query", {}, { query: "" }, { query: "   " }, { query: 5 }, { query: "a".repeat(201) }, { query: "\u0000" }, { query: "a\u0007b" }, { query: null }, { type: null, query: "x" }, { query: "x", page_token: null }, { page_token: null },
     { query: "x", type: "movie" }, { query: "x", type: 1 }, { query: "x", duration: "short" }, { query: "x", upload_date: "last_hour" }, { query: "x", sort_by: "newest" },
     { query: "x", extra: 1 }, { query: "x", page_token: "CONTPAD0123456789.AAAA" }, { type: "video" }, { page_token: "short" }, { page_token: "has spaces in it, definitely" },
     { page_token: 5 }, { page_token: "A".repeat(2001) }, { page_token: "CONTPAD0123456789.AAAA", type: "video" }
@@ -390,7 +391,8 @@ test("search maps rate limits, bot checks, bad bodies and network failures to ex
   await harness("search", { route: () => ({ status: 403, text: "" }) }).err({ query: "x" }, "challenge");
   await harness("search", { route: () => ({ status: 200, text: "<html>Our systems have detected unusual traffic</html>" }) }).err({ query: "x" }, "challenge");
   await harness("search", { route: () => ({ status: 502, text: "<html>Bad gateway</html>" }) }).err({ query: "x" }, "site_error");
-  await harness("search", { route: () => ({ status: 400, text: JSON.stringify({ error: { message: "Precondition check failed." } }) }) }).err({ page_token: "CONTPAD0123456789.AAAA" }, "site_error");
+  await harness("search", { route: () => ({ status: 400, text: JSON.stringify({ error: { message: "Precondition check failed." } }) }) }).err({ query: "x" }, "site_error");
+  await harness("search", { route: () => ({ status: 400, text: JSON.stringify({ error: { message: "Precondition check failed." } }) }) }).err({ page_token: "CONTPAD0123456789.AAAA" }, "invalid_page_token");
   await harness("search", { throws: true }).err({ query: "x" }, "site_error");
   const failing = harness("search", { route: (endpoint, body) => (endpoint === "search" && body.params ? { status: 429, text: "" } : null) });
   await failing.err({ query: "x", type: "video" }, "rate_limited");
@@ -404,6 +406,70 @@ test("search distinguishes an empty result page from a layout it cannot read", a
   assert.equal(out.query, "x");
   await harness("search", { items: [], more: false }).err({ query: "x" }, "site_changed");
   await harness("search", { items: [{ shelfRenderer: {} }, adBlock()], more: false }).err({ query: "x" }, "site_changed");
+});
+
+test("search normalizes tabs and newlines in a query and counts its length in code points", async () => {
+  const spaced = harness("search");
+  assert.equal((await spaced.ok({ query: "\n a\tb \r\n c \n" })).query, "a b c");
+  assert.equal(spaced.calls[0].body.query, "a b c");
+  await harness("search").ok({ query: "\u{1F600}".repeat(150) });
+  await harness("search").ok({ query: "\u{1F600}".repeat(200) });
+  await harness("search").err({ query: "\u{1F600}".repeat(201) }, "invalid_input");
+  await harness("search").err({ query: "a".repeat(201) }, "invalid_input");
+});
+
+test("search reports no_results, not filter_unavailable, when the query itself has no matches", async () => {
+  const emptyBase = () => {
+    const page = firstPage({}, [{ backgroundPromoRenderer: { title: { runs: [{ text: "No results found" }] } } }], false);
+    for (const g of page.header.searchHeaderRenderer.searchFilterButton.buttonRenderer.command.openPopupAction.popup.searchFilterOptionsDialogRenderer.groups) {
+      for (const f of g.searchFilterGroupRenderer.filters) if (f.searchFilterRenderer.status !== "FILTER_STATUS_SELECTED") { f.searchFilterRenderer.status = "FILTER_STATUS_DISABLED"; delete f.searchFilterRenderer.navigationEndpoint; }
+    }
+    return page;
+  };
+  for (const filters of [{ type: "video" }, { duration: "over_20_min" }, { upload_date: "today" }, { type: "channel", duration: "under_3_min" }, { sort_by: "popularity" }]) {
+    const h = harness("search", { route: endpoint => (endpoint === "search" ? { status: 200, text: JSON.stringify(emptyBase()) } : null) });
+    const out = plain(await h.definition.execute({ query: "zzzz", ...filters }, {}));
+    assert.equal(out.status, "no_results", JSON.stringify(filters) + " " + JSON.stringify(out).slice(0, 200));
+    assert.ok(conforms(h.definition.tool.outputSchema, out));
+    assert.equal(h.calls.length, 1, "no further request is needed once the base search is empty");
+  }
+});
+
+test("search drops repeated results within a page and says so", async () => {
+  const h = harness("search", { items: [videoBlock(1), videoBlock(2), videoBlock(1), shortsShelf(1, 2, 1), channelBlock(1), channelBlock(1), playlistBlock(1), playlistBlock(1)] });
+  const out = await h.ok({ query: "x" });
+  assert.deepEqual(out.results.map(r => r.kind + ":" + (r.video_id ?? r.channel_id ?? r.playlist_id)), [`video:${vid(1)}`, `video:${vid(2)}`, `short:${shortId(1)}`, `short:${shortId(2)}`, `channel:${chId(1)}`, "playlist:PLexample00000001"]);
+  assert.deepEqual(out.results.map(r => r.rank), [1, 2, 3, 4, 5, 6]);
+  assert.ok(out.warnings.some(w => /^4 repeated result\(s\)/.test(w)), JSON.stringify(out.warnings));
+  const sameId = harness("search", { items: [videoBlock(1), { gridShelfViewModel: { contents: [{ shortsLockupViewModel: { onTap: { innertubeCommand: { reelWatchEndpoint: { videoId: vid(1) } } }, overlayMetadata: { primaryText: { content: "Same id as a video row" } } } }] } }] });
+  assert.equal((await sameId.ok({ query: "x" })).results.length, 1, "the same video id as a row and as a Short is one result");
+});
+
+test("search rejects a page token the site does not accept instead of reporting a layout change", async () => {
+  const empty = harness("search", { route: (endpoint, body) => (body.continuation ? { status: 200, text: JSON.stringify({ estimatedResults: "1", header: header({}), onResponseReceivedCommands: [{ clickTrackingParams: "x" }] }) } : null) });
+  const out = await empty.err({ page_token: "CONTPAD0123456789.tampered" }, "invalid_page_token");
+  assert.match(out.error_message, /altered, expired or from a different search/);
+  await harness("search", { route: (endpoint, body) => (body.continuation ? { status: 200, text: JSON.stringify({}) } : null) }).err({ page_token: "CONTPAD0123456789.tampered" }, "invalid_page_token");
+});
+
+test("search skips blocks whose fields have an unexpected type and fails cleanly on a shifted container", async () => {
+  const shifted = harness("search", { items: [videoBlock(1, { badges: "LIVE" }), videoBlock(2), channelBlock(3, { ownerBadges: {} }), { gridShelfViewModel: { contents: {} } }, playlistBlock(4, "LOCKUP_CONTENT_TYPE_PLAYLIST", { metadata: { lockupMetadataViewModel: { title: { content: "T" }, metadata: { contentMetadataViewModel: { metadataRows: {} } } } } }), videoBlock(5)] });
+  const out = await shifted.ok({ query: "x" });
+  assert.deepEqual(out.results.map(r => r.kind), ["video", "playlist", "video"]);
+  assert.deepEqual([out.results[0].video_id, out.results[2].video_id], [vid(2), vid(5)]);
+  assert.equal(out.results[1].channel_name, null, "an unreadable metadata row leaves the field null instead of failing the block");
+  assert.deepEqual(out.omitted, { sponsored: 0, unsupported: 3 });
+  const container = harness("search", { route: () => ({ status: 200, text: JSON.stringify({ contents: { twoColumnSearchResultsRenderer: { primaryContents: { sectionListRenderer: { contents: [{ itemSectionRenderer: { contents: 5 } }] } } } } }) }) });
+  await container.err({ query: "x" }, "site_changed");
+  await harness("search", { route: () => ({ status: 200, text: JSON.stringify([]) }) }).err({ query: "x" }, "site_changed");
+  await harness("search", { route: () => ({ status: 200, text: JSON.stringify({ header: { searchHeaderRenderer: { searchFilterButton: { buttonRenderer: { command: { openPopupAction: { popup: { searchFilterOptionsDialogRenderer: { groups: [{ searchFilterGroupRenderer: { title: { simpleText: "Type" }, filters: {} } }] } } } } } } } } }) }) }).err({ query: "x", type: "video" }, "filter_unavailable");
+});
+
+test("search never leaves half of a surrogate pair when it truncates text", async () => {
+  const title = "A".repeat(299) + "\u{1F600}" + "B";
+  const out = await harness("search", { items: [videoBlock(1, { title: { runs: [{ text: title }] } })] }).ok({ query: "x" });
+  assert.equal(out.results[0].title, "A".repeat(299));
+  assert.doesNotMatch(out.results[0].title, /[\ud800-\udbff]$/);
 });
 
 // --- get_video ---------------------------------------------------------------------------------------
@@ -550,4 +616,56 @@ test("both tools behave the same from any www.youtube.com page", async () => {
     await harness("search", { url }).ok({ query: "x" });
     await harness("get_video", { url }).ok({ video: vid(1) });
   }
+});
+
+test("get_video warns when it caps keywords or chapters", async () => {
+  const many = harness("get_video", {
+    player: playerBody(vid(1), { details: { keywords: Array.from({ length: 40 }, (_, i) => "k" + i) } }),
+    next: nextBody({ chapters: Array.from({ length: 70 }, (_, i) => chapter("C" + i, "0:" + String(i % 60).padStart(2, "0"), i)) })
+  });
+  const out = await many.ok({ video: vid(1) });
+  assert.equal(out.keywords.length, 25);
+  assert.equal(out.chapters.length, 60);
+  assert.ok(out.warnings.some(w => /40 keywords; only the first 25/.test(w)), JSON.stringify(out.warnings));
+  assert.ok(out.warnings.some(w => /70 chapters; only the first 60/.test(w)), JSON.stringify(out.warnings));
+  const within = harness("get_video");
+  assert.deepEqual((await within.ok({ video: vid(1) })).warnings, []);
+});
+
+test("get_video treats a player response without a playability block as a layout change", async () => {
+  await harness("get_video", { player: {} }).err({ video: vid(1) }, "site_changed");
+  await harness("get_video", { player: [] }).err({ video: vid(1) }, "site_changed");
+  await harness("get_video", { player: { playabilityStatus: "OK", videoDetails: {} } }).err({ video: vid(1) }, "site_changed");
+});
+
+test("get_video keeps the metadata and warns when the watch-page data has an unexpected type", async () => {
+  for (const next of [
+    { ...nextBody(), engagementPanels: {} },
+    { ...nextBody(), contents: { twoColumnWatchNextResults: { results: { results: { contents: {} } } } } },
+    nextBody({ chapters: 5 })
+  ]) {
+    const out = await harness("get_video", { next }).ok({ video: vid(1) });
+    assert.equal(out.title, "Example video title");
+    assert.deepEqual(out.chapters, []);
+    assert.ok(out.warnings.length > 0, JSON.stringify(out.warnings));
+  }
+  const badge = await harness("get_video", { next: (() => { const n = nextBody(); n.contents.twoColumnWatchNextResults.results.results.contents[1].videoSecondaryInfoRenderer.owner.videoOwnerRenderer.badges = {}; return n; })() }).ok({ video: vid(1) });
+  assert.equal(badge.channel.is_verified, null);
+  assert.equal(badge.channel.subscriber_text, null);
+  assert.deepEqual(badge.chapters, []);
+  assert.ok(badge.warnings.some(w => /unexpected structure/.test(w)));
+});
+
+test("get_video never leaves half of a surrogate pair when it truncates text", async () => {
+  const out = await harness("get_video", { player: playerBody(vid(1), { details: { title: "A".repeat(299) + "\u{1F600}" + "B", shortDescription: "D".repeat(4999) + "\u{1F600}" + "E" } }) }).ok({ video: vid(1) });
+  assert.equal(out.title, "A".repeat(299));
+  assert.equal(out.description, "D".repeat(4999));
+  assert.equal(out.description_truncated, true);
+});
+
+test("get_video rejects URLs without a scheme", async () => {
+  const h = harness("get_video");
+  for (const video of [`www.youtube.com/shorts/${vid(1)}`, `www.youtube.com/watch?v=${vid(1)}`, `youtube.com/shorts/${vid(1)}`, `youtu.be/${vid(1)}`]) await h.err({ video }, "invalid_input");
+  assert.equal(h.calls.length, 0);
+  assert.match(h.definition.tool.inputSchema.properties.video.description, /URLs without https:\/\/ are rejected/);
 });
