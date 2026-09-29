@@ -24,22 +24,25 @@ survive a navigation and none qualifies for `cdp`.
 
 ## Scope and loading
 
-Register all three files together under namespace `reddit.com`:
+Register all three files together under namespace `reddit.com`; `--force-overwrite-namespace` replaces
+the whole namespace, so include every file each time:
 
-```javascript
-const fs = await import("node:fs");
-const tools = ["list_posts", "search", "get_thread"].flatMap(n => (0, eval)("(" + fs.readFileSync(`domains/reddit.com/${n}.js`, "utf8") + ")"));
-await webmcp.addCustomTools({ namespace: "reddit.com", tools, forceOverwriteNamespace: true });
-const tab = (await currentTab()).targetId;
-const tool = (await webmcp.listTools()).find(t => t.source.custom?.namespace === "reddit.com" && t.tool.name === "list_posts" && t.source.target_id === tab);
-const result = await webmcp.invokeTool(tool.tool_ref, { community: "programming", sort: "top", time: "week", limit: 5 }, { timeoutSec: 60 });
+```sh
+# one array expression from the three files
+node -e 'const fs=require("fs");process.stdout.write("[].concat("+["list_posts","search","get_thread"].map(n=>fs.readFileSync(`domains/reddit.com/${n}.js`,"utf8").trim()).join(",")+")")' > /tmp/reddit-tools.js
+kernel browsers webmcp custom-tools add <browser> --namespace reddit.com --force-overwrite-namespace --source-file /tmp/reddit-tools.js
+kernel browsers webmcp list <browser> --json      # pick the tool_ref whose source.target_id is your tab
+kernel browsers webmcp invoke <browser> --tool-ref <tool_ref> --input '{"community":"programming","sort":"top","time":"week","limit":5}'
 ```
 
-Or push them from a checkout with `kernel browsers webmcp custom-tools add <browser> --namespace reddit.com --force-overwrite-namespace --source-file <file>`, or with `xwebmcp add kernel/xwebmcp/domains/reddit.com` and `xwebmcp attach`.
+Or install them from GitHub with `xwebmcp add kernel/xwebmcp/domains/reddit.com` and `xwebmcp attach`
+(`--kernel <browser>` for a Kernel browser). From the browser REPL, `webmcp.addCustomTools({ namespace: "reddit.com", tools, forceOverwriteNamespace: true })`
+takes the same evaluated definitions; the REPL runs inside the browser VM, so it cannot read a checkout on your machine.
 
 Each tool runs inside the `www.reddit.com` page it is invoked on (any page there works) and never
 navigates. Calls take about 1 s; `timeoutSec: 60` is plenty. Each call is one request to
-`www.reddit.com`, sent with `fetch` from the page, and nothing is sent anywhere else.
+`www.reddit.com`, sent with `fetch` from the page (the site itself redirects an unknown community to a
+second `www.reddit.com` URL), and nothing is sent anywhere else.
 
 What the tools never do: sign in, open the inbox, notifications or any account page, vote, save,
 subscribe, comment, post, message or change a setting, expand collapsed comment branches, or
@@ -50,7 +53,8 @@ Conventions:
 - Posts are identified by `id` (base 36, the part after `/comments/` in a thread URL) or the
   `fullname` `t3_<id>`. Comments have `id` and `fullname` `t1_<id>`; `parent_id` is a fullname, `t3_...`
   for top-level comments. Times are Unix seconds.
-- `list_posts` needs a `community` (a subreddit name, or `popular` or `all`). The personalised home
+- `list_posts` needs a `community` (a subreddit name, or `popular` or `all`); the site ignores case and the
+  result echoes the name as you gave it. The personalised home
   feed is deliberately not offered: its content depends on the signed-in account.
 - `after` is the site's cursor; pass it back unchanged for the next page. It is `null` at the end.
 - `search` covers posts only. A community given to `search` limits the search to it.
@@ -58,8 +62,10 @@ Conventions:
   top-level comments; the site returns comments with depth below `max_depth`. `more` lists what
   the site collapsed: `count` is the number of replies it says are hidden, and 0 is a "continue this
   thread" link or a branch cut by `max_depth`.
-- Text is clipped (post text 8000, comment bodies 1500, previews 300 characters) and flagged
-  `*_truncated`. `[deleted]` and `[removed]` are passed through as the site shows them.
+- Text is clipped (post text 8000, comment bodies 1500 characters), flagged `selftext_truncated` and
+  `body_truncated`; `text_preview` is the first 300 characters of a self post and is not flagged.
+  `[deleted]` and `[removed]` are passed through as the site shows them. `url` values are ASCII
+  (non-ASCII permalinks come back percent-encoded).
 - Output is an allowlist of public fields. The site also returns viewer-specific fields when signed in
   (`likes`, `saved`, `hidden`, `visited`, `clicked`, moderation and report state, user ids); none of
   them are read into the output.
@@ -75,9 +81,10 @@ these tools, and `https://www.reddit.com/robots.txt` disallows automated crawlin
 The tools read one page for a person using their own browser session and do not crawl or bulk-collect.
 Reddit's published position is that non-commercial use of public content is fine and commercial or
 large-scale use needs an agreement with Reddit; the tools carry no such agreement and are meant for
-user-directed, non-commercial reading. They do not sign in and never touch private messages, quarantined
-or private communities, or account data. Anyone distributing or hosting them should confirm that their
-use is within those terms.
+user-directed, non-commercial reading. They do not sign in and never open private messages or account pages.
+They read what the current session can see through the site's public JSON URLs: signed out that is public
+content only, and in a signed-in browser it also includes communities the account belongs to. Anyone
+distributing or hosting them should confirm that their use is within those terms.
 
 ## Site quirks
 
@@ -89,9 +96,11 @@ use is within those terms.
 - **Rate limit.** JSON responses carry `x-ratelimit-used`, `x-ratelimit-remaining` and `x-ratelimit-reset`;
   the observed budget was about 100 requests per window. HTTP 429 is reported as `rate_limited`
   with `retry_after_seconds` when the site gives a reset time. The tools never retry.
-- **Unknown communities.** A feed or search for a community that does not exist returns an empty listing
-  rather than an error, so it comes back as `no_results`, indistinguishable from an empty community.
-  Some restricted communities answer HTTP 403 with a `reason` (observed: `gold_only`), returned as `forbidden`.
+- **Unknown communities.** A feed or community-scoped search for a community that does not exist is
+  redirected by the site to its community search (`/subreddits/search.json`, HTTP 200); the tools
+  detect that redirect and return `not_found`. Some restricted communities answer HTTP 403 with a `reason`
+  (observed: `gold_only`), returned as `forbidden`.
+- **Cookies.** The site's JSON responses refresh a `session_tracker` cookie, as any page-side `fetch` of them does.
 - **Old Reddit.** `old.reddit.com` now redirects to a login page, so nothing here uses it.
 - **Non-ASCII output on the Kernel runtime.** On the Kernel browser API observed 2026-09-29, a page tool
   whose result contains Latin-1 accented characters such as `ã` or `é` (but not emoji or plain ASCII) is
@@ -104,16 +113,14 @@ use is within those terms.
   crosspost, gallery, poll or media details beyond `is_video` and `link_url`.
 - `get_thread` returns at most 100 comments to depth 8 and does not expand `more`. Reading the rest
   of a large thread needs another call with a different `sort`, or a person on the site.
-- `no_results` cannot tell an empty community from a nonexistent one (see Site quirks).
-- Quarantined, private, age-gated and banned communities are not readable: `forbidden` or `not_found`.
-  Only the `gold_only` restriction was seen live; other `forbidden` reasons and NSFW handling are
-  covered by fixtures only, and were never requested live.
+- Quarantined, private, age-gated and banned communities are not readable by a session that cannot
+  read them: `forbidden` or `not_found`. Only the `gold_only` restriction was seen live; other
+  `forbidden` reasons and NSFW handling are covered by fixtures only, and were never requested live.
 - `[deleted]` / `[removed]` handling, archived and locked threads, and threads with very long or
   non-Latin comment bodies are covered by fixtures only.
 - The tools were exercised signed out and, in a read-only check, in a signed-in browser whose account
   had no subscriptions; they do not depend on either.
 - 429 behavior is covered by fixtures only; the limit was never reached live.
-- Never verified against Chrome with the extension.
 
 ## QA summary
 

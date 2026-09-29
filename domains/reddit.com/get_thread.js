@@ -3,7 +3,7 @@
   match: { url_patterns: ["https://www.reddit.com/*"] },
   tool: {
     name: "get_thread",
-    description: "Read one Reddit post and its comment tree: the post (title, author, community, score, comment count, text, flair, flags) and up to max_comments comments flattened in the site's reading order, each with its depth and parent_id so the tree can be rebuilt. Identify the post by its id (as returned by list_posts and search, e.g. '1abcde' or 't3_1abcde') or by a reddit.com comments URL. sort is the site's comment sort: confidence (the site's 'best', default), top, new, controversial, old or qa. Comments beyond max_comments or max_depth are not returned: more lists the branches the site left out (a parent_id and the number of replies it says are hidden, 0 when the site gives no count), and comments_capped says the tool itself dropped comments to stay within a limit. Post text and comment bodies are clipped (selftext_truncated and body_truncated say so), and '[deleted]' or '[removed]' content is passed through as the site shows it. Public, read-only reads of the site's own JSON for the current browser session; this tool does not sign in or change anything. Results change constantly.",
+    description: "Read one Reddit post and its comment tree: the post (title, author, community, score, comment count, text, flair, flags) and up to max_comments comments flattened in the site's reading order, each with its depth and parent_id so the tree can be rebuilt. Identify the post by its id (as returned by list_posts and search, e.g. '1abcde' or 't3_1abcde') or by a www.reddit.com comments URL. sort is the site's comment sort: confidence (the site's 'best', default), top, new, controversial, old or qa. Comments beyond max_comments or max_depth are not returned: more lists the branches the site left out (a parent_id and the number of replies it says are hidden, 0 when the site gives no count), and comments_capped says the tool itself dropped comments to stay within a limit. Post text and comment bodies are clipped (selftext_truncated and body_truncated say so), and '[deleted]' or '[removed]' content is passed through as the site shows it. Public, read-only reads of the site's own JSON for the current browser session; this tool does not sign in or change anything, and a thread this session cannot read comes back as forbidden or not_found. Results change constantly.",
     inputSchema: {
       type: "object", additionalProperties: false, required: ["post"],
       properties: {
@@ -97,12 +97,13 @@
     const parse = value => {
       if (typeof value !== "string") return null;
       const text = value.trim();
+      if (text.length > 300) return null;
       let m = /^(?:t3_)?([a-z0-9]{4,10})$/i.exec(text);
       if (m) return m[1].toLowerCase();
       let u;
       try { u = new URL(text); } catch { return null; }
       if (u.protocol !== "https:" || !/^(www\.)?reddit\.com$/i.test(u.hostname)) return null;
-      m = /^\/(?:r\/[A-Za-z0-9_]{2,21}\/)?comments\/([a-z0-9]{4,10})(?:\/|$)/i.exec(u.pathname);
+      m = /^\/(?:(?:r|user)\/[A-Za-z0-9_-]{2,32}\/)?comments\/([a-z0-9]{4,10})(?:\/|$)/i.exec(u.pathname);
       return m ? m[1].toLowerCase() : null;
     };
     const postId = parse(input.post);
@@ -151,7 +152,7 @@
       author: typeof p.author === "string" ? p.author : null, community: typeof p.subreddit === "string" ? p.subreddit : null,
       score: count(p.score), upvote_ratio: typeof p.upvote_ratio === "number" ? p.upvote_ratio : null, num_comments: count(p.num_comments),
       created_utc: typeof p.created_utc === "number" ? Math.round(p.created_utc) : null,
-      url: typeof p.permalink === "string" && /^\/(r|user)\/[A-Za-z0-9_-]+\/comments\/[a-z0-9]+\//.test(p.permalink) ? ORIGIN + p.permalink : `${ORIGIN}/comments/${p.id}/`,
+      url: new URL(typeof p.permalink === "string" && /^\/(r|user)\/[A-Za-z0-9_-]+\/comments\/[a-z0-9]+\//.test(p.permalink) ? p.permalink : `/comments/${p.id}/`, ORIGIN).href,
       link_url: p.is_self === true ? null : http(p.url), domain: typeof p.domain === "string" ? p.domain : null,
       is_self: p.is_self === true, is_video: p.is_video === true, over_18: p.over_18 === true, spoiler: p.spoiler === true, stickied: p.stickied === true, locked: p.locked === true, archived: p.archived === true,
       flair: typeof p.link_flair_text === "string" && p.link_flair_text ? p.link_flair_text : null,
@@ -178,7 +179,7 @@
           created_utc: typeof d.created_utc === "number" ? Math.round(d.created_utc) : null,
           edited: d.edited !== false && d.edited !== undefined && d.edited !== null, is_submitter: d.is_submitter === true, stickied: d.stickied === true,
           distinguished: typeof d.distinguished === "string" ? d.distinguished : null,
-          url: typeof d.permalink === "string" && /^\/(r|user)\/[A-Za-z0-9_-]+\/comments\/[a-z0-9]+\//.test(d.permalink) ? ORIGIN + d.permalink : `${ORIGIN}/comments/${postId}/_/${d.id}/`
+          url: new URL(typeof d.permalink === "string" && /^\/(r|user)\/[A-Za-z0-9_-]+\/comments\/[a-z0-9]+\//.test(d.permalink) ? d.permalink : `/comments/${postId}/_/${d.id}/`, ORIGIN).href
         });
         if (d.replies && typeof d.replies === "object" && d.replies.data && Array.isArray(d.replies.data.children)) walk(d.replies.data.children);
       }

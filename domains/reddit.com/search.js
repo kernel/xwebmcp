@@ -3,12 +3,12 @@
   match: { url_patterns: ["https://www.reddit.com/*"] },
   tool: {
     name: "search",
-    description: "Search Reddit posts by keyword, across the whole site or inside one community, using the same search the site's results page runs. Sorts are the site's own: relevance (default), hot, top, new and comments; a time window applies to relevance, top and comments. Each post has an id, title, author, community, score, comment count, creation time, canonical thread URL, the link destination for link posts, flair, and flags (over_18, spoiler, stickied, locked); self posts carry a short text_preview. Pass a returned after value to read the next page. Searches posts only, not comments, communities or users. Public, read-only reads of the site's own JSON for the current browser session; this tool does not sign in. Results change constantly. no_results means nothing matched, which is also what a search inside an unknown community returns. Use get_thread with a post id to read the discussion and list_posts to browse a community feed.",
+    description: "Search Reddit posts by keyword, across the whole site or inside one community, using the same search the site's results page runs. Sorts are the site's own: relevance (default), hot, top, new and comments; a time window applies to relevance, top and comments. Each post has an id, title, author, community, score, comment count, creation time, canonical thread URL, the link destination for link posts, flair, and flags (over_18, spoiler, stickied, locked); self posts carry a short text_preview. Pass a returned after value to read the next page. Searches posts only, not comments, communities or users. Public, read-only reads of the site's own JSON for the current browser session; this tool does not sign in, so a community the session cannot read comes back as forbidden or not_found, while a signed-in session can search communities its account belongs to. Results change constantly. no_results means nothing matched. Use get_thread with a post id to read the discussion and list_posts to browse a community feed.",
     inputSchema: {
       type: "object", additionalProperties: false, required: ["query"],
       properties: {
         query: { type: "string", minLength: 1, maxLength: 512, description: "Keywords as a person would type them into Reddit search." },
-        community: { type: "string", minLength: 2, maxLength: 24, description: "Subreddit name without the r/ prefix; when given, only that community is searched." },
+        community: { type: "string", minLength: 2, maxLength: 24, description: "Subreddit name without the r/ prefix; when given, only that community is searched. The site ignores case and the result echoes it as given." },
         sort: { enum: ["relevance", "hot", "top", "new", "comments"], default: "relevance", description: "Result order." },
         time: { enum: ["hour", "day", "week", "month", "year", "all"], default: "all", description: "Time window; ignored for hot and new." },
         limit: { type: "integer", minimum: 1, maximum: 25, default: 10, description: "Maximum posts to return." },
@@ -87,7 +87,7 @@
     const unknown = Object.keys(input).find(key => !["query", "community", "sort", "time", "limit", "after"].includes(key));
     if (unknown) return fail("invalid_input", `Unknown input field '${unknown}'. Nothing was requested.`);
     const query = typeof input.query === "string" ? input.query.trim() : "";
-    if (!query || query.length > 512) return fail("invalid_input", "query must be 1-512 characters. Nothing was requested.");
+    if (!query || Array.from(query).length > 512) return fail("invalid_input", "query must be 1-512 characters. Nothing was requested.");
     let community = null;
     if (input.community !== undefined) {
       community = typeof input.community === "string" ? input.community.trim().replace(/^\/?r\//i, "") : "";
@@ -121,11 +121,12 @@
     let json = null;
     try { json = JSON.parse(body); } catch { /* block pages are HTML */ }
     if (res.status === 429) return fail("rate_limited", "Reddit says this browser is making too many requests. Wait for the window to reset before calling again.", rateLimit.reset_seconds === null ? {} : { retry_after_seconds: rateLimit.reset_seconds });
+    if (community && res.redirected && new URL(res.url).pathname === "/subreddits/search.json") return fail("not_found", `No community named '${community}' was found (it may not exist, or it may be banned).`);
     if (json === null) {
       if (res.status === 403 || /prove your humanity|blocked by network security|verify you are a human/i.test(body)) return fail("challenge", "Reddit is showing a bot check to this browser. A person has to complete it on reddit.com; this tool does not try to get past it. Wait and do not retry automatically.");
       return fail(res.status >= 500 ? "site_error" : "site_changed", `Reddit answered HTTP ${res.status} with a page instead of search data. Nothing was changed.`);
     }
-    if (res.status === 404) return fail("not_found", `No community named '${community}' was found (it may not exist, or it may be banned).`);
+    if (res.status === 404) return fail("not_found", community ? `No community named '${community}' was found (it may not exist, or it may be banned).` : "Reddit answered HTTP 404 for this search.");
     if (res.status === 403) return fail("forbidden", "Reddit does not show this search to this session (private, quarantined or age-gated community). This tool does not sign in or change settings.", typeof json.reason === "string" ? { reason: json.reason.slice(0, 40) } : {});
     if (!res.ok) return fail("site_error", `Reddit answered HTTP ${res.status}. Nothing was changed.`);
     const children = json && json.data && Array.isArray(json.data.children) ? json.data.children : null;
@@ -144,7 +145,7 @@
         community: typeof d.subreddit === "string" ? d.subreddit : (community || ""),
         score: count(d.score), upvote_ratio: typeof d.upvote_ratio === "number" ? d.upvote_ratio : null, num_comments: count(d.num_comments),
         created_utc: typeof d.created_utc === "number" ? Math.round(d.created_utc) : null,
-        url: typeof d.permalink === "string" && /^\/(r|user)\/[A-Za-z0-9_-]+\/comments\/[a-z0-9]+\//.test(d.permalink) ? ORIGIN + d.permalink : `${ORIGIN}/comments/${d.id}/`,
+        url: new URL(typeof d.permalink === "string" && /^\/(r|user)\/[A-Za-z0-9_-]+\/comments\/[a-z0-9]+\//.test(d.permalink) ? d.permalink : `/comments/${d.id}/`, ORIGIN).href,
         link_url: d.is_self === true ? null : http(d.url), domain: typeof d.domain === "string" ? d.domain : null,
         is_self: d.is_self === true, is_video: d.is_video === true, over_18: d.over_18 === true, spoiler: d.spoiler === true, stickied: d.stickied === true, locked: d.locked === true,
         flair: typeof d.link_flair_text === "string" && d.link_flair_text ? d.link_flair_text : null,

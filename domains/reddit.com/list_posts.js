@@ -3,11 +3,11 @@
   match: { url_patterns: ["https://www.reddit.com/*"] },
   tool: {
     name: "list_posts",
-    description: "Read one page of posts from a Reddit community feed (a subreddit such as 'programming', or 'popular' or 'all') in the site's own order: hot (default), new, top, rising or controversial. 'top' and 'controversial' take a time window. Each post has an id, title, author, community, score, comment count, creation time, canonical thread URL, the link destination for link posts, flair, and flags (over_18, spoiler, stickied, locked); self posts carry a short text_preview. Pass a returned after value to read the next page. Sticky posts are part of the site's feed and appear with stickied true. Public, read-only reads of the site's own JSON for the current browser session; this tool does not sign in, and private, quarantined, age-gated or banned communities come back as forbidden or not_found. Results are what the feed shows now and change constantly. no_results means the feed had no posts, which is also what an unknown community name returns. Use get_thread with a post id to read the discussion and search to find posts by keyword.",
+    description: "Read one page of posts from a Reddit community feed (a subreddit such as 'programming', or 'popular' or 'all') in the site's own order: hot (default), new, top, rising or controversial. 'top' and 'controversial' take a time window. Each post has an id, title, author, community, score, comment count, creation time, canonical thread URL, the link destination for link posts, flair, and flags (over_18, spoiler, stickied, locked); self posts carry a short text_preview. Pass a returned after value to read the next page. Sticky posts are part of the site's feed and appear with stickied true. Public, read-only reads of the site's own JSON for the current browser session; this tool does not sign in, and a community this session cannot read (private, quarantined, age-gated, banned or unknown) comes back as forbidden or not_found, while a signed-in session can read communities its account belongs to. Results are what the feed shows now and change constantly. no_results means the community exists but the feed has no posts. Use get_thread with a post id to read the discussion and search to find posts by keyword.",
     inputSchema: {
       type: "object", additionalProperties: false, required: ["community"],
       properties: {
-        community: { type: "string", minLength: 2, maxLength: 24, description: "Subreddit name without the r/ prefix, e.g. 'programming'. Use 'popular' or 'all' for the site-wide feeds." },
+        community: { type: "string", minLength: 2, maxLength: 24, description: "Subreddit name without the r/ prefix, e.g. 'programming'; the site ignores case and the result echoes it as given. Use 'popular' or 'all' for the site-wide feeds." },
         sort: { enum: ["hot", "new", "top", "rising", "controversial"], default: "hot", description: "Feed order." },
         time: { enum: ["hour", "day", "week", "month", "year", "all"], default: "day", description: "Time window for top and controversial; ignored for other sorts." },
         limit: { type: "integer", minimum: 1, maximum: 25, default: 10, description: "Maximum posts to return." },
@@ -111,6 +111,7 @@
     let json = null;
     try { json = JSON.parse(body); } catch { /* block pages are HTML */ }
     if (res.status === 429) return fail("rate_limited", "Reddit says this browser is making too many requests. Wait for the window to reset before calling again.", rateLimit.reset_seconds === null ? {} : { retry_after_seconds: rateLimit.reset_seconds });
+    if (res.redirected && new URL(res.url).pathname === "/subreddits/search.json") return fail("not_found", `No community named '${community}' was found (it may not exist, or it may be banned).`);
     if (json === null) {
       if (res.status === 403 || /prove your humanity|blocked by network security|verify you are a human/i.test(body)) return fail("challenge", "Reddit is showing a bot check to this browser. A person has to complete it on reddit.com; this tool does not try to get past it. Wait and do not retry automatically.");
       return fail(res.status >= 500 ? "site_error" : "site_changed", `Reddit answered HTTP ${res.status} with a page instead of feed data. Nothing was changed.`);
@@ -134,7 +135,7 @@
         community: typeof d.subreddit === "string" ? d.subreddit : community,
         score: count(d.score), upvote_ratio: typeof d.upvote_ratio === "number" ? d.upvote_ratio : null, num_comments: count(d.num_comments),
         created_utc: typeof d.created_utc === "number" ? Math.round(d.created_utc) : null,
-        url: typeof d.permalink === "string" && /^\/(r|user)\/[A-Za-z0-9_-]+\/comments\/[a-z0-9]+\//.test(d.permalink) ? ORIGIN + d.permalink : `${ORIGIN}/comments/${d.id}/`,
+        url: new URL(typeof d.permalink === "string" && /^\/(r|user)\/[A-Za-z0-9_-]+\/comments\/[a-z0-9]+\//.test(d.permalink) ? d.permalink : `/comments/${d.id}/`, ORIGIN).href,
         link_url: d.is_self === true ? null : http(d.url), domain: typeof d.domain === "string" ? d.domain : null,
         is_self: d.is_self === true, is_video: d.is_video === true, over_18: d.over_18 === true, spoiler: d.spoiler === true, stickied: d.stickied === true, locked: d.locked === true,
         flair: typeof d.link_flair_text === "string" && d.link_flair_text ? d.link_flair_text : null,

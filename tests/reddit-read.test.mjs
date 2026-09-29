@@ -37,7 +37,7 @@ function conforms(schema, value) {
   if (typeof value === "string") {
     if (value.length < (schema.minLength ?? 0) || value.length > (schema.maxLength ?? Infinity)) return false;
     if (schema.pattern && !new RegExp(schema.pattern).test(value)) return false;
-    if (schema.format === "uri" && !URL.canParse(value)) return false;
+    if (schema.format === "uri" && (!URL.canParse(value) || !/^[\x21-\x7e]+$/.test(value))) return false;
   }
   if (typeof value === "number") {
     if (value < (schema.minimum ?? -Infinity) || value > (schema.maximum ?? Infinity)) return false;
@@ -91,7 +91,7 @@ function harness(name, options = {}) {
       if (r.throws) throw new TypeError("Failed to fetch");
       const body = r.body ?? (r.json === undefined ? "" : JSON.stringify(r.json));
       const headers = { "x-ratelimit-remaining": "97.0", "x-ratelimit-reset": "240", ...(r.headers ?? {}) };
-      return { status: r.status, ok: r.status >= 200 && r.status < 300, headers: { get: key => headers[key.toLowerCase()] ?? null }, text: async () => body };
+      return { status: r.status, ok: r.status >= 200 && r.status < 300, redirected: Boolean(r.redirectedTo), url: r.redirectedTo ? new URL(r.redirectedTo, HOME).href : String(url), headers: { get: key => headers[key.toLowerCase()] ?? null }, text: async () => body };
     }
   };
   const [definition] = runInNewContext(`(${sources[name]})`, context);
@@ -459,4 +459,54 @@ test("get_thread: unexpected shapes are site_changed", async () => {
     const result = await harness("get_thread", { respond: () => ({ status: 200, json }) }).run({ post: "abcde1" });
     assert.equal(result.error_kind, "site_changed", JSON.stringify(json));
   }
+});
+
+// --- review follow-ups ------------------------------------------------------------------------------------
+
+test("URLs in the output are ASCII even when the site's permalinks are not", async () => {
+  const permalink = "/r/de/comments/abcde1/gr\u00fcne_verm\u00f6genssteuer/";
+  const expected = "https://www.reddit.com/r/de/comments/abcde1/gr%C3%BCne_verm%C3%B6genssteuer/";
+  const list = await harness("list_posts", { respond: () => ({ status: 200, json: listing([t3("abcde1", { permalink })]) }) }).run({ community: "de" });
+  assert.equal(list.posts[0].url, expected);
+  const found = await harness("search", { respond: () => ({ status: 200, json: listing([t3("abcde1", { permalink })]) }) }).run({ query: "caf\u00e9" });
+  assert.equal(found.posts[0].url, expected);
+  const read = await harness("get_thread", { respond: () => ({ status: 200, json: thread(t3("abcde1", { permalink }), [t1("c1", "t3_abcde1", 0, { permalink: permalink + "c1/" })]) }) }).run({ post: "abcde1" });
+  assert.equal(read.post.url, expected);
+  assert.equal(read.comments[0].url, expected + "c1/");
+});
+
+test("an unknown community, which the site redirects to its community search, is not_found", async () => {
+  const gone = { status: 200, redirectedTo: "/subreddits/search.json?q=nosuchcommunity", json: listing([{ kind: "t5", data: { display_name: "other" } }]) };
+  const feed = harness("list_posts", { respond: () => gone });
+  const result = await feed.run({ community: "nosuchcommunity" });
+  assert.equal(result.error_kind, "not_found");
+  assert.match(result.error_message, /nosuchcommunity/);
+  const scoped = await harness("search", { respond: () => gone }).run({ query: "x", community: "nosuchcommunity" });
+  assert.equal(scoped.error_kind, "not_found");
+  const wide = await harness("search", { respond: () => gone }).run({ query: "x" });
+  assert.equal(wide.status, "no_results");
+  const moved = await harness("list_posts", { respond: () => ({ status: 200, redirectedTo: "/r/fabcommunity/hot.json?limit=10", json: listing([t3("abcde1")]) }) }).run({ community: "FabCommunity" });
+  assert.equal(moved.status, "ok");
+});
+
+test("search counts characters, not UTF-16 units, and its 404 message does not name a missing community", async () => {
+  const emoji = harness("search");
+  assert.equal((await emoji.run({ query: "\u{1F600}".repeat(512) })).status, "ok");
+  assert.equal(emoji.calls.length, 1);
+  const over = harness("search");
+  assert.equal((await over.run({ query: "\u{1F600}".repeat(513) })).error_kind, "invalid_input");
+  assert.equal(over.calls.length, 0);
+  const missing = await harness("search", { respond: () => ({ status: 404, json: { message: "Not Found", error: 404 } }) }).run({ query: "x" });
+  assert.equal(missing.error_kind, "not_found");
+  assert.doesNotMatch(missing.error_message, /null/);
+});
+
+test("get_thread accepts user-profile thread URLs and rejects overlong post values before any request", async () => {
+  const h = harness("get_thread", { respond: () => ({ status: 200, json: okBody("get_thread") }) });
+  await h.run({ post: "https://www.reddit.com/user/some-user_1/comments/abcde1/a_title/" });
+  assert.equal(requested(h.calls[0]).path, "/comments/abcde1.json");
+  const long = harness("get_thread");
+  const result = await long.run({ post: "https://www.reddit.com/comments/abcde1/" + "x".repeat(300) });
+  assert.equal(result.error_kind, "invalid_input");
+  assert.equal(long.calls.length, 0);
 });
