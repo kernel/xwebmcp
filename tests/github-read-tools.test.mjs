@@ -44,12 +44,12 @@ function conforms(schema, value) {
 }
 
 // Runs one tool. route(pathAndSearch, init) returns { status, body, url? } (url is the final URL after redirects).
-function run(name, input, { route, origin = ORIGIN, user = "" } = {}) {
+function run(name, input, { route, origin = ORIGIN, user = "", head } = {}) {
   const [definition] = runInNewContext(sources[name]);
   const calls = [];
   const context = {
     location: { origin },
-    document: new Document(user === null ? "<html><head></head><body></body></html>" : `<html><head><meta name="user-login" content="${user}"></head><body></body></html>`),
+    document: new Document(head ?? (user === null ? "<html><head></head><body></body></html>" : `<html><head><meta name="user-login" content="${user}"></head><body></body></html>`)),
     DOMParser,
     URL,
     JSON,
@@ -493,6 +493,9 @@ test("get_issue refuses in a signed-in tab, before any request, and works signed
   assert.equal(refused.output.error_kind, "signed_in_side_effect");
   assert.equal(refused.calls.length, 0);
   assert.ok(!JSON.stringify(refused.output).includes("carol"));
+  const noContent = await run("get_issue", { owner: "example-org", repo: "widgets", number: 7 }, { head: '<html><head><meta name="user-login"></head><body></body></html>', route: () => assert.fail("no request expected") });
+  assert.equal(noContent.output.error_kind, "signed_in_side_effect");
+  assert.equal(noContent.calls.length, 0);
   for (const user of [null, " "]) {
     const unknown = await run("get_issue", { owner: "example-org", repo: "widgets", number: 7 }, { user, route: () => assert.fail("no request expected") });
     assert.equal(unknown.output.error_kind, "signed_in_side_effect", JSON.stringify(user));
@@ -534,6 +537,10 @@ test("get_repository tells repository pages, empty repositories and other pages 
   for (const pattern of ["/:user_id", "/:user_id/:repository/foo", "/:user_id/:repository(.:format)", ""]) {
     const page404 = await run("get_repository", { owner: "example-org", repo: "widgets" }, { route: () => ({ status: 200, body: page(repoPayload(), "", `<meta name="route-pattern" content="${pattern}">`) }) });
     assert.equal(page404.output.error_kind, "not_found", JSON.stringify(pattern));
+  }
+  for (const name of ["x/y junk", "junk x/y", "x/y/z", "x"]) {
+    const looseName = await run("get_repository", { owner: "example-org", repo: "widgets" }, { route: () => ({ status: 200, body: emptyPage.replace('content="example-org/widgets"', `content="${name}"`) }) });
+    assert.equal(looseName.output.error_kind, "site_changed", name);
   }
   const noName = await run("get_repository", { owner: "example-org", repo: "widgets" }, { route: () => ({ status: 200, body: emptyPage.replace(/<meta name="octolytics-dimension-repository_nwo"[^>]*>/, "") }) });
   assert.equal(noName.output.error_kind, "site_changed");

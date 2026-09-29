@@ -276,9 +276,12 @@
       "url_patterns": [
         "https://github.com/*"
       ],
-      "status": "draft",
-      "last_verified": null,
-      "notes": "Issue title, state and close reason, labels, assignees, milestone, linked pull requests, body and the first timeline items GitHub puts in the page (about 15). Signed-out tabs only: refuses in a signed-in tab because the issue page's markAsRead preload may mark a notification read. Private repositories not tested."
+      "status": "qa_passed",
+      "last_verified": "2026-09-29",
+      "notes": "Issue title, state and close reason, labels, assignees, milestone, linked pull requests, body and the first timeline items GitHub puts in the page (about 15). Signed-out tabs only: refuses in a signed-in tab because the issue page's markAsRead preload may mark a notification read. Private repositories not tested.",
+      "provenance": {
+        "qa_agent": "agt_a95c2a4fd4ea679db158"
+      }
     },
     {
       "domain": "github.com",
@@ -289,9 +292,12 @@
       "url_patterns": [
         "https://github.com/*"
       ],
-      "status": "draft",
-      "last_verified": null,
-      "notes": "Pull request state (open, draft, closed, merged), branches, head and merge commits, times, labels and the description as text. No comments, review threads, files, checks or lock state. Public repositories signed out; private repositories not tested."
+      "status": "qa_passed",
+      "last_verified": "2026-09-29",
+      "notes": "Pull request state (open, draft, closed, merged), branches, head and merge commits, times, labels and the description as text. No comments, review threads, files, checks or lock state. Public repositories signed out; private repositories not tested.",
+      "provenance": {
+        "qa_agent": "agt_a95c2a4fd4ea679db158"
+      }
     },
     {
       "domain": "github.com",
@@ -302,9 +308,12 @@
       "url_patterns": [
         "https://github.com/*"
       ],
-      "status": "draft",
-      "last_verified": null,
-      "notes": "Repository overview from the repository page: description, topics, star, fork and watcher counts, license, default branch, latest commit, counts, root entries and README text; empty_repository for a repository with no commits. Public repositories signed out; private repositories not tested."
+      "status": "qa_passed",
+      "last_verified": "2026-09-29",
+      "notes": "Repository overview from the repository page: description, topics, star, fork and watcher counts, license, default branch, latest commit, counts, root entries and README text; empty_repository for a repository with no commits. Public repositories signed out; private repositories not tested.",
+      "provenance": {
+        "qa_agent": "agt_a95c2a4fd4ea679db158"
+      }
     },
     {
       "domain": "github.com",
@@ -315,9 +324,12 @@
       "url_patterns": [
         "https://github.com/*"
       ],
-      "status": "draft",
-      "last_verified": null,
-      "notes": "One page of 10 issue or pull request search results with GitHub qualifiers, sorting and paging."
+      "status": "qa_passed",
+      "last_verified": "2026-09-29",
+      "notes": "One page of 10 issue or pull request search results with GitHub qualifiers, sorting and paging.",
+      "provenance": {
+        "qa_agent": "agt_a95c2a4fd4ea679db158"
+      }
     },
     {
       "domain": "github.com",
@@ -328,9 +340,12 @@
       "url_patterns": [
         "https://github.com/*"
       ],
-      "status": "draft",
-      "last_verified": null,
-      "notes": "One page of 10 repository search results with GitHub qualifiers, sorting and paging."
+      "status": "qa_passed",
+      "last_verified": "2026-09-29",
+      "notes": "One page of 10 repository search results with GitHub qualifiers, sorting and paging.",
+      "provenance": {
+        "qa_agent": "agt_a95c2a4fd4ea679db158"
+      }
     },
     {
       "domain": "google.com",

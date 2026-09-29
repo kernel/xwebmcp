@@ -4,11 +4,11 @@ Tools for GitHub (https://github.com): repository and issue/pull request search,
 
 | tool | file | status | notes |
 |------|------|--------|-------|
-| get_issue | [get_issue.js](get_issue.js) | draft | Issue title, state and close reason, labels, assignees, milestone, linked pull requests, body and the first timeline items GitHub puts in the page (about 15). Signed-out tabs only (see Site quirks); private repositories not tested. |
-| get_pull_request | [get_pull_request.js](get_pull_request.js) | draft | Pull request state (open, draft, closed, merged), branches, head and merge commits, times, labels and the description as text. No comments, review threads, files, checks or lock state. Public repositories signed out; private repositories not tested. |
-| get_repository | [get_repository.js](get_repository.js) | draft | Repository overview from the repository page: description, topics, star, fork and watcher counts, license, default branch, latest commit, counts, root entries and README text; `empty_repository` for a repository with no commits. Public repositories signed out; private repositories not tested. |
-| search_issues | [search_issues.js](search_issues.js) | draft | One page of 10 issue or pull request search results with GitHub qualifiers, sorting and paging. |
-| search_repositories | [search_repositories.js](search_repositories.js) | draft | One page of 10 repository search results with GitHub qualifiers, sorting and paging. |
+| get_issue | [get_issue.js](get_issue.js) | qa_passed | Issue title, state and close reason, labels, assignees, milestone, linked pull requests, body and the first timeline items GitHub puts in the page (about 15). Signed-out tabs only (see Site quirks); private repositories not tested. |
+| get_pull_request | [get_pull_request.js](get_pull_request.js) | qa_passed | Pull request state (open, draft, closed, merged), branches, head and merge commits, times, labels and the description as text. No comments, review threads, files, checks or lock state. Public repositories signed out; private repositories not tested. |
+| get_repository | [get_repository.js](get_repository.js) | qa_passed | Repository overview from the repository page: description, topics, star, fork and watcher counts, license, default branch, latest commit, counts, root entries and README text; `empty_repository` for a repository with no commits. Public repositories signed out; private repositories not tested. |
+| search_issues | [search_issues.js](search_issues.js) | qa_passed | One page of 10 issue or pull request search results with GitHub qualifiers, sorting and paging. |
+| search_repositories | [search_repositories.js](search_repositories.js) | qa_passed | One page of 10 repository search results with GitHub qualifiers, sorting and paging. |
 
 Register all five files together as one array with `forceOverwriteNamespace: true`;
 registering one file that way removes the others.
@@ -18,7 +18,7 @@ registering one file that way removes the others.
 The tools search GitHub and read repository, issue and pull request pages. None of them opens
 a sign-in prompt, changes account state, posts anything or navigates the tab. They use only the
 tab's own session, so a repository the signed-in tab can see is read the same way as a public
-one (except `get_issue`, which refuses in a signed-in tab), but that was not tested. Account-specific state (whether you starred or watch a repository,
+one (except `get_issue`, which runs only when the page says the tab is signed out), but that was not tested. Account-specific state (whether you starred or watch a repository,
 your permissions on an item) is deliberately not returned.
 
 ```javascript
@@ -48,11 +48,11 @@ no post-navigation result that would justify `cdp`.
 | search_repositories | page | `GET /search?q=…&type=repositories[&s=…&o=…][&p=…]` with `Accept: application/json`, the search page's own JSON (`payload.blackbirdSearchRoute`: results, `page_count`, `result_count`, `errors`). |
 | search_issues | page | the same route with `type=issues` or `type=pullrequests`. |
 | get_repository | page | `GET /<owner>/<repo>` as HTML; `meta[name="route-pattern"]` must be `/:user_id/:repository` (other pages such as `/topics/…` are `not_found`); a repository page without embedded data that says "This repository is empty" is an empty repository (`empty_repository`, name and visibility from the `octolytics-dimension-repository_*` meta tags); otherwise the page's embedded `script[data-target="react-app.embeddedData"]` JSON: `sidebarAbout` (description, topics, counts, license, flags), `codeViewLayoutRoute` (default branch, creation time, empty flag) and `codeViewRepoRoute` (root entries, commit count, latest commit, rendered README HTML). The README HTML is parsed with `DOMParser` (which runs nothing) and reduced to text. |
-| get_issue | page | refuses in a signed-in tab (`meta[name="user-login"]` has content), otherwise `GET /<owner>/<repo>/issues/<n>` as HTML, then the embedded `IssueViewerViewQuery` result: the issue, its labels, assignees, linked pull requests and its first timeline items. |
+| get_issue | page | refuses (`signed_in_side_effect`) unless the document has `meta[name="user-login"]` present with empty content, i.e. a signed-out GitHub page; otherwise `GET /<owner>/<repo>/issues/<n>` as HTML, then the embedded `IssueViewerViewQuery` result: the issue, its labels, assignees, linked pull requests and its first timeline items. |
 | get_pull_request | page | `GET /<owner>/<repo>/pull/<n>` as HTML, then the embedded `pullRequestsLayoutRoute.pullRequest` record (state, branches, SHAs, times), and from the server-rendered conversation the description (first comment container that is not a review thread) and the labels sidebar. The page data's `locked` flag reads false even for locked pull requests, so no lock state is returned. |
 
-Every request goes only to `https://github.com` with the page's own cookies. Each call makes one request (checked with a CDP network trace), except
-`get_issue`, whose page response makes Chrome send a second one (see Site quirks). The tools send no custom headers except `Accept: application/json` on searches, no tokens and no body; the embedded
+Every request goes only to `https://github.com` with the page's own cookies. Each call sends one request, which the browser follows through any redirect (checked with a CDP network trace), except
+`get_issue`, whose page response makes Chrome send a second, unrequested one (see Site quirks). The tools send no custom headers except `Accept: application/json` on searches, no tokens and no body; the embedded
 data contains CSRF and upload tokens and account fields, and none of it is copied into results
 (fields are copied one by one from an allowlist).
 
@@ -123,8 +123,9 @@ empty result list; query problems GitHub reports come back in `warnings`.
 - **Pull request pages.** They are large (over 1 MB with many review threads) and their conversation is server-rendered HTML;
   only the description and the labels sidebar are read from it. The page's header badges are not used for the state because
   a pull request page can show several badges; the embedded record's `state` (OPEN, DRAFT, CLOSED, MERGED) is.
-- **Redirects.** A renamed or transferred repository is followed and reported in `redirected_from`. GitHub answered issue and pull request URLs of a renamed repository
-  with HTTP 404 until the repository page itself had been requested, so `get_issue` and `get_pull_request` can report `not_found` for a renamed repository where `get_repository` succeeds. `/orgs/<name>` style
+- **Redirects.** A renamed or transferred repository is followed and reported in `redirected_from`. Pull request URLs of a renamed repository redirected at once (an
+  old name whose pull request number is really an issue then reports `is_issue`), but issue URLs of some renamed repositories answered HTTP 404 even after the repository page had been read, so
+  `get_issue` can report `not_found` for the old name where `get_repository` succeeds. Use the canonical name that `get_repository` returns (its `full_name`, with `redirected_from` set) for the issue. `/orgs/<name>` style
   paths redirect away from a repository page and are reported as `not_found`. `/issues/<n>` for a pull request redirects to `/pull/<n>` and the reverse.
 - **Content Security Policy.** github.com's `script-src` has no `unsafe-eval`, so `new Function` inside the page is blocked. The Kernel
   runtime nevertheless registered and invoked these page tools on 2026-09-29. The extension path for CSP-blocked pages is described
@@ -149,14 +150,15 @@ tools and `navigator.modelContext` is undefined, so the custom namespace conflic
 
 ## Status and known limitations
 
-All five tools are `draft`: independent QA has not signed them off.
+All five tools are `qa_passed`: the independent review (three rounds) signed off the final source with no open blocker or major defect. Nothing was tested signed in (see below).
 
 - **Private repositories and organization SSO were not tested.** The tools read whatever the tab's session may see; nothing here
   distinguishes a private repository from a public one beyond the `visibility` field.
 - **Issue timelines and pull request conversations are partial.** `get_issue` returns only the items GitHub puts in the page.
   `get_pull_request` returns no comments, review threads, changed files, check results or lock state; their pages were not parsed, and the lock flag in the page data is wrong.
 - **`get_issue` is signed-out only.** See the preload note above; this is a deliberate refusal, not a bug, and a real-Chrome user who is signed in to GitHub
-  will get `signed_in_side_effect` from it. Other signed-in side effects of reading pull request, repository and search pages (for example notification read state) were
+  will get `signed_in_side_effect` from it. The gate reads the current document's render-time state, so a stale signed-out document sitting over a signed-in session
+  (GitHub's "signed in with another tab" case) would not be caught; the cookie that would show it is not readable from the page. Other signed-in side effects of reading pull request, repository and search pages (for example notification read state) were
   not observed but could not be tested with an account that has notifications.
 - **Rendered text.** `get_pull_request.body` and `get_repository.readme.text` are text: links, images, formatting and code indentation are dropped; task-list checkboxes
   are kept as `[x]` and `[ ]`. A README that GitHub does not inline into the page (very large ones) gives `readme: null`, the same as no README.
@@ -170,7 +172,9 @@ All five tools are `draft`: independent QA has not signed them off.
 - **Search:** repositories and issues only; code, users, commits, topics and discussions search are not exposed. Only the first
   100 pages (1000 results) of any query are reachable. Qualifier support is whatever GitHub's search accepts.
 - **Rate limits** for sustained use were not characterized beyond the burst noted above.
-- **Only the Kernel browser runtime was exercised.** Extension-host behavior (including CSP-blocked page registration) was not tested.
+- **Extension behavior was exercised only by the independent review**, not by the author: it built the CLI, loaded the extension into Chromium 153 and invoked the tools through
+  `xwebmcp mcp` (`open_tab`, `invoke_tool`; `xwebmcp invoke` refuses tabs it did not open and cannot call page tools by name). Results matched the Kernel runtime, and accented text
+  arrived as objects there. Local Chrome (not Chromium) and a signed-in profile were not tested.
 
 ## QA summary
 
@@ -196,7 +200,19 @@ Fixture tests (`tests/github-read-tools.test.mjs`) run each page tool from `exec
 node --test tests/github-read-tools.test.mjs
 ```
 
-Independent QA: pending.
+Independent QA: agent `agt_a95c2a4fd4ea679db158` (independent reviewer with its own signed-out headful stealth Kernel browsers and a local Chromium with the extension, no account, read-only), three rounds:
+
+| round | head | result |
+|-------|------|--------|
+| 1 | `3db7d10` | 240 recorded invocations, 129 against the live site, all schema-valid; signed off the two search tools and reported major defects in the other three (unanchored login check misreading owners named `login…`, empty repositories answered `site_changed`, wrong pull request `locked` flag, dropped task-list checkbox state, an unrequested `markAsRead` preload request on issue pages) and minor ones (array-coerced `sort`, code-unit query length, snippet wording, non-repository pages, README claims); 129 mutants, 25 survived |
+| 2 | `1e6a15d` | all round-1 defects verified fixed on both runtimes; signed off four tools, `get_issue` conditionally; minor defects (the signed-in gate failing open on non-HTML documents, a missing visibility meta, README wording); 77 mutants, 11 survived |
+| 3 (final) | `4866b76` | 234 live outputs, all schema-valid on the Kernel runtime; 28 invocations through the local Chromium extension, all schema-valid, results matching Kernel; 91 mutants, 83 killed, the survivors equivalent or minor; signed off all five tools with no open blocker or major defect. Its four minor documentation findings (the `get_issue` gate wording, the renamed-repository redirect mechanism, the one-request wording, the stale-document limit) were corrected in the README in a later commit that changes no tool source, and its two small test gaps were closed in the tests |
+
+What the review covered: page-kind choice and self-contained `execute`; discovery on github.com pages and absence on `docs.github.com`, `gist.github.com` and `example.com`; no native tools or
+name collisions; live success from several unrelated starting pages; malformed and unknown input (86 of 88 rejected with no request); a CDP network trace of every tool; output bounds (worst case 58.7 KB);
+data leakage against the raw embedded payloads (none in about 230 outputs); navigation lifetime; and cross-runtime behavior on the Kernel runtime and a local Chromium extension. Untested by the review, as by the author:
+anything signed in (including whether the issue-page preload marks a notification read), private repositories and organizations, the private branch of `empty_repository`, live `warnings` passthrough, and
+pull request `labels: null`.
 
 ## Sessions
 
