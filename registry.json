@@ -247,7 +247,7 @@
       ],
       "status": "draft",
       "last_verified": null,
-      "notes": "Opens the offering page and returns every slot for a date and party size (Book versus Notify, seating areas), the offering's payment terms and the calendar's open dates, or the site's reason when it lists none. Never clicks Book, Notify or a slot. Reads a client-rendered list, so brittle to DOM changes; party sizes the offering does not accept return invalid_input."
+      "notes": "Opens the offering page and returns every slot for a date and party size (Book versus Notify, seating areas), the offering's pricing and the calendar's open dates, or the site's reason when it lists none. Table-reservation offerings only (RESERVATION, PRIX_FIXE, DEPOSIT); pickup, delivery and events return unsupported_offering. Never clicks Book, Notify or a slot. Reads a client-rendered list, so brittle to DOM changes; unaccepted party sizes and past dates return invalid_input."
     },
     {
       "domain": "exploretock.com",
@@ -260,7 +260,7 @@
       ],
       "status": "draft",
       "last_verified": null,
-      "notes": "Page tool on www.exploretock.com: one venue's profile, service hours, booking flags and offerings (offering_id, party sizes, seating areas, payment terms) from the venue page's embedded state, fetched same-origin without navigating. Fields are allowlisted; no session or account data is returned."
+      "notes": "Page tool on www.exploretock.com: one venue's profile, service hours, booking flags and offerings (offering_id, accepted party sizes, seating areas, pricing, slots_supported) from the venue page's embedded state, fetched same-origin without navigating. Fields are allowlisted; no session or account data is returned."
     },
     {
       "domain": "exploretock.com",
@@ -273,7 +273,7 @@
       ],
       "status": "draft",
       "last_verified": null,
-      "notes": "Page tool on www.exploretock.com: dine-in or winery search in one Tock city for a date, party size and time via the site's server-rendered search page, fetched same-origin without navigating. Results follow the site's relevance order and can include venues outside the city; slots are those near the requested time, not the whole day."
+      "notes": "Page tool on www.exploretock.com: dine-in or winery search in one Tock city for a date, party size and time via the site's server-rendered search page, fetched same-origin without navigating. Results follow the site's relevance order, which can change between calls, and can include venues outside the city; times are the ten nearest the request per offering, not the whole day."
     },
     {
       "domain": "flyfrontier.com",

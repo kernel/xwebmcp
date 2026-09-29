@@ -64,7 +64,8 @@ const business = (slug, name, extra = {}) => ({
   webUrl: "https://example.test/", heroImageUrl: "https://example.test/hero.jpg", locale: "en-us", currencyCode: "USD", timeZone: "America/Chicago", businessType: "Restaurant", neighborhood: "Old Town",
   location: { id: 1, address: "1 Example Way", city: "Exampleton", state: "EX", country: "US", zipCode: "90000", lat: 40.1, lng: -90.1 }, ...extra
 });
-const offeringRow = (id, name, groups, extra = {}) => ({ ticketGroup: groups, offering: { id, name, slug: name.toLowerCase().replace(/[^a-z]+/g, "-"), type: "RESERVATION", partySize: [1, 2, 3, 4], purchaseSize: [1, 2, 3, 4], seatingArea: [], ...extra } });
+const priceOf = (priceType = "PAYMENT_CARD_HOLD", amountCents = 2000, extra = {}) => ({ supplements: [], fees: [], partyRangeConfigs: [{ minPartySize: 1, ticketPriceInformation: { priceType, priceDistribution: "PER_TICKET", amountCents } }], pricePerPerson: { minCents: 0, maxCents: 0 }, priceDescription: "$0 per person", ...extra });
+const offeringRow = (id, name, groups, extra = {}) => ({ ticketGroup: groups, offering: { id, name, slug: name.toLowerCase().replace(/[^a-z]+/g, "-"), type: "RESERVATION", partySize: [1, 2, 3, 4], purchaseSize: [1, 2, 3, 4], seatingArea: [], price: priceOf(), ...extra } });
 const row = (slug, name, offerings, extra) => ({ business: business(slug, name, extra), offering: offerings, ranking: { relevanceScore: 1.5 } });
 const searchState = (rows, o = {}) => ({
   app: { jwtToken: FAKE_JWT, csrfToken: FAKE_CSRF, activePartnerRole: "__undefined__", config: { metroArea: METROS, stripeApiKey: FAKE_STRIPE, business: { name: "Should not be read" } } },
@@ -84,7 +85,7 @@ const venueBusiness = (extra = {}) => ({
 const experience = (id, name, extra = {}) => ({
   id, slug: name.toLowerCase().replace(/[^a-z]+/g, "-"), name, type: "RESERVATION", state: "AVAILABLE", description: "Fabricated offering.", partySize: [1, 2, 3, 4], isOneTimeEvent: false,
   seatingArea: [{ id: 1, name: "Bar", minPartySize: 1, maxPartySize: 2 }, { id: 2, name: "Room", minPartySize: 1, maxPartySize: 4 }],
-  price: { partyRangeConfigs: [{ minPartySize: 5, ticketPriceInformation: { priceType: "PREPAID", priceDistribution: "PER_TICKET", amountCents: 9000 } }, { minPartySize: 1, ticketPriceInformation: { priceType: "PAYMENT_CARD_HOLD", priceDistribution: "PER_TICKET", amountCents: 2000 } }] }, ...extra
+  price: { fees: [{ name: "service charge", min: 20, max: 20, type: "PERCENT" }], priceDescription: "$20 per person (hold)", partyRangeConfigs: [{ minPartySize: 5, ticketPriceInformation: { priceType: "PREPAID", priceDistribution: "PER_TICKET", amountCents: 9000 } }, { minPartySize: 1, ticketPriceInformation: { priceType: "PAYMENT_CARD_HOLD", priceDistribution: "PER_TICKET", amountCents: 2000 } }] }, ...extra
 });
 const venueState = (o = {}) => ({
   app: { jwtToken: FAKE_JWT, csrfToken: FAKE_CSRF, config: { metroArea: METROS, stripeApiKey: FAKE_STRIPE, business: o.business ?? venueBusiness() } },
@@ -108,7 +109,7 @@ function pageHarness(name, o = {}) {
       assert.equal(init.cache, "no-store");
       const r = responder(path, calls);
       if (r === "network") throw new TypeError("network down");
-      return { ok: r.status >= 200 && r.status < 300, status: r.status, headers: { get: h => (h.toLowerCase() === "cf-mitigated" ? r.cf ?? null : null) }, text: async () => r.html ?? "" };
+      return { ok: r.status >= 200 && r.status < 300, status: r.status, headers: { get: h => (h.toLowerCase() === "cf-mitigated" ? r.cf ?? null : h.toLowerCase() === "content-type" ? r.ct ?? null : null) }, text: async () => r.html ?? "" };
     }
   };
   const [definition] = runInNewContext(`(${sources[name]})`, context);
@@ -191,7 +192,10 @@ const monthDays = [
   { label: "2026-10-04, no availability", cls: "ConsumerCalendar-day is-in-month is-disabled", disabled: true },
   { label: "2026-10-05", cls: "ConsumerCalendar-day is-in-month is-available" },
   { label: "2026-10-06", cls: "ConsumerCalendar-day is-in-month is-future is-disabled", disabled: true },
-  { label: "2026-09-25", cls: "ConsumerCalendar-day is-in-month is-past is-disabled", disabled: true }
+  { label: "2026-09-25", cls: "ConsumerCalendar-day is-in-month is-past is-disabled", disabled: true },
+  { label: "2026-10-07", cls: "ConsumerCalendar-day is-in-month is-available", disabled: true },
+  { label: "2026-11-02", cls: "ConsumerCalendar-day is-out-of-month is-available" },
+  { label: "2026-11-03, no availability", cls: "ConsumerCalendar-day is-out-of-month is-disabled", disabled: true }
 ];
 const listPage = (extra = {}) => ({ slots: [slotRow("5:00 PM", "Bar · Room"), slotRow("5:15 PM", null, "Join Notify list for Dinner Reservation at 5:15 PM"), slotRow("12:30 AM", "Room")], days: monthDays, ...extra });
 const availability = { slug: "fabricated-bistro", offering_id: 1, date: DATE, party_size: 2 };
@@ -233,7 +237,7 @@ test("registry lists every exploretock.com tool exactly once", () => {
 // --- input validation happens before any site access ----------------------------------------------------
 
 const invalid = {
-  search_restaurants: [undefined, null, [], {}, { city: "chicago" }, { date: DATE }, { city: "Chicago", date: DATE }, { city: "chi cago", date: DATE }, { city: "chicago", date: DATE, extra: 1 }, { city: "chicago", date: "2026-02-30" },
+  search_restaurants: [undefined, null, [], {}, { city: "chicago" }, { date: DATE }, { city: "Chicago", date: DATE }, { city: "chi cago", date: DATE }, { city: "chicago", date: DATE, extra: 1 }, { city: "chicago", date: "2026-02-30" }, { city: "chicago", date: "2026-13-01" }, { city: "chicago", date: "2026-00-10" }, { city: "chicago", date: "2026-10-32" }, { city: "chicago", date: "2026-99-99" },
     { city: "chicago", date: "10/10/2026" }, { city: "chicago", date: day(-5) }, { city: "chicago", date: day(400) }, { city: "chicago", date: DATE, party_size: 0 }, { city: "chicago", date: DATE, party_size: 21 },
     { city: "chicago", date: DATE, party_size: "2" }, { city: "chicago", date: DATE, time: "19:10" }, { city: "chicago", date: DATE, time: "7pm" }, { city: "chicago", date: DATE, time: "24:00" },
     { city: "chicago", date: DATE, type: "pickup" }, { city: "chicago", date: DATE, query: "" }, { city: "chicago", date: DATE, query: "x".repeat(81) }, { city: "chicago", date: DATE, query: 5 },
@@ -242,7 +246,7 @@ const invalid = {
     { url: "https://www.exploretock.com/city/chicago" }, { url: "http://www.exploretock.com/fabricated-bistro" }, { url: "https://example.com/fabricated-bistro" }, { url: "https://exploretock.com.example.net/fabricated-bistro" },
     { url: "not a url at all, but long enough" }, { slug: "fabricated-bistro", url: "https://www.exploretock.com/fabricated-bistro" }],
   get_availability: [undefined, null, {}, [], { slug: "fabricated-bistro" }, { ...availability, slug: "bad slug" }, { ...availability, slug: "" }, { ...availability, offering_id: 0 }, { ...availability, offering_id: "1" }, { ...availability, offering_id: 1.5 },
-    { ...availability, offering_id: 2147483648 }, { ...availability, date: "2026-02-30" }, { ...availability, date: day(-5) }, { ...availability, date: day(400) }, { ...availability, date: "tomorrow" }, { ...availability, party_size: 0 },
+    { ...availability, offering_id: 2147483648 }, { ...availability, date: "2026-02-30" }, { ...availability, date: "2026-13-01" }, { ...availability, date: "2026-10-32" }, { ...availability, date: "2026-00-10" }, { ...availability, date: day(-5) }, { ...availability, date: day(400) }, { ...availability, date: "tomorrow" }, { ...availability, party_size: 0 },
     { ...availability, party_size: 21 }, { ...availability, party_size: "2" }, { ...availability, extra: 1 }]
 };
 for (const [name, inputs] of Object.entries(invalid)) {
@@ -281,8 +285,8 @@ for (const name of ["search_restaurants", "get_restaurant"]) {
 
 const searchRows = [
   row("far-cafe", "Far Cafe", [offeringRow(11, "Table", [ticket(`${DATE}T18:45`, "Bar"), ticket(`${DATE}T19:30`, "Bar")])], { location: { address: "9 Far Rd", city: "Farville", state: "EX", country: "US", lat: 40.5, lng: -90.5 } }),
-  row("near-bistro", "Near Bistro", [offeringRow(12, "Tasting Menu", [ticket(`${DATE}T19:45`), ticket(`${DATE}T18:15`), ticket(`${DATE}T19:00`)], { partySize: [2, 4, 3] }), offeringRow(13, "Bar Seats", [ticket(`${DATE}T20:00`, "Bar", { priceType: "PREPAID", priceDistribution: "PER_TICKET", amountCents: 5000 })])]),
-  row("no-slots-place", "No Slots Place", [offeringRow(14, "Table", [])], { neighborhood: "" }),
+  row("near-bistro", "Near Bistro", [offeringRow(12, "Tasting Menu", [ticket(`${DATE}T19:45`), ticket(`${DATE}T18:15`), ticket(`${DATE}T19:00`)], { partySize: [4, 2, 3, 2], type: "PRIX_FIXE", price: priceOf("PREPAID", 37500, { fees: [{ name: "service charge", min: 20, max: 20, type: "PERCENT" }], priceDescription: "Starting at $450 per person" }) }), offeringRow(13, "Bar Seats", [ticket(`${DATE}T20:00`, "Bar")], { price: priceOf("PREPAID", 0, { fees: [{ name: "table", min: 50000, max: 50000, type: "FLAT" }], priceDescription: "$500" }) })]),
+  row("no-slots-place", "No Slots Place", [offeringRow(14, "Table", [], { price: null })], { neighborhood: "" }),
   row("bad slug!", "Skipped Place", [offeringRow(15, "Table", [ticket(`${DATE}T19:00`)])])
 ];
 const searchRespond = (rows, o) => path => ({ status: 200, html: stateHtml(searchState(rows, o)) });
@@ -308,15 +312,15 @@ test("search_restaurants: fetches the site's own search page and maps venues, of
   assert.ok(far.distance_miles > 40 && far.distance_miles < 80, String(far.distance_miles));
   assert.equal(near.neighborhood, "Old Town");
   assert.equal(none.neighborhood, null);
-  assert.deepEqual(far.offerings[0].slots, [{ local_datetime: `${DATE}T18:45`, seating_area: "Bar" }, { local_datetime: `${DATE}T19:30`, seating_area: "Bar" }]);
-  assert.deepEqual(far.offerings[0].payment, { price_type: "PAYMENT_CARD_HOLD", amount_cents: 2000, per: "PER_TICKET" });
+  assert.deepEqual(far.offerings[0].slots, [{ local_datetime: `${DATE}T18:45`, seating_areas: ["Bar"] }, { local_datetime: `${DATE}T19:30`, seating_areas: ["Bar"] }]);
+  assert.deepEqual(far.offerings[0].pricing, { description: "$0 per person", price_type: "PAYMENT_CARD_HOLD", amount_cents: 2000, per: "PER_TICKET", fees: [] });
   assert.equal(far.offerings[0].offering_id, 11);
   assert.deepEqual(near.offerings[0].slots.map(s => s.local_datetime.slice(11)), ["18:15", "19:00", "19:45"]);
-  assert.deepEqual(near.offerings[0].slots.map(s => s.seating_area), [null, null, null]);
-  assert.deepEqual(near.offerings[0].party_size, { min: 2, max: 4 });
-  assert.equal(near.offerings[1].payment.price_type, "PREPAID");
+  assert.deepEqual(near.offerings[0].slots.map(s => s.seating_areas), [[], [], []]);
+  assert.deepEqual(near.offerings[0].party_sizes, [2, 3, 4], "party sizes are listed, sorted and de-duplicated");
+  assert.equal(near.offerings[0].type, "PRIX_FIXE");
   assert.equal(none.offerings[0].slot_count, 0);
-  assert.equal(none.offerings[0].payment, null);
+  assert.equal(none.offerings[0].pricing, null);
 });
 
 test("search_restaurants: query and winery type reach the site's search parameters", async () => {
@@ -406,10 +410,84 @@ test("search_restaurants: challenge, rate limit, server errors, network failure 
 });
 
 test("search_restaurants: reads only the requested state paths and tolerates undefined values and function bodies in the literal", async () => {
-  const html = `<script>window.$REDUX_STATE = {"app":{"a":undefined,"note":"} undefined { \\" ","cb":function noop(){ return "}"; }},"availability":{"result":{"offeringAvailability":[${JSON.stringify(searchRows[0])}],"count":1}},"metroArea":{"selectedMetroArea":${JSON.stringify(METRO)}}};</script>`;
+  const html = `<script>window.$REDUX_STATE = {"app":{"a":undefined,"note":"} undefined { \\" ","cb":function noop(){ return "}"; },"config":{"metroArea":${JSON.stringify(METROS)}}},"availability":{"result":{"offeringAvailability":[${JSON.stringify(searchRows[0])}],"count":1}},"metroArea":{"selectedMetroArea":${JSON.stringify(METRO)}}};</script>`;
   const result = await pageHarness("search_restaurants", { respond: () => ({ status: 200, html }) }).run({ city: "exampleton", date: DATE });
   assert.equal(result.status, "ok");
   assert.equal(result.venues[0].slug, "far-cafe");
+});
+
+test("search_restaurants: pricing carries the site's own price text and fees, not only the ticket amount", async () => {
+  const h = pageHarness("search_restaurants", { respond: searchRespond(searchRows) });
+  const result = await h.run({ city: "exampleton", date: DATE });
+  const [prixFixe, flat] = result.venues[1].offerings;
+  assert.deepEqual(prixFixe.pricing, { description: "Starting at $450 per person", price_type: "PREPAID", amount_cents: 37500, per: "PER_TICKET", fees: [{ name: "service charge", type: "PERCENT", min: 20, max: 20 }] });
+  assert.equal(flat.pricing.amount_cents, 0);
+  assert.equal(flat.pricing.description, "$500", "a flat fee shows even when the ticket amount is 0");
+  assert.deepEqual(flat.pricing.fees, [{ name: "table", type: "FLAT", min: 50000, max: 50000 }]);
+});
+
+test("search_restaurants: pricing follows the party range that covers the requested party size", async () => {
+  const price = priceOf("PAYMENT_CARD_HOLD", 2000, { partyRangeConfigs: [{ minPartySize: 6, ticketPriceInformation: { priceType: "PREPAID", priceDistribution: "PER_TICKET", amountCents: 9000 } }, { minPartySize: 1, ticketPriceInformation: { priceType: "PAYMENT_CARD_HOLD", priceDistribution: "PER_TICKET", amountCents: 2000 } }] });
+  const respond = searchRespond([row("ranged", "Ranged", [offeringRow(20, "Table", [ticket(`${DATE}T19:00`)], { price, partySize: [1, 2, 6, 7] })])]);
+  const small = await pageHarness("search_restaurants", { respond }).run({ city: "exampleton", date: DATE, party_size: 2 });
+  assert.equal(small.venues[0].offerings[0].pricing.amount_cents, 2000);
+  const large = await pageHarness("search_restaurants", { respond }).run({ city: "exampleton", date: DATE, party_size: 7 });
+  assert.equal(large.venues[0].offerings[0].pricing.price_type, "PREPAID");
+});
+
+test("search_restaurants: times that share a slot list are merged with their seating areas and the ten nearest the request are kept", async () => {
+  const areas = ["Bar", "Room", "Patio"];
+  const times = ["17:00", "17:30", "18:00", "18:30", "19:00", "19:30", "20:00", "20:30", "21:00", "21:30", "22:00", "22:30"];
+  const groups = times.flatMap(t => areas.map(a => ticket(`${DATE}T${t}`, a)));
+  const h = pageHarness("search_restaurants", { respond: searchRespond([row("busy-rooms", "Busy Rooms", [offeringRow(30, "Table", groups)])]) });
+  const result = await h.run({ city: "exampleton", date: DATE, time: "21:00" });
+  const offering = result.venues[0].offerings[0];
+  assert.equal(offering.slot_count, 12);
+  assert.equal(offering.slots_truncated, true);
+  assert.deepEqual(offering.slots.map(s => s.local_datetime.slice(11)), ["18:00", "18:30", "19:00", "19:30", "20:00", "20:30", "21:00", "21:30", "22:00", "22:30"]);
+  assert.ok(offering.slots.every(s => s.seating_areas.length === 3));
+  const early = await pageHarness("search_restaurants", { respond: searchRespond([row("busy-rooms", "Busy Rooms", [offeringRow(30, "Table", groups)])]) }).run({ city: "exampleton", date: DATE, time: "17:00" });
+  assert.deepEqual(early.venues[0].offerings[0].slots.map(s => s.local_datetime.slice(11)), ["17:00", "17:30", "18:00", "18:30", "19:00", "19:30", "20:00", "20:30", "21:00", "21:30"]);
+});
+
+test("search_restaurants: a date before today in the city's time zone is invalid_input", async () => {
+  const ahead = { ...METRO, slug: "kiritimati", name: "Kiritimati", timezone: "Pacific/Kiritimati" };
+  const h = pageHarness("search_restaurants", { respond: searchRespond(searchRows, { metro: ahead }) });
+  const result = await h.run({ city: "kiritimati", date: day(-1) });
+  assert.equal(result.error_kind, "invalid_input");
+  assert.match(result.error_message, /before today in Kiritimati/);
+  const fine = await pageHarness("search_restaurants", { respond: searchRespond(searchRows, { metro: { ...ahead, timezone: "Not/AZone" } }) }).run({ city: "kiritimati", date: day(-1) });
+  assert.equal(fine.status, "ok", "an unknown zone name does not block the search");
+});
+
+test("search_restaurants: per_page, has_more and distance follow the data exactly", async () => {
+  const rows = Array.from({ length: 10 }, (_, i) => row(`v-${i}`, `V ${i}`, [offeringRow(500 + i, "Table", [ticket(`${DATE}T19:00`)])], { location: { city: "X", state: "EX", country: "US", lat: 41, lng: -90 } }));
+  const h = pageHarness("search_restaurants", { respond: searchRespond(rows) });
+  const seven = await h.run({ city: "exampleton", date: DATE, per_page: 7 });
+  assert.equal(seven.venues.length, 7);
+  assert.equal(seven.has_more, true);
+  const exact = await h.run({ city: "exampleton", date: DATE, per_page: 10 });
+  assert.equal(exact.venues.length, 10);
+  assert.equal(exact.has_more, false, "the last full page has no more");
+  assert.equal(exact.venues[0].distance_miles, 69.1, "one degree of latitude is 69.1 miles");
+});
+
+test("search_restaurants: a plain HTTP 403 is reported as a challenge, and a page whose city list cannot be read as site_changed", async () => {
+  const blocked = await pageHarness("search_restaurants", { respond: () => ({ status: 403, html: "<html>denied</html>" }) }).run({ city: "exampleton", date: DATE });
+  assert.equal(blocked.error_kind, "challenge");
+  const state = searchState(searchRows);
+  delete state.app.config.metroArea;
+  const unreadable = await pageHarness("search_restaurants", { respond: () => ({ status: 200, html: stateHtml(state) }) }).run({ city: "exampleton", date: DATE });
+  assert.equal(unreadable.error_kind, "site_changed");
+});
+
+test("search_restaurants: ten distinct times are not truncated and eleven are", async () => {
+  const times = n => Array.from({ length: n }, (_, i) => ticket(`${DATE}T${String(10 + i).padStart(2, "0")}:00`));
+  const ten = await pageHarness("search_restaurants", { respond: searchRespond([row("ten", "Ten", [offeringRow(41, "Table", times(10))])]) }).run({ city: "exampleton", date: DATE });
+  assert.equal(ten.venues[0].offerings[0].slots_truncated, false);
+  assert.equal(ten.venues[0].offerings[0].slots.length, 10);
+  const eleven = await pageHarness("search_restaurants", { respond: searchRespond([row("eleven", "Eleven", [offeringRow(42, "Table", times(11))])]) }).run({ city: "exampleton", date: DATE });
+  assert.equal(eleven.venues[0].offerings[0].slots_truncated, true);
 });
 
 test("search_restaurants: page text that looks like instructions is returned as data only", async () => {
@@ -445,10 +523,19 @@ test("get_restaurant: maps the venue record and offerings and fetches only that 
   const [dinner, chef] = result.offerings;
   assert.equal(dinner.offering_id, 1);
   assert.equal(dinner.offering_slug, "dinner-reservation");
-  assert.deepEqual(dinner.party_size, { min: 1, max: 4 });
+  assert.deepEqual(dinner.party_sizes, [1, 2, 3, 4]);
+  assert.equal(dinner.slots_supported, true);
   assert.deepEqual(dinner.seating_areas, [{ name: "Bar", party_size: { min: 1, max: 2 } }, { name: "Room", party_size: { min: 1, max: 4 } }]);
-  assert.deepEqual(dinner.payment, { price_type: "PAYMENT_CARD_HOLD", amount_cents: 2000, per: "PER_TICKET" }, "the smallest party range wins");
+  assert.deepEqual(dinner.pricing, { description: "$20 per person (hold)", price_type: "PAYMENT_CARD_HOLD", amount_cents: 2000, per: "PER_TICKET", fees: [{ name: "service charge", type: "PERCENT", min: 20, max: 20 }] }, "the smallest party range wins");
   assert.equal(chef.name, "Chef Table");
+});
+
+test("get_restaurant: bounds the offering list and marks offerings get_availability cannot read", async () => {
+  const many = Array.from({ length: 25 }, (_, i) => experience(100 + i, `Offer ${i}`, { type: i === 0 ? "ORDER_PICKUP" : i === 1 ? "GA_EVENT" : "PRIX_FIXE" }));
+  const result = await pageHarness("get_restaurant", { respond: venueRespond({ experiences: many }) }).run({ slug: "fabricated-bistro" });
+  assert.equal(result.offering_count, 25);
+  assert.equal(result.offerings.length, 20);
+  assert.deepEqual(result.offerings.slice(0, 3).map(o => [o.type, o.slots_supported]), [["ORDER_PICKUP", false], ["GA_EVENT", false], ["PRIX_FIXE", true]]);
 });
 
 test("get_restaurant: accepts a venue URL, including deeper Tock paths and the apex host", async () => {
@@ -482,8 +569,11 @@ test("get_restaurant: a page without offerings still returns the profile", async
 test("get_restaurant: unknown venue, other pages, renamed venues, challenges and missing state are explicit errors", async () => {
   const cases = [
     [{ status: 404, html: "<html>not found</html>" }, "not_found"],
-    [{ status: 200, html: stateHtml({ app: { config: {} } }) }, "not_found"],
-    [{ status: 200, html: stateHtml(venueState({ business: venueBusiness({ domainName: "someone-else" }) })) }, "site_changed"],
+    [{ status: 200, html: stateHtml({ app: { config: { metroArea: METROS } } }) }, "not_found"],
+    [{ status: 200, html: stateHtml({ app: { config: {} } }) }, "site_changed"],
+    [{ status: 200, html: stateHtml(venueState({ business: venueBusiness({ domainName: "someone-else" }) })) }, "not_found"],
+    [{ status: 200, ct: "text/plain", html: "User-agent: *" }, "not_found"],
+    [{ status: 403, html: "<html>denied</html>" }, "challenge"],
     [{ status: 403, cf: "challenge", html: "" }, "challenge"],
     [{ status: 429, html: "" }, "rate_limited"],
     [{ status: 502, html: "" }, "site_error"],
@@ -499,7 +589,7 @@ test("get_restaurant: unknown venue, other pages, renamed venues, challenges and
 
 // --- get_availability ------------------------------------------------------------------------------------
 
-test("get_availability: navigates to the offering page and returns slots, offering payment and calendar dates", async () => {
+test("get_availability: navigates to the offering page and returns slots, offering pricing and calendar dates", async () => {
   const h = cdpHarness({ pages: [{ origin: 1, path: "/somewhere-else", search: "", state: {} }, { origin: 2, ...listPage() }] });
   const result = await h.run(availability);
   assert.deepEqual(h.calls.goto, [`${ORIGIN}/fabricated-bistro/experience/1/reservation?date=${DATE}&size=2`]);
@@ -507,8 +597,9 @@ test("get_availability: navigates to the offering page and returns slots, offeri
   assert.equal(result.status, "ok");
   assert.deepEqual(result.business, { slug: "fabricated-bistro", name: "Fabricated Bistro", url: `${ORIGIN}/fabricated-bistro`, time_zone: "America/Chicago" });
   assert.equal(result.offering.offering_id, 1);
-  assert.deepEqual(result.offering.party_size, { min: 1, max: 4 });
-  assert.deepEqual(result.offering.payment, { price_type: "PAYMENT_CARD_HOLD", amount_cents: 2000, per: "PER_TICKET" });
+  assert.equal(result.offering.type, "RESERVATION");
+  assert.deepEqual(result.offering.party_sizes, [1, 2, 3, 4]);
+  assert.deepEqual(result.offering.pricing, { description: "$20 per person (hold)", price_type: "PAYMENT_CARD_HOLD", amount_cents: 2000, per: "PER_TICKET", fees: [{ name: "service charge", type: "PERCENT", min: 20, max: 20 }] });
   assert.deepEqual(result.slots, [
     { local_time: "17:00", time_label: "5:00 PM", status: "bookable", seating_areas: ["Bar", "Room"] },
     { local_time: "17:15", time_label: "5:15 PM", status: "notify_only", seating_areas: [] },
@@ -519,11 +610,11 @@ test("get_availability: navigates to the offering page and returns slots, offeri
   assert.deepEqual(result.unavailable_dates, ["2026-10-04"]);
 });
 
-test("get_availability: the payment terms follow the requested party size", async () => {
+test("get_availability: the pricing follows the requested party size", async () => {
   const h = cdpHarness({ page: { ...listPage(), search: `?date=${DATE}&size=5` }, offerings: [experience(1, "Dinner Reservation", { partySize: [1, 2, 3, 4, 5, 6] })] });
   const result = await h.run({ ...availability, party_size: 5 });
-  assert.equal(result.offering.payment.price_type, "PREPAID");
-  assert.equal(result.offering.payment.amount_cents, 9000);
+  assert.equal(result.offering.pricing.price_type, "PREPAID");
+  assert.equal(result.offering.pricing.amount_cents, 9000);
   assert.match(h.calls.goto[0], /size=5$/);
 });
 
@@ -535,12 +626,23 @@ test("get_availability: reads 24-hour labels and warns about rows it cannot read
   assert.match(result.warnings[0], /2 slot rows with an unreadable time/);
 });
 
+test("get_availability: only a control that starts with Book is bookable, and only in-month enabled available days are listed", async () => {
+  const page = listPage({ slots: [slotRow("6:00 PM", null, "Join Notify list for Book Club Dinner at 6:00 PM"), slotRow("6:15 PM", null, "Rebook Dinner at 6:15 PM"), slotRow("6:30 PM", null, "Book Dinner at 6:30 PM")] });
+  const result = await cdpHarness({ page }).run(availability);
+  assert.deepEqual(result.slots.map(s => s.status), ["notify_only", "other", "bookable"]);
+  assert.deepEqual(result.available_dates, ["2026-10-01", "2026-10-05"], "disabled and out-of-month days are not open dates");
+  assert.deepEqual(result.unavailable_dates, ["2026-10-04"], "out-of-month days are not listed");
+});
+
 test("get_availability: bounds the slot list", async () => {
   const slots = Array.from({ length: 100 }, (_, i) => slotRow(`${String(Math.floor(i / 4) % 24).padStart(2, "0")}:${String((i % 4) * 15).padStart(2, "0")}`, null));
   const result = await cdpHarness({ page: listPage({ slots }) }).run(availability);
   assert.equal(result.slot_count, 100);
   assert.equal(result.slots.length, 96);
   assert.equal(result.slots_truncated, true);
+  const exact = await cdpHarness({ page: listPage({ slots: slots.slice(0, 96) }) }).run(availability);
+  assert.equal(exact.slots.length, 96);
+  assert.equal(exact.slots_truncated, false);
 });
 
 test("get_availability: a day the offering is not offered is no_availability with the site's reason and the open dates", async () => {
@@ -554,11 +656,50 @@ test("get_availability: a day the offering is not offered is no_availability wit
   assert.deepEqual(notOpen.available_dates, []);
 });
 
-test("get_availability: an offering that takes fewer guests is invalid_input with the accepted sizes", async () => {
-  const h = cdpHarness({ page: { ...listPage(), search: `?date=${DATE}&size=2&time=20%3A00` }, offerings: [experience(1, "Dinner Reservation", { partySize: [1, 2, 3, 4, 5, 6, 7, 8] })] });
+test("get_availability: a party size the offering does not accept is invalid_input straight away, listing the real sizes", async () => {
+  const h = cdpHarness({ page: listPage(), offerings: [experience(1, "Dinner Reservation", { partySize: [1, 2, 3, 4, 5, 6, 7, 8] })] });
   const result = await h.run({ ...availability, party_size: 12 });
   assert.equal(result.error_kind, "invalid_input");
-  assert.match(result.error_message, /does not take a party of 12; the site changed it to 2\. Accepted party sizes: 1 to 8/);
+  assert.match(result.error_message, /does not take a party of 12\. Accepted party sizes: 1 to 8\./);
+  assert.ok(h.calls.waits <= 2, "no waiting for a slot list that will never come");
+  const gap = cdpHarness({ page: listPage(), offerings: [experience(1, "Dinner Reservation", { partySize: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 12] })] });
+  const gapResult = await gap.run({ ...availability, party_size: 11 });
+  assert.equal(gapResult.error_kind, "invalid_input");
+  assert.match(gapResult.error_message, /Accepted party sizes: 1 to 10, 12\./);
+  const two = await cdpHarness({ page: listPage(), offerings: [experience(1, "Dinner Reservation", { partySize: [4, 2] })] }).run({ ...availability, party_size: 3 });
+  assert.match(two.error_message, /Accepted party sizes: 2, 4\./);
+});
+
+test("get_availability: a party size the site rewrote is reported when the offering lists no sizes", async () => {
+  const h = cdpHarness({ page: { ...listPage(), search: `?date=${DATE}&size=2` }, offerings: [experience(1, "Dinner Reservation", { partySize: [] })] });
+  const result = await h.run({ ...availability, party_size: 7 });
+  assert.equal(result.error_kind, "invalid_input");
+  assert.match(result.error_message, /changed the party size to 2 instead of 7/);
+});
+
+test("get_availability: pickup, delivery and event offerings are unsupported, not read as table slots", async () => {
+  for (const type of ["ORDER_PICKUP", "ORDER_DELIVERY", "GA_EVENT", "SOMETHING_NEW"]) {
+    const h = cdpHarness({ page: { ...listPage(), path: type === "GA_EVENT" ? "/fabricated-bistro/event/1/x" : undefined }, offerings: [experience(1, "Other", { type })] });
+    const result = await h.run(availability);
+    assert.equal(result.status, "error");
+    assert.equal(result.error_kind, "unsupported_offering", type);
+    assert.match(result.error_message, new RegExp(type));
+    assert.ok(h.calls.waits <= 2);
+  }
+  for (const type of ["RESERVATION", "PRIX_FIXE", "DEPOSIT"]) {
+    const result = await cdpHarness({ page: listPage(), offerings: [experience(1, "Table", { type })] }).run(availability);
+    assert.equal(result.status, "ok", type);
+    assert.equal(result.offering.type, type);
+  }
+});
+
+test("get_availability: a date before today at the venue is invalid_input without waiting", async () => {
+  const state = { app: { config: { business: { domainName: "fabricated-bistro", name: "Fabricated Bistro", timeZone: "Pacific/Kiritimati" } } }, calendar: { offerings: { experience: [experience(1, "Dinner Reservation")] } } };
+  const h = cdpHarness({ page: { ...listPage(), state, search: `?date=${day(-1)}&size=2` } });
+  const result = await h.run({ ...availability, date: day(-1) });
+  assert.equal(result.error_kind, "invalid_input");
+  assert.match(result.error_message, /before today at the venue/);
+  assert.ok(h.calls.waits <= 2);
 });
 
 test("get_availability: a date the site rewrote is reported instead of returning another day's slots", async () => {
@@ -573,8 +714,11 @@ test("get_availability: unknown offering, unknown venue and different venue are 
   assert.match(noOffering.error_message, /no offering 99/);
   const noVenue = await cdpHarness({ page: { path: "/no-venue/experience/1/x", state: {}, slots: [] } }).run({ ...availability, slug: "no-venue" });
   assert.equal(noVenue.error_kind, "not_found");
-  const other = await cdpHarness({ page: { ...listPage(), state: { app: { config: { business: { domainName: "another-venue", name: "Another" } } }, calendar: { offerings: { experience: [experience(1, "X")] } } } } }).run(availability);
-  assert.equal(other.error_kind, "site_changed");
+  const alias = cdpHarness({ page: { ...listPage(), path: "/another-venue", state: { app: { config: { business: { domainName: "another-venue", name: "Another" } } }, calendar: { offerings: { experience: [experience(1, "X")] } } } } });
+  const aliasResult = await alias.run(availability);
+  assert.equal(aliasResult.error_kind, "not_found");
+  assert.match(aliasResult.error_message, /alias of venue another-venue/);
+  assert.ok(alias.calls.waits <= 2, "an alias is reported at once, not after the wait");
   const noState = await cdpHarness({ page: { ...listPage(), state: { app: { config: { business: { domainName: "fabricated-bistro" } } } } } }).run(availability);
   assert.equal(noState.error_kind, "site_changed", "offerings that cannot be confirmed are not assumed");
 });
