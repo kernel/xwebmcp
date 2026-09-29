@@ -867,6 +867,54 @@
       }
     },
     {
+      "domain": "sevenrooms.com",
+      "tool": "get_availability",
+      "file": "domains/sevenrooms.com/get_availability.js",
+      "kind": "page",
+      "namespace": "sevenrooms.com",
+      "url_patterns": [
+        "https://www.sevenrooms.com/reservations/*",
+        "https://www.sevenrooms.com/explore/*",
+        "https://www.sevenrooms.com/experiences/*",
+        "https://www.sevenrooms.com/events/*",
+        "https://fp.sevenrooms.com/reservations/*",
+        "https://fp.sevenrooms.com/explore/*",
+        "https://fp.sevenrooms.com/experiences/*",
+        "https://fp.sevenrooms.com/events/*",
+        "https://eu.sevenrooms.com/reservations/*",
+        "https://eu.sevenrooms.com/explore/*",
+        "https://eu.sevenrooms.com/experiences/*",
+        "https://eu.sevenrooms.com/events/*"
+      ],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Not independently QA'd. Page tool on the SevenRooms guest booking hosts (www, fp, eu): bookable times for one venue, date and party size as venue-local and UTC starts with seating area, shift, card and payment fields and deduplicated venue policy text. Lists only the site's book entries (what the widget shows as time buttons); request entries are counted, not listed. Never selects, holds or books, and drops booking handles."
+    },
+    {
+      "domain": "sevenrooms.com",
+      "tool": "get_restaurant",
+      "file": "domains/sevenrooms.com/get_restaurant.js",
+      "kind": "page",
+      "namespace": "sevenrooms.com",
+      "url_patterns": [
+        "https://www.sevenrooms.com/reservations/*",
+        "https://www.sevenrooms.com/explore/*",
+        "https://www.sevenrooms.com/experiences/*",
+        "https://www.sevenrooms.com/events/*",
+        "https://fp.sevenrooms.com/reservations/*",
+        "https://fp.sevenrooms.com/explore/*",
+        "https://fp.sevenrooms.com/experiences/*",
+        "https://fp.sevenrooms.com/events/*",
+        "https://eu.sevenrooms.com/reservations/*",
+        "https://eu.sevenrooms.com/explore/*",
+        "https://eu.sevenrooms.com/experiences/*",
+        "https://eu.sevenrooms.com/events/*"
+      ],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Not independently QA'd. Page tool on the SevenRooms guest booking hosts (www, fp, eu): one venue's public widget details by venue_url_key (address, party sizes, booking window, currency, languages); a venue is found only on the hosts that serve it. Read-only, signed out, no navigation; returns none of the site's payment, map or analytics keys."
+    },
+    {
       "domain": "southwest.com",
       "tool": "login",
       "file": "domains/southwest.com/login.js",
