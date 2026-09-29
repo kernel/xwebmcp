@@ -83,7 +83,7 @@
 
     try {
       if (window.location.origin !== ORIGIN) return fail("wrong_page", "Open any https://www.fandango.com page first; this tool calls the site's search from that page.");
-      if (window.location.pathname === "/region-error") return fail("region_blocked", "Fandango is not available outside the United States; this browser's network location is blocked. Use a US network location.");
+      if (window.location.pathname === "/region-error") return fail("region_blocked", "This tab is on Fandango's /region-error page: the site is US-only and did not accept this browser's network location. Use a US network location and reload.");
       const res = await fetch("/napi/home/autocompleteDesktopSearch?search=" + encodeURIComponent(query), { headers: { accept: "application/json" }, signal: AbortSignal.timeout(20000) });
       if (res.status === 429) return fail("rate_limited", "Fandango returned HTTP 429; wait a few minutes before searching again.");
       if (res.status === 403) return fail("challenge", "Fandango refused the request (HTTP 403), which usually means bot protection; wait or use another browser session.");
@@ -93,6 +93,7 @@
 
       const items = type => Array.isArray(body.resultsByType[type]?.items) ? body.resultsByType[type].items : [];
       // Links are site-relative paths; keep only ones that stay on www.fandango.com and drop any query or fragment.
+      // The site redirects theater links to lower case and city links from '+' to '-', so those are returned in their final form.
       const pathOf = link => {
         if (typeof link !== "string" || !link.startsWith("/") || link.startsWith("//")) return null;
         try { const u = new URL(link, ORIGIN); return u.origin === ORIGIN ? u.pathname : null; } catch { return null; }
@@ -107,12 +108,12 @@
         const path = pathOf(t?.link);
         const id = path && /-([A-Za-z0-9]{3,12})\/theater-page\/?$/.exec(path)?.[1];
         if (!id || typeof t.name !== "string") return [];
-        return [{ theater_id: id.toUpperCase(), name: t.name, url: ORIGIN + path }];
+        return [{ theater_id: id.toUpperCase(), name: t.name, url: ORIGIN + path.toLowerCase() }];
       });
       const locations = !types.includes("locations") ? [] : items("locations").flatMap(l => {
         const path = pathOf(l?.link);
         if (!path || !/_movietimes\/?$/.test(path) || typeof l.name !== "string") return [];
-        return [{ name: l.name, city: l.name.replace(/,\s*[A-Za-z]{2}$/, ""), state: typeof l.state === "string" && l.state ? l.state : null, url: ORIGIN + path }];
+        return [{ name: l.name, city: l.name.replace(/,\s*[A-Za-z]{2}$/, ""), state: typeof l.state === "string" && l.state ? l.state : null, url: ORIGIN + path.replace(/\+/g, "-") }];
       });
       const people = !types.includes("people") ? [] : items("people").flatMap(p => {
         const path = pathOf(p?.link);

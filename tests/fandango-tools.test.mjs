@@ -60,8 +60,8 @@ const AUTOCOMPLETE = {
         { id: "m6", name: "Undated Movie", link: "/undated-movie-100006/movie-overview?cmp=x#frag" }
       ]
     },
-    theaters: { type: "theaters", items: [{ id: "t1", name: "Example Cinema 12", link: "/example-cinema-12-AAAAA/theater-page" }, { id: "t2", name: "No Link Cinema", link: "/nowhere" }] },
-    locations: { type: "locations", items: [{ id: "l1", name: "Springfield, IL", link: "/springfield_il_movietimes", state: "IL" }, { id: "l2", name: "Odd Place", link: "/somewhere-else", state: "" }] },
+    theaters: { type: "theaters", items: [{ id: "t1", name: "Example Cinema 12", link: "/example-cinema-12-AAAAA/theater-page" }, { id: "t3", name: "Lower Case Cinema", link: "/lower-case-cinema-bbbbb/theater-page" }, { id: "t2", name: "No Link Cinema", link: "/nowhere" }] },
+    locations: { type: "locations", items: [{ id: "l1", name: "Springfield, IL", link: "/springfield_il_movietimes", state: "IL" }, { id: "l3", name: "Port Example, CA", link: "/port+example_ca_movietimes", state: "CA" }, { id: "l2", name: "Odd Place", link: "/somewhere-else", state: "" }] },
     people: { type: "people", items: [{ id: "p1", name: "Example Person", link: "/people/example-person-777" }, { id: "p2", name: "Other Link", link: "/other/example" }] }
   }
 };
@@ -256,8 +256,14 @@ test("search maps suggestions to ids and canonical www URLs and drops links that
     { movie_id: "100001", name: "Example Movie (2026)", release_date: "2026-07-31", url: "https://www.fandango.com/example-movie-2026-100001/movie-overview" },
     { movie_id: "100006", name: "Undated Movie", release_date: null, url: "https://www.fandango.com/undated-movie-100006/movie-overview" }
   ]);
-  assert.deepEqual(r.theaters, [{ theater_id: "AAAAA", name: "Example Cinema 12", url: "https://www.fandango.com/example-cinema-12-AAAAA/theater-page" }]);
-  assert.deepEqual(r.locations, [{ name: "Springfield, IL", city: "Springfield", state: "IL", url: "https://www.fandango.com/springfield_il_movietimes" }]);
+  assert.deepEqual(r.theaters, [
+    { theater_id: "AAAAA", name: "Example Cinema 12", url: "https://www.fandango.com/example-cinema-12-aaaaa/theater-page" },
+    { theater_id: "BBBBB", name: "Lower Case Cinema", url: "https://www.fandango.com/lower-case-cinema-bbbbb/theater-page" }
+  ]);
+  assert.deepEqual(r.locations, [
+    { name: "Springfield, IL", city: "Springfield", state: "IL", url: "https://www.fandango.com/springfield_il_movietimes" },
+    { name: "Port Example, CA", city: "Port Example", state: "CA", url: "https://www.fandango.com/port-example_ca_movietimes" }
+  ]);
   assert.deepEqual(r.people, [{ name: "Example Person", url: "https://www.fandango.com/people/example-person-777" }]);
   assert.ok(!JSON.stringify(r).includes("elsewhere.example") && !JSON.stringify(r).includes("poster"));
 });
@@ -266,7 +272,7 @@ test("search filters by requested types and reports no_results when nothing is l
   let r = await harness("search").run({ query: "example", types: ["theaters"] });
   assert.equal(r.status, "ok");
   assert.deepEqual([r.movies, r.locations, r.people], [[], [], []]);
-  assert.equal(r.theaters.length, 1);
+  assert.deepEqual(r.theaters.map(t => t.theater_id), ["AAAAA", "BBBBB"]);
   const only = { ...AUTOCOMPLETE, resultsByType: { ...AUTOCOMPLETE.resultsByType, people: { type: "people", items: [] } } };
   r = await harness("search", { route: () => ({ status: 200, body: only }) }).run({ query: "example", types: ["people"] });
   assert.equal(r.status, "no_results");
@@ -421,6 +427,93 @@ test("get_movie_showtimes separates empty dates, unknown movies or ZIPs, extra p
   assert.equal(r.available_dates, null);
   r = await harness("get_movie_showtimes", { route: path => (path.startsWith("/napi/movieCalendar/") ? { status: 403, body: {} } : null) }).run({ movie_id: "100001", zip: "60601" });
   assert.deepEqual([r.status, r.error_kind], ["error", "challenge"]);
+});
+
+// --- review fixes ---------------------------------------------------------------------------------------
+
+test("search_theaters sends hyphens as spaces, keeps periods, and maps the site's unknown-city 404 to no_results", async () => {
+  let h = harness("search_theaters");
+  let r = await h.run({ city: "Winston-Salem", state: "nc" });
+  assert.deepEqual(paths(h), ["/napi/nearbyTheaters?limit=10&city=Winston+Salem&state=NC"]);
+  assert.deepEqual(r.place, { zip: null, city: "Winston-Salem", state: "NC" });
+  h = harness("search_theaters");
+  await h.run({ city: "St. Louis", state: "MO" });
+  assert.deepEqual(paths(h), ["/napi/nearbyTheaters?limit=10&city=St.+Louis&state=MO"]);
+  const unknown = { status: 404, body: { error: { error: true }, attemptedLocation: "Zzzzville, ZZ" } };
+  r = await harness("search_theaters", { route: () => unknown }).run({ city: "Zzzzville", state: "ZZ" });
+  assert.equal(r.status, "no_results");
+  assert.match(r.message, /St\. Louis/);
+  r = await harness("search_theaters", { route: () => unknown }).run({ city: "Coeur d'Alene", state: "ID" });
+  assert.equal(r.status, "no_results");
+  r = await harness("search_theaters", { route: () => unknown }).run({ zip: "60601" });
+  assert.deepEqual([r.status, r.error_kind], ["error", "site_error"], "a 404 for a ZIP request is not an unknown city");
+  r = await harness("search_theaters", { route: () => ({ status: 404, body: { note: "no error field" } }) }).run({ city: "Chicago", state: "IL" });
+  assert.deepEqual([r.status, r.error_kind], ["error", "site_error"]);
+});
+
+test("showtime statuses map every site word seen live and pass unknown words through", async () => {
+  const words = [["available", "available"], ["soldout", "sold_out"], ["pastshowtime", "past"], ["disabled", "unavailable"], ["restricted", "restricted"], ["somethingnew", "unknown"]];
+  const times = words.map(([type], i) => showtime({ id: 910000 + i, type, date: `${i + 1}:00p`, ticketingDate: `2026-10-02+${String(i + 13).padStart(2, "0")}:00` }));
+  const expired = showtime({ id: 910100, type: "available", expired: true, date: "8:00p", ticketingDate: "2026-10-02+20:00" });
+  const soldExpired = showtime({ id: 910101, type: "soldout", expired: true, date: "9:00p", ticketingDate: "2026-10-02+21:00" });
+  const theaterDay = THEATER_DAY(); theaterDay.viewModel.movies = [movie(100001, "Status Movie", [["Standard", group([...times, expired, soldExpired])]])];
+  let r = await harness("get_theater_showtimes", { route: path => (path.startsWith("/napi/theaterMovieShowtimes/") ? { status: 200, body: theaterDay } : null) }).run({ theater_id: "AAAAA" });
+  const expected = [...words.map(([type, status]) => [status, type]), ["past", "available"], ["sold_out", "soldout"]];
+  assert.deepEqual(r.movies[0].screenings[0].showtimes.map(t => [t.status, t.site_status]), expected);
+  const grouped = GROUPINGS(); grouped.theaterShowtimes.theaters = [groupingTheater("CCCCC", "Status Cinema", { variants: [{ filmFormatHeader: "Standard", amenityGroups: [group([...times, expired, soldExpired])] }] })];
+  r = await harness("get_movie_showtimes", { route: path => (path.startsWith("/napi/theaterShowtimeGroupings/") ? { status: 200, body: grouped } : null) }).run({ movie_id: "100001", zip: "60601", date: "2026-10-02" });
+  assert.deepEqual(r.theaters[0].screenings[0].showtimes.map(t => [t.status, t.site_status]), expected);
+});
+
+test("showtimes after midnight keep the next calendar date, and a missing id or ticketing flag is null or false", async () => {
+  const late = showtime({ id: undefined, date: "12:15a", ticketingDate: "2026-10-03+00:15" });
+  delete late.id;
+  const theaterDay = THEATER_DAY(); theaterDay.viewModel.movies = [movie(100001, "Late Movie", [["Standard", group([late])]])];
+  delete theaterDay.viewModel.theater.details.isTicketing; delete theaterDay.viewModel.theater.details.hasReservedSeating;
+  let r = await harness("get_theater_showtimes", { route: path => (path.startsWith("/napi/theaterMovieShowtimes/") ? { status: 200, body: theaterDay } : null) }).run({ theater_id: "AAAAA", date: "2026-10-02" });
+  assert.deepEqual(r.movies[0].screenings[0].showtimes[0], { local_date: "2026-10-03", local_time: "00:15", time_text: "12:15a", status: "available", site_status: "available", showtime_id: null });
+  assert.deepEqual([r.theater.ticketing_available, r.theater.has_reserved_seating], [false, false]);
+  const grouped = GROUPINGS(); grouped.theaterShowtimes.theaters = [groupingTheater("CCCCC", "Late Cinema", { isTicketing: undefined, variants: [{ filmFormatHeader: "Standard", amenityGroups: [group([late])] }] })];
+  r = await harness("get_movie_showtimes", { route: path => (path.startsWith("/napi/theaterShowtimeGroupings/") ? { status: 200, body: grouped } : null) }).run({ movie_id: "100001", zip: "60601", date: "2026-10-02" });
+  assert.deepEqual([r.theaters[0].screenings[0].showtimes[0].local_date, r.theaters[0].screenings[0].showtimes[0].local_time, r.theaters[0].ticketing_available], ["2026-10-03", "00:15", false]);
+  r = await harness("search_theaters", { route: () => ({ status: 200, body: { ...NEARBY, theaters: [theaterRecord("AAAAA", "No Flag Cinema", { isTicketing: undefined, hasReservedSeating: undefined })] } }) }).run({ zip: "60601" });
+  assert.deepEqual([r.theaters[0].ticketing_available, r.theaters[0].has_reserved_seating, r.theaters[0].open], [false, false, true]);
+});
+
+test("output caps: amenities per screening and dates per calendar", async () => {
+  const many = Array.from({ length: 30 }, (_, i) => ({ id: i, name: "Amenity " + i }));
+  const dates = Array.from({ length: 150 }, (_, i) => new Date(Date.UTC(2026, 9, 2 + i)).toISOString().slice(0, 10));
+  const theaterDay = THEATER_DAY(); theaterDay.viewModel.movies = [movie(100001, "Capped Movie", [["Standard", group([showtime()], { amenities: many })]])];
+  let r = await harness("get_theater_showtimes", { route: path => (path.startsWith("/napi/theaterMovieShowtimes/") ? { status: 200, body: theaterDay } : path.startsWith("/napi/theaterCalendar/") ? { status: 200, body: { ...THEATER_CALENDAR, showtimeDates: dates } } : null) }).run({ theater_id: "AAAAA" });
+  assert.deepEqual([r.movies[0].screenings[0].amenities.length, r.available_dates.length], [20, 120]);
+  const grouped = GROUPINGS(); grouped.theaterShowtimes.theaters = [groupingTheater("CCCCC", "Capped Cinema", { variants: [{ filmFormatHeader: "Standard", amenityGroups: [group([showtime()], { amenities: many })] }] })];
+  r = await harness("get_movie_showtimes", { route: path => (path.startsWith("/napi/theaterShowtimeGroupings/") ? { status: 200, body: grouped } : path.startsWith("/napi/movieCalendar/") ? { status: 200, body: { ...MOVIE_CALENDAR, movieCalendar: { ...MOVIE_CALENDAR.movieCalendar, showtimeDates: dates } } } : null) }).run({ movie_id: "100001", zip: "60601", date: "2026-10-02" });
+  assert.deepEqual([r.theaters[0].screenings[0].amenities.length, r.available_dates.length], [20, 120]);
+});
+
+test("a past date the site answers with its current day is no_showtimes when the calendar does not list it, else an error", async () => {
+  // Observed live: dates about four weeks back or more make both endpoints return the current day's data.
+  let r = await harness("get_theater_showtimes").run({ theater_id: "AAAAA", date: "2026-08-15" });
+  assert.deepEqual([r.status, r.date, r.available_dates], ["no_showtimes", "2026-08-15", ["2026-10-02", "2026-10-03"]]);
+  assert.match(r.message, /2026-10-02 instead/);
+  r = await harness("get_theater_showtimes", { route: path => (path.startsWith("/napi/theaterCalendar/") ? { status: 200, body: { isEmpty: true } } : null) }).run({ theater_id: "AAAAA", date: "2026-08-15" });
+  assert.deepEqual([r.status, r.error_kind], ["error", "site_error"], "without a calendar the mismatch cannot be explained");
+  r = await harness("get_movie_showtimes").run({ movie_id: "100001", zip: "60601", date: "2026-08-15" });
+  assert.deepEqual([r.status, r.date, r.available_dates], ["no_showtimes", "2026-08-15", ["2026-10-02", "2026-10-03", "2026-10-04"]]);
+  r = await harness("get_movie_showtimes", { route: path => (path.startsWith("/napi/movieCalendar/") ? { status: 500, body: {} } : null) }).run({ movie_id: "100001", zip: "60601", date: "2026-08-15" });
+  assert.deepEqual([r.status, r.error_kind], ["error", "site_error"]);
+});
+
+test("unrecognized response shapes are site_error, not fabricated empties or not-found outcomes", async () => {
+  const groupingsWith = body => path => (path.startsWith("/napi/theaterShowtimeGroupings/") ? { status: 200, body } : null);
+  for (const body of [{ hasShowtimes: true }, { hasShowtimes: true, theaterShowtimes: { theatres: [] } }, { theaterShowtimes: { theaters: [] } }, {}]) {
+    const r = await harness("get_movie_showtimes", { route: groupingsWith(body) }).run({ movie_id: "100001", zip: "60601", date: "2026-10-02" });
+    assert.deepEqual([r.status, r.error_kind], ["error", "site_error"], JSON.stringify(body));
+  }
+  let r = await harness("get_movie_showtimes", { route: path => (path.startsWith("/napi/movieCalendar/") ? { status: 200, body: { cal: 1 } } : null) }).run({ movie_id: "100001", zip: "60601" });
+  assert.deepEqual([r.status, r.error_kind], ["error", "site_error"], "a calendar without hasCalendar is not 'not found'");
+  r = await harness("get_theater_showtimes", { route: path => (path.startsWith("/napi/theaterMovieShowtimes/") ? { status: 200, body: { error: "rate limited" } } : null) }).run({ theater_id: "AAAAA" });
+  assert.deepEqual([r.status, r.error_kind], ["error", "site_error"], "only the site's error:true means an unknown theater");
 });
 
 // --- inputs ---------------------------------------------------------------------------------------------

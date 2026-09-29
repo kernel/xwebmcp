@@ -4,7 +4,7 @@
   tool: {
     name: "search_theaters",
     title: "Search Fandango theaters near a place",
-    description: "List movie theaters near a US ZIP code, or near a US city and state, as Fandango's own nearby-theaters list shows them, in the site's order (nearest first when checked). Returns theater_id, name, canonical theater page URL, address, distance in miles from the place, chain, phone, amenities and whether Fandango sells tickets online for it. Give exactly one of zip, or city with state. Pass a theater_id to get_theater_showtimes for that theater's showtimes. Fandango returns an empty list for an unknown place without saying why, so a no_results outcome cannot tell a mistyped ZIP from a place with no theaters. Runs inside the current www.fandango.com page without navigating. Read-only; works signed out and never uses saved or favorite theaters.",
+    description: "List movie theaters near a US ZIP code, or near a US city and state, as Fandango's own nearby-theaters list shows them, in the site's order (nearest first when checked). Returns theater_id, name, canonical theater page URL, address, distance in miles from the place, chain, phone, amenities and whether Fandango sells tickets online for it. Give exactly one of zip, or city with state. Pass a theater_id to get_theater_showtimes for that theater's showtimes. Fandango returns an empty list for an unknown ZIP and an error for a city it does not recognize; both come back as no_results, which cannot tell a mistyped place from one with no theaters. The site is strict about city spelling ('St. Louis' with the period works, 'St Louis' does not; hyphens are sent as spaces; names with apostrophes were not found), so retry with a ZIP. Runs inside the current www.fandango.com page without navigating. Read-only; works signed out and never uses saved or favorite theaters.",
     inputSchema: {
       type: "object", additionalProperties: false,
       properties: {
@@ -96,15 +96,17 @@
 
     try {
       if (window.location.origin !== ORIGIN) return fail("wrong_page", "Open any https://www.fandango.com page first; this tool calls the site's theater search from that page.");
-      if (window.location.pathname === "/region-error") return fail("region_blocked", "Fandango is not available outside the United States; this browser's network location is blocked. Use a US network location.");
+      if (window.location.pathname === "/region-error") return fail("region_blocked", "This tab is on Fandango's /region-error page: the site is US-only and did not accept this browser's network location. Use a US network location and reload.");
       const params = new URLSearchParams({ limit: String(limit) });
       if (zip) params.set("zipCode", zip);
-      else { params.set("city", city); params.set("state", state); }
+      else { params.set("city", city.replace(/-/g, " ")); params.set("state", state); }
       const res = await fetch("/napi/nearbyTheaters?" + params.toString(), { headers: { accept: "application/json" }, signal: AbortSignal.timeout(20000) });
       if (res.status === 429) return fail("rate_limited", "Fandango returned HTTP 429; wait a few minutes before searching again.");
       if (res.status === 403) return fail("challenge", "Fandango refused the request (HTTP 403), which usually means bot protection; wait or use another browser session.");
       let body = null;
       try { body = JSON.parse(await res.text()); } catch {}
+      // A city the site does not recognize answers HTTP 404 with an error object instead of an empty list.
+      if (res.status === 404 && city && body?.error) return { status: "no_results", place, observed_at: observedAt, message: "Fandango did not recognize the city and state. The site is strict about spelling ('St. Louis' with the period works, 'St Louis' does not; hyphens are sent as spaces; names with apostrophes were not found). Try a ZIP code." };
       if (res.status >= 400 || !body || typeof body !== "object" || !Array.isArray(body.theaters)) return fail("site_error", "Fandango's theater search returned HTTP " + res.status + (body ? " with an unexpected response shape." : " with a non-JSON body."));
 
       const text = v => typeof v === "string" && v.trim() ? v.trim() : null;

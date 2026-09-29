@@ -4,7 +4,7 @@
   tool: {
     name: "get_theater_showtimes",
     title: "Get a Fandango theater's showtimes for one day",
-    description: "Get every movie and showtime one US theater has on Fandango for one local calendar date, plus the theater's details and the dates that have showtimes. Get theater_id from search or search_theaters. Each movie lists screenings grouped by format (Standard, 3D, IMAX and so on) with the amenities that apply (reserved seating, closed caption, recliners and so on); each showtime has its local date and time, a status (available, sold_out, past or unavailable) and Fandango's showtime id. Without date the site's current showing day is used and returned as date. Only lists showtimes: it does not open ticket pages, pick seats, or report prices, fees or seat availability, and an 'available' status does not guarantee tickets can be bought. Runs inside the current www.fandango.com page without navigating. Read-only; works signed out and does not return favorite or account state.",
+    description: "Get every movie and showtime one US theater has on Fandango for one local calendar date, plus the theater's details and the dates that have showtimes. Get theater_id from search or search_theaters. Each movie lists screenings grouped by format (Standard, 3D, IMAX and so on) with the amenities that apply (reserved seating, closed caption, recliners and so on); each showtime has its local date and time, a status (available, sold_out, past, unavailable, restricted or unknown) and Fandango's showtime id when the site gives one. Without date the site's current showing day is used and returned as date. Only lists showtimes: it does not open ticket pages, pick seats, or report prices, fees or seat availability, and an 'available' status does not guarantee tickets can be bought. Runs inside the current www.fandango.com page without navigating. Read-only; works signed out and does not return favorite or account state.",
     inputSchema: {
       type: "object", additionalProperties: false, required: ["theater_id"],
       properties: {
@@ -71,9 +71,9 @@
                               local_date: { type: ["string", "null"], description: "YYYY-MM-DD at the theater." },
                               local_time: { type: ["string", "null"], description: "HH:MM 24-hour at the theater." },
                               time_text: { type: "string", description: "The time as the site prints it, for example 7:00p." },
-                              status: { enum: ["available", "sold_out", "past", "unavailable", "unknown"], description: "unavailable is a showtime the site lists but marks disabled, with no reason given." },
+                              status: { enum: ["available", "sold_out", "past", "unavailable", "restricted", "unknown"], description: "unavailable is a showtime the site lists but marks disabled and restricted one it marks restricted; the site gives no reason for either, so do not read restricted as available or unavailable. unknown is any other site word (see site_status)." },
                               site_status: { type: ["string", "null"], description: "The site's own status word." },
-                              showtime_id: { type: ["integer", "null"] }
+                              showtime_id: { type: ["integer", "null"], description: "Fandango's showtime id; null when the site omits it, which it does for some theaters." }
                             }
                           }
                         }
@@ -153,7 +153,7 @@
 
     try {
       if (window.location.origin !== ORIGIN) return fail("wrong_page", "Open any https://www.fandango.com page first; this tool calls the site's showtimes from that page.");
-      if (window.location.pathname === "/region-error") return fail("region_blocked", "Fandango is not available outside the United States; this browser's network location is blocked. Use a US network location.");
+      if (window.location.pathname === "/region-error") return fail("region_blocked", "This tab is on Fandango's /region-error page: the site is US-only and did not accept this browser's network location. Use a US network location and reload.");
       const showtimesPath = "/napi/theaterMovieShowtimes/" + theaterId + "?chainCode=&" + (input.date ? "startDate=" + input.date + "&" : "") + "isdesktop=true&partnerRestrictedTicketing=";
       const [shows, calendar] = await Promise.all([api(showtimesPath), api("/napi/theaterCalendar/" + theaterId)]);
       const stop = blocked(shows) || blocked(calendar);
@@ -161,7 +161,7 @@
       if (shows.status >= 400 || !shows.body) return fail("site_error", "Fandango's showtimes returned HTTP " + shows.status + (shows.body ? " with an unexpected response shape." : " with a non-JSON body."));
       const vm = shows.body.viewModel;
       if (!vm) {
-        if (shows.body.error) return fail("theater_not_found", "Fandango does not recognize theater_id " + theaterId + ". Get ids from search or search_theaters.");
+        if (shows.body.error === true) return fail("theater_not_found", "Fandango does not recognize theater_id " + theaterId + ". Get ids from search or search_theaters.");
         return fail("site_error", "Fandango's showtimes response had no showtime data; the site may have changed.");
       }
       const details = vm.theater?.details;
@@ -169,7 +169,6 @@
       // With no showtimes on the requested day the site leaves date null.
       const shown = /^\d{4}-\d{2}-\d{2}$/.test(vm.date ?? "") ? vm.date : null;
       if (vm.movies.length && !shown) return fail("site_error", "Fandango's showtimes response had movies but no date; the site may have changed.");
-      if (shown && input.date && shown !== input.date) return fail("site_error", "Fandango returned showtimes for " + shown + " instead of the requested " + input.date + ".");
       const day = shown ?? input.date ?? (/^\d{4}-\d{2}-\d{2}$/.test(calendar.body?.selectedDate ?? "") ? calendar.body.selectedDate : null);
       if (!day) return fail("site_error", "Fandango's showtimes response did not say which date it covers; pass date explicitly.");
 
@@ -184,7 +183,13 @@
       const dates = Array.isArray(calendar.body?.showtimeDates) && calendar.body.isEmpty !== true
         ? calendar.body.showtimeDates.filter(d => /^\d{4}-\d{2}-\d{2}$/.test(d)).slice(0, 120) : null;
 
-      const STATUS = { available: "available", soldout: "sold_out", pastshowtime: "past", disabled: "unavailable" };
+      // For a date far enough in the past the site answers with its current day instead of the requested one.
+      if (shown && input.date && shown !== input.date) {
+        if (dates && !dates.includes(input.date)) return { status: "no_showtimes", date: input.date, observed_at: observedAt, theater, available_dates: dates, message: "Fandango has no showtimes at " + theater.name + " on " + input.date + " (it answered with " + shown + " instead, which it does for dates it does not list). Dates with showtimes are in available_dates." };
+        return fail("site_error", "Fandango returned showtimes for " + shown + " instead of the requested " + input.date + ".");
+      }
+
+      const STATUS = { available: "available", soldout: "sold_out", pastshowtime: "past", disabled: "unavailable", restricted: "restricted" };
       const movies = vm.movies.flatMap(m => {
         const id = Number.isInteger(m?.id) && m.id > 0 ? String(m.id) : null;
         if (!id || !text(m.title)) return [];
