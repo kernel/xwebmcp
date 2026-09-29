@@ -211,7 +211,7 @@
         arrival: { airportCode: airport(arr.airportCode), city: text(arr.cityName), terminal: short(arr.terminal), gate: short(arr.gate), baggageClaim: short(arr.baggageClaim), scheduled: time(arr.scheduledArrivalTime), estimated: time(arr.estimatedArrivalTime), actual: time(arr.actualArrivalTime) },
         aircraft: { name: text(equipment.displayName), code: code(equipment.equipmentCode) },
         amenities: { wifi: flag(f.wifiAvailable), power: flag(f.powerPortAvailable) },
-        incomingFlight: /^[1-9][0-9]{0,3}$/.test(priorNumber) ? { flightNumber: priorNumber, originDate: /^\d{4}-\d{2}-\d{2}$/.test(prior.priorLegOriginDate || "") ? prior.priorLegOriginDate : null } : null
+        incomingFlight: /^[1-9][0-9]{0,3}$/.test(priorNumber) ? { flightNumber: priorNumber, originDate: typeof prior.priorLegOriginDate === "string" && /^\d{4}-\d{2}-\d{2}$/.test(prior.priorLegOriginDate) ? prior.priorLegOriginDate : null } : null
       };
     });
     return {

@@ -338,7 +338,8 @@ test("the incoming flight drops leading zeros and the site's 0000 placeholder", 
     [{ priorLegFlightNumber: "0000", priorLegOriginDate: "2026-09-22" }, null],
     [{ priorLegFlightNumber: null, priorLegOriginDate: "2026-09-22" }, null],
     [{ priorLegFlightNumber: "12345", priorLegOriginDate: "2026-09-22" }, null],
-    [{ priorLegFlightNumber: "1e3", priorLegOriginDate: "2026-09-22" }, null]
+    [{ priorLegFlightNumber: "1e3", priorLegOriginDate: "2026-09-22" }, null],
+    [{ priorLegFlightNumber: "2464", priorLegOriginDate: ["2026-09-22"] }, { flightNumber: "2464", originDate: null }]
   ];
   for (const [previousFlightInfo, expected] of cases) {
     const page = setup({ respond: () => reply(200, { flights: [flightRow({ previousFlightInfo })] }) });
@@ -348,7 +349,7 @@ test("the incoming flight drops leading zeros and the site's 0000 placeholder", 
   }
 });
 
-test("the 20 second guard aborts a hung request and reports an unknown outcome", async () => {
+test("the 20 second guard aborts a hung request and reports an unknown outcome", { timeout: 5000 }, async () => {
   const timers = [];
   const page = setup({
     timers,
@@ -371,4 +372,14 @@ test("the schema checker only counts own keys, so inherited names cannot hide ex
   assert.equal(conforms(schema, { a: "x" }), true);
   assert.equal(conforms(schema, { a: "x", constructor: "y" }), false);
   assert.equal(conforms(schema, JSON.parse('{"a":"x","__proto__":"y"}')), false);
+});
+
+test("the output schema rejects an incoming flight the tool would never produce", async () => {
+  const page = setup();
+  const ok = await page.run(good);
+  assert.ok(conforms(page.tool.tool.outputSchema, ok));
+  for (const incomingFlight of [{ flightNumber: "0000", originDate: null }, { flightNumber: "0101", originDate: null }, { flightNumber: null, originDate: "2026-10-01" }, { flightNumber: "567", originDate: ["2026-10-01"] }]) {
+    const bad = { ...ok, flights: [{ ...ok.flights[0], incomingFlight }] };
+    assert.equal(conforms(page.tool.tool.outputSchema, bad), false, JSON.stringify(incomingFlight));
+  }
 });
