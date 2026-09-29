@@ -94,6 +94,7 @@
       const items = type => Array.isArray(body.resultsByType[type]?.items) ? body.resultsByType[type].items : [];
       // Links are site-relative paths; keep only ones that stay on www.fandango.com and drop any query or fragment.
       // The site redirects theater links to lower case and city links from '+' to '-', so those are returned in their final form.
+      // For city names with an apostrophe the site's own link is a 404; the same path without the apostrophe resolves.
       const pathOf = link => {
         if (typeof link !== "string" || !link.startsWith("/") || link.startsWith("//")) return null;
         try { const u = new URL(link, ORIGIN); return u.origin === ORIGIN ? u.pathname : null; } catch { return null; }
@@ -113,7 +114,7 @@
       const locations = !types.includes("locations") ? [] : items("locations").flatMap(l => {
         const path = pathOf(l?.link);
         if (!path || !/_movietimes\/?$/.test(path) || typeof l.name !== "string") return [];
-        return [{ name: l.name, city: l.name.replace(/,\s*[A-Za-z]{2}$/, ""), state: typeof l.state === "string" && l.state ? l.state : null, url: ORIGIN + path.replace(/\+/g, "-") }];
+        return [{ name: l.name, city: l.name.replace(/,\s*[A-Za-z]{2}$/, ""), state: typeof l.state === "string" && l.state ? l.state : null, url: ORIGIN + path.replace(/\+/g, "-").replace(/'/g, "") }];
       });
       const people = !types.includes("people") ? [] : items("people").flatMap(p => {
         const path = pathOf(p?.link);

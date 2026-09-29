@@ -61,7 +61,7 @@ const AUTOCOMPLETE = {
       ]
     },
     theaters: { type: "theaters", items: [{ id: "t1", name: "Example Cinema 12", link: "/example-cinema-12-AAAAA/theater-page" }, { id: "t3", name: "Lower Case Cinema", link: "/lower-case-cinema-bbbbb/theater-page" }, { id: "t2", name: "No Link Cinema", link: "/nowhere" }] },
-    locations: { type: "locations", items: [{ id: "l1", name: "Springfield, IL", link: "/springfield_il_movietimes", state: "IL" }, { id: "l3", name: "Port Example, CA", link: "/port+example_ca_movietimes", state: "CA" }, { id: "l2", name: "Odd Place", link: "/somewhere-else", state: "" }] },
+    locations: { type: "locations", items: [{ id: "l1", name: "Springfield, IL", link: "/springfield_il_movietimes", state: "IL" }, { id: "l3", name: "Port Example, CA", link: "/port+example_ca_movietimes", state: "CA" }, { id: "l4", name: "Coeur d'Example, ID", link: "/coeur+d'example_id_movietimes", state: "ID" }, { id: "l2", name: "Odd Place", link: "/somewhere-else", state: "" }] },
     people: { type: "people", items: [{ id: "p1", name: "Example Person", link: "/people/example-person-777" }, { id: "p2", name: "Other Link", link: "/other/example" }] }
   }
 };
@@ -262,7 +262,8 @@ test("search maps suggestions to ids and canonical www URLs and drops links that
   ]);
   assert.deepEqual(r.locations, [
     { name: "Springfield, IL", city: "Springfield", state: "IL", url: "https://www.fandango.com/springfield_il_movietimes" },
-    { name: "Port Example, CA", city: "Port Example", state: "CA", url: "https://www.fandango.com/port-example_ca_movietimes" }
+    { name: "Port Example, CA", city: "Port Example", state: "CA", url: "https://www.fandango.com/port-example_ca_movietimes" },
+    { name: "Coeur d'Example, ID", city: "Coeur d'Example", state: "ID", url: "https://www.fandango.com/coeur-dexample_id_movietimes" }
   ]);
   assert.deepEqual(r.people, [{ name: "Example Person", url: "https://www.fandango.com/people/example-person-777" }]);
   assert.ok(!JSON.stringify(r).includes("elsewhere.example") && !JSON.stringify(r).includes("poster"));
@@ -514,6 +515,45 @@ test("unrecognized response shapes are site_error, not fabricated empties or not
   assert.deepEqual([r.status, r.error_kind], ["error", "site_error"], "a calendar without hasCalendar is not 'not found'");
   r = await harness("get_theater_showtimes", { route: path => (path.startsWith("/napi/theaterMovieShowtimes/") ? { status: 200, body: { error: "rate limited" } } : null) }).run({ theater_id: "AAAAA" });
   assert.deepEqual([r.status, r.error_kind], ["error", "site_error"], "only the site's error:true means an unknown theater");
+});
+
+test("get_theater_showtimes limits: default 40, truncated only when movies are cut, calendar isEmpty nulls the dates", async () => {
+  const twelve = THEATER_DAY(); twelve.viewModel.movies = Array.from({ length: 12 }, (_, i) => movie(100100 + i, "Movie " + i, [["Standard", group([showtime({ id: 920000 + i })])]]));
+  const route = path => (path.startsWith("/napi/theaterMovieShowtimes/") ? { status: 200, body: twelve } : null);
+  let r = await harness("get_theater_showtimes", { route }).run({ theater_id: "AAAAA" });
+  assert.deepEqual([r.total_movies, r.movies.length, r.truncated], [12, 12, false], "the default limit is not smaller than 12");
+  r = await harness("get_theater_showtimes", { route }).run({ theater_id: "AAAAA", limit: 12 });
+  assert.deepEqual([r.movies.length, r.truncated], [12, false]);
+  r = await harness("get_theater_showtimes", { route }).run({ theater_id: "AAAAA", limit: 11 });
+  assert.deepEqual([r.movies.length, r.truncated], [11, true]);
+  r = await harness("get_theater_showtimes", { route: path => route(path) ?? (path.startsWith("/napi/theaterCalendar/") ? { status: 200, body: { ...THEATER_CALENDAR, isEmpty: true } } : null) }).run({ theater_id: "AAAAA" });
+  assert.equal(r.available_dates, null);
+});
+
+test("links written with a backslash or another origin never leave www.fandango.com", async () => {
+  const theaterDay = THEATER_DAY();
+  theaterDay.viewModel.movies = [movie(100001, "Backslash Movie", [["Standard", group([showtime()])]], { mopURI: "/\\elsewhere.example/x-100001/movie-overview" }), movie(100002, "Absolute Movie", [["Standard", group([showtime()])]], { mopURI: "https://elsewhere.example/x-100002/movie-overview" })];
+  let r = await harness("get_theater_showtimes", { route: path => (path.startsWith("/napi/theaterMovieShowtimes/") ? { status: 200, body: theaterDay } : null) }).run({ theater_id: "AAAAA" });
+  assert.deepEqual(r.movies.map(m => m.url), [null, null]);
+  const badTheater = THEATER_DAY(); badTheater.viewModel.theater.details.theaterPageUrl = "/\\elsewhere.example/x-aaaaa/theater-page";
+  r = await harness("get_theater_showtimes", { route: path => (path.startsWith("/napi/theaterMovieShowtimes/") ? { status: 200, body: badTheater } : null) }).run({ theater_id: "AAAAA" });
+  assert.deepEqual([r.status, r.error_kind], ["error", "site_error"]);
+  const grouped = GROUPINGS(); grouped.theaterShowtimes.theaters = [groupingTheater("CCCCC", "Backslash Cinema", { theaterPageUrl: "/\\elsewhere.example/x-ccccc/theater-page" }), groupingTheater("DDDDD", "Kept Cinema")];
+  r = await harness("get_movie_showtimes", { route: path => (path.startsWith("/napi/theaterShowtimeGroupings/") ? { status: 200, body: grouped } : null) }).run({ movie_id: "100001", zip: "60601", date: "2026-10-02" });
+  assert.deepEqual(r.theaters.map(t => t.theater_id), ["DDDDD"]);
+  r = await harness("search_theaters", { route: () => ({ status: 200, body: { ...NEARBY, theaters: [theaterRecord("FFFFF", "Backslash", { theaterPageUrl: "/\\elsewhere.example/x-fffff/theater-page" })] } }) }).run({ zip: "60601" });
+  assert.equal(r.status, "no_results");
+});
+
+test("get_movie_showtimes returns exactly limit theaters and marks truncation only when some were cut", async () => {
+  const r = await harness("get_movie_showtimes").run({ movie_id: "100001", zip: "60601", date: "2026-10-02", limit: 2 });
+  assert.deepEqual([r.total_theaters, r.theaters.length, r.truncated], [2, 2, false]);
+});
+
+test("search_theaters treats a temporarily closed theater as not open", async () => {
+  const theaters = [theaterRecord("AAAAA", "Closed Cinema", { isOpen: true, isTemporarilyClosed: true }), theaterRecord("BBBBB", "Open Cinema")];
+  const r = await harness("search_theaters", { route: () => ({ status: 200, body: { ...NEARBY, theaters } }) }).run({ zip: "60601" });
+  assert.deepEqual(r.theaters.map(t => [t.theater_id, t.open]), [["AAAAA", false], ["BBBBB", true]]);
 });
 
 // --- inputs ---------------------------------------------------------------------------------------------

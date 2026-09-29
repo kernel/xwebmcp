@@ -38,7 +38,7 @@ Outputs:
 - Showtimes carry `local_date` and `local_time` parsed from the site's `ticketingDate` (`YYYY-MM-DD+HH:MM`, venue-local), the printed `time_text` (for example `7:00p`), `showtime_id` when the site gives one (it omits it for some theaters), and a `status` mapped from the site's `type`: `available`, `sold_out` (`soldout`), `past` (`pastshowtime`, or `expired`), `unavailable` (`disabled`) or `restricted`, neither with a reason from the site, or `unknown` for any other word. `site_status` keeps the site's own word.
 - Screenings group showtimes by the site's format heading (`Standard`, `3D`, `IMAX`, …) and amenity group; `amenities` are the names the site attaches (reserved seating, closed caption, recliners, and policy notes such as "No passes").
 - `distance_miles` is what the site reports from the ZIP or city.
-- `search` returns theater and city links in the form the site redirects to (theater paths in lower case, `+` in city paths as `-`), the same URLs `search_theaters` returns.
+- `search` returns theater and city links in the form that resolves without a redirect (theater paths in lower case, `+` in city paths as `-`, and apostrophes dropped from city paths because the site's own link for such names is a 404), the same theater URLs `search_theaters` returns. `search_theaters` echoes the normalized input in `place` (hyphens kept, state in upper case), not the spelling it sent to the site.
 - Every result carries `observed_at`. Showtimes and sold-out flags change during the day.
 - Output is bounded: `limit` on theaters (movie showtimes, at most 40) or movies (theater showtimes, at most 60), `total_*` and `truncated` report what was cut, and lists such as `available_dates` are capped.
 - The ticketing link and hash the site attaches to each showtime (which point into the ticket-selection site) are not returned, and no tool opens them. Movie and theater URLs are rebuilt as `https://www.fandango.com/<path>` and links that leave the site are dropped.
@@ -63,7 +63,7 @@ All four tools match only `https://www.fandango.com/*`, not the default `https:/
 - **City spelling is strict.** `nearbyTheaters` matched `Winston Salem` and `Wilkes Barre` but not the hyphenated forms, matched `St. Louis` but not `St Louis`, and did not match `Coeur d'Alene` in any spelling tried. `search_theaters` sends hyphens as spaces, keeps periods and returns `no_results` (with a hint to use a ZIP) when the site answers 404.
 - **Old dates fall back to today.** A date about four weeks back or more (checked: 2026-08-15 on 2026-09-29; 2026-09-01 was still answered as empty) makes both showtime endpoints return the current day's showtimes instead. The tools compare the date in the answer with the requested one and, when the site's calendar does not list the requested date, return `no_showtimes` with `available_dates`.
 - **Movie showtimes use a ZIP only.** The endpoint was only observed with a ZIP; there is no city form.
-- **Field differences.** `dateLocal`/`dateUtc` appear only in the movie-showtimes endpoint, so the tools parse `ticketingDate`, which both endpoints carry. It matched `dateLocal` on all 511 showtimes sampled at first, and QA later saw showtimes after midnight (12:15a to 4:30a for a far-off release) carry the next calendar date with the right time. The site omits the showtime `id` for some theaters (all 77 showtimes at one AMC theater on one day), so `showtime_id` is often null.
+- **Field differences.** `dateLocal`/`dateUtc` appear only in the movie-showtimes endpoint, so the tools parse `ticketingDate`, which both endpoints carry. It matched `dateLocal` on all 511 showtimes sampled at first, and a later check saw showtimes after midnight (12:15a to 4:30a for a far-off release) carry the next calendar date with the right time. The site omits the showtime `id` for some theaters (all 77 showtimes at one AMC theater on one day at first, later 4 of 229 for one movie in New York City), so `showtime_id` can be null.
 - **Output shape through the Kernel API.** The Kernel API returned some outputs as a JSON string instead of an object (seen for larger outputs and for outputs with non-ASCII text); parse it when `typeof output === "string"`. This is runtime behavior, not tool code.
 - **Payload size.** One theater day is about 140 KB and one movie in New York City about 190 KB before the tools trim it; the largest tool output seen was about 58 KB.
 - **No stability guarantee.** `/napi/*` is an undocumented first-party API. A changed shape returns `site_error` rather than a partial success.
@@ -82,6 +82,28 @@ All four tools match only `https://www.fandango.com/*`, not the default `https:/
 
 ## QA
 
-Draft. Independent QA has not run yet.
+Independent QA agent `agt_7481b4b4b98a44369c89`. All live checks were signed out, from a US network, on 2026-09-29; the reviewer never signed in, clicked on the site or opened a ticket-selection page.
 
-Sessions (ephemeral): builder browsers were created and deleted by the builder.
+Round 1 on the first revision (`search.js` blob `0ef6b98`, `search_theaters.js` `3f89885`, `get_movie_showtimes.js` `f6351eb`, `get_theater_showtimes.js` `ce32ddc`): **FAIL**. Findings, all fixed in the next commit:
+
+1. `search_theaters` answered a hyphenated, apostrophe or unknown city with `site_error` because the site returns HTTP 404 for it (and rejects hyphenated spellings that work with spaces). Hyphens are now sent as spaces and the 404 becomes `no_results` with a spelling hint.
+2. Unrecognized response shapes could turn into fabricated `no_showtimes`, `not_found` or `theater_not_found` outcomes (found with page-local stubs). Empty and not-found outcomes now require the site's own signals (`hasShowtimes: false`, a boolean `hasCalendar`, `error: true`); anything else is `site_error`.
+3. Dates about four weeks back or more made both showtime tools report `site_error`, because the site answers with the current day. They now return `no_showtimes` with `available_dates`.
+4. The site's fifth showtime word `restricted` was mapped to `unknown`; it now has its own status.
+5. Descriptions claimed every showtime has an id; many are null.
+6. Stale README claims (after-midnight showtimes, calendar sizes) and missing tests.
+7. `search` returned theater links with an upper-case id and city links with `+`, which the site redirects; they are now returned in their final form.
+
+Round 2 on `8243fb1` (blobs `78827d6`, `53f15c0`, `37ac694`, `ced08a2`): **PASS**, with minor items: `search` passed through the site's own 404 links for city names with an apostrophe (fixed by dropping the apostrophe, which resolved for every such city checked), an internally inconsistent QA paragraph in this README, and six surviving mutants in the tests (tests added; all seven mutants of that set are now killed). What round 2 verified live, on the Kernel runtime and in a local Chromium 153 with the unpacked extension:
+
+- Outputs matched the site: 77 and 95 showtimes at one theater on two days, identical to the theater page; nine theaters for one movie near one ZIP, identical to the movie page including times, formats and states; `time_text` and `local_time` agreed on all 1386 showtimes checked.
+- 88 saved Kernel outputs and 13 extension outputs all validated against their output schemas with a real JSON Schema validator, covering `ok`, `no_results`, `no_showtimes`, `invalid_input`, `not_found` and `theater_not_found`.
+- From the home, a movie, a theater and a 404 page on `www.fandango.com`, all four tools returned success and the tab URL never changed; on `/region-error` all four returned `region_blocked` with no request; no tool was listed on the `tickets.` or `athome.` landing pages; CDP network events showed only `GET /napi/...` fetches with no body and no navigation, and cookies and storage were unchanged.
+- The largest output was about 61 KB (110 KB as the Kernel API wraps it), under the 240 KiB API limit.
+- The extension run used a scratch copy of the extension whose manifest lists `https://www.fandango.com/*` as a host permission, because the site-access prompt cannot be driven headlessly; it otherwise matched the repository and gave the same outputs as the Kernel runtime for the same inputs.
+
+Not exercised in any round: live HTTP 403 and 429 responses and bot-protection pages (stubbed only), a real non-US network location (only the `/region-error` page), signed-in tabs, theaters with `ticketing_available: false`, and a live `restricted` status in round 2 (seen live earlier, fixture-covered).
+
+Round 3 (`search.js` after the apostrophe change): pending.
+
+Sessions (ephemeral): builder and QA browsers were created and deleted by their owners.
