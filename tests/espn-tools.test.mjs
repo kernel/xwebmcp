@@ -536,3 +536,19 @@ test("search refuses to run outside www.espn.com", async () => {
   assert.equal(result.error_kind, "wrong_page");
   assert.equal(h.calls.fetches.length, 0);
 });
+
+test("control-character handling covers the first and last C0 and C1 characters and keeps neighbouring text characters", async () => {
+  const dirty = "a\u0000b\u001fc\u007fd\u0080e\u009ff\u00a0g h";
+  const clean = "a b c d e f\u00a0g h";
+  const scoreboard = await harness("get_scoreboard", okScoreboard([event("1", { status: { description: "Scheduled", detail: dirty, state: "pre" } })], { date: "2026-10-03" })).run({ league: "nba" });
+  assert.equal(scoreboard.games[0].status_detail, clean);
+  const search = await harness("search", okSearch([searchGroup("team", [{ ...teamItem, displayName: dirty }])])).run({ query: "ab" });
+  assert.equal(search.results[0].title, clean);
+
+  const h = harness("search", okSearch([searchGroup("team", [teamItem])]));
+  for (const query of ["a\u0000b", "a\u001fb", "a\u007fb", "a\u0080b", "a\u009fb"]) assert.equal((await h.run({ query })).error_kind, "invalid_input", JSON.stringify(query));
+  for (const query of ["a\u0020b", "a\u00a0b", "a\u00a1b"]) assert.equal((await h.run({ query })).status, "ok", JSON.stringify(query));
+  const schema = h.definition.tool.inputSchema;
+  for (const query of ["a\u0000b", "a\u001fb", "a\u007fb", "a\u0080b", "a\u009fb"]) assert.ok(!conforms(schema, { query }), JSON.stringify(query));
+  for (const query of ["a\u0020b", "a\u00a0b", "a\u00a1b"]) assert.ok(conforms(schema, { query }), JSON.stringify(query));
+});

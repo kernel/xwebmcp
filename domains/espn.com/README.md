@@ -4,8 +4,8 @@ Tools for ESPN's public sports site (https://www.espn.com): scoreboards and site
 
 | tool | file | status | notes |
 |------|------|--------|-------|
-| get_scoreboard | [get_scoreboard.js](get_scoreboard.js) | draft | NFL, NBA and NHL games for one date (NBA, NHL) or one week (NFL): start time, state, score, record, broadcasters, venue; echoes the effective date or week and reports no_games separately from errors |
-| search | [search.js](search.js) | draft | Teams, players, articles and upcoming Watch ESPN events, capped per type, with ESPN page URLs and uids; clips, replays and films omitted |
+| get_scoreboard | [get_scoreboard.js](get_scoreboard.js) | verified | NFL, NBA and NHL games for one date (NBA, NHL) or one week (NFL): start time, state, score, record, broadcasters, venue; echoes the effective date or week and reports no_games separately from errors |
+| search | [search.js](search.js) | verified | Teams, players, articles and upcoming Watch ESPN events, capped per type, with ESPN page URLs and uids; clips, replays and films omitted |
 
 ## Native WebMCP tools
 
@@ -47,7 +47,7 @@ Both tools match only `https://www.espn.com/*`, not the default `https://espn.co
 
 - Nothing here signs in, follows, favorites, subscribes, bets, starts playback, accepts terms or changes any preference. Both tools only read.
 - Requests carry no cookies (`credentials: "omit"`), so they behave the same signed in or out and never expose account state.
-- ESPN page and search content is untrusted text. It is returned as data, with C0 and C1 control characters (U+0000 to U+001F and U+007F to U+009F) replaced by spaces and every string length-capped (URLs longer than 300 characters and identifiers longer than their cap, 20 to 60 characters depending on the field, are dropped rather than truncated), and never interpreted; URLs are limited to `https://*.espn.com` paths with the port, query string and fragment removed.
+- ESPN page and search content is untrusted text. It is returned as data, with C0 and C1 control characters (U+0000 to U+001F and U+007F to U+009F) replaced by spaces and every returned text field length-capped except `omitted_types` (see Known limitations; URLs longer than 300 characters and identifiers longer than their cap, 20 to 60 characters depending on the field, are dropped rather than truncated), and never interpreted; URLs are limited to `https://*.espn.com` paths with the port, query string and fragment removed.
 - Results are quotes at `observed_at`, not live updates.
 
 ## Site quirks
@@ -69,9 +69,25 @@ Both tools match only `https://www.espn.com/*`, not the default `https://espn.co
 - Not live-tested: HTTP 403 and 429 responses, a challenge page, a slow ESPN response. They are covered by stubbed tests.
 - Signed-in behaviour is untested and unsupported by design: nothing here reads Fantasy leagues, favorites or entitlements.
 - The scoreboard layout is ESPN's private page data, not a documented API, and can change without notice.
+- Hostile or malformed ESPN content edge cases, found by independent QA and left unchanged after sign-off (real ESPN responses do not trigger them):
+  - `search` copies the names of omitted result groups into `omitted_types` as ESPN sends them, without sanitising, capping or bounding them, so hostile group names could enlarge the output beyond the API size limit. Real values are `clips`, `replay` and `film`.
+  - An id that is an object rather than a string or number is returned as `"[object Object]"`. Real ids are strings or numbers.
+  - `search` validates the query after trimming, so a query with leading or trailing tab or newline characters is accepted by the tool but rejected by a client that checks the raw string against the schema pattern.
+  - `get_scoreboard` skips events without a usable game id and does not say how many it skipped; `game_count` counts usable events only.
 
 ## QA
 
-No independent QA yet; both tools are `draft`. Local checks: fixture tests in `tests/espn-tools.test.mjs` against fabricated data, and live signed-out invocations on 2026-09-29 from the homepage and an article page of a fresh Kernel browser (NFL default and explicit week, NBA default and no-games date, NHL dated with truncation, a nonexistent NFL week, search with results, no results and filtered types, and malformed inputs).
+Independent QA by Hypeship agent `agt_38231d3040927db065c6` (claude-bridge/claude-sonnet-5-5, thinking xhigh), three rounds on 2026-09-29:
 
-Sessions (ephemeral): the builder's temporary browser was deleted after use.
+1. Head `8aa4545`: FAIL. One major defect (`search` returned `no_results` for an HTTP 200 `errors` body) and two minor ones (uncapped fields, untested input schemas). Fixed in `af7438f`.
+2. Head `af7438f`: PASS with five minor items (an overclaim of control-character removal, README wording, a stale PR body, uncovered caps, unknown 200 bodies giving `no_results`). Fixed in `4b54244`.
+3. Head `4b54244` (`get_scoreboard.js` git blob `718c465`, `search.js` git blob `7957086`): PASS, with four minor hostile-content items recorded under Known limitations. The tool files were not changed after this sign-off; later commits only add tests, README text and registry status.
+
+Final-round coverage, signed out, 2026-09-29:
+
+- Kernel runtime, fresh browser: whole namespace registered together; no native tools on any page checked; both tools invoked from the homepage, scoreboard, game, article, search and 404 pages; 80 outputs validated against `outputSchema`; scoreboard results compared with the page's own games (NFL week 3 with 16 games, NHL default with 5, NBA 2026-10-08 with 6) with no mismatches; truncation and `no_games`; 48 search queries including ESPN's failure modes and non-Latin queries; 79 malformed inputs with no ESPN request; 62 stubbed failure and layout shapes; re-registration after navigation with the old `tool_ref` rejected; `wrong_page` on `fantasy.espn.com` and `secure.espn.com`; largest live output 8.66 KiB; cookie and storage names unchanged; tool requests limited to the documented endpoints.
+- Local Chrome extension (Chromium 153, throwaway profile, tools installed pinned to `4b54244`): 24 live invocations and 11 stubbed shapes matched the Kernel runtime; the extension listed no tools on `fantasy.espn.com` or `secure.espn.com`. Not tested: `xwebmcp invoke <tool_ref>` on an extension-opened tab, and `www.espn.co.uk` in the extension.
+- Mutation testing: 100 scratch mutants, 91 killed by the tests at that head; the 9 survivors were range-boundary control characters, which the last test in `tests/espn-tools.test.mjs` now pins (behaviour was already correct).
+- Not verified: games in progress, real HTTP 403/429 or challenge pages, postponed and overtime games, and any signed-in behaviour.
+
+Sessions (ephemeral): the builder's and the reviewer's temporary browsers were created and deleted by each agent.

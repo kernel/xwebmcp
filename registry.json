@@ -139,9 +139,12 @@
       "url_patterns": [
         "https://www.espn.com/*"
       ],
-      "status": "draft",
-      "last_verified": null,
-      "notes": "NFL, NBA and NHL games for one date (NBA, NHL) or one week (NFL): start time, state, score, record, broadcasters, venue; echoes the effective date or week and reports no_games separately from errors. Public, read-only, no navigation. Other leagues unsupported; live-game shape unverified."
+      "status": "verified",
+      "last_verified": "2026-09-29",
+      "notes": "NFL, NBA and NHL games for one date (NBA, NHL) or one week (NFL): start time, state, score, record, broadcasters, venue; echoes the effective date or week and reports no_games separately from errors. Public, read-only, no navigation. Other leagues unsupported. Live-verified signed out on the Kernel runtime and in a local Chrome extension (2026-09-29); games in progress and real 403/429 responses untested.",
+      "provenance": {
+        "qa_agent": "agt_38231d3040927db065c6"
+      }
     },
     {
       "domain": "espn.com",
@@ -152,9 +155,12 @@
       "url_patterns": [
         "https://www.espn.com/*"
       ],
-      "status": "draft",
-      "last_verified": null,
-      "notes": "ESPN site search for teams, players, articles and upcoming Watch ESPN events, capped per type, with ESPN page URLs and uids; video clips, replays and films are omitted. Public, read-only, no navigation."
+      "status": "verified",
+      "last_verified": "2026-09-29",
+      "notes": "ESPN site search for teams, players, articles and upcoming Watch ESPN events, capped per type, with ESPN page URLs and uids; clips, replays and films omitted; ESPN error bodies become typed errors or warnings, never no_results. Public, read-only, no navigation. Live-verified signed out on the Kernel runtime and in a local Chrome extension (2026-09-29); real 403/429 responses untested.",
+      "provenance": {
+        "qa_agent": "agt_38231d3040927db065c6"
+      }
     },
     {
       "domain": "etsy.com",
