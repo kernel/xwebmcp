@@ -132,8 +132,9 @@
       const script = doc.querySelector('script[data-target="react-app.embeddedData"]');
       if (!script && /This repository is empty/.test(doc.body.textContent)) {
         const name = meta("octolytics-dimension-repository_nwo");
-        if (!/^[A-Za-z0-9._-]+\/[A-Za-z0-9._-]+$/.test(name || "")) throw changed();
-        return { status: "empty_repository", full_name: name, url: "https://github.com/" + name, redirected_from: name.toLowerCase() === requested.toLowerCase() ? null : requested, visibility: meta("octolytics-dimension-repository_public") === "true" ? "public" : "private" };
+        const isPublic = meta("octolytics-dimension-repository_public");
+        if (!/^[A-Za-z0-9._-]+\/[A-Za-z0-9._-]+$/.test(name || "") || (isPublic !== "true" && isPublic !== "false")) throw changed();
+        return { status: "empty_repository", full_name: name, url: "https://github.com/" + name, redirected_from: name.toLowerCase() === requested.toLowerCase() ? null : requested, visibility: isPublic === "true" ? "public" : "private" };
       }
       let payload;
       try { payload = JSON.parse(script.textContent).payload; } catch { throw changed(); }

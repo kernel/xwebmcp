@@ -49,7 +49,7 @@ function run(name, input, { route, origin = ORIGIN, user = "" } = {}) {
   const calls = [];
   const context = {
     location: { origin },
-    document: new Document(`<html><head><meta name="user-login" content="${user}"></head><body></body></html>`),
+    document: new Document(user === null ? "<html><head></head><body></body></html>" : `<html><head><meta name="user-login" content="${user}"></head><body></body></html>`),
     DOMParser,
     URL,
     JSON,
@@ -271,6 +271,8 @@ test("get_repository truncates or omits the README and caps the root listing", a
   const many = await run("get_repository", { owner: "example-org", repo: "widgets" }, { route: repoRoute(repoPayload({ codeViewRepoRoute: { ...repoPayload().codeViewRepoRoute, tree: { items, totalCount: 150 } } })) });
   assert.equal(many.output.root_entries.length, 100);
   assert.equal(many.output.root_entries_total, 150);
+  const capped = await run("get_repository", { owner: "example-org", repo: "widgets" }, { route: repoRoute(repoPayload({ codeViewRepoRoute: { ...repoPayload().codeViewRepoRoute, tree: { items: items.slice(0, 120), totalCount: 400 } } })) });
+  assert.deepEqual([capped.output.root_entries.length, capped.output.root_entries_total], [100, 400]);
   const emoji = repoPayload();
   emoji.codeViewRepoRoute.overview.overviewFiles[0].richText = "<p>ab😀cd</p>";
   const cut = await run("get_repository", { owner: "example-org", repo: "widgets", readme_max_chars: 3 }, { route: repoRoute(emoji) });
@@ -480,7 +482,9 @@ test("a login-like owner name is not mistaken for GitHub's login redirect", asyn
     assert.equal(output.status === "ok" || output.error_kind === "site_changed", true, name);
   }
   for (const url of [`${ORIGIN}/login`, `${ORIGIN}/login/`, `${ORIGIN}/login/oauth?x=1`]) {
-    assert.equal((await run("get_issue", { owner: "a", repo: "r", number: 1 }, { route: () => ({ status: 200, body: "", url }) })).output.error_kind, "login_required", url);
+    for (const [name, input] of [["get_repository", { owner: "a", repo: "r" }], ["get_issue", { owner: "a", repo: "r", number: 1 }], ["get_pull_request", { owner: "a", repo: "r", number: 1 }], ["search_repositories", { query: "x" }], ["search_issues", { query: "x" }]]) {
+      assert.equal((await run(name, input, { route: () => ({ status: 200, body: "", url }) })).output.error_kind, "login_required", `${name} ${url}`);
+    }
   }
 });
 
@@ -489,14 +493,21 @@ test("get_issue refuses in a signed-in tab, before any request, and works signed
   assert.equal(refused.output.error_kind, "signed_in_side_effect");
   assert.equal(refused.calls.length, 0);
   assert.ok(!JSON.stringify(refused.output).includes("carol"));
+  for (const user of [null, " "]) {
+    const unknown = await run("get_issue", { owner: "example-org", repo: "widgets", number: 7 }, { user, route: () => assert.fail("no request expected") });
+    assert.equal(unknown.output.error_kind, "signed_in_side_effect", JSON.stringify(user));
+    assert.equal(unknown.calls.length, 0);
+  }
   const open = await run("get_issue", { owner: "example-org", repo: "widgets", number: 7 }, { user: "", route: issueRoute(issuePayload([])) });
   assert.equal(open.output.status, "ok");
   assert.equal(open.calls.length, 1);
   for (const name of ["get_repository", "get_pull_request", "search_repositories", "search_issues"]) {
     const input = { get_repository: { owner: "a", repo: "r" }, get_pull_request: { owner: "a", repo: "r", number: 1 }, search_repositories: { query: "x" }, search_issues: { query: "x" } }[name];
-    const signedIn = await run(name, input, { user: "carol", route: () => ({ status: 404, body: "" }) });
-    assert.notEqual(signedIn.output.error_kind, "signed_in_side_effect", name);
-    assert.equal(signedIn.calls.length, 1, name);
+    for (const user of ["carol", null]) {
+      const signedIn = await run(name, input, { user, route: () => ({ status: 404, body: "" }) });
+      assert.notEqual(signedIn.output.error_kind, "signed_in_side_effect", name);
+      assert.equal(signedIn.calls.length, 1, name);
+    }
   }
 });
 
@@ -510,6 +521,20 @@ test("get_repository tells repository pages, empty repositories and other pages 
   assert.deepEqual([privateEmpty.output.redirected_from, privateEmpty.output.visibility], ["old-org/widgets", "private"]);
   const noMarker = await run("get_repository", { owner: "example-org", repo: "widgets" }, { route: () => ({ status: 200, body: `<html><head><meta name="route-pattern" content="/:user_id/:repository"></head><body>changed layout</body></html>` }) });
   assert.equal(noMarker.output.error_kind, "site_changed");
+  for (const value of ["", "maybe"]) {
+    const badVisibility = await run("get_repository", { owner: "example-org", repo: "widgets" }, { route: () => ({ status: 200, body: emptyPage.replace('content="true"', `content="${value}"`) }) });
+    assert.equal(badVisibility.output.error_kind, "site_changed", JSON.stringify(value));
+  }
+  const noVisibilityMeta = await run("get_repository", { owner: "example-org", repo: "widgets" }, { route: () => ({ status: 200, body: emptyPage.replace(/<meta name="octolytics-dimension-repository_public"[^>]*>/, "") }) });
+  assert.equal(noVisibilityMeta.output.error_kind, "site_changed");
+  const phrase = repoPayload();
+  phrase.codeViewRepoRoute.overview.overviewFiles[0].richText = "<p>This repository is empty of bugs.</p><p>This repository is empty</p>";
+  const inReadme = await run("get_repository", { owner: "example-org", repo: "widgets" }, { route: repoRoute(phrase) });
+  assert.equal(inReadme.output.status, "ok");
+  for (const pattern of ["/:user_id", "/:user_id/:repository/foo", "/:user_id/:repository(.:format)", ""]) {
+    const page404 = await run("get_repository", { owner: "example-org", repo: "widgets" }, { route: () => ({ status: 200, body: page(repoPayload(), "", `<meta name="route-pattern" content="${pattern}">`) }) });
+    assert.equal(page404.output.error_kind, "not_found", JSON.stringify(pattern));
+  }
   const noName = await run("get_repository", { owner: "example-org", repo: "widgets" }, { route: () => ({ status: 200, body: emptyPage.replace(/<meta name="octolytics-dimension-repository_nwo"[^>]*>/, "") }) });
   assert.equal(noName.output.error_kind, "site_changed");
 });
@@ -544,7 +569,8 @@ test("get_pull_request does not report a lock state the page data cannot confirm
 
 test("sort must be a string and query length counts characters like the schema", async () => {
   for (const name of ["search_repositories", "search_issues"]) {
-    for (const sort of [["stars"], { toString: () => "stars" }, 1, null]) {
+    const valid = name === "search_repositories" ? "stars" : "comments";
+    for (const sort of [[valid], { toString: () => valid }, 1, null]) {
       const { output, calls } = await run(name, { query: "cli", sort }, { route: () => assert.fail("no request expected") });
       assert.equal(output.error_kind, "invalid_input", `${name} ${JSON.stringify(sort)}`);
       assert.equal(calls.length, 0);

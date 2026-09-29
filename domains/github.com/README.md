@@ -36,8 +36,8 @@ await webmcp.invokeTool(await ref("get_pull_request"), { owner: "<owner>", repo:
 
 The tools are listed while the tab is on any `https://github.com/*` page (see URL patterns);
 they read the site with relative same-origin requests, so the starting page does not matter.
-Live timings on 2026-09-29: about 0.1 to 1 s per call, up to about 6 s for a pull request page with a very large conversation, and one search answered HTTP 502 after
-about 9 s; `timeoutSec: 60` is plenty.
+Live timings on 2026-09-29: about 0.1 to 1.2 s for searches and `get_repository`, 1 to 2 s for `get_issue` and `get_pull_request`, up to about 6 s for a pull request page with a
+very large conversation, and one search answered HTTP 502 after about 9 s; `timeoutSec: 60` is plenty.
 
 How each tool reaches the site. All five are `kind: "page"`: none navigates, and each result is
 computed and returned from the registering document before anything else happens, so there is
@@ -95,16 +95,16 @@ empty result list; query problems GitHub reports come back in `warnings`.
 
 ## Site quirks
 
-- **Rate limiting.** Observed 2026-09-29: about 14 search requests in a few seconds from one browser
-  session returned HTTP 429 (tools report `throttled`). Spacing calls by about 2.5 s avoided it in the author's run, but an
-  independent run got one 429 on its 9th search at 2.7 s spacing from a shared egress address, so spacing lowers the risk and
-  does not remove it. There is no retry inside the tools; callers should back off for a minute or more.
+- **Rate limiting.** Observed 2026-09-29: about 14 search requests in a few seconds from one browser session returned HTTP 429
+  (tools report `throttled`). Slower calls did not reliably avoid it: independent runs from a shared egress address got 429s at 2.7 s
+  spacing and again at 5.5 s spacing after about 35 requests from one browser. The tools do not retry; callers should pace calls and back off for a minute or more.
 - **Preload request on issue pages.** An issue page answers with `Link: <…/issues/<n>/secondary_view?markAsRead=true&queryId=…>; rel=preload; as=fetch`.
-  Chrome acts on that hint for any fetch of the page, and a CDP network trace showed a second, unrequested GET to `secondary_view?markAsRead=true`
-  for `fetch()` and for `XMLHttpRequest`, with `keepalive`, with different `Accept` headers and when the response was aborted after its headers. Signed in, that request
+  Chrome acts on that hint whenever the page is fetched, and CDP network traces showed a second, unrequested GET to `secondary_view?markAsRead=true`
+  for `fetch()` and `XMLHttpRequest`, with `keepalive`, `credentials: "omit"`, `cache: "no-store"`, `HEAD`, several `Accept` values that return the page, and when the response was aborted after its headers.
+  `Accept` values that do not return the page (`application/json`, `text/plain` and similar) answer HTTP 406 with no `Link` header and no data. Signed in, that request
   may mark the account's notification for the issue as read (untested: the only account used had no notifications, and creating one would need a state change).
-  A read-only tool must not do that, so `get_issue` refuses in a signed-in tab with `signed_in_side_effect` before any request, and works in a signed-out tab, where
-  there is no account to change. Pull request and repository pages carry no such header (checked signed out and signed in) and make one request.
+  A read-only tool must not do that, so `get_issue` refuses with `signed_in_side_effect` before any request unless the page positively says the tab is signed out (its
+  `meta[name="user-login"]` tag is present and empty); a missing tag, as on a text or feed document, is treated as unknown. In a signed-out tab there is no account to change. Pull request and repository pages carry no such header (checked signed out and signed in) and make one request.
 - **Search result state.** Search results carry `state` (open, closed, merged, draft). For the handful of pull requests compared
   on 2026-09-29 (draft, merged, closed and open) it matched the pull request's own page; index lag was not observed but is not
   ruled out, and `get_issue` and `get_pull_request` read the item's page.
@@ -123,7 +123,8 @@ empty result list; query problems GitHub reports come back in `warnings`.
 - **Pull request pages.** They are large (over 1 MB with many review threads) and their conversation is server-rendered HTML;
   only the description and the labels sidebar are read from it. The page's header badges are not used for the state because
   a pull request page can show several badges; the embedded record's `state` (OPEN, DRAFT, CLOSED, MERGED) is.
-- **Redirects.** A renamed or transferred repository is followed and reported in `redirected_from`. `/orgs/<name>` style
+- **Redirects.** A renamed or transferred repository is followed and reported in `redirected_from`. GitHub answered issue and pull request URLs of a renamed repository
+  with HTTP 404 until the repository page itself had been requested, so `get_issue` and `get_pull_request` can report `not_found` for a renamed repository where `get_repository` succeeds. `/orgs/<name>` style
   paths redirect away from a repository page and are reported as `not_found`. `/issues/<n>` for a pull request redirects to `/pull/<n>` and the reverse.
 - **Content Security Policy.** github.com's `script-src` has no `unsafe-eval`, so `new Function` inside the page is blocked. The Kernel
   runtime nevertheless registered and invoked these page tools on 2026-09-29. The extension path for CSP-blocked pages is described
@@ -162,6 +163,8 @@ All five tools are `draft`: independent QA has not signed them off.
 - **Labels on pull requests** come from the page's labels sidebar (verified on pull requests with and without labels); if the sidebar is
   missing `labels` is null.
 - **Repository facts not read:** languages, contributors, latest release, and the account-specific star/watch/fork state.
+- **Empty repositories are read for a signed-out visitor only.** `empty_repository` relies on the text "This repository is empty"; what a signed-in owner's view of an empty repository shows was not
+  tested and may be reported as `site_changed`.
 - **Repository flags.** `is_archived`, `is_fork`, `is_mirror` and `is_template` are read from the repository page's sidebar data; the independent review exercised
   them live on archived, mirror, fork and template repositories. Empty repositories are the separate `empty_repository` status.
 - **Search:** repositories and issues only; code, users, commits, topics and discussions search are not exposed. Only the first
