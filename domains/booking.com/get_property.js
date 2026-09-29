@@ -21,6 +21,13 @@
     },
     description: "What the property page says it priced, read from the page, not echoed from the request."
   };
+  const ratesLeftOutSchema = {
+    type: "object", additionalProperties: false, required: ["party_too_large", "unreadable"],
+    properties: {
+      party_too_large: { type: "integer", minimum: 0, description: "Rate rows the page limits to fewer guests than the party (for example per-bed rates); their prices do not cover everyone. The site may allow selecting several such units, which this tool does not price." },
+      unreadable: { type: "integer", minimum: 0, description: "Rate rows in a room, or with a price, the tool could not read." }
+    }
+  };
   const propertySchema = {
     type: "object", additionalProperties: false, required: ["property_id", "name", "property_url", "address", "review", "review_categories", "popular_facilities", "check_in_time", "check_out_time"],
     properties: {
@@ -44,7 +51,7 @@
     match: { url_patterns: ["https://www.booking.com/*"] },
     tool: {
       name: "get_property",
-      description: "Read one Booking.com property page for given dates and party: name, address, review score, popular facilities, check-in and check-out times, and every room with each rate the site lists for the whole party (displayed price for the whole stay, cancellation, prepayment and meal terms, taxes and fees excluded from the price). Get property_url from search_stays. Requires explicit check_in, check_out, adults and currency, for one room. currency must be the currency the site is already showing (its header currency picker): the tool never changes the site's currency and fails with currency_mismatch, naming what the site shows, when they differ. The output echoes the effective dates, guests and currency the page applied and a price_basis, and a page that did not apply them as asked is an error. Rates the page limits to fewer guests than the party are left out, because their prices do not cover the whole party (rates_left_out counts them). Read-only: it never selects a room or rate, saves to a list, reserves or opens checkout, and changes no browser or account setting; Booking.com records the page view. Listing a rate is not a hold or a guarantee, and prices can differ by session (member discounts when signed in). Run it on any https://www.booking.com page in an English-language session and do not navigate the tab while it runs. Dates the property cannot offer give status no_availability, and so can dates beyond the site's bookable window.",
+      description: "Read one Booking.com property page for given dates and party: name, address, review score, popular facilities, check-in and check-out times, and every room with each rate the site lists for the whole party (displayed price for the whole stay, cancellation, prepayment and meal terms, taxes and fees excluded from the price). Get property_url from search_stays. Requires explicit check_in, check_out, adults and currency, for one room. currency must be the currency the site is already showing (its header currency picker): the tool never changes the site's currency and fails with currency_mismatch, naming what the site shows, when they differ. The output echoes the effective dates, guests and currency the page applied and a price_basis, and a page that did not apply them as asked is an error. Rates the page limits to fewer guests than the party are left out, because their prices do not cover the whole party (rates_left_out counts them); when every rate is like that the status is no_rate_for_party. A rate marked as a members-only price needs signing in: price.total then includes a member discount (member_discount) that a signed-out visitor is not given. Read-only: it never selects a room or rate, saves to a list, reserves or opens checkout, and changes no browser or account setting; Booking.com records the page view. Listing a rate is not a hold or a guarantee, and prices can differ by session (member discounts when signed in). Run it on any https://www.booking.com page in an English-language session and do not navigate the tab while it runs. Dates the property cannot offer give status no_availability, and so can dates beyond the site's bookable window; for such dates the page may also apply the party the session last searched, which is reported as search_not_applied.",
       inputSchema: {
         type: "object", additionalProperties: false,
         required: ["property_url", "check_in", "check_out", "adults", "currency"],
@@ -81,13 +88,7 @@
               rates_total: { type: "integer", minimum: 1, description: "Readable rates the page lists for this party, before max_rates." },
               rates_returned: { type: "integer", minimum: 1 },
               truncated: { type: "boolean", description: "True when more rates existed than max_rates." },
-              rates_left_out: {
-                type: "object", additionalProperties: false, required: ["party_too_large", "unreadable"],
-                properties: {
-                  party_too_large: { type: "integer", minimum: 0, description: "Rate rows the page limits to fewer guests than the party; their prices do not cover everyone." },
-                  unreadable: { type: "integer", minimum: 0, description: "Rate rows in a room the tool could not read." }
-                }
-              },
+              rates_left_out: ratesLeftOutSchema,
               warnings: { type: "array", items: { type: "string" } },
               rooms: {
                 type: "array", minItems: 1,
@@ -104,7 +105,7 @@
                       type: "array", minItems: 1,
                       items: {
                         type: "object", additionalProperties: false,
-                        required: ["max_guests", "max_adults", "price", "cancellation", "free_cancellation", "non_refundable", "prepayment", "meal_plan", "member_discount_applied"],
+                        required: ["max_guests", "max_adults", "price", "cancellation", "free_cancellation", "non_refundable", "prepayment", "meal_plan", "member_discount"],
                         properties: {
                           max_guests: { type: ["integer", "null"], description: "The page's 'Max. people' for this rate (shown when the search has no children)." },
                           max_adults: { type: ["integer", "null"], description: "The page's 'Max adults' for this rate (shown when the search has children)." },
@@ -124,7 +125,14 @@
                           non_refundable: { type: "boolean" },
                           prepayment: { type: ["string", "null"], description: "For example 'Pay the property before arrival'." },
                           meal_plan: { type: ["string", "null"], description: "The page's meal line, for example 'Wonderful breakfast included' or 'Wonderful breakfast $16'." },
-                          member_discount_applied: { type: "boolean", description: "True when the rate's price breakdown includes a member (Genius) discount." }
+                          member_discount: {
+                            type: ["object", "null"], additionalProperties: false, required: ["amount", "requires_sign_in"],
+                            properties: {
+                              amount: { type: ["number", "null"], description: "The member (Genius) discount inside price.total, in effective.currency." },
+                              requires_sign_in: { type: "boolean", description: "True when the page marks the price 'Sign in for this members-only price': price.total includes a discount a signed-out visitor is not given, so the price without it is higher by about amount." }
+                            },
+                            description: "Null when the rate's price has no member discount."
+                          }
                         }
                       }
                     }
@@ -139,6 +147,14 @@
             properties: {
               status: { const: "no_availability" }, observed_at: { type: "string" }, query: querySchema, effective: effectiveSchema, property: propertySchema,
               message: { type: "string" }
+            }
+          },
+          {
+            type: "object", additionalProperties: false,
+            required: ["status", "observed_at", "query", "effective", "property", "rates_left_out", "message"],
+            properties: {
+              status: { const: "no_rate_for_party" }, observed_at: { type: "string" }, query: querySchema, effective: effectiveSchema, property: propertySchema,
+              rates_left_out: ratesLeftOutSchema, message: { type: "string" }
             }
           },
           {
@@ -210,7 +226,7 @@
           return fail("site_error", "Booking.com returned HTTP " + res.status + ".");
         }
         const final = new URL(res.url);
-        if (/\/(sign-?in|login|consent)\b/i.test(final.pathname)) return fail("gated", "Booking.com asked for sign-in or consent (" + final.pathname + ") instead of showing the property.");
+        if (final.pathname !== propertyPath && /\/(sign-?in|login|consent)\b/i.test(final.pathname)) return fail("gated", "Booking.com asked for sign-in or consent (" + final.pathname + ") instead of showing the property.");
         if (final.pathname !== propertyPath) return fail("search_not_accepted", "Booking.com redirected the property page to " + final.pathname + ". It does that for dates in the past or beyond its bookable window (observed to end about 16 months ahead), and it may also do it when it treats the request as automated; the tool cannot tell which applied.");
         const doc = new DOMParser().parseFromString(html, "text/html");
 
@@ -271,11 +287,11 @@
         if (ages.length && !agesConfirmed) warnings.push("The page did not list the child ages, so the ages sent could not be confirmed.");
         const party = query.adults + ages.length;
         const rooms = [];
-        let room = null, read = 0, tooLarge = 0, unreadableRows = 0, unreadablePrices = 0, noTaxes = 0;
+        let room = null, read = 0, tooLarge = 0, unreadableRows = 0, unreadablePrices = 0, noTaxes = 0, memberOnly = 0;
         for (const row of rowEls) {
           const head = row.querySelector("th.hprt-table-cell-roomtype");
           if (head) {
-            const link = head.querySelector("a[data-room-id]") || [...head.querySelectorAll("a")].find(a => text(a));
+            const link = head.querySelector("a[data-room-id], a.hprt-roomtype-link");
             room = null;
             if (link && text(link)) {
               const items = [...head.querySelectorAll("[role=\"listitem\"]")].map(text).filter(Boolean);
@@ -294,7 +310,7 @@
           const occupancyText = text(row.querySelector(".hprt-table-cell-occupancy"));
           const maxGuests = /Max\.? people:\s*(\d+)/i.exec(occupancyText);
           const maxAdults = /Max\.? adults?:\s*(\d+)/i.exec(occupancyText);
-          if ((maxGuests && Number(maxGuests[1]) < party) || (maxAdults && Number(maxAdults[1]) < query.adults)) { tooLarge++; continue; }
+          if ((maxGuests && Number(maxGuests[1]) < party) || (maxAdults && Number(maxAdults[1]) < query.adults) || (/Only for 1 guest/i.test(occupancyText) && party > 1)) { tooLarge++; continue; }
           const block = row.querySelector(".hprt-price-block");
           const totalEl = block && block.querySelector(".bui-price-display__value");
           const totalText = text(totalEl && totalEl.querySelector("span") ? totalEl.querySelector("span") : totalEl);
@@ -303,9 +319,12 @@
           if (read > maxRates) continue;
           const breakdown = [...block.querySelectorAll(".prco-pop-breakdown-element")].map(text).filter(Boolean);
           const before = breakdown.indexOf("Total before taxes");
+          const memberAt = breakdown.indexOf("Genius discount");
+          const requiresSignIn = !!block.querySelector(".prd-genius-preview-rate-inline") || /members-only price/i.test(text(block));
+          if (memberAt >= 0 && requiresSignIn) memberOnly++;
           const excludedEl = row.querySelector(".js-us-excluded-fees");
           const underEl = row.querySelector(".prd-taxes-and-fees-under-price");
-          const excluded = excludedEl ? text(excludedEl).replace(/^Excluded:\s*/i, "") : underEl ? text(underEl).replace(/^\+\s*/, "") : "";
+          const excluded = excludedEl ? text(excludedEl).replace(/^Excluded:\s*/i, "") : underEl && /^\+/.test(text(underEl)) ? text(underEl).replace(/^\+\s*/, "") : "";
           if (!excluded) noTaxes++;
           const conditions = row.querySelector(".hprt-table-cell-conditions");
           const policyTitle = id => text(conditions && conditions.querySelector("[data-testid=\"" + id + "\"] [data-testid=\"policy-title\"]")) || null;
@@ -326,17 +345,18 @@
             cancellation, free_cancellation: /free cancellation/i.test(cancellation || ""), non_refundable: /non-refundable/i.test(cancellation || ""),
             prepayment: policyTitle("prepayment-policy"),
             meal_plan: meal || null,
-            member_discount_applied: /Genius discount/i.test(text(block))
+            member_discount: memberAt >= 0 || requiresSignIn ? { amount: memberAt >= 0 ? amount(breakdown[memberAt + 1]) : null, requires_sign_in: requiresSignIn } : null
           });
         }
-        if (tooLarge) warnings.push(tooLarge + " rates that the page limits to fewer guests than this party were left out, because their prices do not cover everyone.");
+        if (tooLarge) warnings.push(tooLarge + " rates that the page limits to fewer guests than this party were left out, because their prices do not cover everyone (several units of such a rate may be selectable on the site; this tool does not price that).");
         if (unreadableRows) warnings.push(unreadableRows + " rate rows in a room or with a price the tool could not read were left out.");
+        if (memberOnly) warnings.push(memberOnly + " rates show a members-only price that needs signing in; for those, price.total includes the member discount, so the price without signing in is higher by member_discount.amount.");
         if (noTaxes) warnings.push(noTaxes + " rates listed no excluded taxes and fees in a form this tool reads; their displayed price may exclude taxes and fees.");
         if (unreadablePrices) warnings.push(unreadablePrices + " rates showed a price that could not be read as a number; see total_text.");
         const kept = rooms.filter(r => r.rates.length);
         const listed = kept.reduce((n, r) => n + r.rates.length, 0);
         if (!kept.length) {
-          if (tooLarge && !unreadableRows) return { status: "no_availability", observed_at: observedAt, query, effective, property, message: "Booking.com lists rates at this property only for fewer guests than this party (" + tooLarge + " rates left out)." };
+          if (tooLarge && !unreadableRows) return { status: "no_rate_for_party", observed_at: observedAt, query, effective, property, rates_left_out: { party_too_large: tooLarge, unreadable: 0 }, message: "Every rate the page lists (" + tooLarge + ") is limited to fewer guests than this party, for example a per-bed rate. The site may let you select several units, which this tool does not price; that is not the same as no availability." };
           return fail("site_changed", "The property page has a rate table but no readable rate for this party; Booking.com's markup may have changed.");
         }
         return {

@@ -98,7 +98,7 @@ const home = ({ currency = "USD" } = {}) => shell({ body: "<h1>Find your next st
 
 const PROPERTY_LD = { "@context": "http://schema.org", "@type": "Hotel", name: "Harbor View Studios", url: "https://www.booking.com/hotel/xx/harbor-view-studios.html", address: { "@type": "PostalAddress", streetAddress: "1 Example Quay, Old Quarter, 1000-000 Example Harbor, Examplia", addressCountry: "Examplia" }, aggregateRating: { "@type": "AggregateRating", reviewCount: 1233, bestRating: 10, ratingValue: 8.4 } };
 
-function rateRow({ head = null, blockId = "1001_2001_2_2_0", guests = "Max. people: 2", total = "$316", original = "$352", perNight = "$158", before = "$316.46", excluded = "6 % VAT, € 4 City tax per person per night", cancellation = "Non-refundable", meal = "Wonderful breakfast $16", prepay = "Pay the property before arrival", genius = false } = {}) {
+function rateRow({ head = null, blockId = "1001_2001_2_2_0", guests = "Max. people: 2", total = "$316", original = "$352", perNight = "$158", before = "$316.46", excluded = "6 % VAT, € 4 City tax per person per night", cancellation = "Non-refundable", meal = "Wonderful breakfast $16", prepay = "Pay the property before arrival", genius = false, preview = false } = {}) {
   const th = head ? `<th class="hprt-table-cell -first hprt-table-cell-roomtype" rowspan="6"><div data-et-view=""><a></a><a data-room-id="${head.id}" id="room_type_id_${head.id}"><span> ${head.name} </span></a></div>` +
     (head.left ? `<div><span><div><span><span> We have ${head.left} left </span></span></div></span></div>` : "") +
     `<div><ul><li><span> ${head.beds} <i></i></span></li></ul></div><div><div role="list"><div role="listitem"><span>Entire studio</span></div><div role="listitem"><span>441 feet²</span></div><div role="listitem"><span>Private bathroom</span></div></div></div></th>` : "";
@@ -106,7 +106,9 @@ function rateRow({ head = null, blockId = "1001_2001_2_2_0", guests = "Max. peop
   const strike = original ? `<div class="bui-f-color-destructive js-strikethrough-price bui-price-display__original">${original}</div>` : "";
   const breakdown = `<div id="price-area-block-id-1"><div><div><div><div class="bui-f-font-body prco-pop-breakdown-element">Original price</div></div><div><div class="bui-f-font-body prco-pop-breakdown-element prco-text-nowrap-helper">$351.62</div></div></div>` +
     (genius ? `<div><div><div class="prco-pop-breakdown-element"><div>Genius discount</div></div></div><div><div class="prco-pop-breakdown-element">- $35.16</div></div></div>` : "") +
-    `<div class="prco-pop-breakdown-element"><hr></div><div><div><div class="bui-f-font-strong prco-pop-breakdown-element">Total before taxes</div></div><div><div class="bui-f-font-strong prco-pop-breakdown-element prco-text-nowrap-helper">${before}</div></div></div><div class="prco-pop-breakdown-element"><hr></div><div class="bui-f-font-caption bui-f-color-grayscale"><div>${perNight} is the average price per night. This excludes taxes and fees.</div></div></div></div>`;
+    `<div class="prco-pop-breakdown-element"><hr></div><div><div><div class="bui-f-font-strong prco-pop-breakdown-element">Total before taxes</div></div><div><div class="bui-f-font-strong prco-pop-breakdown-element prco-text-nowrap-helper">${before}</div></div></div>` +
+    (preview ? `<div><div><div class="prd-genius-preview-rate-inline bui-f-font-caption">Sign in for this members-only price</div></div></div>` : "") +
+    `<div class="prco-pop-breakdown-element"><hr></div><div class="bui-f-font-caption bui-f-color-grayscale"><div>${perNight} is the average price per night. This excludes taxes and fees.</div></div></div></div>`;
   const price = `<td class="hp-price-left-align hprt-table-cell hprt-table-cell-price"><div class="hprt-price-block"><div class="prco-wrapper bui-price-display"><div><div><span class="prco-f-font-caption js-average-per-night-price">${perNight}</span><span class="prco-f-font-caption">per night</span></div><div class="prco-inline-block-maker-helper">${strike}<div class="bui-price-display__value prco-text-nowrap-helper prco-f-font-heading"><span>${total}</span><span class="prco-hp-rt-icon-pos-fix"><svg><path></path></svg></span></div><span>Original price ${original} Current price ${total}</span></div></div>${breakdown}<div><div class="prco-inline-block-maker-helper bui-price-display__label">2 nights</div></div></div>` +
     (excluded ? `<div class="hprt-roomtype-block"><div><div class="js-us-excluded-fees"><span> Excluded: </span> ${excluded}</div></div></div>` : "") + `</div></td>`;
   const policy = (id, title) => `<div data-testid="${id}"><div><span data-testid="policy-icon" role="presentation"></span></div><div><div><div><div data-testid="policy-title"><span><strong>${title}</strong></span></div></div></div></div></div>`;
@@ -286,7 +288,7 @@ test("search_stays returns the first page with effective dates, guests, currency
     rank: 1, name: "Harbor View Studios", property_url: "https://www.booking.com/hotel/xx/harbor-view-studios.html", area: "Old Quarter, Example Harbor", distance_from_center: "0.6 miles from downtown",
     star_rating: 4, review: { score: 8.4, label: "Very Good", count: 1234 },
     unit: { name: "Superior Studio", details: "Entire studio • 1 bathroom • 323 ft²", beds: "1 queen bed", free_cancellation: true, breakfast_included: false, units_left: 2 },
-    price: { total: 137, original_total: null, per_night_average: 69, total_text: "$137", additional_charges_may_apply: false }, deal_labels: [], preferred_plus: true
+    price: { total: 137, original_total: null, per_night_average: 69, total_text: "$137", additional_charges_may_apply: false, members_only: false }, deal_labels: [], preferred_plus: true
   });
   assert.equal(b.price.total, 337);
   assert.equal(b.price.original_total, 886);
@@ -310,6 +312,18 @@ test("search_stays warns about a price it cannot read instead of guessing", asyn
   assert.equal(output.properties[0].price.total, null);
   assert.equal(output.properties[0].price.total_text, "1'234 CHF");
   assert.match(output.warnings.join(" "), /1 returned properties showed no readable price/);
+});
+
+test("search_stays flags a members-only price and warns", async () => {
+  const prompt = "<div data-testid=\"genius-rate-sharing-sign-in-prompt\">Sign in for this members-only price</div>";
+  const cards = [card({ name: "Member Deal Inn", slug: "member-deal-inn", price: { perNight: "$52", total: "$124", original: "$135", extra: prompt } }), card({ name: "Plain Inn", slug: "plain-inn" })];
+  const { output } = await run("search_stays", SEARCH, { routes: [searchRoute({ body: searchPage({ cards }) })] });
+  assert.equal(output.effective.signed_in, false);
+  assert.equal(output.properties[0].price.members_only, true);
+  assert.equal(output.properties[0].price.total, 124);
+  assert.equal(output.properties[0].price.original_total, 135);
+  assert.equal(output.properties[1].price.members_only, false);
+  assert.match(output.warnings.join(" "), /1 returned properties show a members-only price that needs signing in/);
 });
 
 test("search_stays sends the exact search and builds a tracking-free results_url", async () => {
@@ -525,7 +539,7 @@ test("get_property reads rooms, rates, cancellation, meal, taxes and the page's 
   assert.deepEqual(studio.rates[0], {
     max_guests: 2, max_adults: null,
     price: { total: 316, original_total: 352, per_night_average: 158, total_before_taxes: 316.46, taxes_and_fees_excluded: "6 % VAT, € 4 City tax per person per night", total_text: "$316" },
-    cancellation: "Non-refundable", free_cancellation: false, non_refundable: true, prepayment: "Pay the property before arrival", meal_plan: "Wonderful breakfast $16", member_discount_applied: false
+    cancellation: "Non-refundable", free_cancellation: false, non_refundable: true, prepayment: "Pay the property before arrival", meal_plan: "Wonderful breakfast $16", member_discount: null
   });
   assert.equal(studio.rates[1].free_cancellation, true);
   assert.equal(studio.rates[1].cancellation, "Free cancellation before October 27, 2026");
@@ -558,8 +572,17 @@ test("get_property marks member discounts and warns when signed in", async () =>
   const rows = [rateRow({ head: ROOM_A, genius: true })];
   const { output } = await run("get_property", PROPERTY, { routes: [propertyRoute({ body: propertyPage({ rows, signedIn: true }) })] });
   assert.equal(output.effective.signed_in, true);
-  assert.equal(output.rooms[0].rates[0].member_discount_applied, true);
+  assert.deepEqual(output.rooms[0].rates[0].member_discount, { amount: 35.16, requires_sign_in: false });
   assert.match(output.warnings.join(" "), /signed in/);
+});
+
+test("get_property flags a members-only price that a signed-out visitor does not get", async () => {
+  const rows = [rateRow({ head: ROOM_A, genius: true, preview: true }), rateRow({ blockId: "1001_2002_2_2_0" })];
+  const { output } = await run("get_property", PROPERTY, { routes: [propertyRoute({ body: propertyPage({ rows }) })] });
+  assert.equal(output.effective.signed_in, false);
+  assert.deepEqual(output.rooms[0].rates[0].member_discount, { amount: 35.16, requires_sign_in: true });
+  assert.equal(output.rooms[0].rates[1].member_discount, null);
+  assert.match(output.warnings.join(" "), /1 rates show a members-only price that needs signing in/);
 });
 
 test("get_property reports no_availability when the site lists none", async () => {
@@ -608,6 +631,14 @@ test("get_property distinguishes a missing property, blocks, gates and changed m
   }
   const network = await run("get_property", PROPERTY, { routes: [propertyRoute(new TypeError("Failed to fetch"))] });
   assert.equal(network.output.error_kind, "site_error");
+});
+
+test("get_property does not treat a property whose slug starts with 'login' as a gate", async () => {
+  const path = "/hotel/xx/login-inn.html";
+  const { output } = await run("get_property", { ...PROPERTY, property_url: "https://www.booking.com" + path }, { routes: [propertyRoute({ body: propertyPage(), finalPath: path })] });
+  assert.equal(output.status, "ok");
+  const gated = await run("get_property", PROPERTY, { routes: [propertyRoute({ body: "<html></html>", finalPath: "/login", redirected: true })] });
+  assert.equal(gated.output.error_kind, "gated");
 });
 
 test("get_property refuses pages that applied other dates or guests", async () => {
@@ -662,11 +693,23 @@ test("get_property reads 'Max adults' when children are in the party and checks 
   assert.deepEqual(output.rates_left_out, { party_too_large: 1, unreadable: 0 });
 });
 
-test("get_property says so when every rate is for a smaller party", async () => {
+test("get_property says so when every rate is for a smaller party, without calling it no availability", async () => {
   const rows = [rateRow({ head: ROOM_A, guests: "Max. people: 1 Only for 1 guest" })];
   const { output } = await run("get_property", PROPERTY, { routes: [propertyRoute({ body: propertyPage({ rows }) })] });
-  assert.equal(output.status, "no_availability");
-  assert.match(output.message, /only for fewer guests than this party \(1 rates left out\)/);
+  assert.equal(output.status, "no_rate_for_party");
+  assert.deepEqual(output.rates_left_out, { party_too_large: 1, unreadable: 0 });
+  assert.match(output.message, /limited to fewer guests than this party/);
+  assert.match(output.message, /not the same as no availability/);
+  assert.equal(output.property.name, "Harbor View Studios");
+});
+
+test("get_property catches a single-guest cap shown only as 'Only for 1 guest'", async () => {
+  const rows = [rateRow({ head: ROOM_A, guests: "Only for 1 guest" }), rateRow({ head: ROOM_B, blockId: "1002_2001_2_2_0", guests: "Max. people: 2" })];
+  const { output } = await run("get_property", PROPERTY, { routes: [propertyRoute({ body: propertyPage({ rows }) })] });
+  assert.deepEqual(output.rooms.map(r => r.name), ["Executive One-Bedroom Apartment"]);
+  assert.deepEqual(output.rates_left_out, { party_too_large: 1, unreadable: 0 });
+  const solo = await run("get_property", { ...PROPERTY, adults: 1 }, { routes: [propertyRoute({ body: propertyPage({ rows: [rateRow({ head: ROOM_A, guests: "Only for 1 guest" })], occupancy: "1 adult · 0 children · 1 room" }) })] });
+  assert.equal(solo.output.status, "ok", "a single guest fits a single-guest rate");
 });
 
 test("get_property does not silently drop rows it cannot attribute to a room", async () => {
@@ -676,10 +719,14 @@ test("get_property does not silently drop rows it cannot attribute to a room", a
   assert.equal(output.rates_returned, 1);
   assert.deepEqual(output.rates_left_out, { party_too_large: 0, unreadable: 1 });
   assert.match(output.warnings.join(" "), /1 rate rows in a room or with a price the tool could not read were left out/);
-  const headWithoutRoomLink = rateRow({ head: ROOM_A }).replace(/<a data-room-id="1001" id="room_type_id_1001"><span> Studio <\/span><\/a>/, "<a href=\"#\"><span>Studio</span></a>");
-  const fallback = await run("get_property", PROPERTY, { routes: [propertyRoute({ body: propertyPage({ rows: [headWithoutRoomLink] }) })] });
-  assert.equal(fallback.output.rooms[0].name, "Studio");
+  const namedLink = rateRow({ head: ROOM_A }).replace(/<a data-room-id="1001" id="room_type_id_1001"><span> Studio <\/span><\/a>/, "<a class=\"hprt-roomtype-link\" href=\"#\"><span class=\"hprt-roomtype-icon-link\">Deluxe Room</span></a>");
+  const fallback = await run("get_property", PROPERTY, { routes: [propertyRoute({ body: propertyPage({ rows: [namedLink] }) })] });
+  assert.equal(fallback.output.rooms[0].name, "Deluxe Room");
   assert.equal(fallback.output.rooms[0].room_id, null);
+  const otherAnchor = rateRow({ head: ROOM_A }).replace(/<a data-room-id="1001" id="room_type_id_1001"><span> Studio <\/span><\/a>/, "<a href=\"#photos\">See all photos</a>");
+  const none = await run("get_property", PROPERTY, { routes: [propertyRoute({ body: propertyPage({ rows: [otherAnchor, rateRow({ head: ROOM_B, blockId: "1002_2001_2_2_0" })] }) })] });
+  assert.deepEqual(none.output.rooms.map(r => r.name), ["Executive One-Bedroom Apartment"], "an unrelated link must not name a room");
+  assert.deepEqual(none.output.rates_left_out, { party_too_large: 0, unreadable: 1 });
 });
 
 test("get_property warns when a rate lists no excluded taxes, and reads the alternate under-price line", async () => {
@@ -692,6 +739,10 @@ test("get_property warns when a rate lists no excluded taxes, and reads the alte
   r = await run("get_property", PROPERTY, { routes: [propertyRoute({ body: propertyPage({ rows: [under] }) })] });
   assert.equal(r.output.rooms[0].rates[0].price.taxes_and_fees_excluded, "US$18 taxes and fees");
   assert.deepEqual(r.output.warnings, []);
+  const included = under.replace("+US$18 taxes and fees", "Includes taxes and fees");
+  r = await run("get_property", PROPERTY, { routes: [propertyRoute({ body: propertyPage({ rows: [included] }) })] });
+  assert.equal(r.output.rooms[0].rates[0].price.taxes_and_fees_excluded, null, "an 'Includes' line is not an excluded charge");
+  assert.match(r.output.warnings.join(" "), /listed no excluded taxes and fees/);
 });
 
 test("get_property needs a www.booking.com page and an English page", async () => {
