@@ -61,11 +61,15 @@ const PLACES = {
   ChIJExampleCity000001: { description: "Exampleville, ZZ, USA", destinationType: "City", location: { latitude: 10.5, longitude: -20.25, city: "Exampleville", state: "ZZ", country: "US" } },
   ChIJExampleAirport001: { description: "Exampleville Airport (EXM)", destinationType: "Airport", location: { latitude: 10.75, longitude: -20.5, city: "Exampleville", state: "ZZ", country: "US" } },
   ChIJExampleRegion0001: { description: "Exampleland", destinationType: "State_Province_Region", location: { latitude: null, longitude: null, city: null, state: "EL", country: "US" } },
-  ChIJExamplePoi0000001: { description: "Example Tower", destinationType: "Point of Interest", location: { latitude: 10.6, longitude: -20.3, city: "Exampleville", state: "ZZ", country: "US" } }
+  ChIJExamplePoi0000001: { description: "Example Tower", destinationType: "Point of Interest", location: { latitude: 10.6, longitude: -20.3, city: "Exampleville", state: "ZZ", country: "US" } },
+  ChIJExampleRegion0002: { description: "Exampleprefecture", destinationType: "State_Province_Region", location: { latitude: 11.5, longitude: -21.25, city: null, state: "EP", country: "JP" } },
+  ChIJExampleCountry001: { description: "Examplestan", destinationType: "Country", location: { latitude: 12.5, longitude: -22.25, city: null, state: null, country: "XX" } }
 };
 const SUGGESTIONS = {
   Exampleville: ["ChIJExampleCity000001", "ChIJExampleAirport001", "ChIJExamplePoi0000001"],
   Exampleland: ["ChIJExampleRegion0001", "ChIJExampleCity000001"],
+  Exampleprefecture: ["ChIJExampleRegion0002", "ChIJExampleCity000001", "ChIJExamplePoi0000001"],
+  Examplestan: ["ChIJExampleCountry001"],
   Nowhere: []
 };
 const suggestionNode = id => ({ placeId: id, description: PLACES[id].description + " (suggestion)", primaryDescription: "x", secondaryDescription: "y", __typename: "SuggestedPlace" });
@@ -353,12 +357,12 @@ test("search_hotels: returns an allowlisted hotel record with converted amounts 
     property_id: "ABCDE", name: "Example Harbor Hotel", brand: { id: "XX", name: "Example Brand" },
     url: "https://www.marriott.com/en-us/hotels/abcde-example-harbor-hotel/overview/", latitude: 10.51, longitude: -20.26, distance_miles: 1, rating: 4.2, review_count: 321,
     caption: "Example Harbor Hotel caption.", fee_notes: [{ type: "DESTINATION_FEE_DESCRIPTION", text: "Daily $25 destination fee." }], bookable: true, adults_only: false, resort: false,
-    cash_rate: { available: true, status_code: "AvailableForSale", members_only: null, currency: "USD", per_night: { rate: 272.5, mandatory_fees: 0, rate_with_mandatory_fees: 272.5, other_fees: 0, taxes: 38.15, total: 310.65 } },
+    cash_rate: { available: true, status_code: "AvailableForSale", members_only: null, currency: "USD", per_night: { rate: 272.5, mandatory_fees: 0, rate_with_mandatory_fees: 272.5, fees: 0, taxes: 38.15, total: 310.65 } },
     points_rate: null
   });
   assert.equal(second.distance_miles, 2);
   assert.equal(second.cash_rate.members_only, true);
-  assert.deepEqual(plain(second.cash_rate.per_night), { rate: 308, mandatory_fees: 28, rate_with_mandatory_fees: 336, other_fees: 35.08, taxes: 52.75, total: 395.83 });
+  assert.deepEqual(plain(second.cash_rate.per_night), { rate: 308, mandatory_fees: 28, rate_with_mandatory_fees: 336, fees: 35.08, taxes: 52.75, total: 395.83 });
   const text = JSON.stringify(result);
   assert.equal(text.includes("should-not-be-returned"), false, "photo urls must not be returned");
   assert.equal(text.includes("__typename"), false);
@@ -411,6 +415,13 @@ test("search_hotels: warnings are de-duplicated by code and bounded", async () =
   assert.deepEqual(result.warnings[0], { code: "AMP000", message: "m0" });
 });
 
+test("search_hotels: markup in a site warning is stripped to plain text", async () => {
+  const warnings = [{ code: "WARN-SEARCH-1002", message: "Let's try something else. <a href=\"/hotel-search.mi\">Check   our\nsearch</a> tips." }];
+  const h = harness("search_hotels", { respond: c => c.body?.operationName === "phoenixShopDatedSearchByGeoQuery" ? { body: searchBody(DEFAULT_EDGES(), { warnings }) } : null });
+  const result = await h.run(VALID);
+  assert.deepEqual(result.warnings, [{ code: "WARN-SEARCH-1002", message: "Let's try something else. Check our search tips." }]);
+});
+
 test("search_hotels: an empty result page is no_results, not an error", async () => {
   const h = harness("search_hotels", { respond: c => c.body?.operationName === "phoenixShopDatedSearchByGeoQuery" ? { body: searchBody([], { total: 0 }) } : null });
   const result = await h.run(VALID);
@@ -434,13 +445,62 @@ test("search_hotels: an unknown place_id is destination_not_found", async () => 
   assert.equal(searchOf(h.calls), undefined);
 });
 
-test("search_hotels: a region-level destination is refused with the site's suggestions, never silently replaced", async () => {
+test("search_hotels: a region-level place without coordinates is refused, offering the site's other matches", async () => {
   const h = harness("search_hotels");
   const result = await h.run({ ...VALID, destination: "Exampleland" });
   assert.equal(result.error_kind, "destination_not_supported");
   assert.match(result.error_message, /State_Province_Region/);
-  assert.deepEqual(result.suggestions.map(s => s.place_id), ["ChIJExampleRegion0001", "ChIJExampleCity000001"]);
+  assert.deepEqual(result.suggestions.map(s => s.place_id), ["ChIJExampleCity000001"], "the rejected place must not be offered back");
   assert.equal(searchOf(h.calls), undefined);
+});
+
+test("search_hotels: a region or country with coordinates is still refused by type, never searched as a city", async () => {
+  for (const [destination, kind] of [["Exampleprefecture", "State_Province_Region"], ["Examplestan", "Country"]]) {
+    const h = harness("search_hotels");
+    const result = await h.run({ ...VALID, destination });
+    assert.equal(result.error_kind, "destination_not_supported", destination);
+    assert.match(result.error_message, new RegExp(kind));
+    assert.equal(searchOf(h.calls), undefined, destination);
+  }
+  const noAlternatives = await harness("search_hotels").run({ ...VALID, destination: "Examplestan" });
+  assert.equal(Object.hasOwn(noAlternatives, "suggestions"), false, "no suggestions key when the site offered no other match");
+});
+
+test("search_hotels: a refused place_id gets no suggestions of itself", async () => {
+  const result = await harness("search_hotels").run({ place_id: "ChIJExampleRegion0001", check_in: "2026-10-20", check_out: "2026-10-22" });
+  assert.equal(result.error_kind, "destination_not_supported");
+  assert.equal(Object.hasOwn(result, "suggestions"), false);
+});
+
+test("search_hotels: a changed shape on the suggestion or details operation is site_changed, not destination_not_found", async () => {
+  const cases = [
+    [c => (c.body?.operationName === "phoenixShopSuggestedPlacesQuery" ? { body: {} } : null), VALID],
+    [c => (c.body?.operationName === "phoenixShopSuggestedPlacesQuery" ? { body: { data: null } } : null), VALID],
+    [c => (c.body?.operationName === "phoenixShopSuggestedPlacesQuery" ? { body: { data: { suggestedPlaces: null } } } : null), VALID],
+    [c => (c.body?.operationName === "phoenixShopSuggestedPlacesDetailsQuery" ? { body: {} } : null), VALID],
+    [c => (c.body?.operationName === "phoenixShopSuggestedPlacesDetailsQuery" ? { body: { data: {} } } : null), { place_id: "ChIJExampleCity000001", check_in: "2026-10-20", check_out: "2026-10-22" }]
+  ];
+  for (const [respond, input] of cases) {
+    const result = await harness("search_hotels", { respond }).run(input);
+    assert.equal(result.error_kind, "site_changed", JSON.stringify(result));
+  }
+});
+
+test("search_hotels: an offset past the last hotel is an empty ok page, not no_results", async () => {
+  const h = harness("search_hotels", { respond: c => c.body?.operationName === "phoenixShopDatedSearchByGeoQuery" ? { body: searchBody([], { total: 68 }) } : null });
+  const result = await h.run({ ...VALID, offset: 1000 });
+  assert.equal(result.status, "ok");
+  assert.deepEqual(result.hotels, []);
+  assert.equal(result.site_total, 68);
+  assert.equal(result.has_more, false);
+  assert.equal(result.next_offset, null);
+});
+
+test("search_hotels: next_offset is null unless the site says there is a next page", async () => {
+  const h = harness("search_hotels", { respond: c => c.body?.operationName === "phoenixShopDatedSearchByGeoQuery" ? { body: searchBody(DEFAULT_EDGES(), { hasNext: false, nextOffset: 2 }) } : null });
+  const result = await h.run(VALID);
+  assert.equal(result.has_more, false);
+  assert.equal(result.next_offset, null);
 });
 
 // --- search_hotels: site failures --------------------------------------------------------------------------
@@ -469,7 +529,7 @@ for (const [label, respond, kind] of failures) {
 
 // --- get_hotel ---------------------------------------------------------------------------------------------
 
-const invalidHotelInputs = [undefined, null, [], {}, { hotel: "" }, { hotel: "abcd" }, { hotel: 12345 }, { hotel: "ABCDE", extra: 1 }, { hotel: "not a hotel or url!" }, { hotel: "x".repeat(401) }, { hotel: "https://www.marriott.com/default.mi" }, { hotel: "https://www.marriott.com/en-us/hotels/" }, { hotel: "http://www.marriott.com/en-us/hotels/abcde-example/overview/" }];
+const invalidHotelInputs = [undefined, null, [], {}, { hotel: "" }, { hotel: "abcd" }, { hotel: 12345 }, { hotel: "ABCDE", extra: 1 }, { hotel: "not a hotel or url!" }, { hotel: "x".repeat(401) }, { hotel: "https://www.marriott.com/default.mi" }, { hotel: "https://www.marriott.com/en-us/hotels/" }];
 for (const input of invalidHotelInputs) {
   test(`get_hotel: rejects ${JSON.stringify(input)} before touching the network`, async () => {
     const h = harness("get_hotel");
@@ -523,6 +583,34 @@ test("get_hotel: slug and URL forms fetch the overview page; the url in the resu
     assert.equal(result.url, HOTEL_URL);
     assert.match(h.calls[0].path, /^\/(en-us\/hotels\/abcde-example-harbor-hotel\/overview\/|hotels\/travel\/abcde\/)$/, hotel);
   }
+});
+
+test("get_hotel: the result url is built from the slug even when the final address carries a query string", async () => {
+  const h = harness("get_hotel", { respond: hotelRoute({ response: { url: HOTEL_URL + "?token=secret#frag" } }) });
+  const result = await h.run({ hotel: "ABCDE" });
+  assert.equal(result.status, "ok");
+  assert.equal(result.url, HOTEL_URL);
+  assert.equal(JSON.stringify(result).includes("secret"), false);
+});
+
+test("get_hotel: a plain http URL asks for https; a non-URL scheme is another host", async () => {
+  const http = harness("get_hotel");
+  const httpResult = await http.run({ hotel: "http://www.marriott.com/en-us/hotels/abcde-example-harbor-hotel/overview/" });
+  assert.equal(httpResult.error_kind, "invalid_input");
+  assert.match(httpResult.error_message, /https/);
+  const js = await harness("get_hotel").run({ hotel: "javascript:alert(1)" });
+  assert.equal(js.error_kind, "unsupported_host");
+  assert.deepEqual(http.calls, []);
+});
+
+test("get_hotel: slugs up to 160 characters are accepted, longer ones are rejected before any request", async () => {
+  const ok = "abcde-" + "a".repeat(154), tooLong = "abcde-" + "a".repeat(155);
+  const accepted = harness("get_hotel", { respond: () => ({ status: 404, body: "" }) });
+  assert.equal((await accepted.run({ hotel: ok })).error_kind, "not_found");
+  assert.equal(accepted.calls.length, 1);
+  const rejected = harness("get_hotel");
+  assert.equal((await rejected.run({ hotel: tooLong })).error_kind, "invalid_input");
+  assert.deepEqual(rejected.calls, []);
 });
 
 test("get_hotel: a URL with query or fragment is reduced to the hotel path", async () => {

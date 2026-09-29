@@ -3,7 +3,7 @@
   match: { url_patterns: ["https://www.marriott.com/*"] },
   tool: {
     name: "search_hotels",
-    description: "Search Marriott hotels near a destination for a stay: name, brand, distance, rating, review count, and the lowest displayed cash rate per night (or points per room for the stay when use_points is true). Give either destination (free text, resolved to the first suggestion the site's destination box offers) or place_id (from a previous result's resolved_destination or other_destinations, to pick a different match). Only city, airport and point-of-interest destinations are supported. Rates are quotes for the signed-out public search: amounts are average per night per room in the reported currency, before or after mandatory daily fees and taxes as labelled, and a hotel with available false has no bookable rate for that party and dates. It does not select a room or rate, and it does not prove a room can be booked. Results are ordered by distance and paged with limit/offset. Runs inside the current www.marriott.com page without navigating; read-only.",
+    description: "Search Marriott hotels near a destination for a stay: name, brand, distance, rating, review count, and the lowest displayed cash rate per night (or points per room for the stay when use_points is true). Give either destination (free text, resolved to the first suggestion the site's destination box offers) or place_id (from a previous result's resolved_destination or other_destinations, to pick a different match). Only city, airport and point-of-interest destinations are supported. Rates are quotes for the signed-out public search: amounts are average per night per room in the reported currency, before or after mandatory daily fees and taxes as labelled, and a hotel with available false has no bookable rate for that party and dates. It does not select a room or rate, and it does not prove a room can be booked. Results are ordered by distance and paged with limit/offset (an offset past the last hotel returns an empty page). Runs inside the current www.marriott.com page without navigating; read-only.",
     inputSchema: {
       type: "object", additionalProperties: false, required: ["check_in", "check_out"],
       properties: {
@@ -48,7 +48,7 @@
                 properties: {
                   property_id: { type: "string", description: "Marriott property code, e.g. 5 letters." }, name: { type: "string" },
                   brand: { type: ["object", "null"], additionalProperties: false, required: ["id", "name"], properties: { id: { type: "string" }, name: { type: "string" } } },
-                  url: { type: ["string", "null"], description: "Hotel overview page; pass it to get_hotel." },
+                  url: { type: ["string", "null"], description: "Hotel overview page address; pass it to get_hotel. A few listed properties (for example residences) have no overview page and get_hotel returns not_found for them." },
                   latitude: { type: ["number", "null"] }, longitude: { type: ["number", "null"] }, distance_miles: { type: ["number", "null"] },
                   rating: { type: ["number", "null"], description: "The site's guest rating out of 5." }, review_count: { type: ["integer", "null"] },
                   caption: { type: ["string", "null"], description: "The hotel's marketing caption; untrusted site copy." },
@@ -61,14 +61,14 @@
                       status_code: { type: "string", description: "The site's availability code, e.g. AvailableForSale, NotAvailable, ClosedDueToMaxOcc." },
                       members_only: { type: ["boolean", "null"] }, currency: { type: ["string", "null"] },
                       per_night: {
-                        type: ["object", "null"], additionalProperties: false, required: ["rate", "mandatory_fees", "rate_with_mandatory_fees", "other_fees", "taxes", "total"],
+                        type: ["object", "null"], additionalProperties: false, required: ["rate", "mandatory_fees", "rate_with_mandatory_fees", "fees", "taxes", "total"],
                         properties: {
                           rate: { type: ["number", "null"], description: "Average nightly room rate per room, before fees and taxes." },
-                          mandatory_fees: { type: ["number", "null"], description: "Mandatory daily fees (for example a destination fee) per night." },
-                          rate_with_mandatory_fees: { type: ["number", "null"], description: "The price the site's result list shows per night." },
-                          other_fees: { type: ["number", "null"], description: "The site's fees amount; total equals rate + other_fees + taxes." },
+                          mandatory_fees: { type: ["number", "null"], description: "Mandatory daily fees (for example a destination or resort fee) per night. Already part of fees." },
+                          rate_with_mandatory_fees: { type: ["number", "null"], description: "rate + mandatory_fees: the price the site's result list shows per night (the list truncates it to whole currency units)." },
+                          fees: { type: ["number", "null"], description: "All per-night fees the site adds to the rate, including mandatory_fees." },
                           taxes: { type: ["number", "null"] },
-                          total: { type: ["number", "null"], description: "Average per night including fees and taxes." }
+                          total: { type: ["number", "null"], description: "Average per night including all fees and taxes: rate + fees + taxes (mandatory_fees are inside fees, not added again)." }
                         }
                       }
                     }
@@ -90,7 +90,7 @@
             status: { const: "error" },
             error_kind: { enum: ["invalid_input", "wrong_page", "challenge", "rate_limited", "destination_not_found", "destination_not_supported", "site_changed", "site_error"] },
             error_message: { type: "string", minLength: 1 },
-            suggestions: { type: "array", maxItems: 5, items: { type: "object", additionalProperties: false, required: ["place_id", "description"], properties: { place_id: { type: "string" }, description: { type: "string" } } }, description: "Present for destination errors: the site's suggestions, usable as place_id." }
+            suggestions: { type: "array", minItems: 1, maxItems: 4, items: { type: "object", additionalProperties: false, required: ["place_id", "description"], properties: { place_id: { type: "string" }, description: { type: "string" } } }, description: "Present for destination_not_supported when the site offered other matches for the same text; pass one as place_id. They are not checked to be searchable." }
           }
         }
       ]
@@ -108,7 +108,7 @@
     const FEE_TYPES = ["RESORT_FEE_DESCRIPTION", "DESTINATION_FEE_DESCRIPTION", "TOURISM_MARKETING_FEE_DESCRIPTION", "SURCHARGE_ORDINANCE_COST_DESCRIPTION"];
     const DESCRIPTION_FILTER = ["HOTEL_MARKETING_CAPTION", ...FEE_TYPES];
     const DAY = 86400000;
-    const fail = (kind, message, suggestions) => (suggestions ? { status: "error", error_kind: kind, error_message: message, suggestions } : { status: "error", error_kind: kind, error_message: message });
+    const fail = (kind, message, suggestions) => (suggestions?.length ? { status: "error", error_kind: kind, error_message: message, suggestions } : { status: "error", error_kind: kind, error_message: message });
     const ALLOWED = ["destination", "place_id", "check_in", "check_out", "rooms", "adults_per_room", "radius_miles", "use_points", "limit", "offset"];
     if (!input || typeof input !== "object" || Array.isArray(input) || Object.keys(input).some(k => !ALLOWED.includes(k))) return fail("invalid_input", "Provide only destination or place_id, check_in, check_out, rooms, adults_per_room, radius_miles, use_points, limit and offset.");
     const int = (v, dflt, lo, hi) => (v === undefined ? dflt : Number.isInteger(v) && v >= lo && v <= hi ? v : null);
@@ -179,7 +179,9 @@
         const found = await gql("phoenixShopSuggestedPlacesQuery", { query });
         const bad = problem(found);
         if (bad) return bad;
-        const nodes = (found.body?.data?.suggestedPlaces?.edges ?? []).map(e => e?.node).filter(n => n && typeof n.placeId === "string" && str(n.description));
+        const edges = found.body?.data?.suggestedPlaces?.edges;
+        if (!Array.isArray(edges)) return fail("site_changed", "Marriott's destination suggestions no longer have the shape this tool reads.");
+        const nodes = edges.map(e => e?.node).filter(n => n && typeof n.placeId === "string" && str(n.description));
         if (!nodes.length) return fail("destination_not_found", "Marriott's destination search has no suggestion for '" + query + "'.");
         placeId = nodes[0].placeId;
         description = cut(nodes[0].description, 200);
@@ -188,12 +190,12 @@
       const detailed = await gql("phoenixShopSuggestedPlacesDetailsQuery", { placeId });
       const badDetails = problem(detailed);
       if (badDetails) return badDetails;
-      const place = detailed.body?.data?.suggestedPlaceDetails;
+      if (!detailed.body?.data || !("suggestedPlaceDetails" in detailed.body.data)) return fail("site_changed", "Marriott's destination details no longer have the shape this tool reads.");
+      const place = detailed.body.data.suggestedPlaceDetails;
       if (!place) return fail("destination_not_found", "Marriott has no destination for that place_id.");
       const searchType = DESTINATION_TYPES[place.destinationType];
       const lat = num(place.location?.latitude), lon = num(place.location?.longitude);
-      const listed = [{ place_id: placeId, description: description || cut(place.description, 200) || "" }, ...alternatives].filter(s => s.description);
-      if (!searchType || lat === null || lon === null) return fail("destination_not_supported", "'" + (description || cut(place.description, 200) || placeId) + "' is a " + (str(place.destinationType) || "region-level") + " destination; only city, airport and point-of-interest destinations can be searched. Pick one of the suggestions or use a more specific place.", listed.slice(0, 5));
+      if (!searchType || lat === null || lon === null) return fail("destination_not_supported", "'" + (description || cut(place.description, 200) || placeId) + "' is a " + (str(place.destinationType) || "region-level") + " destination; only city, airport and point-of-interest destinations can be searched. Use a more specific place" + (alternatives.length ? " or one of the suggestions." : "."), alternatives);
 
       const found = await gql("phoenixShopDatedSearchByGeoQuery", {
         search: {
@@ -225,7 +227,7 @@
       const warnings = [];
       for (const w of statuses.flatMap(s => s?.warnings ?? [])) {
         const code = str(w?.code);
-        if (code && !seen.has(code) && warnings.length < 8) { seen.add(code); warnings.push({ code, message: cut(w.message ?? w.devMessage, 200) ?? "" }); }
+        if (code && !seen.has(code) && warnings.length < 8) { seen.add(code); warnings.push({ code, message: cut(String(w.message ?? w.devMessage ?? "").replace(/<[^>]*>/g, " ").replace(/\s+/g, " "), 200) ?? "" }); }
       }
       const hotels = result.edges.map(e => e?.node).filter(n => n?.property && typeof n.property.id === "string").map(n => {
         const p = n.property, info = p.basicInformation ?? {};
@@ -247,14 +249,14 @@
           bookable: bool(info.bookable), adults_only: bool(info.isAdultsOnly), resort: bool(info.resort),
           cash_rate: cash ? {
             available: cash.status?.code === "AvailableForSale", status_code: str(cash.status?.code) || "unknown", members_only: bool(cash.membersOnly), currency: str(avg?.amount?.currency),
-            per_night: avg ? { rate: money(avg.amount), mandatory_fees: money(avg.mandatoryFees), rate_with_mandatory_fees: money(avg.amountPlusMandatoryFees), other_fees: money(avg.fees), taxes: money(avg.taxes), total: money(avg.totalAmount) } : null
+            per_night: avg ? { rate: money(avg.amount), mandatory_fees: money(avg.mandatoryFees), rate_with_mandatory_fees: money(avg.amountPlusMandatoryFees), fees: money(avg.fees), taxes: money(avg.taxes), total: money(avg.totalAmount) } : null
           } : null,
           points_rate: points ? { available: points.status?.code === "AvailableForSale", status_code: str(points.status?.code) || "unknown", points_per_room: Number.isInteger(points.rateModes.pointsPerUnit.points) ? points.rateModes.pointsPerUnit.points : null } : null
         };
       });
       const nextOffset = result.pageInfo?.hasNextPage && Number.isInteger(result.pageInfo.nextOffset) ? result.pageInfo.nextOffset : null;
       return {
-        status: hotels.length ? "ok" : "no_results",
+        status: hotels.length || offset > 0 ? "ok" : "no_results",
         resolved_destination: { place_id: placeId, description: description || cut(place.description, 200) || placeId, type: searchType.toLowerCase(), latitude: lat, longitude: lon, city: str(place.location.city), state: str(place.location.state), country: str(place.location.country) },
         other_destinations: alternatives,
         check_in: input.check_in, check_out: input.check_out, nights, rooms, adults_per_room: adults, radius_miles: radius, use_points: usePoints,

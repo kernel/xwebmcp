@@ -50,12 +50,13 @@
     if (raw.length < 5 || raw.length > 400) return fail("invalid_input", "hotel must be a property code, hotel slug or hotel overview URL.");
     let path = null;
     if (/^[A-Za-z]{5}$/.test(raw)) path = "/hotels/travel/" + raw.toLowerCase() + "/";
-    else if (/^[a-z]{5}-[a-z0-9-]{1,160}$/.test(raw)) path = "/en-us/hotels/" + raw + "/overview/";
+    else if (/^[a-z]{5}-[a-z0-9-]{1,154}$/.test(raw)) path = "/en-us/hotels/" + raw + "/overview/";
     else {
       let url;
       try { url = new URL(raw); } catch { return fail("invalid_input", "hotel is not a property code, hotel slug or URL."); }
       const host = url.hostname.toLowerCase();
-      if (url.protocol !== "https:" || !(host === "marriott.com" || host === "www.marriott.com")) return fail("unsupported_host", "Only https://www.marriott.com hotel pages are supported; " + host + " is a different site.");
+      if (!(host === "marriott.com" || host === "www.marriott.com")) return fail("unsupported_host", "Only https://www.marriott.com hotel pages are supported; " + (host || raw.slice(0, 40)) + " is a different site.");
+      if (url.protocol !== "https:") return fail("invalid_input", "Only https://www.marriott.com hotel pages are supported; use an https URL.");
       const slug = /^\/(?:en-us\/)?hotels\/(?:travel\/)?([a-z0-9-]{5,160})\/(?:overview\/?)?$/.exec(url.pathname)?.[1];
       if (!slug) return fail("invalid_input", "The URL is not a hotel overview page (/en-us/hotels/<slug>/overview/).");
       path = /^[a-z]{5}$/.test(slug) ? "/hotels/travel/" + slug + "/" : "/en-us/hotels/" + slug + "/overview/";
