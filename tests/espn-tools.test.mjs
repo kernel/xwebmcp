@@ -141,7 +141,7 @@ test("input schemas accept documented input and reject the rest", () => {
   const search = harness("search").definition.tool.inputSchema;
   for (const input of [{ query: "ab" }, { query: "lakers", types: ["team", "player"], limit: 10 }]) assert.ok(conforms(search, input), JSON.stringify(input));
   for (const input of [{}, { query: "a" }, { query: "x".repeat(101) }, { query: "ok", limit: 0 }, { query: "ok", limit: 11 }, { query: "ok", types: [] }, { query: "ok", types: ["clips"] },
-    { query: "ok", types: ["team", "team"] }, { query: "ok", extra: true }]) {
+    { query: "ok", types: ["team", "team"] }, { query: "ok", extra: true }, { query: "a<b" }, { query: "a>b" }, { query: "50% off" }, { query: "a\u0085b" }, { query: "a\nb" }]) {
     assert.ok(!conforms(search, input), JSON.stringify(input));
   }
 });
@@ -267,21 +267,43 @@ test("get_scoreboard skips malformed events and reports a layout change when non
 });
 
 test("get_scoreboard strips control characters and caps hostile field lengths", async () => {
-  const hostile = "\u0001".repeat(3000) + "x".repeat(3000);
-  const events = Array.from({ length: 50 }, (_, i) => event(`${i}${"9".repeat(200)}`, {
+  const hostile = "\u0001\u007f\u0085\u009b".repeat(1000) + "x".repeat(3000);
+  const events = Array.from({ length: 50 }, (_, i) => event(String(i), {
     date: hostile, link: "/nfl/game/_/gameId/1/" + "a".repeat(500),
     status: { description: hostile, detail: hostile, state: "pre" },
     broadcasts: Array.from({ length: 20 }, () => ({ name: hostile })),
     vnue: { fullName: hostile, address: { city: hostile, state: hostile } },
-    competitors: [competitor(hostile, hostile, hostile, true, 1, { records: [{ type: "total", summary: hostile }] }), competitor(hostile, hostile, hostile, false, 2)]
+    competitors: [competitor("7", hostile, hostile, true, 1, { records: [{ type: "total", summary: hostile }] }), competitor("8", hostile, hostile, false, 2)]
   }));
   const result = await harness("get_scoreboard", okScoreboard(events, { date: "2026-10-03" })).run({ league: "nba", max_games: 50 });
   const json = JSON.stringify(result);
   assert.ok(json.length < 240 * 1024, `output is ${json.length} bytes`);
-  assert.ok(!/\\u0001/.test(json), "control characters are removed");
-  assert.equal(result.games[0].game_id.length, 30);
-  assert.equal(result.games[0].url, null, "an over-long URL is dropped, not truncated");
-  assert.equal(result.games[0].broadcasts.length, 6);
+  assert.ok(!/[\u0001\u007f\u0085\u009b]/.test(json) && !/\\u00(01|7f|85|9b)/i.test(json), "control characters are removed");
+  const [game] = result.games;
+  assert.equal(game.url, null, "an over-long URL is dropped, not truncated");
+  assert.equal(game.broadcasts.length, 6);
+  assert.equal(game.start_utc.length, 40);
+  assert.equal(game.status.length, 60);
+  assert.equal(game.status_detail.length, 120);
+  assert.equal(game.venue.name.length, 100);
+  assert.equal(game.venue.city.length, 60);
+  assert.equal(game.venue.state.length, 40);
+  assert.equal(game.teams[0].abbreviation.length, 10);
+  assert.equal(game.teams[0].name.length, 80);
+  assert.equal(game.teams[0].record.length, 20);
+});
+
+test("get_scoreboard drops identifiers that exceed their cap instead of truncating them", async () => {
+  const long = event("9".repeat(31));
+  const teamLong = event("801", { competitors: [competitor("1".repeat(21), "AAA", "Alpha Anvils", true), competitor("2", "BBB", "Beta Bears", false)] });
+  const exact = event("8".repeat(30), { competitors: [competitor("1".repeat(20), "AAA", "Alpha Anvils", true)] });
+  const result = await harness("get_scoreboard", okScoreboard([long, teamLong, exact], { date: "2026-10-03" })).run({ league: "nba" });
+  assert.deepEqual(result.games.map(g => g.game_id), ["801", "8".repeat(30)]);
+  assert.equal(result.game_count, 2);
+  assert.equal(result.games[0].teams[0].team_id, null);
+  assert.equal(result.games[1].teams[0].team_id, "1".repeat(20));
+  const unreadable = await harness("get_scoreboard", okScoreboard([long], { date: "2026-10-03" })).run({ league: "nba" });
+  assert.equal(unreadable.error_kind, "site_changed");
 });
 
 test("get_scoreboard rejects malformed input before any request", async () => {
@@ -439,22 +461,48 @@ test("search reports ESPN errors instead of no_results, and warns on partial res
 });
 
 test("search strips control characters, caps hostile lengths and keeps only the hostname", async () => {
-  const hostile = "\u0002".repeat(2000) + "y".repeat(2000);
+  const hostile = "\u0002\u007f\u0085\u009b".repeat(500) + "y".repeat(2000);
   const items = Array.from({ length: 10 }, () => ({ ...articleItem, displayName: hostile, byline: hostile, date: hostile, link: { web: "https://www.espn.com:8443/x/" + "b".repeat(400) } }));
-  const groups = ["team", "player"].map(type => searchGroup(type, Array.from({ length: 10 }, () => ({ ...teamItem, displayName: hostile, subtitle: hostile, uid: hostile, link: { web: "https://www.espn.com:8443/ok" } }))));
-  const result = await harness("search", okSearch([...groups, searchGroup("article", items), searchGroup("upcoming", Array.from({ length: 10 }, () => ({ ...upcomingItem, displayName: hostile, eventId: null })))])).run({ query: "ab", limit: 10 });
+  const groups = ["team", "player"].map(type => searchGroup(type, Array.from({ length: 10 }, () => ({ ...teamItem, displayName: hostile, subtitle: hostile, defaultLeagueSlug: hostile, sport: hostile, link: { web: "https://www.espn.com:8443/ok" } }))));
+  const result = await harness("search", okSearch([...groups, searchGroup("article", items), searchGroup("upcoming", Array.from({ length: 10 }, () => ({ ...upcomingItem, displayName: hostile, subtitle: hostile, date: hostile, eventId: null })))])).run({ query: "ab", limit: 10 });
   const json = JSON.stringify(result);
   assert.ok(json.length < 240 * 1024, `output is ${json.length} bytes`);
-  assert.ok(!/\\u0002/.test(json), "control characters are removed");
-  assert.equal(result.results.find(r => r.type === "article").url, null, "an over-long URL is dropped");
-  assert.equal(result.results.find(r => r.type === "team").url, "https://www.espn.com/ok", "no port is passed through");
-  assert.equal(result.results.find(r => r.type === "upcoming").event_id, null);
+  assert.ok(!/\\u00(02|7f|85|9b)/i.test(json) && !/[\u0002\u007f\u0085\u009b]/.test(json), "control characters are removed");
+  const byType = type => result.results.find(r => r.type === type);
+  assert.equal(byType("article").url, null, "an over-long URL is dropped");
+  assert.equal(byType("team").url, "https://www.espn.com/ok", "no port is passed through");
+  assert.equal(byType("team").title.length, 300);
+  assert.equal(byType("team").subtitle.length, 200);
+  assert.equal(byType("team").league_slug.length, 40);
+  assert.equal(byType("team").sport.length, 40);
+  assert.equal(byType("article").byline.length, 200);
+  assert.equal(byType("article").published_at.length, 40);
+  assert.equal(byType("upcoming").event_id, null);
+  assert.equal(byType("upcoming").start_utc.length, 40);
+});
+
+test("search drops identifiers that exceed their cap instead of truncating them", async () => {
+  const result = await harness("search", okSearch([
+    searchGroup("team", [{ ...teamItem, uid: "u".repeat(61) }, { ...teamItem, displayName: "Exact", uid: "u".repeat(60) }]),
+    searchGroup("upcoming", [{ ...upcomingItem, eventId: "9".repeat(31) }, { ...upcomingItem, displayName: "Exact", eventId: 900000002 }])
+  ])).run({ query: "ab" });
+  assert.deepEqual(result.results.map(r => (r.type === "team" ? r.uid : r.event_id)), [null, "u".repeat(60), null, "900000002"]);
+});
+
+test("search treats a 200 body without a results list as a layout change unless it is empty or an errors array", async () => {
+  for (const body of [{ errors: { code: "500" } }, { errors: "boom" }, { code: 500, message: "x" }, { error: "x" }, { status: "error" }, { totalFound: 0 }]) {
+    const result = await harness("search", { respond: () => ({ status: 200, body }) }).run({ query: "ab" });
+    assert.equal(result.error_kind, "site_changed", JSON.stringify(body));
+  }
+  for (const body of [{}, { results: [] }, { totalFound: 0, resultTypes: [], results: [] }, { errors: [] }]) {
+    assert.equal((await harness("search", { respond: () => ({ status: 200, body }) }).run({ query: "ab" })).status, "no_results", JSON.stringify(body));
+  }
 });
 
 test("search rejects malformed input before any request", async () => {
   const h = harness("search", okSearch([searchGroup("team", [teamItem])]));
   const bad = [
-    undefined, null, [], "lakers", {}, { query: 1 }, { query: "" }, { query: " a " }, { query: "x".repeat(101) }, { query: "line\nbreak" }, { query: "nul\u0000" }, { query: "a<b" }, { query: "x>" }, { query: "50% off" }, { query: "%20%20" },
+    undefined, null, [], "lakers", {}, { query: 1 }, { query: "" }, { query: " a " }, { query: "x".repeat(101) }, { query: "line\nbreak" }, { query: "nul\u0000" }, { query: "a<b" }, { query: "x>" }, { query: "50% off" }, { query: "%20%20" }, { query: "a\u0085b" }, { query: "a\u009bb" }, { query: "a\u007fb" },
     { query: "ok", limit: 0 }, { query: "ok", limit: 11 }, { query: "ok", limit: 1.5 }, { query: "ok", limit: "5" },
     { query: "ok", types: [] }, { query: "ok", types: "team" }, { query: "ok", types: ["clips"] }, { query: "ok", types: ["team", "team"] },
     { query: "ok", types: ["team", "player", "article", "upcoming", "team"] }, { query: "ok", extra: true }

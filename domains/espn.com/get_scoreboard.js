@@ -182,10 +182,14 @@
     }
     const url = ORIGIN + path;
     const text = (value, max) => {
-      const clean = typeof value === "string" ? value.replace(/[\u0000-\u001f\u007f]+/g, " ").trim() : "";
+      const clean = typeof value === "string" ? value.replace(/[\u0000-\u001f\u007f-\u009f]+/g, " ").trim() : "";
       return clean ? clean.slice(0, max) : null;
     };
-    const gameId = event => text(event.id === undefined || event.id === null ? "" : String(event.id), 30);
+    const identifier = (value, max) => {
+      const clean = value === undefined || value === null ? null : text(String(value), max + 1);
+      return clean && clean.length <= max ? clean : null;
+    };
+    const gameId = event => identifier(event.id, 30);
     const events = board.evts.filter(event => event && typeof event === "object" && gameId(event));
     if (board.evts.length && !events.length) return fail("site_changed", "ESPN's scoreboard events no longer have the fields this tool reads.");
     if (!events.length) {
@@ -211,7 +215,7 @@
           const total = (Array.isArray(team.records) ? team.records : []).find(record => record && record.type === "total");
           const score = team.score === undefined || team.score === null || team.score === "" ? NaN : Number(team.score);
           return {
-            team_id: text(team.id === undefined || team.id === null ? "" : String(team.id), 20),
+            team_id: identifier(team.id, 20),
             abbreviation: text(team.abbrev, 10),
             name: text(team.displayName, 80),
             home: team.isHome === true,

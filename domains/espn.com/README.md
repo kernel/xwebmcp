@@ -35,7 +35,8 @@ Outputs:
 - `no_games` means ESPN returned a valid scoreboard page with an empty events list (an off-season date, a bye day, or a week number ESPN has no games for). It is not an error.
 - Scores are `null` before a game starts. `winner` is true only for the winner; a tie or unfinished game has both false.
 - `game_id` (scoreboard) equals `event_id` on `upcoming` search results.
-- Page-tool outputs have been observed to arrive from the runtime's page bridge as a JSON string rather than an object; parse the string when `typeof output === "string"`. This is runtime behaviour, not tool code.
+- Page-tool outputs have been observed to arrive from the runtime's page bridge as a JSON string rather than an object; parse the string when `typeof output === "string"`. Outputs containing non-ASCII text (accented names) were the usual trigger in independent checks. This is runtime behaviour, not tool code.
+- `search` adds `warnings` when ESPN reported errors alongside the results; the results may then be incomplete (for example a team group can be missing).
 - Every success carries `observed_at`.
 
 ## URL patterns
@@ -46,7 +47,7 @@ Both tools match only `https://www.espn.com/*`, not the default `https://espn.co
 
 - Nothing here signs in, follows, favorites, subscribes, bets, starts playback, accepts terms or changes any preference. Both tools only read.
 - Requests carry no cookies (`credentials: "omit"`), so they behave the same signed in or out and never expose account state.
-- ESPN page and search content is untrusted text. It is returned as data, with control characters removed and every string length-capped (URLs longer than 300 characters are dropped rather than truncated), and never interpreted; URLs are limited to `https://*.espn.com` paths with the port, query string and fragment removed.
+- ESPN page and search content is untrusted text. It is returned as data, with C0 and C1 control characters (U+0000 to U+001F and U+007F to U+009F) replaced by spaces and every string length-capped (URLs longer than 300 characters and identifiers longer than their cap, 20 to 60 characters depending on the field, are dropped rather than truncated), and never interpreted; URLs are limited to `https://*.espn.com` paths with the port, query string and fragment removed.
 - Results are quotes at `observed_at`, not live updates.
 
 ## Site quirks
@@ -54,7 +55,7 @@ Both tools match only `https://www.espn.com/*`, not the default `https://espn.co
 - Scoreboard data is embedded in the HTML as a private, abbreviated layout (for example `evts`, `vnue`, `competitors`), and the soccer scoreboard uses a different one (`gmsByLeague`, no `evts`). When the expected page data or events list is missing the tool returns `site_changed` instead of an empty result.
 - Dates use ESPN's own scoreboard day. In observed sessions games starting late in the evening Eastern time were listed under that Eastern date, but the time zone rule is ESPN's, not verified here.
 - `/<league>/scoreboard/_/date/YYYY-MM-DD` (dashed) returned HTTP 503; only `YYYYMMDD` works, which the tool builds itself.
-- Search fails in several ways depending on the characters in the query (observed 2026-09-29): a single character or `%` returns HTTP 400, which the page often cannot read because the response lacks CORS headers; `<` and `>` get an HTML HTTP 403 from a filter with no CORS headers; whitespace that ESPN decodes to nothing returns HTTP 200 with only an `errors` array; a backslash or `|` returns HTTP 200 with results *and* an `errors` array. An unmatched query returns `{}` with HTTP 200. The tool rejects `<`, `>` and `%` before sending, maps the 400 and errors-only cases to `invalid_input` or `site_error` (never `no_results`), and adds a warning when results arrive together with errors.
+- Search fails in several ways depending on the characters in the query (observed 2026-09-29): a single character or `%` returns HTTP 400, which the page often cannot read because the response lacks CORS headers; `<` and `>` get an HTML HTTP 403 from a filter with no CORS headers; whitespace that ESPN decodes to nothing, or two backslashes, return HTTP 200 with only an `errors` array; a lone backslash character in a longer query returns HTTP 400 in some positions and HTTP 200 with results *and* an `errors` array in others (also seen with `|`, `^`, `[`, `]`, `{`, `}` and a backtick); a trailing `|` returned HTTP 504 twice in an independent check. An unmatched query returns `{}` with HTTP 200. The tool rejects `<`, `>`, `%` and control characters before sending, maps the 400 and errors-only cases to `invalid_input` or `site_error` (never `no_results`), and adds a `warnings` entry when results arrive together with errors. A 200 response that has no `results` list, is not empty and has no `errors` array is reported as `site_changed`.
 - Search `limit` applies per result type, so a query can return up to four times `limit` results.
 - The pages carry a Content-Security-Policy; the cross-origin search request from a `www.espn.com` page was permitted.
 
@@ -64,7 +65,7 @@ Both tools match only `https://www.espn.com/*`, not the default `https://espn.co
 - Games in progress were not observed (none were live during discovery), so the in-progress `state`, clock text and score updates are covered by fixtures only. Postponed, delayed and overtime games are mapped from ESPN's `status` fields but were not seen live.
 - No pagination: at most `max_games` (default 30, maximum 50) games and `limit` results per type. `truncated` and `game_count` report what was cut.
 - A week or date outside ESPN's calendar returns `no_games` (for NFL a nonexistent week such as regular-season week 19 looks the same as a real empty week).
-- Search rejects queries containing `<`, `>` or `%` (ESPN's search fails on them). When ESPN reports errors together with results, the results are returned with a `warning` and may be incomplete. Search returns only team, player, article and upcoming results; `omitted_types` names other groups ESPN returned. `upcoming` entries are Watch ESPN listings and may need an ESPN subscription to play. Article `premium` reflects ESPN's own flag; premium article text is not read.
+- Search rejects queries containing `<`, `>` or `%` (ESPN's search fails on them). When ESPN reports errors together with results, the results are returned with a `warnings` entry and may be incomplete. Search returns only team, player, article and upcoming results; `omitted_types` names other groups ESPN returned. `upcoming` entries are Watch ESPN listings and may need an ESPN subscription to play. Article `premium` reflects ESPN's own flag; premium article text is not read.
 - Not live-tested: HTTP 403 and 429 responses, a challenge page, a slow ESPN response. They are covered by stubbed tests.
 - Signed-in behaviour is untested and unsupported by design: nothing here reads Fantasy leagues, favorites or entitlements.
 - The scoreboard layout is ESPN's private page data, not a documented API, and can change without notice.
