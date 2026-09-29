@@ -4,7 +4,7 @@
   tool: {
     name: "search",
     title: "Search eBay listings",
-    description: "Search eBay (www.ebay.com) for listings and return one results page as data: item_id, canonical url, title, condition, price, original price, buying format (auction or buy_it_now), best_offer flag, bids and time left for auctions, delivery, location, returns, watchers, and the seller's username and feedback. Filters mirror eBay's own: sort, buying_format, condition, price_min/price_max (USD), free_shipping, returns_accepted, item_location, category_id, and page. Pass sold_only to search sold listings for price comparison: this needs a signed-in eBay session and returns login_required otherwise; each sold item has sold_date_text, and for listings that accept Best Offer the sale price may differ from the price shown (price_caveat says so). Read-only: it fetches the results page from the current document and never navigates, bids, makes offers or changes any account state. Prices are as eBay shows them for this session's shipping location and currency. total_results is eBay's own count and is approximate when it ends with +. Sponsored placement is not reported. Use get_listing with an item_id for full details. eBay sometimes answers with its error page; the tool retries up to twice (after 4 and 8 seconds) and then returns blocked, and requests sent within a few seconds of each other make that likely, so space calls by about ten seconds.",
+    description: "Search eBay (www.ebay.com) for listings and return one results page as data: item_id, canonical url, title, condition, price, original price, buying format (auction or buy_it_now), best_offer flag, bids and time left for auctions, delivery, location, returns, watchers, and the seller's username and feedback. Filters mirror eBay's own: sort, buying_format, condition, price_min/price_max (USD), free_shipping, returns_accepted, item_location, category_id, and page. Pass sold_only to search sold listings for price comparison: this needs a signed-in eBay session and returns login_required otherwise; each sold item has sold_date_text, and for listings that accept Best Offer the sale price may differ from the price shown (price_caveat says so). Read-only: it fetches the results page from the current document and never navigates, bids, makes offers or changes any account state. Prices are as eBay shows them for this session's shipping location and currency. total_results is eBay's own count and is approximate when it ends with +. Sponsored placement is not reported. A null field means the card does not show it, not that the answer is no: returns_text is set only when the card shows a returns line such as Free returns, and buying_format is null for fixed-price cards that show neither Buy It Now nor a bid count (fixed-price listings with Best Offer often do). Auction time left is a countdown; clock times are not returned because eBay renders them in its own time zone. Use get_listing with an item_id for full details. eBay sometimes answers with its error page; the tool retries up to twice (after 4 and 8 seconds) and then returns blocked, and requests sent within a few seconds of each other make that likely, so space calls by about ten seconds. If eBay redirects to a verification page the result is challenge: a person has to complete it in the browser and the tool never tries.",
     inputSchema: {
       type: "object", additionalProperties: false, required: ["query"],
       properties: {
@@ -41,7 +41,7 @@
               type: "array", minItems: 1, maxItems: 60,
               items: {
                 type: "object", additionalProperties: false,
-                required: ["rank", "item_id", "url", "title", "new_listing", "condition", "details", "price", "price_text", "currency", "original_price_text", "buying_format", "best_offer", "bids", "time_left_text", "ends_text", "shipping_text", "location_text", "returns_text", "watchers_text", "sold_text", "sold_date_text", "price_caveat", "seller", "badges"],
+                required: ["rank", "item_id", "url", "title", "new_listing", "condition", "details", "price", "price_text", "currency", "original_price_text", "buying_format", "best_offer", "bids", "time_left_text", "shipping_text", "location_text", "returns_text", "watchers_text", "sold_text", "sold_date_text", "price_caveat", "seller", "badges"],
                 properties: {
                   rank: { type: "integer", minimum: 1, description: "Position in the returned list." },
                   item_id: { type: "string", pattern: "^[0-9]{9,14}$", description: "eBay item number; pass it to get_listing." },
@@ -58,7 +58,6 @@
                   best_offer: { type: "boolean", description: "True when the card says or Best Offer." },
                   bids: { type: ["integer", "null"] },
                   time_left_text: { type: ["string", "null"], description: "Auction time left, for example '32m left'." },
-                  ends_text: { type: ["string", "null"], description: "Auction end time as displayed, for example '(Today 03:10 PM)'." },
                   shipping_text: { type: ["string", "null"], description: "Delivery or pickup line, for example '+$11.30 delivery' or 'Free delivery in 2-4 days'." },
                   location_text: { type: ["string", "null"] },
                   returns_text: { type: ["string", "null"] },
@@ -91,7 +90,7 @@
           type: "object", additionalProperties: false, required: ["status", "error_kind", "error_message"],
           properties: {
             status: { const: "error" },
-            error_kind: { enum: ["invalid_input", "wrong_page", "login_required", "blocked", "rate_limited", "redirected", "request_failed", "site_error", "site_changed"] },
+            error_kind: { enum: ["invalid_input", "wrong_page", "login_required", "blocked", "challenge", "rate_limited", "redirected", "request_failed", "site_error", "site_changed"] },
             error_message: { type: "string", minLength: 1 }
           }
         }
@@ -114,15 +113,16 @@
     if (extra) return fail("invalid_input", `Unrecognized input field "${extra}".`);
     if (typeof input.query !== "string" || clean(input.query).length < 1 || input.query.length > 200 || /[\u0000-\u001f\u007f]/.test(input.query)) return fail("invalid_input", "query must be a non-empty string of at most 200 characters without control characters.");
     const query = clean(input.query);
-    const sort = input.sort ?? "best_match";
-    const format = input.buying_format ?? "all";
-    const soldOnly = input.sold_only ?? false;
-    const page = input.page ?? 1;
-    const limit = input.limit ?? 20;
-    if (!Object.hasOwn(SORTS, sort)) return fail("invalid_input", `sort must be one of ${Object.keys(SORTS).join(", ")}.`);
-    if (!Object.hasOwn(FORMATS, format)) return fail("invalid_input", "buying_format must be all, auction or buy_it_now.");
-    if (input.condition !== undefined && !Object.hasOwn(CONDITIONS, input.condition)) return fail("invalid_input", `condition must be one of ${Object.keys(CONDITIONS).join(", ")}.`);
-    if (input.item_location !== undefined && !Object.hasOwn(LOCATIONS, input.item_location)) return fail("invalid_input", "item_location must be us_only, north_america or worldwide.");
+    const sort = input.sort === undefined ? "best_match" : input.sort;
+    const format = input.buying_format === undefined ? "all" : input.buying_format;
+    const soldOnly = input.sold_only === undefined ? false : input.sold_only;
+    const page = input.page === undefined ? 1 : input.page;
+    const limit = input.limit === undefined ? 20 : input.limit;
+    const known = (value, table) => typeof value === "string" && Object.hasOwn(table, value);
+    if (!known(sort, SORTS)) return fail("invalid_input", `sort must be one of ${Object.keys(SORTS).join(", ")}.`);
+    if (!known(format, FORMATS)) return fail("invalid_input", "buying_format must be all, auction or buy_it_now.");
+    if (input.condition !== undefined && !known(input.condition, CONDITIONS)) return fail("invalid_input", `condition must be one of ${Object.keys(CONDITIONS).join(", ")}.`);
+    if (input.item_location !== undefined && !known(input.item_location, LOCATIONS)) return fail("invalid_input", "item_location must be us_only, north_america or worldwide.");
     for (const key of ["price_min", "price_max"]) {
       if (input[key] !== undefined && (typeof input[key] !== "number" || !isFinite(input[key]) || input[key] < 0 || input[key] > 10000000)) return fail("invalid_input", `${key} must be a number from 0 to 10000000.`);
     }
@@ -149,19 +149,23 @@
     if (soldOnly) { params.set("LH_Sold", "1"); params.set("LH_Complete", "1"); }
     if (page > 1) params.set("_pgn", String(page));
 
-    // A redirect is not followed: a manual redirect is how eBay answers a request that needs sign-in, and following it cross-origin fails without saying why.
+    // The request does not follow redirects: a manual redirect is how eBay answers a request that needs sign-in. To tell that from a verification page, the redirect is followed once, which works only for a same-origin target.
+    const request = `/sch/i.html?${params}`;
     let html = null;
     for (let attempt = 1; attempt <= 3 && html === null; attempt++) {
       if (attempt > 1) await new Promise(resolve => setTimeout(resolve, 4000 * (attempt - 1)));
       let response;
-      try { response = await fetch(`/sch/i.html?${params}`, { credentials: "include", redirect: "manual" }); }
+      try { response = await fetch(request, { credentials: "include", redirect: "manual" }); }
       catch { return fail("request_failed", "The request to eBay failed before a response arrived. Nothing was changed; try again."); }
       if (response.type === "opaqueredirect") {
+        let landed = "";
+        try { landed = new URL((await fetch(request, { credentials: "include" })).url).pathname; } catch { /* a cross-origin redirect cannot be followed */ }
+        if (/^\/splashui\//.test(landed)) return fail("challenge", "eBay redirected to a verification (CAPTCHA) page instead of returning results. A person has to complete it in this browser; the tool never tries to solve it, and repeated calls make it more likely.");
         if (soldOnly) {
           const signedOut = document.querySelectorAll('#gh a[href*="signin.ebay.com"]').length > 0;
           return fail("login_required", signedOut ? "Sold listings need a signed-in eBay session and this browser is signed out. Sign in to eBay in this browser, then call again." : "eBay redirected the sold-listings request to a sign-in or account-completion page. Sign in, or finish any account step eBay asks for, in this browser yourself, then call again.");
         }
-        return fail("redirected", "eBay redirected the search instead of returning results (it may be a verification, sign-in or regional page). Open the same search in the browser to see it; this tool does not follow or solve it.");
+        return fail("redirected", "eBay redirected the search instead of returning results (it may be a sign-in or regional page). Open the same search in the browser to see it; this tool does not follow or solve it.");
       }
       if (response.status === 429) return fail("rate_limited", "eBay rate-limited the search; wait a few minutes before retrying.");
       const body = await response.text();
@@ -208,7 +212,6 @@
       const find = pattern => rows.find(row => pattern.test(row)) || null;
       const bidsRow = find(/^\d[\d,]* bids?\b/i);
       const timeLeft = card.querySelector(".s-card__time-left");
-      const timeEnd = card.querySelector(".s-card__time-end");
       const bestOffer = rows.some(row => /^or best offer$/i.test(row));
       const caption = text(card.querySelector(".s-card__caption"));
       const soldDate = (/^sold\s+(.+)$/i.exec(caption) || [])[1] || null;
@@ -231,7 +234,6 @@
         best_offer: bestOffer,
         bids: bidsRow ? Number(/^(\d[\d,]*)/.exec(bidsRow)[1].replace(/,/g, "")) : null,
         time_left_text: timeLeft ? text(timeLeft) || null : null,
-        ends_text: timeEnd ? text(timeEnd) || null : null,
         shipping_text: (rows.find(row => /delivery|pickup|shipping/i.test(row) && !/returns/i.test(row)) || "").slice(0, 120) || null,
         location_text: (find(/^located in /i) || "").slice(0, 120) || null,
         returns_text: (find(/returns?\b/i) || "").slice(0, 120) || null,

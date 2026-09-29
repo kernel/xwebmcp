@@ -4,11 +4,11 @@
   tool: {
     name: "get_seller_profile",
     title: "Get eBay seller feedback summary",
-    description: "Read an eBay seller's public feedback profile by username (the seller.username from get_listing or search): feedback score, positive feedback percentage over the last 12 months, member-since text, whether eBay marks the seller Top-rated, the counts of positive, neutral and negative feedback over the last 1, 6 and 12 months, and the detailed seller ratings (accurate description, shipping cost, shipping speed, communication) with their average and number of ratings. Read-only: it fetches the public feedback page from the current document and never contacts the seller or changes anything. Individual buyer comments, buyer names and purchases shown on that page are deliberately not returned. If eBay shows its error state for the username, the result is profile_unavailable: the username does not exist or the page failed to load, and the tool cannot tell which. eBay sometimes answers with its error page; the tool retries up to twice (after 4 and 8 seconds) and then returns blocked; space calls by about ten seconds.",
+    description: "Read an eBay seller's public feedback profile by username (the seller.username from get_listing or search): feedback score, positive feedback percentage over the last 12 months, member-since text, whether eBay marks the seller Top-rated, the counts of positive, neutral and negative feedback over the last 1, 6 and 12 months, and the detailed seller ratings (accurate description, shipping cost, shipping speed, communication) with their average and number of ratings. Read-only: it fetches the public feedback page from the current document and never contacts the seller or changes anything. Individual buyer comments, buyer names and purchases shown on that page are deliberately not returned. If eBay shows its error state for the username, the result is profile_unavailable: the username does not exist or the page failed to load, and the tool cannot tell which. eBay sometimes answers with its error page; the tool retries up to twice (after 4 and 8 seconds) and then returns blocked; space calls by about ten seconds. If eBay redirects to a verification page the result is challenge: a person has to complete it in the browser and the tool never tries.",
     inputSchema: {
       type: "object", additionalProperties: false, required: ["seller_username"],
       properties: {
-        seller_username: { type: "string", pattern: "^[A-Za-z0-9._@*-]{2,64}$", description: "eBay username of the seller, without spaces, as shown on listings and in feedback URLs." }
+        seller_username: { type: "string", pattern: "^(?=.*[A-Za-z0-9])[A-Za-z0-9._@*-]{2,64}$", description: "eBay username of the seller, without spaces, as shown on listings and in feedback URLs; it must contain a letter or digit." }
       }
     },
     outputSchema: {
@@ -47,7 +47,7 @@
           type: "object", additionalProperties: false, required: ["status", "error_kind", "error_message"],
           properties: {
             status: { const: "error" },
-            error_kind: { enum: ["invalid_input", "wrong_page", "profile_unavailable", "blocked", "rate_limited", "redirected", "request_failed", "site_error", "site_changed"] },
+            error_kind: { enum: ["invalid_input", "wrong_page", "profile_unavailable", "blocked", "challenge", "rate_limited", "redirected", "request_failed", "site_error", "site_changed"] },
             error_message: { type: "string", minLength: 1 }
           }
         }
@@ -62,7 +62,7 @@
     if (!input || typeof input !== "object" || Array.isArray(input)) return fail("invalid_input", "Input must be an object.");
     const extra = Object.keys(input).find(key => key !== "seller_username");
     if (extra) return fail("invalid_input", `Unrecognized input field "${extra}".`);
-    if (typeof input.seller_username !== "string" || !/^[A-Za-z0-9._@*-]{2,64}$/.test(input.seller_username)) return fail("invalid_input", "seller_username must be an eBay username of 2 to 64 letters, digits or . _ - @ * characters.");
+    if (typeof input.seller_username !== "string" || !/^(?=.*[A-Za-z0-9])[A-Za-z0-9._@*-]{2,64}$/.test(input.seller_username)) return fail("invalid_input", "seller_username must be an eBay username of 2 to 64 letters, digits or . _ - @ * characters, with at least one letter or digit.");
     const username = input.seller_username;
     if (location.origin !== ORIGIN) return fail("wrong_page", "Open a https://www.ebay.com page in this tab, then call again. Nothing was requested.");
 
@@ -73,7 +73,12 @@
       let response;
       try { response = await fetch(path, { credentials: "include", redirect: "manual" }); }
       catch { return fail("request_failed", "The request to eBay failed before a response arrived. Nothing was changed; try again."); }
-      if (response.type === "opaqueredirect") return fail("redirected", "eBay redirected the feedback request instead of returning the page (it may be a verification, sign-in or regional page). Open the profile in the browser to see it; this tool does not follow or solve it.");
+      if (response.type === "opaqueredirect") {
+        let landed = "";
+        try { landed = new URL((await fetch(path, { credentials: "include" })).url).pathname; } catch { /* a cross-origin redirect cannot be followed */ }
+        if (/^\/splashui\//.test(landed)) return fail("challenge", "eBay redirected to a verification (CAPTCHA) page instead of returning the feedback profile. A person has to complete it in this browser; the tool never tries to solve it, and repeated calls make it more likely.");
+        return fail("redirected", "eBay redirected the feedback request instead of returning the page (it may be a sign-in or regional page). Open the profile in the browser to see it; this tool does not follow or solve it.");
+      }
       if (response.status === 429) return fail("rate_limited", "eBay rate-limited the feedback request; wait a few minutes before retrying.");
       const body = await response.text();
       if (response.status === 403 || /<title>\s*Error Page \| eBay/i.test(body.slice(0, 4000))) continue;

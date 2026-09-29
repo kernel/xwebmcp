@@ -61,7 +61,7 @@ async function run(name, input, { responses = [], origin = ORIGIN, signedOut = f
       calls.fetches.push({ path, init: plain(init) });
       const next = queue.length > 1 ? queue.shift() : queue[0];
       if (next === "throw") throw new TypeError("Failed to fetch");
-      return { status: next.status ?? 200, type: next.type ?? "basic", text: async () => next.html ?? "" };
+      return { status: next.status ?? 200, type: next.type ?? "basic", url: next.url, text: async () => next.html ?? "" };
     }
   };
   const execute = runInNewContext("(" + definitions[name].execute.toString() + ")", sandbox);
@@ -70,6 +70,8 @@ async function run(name, input, { responses = [], origin = ORIGIN, signedOut = f
   return { output, calls };
 }
 const ok = html => ({ status: 200, html });
+const REDIRECT = { type: "opaqueredirect", status: 0 };
+const CAPTCHA = { status: 200, url: "https://www.ebay.com/splashui/captcha?ru=x", html: "<html><title>Captcha</title></html>" };
 const ERROR_PAGE = { status: 403, html: "<html><head><title>Error Page | eBay</title></head><body>SORRY Something went wrong on our end</body></html>" };
 
 // --- search fixtures ----------------------------------------------------------------------------
@@ -137,7 +139,7 @@ test("search: parses real cards, skips placeholders, mismatched links and unpref
   const [refurb, shoe, auction, toprated] = output.items;
   assert.deepEqual(refurb, {
     rank: 1, item_id: "100000000001", url: "https://www.ebay.com/itm/100000000001", title: "Fixture Wireless Keyboard TKL", new_listing: true, condition: "Certified - Refurbished", details: [],
-    price: 129.99, price_text: "$129.99", currency: "USD", original_price_text: "$219.99", buying_format: "buy_it_now", best_offer: false, bids: null, time_left_text: null, ends_text: null,
+    price: 129.99, price_text: "$129.99", currency: "USD", original_price_text: "$219.99", buying_format: "buy_it_now", best_offer: false, bids: null, time_left_text: null,
     shipping_text: "Free delivery in 2-4 days", location_text: "Located in United States", returns_text: "Free returns", watchers_text: "128 watchers", sold_text: "17 sold", sold_date_text: null, price_caveat: null,
     seller: { username: "fixture_seller_a", feedback_percent: 100, feedback_count_text: "77" }, badges: ["eBay Refurbished"]
   });
@@ -151,7 +153,6 @@ test("search: parses real cards, skips placeholders, mismatched links and unpref
   assert.equal(auction.buying_format, "auction");
   assert.equal(auction.bids, 3);
   assert.equal(auction.time_left_text, "32m left");
-  assert.equal(auction.ends_text, "(Today 03:10 PM)");
   assert.equal(auction.shipping_text, "+$9.50 delivery");
   assert.equal(toprated.price, null);
   assert.equal(toprated.price_text, "$10.00 to $20.00");
@@ -219,19 +220,33 @@ test("search: sold_only asks for sold and completed listings and reports sold da
 });
 
 test("search: sold_only redirect reports login_required and never guesses results", async () => {
-  const signedOut = await run("search", { query: "k", sold_only: true }, { responses: [{ type: "opaqueredirect", status: 0 }], signedOut: true });
+  // The redirect is followed once to read a same-origin target; eBay's sign-in redirect is cross-origin, so that follow throws.
+  const signedOut = await run("search", { query: "k", sold_only: true }, { responses: [REDIRECT, "throw"], signedOut: true });
   assert.equal(signedOut.output.error_kind, "login_required");
   assert.match(signedOut.output.error_message, /signed out/);
-  const signedIn = await run("search", { query: "k", sold_only: true }, { responses: [{ type: "opaqueredirect", status: 0 }] });
+  const signedIn = await run("search", { query: "k", sold_only: true }, { responses: [REDIRECT, "throw"] });
   assert.equal(signedIn.output.error_kind, "login_required");
   assert.match(signedIn.output.error_message, /account-completion/);
-  assert.equal(signedIn.calls.fetches.length, 1, "no retry after a redirect");
+  assert.equal(signedIn.calls.fetches.length, 2, "one request, one follow, no retry");
+});
+
+test("search: a redirect to eBay's verification page is a challenge, for sold and ordinary searches alike", async () => {
+  for (const input of [{ query: "k" }, { query: "k", sold_only: true }]) {
+    const { output, calls } = await run("search", input, { responses: [REDIRECT, CAPTCHA] });
+    assert.equal(output.error_kind, "challenge", JSON.stringify(input));
+    assert.match(output.error_message, /never tries to solve/);
+    assert.equal(calls.fetches.length, 2);
+    assert.deepEqual(calls.fetches[1].init, { credentials: "include" }, "only the follow-up request follows redirects");
+    assert.equal(calls.fetches[1].path, calls.fetches[0].path);
+  }
 });
 
 test("search: any other redirect is reported, not followed or treated as results", async () => {
-  const { output, calls } = await run("search", { query: "k" }, { responses: [{ type: "opaqueredirect", status: 0 }] });
+  const { output, calls } = await run("search", { query: "k" }, { responses: [REDIRECT, "throw"] });
   assert.equal(output.error_kind, "redirected");
-  assert.equal(calls.fetches.length, 1);
+  assert.equal(calls.fetches.length, 2);
+  const elsewhere = await run("search", { query: "k" }, { responses: [REDIRECT, { status: 200, url: "https://www.ebay.com/b/Keyboards/1/bn_1", html: "<html></html>" }] });
+  assert.equal(elsewhere.output.error_kind, "redirected");
 });
 
 test("search: eBay's error page is retried with backoff, then reported as blocked", async () => {
@@ -304,11 +319,36 @@ test("search: refuses to run on another origin without requesting anything", asy
   }
 });
 
+test("search: null and non-string values never stand in for defaults or enums", async () => {
+  for (const input of [{ sort: null }, { page: null }, { limit: null }, { buying_format: null }, { sold_only: null }, { sort: ["best_match"] }, { buying_format: ["all"] }, { condition: ["new"] }, { item_location: ["us_only"] }, { condition: null }, { item_location: null }, { category_id: null }, { price_min: null }, { free_shipping: null }]) {
+    const { output, calls } = await run("search", { query: "k", ...input }, { responses: [ok(searchPage(CARDS))] });
+    assert.equal(output.error_kind, "invalid_input", JSON.stringify(input));
+    assert.equal(calls.fetches.length, 0);
+  }
+});
+
+test("search: hidden text is skipped, thousands separators parse, and only 'Sold <date>' captions count as sold", async () => {
+  const hidden = card({ id: 100000000021, title: "Fixture priced item", price: "$25,000.00" }).replace('<span class="su-styled-text primary default">Fixture priced item</span>', '<span class="su-styled-text primary default">Fixture priced item</span><span aria-hidden="true"> hidden decoy</span>');
+  const captions = [
+    card({ id: 100000000022, title: "Fixture ended unsold", caption: "Ended  Sep 29, 2026", rows: ["or Best Offer"] }),
+    card({ id: 100000000023, title: "Fixture bare sold caption", caption: "Sold", rows: ["or Best Offer"] })
+  ];
+  const { output } = await run("search", { query: "k" }, { responses: [ok(searchPage([hidden, ...captions]))] });
+  const [priced, unsold, bare] = output.items;
+  assert.equal(priced.title, "Fixture priced item");
+  assert.equal(priced.price, 25000);
+  assert.equal(priced.price_text, "$25,000.00");
+  assert.equal(unsold.sold_date_text, null);
+  assert.equal(unsold.price_caveat, null);
+  assert.equal(bare.sold_date_text, null);
+  assert.equal(bare.price_caveat, null);
+});
+
 // --- get_listing fixtures -----------------------------------------------------------------------
 
 const ID = "298000000001";
-function itemPage({ id = ID, box = "bin", bidText = "0 bids", timer = "Ends in 12m 45s", bestOffer = true, priceText = "US $50.00", statusMessage = null, availability = "InStock", withVariations = false, model = true, quantity = true, title = "Fixture Wireless Keyboard Black", sellerLink = `&seller=fixture-seller-1&`, extraSellerHtml = "" } = {}) {
-  const ld = { "@context": "https://schema.org", "@type": "Product", name: title, image: [{ "@type": "ImageObject", url: "https://i.ebayimg.com/images/g/fixtureA/s-l1600.png" }, "https://i.ebayimg.com/images/g/fixtureB/s-l1600.png", { url: "https://tracker.example.invalid/pixel.png" }], mpn: "FX-100", model: "Fixture K1", brand: { "@type": "Brand", name: "Testbrand" }, gtin13: "0123456789012",
+function itemPage({ id = ID, box = "bin", bidText = "0 bids", timer = "Ends in 12m 45s", bestOffer = true, priceText = "US $50.00", statusMessage = null, availability = "InStock", withVariations = false, model = true, quantity = true, gtin = "0123456789012", title = "Fixture Wireless Keyboard Black", sellerLink = `&seller=fixture-seller-1&`, extraSellerHtml = "" } = {}) {
+  const ld = { "@context": "https://schema.org", "@type": "Product", name: title, image: [{ "@type": "ImageObject", url: "https://i.ebayimg.com/images/g/fixtureA/s-l1600.png" }, "https://i.ebayimg.com/images/g/fixtureB/s-l1600.png", { url: "https://tracker.example.invalid/pixel.png" }], mpn: "FX-100", model: "Fixture K1", brand: { "@type": "Brand", name: "Testbrand" }, gtin13: gtin,
     offers: { "@type": "Offer", url: `https://www.ebay.com/itm/${id}`, itemCondition: "https://schema.org/NewCondition", availability: `https://schema.org/${availability}`, priceCurrency: "USD", price: "50.0", shippingDetails: [{ "@type": "OfferShippingDetails", shippingRate: { "@type": "MonetaryAmount", value: "10.43", currency: "USD" } }] } };
   const bidBox = `<div class="vim x-bid-price" data-testid="x-bid-price"><div class="x-price-primary" data-testid="x-price-primary"><span class="x-price-primary__price"><span class="ux-textspans">${priceText}</span></span></div><div class="x-bid-info"><div class="x-bid-count"><a href="/bfl/viewbids/${id}"><span class="ux-textspans ux-textspans--PSEUDOLINK">${bidText}</span></a></div><div class="x-end-time"><span class="ux-timer"><span class="ux-timer__text"><span class="ux-timer__label">Ends in </span>${timer.replace("Ends in ", "")}</span></span></div></div></div>`;
   const binBox = `<div class="vim x-bin-price" data-testid="x-bin-price"><div class="x-bin-price__content"><div class="x-price-primary" data-testid="x-price-primary"><span class="x-price-primary__price"><span class="ux-textspans">${priceText}</span></span>${bestOffer ? '<span class="x-price-primary__orBestOffer"><span class="ux-textspans ux-textspans--SECONDARY">or Best Offer</span></span>' : ""}</div></div></div>`;
@@ -321,6 +361,7 @@ function itemPage({ id = ID, box = "bin", bidText = "0 bids", timer = "Ends in 1
   <div class="vim x-item-condition" data-testid="x-item-condition"><div class="x-item-condition-label"><span>Condition:</span></div><div class="x-item-condition-text"><div class="ux-icon-text"><span class="ux-icon-text__text"><span><span class="ux-textspans">New</span></span><span class="clipped">New</span></span><button class="ux-action fake-link"><span>More information - About this item condition</span></button></div></div></div>
   ${quantity ? '<div class="vim x-quantity" data-testid="x-quantity"><div class="x-quantity__availability"><span class="ux-textspans ux-textspans--SECONDARY">5 available</span><span class="ux-textspans ux-textspans--BOLD">152 sold</span></div></div>' : ""}
   ${withVariations ? msku : ""}
+  <div class="ux-labels-values col-12"><div class="ux-labels-values__labels col-3"><div class="ux-labels-values__labels-content"><div><span class="ux-textspans">Shipping</span></div></div></div><div class="ux-labels-values__values col-9"><span class="ux-textspans">FREE</span></div></div>
   <div class="ux-labels-values col-12 ux-labels-values--shipping"><div class="ux-labels-values__labels col-3"><div class="ux-labels-values__labels-content"><div><span class="ux-textspans">Shipping:</span></div></div></div><div class="ux-labels-values__values col-9"><div class="ux-labels-values__values-content"><div><span class="ux-textspans ux-textspans--BOLD">US $10.43</span><span class="ux-textspans">&nbsp;</span><span class="ux-textspans">Standard Tracked Shipping</span><span class="ux-textspans">. </span><button class="ux-action fake-link"><span class="ux-textspans">See details</span><span class="clipped">for shipping</span></button></div><div><span class="ux-textspans">Located in: Testville, Testland</span></div></div></div></div>
   <div class="ux-labels-values col-12"><div class="ux-labels-values__labels col-3"><div class="ux-labels-values__labels-content"><div><span class="ux-textspans">Delivery:</span></div></div></div><div class="ux-labels-values__values col-9"><div class="ux-labels-values__values-content"><div><span class="ux-textspans">Estimated between </span><span class="ux-textspans ux-textspans--BOLD">Sat, Oct 3</span><span class="ux-textspans"> and </span><span class="ux-textspans ux-textspans--BOLD">Fri, Oct 9</span><span class="ux-textspans"> to </span><span class="ux-textspans">10001</span><span class="ux-textspans__custom-view"><span class="infotip"><button class="infotip__host"></button><span class="infotip__overlay"><span class="infotip__content"><div><span class="ux-textspans">Estimated delivery dates include the seller's handling time.</span></div></span></span></span></span></div></div></div></div>
   <div class="ux-labels-values col-12"><div class="ux-labels-values__labels col-3"><div class="ux-labels-values__labels-content"><div><span class="ux-textspans">Returns:</span></div></div></div><div class="ux-labels-values__values col-9"><div class="ux-labels-values__values-content"><div><span class="ux-textspans">Seller does not accept returns</span><span class="ux-textspans">.&nbsp;</span><button class="ux-action fake-link"><span class="ux-textspans">See details</span></button></div></div></div></div>
@@ -355,7 +396,7 @@ test("get_listing: reads a fixed-price listing from structured data and the buy 
     bid_count: null, time_left_text: null, availability: "in_stock", status_message: null, condition: "New",
     quantity_available_text: "5 available", quantity_sold_text: "152 sold",
     shipping_text: "US $10.43 Standard Tracked Shipping. Located in: Testville, Testland", shipping_cost: { amount: 10.43, currency: "USD" },
-    delivery_text: "Estimated between Sat, Oct 3 and Fri, Oct 9 to 10001", returns_text: "Seller does not accept returns.",
+    delivery_text: "Estimated between Sat, Oct 3 and Fri, Oct 9", returns_text: "Seller does not accept returns.",
     item_specifics: [{ name: "Color", value: "Black" }, { name: "Features", value: "Backlit," }],
     category_path: ["Electronics", "Keyboards"],
     images: ["https://i.ebayimg.com/images/g/fixtureA/s-l1600.png", "https://i.ebayimg.com/images/g/fixtureB/s-l1600.png"],
@@ -435,8 +476,11 @@ test("get_listing: unknown items, redirects and eBay's error page are distinct e
   const missing = await run("get_listing", { item_id: ID }, { responses: [{ status: 404, html: "<html><head><title>Discover error | eBay</title></head></html>" }] });
   assert.equal(missing.output.error_kind, "not_found");
   assert.equal(missing.calls.fetches.length, 1);
-  const redirect = await run("get_listing", { item_id: ID }, { responses: [{ type: "opaqueredirect", status: 0 }] });
+  const redirect = await run("get_listing", { item_id: ID }, { responses: [REDIRECT, "throw"] });
   assert.equal(redirect.output.error_kind, "redirected");
+  const challenge = await run("get_listing", { item_id: ID }, { responses: [REDIRECT, CAPTCHA] });
+  assert.equal(challenge.output.error_kind, "challenge");
+  assert.deepEqual(challenge.calls.fetches.map(f => f.path), [`/itm/${ID}`, `/itm/${ID}`]);
   const blocked = await run("get_listing", { item_id: ID }, { responses: [ERROR_PAGE] });
   assert.equal(blocked.output.error_kind, "blocked");
   assert.equal(blocked.calls.fetches.length, 3);
@@ -454,6 +498,41 @@ test("get_listing: unknown items, redirects and eBay's error page are distinct e
 test("get_listing: a page with no title and no structured price is site_changed", async () => {
   const { output } = await run("get_listing", { item_id: ID }, { responses: [ok("<html><head><title>Other</title></head><body><main>Nothing</main></body></html>")] });
   assert.equal(output.error_kind, "site_changed");
+});
+
+test("get_listing: the session's ship-to ZIP code is removed from delivery text", async () => {
+  const { output } = await run("get_listing", { item_id: ID }, { responses: [ok(itemPage())] });
+  assert.equal(output.delivery_text, "Estimated between Sat, Oct 3 and Fri, Oct 9");
+  const zipPlus4 = itemPage().replace("<span class=\"ux-textspans\">10001</span>", "<span class=\"ux-textspans\">10001-1234</span>");
+  assert.doesNotMatch((await run("get_listing", { item_id: ID }, { responses: [ok(zipPlus4)] })).output.delivery_text, /1000|1234/);
+  const named = itemPage().replace("<span class=\"ux-textspans\">10001</span>", "<span class=\"ux-textspans\">Testland</span>");
+  assert.match((await run("get_listing", { item_id: ID }, { responses: [ok(named)] })).output.delivery_text, /to Testland$/, "only ZIP codes are removed");
+});
+
+test("get_listing: when a label appears twice the fuller line wins over the short summary", async () => {
+  const { output } = await run("get_listing", { item_id: ID }, { responses: [ok(itemPage())] });
+  assert.equal(output.shipping_text, "US $10.43 Standard Tracked Shipping. Located in: Testville, Testland");
+});
+
+test("get_listing: an ended auction's bare countdown label and a non-GTIN placeholder are null", async () => {
+  const ended = await run("get_listing", { item_id: ID }, { responses: [ok(itemPage({ box: "auction", timer: "Ends in ", gtin: "Does not apply" }))] });
+  assert.equal(ended.output.time_left_text, null);
+  assert.equal(ended.output.gtin, null);
+  const live = await run("get_listing", { item_id: ID }, { responses: [ok(itemPage({ box: "auction", timer: "Ends in 5s" }))] });
+  assert.equal(live.output.time_left_text, "Ends in 5s");
+  assert.equal(live.output.gtin, "0123456789012");
+});
+
+test("get_listing: a redirect to another item says which one, other redirects stay generic", async () => {
+  const moved = await run("get_listing", { item_id: ID }, { responses: [REDIRECT, { status: 200, url: "https://www.ebay.com/itm/298000000099", html: "<html></html>" }] });
+  assert.equal(moved.output.error_kind, "redirected");
+  assert.match(moved.output.error_message, /item 298000000001 to item 298000000099/);
+  assert.match(moved.output.error_message, /item_id "298000000099"/);
+  const same = await run("get_listing", { item_id: ID }, { responses: [REDIRECT, { status: 200, url: `https://www.ebay.com/itm/${ID}`, html: "<html></html>" }] });
+  assert.equal(same.output.error_kind, "redirected");
+  assert.doesNotMatch(same.output.error_message, /relisted/);
+  const elsewhere = await run("get_listing", { item_id: ID }, { responses: [REDIRECT, { status: 200, url: "https://www.ebay.com/b/Keyboards/1/bn_1", html: "<html></html>" }] });
+  assert.doesNotMatch(elsewhere.output.error_message, /relisted/);
 });
 
 test("get_listing: malformed input is rejected before any request, and other origins are refused", async () => {
@@ -532,8 +611,11 @@ test("get_seller_profile: eBay's error state is profile_unavailable, and a chang
 });
 
 test("get_seller_profile: redirects, error pages, rate limits and network failures are distinct errors", async () => {
-  const redirect = await run("get_seller_profile", { seller_username: "fixture_seller_a" }, { responses: [{ type: "opaqueredirect", status: 0 }] });
+  const redirect = await run("get_seller_profile", { seller_username: "fixture_seller_a" }, { responses: [REDIRECT, "throw"] });
   assert.equal(redirect.output.error_kind, "redirected");
+  const challenge = await run("get_seller_profile", { seller_username: "fixture_seller_a" }, { responses: [REDIRECT, CAPTCHA] });
+  assert.equal(challenge.output.error_kind, "challenge");
+  assert.deepEqual(challenge.calls.fetches.map(f => f.path), ["/fdbk/feedback_profile/fixture_seller_a", "/fdbk/feedback_profile/fixture_seller_a"]);
   const blocked = await run("get_seller_profile", { seller_username: "fixture_seller_a" }, { responses: [ERROR_PAGE] });
   assert.equal(blocked.output.error_kind, "blocked");
   assert.equal(blocked.calls.fetches.length, 3);
@@ -544,10 +626,14 @@ test("get_seller_profile: redirects, error pages, rate limits and network failur
 });
 
 test("get_seller_profile: usernames are validated and encoded, and other origins are refused", async () => {
-  for (const input of [undefined, null, [], "x", {}, { seller_username: 5 }, { seller_username: "a" }, { seller_username: "a b" }, { seller_username: "a/b" }, { seller_username: "a?b" }, { seller_username: "../x" }, { seller_username: "x".repeat(65) }, { seller_username: "ok_name", extra: 1 }]) {
+  for (const input of [undefined, null, [], "x", {}, { seller_username: 5 }, { seller_username: "a" }, { seller_username: "a b" }, { seller_username: ".." }, { seller_username: "." }, { seller_username: "..." }, { seller_username: "--" }, { seller_username: "__" }, { seller_username: "a/b" }, { seller_username: "a?b" }, { seller_username: "../x" }, { seller_username: "x".repeat(65) }, { seller_username: "ok_name", extra: 1 }]) {
     const { output, calls } = await run("get_seller_profile", input, { responses: [ok(profilePage())] });
     assert.equal(output.error_kind, "invalid_input", JSON.stringify(input));
     assert.equal(calls.fetches.length, 0);
+  }
+  for (const valid of ["a.b", "_x_", "9-9", "user.name-1"]) {
+    const { output } = await run("get_seller_profile", { seller_username: valid }, { responses: [ok(profilePage({ name: valid }))] });
+    assert.equal(output.status, "ok", valid);
   }
   const star = await run("get_seller_profile", { seller_username: "user@x*1" }, { responses: [ok(profilePage({ name: "user@x*1" }))] });
   assert.equal(star.calls.fetches[0].path, "/fdbk/feedback_profile/user%40x*1");

@@ -54,7 +54,8 @@ Identifiers and conventions:
   and `page` (up to 20, up to 60 listings each). Keywords do not filter by themselves.
 - Prices are strings as eBay shows them for the session (`price_text`) plus a number when a single amount is
   shown. Shipping, delivery estimates and currency follow the browser session's location; the tools never
-  change it.
+  change it, and the ship-to ZIP code eBay appends to a delivery estimate is removed from `delivery_text`
+  (a signed-in session's ship-to address is the account's).
 - `seller.username` from `search` is the value to pass to `get_seller_profile`. On `get_listing` the seller
   card shows a store's display name for sellers with an eBay Store, so `seller.name` may not be a username;
   `seller.username` is read from the listing's own seller link and can be null.
@@ -66,7 +67,10 @@ sign-in page for a signed-out browser, and the tool reports `login_required` (it
 redirected, so the message says which state the page header shows). Each sold item carries `sold_date_text`.
 For a listing that accepts Best Offer the price on the card is not necessarily what the buyer paid, so those
 items have `best_offer: true` and a `price_caveat`. `get_listing` on a sold or
-ended listing loads normally, with eBay's notice in `status_message` and `availability: "out_of_stock"`.
+ended listing loads with eBay's notice in `status_message` and `availability: "out_of_stock"`; if eBay has
+relisted the item, its `/itm/` URL may later redirect to the new item, and the result is then `redirected` with
+the new item number in the message. Clock times in eBay's notices follow eBay's server rendering and may not be
+in the browser's time zone; `search` returns auction time left as a countdown and no clock times.
 
 ## URL patterns
 
@@ -93,7 +97,8 @@ Input is validated before any request; a bad input never reaches eBay.
 | `profile_unavailable` | `get_seller_profile`: eBay showed its error state; the username does not exist or the page failed to load, and the tool cannot tell which |
 | `blocked` | eBay answered its error page (HTTP 403) on all three attempts |
 | `rate_limited` | HTTP 429; not retried |
-| `redirected` | eBay redirected the request (verification, sign-in or regional page); not followed |
+| `challenge` | eBay redirected to a verification page (`/splashui/captcha` or `/splashui/challenge`); a person has to complete it in the browser, the tool never tries |
+| `redirected` | any other redirect (for example to sign-in or a regional page); not followed |
 | `request_failed` | the fetch failed before any response |
 | `site_error` | another HTTP 4xx or 5xx |
 | `site_changed` | the page loaded but its markup was not recognized (including a listing that shows variation menus whose data could not be read); nothing is guessed |
@@ -111,6 +116,16 @@ no zero count is `site_changed`.
   and 8 s, then returns `blocked`; in one series of six back-to-back searches through the tool all six
   succeeded, two after retries. The tools do not try to get past a block, and callers should not loop on
   `blocked`.
+- **Null does not mean no.** A results card shows a returns line only for "Free returns", so `returns_text` is
+  null for cards whose sellers accept paid returns (22 of 60 cards with `returns_accepted` set, in one check);
+  and a fixed-price card that offers Best Offer often says neither "Buy It Now" nor a bid count, so
+  `buying_format` is null for it (31 of 60 cards with the `buy_it_now` filter, in one check).
+- **Time zones.** eBay renders clock times ("Today 05:01 PM") in the fetched HTML in its own time zone, which
+  differed from the tab's by three hours in one check. `search` therefore returns only the countdown.
+- **Two shipping lines.** An item page can carry the label "Shipping" twice: a short summary ("FREE") and the
+  full line with carrier and location. The longer value is returned.
+- **Top-level navigation.** In one QA browser every top-level navigation to a `/sch/` URL showed the Error
+  Page while page-context fetches worked intermittently; the tools only fetch.
 - **Decoy "Sponsored" text.** Every result card ends with the reversed text `derosnopS` in a visually empty
   element. It is not a sponsored flag: all 60 cards on a page carry it. No real sponsored marker was found, so
   `sponsored` is not reported and the decoy text is never returned.
@@ -124,8 +139,16 @@ no zero count is `site_changed`.
   auctions; `buying_format` is `null` when the card says neither. Use the `buying_format` filter to restrict.
 - **Redirects are not followed.** Requests use `redirect: "manual"`: a cross-origin redirect (sign-in) makes a
   followed fetch throw without saying why, and a manual redirect is how eBay signals the sign-in requirement.
-  The cost is that a benign same-origin redirect would also be reported as `redirected`; none was seen on the
-  three endpoints.
+  When a manual redirect comes back the tool follows it once to read where it leads: a same-origin target can be
+  read (`/splashui/...` is eBay's verification page, reported as `challenge`), a cross-origin one cannot (reported
+  as `login_required` for `sold_only`, otherwise `redirected`). The cost is that a benign same-origin redirect
+  is reported as `redirected` too. One was seen: the `/itm/` URL of an auction that ended unsold and was relisted
+  redirected to the new item a couple of minutes after it ended, and `get_listing` then names the new item number.
+- **Verification pages and blocks vary by environment.** In the Kernel browsers used for the checks below no
+  verification page appeared. In a separate, non-stealth local Chromium on a datacenter-style egress (used for
+  the extension check), eBay redirected search, item and feedback fetches to `/splashui/challenge` or
+  `/splashui/captcha` on some calls and answered 4 of 4 spaced search fetches with HTTP 403, so a caller can
+  expect `challenge` and `blocked` outcomes where the browser's network is treated as automated.
 - **Store sellers on item pages.** The seller card shows the store name (for example a display name with spaces)
   where the username would be; the username is read from the link to the listing's description document
   (`itm.ebaydesc.com/itmdesc/<id>?...&seller=<username>`), which was present for both a store and a
@@ -141,10 +164,12 @@ no zero count is `site_changed`.
 
 ## Known limitations
 
-- **Untested surfaces.** The `blocked` retry path against the live site was exercised only through intermittent
-  403s, never against a persistent block or a verification challenge; a challenge page served as HTTP 200 would
-  be reported as `site_changed`, never solved. `rate_limited` (HTTP 429),
-  `redirected` on public searches, and `site_error` were never seen live and are covered by fixtures only.
+- **Untested surfaces.** `rate_limited` (HTTP 429), `redirected` for a non-verification redirect on a public
+  search, and `site_error` were never seen live and are covered by fixtures only. A verification page served
+  with HTTP 200 instead of as a redirect would be reported as `site_changed`, never solved.
+- `new_listing` was true for newest-first keyboard results in one builder check and absent in a QA sample of
+  about 900 cards, so treat it as best effort. Page 2 can repeat items from page 1 because rankings shift between
+  requests, and a card's condition label can differ from the item page's ("New (Other)" versus "New without box").
 - `search` returns one results page per call (up to 60 listings); eBay's total is text such as `57,000+`, and
   `total_results_approximate` is true when it ends with `+`.
 - Not reported: sponsored placement, product ratings shown on some cards, coupon prices, seller descriptions,
@@ -183,11 +208,37 @@ decoy and placeholder handling, text-noise removal, and that only relative GET-s
 node --test tests/ebay-tools.test.mjs
 ```
 
-Independent QA: not yet run; all three tools stay `draft`.
+Independent QA, round 1 (agent `agt_d977f53d650492ebf073`, pi / Sonnet 5.5, own Kernel browser, signed out, head
+`04aa9b3`): NOT SIGNED OFF. About 70 live tool calls, 61 outputs validated against their schemas with no
+failures, 37 malformed inputs made no request, results were identical from five starting pages with the tab URL
+unchanged, and the largest output (60 results) was 56,706 bytes. Findings, all addressed in the next revision:
+
+- D1 (blocking): `seller_username` `..` passed validation and requested `/fdbk/`; usernames must now contain a
+  letter or digit.
+- D2 (medium): `delivery_text` ended with the session's ship-to ZIP; it is removed.
+- D3 (medium): the relisted-auction redirect above; the result now names the new item and the README says so.
+- D4 to D9 (minor): bare "Ends in" countdown label on ended auctions, `gtin` "Does not apply", the short "FREE"
+  shipping row winning over the full line, clock times without a time zone (`ends_text` removed), undocumented
+  nulls, and `null` accepted for `sort`, `page`, `limit`, `buying_format` and `sold_only` because the Kernel
+  runtime does not validate page-tool input against the schema (the tool's own checks are the only gate there).
+
+Independent QA, round 2: not yet run; all three tools stay `draft`.
 
 ## Verification
 
-Kernel runtime: builder checks above. Chrome extension runtime: not yet verified.
+Kernel runtime: the builder checks and QA round 1 above. `sold_only` success was never QA-tested (no
+authorized signed-in session); the builder verified it once in one signed-in test session.
+
+Chrome extension runtime (Chromium 153, this repository's `extension/` built at the reviewed commit, a scratch
+profile, tools installed with `xwebmcp dev` and invoked through `xwebmcp mcp` with `open_tab` and `invoke_tool`,
+because the CLI refuses tabs it did not open): the builder got successful `search` and `get_listing` results and
+a successful `get_seller_profile` result, `invalid_input` and signed-out `login_required` outcomes, and, on
+other calls in the same session, `challenge` outcomes where eBay redirected to its verification page (the
+builder had pre-granted `https://www.ebay.com/*` in the scratch copy of the manifest instead of using the popup's
+Grant access prompt; no runtime code was changed). QA's own extension run granted the site through the prompt,
+but eBay served a verification page to its network, so it saw only error paths (`redirected` in that revision)
+and `..` reproduced D1. Parity with the Kernel runtime is therefore shown only for the cases listed here:
+not for every input, not for unrelated starting pages, and not for the navigation-lifetime case.
 
 ## Sessions
 

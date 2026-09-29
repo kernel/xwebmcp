@@ -4,7 +4,7 @@
   tool: {
     name: "get_listing",
     title: "Get eBay listing details",
-    description: "Read one eBay listing by its item number (the item_id from search or the number in an /itm/ URL): title, price and whether it is a current bid or a fixed price, buying format, Best Offer flag, bids and time left for auctions, availability, quantity available and sold, condition, delivery/shipping cost, returns, item specifics, category path, images, brand/model/GTIN when eBay publishes them, the seller's username and feedback, and the listing's variation menus with each option's sold-out flag and the price range across variations. Sold or ended listings load too: status_message then carries eBay's notice such as 'This listing sold on ...' and availability is out_of_stock; for a sold Best Offer listing the price shown may differ from the sale price (price_caveat). Read-only: it fetches the listing page from the current document, never navigates, bids, makes offers, or adds to cart or watchlist. It does not return the seller's description text, which eBay serves from a separate domain, and it does not choose or price a specific variation combination. Delivery text reflects the session's shipping location. eBay sometimes answers with its error page; the tool retries up to twice (after 4 and 8 seconds) and then returns blocked; space calls by about ten seconds.",
+    description: "Read one eBay listing by its item number (the item_id from search or the number in an /itm/ URL): title, price and whether it is a current bid or a fixed price, buying format, Best Offer flag, bids and time left for auctions, availability, quantity available and sold, condition, delivery/shipping cost, returns, item specifics, category path, images, brand/model/GTIN when eBay publishes them, the seller's username and feedback, and the listing's variation menus with each option's sold-out flag and the price range across variations. Sold or ended listings load too: status_message then carries eBay's notice such as 'This listing sold on ...' (clock times in it follow eBay's server rendering and may not be in the browser's time zone) and availability is out_of_stock; for a sold Best Offer listing the price shown may differ from the sale price (price_caveat). Read-only: it fetches the listing page from the current document, never navigates, bids, makes offers, or adds to cart or watchlist. It does not return the seller's description text, which eBay serves from a separate domain, and it does not choose or price a specific variation combination. Delivery text reflects the session's shipping location, but the ZIP code eBay appends to the estimate is removed. An item that eBay has since relisted can answer with a redirect to the new item; the result is then redirected and names the new item number. eBay sometimes answers with its error page; the tool retries up to twice (after 4 and 8 seconds) and then returns blocked; space calls by about ten seconds. If eBay redirects to a verification page the result is challenge: a person has to complete it in the browser and the tool never tries.",
     inputSchema: {
       type: "object", additionalProperties: false, required: ["item_id"],
       properties: {
@@ -89,7 +89,7 @@
           type: "object", additionalProperties: false, required: ["status", "error_kind", "error_message"],
           properties: {
             status: { const: "error" },
-            error_kind: { enum: ["invalid_input", "wrong_page", "not_found", "blocked", "rate_limited", "redirected", "request_failed", "site_error", "site_changed"] },
+            error_kind: { enum: ["invalid_input", "wrong_page", "not_found", "blocked", "challenge", "rate_limited", "redirected", "request_failed", "site_error", "site_changed"] },
             error_message: { type: "string", minLength: 1 }
           }
         }
@@ -108,13 +108,22 @@
     const id = input.item_id;
     if (location.origin !== ORIGIN) return fail("wrong_page", "Open a https://www.ebay.com page in this tab, then call again. Nothing was requested.");
 
+    // The request does not follow redirects; a redirect is followed once to tell a verification page (same-origin) from other redirects.
+    const request = `/itm/${id}`;
     let html = null;
     for (let attempt = 1; attempt <= 3 && html === null; attempt++) {
       if (attempt > 1) await new Promise(resolve => setTimeout(resolve, 4000 * (attempt - 1)));
       let response;
-      try { response = await fetch(`/itm/${id}`, { credentials: "include", redirect: "manual" }); }
+      try { response = await fetch(request, { credentials: "include", redirect: "manual" }); }
       catch { return fail("request_failed", "The request to eBay failed before a response arrived. Nothing was changed; try again."); }
-      if (response.type === "opaqueredirect") return fail("redirected", "eBay redirected the listing request instead of returning the page (it may be a verification, sign-in or regional page). Open the listing in the browser to see it; this tool does not follow or solve it.");
+      if (response.type === "opaqueredirect") {
+        let landed = "";
+        try { landed = new URL((await fetch(request, { credentials: "include" })).url).pathname; } catch { /* a cross-origin redirect cannot be followed */ }
+        if (/^\/splashui\//.test(landed)) return fail("challenge", "eBay redirected to a verification (CAPTCHA) page instead of returning the listing. A person has to complete it in this browser; the tool never tries to solve it, and repeated calls make it more likely.");
+        const moved = (/^\/itm\/(?:[^/?#]*\/)?([0-9]{9,14})\/?$/.exec(landed) || [])[1];
+        if (moved && moved !== id) return fail("redirected", `eBay redirected item ${id} to item ${moved}, which usually means the listing ended and was relisted or replaced. Call get_listing with item_id "${moved}" for the current listing.`);
+        return fail("redirected", "eBay redirected the listing request instead of returning the page (it may be a sign-in or regional page). Open the listing in the browser to see it; this tool does not follow or solve it.");
+      }
       if (response.status === 429) return fail("rate_limited", "eBay rate-limited the listing request; wait a few minutes before retrying.");
       if (response.status === 404) return fail("not_found", `eBay has no listing with item number ${id}.`);
       const body = await response.text();
@@ -138,6 +147,8 @@
       if (el) walk(el);
       return clean(out);
     };
+    // Delivery estimates end with the session's ship-to ZIP code ("... to 10001"); it is not returned.
+    const redact = value => value.replace(/\s+to\s+[0-9]{5}(?:-[0-9]{4})?(?![0-9])/g, "");
     const first = (selector, skip) => { const el = doc.querySelector(selector); return el ? text(el, skip) || null : null; };
     const amount = value => { const m = /^[^\d]{0,4}([\d,]+(?:\.\d+)?)(?:\/ea)?$/.exec(value || ""); return m ? Number(m[1].replace(/,/g, "")) : null; };
     let product = null;
@@ -155,6 +166,7 @@
     const buyingFormat = bidBox ? "auction" : binBox ? "buy_it_now" : null;
     const bestOffer = !!(bidBox || binBox || doc).querySelector(".x-price-primary__orBestOffer") || /or best offer/i.test(text(bidBox || binBox));
     const statusMessage = first('[data-testid="d-statusmessage"]');
+    const timerText = first(".ux-timer__text");
     const bids = /^(\d[\d,]*) bids?\b/i.exec(first(".x-bid-count") || "");
     const availabilityUrl = offer && typeof offer.availability === "string" ? offer.availability.replace(/^.*\//, "") : "";
     const conditionUrl = offer && typeof offer.itemCondition === "string" ? offer.itemCondition.replace(/^.*\//, "") : "";
@@ -162,11 +174,12 @@
     const conditionText = first(".x-item-condition-text", { buttons: true });
     const availabilityEl = doc.querySelector(".x-quantity__availability");
     const availabilitySpans = availabilityEl ? [...availabilityEl.querySelectorAll("span")].map(el => text(el)).filter(Boolean) : [];
+    // A label can appear twice (a short summary such as "FREE" and the full line); the longer value is the full line.
     const rows = {};
     for (const row of doc.querySelectorAll("div.ux-labels-values")) {
       const label = text(row.querySelector(".ux-labels-values__labels")).replace(/:$/, "");
       const value = text(row.querySelector(".ux-labels-values__values"), { buttons: true });
-      if (label && value && !Object.hasOwn(rows, label)) rows[label] = value;
+      if (label && value && (!Object.hasOwn(rows, label) || value.length > rows[label].length)) rows[label] = value;
     }
     const rate = offer && Array.isArray(offer.shippingDetails) && offer.shippingDetails[0] ? offer.shippingDetails[0].shippingRate : null;
     const rateAmount = rate && rate.value !== undefined ? Number(rate.value) : NaN;
@@ -247,15 +260,15 @@
       best_offer: bestOffer,
       price_caveat: soldNotice && bestOffer ? "This listing accepts Best Offer, so the sale price may differ from the price shown." : null,
       bid_count: bids ? Number(bids[1].replace(/,/g, "")) : null,
-      time_left_text: first(".ux-timer__text"),
+      time_left_text: /[0-9]/.test(timerText || "") ? timerText : null,
       availability: { InStock: "in_stock", OutOfStock: "out_of_stock" }[availabilityUrl] || null,
       status_message: statusMessage ? statusMessage.slice(0, 200) : null,
       condition: /[A-Za-z]/.test(conditionText || "") ? conditionText : conditionFallback,
       quantity_available_text: availabilitySpans.find(t => /available|left|last one/i.test(t)) || null,
       quantity_sold_text: availabilitySpans.find(t => /\bsold$/i.test(t)) || null,
-      shipping_text: rows.Shipping ? rows.Shipping.slice(0, 300) : null,
+      shipping_text: rows.Shipping ? redact(rows.Shipping).slice(0, 300) : null,
       shipping_cost: isFinite(rateAmount) && rate && /^[A-Z]{3}$/.test(rate.currency || "") ? { amount: rateAmount, currency: rate.currency } : null,
-      delivery_text: rows.Delivery ? rows.Delivery.slice(0, 300) : null,
+      delivery_text: rows.Delivery ? redact(rows.Delivery).slice(0, 300) : null,
       returns_text: rows.Returns ? rows.Returns.slice(0, 300) : null,
       item_specifics: specifics,
       category_path: [...doc.querySelectorAll('[data-testid="x-breadcrumb"] li')].map(li => text(li)).filter(Boolean).slice(0, 8).map(s => s.slice(0, 80)),
@@ -263,7 +276,7 @@
       brand: product && product.brand && typeof product.brand.name === "string" ? clean(product.brand.name).slice(0, 80) || null : null,
       model: product && typeof product.model === "string" ? clean(product.model).slice(0, 80) || null : null,
       mpn: product && typeof product.mpn === "string" ? clean(product.mpn).slice(0, 80) || null : null,
-      gtin: typeof gtin === "string" ? clean(gtin).slice(0, 20) || null : null,
+      gtin: typeof gtin === "string" && /^[0-9]{8,14}$/.test(clean(gtin)) ? clean(gtin) : null,
       seller,
       variations
     };
