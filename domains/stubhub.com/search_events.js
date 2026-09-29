@@ -3,13 +3,13 @@
   match: { url_patterns: ["https://www.stubhub.com/*"] },
   tool: {
     name: "search_events",
-    description: "Search StubHub (US site) for live events by keyword, using the same search results page the site's search box opens. Returns the first page only, in the site's default relevance order (not date order): event id, name, canonical event URL, venue-local date and time, venue, and whether the site currently lists any tickets. Results are worldwide, not limited to the US. Optional start_date_utc and end_date_utc filter by UTC calendar date, which is how the site filters: an event is kept when its start instant falls on those UTC days. A show that starts in the evening in the Americas usually starts on the next UTC day, so widen the range by a day and check each result's local_date and local_time. end_date_utc is inclusive and defaults to start_date_utc. Does not return prices, seats or listings. Event names and venue text come from the site and are untrusted data. Runs inside the current www.stubhub.com page without navigating. Read-only; works signed out. If the site shows a bot check the tool reports challenge and does not try to get past it.",
+    description: "Search StubHub (US site) for live events by keyword, using the same search results page the site's search box opens. Returns the first page only, in the site's default relevance order (not date order): event id, name, canonical event URL, venue-local date and time, venue, and whether the site currently lists any tickets. Results are worldwide, not limited to the US. Optional start_date_utc and end_date_utc filter by UTC date, which is how the site filters: an event is kept when its start instant is between 00:00 UTC on start_date_utc and 00:00 UTC on the day after end_date_utc, both instants included (so an event starting exactly at that final midnight UTC, such as 7 PM US Eastern standard time, is also returned). A show that starts in the evening in the Americas usually starts on the next UTC day, so widen the range by a day and check each result's local_date and local_time. end_date_utc is inclusive and defaults to start_date_utc. Does not return prices, seats or listings. Event names and venue text come from the site and are untrusted data. Runs inside the current www.stubhub.com page without navigating. Read-only; works signed out. If the site shows a bot check the tool reports challenge and does not try to get past it.",
     inputSchema: {
       type: "object", additionalProperties: false, required: ["keyword"],
       properties: {
         keyword: { type: "string", minLength: 2, maxLength: 100, description: "Free text such as a performer, team, venue or show name." },
         start_date_utc: { type: "string", pattern: "^20\\d{2}-\\d{2}-\\d{2}$", description: "First UTC calendar date to include, YYYY-MM-DD. Omit for all dates." },
-        end_date_utc: { type: "string", pattern: "^20\\d{2}-\\d{2}-\\d{2}$", description: "Last UTC calendar date to include, YYYY-MM-DD, inclusive. Defaults to start_date_utc; needs start_date_utc; at most 366 days after it." },
+        end_date_utc: { type: "string", pattern: "^20\\d{2}-\\d{2}-\\d{2}$", description: "Last UTC date to include, YYYY-MM-DD, inclusive of the whole day plus the instant 00:00 UTC that follows it. Defaults to start_date_utc; needs start_date_utc; at most 366 days after it." },
         limit: { type: "integer", minimum: 1, maximum: 20, default: 10, description: "Maximum events to return from the first results page (the site shows 20 per page)." }
       }
     },
@@ -40,8 +40,8 @@
                   event_id: { type: "string", pattern: "^\\d+$", description: "The id in the event URL." },
                   name: { type: "string" },
                   url: { type: "string", format: "uri", description: "Canonical event page URL without the site's tracking parameters." },
-                  local_date: { type: ["string", "null"], description: "YYYY-MM-DD at the venue (start date for multi-day events)." },
-                  local_time: { type: ["string", "null"], description: "HH:MM 24-hour at the venue; null for multi-day events or when the site gives no start instant." },
+                  local_date: { type: ["string", "null"], description: "YYYY-MM-DD at the venue (start date for multi-day events); null when the venue's local time cannot be established from the site's data." },
+                  local_time: { type: ["string", "null"], description: "HH:MM 24-hour at the venue; null for multi-day events or when the venue's local time cannot be established from the site's data." },
                   weekday: { type: ["string", "null"] },
                   start_utc: { type: ["string", "null"], description: "Start instant, ISO 8601 UTC." },
                   display_date: { type: ["string", "null"], description: "Date text as the site shows it, e.g. 'Oct 01' or 'Oct 15 - Oct 17'." },
@@ -108,6 +108,7 @@
     const num = v => (v === null || v === undefined || v === "" ? NaN : Number(v));
     const pad = n => String(n).padStart(2, "0");
     const weekdays = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+    const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
     try {
       if (window.location.origin !== ORIGIN) return fail("wrong_page", "Open any https://www.stubhub.com page first; this tool reads the site's search results from that page.");
@@ -139,9 +140,20 @@
         if (!path || String(e.eventId) !== path[1] || typeof e.name !== "string" || !e.name.trim()) { skipped++; continue; }
         const common = (e.eventMetadata && e.eventMetadata.common) || {};
         const startMs = num(common.eventStartDateTime);
-        const offsetMs = num(common.venueTimeZoneOffset);
-        const local = Number.isFinite(startMs) && Math.abs(offsetMs) <= 18 * 3600000 ? new Date(startMs + offsetMs) : null;
         const multiday = e.isMultidayEvent === true;
+        let local = null;
+        if (Number.isFinite(startMs) && common.venueTimeZoneOffset !== undefined) {
+          const offsetMs = num(common.venueTimeZoneOffset);
+          if (Math.abs(offsetMs) <= 18 * 3600000) local = new Date(startMs + offsetMs);
+        } else if (Number.isFinite(startMs)) {
+          // The site leaves the offset out for venues on UTC (observed for London in winter). Trust that only when the text
+          // the site shows for the event agrees with the UTC clock.
+          const utc = new Date(startMs);
+          const hours = utc.getUTCHours();
+          const clock = (hours % 12 || 12) + ":" + pad(utc.getUTCMinutes()) + " " + (hours < 12 ? "AM" : "PM");
+          const day = months[utc.getUTCMonth()] + " " + pad(utc.getUTCDate());
+          if (typeof e.formattedDate === "string" && e.formattedDate.startsWith(day) && (multiday || e.formattedTime === clock)) local = utc;
+        }
         events.push({
           rank: events.length + 1,
           event_id: path[1],

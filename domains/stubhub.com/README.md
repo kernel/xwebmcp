@@ -35,6 +35,8 @@ Nothing here selects a listing, opens an event page, follows a link, favorites, 
 - **Venue-local dates are not what is filtered.** An evening event in the Americas starts on the next UTC day, and a late-night one in Asia or Oceania on the previous one. Widen the range by a day and read each result's `local_date` and `local_time`. A venue-local filter was not built: the site orders results by relevance and only the first page is read, so filtering afterwards would return an unpredictable subset.
 - Without dates the tool sends `dates=0,null,null` explicitly. The site remembers a date filter applied through its own UI in that browser (a plain visit to the search URL kept "Oct 10 - Oct 17" until cleared); a fetch with an explicit `dates` value does not change that memory (a plain visit afterwards still showed "All dates").
 - `local_date`, `local_time` and `weekday` are computed from the result's start instant plus the venue's UTC offset that the site includes. In a sample of 152 results from eight keyword queries, all 144 that are not multi-day matched the site's own `formattedDate` and `formattedTime` text (the site appends the year for dates outside the current year).
+- **Venues on UTC have no offset in the data.** The site leaves `venueTimeZoneOffset` out when the offset is zero (London events after the late-October clock change, 21 of 289 events in an independent sample; the builder's 152-result sample happened to contain none). For those events the tool reads the start instant as local time only when the site's own text agrees: `formattedDate` must begin with the UTC month and day and, for single-day events, `formattedTime` must equal the UTC clock time. Otherwise `local_date`, `local_time` and `weekday` are null and `start_utc` and the display text are still returned. An explicit offset of `"0"` is used as given.
+- An event that starts exactly at 00:00 UTC on the day after `end_date_utc` is returned as well, because the site's upper bound is an inclusive instant. This is common for US Eastern evening starts (7 PM standard time, 8 PM daylight time), whose `local_date` is the last day requested.
 
 ### Outputs
 
@@ -58,11 +60,13 @@ The tool matches only `https://www.stubhub.com/*`, not the default `https://stub
 ## Known limitations
 
 - First results page only: at most 20 events, in the site's relevance order (not date order). There is no way to read further pages with this tool.
-- Dates filter on UTC start instants, not venue-local dates (see above). Events starting exactly at 00:00 UTC on the day after `end_date_utc` are also returned, because the site includes its upper bound.
+- Dates filter on UTC start instants, not venue-local dates (see above), and the site's upper bound is inclusive, so events starting exactly at 00:00 UTC on the day after `end_date_utc` are also returned and counted in `total_count`.
+- `local_date`, `local_time` and `weekday` are null when the venue's local time cannot be established from the site's data (no start instant, an unusable offset, or an omitted offset that the displayed text does not corroborate).
 - No location or radius filter, no category or sort options, no keyword-less search: their `GET` behaviour was not verified. A location parameter did not change the results in one check.
 - No prices, seats, listings, quantity or fees; no event, performer, venue or Explore pages; no account, order, favorites or seller flows. Those were investigated only for discovery and are not implemented.
 - Search-index flags (`has_active_listings`, `availability_message`) can lag the event page.
 - Not live-verified: the `challenge` and `rate_limited` paths (no search request was ever refused), the `site_changed` paths, other country editions, and behaviour in a signed-in browser (public results were read signed out; the signed-in page was not compared). These are covered by stubbed tests only.
+- AWS WAF is documented to answer its challenge and CAPTCHA actions with HTTP 202 or 405 rather than 403. No such response was ever seen from `/secure/Search`; if one appears the tool reports `site_error` with the status, not `challenge`.
 
 ## QA
 

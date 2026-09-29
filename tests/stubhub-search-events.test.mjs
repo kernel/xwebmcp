@@ -289,6 +289,65 @@ test("search_events: missing or unusable time data becomes null, not a guess", a
   assert.equal(a.display_date, "Oct 01");
 });
 
+// The site leaves venueTimeZoneOffset out for venues on UTC (observed for London in winter). The local time is then
+// trusted only when the text the site shows for the event agrees with the UTC clock.
+const gmt = (id, start, formattedDate, formattedTime, extra = {}) => {
+  const e = item(id, "Fabricated Musical", start, 0, { formattedDate, formattedTime, venueCity: "London", venueStateProvince: null, countryCode: "GB", countryName: "United Kingdom", ...extra });
+  delete e.eventMetadata.common.venueTimeZoneOffset;
+  return e;
+};
+
+test("search_events: an omitted UTC offset is read as UTC when the displayed date and time agree", async () => {
+  const events = [
+    gmt("700000001", "2026-11-03T19:30:00Z", "Nov 03", "7:30 PM"),
+    gmt("700000002", "2026-11-04T00:05:00Z", "Nov 04", "12:05 AM"),
+    gmt("700000003", "2026-11-04T12:00:00Z", "Nov 04", "12:00 PM"),
+    gmt("700000004", "2027-05-29T19:00:00Z", "May 29 2027", "7:00 PM"),
+    gmt("700000005", "2026-11-05T14:00:00Z", "Nov 05 - Nov 07", "3 days", { isMultidayEvent: true })
+  ];
+  const h = harness({ route: () => ({ status: 200, body: pageHtml(grid(events)) }) });
+  const result = await h.run({ keyword: "musical" });
+  assert.equal(result.status, "ok");
+  assert.deepEqual(result.events.map(e => [e.local_date, e.local_time, e.weekday]), [
+    ["2026-11-03", "19:30", "Tuesday"], ["2026-11-04", "00:05", "Wednesday"], ["2026-11-04", "12:00", "Wednesday"], ["2027-05-29", "19:00", "Saturday"], ["2026-11-05", null, "Thursday"]
+  ]);
+  assert.equal(result.events[0].start_utc, "2026-11-03T19:30:00.000Z");
+  assert.equal(result.events[0].venue.country_code, "GB");
+});
+
+test("search_events: an omitted offset with text that disagrees with the UTC clock gives null, not a guess", async () => {
+  const events = [
+    gmt("710000001", "2026-11-03T19:30:00Z", "Nov 03", "8:30 PM"),
+    gmt("710000002", "2026-11-03T19:30:00Z", "Nov 04", "7:30 PM"),
+    gmt("710000003", "2026-11-03T19:30:00Z", undefined, "7:30 PM"),
+    gmt("710000004", "2026-11-03T19:30:00Z", "Nov 03", undefined),
+    gmt("710000005", "2026-11-03T19:30:00Z", "Nov 04 - Nov 06", "3 days", { isMultidayEvent: true })
+  ];
+  const h = harness({ route: () => ({ status: 200, body: pageHtml(grid(events)) }) });
+  const result = await h.run({ keyword: "musical" });
+  assert.equal(result.status, "ok");
+  for (const e of result.events) {
+    assert.deepEqual([e.local_date, e.local_time, e.weekday], [null, null, null], e.event_id);
+    assert.equal(e.start_utc, "2026-11-03T19:30:00.000Z");
+  }
+});
+
+test("search_events: an explicit zero offset is used as given", async () => {
+  const zero = item("720000001", "Fabricated Musical", "2026-11-03T19:30:00Z", 0);
+  const h = harness({ route: () => ({ status: 200, body: pageHtml(grid([zero])) }) });
+  const [event] = (await h.run({ keyword: "musical" })).events;
+  assert.deepEqual([event.local_date, event.local_time], ["2026-11-03", "19:30"]);
+});
+
+test("search_events: an event starting exactly at 00:00 UTC after end_date_utc is passed through, and the description says so", async () => {
+  const boundary = item("730000001", "Fabricated Band", "2026-10-16T00:00:00Z", -4, { formattedDate: "Oct 15", formattedTime: "8:00 PM" });
+  const h = harness({ route: () => ({ status: 200, body: pageHtml(grid([boundary])) }) });
+  const result = await h.run({ keyword: "band", start_date_utc: "2026-10-15", end_date_utc: "2026-10-15" });
+  assert.equal(result.events[0].start_utc, "2026-10-16T00:00:00.000Z");
+  assert.equal(result.events[0].local_date, "2026-10-15");
+  assert.match(h.definition.tool.description, /00:00 UTC on the day after end_date_utc, both instants included/);
+});
+
 test("search_events: skips results that are not StubHub event pages and says so", async () => {
   const good = item("400000001", "Fabricated Band", "2026-10-02T03:00:00Z", -7);
   const offHost = item("400000002", "Elsewhere Show", "2026-10-02T03:00:00Z", -7, { url: "https://www.example.com/x/event/400000002/" });
