@@ -27,7 +27,7 @@
               items: {
                 type: "object", additionalProperties: false, required: ["rank", "asin", "title", "url", "image_url", "price_inr", "price_text", "rating", "rating_count"],
                 properties: {
-                  rank: { type: "integer", minimum: 1, maximum: 100, description: "The site's rank number for this product in the chart." },
+                  rank: { type: "integer", minimum: 1, maximum: 999, description: "The site's rank number for this product in the chart." },
                   asin: { type: "string", pattern: "^[A-Z0-9]{10}$" },
                   title: { type: "string", minLength: 1 },
                   url: { type: "string", pattern: "^https://www\\.amazon\\.in/dp/[A-Z0-9]{10}$" },
@@ -73,6 +73,7 @@
       } catch { return null; }
     };
     if (!input || typeof input !== "object" || Array.isArray(input) || Object.keys(input).some(k => !["category", "page", "limit"].includes(k))) return fail("invalid_input", "Provide optionally category, page and limit.");
+    if (Object.values(input).some(value => value === null)) return fail("invalid_input", "Omit optional fields instead of passing null.");
     const category = input.category === undefined ? null : input.category;
     const page = input.page === undefined ? 1 : input.page;
     const limit = input.limit === undefined ? 30 : input.limit;
@@ -132,6 +133,7 @@
         if (path && CATEGORY.test(path) && name && !subcategories.some(s => s.category === path) && subcategories.length < 60) subcategories.push({ name, category: path });
       }
     }
+    if (!category && !subcategories.length) return fail("site_changed", "The page has no department list; amazon.in may have changed its markup.");
     return { status: "ok", category, category_name: categoryName, page, items: items.slice(0, limit), subcategories };
   }
 }]
