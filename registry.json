@@ -493,6 +493,20 @@
       "notes": "Sets a cart line to an exact quantity (0 removes) through the site's UpdateCartItemsMutation; not_in_cart when the item is absent; one mutation per invocation, never retried. Live-verified 2026-09-25 (author and independent QA) with per-each and weighed items and a fully restored cart. Since 2026-09-28 the shopping location comes from the site's GetLastUserLocation query (or a fresh /store render when it has no address), never from the page's load-time state, and a failed location read fails the call; the tool follows an address switch without a reload. Author live check passed, awaiting independent QA."
     },
     {
+      "domain": "ipwho.is",
+      "tool": "lookup_ip",
+      "file": "domains/ipwho.is/lookup_ip.js",
+      "kind": "page",
+      "namespace": "ipwho.is",
+      "url_patterns": [
+        "https://ipwho.is/*",
+        "https://*.ipwho.is/*"
+      ],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Draft. Page tool on ipwho.is: one free-endpoint lookup per call for an IPv4/IPv6 address or the browser's own egress address; no retries, cooldown after HTTP 429. Approximate location; free tier only."
+    },
+    {
       "domain": "jetblue.com",
       "tool": "login",
       "file": "domains/jetblue.com/login.js",
