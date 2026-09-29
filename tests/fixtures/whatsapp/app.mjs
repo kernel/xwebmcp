@@ -5,9 +5,11 @@
 // contains real account data.
 //
 // Two guards keep the tools honest about what they read. Text the tools must never read (message
-// previews, contact names, message hits) records every read of textContent or any attribute. And the
-// tools only see elements through a strict view that throws on any property outside the small set
-// they use, so a read through innerText, innerHTML, dataset, attributes and the like fails a test.
+// previews, contact names, message hits) records every read of textContent or of an attribute, whether
+// by getAttribute or by a selector that tests it. And the tools only see elements through a strict view
+// that records, then throws on, any member outside the small set they use, so a read through innerText,
+// innerHTML, dataset, attributes and the like fails a test even if the tool swallows the error. The
+// fixture models no unread, pinned or muted markup, so those are not covered by these guards.
 import { readFileSync } from "node:fs";
 import { runInNewContext } from "node:vm";
 
@@ -55,6 +57,7 @@ function parseSelector(selector) {
     return { tag: match[1] || null, attrs };
   });
 }
+const STRUCTURAL = new Set(["data-testid", "role"]);
 function matchesCompound(el, { tag, attrs }) {
   if (tag && el.localName !== tag) return false;
   return attrs.every(({ name, op, value }) => {
@@ -78,12 +81,15 @@ export class El {
   descendants() { return this.children.flatMap(kid => [kid, ...kid.descendants()]); }
   querySelectorAll(selector) {
     const chain = parseSelector(selector);
-    return this.descendants().filter(el => {
+    const found = this.descendants().filter(el => {
       if (!matchesCompound(el, chain[chain.length - 1])) return false;
       let at = chain.length - 2;
       for (let up = el.parentElement; up && at >= 0; up = up.parentElement) if (matchesCompound(up, chain[at])) at--;
       return at < 0;
     });
+    // A selector that tests an attribute other than the structural ones and returns a forbidden node has read that attribute.
+    if (chain.some(compound => compound.attrs.some(attr => !STRUCTURAL.has(attr.name)))) for (const el of found) if (el.forbidden) el.forbidden.push(el.label);
+    return found;
   }
   querySelector(selector) { return this.querySelectorAll(selector)[0] || null; }
 }
@@ -116,12 +122,12 @@ export const MESSAGES = [{ title: "Book Club", text: "MESSAGE-HIT alpha beta" }]
 // Chats may carry `member` (text elsewhere in the row that a query can match). Options: mode (logged_in | logged_out | splash), noSearchBox, readyAtMs, origin; chats, contacts, messages, extraRows, shuffle,
 // titleless (no title attribute), blankTitles (no readable title); scroller / mainOverflow ({ overflowY, scrollHeight, clientHeight });
 // qrHook (the only link_device_* hook shown on the QR screen); after typing: blankMs (empty list), latencyMs (old rows still listed), staleDrop (old frame lacks that many rows), partialMs
-// (only the first match listed), neverSettles, neverClears, focusOnInput; initialSearch.
+// (only the first match listed), flipMs (the settled chats swap order on every poll for that long), neverSettles, neverClears, focusOnInput; initialSearch.
 export function createApp(options = {}) {
   const o = {
     mode: "logged_in", chats: CHATS, contacts: CONTACTS, messages: MESSAGES, extraRows: [], shuffle: false,
     latencyMs: 550, blankMs: 0, staleDrop: 0, partialMs: 0, neverSettles: false, neverClears: false, focusOnInput: true, initialSearch: "",
-    scroller: null, mainOverflow: null, titleless: false, blankTitles: false, noSearchBox: false, readyAtMs: 0, ...options
+    scroller: null, mainOverflow: null, titleless: false, blankTitles: false, noSearchBox: false, readyAtMs: 0, flipMs: 0, bodyOverflow: null, ...options
   };
   const clock = { now: 1_000_000 };
   const forbidden = [];
@@ -140,6 +146,7 @@ export function createApp(options = {}) {
   main.append(pane);
   if (o.scroller) Object.assign(pane, o.scroller);
   if (o.mainOverflow) Object.assign(main, o.mainOverflow);
+  if (o.bodyOverflow) Object.assign(body, o.bodyOverflow);
   const empty = new El("div", { "data-testid": "search-no-chats-or-contacts-container" }, [new El("h2", {}, [new El("span", {}, [], "Nothing here")])]);
 
   const forbid = (el, label) => { el.forbidden = forbidden; el.label = label; return el; };
@@ -211,7 +218,10 @@ export function createApp(options = {}) {
       return false;
     }
     const matched = o.chats.filter(chat => how(chat, query));
-    const chats = o.partialMs && elapsed < o.blankMs + o.latencyMs + o.partialMs ? matched.slice(0, 1) : matched;
+    const settledAt = o.blankMs + o.latencyMs;
+    // flipMs: for that long the rows swap order on every 150 ms poll, so consecutive frames have the same rows in a different order.
+    const flipped = o.flipMs && elapsed < settledAt + o.flipMs && Math.floor((elapsed - settledAt) / 150) % 2 === 1;
+    const chats = o.partialMs && elapsed < settledAt + o.partialMs ? matched.slice(0, 1) : flipped ? [...matched].reverse() : matched;
     const contacts = o.contacts.filter(contact => contact.name.toLowerCase().includes(query));
     const messages = o.messages.filter(message => message.text.toLowerCase().includes(query));
     if (!matched.length && !contacts.length && !messages.length) return true;
@@ -244,7 +254,7 @@ export function createApp(options = {}) {
       const proxy = new Proxy(el, {
         get(target, prop) {
           if (typeof prop === "symbol") return Reflect.get(target, prop, target);
-          if (!ALLOWED.has(prop)) throw new Error(`unexpected DOM read: ${prop}`);
+          if (!ALLOWED.has(prop)) { forbidden.push(`unexpected:${prop}`); throw new Error(`unexpected DOM read: ${prop}`); }
           const value = Reflect.get(target, prop, target);
           return typeof value === "function" ? (...args) => wrap(value.apply(target, args)) : wrap(value);
         }

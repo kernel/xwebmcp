@@ -3,8 +3,10 @@ import test from "node:test";
 import { CONTACTS, El, createApp } from "./fixtures/whatsapp/app.mjs";
 
 // Every name, number, time and message below is fabricated. The fixture app records any read of a
-// message preview, a contact name or a message hit, and throws on any element member the tools have
-// no reason to use, so a tool that reads such text (by any route) fails these tests.
+// message preview, a contact name or a message hit (by textContent, getAttribute or an attribute
+// selector) and records and throws on any element member the tools have no reason to use. Unread,
+// pinned and muted markup is not modelled, so that those are not read is a property of the sources,
+// not of these tests.
 const titles = result => result.chats.map(chat => chat.title);
 const untouched = app => {
   assert.deepEqual(app.forbidden, [], "previews, contact names and message hits are never read");
@@ -21,11 +23,22 @@ test("the fixture's read guards fire on reads the tools must not make", () => {
   app.probe(`${row}.textContent`);
   assert.ok(app.forbidden.includes("preview"), "reading a row's text reaches the preview and is recorded");
   const other = createApp();
-  other.probe('document.querySelector(\'[data-testid="chat-list"]\').querySelectorAll(\'span[title]\')[0].getAttribute("aria-label")');
+  other.probe('document.querySelector(\'[data-testid="chat-list"]\').querySelectorAll(\'[data-testid="cell-frame-title"] span[title]\')[0].getAttribute("aria-label")');
   assert.deepEqual(other.forbidden, [], "attribute reads on non-forbidden nodes are fine");
   const search = createApp({ initialSearch: "dana" });
   search.probe('document.querySelectorAll(\'[data-testid="cell-frame-title"] span[title]\').forEach(s => s.getAttribute("title"))');
   assert.ok(search.forbidden.includes("contact name"), "attribute reads on contact names are recorded");
+  for (const selector of ['span[title^="D"]', 'span[title^="Dana"]', 'span[title]']) {
+    const probe = createApp({ initialSearch: "dana" });
+    probe.probe(`document.querySelector('[data-testid="chat-list"]').querySelectorAll('${selector}')`);
+    assert.ok(probe.forbidden.includes("contact name"), `a selector that tests an attribute value reads it: ${selector}`);
+  }
+  const structural = createApp({ initialSearch: "dana" });
+  structural.probe('document.querySelector(\'[data-testid="chat-list"]\').querySelectorAll(\'[role="row"] [data-testid="cell-frame-title"]\')');
+  assert.deepEqual(structural.forbidden, [], "selecting by test id and role is structural, not a read");
+  const swallowed = createApp();
+  swallowed.probe('try { document.querySelector(\'[data-testid="chat-list"] [role="row"]\').innerText } catch {}');
+  assert.deepEqual(swallowed.forbidden, ["unexpected:innerText"], "a swallowed unexpected read is still recorded");
 });
 
 test("list_chats returns the rendered chats in sidebar order without previews or side effects", async () => {
@@ -72,6 +85,7 @@ test("list_chats flags an overflowing sidebar scroll container, and only that on
   assert.equal(await flag({ scroller: { overflowY: "auto", scrollHeight: 800, clientHeight: 800 } }), false);
   assert.equal(await flag({ scroller: { overflowY: "visible", scrollHeight: 4000, clientHeight: 800 } }), false, "an ancestor that does not scroll is ignored");
   assert.equal(await flag({ scroller: { overflowY: "auto", scrollHeight: 800, clientHeight: 800 }, mainOverflow: { overflowY: "hidden", scrollHeight: 5000, clientHeight: 900 } }), false, "an unrelated overflowing ancestor beyond the scroller is ignored");
+  assert.equal(await flag({ bodyOverflow: { overflowY: "auto", scrollHeight: 5000, clientHeight: 900 } }), false, "the page itself is never treated as the sidebar's scroll container");
 });
 
 test("list_chats reports each unusable state explicitly and never an empty success", async () => {
@@ -149,6 +163,12 @@ test("search_chats waits out frames that are blank or still filling in", async (
   assert.deepEqual(filling.results.map(r => r.title), ["Alice Example", "Carla Sample", "Team Alpha"], "a first match followed by the rest is not settled");
   const blank = await createApp({ blankMs: 1000, latencyMs: 400 }).tool("search_chats").run({ query: "a" });
   assert.deepEqual(blank.results.map(r => r.title), ["Alice Example", "Carla Sample", "Team Alpha"], "a list with no rows and no heading is not a result");
+});
+
+test("search_chats does not settle while the same rows keep changing order", async () => {
+  const app = createApp({ flipMs: 900 });
+  const result = await app.tool("search_chats").run({ query: "a" });
+  assert.deepEqual(result.results.map(r => r.title), ["Alice Example", "Carla Sample", "Team Alpha"], "same rows, changed titles or order, is not yet stable");
 });
 
 test("search_chats accepts a chat that matches through text other than its title", async () => {
