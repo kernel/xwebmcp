@@ -60,17 +60,26 @@ nothing useful: macOS Chrome does not run editing shortcuts for synthetic CDP ke
 the event carries `commands: ["selectAll"]`. Backspace removed one character and typing `CVG`
 produced `CVCVG`, so no airport option matched. Kernel browsers (Linux, Ctrl+A) were unaffected.
 
-The tool now clears the focused airport box through the page (native value setter plus an
-`input` event), pauses briefly, types the code with the inlined `lib/input.js` `typeInto`
-(50–120 ms between keys, `clear: false`), and checks the box holds exactly the code before
-choosing an option; otherwise it returns `INPUT_MISMATCH` without choosing. Unit tests:
-`tests/delta-search-flights.test.mjs`. The extension's `fillInput` was also fixed to send
+The first fix cleared the box through the page and called `typeInto` with `clear: false`. That
+workaround is gone: the inlined `lib/input.js` `typeInto` now clears correctly on every platform
+(Control held around an `a` rawKeyDown carrying `commands: ["selectAll"]`, then Backspace, then a
+read-back of the focused field with a page-side select fallback; it throws rather than typing on
+top of leftover text). The tool pauses briefly, calls `typeInto(n, code)` with its default clear,
+and still checks the box holds exactly the code before choosing an option; otherwise it returns
+`INPUT_MISMATCH` without choosing. Unit tests: `tests/delta-search-flights.test.mjs` and
+`tests/input-helper.test.mjs`. The extension's `fillInput` was also fixed to send
 `commands: ["selectAll"]` on macOS.
 
 Live, 2026-09-29, regular Chrome 154 on macOS, xwebmcp extension, signed out: CVG→SFO one way,
 2026-09-30, 1 adult returned `status: "ok"` with first-page flights (for example DL 393/DL 1715,
 7:00 AM–10:53 AM, 1 stop, $399 Delta Main) in about 11 seconds, with no SFAF error. This is the
 first successful full live invocation of this tool; it is one case, not a QA pass.
+
+Inlined snippet changed (2026-09-29, same day): after the `typeInto` clear change above, the new
+clear sequence was run by hand over CDP on Delta's prefilled origin box (caret inside `CVG`): the
+`selectAll` command selected 0–3 and Backspace left the box empty. One invocation of the updated
+tool (CVG→SFO one way, three weeks out, 1 adult) returned `status: "ok"` with flights. The tool
+stays `draft`; this is not fresh independent QA.
 
 ## QA summary
 
