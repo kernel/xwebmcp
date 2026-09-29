@@ -46,16 +46,18 @@ own requests use. None of them navigates, so no CDP exception applies.
   city's map center from `GET /3/location/config`, which is Resy's whole city list (about 2 MB); pass
   `latitude` and `longitude` to skip it. `resolved_location` in the output gives the coordinates to reuse.
   Distances are straight-line miles computed from the search center. Page size is at most 20 and at most 12
-  slots are listed per venue, with the full `slot_count`. A longitude beyond +/-179 is rejected because the
-  site's search answers 502 there.
+  slots are listed per venue, sorted earliest first, with the full `slot_count`. Coordinates whose search circle
+  reaches longitude +/-180 or comes within 1 degree of a pole are rejected because the site's search answers 502
+  there.
 - **get_restaurant** reads `GET /3/venue?url_slug=&location=`. It returns a fixed allowlist of fields; the
   venue payload also carries announcements, images, social links, venue group and, when signed in, favorite
   and list membership, none of which are returned. Text fields are truncated to 4000 characters.
 - **get_availability** posts `POST /4/find` with the venue id, date and party size (`lat` and `long` are 0, as
-  the venue page sends them). Each slot has venue-local `local_time` and `end_local_time`, `seating_type` and a
+  the venue page sends them). Each slot has `local_start` and `local_end` (venue-local `YYYY-MM-DDTHH:MM`, no offset; a
+  slot after midnight belongs to the requested date but carries the next calendar date), `seating_type` and a
   `policy` object with the site's raw fields for that slot's template (`requires_payment`,
   `cancellation_fee`, `cancel_cutoff_secs`, `cancel_cutoff_time`, `deposit_fee`, `service_charge`). At most the
-  first 300 slots are returned, earliest first, with the full `slot_count` and `slots_truncated`; a venue with a slot
+  first 300 slots are returned, sorted earliest first, with the full `slot_count` and `slots_truncated`; a venue with a slot
   every five minutes all day has about 288.
 - **get_availability_calendar** reads `GET /4/venue/calendar` and returns each date's `reservation`,
   `event` and `walk_in` state plus `last_bookable_date`. Observed reservation values are `available`, `sold-out`
@@ -87,16 +89,19 @@ redirects to `resy.com`. The check `window.location.origin === "https://resy.com
   pattern.
 - Dates are validated before any request: the site accepts past dates and out-of-range values and answers with
   empty results rather than errors, and some malformed values (a huge radius, page 0, an invalid latitude, a
-  longitude beyond +/-179) make its API answer with a 502 error page. The tools reject those inputs themselves.
-  Other unusual combinations of coordinates and radius near the antimeridian or the poles can still make the
-  site answer 502; no Resy city is near them, and the tool reports that as `site_error`.
+  search circle that reaches longitude +/-180 or a pole) make its API answer with a 502 error page. The tools
+  reject those inputs themselves. The circle rule is an approximation of where the site failed in testing: it also
+  rejects a few coordinates the site accepts (for example exactly on +/-180 at the equator) and may still miss an
+  odd combination, which the tool reports as `site_error`. No Resy city is near the antimeridian or the poles.
 
 ## Site quirks
 
 - The API's cross-origin requests fail at the network layer unless `Cache-Control: no-cache` is sent, which is
   why every request includes it. `credentials` is omitted; authentication is by the `Authorization` key header.
-- Slot times (`date.start`, `date.end`) are the venue's local wall-clock times; a request with a time returns
-  slots roughly an hour either side of it.
+- Slot times (`date.start`, `date.end`) are the venue's local wall-clock times, and late-night slots after
+  midnight are dated the next calendar day, so a request for one date can list slots on the next. The tools return
+  the full date-time for that reason and sort by it. A request with a time returns slots roughly an hour either
+  side of it.
 - `notify_offered` reports whether Resy offers Notify for that venue and date. It does not say whether the
   date is sold out.
 - The calendar only reports days inside the venue's booking window (`last_calendar_day`, observed 30 to 33 days
@@ -144,10 +149,10 @@ redirects to `resy.com`. The check `window.location.origin === "https://resy.com
 
 ## QA
 
-Independent QA round 1 (QA agent `agt_221f5a5f11361477ff09`, on the first revision, `2a97e7e`): **FAIL**. It ran the
-whole namespace live on a Kernel browser (24 tool/page combinations across five resy.com starting pages, 322
-schema-validated outputs, about 226 captured requests) and in a local headless Chromium 153 with the repo
-extension. Findings, all fixed in the next commit and covered by new tests:
+Independent QA round 1 (QA agent `agt_221f5a5f11361477ff09`, revision `2a97e7e`): **FAIL**. It ran the whole
+namespace live on a Kernel browser (322 schema-validated outputs from tool calls on six resy.com starting pages,
+about 143 captured API requests) and in a local headless Chromium 153 with the repo extension. Findings, fixed in
+the next commit with new tests:
 
 1. `get_restaurant` rejected venue slugs with capital letters, which `search_restaurants` can return.
 2. `get_availability_calendar` returned `no_results` (200, no days, null last day) rather than `not_found` for
@@ -156,22 +161,34 @@ extension. Findings, all fixed in the next commit and covered by new tests:
 3. `search_restaurants` accepted `date: null` as if omitted.
 4. A bot-protection block on the API is invisible to the page (no cross-origin headers) and surfaces as
    `site_error`; the error message and this README now say so.
-5. Longitudes beyond +/-179 made the site answer 502; they are rejected.
+5. Longitudes near +/-180 made the site answer 502; they are rejected (see finding 8).
 6. The 100-slot cap in `get_availability` cut off the evening for a venue with 144 slots; the cap is now 300 and
    documented, with `slot_count` and `slots_truncated`.
 
-Also recorded from round 1: calendar states include `closed`; Kernel's `invokeTool` returns non-ASCII page-tool
-output as a JSON string; on the Kernel runtime, navigating away mid-call leaves the caller waiting until the call
-timeout and then `outcome_unknown` (the extension reports it in about 0.15 s).
+Independent QA round 2 (same agent, revision `6f23528`): **FAIL**, with all six round-1 fixes confirmed live and in
+the extension, and these new findings, fixed in the next commit with new tests:
 
-Round 1 verified live (signed out, 2026-09-29): discovery of exactly four custom page tools, no native tools on
-five resy.com pages, tools not listed on `blog.`, `widgets.`, `helpdesk.` or an unrelated site, all four tools from
-five different starting pages, 105 of 106 malformed inputs rejected with no network request (the exception was
-finding 3), slot times and profile fields against four public venue pages (New York, Los Angeles, Chicago),
-venue-local times, no cookies or account headers sent and no key or booking handle in any output, and largest
-output about 43 KB. Kernel-runtime and local-extension results are kept separate. In the extension, the four tools
-registered and returned completed results on resy.com, with the same findings 1 to 3 reproducing; headed mode,
-`xwebmcp setup chrome`, the native-messaging bridge and the popup grant UI were not tested.
+7. A slot that starts after midnight lost its calendar date because only `HH:MM` was returned, so the list looked
+   unsorted and a caller combining `date` and time got a slot 24 hours early. Slots now carry `local_start` and
+   `local_end` as full venue-local date-times and are sorted by start.
+8. The `abs(longitude) <= 179` guard was a heuristic that rejected coordinates the site accepts and missed
+   `{latitude: 45, longitude: 179, radius_meters: 100000}` and a pole case. It is now a check on whether the
+   search circle reaches +/-180 or comes within 1 degree of a pole, documented as an approximation.
+
+Smaller round-2 corrections: the null-window calendar message no longer claims a cause it did not verify, the
+network-failure message says a block can repeat for the same input, and this section's request counts were
+corrected. Twenty-six mutants were tried in round 2; those that survived were turned into tests.
+
+Verified live by QA (signed out, 2026-09-29): discovery of exactly four custom page tools registered atomically,
+no native tools on the pages checked, tools not listed on `blog.`, `widgets.`, `helpdesk.` or an unrelated site,
+all four tools from several starting pages, 105 of 106 malformed inputs rejected with no network request (the
+exception was finding 3), slot times and profile fields against four public venue pages (New York, Los Angeles,
+Chicago), venue-local times, no cookies or account headers sent and no key or booking handle in any output, and a
+largest live output of about 48 KB. Kernel-runtime and local-extension results were kept separate: in the extension
+the four tools registered and returned completed results on resy.com with the same findings reproducing; headed
+mode, `xwebmcp setup chrome`, the native-messaging bridge and the popup grant UI were not tested. Not tested at
+all: signed-in behavior, live `challenge`, `rate_limited`, `login_required` and `gated` outside the bot-protection
+case, and a live venue with more than 300 slots (the cap is stub-tested).
 
 No tool has a QA status above `draft` yet; a re-review of the fixed source is pending.
 

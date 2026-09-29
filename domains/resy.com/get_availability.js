@@ -3,7 +3,7 @@
   match: { url_patterns: ["https://resy.com/*"] },
   tool: {
     name: "get_availability",
-    description: "List the open reservation slots Resy (resy.com) shows for one restaurant on one date for a party size: venue-local start and end times, seating type, and each slot's cancellation and payment terms as the site's raw policy fields. Get venue_id from search_restaurants or get_restaurant. It never selects a slot, holds a table, books or joins a wait list, and it does not return the booking handles the site needs to book. A slot is a snapshot; it does not prove the table is still free, and no_availability does not say why (fully booked, party size outside what the venue takes, date outside its booking window, or reservations closed). Lists at most the first 300 slots, earliest first (a venue with five-minute slots all day has about 288). Use get_availability_calendar to find open dates. Venues booked through Tock, closed or unknown venue ids return not_found. Runs inside the current resy.com page without navigating; read-only, works signed out.",
+    description: "List the open reservation slots Resy (resy.com) shows for one restaurant on one date for a party size: venue-local start and end date-times (a slot after midnight belongs to the requested date but carries the next calendar date), seating type, and each slot's cancellation and payment terms as the site's raw policy fields. Get venue_id from search_restaurants or get_restaurant. It never selects a slot, holds a table, books or joins a wait list, and it does not return the booking handles the site needs to book. A slot is a snapshot; it does not prove the table is still free, and no_availability does not say why (fully booked, party size outside what the venue takes, date outside its booking window, or reservations closed). Slots are sorted earliest first and at most the first 300 are listed (a venue with five-minute slots all day has about 288). Use get_availability_calendar to find open dates. Venues booked through Tock, closed or unknown venue ids return not_found. Runs inside the current resy.com page without navigating; read-only, works signed out.",
     inputSchema: {
       type: "object", additionalProperties: false, required: ["venue_id", "date"],
       properties: {
@@ -35,10 +35,10 @@
             slots: {
               type: "array", minItems: 1, maxItems: 300,
               items: {
-                type: "object", additionalProperties: false, required: ["local_time", "end_local_time", "seating_type", "global_dining_access", "policy"],
+                type: "object", additionalProperties: false, required: ["local_start", "local_end", "seating_type", "global_dining_access", "policy"],
                 properties: {
-                  local_time: { type: "string", pattern: "^\\d{2}:\\d{2}$" },
-                  end_local_time: { type: ["string", "null"], pattern: "^\\d{2}:\\d{2}$" },
+                  local_start: { type: "string", pattern: "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}$", description: "Venue-local start, YYYY-MM-DDTHH:MM with no offset. Late-night slots belong to the requested service date but carry the next calendar date." },
+                  local_end: { type: ["string", "null"], pattern: "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}$", description: "Venue-local end, same format; null when the site gives none." },
                   seating_type: { type: ["string", "null"], description: "For example Dining Room or Chef Counter; null when the site gives none." },
                   global_dining_access: { type: "boolean", description: "The site marks this slot as a Global Dining Access slot." },
                   policy: {
@@ -97,7 +97,8 @@
       if (v > dayOf(Date.now() + 366 * 86400000)) return name + " is more than a year ahead.";
       return null;
     };
-    const localClock = v => { const m = typeof v === "string" ? /^\d{4}-\d{2}-\d{2} (\d{2}:\d{2})(?::\d{2})?$/.exec(v) : null; return m ? m[1] : null; };
+    const localStamp = v => { const m = typeof v === "string" ? /^(\d{4}-\d{2}-\d{2}) (\d{2}:\d{2})(?::\d{2})?$/.exec(v) : null; return m ? m[1] + "T" + m[2] : null; };
+    const byStart = (a, b) => (a.local_start < b.local_start ? -1 : a.local_start > b.local_start ? 1 : 0);
     // Calls api.resy.com from the current resy.com document with the header set the site's own requests use.
     const connect = async () => {
       if (window.location.origin !== ORIGIN) return { error: fail("wrong_page", "Open a page on https://resy.com first; this tool calls Resy's API from that page.") };
@@ -118,7 +119,7 @@
           });
           raw = await res.text();
         } catch {
-          return { error: fail("site_error", controller.signal.aborted ? "Resy's API did not answer within 25 seconds." : "The request to Resy's API failed before a response arrived. This can be a network fault or Resy's bot protection blocking the request; its block pages carry no cross-origin headers, so the status is not visible to the page.") };
+          return { error: fail("site_error", controller.signal.aborted ? "Resy's API did not answer within 25 seconds." : "The request to Resy's API failed before a response arrived. This can be a network fault or Resy's bot protection blocking the request; its block pages carry no cross-origin headers, so the status is not visible to the page. A block can repeat for the same input.") };
         } finally { clearTimeout(timer); }
         let json = null;
         try { json = JSON.parse(raw); } catch { json = null; }
@@ -165,15 +166,16 @@
     const warnings = [];
     const slots = [];
     for (const s of entry.slots) {
-      const start = isPlain(s) && isPlain(s.date) ? localClock(s.date.start) : null;
+      const start = isPlain(s) && isPlain(s.date) ? localStamp(s.date.start) : null;
       if (!start) { warnings.push("Skipped a slot without a readable start time."); continue; }
       const t = isPlain(s.template) && isPlain(templates[String(s.template.id)]) ? templates[String(s.template.id)] : null;
       slots.push({
-        local_time: start, end_local_time: localClock(s.date.end), seating_type: isPlain(s.config) ? text(s.config.type, 60) : null,
+        local_start: start, local_end: localStamp(s.date.end), seating_type: isPlain(s.config) ? text(s.config.type, 60) : null,
         global_dining_access: s.is_global_dining_access === true,
         policy: t ? { requires_payment: t.is_paid === true, cancellation_fee: num(t.cancellation_fee), cancel_cutoff_secs: int(t.secs_cancel_cut_off), cancel_cutoff_time: text(t.time_cancel_cut_off, 20), deposit_fee: num(t.deposit_fee), service_charge: text(t.service_charge, 20) } : null
       });
     }
+    slots.sort(byStart);
     if (!slots.length) return { status: "no_availability", observed_at: observedAt, venue_id: input.venue_id, name, url, date: input.date, party_size: partySize, notify_offered: notifyOffered, message: entry.slots.length ? "Resy listed slots but none had a readable time." : "Resy lists no open slots for this venue, date and party size. This does not say why: it can be fully booked, a party size or date the venue does not take online, or reservations closed." };
     return {
       status: "ok", observed_at: observedAt, venue_id: input.venue_id, name, url, date: input.date, party_size: partySize,

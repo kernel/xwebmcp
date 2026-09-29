@@ -54,8 +54,9 @@ const LOCATIONS = [
   { code: "hid", name: "Hidden Test", url_slug: "hidden-test", map_center: { latitude: 1, longitude: 1 }, show_on_web: 0 },
   { code: "nomc", name: "No Center", url_slug: "no-center", show_on_web: 1 }
 ];
+const stamp = v => (v === null ? null : (v.includes(" ") ? v : "2026-10-09 " + v) + ":00");
 const slot = (start, end, type = "Dining Room", template = 11, extra = {}) => ({
-  date: { start: `2026-10-09 ${start}:00`, end: end ? `2026-10-09 ${end}:00` : null }, template: { id: template },
+  date: { start: stamp(start), end: stamp(end) }, template: { id: template },
   config: { id: 5, token: FAKE_HANDLE, type }, exclusive: { id: 0, is_eligible: true }, is_global_dining_access: false, reservation_config: { badge: null }, ...extra
 });
 const TEMPLATES = {
@@ -185,19 +186,19 @@ test("registry lists every resy.com tool exactly once", () => {
 const ok = { venue_id: 1001, date: "2026-10-09" };
 const invalid = {
   search_restaurants: [undefined, null, [], {}, { extra: 1, query: "x" }, { query: "" }, { query: 5 }, { query: "x".repeat(101) }, { location: "not a slug!" }, { location: "a" }, { location: 5 },
-    { latitude: 40 }, { longitude: -74 }, { latitude: 91, longitude: 0 }, { latitude: 0, longitude: 181 }, { latitude: 45, longitude: 179.5 }, { latitude: 45, longitude: -180 }, { latitude: 45, longitude: 180 }, { latitude: "40", longitude: -74 }, { latitude: 40, longitude: -74, location: "ny" },
+    { latitude: 40 }, { longitude: -74 }, { latitude: 91, longitude: 0 }, { latitude: 0, longitude: 181 }, { latitude: 45, longitude: 179.9 }, { latitude: 45, longitude: -180 }, { latitude: 45, longitude: 180 }, { latitude: 45, longitude: 179, radius_meters: 100000 }, { latitude: 45, longitude: -179, radius_meters: 100000 }, { latitude: 89.5, longitude: 0 }, { latitude: -90, longitude: -179 }, { latitude: 90, longitude: 0 }, { latitude: "40", longitude: -74 }, { latitude: 40, longitude: -74, location: "ny" },
     { query: "x", radius_meters: 99 }, { query: "x", radius_meters: 100001 }, { query: "x", radius_meters: 5000.5 },
     { location: "ny", date: "2026-02-30" }, { location: "ny", date: "10/09/2026" }, { location: "ny", date: "2026-09-27" }, { location: "ny", date: "2027-12-31" }, { location: "ny", party_size: 2 }, { location: "ny", time: "19:00" },
     { location: "ny", date: "2026-10-09", party_size: 0 }, { location: "ny", date: "2026-10-09", party_size: 21 }, { location: "ny", date: "2026-10-09", party_size: "2" }, { location: "ny", date: "2026-10-09", time: "7pm" }, { location: "ny", date: "2026-10-09", time: "24:00" },
-    { location: "ny", date: null }, { location: "ny", date: "2026-10-09", time: null }, { location: "ny", date: "2026-10-09", party_size: null }, { location: "ny", cuisine: null }, { location: "ny", page: null }, { location: "ny", per_page: null },
+    { location: "ny", cuisine: "x".repeat(61) }, { location: "ny", date: null }, { location: "ny", date: "2026-10-09", time: null }, { location: "ny", date: "2026-10-09", party_size: null }, { location: "ny", cuisine: null }, { location: "ny", page: null }, { location: "ny", per_page: null },
     { query: null }, { query: "x", location: null }, { query: "x", radius_meters: null }, { latitude: null, longitude: null }, { location: "ny", cuisine: "" }, { location: "ny", page: 0 }, { location: "ny", page: 101 }, { location: "ny", per_page: 0 }, { location: "ny", per_page: 21 }, { location: "ny", per_page: 2.5 }],
   get_restaurant: [undefined, null, [], {}, { url: "" }, { url: 5 }, { url: "https://resy.com/" }, { url: "https://resy.com/cities/ny" }, { url: "http://resy.com/cities/ny/venues/x" }, { url: "https://resy.com.evil.example/cities/ny/venues/x" },
     { url: "https://evil.example/cities/ny/venues/x" }, { url: "https://blog.resy.com/cities/ny/venues/x" }, { url: "https://resy.com/cities/NY/venues/x" }, { url: "https://resy.com/cities/ny/venues/x", city_slug: "ny" },
-    { city_slug: "ny" }, { url_slug: "x" }, { city_slug: "N Y", url_slug: "x" }, { city_slug: "ny", url_slug: "../x" }, { city_slug: "ny", url_slug: 5 }, { city_slug: "ny", url_slug: "x", extra: 1 }],
+    { city_slug: "ny" }, { url_slug: "x" }, { city_slug: "N Y", url_slug: "x" }, { city_slug: "NY", url_slug: "x" }, { city_slug: "ny", url_slug: "../x" }, { city_slug: "ny", url_slug: 5 }, { city_slug: "ny", url_slug: "x", extra: 1 }],
   get_availability: [undefined, null, {}, { date: "2026-10-09" }, { venue_id: 1001 }, { ...ok, venue_id: 0 }, { ...ok, venue_id: "1001" }, { ...ok, venue_id: 1.5 }, { ...ok, venue_id: 2147483648 }, { ...ok, date: "2026-13-01" }, { ...ok, date: "2026-09-27" },
     { ...ok, date: "2027-10-01" }, { ...ok, party_size: 0 }, { ...ok, party_size: 21 }, { ...ok, party_size: "2" }, { ...ok, party_size: null }, { ...ok, date: null }, { ...ok, extra: 1 }],
   get_availability_calendar: [undefined, null, {}, { venue_id: 1001 }, { start_date: "2026-10-09" }, { venue_id: 0, start_date: "2026-10-09" }, { venue_id: 1001, start_date: "2026-09-27" }, { venue_id: 1001, start_date: "2026-10-09", end_date: "2026-10-08" },
-    { venue_id: 1001, start_date: "2026-10-09", end_date: "2027-11-01" }, { venue_id: 1001, start_date: "2026-10-09", end_date: "soon" }, { venue_id: 1001, start_date: "2026-10-09", party_size: 0 }, { venue_id: 1001, start_date: "2026-10-09", party_size: 21 },
+    { venue_id: 1001, start_date: "2026-10-09", end_date: "2027-11-01" }, { venue_id: 1001, start_date: "2026-10-01", end_date: "2027-10-03" }, { venue_id: 2147483648, start_date: "2026-10-09" }, { venue_id: 1001, start_date: "2026-10-09", end_date: "soon" }, { venue_id: 1001, start_date: "2026-10-09", party_size: 0 }, { venue_id: 1001, start_date: "2026-10-09", party_size: 21 },
     { venue_id: 1001, start_date: "2026-10-09", end_date: null }, { venue_id: 1001, start_date: "2026-10-09", party_size: null }, { venue_id: 1001, start_date: null },
     { venue_id: 1001, start_date: "2026-10-09", extra: 1 }]
 };
@@ -218,6 +219,28 @@ test("search_restaurants: radius_meters needs a place", async () => {
   const result = await h.run({ query: "x", radius_meters: 5000 });
   assert.equal(result.error_kind, "invalid_input");
   assert.deepEqual(h.calls.requests, []);
+});
+
+test("input schemas state the bounds the tools enforce", () => {
+  const props = name => harness(name).definition.tool.inputSchema.properties;
+  const bounds = p => [p.minimum, p.maximum];
+  const s = props("search_restaurants");
+  assert.deepEqual(bounds(s.per_page), [1, 20]);
+  assert.deepEqual(bounds(s.page), [1, 100]);
+  assert.deepEqual(bounds(s.party_size), [1, 20]);
+  assert.deepEqual(bounds(s.radius_meters), [100, 100000]);
+  assert.deepEqual(bounds(s.latitude), [-90, 90]);
+  assert.deepEqual(bounds(s.longitude), [-180, 180]);
+  assert.equal(s.cuisine.maxLength, 60);
+  assert.equal(s.query.maxLength, 100);
+  for (const name of ["get_availability", "get_availability_calendar"]) {
+    const p = props(name);
+    assert.deepEqual(bounds(p.venue_id), [1, 2147483647]);
+    assert.deepEqual(bounds(p.party_size), [1, 20]);
+  }
+  const r = props("get_restaurant");
+  assert.equal(new RegExp(r.url_slug.pattern).test("Mixed-Case-Slug"), true, "venue slugs may contain capitals");
+  assert.equal(new RegExp(r.city_slug.pattern).test("NY"), false, "city slugs are lowercase");
 });
 
 // --- page and configuration preconditions -----------------------------------------------------------------
@@ -288,7 +311,8 @@ test("search_restaurants: location search with date, party size and time sends t
   assert.equal(first.notify_offered, true);
   assert.equal(first.is_tock_inventory, false);
   assert.ok(first.distance_miles > 0.8 && first.distance_miles < 0.95, "distance from the map center in miles: " + first.distance_miles);
-  assert.deepEqual(first.availability, { date: "2026-10-09", party_size: 4, slot_count: 2, slots: [{ local_time: "18:30", end_local_time: "20:00", seating_type: "Dining Room" }, { local_time: "19:00", end_local_time: "20:30", seating_type: "Bar" }], slots_truncated: false });
+  assert.deepEqual(first.availability, { date: "2026-10-09", party_size: 4, slot_count: 2, slots: [{ local_start: "2026-10-09T18:30", local_end: "2026-10-09T20:00", seating_type: "Dining Room" }, { local_start: "2026-10-09T19:00", local_end: "2026-10-09T20:30", seating_type: "Bar" }], slots_truncated: false });
+  assert.equal(first.distance_miles, Math.round(first.distance_miles * 100) / 100, "rounded to two decimals");
   assert.equal(second.is_tock_inventory, true);
 });
 
@@ -306,6 +330,23 @@ test("search_restaurants: coordinates skip the location list; a query alone send
   assert.deepEqual(queryOnly.calls.requests[0].body, { types: ["venue"], include_tock_inventory: true, page: 1, per_page: 10, query: "osteria" });
   assert.equal(b.venues[0].distance_miles, null);
   assert.equal(b.query.radius_meters, null);
+});
+
+for (const input of [{ latitude: 0, longitude: 179.5 }, { latitude: 45, longitude: 179.5 }, { latitude: -45, longitude: -179.5 }, { latitude: 89, longitude: 0 }, { latitude: 40.7, longitude: -74, radius_meters: 100000 }, { latitude: 45, longitude: 178, radius_meters: 100 }]) {
+  test(`search_restaurants: coordinates ${JSON.stringify(input)} whose circle stays clear of the antimeridian and poles are searched`, async () => {
+    const h = harness("search_restaurants");
+    assert.equal((await h.run(input)).status, "ok");
+    assert.equal(h.calls.requests.length, 1);
+  });
+}
+
+test("search_restaurants: slots after midnight keep their calendar date and the list is sorted by start", async () => {
+  const late = [slot("2026-10-10 00:30", "2026-10-10 01:30", "Bar"), slot("23:15", "2026-10-10 00:45"), slot("2026-10-09 23:45", null), slot("22:00", "23:30")];
+  const h = harness("search_restaurants", { route: (m, path) => (path === "/3/venuesearch/search" ? { status: 200, body: searchBody([hit(2001, "Fabricated Osteria", { availability: { ...hit(1, "x").availability, slots: late } })]) } : null) });
+  const result = await h.run({ latitude: 40, longitude: -74, date: "2026-10-09", time: "23:30" });
+  assert.deepEqual(result.venues[0].availability.slots.map(s => [s.local_start, s.local_end]), [
+    ["2026-10-09T22:00", "2026-10-09T23:30"], ["2026-10-09T23:15", "2026-10-10T00:45"], ["2026-10-09T23:45", null], ["2026-10-10T00:30", "2026-10-10T01:30"]
+  ]);
 });
 
 test("search_restaurants: a location code resolves and the default radius and party size apply", async () => {
@@ -337,7 +378,7 @@ test("search_restaurants: slots are capped at 12 per venue with the full count",
   assert.equal(result.venues[0].availability.slot_count, 15);
   assert.equal(result.venues[0].availability.slots.length, 12);
   assert.equal(result.venues[0].availability.slots_truncated, true);
-  assert.equal(result.venues[0].availability.slots[0].end_local_time, null);
+  assert.equal(result.venues[0].availability.slots[0].local_end, null);
 });
 
 test("search_restaurants: slot_count 0 is reported as a venue with no open slots, not dropped", async () => {
@@ -368,6 +409,12 @@ test("search_restaurants: never returns more venues than per_page even if the si
   const h = harness("search_restaurants", { route: (m, path) => (path === "/3/venuesearch/search" ? { status: 200, body: searchBody(Array.from({ length: 25 }, (_, i) => hit(3000 + i, "Fabricated Place " + i)), 25) } : null) });
   const result = await h.run({ latitude: 40, longitude: -74, per_page: 20 });
   assert.equal(result.venues.length, 20);
+});
+
+test("search_restaurants: has_more is false when the page ends exactly at the site total", async () => {
+  const h = harness("search_restaurants", { route: (m, path) => (path === "/3/venuesearch/search" ? { status: 200, body: searchBody([hit(2001, "Fabricated Osteria"), hit(2002, "Fabricated Bistro")], 4) } : null) });
+  const result = await h.run({ latitude: 40, longitude: -74, per_page: 2, page: 2 });
+  assert.equal(result.has_more, false);
 });
 
 test("search_restaurants: results without an id or name are skipped with a warning; none usable is site_changed", async () => {
@@ -486,7 +533,7 @@ test("get_availability: posts the site's find request and maps slots with their 
   assert.equal(result.currency, "USD");
   assert.equal(result.notify_offered, true);
   assert.equal(result.slot_count, 3);
-  assert.deepEqual(result.slots.map(s => [s.local_time, s.end_local_time, s.seating_type, s.global_dining_access]), [["18:30", "20:00", "Dining Room", false], ["19:00", "20:30", "Bar", false], ["21:00", null, "Chef Counter", true]]);
+  assert.deepEqual(result.slots.map(s => [s.local_start, s.local_end, s.seating_type, s.global_dining_access]), [["2026-10-09T18:30", "2026-10-09T20:00", "Dining Room", false], ["2026-10-09T19:00", "2026-10-09T20:30", "Bar", false], ["2026-10-09T21:00", null, "Chef Counter", true]]);
   assert.deepEqual(result.slots[0].policy, { requires_payment: false, cancellation_fee: null, cancel_cutoff_secs: null, cancel_cutoff_time: null, deposit_fee: null, service_charge: null });
   assert.deepEqual(result.slots[1].policy, { requires_payment: true, cancellation_fee: 25, cancel_cutoff_secs: 86400, cancel_cutoff_time: null, deposit_fee: null, service_charge: null });
   assert.deepEqual(result.slots[2].policy, { requires_payment: true, cancellation_fee: null, cancel_cutoff_secs: 0, cancel_cutoff_time: "12:00:00", deposit_fee: 50, service_charge: "0%" });
@@ -562,8 +609,29 @@ test("get_availability: a venue with a slot every five minutes all day fits; mor
   assert.equal(result.slots_truncated, true);
 });
 
+test("get_availability: slots after midnight keep their calendar date, and the list is sorted by start whatever order the site sends", async () => {
+  const late = [slot("2026-10-10 01:45", "2026-10-10 03:15"), slot("22:00", "23:30"), slot("2026-10-09 23:45", "2026-10-10 00:45", "Bar", 12), slot("2026-10-10 00:00", null)];
+  const h = harness("get_availability", { route: (m, path) => (path === "/4/find" ? { status: 200, body: findBody(late) } : null) });
+  const result = await h.run(ok);
+  assert.deepEqual(result.slots.map(s => [s.local_start, s.local_end]), [
+    ["2026-10-09T22:00", "2026-10-09T23:30"], ["2026-10-09T23:45", "2026-10-10T00:45"], ["2026-10-10T00:00", null], ["2026-10-10T01:45", "2026-10-10T03:15"]
+  ]);
+  assert.equal(result.slots[1].seating_type, "Bar");
+  assert.equal(result.slots[1].policy.requires_payment, true, "sorting keeps each slot with its own policy");
+});
+
+test("get_availability: exactly 300 slots are not truncated and 301 are", async () => {
+  const at = i => `2026-10-09 ${String(Math.floor(i / 60)).padStart(2, "0")}:${String(i % 60).padStart(2, "0")}`;
+  for (const [count, truncated] of [[300, false], [301, true]]) {
+    const h = harness("get_availability", { route: (m, path) => (path === "/4/find" ? { status: 200, body: findBody(Array.from({ length: count }, (_, i) => slot(at(i), null))) } : null) });
+    const result = await h.run(ok);
+    assert.equal(result.slots.length, 300);
+    assert.equal(result.slots_truncated, truncated, String(count));
+  }
+});
+
 test("get_availability: yesterday (UTC) and dates up to a year ahead are accepted", async () => {
-  for (const date of ["2026-09-28", "2026-09-29", "2027-09-29"]) {
+  for (const date of ["2026-09-28", "2026-09-29", "2027-09-29", "2027-09-30"]) {
     const h = harness("get_availability");
     assert.equal((await h.run({ venue_id: 1001, date })).status, "ok", date);
   }
@@ -607,6 +675,13 @@ test("get_availability_calendar: nothing inside the booking window is no_results
   assert.equal(result.last_bookable_date, null);
   assert.match(result.message, /no booking window/);
   assert.match(result.message, /Tock/);
+});
+
+test("get_availability_calendar: a start on the site's last day with no days gets the generic message", async () => {
+  const h = harness("get_availability_calendar", { route: (m, path) => (path.startsWith("/4/venue/calendar?") ? { status: 200, body: { scheduled: [], last_calendar_day: "2026-10-09" } } : null) });
+  const result = await h.run({ venue_id: 1001, start_date: "2026-10-09" });
+  assert.equal(result.status, "no_results");
+  assert.match(result.message, /no calendar days for this range/);
 });
 
 test("get_availability_calendar: closed days are passed through as the site states them", async () => {
