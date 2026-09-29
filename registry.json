@@ -247,7 +247,7 @@
       ],
       "status": "draft",
       "last_verified": null,
-      "notes": "Read-only. Reads one record entry by persona id or ark: people, dated events, allowlisted attributes, links and citation. Fixture-tested; live on a signed-out and one signed-in Kernel browser during authoring. Not independently QA'd yet."
+      "notes": "Read-only. Reads one record entry by 1:1: or 1:2: ark or URL: people, dated events, allowlisted attributes, links and citation. Fixture-tested; live on a signed-out and one signed-in Kernel browser during authoring. Not independently QA'd yet."
     },
     {
       "domain": "familysearch.org",
@@ -273,7 +273,7 @@
       ],
       "status": "draft",
       "last_verified": null,
-      "notes": "Read-only. Records search by name, birth place and years, keyword and (signed in) collection; one page of allowlisted hit fields. Fixture-tested; live on a signed-out and one signed-in Kernel browser during authoring. Not independently QA'd yet."
+      "notes": "Read-only. Records search by name, birth place and years, keyword and collection; one page of allowlisted hit fields. Fixture-tested; live on a signed-out and one signed-in Kernel browser during authoring. Not independently QA'd yet."
     },
     {
       "domain": "flyfrontier.com",

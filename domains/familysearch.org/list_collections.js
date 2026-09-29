@@ -7,7 +7,7 @@
     inputSchema: {
       type: "object", additionalProperties: false,
       properties: {
-        query: { type: "string", minLength: 1, maxLength: 100, description: "Words that must all appear in the collection title, for example 'civil registration' or 'census 1901'." },
+        query: { type: "string", minLength: 1, maxLength: 100, description: "Whole words that must all appear in the collection title, ignoring case, accents and punctuation, for example 'civil registration' or 'census 1901'. Words do not match inside longer words." },
         place: { type: "string", minLength: 1, maxLength: 100, description: "Country, US state or world-region name exactly as in the site's Place filter, case-insensitive. A collection matches when it is filed under that place, so a state name leaves out nationwide collections such as the US censuses; use United States for those." },
         record_type: { enum: ["CENSUS", "VITAL", "CHURCH_RECORD", "MILITARY", "MIGRATION", "LEGAL", "GOVERNMENT", "MISCELLANEOUS", "NEWSPAPER", "ETHNICITY", "DIRECTORY", "COMPILED_GENEALOGY", "STORY", "OTHER"], description: "The site's collection type: VITAL is births, marriages and deaths; CENSUS includes lists." },
         year_from: { type: "integer", minimum: 1, maximum: 2100, description: "Keep collections whose years overlap this year or later." },
@@ -76,7 +76,7 @@
     const fail = (kind, message) => ({ status: "error", error_kind: kind, error_message: message });
     const clip = (value, max) => {
       if (typeof value !== "string") return null;
-      const text = value.replace(/[\u0000-\u001f\u007f]/g, " ").replace(/\s+/g, " ").trim();
+      const text = value.replace(/[\u0000-\u001f\u007f-\u009f\u200b-\u200f\u2028-\u202e\u2060-\u2064\ufeff]/g, " ").replace(/\s+/g, " ").trim();
       if (!text) return null;
       return text.length > max ? text.slice(0, max - 1) + "…" : text;
     };
@@ -88,7 +88,7 @@
     const words = {};
     for (const key of ["query", "place"]) {
       if (input[key] === undefined) continue;
-      const value = typeof input[key] === "string" ? input[key].replace(/[\u0000-\u001f\u007f]/g, " ").replace(/\s+/g, " ").trim() : "";
+      const value = typeof input[key] === "string" ? input[key].replace(/[\u0000-\u001f\u007f-\u009f\u200b-\u200f\u2028-\u202e\u2060-\u2064\ufeff]/g, " ").replace(/\s+/g, " ").trim() : "";
       if (value.length < 1 || value.length > 100) return fail("invalid_input", key + " must be a text of 1 to 100 characters. Nothing was sent to FamilySearch.");
       words[key] = value;
     }
@@ -106,6 +106,9 @@
     if (!(Number.isInteger(limit) && limit >= 1 && limit <= 50)) return fail("invalid_input", "limit must be an integer from 1 to 50. Nothing was sent to FamilySearch.");
     if (!(Number.isInteger(offset) && offset >= 0 && offset <= 3500)) return fail("invalid_input", "offset must be an integer from 0 to 3500. Nothing was sent to FamilySearch.");
 
+    const norm = text => text.normalize("NFD").replace(/\p{M}/gu, "").toLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim();
+    const queryText = words.query ? norm(words.query) : "";
+    if (words.query && !queryText) return fail("invalid_input", "query must contain at least one letter or digit. Nothing was sent to FamilySearch.");
     if (location.origin !== "https://www.familysearch.org") return fail("wrong_page", "This tab is on " + location.host + ", not www.familysearch.org. Open https://www.familysearch.org/ in this tab and call again. Nothing was sent to FamilySearch.");
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 40000);
@@ -127,7 +130,7 @@
     if (status !== 200) return fail("site_error", "FamilySearch answered HTTP " + status + ". Nothing was changed.");
     if (!isJson) return fail("challenge", "FamilySearch returned a page instead of the collection list; its bot protection or a site change is interfering. Do not retry automatically.");
     const list = json && json.collectionList;
-    if (!Array.isArray(list) || list.length === 0 || !list.every(c => c && typeof c.collectionId === "string" && typeof c.title === "string")) return fail("site_changed", "FamilySearch's collection list no longer has the expected shape (collectionList).");
+    if (!Array.isArray(list) || list.length === 0 || !list.every(c => c && typeof c.collectionId === "string" && /^[0-9]{1,10}$/.test(c.collectionId) && typeof c.title === "string")) return fail("site_changed", "FamilySearch's collection list no longer has the expected shape (collectionList).");
 
     const names = new Map();
     const regions = new Map();
@@ -155,12 +158,11 @@
         return fail("invalid_input", "No place named '" + words.place + "' in FamilySearch's collection Place filter" + (near.length ? "; similar names: " + near.join(", ") : "; use a country, US state or world-region name such as Ireland, Ohio or Continental Europe") + ". Nothing was changed.");
       }
     }
-    const queryWords = words.query ? words.query.toLowerCase().split(" ") : [];
+    const queryWords = queryText ? queryText.split(" ") : [];
     const scored = [];
     for (const c of list) {
-      const title = c.title.toLowerCase();
-      const matched = queryWords.filter(word => title.includes(word)).length;
-      if (matched < queryWords.length) continue;
+      const titleWords = new Set(norm(c.title).split(" "));
+      if (!queryWords.every(word => titleWords.has(word))) continue;
       if (words.place && !(placeRegion && c.region === placeRegion) && !(Array.isArray(c.placeIds) && c.placeIds.some(id => placeIds.includes(id)))) continue;
       if (input.record_type !== undefined && c.recordType !== input.record_type) continue;
       const startYear = Number.isInteger(c.startYear) ? c.startYear : null;
@@ -171,7 +173,7 @@
       const images = Number.isInteger(c.imageCount) ? c.imageCount : 0;
       if (input.min_records !== undefined && records < input.min_records) continue;
       if (input.has_images !== undefined && (images > 0) !== input.has_images) continue;
-      scored.push({ c, records, images, startYear, endYear, updated: Number.isFinite(c.lastUpdatedMillis) ? c.lastUpdatedMillis : 0 });
+      scored.push({ c, records, images, startYear, endYear, normTitle: norm(c.title), updated: Number.isFinite(c.lastUpdatedMillis) && c.lastUpdatedMillis > 0 && c.lastUpdatedMillis < Date.UTC(9999, 0, 1) ? c.lastUpdatedMillis : 0 });
     }
     if (scored.length === 0) return { status: "no_results", total_matches: 0, offset };
     scored.sort((a, b) => {
@@ -180,8 +182,7 @@
       return b.records - a.records || a.c.title.localeCompare(b.c.title);
     });
     if (sortBy === "relevance" && queryWords.length > 0) {
-      const first = words.query.toLowerCase();
-      scored.sort((a, b) => Number(b.c.title.toLowerCase().startsWith(first)) - Number(a.c.title.toLowerCase().startsWith(first)) || b.records - a.records);
+      scored.sort((a, b) => Number(b.normTitle.startsWith(queryText)) - Number(a.normTitle.startsWith(queryText)) || b.records - a.records);
     }
     const page = scored.slice(offset, offset + limit);
     if (page.length === 0) return { status: "no_results", total_matches: scored.length, offset };
@@ -189,7 +190,7 @@
       status: "ok", total_matches: scored.length, offset, returned: page.length, has_more: offset + page.length < scored.length,
       collections: page.map(({ c, records, images, startYear, endYear, updated }) => ({
         collection_id: c.collectionId,
-        title: clip(c.title, 300) || c.title,
+        title: clip(c.title, 300) ?? "(untitled)",
         url: "https://www.familysearch.org/en/search/collection/" + c.collectionId,
         record_type: clip(c.recordType, 40),
         region: clip(c.region, 40),
