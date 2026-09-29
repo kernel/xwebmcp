@@ -173,6 +173,43 @@
       },
     },
     execute: async (input) => {
+      // @xwebmcp-inline lib/input.js
+      const typeInto = async (target, text, options = {}) => {
+        await click(target);
+        if (options.clear !== false) {
+          await cdp("Input.dispatchKeyEvent", { type: "keyDown", key: "Control", code: "ControlLeft", windowsVirtualKeyCode: 17, modifiers: 2, location: 1 });
+          try {
+            await pressKey("a", ["Control"]);
+          } finally {
+            await cdp("Input.dispatchKeyEvent", { type: "keyUp", key: "Control", code: "ControlLeft", windowsVirtualKeyCode: 17, modifiers: 0, location: 1 });
+          }
+          await pressKey("Backspace");
+        }
+        const shifted = '~!@#$%^&*()_+{}|:"<>?';
+        const unshifted = '`1234567890-=[]\\;\',./';
+        const random = options.random || Math.random;
+        let previous = "";
+        for (const character of text) {
+          if (previous && options.cadence !== "none") {
+            const pause = /[.@\s]/.test(previous) ? [80, 200] : [50, 120];
+            await waitMs(pause[0] + Math.floor(random() * (pause[1] - pause[0] + 1)));
+          }
+          const uppercase = character >= "A" && character <= "Z";
+          const symbol = shifted.indexOf(character);
+          if (uppercase || symbol !== -1) {
+            await cdp("Input.dispatchKeyEvent", { type: "keyDown", key: "Shift", code: "ShiftLeft", windowsVirtualKeyCode: 16, modifiers: 8, location: 1 });
+            try {
+              await pressKey(uppercase ? character.toLowerCase() : unshifted[symbol], ["Shift"]);
+            } finally {
+              await cdp("Input.dispatchKeyEvent", { type: "keyUp", key: "Shift", code: "ShiftLeft", windowsVirtualKeyCode: 16, modifiers: 0, location: 1 });
+            }
+          } else {
+            await pressKey(character);
+          }
+          previous = character;
+        }
+      };
+      // @xwebmcp-end
       const started = Date.now(),
         deadline = started + 105000;
       let resultsUrl = null;
@@ -294,7 +331,23 @@
           const n = (await accessibilitySnapshot()).nodes.find(
             (n) => n.role === "textbox" && n.name === label,
           );
-          await fillInput(n, code, { timeoutSec: Math.min(10, remaining()) });
+          // The airport box opens prefilled (e.g. the geolocated origin) and the click above
+          // leaves the caret inside that text. Keyboard select-all is platform-specific over
+          // CDP (macOS Chrome ignores a bare Meta+A), so clear through the page instead, then
+          // type at a human cadence and check the box holds exactly the code before choosing.
+          const cleared = await js(() => {
+            const e = document.activeElement;
+            if (!e || e.tagName !== "INPUT") return false;
+            Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value").set.call(e, "");
+            e.dispatchEvent(new Event("input", { bubbles: true }));
+            return e.value === "";
+          });
+          if (!cleared) throw Error("UI_CHANGED: could not clear the " + label + " airport box");
+          await waitMs(150 + Math.floor(Math.random() * 200));
+          await typeInto(n, code, { clear: false });
+          const typed = await js(() => document.activeElement?.value ?? null);
+          if (typeof typed !== "string" || typed.trim().toUpperCase() !== code)
+            throw Error("INPUT_MISMATCH: " + label + " box holds " + JSON.stringify(typed) + " instead of " + code);
           await wait(
             '[role="option"][id*="' +
               code +

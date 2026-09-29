@@ -91,10 +91,27 @@ func Scan(root string) ([]File, error) {
 			return nil, err
 		}
 		namespace, name, _, _, _ := github.NamespaceFor(registry, rel)
+		if !strings.Contains(rel, "/") && !inRegistry(registry, rel) {
+			// Watching a domains/<namespace> directory: its files sit at the
+			// top level, so the directory itself names the namespace.
+			namespace = filepath.Base(absolute)
+		}
 		files = append(files, File{Namespace: namespace, Name: name, Path: path, Rel: rel, Source: string(data), Digest: digest(data)})
 	}
 	sort.Slice(files, func(i, j int) bool { return files[i].Rel < files[j].Rel })
 	return files, nil
+}
+
+func inRegistry(registry *github.Registry, file string) bool {
+	if registry == nil {
+		return false
+	}
+	for _, entry := range registry.Tools {
+		if entry.File == file {
+			return true
+		}
+	}
+	return false
 }
 
 func digest(data []byte) string {

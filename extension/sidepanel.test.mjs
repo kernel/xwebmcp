@@ -34,7 +34,7 @@ test('an earlier tab reload cannot replace the current tab snapshot', async () =
         onActivated: event,
         onUpdated: event,
       },
-      storage: {session: {get: async () => ({}), onChanged: event}},
+      storage: {session: {get: async () => ({}), set: async () => {}, onChanged: event}, local: {get: async () => ({}), set: async () => {}, onChanged: event}},
     },
     globalThis: {
       xw: {
@@ -48,6 +48,7 @@ test('an earlier tab reload cannot replace the current tab snapshot', async () =
           },
           onToolsChanged() {},
         },
+        examples: {SETTINGS_KEY: 'openrouter', DEFAULT_MODEL: 'm'},
         inputs: {getWebMCPFields() { return null; }, canDisplayWebMCPFields() { return false; }, parseWebMCPInput() { return {}; }},
       },
     },
