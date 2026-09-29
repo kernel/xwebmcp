@@ -1021,6 +1021,19 @@
     },
     {
       "domain": "ticketmaster.com",
+      "tool": "get_artist",
+      "file": "domains/ticketmaster.com/get_artist.js",
+      "kind": "page",
+      "namespace": "ticketmaster.com",
+      "url_patterns": [
+        "https://www.ticketmaster.com/*"
+      ],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Page tool on www.ticketmaster.com: artist/attraction record by id or URL with type, category, plain-text synopsis, optional about/FAQ/news/experience excerpts, and the attraction's events in the site's order (offset/limit, on_ticketmaster flag for other country sites). Read-only; no seats or prices."
+    },
+    {
+      "domain": "ticketmaster.com",
       "tool": "get_event",
       "file": "domains/ticketmaster.com/get_event.js",
       "kind": "page",
@@ -1050,6 +1063,32 @@
       "provenance": {
         "qa_agent": "agt_cb155ebc4a11ce54cc4c"
       }
+    },
+    {
+      "domain": "ticketmaster.com",
+      "tool": "get_venue",
+      "file": "domains/ticketmaster.com/get_venue.js",
+      "kind": "page",
+      "namespace": "ticketmaster.com",
+      "url_patterns": [
+        "https://www.ticketmaster.com/*"
+      ],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Page tool on www.ticketmaster.com: venue record by id or URL with address, coordinates, policy text blocks, optional seat-map image list, and the venue's events in the site's order (offset/limit). Read-only; no seats or prices."
+    },
+    {
+      "domain": "ticketmaster.com",
+      "tool": "search_attractions",
+      "file": "domains/ticketmaster.com/search_attractions.js",
+      "kind": "page",
+      "namespace": "ticketmaster.com",
+      "url_patterns": [
+        "https://www.ticketmaster.com/*"
+      ],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Page tool on www.ticketmaster.com: name typeahead over the site's own search suggestions; returns numeric ids for artist-type attractions (performers, teams, shows) and venues. At most 10 suggestions per query. Read-only, US site."
     },
     {
       "domain": "ticketmaster.com",

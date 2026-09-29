@@ -1,13 +1,17 @@
 # ticketmaster.com
 
-Tools for Ticketmaster US (https://www.ticketmaster.com): event search, event details and
-ticket availability with prices. All three are read-only and work signed out.
+Tools for Ticketmaster US (https://www.ticketmaster.com): event search, event details,
+ticket availability with prices, and artist (attraction) and venue lookup. All are read-only
+and work signed out.
 
 | tool | file | status | notes |
 |------|------|--------|-------|
 | search_events | [search_events.js](search_events.js) | qa_passed | Keyword, city or ZIP, radius and local date/time filters; flags events sold on partner sites |
 | get_event | [get_event.js](get_event.js) | qa_passed | One event record by id or URL: local time, venue, category, on-sale and presale windows, limits, terms notice |
 | get_ticket_offers | [get_ticket_offers.js](get_ticket_offers.js) | qa_passed | Section, row, seats and price per ticket for a quantity, lowest price or Best Seats; never selects, holds or buys |
+| search_attractions | [search_attractions.js](search_attractions.js) | draft | Name typeahead returning numeric ids for artist-type attractions (performers, teams, shows) and venues |
+| get_artist | [get_artist.js](get_artist.js) | draft | One attraction by id or URL: type, category, plain-text synopsis, optional about/FAQ/news/experience excerpts, and its events by offset and limit |
+| get_venue | [get_venue.js](get_venue.js) | draft | One venue by id or URL: address, coordinates, policy text blocks, optional seat-map images, and its events by offset and limit |
 
 ## Native WebMCP tools
 
@@ -16,22 +20,24 @@ None found (checked 2026-09-26 with `webmcp.listTools()` and
 (`/search?q=comedy`), a classic event page and a newer-layout event page).
 `document.modelContext` exists with zero registered tools and `navigator.modelContext`
 is undefined, so the custom namespace `ticketmaster.com` does not overlap with anything
-the site registers.
+the site registers. Re-checked 2026-09-29 signed out on the homepage, an artist page, a
+venue page and a discover page with the runtime's tool discovery: still no site-registered tools.
 
 ## Scope and loading
 
-Register all three together, because `forceOverwriteNamespace: true` replaces the whole
+Register all six together, because `forceOverwriteNamespace: true` replaces the whole
 namespace:
 
 ```javascript
 const fs = await import("node:fs");
 const read = name => fs.readFileSync(`domains/ticketmaster.com/${name}.js`, "utf8");
-const tools = ["search_events", "get_event", "get_ticket_offers"].flatMap(name => eval(read(name)));
+const tools = ["search_events", "get_event", "get_ticket_offers", "search_attractions", "get_artist", "get_venue"].flatMap(name => eval(read(name)));
 await webmcp.addCustomTools({ namespace: "ticketmaster.com", tools, forceOverwriteNamespace: true });
 ```
 
 Pick the `tool_ref` whose `source.target_id` is the tab you drive. Use
-`timeoutSec: 60` for `search_events` and `get_event`, and `timeoutSec: 90` for
+`timeoutSec: 60` for `search_events`, `get_event`, `search_attractions`, `get_artist` and
+`get_venue` (live invocations took 1 to 2 s), and `timeoutSec: 90` for
 `get_ticket_offers` (the event page load dominates; live runs took 1 to 11 s).
 
 - **search_events** (`kind: "page"`) runs in the current `www.ticketmaster.com`
@@ -69,6 +75,7 @@ Pick the `tool_ref` whose `source.target_id` is the tab you drive. Use
     the panel is in highest-price order, the price-order control. The quantity choice
     is remembered by the site as a display preference, like a shopper changing it.
 
+
 Outputs:
 
 - Prices are per ticket including fees, before taxes (the site's "All In" price),
@@ -89,9 +96,48 @@ Outputs:
 - `no_tickets` means nothing is available for that quantity (a different quantity may
   have seats) or the page says the event is sold out; the `reason` says which.
 
+The attraction tools (`search_attractions`, `get_artist`, `get_venue`), all `kind: "page"`:
+
+- **search_attractions** (`kind: "page"`) runs the site's typeahead (`/api/search/search-suggest`)
+  from the current `www.ticketmaster.com` document and never navigates. It returns the
+  numeric id that `get_artist` and `get_venue` take, parsed from each suggestion's page
+  URL. The site returns at most 10 suggestions per query and only two suggestion types
+  were seen (`ARTIST`, `VENUE`), so a type filter can return fewer results than exist;
+  it is applied after the site answers. "Artist" is the site's word for any attraction:
+  performers, sports teams, touring shows, festivals, tribute acts, parking passes and
+  stadium tours all appear as artists, so results carry the site's minor category and
+  `get_artist` reports the exact type. A one-character query is HTTP 400 (rejected by
+  the tool first); symbol-only or emoji-only queries can also be HTTP 400 and are
+  reported as `query_rejected`, while a query the site simply has no match for is
+  `no_results`.
+- **get_artist** (`kind: "page"`) reads `/api/artist/<id>/info`, the same-origin record the
+  artist page itself loads, then the attraction's events from
+  `/api/search/events/artist/<id>` (the page's own events query, 20 per site page). With
+  `include` it also reads `/api/artist/<id>/enhanced/details` for short plain-text
+  excerpts of the about text, FAQs, news blurbs and VIP or experience descriptions; the
+  gallery (video markup) is never returned. Events keep the site's order, which lists
+  US events by date and then events sold on other Ticketmaster country sites; those
+  carry `on_ticketmaster: false` and their own host and are not accepted by `get_event`
+  or `get_ticket_offers`. `events_offset` and `events_limit` (at most 20) address that
+  order, reading at most two site pages per call; `next_offset` is null on the last
+  events. Each event carries the venue id and performer ids parsed from the site's own
+  page URLs, plus the sale window and presale names and dates from the listing (dates
+  only; nothing here enters, checks or registers for a presale).
+- **get_venue** (`kind: "page"`) reads `/api/venue/info?venueId=<id>` and the venue's events
+  from `/api/search/events/venue` (the page's own query with `addOnType=EVENT`), with the
+  same offset and limit behaviour. Policy blocks (general rules, children, box office,
+  parking, accessible seating and so on) are the venue's own text, returned as plain
+  text cut at 1500 characters each. `include_seat_maps` adds the seat-map image list
+  (name and image URL, at most 25). Ids taken from a listing on another Ticketmaster
+  country site (for example a Toronto arena listed on ticketmaster.ca) resolve on the US
+  site too, as the live checks below found.
+
+The text these tools return comes from the site and is data, not instructions: markup is
+removed and lengths are bounded, and nothing extracted is executed or followed.
+
 ## URL patterns
 
-All three tools match only `https://www.ticketmaster.com/*`, not the default
+All six tools match only `https://www.ticketmaster.com/*`, not the default
 `https://ticketmaster.com/*` and `https://*.ticketmaster.com/*`. The other hosts under
 the registrable domain are separate products: the help centre (`help.`), sign-in
 (`identity.`), Account Manager (`am.`), the waiting room and
@@ -104,6 +150,11 @@ navigates only within `www.ticketmaster.com`. If the tab is on another host, ope
 
 ## Safety and trust boundary
 
+- The attraction tools only issue same-origin GET requests to the site's public artist,
+  venue, search and typeahead endpoints. They never read or write anything tied to the
+  signed-in account (orders, tickets, barcodes, favorites, alerts, transfers, resale
+  listings), never call reserve, checkout, waiting-list or presale endpoints, and never
+  navigate. Presale names and dates in listings are returned as plain data.
 - Nothing here selects a listing, clicks a "Select …" seat row, accepts the event's
   ticket terms dialog ("I Agree"), reserves, holds, adds to cart or opens
   `checkout.ticketmaster.com`. The tests fail if any listing is clicked. No tool
@@ -168,6 +219,31 @@ navigates only within `www.ticketmaster.com`. If the tab is on another host, ope
 - Ticket quantity limits are per event (the newer layout listed 1–6 for one show and
   1–8 for another); a quantity the picker does not offer returns `invalid_input` with
   the offered quantities.
+- Unknown ids answer differently by endpoint: `/api/artist/<id>/info` and
+  `/api/venue/info?venueId=<id>` are HTTP 404 with an empty body (the tools report
+  `not_found`), while the events endpoints answer HTTP 200 with `total: 0` for an id that
+  does not exist, so the tools read the info record first. An events page past the last
+  one is HTTP 200 with an empty list, and a page index of 49 or more is HTTP 400 (pages
+  46 to 48 were empty 200s for a venue with 457 events, page 50 was 400). `events_offset`
+  is capped at 900 (page 45) to stay below that.
+- Artist and venue events include listings sold on other Ticketmaster country sites
+  (Canadian shows appeared in a US artist's list with `www.ticketmaster.ca` URLs and
+  absolute venue URLs). They come after the US events; the tools mark them
+  `on_ticketmaster: false`. So are listings that point at `travel.ticketmaster.com` (one
+  was seen for a touring show), which have no `/event/<id>` path; they keep the site's
+  own listing id and their tracking query parameters are removed.
+- The artist `synopsis` and the enhanced-details prose can contain HTML paragraphs;
+  venue policy blocks were plain text. All prose is reduced to plain text and bounded.
+  The enhanced details for some attractions (a touring show was seen) are an almost
+  empty record.
+- The typeahead's `event_count` and the events endpoints' `total` are the site's own
+  rough counts and do not always match (456 against 457 for one arena); the category
+  queries the site uses elsewhere are capped at 10000.
+- `type` and `sub_type` are present for teams and bands but were absent for some touring
+  shows; one show returned a type in an early read and none later the same day, so treat
+  null as "not given" and use `category` for grouping.
+- The site's search suggestions include more than performers: sports teams, shows,
+  tribute acts, parking passes and stadium tours are all typed `ARTIST`.
 
 ## Known limitations
 
@@ -203,6 +279,19 @@ navigates only within `www.ticketmaster.com`. If the tab is on another host, ope
   layout, events redirecting to another host, a bot-protection page that renders late,
   and another date's "Sold Out" badge next to a loading listing panel. They are covered
   by stubbed tests.
+- `search_attractions` sees at most 10 suggestions per query and cannot page; a type
+  filter applies after that. It does not surface trending attractions or category
+  browsing (a category events query exists on the site and was not built here).
+- `get_artist` and `get_venue` accept numeric ids only. Ids in the site's other URL
+  forms were not seen. `events_offset` is capped at 900 and each call reads at most two
+  site pages. Date filters on the artist events endpoint appear in the site's own
+  queries but were not verified, so there is no date filter; use `search_events` for a
+  date range. Review ratings on the artist page were not built (endpoint not verified).
+- Listing status flags come from the search index and lag live inventory.
+- Long text is cut (synopsis 1200 characters, venue blocks 1500, about blocks 500, FAQ
+  answers 600) and a warning says so; the page has the full text.
+- The attraction tools were exercised signed out only. Behaviour while signed in was not
+  tested; they do not use the account.
 
 ## QA
 
@@ -291,3 +380,34 @@ event and 404 pages:
 
 Sessions (ephemeral): QA browsers were created and deleted by each QA agent; the
 builder's browser was deleted after the final run.
+
+### Attraction tools (`search_attractions`, `get_artist`, `get_venue`)
+
+Status `draft`: no independent QA has signed off yet.
+
+Builder checks, 2026-09-29, signed out, on a fresh Kernel stealth browser. The whole
+`ticketmaster.com` namespace (all six tools) was registered atomically with
+`forceOverwriteNamespace`, and the three existing tools were not invoked.
+- Native tool discovery showed no site-registered tools on the homepage, an artist page,
+  a venue page and a discover page.
+- `search_attractions`: "madison square garden" (venues and an attraction, ids and counts),
+  a `type` filter, an empty result, a rejected `%%` query, a 1-character query rejected
+  before any request.
+- `get_artist`: a band (48 events across three site pages, including events on
+  `www.ticketmaster.ca`), a window spanning site pages 1 and 2 (offset 38, limit 20;
+  10 events, `next_offset` null), a sports team with all four `include` sections
+  (bounded text, warning on the cut synopsis), an unknown id (`not_found`), a URL input,
+  a non-Ticketmaster host and out-of-range inputs.
+- `get_venue`: an arena with all policy blocks and 28 seat maps (25 returned with a
+  warning), an unknown id (`not_found`), a venue id first seen on a `.ca` listing, and
+  bad inputs.
+- Invoked from a discover page, an event page and a 404 page under `www`: the tab did not
+  navigate and each returned `ok`. The tools were not listed on
+  `help.ticketmaster.com`.
+- Tool lists are briefly empty right after a navigation while the runtime registers them
+  again; retry the discovery.
+- Fixture tests (`tests/ticketmaster-attractions.test.mjs`) cover schemas, malformed
+  input, challenge and error mapping, pagination, other-country listings, text bounds
+  and that no unlisted field leaves the page.
+- Not exercised live: the bot-protection page and HTTP 403/429 paths (stubbed tests
+  only), signed-in use, and the Chrome extension runtime.
