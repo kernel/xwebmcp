@@ -3,7 +3,7 @@
   match: { url_patterns: ["https://www.espn.com/*"] },
   tool: {
     name: "get_scoreboard",
-    description: "Read ESPN's public scoreboard for NFL, NBA or NHL: the games on one date (NBA, NHL) or in one week (NFL), with start time, state, score and record per team, broadcasters and venue. Reads the scoreboard page's own data from the current www.espn.com document without navigating, and works signed out. With no date or week ESPN picks the day or week itself (for NBA and NHL that can be the next day with games), so read `effective` to see what was returned. Games in progress are returned as ESPN lists them; scores are snapshots, not live updates. Returns at most max_games games and says when it truncated. status \"no_games\" means ESPN lists no games for that date or week, which is different from an error. Other leagues are not supported yet. Odds, tickets and player leaders are not returned. Run it on a www.espn.com page; on other espn.com hosts it returns wrong_page.",
+    description: "Read ESPN's public scoreboard for NFL, NBA or NHL: the games on one date (NBA, NHL) or in one week (NFL), with start time, state, score and record per team, broadcasters and venue. Fetches the scoreboard page for the requested league from www.espn.com and reads its embedded data, so it does not matter which www.espn.com page is open, and it never navigates. Works signed out. With no date or week ESPN picks the day or week itself (for NBA and NHL that can be the next day with games), so read `effective` to see what was returned. Games in progress are returned as ESPN lists them; scores are snapshots, not live updates. Returns at most max_games games and says when it truncated. status \"no_games\" means ESPN lists no games for that date or week, which is different from an error. Other leagues are not supported yet. Odds, tickets and player leaders are not returned. Run it on a www.espn.com page; on other espn.com hosts it returns wrong_page.",
     inputSchema: {
       type: "object", additionalProperties: false, required: ["league"],
       properties: {
@@ -135,7 +135,7 @@
       if (input.date !== undefined) {
         const parts = typeof input.date === "string" ? /^(\d{4})-(\d{2})-(\d{2})$/.exec(input.date) : null;
         const check = parts ? new Date(Date.UTC(+parts[1], +parts[2] - 1, +parts[3])) : null;
-        if (!check || check.getUTCFullYear() !== +parts[1] || check.getUTCMonth() !== +parts[2] - 1 || check.getUTCDate() !== +parts[3] || +parts[1] < 1990) return fail("invalid_input", "date must be a real calendar date, YYYY-MM-DD, from 1990 on.");
+        if (!check || check.getUTCFullYear() !== +parts[1] || check.getUTCMonth() !== +parts[2] - 1 || +parts[1] < 1990) return fail("invalid_input", "date must be a real calendar date, YYYY-MM-DD, from 1990 on.");
         requested = { date: input.date, year: null, season_type: null, week: null };
         path += "/_/date/" + parts[1] + parts[2] + parts[3];
       }
@@ -181,19 +181,26 @@
       effective.date = site.date;
     }
     const url = ORIGIN + path;
-    const events = board.evts.filter(event => event && typeof event === "object" && event.id !== undefined && event.id !== null);
+    const text = (value, max) => {
+      const clean = typeof value === "string" ? value.replace(/[\u0000-\u001f\u007f]+/g, " ").trim() : "";
+      return clean ? clean.slice(0, max) : null;
+    };
+    const gameId = event => text(event.id === undefined || event.id === null ? "" : String(event.id), 30);
+    const events = board.evts.filter(event => event && typeof event === "object" && gameId(event));
     if (board.evts.length && !events.length) return fail("site_changed", "ESPN's scoreboard events no longer have the fields this tool reads.");
     if (!events.length) {
       return { status: "no_games", league, url, effective, message: "ESPN lists no " + league.toUpperCase() + " games for this " + (league === "nfl" ? "week" : "date") + "." };
     }
 
-    const text = (value, max) => (typeof value === "string" && value.trim() ? value.trim().slice(0, max) : null);
-    const path2url = value => (typeof value === "string" && /^\/[^/]/.test(value) ? ORIGIN + value.split(/[?#]/)[0] : null);
+    const path2url = value => {
+      const link = typeof value === "string" && /^\/[^/]/.test(value) ? ORIGIN + value.split(/[?#]/)[0] : null;
+      return link && link.length <= 300 ? link : null;
+    };
     const games = events.slice(0, maxGames).map(event => {
       const status = event.status && typeof event.status === "object" ? event.status : {};
       const venue = event.vnue && typeof event.vnue === "object" ? event.vnue : null;
       return {
-        game_id: String(event.id),
+        game_id: gameId(event),
         url: path2url(event.link),
         start_utc: text(event.date, 40),
         state: status.state === "pre" || status.state === "in" || status.state === "post" ? status.state : null,
@@ -204,7 +211,7 @@
           const total = (Array.isArray(team.records) ? team.records : []).find(record => record && record.type === "total");
           const score = team.score === undefined || team.score === null || team.score === "" ? NaN : Number(team.score);
           return {
-            team_id: text(String(team.id ?? ""), 20),
+            team_id: text(team.id === undefined || team.id === null ? "" : String(team.id), 20),
             abbreviation: text(team.abbrev, 10),
             name: text(team.displayName, 80),
             home: team.isHome === true,

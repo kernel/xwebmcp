@@ -25,6 +25,7 @@ function conforms(schema, value) {
   if (Array.isArray(value)) {
     if (schema.minItems !== undefined && value.length < schema.minItems) return false;
     if (schema.maxItems !== undefined && value.length > schema.maxItems) return false;
+    if (schema.uniqueItems && new Set(value.map(item => JSON.stringify(item))).size !== value.length) return false;
     if (schema.items && !value.every(item => conforms(schema.items, item))) return false;
   }
   if (value !== null && typeof value === "object" && !Array.isArray(value)) {
@@ -127,6 +128,21 @@ test("registry entries match the tool files", () => {
     assert.equal(entry.file, `domains/espn.com/${name}.js`);
     assert.equal(definition.tool.annotations.readOnlyHint, true);
     assert.ok(!sources[name].trimEnd().endsWith(";"), "no trailing semicolon");
+  }
+});
+
+test("input schemas accept documented input and reject the rest", () => {
+  const scoreboard = harness("get_scoreboard").definition.tool.inputSchema;
+  for (const input of [{ league: "nba" }, { league: "nhl", date: "2026-10-03", max_games: 50 }, { league: "nfl", year: 2026, season_type: "regular", week: 3 }]) assert.ok(conforms(scoreboard, input), JSON.stringify(input));
+  for (const input of [{}, { league: "mlb" }, { league: "nba", extra: 1 }, { league: "nba", date: "20261003" }, { league: "nba", max_games: 0 }, { league: "nba", max_games: 51 },
+    { league: "nfl", year: 1999, season_type: "regular", week: 1 }, { league: "nfl", year: 2026, season_type: "playoffs", week: 1 }, { league: "nfl", year: 2026, season_type: "regular", week: 26 }]) {
+    assert.ok(!conforms(scoreboard, input), JSON.stringify(input));
+  }
+  const search = harness("search").definition.tool.inputSchema;
+  for (const input of [{ query: "ab" }, { query: "lakers", types: ["team", "player"], limit: 10 }]) assert.ok(conforms(search, input), JSON.stringify(input));
+  for (const input of [{}, { query: "a" }, { query: "x".repeat(101) }, { query: "ok", limit: 0 }, { query: "ok", limit: 11 }, { query: "ok", types: [] }, { query: "ok", types: ["clips"] },
+    { query: "ok", types: ["team", "team"] }, { query: "ok", extra: true }]) {
+    assert.ok(!conforms(search, input), JSON.stringify(input));
   }
 });
 
@@ -248,6 +264,24 @@ test("get_scoreboard skips malformed events and reports a layout change when non
 
   const unreadable = await harness("get_scoreboard", okScoreboard([null, { competitors: [] }])).run({ league: "nba" });
   assert.equal(unreadable.error_kind, "site_changed");
+});
+
+test("get_scoreboard strips control characters and caps hostile field lengths", async () => {
+  const hostile = "\u0001".repeat(3000) + "x".repeat(3000);
+  const events = Array.from({ length: 50 }, (_, i) => event(`${i}${"9".repeat(200)}`, {
+    date: hostile, link: "/nfl/game/_/gameId/1/" + "a".repeat(500),
+    status: { description: hostile, detail: hostile, state: "pre" },
+    broadcasts: Array.from({ length: 20 }, () => ({ name: hostile })),
+    vnue: { fullName: hostile, address: { city: hostile, state: hostile } },
+    competitors: [competitor(hostile, hostile, hostile, true, 1, { records: [{ type: "total", summary: hostile }] }), competitor(hostile, hostile, hostile, false, 2)]
+  }));
+  const result = await harness("get_scoreboard", okScoreboard(events, { date: "2026-10-03" })).run({ league: "nba", max_games: 50 });
+  const json = JSON.stringify(result);
+  assert.ok(json.length < 240 * 1024, `output is ${json.length} bytes`);
+  assert.ok(!/\\u0001/.test(json), "control characters are removed");
+  assert.equal(result.games[0].game_id.length, 30);
+  assert.equal(result.games[0].url, null, "an over-long URL is dropped, not truncated");
+  assert.equal(result.games[0].broadcasts.length, 6);
 });
 
 test("get_scoreboard rejects malformed input before any request", async () => {
@@ -384,10 +418,43 @@ test("search separates no_results from errors", async () => {
   assert.equal(filtered.status, "no_results");
 });
 
+test("search reports ESPN errors instead of no_results, and warns on partial results", async () => {
+  const errorsOnly = harness("search", { respond: () => ({ status: 200, body: { errors: [{ code: "500", message: "internal detail that must not be echoed" }] } }) });
+  const failed = await errorsOnly.run({ query: "ab" });
+  assert.equal(failed.error_kind, "site_error");
+  assert.ok(!failed.error_message.includes("internal detail"));
+
+  const rejected = await harness("search", { respond: () => ({ status: 200, body: { errors: [{ code: "400", message: "q cannot be null" }] } }) }).run({ query: "ab" });
+  assert.equal(rejected.error_kind, "invalid_input");
+
+  const partial = await harness("search", { respond: () => ({ status: 200, body: { ...searchBody([searchGroup("team", [teamItem])]), errors: [{ code: "500" }] } }) }).run({ query: "ab" });
+  assert.equal(partial.status, "ok");
+  assert.equal(partial.warnings.length, 1);
+  assert.equal(partial.results.length, 1);
+
+  const clean = await harness("search", okSearch([searchGroup("team", [teamItem])])).run({ query: "ab" });
+  assert.equal(clean.warnings, undefined);
+  const empty = await harness("search", { respond: () => ({ status: 200, body: { errors: [] } }) }).run({ query: "ab" });
+  assert.equal(empty.status, "no_results");
+});
+
+test("search strips control characters, caps hostile lengths and keeps only the hostname", async () => {
+  const hostile = "\u0002".repeat(2000) + "y".repeat(2000);
+  const items = Array.from({ length: 10 }, () => ({ ...articleItem, displayName: hostile, byline: hostile, date: hostile, link: { web: "https://www.espn.com:8443/x/" + "b".repeat(400) } }));
+  const groups = ["team", "player"].map(type => searchGroup(type, Array.from({ length: 10 }, () => ({ ...teamItem, displayName: hostile, subtitle: hostile, uid: hostile, link: { web: "https://www.espn.com:8443/ok" } }))));
+  const result = await harness("search", okSearch([...groups, searchGroup("article", items), searchGroup("upcoming", Array.from({ length: 10 }, () => ({ ...upcomingItem, displayName: hostile, eventId: null })))])).run({ query: "ab", limit: 10 });
+  const json = JSON.stringify(result);
+  assert.ok(json.length < 240 * 1024, `output is ${json.length} bytes`);
+  assert.ok(!/\\u0002/.test(json), "control characters are removed");
+  assert.equal(result.results.find(r => r.type === "article").url, null, "an over-long URL is dropped");
+  assert.equal(result.results.find(r => r.type === "team").url, "https://www.espn.com/ok", "no port is passed through");
+  assert.equal(result.results.find(r => r.type === "upcoming").event_id, null);
+});
+
 test("search rejects malformed input before any request", async () => {
   const h = harness("search", okSearch([searchGroup("team", [teamItem])]));
   const bad = [
-    undefined, null, [], "lakers", {}, { query: 1 }, { query: "" }, { query: " a " }, { query: "x".repeat(101) }, { query: "line\nbreak" }, { query: "nul\u0000" },
+    undefined, null, [], "lakers", {}, { query: 1 }, { query: "" }, { query: " a " }, { query: "x".repeat(101) }, { query: "line\nbreak" }, { query: "nul\u0000" }, { query: "a<b" }, { query: "x>" }, { query: "50% off" }, { query: "%20%20" },
     { query: "ok", limit: 0 }, { query: "ok", limit: 11 }, { query: "ok", limit: 1.5 }, { query: "ok", limit: "5" },
     { query: "ok", types: [] }, { query: "ok", types: "team" }, { query: "ok", types: ["clips"] }, { query: "ok", types: ["team", "team"] },
     { query: "ok", types: ["team", "player", "article", "upcoming", "team"] }, { query: "ok", extra: true }
