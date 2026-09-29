@@ -408,6 +408,10 @@ test("search maps rate limits, bot checks, bad bodies and network failures to ex
   await harness("search", { route: () => ({ status: 400, text: JSON.stringify({ error: { message: "Precondition check failed." } }) }) }).err({ page_token: "CONTPAD0123456789.AAAA" }, "invalid_page_token");
   await harness("search", { route: () => ({ status: 400, text: "<html>Bad Request</html>" }) }).err({ page_token: "CONTPAD0123456789.AAAA" }, "invalid_page_token");
   await harness("search", { route: () => ({ status: 400, text: "<html>Bad Request</html>" }) }).err({ query: "x" }, "site_error");
+  const botCheck = "<html>Our systems have detected unusual traffic from your computer network</html>";
+  await harness("search", { route: () => ({ status: 400, text: botCheck }) }).err({ page_token: "CONTPAD0123456789.AAAA" }, "challenge");
+  await harness("search", { route: () => ({ status: 200, text: botCheck }) }).err({ page_token: "CONTPAD0123456789.AAAA" }, "challenge");
+  await harness("search", { route: () => ({ status: 400, text: botCheck }) }).err({ query: "x" }, "challenge");
   await harness("search", { throws: true }).err({ query: "x" }, "site_error");
   const failing = harness("search", { route: (endpoint, body) => (endpoint === "search" && body.params ? { status: 429, text: "" } : null) });
   await failing.err({ query: "x", type: "video" }, "rate_limited");
@@ -739,6 +743,8 @@ test("get_video strips C1 control characters from text", async () => {
   const out = await harness("get_video", { player: playerBody(vid(1), { details: { title: "A\u0085B", shortDescription: "one\u009ftwo\nthree" } }) }).ok({ video: vid(1) });
   assert.equal(out.title, "A B");
   assert.equal(out.description, "one two\nthree");
+  const lines = await harness("get_video", { player: playerBody(vid(1), { details: { shortDescription: "a\r\nb\rc\nd" } }) }).ok({ video: vid(1) });
+  assert.equal(lines.description, "a\nb\nc\nd", "CRLF and CR become a single newline");
 });
 
 test("get_video rejects URLs without a scheme", async () => {

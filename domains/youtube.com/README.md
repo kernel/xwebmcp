@@ -132,7 +132,7 @@ scope, although `get_video` accepts a `youtu.be` link as input.
   `no_results`. With type Shorts plus Upload date, or Shorts plus Popularity, the site answered with
   ordinary short videos (`kind: "video"`, some over a minute) or with nothing, while its filter menu
   still read Shorts; each result's `kind` says what the row is. Shorts with the relevance sort returned
-  25 to 28 Shorts.
+  25 to 40 Shorts.
 - For a query the site spell-corrects ("Showing results for ..."), the results are for the corrected
   text; the tool keeps `query` as sent and adds a warning naming the corrected query. A "did you mean"
   card adds a warning too. Both cards sit next to the results, and next to the empty-state card on a
@@ -244,4 +244,21 @@ warning, paging past the last page says so, C1 control characters are rejected o
 continuation is `invalid_page_token`, and the surviving mutants were closed with tests (all 22 mutants of
 the new paths are killed).
 
-Independent QA of the revision that fixes these: pending. Status stays `draft` until it passes.
+Independent QA round 3 (same agent, revision `7e15134`): **FAIL** on one minor, fixture-only finding; the three
+round 2 findings were confirmed fixed and no regression was found on live YouTube (about 500 more requests, all
+anonymous POSTs to the three endpoints; 65 outputs validated with Ajv; the size bound was exercised with
+maximum-length CJK, emoji and escaped-character pages through the real runtime with a mocked `fetch`, largest
+accepted output 184,655 bytes; a mutation run killed 28 of 38 mutants, the survivors being boundary and
+equivalent cases). The finding: a continuation HTTP 400 whose body reports unusual traffic was returned as
+`invalid_page_token` instead of `challenge`.
+
+The next revision fixes that finding (a 400 with a bot-check body stays `challenge`), fixes the CRLF
+normalization order in descriptions, says in the tool description that a suggested or corrected query in a
+warning is third-party text, and corrects the Shorts count above. It has tests and a live smoke run, and it has
+**not** been independently reviewed: the review limit for this change was reached. Both tools therefore stay
+`draft`, and the registry carries no `qa_passed` or `verified` status.
+
+Open items: the Chrome extension cannot register the tools on youtube.com (see Known limitations); the
+revision after round 3 needs an independent review before either tool can be `qa_passed`; `gated`, `challenge`,
+`rate_limited`, a live page over the size bounds, and a live continuation 400 with a bot-check body were never
+observed.
