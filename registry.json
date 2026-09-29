@@ -1274,6 +1274,32 @@
       "provenance": {
         "qa_agent": "agt_a87837884a432de575e8"
       }
+    },
+    {
+      "domain": "youtube.com",
+      "tool": "get_video",
+      "file": "domains/youtube.com/get_video.js",
+      "kind": "page",
+      "namespace": "youtube.com",
+      "url_patterns": [
+        "https://www.youtube.com/*"
+      ],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Public metadata for one video or Short by id or URL: title, description, uploader, publish date, duration, counts, chapters, live flags. Anonymous requests to the site's player and next endpoints; never plays, returns no media or caption URLs, and does not report playability. Sign-in, age and content-warning screens return login_required or gated."
+    },
+    {
+      "domain": "youtube.com",
+      "tool": "search",
+      "file": "domains/youtube.com/search.js",
+      "kind": "page",
+      "namespace": "youtube.com",
+      "url_patterns": [
+        "https://www.youtube.com/*"
+      ],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "One page of typed video, Short, channel and playlist results with the site's type, duration, upload-date and sort filters and an opaque page token. Anonymous requests to the site's search endpoint; sponsored results are omitted and counted."
     }
   ]
 }
