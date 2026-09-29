@@ -349,8 +349,9 @@ test("token and shape problems are site_changed and never leak the token", async
 test("a response for another flight or day, or with unreadable segments, is site_changed and returns nothing", async () => {
   const wrongFlight = plain(await okNumber([statusSegment()], { data: { Flight: { flightNumber: "999", FlightOriginationDate: "2026-10-01" }, flightLegs: [{ OperationalFlightSegments: [statusSegment()] }] } }).run({ flight_number: "1234", date: "2026-10-01" }));
   assert.equal(wrongFlight.status, "site_changed");
-  const wrongDay = plain(await okNumber([statusSegment()], { data: { Flight: { flightNumber: "1234", FlightOriginationDate: "2026-10-02" }, flightLegs: [{ OperationalFlightSegments: [statusSegment()] }] } }).run({ flight_number: "1234", date: "2026-10-01" }));
-  assert.equal(wrongDay.status, "site_changed");
+  const nextDay = statusSegment({ DepartureDateTime: "2026-10-02T06:00:00", DepartureUTCDateTime: "2026-10-02T13:00:00", ArrivalDateTime: "2026-10-02T07:37:00", ArrivalUTCDateTime: "2026-10-02T14:37:00" });
+  const wrongDay = plain(await okNumber([nextDay], { data: { Flight: { flightNumber: "1234", FlightOriginationDate: "2026-10-02" }, flightLegs: [{ OperationalFlightSegments: [nextDay] }] } }).run({ flight_number: "1234", date: "2026-10-01" }));
+  assert.equal(wrongDay.status, "site_changed", "no leg departs on the requested date");
   const unreadable = plain(await okNumber([statusSegment(), statusSegment({ DepartureUTCDateTime: "garbage" })]).run({ flight_number: "1234", date: "2026-10-01" }));
   assert.equal(unreadable.status, "site_changed");
   assert.equal(unreadable.legs, undefined, "no partial data");
@@ -576,7 +577,7 @@ test("site text: invisible formatting characters are stripped and truncation nev
   const astral = "\u{1F6EB}".repeat(100) + "  ";
   const out = plain(await okNumber([statusSegment({ FlightStatuses: [{ StatusType: "FlightStatus", Description: spoof, Code: "X" }, { StatusType: "LegStatus", Description: astral }], DepartureGate: "A" + astral })]).run({ flight_number: "1234", date: "2026-10-01" }));
   const leg = out.legs[0];
-  assert.equal(leg.status_text, "On time gnidnal hidden end");
+  assert.equal(leg.status_text, "On time gnidnalhidden end");
   assert.equal(Array.from(leg.leg_status).length, 80);
   assert.ok(!/[\ud800-\udbff](?![\udc00-\udfff])|(?<![\ud800-\udbff])[\udc00-\udfff]/.test(JSON.stringify(leg)), "no lone surrogates");
   assert.equal(leg.leg_status, leg.leg_status.trimEnd());
@@ -603,4 +604,104 @@ test("output schema pins: extra properties are rejected and the new fields are r
   const numberOut = plain(await okNumber().run({ flight_number: "1234", date: "2026-10-01" }));
   delete numberOut.in_sequence;
   assert.equal(conforms(outputSchema(h), numberOut), false, "in_sequence is required");
+});
+
+// --- second review round ----------------------------------------------------------------------------------
+
+test("a flight whose first leg departed the day before is answered with the legs that depart on the requested day", async () => {
+  // United's header carries the first leg's origination date (the day before); the legs returned depart on the requested day.
+  const later = [
+    statusSegment({ DepartureAirport: { IATACode: "MAJ" }, ArrivalAirport: { IATACode: "KWA" }, EstimatedDepartureTime: null, EstimatedArrivalTime: null, ...setTimes("Departure", at("2026-10-01T07:00:00", "2026-09-30T19:00:00")), ...setTimes("Arrival", at("2026-10-01T08:00:00", "2026-09-30T20:00:00")) }),
+    statusSegment({ DepartureAirport: { IATACode: "KWA" }, ArrivalAirport: { IATACode: "KSA" }, EstimatedDepartureTime: null, EstimatedArrivalTime: null, ...setTimes("Departure", at("2026-10-01T08:45:00", "2026-09-30T20:45:00")), ...setTimes("Arrival", at("2026-10-01T10:15:00", "2026-09-30T22:15:00")) })
+  ];
+  const body = { data: { Flight: { flightNumber: "1234", FlightOriginationDate: "2026-09-30" }, flightLegs: later.map(seg => ({ OperationalFlightSegments: [seg] })) } };
+  const h = lookup(() => response(200, body));
+  const out = plain(await h.run({ flight_number: "1234", date: "2026-10-01" }));
+  assert.equal(out.status, "ok");
+  assert.equal(out.leg_count, 2);
+  assert.equal(out.in_sequence, true);
+  assert.deepEqual(out.legs.map(l => l.departure.airport_code), ["MAJ", "KWA"]);
+  assert.equal(out.legs[0].departure.scheduled, "2026-10-01T07:00:00+12:00");
+  assert.ok(conforms(outputSchema(h), out));
+});
+
+test("an answer whose legs all depart on another day, or for another flight number, is site_changed", async () => {
+  const other = statusSegment({ DepartureDateTime: "2026-09-30T06:00:00", DepartureUTCDateTime: "2026-09-30T13:00:00", ArrivalDateTime: "2026-09-30T07:37:00", ArrivalUTCDateTime: "2026-09-30T14:37:00" });
+  const body = { data: { Flight: { flightNumber: "1234", FlightOriginationDate: "2026-10-01" }, flightLegs: [{ OperationalFlightSegments: [other] }] } };
+  assert.equal(plain(await lookup(() => response(200, body)).run({ flight_number: "1234", date: "2026-10-01" })).status, "site_changed");
+  assert.equal(plain(await okNumber().run({ flight_number: "4321", date: "2026-10-01" })).status, "site_changed");
+});
+
+test("route: an answer that no longer says which airline flies or sells any segment is site_changed, not no_results", async () => {
+  const bare = () => { const seg = routeSegment(); delete seg.OperatingAirlineCode; delete seg.MarketedFlightSegment; return seg; };
+  const out = plain(await okRoute([trip([bare()]), trip([bare()])]).run({ origin: "SFO", destination: "LAX", date: "2026-10-01" }));
+  assert.equal(out.status, "site_changed");
+  assert.match(out.message, /no longer says which airline/);
+  const partial = plain(await okRoute([trip([bare()]), trip([routeSegment()])]).run({ origin: "SFO", destination: "LAX", date: "2026-10-01" }));
+  assert.equal(partial.status, "ok", "one identifiable segment is enough to know the fields still exist");
+  assert.equal(partial.itinerary_count, 1);
+});
+
+test("route: an itinerary with no legs or no segments makes the answer unreadable", async () => {
+  for (const broken of [{ FlightLegs: [], JourneyDuration: "97" }, { FlightLegs: [{ OperationalFlightSegments: [] }], JourneyDuration: "97" }, { FlightLegs: [{}] }, { JourneyDuration: "97" }]) {
+    const out = plain(await okRoute([trip([routeSegment()]), broken]).run({ origin: "SFO", destination: "LAX", date: "2026-10-01" }));
+    assert.equal(out.status, "site_changed", JSON.stringify(broken));
+  }
+});
+
+test("route: an airline that operates a segment is kept even when no marketing carrier is listed", async () => {
+  const opOnly = routeSegment({ FlightNumber: "6285", OperatingAirlineCode: "YV", OperatingAirlineName: "Example Regional" });
+  delete opOnly.MarketedFlightSegment;
+  const soldByUnited = routeSegment({ FlightNumber: "6001", OperatingAirlineCode: "OO" });
+  const out = plain(await okRoute([trip([opOnly]), trip([soldByUnited])]).run({ origin: "SFO", destination: "LAX", date: "2026-10-01", airline: "YV" }));
+  assert.equal(out.status, "ok");
+  assert.deepEqual(out.itineraries.map(i => i.segments[0].flight_number), ["6285"], "only the operated itinerary");
+});
+
+test("route: possibly_truncated follows what United returned, not what the airline filter kept", async () => {
+  const united = () => trip([routeSegment()]);
+  const partner = () => trip([routeSegment({ OperatingAirlineCode: "NH", MarketedFlightSegment: [{ MarketingAirlineCode: "NH" }] })]);
+  const out = plain(await okRoute([...Array.from({ length: 5 }, united), ...Array.from({ length: 25 }, partner)]).run({ origin: "SFO", destination: "LAX", date: "2026-10-01" }));
+  assert.equal(out.itinerary_count, 5);
+  assert.equal(out.possibly_truncated, true);
+  const small = plain(await okRoute([...Array.from({ length: 5 }, united), ...Array.from({ length: 20 }, partner)]).run({ origin: "SFO", destination: "LAX", date: "2026-10-01" }));
+  assert.equal(small.possibly_truncated, false);
+});
+
+test("in_sequence: equal times are in sequence, instants decide (not local text), and every pair is checked", async () => {
+  const leg = (from, to, dep, arr) => statusSegment({ DepartureAirport: { IATACode: from }, ArrivalAirport: { IATACode: to }, EstimatedDepartureTime: null, EstimatedArrivalTime: null, ...setTimes("Departure", dep), ...setTimes("Arrival", arr) });
+  const run = legs => okNumber(legs).run({ flight_number: "1234", date: "2026-10-01" }).then(plain);
+  const touching = await run([
+    leg("SFO", "LAX", at("2026-10-01T06:00:00", "2026-10-01T13:00:00"), at("2026-10-01T07:37:00", "2026-10-01T14:37:00")),
+    leg("LAX", "SAN", at("2026-10-01T07:37:00", "2026-10-01T14:37:00"), at("2026-10-01T08:30:00", "2026-10-01T15:30:00"))
+  ]);
+  assert.equal(touching.in_sequence, true, "a leg that departs exactly when the previous one arrives is in sequence");
+  // Local text sorts leg 2 after leg 1, but leg 2 leaves (2026-10-01T23:00Z) before leg 1 lands (2026-10-02T06:00Z).
+  const textOrdered = await run([
+    leg("SFO", "LAX", at("2026-10-01T20:00:00", "2026-10-02T03:00:00"), at("2026-10-01T23:00:00", "2026-10-02T06:00:00")),
+    leg("LAX", "NRT", at("2026-10-02T08:00:00", "2026-10-01T23:00:00"), at("2026-10-02T12:00:00", "2026-10-02T03:00:00"))
+  ]);
+  assert.equal(textOrdered.in_sequence, false, "comparison is by instant");
+  const laterPairBad = await run([
+    leg("SFO", "LAX", at("2026-10-01T06:00:00", "2026-10-01T13:00:00"), at("2026-10-01T07:37:00", "2026-10-01T14:37:00")),
+    leg("LAX", "EWR", at("2026-10-01T10:15:00", "2026-10-01T17:15:00"), at("2026-10-01T18:30:00", "2026-10-01T22:30:00")),
+    leg("EWR", "IAH", at("2026-10-01T15:00:00", "2026-10-01T19:00:00"), at("2026-10-01T18:00:00", "2026-10-01T23:00:00"))
+  ]);
+  assert.equal(laterPairBad.in_sequence, false, "the second pair is checked too");
+});
+
+test("site text: format, tag and variation characters are removed, and truncation leaves no trailing space", async () => {
+  const hidden = "a\u00adb\u{E0049}\u{E0065}c\u2060d\u061ce\ufe0ff\ufeffg\u034fh\u{E0100}i\u206fj";
+  const padded = "a".repeat(79) + " " + "b".repeat(20);
+  const out = plain(await okNumber([statusSegment({ FlightStatuses: [{ StatusType: "FlightStatus", Description: hidden, Code: "X" }, { StatusType: "LegStatus", Description: padded }] })]).run({ flight_number: "1234", date: "2026-10-01" }));
+  assert.equal(out.legs[0].status_text, "abcdefghij", "invisible characters are deleted, not turned into spaces");
+  assert.equal(out.legs[0].leg_status, "a".repeat(79), "the space the cut leaves at the end is trimmed");
+});
+
+test("output schema pin: in_sequence is required on every route itinerary", async () => {
+  const h = okRoute([trip([routeSegment()])]);
+  const out = plain(await h.run({ origin: "SFO", destination: "LAX", date: "2026-10-01" }));
+  const stripped = structuredClone(out);
+  delete stripped.itineraries[0].in_sequence;
+  assert.equal(conforms(outputSchema(h), stripped), false);
 });
