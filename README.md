@@ -136,9 +136,10 @@ How invocation works and what to expect:
 - A tool invoked from the page (`document.modelContext.executeTool`) keeps running in
   the extension if its document navigates away, but that document can no longer receive
   the result; the invocation log (`listInvocations`) records it as undelivered.
-- Tool inputs are never logged or stored. Failed invocations keep the thrown error with
-  its stack mapped to the tool file, the tool's console output, and timing, readable
-  through `getInvocation`.
+- Tool inputs are never logged or stored. Failed invocations keep the thrown error,
+  console output, and timing, readable through `getInvocation`. A local file installed
+  individually retains its filename in mapped stacks; `attach` combines installed
+  files per namespace, so those stacks point to the namespace batch instead.
 
 #### Connect an agent: `xwebmcp mcp`
 
@@ -160,13 +161,17 @@ The server offers generic tools and one MCP tool per installed custom tool:
 | `invoke_tool` | run a tool by `tool_ref`, or an installed cdp tool by `namespace` + `name` (opens the site when no tab has it); returns `WebMCPInvocationResult` plus `diagnostics` on failure (error with stack mapped to the tool file, console output, timing) |
 | `get_invocation` | diagnostics for a past invocation |
 | `list_custom_tools`, `install_tool`, `remove_tool` | installed tools; `install_tool` takes a local file path |
-| `open_tab`, `navigate_tab`, `close_tab`, `list_tabs` | tabs owned by the server |
+| `open_tab`, `navigate_tab`, `close_tab`, `list_tabs` | extension-owned tabs; with `--kernel`, only `list_tabs` is available and lists tabs that expose tools |
 | `southwest_2ecom__search_5fflights`, … | each installed tool, with its own input schema |
 
 By default the server only sees and acts on tabs it opened itself (an **xwebmcp** tab
 group); pass `allow_user_tabs` / `all_tabs` per call, or start with `--all-tabs` to list
 the user's tabs too. Tool inputs are never logged or stored by the server or the
-extension. `--kernel <browser>` points the same server at a Kernel browser.
+extension. `--kernel <browser>` points the same server at a Kernel browser, but it
+cannot map a numeric `tab_id` to a REPL target for `open_tab`, `navigate_tab`, or
+`close_tab`, so those operations return an error rather than acting on the wrong tab.
+For a custom tool invoked by namespace without a matching registration, the Kernel
+target opens a new tab; pass `tab_id` to require an existing matching registration.
 
 ### Develop tools locally
 
@@ -226,8 +231,9 @@ xwebmcp attach --kernel <browser id or name>
 xwebmcp tools --kernel <browser id or name>
 ```
 
-`attach` replaces each namespace atomically (the first file of a namespace is sent with
-`force_overwrite_namespace`), so re-running it after an update is safe for both targets.
+`attach` sends all installed files in each namespace as one batch with
+`force_overwrite_namespace`, so a failed file does not leave that namespace partly
+updated. Re-running it after an update is safe for both targets.
 
 ### By hand
 

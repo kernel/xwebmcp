@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/urfave/cli/v3"
 
@@ -61,6 +62,18 @@ func (a *App) namespaces(st *store.Store) ([]namespaceSource, error) {
 	return out, nil
 }
 
+func namespaceBatch(st *store.Store, ns namespaceSource) (string, error) {
+	parts := make([]string, 0, len(ns.Tools))
+	for _, item := range ns.Tools {
+		source, err := st.ReadToolSource(item.Source, item.Tool)
+		if err != nil {
+			return "", err
+		}
+		parts = append(parts, "...("+toolsource.Normalize(source)+")")
+	}
+	return "[" + strings.Join(parts, ",") + "]", nil
+}
+
 func (a *App) attachKernel(ctx context.Context, browser string) error {
 	client, err := a.Kernel()
 	if err != nil {
@@ -79,24 +92,21 @@ func (a *App) attachKernel(ctx context.Context, browser string) error {
 	}
 	total := 0
 	for _, ns := range namespaces {
-		for i, item := range ns.Tools {
-			source, err := st.ReadToolSource(item.Source, item.Tool)
-			if err != nil {
-				return err
+		source, err := namespaceBatch(st, ns)
+		if err != nil {
+			return err
+		}
+		added, err := client.AddCustomTools(ctx, browser, ns.Namespace, source, true)
+		if err != nil {
+			var apiErr *kernelapi.APIError
+			if errors.As(err, &apiErr) {
+				return fmt.Errorf("register %s: %w", ns.Namespace, err)
 			}
-			// The first batch replaces the namespace atomically; later files add to it.
-			added, err := client.AddCustomTools(ctx, browser, ns.Namespace, toolsource.Normalize(source), i == 0)
-			if err != nil {
-				var apiErr *kernelapi.APIError
-				if errors.As(err, &apiErr) {
-					return fmt.Errorf("register %s/%s: %w", ns.Namespace, item.Tool.Name, err)
-				}
-				return err
-			}
-			for _, tool := range added {
-				total++
-				a.printf("%s  %s/%s  %s\n", tool.ID, tool.Namespace, tool.Tool.Name, tool.Kind)
-			}
+			return err
+		}
+		for _, tool := range added {
+			total++
+			a.printf("%s  %s/%s  %s\n", tool.ID, tool.Namespace, tool.Tool.Name, tool.Kind)
 		}
 	}
 	a.printf("attached %d tool(s) to Kernel browser %s\n", total, browser)

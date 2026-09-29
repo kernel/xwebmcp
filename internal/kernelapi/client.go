@@ -231,5 +231,8 @@ func (c *Client) ExecuteRepl(ctx context.Context, browser, code string, timeoutS
 	if err := c.do(ctx, http.MethodPost, browserPath(browser, "/repl"), body, &res); err != nil {
 		return nil, err
 	}
+	if !res.Success {
+		return nil, fmt.Errorf("browser REPL: %s", res.Error)
+	}
 	return &res, nil
 }

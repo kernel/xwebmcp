@@ -15,7 +15,6 @@ import (
 	"github.com/urfave/cli/v3"
 
 	"github.com/kernel/xwebmcp/internal/bridge"
-	"github.com/kernel/xwebmcp/internal/toolsource"
 )
 
 // extensionTool mirrors the CustomWebMCPDefinition shape the extension returns.
@@ -120,30 +119,34 @@ func (a *App) attachExtension(ctx context.Context) error {
 
 	total := 0
 	var pending []string
+	seenPending := map[string]bool{}
 	for _, ns := range namespaces {
-		for i, item := range ns.Tools {
-			source, err := st.ReadToolSource(item.Source, item.Tool)
-			if err != nil {
-				return err
+		source, err := namespaceBatch(st, ns)
+		if err != nil {
+			return err
+		}
+		var result struct {
+			Tools          []extensionTool `json:"tools"`
+			PendingOrigins []string        `json:"pending_origins"`
+		}
+		params := map[string]any{
+			"namespace":                 ns.Namespace,
+			"source":                    source,
+			"file":                      "domains/" + ns.Namespace + "/(batch).js",
+			"force_overwrite_namespace": true,
+		}
+		if err := client.Call(ctx, "addCustomTools", params, &result); err != nil {
+			return fmt.Errorf("register %s: %w", ns.Namespace, err)
+		}
+		for _, tool := range result.Tools {
+			total++
+			a.printf("%s  %s/%s  %s\n", tool.ID, tool.Namespace, tool.Tool.Name, tool.Kind)
+		}
+		for _, origin := range result.PendingOrigins {
+			if !seenPending[origin] {
+				pending = append(pending, origin)
+				seenPending[origin] = true
 			}
-			var result struct {
-				Tools          []extensionTool `json:"tools"`
-				PendingOrigins []string        `json:"pending_origins"`
-			}
-			params := map[string]any{
-				"namespace":                 ns.Namespace,
-				"source":                    toolsource.Normalize(source),
-				"file":                      item.Tool.File,
-				"force_overwrite_namespace": i == 0,
-			}
-			if err := client.Call(ctx, "addCustomTools", params, &result); err != nil {
-				return fmt.Errorf("register %s/%s: %w", ns.Namespace, item.Tool.Name, err)
-			}
-			for _, tool := range result.Tools {
-				total++
-				a.printf("%s  %s/%s  %s\n", tool.ID, tool.Namespace, tool.Tool.Name, tool.Kind)
-			}
-			pending = result.PendingOrigins
 		}
 	}
 	a.printf("attached %d tool(s) to the Chrome extension\n", total)
