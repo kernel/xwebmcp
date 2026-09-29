@@ -42,6 +42,25 @@ func TestScanDirectoryWithoutRegistry(t *testing.T) {
 	}
 }
 
+func TestScanNamespaceDirectory(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "delta.com")
+	os.MkdirAll(root, 0o755)
+	os.WriteFile(filepath.Join(root, "login.js"), []byte("[3]"), 0o644)
+	os.WriteFile(filepath.Join(root, "search_flights.js"), []byte("[4]"), 0o644)
+	files, err := Scan(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(files) != 2 {
+		t.Fatalf("files = %+v", files)
+	}
+	for _, file := range files {
+		if file.Namespace != "delta.com" {
+			t.Errorf("%s namespace = %q, want delta.com", file.Rel, file.Namespace)
+		}
+	}
+}
+
 func TestWatchReportsEdits(t *testing.T) {
 	root := t.TempDir()
 	os.MkdirAll(filepath.Join(root, "c.test"), 0o755)
