@@ -1,0 +1,61 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>xwebmcp tools</title>
+    <style>
+      :root { color-scheme: light dark; }
+      body { font: 13px/1.4 system-ui, sans-serif; margin: 0; color: #222; background: #fff; display: flex; flex-direction: column; height: 100vh; }
+      @media (prefers-color-scheme: dark) { body { color: #ddd; background: #1e1e1e; } .badge { background: #333; color: #ccc; } pre, select, input, textarea { background: #2a2a2a; color: #ddd; border-color: #444; } .tool.selected { background: #2f2f2f; } .tool:hover { background: #2a2a2a; } header, .section { border-color: #333; } }
+      header { padding: 8px 12px; border-bottom: 1px solid #e5e5e5; display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+      header h1 { font-size: 13px; margin: 0; }
+      .muted { color: #777; }
+      .badge { font-size: 10px; padding: 1px 6px; border-radius: 8px; background: #eee; color: #444; white-space: nowrap; }
+      .badge.native { background: #e3f2fd; color: #0d47a1; }
+      .badge.custom { background: #e8f5e9; color: #1b5e20; }
+      .section { border-bottom: 1px solid #e5e5e5; }
+      .search { padding: 8px 12px; }
+      .search input { width: 100%; box-sizing: border-box; }
+      #page { font-size: 11px; padding: 0 12px 6px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      #list { max-height: 34vh; overflow: auto; }
+      .group { padding: 4px 12px 2px; font-size: 10px; color: #777; text-transform: uppercase; letter-spacing: .04em; }
+      .tool { display: flex; align-items: center; gap: 6px; width: 100%; text-align: left; padding: 6px 12px; border: 0; border-left: 2px solid transparent; background: none; font: inherit; color: inherit; cursor: pointer; }
+      .tool:hover { background: #f5f5f5; }
+      .tool.selected { border-left-color: #2e7d32; background: #f0f0f0; }
+      .tool .name { font-family: ui-monospace, monospace; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      #editor { flex: 1; overflow: auto; padding: 12px; }
+      #editor h2 { font-size: 15px; margin: 0; font-family: ui-monospace, monospace; word-break: break-all; }
+      #editor p { margin: 6px 0; }
+      .row { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+      label { display: flex; justify-content: space-between; gap: 8px; font-size: 12px; margin: 8px 0 3px; }
+      input, select, textarea { font: inherit; font-size: 12px; padding: 4px 6px; border: 1px solid #bbb; border-radius: 4px; box-sizing: border-box; width: 100%; }
+      textarea { font-family: ui-monospace, monospace; min-height: 120px; }
+      button { font: inherit; font-size: 12px; padding: 4px 10px; border-radius: 6px; border: 1px solid #bbb; background: #fafafa; cursor: pointer; color: #222; }
+      button:hover { background: #f0f0f0; }
+      button.primary { background: #2e7d32; color: #fff; border-color: #2e7d32; }
+      button:disabled { opacity: .5; cursor: default; }
+      pre { margin: 6px 0 0; padding: 8px; background: #f5f5f5; border: 1px solid #e5e5e5; border-radius: 4px; max-height: 260px; overflow: auto; white-space: pre-wrap; word-break: break-word; font-size: 11px; }
+      .error { color: #b71c1c; white-space: pre-wrap; word-break: break-word; }
+      details { margin-top: 10px; font-size: 11px; }
+      details summary { cursor: pointer; color: #777; }
+      .empty { padding: 12px; color: #777; }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>webmcp tools <span id="count" class="muted"></span></h1>
+      <span id="bridge" class="badge">bridge: …</span>
+    </header>
+    <div class="section">
+      <div class="search"><input id="search" type="search" placeholder="find a tool…" aria-label="find a tool" /></div>
+      <div id="page" class="muted"></div>
+      <div id="list"></div>
+      <div id="list-empty" class="empty"></div>
+    </div>
+    <div id="editor"><div class="empty">select a tool to run it.</div></div>
+    <script src="lib/url-pattern.js"></script>
+    <script src="lib/client.js"></script>
+    <script src="lib/webmcp-inputs.js"></script>
+    <script src="sidepanel.js"></script>
+  </body>
+</html>

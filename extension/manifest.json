@@ -12,6 +12,7 @@
     "nativeMessaging",
     "offscreen",
     "scripting",
+    "sidePanel",
     "storage",
     "tabGroups",
     "tabs",
@@ -20,5 +21,6 @@
   "optional_host_permissions": ["http://*/*", "https://*/*"],
   "background": {"service_worker": "background.js", "type": "module"},
   "action": {"default_popup": "popup.html", "default_title": "xwebmcp"},
-  "sandbox": {"pages": ["sandbox/sandbox.html"]}
+  "sandbox": {"pages": ["sandbox/sandbox.html"]},
+  "side_panel": {"default_path": "sidepanel.html"}
 }
