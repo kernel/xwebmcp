@@ -4,7 +4,7 @@ The free, keyless JSON IP-geolocation endpoint at https://ipwho.is.
 
 | tool | file | status | notes |
 |------|------|--------|-------|
-| lookup_ip | [lookup_ip.js](lookup_ip.js) | draft | One lookup per call for an IPv4/IPv6 address or the browser's own egress address; location, ASN/ISP and timezone; approximate, free tier only |
+| lookup_ip | [lookup_ip.js](lookup_ip.js) | verified | One lookup per call for an IPv4/IPv6 address or the browser's own egress address; location, ASN/ISP and timezone; approximate, free tier only |
 
 ## What the site is
 
@@ -59,8 +59,8 @@ The tool is listed only on `ipwho.is` documents, so a tab has to be on ipwho.is 
 - **Errors** use `status: "error"` with `error_kind`: `invalid_input`, `invalid_ip`, `reserved_range`,
   `rate_limited` (with `retry_after_seconds`), `gated` (HTTP 403), `network_error` (timeout or no
   answer), `site_error` (other HTTP or application errors) and `site_changed` (a 200 answer that is
-  larger than 16 KiB, is not a JSON object, has no valid `ip`/`type`, has no country name or code, or
-  is for a different address than requested). A lookup is `ok` only with a valid address and country
+  larger than 16 KiB, is not a JSON object, lacks `success: true`, has no valid `ip`/`type`, has no
+  country name or code, or is for a different address than requested). A lookup is `ok` only with a valid address and country
   data, so a bare `{"success":true,"ip":...}` is `site_changed`, never an empty success. A real address
   the database has no country for would also be reported as `site_changed`; that was not observed.
 
@@ -151,17 +151,44 @@ and length-capped, and unrecognized error text is not echoed.
 - Fields the free endpoint does not return for an address come back as `null`; they were not seen
   missing for a successful lookup.
 - A data field the site renames comes back as `null`, except the ones an `ok` result depends on: `ip`,
-  `type` and a country name or code (see the error list above). A renamed or dropped field of those three
-  is `site_changed`, so a partial rename can turn every lookup into `site_changed`.
+  `type`, `success` and a country name or code (see the error list above). A renamed or dropped field of
+  those is `site_changed`, so a partial rename can turn every lookup into `site_changed`.
 - The local-extension check drove the extension's own message API in Chromium 153, not the `xwebmcp` CLI,
   its native messaging host or branded Google Chrome; those paths were not exercised.
 
 ## QA
 
-Author checks, 2026-09-29, on the final source of this revision. Independent QA has not signed off yet,
-so the tool is `draft`. An earlier revision was reviewed once and failed; its findings (an empty
-success body accepted as `ok`, an unbounded body read, an untested IPv6 injection guard, undocumented
-runtime string delivery and several documentation gaps) are fixed in this revision.
+**Independent QA: PASS on the final tool source, 2026-09-29** (QA agent `agt_cc1db635c02b06098b97`,
+recorded in the registry as `provenance.qa_agent`). The reviewer read the source, tests and this README
+completely, ran the validator and the full suite, mutation-tested the tool, and exercised it live in a
+fresh Kernel browser and in the local extension. Three rounds:
+
+1. First revision: **FAIL**. An empty success body was accepted as `ok`, the body size bound bounded
+   nothing, the IPv6 injection guard had no test, the runtime's string delivery was undocumented, and
+   several README statements were inaccurate. All fixed.
+2. Second revision: **FAIL** on one documentation defect (a stale README sentence that contradicted the
+   code) plus test gaps for fractional `Retry-After`, `Math.round` versus `Math.ceil`, other-family
+   answers, a missing `success` flag and empty stream chunks. The tool source had no finding. All fixed
+   in the README and tests.
+3. Final revision: **PASS** with no blocking or should-fix defect. The tool file the reviewer signed off
+   (git blob `a7b4dc018b24bde73df09be2f79c52e052aa21a3`) is the one in this repository; later commits change only this README and the
+   registry entry to record the sign-off.
+
+What the reviewer verified: 85 scripted mutants (78 killed; the 7 that survive are equivalent or not
+observable in the harness); replay of 40 real site responses through the source with no false
+rejection; live registration, listing, invocation and schema validation of live outputs (59 in the first round, 18
+in the second, all valid); malformed input sending zero requests (38 and 25 inputs in two rounds,
+counted at the CDP level); exactly one request per call with no
+cookies and no other host; stubbed failure shapes with real streams; the 429 cooldown; navigation
+lifetime; and the same behavior in the local extension. It did not verify the site's real 429, a real
+redirect or stall, an IPv6 egress echo, `*.ipwho.is` documents, parallel calls, the `xwebmcp` CLI, its
+native host or branded Google Chrome.
+
+**Live case for `verified`:** on 2026-09-29 `lookup_ip` was invoked from the `https://ipwho.is/9.9.9.9`
+document, not only from the `https://ipwho.is/` entry page, and returned `ok` (both the author and the
+independent reviewer did this in the Kernel browser).
+
+Author checks on the same source (2026-09-29):
 
 - **Stubbed tests** (`tests/ipwho-lookup-ip.test.mjs`, 34 cases): input validation before any request
   (including whitespace and path/query injection strings), request shape, every error kind, single
