@@ -1274,6 +1274,58 @@
       "provenance": {
         "qa_agent": "agt_a87837884a432de575e8"
       }
+    },
+    {
+      "domain": "walmart.com",
+      "tool": "get_product",
+      "file": "domains/walmart.com/get_product.js",
+      "kind": "page",
+      "namespace": "walmart.com",
+      "url_patterns": [
+        "https://www.walmart.com/*"
+      ],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Read-only item details for one us_item_id: price, availability, seller, fulfillment, limits, returns, specifications, descriptions and up to 100 variants, for the session's selected store. Not yet independently tested."
+    },
+    {
+      "domain": "walmart.com",
+      "tool": "get_product_reviews",
+      "file": "domains/walmart.com/get_product_reviews.js",
+      "kind": "page",
+      "namespace": "walmart.com",
+      "url_patterns": [
+        "https://www.walmart.com/*"
+      ],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Read-only rating summary and one page of 10 listed reviews per call (six site sorts), without reviewer identity. Only reviews with text are listed. Not yet independently tested."
+    },
+    {
+      "domain": "walmart.com",
+      "tool": "get_store",
+      "file": "domains/walmart.com/get_store.js",
+      "kind": "page",
+      "namespace": "walmart.com",
+      "url_patterns": [
+        "https://www.walmart.com/*"
+      ],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Read-only store page data by store_id, or the session's selected store: address, weekly hours, services and nearby stores. Never selects a store. Not yet independently tested."
+    },
+    {
+      "domain": "walmart.com",
+      "tool": "search_products",
+      "file": "domains/walmart.com/search_products.js",
+      "kind": "page",
+      "namespace": "walmart.com",
+      "url_patterns": [
+        "https://www.walmart.com/*"
+      ],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Read-only search page: site sorts, facet filters, price bounds, sponsored flags and selected-store context. Refuses throttled responses that ignore the requested sort or page. Not yet independently tested."
     }
   ]
 }
