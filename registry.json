@@ -131,6 +131,45 @@
       }
     },
     {
+      "domain": "ebay.com",
+      "tool": "get_listing",
+      "file": "domains/ebay.com/get_listing.js",
+      "kind": "page",
+      "namespace": "ebay.com",
+      "url_patterns": [
+        "https://www.ebay.com/*"
+      ],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Reads one listing by item number: price (current bid for auctions), buying format, availability, condition, shipping and delivery text, returns, item specifics, category path, images, seller name/username/feedback, sold or ended notice, and variation menus with sold-out flags. Public, read-only. Does not return the seller's description text or choose a variation combination."
+    },
+    {
+      "domain": "ebay.com",
+      "tool": "get_seller_profile",
+      "file": "domains/ebay.com/get_seller_profile.js",
+      "kind": "page",
+      "namespace": "ebay.com",
+      "url_patterns": [
+        "https://www.ebay.com/*"
+      ],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Reads a seller's public feedback summary by username: score, 12-month positive percentage, member-since, Top-rated line, positive/neutral/negative counts for 1, 6 and 12 months, and detailed seller ratings. Public, read-only. Buyer comments are not returned."
+    },
+    {
+      "domain": "ebay.com",
+      "tool": "search",
+      "file": "domains/ebay.com/search.js",
+      "kind": "page",
+      "namespace": "ebay.com",
+      "url_patterns": [
+        "https://www.ebay.com/*"
+      ],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Searches listings with eBay's own sort and filter parameters and returns one results page (up to 60 items) as data. sold_only searches sold listings and needs a signed-in session (login_required otherwise). Public otherwise, read-only. Does not report sponsored placement."
+    },
+    {
       "domain": "etsy.com",
       "tool": "add_to_cart",
       "file": "domains/etsy.com/add_to_cart.js",
