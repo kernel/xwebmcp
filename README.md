@@ -161,13 +161,17 @@ The server offers generic tools and one MCP tool per installed custom tool:
 | `invoke_tool` | run a tool by `tool_ref`, or an installed cdp tool by `namespace` + `name` (opens the site when no tab has it); returns `WebMCPInvocationResult` plus `diagnostics` on failure (error with stack mapped to the tool file, console output, timing) |
 | `get_invocation` | diagnostics for a past invocation |
 | `list_custom_tools`, `install_tool`, `remove_tool` | installed tools; `install_tool` takes a local file path |
-| `open_tab`, `navigate_tab`, `close_tab`, `list_tabs` | tabs owned by the server |
+| `open_tab`, `navigate_tab`, `close_tab`, `list_tabs` | extension-owned tabs; with `--kernel`, only `list_tabs` is available and lists tabs that expose tools |
 | `southwest_2ecom__search_5fflights`, … | each installed tool, with its own input schema |
 
 By default the server only sees and acts on tabs it opened itself (an **xwebmcp** tab
 group); pass `allow_user_tabs` / `all_tabs` per call, or start with `--all-tabs` to list
 the user's tabs too. Tool inputs are never logged or stored by the server or the
-extension. `--kernel <browser>` points the same server at a Kernel browser.
+extension. `--kernel <browser>` points the same server at a Kernel browser, but it
+cannot map a numeric `tab_id` to a REPL target for `open_tab`, `navigate_tab`, or
+`close_tab`, so those operations return an error rather than acting on the wrong tab.
+For a custom tool invoked by namespace without a matching registration, the Kernel
+target opens a new tab; pass `tab_id` to require an existing matching registration.
 
 ### Develop tools locally
 

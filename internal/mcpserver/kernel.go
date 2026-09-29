@@ -52,7 +52,7 @@ func (t *KernelTarget) ListTools(ctx context.Context, params ListToolsParams) (j
 func (t *KernelTarget) Invoke(ctx context.Context, params InvokeParams) (*Invocation, error) {
 	toolRef := params.ToolRef
 	if toolRef == "" {
-		ref, err := t.liveRef(ctx, params.Namespace, params.Name)
+		ref, err := t.liveRef(ctx, params.Namespace, params.Name, params.TabID)
 		if err != nil {
 			return nil, err
 		}
@@ -75,7 +75,7 @@ func (t *KernelTarget) Invoke(ctx context.Context, params InvokeParams) (*Invoca
 
 // liveRef finds the live registration of an installed tool, opening the
 // namespace's site in the browser when no tab exposes it yet.
-func (t *KernelTarget) liveRef(ctx context.Context, namespace, name string) (string, error) {
+func (t *KernelTarget) liveRef(ctx context.Context, namespace, name string, tabID int) (string, error) {
 	definitions, err := t.client.ListCustomTools(ctx, t.browser)
 	if err != nil {
 		return "", err
@@ -90,17 +90,20 @@ func (t *KernelTarget) liveRef(ctx context.Context, namespace, name string) (str
 	if definition == nil {
 		return "", fmt.Errorf("custom tool %s/%s is not registered on %s", namespace, name, t.browser)
 	}
-	if ref := t.findRef(ctx, definition.ID); ref != "" {
+	if ref := t.findRef(ctx, definition.ID, tabID); ref != "" {
 		return ref, nil
 	}
+	if tabID != 0 {
+		return "", fmt.Errorf("custom tool %s/%s is not available in tab %d; navigate that tab before invoking it", namespace, name, tabID)
+	}
 	entry := entryURL(definition.Match.URLPatterns, namespace)
-	code := fmt.Sprintf(`{ const tab = await ensureRealTab(); if (!tab) await newTab(%[1]s); else await gotoUrl(%[1]s); await waitForLoad(15); }`, jsonString(entry))
+	code := fmt.Sprintf(`{ await newTab(%[1]s); await waitForLoad(15); }`, jsonString(entry))
 	if _, err := t.client.ExecuteRepl(ctx, t.browser, code, 30); err != nil {
 		return "", fmt.Errorf("open %s: %w", entry, err)
 	}
 	deadline := time.Now().Add(15 * time.Second)
 	for time.Now().Before(deadline) {
-		if ref := t.findRef(ctx, definition.ID); ref != "" {
+		if ref := t.findRef(ctx, definition.ID, 0); ref != "" {
 			return ref, nil
 		}
 		time.Sleep(500 * time.Millisecond)
@@ -108,13 +111,13 @@ func (t *KernelTarget) liveRef(ctx context.Context, namespace, name string) (str
 	return "", fmt.Errorf("custom tool %s/%s did not appear on %s after opening %s", namespace, name, t.browser, entry)
 }
 
-func (t *KernelTarget) findRef(ctx context.Context, id string) string {
+func (t *KernelTarget) findRef(ctx context.Context, id string, tabID int) string {
 	live, err := t.client.ListTools(ctx, t.browser)
 	if err != nil {
 		return ""
 	}
 	for _, tool := range live {
-		if tool.Source.Custom != nil && tool.Source.Custom.ID == id {
+		if tool.Source.Custom != nil && tool.Source.Custom.ID == id && (tabID == 0 || tool.Source.TabID == tabID) {
 			return tool.ToolRef
 		}
 	}
@@ -186,30 +189,21 @@ func (t *KernelTarget) ListTabs(ctx context.Context, _ bool) ([]Tab, error) {
 			continue
 		}
 		seen[tool.Source.TabID] = true
-		tabs = append(tabs, Tab{TabID: tool.Source.TabID, URL: tool.Source.PageURL, Title: tool.Source.PageTitle, Owned: true})
+		tabs = append(tabs, Tab{TabID: tool.Source.TabID, URL: tool.Source.PageURL, Title: tool.Source.PageTitle, Owned: false})
 	}
 	return tabs, nil
 }
 
-func (t *KernelTarget) OpenTab(ctx context.Context, url string) (*Tab, error) {
-	code := fmt.Sprintf(`{ await newTab(%s); await waitForLoad(15); }`, jsonString(url))
-	if _, err := t.client.ExecuteRepl(ctx, t.browser, code, 30); err != nil {
-		return nil, err
-	}
-	return &Tab{URL: url, Owned: true}, nil
+func (t *KernelTarget) OpenTab(context.Context, string) (*Tab, error) {
+	return nil, errors.New("open_tab cannot return a numeric tab_id on a Kernel browser; use its browser REPL instead")
 }
 
-func (t *KernelTarget) NavigateTab(ctx context.Context, _ int, url string, _ bool) (*Tab, error) {
-	code := fmt.Sprintf(`{ await ensureRealTab(); await gotoUrl(%s); await waitForLoad(15); }`, jsonString(url))
-	if _, err := t.client.ExecuteRepl(ctx, t.browser, code, 30); err != nil {
-		return nil, err
-	}
-	return &Tab{URL: url, Owned: true}, nil
+func (t *KernelTarget) NavigateTab(context.Context, int, string, bool) (*Tab, error) {
+	return nil, errors.New("navigate_tab by numeric tab_id is not supported on a Kernel browser; use its browser REPL to select the target")
 }
 
-func (t *KernelTarget) CloseTab(ctx context.Context, _ int, _ bool) error {
-	_, err := t.client.ExecuteRepl(ctx, t.browser, `await closeTab()`, 30)
-	return err
+func (t *KernelTarget) CloseTab(context.Context, int, bool) error {
+	return errors.New("close_tab by numeric tab_id is not supported on a Kernel browser; use its browser REPL to select the target")
 }
 
 func (t *KernelTarget) GetInvocation(context.Context, string) (json.RawMessage, error) {
