@@ -145,7 +145,7 @@ test("search_products rejects malformed input before any request", async () => {
     { query: "x", limit: 0 }, { query: "x", limit: 61 }, { query: "x", limit: "5" },
     { query: "x", exclude_sponsored: "yes" }, { query: "x", include_facets: 1 },
     { query: "x", facet_ids: "p_123:1" }, { query: "x", facet_ids: ["bad id"] }, { query: "x", facet_ids: ["P_123:1"] }, { query: "x", facet_ids: ["p_123:1", "p_123:1"] },
-    { query: "x", facet_ids: Array.from({ length: 9 }, (_, i) => `p_123:${i}`) }, { query: "x", facet_ids: [5] }, { query: "x", facet_ids: ["p_90:6741117031"] },
+    { query: "x", facet_ids: Array.from({ length: 9 }, (_, i) => `p_123:${i}`) }, { query: "x", facet_ids: [5] }, { query: "x", facet_ids: ["p_90:6741117031"] }, { query: "x", facet_ids: ["n:5925789031"] }, { query: "x", facet_ids: ["p_123:a b"] }, { query: "x", facet_ids: ["p_123:a,b"] }, { query: "x", facet_ids: ["p_123:a|b"] }, { query: "x", facet_ids: ["p_123:100%"] }, { query: "x", facet_ids: ["p_123:" + "v".repeat(121)] },
     { query: null }, { query: "x", department: null }, { query: "x", sort_by: null }, { query: "x", min_price_inr: null }, { query: "x", max_price_inr: null }, { query: "x", page: null },
     { query: "x", limit: null }, { query: "x", exclude_sponsored: null }, { query: "x", include_facets: null }, { query: "x", facet_ids: null }
   ];
@@ -289,7 +289,7 @@ test("search_products returns filter options with ids and applies them the way t
   const inDepartment = await search({ query: "water bottle", department: "electronics", include_facets: true, facet_ids: ["p_123:222"] });
   assert.deepEqual(inDepartment.result.facets[1].options.map(o => [o.id, o.selected]), [["p_123:111", false], ["p_123:222", true], ["p_123:333", false]], "the implicit browse-node token is ignored");
   const hand = await search({ query: "water bottle", department: "electronics", include_facets: true, facet_ids: ["n:976419031", "p_123:222"] });
-  assert.deepEqual(hand.result.facets[1].options.map(o => [o.id, o.selected]), [["p_123:111", false], ["p_123:222", true], ["p_123:333", false]]);
+  assert.deepEqual([hand.result.status, hand.result.error_kind, hand.calls.requests.length], ["error", "invalid_input", 0], "category ids are set by department and are refused");
 });
 
 test("search_products distinguishes an empty search from a changed page", async () => {
@@ -653,7 +653,8 @@ const SCHEMA_REJECTS = {
     { query: "x", page: 0 }, { query: "x", page: 21 }, { query: "x", page: null }, { query: "x", limit: 0 }, { query: "x", limit: 61 }, { query: "x", limit: null },
     { query: "x", exclude_sponsored: "yes" }, { query: "x", include_facets: 1 },
     { query: "x", facet_ids: "p_123:1" }, { query: "x", facet_ids: null }, { query: "x", facet_ids: ["bad id"] }, { query: "x", facet_ids: ["P_123:1"] }, { query: "x", facet_ids: ["p_123:1", "p_123:1"] },
-    { query: "x", facet_ids: Array.from({ length: 9 }, (_, i) => `p_123:${i}`) }, { query: "x", facet_ids: ["p_90:6741117031"] }
+    { query: "x", facet_ids: Array.from({ length: 9 }, (_, i) => `p_123:${i}`) }, { query: "x", facet_ids: ["p_90:6741117031"] },
+    { query: "x", facet_ids: ["n:5925789031"] }, { query: "x", facet_ids: ["p_123:a b"] }, { query: "x", facet_ids: ["p_123:a,b"] }, { query: "x", facet_ids: ["p_123:a|b"] }, { query: "x", facet_ids: ["p_123:100%"] }, { query: "x", facet_ids: ["p_123:" + "v".repeat(121)] }
   ],
   get_product: [{}, { asin: "" }, { asin: "b0testaaa1" }, { asin: "SHORT" }, { asin: "B0TESTAAA1X" }, { asin: 5 }, { asin: null }, { asin: "B0TESTAAA1", extra: 1 }],
   list_bestsellers: [{ category: "Kitchen" }, { category: "k" }, { category: "kitchen/" }, { category: "kitchen/abc" }, { category: "kitchen/1379960031/extra" }, { category: null }, { category: 5 }, { page: 0 }, { page: 3 }, { page: null }, { limit: 0 }, { limit: 31 }, { limit: null }, { extra: 1 }]
@@ -662,7 +663,8 @@ const SCHEMA_ACCEPTS = {
   search_products: [
     { query: "water bottle" }, { query: "a&b=c#d", department: "kitchen", sort_by: "newest", min_price_inr: 0, max_price_inr: 10000000, page: 20, limit: 60, exclude_sponsored: true, include_facets: true },
     { query: "x", facet_ids: ["p_123:111", "p_72:1318476031", "p_n_g-1003512784111:49989874031", "p_n_free_shipping_eligible:205563695031", "p_36:-30000", "p_9:1"] },
-    { query: "x", facet_ids: Array.from({ length: 8 }, (_, i) => `p_123:${i}`) }
+    { query: "x", facet_ids: Array.from({ length: 8 }, (_, i) => `p_123:${i}`) },
+    { query: "x", facet_ids: ["p_lbr_books_authors_browse-bin:J.K.+Rowling+(Joanne+Kathleen+Rowling)", "p_lbr_books_authors_browse-bin:Donald+B.+Lemke", "p_123:" + "v".repeat(120)] }
   ],
   get_product: [{ asin: "B0CXNSCCVW" }, { asin: "0123456789" }],
   list_bestsellers: [{}, { category: "kitchen" }, { category: "kitchen/1379960031", page: 2, limit: 30 }, { category: "boost", limit: 1 }]
@@ -689,4 +691,45 @@ test("search_products does not mistake the department's category links for filte
     assert.deepEqual(selectedOf(result.facets), input.facet_ids || [], JSON.stringify(input));
     assert.equal(result.facets_truncated, false, "navigation links are not truncation");
   }
+});
+
+// ---- final findings: single-select lists, ids that must round-trip, malformed and off-path links -------------------------------
+
+test("search_products lists every option of a single-select list when one is applied", async () => {
+  const link = rh => `/s?k=x${rh ? `&amp;rh=${rh}` : ""}&amp;rnid=1&amp;ref=sr_nr`;
+  const html = `<div id="d-title" role="heading"><span>Discount</span></div><ul aria-labelledby="d-title">`
+    + `<li><a href="${link("p_n_pct-off-with-tax%3A2665399031")}"><span>10% Off or more</span></a></li>`
+    + `<li><a href="${link("")}"><span>25% Off or more</span></a></li>`
+    + `<li><a href="${link("p_n_pct-off-with-tax%3A2665401031")}"><span>50% Off or more</span></a></li></ul>`;
+  const { result } = await search({ query: "x", include_facets: true, facet_ids: ["p_n_pct-off-with-tax:2665400031"] }, searchSite({ facetsHtml: html }));
+  assert.deepEqual(result.facets, [{ name: "Discount", options: [
+    { id: "p_n_pct-off-with-tax:2665399031", name: "10% Off or more", selected: false },
+    { id: "p_n_pct-off-with-tax:2665400031", name: "25% Off or more", selected: true },
+    { id: "p_n_pct-off-with-tax:2665401031", name: "50% Off or more", selected: false }
+  ] }], "the applied option and its alternatives are all listed");
+  assert.equal(result.facets_truncated, false, "a swap link is not truncation");
+  const across = html.replace("rh=p_n_pct-off-with-tax%3A2665399031", "rh=p_other%3A1");
+  const unclear = (await search({ query: "x", include_facets: true, facet_ids: ["p_n_pct-off-with-tax:2665400031"] }, searchSite({ facetsHtml: across }))).result;
+  assert.equal(unclear.facets_truncated, true, "one filter swapped for a different key cannot be identified and is reported");
+});
+
+test("search_products returns ids that it also accepts as input", async () => {
+  const link = value => `<li><a href="/s?k=x&amp;rh=p_lbr%3A${value}"><span>Option</span></a></li>`;
+  const html = `<div id="a-title" role="heading"><span>Author</span></div><ul aria-labelledby="a-title">${link("J.K.%2BRowling%2B%2528Joanne%2BKathleen%2BRowling%2529")}${link("Donald%2BB.%2BLemke")}${link("V".repeat(120))}${link("100%2525")}${link("V".repeat(121))}</ul>`;
+  const { result } = await search({ query: "x", include_facets: true }, searchSite({ facetsHtml: html }));
+  const ids = result.facets[0].options.map(o => o.id);
+  assert.deepEqual(ids, ["p_lbr:J.K.+Rowling+(Joanne+Kathleen+Rowling)", "p_lbr:Donald+B.+Lemke", "p_lbr:" + "V".repeat(120)]);
+  assert.equal(result.facets_truncated, true, "ids that could not be passed back are reported as missing, not returned");
+  const [definition] = runInNewContext(`(${sources.search_products})`, {});
+  for (const id of ids) assert.equal(conforms(plain(definition.tool.inputSchema), { query: "x", facet_ids: [id] }), true, `schema rejects returned id ${id}`);
+  const again = await search({ query: "x", facet_ids: ids });
+  assert.equal(again.calls.requests[0].url.searchParams.get("rh"), "p_lbr:J.K.+Rowling+(Joanne+Kathleen+Rowling)|Donald+B.+Lemke|" + "V".repeat(120), "the id reaches the site unchanged");
+});
+
+test("search_products ignores filter-list links that are off path or malformed without failing", async () => {
+  const list = links => `<div id="g-title" role="heading"><span>Group</span></div><ul aria-labelledby="g-title"><li><a href="/s?k=x&amp;rh=p_123%3A1"><span>Known</span></a></li>${links}</ul>`;
+  const offPath = (await search({ query: "x", include_facets: true }, searchSite({ facetsHtml: list("<li><a href=\"/dp/B0TESTAAA1?rh=p_123%3A7\"><span>Product</span></a></li><li><a href=\"/gp/help?rh=p_123%3A8\"><span>Help</span></a></li>") }))).result;
+  assert.deepEqual([offPath.facets[0].options.map(o => o.id), offPath.facets_truncated], [["p_123:1"], false], "same-site links that are not searches are not filters");
+  const malformed = (await search({ query: "x", include_facets: true }, searchSite({ facetsHtml: list("<li><a href=\"http://\"><span>Broken</span></a></li>") }))).result;
+  assert.deepEqual([malformed.status, malformed.facets[0].options.map(o => o.id), malformed.facets_truncated], ["ok", ["p_123:1"], true], "a malformed link is reported as truncation instead of throwing");
 });
