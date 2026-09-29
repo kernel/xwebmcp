@@ -54,6 +54,45 @@
       }
     },
     {
+      "domain": "amazon.com",
+      "tool": "get_best_sellers",
+      "file": "domains/amazon.com/get_best_sellers.js",
+      "kind": "page",
+      "namespace": "amazon.com",
+      "url_patterns": [
+        "https://www.amazon.com/*"
+      ],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "One page of a department or category Best Sellers ranking (ranks 1-30 of each page of 50 that Amazon server-renders) plus navigable categories; without a category it lists departments. Read-only; does not return ranks that only load through page scripts."
+    },
+    {
+      "domain": "amazon.com",
+      "tool": "get_product",
+      "file": "domains/amazon.com/get_product.js",
+      "kind": "page",
+      "namespace": "amazon.com",
+      "url_patterns": [
+        "https://www.amazon.com/*"
+      ],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Product page fields for one ASIN: title, brand, current and list price, availability, rating and histogram, bullets, shipper and seller, delivery wording, add-to-cart availability, and variations with the ASIN of each combination (variant_filter narrows large families). Read-only; prices and delivery follow the session delivery location."
+    },
+    {
+      "domain": "amazon.com",
+      "tool": "search_products",
+      "file": "domains/amazon.com/search_products.js",
+      "kind": "page",
+      "namespace": "amazon.com",
+      "url_patterns": [
+        "https://www.amazon.com/*"
+      ],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "One results page of Amazon search with the site sorts, price bounds and filters by id (include_facets lists them); products carry ASIN, price, list price, rating, sponsored flag and delivery wording. Read-only; results come from the server-rendered page so ad placements can differ from the tab; an ignored filter id is reported, not returned unfiltered."
+    },
+    {
       "domain": "delta.com",
       "tool": "login",
       "file": "domains/delta.com/login.js",
