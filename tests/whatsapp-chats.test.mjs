@@ -3,12 +3,30 @@ import test from "node:test";
 import { CONTACTS, El, createApp } from "./fixtures/whatsapp/app.mjs";
 
 // Every name, number, time and message below is fabricated. The fixture app records any read of a
-// message preview, a contact name or a message hit, so a tool that reads them fails the test.
+// message preview, a contact name or a message hit, and throws on any element member the tools have
+// no reason to use, so a tool that reads such text (by any route) fails these tests.
 const titles = result => result.chats.map(chat => chat.title);
 const untouched = app => {
   assert.deepEqual(app.forbidden, [], "previews, contact names and message hits are never read");
   assert.ok(app.log.every(entry => entry === "event:input"), "only search-box input events: " + app.log.join());
 };
+const cancelAfter = (app, ms) => { const t0 = app.clock.now; return { get aborted() { return app.clock.now - t0 >= ms; } }; };
+
+test("the fixture's read guards fire on reads the tools must not make", () => {
+  const app = createApp();
+  const row = 'document.querySelector(\'[data-testid="chat-list"] [role="row"]\')';
+  for (const member of ["innerText", "innerHTML", "outerHTML", "dataset", "attributes", "title", "firstChild", "childNodes", "children"]) {
+    assert.throws(() => app.probe(`${row}.${member}`), new RegExp(`unexpected DOM read: ${member}`), member);
+  }
+  app.probe(`${row}.textContent`);
+  assert.ok(app.forbidden.includes("preview"), "reading a row's text reaches the preview and is recorded");
+  const other = createApp();
+  other.probe('document.querySelector(\'[data-testid="chat-list"]\').querySelectorAll(\'span[title]\')[0].getAttribute("aria-label")');
+  assert.deepEqual(other.forbidden, [], "attribute reads on non-forbidden nodes are fine");
+  const search = createApp({ initialSearch: "dana" });
+  search.probe('document.querySelectorAll(\'[data-testid="cell-frame-title"] span[title]\').forEach(s => s.getAttribute("title"))');
+  assert.ok(search.forbidden.includes("contact name"), "attribute reads on contact names are recorded");
+});
 
 test("list_chats returns the rendered chats in sidebar order without previews or side effects", async () => {
   const app = createApp({ shuffle: true });
@@ -25,7 +43,13 @@ test("list_chats returns the rendered chats in sidebar order without previews or
   untouched(app);
 });
 
-test("list_chats skips rows that are not chats and applies limit", async () => {
+test("list_chats orders rows by their list index, not lexically or by document order", async () => {
+  const many = Array.from({ length: 12 }, (_, i) => ({ title: `Chat ${String(i + 1).padStart(2, "0")}`, time: `${i + 1}:00 PM`, preview: "P" }));
+  const result = await createApp({ chats: many, shuffle: true }).tool("list_chats").run({});
+  assert.deepEqual(titles(result), many.map(chat => chat.title), "list-item-2 comes before list-item-10");
+});
+
+test("list_chats skips rows that are not chats, applies limit, and reports a missing time as null", async () => {
   const archived = index => new El("div", { role: "row", "data-testid": `list-item-${index}` }, [new El("div", {}, [], "Archived")]);
   const app = createApp({ extraRows: [archived] });
   const result = await app.tool("list_chats").run({ limit: 2 });
@@ -34,14 +58,20 @@ test("list_chats skips rows that are not chats and applies limit", async () => {
   assert.equal(result.truncated, true);
   assert.equal((await app.tool("list_chats").run({ limit: 5 })).truncated, false);
   assert.equal((await app.tool("list_chats").run({ limit: 100 })).returned, 5);
+  const noTime = await createApp({ chats: [{ title: "Solo", time: "", preview: "P" }] }).tool("list_chats").run({});
+  assert.deepEqual(noTime.chats, [{ position: 1, title: "Solo", time_display: null }]);
   untouched(app);
 });
 
-test("list_chats flags a scrollable list instead of claiming it is complete", async () => {
-  const app = createApp({ scrollHeight: 4000, clientHeight: 800 });
-  const result = await app.tool("list_chats").run({});
-  assert.equal(result.more_rows_possible, true);
-  assert.equal(result.returned, 5);
+test("list_chats flags an overflowing sidebar scroll container, and only that one", async () => {
+  const flag = async options => (await createApp(options).tool("list_chats").run({})).more_rows_possible;
+  assert.equal(await flag({ scroller: { overflowY: "auto", scrollHeight: 4000, clientHeight: 800 } }), true);
+  assert.equal(await flag({ scroller: { overflowY: "scroll", scrollHeight: 4000, clientHeight: 800 } }), true);
+  assert.equal(await flag({ scroller: { overflowY: "auto", scrollHeight: 802, clientHeight: 800 } }), false, "two pixels of rounding is not overflow");
+  assert.equal(await flag({ scroller: { overflowY: "auto", scrollHeight: 803, clientHeight: 800 } }), true);
+  assert.equal(await flag({ scroller: { overflowY: "auto", scrollHeight: 800, clientHeight: 800 } }), false);
+  assert.equal(await flag({ scroller: { overflowY: "visible", scrollHeight: 4000, clientHeight: 800 } }), false, "an ancestor that does not scroll is ignored");
+  assert.equal(await flag({ scroller: { overflowY: "auto", scrollHeight: 800, clientHeight: 800 }, mainOverflow: { overflowY: "hidden", scrollHeight: 5000, clientHeight: 900 } }), false, "an unrelated overflowing ancestor beyond the scroller is ignored");
 });
 
 test("list_chats reports each unusable state explicitly and never an empty success", async () => {
@@ -50,6 +80,7 @@ test("list_chats reports each unusable state explicitly and never an empty succe
   const linking = await createApp({ mode: "logged_out" }).tool("list_chats").run({});
   assert.equal(linking.error_kind, "not_authenticated");
   assert.equal((await createApp({ mode: "splash" }).tool("list_chats").run({})).error_kind, "not_ready");
+  assert.equal((await createApp({ noSearchBox: true }).tool("list_chats").run({})).error_kind, "not_ready");
   const searching = createApp({ initialSearch: "ali" });
   assert.equal((await searching.tool("list_chats").run({})).error_kind, "search_active");
   assert.deepEqual(searching.log, []);
@@ -86,7 +117,7 @@ test("search_chats finds chats by title and skips contacts and message hits unre
   untouched(app);
 });
 
-test("search_chats types once, never presses a key, and leaves the sidebar as it found it", async () => {
+test("search_chats types once, never presses a key, and leaves the sidebar and focus as it found them", async () => {
   const app = createApp();
   const result = await app.tool("search_chats").run({ query: "alice" });
   assert.deepEqual(result.results.map(r => r.title), ["Alice Example"]);
@@ -94,7 +125,7 @@ test("search_chats types once, never presses a key, and leaves the sidebar as it
   assert.equal(app.box.value, "");
   assert.equal(app.sidebarRows(), 5, "the normal chat list is back");
   assert.deepEqual(app.log, ["event:input", "event:input"], "one event to type, one to clear");
-  assert.equal(app.app.active, null, "focus is not left in the search box");
+  assert.equal(app.app.active, null, "the site focuses the box while typing; the tool gives the focus back");
   untouched(app);
   const focused = createApp();
   focused.box.focus();
@@ -102,19 +133,30 @@ test("search_chats types once, never presses a key, and leaves the sidebar as it
   assert.equal(focused.app.active, focused.box, "a box that was focused stays focused");
 });
 
-test("search_chats ignores the sidebar's stale first frame and waits for the real result", async () => {
-  const app = createApp({ latencyMs: 600 });
-  const result = await app.tool("search_chats").run({ query: "carla" });
-  assert.deepEqual(result.results.map(r => r.title), ["Carla Sample"], "not the five old rows shown under the heading");
-  const everyone = createApp({ chats: [{ title: "Anna", time: "1:00 PM", preview: "P1" }, { title: "Hanna", time: "2:00 PM", preview: "P2" }], latencyMs: 600 });
-  const all = await everyone.tool("search_chats").run({ query: "an" });
-  assert.deepEqual(all.results.map(r => r.title), ["Anna", "Hanna"], "a query that matches every chat is told apart by the match highlight");
+test("search_chats returns the real result, not the old rows the sidebar lists first", async () => {
+  const quick = await createApp().tool("search_chats").run({ query: "carla" });
+  assert.deepEqual(quick.results.map(r => r.title), ["Carla Sample"], "the old frame lists all five chats, highlighting only the match");
+  const slow = await createApp({ latencyMs: 1500 }).tool("search_chats").run({ query: "carla" });
+  assert.deepEqual(slow.results.map(r => r.title), ["Carla Sample"], "an old frame that lasts more than a second is still not the result");
+  const shorter = await createApp({ latencyMs: 1500, staleDrop: 1 }).tool("search_chats").run({ query: "carla" });
+  assert.deepEqual(shorter.results.map(r => r.title), ["Carla Sample"], "nor is an old frame with a different number of rows");
+  const everyone = createApp({ chats: [{ title: "Anna", time: "1:00 PM", preview: "P1" }, { title: "Hanna", time: "2:00 PM", preview: "P2" }] });
+  assert.deepEqual((await everyone.tool("search_chats").run({ query: "an" })).results.map(r => r.title), ["Anna", "Hanna"], "a query that matches every chat is a real result at once");
 });
 
-test("search_chats waits out a result that is still filling in", async () => {
-  const app = createApp({ latencyMs: 300, partialMs: 500 });
-  const result = await app.tool("search_chats").run({ query: "a" });
-  assert.deepEqual(result.results.map(r => r.title), ["Alice Example", "Carla Sample", "Team Alpha"]);
+test("search_chats waits out frames that are blank or still filling in", async () => {
+  const filling = await createApp({ latencyMs: 1000, partialMs: 500 }).tool("search_chats").run({ query: "a" });
+  assert.deepEqual(filling.results.map(r => r.title), ["Alice Example", "Carla Sample", "Team Alpha"], "a first match followed by the rest is not settled");
+  const blank = await createApp({ blankMs: 1000, latencyMs: 400 }).tool("search_chats").run({ query: "a" });
+  assert.deepEqual(blank.results.map(r => r.title), ["Alice Example", "Carla Sample", "Team Alpha"], "a list with no rows and no heading is not a result");
+});
+
+test("search_chats accepts a chat that matches through text other than its title", async () => {
+  const chats = [{ title: "Book Club", time: "Yesterday", preview: "P1", member: "zed" }, { title: "Alice Example", time: "9:41 AM", preview: "P2" }];
+  const app = createApp({ chats });
+  const result = await app.tool("search_chats").run({ query: "zed" });
+  assert.deepEqual(result.results.map(r => r.title), ["Book Club"]);
+  assert.deepEqual(app.forbidden, [], "the highlighted member text is not read");
 });
 
 test("search_chats says so when nothing matches, without inventing rows", async () => {
@@ -123,13 +165,17 @@ test("search_chats says so when nothing matches, without inventing rows", async 
   assert.equal(none.status, "no_results");
   assert.equal(none.search_cleared, true);
   assert.equal(app.sidebarRows(), 5);
-  const contactOnly = await createApp().tool("search_chats").run({ query: "dana" });
+  const contactApp = createApp();
+  const contactOnly = await contactApp.tool("search_chats").run({ query: "dana" });
   assert.equal(contactOnly.status, "no_results");
   assert.match(contactOnly.message, /No chat title matched/);
+  untouched(contactApp);
   const messageOnly = createApp();
   const hit = await messageOnly.tool("search_chats").run({ query: "message-hit" });
   assert.equal(hit.status, "no_results");
   untouched(messageOnly);
+  const noChats = await createApp({ chats: [] }).tool("search_chats").run({ query: "dana" });
+  assert.equal(noChats.status, "no_results", "an account with no chats still settles on a contacts-only result");
 });
 
 test("search_chats truncates to limit and reports the total", async () => {
@@ -149,14 +195,18 @@ test("search_chats refuses to overwrite an existing search and validates before 
   assert.deepEqual(searching.log, []);
   const app = createApp();
   const tool = app.tool("search_chats");
-  for (const bad of [{}, { query: "" }, { query: "   " }, { query: 5 }, { query: "a\nb" }, { query: "x".repeat(101) }, { query: "a", limit: 0 }, { query: "a", limit: 51 }, { query: "a", timeout_sec: 0 }, { query: "a", timeout_sec: 21 }, { query: "a", extra: 1 }, [], null, "alice"]) {
-    assert.equal((await tool.run(bad)).error_kind, "invalid_input", JSON.stringify(bad));
-  }
+  const bad = [{}, { query: "" }, { query: "   " }, { query: 5 }, { query: "a\nb" }, { query: "a\u0085b" }, { query: "a\u2028b" }, { query: "a\u202eb" }, { query: "a\ud800b" }, { query: "🙂".repeat(101) }, { query: "x".repeat(101) },
+    { query: "a", limit: 0 }, { query: "a", limit: 51 }, { query: "a", timeout_sec: 0 }, { query: "a", timeout_sec: 21 }, { query: "a", extra: 1 }, [], null, "alice"];
+  for (const input of bad) assert.equal((await tool.run(input)).error_kind, "invalid_input", JSON.stringify(input));
   assert.deepEqual(app.log, [], "invalid input never reaches the site");
+  for (const query of ["🙂".repeat(60), "🙂".repeat(100), "x".repeat(100), "👨‍👩‍👧 family", "a\u200bb"]) {
+    const result = await createApp().tool("search_chats").run({ query });
+    assert.notEqual(result.error_kind, "invalid_input", query.slice(0, 8));
+  }
 });
 
 test("search_chats reports unusable pages without typing", async () => {
-  for (const [options, kind] of [[{ origin: "https://www.whatsapp.com" }, "wrong_page"], [{ mode: "logged_out" }, "not_authenticated"], [{ mode: "splash" }, "not_ready"]]) {
+  for (const [options, kind] of [[{ origin: "https://www.whatsapp.com" }, "wrong_page"], [{ mode: "logged_out" }, "not_authenticated"], [{ mode: "splash" }, "not_ready"], [{ noSearchBox: true }, "not_ready"]]) {
     const app = createApp(options);
     const result = await app.tool("search_chats").run({ query: "alice" });
     assert.equal(result.error_kind, kind);
@@ -165,19 +215,23 @@ test("search_chats reports unusable pages without typing", async () => {
   }
 });
 
-test("search_chats times out explicitly, still clears the box, and honours cancellation", async () => {
+test("search_chats times out explicitly and still clears the box", async () => {
   const app = createApp({ neverSettles: true });
   const result = await app.tool("search_chats").run({ query: "alice", timeout_sec: 1 });
   assert.equal(result.status, "error");
   assert.equal(result.error_kind, "timeout");
   assert.equal(result.search_cleared, true);
   assert.equal(app.box.value, "");
-  const cancelled = createApp({ neverSettles: true });
-  const controller = new AbortController(); controller.abort();
-  const stopped = await cancelled.tool("search_chats").run({ query: "alice" }, { signal: controller.signal });
-  assert.equal(stopped.error_kind, "timeout");
-  assert.match(stopped.error_message, /cancelled/);
-  assert.equal(cancelled.box.value, "");
+});
+
+test("search_chats stops as soon as it is cancelled, says so, and clears the box", async () => {
+  const app = createApp({ neverSettles: true });
+  const t0 = app.clock.now;
+  const result = await app.tool("search_chats").run({ query: "alice" }, { signal: cancelAfter(app, 300) });
+  assert.equal(result.error_kind, "cancelled");
+  assert.equal(result.search_cleared, true);
+  assert.equal(app.box.value, "");
+  assert.ok(app.clock.now - t0 < 1500, "did not wait out the eight-second default timeout");
 });
 
 test("search_chats admits when it could not confirm the sidebar is back to normal", async () => {

@@ -40,6 +40,15 @@ test("get_session_status reads the loaded, linking and unrecognised screens with
   assert.deepEqual(loaded.forbidden, []);
 });
 
+test("logged_in needs both the main screen and the search box; any device-linking hook means logged_out", async () => {
+  const halfLoaded = await createApp({ noSearchBox: true }).tool("get_session_status").run({});
+  assert.equal(halfLoaded.state, "unknown");
+  for (const hook of ["link_device_qr_help_link", "link_device_auto_logout_toggle", "link_device_landing_get_started_link"]) {
+    assert.equal((await createApp({ mode: "logged_out", qrHook: hook }).tool("get_session_status").run({})).state, "logged_out", hook);
+  }
+  assert.equal((await createApp({ mode: "logged_out", qrHook: "link-device-unrelated" }).tool("get_session_status").run({})).state, "unknown");
+});
+
 test("get_session_status defaults to no waiting, and waits only while the state is unknown", async () => {
   const slow = createApp({ readyAtMs: 1200 });
   assert.equal((await slow.tool("get_session_status").run({})).state, "unknown");
@@ -54,9 +63,14 @@ test("get_session_status defaults to no waiting, and waits only while the state 
   const t0 = immediate.clock.now;
   await immediate.tool("get_session_status").run({ wait_sec: 20 });
   assert.equal(immediate.clock.now, t0, "returns at once when the state is already known");
-  const aborted = createApp({ mode: "splash" });
-  const controller = new AbortController(); controller.abort();
-  assert.equal((await aborted.tool("get_session_status").run({ wait_sec: 20 }, { signal: controller.signal })).state, "unknown");
+});
+
+test("get_session_status stops waiting as soon as the call is cancelled", async () => {
+  const app = createApp({ mode: "splash" });
+  const t0 = app.clock.now;
+  const signal = { get aborted() { return app.clock.now - t0 >= 500; } };
+  assert.equal((await app.tool("get_session_status").run({ wait_sec: 20 }, { signal })).state, "unknown");
+  assert.ok(app.clock.now - t0 < 2000, "returned long before wait_sec elapsed");
 });
 
 test("get_session_status rejects other pages and malformed input before reading the page", async () => {

@@ -1,7 +1,13 @@
 // A stand-in for the WhatsApp Web sidebar used by the whatsapp.com tool tests. It builds the same
 // data-testid / role structure the tools read from fabricated chats, contacts and messages, runs on a
-// virtual clock, and records every read of text the tools must never read (message previews, contact
-// names, message hits). Nothing here contacts the live site or contains real account data.
+// virtual clock, and reproduces the frames the real sidebar shows after typing (the old rows first,
+// with the matches highlighted, then the filtered result). Nothing here contacts the live site or
+// contains real account data.
+//
+// Two guards keep the tools honest about what they read. Text the tools must never read (message
+// previews, contact names, message hits) records every read of textContent or any attribute. And the
+// tools only see elements through a strict view that throws on any property outside the small set
+// they use, so a read through innerText, innerHTML, dataset, attributes and the like fails a test.
 import { readFileSync } from "node:fs";
 import { runInNewContext } from "node:vm";
 
@@ -32,7 +38,8 @@ export function conforms(schema, value) {
     if (schema.additionalProperties === false && Object.keys(value).some(key => !(key in (schema.properties || {})))) return false;
   }
   if (typeof value === "string") {
-    if (value.length < (schema.minLength ?? 0) || value.length > (schema.maxLength ?? Infinity)) return false;
+    const length = [...value].length;
+    if (length < (schema.minLength ?? 0) || length > (schema.maxLength ?? Infinity)) return false;
   }
   if (typeof value === "number" && (value < (schema.minimum ?? -Infinity) || value > (schema.maximum ?? Infinity))) return false;
   return true;
@@ -61,12 +68,12 @@ export class El {
   constructor(tag, attrs = {}, kids = [], text = "") {
     this.localName = tag; this.tagName = tag.toUpperCase();
     this.attrs = { ...attrs }; this.ownText = text; this.children = []; this.parentElement = null;
-    this.forbidden = null; this.scrollHeight = 0; this.clientHeight = 0;
+    this.forbidden = null; this.label = null; this.overflowY = "visible"; this.scrollHeight = 0; this.clientHeight = 0;
     for (const kid of kids) this.append(kid);
   }
   append(kid) { kid.parentElement = this; this.children.push(kid); return kid; }
   rawAttr(name) { return Object.hasOwn(this.attrs, name) ? String(this.attrs[name]) : null; }
-  getAttribute(name) { if (this.forbidden && name === "title") this.forbidden.push(this.label); return this.rawAttr(name); }
+  getAttribute(name) { if (this.forbidden) this.forbidden.push(this.label); return this.rawAttr(name); }
   get textContent() { if (this.forbidden) this.forbidden.push(this.label); return this.ownText + this.children.map(kid => kid.textContent).join(""); }
   descendants() { return this.children.flatMap(kid => [kid, ...kid.descendants()]); }
   querySelectorAll(selector) {
@@ -86,10 +93,13 @@ class InputEl extends El {
   constructor(app, attrs) { super("input", attrs); this.app = app; this._value = ""; this.listeners = []; }
   get value() { return this._value; }
   set value(v) { this._value = String(v); }
-  dispatchEvent(event) { this.app.record("event:" + event.type); for (const fn of this.listeners) fn(event); return true; }
+  dispatchEvent(event) { this.app.log.push("event:" + event.type); for (const fn of this.listeners) fn(event); return true; }
   focus() { this.app.active = this; }
   blur() { if (this.app.active === this) this.app.active = null; }
 }
+
+// Exactly the element members the tools use; anything else throws.
+const ALLOWED = new Set(["querySelector", "querySelectorAll", "getAttribute", "textContent", "value", "parentElement", "scrollHeight", "clientHeight", "dispatchEvent", "blur"]);
 
 // --- the fabricated app ---
 
@@ -103,16 +113,20 @@ const CHATS = [
 export const CONTACTS = [{ name: "Dana Contact", about: "ABOUT-DANA" }, { name: "Alan Contact", about: "ABOUT-ALAN" }];
 export const MESSAGES = [{ title: "Book Club", text: "MESSAGE-HIT alpha beta" }];
 
+// Chats may carry `member` (text elsewhere in the row that a query can match). Options: mode (logged_in | logged_out | splash), noSearchBox, readyAtMs, origin; chats, contacts, messages, extraRows, shuffle,
+// titleless (no title attribute), blankTitles (no readable title); scroller / mainOverflow ({ overflowY, scrollHeight, clientHeight });
+// qrHook (the only link_device_* hook shown on the QR screen); after typing: blankMs (empty list), latencyMs (old rows still listed), staleDrop (old frame lacks that many rows), partialMs
+// (only the first match listed), neverSettles, neverClears, focusOnInput; initialSearch.
 export function createApp(options = {}) {
   const o = {
-    mode: "logged_in", chats: CHATS, contacts: CONTACTS, messages: MESSAGES,
-    staleMs: 400, latencyMs: 700, neverSettles: false, neverClears: false, initialSearch: "",
-    shuffle: false, scrollHeight: 0, clientHeight: 0, extraRows: [], titleless: false, readyAtMs: 0, ...options
+    mode: "logged_in", chats: CHATS, contacts: CONTACTS, messages: MESSAGES, extraRows: [], shuffle: false,
+    latencyMs: 550, blankMs: 0, staleDrop: 0, partialMs: 0, neverSettles: false, neverClears: false, focusOnInput: true, initialSearch: "",
+    scroller: null, mainOverflow: null, titleless: false, blankTitles: false, noSearchBox: false, readyAtMs: 0, ...options
   };
   const clock = { now: 1_000_000 };
   const forbidden = [];
   const log = [];
-  const app = { active: null, record: entry => log.push(entry) };
+  const app = { active: null, log };
 
   const body = new El("body");
   const main = new El("div", { "data-testid": "wa-web-main-screen" });
@@ -122,8 +136,10 @@ export function createApp(options = {}) {
   const pane = new El("div", { id: "pane-side" });
   const holder = new El("div", {});
   pane.append(holder);
-  main.append(searchWrap); main.append(pane);
-  pane.scrollHeight = o.scrollHeight; pane.clientHeight = o.clientHeight;
+  if (!o.noSearchBox) main.append(searchWrap);
+  main.append(pane);
+  if (o.scroller) Object.assign(pane, o.scroller);
+  if (o.mainOverflow) Object.assign(main, o.mainOverflow);
   const empty = new El("div", { "data-testid": "search-no-chats-or-contacts-container" }, [new El("h2", {}, [new El("span", {}, [], "Nothing here")])]);
 
   const forbid = (el, label) => { el.forbidden = forbidden; el.label = label; return el; };
@@ -131,10 +147,11 @@ export function createApp(options = {}) {
   // titleless: no title attribute (the visible text is the fallback); blankTitles: no readable title at all.
   const titleSpan = (text, marked) => {
     const shown = o.blankTitles ? "" : text;
-    const span = new El("span", { dir: "auto", ...(o.titleless || o.blankTitles ? {} : { title: text }) }, [], marked ? "" : shown);
-    if (marked) span.append(highlightSpan(shown));
+    const span = new El("span", { dir: "auto", ...(o.titleless || o.blankTitles ? {} : { title: text }) }, [], marked === "title" ? "" : shown);
+    if (marked === "title") span.append(highlightSpan(shown));
     return span;
   };
+  // marked: "title" highlights the title, "member" highlights text elsewhere in the row, null highlights nothing.
   const chatRow = (index, chat, marked) => new El("div", { role: "row", "data-testid": `list-item-${index}` }, [
     new El("div", { role: "gridcell", tabindex: "0" }, [new El("div", { "aria-selected": "false", tabindex: "-1" }, [
       new El("div", { "data-testid": "cell-frame-container" }, [
@@ -146,7 +163,10 @@ export function createApp(options = {}) {
           ]),
           new El("div", { "data-testid": "cell-frame-secondary" }, [
             new El("div", {}, [new El("span", { "data-testid": "last-msg-status" })]),
-            new El("div", { role: "gridcell" }, [forbid(new El("span", { title: chat.preview }, [], chat.preview), "preview")])
+            new El("div", { role: "gridcell" }, [
+              forbid(new El("span", { title: chat.preview }, [], chat.preview), "preview"),
+              ...(marked === "member" ? [forbid(new El("span", { "data-testid": "text-highlight" }, [], "member"), "member text")] : [])
+            ])
           ])
         ])
       ])
@@ -170,37 +190,42 @@ export function createApp(options = {}) {
 
   const listWith = rows => {
     const list = new El("div", { "data-testid": "chat-list", tabindex: "0" });
-    list.scrollHeight = 0; list.clientHeight = 0;
-    const ordered = o.shuffle ? [...rows].reverse() : rows;
-    for (const row of ordered) list.append(row);
+    for (const row of o.shuffle ? [...rows].reverse() : rows) list.append(row);
     return list;
   };
-  const normalRows = () => [...o.extraRows.map((row, i) => row(i)), ...o.chats.map((chat, i) => chatRow(o.extraRows.length + i, chat, false))];
+  const normalRows = () => [...o.extraRows.map((row, i) => row(i)), ...o.chats.map((chat, i) => chatRow(o.extraRows.length + i, chat, null))];
+  // How a chat matches: by its title, or by other text in the row (a group member's name), which the sidebar highlights elsewhere.
+  const how = (chat, query) => chat.title.toLowerCase().includes(query) ? "title" : chat.member?.toLowerCase().includes(query) ? "member" : null;
 
   let typedAt = 0;
-  const staleRows = () => [headingRow(0, "Chats"), ...o.chats.map((chat, i) => chatRow(i + 1, chat, false))];
   // Returns true when the "no chats or contacts" panel replaces the list.
   const render = () => {
     holder.children = [];
     const query = box.value.trim().toLowerCase();
     if (!query && !(o.neverClears && typedAt)) { holder.append(listWith(normalRows())); return false; }
-    if (o.neverSettles || !query || clock.now - typedAt < o.latencyMs) { holder.append(listWith(staleRows())); return false; }
-    const matched = o.chats.filter(chat => chat.title.toLowerCase().includes(query));
-    const chats = o.partialMs && clock.now - typedAt < o.latencyMs + o.partialMs ? matched.slice(0, 1) : matched;
+    const elapsed = clock.now - typedAt;
+    if (query && elapsed < o.blankMs) { holder.append(listWith([])); return false; }
+    if (o.neverSettles || !query || elapsed < o.blankMs + o.latencyMs) {
+      const old = o.chats.slice(0, o.chats.length - o.staleDrop);
+      holder.append(listWith([headingRow(0, "Chats"), ...old.map((chat, i) => chatRow(i + 1, chat, how(chat, query)))]));
+      return false;
+    }
+    const matched = o.chats.filter(chat => how(chat, query));
+    const chats = o.partialMs && elapsed < o.blankMs + o.latencyMs + o.partialMs ? matched.slice(0, 1) : matched;
     const contacts = o.contacts.filter(contact => contact.name.toLowerCase().includes(query));
     const messages = o.messages.filter(message => message.text.toLowerCase().includes(query));
-    if (!chats.length && !contacts.length && !messages.length) return true;
+    if (!matched.length && !contacts.length && !messages.length) return true;
     const rows = [];
-    if (chats.length) { rows.push(headingRow(rows.length, "Chats")); for (const chat of chats) rows.push(chatRow(rows.length, chat, true)); }
+    if (chats.length) { rows.push(headingRow(rows.length, "Chats")); for (const chat of chats) rows.push(chatRow(rows.length, chat, how(chat, query))); }
     if (contacts.length) { rows.push(headingRow(rows.length, "Contacts")); for (const contact of contacts) rows.push(contactRow(rows.length, contact)); }
     if (messages.length) { rows.push(headingRow(rows.length, "Messages")); for (const message of messages) rows.push(messageRow(rows.length, message)); }
     holder.append(listWith(rows));
     return false;
   };
-  box.listeners.push(() => { if (box.value !== "") typedAt = clock.now; });
+  box.listeners.push(() => { if (box.value !== "") { typedAt = clock.now; if (o.focusOnInput) app.active = box; } });
   if (o.initialSearch) { box._value = o.initialSearch; typedAt = clock.now - 10_000; }
 
-  const qr = () => [new El("div", { "data-testid": "link_device_qr_phone_number_link" }), new El("div", { "data-testid": "link_device_landing_get_started_link" })];
+  const qr = () => o.qrHook ? [new El("div", { "data-testid": o.qrHook })] : [new El("div", { "data-testid": "link_device_qr_phone_number_link" }), new El("div", { "data-testid": "link_device_landing_get_started_link" })];
   clock.start = clock.now;
   const sync = () => {
     body.children = [];
@@ -210,10 +235,29 @@ export function createApp(options = {}) {
     if (render()) body.append(empty);
   };
 
+  // Strict, identity-stable views of elements for the tool.
+  const views = new WeakMap();
+  const raws = new WeakMap();
+  const wrap = value => value instanceof El ? view(value) : Array.isArray(value) ? value.map(wrap) : value;
+  const view = el => {
+    if (!views.has(el)) {
+      const proxy = new Proxy(el, {
+        get(target, prop) {
+          if (typeof prop === "symbol") return Reflect.get(target, prop, target);
+          if (!ALLOWED.has(prop)) throw new Error(`unexpected DOM read: ${prop}`);
+          const value = Reflect.get(target, prop, target);
+          return typeof value === "function" ? (...args) => wrap(value.apply(target, args)) : wrap(value);
+        }
+      });
+      views.set(el, proxy); raws.set(proxy, el);
+    }
+    return views.get(el);
+  };
   const doc = {
-    body, get activeElement() { return app.active || body; },
-    querySelector: selector => { sync(); return body.querySelector(selector); },
-    querySelectorAll: selector => { sync(); return body.querySelectorAll(selector); }
+    get body() { return view(body); },
+    get activeElement() { return view(app.active || body); },
+    querySelector: selector => { sync(); return wrap(body.querySelector(selector)); },
+    querySelectorAll: selector => { sync(); return wrap(body.querySelectorAll(selector)); }
   };
   class FakeDate extends Date {
     constructor(...args) { super(...(args.length ? args : [clock.now])); }
@@ -221,6 +265,7 @@ export function createApp(options = {}) {
   }
   const context = {
     document: doc, location: { origin: o.origin ?? ORIGIN },
+    getComputedStyle: el => ({ overflowY: raws.get(el)?.overflowY ?? "visible" }),
     HTMLInputElement: InputEl, Event: class { constructor(type, init = {}) { this.type = type; this.bubbles = !!init.bubbles; } },
     Date: FakeDate, setTimeout: (fn, ms) => { clock.now += ms; Promise.resolve().then(fn); return 0; }
   };
@@ -238,6 +283,8 @@ export function createApp(options = {}) {
         }
       };
     },
+    // Runs code in the same sandbox as the tools, to test the guards themselves.
+    probe: code => runInNewContext(code, context),
     sidebarRows: () => { sync(); return body.querySelectorAll('[data-testid="chat-list"] [role="row"]').length; }
   };
 }

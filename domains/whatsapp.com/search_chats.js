@@ -7,7 +7,7 @@
     inputSchema: {
       type: "object", additionalProperties: false, required: ["query"],
       properties: {
-        query: { type: "string", minLength: 1, maxLength: 100, description: "Text to search for, typed into the sidebar search box. Leading and trailing spaces are removed; control characters are rejected." },
+        query: { type: "string", minLength: 1, maxLength: 100, description: "Text to search for, typed into the sidebar search box. Leading and trailing spaces are removed; control, line-separator and bidirectional-override characters and unpaired surrogates are rejected." },
         limit: { type: "integer", minimum: 1, maximum: 50, default: 20, description: "Maximum results to return." },
         timeout_sec: { type: "integer", minimum: 1, maximum: 20, default: 8, description: "Seconds to wait for the sidebar to finish showing results." }
       }
@@ -50,7 +50,7 @@
           type: "object", additionalProperties: false, required: ["status", "error_kind", "error_message"],
           properties: {
             status: { const: "error" },
-            error_kind: { enum: ["invalid_input", "wrong_page", "not_authenticated", "not_ready", "search_active", "site_changed", "timeout"] },
+            error_kind: { enum: ["invalid_input", "wrong_page", "not_authenticated", "not_ready", "search_active", "site_changed", "timeout", "cancelled"] },
             error_message: { type: "string", minLength: 1 },
             search_cleared: { type: "boolean", description: "Present only when the tool typed into the search box: whether it was emptied and confirmed back to the normal list." }
           }
@@ -66,7 +66,7 @@
     if (!args || Object.keys(args).some(key => !["query", "limit", "timeout_sec"].includes(key))) return fail("invalid_input", "Provide query, and optionally limit and timeout_sec, and nothing else.");
     if (typeof args.query !== "string") return fail("invalid_input", "query must be a string.");
     const query = args.query.trim();
-    if (!query || query.length > 100 || /[\u0000-\u001f\u007f]/.test(query)) return fail("invalid_input", "query must be 1 to 100 characters after trimming, with no control characters.");
+    if (!query || [...query].length > 100 || /[\p{Cc}\p{Zl}\p{Zp}\u202A-\u202E\u2066-\u2069\uD800-\uDFFF]/u.test(query)) return fail("invalid_input", "query must be 1 to 100 characters after trimming, with no control, line-separator or bidirectional-override characters and no unpaired surrogates.");
     const limit = args.limit === undefined ? 20 : args.limit;
     if (!Number.isInteger(limit) || limit < 1 || limit > 50) return fail("invalid_input", "limit must be an integer from 1 to 50.");
     const timeoutSec = args.timeout_sec === undefined ? 8 : args.timeout_sec;
@@ -88,11 +88,11 @@
       Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value").set.call(box, value);
       box.dispatchEvent(new Event("input", { bubbles: true }));
     };
-    // One pass over the sidebar. Heading rows have neither a chat frame nor a title. Chats have a frame and a time; address-book contacts have a frame but no time, and message hits have no frame; both are skipped without reading their titles.
+    // One pass over the sidebar. Heading rows have neither a chat frame nor a title. Chats have a frame and a time; address-book contacts have a frame but no time, and message hits have no frame; both are skipped without reading their titles. matched is whether the row highlights part of the query.
     const snapshot = () => {
       const empty = !!document.querySelector('[data-testid="search-no-chats-or-contacts-container"]');
       const list = document.querySelector('[data-testid="chat-list"]');
-      const out = { empty, present: !!list, headings: 0, highlights: 0, chats: [] };
+      const out = { empty, present: !!list, headings: 0, chats: [] };
       if (!list) return out;
       const items = [...list.querySelectorAll('[role="row"]')].map(row => {
         const match = /^list-item-(\d+)$/.exec(row.getAttribute("data-testid") || "");
@@ -106,8 +106,7 @@
           if (!time) continue;
           const titleBox = row.querySelector('[data-testid="cell-frame-title"]');
           const titleNode = titleBox ? titleBox.querySelector("span[title]") || titleBox : null;
-          out.chats.push({ title: clean(titleNode && (titleNode.getAttribute("title") || titleNode.textContent), 200), time_display: time });
-          out.highlights += row.querySelectorAll('[data-testid="text-highlight"]').length;
+          out.chats.push({ title: clean(titleNode && (titleNode.getAttribute("title") || titleNode.textContent), 200), time_display: time, matched: !!row.querySelector('[data-testid="text-highlight"]') });
         } else if (!row.querySelector('[data-testid="cell-frame-title"]')) {
           out.headings++;
         }
@@ -116,7 +115,6 @@
     };
     const signature = seen => seen.empty ? "empty" : !seen.present ? "none" : JSON.stringify([seen.headings, seen.chats]);
 
-    const baseline = snapshot().chats.length;
     const wasFocused = document.activeElement === box;
     let settled = null;
     let cleared = false;
@@ -129,13 +127,12 @@
       while (Date.now() - started < timeoutSec * 1000 && !aborted()) {
         await sleep(150);
         const seen = snapshot();
-        // Right after typing the sidebar first shows its old rows under a heading; a true result differs from that or highlights the match.
-        const stale = !seen.empty && seen.headings > 0 && seen.chats.length === baseline && seen.highlights === 0;
-        const ready = seen.empty || (seen.headings > 0 && !stale);
+        // After typing, the sidebar first lists every old chat under a heading with only the matches highlighted, then drops the rest: a result is final once each chat it lists highlights part of the query.
+        const ready = seen.empty || (seen.headings > 0 && seen.chats.every(chat => chat.matched));
         const sig = ready ? signature(seen) : null;
         stable = ready && sig === last ? stable + 1 : ready ? 1 : 0;
         last = sig;
-        if (ready && stable >= 4 && Date.now() - started >= 800) { settled = seen; break; }
+        if (ready && stable >= 4) { settled = seen; break; }
       }
       if (!settled) failure = aborted() ? "aborted" : "timeout";
     } finally {
@@ -149,12 +146,13 @@
       if (!wasFocused && document.activeElement === box) box.blur();
     }
 
-    if (failure) return fail("timeout", failure === "aborted" ? "The call was cancelled before the sidebar finished showing results." : "The sidebar did not settle on a result in time; treat the outcome as unknown.", { search_cleared: cleared });
+    if (failure === "aborted") return fail("cancelled", "The call was cancelled before the sidebar finished showing results.", { search_cleared: cleared });
+    if (failure) return fail("timeout", "The sidebar did not settle on a result in time; treat the outcome as unknown.", { search_cleared: cleared });
     if (settled.empty) return { status: "no_results", query, message: "The sidebar reported no chats or contacts for this query.", search_cleared: cleared };
     const chats = settled.chats;
     if (chats.some(chat => !chat.title)) return fail("site_changed", "A result row has no readable title; WhatsApp Web's markup may have changed.", { search_cleared: cleared });
     if (!chats.length) return { status: "no_results", query, message: "No chat title matched this query. Address-book contacts and message-text hits, which the sidebar may list, are not read by this tool.", search_cleared: cleared };
-    const results = chats.slice(0, limit).map((chat, at) => ({ position: at + 1, ...chat }));
+    const results = chats.slice(0, limit).map((chat, at) => ({ position: at + 1, title: chat.title, time_display: chat.time_display }));
     return { status: "ok", query, total: chats.length, returned: results.length, truncated: chats.length > limit, results, search_cleared: cleared };
   }
 }]
