@@ -55,16 +55,16 @@ const SEARCH_IDS = { "/Online": guid(900), "/imax/Online": guid(901), "/lff/Onli
 const PROGRAMME_NAME = { "/Online": "BFI Southbank", "/imax/Online": "BFI IMAX", "/lff/Online": "BFI London Film Festival" };
 
 // One performance: id/article are numbers turned into GUIDs.
-const perf = ({ id, article, title, start, sales = "S", avail = "G", num = "40", venue = "Screen NFT9", min = "£9.00", max = "£12.00", onSale = "", keywords = "Fabricated season,Digital" }) => ({
-  id: guid(id), article: guid(article, "A"), title, start, sales, avail, num, venue, min, max, onSale, keywords
+const perf = ({ id, article, title, start, sales = "S", avail = "G", num = "40", venue = "Screen NFT9", venueLong = null, min = "£9.00", max = "£12.00", onSale = "", keywords = "Fabricated season,Digital", info = null }) => ({
+  id: guid(id), article: guid(article, "A"), title, start, sales, avail, num, venue, venueLong: venueLong ?? venue, min, max, onSale, keywords, info
 });
 const toRow = p => {
   const row = HEADERS.map(() => "");
   const set = (name, value) => { row[HEADERS.indexOf(name)] = value; };
   set("Id", p.id); set("Name", "internal_code_" + p.id.slice(0, 3)); set("Description", p.title); set("Short Description", p.title); set("-", p.start);
   set("On Sale Date", p.onSale); set("Sales Status", p.sales); set("Availability", p.avail); set("Available Number", p.num); set("Keywords", p.keywords);
-  set("Additional Info", `default.asp?doWork::WScontent::loadArticle=Load&BOparam::WScontent::loadArticle::article_id=${p.article}&BOparam::WScontent::loadArticle::context_id=${p.id}`);
-  set("Venue Name", "Internal venue label"); set("Venue Description", p.venue); set("Venue Short Description", p.venue);
+  set("Additional Info", p.info ?? `default.asp?doWork::WScontent::loadArticle=Load&BOparam::WScontent::loadArticle::article_id=${p.article}&BOparam::WScontent::loadArticle::context_id=${p.id}`);
+  set("Venue Name", "Internal venue label"); set("Venue Description", p.venueLong); set("Venue Short Description", p.venue);
   set("Minimum Price", p.min); set("Maximum Price", p.max); set("access", "Public"); set("Options", ["1"]);
   return row;
 };
@@ -104,14 +104,18 @@ function makeSite({ pageSize = 50, articlePageSize = 5, articles = {}, overrides
       perf({ id: 3, article: 13, title: "Family Funday", start: "Sunday 04 October 2026 11:00", avail: "L", num: "3", min: "£4.00", max: "£8.00" }),
       perf({ id: 4, article: 14, title: "Future Premiere", start: "Tuesday 27 October 2026 18:00", sales: "C", avail: "U", num: "-1", onSale: "Thursday 01 October 2026 10:00", min: "£0.00", max: "£0.00" }),
       perf({ id: 5, article: 15, title: "Library Session", start: "Monday 05 October 2026 09:05", avail: "E", num: "41", min: "£0.00", max: "£0.00" }),
-      perf({ id: 6, article: 16, title: "Odd Price Night", start: "Monday 05 October 2026 20:00", avail: "Z", sales: "Q", num: "abc", min: "from £5", max: "" })
+      perf({ id: 6, article: 16, title: "Odd Price Night", start: "Monday 05 October 2026 20:00", avail: "Z", sales: "Q", num: "abc", min: "from £5", max: "" }),
+      perf({ id: 7, article: 17, title: "Booking Page Show", start: "Tuesday 06 October 2026 19:00", info: "https://whatson.bfi.org.uk/Online/article/fabricated-booking" }),
+      perf({ id: 8, article: 18, title: "Elsewhere Link Show", start: "Tuesday 06 October 2026 21:00", info: "https://whatson.bfi.org.uk/imax/Online/article/fabricated-blockbuster" }),
+      perf({ id: 9, article: 19, title: "No Link Show", start: "Wednesday 07 October 2026 12:00", info: "" })
     ],
-    "/imax/Online": [perf({ id: 21, article: 31, title: "Fabricated Blockbuster", start: "Saturday 03 October 2026 11:30", num: "380", venue: "BFI IMAX, Waterloo", min: "£0.00", max: "£28.00", keywords: "IMAX (with laser)" })],
+    "/imax/Online": [perf({ id: 21, article: 31, title: "Fabricated Blockbuster", start: "Saturday 03 October 2026 11:30", num: "380", venue: "BFI IMAX", venueLong: "BFI IMAX, Waterloo", min: "£0.00", max: "£28.00", keywords: "IMAX (with laser)" })],
     "/lff/Online": [perf({ id: 41, article: 51, title: "Fabricated Festival Gala", start: "Wednesday 07 October 2026 18:45", avail: "S", num: "0", venue: "Fabricated Hall", min: "£10.00", max: "£30.00", keywords: "Galas" })]
   };
   const site = { catalog, calls: [], pageSize, articlePageSize, articles, overrides };
   site.fetch = async (target, init = {}) => {
     const u = new URL(target, ORIGIN);
+    const sizeOf = a => a.pageSize ?? site.articlePageSize;
     site.calls.push({ path: u.pathname, keys: [...u.searchParams.keys()], params: Object.fromEntries(u.searchParams), credentials: init.credentials, cache: init.cache, method: (init.method || "GET").toUpperCase() });
     const forced = site.overrides?.(u, init, site);
     if (forced) return forced;
@@ -121,7 +125,7 @@ function makeSite({ pageSize = 50, articlePageSize = 5, articles = {}, overrides
     if (slug) {
       const found = Object.values(site.articles[prefix] || {}).find(a => a.slug === slug);
       if (!found) return { ...response(200, htmlPage("Welcome", "<div>error</div>"), ORIGIN + prefix + "/error.asp"), redirected: true };
-      return { ...response(200, articlePage({ prefix, ...found, pageSize: site.articlePageSize, totalPages: found.reportedPages ?? pagesOf(found), perfs: found.perfs.slice(0, site.articlePageSize) }), ORIGIN + prefix + "/default.asp"), redirected: true };
+      return { ...response(200, articlePage({ prefix, ...found, pageSize: sizeOf(found), totalPages: found.reportedPages ?? pagesOf(found, sizeOf(found)), perfs: found.perfs.slice(0, sizeOf(found)) }), ORIGIN + prefix + "/default.asp"), redirected: true };
     }
     const p = u.searchParams;
     const permalink = p.get("BOparam::WScontent::loadArticle::permalink");
@@ -131,14 +135,14 @@ function makeSite({ pageSize = 50, articlePageSize = 5, articles = {}, overrides
     if (permalink) {
       const found = Object.values(site.articles[prefix] || {}).find(a => a.slug === permalink);
       if (!found) return { ...response(200, htmlPage("Welcome", "<div>error</div>"), ORIGIN + prefix + "/error.asp"), redirected: true };
-      return response(200, articlePage({ prefix, ...found, pageSize: site.articlePageSize, totalPages: found.reportedPages ?? pagesOf(found), perfs: found.perfs.slice(0, site.articlePageSize) }), u.href);
+      return response(200, articlePage({ prefix, ...found, pageSize: sizeOf(found), totalPages: found.reportedPages ?? pagesOf(found, sizeOf(found)), perfs: found.perfs.slice(0, sizeOf(found)) }), u.href);
     }
     if (loadId || (pageId && pageId !== SEARCH_IDS[prefix])) {
       const found = (site.articles[prefix] || {})[articleKey];
       if (!found) return response(500, "", u.href);
       const n = p.get("doWork::WScontent::getPage") !== null ? Number(p.get("BOset::WScontent::SearchResultsInfo::current_page")) : 1;
-      const slice = found.perfs.slice((n - 1) * site.articlePageSize, n * site.articlePageSize);
-      return response(200, articlePage({ prefix, ...found, page: n, pageSize: site.articlePageSize, totalPages: found.reportedPages ?? pagesOf(found), perfs: slice }), u.href);
+      const slice = found.perfs.slice((n - 1) * sizeOf(found), n * sizeOf(found));
+      return response(200, articlePage({ prefix, ...found, page: n, pageSize: sizeOf(found), totalPages: found.reportedPages ?? pagesOf(found, sizeOf(found)), perfs: slice }), u.href);
     }
     // search or getPage over the programme's catalog
     const criteria = k => p.get("BOset::WScontent::SearchCriteria::" + k) || "";
@@ -155,7 +159,7 @@ function makeSite({ pageSize = 50, articlePageSize = 5, articles = {}, overrides
   };
   return site;
 }
-const pagesOf = a => Math.max(1, Math.ceil(a.perfs.length / 5));
+const pagesOf = (a, size = 5) => Math.max(1, Math.ceil(a.perfs.length / size));
 
 function load(name, { path = "/Online/default.asp", origin = ORIGIN, site = makeSite(), title = "BFI Southbank", searchFormId, withForm = true } = {}) {
   const prefix = /^\/(?:(imax|lff)\/)?Online\//i.exec(path);
@@ -208,7 +212,7 @@ test("registry entries match the tool files and narrow the URL patterns to the t
 test("sources contain no purchase, basket, login or session-token code paths", () => {
   for (const name of NAMES) {
     const body = sources[name];
-    assert.ok(!/seatSelect|mapSelect|shoppingCart|orderQuestions|maintainAccount|login\.asp|sToken|WSbasket|localStorage|sessionStorage|document\.cookie/i.test(body.replace(/\/\/[^\n]*/g, "")), name + " references a forbidden surface");
+    assert.ok(!/seatSelect|mapSelect|shoppingCart|orderQuestions|maintainAccount|login\.asp|sToken|WSbasket|localStorage|sessionStorage|document\.cookie/i.test(body.replace(/(^|\s)\/\/[^\n]*/g, "")), name + " references a forbidden surface");
     assert.ok(!/method:\s*["']POST["']/i.test(body), name + " never POSTs");
     assert.ok(!/credentials:\s*["'](include|same-origin)["']/.test(body), name + " never sends credentials");
     assert.ok(/credentials: "omit"/.test(body));
@@ -238,7 +242,7 @@ test("search_events: one cookieless GET to the tab's programme, filters mapped, 
     position: 1, performance_id: guid(1), event_id: guid(11, "A"), title: "Fabricated Noir",
     event_url: `${ORIGIN}/Online/default.asp?doWork::WScontent::loadArticle=Load&BOparam::WScontent::loadArticle::article_id=${guid(11, "A")}`,
     local_date: "2026-10-03", local_time: "12:00", weekday: "Saturday", venue: "Screen NFT9", sales_status: "on_sale", availability: "excellent", availability_count: 300,
-    on_sale_local: null, price_min_gbp: 9, price_max_gbp: 12, categories: ["Noir season", "Digital", "English subtitles"]
+    on_sale_local: null, price_min_gbp: 9, price_max_gbp: 12, categories: ["Digital", "English subtitles", "Noir season"]
   });
   assert.equal(q.title, "Chabrol\u2019s Fabricated Q&A");
   assert.equal(q.availability, "sold_out");
@@ -261,10 +265,10 @@ test("search_events: not-yet-on-sale, unknown codes and odd prices map to explic
 test("search_events: keyword filter, paging through getPage, and positions across pages", async () => {
   const tool = load("search_events", { site: makeSite({ pageSize: 2 }) });
   const first = await tool.run({});
-  assert.deepEqual(first.pagination, { page: 1, page_size: 2, total_pages: 3, has_more: true });
+  assert.deepEqual(first.pagination, { page: 1, page_size: 2, total_pages: 5, has_more: true });
   assert.deepEqual(first.events.map(e => e.position), [1, 2]);
   const third = await tool.run({ page: 3 });
-  assert.deepEqual(third.pagination, { page: 3, page_size: 2, total_pages: 3, has_more: false });
+  assert.deepEqual(third.pagination, { page: 3, page_size: 2, total_pages: 5, has_more: true });
   assert.deepEqual(third.events.map(e => e.position), [5, 6]);
   const calls = tool.site.calls;
   assert.equal(calls[1].params["doWork::WScontent::getPage"], "");
@@ -286,6 +290,7 @@ test("search_events: no results, out-of-range page and available_only that empti
   const far = await tool.run({ page: 4 });
   assert.equal(far.status, "no_results");
   assert.match(far.message, /Page 4 has no results/);
+  assert.match(none.message, /only upcoming films and events/);
   const sold = load("search_events");
   sold.site.catalog["/Online"] = [perf({ id: 60, article: 61, title: "Sold Out Show", start: "Friday 02 October 2026 19:00", avail: "S", num: "0" }), perf({ id: 62, article: 63, title: "Closed Show", start: "Friday 02 October 2026 20:00", sales: "C", avail: "G" })];
   const filtered = await sold.run({ available_only: true });
@@ -318,9 +323,9 @@ test("search_events: programme comes from the tab; another programme is rejected
 
 test("search_events: malformed input is rejected before any request", async () => {
   const bad = [
-    { keyword: "x" }, { keyword: "y".repeat(101) }, { keyword: 5 }, { start_date: "2026-02-30" }, { start_date: "10/03/2026" }, { end_date: "2026-10-03" },
-    { start_date: "2026-10-05", end_date: "2026-10-03" }, { start_date: "2026-01-01", end_date: "2027-06-01" }, { available_only: "yes" }, { page: 0 }, { page: 21 }, { page: 1.5 },
-    { programme: "cinemas" }, { limit: 5 }, { sToken: "x" }, [], null
+    { keyword: "x" }, { keyword: "y".repeat(101) }, { keyword: 5 }, { start_date: "2026-02-30" }, { start_date: "2026-13-01" }, { start_date: "2026-00-10" }, { start_date: "2026-10-00" }, { start_date: "2026-10-01", end_date: "2026-10-32" }, { start_date: "10/03/2026" }, { end_date: "2026-10-03" },
+    { start_date: "2026-10-05", end_date: "2026-10-03" }, { start_date: "2026-01-01", end_date: "2027-06-01" }, { available_only: "yes" }, { page: 0 }, { page: 51 }, { page: 1.5 },
+    { programme: "cinemas" }, { programme: ["southbank"] }, { programme: 5 }, { limit: 5 }, { sToken: "x" }, [], null
   ];
   const tool = load("search_events");
   for (const input of bad) {
@@ -388,6 +393,32 @@ test("search_events: rows without an id or title are skipped with a warning", as
   assert.match(result.warnings[0], /2 result row\(s\) were skipped/);
 });
 
+test("search_events: events linked by name get an event_url, other links stay null, and the rendered venue label is used", async () => {
+  const tool = load("search_events");
+  const result = await tool.run({ start_date: "2026-10-06", end_date: "2026-10-07" });
+  const byTitle = Object.fromEntries(result.events.map(e => [e.title, e]));
+  assert.deepEqual([byTitle["Booking Page Show"].event_id, byTitle["Booking Page Show"].event_url], [null, `${ORIGIN}/Online/article/fabricated-booking`], "name-linked events are still reachable through get_event");
+  assert.deepEqual([byTitle["Elsewhere Link Show"].event_id, byTitle["Elsewhere Link Show"].event_url], [null, null], "a link into another programme is never returned");
+  assert.deepEqual([byTitle["No Link Show"].event_id, byTitle["No Link Show"].event_url], [null, null]);
+  const imax = load("search_events", { path: "/imax/Online/default.asp" });
+  const [show] = (await imax.run({})).events;
+  assert.equal(show.venue, "BFI IMAX", "the short venue label the site renders, not the longer description");
+  const lffRows = load("search_events", { path: "/lff/Online/default.asp" });
+  lffRows.site.catalog["/lff/Online"].push(perf({ id: 70, article: 71, title: "Festival Booking Show", start: "Thursday 08 October 2026 18:00", info: "https://whatson.bfi.org.uk/lff/Online/article/festival-booking-lff26" }));
+  const lff = await lffRows.run({});
+  assert.equal(lff.events.find(e => e.title === "Festival Booking Show").event_url, `${ORIGIN}/lff/Online/article/festival-booking-lff26`);
+  assertSafeRequests(tool.site, "/Online");
+});
+
+test("search_events: calendar-invalid dates return invalid_input instead of throwing", async () => {
+  const tool = load("search_events");
+  for (const input of [{ start_date: "2026-13-01" }, { start_date: "2026-00-10" }, { start_date: "2026-10-00" }, { start_date: "2026-10-32" }, { start_date: "2026-10-01", end_date: "2026-13-40" }, { start_date: "0000-00-00" }]) {
+    const result = await tool.run(input);
+    assert.equal(result.error_kind, "invalid_input", JSON.stringify(input));
+  }
+  assert.equal(tool.site.calls.length, 0);
+});
+
 // --- get_event -----------------------------------------------------------------------------------------
 
 const ARTICLE = guid(11, "A");
@@ -396,6 +427,7 @@ const articleSite = (n = 3, extra = {}) => makeSite({
   articles: {
     "/Online": {
       [ARTICLE]: { article: ARTICLE, slug: "fabricated-noir", title: "Fabricated Noir", summary: "A fabricated detective story.", details: [["Director", "Ada Example"], [null, "USA 1949. 90min"], ["Certificate", "PG"], ["Director", "Ada Example"], ["Language", ""]], paragraphs: ["First paragraph &amp; more.", "Second paragraph."], perfs: ownPerfs(n), ...extra },
+      [guid(23, "A")]: { article: guid(23, "A"), slug: "fabricated-booking", title: "Book tickets for Fabricated Booking", summary: "Booking page.", details: [], paragraphs: [], pageSize: 100, perfs: Array.from({ length: 120 }, (_, i) => perf({ id: 500 + i, article: 23, title: "Booking Page Show", start: `Saturday ${String(3 + (i % 20)).padStart(2, "0")} October 2026 ${String(10 + (i % 9)).padStart(2, "0")}:00`, info: "https://whatson.bfi.org.uk/Online/article/fabricated-booking" })) },
       [guid(22, "A")]: { article: guid(22, "A"), slug: "no-own-showings", title: "Fabricated Archive Title", summary: "Credits but no listed showings.", details: [["Director", "Ada Example"]], paragraphs: ["Text."], perfs: [], booking: false, reportedPages: 4, extraRows: [perf({ id: 310, article: 12, title: "Other Show", start: "Saturday 03 October 2026 14:30" })] },
       [guid(20, "A")]: { article: guid(20, "A"), slug: "season-list", title: "Fabricated Season", summary: "A season page.", details: [], paragraphs: ["Season text."], perfs: [], booking: false, extraRows: [perf({ id: 300, article: 12, title: "Other Show", start: "Saturday 03 October 2026 14:30" })] }
     },
@@ -417,7 +449,7 @@ test("get_event: reads credits, text and only this article's performances by art
   assert.equal(result.description_text, "First paragraph & more.\n\nSecond paragraph.");
   assert.equal(result.description_truncated, false);
   assert.equal(result.performances.length, 3);
-  assert.deepEqual(result.performances[0], { performance_id: guid(100), local_date: "2026-10-03", local_time: "12:00", weekday: "Saturday", venue: "Screen NFT9", sales_status: "on_sale", availability: "good", availability_count: 30, on_sale_local: null, price_min_gbp: 9, price_max_gbp: 12, categories: ["Fabricated season", "Digital"] });
+  assert.deepEqual(result.performances[0], { performance_id: guid(100), local_date: "2026-10-03", local_time: "12:00", weekday: "Saturday", venue: "Screen NFT9", sales_status: "on_sale", availability: "good", availability_count: 30, on_sale_local: null, price_min_gbp: 9, price_max_gbp: 12, categories: ["Digital", "Fabricated season"] });
   assert.equal(result.viewed_as, "signed_out");
   assert.equal(tool.site.calls.length, 1);
   assert.equal(tool.site.calls[0].path, "/Online/default.asp");
@@ -442,7 +474,7 @@ test("get_event: reads every page of performances (5 per page) and caps at 10 pa
   const capped = await long.run({ event: ARTICLE });
   assert.equal(capped.performances.length, 50);
   assert.equal(long.site.calls.length, 10, "never more than 10 requests");
-  assert.match(capped.warnings[0], /12 pages of performances; only the first 10 pages \(50\)/);
+  assert.match(capped.warnings[0], /more performances than the 50 returned/);
 });
 
 test("get_event: URL forms send only the validated article id, permalink or slug", async () => {
@@ -490,7 +522,7 @@ test("get_event: malformed input, foreign hosts and non-event URLs are rejected 
   const cases = [
     [{}, "invalid_input"], [{ event: "abc" }, "invalid_input"], [{ event: "x".repeat(601) }, "invalid_input"], [{ event: 5 }, "invalid_input"], [{ event: ARTICLE, extra: 1 }, "invalid_input"],
     [{ event: ARTICLE, programme: "cinemas" }, "invalid_input"], [{ event: "not a url at all" }, "invalid_input"],
-    [{ event: "https://cinemas.bfi.org.uk/whats-on/fabricated" }, "unsupported_host"], [{ event: "http://whatson.bfi.org.uk/Online/article/x-y" }, "unsupported_host"],
+    [{ event: "https://cinemas.bfi.org.uk/whats-on/fabricated" }, "unsupported_host"], [{ event: "http://whatson.bfi.org.uk/Online/article/x-y" }, "unsupported_host"], [{ event: "javascript:alert(1)" }, "unsupported_host"], [{ event: ARTICLE, programme: ["southbank"] }, "invalid_input"],
     [{ event: "https://whatson.bfi.org.uk.evil.example/Online/article/fabricated-noir" }, "unsupported_host"],
     [{ event: `${ORIGIN}/Online/shoppingCart.asp` }, "invalid_input"], [{ event: `${ORIGIN}/Online/seatSelect.asp` }, "invalid_input"], [{ event: `${ORIGIN}/Online/default.asp` }, "invalid_input"],
     [{ event: `${ORIGIN}/Online/default.asp?BOparam::WScontent::loadArticle::article_id=not-a-guid` }, "invalid_input"],
@@ -498,6 +530,9 @@ test("get_event: malformed input, foreign hosts and non-event URLs are rejected 
     [{ event: `${ORIGIN}/Online/article/a%2Fb` }, "invalid_input"]
   ];
   for (const [input, kind] of cases) assert.equal((await tool.run(input)).error_kind, kind, JSON.stringify(input));
+  assert.match((await tool.run({ event: "http://whatson.bfi.org.uk/Online/article/x-y" })).error_message, /Only https:\/\/whatson\.bfi\.org\.uk event page URLs/);
+  assert.match((await tool.run({ event: "javascript:alert(1)" })).error_message, /Only https:\/\/whatson\.bfi\.org\.uk event page URLs/);
+  assert.match((await tool.run({ event: "https://cinemas.bfi.org.uk/whats-on/fabricated" })).error_message, /cinemas\.bfi\.org\.uk is a different site/);
   assert.equal(site.calls.length, 0);
 });
 
@@ -521,7 +556,9 @@ test("get_event: unknown events, information pages and site failures are explici
   await failing(() => ({ ...response(200, "<html></html>", "https://www.example.org/"), redirected: true }), "site_error")();
   await failing(() => response(200, htmlPage("Welcome", "<p>hello</p>"), ORIGIN + "/Online/default.asp"), "site_changed")();
   const slug500 = load("get_event", { site: makeSite({ overrides: () => response(500, "", ORIGIN + "/Online/default.asp") }) });
-  assert.equal((await slug500.run({ event: `${ORIGIN}/Online/article/anything` })).error_kind, "site_error", "a 500 for a slug is not claimed to mean not found");
+  const named = await slug500.run({ event: `${ORIGIN}/Online/article/anything` });
+  assert.equal(named.error_kind, "not_found", "the site answers 500 for names of other programmes' pages");
+  assert.match(named.error_message, /can also mean a site error/);
 });
 
 test("get_event: a page with credits but none of its own performances is not paged for other events' rows", async () => {
@@ -530,7 +567,32 @@ test("get_event: a page with credits but none of its own performances is not pag
   const result = await tool.run({ event: `${ORIGIN}/Online/article/no-own-showings` });
   assert.equal(result.status, "ok");
   assert.deepEqual(result.performances, []);
+  assert.match(result.warnings.join(" "), /lists no performances/);
   assert.equal(site.calls.length, 1, "the site reports 4 pages, but they list other events");
+});
+
+test("get_event: a booking page whose rows link by name returns its performances, capped at 50 with a warning", async () => {
+  const site = articleSite(1);
+  const tool = load("get_event", { site });
+  const result = await tool.run({ event: `${ORIGIN}/Online/article/fabricated-booking` });
+  assert.equal(result.status, "ok");
+  assert.equal(result.title, "Book tickets for Fabricated Booking");
+  assert.equal(result.event_id, guid(23, "A"));
+  assert.equal(result.performances.length, 50);
+  assert.match(result.warnings.join(" "), /more performances than the 50 returned/);
+  assert.deepEqual(site.calls.map(c => c.path), ["/Online/article/fabricated-booking"], "the first page already holds 100 rows, so no further page is read");
+  const byId = await tool.run({ event: guid(23, "A") });
+  assert.equal(byId.performances.length, 0, "a GUID lookup cannot claim rows that link by name, and says so");
+  assert.match(byId.warnings.join(" "), /lists no performances/);
+  assertSafeRequests(site, "/Online");
+});
+
+test("get_event: a page with credits but no performances says so instead of returning a silent empty list", async () => {
+  const site = articleSite(1);
+  const result = await load("get_event", { site }).run({ event: `${ORIGIN}/Online/article/no-own-showings` });
+  assert.equal(result.status, "ok");
+  assert.deepEqual(result.performances, []);
+  assert.match(result.warnings.join(" "), /separate booking page/);
 });
 
 test("get_event: a failing later page is an explicit error, not a partial success", async () => {

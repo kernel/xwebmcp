@@ -69,7 +69,7 @@
       ],
       "status": "draft",
       "last_verified": null,
-      "notes": "Read-only page tool for one film or event page on the tab's own BFI ticketing programme (Southbank, IMAX or London Film Festival): credits, description text and every upcoming performance with sales status, availability band and signed-out price range. Cookieless requests; a different programme is rejected before any request. Never opens booking. Not yet independently QA'd."
+      "notes": "Read-only page tool for one film or event page on the tab's own BFI ticketing programme (Southbank, IMAX or London Film Festival): credits, description text and the first 50 performances the site lists, each with sales status, availability band and signed-out price range. Cookieless requests; a different programme is rejected before any request. Never opens booking. Not yet independently QA'd."
     },
     {
       "domain": "bfi.org.uk",

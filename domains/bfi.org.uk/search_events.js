@@ -12,7 +12,7 @@
   },
   tool: {
     name: "search_events",
-    description: "Search the screenings and events of ONE BFI ticketing programme (BFI Southbank, BFI IMAX or the BFI London Film Festival) by keyword and local date range, using the same search as the site's own search box. It searches the programme of the tab it runs on and never another: the three programmes share one login session on whatson.bfi.org.uk, so the tool sends only signed-out requests (no cookies) to the tab's own programme and rejects a `programme` that differs from the tab's with programme_mismatch before any request. Returns one page of up to 50 performances in the site's order: title, venue-local date and time, screen, whether tickets are on sale, an availability band (excellent, good, limited, sold_out), the site's availability count, the price range and the event page. Prices are the signed-out view in GBP: the low end is usually the concession price and the range does not reflect member discounts. It cannot tell you seat prices or seat availability for a booking; that needs the site's booking flow, which this tool never enters. Results are paged by the site (50 per page): use `page` to read further and the returned pagination to know how many exist. Keyword matching is the site's own (titles and keyword tags; very common words like 'the' return nothing). Use event_id with get_event for one event's description, credits and all its performances. Read-only; works signed out.",
+    description: "Search the screenings and events of ONE BFI ticketing programme (BFI Southbank, BFI IMAX or the BFI London Film Festival) by keyword and local date range, using the same search as the site's own search box. It searches the programme of the tab it runs on and never another: the three programmes share one login session on whatson.bfi.org.uk, so the tool sends only signed-out requests (no cookies) to the tab's own programme and rejects a `programme` that differs from the tab's with programme_mismatch before any request. Returns one page of up to 50 performances in the site's order: title, venue-local date and time, screen, whether tickets are on sale, an availability band (excellent, good, limited, sold_out), the site's availability count, the price range and the event page. Prices are the signed-out view in GBP: the low end is usually the concession price and the range does not reflect member discounts. It cannot tell you seat prices or seat availability for a booking; that needs the site's booking flow, which this tool never enters. Results are paged by the site (50 per page, `page` 1 to 50): use `page` to read further and the returned pagination to know how many exist. Keyword matching is the site's own (titles and keyword tags; very common words like 'the' return nothing). Pass an event_url (or event_id) to get_event for one event's description, credits and its performances. Read-only; works signed out.",
     inputSchema: {
       type: "object", additionalProperties: false,
       properties: {
@@ -20,7 +20,7 @@
         start_date: { type: "string", pattern: "^\\d{4}-\\d{2}-\\d{2}$", description: "First local date to include, YYYY-MM-DD. With no dates the site lists what is on from today." },
         end_date: { type: "string", pattern: "^\\d{4}-\\d{2}-\\d{2}$", description: "Last local date to include, YYYY-MM-DD. Defaults to start_date when only start_date is given." },
         available_only: { type: "boolean", default: false, description: "Keep only performances that are on sale and not sold out. Applied to the fetched page, so a page can come back with fewer than 50 rows while more pages exist." },
-        page: { type: "integer", minimum: 1, maximum: 20, default: 1, description: "Which page of the site's results (50 per page) to read." },
+        page: { type: "integer", minimum: 1, maximum: 50, default: 1, description: "Which page of the site's results (50 per page) to read; the returned pagination says how many exist." },
         programme: { enum: ["southbank", "imax", "lff"], description: "The programme you expect this tab to be on. Optional guard: the tool searches the tab's own programme and returns programme_mismatch if this differs." }
       }
     },
@@ -53,9 +53,9 @@
                 properties: {
                   position: { type: "integer", minimum: 1, description: "1-based position in the site's ordering across all pages." },
                   performance_id: { type: "string", description: "The site's id for this one showing." },
-                  event_id: { type: ["string", "null"], description: "Article id of the film or event page; pass it to get_event. Several performances share one." },
+                  event_id: { type: ["string", "null"], description: "Article id of the film or event page when the site links it by id; several performances share one. Null when the site links the event by name; use event_url then." },
                   title: { type: "string" },
-                  event_url: { type: ["string", "null"], format: "uri", description: "Canonical event page on whatson.bfi.org.uk." },
+                  event_url: { type: ["string", "null"], format: "uri", description: "Event page on whatson.bfi.org.uk in this programme; pass it to get_event. Null when the site gives no link in this programme." },
                   local_date: { type: ["string", "null"], description: "YYYY-MM-DD in London." },
                   local_time: { type: ["string", "null"], description: "HH:MM in London." },
                   weekday: { type: ["string", "null"] },
@@ -66,7 +66,7 @@
                   on_sale_local: { type: ["string", "null"], description: "London time the performance goes on sale, YYYY-MM-DDTHH:MM, when the site gives one." },
                   price_min_gbp: { type: ["number", "null"], description: "Lowest signed-out price in GBP; 0 appears for free or non-ticketed sessions and is not a bookable price." },
                   price_max_gbp: { type: ["number", "null"] },
-                  categories: { type: "array", items: { type: "string" }, description: "The site's keyword tags (season, format, access)." }
+                  categories: { type: "array", items: { type: "string" }, description: "The site's keyword tags (season, format, access), sorted alphabetically because the site does not keep a stable order." }
                 }
               }
             }
@@ -111,7 +111,7 @@
       if (typeof input.keyword !== "string" || input.keyword.trim().length < 2 || input.keyword.trim().length > 100) return fail("invalid_input", "keyword must be a string of 2 to 100 characters.");
       keyword = input.keyword.trim().replace(/\s+/g, " ");
     }
-    const isDate = v => typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v) && new Date(v + "T00:00:00Z").toISOString().slice(0, 10) === v;
+    const isDate = v => typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v) && !Number.isNaN(Date.parse(v + "T00:00:00Z")) && new Date(v + "T00:00:00Z").toISOString().slice(0, 10) === v;
     if (input.start_date !== undefined && !isDate(input.start_date)) return fail("invalid_input", "start_date must be a real calendar date, YYYY-MM-DD.");
     if (input.end_date !== undefined && !isDate(input.end_date)) return fail("invalid_input", "end_date must be a real calendar date, YYYY-MM-DD.");
     const startDate = input.start_date ?? null;
@@ -122,8 +122,8 @@
     if (input.available_only !== undefined && typeof input.available_only !== "boolean") return fail("invalid_input", "available_only must be true or false.");
     const availableOnly = input.available_only === true;
     const page = input.page === undefined ? 1 : input.page;
-    if (!Number.isInteger(page) || page < 1 || page > 20) return fail("invalid_input", "page must be an integer from 1 to 20.");
-    if (input.programme !== undefined && !Object.hasOwn(SITES, input.programme)) return fail("invalid_input", "programme must be 'southbank', 'imax' or 'lff'.");
+    if (!Number.isInteger(page) || page < 1 || page > 50) return fail("invalid_input", "page must be an integer from 1 to 50.");
+    if (input.programme !== undefined && (typeof input.programme !== "string" || !Object.hasOwn(SITES, input.programme))) return fail("invalid_input", "programme must be 'southbank', 'imax' or 'lff'.");
 
     const query = { keyword, start_date: startDate, end_date: endDate, available_only: availableOnly, page };
     const observedAt = new Date().toISOString();
@@ -202,12 +202,12 @@
       let headers, rows;
       try { headers = grab("searchHeaders"); rows = grab("searchResults"); } catch (error) { return fail("site_changed", "The results data could not be read (" + (error && error.message ? error.message : String(error)) + ")."); }
       if (!rows || !rows.length) {
-        const message = page > 1 ? "Page " + page + " has no results; the search has fewer pages." : site.name + " has no films or events matching the search.";
+        const message = page > 1 ? "Page " + page + " has no results; the search has fewer pages." : site.name + " has no films or events matching the search. The site lists only upcoming films and events, so a date that has passed returns nothing.";
         return { status: "no_results", programme, query, viewed_as: "signed_out", pagination: null, observed_at: observedAt, message };
       }
       if (!Array.isArray(headers)) return fail("site_changed", "The results table has no header row.");
       const col = name => headers.indexOf(name);
-      const needed = ["Id", "Description", "-", "Sales Status", "Availability", "Available Number", "Additional Info", "Venue Description", "Minimum Price", "Maximum Price", "On Sale Date", "Keywords"];
+      const needed = ["Id", "Description", "-", "Sales Status", "Availability", "Available Number", "Additional Info", "Venue Short Description", "Minimum Price", "Maximum Price", "On Sale Date", "Keywords"];
       const missing = needed.filter(n => col(n) < 0);
       if (missing.length) return fail("site_changed", "The results table no longer has the columns this tool reads (missing: " + missing.join(", ") + ").");
       const pg = /pagination\s*:\s*\{\s*current_page\s*:\s*"(\d+)"\s*,\s*page_size\s*:\s*"(\d+)"\s*,\s*total_pages\s*:\s*"(\d+)"/.exec(html);
@@ -226,6 +226,16 @@
       };
       const gbp = s => { const m = /^£(\d+(?:\.\d{1,2})?)$/.exec(typeof s === "string" ? s.trim() : ""); return m ? Number(m[1]) : null; };
       const text = (v, max) => { const s = decode(typeof v === "string" ? v : "").replace(/\s+/g, " ").trim(); return s ? s.slice(0, max) : null; };
+      // An event is linked either by article id or, for some festival events, by an /article/<name> URL.
+      const eventLink = info => {
+        if (typeof info !== "string") return { id: null, url: null };
+        const byId = /article_id=([0-9A-Fa-f]{8}(?:-[0-9A-Fa-f]{4}){3}-[0-9A-Fa-f]{12})/.exec(info);
+        if (byId) return { id: byId[1], url: ORIGIN + site.prefix + "/default.asp?doWork::WScontent::loadArticle=Load&BOparam::WScontent::loadArticle::article_id=" + byId[1] };
+        const byName = /^(?:https:\/\/whatson\.bfi\.org\.uk)?\/(?:(imax|lff)\/)?Online\/article\/([A-Za-z0-9][A-Za-z0-9._-]{0,120})\/?$/i.exec(info.trim());
+        if (byName && (byName[1] || "southbank").toLowerCase() === programme) return { id: null, url: ORIGIN + site.prefix + "/article/" + byName[2] };
+        return { id: null, url: null };
+      };
+      const byTag = (a, b) => { const x = a.toLowerCase(), y = b.toLowerCase(); return x < y ? -1 : x > y ? 1 : a < b ? -1 : a > b ? 1 : 0; };
       const warnings = [];
       let skipped = 0;
       const events = [];
@@ -236,24 +246,23 @@
         if (typeof performanceId !== "string" || !guid.test(performanceId) || !title) { skipped++; return; }
         const start = when(r[col("-")]);
         const onSale = when(r[col("On Sale Date")]);
-        const link = typeof r[col("Additional Info")] === "string" ? /article_id=([0-9A-Fa-f-]{36})/.exec(r[col("Additional Info")]) : null;
-        const eventId = link && guid.test(link[1]) ? link[1] : null;
+        const link = eventLink(r[col("Additional Info")]);
         const salesCode = r[col("Sales Status")], availCode = r[col("Availability")];
         const count = Number.parseInt(r[col("Available Number")], 10);
         events.push({
           position: (pagination.page - 1) * pagination.page_size + i + 1,
           performance_id: performanceId,
-          event_id: eventId,
+          event_id: link.id,
           title,
-          event_url: eventId ? ORIGIN + site.prefix + "/default.asp?doWork::WScontent::loadArticle=Load&BOparam::WScontent::loadArticle::article_id=" + eventId : null,
+          event_url: link.url,
           local_date: start.date, local_time: start.time, weekday: start.weekday,
-          venue: text(r[col("Venue Description")], 120),
+          venue: text(r[col("Venue Short Description")] || r[col("Venue Description")], 120),
           sales_status: salesCode === "S" ? "on_sale" : salesCode === "C" ? "not_on_sale" : "unknown",
           availability: { E: "excellent", G: "good", L: "limited", S: "sold_out" }[availCode] || "unknown",
           availability_count: Number.isInteger(count) && count >= 0 ? count : null,
           on_sale_local: onSale.date && onSale.time ? onSale.date + "T" + onSale.time : null,
           price_min_gbp: gbp(r[col("Minimum Price")]), price_max_gbp: gbp(r[col("Maximum Price")]),
-          categories: typeof r[col("Keywords")] === "string" ? r[col("Keywords")].split(",").map(k => text(k, 60)).filter(Boolean).slice(0, 12) : []
+          categories: typeof r[col("Keywords")] === "string" ? r[col("Keywords")].split(",").map(k => text(k, 60)).filter(Boolean).slice(0, 12).sort(byTag) : []
         });
       });
       if (skipped) warnings.push(skipped + " result row(s) were skipped because they lacked an id or title.");
