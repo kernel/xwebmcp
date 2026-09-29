@@ -64,7 +64,10 @@
       ],
       "status": "draft",
       "last_verified": null,
-      "notes": "Public read of one property page for explicit dates, one room, adults, child ages and the currency the site shows: name, address, review score, check-in/out times and every listed rate for the whole party with total, discount, taxes and fees excluded, cancellation, prepayment and meal terms. Echoes the dates, guests and currency the page applied and refuses a page that applied others or a different currency; leaves out rates limited to fewer guests than the party; flags members-only prices. Never changes the site's currency, selects a rate or opens checkout. Independent QA pending."
+      "notes": "Public read of one property page for explicit dates, one room, adults, child ages and the currency the site shows: name, address, review score, check-in/out times and every listed rate for the whole party with total, discount, taxes and fees excluded, cancellation, prepayment and meal terms. Echoes the dates, guests and currency the page applied and refuses a page that applied others or a different currency; leaves out rates limited to fewer guests than the party; flags members-only prices. Never changes the site's currency, selects a rate or opens checkout. Independent review ended with one wording defect open (fixed afterwards, not re-reviewed); no sign-off.",
+      "provenance": {
+        "qa_agent": "agt_dd7f389d3c2826a1698e"
+      }
     },
     {
       "domain": "booking.com",
@@ -77,7 +80,10 @@
       ],
       "status": "draft",
       "last_verified": null,
-      "notes": "Public first results page (up to 25 properties) for a destination, explicit dates, one room, adults, child ages and the currency the site shows, with sort and filters. Returns canonical property URLs, review scores, the recommended unit and the displayed stay total, and echoes the dates, guests and currency the site applied. Flags members-only prices. Distinguishes no_results, unaccepted searches, challenges, gates, rate limits and a currency mismatch. Never changes the site's currency. Independent QA pending."
+      "notes": "Public first results page (up to 25 properties) for a destination, explicit dates, one room, adults, child ages and the currency the site shows, with sort and filters. Returns canonical property URLs, review scores, the recommended unit and the displayed stay total, and echoes the dates, guests and currency the site applied. Flags members-only prices. Distinguishes no_results, unaccepted searches, challenges, gates, rate limits and a currency mismatch. Never changes the site's currency. Independent review ended with one wording defect open (fixed afterwards, not re-reviewed); no sign-off.",
+      "provenance": {
+        "qa_agent": "agt_dd7f389d3c2826a1698e"
+      }
     },
     {
       "domain": "delta.com",

@@ -109,11 +109,11 @@
                       type: ["object", "null"], additionalProperties: false, required: ["total", "original_total", "per_night_average", "total_text", "additional_charges_may_apply", "members_only"],
                       properties: {
                         total: { type: ["number", "null"], description: "Displayed price for the whole stay in effective.currency (the discounted price when original_total is set); null when the text could not be read as a number. When members_only is true this is the members-only price, which needs signing in." },
-                        original_total: { type: ["number", "null"], description: "Struck-through price before a deal or discount. When members_only is true it is the price without the member discount." },
+                        original_total: { type: ["number", "null"], description: "Struck-through price before a deal or discount. It is the pre-deal price, so when members_only is true it is not necessarily the price without the member discount." },
                         per_night_average: { type: ["number", "null"], description: "The card's per-night figure; the site rounds it." },
                         total_text: { type: "string", description: "The total exactly as the card shows it." },
                         additional_charges_may_apply: { type: "boolean" },
-                        members_only: { type: "boolean", description: "True when the card marks the displayed price 'Sign in for this members-only price': it is a member (Genius) price that a signed-out visitor is not given." }
+                        members_only: { type: "boolean", description: "True when the card marks the displayed price 'Sign in for this members-only price': it includes a member (Genius) discount that a signed-out visitor is not given, by an amount the card does not show (get_property lists member_discount.amount)." }
                       },
                       description: "Null when the card shows no price."
                     },
@@ -289,7 +289,7 @@
             const rateText = text(rate);
             const struck = /Original price\s+(\S+?)\.?\s+Current price/i.exec(rateText);
             const totalText = spans.length ? spans[spans.length - 1] : "";
-            if (totalText) price = { total: amount(totalText), original_total: struck ? amount(struck[1]) : null, per_night_average: spans.length > 1 ? amount(spans[0]) : null, total_text: totalText, additional_charges_may_apply: /additional charges may apply/i.test(rateText), members_only: !!pickTid(rate, "genius-rate-sharing-sign-in-prompt") };
+            if (totalText) price = { total: amount(totalText), original_total: struck ? amount(struck[1]) : null, per_night_average: spans.length > 1 ? amount(spans[0]) : null, total_text: totalText, additional_charges_may_apply: /additional charges may apply/i.test(rateText), members_only: !!pickTid(rate, "genius-rate-sharing-sign-in-prompt") || /members-only price/i.test(rateText) };
           }
           if (!price || price.total === null) unpriced++;
           properties.push({
@@ -302,7 +302,7 @@
         }
         if (!properties.length) return fail("site_changed", "None of the " + cardEls.length + " property cards had a readable name and property URL; Booking.com's markup may have changed.");
         const membersOnly = properties.filter(prop => prop.price && prop.price.members_only).length;
-        if (membersOnly) warnings.push(membersOnly + " returned properties show a members-only price that needs signing in; for those, price.total is the member price and price.original_total the price without it.");
+        if (membersOnly) warnings.push(membersOnly + " returned properties show a members-only price that needs signing in; for those, price.total includes a member discount a signed-out visitor is not given, by an amount the card does not show (see get_property).");
         if (unpriced) warnings.push(unpriced + " returned properties showed no readable price on the results card.");
         if (skipped) warnings.push(skipped + " result cards were skipped because they had no name or a non-property URL, or repeated a property.");
         return {

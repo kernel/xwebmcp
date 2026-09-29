@@ -321,7 +321,7 @@
           const before = breakdown.indexOf("Total before taxes");
           const memberAt = breakdown.indexOf("Genius discount");
           const requiresSignIn = !!block.querySelector(".prd-genius-preview-rate-inline") || /members-only price/i.test(text(block));
-          if (memberAt >= 0 && requiresSignIn) memberOnly++;
+          if (requiresSignIn) memberOnly++;
           const excludedEl = row.querySelector(".js-us-excluded-fees");
           const underEl = row.querySelector(".prd-taxes-and-fees-under-price");
           const excluded = excludedEl ? text(excludedEl).replace(/^Excluded:\s*/i, "") : underEl && /^\+/.test(text(underEl)) ? text(underEl).replace(/^\+\s*/, "") : "";

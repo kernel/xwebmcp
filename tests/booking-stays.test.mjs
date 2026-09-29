@@ -324,6 +324,10 @@ test("search_stays flags a members-only price and warns", async () => {
   assert.equal(output.properties[0].price.original_total, 135);
   assert.equal(output.properties[1].price.members_only, false);
   assert.match(output.warnings.join(" "), /1 returned properties show a members-only price that needs signing in/);
+  assert.doesNotMatch(output.warnings.join(" "), /price without it/, "original_total is only the pre-deal price on a card that also has a deal");
+  const textOnly = prompt.replace(' data-testid="genius-rate-sharing-sign-in-prompt"', "");
+  const plain = await run("search_stays", SEARCH, { routes: [searchRoute({ body: searchPage({ cards: [card({ price: { perNight: "$52", total: "$124", original: "$135", extra: textOnly } })] }) })] });
+  assert.equal(plain.output.properties[0].price.members_only, true, "the prompt text alone marks a members-only price");
 });
 
 test("search_stays sends the exact search and builds a tracking-free results_url", async () => {
@@ -582,6 +586,13 @@ test("get_property flags a members-only price that a signed-out visitor does not
   assert.equal(output.effective.signed_in, false);
   assert.deepEqual(output.rooms[0].rates[0].member_discount, { amount: 35.16, requires_sign_in: true });
   assert.equal(output.rooms[0].rates[1].member_discount, null);
+  assert.match(output.warnings.join(" "), /1 rates show a members-only price that needs signing in/);
+});
+
+test("get_property warns about a members-only price even when the discount line is worded differently", async () => {
+  const rows = [rateRow({ head: ROOM_A, genius: true, preview: true }).replace("Genius discount", "Member rate")];
+  const { output } = await run("get_property", PROPERTY, { routes: [propertyRoute({ body: propertyPage({ rows }) })] });
+  assert.deepEqual(output.rooms[0].rates[0].member_discount, { amount: null, requires_sign_in: true });
   assert.match(output.warnings.join(" "), /1 rates show a members-only price that needs signing in/);
 });
 
