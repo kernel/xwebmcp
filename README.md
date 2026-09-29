@@ -136,9 +136,10 @@ How invocation works and what to expect:
 - A tool invoked from the page (`document.modelContext.executeTool`) keeps running in
   the extension if its document navigates away, but that document can no longer receive
   the result; the invocation log (`listInvocations`) records it as undelivered.
-- Tool inputs are never logged or stored. Failed invocations keep the thrown error with
-  its stack mapped to the tool file, the tool's console output, and timing, readable
-  through `getInvocation`.
+- Tool inputs are never logged or stored. Failed invocations keep the thrown error,
+  console output, and timing, readable through `getInvocation`. A local file installed
+  individually retains its filename in mapped stacks; `attach` combines installed
+  files per namespace, so those stacks point to the namespace batch instead.
 
 #### Connect an agent: `xwebmcp mcp`
 
@@ -226,8 +227,9 @@ xwebmcp attach --kernel <browser id or name>
 xwebmcp tools --kernel <browser id or name>
 ```
 
-`attach` replaces each namespace atomically (the first file of a namespace is sent with
-`force_overwrite_namespace`), so re-running it after an update is safe for both targets.
+`attach` sends all installed files in each namespace as one batch with
+`force_overwrite_namespace`, so a failed file does not leave that namespace partly
+updated. Re-running it after an update is safe for both targets.
 
 ### By hand
 
