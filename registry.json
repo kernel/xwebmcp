@@ -295,7 +295,7 @@
       ],
       "status": "draft",
       "last_verified": null,
-      "notes": "Page tool on job-boards.greenhouse.io: the questions one job application asks (labels, help text, required flag, field names and types, choices) plus education fields, demographic-section size and consent settings. Never opens, fills, uploads or submits the form. Untrusted employer text; not yet independently QAed."
+      "notes": "Page tool on job-boards.greenhouse.io: the questions one job application asks (labels, help text, required flag, field names and types, choices) plus education fields, self-identification section titles and sizes and consent settings. Never opens, fills, uploads or submits the form. Untrusted employer text; not yet independently QAed."
     },
     {
       "domain": "greenhouse.io",

@@ -8,7 +8,7 @@
       type: "object", additionalProperties: false, required: ["board"],
       properties: {
         board: { type: "string", pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$", description: "Board token from the employer's board URL, e.g. 'acme' for https://job-boards.greenhouse.io/acme." },
-        keyword: { type: "string", minLength: 1, maxLength: 100, description: "Free text as typed in the board's Search box; matches more than titles. A keyword made only of an HTML tag was ignored by the site in testing, which lists every job." },
+        keyword: { type: "string", minLength: 1, maxLength: 100, pattern: "\\S", description: "Free text as typed in the board's Search box (surrounding whitespace is ignored); matches more than titles. A keyword made only of an HTML tag was ignored by the site in testing, which lists every job." },
         department_ids: { type: "array", minItems: 1, maxItems: 10, uniqueItems: true, items: { type: "integer", minimum: 1, maximum: 9007199254740991 }, description: "Department ids from include_filters. Several ids combine as OR." },
         office_ids: { type: "array", minItems: 1, maxItems: 10, uniqueItems: true, items: { type: "integer", minimum: 1, maximum: 9007199254740991 }, description: "Office ids from include_filters. Several ids combine as OR." },
         page: { type: "integer", minimum: 1, maximum: 100, default: 1, description: "Results page, 50 jobs per page." },
@@ -86,7 +86,7 @@
           type: "object", additionalProperties: false, required: ["status", "error_kind", "error_message"],
           properties: {
             status: { const: "error" },
-            error_kind: { enum: ["invalid_input", "wrong_page", "board_not_found", "board_redirects", "rate_limited", "challenge", "site_changed", "site_error"] },
+            error_kind: { enum: ["invalid_input", "wrong_page", "board_not_found", "board_redirects", "rate_limited", "challenge", "site_changed", "site_error", "output_too_large"] },
             error_message: { type: "string", minLength: 1 },
             redirect_url: { type: "string", format: "uri", maxLength: 2000, description: "Only for board_redirects: the employer-controlled address the site redirects to. Not followed." }
           }
@@ -104,7 +104,7 @@
     let keyword = null;
     if (input.keyword !== undefined) {
       keyword = typeof input.keyword === "string" ? input.keyword.trim().replace(/\s+/g, " ") : "";
-      if (keyword.length < 1 || keyword.length > 100) return fail("invalid_input", "keyword must be a string of 1 to 100 characters.");
+      if (keyword.length < 1 || Array.from(keyword).length > 100) return fail("invalid_input", "keyword must be a string of 1 to 100 characters.");
     }
     const idList = (value, name) => {
       if (value === undefined) return { ids: [] };
@@ -120,7 +120,8 @@
     const includeFilters = input.include_filters === true;
 
     if (window.location.origin !== ORIGIN) return fail("wrong_page", "This tool runs on " + ORIGIN + ". Open a board page such as " + ORIGIN + "/" + input.board + " in this tab and call again.");
-    const route = Object.values(window.__remixManifest?.routes ?? {}).find(r => r.path === ":url_token" && r.hasLoader && typeof r.id === "string");
+    if (!window.__remixManifest) return fail("wrong_page", "This page has no Greenhouse board data: it may still be loading or be a not-found page. Open an existing board or job page on " + ORIGIN + " in this tab and call again.");
+    const route = Object.values(window.__remixManifest.routes ?? {}).find(r => r.path === ":url_token" && r.hasLoader && typeof r.id === "string");
     if (!route) return fail("site_changed", "The page no longer lists the board data route in its Remix manifest, so the board request cannot be built.");
 
     const query = new URLSearchParams();
@@ -132,7 +133,7 @@
 
     let res, body;
     try {
-      res = await fetch("/" + encodeURIComponent(input.board) + "?" + query.toString(), { credentials: "same-origin", signal: AbortSignal.timeout(25000) });
+      res = await fetch("/" + encodeURIComponent(input.board) + "?" + query.toString(), { credentials: "same-origin", signal: AbortSignal.timeout(40000) });
       body = await res.text();
     } catch (error) {
       return fail("site_error", "The request to job-boards.greenhouse.io failed before a response arrived (" + (error?.name || "error") + ").");
@@ -158,10 +159,11 @@
     }
 
     const warnings = [];
-    const str = (v, max) => (typeof v === "string" ? v.slice(0, max) : null);
+    const cut = (s, max) => (s.length <= max ? s : s.slice(0, s.charCodeAt(max - 1) >= 0xd800 && s.charCodeAt(max - 1) <= 0xdbff ? max - 1 : max));
+    const str = (v, max) => (typeof v === "string" ? cut(v, max) : null);
     const flatten = (list, parents = []) => (Array.isArray(list) ? list : []).flatMap(item => (
       Number.isSafeInteger(item?.id) && typeof item?.name === "string"
-        ? [{ id: item.id, name: item.name.slice(0, 200), path: parents }, ...flatten(item.children, [...parents, item.name.slice(0, 200)])]
+        ? [{ id: item.id, name: cut(item.name, 200), path: parents }, ...flatten(item.children, [...parents, cut(item.name, 200)])]
         : []
     ));
     let filters = null;
@@ -174,7 +176,7 @@
 
     const boardUrl = ORIGIN + "/" + encodeURIComponent(input.board);
     const base = {
-      board: input.board, board_name: data.board.name.slice(0, 200), url: boardUrl,
+      board: input.board, board_name: cut(data.board.name, 200), url: boardUrl,
       query: { keyword, department_ids: departments.ids, office_ids: offices.ids, page },
       total: posts.total, page: posts.page, total_pages: posts.total_pages
     };
@@ -197,15 +199,17 @@
         title: str(post.title, 300),
         location: str(post.location, 300),
         department: department && typeof department.name === "string"
-          ? { id: Number.isSafeInteger(department.id) ? department.id : null, name: department.name.slice(0, 200), path: Array.isArray(department.path) ? department.path.filter(n => typeof n === "string").map(n => n.slice(0, 200)) : [] }
+          ? { id: Number.isSafeInteger(department.id) ? department.id : null, name: cut(department.name, 200), path: Array.isArray(department.path) ? department.path.filter(n => typeof n === "string").map(n => cut(n, 200)) : [] }
           : null,
         published_at: str(post.published_at, 40),
         updated_at: str(post.updated_at, 40),
-        requisition_id: post.requisition_id == null ? null : String(post.requisition_id).slice(0, 100),
+        requisition_id: post.requisition_id == null ? null : cut(String(post.requisition_id), 100),
         is_featured: post.is_featured === true,
         url: boardUrl + "/jobs/" + jobId
       });
     }
-    return { status: "ok", ...base, jobs, filters, warnings, untrusted_content: true, observed_at: observedAt };
+    const result = { status: "ok", ...base, jobs, filters, warnings, untrusted_content: true, observed_at: observedAt };
+    if (JSON.stringify(result).length > 150000) return fail("output_too_large", "The result is larger than this tool returns (150000 characters); leave include_filters off or narrow the search.");
+    return result;
   }
 }]

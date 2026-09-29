@@ -67,12 +67,13 @@
     if (typeof input.job_id !== "string" || !/^[0-9]{1,20}$/.test(input.job_id)) return fail("invalid_input", "job_id must be the numeric job id, for example the number at the end of https://job-boards.greenhouse.io/acme/jobs/1234567.");
 
     if (window.location.origin !== ORIGIN) return fail("wrong_page", "This tool runs on " + ORIGIN + ". Open a board page such as " + ORIGIN + "/" + input.board + " in this tab and call again.");
-    const route = Object.values(window.__remixManifest?.routes ?? {}).find(r => r.path === ":url_token/jobs/:job_post_id" && r.hasLoader && typeof r.id === "string");
+    if (!window.__remixManifest) return fail("wrong_page", "This page has no Greenhouse board data: it may still be loading or be a not-found page. Open an existing board or job page on " + ORIGIN + " in this tab and call again.");
+    const route = Object.values(window.__remixManifest.routes ?? {}).find(r => r.path === ":url_token/jobs/:job_post_id" && r.hasLoader && typeof r.id === "string");
     if (!route) return fail("site_changed", "The page no longer lists the job data route in its Remix manifest, so the job request cannot be built.");
 
     let res, body;
     try {
-      res = await fetch("/" + encodeURIComponent(input.board) + "/jobs/" + input.job_id + "?_data=" + encodeURIComponent(route.id), { credentials: "same-origin", signal: AbortSignal.timeout(25000) });
+      res = await fetch("/" + encodeURIComponent(input.board) + "/jobs/" + input.job_id + "?_data=" + encodeURIComponent(route.id), { credentials: "same-origin", signal: AbortSignal.timeout(40000) });
       body = await res.text();
     } catch (error) {
       return fail("site_error", "The request to job-boards.greenhouse.io failed before a response arrived (" + (error?.name || "error") + ").");
@@ -92,44 +93,85 @@
     const post = data?.jobPost;
     if (!post || typeof post !== "object" || typeof post.title !== "string") return fail("site_changed", "The job response is not the JSON shape this tool was built against (jobPost.title).");
 
-    const str = (v, max) => (typeof v === "string" ? v.slice(0, max) : null);
-    const NAMED = { amp: "&", lt: "<", gt: ">", quot: "\"", apos: "'", nbsp: " ", lsquo: "\u2018", rsquo: "\u2019", ldquo: "\u201c", rdquo: "\u201d", ndash: "\u2013", mdash: "\u2014", hellip: "\u2026", bull: "\u2022", middot: "\u00b7", copy: "\u00a9", reg: "\u00ae", trade: "\u2122" };
-    const toText = html => (typeof html !== "string" ? "" : html.slice(0, 200000)
-      .replace(/<(script|style)\b[^>]*>[\s\S]*?<\/\1\s*>/gi, "")
-      .replace(/\s+/g, " ")
-      .replace(/<br\s*\/?>/gi, "\n")
-      .replace(/<li\b[^>]*>/gi, "\n- ")
-      .replace(/<\/p>\s*<\/li>/gi, "</li>")
-      .replace(/<\/(p|div|h[1-6]|ul|ol|table|tr|blockquote)\s*>/gi, "\n\n")
-      .replace(/<[^>]*>/g, "")
-      .replace(/&(#x[0-9a-f]+|#[0-9]+|[a-z]+);/gi, (match, entity) => {
-        if (entity[0] === "#") {
-          const code = entity[1].toLowerCase() === "x" ? parseInt(entity.slice(2), 16) : parseInt(entity.slice(1), 10);
-          return code > 0 && code <= 0x10ffff && !(code >= 0xd800 && code <= 0xdfff) ? String.fromCodePoint(code) : "\ufffd";
+    const cut = (s, max) => (s.length <= max ? s : s.slice(0, s.charCodeAt(max - 1) >= 0xd800 && s.charCodeAt(max - 1) <= 0xdbff ? max - 1 : max));
+    const str = (v, max) => (typeof v === "string" ? cut(v, max) : null);
+    const NAMED = { amp: "&", lt: "<", gt: ">", quot: "\"", apos: "'", ensp: "\u2002", emsp: "\u2003", thinsp: "\u2009", zwnj: "\u200c", zwj: "\u200d", lrm: "\u200e", rlm: "\u200f", ndash: "\u2013", mdash: "\u2014", lsquo: "\u2018", rsquo: "\u2019", sbquo: "\u201a", ldquo: "\u201c", rdquo: "\u201d", bdquo: "\u201e", dagger: "\u2020", Dagger: "\u2021", bull: "\u2022", hellip: "\u2026", permil: "\u2030", lsaquo: "\u2039", rsaquo: "\u203a", euro: "\u20ac", trade: "\u2122", larr: "\u2190", uarr: "\u2191", rarr: "\u2192", darr: "\u2193", harr: "\u2194", OElig: "\u0152", oelig: "\u0153", Scaron: "\u0160", scaron: "\u0161", Yuml: "\u0178" };
+    const LATIN1 = "nbsp iexcl cent pound curren yen brvbar sect uml copy ordf laquo not shy reg macr deg plusmn sup2 sup3 acute micro para middot cedil sup1 ordm raquo frac14 frac12 frac34 iquest Agrave Aacute Acirc Atilde Auml Aring AElig Ccedil Egrave Eacute Ecirc Euml Igrave Iacute Icirc Iuml ETH Ntilde Ograve Oacute Ocirc Otilde Ouml times Oslash Ugrave Uacute Ucirc Uuml Yacute THORN szlig agrave aacute acirc atilde auml aring aelig ccedil egrave eacute ecirc euml igrave iacute icirc iuml eth ntilde ograve oacute ocirc otilde ouml divide oslash ugrave uacute ucirc uuml yacute thorn yuml".split(" ");
+    const decode = s => s.replace(/&(#[xX][0-9a-fA-F]{1,8}|#[0-9]{1,8}|[A-Za-z][A-Za-z0-9]{0,31});/g, (match, entity) => {
+      if (entity[0] === "#") {
+        const code = entity[1] === "x" || entity[1] === "X" ? parseInt(entity.slice(2), 16) : parseInt(entity.slice(1), 10);
+        return code > 0 && code <= 0x10ffff && !(code >= 0xd800 && code <= 0xdfff) ? String.fromCodePoint(code) : "\ufffd";
+      }
+      if (Object.hasOwn(NAMED, entity)) return NAMED[entity];
+      const latin = LATIN1.indexOf(entity);
+      return latin >= 0 ? String.fromCharCode(160 + latin) : match;
+    });
+    const toText = (html, limit) => {
+      if (typeof html !== "string") return "";
+      const src = html.slice(0, limit);
+      const lower = src.replace(/[A-Z]/g, c => c.toLowerCase());
+      let out = "", pendingBreaks = 0, pendingSpace = false, pendingBullet = false, openItems = 0, i = 0;
+      const wants = level => { if (!pendingBullet) pendingBreaks = Math.max(pendingBreaks, level); };
+      const text = raw => {
+        const chunk = decode(raw).replace(/\s+/g, " ");
+        if (!chunk.trim()) { pendingSpace = true; return; }
+        if (chunk[0] === " ") pendingSpace = true;
+        if (out) out += pendingBreaks ? "\n".repeat(pendingBreaks) : pendingSpace ? " " : "";
+        if (pendingBullet) { out += "- "; pendingBullet = false; }
+        out += chunk.trim();
+        pendingBreaks = 0;
+        pendingSpace = chunk[chunk.length - 1] === " ";
+      };
+      while (i < src.length) {
+        const lt = src.indexOf("<", i);
+        if (lt < 0) { text(src.slice(i)); break; }
+        if (lt > i) text(src.slice(i, lt));
+        if (src.startsWith("<!--", lt)) {
+          const end = src.indexOf("-->", lt + 4);
+          if (end < 0) break;
+          i = end + 3;
+          continue;
         }
-        return Object.hasOwn(NAMED, entity) ? NAMED[entity] : match;
-      })
-      .replace(/[ \t\u00a0]+/g, " ")
-      .replace(/ ?\n ?/g, "\n")
-      .replace(/\n{3,}/g, "\n\n")
-      .trim());
-    const sections = [post.introduction, post.content, post.conclusion].map(toText).filter(Boolean);
-    let description = sections.join("\n\n");
-    const truncated = description.length > 30000;
-    if (truncated) description = description.slice(0, 30000);
+        if (!/[A-Za-z/!?]/.test(src[lt + 1] ?? "")) { text("<"); i = lt + 1; continue; }
+        const gt = src.indexOf(">", lt + 1);
+        if (gt < 0) { text(src.slice(lt)); break; }
+        const tag = /^(\/?)([A-Za-z][A-Za-z0-9]*)/.exec(src.slice(lt + 1, gt));
+        i = gt + 1;
+        if (!tag) continue;
+        const name = tag[2].toLowerCase(), closing = tag[1] === "/";
+        if (!closing && (name === "script" || name === "style")) {
+          const end = lower.indexOf("</" + name, i);
+          const close = end < 0 ? -1 : src.indexOf(">", end);
+          if (close < 0) break;
+          i = close + 1;
+        } else if (name === "br") {
+          if (!pendingBullet) pendingBreaks = Math.min(pendingBreaks + 1, 2);
+        } else if (name === "li") {
+          if (closing) { openItems = Math.max(0, openItems - 1); pendingBullet = false; wants(1); }
+          else { wants(1); openItems++; pendingBullet = true; }
+        } else if (/^(p|div|h[1-6]|ul|ol|table|tr|blockquote)$/.test(name)) {
+          wants(openItems > 0 ? 1 : 2);
+        } else if (closing && (name === "td" || name === "th")) {
+          pendingSpace = true;
+        }
+      }
+      return out;
+    };
+    const sections = [post.introduction, post.content, post.conclusion].map(html => toText(html, 200000)).filter(Boolean);
+    const full = sections.join("\n\n");
 
     const payRanges = (Array.isArray(post.pay_ranges) ? post.pay_ranges : []).slice(0, 10).map(range => ({
       title: str(range?.title, 200),
       min: str(range?.min, 100),
       max: str(range?.max, 100),
       currency: str(range?.currency_type, 10),
-      note: toText(range?.description).slice(0, 1000) || null
+      note: cut(toText(range?.description, 50000), 1000) || null
     }));
     return {
       status: "ok", board: input.board, job_id: input.job_id, url: ORIGIN + "/" + encodeURIComponent(input.board) + "/jobs/" + input.job_id,
-      title: post.title.slice(0, 300), company_name: str(post.company_name, 200), location: str(post.job_post_location, 300),
+      title: cut(post.title, 300), company_name: str(post.company_name, 200), location: str(post.job_post_location, 300),
       published_at: str(post.published_at, 40), application_deadline: str(post.application_deadline, 100),
-      pay_ranges: payRanges, description, description_truncated: truncated, untrusted_content: true, observed_at: new Date().toISOString()
+      pay_ranges: payRanges, description: cut(full, 30000), description_truncated: full.length > 30000, untrusted_content: true, observed_at: new Date().toISOString()
     };
   }
 }]
