@@ -73,7 +73,7 @@ const page = (payload, body = "", head = "") => `<html><head><title>x</title>${h
 // --- registry and contract ----------------------------------------------------------------------------
 
 test("registry entries match the tool files", () => {
-  const entries = registry.tools.filter(t => t.domain === "github.com");
+  const entries = registry.tools.filter(t => t.domain === "github.com" && NAMES.includes(t.tool));
   assert.deepEqual(entries.map(t => t.tool), [...NAMES].sort());
   for (const entry of entries) {
     const [definition] = runInNewContext(sources[entry.tool]);
@@ -101,7 +101,7 @@ test("every tool refuses a non-GitHub top document and malformed input before an
     get_issue: { owner: "a", repo: "r", number: 1 }, get_pull_request: { owner: "a", repo: "r", number: 1 }
   };
   for (const name of NAMES) {
-    for (const input of bad[name]) {
+    for (const input of [null, [], "text", true, 3, ...bad[name]]) {
       const { output, calls } = await run(name, input, { route: () => assert.fail("no request expected") });
       assert.equal(output.error_kind, "invalid_input", `${name} ${JSON.stringify(input)}`);
       assert.equal(calls.length, 0);

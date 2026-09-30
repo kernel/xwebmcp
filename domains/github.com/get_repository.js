@@ -85,6 +85,7 @@
   },
   execute: async (input) => {
     const fail = (kind, message) => ({ status: "error", error_kind: kind, error_message: message });
+    if (!input || typeof input !== "object" || Array.isArray(input)) return fail("invalid_input", "Input must be an object. Nothing was requested.");
     const unknown = Object.keys(input).find(key => !["owner", "repo", "readme_max_chars"].includes(key));
     if (unknown) return fail("invalid_input", "Unknown input field " + unknown + ". Nothing was requested.");
     const owner = input.owner;

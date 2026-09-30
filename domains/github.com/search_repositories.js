@@ -62,6 +62,7 @@
   },
   execute: async (input) => {
     const fail = (kind, message) => ({ status: "error", error_kind: kind, error_message: message });
+    if (!input || typeof input !== "object" || Array.isArray(input)) return fail("invalid_input", "Input must be an object. Nothing was requested.");
     const unknown = Object.keys(input).find(key => !["query", "sort", "order", "page"].includes(key));
     if (unknown) return fail("invalid_input", "Unknown input field " + unknown + ". Nothing was requested.");
     const SORTS = { best_match: null, stars: "stars", forks: "forks", updated: "updated", help_wanted_issues: "help-wanted-issues" };

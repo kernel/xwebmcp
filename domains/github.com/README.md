@@ -1,29 +1,30 @@
 # github.com
 
-Tools for GitHub (https://github.com): repository and issue/pull request search, and read-only detail pages for one repository, issue or pull request. Everything here only reads; no tool signs in, comments, stars, forks, creates or changes anything.
+Tools for GitHub (https://github.com): repository/issue/PR reads, exact-content preparation with manual handoff, and guarded public repository starring. No tool signs in, creates an issue/PR, posts a comment, forks, merges or releases.
 
 | tool | file | status | notes |
 |------|------|--------|-------|
-| get_issue | [get_issue.js](get_issue.js) | qa_passed | Issue title, state and close reason, labels, assignees, milestone, linked pull requests, body and the first timeline items GitHub puts in the page (about 15). Signed-out tabs only (see Site quirks); private repositories not tested. |
-| get_pull_request | [get_pull_request.js](get_pull_request.js) | qa_passed | Pull request state (open, draft, closed, merged), branches, head and merge commits, times, labels and the description as text. No comments, review threads, files, checks or lock state. Public repositories signed out; private repositories not tested. |
-| get_repository | [get_repository.js](get_repository.js) | qa_passed | Repository overview from the repository page: description, topics, star, fork and watcher counts, license, default branch, latest commit, counts, root entries and README text; `empty_repository` for a repository with no commits. Public repositories signed out; private repositories not tested. |
-| search_issues | [search_issues.js](search_issues.js) | qa_passed | One page of 10 issue or pull request search results with GitHub qualifiers, sorting and paging. |
-| search_repositories | [search_repositories.js](search_repositories.js) | qa_passed | One page of 10 repository search results with GitHub qualifiers, sorting and paging. |
+| get_issue | [get_issue.js](get_issue.js) | draft | Issue title, state and close reason, labels, assignees, milestone, linked pull requests, body and the first timeline items GitHub puts in the page (about 15). Signed-out tabs only (see Site quirks); private repositories not tested. |
+| get_pull_request | [get_pull_request.js](get_pull_request.js) | draft | Pull request state (open, draft, closed, merged), branches, head and merge commits, times, labels and the description as text. No comments, review threads, files, checks or lock state. Public repositories signed out; private repositories not tested. |
+| get_repository | [get_repository.js](get_repository.js) | draft | Repository overview from the repository page: description, topics, star, fork and watcher counts, license, default branch, latest commit, counts, root entries and README text; `empty_repository` for a repository with no commits. Public repositories signed out; private repositories not tested. |
+| get_star_status | [get_star_status.js](get_star_status.js) | draft | Fresh public repository star state for an explicitly expected signed-in account; no account identifier output. |
+| prepare_comment | [prepare_comment.js](prepare_comment.js) | draft | Exact Markdown content and manual handoff for the public issue/PR already open; no fetch, editor fill or send. |
+| prepare_issue | [prepare_issue.js](prepare_issue.js) | draft | Public repository and Issues-link check; exact title/body and manual new-issue URL, not a persisted draft. |
+| prepare_pull_request | [prepare_pull_request.js](prepare_pull_request.js) | draft | Public repository check; exact title/body/base/head and comparison URL. Branch existence and comparison are not verified. |
+| search_issues | [search_issues.js](search_issues.js) | draft | One page of 10 issue or pull request search results with GitHub qualifiers, sorting and paging. |
+| search_repositories | [search_repositories.js](search_repositories.js) | draft | One page of 10 repository search results with GitHub qualifiers, sorting and paging. |
+| set_star | [set_star.js](set_star.js) | draft | Reversible public star/unstar for the expected account/state, one UI click and server verification. Live mutation is untested. |
 
-Register all five files together as one array with `forceOverwriteNamespace: true`;
+Register all ten files together as one array with `forceOverwriteNamespace: true`;
 registering one file that way removes the others.
 
 ## Scope and loading
 
-The tools search GitHub and read repository, issue and pull request pages. None of them opens
-a sign-in prompt, changes account state, posts anything or navigates the tab. They use only the
-tab's own session, so a repository the signed-in tab can see is read the same way as a public
-one (except `get_issue`, which runs only when the page says the tab is signed out), but that was not tested. Account-specific state (whether you starred or watch a repository,
-your permissions on an item) is deliberately not returned.
+All tools use the tab's own authorized session and stay in the registering document. Only `set_star` changes account state (publicly visible starring); the preparation tools do not persist drafts or fill editors. New tools reject private repositories. The existing read tools were tested only on public repositories; `get_issue` runs only when the page says the tab is signed out. Star state is returned only by `get_star_status` and `set_star`, never with a session account identifier.
 
 ```javascript
 const fs = await import("node:fs");
-const files = ["get_issue", "get_pull_request", "get_repository", "search_issues", "search_repositories"];
+const files = ["get_issue", "get_pull_request", "get_repository", "get_star_status", "prepare_comment", "prepare_issue", "prepare_pull_request", "search_issues", "search_repositories", "set_star"];
 const tools = files.flatMap(name => eval(fs.readFileSync(`domains/github.com/${name}.js`, "utf8")));
 await webmcp.addCustomTools({ namespace: "github.com", tools, forceOverwriteNamespace: true });
 const ref = async name => (await webmcp.listTools()).find(t => t.source.custom?.namespace === "github.com" && t.tool.name === name).tool_ref;
@@ -35,13 +36,11 @@ await webmcp.invokeTool(await ref("get_pull_request"), { owner: "<owner>", repo:
 ```
 
 The tools are listed while the tab is on any `https://github.com/*` page (see URL patterns);
-they read the site with relative same-origin requests, so the starting page does not matter.
+read/search tools and repository preparations use same-origin reads from unrelated starting pages. `prepare_comment` requires the exact already-open conversation, and `set_star` requires the exact repository overview; both return `wrong_page` without navigating otherwise.
 Live timings on 2026-09-29: about 0.1 to 1.2 s for searches and `get_repository`, 1 to 2 s for `get_issue` and `get_pull_request`, up to about 6 s for a pull request page with a
 very large conversation, and one search answered HTTP 502 after about 9 s; `timeoutSec: 60` is plenty.
 
-How each tool reaches the site. All five are `kind: "page"`: none navigates, and each result is
-computed and returned from the registering document before anything else happens, so there is
-no post-navigation result that would justify `cdp`.
+All ten tools are `kind: "page"`. Reads and preparations remain in the current document. `set_star` presses the observed repository React button without form submission/navigation, then reads a fresh server page for the postcondition. No post-navigation rich output justifies CDP; live mutation/navigation behavior remains untested.
 
 | tool | kind | method |
 |------|------|--------|
@@ -51,14 +50,26 @@ no post-navigation result that would justify `cdp`.
 | get_issue | page | refuses (`signed_in_side_effect`) unless the document has `meta[name="user-login"]` present with empty content, i.e. a signed-out GitHub page; otherwise `GET /<owner>/<repo>/issues/<n>` as HTML, then the embedded `IssueViewerViewQuery` result: the issue, its labels, assignees, linked pull requests and its first timeline items. |
 | get_pull_request | page | `GET /<owner>/<repo>/pull/<n>` as HTML, then the embedded `pullRequestsLayoutRoute.pullRequest` record (state, branches, SHAs, times), and from the server-rendered conversation the description (first comment container that is not a review thread) and the labels sidebar. The page data's `locked` flag reads false even for locked pull requests, so no lock state is returned. |
 
-Every request goes only to `https://github.com` with the page's own cookies. Each call sends one request, which the browser follows through any redirect (checked with a CDP network trace), except
+The five original read tools request `https://github.com` with the page's own cookies. Each sends one request, which the browser follows through any redirect (checked with a CDP network trace), except
 `get_issue`, whose page response makes Chrome send a second, unrequested one (see Site quirks). The tools send no custom headers except `Accept: application/json` on searches, no tokens and no body; the embedded
 data contains CSRF and upload tokens and account fields, and none of it is copied into results
 (fields are copied one by one from an allowlist).
 
+## Preparation and star safety
+
+- `prepare_issue`: one public repository GET, validates canonical identity and the observed Issues link. Returns exact title (at most 256 UTF-16 code units), Markdown body (at most 10000), and `/issues/new`. Does not load the issue editor or apply templates. A human must complete any required issue-form fields, review the account and exact target/content, then submit in GitHub.
+- `prepare_pull_request`: one public repository GET, returns exact title/body, distinct validated same-repository branch names (at most 200 each), and an encoded `/compare/base...head?expand=1` URL. `comparison_verified: false` is explicit: branches, diff, existing PRs, creation permission and mergeability require manual review. No fork-head syntax, branch creation, persisted draft or automatic PR creation.
+- `prepare_comment`: reads only the already-open exact public conversation's identity metadata. Fetching an issue can mark an unread notification read, so this tool neither opens nor fetches a thread. The human must decide whether to open it. A prepared result does not prove comments are unlocked or posting is permitted. No editor fill or send.
+- All preparations return `submission_attempted: false` and `human_review_required: true`. They do not launch handoff URLs or execute automatically. A model's `confirmed: true` is rejected as unknown input, not treated as consent. The runtime spec promises no trusted human approval path, so executable creation/comments/merges/releases are deliberately absent.
+- `get_star_status`: fresh public repository GET and positive session-account match to `expected_account`. Returns only `starred`/`can_star`, canonical target and status; never the actual login, viewer payload or tokens.
+- `set_star`: requires the exact public repository overview, `expected_account`, last observed `expected_starred`, and desired boolean `starred`. Checks current document and fresh server account/public identity, expected state, permission and one visible/enabled nonloading button with exact `Star owner/repo` or `Unstar owner/repo` label. It clicks once, waits at most 3 seconds for the UI, then makes one server verification read. No request/toggle retries. Matching desired state is a no-op; stale state is `state_changed`; concurrent same-document calls are `busy`.
+- Stars are publicly visible account activity, not private bookmarks. The tool never edits lists directly, changes watch preferences or accepts GitHub's unstar/list-removal confirmation. Static inspection of the delivered star handler showed an HTTP 409 native confirmation path; if GitHub requires it, the tool leaves the prompt unaccepted and the server state unchanged/unconfirmed. No synthetic `confirm` request is sent. Live mutation QA is not authorized; a mocked click is not evidence that GitHub accepted a real star. No mutation success will be called `verified` without separately approved test-account evidence.
+- Star cancellation before clicking changes nothing; after clicking, errors/cancellation return `outcome_unknown`, `mutation_attempted: true`. Do not retry or automatically compensate: read `get_star_status` and obtain a new user decision. A document navigation can destroy the page invocation; the runtime's unknown outcome must be handled the same way. A transient DOM lock is removed on settled calls, not persisted to cookies/storage.
+- The star UI/payload (`button[data-testid="star-button"]`, `sidebarAbout.star.viewerHasStarred`, `canStar`) was observed without clicking it. Publicly delivered code confirmed exact `Star owner/repo` / `Unstar owner/repo` labels and a page-local POST handler (including an optional unstar confirmation), not navigation. No guessed mutation endpoint or exposed CSRF token is used. Render-time account metadata can become stale; fresh preflight and postcondition account checks reduce but cannot eliminate an external account switch between a read and a click. Use one stable account/tab, serially.
+
 ## URL patterns
 
-All five tools use `["https://github.com/*"]` instead of the default `["https://github.com/*",
+All ten tools use `["https://github.com/*"]` instead of the default `["https://github.com/*",
 "https://*.github.com/*"]`. github.com is the code-hosting product; the other hosts under the
 registrable domain are unrelated products and are not covered here: `docs.github.com` (documentation
 with its own search), `gist.github.com` (gists), `api.github.com` (the REST API), `education.`, `support.`,
@@ -70,7 +81,7 @@ cannot navigate the tab to fix that. With the narrowed pattern the tools are sim
 
 ## Output contract
 
-Every tool returns `status: "ok"` (searches may return `no_results`) or `{ status: "error",
+Read/star tools return `status: "ok"`, preparations return `prepared` (never submitted), and searches may return `no_results`; failures return `{ status: "error",
 error_kind, error_message }`. Inputs are checked before any request, including unknown fields.
 Shared `error_kind` values: `invalid_input`, `wrong_page` (the top document is not on
 `https://github.com`), `throttled` (HTTP 429), `blocked` (HTTP 403), `login_required` (GitHub redirected
@@ -129,7 +140,7 @@ empty result list; query problems GitHub reports come back in `warnings`.
   paths redirect away from a repository page and are reported as `not_found`. `/issues/<n>` for a pull request redirects to `/pull/<n>` and the reverse.
 - **Content Security Policy.** github.com's `script-src` has no `unsafe-eval`, so `new Function` inside the page is blocked. The Kernel
   runtime nevertheless registered and invoked these page tools on 2026-09-29. The extension path for CSP-blocked pages is described
-  in `spec/cdp-tools.md` §9 (item 12) and was not exercised for this domain.
+  in `spec/cdp-tools.md` §9 (item 12); the previous independent review exercised the extension.
 - **Internal payloads.** The embedded data and `Accept: application/json` search responses are GitHub front-end internals and
   may change without notice. The tools check the fields they need and return `site_changed` instead of partial results.
   Several other routes (issue and pull request lists, releases, tags, pull request files) answer HTTP 406 to `Accept: application/json` and
@@ -139,8 +150,7 @@ empty result list; query problems GitHub reports come back in `warnings`.
 
 GitHub also offers a REST/GraphQL API, the `gh` CLI and an official GitHub MCP server. Those need a token or a local install
 and cover far more (writes, code search, files, Actions). These tools exist for browser agents that stay in a tab, need no token,
-and want a page-consistent read of what a person would see. Code search, dashboards, notifications, file contents and every write
-are out of scope here and are not implemented.
+and want page-local reads, content handoff and repository starring. These are not token-based integration wrappers. Code search, dashboards, notifications, file contents and executable issue/PR/comment creation, merges and releases are not implemented.
 
 ## Native WebMCP tools
 
@@ -150,10 +160,9 @@ tools and `navigator.modelContext` is undefined, so the custom namespace conflic
 
 ## Status and known limitations
 
-All five tools are `qa_passed`: the independent review (three rounds) signed off the final source with no open blocker or major defect. Nothing was tested signed in (see below).
+All ten tools are `draft` pending fresh independent QA: the old read source now also rejects null, arrays and primitive inputs explicitly before requests. The historical sign-off below predates that source change. Live mutation of stars is not authorized in development and is fixture-only. Creation/comments/merges/releases remain unshipped because the runtime does not provide trusted human approval enforcement.
 
-- **Private repositories and organization SSO were not tested.** The tools read whatever the tab's session may see; nothing here
-  distinguishes a private repository from a public one beyond the `visibility` field.
+- **Private repositories and organization SSO were not tested.** The original read tools may see what the authorized tab can access, but private targets were not exercised. New preparations/star tools reject non-public targets.
 - **Issue timelines and pull request conversations are partial.** `get_issue` returns only the items GitHub puts in the page.
   `get_pull_request` returns no comments, review threads, changed files, check results or lock state; their pages were not parsed, and the lock flag in the page data is wrong.
 - **`get_issue` is signed-out only.** See the preload note above; this is a deliberate refusal, not a bug, and a real-Chrome user who is signed in to GitHub
@@ -164,7 +173,7 @@ All five tools are `qa_passed`: the independent review (three rounds) signed off
   are kept as `[x]` and `[ ]`. A README that GitHub does not inline into the page (very large ones) gives `readme: null`, the same as no README.
 - **Labels on pull requests** come from the page's labels sidebar (verified on pull requests with and without labels); if the sidebar is
   missing `labels` is null.
-- **Repository facts not read:** languages, contributors, latest release, and the account-specific star/watch/fork state.
+- **Repository facts not read by `get_repository`:** languages, contributors, latest release, and the account-specific star/watch/fork state. Use `get_star_status` for stars.
 - **Empty repositories are read for a signed-out visitor only.** `empty_repository` relies on the text "This repository is empty"; what a signed-in owner's view of an empty repository shows was not
   tested and may be reported as `site_changed`.
 - **Repository flags.** `is_archived`, `is_fork`, `is_mirror` and `is_template` are read from the repository page's sidebar data; the independent review exercised
@@ -213,6 +222,12 @@ name collisions; live success from several unrelated starting pages; malformed a
 data leakage against the raw embedded payloads (none in about 230 outputs); navigation lifetime; and cross-runtime behavior on the Kernel runtime and a local Chromium extension. Untested by the review, as by the author:
 anything signed in (including whether the issue-page preload marks a notification read), private repositories and organizations, the private branch of `empty_repository`, live `warnings` passthrough, and
 pull request `labels: null`.
+
+## Broader-tool QA (2026-09-30)
+
+Author: full ten-tool namespace atomically registered twice on a fresh signed-out Kernel browser. No native tools listed. All original read tools still returned success. From `/about`, `prepare_issue` and `prepare_pull_request` returned `prepared`; `prepare_comment` refused until the exact public PR conversation was open, then returned `prepared`, never requested a thread or sent content. `get_star_status` returned `login_required` signed out; the already authorized session returned `ok` for the matching account and `wrong_account` for a fabricated mismatch, without returning the login. `set_star` returned `login_required`, `mutation_attempted: false` signed out and rejected a fake `confirmed` field. No live mutation was performed.
+
+`tests/github-actions.test.mjs` exercises serialized execute functions with fabricated public/private identities, content, repository payloads and a mock button. It covers preparation success/failure, exact-target guards, malformed inputs before interaction, cancellation, missing/wrong session, disabled or ambiguous button, stale state, no-op, mock star/unstar, server verification failure and unknown outcomes without retries. Mock mutation is not live success evidence. Independent broader-tool QA is pending; the previous review above is historical evidence, not final-source sign-off.
 
 ## Sessions
 
