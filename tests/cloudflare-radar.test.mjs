@@ -340,6 +340,16 @@ test("get_domain_info: default sections read details, DNS and post-quantum suppo
   assert.equal(result.untrusted_content, true);
 });
 
+test("get_domain_info: normalized empty categories and ASN cannot produce an empty details success", async () => {
+  for (const [categories, asn] of [[null, {}], [[], null], [[{}], {}], [[{ label: [""] }], { asn: 0 }], [null, { asn: 4294967296 }]]) {
+    const h = harness("get_domain_info", { routes: { DomainDetailsPanel: () => ({ status: 200, body: { categories, asn, dnssec: false } }) } });
+    assert.equal((await h.run({ domain: "host.example.net", sections: ["details"] })).status, "no_data");
+    assert.deepEqual(chartsCalled(h), ["DomainDetailsPanel"]);
+  }
+  const h = harness("get_domain_info", { routes: { DomainDetailsPanel: () => ({ status: 200, body: details({ categories: null }) }) } });
+  assert.equal((await h.run({ domain: "host.example.net", sections: ["details"] })).details.asn.asn, 64500);
+});
+
 test("get_domain_info: the Top 100 position needs an exact name match", async () => {
   for (const [domain, rank] of [["host.example.net", 2], ["www.host.example.net", null], ["other.example.net", null]]) {
     const result = await harness("get_domain_info").run({ domain, sections: ["details"] });

@@ -147,14 +147,15 @@
         if (r.unavailable) return r;
         const b = r.body;
         if (!isObject(b) || !(Array.isArray(b.categories) || b.categories === null) || !(isObject(b.asn) || b.asn === null)) return shape("domain details");
-        if (b.categories === null && b.asn === null) return bad("no_data", "Radar has no category or ASN data for this host; it may not exist or resolve.");
+        const categories = strings((b.categories ?? []).map(c => (Array.isArray(c?.label) && typeof c.label[0] === "string" ? c.label[0] : null)));
+        const asn = b.asn && Number.isInteger(b.asn.asn) && b.asn.asn >= 1 && b.asn.asn <= 4294967295 ? { asn: b.asn.asn, name: str(b.asn.name), country_code: str(b.asn.country) } : null;
+        if (!categories.length && !asn) return bad("no_data", "Radar has no category or ASN data for this host; it may not exist or resolve.");
         let rank = null;
         const top = await read("/charts/TopDomainsTable/fetch?");
         if (top.body && Array.isArray(top.body.domains)) rank = top.body.domains.find(d => d && d.domain === domain && Number.isInteger(d.rank) && d.rank >= 1 && d.rank <= 100)?.rank ?? null;
         else warnings.push("Radar's Top 100 table could not be read, so top_100_rank is null.");
         return { value: {
-          categories: strings((b.categories ?? []).map(c => (Array.isArray(c?.label) && typeof c.label[0] === "string" ? c.label[0] : null))),
-          asn: b.asn && Number.isInteger(b.asn.asn) && b.asn.asn >= 1 && b.asn.asn <= 4294967295 ? { asn: b.asn.asn, name: str(b.asn.name), country_code: str(b.asn.country) } : null,
+          categories, asn,
           dnssec: bool(b.dnssec), top_100_rank: rank
         } };
       },
