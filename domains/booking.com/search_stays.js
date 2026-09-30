@@ -203,7 +203,7 @@
       };
       const currencyCodes = new Set(Intl.supportedValuesOf("currency"));
       const currencyMarkers = [[/\bUS\$/, ["USD"]], [/\b(?:CA\$|C\$)/, ["CAD"]], [/\b(?:AU\$|A\$)/, ["AUD"]], [/\bNZ\$/, ["NZD"]], [/\bHK\$/, ["HKD"]], [/\b(?:SG\$|S\$)/, ["SGD"]], [/\bNT\$/, ["TWD"]], [/€/, ["EUR"]], [/£/, ["GBP"]], [/¥/, ["JPY", "CNY"]], [/₹/, ["INR"]]];
-      const differentCurrency = s => (s.match(/\b[A-Z]{3}\b/g) || []).some(c => currencyCodes.has(c) && c !== query.currency) || currencyMarkers.some(([pattern, currencies]) => pattern.test(s) && !currencies.includes(query.currency));
+      const differentCurrency = s => (s.match(/(?<![A-Z])[A-Z]{3}(?![A-Z])/g) || []).some(c => currencyCodes.has(c) && c !== query.currency) || currencyMarkers.some(([pattern, currencies]) => pattern.test(s) && !currencies.includes(query.currency));
       const cfg = (html, re) => (re.exec(html) || [])[1] ?? null;
       const observedAt = new Date().toISOString();
 
@@ -295,7 +295,7 @@
           if (rate) {
             const spans = [...rate.querySelectorAll("[data-testid=\"price-and-discounted-price\"]")].map(text);
             const rateText = rawText(rate);
-            const struck = /Original price\s+(\S+?)\.?\s+Current price/i.exec(rateText);
+            const struck = /Original price\s+(.+?)\.?\s+Current price/i.exec(rateText);
             const totalText = spans.length ? spans[spans.length - 1] : "";
             if ([...spans, struck ? struck[1] : ""].some(differentCurrency)) return fail("currency_mismatch", "A result price explicitly names a different currency; no price was converted or setting changed.");
             if (totalText) price = { total: amount(totalText), original_total: struck ? amount(struck[1]) : null, per_night_average: spans.length > 1 ? amount(spans[0]) : null, total_text: totalText, additional_charges_may_apply: /additional charges may apply/i.test(rateText), members_only: !!pickTid(rate, "genius-rate-sharing-sign-in-prompt") || /members-only price/i.test(rateText) };

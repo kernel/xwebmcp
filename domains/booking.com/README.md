@@ -140,11 +140,11 @@ node --test tests/booking-stays.test.mjs
 
 ### Current increment verification (2026-09-30)
 
-- Fixtures: 127 Booking.com tests pass, including exact preparation success, malformed inputs before any page access, changed price/dates/currency/property/sign-in state, missing capacity/policies/fees, existing selections, duplicate/missing rates, member previews, cancellation, and document/selection equality. Real mutation success is not inferred from fixtures.
-- Full suite: 1704 tests pass on the current branch; registry validation reports 82 valid tools. Structured read outputs have a 200,000-byte cap. Warnings may count rates scanned beyond the returned cap.
+- Fixtures: 128 Booking.com tests pass, including exact preparation success, malformed inputs before any page access, changed price/dates/currency/property/sign-in state, missing capacity/policies/fees, existing selections, duplicate/missing rates, member previews, cancellation, and document/selection equality. Real mutation success is not inferred from fixtures.
+- Full suite: 1705 tests pass on the current branch; registry validation reports 82 valid tools. Structured read outputs have a 200,000-byte cap. Warnings may count rates scanned beyond the returned cap.
 - Author Kernel check: all three files registered atomically; no native tools found before registration. Initial `get_property` invocation returned `outcome_unknown`, followed by a page-evaluation timeout. No automatic retry or booking action was made; the scratch browser was deleted.
 - Independent round 1 reviewed `7ce8096`: Kernel search and property reads succeeded from the home page; preparation returned `wrong_page` there but `outcome_unknown` on its property page. The local extension returned live property data with matching sorted ranks and a `prepared` handoff with zero requests and unchanged HTML/selections; local search redirected home. These results do not establish cross-runtime parity.
-- Three isolated-fixture defects were found (contradictory row currency, inherited disabled control, conflicting sign-in markers), reproduced in detached Chromium and jsdom without changing live controls. They are fixed in the current source and pending recheck. No independent sign-off is claimed for changed source.
+- Three isolated-fixture defects were found (contradictory row currency, inherited disabled control, conflicting sign-in markers), reproduced in detached Chromium and jsdom without changing live controls. Their original reproductions passed recheck on `6de3e25`. That recheck found two additional fixture-only currency gaps (codes adjacent to digits, and spaced search-card original prices); both are fixed and pending final recheck. No independent sign-off is claimed for changed source.
 
 ## Sessions
 

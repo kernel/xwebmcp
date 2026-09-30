@@ -913,7 +913,7 @@ test("read tools reject outputs over the byte bound without returning oversized 
 });
 
 test("price reads and preparation reject explicit conflicting currencies", async () => {
-  for (const price of ["EUR 316", "€316", "£316", "CA$316", "AU$316", "CHF 316"]) {
+  for (const price of ["EUR 316", "EUR316", "316EUR", "€316", "£316", "CA$316", "AU$316", "CHF 316", "CHF316"]) {
     const property = await run("get_property", PROPERTY, { routes: [propertyRoute({ body: propertyPage({ rows: [rateRow({ head: ROOM_A, total: price })] }) })] });
     assert.equal(property.output.error_kind, "currency_mismatch", price);
     const prep = await run("prepare_booking", PREPARE, prepOptions(propertyPage({ rows: [rateRow({ head: ROOM_A, total: price })] })));
@@ -923,6 +923,16 @@ test("price reads and preparation reject explicit conflicting currencies", async
   }
   const allowed = await run("prepare_booking", PREPARE, prepOptions(propertyPage({ rows: [rateRow({ head: ROOM_A, total: "US$316" })] })));
   assert.equal(allowed.output.status, "prepared", "US$ must not be mistaken for S$");
+});
+
+test("search cards parse spaced original prices and reject contradictory currencies", async () => {
+  const good = await run("search_stays", SEARCH, { routes: [searchRoute({ body: searchPage({ cards: [card({ price: { total: "USD 316", original: "USD 352" } })] }) })] });
+  assert.equal(good.output.status, "ok");
+  assert.equal(good.output.properties[0].price.original_total, 352);
+  for (const original of ["EUR 352", "EUR352", "€ 352"]) {
+    const bad = await run("search_stays", SEARCH, { routes: [searchRoute({ body: searchPage({ cards: [card({ price: { total: "USD 316", original } })] }) })] });
+    assert.equal(bad.output.error_kind, "currency_mismatch", original);
+  }
 });
 
 test("read tools report unknown sign-in state and preparation blocks conflicting markers", async () => {

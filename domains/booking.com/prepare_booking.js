@@ -115,7 +115,7 @@
     const priceText = text(totalEl?.querySelector("span") || totalEl);
     const codes = new Set(Intl.supportedValuesOf("currency"));
     const markers = [[/\bUS\$/, ["USD"]], [/\b(?:CA\$|C\$)/, ["CAD"]], [/\b(?:AU\$|A\$)/, ["AUD"]], [/\bNZ\$/, ["NZD"]], [/\bHK\$/, ["HKD"]], [/\b(?:SG\$|S\$)/, ["SGD"]], [/\bNT\$/, ["TWD"]], [/€/, ["EUR"]], [/£/, ["GBP"]], [/¥/, ["JPY", "CNY"]], [/₹/, ["INR"]]];
-    if ((priceText.match(/\b[A-Z]{3}\b/g) || []).some(c => codes.has(c) && c !== input.currency) || markers.some(([pattern, currencies]) => pattern.test(priceText) && !currencies.includes(input.currency))) return fail("currency_mismatch", "The displayed rate explicitly names a different currency; read the rate again.");
+    if ((priceText.match(/(?<![A-Z])[A-Z]{3}(?![A-Z])/g) || []).some(c => codes.has(c) && c !== input.currency) || markers.some(([pattern, currencies]) => pattern.test(priceText) && !currencies.includes(input.currency))) return fail("currency_mismatch", "The displayed rate explicitly names a different currency; read the rate again.");
     const token = /[\d][\d,.']*/.exec(priceText)?.[0];
     const total = token && /^(\d{1,3}(,\d{3})+|\d+)(\.\d+)?$/.test(token) ? Number(token.replace(/,/g, "")) : null;
     if (total === null || !Number.isFinite(total)) return fail("site_changed", "The displayed total cannot be read.");
