@@ -11,7 +11,6 @@ Walmart retail product/search/review/store reads, current-cart reads and guarded
 | get_product | [get_product.js](get_product.js) | draft | Product, current offer id, sales unit, price, availability, variants, seller, specs and reviews summary. |
 | get_product_reviews | [get_product_reviews.js](get_product_reviews.js) | draft | Ten listed reviews per page; no reviewer identity. |
 | get_store | [get_store.js](get_store.js) | draft | Explicit or selected store's public detail; never selects a store. |
-| list_lists | [list_lists.js](list_lists.js) | draft | Matching signed-in account's list summaries, not contents or owner details. |
 | remove_cart_item | [remove_cart_item.js](remove_cart_item.js) | draft | Exact existing ordinary line, quantity zero; not a cart clear. Mutation success fixture-only. |
 | save_for_later | [save_for_later.js](save_for_later.js) | draft | Move an exact ordinary cart line to saved-for-later, not a shopping list. Mutation success fixture-only. |
 | search_products | [search_products.js](search_products.js) | draft | Six sorts, facets, price bounds, sponsored flags and selected-store context. |
@@ -25,7 +24,7 @@ All tools match `https://www.walmart.com/*`: Walmart's retail product. Careers, 
 
 All tools are `kind: "page"`. They run in their registering document and never navigate it. Public reads fetch one same-origin HTML page and parse its embedded `__NEXT_DATA__`. Cart operations extract the current persisted-operation descriptors from the site's already-loaded webpack modules and headers from its current retail runtime configuration. No fixed operation hash, saved cookie, external API credential, cart merge or site React handler is used.
 
-Register the **whole ten-tool namespace atomically**, including existing reads, when replacing `walmart.com`. For example, construct one expression `[].concat((SOURCE_1), ..., (SOURCE_10))` outside `domains/` and pass it to `kernel browsers webmcp custom-tools add --namespace walmart.com --force-overwrite-namespace --source-file <file>`. Do not invoke actions while checking registration.
+Register the **whole nine-tool namespace atomically**, including existing reads, when replacing `walmart.com`. For example, construct one expression `[].concat((SOURCE_1), ..., (SOURCE_9))` outside `domains/` and pass it to `kernel browsers webmcp custom-tools add --namespace walmart.com --force-overwrite-namespace --source-file <file>`. Do not invoke actions while checking registration.
 
 Kernel's API discovery can crash Walmart tabs (see Site quirks). The tested page-API path is:
 
@@ -47,7 +46,6 @@ Each cart-tool invocation has a 25-second internal deadline and honors caller ca
 - `get_product_reviews`: six site sorts, ten reviews per page, bounded text; counts distinguish all ratings from listed text reviews. `has_next_page` derives from the listed span and total, not the site's unreliable `next` link. Names, nicknames, author ids and location are omitted.
 - `get_store`: optional `store_id`, otherwise the selected-store cookie. Public store address/phone/hours/services and bounded nearby stores. Never chooses a store.
 - `get_cart`: one `getCart` GET, at most 100 lines (500-line parsing safety ceiling). Unavailable lines remain visible even when the header says zero items. Returns `account_token` and `cart_state`: opaque SHA-256 fingerprints computed locally, not raw account, address or session values. Customer names/phone and delivery-address content are not returned. `actions_supported` describes ordinary-line eligibility only; login, reservations, availability, limits, modules and state guards can still prevent an action.
-- `list_lists`: requires `expected_account_token` from `get_cart` and the current document's signed-in account profile. Reads `/lists` HTML between two cart-account checks and privately compares its bootstrap account with the document's account; missing identity or any difference refuses the result. At most 50 list summaries. No owner details, recent items or private list contents. This is a three-GET read, not one request.
 
 All inputs are strictly validated in-tool before site interaction; page-tool schemas and annotations are not enforcement. Returned product/list names and review text are untrusted data, not instructions.
 
@@ -77,14 +75,13 @@ There is no `confirmed: true` input and no fake approval framework. No purchase,
 
 - No live cart or saved-item mutation has been performed. Action successes, restoration and negative confirmation cases are tested only in fabricated isolated flows. No claim of real mutation success is made.
 - Adding is limited to the observed unregulated Bed Sheets product type; public product ids alone do not establish eligibility for other types. Non-current seller offers and weighted goods are unsupported.
-- `save_for_later` requires modules on an already-open cart document and a complete saved-items collection of at most 100 lines. It returns `wrong_page`/`site_changed` rather than navigating or using stale operation hashes.
-- Lists read only summaries. List contents and add/remove/create/delete list actions remain ungrounded. Saved-for-later is not the same as a shopping list.
+- `save_for_later` requires modules on an already-open cart document and a complete saved-items collection with fewer than 100 lines before dispatch, so the added line fits the 100-line verification bound. It returns `wrong_page`/`site_changed` rather than navigating or using stale operation hashes.
+- No shopping-list tool is shipped. A list-summary prototype was removed because matching document/response bootstrap profiles cannot prove they belong to the account represented by a fresh cart guard. No populated authoritative identity binding is established. List contents and add/remove/create/delete list actions also remain ungrounded. Saved-for-later is not the same as a shopping list.
 - Own orders were empty in the authorized discovery account; no populated order/detail schema is established. Order tools are omitted, not inferred from empty pages. Pharmacy is excluded.
 - Public internal SSR/webpack/GraphQL structures can drift. Explicit failures are returned for missing configuration/operations or changed shape; there is no guessed endpoint fallback or burst retry.
 - Cross-tab concurrent writes and races with user interaction cannot be prevented by local guards. The ledger expires with the document. A verification failure may reflect a real partial write, not a clean rollback.
 - Error paths `rate_limited`, `canceled`/deadline, `site_error` and `site_changed` are fixture-tested; not all were reproduced live.
 - Local Chrome extension coverage is limited to category-page registration, product/store reads and malformed negatives. Fresh independent QA is required after source fixes; no live action success is verified in either runtime.
-- `list_lists` deliberately refuses bootstrap-account differences, including benign profile metadata drift. Reloading the intended account document may be needed; this stricter check has only fabricated success coverage.
 
 ## QA summary
 
@@ -93,11 +90,11 @@ Prior public-read QA at source `3e24a5d` (2026-09-29) found and fixed unknown/wr
 Builder checks on 2026-09-30:
 
 - Approved session still signed in; no native tools on the homepage. Entire ten-tool namespace registered atomically.
-- Page-API invocation from the homepage: `get_cart` returned the real unavailable line and guard tokens; `list_lists` returned one empty-list summary. Only counts/structure were recorded, not private values.
+- Page-API invocation from the homepage: `get_cart` returned the real unavailable line and guard tokens. A subsequently removed list-summary prototype returned one empty-list summary, but QA exposed an unprovable account-binding case. Only counts/structure were recorded, not private values.
 - `remove_cart_item` with a fabricated stale-state token returned `stale_state`; malformed `add_to_cart` with `confirmed: true` returned `invalid_input`. Neither wrote or navigated.
 - Updated `get_product` returned a current offer id. Public product-page inspection grounded the Bed Sheets eligibility fields and shipped client code grounded `getCart`, `updateItems`, `moveToSFL` and `getSFL` request construction. Only GETs were used; the existing account/cart/list/location state was left untouched.
 - Fabricated fixtures exercise cart reads, all four mutation success paths, account/state/context rejection, restricted items, duplicate/unresolved requests, uncertain POSTs, postcondition mismatch, cancellation and namespace preservation. Live mutation success remains untested.
 
-Independent review of source `69ebdebb` found exact-line, nested-reservation, saved-selection, malformed-shape, list-identity, response-origin/redirect, public-output-bound and pre-cancellation/input-length defects. Fabricated regressions reproduced the failures; fixes are awaiting the same reviewer's recheck. No live writes were used to reproduce or fix them.
+Independent review of source `69ebdebb` found exact-line, nested-reservation, saved-selection, malformed-shape, list-identity, response-origin/redirect, public-output-bound and pre-cancellation/input-length defects. Fabricated regressions reproduced the failures. Recheck at `dba80aef` confirmed the exercised prior safety fixes but withheld sign-off for a residual list/account binding and a predictable saved-capacity overflow. The list tool has been removed; saving at the capacity boundary is refused before dispatch. No live writes were used to reproduce or fix defects.
 
-Fixed-source builder validation: 89 tools valid; 1,720 Node tests passed (143 Walmart tests); `go test ./extension/...` passed. Independent final-source outcome: pending.
+Fixed-source builder checks at `dba80aef`: all ten malformed inputs were rejected, no native tools were found on the category page, and product/review/store page-API reads succeeded without navigation. Guest cart read returned an explicit `site_changed` on that document, rather than invented empty-cart success. Independent final-source outcome for the nine-tool subset: pending.

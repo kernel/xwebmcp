@@ -5,15 +5,14 @@ import test from "node:test";
 import { runInNewContext } from "node:vm";
 
 // Fabricated account, cart and product data; this harness never contacts Walmart.
-const names = ["get_cart", "add_to_cart", "update_cart_item", "remove_cart_item", "save_for_later", "list_lists"];
+const names = ["get_cart", "add_to_cart", "update_cart_item", "remove_cart_item", "save_for_later"];
 const writes = names.slice(1, 5);
 const sources = Object.fromEntries(names.map(n => [n, readFileSync(new URL(`../domains/walmart.com/${n}.js`, import.meta.url), "utf8")]));
 const copy = value => JSON.parse(JSON.stringify(value));
 const product = () => ({ usItemId: "20000001", offerId: "TEST_OFFER", name: "Test towels", salesUnit: "EACH", isAlcohol: false, type: "Bed Sheets", legalRestriction: false, isLMPAlcoholItem: false, showAtc: true, orderLimit: 12, orderMinLimit: 1, availabilityStatus: "IN_STOCK", canAddToCart: true, sellerName: "Test seller", fulfillmentOptions: [{ type: "SHIPPING", availabilityStatus: "IN_STOCK" }] });
 const line = (id = "TEST_LINE", p = product()) => ({ id, quantity: 2, product: p, fulfillmentPreference: "SHIPPING", priceInfo: { itemPrice: { value: 3 }, linePrice: { value: 6 } } });
 const cart = () => ({ id: "TEST_CART", customer: { id: "TEST_ACCOUNT", isGuest: false, firstName: "Never Return", phone: "555-000-0000" }, lineItems: [line()], checkoutable: true, fulfillment: { intent: "SHIPPING", pickupStore: { storeId: "1234" }, deliveryStore: { storeId: "2222" }, deliveryAddress: { addressLineOne: "1 Fabricated Street" }, fulfillmentItemGroups: [{ collapsedItemIds: ["TEST_LINE"] }] }, priceDetails: { subTotal: { value: 6 } } });
-const accountProfile = () => ({ profile: { emailAddress: "reader@example.invalid", firstName: "Fabricated" } });
-const next = (props = { bootstrapData: { account: { data: { account: accountProfile() } } } }) => ({ runtimeConfig: { tenant: "test-tenant", tenantV2: { bu: "WALMART-US", mart: "B2C" }, appVersion: "test-version" }, props: { pageProps: props } });
+const next = (props = {}) => ({ runtimeConfig: { tenant: "test-tenant", tenantV2: { bu: "WALMART-US", mart: "B2C" }, appVersion: "test-version" }, props: { pageProps: props } });
 const html = data => `<script id="__NEXT_DATA__">${JSON.stringify(data)}</script>`;
 const operation = (name, type) => ({ toString: () => `let op={type:"${type}",name:"${name}",hash:"${"a".repeat(64)}"}` });
 
@@ -51,7 +50,6 @@ function harness(options = {}) {
     }
     let data;
     const path = new URL(url, "https://www.walmart.com").pathname;
-    if (path === "/lists") return response(html(next({ bootstrapData: { account: { data: { account: accountProfile() } } }, initialData: { data: { shoppingListsExtended: { maxListsReached: false, lists: [{ id: "TEST_LIST", name: "Test list", type: "SL", lineItemCount: 2, primary: true, ownerDetails: { private: "Never Return" } }] } } } })), url);
     if (path.startsWith("/ip/")) return response(html({ props: { pageProps: { initialData: { data: { product: product() } } } } }), url);
     const op = path.split("/").at(-2);
     if (op === "getCart") data = { cart: copy(state.cart) };
@@ -110,7 +108,7 @@ for (const name of names) {
   });
   test(`${name}: wrong domain and pre-cancellation never interact`, async () => {
     const base = harness();
-    let valid = name === "get_cart" ? {} : name === "list_lists" ? { expected_account_token: (await base.guards()).expected_account_token } : await inputFor(base, name);
+    const valid = name === "get_cart" ? {} : await inputFor(base, name);
     const wrong = harness({ origin: "https://careers.walmart.com" });
     assert.equal((await wrong.run(name, valid)).error_kind, "wrong_page"); assert.equal(wrong.state.calls.length, 0);
     const h = harness(), c = new AbortController(); c.abort();
@@ -204,15 +202,6 @@ test("save_for_later: missing modules, paginated or duplicate saved state preven
   }
 });
 
-test("list_lists: own account summaries only, wrong-account and login failures", async () => {
-  const h = harness(), guards = await h.guards();
-  const r = await h.run("list_lists", { expected_account_token: guards.expected_account_token });
-  assert.equal(r.status, "ok"); assert.equal(r.lists[0].name, "Test list"); assert.equal(JSON.stringify(r).includes("Never Return"), false);
-  assert.equal(h.state.posts, 0);
-  h.state.cart.customer.id = "OTHER_ACCOUNT";
-  assert.equal((await h.run("list_lists", { expected_account_token: guards.expected_account_token })).error_kind, "wrong_account");
-});
-
 test("add_to_cart: exact observed product eligibility is required before mutation", async () => {
   for (const change of [p => p.type = "Unknown Goods", p => p.showAtc = false, p => p.legalRestriction = true, p => p.isAlcohol = true, p => p.isLMPAlcoholItem = true, p => p.salesUnit = "WEIGHT", p => p.petRx = { eligible: true }, p => p.vision = { visionCenterApproved: true }, p => p.orderLimit = 2]) {
     const c = cart(); c.lineItems = [];
@@ -303,16 +292,9 @@ test("save_for_later: malformed saved entries are refused before POST", async ()
   }
 });
 
-test("list_lists: intervening HTML must identify the same document account", async () => {
-  const h = harness({ respond: url => url === "/lists" ? response(html(next({ bootstrapData: { account: { data: { account: { profile: { emailAddress: "other@example.invalid", firstName: "Other" } } } } }, initialData: { data: { shoppingListsExtended: { lists: [{ id: "OTHER_LIST", name: "Must not return", lineItemCount: 1 }] } } } })), url) : null });
-  const r = await h.run("list_lists", { expected_account_token: (await h.guards()).expected_account_token });
-  assert.equal(r.error_kind, "wrong_account"); assert.equal(JSON.stringify(r).includes("Must not return"), false);
-  assert.equal(h.state.posts, 0);
-});
-
 for (const name of names) test(`${name}: foreign-origin cart responses are rejected`, async () => {
   const base = harness();
-  const input = name === "get_cart" ? {} : name === "list_lists" ? { expected_account_token: (await base.guards()).expected_account_token } : await inputFor(base, name);
+  const input = name === "get_cart" ? {} : await inputFor(base, name);
   const h = harness({ respond: () => response(JSON.stringify({ data: { cart: cart() } }), "https://other.example.invalid/orchestra/home/graphql/getCart/test") });
   assert.equal((await h.run(name, input)).error_kind, "site_changed"); assert.equal(h.state.posts, 0);
 });
@@ -323,10 +305,16 @@ test("get_cart: malformed selections are not advertised as action-supported", as
   assert.equal(r.lines[0].actions_supported, false);
 });
 
-test("list_lists: missing document identity fails before the lists fetch", async () => {
-  const h = harness(); h.document.getElementById = () => ({ textContent: JSON.stringify(next({ bootstrapData: { account: { data: { account: { profile: {} } } } } })) });
-  const r = await h.run("list_lists", { expected_account_token: (await h.guards()).expected_account_token });
-  assert.equal(r.error_kind, "site_changed"); assert.equal(h.state.calls.some(c => c.url === "/lists"), false);
+test("save_for_later: predictable saved-capacity overflow is refused before dispatch", async () => {
+  for (const count of [99, 100]) {
+    const h = harness();
+    h.state.saved.lineItems = Array.from({ length: count }, (_, i) => line(`SAVED_${i}`, { ...product(), offerId: `SAVED_OFFER_${i}` }));
+    h.state.saved.totalQuantity = count * 2;
+    const r = await h.run("save_for_later", await inputFor(h, "save_for_later"));
+    assert.equal(count === 99 ? r.status : r.error_kind, count === 99 ? "ok" : "unsupported_item");
+    assert.equal(h.state.posts, count === 99 ? 1 : 0);
+    assert.equal(h.state.saved.lineItems.length, 100);
+  }
 });
 
 test("save_for_later: zero-quantity targets are rejected without POST", async () => {
@@ -336,9 +324,10 @@ test("save_for_later: zero-quantity targets are rejected without POST", async ()
   assert.equal(r.error_kind, "unsupported_item"); assert.equal(h.state.posts, 0);
 });
 
-test("ten tools form the complete atomic Walmart namespace", () => {
+test("nine tools form the complete atomic Walmart namespace without unbound list reads", () => {
   const registry = JSON.parse(readFileSync(new URL("../registry.json", import.meta.url), "utf8"));
   const registered = registry.tools.filter(t => t.domain === "walmart.com").map(t => t.tool).sort();
   assert.deepEqual(registered, [...names, "search_products", "get_product", "get_product_reviews", "get_store"].sort());
-  for (const name of names) assert.equal(harness().definitions[name].tool.annotations.readOnlyHint, ["get_cart", "list_lists"].includes(name));
+  for (const name of names) assert.equal(harness().definitions[name].tool.annotations.readOnlyHint, name === "get_cart");
+  assert.equal(registered.includes("list_lists"), false);
 });

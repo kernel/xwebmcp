@@ -293,6 +293,7 @@
         {
           savedBefore = (await gql("getSFL", { sflInput: { pageInfo: { pageSize: 100, pageCursor: null } } }))?.sfl;
           if (!validSaved(savedBefore)) return fail("site_changed", "Saved-items state is unavailable or paginated; nothing was changed.");
+          if (savedBefore.lineItems.length >= 100) return fail("unsupported_item", "Saving would exceed the 100-line verification bound; nothing was changed.");
           if (savedBefore.lineItems.some(l => l.product?.offerId === product.offerId)) return fail("stale_state", "The offer is already saved; no duplicate save was attempted.");
         }
         const fresh = await readCart();

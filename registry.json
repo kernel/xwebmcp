@@ -1342,19 +1342,6 @@
     },
     {
       "domain": "walmart.com",
-      "tool": "list_lists",
-      "file": "domains/walmart.com/list_lists.js",
-      "kind": "page",
-      "namespace": "walmart.com",
-      "url_patterns": [
-        "https://www.walmart.com/*"
-      ],
-      "status": "draft",
-      "last_verified": null,
-      "notes": "Broad implementation pending fresh independent QA; cart mutation success is fixture-only, never live-tested."
-    },
-    {
-      "domain": "walmart.com",
       "tool": "remove_cart_item",
       "file": "domains/walmart.com/remove_cart_item.js",
       "kind": "page",
