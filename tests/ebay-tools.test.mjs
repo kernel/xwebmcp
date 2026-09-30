@@ -49,23 +49,24 @@ function conforms(schema, value) {
 }
 
 // Runs one tool against a stubbed page. `responses` are served in order (the last one repeats).
-async function run(name, input, { responses = [], origin = ORIGIN, signedOut = false } = {}) {
+async function run(name, input, { responses = [], origin = ORIGIN, pathname = "/", signedOut = false, signal, onFetch, onDelay, onBody } = {}) {
   const calls = { fetches: [], delays: [] };
   const queue = [...responses];
   const sandbox = {
     DOMParser, URL, URLSearchParams, encodeURIComponent,
-    location: { origin },
+    location: { origin, pathname },
     document: { querySelectorAll: selector => (signedOut && selector.includes("signin.ebay.com") ? [{}] : []) },
-    setTimeout: (fn, ms) => { calls.delays.push(ms); fn(); return 0; },
+    setTimeout: (fn, ms) => { calls.delays.push(ms); onDelay?.(); fn(); return 0; },
     fetch: async (path, init) => {
       calls.fetches.push({ path, init: plain(init) });
+      onFetch?.(path, init);
       const next = queue.length > 1 ? queue.shift() : queue[0];
       if (next === "throw") throw new TypeError("Failed to fetch");
-      return { status: next.status ?? 200, type: next.type ?? "basic", url: next.url, text: async () => next.html ?? "" };
+      return { status: next.status ?? 200, type: next.type ?? "basic", url: next.url, text: async () => { onBody?.(); if (next.bodyError) throw new TypeError("Body interrupted"); return next.html ?? ""; } };
     }
   };
   const execute = runInNewContext("(" + definitions[name].execute.toString() + ")", sandbox);
-  const output = plain(await execute(input));
+  const output = plain(await execute(input, { signal }));
   assert.ok(conforms(definitions[name].tool.outputSchema, output), `output does not match the schema: ${JSON.stringify(output).slice(0, 400)}`);
   return { output, calls };
 }
@@ -595,12 +596,12 @@ test("get_listing: postal codes of other countries are removed too, without eati
     ['<span class="ux-textspans"> to 5 days</span>', "Estimated between Sat, Oct 3 and Fri, Oct 9 to 5 days"],
     ['<span class="ux-textspans"> to NEW YORK</span>', "Estimated between Sat, Oct 3 and Fri, Oct 9 to NEW YORK"],
     ['<span class="ux-textspans"> to 12</span>', "Estimated between Sat, Oct 3 and Fri, Oct 9 to 12"],
-    ['<span class="ux-textspans"> to 1A2</span>', "Estimated between Sat, Oct 3 and Fri, Oct 9"],
-    ['<span class="ux-textspans"> to A1B2C3D4E</span>', "Estimated between Sat, Oct 3 and Fri, Oct 9"],
+    ['<span class="ux-textspans"> to 1A2</span>', "Estimated between Sat, Oct 3 and Fri, Oct 9 to 1A2"],
+    ['<span class="ux-textspans"> to A1B2C3D4E</span>', "Estimated between Sat, Oct 3 and Fri, Oct 9 to A1B2C3D4E"],
     ['<span class="ux-textspans"> to A1B2C3D4E5</span>', "Estimated between Sat, Oct 3 and Fri, Oct 9 to A1B2C3D4E5"],
-    ['<span class="ux-textspans"> to SW1A 1AA. Fixture note</span>', "Estimated between Sat, Oct 3 and Fri, Oct 9 to SW1A 1AA. Fixture note"]
+    ['<span class="ux-textspans"> to SW1A 1AA. Fixture note</span>', "Estimated between Sat, Oct 3 and Fri, Oct 9. Fixture note"],
+    ['<span class="ux-textspans"> up to 100</span>', "Estimated between Sat, Oct 3 and Fri, Oct 9 up to 100"]
   ];
-  // A non-US code is removed only when it ends the text (a documented limitation); the last case pins that.
   for (const [tail, expected] of cases) assert.equal((await run("get_listing", { item_id: ID }, { responses: [ok(withDelivery(tail))] })).output.delivery_text, expected, tail);
   const shipping = itemPage().replace("<span class=\"ux-textspans\">Standard Tracked Shipping</span>", "<span class=\"ux-textspans\">Standard Tracked Shipping to 10001</span>");
   assert.equal((await run("get_listing", { item_id: ID }, { responses: [ok(shipping)] })).output.shipping_text, "US $10.43 Standard Tracked Shipping. Located in: Testville, Testland", "shipping_text is redacted too");
@@ -758,6 +759,110 @@ test("input schemas and the in-tool validation agree: whatever the schema reject
     assert.equal(output.error_kind, "invalid_input", `${name} ${JSON.stringify(input)} is rejected by the schema, so the tool must reject it too`);
     assert.equal(calls.fetches.length, 0);
   }
+});
+
+const INPUTS = { search: { query: "fixture keyboard" }, get_listing: { item_id: ID }, get_seller_profile: { seller_username: "fixture_seller_a" } };
+const PAGES = { search: searchPage(CARDS), get_listing: itemPage(), get_seller_profile: profilePage() };
+
+for (const name of NAMES) {
+  test(`${name}: cancellation stops reads before interaction and during fetch, body and backoff`, async () => {
+    const before = new AbortController();
+    before.abort();
+    const canceled = await run(name, INPUTS[name], { signal: before.signal });
+    assert.equal(canceled.output.error_kind, "canceled");
+    assert.equal(canceled.calls.fetches.length, 0);
+    const invalid = await run(name, {}, { signal: before.signal });
+    assert.equal(invalid.output.error_kind, "invalid_input", "input validation comes first");
+
+    for (const phase of ["fetch", "response", "body", "backoff", "follow"]) {
+      const controller = new AbortController();
+      let count = 0;
+      const result = await run(name, INPUTS[name], {
+        signal: controller.signal,
+        responses: phase === "backoff" ? [ERROR_PAGE] : phase === "follow" ? [REDIRECT, CAPTCHA] : [ok(PAGES[name])],
+        onFetch: (_path, init) => {
+          assert.equal(init.signal, controller.signal);
+          count++;
+          if (phase === "response") controller.abort();
+          if (phase === "fetch" || (phase === "follow" && count === 2)) { controller.abort(); throw new Error("Canceled"); }
+        },
+        onBody: () => { if (phase === "body") controller.abort(); },
+        onDelay: () => { if (phase === "backoff") controller.abort(); }
+      });
+      assert.equal(result.output.error_kind, "canceled", phase);
+      assert.equal(result.calls.fetches.length, phase === "follow" ? 2 : 1, "no request after cancellation");
+    }
+  });
+
+  test(`${name}: response body errors and malformed redirect URLs return typed failures`, async () => {
+    const body = await run(name, INPUTS[name], { responses: [{ status: 200, bodyError: true }] });
+    assert.equal(body.output.error_kind, "request_failed");
+    assert.equal(body.calls.fetches.length, 1);
+    for (const url of [undefined, "", "not a URL"]) {
+      const result = await run(name, INPUTS[name], { responses: [REDIRECT, { status: 200, url }] });
+      assert.equal(result.output.error_kind, "redirected");
+      assert.equal(result.calls.fetches.length, 2);
+    }
+  });
+
+  test(`${name}: verification pages fail without interaction or treating their markup as data`, async () => {
+    const current = await run(name, INPUTS[name], { pathname: "/splashui/captcha" });
+    assert.equal(current.output.error_kind, "challenge");
+    assert.equal(current.calls.fetches.length, 0);
+    for (const title of ["Security Measure", "Pardon Our Interruption"]) {
+      const result = await run(name, INPUTS[name], { responses: [ok(`<html><head><title>${title} | eBay</title></head><body>${PAGES[name]}</body></html>`)] });
+      assert.equal(result.output.error_kind, "challenge");
+      assert.equal(result.calls.fetches.length, 1);
+    }
+  });
+}
+
+test("get_listing: recognized postal codes are redacted mid-shipping and other formats are not guessed", async () => {
+  for (const code of ["SW1A 1AA", "sw1a 1aa", "K1A 0B1", "K1A0B1", "12345", "12345-6789", "123456"]) {
+    const html = itemPage().replace("Standard Tracked Shipping</span>", `Standard Tracked Shipping to ${code}</span>`);
+    const { output } = await run("get_listing", INPUTS.get_listing, { responses: [ok(html)] });
+    assert.equal(output.shipping_text, "US $10.43 Standard Tracked Shipping. Located in: Testville, Testland", code);
+  }
+  for (const suffix of ["up to 100", "to 1234567", "to 12345ABC", "to K1A 0B1XYZ", "to Testland", "3 to 5 days"]) {
+    const html = itemPage().replace("Standard Tracked Shipping</span>", `Standard Tracked Shipping ${suffix}</span>`);
+    const { output } = await run("get_listing", INPUTS.get_listing, { responses: [ok(html)] });
+    assert.ok(output.shipping_text.includes(suffix), suffix);
+  }
+});
+
+test("get_listing: image URLs use exact public image hosts and strip query credentials", async () => {
+  const images = [
+    "https://i.ebayimg.com/images/g/fixture/s-l500.jpg?signature=fixture-secret#token",
+    "https://evil-ebayimg.com/images/secret.jpg",
+    "https://ebayimg.com.attacker.invalid/images/secret.jpg",
+    "https://user:password@i.ebayimg.com/images/secret.jpg",
+    "https://i.ebayimg.com:8443/images/secret.jpg",
+    "https://i.ebayimg.com/session/secret",
+    "http://i.ebayimg.com/images/secret.jpg",
+    "https://i.ebayimg.com/images/" + "x".repeat(2048),
+    "not a URL"
+  ];
+  const html = itemPage().replace(/"image":\[.*?\],"mpn"/, `"image":${JSON.stringify(images)},"mpn"`);
+  const { output } = await run("get_listing", INPUTS.get_listing, { responses: [ok(html)] });
+  assert.deepEqual(output.images, ["https://i.ebayimg.com/images/g/fixture/s-l500.jpg"]);
+  assert.doesNotMatch(JSON.stringify(output), /fixture-secret|password|signature|token/);
+});
+
+test("all tools: malformed field names cannot produce oversized error output", async () => {
+  for (const name of NAMES) {
+    const { output, calls } = await run(name, { ...INPUTS[name], ["x".repeat(10000)]: true });
+    assert.equal(output.error_kind, "invalid_input");
+    assert.ok(JSON.stringify(output).length < 300);
+    assert.equal(calls.fetches.length, 0);
+  }
+});
+
+test("search: even no-results headings and countdowns have bounded text", async () => {
+  const none = await run("search", INPUTS.search, { responses: [ok(searchPage([], "0 results for " + "x".repeat(10000)))] });
+  assert.equal(none.output.total_results_text.length, 200);
+  const page = searchPage([auctionCard(100000000003)]).replace("32m left", "5s " + "x".repeat(10000));
+  const result = await run("search", INPUTS.search, { responses: [ok(page)] });
+  assert.equal(result.output.items[0].time_left_text.length, 80);
 });
 
 test("every ebay.com tool is read-only, page-kind, and only issues GET requests to relative paths", async () => {

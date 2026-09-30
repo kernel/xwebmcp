@@ -4,7 +4,7 @@
   tool: {
     name: "search",
     title: "Search eBay listings",
-    description: "Search eBay (www.ebay.com) for listings and return one results page as data: item_id, canonical url, title, condition, price, original price, buying format (auction or buy_it_now), best_offer flag, bids and time left for auctions, delivery, location, returns, watchers, and the seller's username and feedback. Filters mirror eBay's own: sort, buying_format, condition, price_min/price_max (USD), free_shipping, returns_accepted, item_location, category_id, and page. Pass sold_only to search sold listings for price comparison: this needs a signed-in eBay session and returns login_required otherwise; each sold item has sold_date_text, and for listings that accept Best Offer the sale price may differ from the price shown (price_caveat says so). Read-only: it fetches the results page from the current document and never navigates, bids, makes offers or changes any account state. Prices are as eBay shows them for this session's shipping location and currency. total_results is eBay's own count and is approximate when it ends with +. Sponsored placement is not reported. A null field means the card does not show it, not that the answer is no: returns_text is set only when the card shows a returns line such as Free returns, and buying_format is null for fixed-price cards that show neither Buy It Now nor a bid count (fixed-price listings with Best Offer often do). Auction time left is a countdown; clock times are not returned because eBay renders them in its own time zone. Use get_listing with an item_id for full details. eBay sometimes answers with its error page; the tool retries up to twice (after 4 and 8 seconds) and then returns blocked, and requests sent within a few seconds of each other make that likely, so space calls by about ten seconds. If eBay redirects the request, it is repeated once with redirects limited to www.ebay.com (a redirect to another eBay host is refused without being sent); a redirect to a verification page is reported as challenge: a person has to complete it in the browser and the tool never tries.",
+    description: "Search eBay (www.ebay.com) for listings and return one results page as data: item_id, canonical url, title, condition, price, original price, buying format (auction or buy_it_now), best_offer flag, bids and time left for auctions, delivery, location, returns, watchers, and the seller's username and feedback. Filters mirror eBay's own: sort, buying_format, condition, price_min/price_max (USD), free_shipping, returns_accepted, item_location, category_id, and page. Pass sold_only to search sold listings for price comparison: this needs a signed-in eBay session and returns login_required otherwise; each sold item has sold_date_text, and for listings that accept Best Offer the sale price may differ from the price shown (price_caveat says so). Read-only: it fetches the results page from the current document and never navigates, bids, makes offers or changes any account state. Prices are as eBay shows them for this session's shipping location and currency. total_results is eBay's own count and is approximate when it ends with +. Sponsored placement is not reported. A null field means the card does not show it, not that the answer is no: returns_text is set only when the card shows a returns line such as Free returns, and buying_format is null for fixed-price cards that show neither Buy It Now nor a bid count (fixed-price listings with Best Offer often do). Auction time left is a countdown; clock times are not returned because eBay renders them in its own time zone. Use get_listing with an item_id for full details. eBay sometimes answers with its error page; the tool retries up to twice (after 4 and 8 seconds) and then returns blocked, and requests sent within a few seconds of each other make that likely, so space calls by about ten seconds. If eBay redirects the request, one additional fetch follows the same-host redirect chain, which can issue multiple GETs; a redirect to another host is refused without being sent; a redirect to a verification page is reported as challenge: a person has to complete it in the browser and the tool never tries.",
     inputSchema: {
       type: "object", additionalProperties: false, required: ["query"],
       properties: {
@@ -90,7 +90,7 @@
           type: "object", additionalProperties: false, required: ["status", "error_kind", "error_message"],
           properties: {
             status: { const: "error" },
-            error_kind: { enum: ["invalid_input", "wrong_page", "login_required", "blocked", "challenge", "rate_limited", "redirected", "request_failed", "site_error", "site_changed"] },
+            error_kind: { enum: ["invalid_input", "wrong_page", "login_required", "blocked", "challenge", "rate_limited", "redirected", "request_failed", "site_error", "site_changed", "canceled"] },
             error_message: { type: "string", minLength: 1 }
           }
         }
@@ -98,10 +98,10 @@
     },
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true }
   },
-  execute: async (input) => {
+  execute: async (input, { signal } = {}) => {
     const ORIGIN = "https://www.ebay.com";
     const fail = (kind, message) => ({ status: "error", error_kind: kind, error_message: message });
-    const clean = s => (s || "").replace(/\s+/g, " ").trim();
+    const clean = s => typeof s === "string" ? s.replace(/\s+/g, " ").trim() : "";
     const SORTS = { best_match: "12", ending_soonest: "1", newly_listed: "10", price_shipping_lowest: "15", price_shipping_highest: "16", ended_recently: "13" };
     const FORMATS = { all: null, auction: "LH_Auction", buy_it_now: "LH_BIN" };
     const CONDITIONS = { new: "1000", open_box: "1500", certified_refurbished: "2000", excellent_refurbished: "2010", very_good_refurbished: "2020", good_refurbished: "2030", used: "3000", for_parts_or_not_working: "7000", not_specified: "10" };
@@ -110,7 +110,7 @@
 
     if (!input || typeof input !== "object" || Array.isArray(input)) return fail("invalid_input", "Input must be an object.");
     const extra = Object.keys(input).find(key => !KEYS.includes(key));
-    if (extra) return fail("invalid_input", `Unrecognized input field "${extra}".`);
+    if (extra) return fail("invalid_input", `Unrecognized input field "${extra.slice(0, 80)}".`);
     if (typeof input.query !== "string" || clean(input.query).length < 1 || input.query.length > 200 || /[\u0000-\u001f\u007f]/.test(input.query)) return fail("invalid_input", "query must be a non-empty string of at most 200 characters without control characters.");
     const query = clean(input.query);
     const sort = input.sort === undefined ? "best_match" : input.sort;
@@ -135,7 +135,10 @@
     if (!Number.isInteger(limit) || limit < 1 || limit > 60) return fail("invalid_input", "limit must be an integer from 1 to 60.");
     if (sort === "ended_recently" && !soldOnly) return fail("invalid_input", "sort ended_recently is only valid with sold_only.");
     if (sort === "ending_soonest" && soldOnly) return fail("invalid_input", "sort ending_soonest cannot be combined with sold_only.");
+    if (signal?.aborted) return fail("canceled", "The read was canceled.");
     if (location.origin !== ORIGIN) return fail("wrong_page", "Open a https://www.ebay.com page in this tab, then call again. Nothing was requested.");
+
+    if (/^\/splashui\//.test(location.pathname)) return fail("challenge", "This tab is on eBay's verification page. Nothing was requested; the tool never solves challenges.");
 
     const params = new URLSearchParams({ _nkw: query, _sop: SORTS[sort] });
     if (FORMATS[format]) params.set(FORMATS[format], "1");
@@ -154,21 +157,29 @@
     let html = null;
     for (let attempt = 1; attempt <= 3 && html === null; attempt++) {
       if (attempt > 1) await new Promise(resolve => setTimeout(resolve, 4000 * (attempt - 1)));
+      if (signal?.aborted) return fail("canceled", "The read was canceled.");
       let response;
-      try { response = await fetch(request, { credentials: "include", redirect: "manual" }); }
-      catch { return fail("request_failed", "The request to eBay failed before a response arrived. Nothing was changed; try again."); }
+      try { response = await fetch(request, { credentials: "include", redirect: "manual", ...(signal ? { signal } : {}) }); }
+      catch { return signal?.aborted ? fail("canceled", "The read was canceled.") : fail("request_failed", "The request to eBay failed before a response arrived. Nothing was intentionally changed."); }
+      if (signal?.aborted) return fail("canceled", "The read was canceled.");
       if (response.type === "opaqueredirect") {
         if (soldOnly && document.querySelectorAll('#gh a[href*="signin.ebay.com"]').length > 0) return fail("login_required", "Sold listings need a signed-in eBay session and this browser is signed out. Sign in to eBay in this browser, then call again.");
         let followed = null;
-        try { followed = await fetch(request, { credentials: "include", mode: "same-origin" }); } catch { /* the redirect leads to another host */ }
-        const landed = followed ? new URL(followed.url).pathname : "";
+        try { followed = await fetch(request, { credentials: "include", mode: "same-origin", ...(signal ? { signal } : {}) }); } catch { /* the redirect may lead to another host */ }
+        if (signal?.aborted) return fail("canceled", "The read was canceled.");
+        let landed = "";
+        try { if (followed) landed = new URL(followed.url).pathname; } catch { return fail("redirected", "eBay's redirect destination could not be read. Nothing was intentionally changed."); }
         if (/^\/splashui\//.test(landed)) return fail("challenge", "eBay redirected to a verification (CAPTCHA) page instead of returning results. A person has to complete it in this browser; the tool never tries to solve it, and repeated calls make it more likely.");
         if (followed && followed.status === 403) continue;
-        if (soldOnly && !followed) return fail("login_required", "eBay redirected the sold-listings request to a page on another host; sign-in and account completion are the usual cases. Sign in, or finish any account step eBay asks for, in this browser yourself, then call again.");
+        if (soldOnly && !followed) return fail("login_required", "eBay redirected the sold-listings request to a page on another host; sign-in and account completion are the usual cases. The required account page is inaccessible to this tool. It never signs in or completes account setup.");
         return fail("redirected", "eBay redirected the search instead of returning results (it may be a sign-in or regional page). Open the same search in the browser to see it; this tool does not follow or solve it.");
       }
       if (response.status === 429) return fail("rate_limited", "eBay rate-limited the search; wait a few minutes before retrying.");
-      const body = await response.text();
+      let body;
+      try { body = await response.text(); }
+      catch { return signal?.aborted ? fail("canceled", "The read was canceled.") : fail("request_failed", "The response body could not be read."); }
+      if (signal?.aborted) return fail("canceled", "The read was canceled.");
+      if (/<title>\s*(?:Security Measure|Pardon Our Interruption)\s*\|\s*eBay/i.test(body.slice(0, 4000))) return fail("challenge", "eBay returned a verification page. The tool never solves challenges.");
       if (response.status === 403 || /<title>\s*Error Page \| eBay/i.test(body.slice(0, 4000))) continue;
       if (response.status >= 400) return fail("site_error", `eBay answered HTTP ${response.status} for the search.`);
       html = body;
@@ -233,7 +244,7 @@
         buying_format: bidsRow ? "auction" : rows.some(row => /^buy it now$/i.test(row)) ? "buy_it_now" : null,
         best_offer: bestOffer,
         bids: bidsRow ? Number(/^(\d[\d,]*)/.exec(bidsRow)[1].replace(/,/g, "")) : null,
-        time_left_text: timeLeft ? text(timeLeft) || null : null,
+        time_left_text: timeLeft ? text(timeLeft).slice(0, 80) || null : null,
         shipping_text: (rows.find(row => /delivery|pickup|shipping/i.test(row) && !/returns/i.test(row)) || "").slice(0, 120) || null,
         location_text: (find(/^located in /i) || "").slice(0, 120) || null,
         returns_text: (find(/returns?\b/i) || "").slice(0, 120) || null,
@@ -248,7 +259,7 @@
     }
     const common = { query, page, sold_only: soldOnly };
     if (items.length) return { status: "ok", ...common, total_results: total, total_results_approximate: !!(countMatch && countMatch[2]), total_results_text: headingText ? headingText.slice(0, 200) : null, items };
-    if (total === 0) return { status: "no_results", ...common, total_results_text: headingText };
+    if (total === 0) return { status: "no_results", ...common, total_results_text: headingText ? headingText.slice(0, 200) : null };
     return fail("site_changed", "The results page loaded but no listing cards or result count were recognized; eBay may have changed its markup. Nothing was changed.");
   }
 }]

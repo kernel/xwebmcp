@@ -4,7 +4,7 @@
   tool: {
     name: "get_listing",
     title: "Get eBay listing details",
-    description: "Read one eBay listing by its item number (the item_id from search or the number in an /itm/ URL): title, price and whether it is a current bid or a fixed price, buying format, Best Offer flag, bids and time left for auctions, availability, quantity available and sold, condition, delivery/shipping cost, returns, item specifics, category path, images, brand/model/GTIN when eBay publishes them, the seller's username and feedback, and the listing's variation menus with each option's sold-out flag and the price range across variations. Sold or ended listings load too: status_message then carries eBay's notice such as 'This listing sold on ...' (clock times in it follow eBay's server rendering and may not be in the browser's time zone) and availability is out_of_stock; for a sold Best Offer listing the price shown may differ from the sale price (price_caveat). Read-only: it fetches the listing page from the current document, never navigates, bids, makes offers, or adds to cart or watchlist. It does not return the seller's description text, which eBay serves from a separate domain, and it does not choose or price a specific variation combination. Delivery text reflects the session's shipping location, but the postal code eBay appends to the estimate is removed. An item that eBay has since relisted can answer with a redirect to the new item; the result is then redirected and names the new item number. eBay sometimes answers with its error page; the tool retries up to twice (after 4 and 8 seconds) and then returns blocked; space calls by about ten seconds. If eBay redirects the request, it is repeated once with redirects limited to www.ebay.com (a redirect to another eBay host is refused without being sent); a redirect to a verification page is reported as challenge: a person has to complete it in the browser and the tool never tries.",
+    description: "Read one eBay listing by its item number (the item_id from search or the number in an /itm/ URL): title, price and whether it is a current bid or a fixed price, buying format, Best Offer flag, bids and time left for auctions, availability, quantity available and sold, condition, delivery/shipping cost, returns, item specifics, category path, images, brand/model/GTIN when eBay publishes them, the seller's username and feedback, and the listing's variation menus with each option's sold-out flag and the price range across variations. Sold or ended listings load too: status_message then carries eBay's notice such as 'This listing sold on ...' (clock times in it follow eBay's server rendering and may not be in the browser's time zone) and availability is out_of_stock; for a sold Best Offer listing the price shown may differ from the sale price (price_caveat). Read-only: it fetches the listing page from the current document, never navigates, bids, makes offers, or adds to cart or watchlist. It does not return the seller's description text, which eBay serves from a separate domain, and it does not choose or price a specific variation combination. Delivery text reflects the session's shipping location. Recognized US, Canadian and UK postal codes after 'to' are redacted, including before a location sentence; other address formats are not guaranteed to be removed. An item that eBay has since relisted can answer with a redirect to the new item; the result is then redirected and names the new item number. eBay sometimes answers with its error page; the tool retries up to twice (after 4 and 8 seconds) and then returns blocked; space calls by about ten seconds. If eBay redirects the request, one additional fetch follows the same-host redirect chain, which can issue multiple GETs; a redirect to another host is refused without being sent; a redirect to a verification page is reported as challenge: a person has to complete it in the browser and the tool never tries.",
     inputSchema: {
       type: "object", additionalProperties: false, required: ["item_id"],
       properties: {
@@ -89,7 +89,7 @@
           type: "object", additionalProperties: false, required: ["status", "error_kind", "error_message"],
           properties: {
             status: { const: "error" },
-            error_kind: { enum: ["invalid_input", "wrong_page", "not_found", "blocked", "challenge", "rate_limited", "redirected", "request_failed", "site_error", "site_changed"] },
+            error_kind: { enum: ["invalid_input", "wrong_page", "not_found", "blocked", "challenge", "rate_limited", "redirected", "request_failed", "site_error", "site_changed", "canceled"] },
             error_message: { type: "string", minLength: 1 }
           }
         }
@@ -97,29 +97,36 @@
     },
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true }
   },
-  execute: async (input) => {
+  execute: async (input, { signal } = {}) => {
     const ORIGIN = "https://www.ebay.com";
     const fail = (kind, message) => ({ status: "error", error_kind: kind, error_message: message });
-    const clean = s => (s || "").replace(/\s+/g, " ").trim();
+    const clean = s => typeof s === "string" ? s.replace(/\s+/g, " ").trim() : "";
     if (!input || typeof input !== "object" || Array.isArray(input)) return fail("invalid_input", "Input must be an object.");
     const extra = Object.keys(input).find(key => key !== "item_id");
-    if (extra) return fail("invalid_input", `Unrecognized input field "${extra}".`);
+    if (extra) return fail("invalid_input", `Unrecognized input field "${extra.slice(0, 80)}".`);
     if (typeof input.item_id !== "string" || !/^[0-9]{9,14}$/.test(input.item_id)) return fail("invalid_input", "item_id must be the numeric eBay item number as a string (9 to 14 digits).");
     const id = input.item_id;
+    if (signal?.aborted) return fail("canceled", "The read was canceled.");
     if (location.origin !== ORIGIN) return fail("wrong_page", "Open a https://www.ebay.com page in this tab, then call again. Nothing was requested.");
+
+    if (/^\/splashui\//.test(location.pathname)) return fail("challenge", "This tab is on eBay's verification page. Nothing was requested; the tool never solves challenges.");
 
     // A redirect is not followed automatically; the request is repeated once with mode "same-origin", which follows a redirect within www.ebay.com and makes the browser refuse one to another host without sending it, to recognize a verification page or a relisted item.
     const request = `/itm/${id}`;
     let html = null;
     for (let attempt = 1; attempt <= 3 && html === null; attempt++) {
       if (attempt > 1) await new Promise(resolve => setTimeout(resolve, 4000 * (attempt - 1)));
+      if (signal?.aborted) return fail("canceled", "The read was canceled.");
       let response;
-      try { response = await fetch(request, { credentials: "include", redirect: "manual" }); }
-      catch { return fail("request_failed", "The request to eBay failed before a response arrived. Nothing was changed; try again."); }
+      try { response = await fetch(request, { credentials: "include", redirect: "manual", ...(signal ? { signal } : {}) }); }
+      catch { return signal?.aborted ? fail("canceled", "The read was canceled.") : fail("request_failed", "The request to eBay failed before a response arrived. Nothing was intentionally changed."); }
+      if (signal?.aborted) return fail("canceled", "The read was canceled.");
       if (response.type === "opaqueredirect") {
         let followed = null;
-        try { followed = await fetch(request, { credentials: "include", mode: "same-origin" }); } catch { /* the redirect leads to another host */ }
-        const landed = followed ? new URL(followed.url).pathname : "";
+        try { followed = await fetch(request, { credentials: "include", mode: "same-origin", ...(signal ? { signal } : {}) }); } catch { /* the redirect may lead to another host */ }
+        if (signal?.aborted) return fail("canceled", "The read was canceled.");
+        let landed = "";
+        try { if (followed) landed = new URL(followed.url).pathname; } catch { return fail("redirected", "eBay's redirect destination could not be read. Nothing was intentionally changed."); }
         if (/^\/splashui\//.test(landed)) return fail("challenge", "eBay redirected to a verification (CAPTCHA) page instead of returning the listing. A person has to complete it in this browser; the tool never tries to solve it, and repeated calls make it more likely.");
         const moved = (/^\/itm\/(?:[^/?#]*\/)?([0-9]{9,14})\/?$/.exec(landed) || [])[1];
         if (moved && moved !== id) return fail("redirected", `eBay redirected item ${id} to item ${moved}, which usually means the listing ended and was relisted or replaced. Call get_listing with item_id "${moved}" for the current listing.`);
@@ -128,7 +135,11 @@
       }
       if (response.status === 429) return fail("rate_limited", "eBay rate-limited the listing request; wait a few minutes before retrying.");
       if (response.status === 404) return fail("not_found", `eBay has no listing with item number ${id}.`);
-      const body = await response.text();
+      let body;
+      try { body = await response.text(); }
+      catch { return signal?.aborted ? fail("canceled", "The read was canceled.") : fail("request_failed", "The response body could not be read."); }
+      if (signal?.aborted) return fail("canceled", "The read was canceled.");
+      if (/<title>\s*(?:Security Measure|Pardon Our Interruption)\s*\|\s*eBay/i.test(body.slice(0, 4000))) return fail("challenge", "eBay returned a verification page. The tool never solves challenges.");
       if (response.status === 403 || /<title>\s*Error Page \| eBay/i.test(body.slice(0, 4000))) continue;
       if (response.status >= 400) return fail("site_error", `eBay answered HTTP ${response.status} for the listing.`);
       html = body;
@@ -149,8 +160,7 @@
       if (el) walk(el);
       return clean(out);
     };
-    // Delivery estimates end with the session's ship-to postal code ("... to 10001", "... to SW1A 1AA"); it is not returned.
-    const redact = value => value.replace(/\s+to\s+[0-9]{5}(?:-[0-9]{4})?(?![0-9])/g, "").replace(/\s+to\s+(?=[A-Z0-9 -]{0,8}[0-9])[A-Z0-9][A-Z0-9 -]{2,8}$/, "");
+    const redact = value => value.replace(/\s+to\s+(?:[0-9]{5}(?:-[0-9]{4})?|[A-Z][0-9][A-Z]\s?[0-9][A-Z][0-9]|[A-Z]{1,2}[0-9][A-Z0-9]?\s?[0-9][A-Z]{2}|[0-9]{6})(?=$|[.,;\s])(?![A-Z0-9])/gi, "");
     const first = (selector, skip) => { const el = doc.querySelector(selector); return el ? text(el, skip) || null : null; };
     const amount = value => { const m = /^[^\d]{0,4}([\d,]+(?:\.\d+)?)(?:\/ea)?$/.exec(value || ""); return m ? Number(m[1].replace(/,/g, "")) : null; };
     let product = null;
@@ -194,7 +204,13 @@
     const images = [];
     for (const image of product && product.image ? [].concat(product.image) : []) {
       const url = typeof image === "string" ? image : image && image.url;
-      if (typeof url === "string" && /^https:\/\/[a-z0-9.-]*ebayimg\.com\//i.test(url) && images.length < 12 && !images.includes(url)) images.push(url);
+      if (typeof url !== "string" || url.length > 2048 || images.length >= 12) continue;
+      try {
+        const imageUrl = new URL(url);
+        if (imageUrl.protocol !== "https:" || imageUrl.username || imageUrl.password || imageUrl.port || !(imageUrl.hostname === "ebayimg.com" || imageUrl.hostname.endsWith(".ebayimg.com")) || !imageUrl.pathname.startsWith("/images/")) continue;
+        const canonical = imageUrl.origin + imageUrl.pathname;
+        if (!images.includes(canonical)) images.push(canonical);
+      } catch { /* malformed image URL */ }
     }
     const sellerName = first(".x-sellercard-atf__about-seller-item--seller-name");
     let seller = null;
@@ -262,12 +278,12 @@
       best_offer: bestOffer,
       price_caveat: soldNotice && bestOffer ? "This listing accepts Best Offer, so the sale price may differ from the price shown." : null,
       bid_count: bids ? Number(bids[1].replace(/,/g, "")) : null,
-      time_left_text: /[0-9]/.test(timerText || "") ? timerText : null,
+      time_left_text: /[0-9]/.test(timerText || "") ? timerText.slice(0, 80) : null,
       availability: { InStock: "in_stock", OutOfStock: "out_of_stock" }[availabilityUrl] || null,
       status_message: statusMessage ? statusMessage.slice(0, 200) : null,
-      condition: /[A-Za-z]/.test(conditionText || "") ? conditionText : conditionFallback,
-      quantity_available_text: availabilitySpans.find(t => /available|left|last one/i.test(t)) || null,
-      quantity_sold_text: availabilitySpans.find(t => /\bsold$/i.test(t)) || null,
+      condition: /[A-Za-z]/.test(conditionText || "") ? conditionText.slice(0, 200) : conditionFallback,
+      quantity_available_text: (availabilitySpans.find(t => /available|left|last one/i.test(t)) || "").slice(0, 80) || null,
+      quantity_sold_text: (availabilitySpans.find(t => /\bsold$/i.test(t)) || "").slice(0, 80) || null,
       shipping_text: rows.Shipping ? redact(rows.Shipping).slice(0, 300) : null,
       shipping_cost: isFinite(rateAmount) && rate && /^[A-Z]{3}$/.test(rate.currency || "") ? { amount: rateAmount, currency: rate.currency } : null,
       delivery_text: rows.Delivery ? redact(rows.Delivery).slice(0, 300) : null,

@@ -4,7 +4,7 @@
   tool: {
     name: "get_seller_profile",
     title: "Get eBay seller feedback summary",
-    description: "Read an eBay seller's public feedback profile by username (the seller.username from get_listing or search): feedback score, positive feedback percentage over the last 12 months, member-since text, whether eBay marks the seller Top-rated, the counts of positive, neutral and negative feedback over the last 1, 6 and 12 months, and the detailed seller ratings (accurate description, shipping cost, shipping speed, communication) with their average and number of ratings. Read-only: it fetches the public feedback page from the current document and never contacts the seller or changes anything. Individual buyer comments, buyer names and purchases shown on that page are deliberately not returned. If eBay shows its error state for the username, the result is profile_unavailable: the username does not exist or the page failed to load, and the tool cannot tell which. eBay sometimes answers with its error page; the tool retries up to twice (after 4 and 8 seconds) and then returns blocked; space calls by about ten seconds. If eBay redirects the request, it is repeated once with redirects limited to www.ebay.com (a redirect to another eBay host is refused without being sent); a redirect to a verification page is reported as challenge: a person has to complete it in the browser and the tool never tries.",
+    description: "Read an eBay seller's public feedback profile by username (the seller.username from get_listing or search): feedback score, positive feedback percentage over the last 12 months, member-since text, whether eBay marks the seller Top-rated, the counts of positive, neutral and negative feedback over the last 1, 6 and 12 months, and the detailed seller ratings (accurate description, shipping cost, shipping speed, communication) with their average and number of ratings. Read-only: it fetches the public feedback page from the current document and never contacts the seller or changes anything. Individual buyer comments, buyer names and purchases shown on that page are deliberately not returned. If eBay shows its error state for the username, the result is profile_unavailable: the username does not exist or the page failed to load, and the tool cannot tell which. eBay sometimes answers with its error page; the tool retries up to twice (after 4 and 8 seconds) and then returns blocked; space calls by about ten seconds. If eBay redirects the request, one additional fetch follows the same-host redirect chain, which can issue multiple GETs; a redirect to another host is refused without being sent; a redirect to a verification page is reported as challenge: a person has to complete it in the browser and the tool never tries.",
     inputSchema: {
       type: "object", additionalProperties: false, required: ["seller_username"],
       properties: {
@@ -47,7 +47,7 @@
           type: "object", additionalProperties: false, required: ["status", "error_kind", "error_message"],
           properties: {
             status: { const: "error" },
-            error_kind: { enum: ["invalid_input", "wrong_page", "profile_unavailable", "blocked", "challenge", "rate_limited", "redirected", "request_failed", "site_error", "site_changed"] },
+            error_kind: { enum: ["invalid_input", "wrong_page", "profile_unavailable", "blocked", "challenge", "rate_limited", "redirected", "request_failed", "site_error", "site_changed", "canceled"] },
             error_message: { type: "string", minLength: 1 }
           }
         }
@@ -55,34 +55,46 @@
     },
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true }
   },
-  execute: async (input) => {
+  execute: async (input, { signal } = {}) => {
     const ORIGIN = "https://www.ebay.com";
     const fail = (kind, message) => ({ status: "error", error_kind: kind, error_message: message });
-    const clean = s => (s || "").replace(/\s+/g, " ").trim();
+    const clean = s => typeof s === "string" ? s.replace(/\s+/g, " ").trim() : "";
     if (!input || typeof input !== "object" || Array.isArray(input)) return fail("invalid_input", "Input must be an object.");
     const extra = Object.keys(input).find(key => key !== "seller_username");
-    if (extra) return fail("invalid_input", `Unrecognized input field "${extra}".`);
+    if (extra) return fail("invalid_input", `Unrecognized input field "${extra.slice(0, 80)}".`);
     if (typeof input.seller_username !== "string" || !/^(?=.*[A-Za-z0-9])[A-Za-z0-9._@*-]{2,64}$/.test(input.seller_username)) return fail("invalid_input", "seller_username must be an eBay username of 2 to 64 letters, digits or . _ - @ * characters, with at least one letter or digit.");
     const username = input.seller_username;
+    if (signal?.aborted) return fail("canceled", "The read was canceled.");
     if (location.origin !== ORIGIN) return fail("wrong_page", "Open a https://www.ebay.com page in this tab, then call again. Nothing was requested.");
+
+    if (/^\/splashui\//.test(location.pathname)) return fail("challenge", "This tab is on eBay's verification page. Nothing was requested; the tool never solves challenges.");
 
     const path = `/fdbk/feedback_profile/${encodeURIComponent(username)}`;
     let html = null;
     for (let attempt = 1; attempt <= 3 && html === null; attempt++) {
       if (attempt > 1) await new Promise(resolve => setTimeout(resolve, 4000 * (attempt - 1)));
+      if (signal?.aborted) return fail("canceled", "The read was canceled.");
       let response;
-      try { response = await fetch(path, { credentials: "include", redirect: "manual" }); }
-      catch { return fail("request_failed", "The request to eBay failed before a response arrived. Nothing was changed; try again."); }
+      try { response = await fetch(path, { credentials: "include", redirect: "manual", ...(signal ? { signal } : {}) }); }
+      catch { return signal?.aborted ? fail("canceled", "The read was canceled.") : fail("request_failed", "The request to eBay failed before a response arrived. Nothing was intentionally changed."); }
+      if (signal?.aborted) return fail("canceled", "The read was canceled.");
       if (response.type === "opaqueredirect") {
         // A redirect is not followed automatically; the request is repeated once with mode "same-origin" (a redirect to another host is refused without being sent) to recognize a verification page.
         let followed = null;
-        try { followed = await fetch(path, { credentials: "include", mode: "same-origin" }); } catch { /* the redirect leads to another host */ }
-        if (followed && /^\/splashui\//.test(new URL(followed.url).pathname)) return fail("challenge", "eBay redirected to a verification (CAPTCHA) page instead of returning the feedback profile. A person has to complete it in this browser; the tool never tries to solve it, and repeated calls make it more likely.");
+        try { followed = await fetch(path, { credentials: "include", mode: "same-origin", ...(signal ? { signal } : {}) }); } catch { /* the redirect may lead to another host */ }
+        if (signal?.aborted) return fail("canceled", "The read was canceled.");
+        let landed = "";
+        try { if (followed) landed = new URL(followed.url).pathname; } catch { return fail("redirected", "eBay's redirect destination could not be read. Nothing was intentionally changed."); }
+        if (/^\/splashui\//.test(landed)) return fail("challenge", "eBay redirected to a verification (CAPTCHA) page instead of returning the feedback profile. A person has to complete it in this browser; the tool never tries to solve it, and repeated calls make it more likely.");
         if (followed && followed.status === 403) continue;
         return fail("redirected", "eBay redirected the feedback request instead of returning the page (it may be a sign-in or regional page). Open the profile in the browser to see it; this tool does not follow or solve it.");
       }
       if (response.status === 429) return fail("rate_limited", "eBay rate-limited the feedback request; wait a few minutes before retrying.");
-      const body = await response.text();
+      let body;
+      try { body = await response.text(); }
+      catch { return signal?.aborted ? fail("canceled", "The read was canceled.") : fail("request_failed", "The response body could not be read."); }
+      if (signal?.aborted) return fail("canceled", "The read was canceled.");
+      if (/<title>\s*(?:Security Measure|Pardon Our Interruption)\s*\|\s*eBay/i.test(body.slice(0, 4000))) return fail("challenge", "eBay returned a verification page. The tool never solves challenges.");
       if (response.status === 403 || /<title>\s*Error Page \| eBay/i.test(body.slice(0, 4000))) continue;
       if (response.status >= 400) return fail("site_error", `eBay answered HTTP ${response.status} for the feedback profile.`);
       html = body;

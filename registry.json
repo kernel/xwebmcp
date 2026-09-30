@@ -139,9 +139,9 @@
       "url_patterns": [
         "https://www.ebay.com/*"
       ],
-      "status": "qa_passed",
-      "last_verified": "2026-09-30",
-      "notes": "Reads one listing by item number: price (current bid for auctions), buying format, availability, condition, shipping and delivery text (ship-to ZIP removed), returns, item specifics, category path, images, seller name/username/feedback, sold or ended notice, and variation menus with sold-out flags. Public, read-only. Does not return the seller's description text or choose a variation combination. Independent QA on the final source used signed-out public pages only; a redirect to a relisted item is reported with the new item number (fixture and emulation only); non-US postal codes are redacted only at the end of the text.",
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Public listing details by item number, including auctions, sellers and variation menus. Read-only; never chooses a variation or purchases. Recognized US, UK and Canadian ship-to postal codes are redacted; other address formats are not guaranteed. Public image hosts are checked exactly and query strings removed. Updated source awaits independent QA.",
       "provenance": {
         "qa_agent": "agt_d977f53d650492ebf073"
       }
@@ -155,9 +155,9 @@
       "url_patterns": [
         "https://www.ebay.com/*"
       ],
-      "status": "qa_passed",
-      "last_verified": "2026-09-30",
-      "notes": "Reads a seller's public feedback summary by username: score, 12-month positive percentage, member-since, Top-rated line, positive/neutral/negative counts for 1, 6 and 12 months, and detailed seller ratings. Public, read-only. Buyer comments are not returned. Independent QA on the final source used signed-out public pages only.",
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Public seller feedback summary by username: score, positive percentage, counts and detailed ratings. Read-only; no buyer comments, messages or purchases returned. Updated source awaits independent QA.",
       "provenance": {
         "qa_agent": "agt_d977f53d650492ebf073"
       }
@@ -171,9 +171,9 @@
       "url_patterns": [
         "https://www.ebay.com/*"
       ],
-      "status": "qa_passed",
-      "last_verified": "2026-09-30",
-      "notes": "Searches listings with eBay's own sort and filter parameters and returns one results page (up to 60 items) as data. sold_only searches sold listings and needs a signed-in session (login_required otherwise): its success path was verified once by the builder in one signed-in test session and never by independent QA. Public otherwise, read-only. Does not report sponsored placement. eBay's intermittent HTTP 403 error page is retried twice and then reported as blocked; a redirect to its verification page is reported as challenge and never solved.",
+      "status": "draft",
+      "last_verified": null,
+      "notes": "One results page, up to 60 items, with eBay sort/filter parameters. Read-only; sold_only needs a signed-in session and sold Best Offer prices may differ from accepted prices. Updated source awaits independent QA. Verification pages are never solved; stop on challenge/blocked. No cart, watchlist, bid, offer or purchase actions.",
       "provenance": {
         "qa_agent": "agt_d977f53d650492ebf073"
       }
