@@ -1274,6 +1274,45 @@
       "provenance": {
         "qa_agent": "agt_a87837884a432de575e8"
       }
+    },
+    {
+      "domain": "zillow.com",
+      "tool": "get_listing",
+      "file": "domains/zillow.com/get_listing.js",
+      "kind": "page",
+      "namespace": "zillow.com",
+      "url_patterns": [
+        "https://www.zillow.com/*"
+      ],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "One anonymous public HTML read for core property facts; no navigation, tracking scripts or contact actions."
+    },
+    {
+      "domain": "zillow.com",
+      "tool": "prepare_contact",
+      "file": "domains/zillow.com/prepare_contact.js",
+      "kind": "page",
+      "namespace": "zillow.com",
+      "url_patterns": [
+        "https://www.zillow.com/*"
+      ],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Local review-only preview from an already-open listing-agent dialog; no fields filled, terms accepted or request sent."
+    },
+    {
+      "domain": "zillow.com",
+      "tool": "search",
+      "file": "domains/zillow.com/search.js",
+      "kind": "page",
+      "namespace": "zillow.com",
+      "url_patterns": [
+        "https://www.zillow.com/*"
+      ],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Exact city/state sale search; at most two anonymous HTML reads, one results page, 41 rows and no retries."
     }
   ]
 }
