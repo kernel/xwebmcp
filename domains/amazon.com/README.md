@@ -4,14 +4,14 @@ Tools for Amazon's US retail shopping site (https://www.amazon.com).
 
 | tool | file | status | notes |
 |------|------|--------|-------|
-| add_to_cart | [add_to_cart.js](add_to_cart.js) | draft | Add an absent child ASIN with exact price/seller, session and cart expectations; mock writes only |
+| add_to_cart | [add_to_cart.js](add_to_cart.js) | qa_passed | Add an absent child ASIN with exact price/seller, session and cart expectations; mock writes only |
 | get_best_sellers | [get_best_sellers.js](get_best_sellers.js) | verified | Department list or one server-rendered ranking page |
-| get_cart | [get_cart.js](get_cart.js) | draft | Retail cart read and opaque session/cart expectations; populated shape tested with fixtures only |
+| get_cart | [get_cart.js](get_cart.js) | verified | Retail cart read and opaque session/cart expectations; populated shape tested with fixtures only |
 | get_product | [get_product.js](get_product.js) | verified | Product price, availability, public seller, delivery wording and child variations |
-| prepare_checkout | [prepare_checkout.js](prepare_checkout.js) | draft | Read-only cart summary and manual handoff; execution unavailable |
-| remove_cart_item | [remove_cart_item.js](remove_cart_item.js) | draft | Remove one exact ordinary retail line; fresh-state guards and exact readback; mock writes only |
+| prepare_checkout | [prepare_checkout.js](prepare_checkout.js) | verified | Read-only cart summary and manual handoff; execution unavailable |
+| remove_cart_item | [remove_cart_item.js](remove_cart_item.js) | qa_passed | Remove one exact ordinary retail line; fresh-state guards and exact readback; mock writes only |
 | search_products | [search_products.js](search_products.js) | verified | One search page with site sorts, price bounds and filter ids |
-| update_cart_item | [update_cart_item.js](update_cart_item.js) | draft | Set an exact ordinary retail line to an absolute quantity; mock writes only |
+| update_cart_item | [update_cart_item.js](update_cart_item.js) | qa_passed | Set an exact ordinary retail line to an absolute quantity; mock writes only |
 
 ## Scope and loading
 
@@ -77,6 +77,6 @@ Every tool uses `["https://www.amazon.com/*"]`. The default apex/wildcard patter
 
 Historical reads: independent QA signed off the three public reads on 2026-09-29, after fixing access-notice classification, the `-ubb` control, per-id filter checks, facet labels, docs and fixture gaps. Dated live cases included each tool invoked from the homepage, product, Best Sellers, cart and sign-in pages with unchanged tab URL/cart count; six search sorts and filters; variation child/parent and public seller; department/category/page-two rankings. The prior optional price-bound wording nit remains in the read tool; callers should use the echoed filter text and shown prices rather than assume strict clamping.
 
-Broad cart increment: the initial independent pass rejected partial active/saved snapshots, missing second-preflight safety metadata and cancellation during hashing. Regression fixtures reproduced those failures; all candidate rows and saved pagination/ids now validate, safety metadata is fingerprinted and rechecked, update/removal payloads use the fresh state, and hash-time cancellation fails explicitly. Recheck of the corrected final source is pending; the new tools remain draft.
+Broad cart increment: the initial independent pass rejected partial active/saved snapshots, missing second-preflight safety metadata and cancellation during hashing. Regression fixtures reproduced those failures; all candidate rows and saved pagination/ids now validate, safety metadata is fingerprinted and rechecked, update/removal payloads use the fresh state, and hash-time cancellation fails explicitly. The same independent reviewer signed off all eight tools on source `f52294d` after one fix/recheck round on 2026-09-30. Registry validation found 87 valid tools; the full tool suite passed 1,685 tests (59 cart, 49 historical Amazon reads), the extension suite passed 14 tests, and Go tests passed. Independent rechecks passed 46 targeted checks plus 61 safety checks with 235 schema-validated outputs. The 13 principal regressions independently failed against the old source and passed against the corrected source. The three writes are `qa_passed`, not live-mutation `verified`; the two new read-only tools are verified against the empty live cart case.
 
-On 2026-09-30, Kernel checks from a product page returned an empty retail cart and a handoff-only summary with unchanged URL. All eight tools registered together and were absent on AWS. The local Chromium extension registered all eight; its separately fetched live endpoints returned `access_gated` without notice interaction, so no live-success parity is claimed. Fully intercepted cart reads, handoff, add/update/remove flows passed in both runtimes and restored the initial fabricated snapshot exactly. No live mutation success is claimed.
+On 2026-09-30, Kernel checks from a product page returned an empty retail cart and a handoff-only summary with unchanged URL. All eight tools registered together and were absent on AWS. The local Chromium extension registered all eight on the signed-off source; its separately fetched live endpoints returned `access_gated` without notice interaction, so no live-success parity is claimed. Fully intercepted cart reads, handoff, add/update/remove flows passed in both runtimes and restored the initial fabricated snapshot exactly. No live mutation success is claimed.

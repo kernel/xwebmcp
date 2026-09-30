@@ -60,9 +60,10 @@
       "kind": "page",
       "namespace": "amazon.com",
       "url_patterns": ["https://www.amazon.com/*"],
-      "status": "draft",
-      "last_verified": null,
-      "notes": "Guarded, add-only retail cart POST with price/seller and fresh session/cart expectations. Mocked writes only; no live mutation success claimed. Never checks out or buys."
+      "status": "qa_passed",
+      "last_verified": "2026-09-30",
+      "notes": "Independently QA-passed add-only retail cart POST with price/seller and fresh session/cart expectations. Mocked writes only; no live mutation success claimed. Readback does not establish seller/offer identity. Never checks out or buys.",
+      "provenance": { "qa_agent": "agt_ad94863d92ee1a4357a1" }
     },
     {
       "domain": "amazon.com",
@@ -87,9 +88,10 @@
       "kind": "page",
       "namespace": "amazon.com",
       "url_patterns": ["https://www.amazon.com/*"],
-      "status": "draft",
-      "last_verified": null,
-      "notes": "Bounded retail cart read and opaque session/cart expectations. Other carts flagged, not parsed; unfamiliar or paginated carts fail. Populated state is fixture-only."
+      "status": "verified",
+      "last_verified": "2026-09-30",
+      "notes": "Independent final-source QA and live empty retail-cart read from a product page on the Kernel runtime. Opaque session/cart expectations include internal safety metadata. Other carts flagged, not parsed; partial or paginated carts fail. Populated state is fixture-only; extension endpoints were access-gated.",
+      "provenance": { "qa_agent": "agt_ad94863d92ee1a4357a1" }
     },
     {
       "domain": "amazon.com",
@@ -114,9 +116,10 @@
       "kind": "page",
       "namespace": "amazon.com",
       "url_patterns": ["https://www.amazon.com/*"],
-      "status": "draft",
-      "last_verified": null,
-      "notes": "Read-only retail cart summary and manual handoff. No checkout, purchase, reservation, shipping/payment choice or account mutation."
+      "status": "verified",
+      "last_verified": "2026-09-30",
+      "notes": "Independent final-source QA and live empty-cart handoff from a product page on the Kernel runtime. Read-only retail cart summary and manual handoff; execution unavailable. No checkout, purchase, reservation, shipping/payment choice or account mutation. Populated state is fixture-only; extension endpoints were access-gated.",
+      "provenance": { "qa_agent": "agt_ad94863d92ee1a4357a1" }
     },
     {
       "domain": "amazon.com",
@@ -125,9 +128,10 @@
       "kind": "page",
       "namespace": "amazon.com",
       "url_patterns": ["https://www.amazon.com/*"],
-      "status": "draft",
-      "last_verified": null,
-      "notes": "Remove one exact ordinary retail line with fresh session/cart/quantity guards and exact readback. Mocked writes only; no live mutation success claimed."
+      "status": "qa_passed",
+      "last_verified": "2026-09-30",
+      "notes": "Independently QA-passed removal of one exact ordinary retail line with fresh session/cart/quantity and safety-metadata guards, a fresh-state request and exact readback. Mocked writes only; no live mutation success claimed.",
+      "provenance": { "qa_agent": "agt_ad94863d92ee1a4357a1" }
     },
     {
       "domain": "amazon.com",
@@ -152,9 +156,10 @@
       "kind": "page",
       "namespace": "amazon.com",
       "url_patterns": ["https://www.amazon.com/*"],
-      "status": "draft",
-      "last_verified": null,
-      "notes": "Set an exact ordinary retail line to an absolute quantity with fresh session/cart/quantity guards and exact readback. Mocked writes only; no live mutation success claimed."
+      "status": "qa_passed",
+      "last_verified": "2026-09-30",
+      "notes": "Independently QA-passed absolute-quantity update of one exact ordinary retail line with fresh session/cart/quantity and safety-metadata guards, a fresh-state request and exact readback. Mocked writes only; no live mutation success claimed.",
+      "provenance": { "qa_agent": "agt_ad94863d92ee1a4357a1" }
     },
     {
       "domain": "delta.com",
