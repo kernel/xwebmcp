@@ -197,7 +197,7 @@
       const body = new URLSearchParams();
       body.set("submit.cart-actions", "1");
       body.set("pageAction", "cart-actions");
-      body.set("actionPayload", JSON.stringify([{ type: "DELETE_START", payload: { itemId: input.cart_item_id, list: "activeItems", relatedItemIds: [], isPrimeAsin: node.getAttribute("data-isprimeasin") === "1",  } }]));
+      body.set("actionPayload", JSON.stringify([{ type: "DELETE_START", payload: { itemId: input.cart_item_id, list: "activeItems", relatedItemIds: [], isPrimeAsin: node.getAttribute("data-isprimeasin") === "1" } }]));
       body.set("activeItems", JSON.stringify(before.nodes.map(n => ({ itemId: n.id, quantity: Number(n.getAttribute("data-quantity")), price: n.getAttribute("data-price"), isSelected: n.getAttribute("data-isselected") === "1", relatedItemIds: [] }))));
       body.set("savedItems", JSON.stringify(before.saved.map(n => ({ itemId: n.id, price: n.getAttribute("data-price") }))));
       body.set("displayedSavedItemNum", String(before.saved.length));
@@ -223,7 +223,6 @@
       } else if (response.status < 200 || response.status >= 300) return fail("outcome_unknown", "Amazon did not acknowledge the write. It may have applied; inspect the cart manually, without retrying.");
       const after = await readCart();
       if (after.error || after.snapshot.session_context !== before.snapshot.session_context) return fail("outcome_unknown", "The post-write cart/session could not be verified. Inspect it manually; do not retry.");
-      const actual = after.snapshot.lines.find(l => l.cart_item_id === input.cart_item_id);
       const expected = { ...before.state, lines: before.state.lines.filter(l => l.cart_item_id !== input.cart_item_id) };
       if (JSON.stringify(expected) !== JSON.stringify(after.state)) return fail("outcome_unknown", "The cart did not exactly match the expected target change and unchanged other lines. Inspect it manually; do not retry.");
       return { status: "ok", changed: true, cart_item_id: target.cart_item_id, asin: target.asin, previous_quantity: target.quantity, quantity: 0, ...after.snapshot };

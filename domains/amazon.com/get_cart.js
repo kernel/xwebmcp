@@ -4,7 +4,7 @@
   tool: {
     name: "get_cart",
     description: "Read this browser session's Amazon US retail cart without navigation or writes. Returns at most 100 validated active lines, quantities, visible unit prices in US cents, subtotal, and opaque session_context/cart_version for guarded cart actions. Saved-for-later state is included only in the version, not returned. Fresh/Whole Foods/other collapsed carts are flagged, not parsed. Empty carts require the observed empty-state marker; unfamiliar or paginated carts fail instead of silently dropping lines. The session digest does not verify a named account; inspect the browser yourself before acting. Never reads account names, addresses, payment details or orders.",
-    inputSchema: { type: "object", additionalProperties: false, properties: {  } },
+    inputSchema: { type: "object", additionalProperties: false, properties: {} },
     outputSchema: {
       type: "object",
       oneOf: [
@@ -77,7 +77,7 @@
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true }
   },
   execute: async (input, { signal } = {}) => {
-    let attempted = false;
+    const attempted = false;
     const fail = (kind, message) => ({ status: "error", error_kind: kind, error_message: message, mutation_attempted: attempted });
     const text = node => {
       if (!node) return null;
@@ -135,7 +135,7 @@
       const cart_version = await hash(JSON.stringify({ session_context, state }));
       return { doc, nodes, saved, state, snapshot: { session_context, cart_version, cart_type: "retail", lines, items_quantity: lines.reduce((s, l) => s + l.quantity, 0), subtotal_cents: price(doc.querySelector("#sc-subtotal-amount-activecart, #sc-subtotal-amount-buybox")), other_carts_present } };
     };
-    if (!input || typeof input !== "object" || Array.isArray(input) || Object.keys(input).some(k => ![].includes(k))) return fail("invalid_input", "Provide only the documented inputs. Nothing was requested.");
+    if (!input || typeof input !== "object" || Array.isArray(input) || Object.keys(input).length > 0) return fail("invalid_input", "Provide only the documented inputs. Nothing was requested.");
     if (location.origin !== "https://www.amazon.com" || /^\/(?:ap|checkout|cpe|payments)(?:\/|$)/.test(location.pathname)) return fail("wrong_page", "Open an Amazon US shopping page in this tab, not sign-in or checkout. Nothing was changed.");
     if (signal?.aborted) return fail("canceled", "Canceled before any request.");
     try {

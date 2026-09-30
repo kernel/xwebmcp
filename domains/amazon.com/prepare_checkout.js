@@ -4,7 +4,7 @@
   tool: {
     name: "prepare_checkout",
     description: "Read the current retail cart and provide a manual checkout handoff, not checkout execution. Returns the cart snapshot and a canonical cart URL; never opens checkout, creates a purchase/hold, selects shipping or payment, or follows a checkout link. Prices are cart estimates, not a confirmed final total. The runtime has no trusted per-purchase human approval mechanism, so order placement is intentionally unavailable.",
-    inputSchema: { type: "object", additionalProperties: false, properties: {  } },
+    inputSchema: { type: "object", additionalProperties: false, properties: {} },
     outputSchema: {
       type: "object",
       oneOf: [
@@ -92,7 +92,7 @@
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true }
   },
   execute: async (input, { signal } = {}) => {
-    let attempted = false;
+    const attempted = false;
     const fail = (kind, message) => ({ status: "error", error_kind: kind, error_message: message, mutation_attempted: attempted });
     const text = node => {
       if (!node) return null;
@@ -150,7 +150,7 @@
       const cart_version = await hash(JSON.stringify({ session_context, state }));
       return { doc, nodes, saved, state, snapshot: { session_context, cart_version, cart_type: "retail", lines, items_quantity: lines.reduce((s, l) => s + l.quantity, 0), subtotal_cents: price(doc.querySelector("#sc-subtotal-amount-activecart, #sc-subtotal-amount-buybox")), other_carts_present } };
     };
-    if (!input || typeof input !== "object" || Array.isArray(input) || Object.keys(input).some(k => ![].includes(k))) return fail("invalid_input", "Provide only the documented inputs. Nothing was requested.");
+    if (!input || typeof input !== "object" || Array.isArray(input) || Object.keys(input).length > 0) return fail("invalid_input", "Provide only the documented inputs. Nothing was requested.");
     if (location.origin !== "https://www.amazon.com" || /^\/(?:ap|checkout|cpe|payments)(?:\/|$)/.test(location.pathname)) return fail("wrong_page", "Open an Amazon US shopping page in this tab, not sign-in or checkout. Nothing was changed.");
     if (signal?.aborted) return fail("canceled", "Canceled before any request.");
     try {
