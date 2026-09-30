@@ -173,7 +173,7 @@
     },
     "annotations": {
       "readOnlyHint": false,
-      "destructiveHint": true,
+      "destructiveHint": false,
       "idempotentHint": false,
       "openWorldHint": true
     }
@@ -323,6 +323,7 @@
         const afterLines = after.lineItems.filter(target);
         if (quantity === 0 ? afterLines.length !== 0 : afterLines.length !== 1 || afterLines[0].quantity !== quantity || afterLines[0].fulfillmentPreference !== line.fulfillmentPreference || (line.id && afterLines[0].id !== line.id)) throw { kind: "outcome_unknown" };
 
+        if (!ordinary(afterLines[0])) throw { kind: "outcome_unknown" };
         record.state = "done";
         return { status: "ok", mutation_attempted: true, request_id: input.request_id, account_token: account, cart_state: await stateKey(after), us_item_id: product.usItemId, offer_id: product.offerId, line_id: afterLines[0]?.id ?? null, quantity, store_id: store(), fulfillment_preference: line.fulfillmentPreference };
       } finally { ledger.busy = false; }

@@ -188,7 +188,7 @@ test("add_to_cart: missing item, unavailable/duplicate offer and changed intent 
 });
 
 test("post-write unrelated-line changes, address changes and partial results never claim success", async () => {
-  for (const afterWrite of [s => s.cart.fulfillment.deliveryAddress.addressLineOne = "Changed", s => s.cart.lineItems.push(line("UNEXPECTED", { ...product(), offerId: "OTHER_OFFER" })), s => s.cart.lineItems[0].quantity = 7]) {
+  for (const afterWrite of [s => s.cart.fulfillment.deliveryAddress.addressLineOne = "Changed", s => s.cart.lineItems.push(line("UNEXPECTED", { ...product(), offerId: "OTHER_OFFER" })), s => s.cart.lineItems[0].quantity = 7, s => s.cart.lineItems[0].selectedVariants = [{ name: "Different size" }], s => s.cart.lineItems[0].subscription = { isSelected: true }]) {
     const h = harness({ afterWrite }), input = await inputFor(h, "update_cart_item");
     assert.equal((await h.run("update_cart_item", input)).error_kind, "outcome_unknown"); assert.equal(h.state.posts, 1);
   }

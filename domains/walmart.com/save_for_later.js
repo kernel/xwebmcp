@@ -312,7 +312,7 @@
           const savedAfter = (await gql("getSFL", { sflInput: { sflId: savedBefore.id, pageInfo: { pageSize: 100, pageCursor: null } } }))?.sfl;
           if (!savedAfter || savedAfter.id !== savedBefore.id || !Array.isArray(savedAfter.lineItems) || savedAfter.pageInfo?.nextPageCursor) throw { kind: "outcome_unknown" };
           const savedTarget = savedAfter.lineItems.filter(l => l.product?.offerId === product.offerId);
-          if (savedAfter.totalQuantity !== savedBefore.totalQuantity + line.quantity || savedTarget.length !== 1 || savedTarget[0].quantity !== line.quantity || JSON.stringify(canonical(savedBefore.lineItems)) !== JSON.stringify(canonical(savedAfter.lineItems.filter(l => l.product?.offerId !== product.offerId)))) throw { kind: "outcome_unknown" };
+          if (savedAfter.totalQuantity !== savedBefore.totalQuantity + line.quantity || savedTarget.length !== 1 || savedTarget[0].product?.usItemId !== product.usItemId || savedTarget[0].quantity !== line.quantity || JSON.stringify(canonical(savedTarget[0].selectedVariants)) !== JSON.stringify(canonical(line.selectedVariants)) || JSON.stringify(canonical(savedBefore.lineItems)) !== JSON.stringify(canonical(savedAfter.lineItems.filter(l => l.product?.offerId !== product.offerId)))) throw { kind: "outcome_unknown" };
         }
         record.state = "done";
         return { status: "ok", mutation_attempted: true, request_id: input.request_id, account_token: account, cart_state: await stateKey(after), us_item_id: product.usItemId, offer_id: product.offerId, line_id: afterLines[0]?.id ?? null, quantity, store_id: store(), fulfillment_preference: line.fulfillmentPreference };
