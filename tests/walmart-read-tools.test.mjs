@@ -99,7 +99,7 @@ const searchProps = (options = {}) => ({
 });
 
 const family = () => ({
-  usItemId: "20000001", name: "Fabricated Sheet Set <b>Queen</b>", brand: "Testbrand", type: "Bed Sheets", upc: "000000123456",
+  usItemId: "20000001", offerId: "FABRICATED_OFFER", salesUnit: "EACH", isAlcohol: false, name: "Fabricated Sheet Set <b>Queen</b>", brand: "Testbrand", type: "Bed Sheets", upc: "000000123456",
   canonicalUrl: "/ip/Fabricated-Sheet-Set/20000001?athbdg=L1", availabilityStatus: "IN_STOCK",
   sellerId: "ABCD1234", sellerName: "Fabricated Seller LLC", sellerType: "EXTERNAL", orderLimit: 12, orderMinLimit: 1,
   averageRating: 4.3, numberOfReviews: 333,
@@ -223,10 +223,10 @@ for (const name of NAMES) {
   });
 }
 
-test("all four tools register together under one namespace with unique names", () => {
+test("all four read tools remain in the expanded namespace with unique names", () => {
   const names = NAMES.flatMap(n => harness(n).definition.tool.name);
   assert.equal(new Set(names).size, NAMES.length);
-  assert.deepEqual(registry.tools.filter(t => t.domain === "walmart.com").map(t => t.tool).sort(), [...NAMES].sort());
+  assert.deepEqual(registry.tools.filter(t => t.domain === "walmart.com" && NAMES.includes(t.tool)).map(t => t.tool).sort(), [...NAMES].sort());
 });
 
 // --- shared failure handling ---------------------------------------------------------------------

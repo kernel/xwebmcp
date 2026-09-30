@@ -1277,6 +1277,32 @@
     },
     {
       "domain": "walmart.com",
+      "tool": "add_to_cart",
+      "file": "domains/walmart.com/add_to_cart.js",
+      "kind": "page",
+      "namespace": "walmart.com",
+      "url_patterns": [
+        "https://www.walmart.com/*"
+      ],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Broad implementation pending fresh independent QA; cart mutation success is fixture-only, never live-tested."
+    },
+    {
+      "domain": "walmart.com",
+      "tool": "get_cart",
+      "file": "domains/walmart.com/get_cart.js",
+      "kind": "page",
+      "namespace": "walmart.com",
+      "url_patterns": [
+        "https://www.walmart.com/*"
+      ],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Broad implementation pending fresh independent QA; cart mutation success is fixture-only, never live-tested."
+    },
+    {
+      "domain": "walmart.com",
       "tool": "get_product",
       "file": "domains/walmart.com/get_product.js",
       "kind": "page",
@@ -1284,12 +1310,9 @@
       "url_patterns": [
         "https://www.walmart.com/*"
       ],
-      "status": "qa_passed",
-      "last_verified": "2026-09-29",
-      "notes": "Independent QA passed on the Kernel runtime (guest browsers, page API and API paths): store-sold and marketplace items with 60 variants, unknown id. Prices, availability and pickup are for the session's selected store. Local extension not verified; signed-in behavior untested.",
-      "provenance": {
-        "qa_agent": "agt_43bb0ce72ad9154374be"
-      }
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Broad implementation pending fresh independent QA; cart mutation success is fixture-only, never live-tested."
     },
     {
       "domain": "walmart.com",
@@ -1300,12 +1323,9 @@
       "url_patterns": [
         "https://www.walmart.com/*"
       ],
-      "status": "qa_passed",
-      "last_verified": "2026-09-29",
-      "notes": "Independent QA passed on the Kernel runtime: six sorts, paging across pages 8-10 of an 82-review item, page 1000 of a large item, out-of-range and unknown ids. Only reviews with text are listed; reviewer identity is never returned. Local extension not verified.",
-      "provenance": {
-        "qa_agent": "agt_43bb0ce72ad9154374be"
-      }
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Broad implementation pending fresh independent QA; cart mutation success is fixture-only, never live-tested."
     },
     {
       "domain": "walmart.com",
@@ -1316,12 +1336,48 @@
       "url_patterns": [
         "https://www.walmart.com/*"
       ],
-      "status": "qa_passed",
-      "last_verified": "2026-09-29",
-      "notes": "Independent QA passed on the Kernel runtime: selected store, explicit ids, unknown id, nearby stores. Never selects a store; regular hours only. Local extension not verified; signed-in behavior untested.",
-      "provenance": {
-        "qa_agent": "agt_43bb0ce72ad9154374be"
-      }
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Broad implementation pending fresh independent QA; cart mutation success is fixture-only, never live-tested."
+    },
+    {
+      "domain": "walmart.com",
+      "tool": "list_lists",
+      "file": "domains/walmart.com/list_lists.js",
+      "kind": "page",
+      "namespace": "walmart.com",
+      "url_patterns": [
+        "https://www.walmart.com/*"
+      ],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Broad implementation pending fresh independent QA; cart mutation success is fixture-only, never live-tested."
+    },
+    {
+      "domain": "walmart.com",
+      "tool": "remove_cart_item",
+      "file": "domains/walmart.com/remove_cart_item.js",
+      "kind": "page",
+      "namespace": "walmart.com",
+      "url_patterns": [
+        "https://www.walmart.com/*"
+      ],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Broad implementation pending fresh independent QA; cart mutation success is fixture-only, never live-tested."
+    },
+    {
+      "domain": "walmart.com",
+      "tool": "save_for_later",
+      "file": "domains/walmart.com/save_for_later.js",
+      "kind": "page",
+      "namespace": "walmart.com",
+      "url_patterns": [
+        "https://www.walmart.com/*"
+      ],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Broad implementation pending fresh independent QA; cart mutation success is fixture-only, never live-tested."
     },
     {
       "domain": "walmart.com",
@@ -1332,12 +1388,22 @@
       "url_patterns": [
         "https://www.walmart.com/*"
       ],
-      "status": "qa_passed",
-      "last_verified": "2026-09-29",
-      "notes": "Independent QA passed on the Kernel runtime: six sorts, facet filters and price bounds, sponsored handling, paging, out-of-range and no-match queries. Refuses throttled responses that ignore the requested sort or page; returns challenge for Walmart's block page. Local extension not verified; signed-in behavior untested.",
-      "provenance": {
-        "qa_agent": "agt_43bb0ce72ad9154374be"
-      }
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Broad implementation pending fresh independent QA; cart mutation success is fixture-only, never live-tested."
+    },
+    {
+      "domain": "walmart.com",
+      "tool": "update_cart_item",
+      "file": "domains/walmart.com/update_cart_item.js",
+      "kind": "page",
+      "namespace": "walmart.com",
+      "url_patterns": [
+        "https://www.walmart.com/*"
+      ],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Broad implementation pending fresh independent QA; cart mutation success is fixture-only, never live-tested."
     }
   ]
 }

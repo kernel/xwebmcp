@@ -1,232 +1,100 @@
 # walmart.com
 
-Read-only tools for Walmart's retail site (https://www.walmart.com): product search, item details, customer reviews and store pages.
+Walmart retail product/search/review/store reads, current-cart reads and guarded reversible cart actions.
+
+## Status
 
 | tool | file | status | notes |
-|------|------|--------|-------|
-| search_products | [search_products.js](search_products.js) | qa_passed | One results page with the site's six sorts, facet filters, price bounds, sponsored flags and the selected store's id; refuses throttled responses that ignore the requested sort or page |
-| get_product | [get_product.js](get_product.js) | qa_passed | One item by us_item_id: price, availability, seller, fulfillment, limits, returns, specifications, descriptions and variants, for the selected store |
-| get_product_reviews | [get_product_reviews.js](get_product_reviews.js) | qa_passed | Rating summary and 10 listed reviews per call (six site sorts), without reviewer names or ids |
-| get_store | [get_store.js](get_store.js) | qa_passed | Store page data by store id or the session's selected store: address, weekly hours, services and nearby stores; never selects a store |
-
-## Native WebMCP tools
-
-None found (checked 2026-09-29 with `document.modelContext.getTools()` and `webmcp.listTools()`, signed out and signed in,
-on the homepage, a search results page, a product page, the reviews page,
-`/cart`, `/lists`, `/my-items`, `/subscriptions/manage`, `/store-finder` and `careers.walmart.com`). `document.modelContext`
-exists on every page; `navigator.modelContext` does not. The site shows an AI shopping assistant in its header, which is
-site chat and not a registered tool. The custom namespace `walmart.com` is the only source of tools on these pages.
-
-## Execution kind
-
-All four tools are `kind: "page"`. Each makes one same-origin `GET` of the site's own HTML page from the document it is
-invoked in (`/search`, `/ip/<id>`, `/reviews/product/<id>`, `/store/<id>`) and reads the page data Walmart embeds in it
-(`__NEXT_DATA__`). None navigates the tab, so none needs to outlive a navigation and none qualifies for `cdp`. The
-destination pages are not opened; their embedded data is fetched and parsed in place.
-
-## Scope and loading
-
-Register the four files together under namespace `walmart.com`. Nothing else is registered in that namespace, so
-`forceOverwriteNamespace` removes no other tool.
-
-```javascript
-const fs = await import("node:fs");
-const names = ["search_products", "get_product", "get_product_reviews", "get_store"];
-const tools = names.flatMap(n => (0, eval)("(" + fs.readFileSync(`domains/walmart.com/${n}.js`, "utf8") + ")"));
-await webmcp.addCustomTools({ namespace: "walmart.com", tools, forceOverwriteNamespace: true });
-const tab = (await currentTab()).targetId;
-const ref = async name => (await webmcp.listTools()).find(t => t.source.custom?.namespace === "walmart.com" && t.tool.name === name && t.source.target_id === tab).tool_ref;
-const found = await webmcp.invokeTool(await ref("search_products"), { query: "paper towels", sort_by: "price_low", limit: 5 }, { timeoutSec: 60 });
-await webmcp.invokeTool(await ref("get_product"), { us_item_id: found.output.products[0].us_item_id }, { timeoutSec: 60 });
-```
-
-The tools are listed only while the tab is on a `www.walmart.com` page (see URL patterns) and never navigate it, so any
-`www.walmart.com` page works as the starting page, including one the agent is already on. Re-list after any navigation.
-A call takes 1 to 4 s; `timeoutSec: 60` is enough.
-
-**Kernel caveat.** On walmart.com the Kernel API's discovery call (`webmcp.listTools()` above, `kernel browsers webmcp
-list`) crashed the tab in independent QA and in the builder's runs unless it ran within about a second of the
-navigation, and a crashed tab answers later invocations with `outcome_unknown` (see Site quirks). If that happens, skip
-listing: after registering, call the tool from the page itself, for example
-`document.modelContext.executeTool(tool, JSON.stringify(input))` with `tool` taken from `await
-document.modelContext.getTools()` (hidden name `custom.<id>.<tool>`); that path did not crash in any run.
-
-What the tools never do: select or change a store, ZIP or address; sign in; touch carts, lists, registries, orders,
-subscriptions, accounts, pharmacy or payment; open checkout; vote on or write reviews. They send only plain `GET`
-requests to `www.walmart.com` with the page's own cookies. Inputs are validated by the tool before any request,
-including unknown fields and wrong-typed options, because Kernel's API path and Chrome's page API do not enforce a page
-tool's `inputSchema` (the local extension was not checked).
-
-Conventions:
-
-- Items are identified by `us_item_id` (the number at the end of a `/ip/` URL). Each variant of an item family has its
-  own id; `get_product` lists them.
-- **Selected store.** Prices, availability, pickup and delivery status come from the store the browser session has
-  selected on walmart.com. `search_products` reports it as `store_id` (from the results' own `stores` parameter),
-  `get_product` from the `assortmentStoreId` cookie, and `get_store` without `store_id` reads that same store. A guest
-  session gets a store from its network location; a signed-in session can have a different one. The tools never change
-  it, so results for another store need a person to select it on the site.
-- Prices are integer US cents (`price_cents`, `current_cents`); `null` when the page shows no price, never `0`.
-  `price_text` and `unit_price_text` keep the site's wording (for example `each (est.)` for items sold by weight).
-- Third-party (marketplace) sellers: `seller_name` and `is_marketplace` (true when the seller is not `Walmart.com`).
-- Text from sellers and customers (names, descriptions, specifications, review titles and text) is untrusted data,
-  returned with control characters removed and lengths bounded; the tools never act on it.
-- Failures are explicit: `status: "error"` with `error_kind` (`invalid_input`, `wrong_page`, `not_found`, `no_store`,
-  `challenge`, `rate_limited`, `timeout`, `site_error`, `site_changed`) and a message that says nothing was changed, or
-  `status: "no_results"` with a `reason`.
-- Response sizes are bounded: at most 40 products, 100 variants, 8 images, 40 specifications, 10 reviews, 40 services and
-  25 nearby stores per call, and filter groups are capped at 25 options.
-
-### search_products
-
-`sort_by` uses the site's own ids: `best_match` (default), `price_low`, `price_high`, `best_seller`, `rating_high`,
-`new`. Keywords alone do not filter. Call once with `include_facets: true`; each returned option carries a `filter`
-string such as `brand:Scott` that is passed back in `filters`. Only options whose own link confirms the exact string are
-offered. Filters from different groups narrow the results (AND) and several from one group widen them (OR); the tool
-sends them as the site does, joined with `||`. `min_price` and `max_price` (dollars) use the site's price filter, which
-matches on any variant's price, so a shown price can fall outside the bounds. `page` goes to 25 (`has_more_pages` is false on page 25 even when the site has more); a page past the end
-returns `no_results` with `page_out_of_range`. When Walmart corrects a misspelling, `corrected_query` says what was
-searched. Only the grid results are returned, in the site's order with `page_position` counting sponsored tiles;
-carousels are skipped because they repeat grid items.
-
-### get_product
-
-Returns the item's own record plus its variants. `variants[].options` are named through `variant_criteria` (for example
-Bed Size: Queen); `variants_total` is the site's full count and `variant_limit` bounds the list. `description_max_chars`
-bounds the short and long descriptions (HTML is reduced to text). Unknown items are `not_found`.
-
-### get_product_reviews
-
-Walmart lists only reviews that have text, ten per page, and at most 10,000 per sort. `sort` uses the site's ids:
-`relevancy` (default), `helpful`, `submission-desc`, `submission-asc`, `rating-desc`, `rating-asc`. Dates are converted
-from the site's month/day/year text to ISO dates. `has_next_page` is computed from the listed span and the site's total,
-because the site's own `next` link was observed to be null on page 8 of an 82-review item while page 9 existed. Reviewer names, ids and locations are not returned. A page past the
-end is answered by Walmart with page 1, which the tool detects from the listed span and reports as `no_results` with
-`page_out_of_range`.
-
-### get_store
-
-Reads `/store/<id>`. Hours are the store's regular weekly local times (`HH:MM`, 24-hour); temporary or holiday hours are
-not returned. Unknown ids are `not_found`; with no `store_id` and no selected store the tool returns `no_store`.
+| --- | --- | --- | --- |
+| add_to_cart | [add_to_cart.js](add_to_cart.js) | draft | Exact current offer, absolute quantity; adding is limited to the observed Bed Sheets type. Mutation success fixture-only. |
+| get_cart | [get_cart.js](get_cart.js) | draft | Actual lines including unavailable ones, totals, store/fulfillment context, opaque account/state guards. |
+| get_product | [get_product.js](get_product.js) | draft | Product, current offer id, sales unit, price, availability, variants, seller, specs and reviews summary. |
+| get_product_reviews | [get_product_reviews.js](get_product_reviews.js) | draft | Ten listed reviews per page; no reviewer identity. |
+| get_store | [get_store.js](get_store.js) | draft | Explicit or selected store's public detail; never selects a store. |
+| list_lists | [list_lists.js](list_lists.js) | draft | Matching signed-in account's list summaries, not contents or owner details. |
+| remove_cart_item | [remove_cart_item.js](remove_cart_item.js) | draft | Exact existing ordinary line, quantity zero; not a cart clear. Mutation success fixture-only. |
+| save_for_later | [save_for_later.js](save_for_later.js) | draft | Move an exact ordinary cart line to saved-for-later, not a shopping list. Mutation success fixture-only. |
+| search_products | [search_products.js](search_products.js) | draft | Six sorts, facets, price bounds, sponsored flags and selected-store context. |
+| update_cart_item | [update_cart_item.js](update_cart_item.js) | draft | Absolute quantity of an exact ordinary existing line; unchanged quantity is a no-op. Mutation success fixture-only. |
 
 ## URL patterns
 
-All four tools use `["https://www.walmart.com/*"]` instead of the default `["https://walmart.com/*",
-"https://*.walmart.com/*"]`. Walmart's retail site lives on `www.walmart.com`, and the bare domain redirects there. Other
-subdomains are unrelated products, for example `careers.walmart.com` (a separate jobs application) and
-`corporate.walmart.com`; the tools' relative requests would go to those hosts and a page tool cannot navigate the tab
-away, so with the narrowed patterns the tools are simply not listed there. Each tool also returns `wrong_page` without
-any request if it ever runs in a document outside `https://www.walmart.com`. Other Walmart products on the same site
-(pharmacy, photo, marketplace seller pages, checkout) are not covered and the tools do not touch them.
+All tools match `https://www.walmart.com/*`: Walmart's retail product. Careers, corporate, seller center and other subdomains are unrelated products and are not matched. Pharmacy and checkout are not action surfaces. A cart action invoked on a challenge, pharmacy or checkout page fails before requests.
+
+## Scope and loading
+
+All tools are `kind: "page"`. They run in their registering document and never navigate it. Public reads fetch one same-origin HTML page and parse its embedded `__NEXT_DATA__`. Cart operations extract the current persisted-operation descriptors from the site's already-loaded webpack modules and headers from its current retail runtime configuration. No fixed operation hash, saved cookie, external API credential, cart merge or site React handler is used.
+
+Register the **whole ten-tool namespace atomically**, including existing reads, when replacing `walmart.com`. For example, construct one expression `[].concat((SOURCE_1), ..., (SOURCE_10))` outside `domains/` and pass it to `kernel browsers webmcp custom-tools add --namespace walmart.com --force-overwrite-namespace --source-file <file>`. Do not invoke actions while checking registration.
+
+Kernel's API discovery can crash Walmart tabs (see Site quirks). The tested page-API path is:
+
+```js
+const tools = await document.modelContext.getTools();
+const tool = tools.find(t => t.name.endsWith(".get_cart"));
+const output = await document.modelContext.executeTool(tool, JSON.stringify({}));
+// Some runtime versions return JSON text rather than an object; parse it if needed.
+```
+
+Cart tools need the site's `getCart` module and retail configuration loaded; absent/changed versions fail explicitly. `save_for_later` additionally requires `getSFL` and `moveToSFL` modules, normally on an already-open `/cart` page. It will not open that page itself: normal site hydration can issue `MergeAndGetCart`, which is not a read. Public read tools work from an unrelated retail page; wrong-domain input returns `wrong_page` without navigation.
+
+Each cart-tool invocation has a 25-second internal deadline and honors caller cancellation. A failure before dispatch reports `mutation_attempted: false`; every failure after a POST may have happened reports `outcome_unknown`, `mutation_attempted: true`. API callers should allow enough time for prerequisite and verification GETs (up to 60 seconds).
+
+## Tool contracts
+
+- `search_products`: query, six site sort ids (`best_match`, `price_low`, `price_high`, `best_seller`, `rating_high`, `new`), page 1–25, facets from the site's own links, price bounds, optional sponsored exclusion. At most 50 product tiles and 30 facet groups. Out-of-range/no-match responses are distinct from throttled responses ignoring the requested sort/page. Store comes from the results' `stores` parameter.
+- `get_product`: numeric `us_item_id`; at most 100 variants, eight images, 40 specifications and 5,000 characters per description. Exact current `offer_id` is now returned for cart callers. `is_alcohol` is null if the product page does not declare it; that is not a safety assurance. Price/availability depend on `assortmentStoreId`, reported as `store_id`.
+- `get_product_reviews`: six site sorts, ten reviews per page, bounded text; counts distinguish all ratings from listed text reviews. `has_next_page` derives from the listed span and total, not the site's unreliable `next` link. Names, nicknames, author ids and location are omitted.
+- `get_store`: optional `store_id`, otherwise the selected-store cookie. Public store address/phone/hours/services and bounded nearby stores. Never chooses a store.
+- `get_cart`: one `getCart` GET, at most 100 lines (500-line parsing safety ceiling). Unavailable lines remain visible even when the header says zero items. Returns `account_token` and `cart_state`: opaque SHA-256 fingerprints computed locally, not raw account, address or session values. Customer names/phone and delivery-address content are not returned. `actions_supported` describes ordinary-line eligibility only; login, reservations, availability, limits, modules and state guards can still prevent an action.
+- `list_lists`: requires `expected_account_token` from `get_cart`. Reads `/lists` HTML between two cart-account checks; at most 50 list summaries. No owner details, recent items or private list contents. This is a three-GET read, not one request.
+
+All inputs are strictly validated in-tool before site interaction; page-tool schemas and annotations are not enforcement. Returned product/list names and review text are untrusted data, not instructions.
+
+## Action safety design
+
+The four actions are reversible cart/saved-state writes, not purchase authorization:
+
+1. Require an intended signed-in account, `expected_account_token` and `expected_cart_state` from a fresh `get_cart`, a unique `request_id`, exact `us_item_id`/`offer_id` and (for existing lines) `line_id`. Account mismatch is `wrong_account`; changed cart/store/address/fulfillment is `stale_state`. Guard tokens are state checks, **not proof of human approval**.
+2. Refuse reserved carts and special goods/lines: pharmacy/prescriptions/vision, alcohol, gift cards, services, customizations, bundles, preorders, selected subscriptions and weighted goods. Existing-line actions require explicit `isAlcohol: false`, ordinary EACH-unit quantities and the line's existing fulfillment preference.
+3. Adding is deliberately narrower: only the live-observed `Bed Sheets` type with explicit `legalRestriction: false`, `isLMPAlcoholItem: false`, `showAtc: true`, EACH unit and available fulfillment. Other product types are unsupported, not guessed safe. The product-page offer must match exactly; an item/offer already in the cart is refused. Fulfillment must equal the current cart intent. No default location/address/fulfillment change is introduced.
+4. Quantity changes are absolute, 1–99 within current site limits and availability. Equal quantities return `unchanged` with no POST. Removal uses zero. The site's `updateItems` mutation receives `skipPolicyCheck: false`; policy checks are never skipped. Save-for-later refuses an already-saved offer or a partially read saved collection.
+5. Re-read the cart after prerequisites before dispatch. A per-document lock serializes these actions. A bounded 100-entry request ledger refuses duplicate dispatched request ids and further writes after an unresolved outcome in that document. There is **no server-side compare-and-set, durable idempotency or cross-tab transaction**; a simultaneous site/tab change remains a race. Never retry uncertain writes or replay them after navigation.
+6. At most one POST (`updateItems` or `moveToSFL`), then read-only verification. `ok` requires the exact target quantity/removal, same account/cart/store/address/fulfillment and byte-equivalent other lines. Saving also checks that exactly that offer/quantity was added and existing saved items were unchanged. Failure to prove any postcondition is `outcome_unknown`, not success. Re-read/reconcile manually; UI React state may lag a direct mutation response.
+
+There is no `confirmed: true` input and no fake approval framework. No purchase, payment, order-placement, reservation/hold, order cancellation, account creation, settings change or list creation/deletion tool is shipped. The current runtime does not provide a trusted per-action human approval channel, so final consequential execution is excluded. Cart actions must only be invoked when the user intends the reversible change; installing/testing tools is not consent to change a live account.
 
 ## Site quirks
 
-- **Bot protection.** Walmart runs HUMAN (PerimeterX). Live, one guest browser was redirected to
-  `https://www.walmart.com/blocked?url=...` after about 12 same-origin page fetches in 30 seconds and again after about 15
-  tool calls in five minutes, and the block lasted a few minutes; independent QA had one browser blocked at its 10th call
-  (about 3 calls a minute). No safe rate was found. A blocked fetch still answers HTTP 200, so the tools detect the
-  `/blocked` redirect, HTTP 418 and 403, and captcha pages without embedded data, and return `error_kind: "challenge"`.
-  A person has to clear it; the tools do not attempt it. Each call makes exactly one request; callers should keep calls
-  sparse, use a fresh browser after a block, and never retry a `challenge` automatically.
-- **Degraded search responses.** Shortly after a burst, and before any redirect, the same-origin search answered HTTP 200
-  with a much smaller result set (about 100 matches instead of about 3,100) that ignored the requested `sort` and `page`.
-  `search_products` compares the page's echoed sort and page with the request and returns `site_changed` instead of
-  returning results that are not the requested page.
-- **Out-of-range pages.** Reviews past the last page come back as page 1 and search pages past the last come back with
-  0 matches; both are reported as `no_results`, and `total_results`/`max_page` are `null` for a search past the end.
-- **Data source.** The tools read `__NEXT_DATA__` from Walmart's own pages. These field names are internal and can change
-  on any deploy; every tool validates the shape it needs and returns `site_changed` instead of guessing.
-- **Unknown ids.** Unknown items and stores are answered with HTTP 200 or 404 pages whose data is `null`; the tools map
-  that to `not_found`. A request for a very short item id (`/ip/1`) never answered within 25 seconds while it was tried,
-  which is why `us_item_id` must have at least 3 digits and every request has a 25 second timeout (`timeout`).
-- **Tile data.** Search tiles rarely carry a brand (use `get_product`), and marketplace tiles can carry no price data;
-  `price_cents` is then `null`. Prices can differ between a search tile and the item page when a family has options.
-- **Sessions.** A signed-in session read the same store id from the `assortmentStoreId` cookie as the results' own `stores`
-  parameter; only that equality was checked, and no account data was read or recorded.
-- **Kernel runtime discovery on walmart.com.** In Kernel browsers, `GET /browsers/{id}/webmcp/tools` (`kernel browsers
-  webmcp list`) was observed to crash the tab's renderer (`Aw, Snap!`, `RESULT_CODE_KILLED_BAD_MESSAGE`) on walmart.com
-  pages, with and without custom tools registered, so the tools do not cause it (a control browser with none crashed on a
-  product page, a search page and a store page; independent QA saw it on the homepage too, while `example.com` survived
-  the same call). It depends on timing: listing on the homepage worked in three of the builder's browsers and on a search
-  page in one, and QA found listing about 300 ms after navigation and invoking immediately worked for all four tools on
-  the homepage, while a late list crashed the tab. After a crash, later invocations through the API in that tab returned
-  `outcome_unknown` until a new browser was used. Invoking the registered tools through the page API
-  (`document.modelContext.executeTool(tool, JSON.stringify(input))`, no list call) did not crash and returned normal
-  results on the homepage, a product page, the reviews page, a search page and a store page.
-- **Local Chrome extension.** Not verified. Independent QA built `xwebmcp` and ran headful Chromium 153 on Linux (not
-  stable Chrome) with a throwaway profile, the WebMCP flag, the unpacked extension and site access granted: the
-  `www.walmart.com` tab crashed at load (`RESULT_CODE_KILLED_BAD_MESSAGE`) in 3 of 3 loads with the four tools attached and
-  in 1 of 1 with a scratch no-op page tool matching walmart.com, and did not crash with the flag only (1 of 1) or with the
-  extension and no tools attached (1 of 1). So the crash follows tool registration through the extension on walmart.com
-  and does not depend on these tools' code; the trigger was not found, and no invocation could be run locally.
-- **Kernel API output encoding.** Independent QA saw `kernel browsers webmcp invoke` return a tool's output as a JSON
-  string instead of an object when the output contains certain Latin-1-range characters such as `¢` or `é` (a scratch
-  tool on `example.com` reproduced it). `get_product` can hit it, for example a `unit_price_text` of `74.0 ¢/lb`. This is
-  the runtime's behavior, not something the tools control; parse the string when the output is not an object.
+- Walmart uses HUMAN/PerimeterX. Guest browsers were blocked after approximately 10–15 calls in a few minutes, and sometimes on first navigation. There is no established safe request rate. `/blocked` can return HTTP 200; tools detect it, 403/418 and captcha-shaped responses. Stop on challenges/rate limits; do not solve or automatically retry them.
+- Kernel API discovery (`kernel browsers webmcp list`) has intermittently crashed the Walmart renderer (`RESULT_CODE_KILLED_BAD_MESSAGE`), including without these tools. Early homepage listing sometimes worked; late and non-home listing sometimes crashed. The page API invoked reads successfully on several retail pages. An early listing is an observation, not a reliable workaround or a policy bypass.
+- Kernel API output containing Latin-1-range characters such as `¢` may arrive as JSON text rather than an object. A no-op tool on another site reproduced that runtime behavior.
+- Prior local-extension QA in headful Chromium 153 on Linux crashed the Walmart tab on registration: 3/3 with these tools, 1/1 with a scratch no-op, no crash without registered tools. No local invocation succeeded. This is not cross-runtime verification, nor evidence of stable-Chrome behavior.
+- Prices and availability vary by selected store. Store defaults were observed to differ for guests and signed-in sessions. Price-low ordering can contain out-of-order marketplace tiles; these tools expose the site's order, not a new global sort.
+- The site can issue its own cookie writes/telemetry; ordinary read fetches do not guarantee an unchanged cookie jar. Tools never persist/copy cookies or change store/account selection.
 
 ## Known limitations
 
-- Read-only public data only. There are no cart, account, order, list, store-selection, address, pharmacy or payment
-  tools, and the tools never request those pages.
-- Everything depends on the store the session has selected; there is no way to choose another store or ZIP.
-- `search_products` returns one page (at most 40 products) per call and skips carousels; `page` goes to 25. `price_cents`
-  can be `null`, tiles rarely have a brand, and multi-value filter behavior was only observed for two brands (OR) and for
-  a brand plus a roll-count range (AND).
-- `get_product` returns at most 100 variants (`variants_total` says how many exist), 8 images and 40 specifications, and
-  does not return the long marketing modules, videos, warranty or nutrition tables.
-- `get_product_reviews` only sees reviews with text and never more than 10,000 per sort; `submitted_date` is null when
-  the site's date text is not month/day/year. Review media are counted (`photo_count`), not returned.
-- `get_store` does not return temporary hours, fuel prices or store events; `nearby` is the site's list of up to 30 nearby
-  stores cut to `nearby_limit`.
-- Unverified: signed-in behavior of the four tools beyond the store-id equality above; behavior on `www.walmart.com`
-  pages other than the ones listed under QA; Walmart's other countries and languages; any Walmart marketplace page; guest
-  and signed-in differences in `get_store` hours or services.
-- The tools stop at a bot-protection challenge and cannot get past it.
+- No live cart or saved-item mutation has been performed. Action successes, restoration and negative confirmation cases are tested only in fabricated isolated flows. No claim of real mutation success is made.
+- Adding is limited to the observed unregulated Bed Sheets product type; public product ids alone do not establish eligibility for other types. Non-current seller offers and weighted goods are unsupported.
+- `save_for_later` requires modules on an already-open cart document and a complete saved-items collection of at most 100 lines. It returns `wrong_page`/`site_changed` rather than navigating or using stale operation hashes.
+- Lists read only summaries. List contents and add/remove/create/delete list actions remain ungrounded. Saved-for-later is not the same as a shopping list.
+- Own orders were empty in the authorized discovery account; no populated order/detail schema is established. Order tools are omitted, not inferred from empty pages. Pharmacy is excluded.
+- Public internal SSR/webpack/GraphQL structures can drift. Explicit failures are returned for missing configuration/operations or changed shape; there is no guessed endpoint fallback or burst retry.
+- Cross-tab concurrent writes and races with user interaction cannot be prevented by local guards. The ledger expires with the document. A verification failure may reflect a real partial write, not a clean rollback.
+- Error paths `rate_limited`, `canceled`/deadline, `site_error` and `site_changed` are fixture-tested; not all were reproduced live.
+- Local Chrome extension invocation remains unverified because of the prior registration crash. Fresh independent QA is required for this broadened source.
 
 ## QA summary
 
-Builder checks on 2026-09-29 with one stealth Kernel browser per run, signed out, registered as one namespace with
-`kernel browsers webmcp custom-tools add --force-overwrite-namespace`:
+Prior public-read QA at source `3e24a5d` (2026-09-29) found and fixed unknown/wrong-typed input reaching the site, early review pagination, surrogate truncation and invalid dates. The broadened source does not inherit that sign-off: all entries are draft pending new review.
 
-- `search_products`: all six sorts returned plausible orders (`price_low` mostly ascending and `price_high` descending by
-  tile price, `rating_high` all 5-star, `best_seller` with the site's best-seller badges, `new`; QA found marketplace
-  tiles out of price order under `price_low`, so the site's sort key is not always the tile price); page 2 with 40 products; a facet
-  brand filter and a two-brand filter (292 matches, more than either brand alone); `include_facets` groups; a
-  misspelling (`corrected_query`); a nonsense query (`no_results`, `no_matches`); page 25 (`no_results`,
-  `page_out_of_range`). Discovery and invocation through the API worked on the homepage.
-- `get_product`: a store-sold item (price, seller Walmart.com, fulfillment, returns, images, specifications), a
-  marketplace item with 60 variants (limit 3), and an unknown id (`not_found`).
-- `get_product_reviews`: `helpful` sort (votes descending, verified flag, ISO dates, rating counts), `submission-desc`
-  page 2, a page past the end of a small item (`page_out_of_range`), and an unknown id (`not_found`).
-- `get_store`: the selected store with 33 services and nearby stores, and an unknown store (`not_found`).
-- Challenge: after about 15 calls in five minutes every tool returned `challenge` for the `/blocked` redirect.
-- Navigation lifetime and unrelated starting pages, through the page API: `get_product` on a product page,
-  `search_products` and `get_store` from that product page, and `get_product_reviews` from the reviews page each returned
-  normal results and the tab URL did not change.
-- The fixture tests in `tests/walmart-read-tools.test.mjs` (fabricated data only) cover input validation before any
-  request, the single plain GET per call, `wrong_page`, challenge detection (redirect, 418, 403, captcha page), rate
-  limiting, server errors, network failure, timeouts and aborts, layout changes, every output branch against its schema,
-  bounds, deduplication, sponsored handling, facet round-tripping, out-of-range pages, unapplied sort or page, missing
-  ids and stores, and that reviewer identity and session location text are never returned.
+Builder checks on 2026-09-30:
 
-Independent QA (agent `agt_43bb0ce72ad9154374be`, 2026-09-29, guest Kernel browsers, page API and Kernel API paths):
+- Approved session still signed in; no native tools on the homepage. Entire ten-tool namespace registered atomically.
+- Page-API invocation from the homepage: `get_cart` returned the real unavailable line and guard tokens; `list_lists` returned one empty-list summary. Only counts/structure were recorded, not private values.
+- `remove_cart_item` with a fabricated stale-state token returned `stale_state`; malformed `add_to_cart` with `confirmed: true` returned `invalid_input`. Neither wrote or navigated.
+- Updated `get_product` returned a current offer id. Public product-page inspection grounded the Bed Sheets eligibility fields and shipped client code grounded `getCart`, `updateItems`, `moveToSFL` and `getSFL` request construction. Only GETs were used; the existing account/cart/list/location state was left untouched.
+- Fabricated fixtures exercise cart reads, all four mutation success paths, account/state/context rejection, restricted items, duplicate/unresolved requests, uncertain POSTs, postcondition mismatch, cancellation and namespace preservation. Live mutation success remains untested.
 
-- Round 1 (source `c8cce03`) found two blocking defects and several minor ones, fixed and covered by new tests: unknown
-  fields and wrong-typed booleans were not rejected, `get_product_reviews` reported no next page one page early on an
-  item whose `next` link was null, truncation could split a surrogate pair, impossible dates such as 2/31 were converted,
-  and the README overstated the runtime and pacing observations.
-- Round 2 signed off the tool source at `3e24a5d`. Live cases: 87 malformed inputs plus 20 non-object inputs, all
-  `invalid_input` with zero requests; `get_product_reviews` pages 8, 9 and 10 of an 82-review item (`has_next_page` true,
-  false, `page_out_of_range`) and pages 1 and 1000 of a large item; a marketplace item with 60 variants; unknown item,
-  review and store ids; the selected store and an explicit store; out-of-range search pages; sorts, facets, sponsored
-  exclusion and price bounds; the API path on the homepage with exactly four custom tools listed and no native tools; a
-  network capture showing one `GET` per call and the tab URL unchanged after every call; a `challenge` from a blocked
-  browser; and every live output valid against the declared schemas with a full JSON Schema validator. The repo's tests
-  passed and a 124-mutant run left no behavioural survivor (surviving mutants were equivalent or covered constants).
-- Not verified: the local Chrome extension (see Site quirks), `rate_limited`/`timeout`/`site_error`/`site_changed` live
-  (stubbed and fixture-tested only), signed-in behavior, and any Kernel API listing on non-home pages after the first
-  second. The sign-off is for the Kernel runtime; there is no cross-runtime parity claim.
-
-## Sessions
-
-Browser sessions used for the builder checks are ephemeral and were deleted; identifiers are kept in the hand-off report.
+Independent review outcome for the broadened source: pending.

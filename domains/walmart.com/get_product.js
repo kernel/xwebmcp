@@ -18,10 +18,13 @@
       oneOf: [
         {
           type: "object", additionalProperties: false,
-          required: ["status", "us_item_id", "requested_us_item_id", "url", "name", "brand", "product_type", "category_path", "upc", "store_id", "price", "availability", "seller", "fulfillment", "order_limit", "order_min_limit", "rating_average", "rating_count", "returns", "images", "specifications", "short_description", "description", "variant_criteria", "variants_total", "variants"],
+          required: ["status", "us_item_id", "offer_id", "sales_unit", "is_alcohol", "requested_us_item_id", "url", "name", "brand", "product_type", "category_path", "upc", "store_id", "price", "availability", "seller", "fulfillment", "order_limit", "order_min_limit", "rating_average", "rating_count", "returns", "images", "specifications", "short_description", "description", "variant_criteria", "variants_total", "variants"],
           properties: {
             status: { const: "ok" },
             us_item_id: { type: "string" },
+            offer_id: { type: ["string", "null"], description: "Exact current seller offer id for add_to_cart; null when unavailable." },
+            sales_unit: { type: ["string", "null"], description: "The site's sales unit. Cart actions support ordinary EACH-unit goods only." },
+            is_alcohol: { type: ["boolean", "null"], description: "Null when not declared by the site; cart actions need explicit false." },
             requested_us_item_id: { type: "string" },
             url: { type: ["string", "null"] },
             name: { type: ["string", "null"] },
@@ -211,6 +214,9 @@
     return {
       status: "ok",
       us_item_id: product.usItemId,
+      offer_id: typeof product.offerId === "string" && /^[A-Za-z0-9_-]{1,128}$/.test(product.offerId) ? product.offerId : null,
+      sales_unit: text(product.salesUnit, 30),
+      is_alcohol: typeof product.isAlcohol === "boolean" ? product.isAlcohol : null,
       requested_us_item_id: id,
       url: productUrl(product.canonicalUrl),
       name: text(product.name, 300),
