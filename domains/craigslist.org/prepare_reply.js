@@ -70,7 +70,15 @@
     const postId = [...document.querySelectorAll(".postinginfo")].map(x => /^post id:\s*(\d{1,16})\s*$/i.exec(x.textContent.trim())?.[1]).find(Boolean);
     if (!postId) return fail("site_changed", "The listing has no public posting ID in the observed format.");
     const reply = document.querySelector("button.reply-button");
-    if (!reply || reply.disabled || reply.hidden || reply.getClientRects().length === 0 || reply.textContent.trim().toLowerCase() !== "reply") return fail("reply_unavailable", "The listing has no visible, enabled reply control; no contact lookup was attempted.");
+    const visible = node => {
+      if (!node || node.getClientRects().length === 0) return false;
+      for (let element = node; element; element = element.parentElement) {
+        const style = getComputedStyle(element);
+        if (element.hasAttribute("hidden") || element.hasAttribute("inert") || style.display === "none" || style.visibility !== "visible" || Number(style.opacity) === 0) return false;
+      }
+      return true;
+    };
+    if (!visible(reply) || reply.disabled || reply.textContent.trim().toLowerCase() !== "reply") return fail("reply_unavailable", "The listing has no visible, enabled reply control; no contact lookup was attempted.");
     const title = titleNode.textContent.replace(/[\u0000-\u001f\u007f\u200b-\u200f\u202a-\u202e\u2066-\u2069]/g, " ")
       .replace(/(?:https?:\/\/|www\.)\S+|\b[\w.+-]+@[\w.-]+\.[a-z]{2,}\b|\b(?:[a-z0-9-]+\.)+(?:com|org|net|io|co|me)\b\S*/gi, "[redacted]")
       .replace(/(?:\+?\d[\d().\s-]{6,}\d)/g, match => match.replace(/\D/g, "").length >= 7 ? "[redacted]" : match)

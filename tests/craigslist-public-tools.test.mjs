@@ -58,6 +58,10 @@ function harness(name, o = {}) {
   }
   const globals = {
     URL, URLSearchParams, Date, AbortController, TextDecoder, document,
+    getComputedStyle: node => {
+      const inline = Object.fromEntries((node.getAttribute("style") || "").split(";").filter(Boolean).map(value => value.split(":").map(part => part.trim())));
+      return { display: "block", visibility: "visible", opacity: "1", ...inline };
+    },
     location: new URL(o.url ?? (name === "prepare_reply" ? listingUrl : "https://www.craigslist.org/about/sites")),
     setTimeout: fn => { timers.push(fn); return timers.length; }, clearTimeout: () => {},
     fetch: async (url, init) => {
@@ -201,6 +205,9 @@ test("search: max 20 output, duplicates excluded and no pagination", async () =>
 test("search: explicit no_results only for consistent zero counts", async () => {
   assert.equal((await harness("search_listings", { envelope: envelope([], { decode: {} }) }).run(searchInput)).status, "no_results");
   assert.equal((await harness("search_listings", { envelope: envelope([], { decode: { version: 3 } }) }).run(searchInput)).error_kind, "site_changed");
+  for (const decode of [null, false, [], undefined]) {
+    assert.equal((await harness("search_listings", { envelope: envelope([], { decode }) }).run(searchInput)).error_kind, "site_changed");
+  }
   assert.equal((await harness("search_listings", { envelope: envelope([], { totalResultCount: 1 }) }).run(searchInput)).error_kind, "site_changed");
 });
 
@@ -307,6 +314,15 @@ test("prepare_reply: wrong listing/page/query refuses without navigation", async
 test("prepare_reply: hidden, disabled or missing reply control fails closed", async () => {
   for (const change of [h => h.document.querySelector("button").setAttribute("hidden", ""), h => h.document.querySelector("button").setAttribute("disabled", ""), h => h.document.querySelector("button").textContent = "other control"]) {
     const h = harness("prepare_reply"); change(h);
+    assert.equal((await h.run(replyInput)).error_kind, "reply_unavailable");
+    assert.equal(h.calls.length, 0);
+  }
+});
+
+test("prepare_reply: invisible or inert controls and ancestors refuse despite client rects", async () => {
+  for (const [selector, attribute, value] of [["button", "style", "visibility:hidden"], ["button", "style", "opacity:0"], ["body", "style", "opacity:0"], ["body", "style", "display:none"], ["body", "inert", ""]]) {
+    const h = harness("prepare_reply");
+    h.document.querySelector(selector).setAttribute(attribute, value);
     assert.equal((await h.run(replyInput)).error_kind, "reply_unavailable");
     assert.equal(h.calls.length, 0);
   }
