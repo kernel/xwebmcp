@@ -82,10 +82,10 @@ class DOMParser {
 
 const bookingInput = { listing_id: ID, checkin: "2026-11-13", checkout: "2026-11-16", adults: 2 };
 const bookingUrl = `https://www.airbnb.com/rooms/${ID}?check_in=2026-11-13&check_out=2026-11-16&adults=2&currency=USD`;
-const button = (innerText, label = null, options = {}) => ({ innerText, checkVisibility: () => !options.hidden, getAttribute: key => key === "aria-label" ? label : key === "aria-disabled" ? options.ariaDisabled ?? null : null, disabled: options.disabled ?? false });
+const button = (innerText, label = null, options = {}) => ({ innerText, checkVisibility: () => !options.hidden, matches: selector => selector === ":disabled" && !!(options.disabled || options.nativeDisabled), closest: () => options.ariaDisabled === "true" || options.inheritedAriaDisabled || options.inert ? {} : null, getAttribute: key => key === "aria-label" ? label : key === "aria-disabled" ? options.ariaDisabled ?? null : null, disabled: options.disabled ?? false });
 function bookingPanel(options = {}) {
   const reserve = button(options.cta ?? "Reserve", null, options);
-  const price = button(options.price ?? "$420\nShow price breakdown", null, { disabled: options.priceDisabled, ariaDisabled: options.priceAriaDisabled, hidden: options.priceHidden });
+  const price = button(options.price ?? "$420\nShow price breakdown", null, { disabled: options.priceDisabled, ariaDisabled: options.priceAriaDisabled, hidden: options.priceHidden, nativeDisabled: options.priceNativeDisabled, inheritedAriaDisabled: options.priceInheritedAriaDisabled, inert: options.priceInert });
   const buttons = [price, button("CHECK-IN CHECKOUT", options.dates ?? "Change dates; Check-in: 2026-11-13; Checkout: 2026-11-16"), button(options.guests ?? "GUESTS\n2 guests"), reserve];
   const region = {
     checkVisibility: () => !options.priceRegionHidden,
@@ -105,7 +105,7 @@ function harness(name, options = {}) {
   const originalQuery = doc.querySelector.bind(doc);
   const panels = options.noPanel ? [] : [bookingPanel(options.panel), ...(options.extraPanels ?? []).map(bookingPanel)];
   doc.querySelector = selector => selector === '[data-testid="book-it-default"]' ? panels[0] ?? null : originalQuery(selector);
-  doc.querySelectorAll = selector => selector === '[data-testid="book-it-default"]' ? panels : [];
+  doc.querySelectorAll = selector => selector === '[data-testid="book-it-default"]' ? panels : selector.startsWith("h1,") ? (options.headings ?? [{ text: originalQuery("h1")?.innerText ?? "" }]).map(heading => ({ innerText: heading.text, checkVisibility: () => !heading.hidden })) : [];
   doc.documentElement.lang = options.lang ?? "en-US";
   doc.createElement = tag => {
     assert.equal(tag, "template");
@@ -262,6 +262,15 @@ for (const [options, kind] of [
   [{ panel: { hidden: true } }, "site_changed"],
   [{ panel: { hidden: true }, extraPanels: [{ text: "These dates are not available" }] }, "unavailable"],
   [{ extraPanels: [{}] }, "site_changed"],
+  [{ headings: [{ text: "Fabricated property" }, { text: "Confirm you’re human" }] }, "challenge"],
+  [{ panel: { priceNativeDisabled: true } }, "site_changed"],
+  [{ panel: { nativeDisabled: true } }, "site_changed"],
+  [{ panel: { priceInheritedAriaDisabled: true } }, "site_changed"],
+  [{ panel: { inheritedAriaDisabled: true } }, "site_changed"],
+  [{ panel: { priceInert: true } }, "site_changed"],
+  [{ panel: { inert: true } }, "site_changed"],
+  [{ panel: { priceRegionText: "$420 Show price breakdown\nfor 4 nights\n$420 for 3 nights" } }, "site_changed"],
+  [{ panel: { priceRegionText: "$420 Show price breakdown\nfor 3 nights longer than your stay" } }, "site_changed"],
   [{ panel: { priceDisabled: true } }, "site_changed"],
   [{ panel: { priceAriaDisabled: "true" } }, "site_changed"],
   [{ panel: { priceHidden: true } }, "site_changed"],

@@ -65,7 +65,9 @@ returns `no_results`.
   preview is supported. Query parameters alone are insufficient: rendered listing
   identity, ISO dates and guest count must match. Exactly one visible panel and
   enabled visible price/Reserve controls are required. The total-stay qualifier
-  must be in the observed price region, not unrelated page text. Only bare-dollar
+  must be an exact, unambiguous line in the observed price region, not unrelated
+  or contradictory page text. Native inherited disabled state, aria-disabled
+  ancestors and inert controls are refused. Only bare-dollar
   numeric price strings are accepted, not CA$/AU$ prefixes or per-night pricing.
   A price/Reserve panel is not proof of bookable inventory.
   `status: prepared` is a preliminary read, not a final quote, hold or booking.
@@ -120,8 +122,8 @@ login and booking starting paths are refused even on the matching host.
 
 ## QA
 
-Builder checks on 2026-09-30: 128 fabricated fixture tests passed, as did registry
-validation and the full 1,705-test suite. A separate real-Chromium check passed 17
+Builder checks on 2026-09-30: 137 fabricated fixture tests passed, as did registry
+validation and the full 1,714-test suite. A separate real-Chromium check passed 22
 preview/starting-page fixtures, with no tool-generated requests or clicks. Fixtures
 cover malformed inputs, denied
 access, unsupported data, price variants, canonical URLs, array/string bounds,
@@ -141,8 +143,11 @@ output schema.
 Independent initial review found six fixture-reproduced issues: hidden/disabled
 preview controls, unrelated total-stay qualifiers, non-USD currency prefixes, a
 missed verification heading, an account-settings starting path, and the encoded
-Unicode search-URL bound. Regression tests now cover these cases; final-source
-recheck is pending. The revised preview and both public reads succeeded live again.
+Unicode search-URL bound. The first recheck signed off both public readers but
+found inherited disabled controls, conflicting stay-length text and a later visible
+verification heading in the preview. Regression tests cover all of these cases;
+final-source recheck is pending. The revised preview and both public reads succeeded
+live again in builder checks.
 
 Local Chromium 153 extension registration succeeded, but optional host permission
 remained ungranted; discovery/invocation could not be verified. Kernel evidence
