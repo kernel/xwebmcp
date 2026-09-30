@@ -327,7 +327,7 @@
       if (!payment || payment.value !== "money") return fail("wrong_page", "Only the observed Money results are supported, not Miles or Money + Miles.");
       const clean = (value, max = 120) => Array.from(String(value || "").replace(/\p{Cc}/gu, " ").replace(/[\p{Cf}\u034f\ufe00-\ufe0f\u{e0100}-\u{e01ef}]/gu, "").replace(/\s+/g, " ").trim()).slice(0, max).join("").trimEnd();
       const empty = document.querySelector('[class*="NoFlights-styles__noFlightTitle"]');
-      if (visible(empty) && /no flights|no flight is available|could not find any flights|couldn't find any flights|couldn't find an exact match|no available flights/i.test(empty.textContent || "")) return fail("no_results", "United displays an explicit no-flights result for this query.");
+      if (visible(empty) && empty.checkVisibility({ opacityProperty: true, visibilityProperty: true }) && /no flights|no flight is available|could not find any flights|couldn't find any flights|couldn't find an exact match|no available flights/i.test(empty.textContent || "")) return fail("no_results", "United displays an explicit no-flights result for this query.");
       const disclaimer = document.querySelector('[class*="FareDisclaimer-styles__disclaimer"]')?.textContent || "";
       if (!/per person/i.test(disclaimer) || !(input.trip_type === "roundtrip" ? /roundtrip/i : /one-way/i).test(disclaimer)) return fail("site_changed", "The displayed fare scope is missing or differs from the requested trip.");
       const query = { origin: input.origin, destination: input.destination, depart_date: input.depart_date, return_date: input.return_date ?? null, trip_type: input.trip_type, passengers: input.passengers };

@@ -1,5 +1,8 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { spawnSync } from "node:child_process";
 import test from "node:test";
 import { runInNewContext } from "node:vm";
 
@@ -7,7 +10,7 @@ const names = ["get_fare_options", "get_fare_calendar", "prepare_itinerary"];
 const sources = Object.fromEntries(names.map(name => [name, readFileSync(new URL(`../domains/united.com/${name}.js`, import.meta.url), "utf8")]));
 const input = { origin: "SFO", destination: "LAX", depart_date: "2027-01-10", trip_type: "one_way", passengers: 2 };
 const choice = { ...input, offer_id: "row-1", primary_flight: "UA 1234", departure_time: "07:00", arrival_time: "08:40", cabin: "Economy Plus (Extra legroom)", expected_amount: 150 };
-const element = (text, more = {}) => ({ innerText: text, textContent: text, getClientRects: () => [{}], ...more });
+const element = (text, more = {}) => ({ innerText: text, textContent: text, getClientRects: () => [{}], checkVisibility: () => more.css_visible !== false, ...more });
 const terms = "Fares are for the entire one-way trip, per person. Additional bag charges may apply.";
 const headerSelector = '[role="columnheader"][class*="ColumnSortResultHeader-styles__column--"]';
 const rowSelector = '[class*="Flight-styles__flightContainer--"]';
@@ -157,6 +160,7 @@ test("explicit no-flights component precedes missing fare terms, unlike loading 
   assert.ok(conforms(h.def.tool.outputSchema, out));
   assert.equal((await harness("get_fare_options", { rows: [], terms: "" }).run()).status, "site_changed");
   assert.equal((await harness("get_fare_options", { ...opts, no_flights: element("We couldn't find an exact match", { getClientRects: () => [] }) }).run()).status, "site_changed");
+  assert.equal((await harness("get_fare_options", { ...opts, no_flights: element("We couldn't find an exact match", { css_visible: false }) }).run()).status, "site_changed");
 });
 test("fare options: pagination rejects non-integers/oversized values before reading", async () => {
   for (const props of [{ offset: -1 }, { offset: 200 }, { offset: "0" }, { limit: 0 }, { limit: 21 }, { limit: 1.2 }]) {
@@ -207,4 +211,38 @@ test("site text is bounded/sanitized and unrelated account content is not return
   assert.doesNotMatch(JSON.stringify(out), /\u202e|\u{e0041}/u);
   assert.ok(h.reads.every(s => !/account|passenger|wallet|cookie/i.test(s)));
   assert.doesNotMatch(JSON.stringify(out), /https?:|token|confirmation|passenger_name|account_id/);
+});
+const chromium = process.env.CHROMIUM_BIN ?? "/usr/bin/chromium";
+test("browser DOM: only a visible no-flights notice establishes absence", { skip: !existsSync(chromium) }, () => {
+  const dir = mkdtempSync(join(tmpdir(), "united-no-flights-"));
+  try {
+    const href = "https://www.united.com/en/us/fsr/choose-flights?f=SFO&t=LAX&d=2027-01-10&px=2,0,0,0,0,0,0,0&tqp=R&clm=7&tt=1";
+    const html = `<!doctype html><title>Isolated no-flights fixture</title>
+      <button aria-label="Currently in English United States $ enter to change">USD</button>
+      <select name="FSRSearch.swap0.travelType"><option value="money">Money</option></select>
+      <section id="parent"><div id="notice" class="NoFlights-styles__noFlightTitle">We couldn't find an exact match</div></section>
+      <pre id="out"></pre><script>
+      (async () => {
+        const location = ${JSON.stringify({ origin: "https://www.united.com", pathname: "/en/us/fsr/choose-flights", href })};
+        const def = (${sources.get_fare_options})[0];
+        const notice = document.getElementById("notice"), parent = document.getElementById("parent");
+        const cases = ["visible", "visibility:hidden", "visibility:collapse", "display:none", "opacity:0", "parent-hidden"];
+        const results = [];
+        for (const css of cases) {
+          notice.style.cssText = css === "parent-hidden" ? "" : css;
+          parent.style.visibility = css === "parent-hidden" ? "hidden" : "visible";
+          results.push((await def.execute(${JSON.stringify(input)}, {})).status);
+        }
+        document.getElementById("out").textContent = JSON.stringify(results);
+      })().catch(error => document.getElementById("out").textContent = "ERROR: " + error.message);
+      </script>`;
+    const file = join(dir, "fixture.html");
+    writeFileSync(file, html);
+    const run = spawnSync(chromium, ["--headless", "--no-sandbox", "--disable-gpu", "--disable-extensions", "--disable-background-networking", "--no-first-run", `--user-data-dir=${join(dir, "profile")}`, "--dump-dom", `file://${file}`], { encoding: "utf8", timeout: 30000 });
+    assert.equal(run.status, 0, run.stderr);
+    const json = run.stdout.match(/<pre id="out">([^<]+)<\/pre>/)?.[1];
+    assert.deepEqual(JSON.parse(json), ["no_results", "site_changed", "site_changed", "site_changed", "site_changed", "site_changed"]);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });
