@@ -3,7 +3,7 @@
   match: { url_patterns: ["https://www.dfm.ae/*", "https://marketwatch.dfm.ae/*"] },
   tool: {
     name: "get_price_history",
-    description: "Get daily trading history (one row per session: open, high, low, close, last, previous close, change, trades, volume, value) for one Dubai Financial Market (dfm.ae) instrument between two dates, newest first, from the same daily-summary data DFM's company page shows. symbol is the exact DFM symbol from search_securities. Dates are trading dates in Dubai and default to the 30 days ending today in Dubai. The public site only serves a limited window: on 2026-09-29 the earliest row DFM returned for an equity was 2024-12-31, and its page says older history needs an eServices request (login, not offered here). The output reports the first and last dates actually returned, and starts_after_from_date is true when the first returned row is later than the requested from_date (the site's history window, a listing after from_date, or from_date falling on a weekend or holiday; this tool cannot tell which). Percent change is in percent units (-0.51 means -0.51%). Rows for instruments that did not trade carry 0.00 prices as the site reports them; use each row's traded flag (volume above 0) and last_trade_date rather than treating those zeros as prices. No row carries a time of day: the freshest possible row is today's session and the site does not say whether it is final, delayed or real-time, so timing.realtime is always 'unknown'. Not suitable for trading decisions. limit (default 60, max 500) keeps the newest rows; truncated says older rows in range were left out, narrow to_date to page back. A valid symbol with no rows in the range (for example a delisted instrument, or a range before it listed) gives no_results, an unknown symbol gives not_found (one extra request to tell them apart). Read-only, public, no sign-in; one or two requests to api2.dfm.ae, never navigates the tab. Exchange data only: no advice or recommendations.",
+    description: "Get daily trading history (one row per session: open, high, low, close, last, previous close, change, trades, volume, value) for one Dubai Financial Market (dfm.ae) instrument between two dates, newest first, from the same daily-summary data DFM's company page shows. symbol is the exact DFM symbol from search_securities. Dates are trading dates in Dubai and default to the 30 days ending today in Dubai. The public site only serves a limited window: on 2026-09-29 the earliest row DFM returned for an equity was 2024-12-31, and its page says older history needs an eServices request (login, not offered here). The output reports the first and last dates actually returned, and starts_after_from_date is true when the first returned row is later than the requested from_date (the site's history window, a listing after from_date, or from_date falling on a weekend or holiday; this tool cannot tell which). Currency is not stated by the daily-summary feed: currency is null, not an assumed AED or USD. Percent change is in percent units (-0.51 means -0.51%). Rows for instruments that did not trade carry 0.00 prices as the site reports them; use each row's traded flag (volume above 0) and last_trade_date rather than treating those zeros as prices. No row carries a time of day: the freshest possible row is today's session and the site does not say whether it is final, delayed or real-time, so timing.realtime is always 'unknown'. Not suitable for trading decisions. limit (default 60, max 500) keeps the newest rows; truncated says older rows in range were left out, narrow to_date to page back. A valid symbol with no rows in the range (for example a delisted instrument, or a range before it listed) gives no_results, an unknown symbol gives not_found (one extra request to tell them apart). Read-only, public, no sign-in; one or two requests to api2.dfm.ae, never navigates the tab. Exchange data only: no advice or recommendations.",
     inputSchema: {
       type: "object", additionalProperties: false, required: ["symbol"],
       properties: {
@@ -18,10 +18,11 @@
       oneOf: [
         {
           type: "object", additionalProperties: false,
-          required: ["status", "symbol", "from_date", "to_date", "first_row_date", "last_row_date", "starts_after_from_date", "total_rows", "returned", "truncated", "rows", "timing"],
+          required: ["status", "symbol", "currency", "from_date", "to_date", "first_row_date", "last_row_date", "starts_after_from_date", "total_rows", "returned", "truncated", "rows", "timing"],
           properties: {
             status: { const: "ok" },
             symbol: { type: "string" },
+            currency: { type: "null", description: "Not stated by the daily-summary feed; do not assume AED or USD from the exchange or symbol." },
             from_date: { type: "string", description: "Requested start, YYYY-MM-DD." },
             to_date: { type: "string", description: "Requested end, YYYY-MM-DD." },
             first_row_date: { type: "string", description: "Oldest session date the site returned for the request (before limit)." },
@@ -169,6 +170,7 @@
     return {
       status: "ok",
       symbol,
+      currency: null,
       from_date: fromDate,
       to_date: toDate,
       first_row_date: rows[rows.length - 1].date,

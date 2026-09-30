@@ -123,9 +123,9 @@
         "https://www.dfm.ae/*",
         "https://marketwatch.dfm.ae/*"
       ],
-      "status": "qa_passed",
-      "last_verified": "2026-09-29",
-      "notes": "Daily OHLCV for one symbol between two dates (newest first, limit 500); the public feed served rows from 2024-12-31 on 2026-09-29. An empty history is split into no_results vs not_found with a profile lookup; timing.realtime is always unknown. Independent QA on 2026-09-29 matched 66-row ranges against the Daily Summary tab on three symbols with no differences. Not exercised: trading hours, headful Chrome, the extension grant flow.",
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Daily summaries for one symbol between two Dubai dates, newest first, at most 500 rows. Includes retrieval time, coverage dates and explicitly unknown currency. Empty history is distinguished from an unknown symbol. No intraday timestamps or real-time guarantee.",
       "provenance": {
         "qa_agent": "agt_6305576496a3aa4284fd"
       }
@@ -140,9 +140,9 @@
         "https://www.dfm.ae/*",
         "https://marketwatch.dfm.ae/*"
       ],
-      "status": "qa_passed",
-      "last_verified": "2026-09-29",
-      "notes": "Identity from DFM's company-profile feed plus the quote block from the Trading-tab feed the company page renders (the profile feed's own quote is zero for some live instruments); quote.status marks absent or zero prices and timing.realtime is always unknown. Independent QA on 2026-09-29 matched the quote field by field against the rendered company page for 15 instruments and swept all 72 symbols on the live price feed. Not exercised: trading hours, headful Chrome, the extension grant flow.",
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Public instrument identity plus the Trading-tab quote, retrieval time and date-only last trade. Marks zero or absent prices; preserves stated profile currency without inferring quote denominations. No account access, intraday timestamp or real-time guarantee.",
       "provenance": {
         "qa_agent": "agt_6305576496a3aa4284fd"
       }
@@ -157,9 +157,9 @@
         "https://www.dfm.ae/*",
         "https://marketwatch.dfm.ae/*"
       ],
-      "status": "qa_passed",
-      "last_verified": "2026-09-29",
-      "notes": "Symbol/name search over the six directory lists the site publishes (equities, bonds, sukuk, funds, ETFs, REITs), ranked, with an overall 45 s request budget and failed lists named in failed_types. The directory's Active flag is unreliable and some symbols are absent from it. Independent QA on 2026-09-29 (signed-out Kernel browser, plus a headless local-extension run with a pre-granted manifest) matched search totals against the raw directory and exercised the time budget under simulated slow and hung fetches. Not exercised: trading hours, headful Chrome, the extension grant flow.",
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Ranked symbol/name search across six public directory lists, at most 50 matches within a 45-second request budget. Failed lists are explicit. Active flags are unreliable and directory coverage is incomplete; no account data or investment recommendations.",
       "provenance": {
         "qa_agent": "agt_6305576496a3aa4284fd"
       }

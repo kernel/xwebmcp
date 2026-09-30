@@ -170,7 +170,7 @@ test("every request goes to the one widgets endpoint, unauthenticated, as a form
 // --- search_securities ---------------------------------------------------------------------------
 
 test("search_securities rejects bad input before any request", async () => {
-  const bad = [undefined, null, [], {}, { query: "" }, { query: "   " }, { query: 5 }, { query: "x".repeat(81) }, { query: "a", security_type: "stocks" }, { query: "a", security_type: 3 },
+  const bad = [undefined, null, [], {}, { query: "" }, { query: "   " }, { query: 5 }, { query: "x".repeat(81) }, { query: "a", security_type: "stocks" }, { query: "a", security_type: 3 }, { query: "a", security_type: ["equities"] }, { query: "a", security_type: { toString: () => "equities" } }, { query: "a" + " ".repeat(80) }, { query: " ".repeat(80) + "a" },
     { query: "a", limit: 0 }, { query: "a", limit: 51 }, { query: "a", limit: 1.5 }, { query: "a", limit: "5" }, { query: "a", extra: true }];
   for (const input of bad) {
     const env = load("search_securities", { handler: directoryHandler() });
@@ -340,6 +340,15 @@ test("get_security takes identity from the profile feed and the quote from the t
   assert.equal(field(late.calls[1].body, "toDate"), "30/09/2026");
 });
 
+test("get_security preserves only the profile's stated currency without guessing from exchange or symbol", async () => {
+  for (const [currency, expected] of [[null, null], ["", null], ["-", null], ["USD", "USD"], [" AED ", "AED"]]) {
+    const env = load("get_security", { handler: securityHandler({ profile: { ...PROFILE, Currency: currency } }) });
+    const out = await env.run({ symbol: "TESTCO" });
+    assert.equal(out.currency, expected);
+    assertConforms(env.definition, out);
+  }
+});
+
 test("get_security echoes the symbol the site reports, not the one requested", async () => {
   const env = load("get_security", { handler: securityHandler({ profile: { ...PROFILE, Symbol: "TESTCO-B" } }) });
   const out = await env.run({ symbol: "testco" });
@@ -484,6 +493,7 @@ test("get_price_history maps rows newest first, flags non-trading rows and repor
   const env = load("get_price_history", { handler: () => okReply(rows) });
   const out = await env.run({ symbol: "TESTCO", from_date: "2026-09-01", to_date: "2026-09-29" });
   assert.equal(out.status, "ok");
+  assert.equal(out.currency, null, "daily-summary prices have no published currency; never infer AED");
   assert.deepEqual(out.rows.map(r => r.date), ["2026-09-29", "2026-09-28", "2026-09-25"]);
   assert.deepEqual(out.rows[0], {
     date: "2026-09-29", open: 11.7, high: 11.76, low: 11.66, close: 11.66, last: 11.66, previous_close: 11.72, change: -0.06, change_percent: -0.51, trades: 1956, volume: 12024247,

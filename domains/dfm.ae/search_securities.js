@@ -81,9 +81,10 @@
     const args = input && typeof input === "object" && !Array.isArray(input) ? input : {};
     const unknown = Object.keys(args).filter(key => !["query", "security_type", "limit"].includes(key));
     if (unknown.length) return fail("invalid_input", "Unknown input: " + unknown.join(", ") + ". Accepted: query, security_type, limit.");
-    const query = typeof args.query === "string" ? args.query.trim().replace(/\s+/g, " ") : "";
-    if (!query || query.length > 80) return fail("invalid_input", "query must be 1-80 characters: a symbol or part of a security name.");
-    if (args.security_type !== undefined && !Object.hasOwn(LISTS, args.security_type)) return fail("invalid_input", "security_type must be one of " + Object.keys(LISTS).join(", ") + ".");
+    if (typeof args.query !== "string" || args.query.length < 1 || args.query.length > 80) return fail("invalid_input", "query must be 1-80 characters: a symbol or part of a security name.");
+    const query = args.query.trim().replace(/\s+/g, " ");
+    if (!query) return fail("invalid_input", "query must contain a symbol or part of a security name.");
+    if (args.security_type !== undefined && (typeof args.security_type !== "string" || !Object.hasOwn(LISTS, args.security_type))) return fail("invalid_input", "security_type must be one of " + Object.keys(LISTS).join(", ") + ".");
     const limit = args.limit === undefined ? 20 : args.limit;
     if (!Number.isInteger(limit) || limit < 1 || limit > 50) return fail("invalid_input", "limit must be an integer from 1 to 50.");
     const types = args.security_type === undefined ? Object.keys(LISTS) : [args.security_type];
