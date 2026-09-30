@@ -64,7 +64,7 @@
           type: "object", additionalProperties: false, required: ["status", "error_kind", "error_message"],
           properties: {
             status: { const: "error" },
-            error_kind: { enum: ["invalid_input", "wrong_page", "login_required", "forbidden", "challenge", "rate_limited", "site_error", "site_changed"] },
+            error_kind: { enum: ["invalid_input", "wrong_page", "login_required", "forbidden", "challenge", "rate_limited", "site_error", "site_changed", "canceled"] },
             error_message: { type: "string", minLength: 1 }
           }
         }
@@ -72,7 +72,7 @@
     },
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true }
   },
-  execute: async (input) => {
+  execute: async (input, { signal } = {}) => {
     const fail = (kind, message) => ({ status: "error", error_kind: kind, error_message: message });
     const scrub = text => text.replace(/\p{Default_Ignorable_Code_Point}/gu, "").replace(/[\p{Cc}\u2028\u2029\u2800]/gu, " ").replace(/\s+/g, " ").trim();
     const clip = (value, max) => {
@@ -112,8 +112,11 @@
     const queryText = words.query ? norm(words.query) : "";
     if (words.query && !queryText) return fail("invalid_input", "query must contain at least one letter or digit. Nothing was sent to FamilySearch.");
     if (location.origin !== "https://www.familysearch.org") return fail("wrong_page", "This tab is on " + location.host + ", not www.familysearch.org. Open https://www.familysearch.org/ in this tab and call again. Nothing was sent to FamilySearch.");
+    if (signal?.aborted) return fail("canceled", "The read was canceled. Nothing was changed.");
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 40000);
+    const cancel = () => controller.abort();
+    signal?.addEventListener("abort", cancel, { once: true });
+    const timer = setTimeout(cancel, 40000);
     let status = 0;
     let isJson = false;
     let json = null;
@@ -124,8 +127,10 @@
       const body = await res.text();
       try { json = JSON.parse(body); } catch { /* not JSON */ }
     } catch {
+      if (signal?.aborted) return fail("canceled", "The read was canceled. Nothing was changed.");
       return fail("site_error", controller.signal.aborted ? "FamilySearch did not answer within 40 seconds. Nothing was changed." : "The request to FamilySearch failed before a response arrived. Nothing was changed.");
-    } finally { clearTimeout(timer); }
+    } finally { clearTimeout(timer); signal?.removeEventListener("abort", cancel); }
+    if (signal?.aborted) return fail("canceled", "The read was canceled. Nothing was changed.");
     if (status === 401) return fail("login_required", "FamilySearch requires a signed-in browser for the collection list (HTTP 401). Sign in to familysearch.org in this browser, then call again. Nothing was changed.");
     if (status === 403) return isJson ? fail("forbidden", "FamilySearch refused the collection list (HTTP 403). Nothing was changed.") : fail("challenge", "FamilySearch's bot protection is blocking requests from this browser (HTTP 403 with a non-JSON page). A person has to clear it on familysearch.org in this browser; do not retry automatically.");
     if (status === 429) return fail("rate_limited", "FamilySearch is rate limiting this browser (HTTP 429). Wait before listing again.");
@@ -197,7 +202,7 @@
         record_type: clip(c.recordType, 40),
         region: clip(c.region, 40),
         start_year: startYear, end_year: endYear,
-        places: (Array.isArray(c.placeIds) ? c.placeIds : []).map(id => names.get(id)).filter(Boolean).slice(0, 6),
+        places: (Array.isArray(c.placeIds) ? c.placeIds : []).map(id => clip(names.get(id), 100)).filter(Boolean).slice(0, 6),
         record_count: records, image_count: images,
         last_updated: updated ? new Date(updated).toISOString().slice(0, 10) : null
       }))

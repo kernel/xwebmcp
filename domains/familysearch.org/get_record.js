@@ -69,7 +69,7 @@
           type: "object", additionalProperties: false, required: ["status", "error_kind", "error_message"],
           properties: {
             status: { const: "error" },
-            error_kind: { enum: ["invalid_input", "wrong_page", "login_required", "forbidden", "challenge", "not_found", "rate_limited", "site_error", "site_changed"] },
+            error_kind: { enum: ["invalid_input", "wrong_page", "login_required", "forbidden", "challenge", "not_found", "rate_limited", "site_error", "site_changed", "canceled"] },
             error_message: { type: "string", minLength: 1 }
           }
         }
@@ -77,7 +77,7 @@
     },
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true }
   },
-  execute: async (input) => {
+  execute: async (input, { signal } = {}) => {
     const fail = (kind, message) => ({ status: "error", error_kind: kind, error_message: message });
     const scrub = text => text.replace(/\p{Default_Ignorable_Code_Point}/gu, "").replace(/[\p{Cc}\u2028\u2029\u2800]/gu, " ").replace(/\s+/g, " ").trim();
     const clip = (value, max) => {
@@ -98,13 +98,16 @@
     const recordUrl = "https://www.familysearch.org/ark:/61903/" + arkKind + ":" + id;
 
     if (location.origin !== "https://www.familysearch.org") return fail("wrong_page", "This tab is on " + location.host + ", not www.familysearch.org. Open https://www.familysearch.org/ in this tab and call again. Nothing was sent to FamilySearch.");
+    if (signal?.aborted) return fail("canceled", "The read was canceled. Nothing was changed.");
     // Like the site's own scripts, send the page's session id as the bearer token: records outside the public set are refused without it. It goes only to same-origin requests and is never returned.
     const session = (/(?:^|;\s*)fssessionid=([^;]+)/.exec(document.cookie) || [])[1];
     const headers = { Accept: "application/json" };
     if (session) headers.Authorization = "Bearer " + session;
     const signedIn = () => (document.querySelector("a[href*='/auth/logout']") ? true : document.querySelector("a[href*='/identity/signup'], [name=signInLink]") ? false : null);
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 40000);
+    const cancel = () => controller.abort();
+    signal?.addEventListener("abort", cancel, { once: true });
+    const timer = setTimeout(cancel, 40000);
     let status = 0;
     let isJson = false;
     let json = null;
@@ -115,8 +118,10 @@
       const body = await res.text();
       try { json = JSON.parse(body); } catch { /* not JSON */ }
     } catch {
+      if (signal?.aborted) return fail("canceled", "The read was canceled. Nothing was changed.");
       return fail("site_error", controller.signal.aborted ? "FamilySearch did not answer within 40 seconds. Nothing was changed." : "The request to FamilySearch failed before a response arrived. Nothing was changed.");
-    } finally { clearTimeout(timer); }
+    } finally { clearTimeout(timer); signal?.removeEventListener("abort", cancel); }
+    if (signal?.aborted) return fail("canceled", "The read was canceled. Nothing was changed.");
     if (status === 401) return fail("login_required", signedIn() === true ? "FamilySearch did not accept this browser's session for the record (HTTP 401); the session may have expired. Sign in to familysearch.org again in this browser, then call again. Nothing was changed." : "FamilySearch requires a signed-in browser to open this record (HTTP 401). Sign in to familysearch.org in this browser, then call again. Nothing was changed.");
     if (status === 403) return isJson ? fail("forbidden", "FamilySearch does not allow this browser session to open this record (HTTP 403). It may belong to a collection that needs a signed-in account, or be restricted. If this browser is signed out, sign in to familysearch.org and try again. Nothing was changed.") : fail("challenge", "FamilySearch's bot protection is blocking requests from this browser (HTTP 403 with a non-JSON page). A person has to clear it on familysearch.org in this browser; do not retry automatically.");
     if (status === 404) return fail("not_found", "FamilySearch has no record " + arkKind + ":" + id + ". Record ids come from search_records; Family Tree person ids are not record ids.");

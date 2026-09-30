@@ -1,97 +1,84 @@
 # familysearch.org
 
-Tools for FamilySearch (https://www.familysearch.org) Historical Records: search indexed record entries, read one record, and list the record collections. All three are read-only. Family Tree, Genealogies, Full-Text, Catalog, Books, Memories and the Research Wiki are not covered.
+Tools for FamilySearch Historical Records: record and collection research plus unsaved source preparation.
 
 | tool | file | status | notes |
 |------|------|--------|-------|
-| search_records | [search_records.js](search_records.js) | draft | One page of hits for name, birth place and years, keyword, exact matching and one collection; allowlisted hit fields |
-| get_record | [get_record.js](get_record.js) | draft | One record by `1:1:` or `1:2:` ark or URL: people, events, attributes, links, collection and citation |
-| list_collections | [list_collections.js](list_collections.js) | draft | Filters the site's list of about 3,500 collections by title, place, type, years, size and images |
+| get_collection | [get_collection.js](get_collection.js) | draft | Exact collection details, citation, coverage, counts and Research Wiki guide URL |
+| get_record | [get_record.js](get_record.js) | draft | Record ark details: people, events, attributes, relationships and citation |
+| list_collections | [list_collections.js](list_collections.js) | draft | Public collection discovery by title, place, type, years, size and images |
+| prepare_source | [prepare_source.js](prepare_source.js) | draft | Returns an unsaved source draft and optional caller note; never attaches or saves |
+| search_records | [search_records.js](search_records.js) | draft | One page of indexed hits by name, birth place/years, keyword and collection |
 
 ## Native WebMCP tools
 
-None found (checked 2026-09-29 with `webmcp.listTools()`, signed out, on the home page, the records search page, a records results page, the collection list, a surname page and the wiki main page; `document.modelContext` exists with no registered tools and `navigator.modelContext` is undefined). The custom namespace `familysearch.org` does not overlap with anything the site registers. Presence can vary by session.
+None found on 2026-09-30 in a fresh signed-out Kernel browser on the public home and collection page, before custom registration. Earlier checks also covered records search/results and the wiki. Presence can vary by session; check before loading.
 
-## Execution kind
+## Execution kind and loading
 
-All three tools are `kind: "page"`. Each calls the site's own JSON endpoints with `fetch` from the `www.familysearch.org` document it is invoked in and returns the result without navigating, so none has a navigation whose post-navigation output it needs, and none qualifies for `cdp`.
+All five tools are `page`. They perform same-origin GETs or prepare returned text in the registering document and never navigate it. No tool needs post-navigation output or a CDP exception. Research guide URLs are handoffs for the caller, not automatic navigation.
 
-## Scope and loading
-
-Register all three files together under namespace `familysearch.org`:
+Register the **entire** `familysearch.org` namespace together when replacing it:
 
 ```javascript
-const names = ["search_records", "get_record", "list_collections"];
+const names = ["get_collection", "get_record", "list_collections", "prepare_source", "search_records"];
+// Assemble from a local checkout, then send the complete array to the browser runtime.
 const fs = await import("node:fs");
-const tools = names.flatMap(n => (0, eval)("(" + fs.readFileSync(`domains/familysearch.org/${n}.js`, "utf8") + ")"));
+const tools = names.flatMap(name => (0, eval)("(" + fs.readFileSync(`domains/familysearch.org/${name}.js`, "utf8") + ")"));
 await webmcp.addCustomTools({ namespace: "familysearch.org", tools, forceOverwriteNamespace: true });
-const tab = (await currentTab()).targetId;
-const tool = (await webmcp.listTools()).find(t => t.source.custom?.namespace === "familysearch.org" && t.tool.name === "search_records" && t.source.target_id === tab);
-const result = await webmcp.invokeTool(tool.tool_ref, { given_name: "ada", surname: "example", birth_year_from: 1855, birth_year_to: 1865 }, { timeoutSec: 60 });
 ```
 
-Each tool works from any `www.familysearch.org` page and never navigates the tab. On any other origin (the runtime registers a tool on a tab's top document when only an embedded frame matched, `spec/cdp-tools.md` §6.1) it returns `wrong_page` without a request; open `https://www.familysearch.org/` and call again. A call takes 0.5 to 3 s, plus up to 10 s when `search_records` waits for the site's session cookie; `timeoutSec: 60` is enough.
+Each works from any `https://www.familysearch.org/` document. If only an embedded frame matches and the runtime registers them on another top origin, they return `wrong_page` without requests. The extension registers only when the top document matches. Invalid inputs are rejected before site interaction; cancellation stops before requests or aborts an outstanding read. Use a 60-second invocation timeout (search may wait 10 seconds for an anonymous session cookie, then 40 seconds for the read).
 
-Typical use: `list_collections` to find collections for a place and period, `search_records` (optionally with `collection_id`), then `get_record` with a hit's `record_url`.
+Typical research sequence:
 
-Conventions:
+1. `list_collections` finds a place/period's collections, with `collection_id` and canonical URL.
+2. `get_collection` reads an exact id's description, coverage and citation. Its `research_guide_url` comes from the site's collection-page guide lookup; the guide itself is not fetched.
+3. `search_records`, optionally filtered by collection, returns hits and canonical `record_url` values.
+4. `get_record` reads indexed facts and relationships. `prepare_source` returns source text for manual review, optionally with a caller-written research note kept separate from site evidence.
 
-- `persona_id` is the site's record identifier for one person in a record (`XXXX-XXXX` or `XXXX-XXX`). Its ark is `1:1:<persona_id>` (`record_url`); a whole household or event record is `1:2:<id>`. `get_record` accepts a `record_url`, a `1:1:` or `1:2:` ark path, or an ark URL, and rejects bare ids: a Family Tree person id has the same shape as a persona id and would silently be read as an unrelated record.
-- Dates and places are the site's index text (`date` as transcribed, `place` normalized when the site has a normalized form). They can be wrong or misspelled; a hit is an index entry, not proof of identity.
-- `attributes` are the facts the index recorded as values (for example marital status or occupation), plus `Age`, `RelationshipToHead` and `OccupationIndustry` from the person fields. Their `type` is FamilySearch's own name for the fact and varies by collection.
-- Text lists are bounded: 8 events and 8 attributes per hit, 10 relatives, 12 events and 12 attributes per person and 40 people per record (the requested person is always kept and listed first; `persons_truncated` says more were left out), 80 links (`relationships_truncated`), 50 hits or collections per call.
+`prepare_source` returns `status: "prepared"`, `saved: false`, `review_required: true`. These describe a returned draft, **not** a saved FamilySearch source or approval for any write. It has no tree-person parameter, executable attachment step or automatic continuation. A missing citation is null, not generated. For a persona ark, it requires the requested persona to appear in the response. Whole-record drafts do not infer a subject. Shared-tree edits require separate authorization and a trusted human approval path; this runtime does not provide one, so confirmed execution is not shipped.
+
+## IDs and bounds
+
+- A persona is a historical record entry, not a Family Tree person. `get_record` accepts `1:1:ID`, `1:2:ID`, an ark path or a FamilySearch ark URL. Bare ids are rejected. `prepare_source` accepts only canonical `record_url` without queries/fragments. Collection ids are strings of 1–10 digits.
+- Search uses the site's default matching and relevance; dates/places are index text, not verified identity. Use `record_url` with `get_record`, not bare `persona_id`.
+- Search: 50 hits, 8 events/attributes per hit, 10 relatives and 10 collection facets. `offset + limit` cannot exceed 4999.
+- Record: 40 people, 12 events/attributes per person, 80 relationships. If the requested person lies beyond the first 40, it is moved to the front. Truncation flags describe omitted people or excess links among returned people.
+- Collections: 50 results per page and 6 place names per item. Exact details: 6 coverage entries, 2000-character description, 1000-character citation. Source drafts: 300-character title, 1000-character citation, 200-character subject name and 2000-character note.
 
 ## URL patterns
 
-All three tools match only `https://www.familysearch.org/*`, not the default `https://familysearch.org/*` and `https://*.familysearch.org/*`. The registrable domain hosts separate products on other hosts: sign-in (`ident.`), the public deceased-ancestor pages (`ancestors.`), the community forum and help. The APIs the tools call are same-origin on `www.familysearch.org`, so a page tool registered on those hosts could not work. The bare `familysearch.org` redirects to `www`.
+All tools match only `https://www.familysearch.org/*`. Other subdomains host separate products (identity, ancestor pages, forums/help), and these same-origin endpoints cannot work there. Bare `familysearch.org` redirects to `www`. No identity-host registration or login automation is supplied.
 
 ## Safety and trust boundary
 
-- Every request is a same-origin `GET` to `www.familysearch.org` (`/service/search/hr/v2/personas`, `/ark:/61903/1:1:<id>` or `1:2:<id>`, `/search/orchestration/collectionListData`). The tools never sign in, save, attach, cite, follow, edit or delete anything, never open Family Tree, images, hints or matches, and never navigate.
-- `get_record` sends the page's `fssessionid` cookie value as the bearer token, exactly as the site's own scripts do: records outside the public set are refused without it (HTTP 401 in a signed-in browser). The token is read from `document.cookie`, sent only to the same origin, and never returned or logged. The other two tools send no token.
-- `signed_in` in `search_records` is read from the current page's header (a Sign Out link means signed in, a Sign Up link means signed out) with no request; it is `null` when the header shows neither, for example on wiki pages or before it has rendered.
-- Record text is untrusted page data. Strings have Unicode default-ignorable characters (soft hyphens, zero-width and bidirectional characters, tag characters, variation selectors, fillers) removed and other control characters replaced by a space, are length-bounded and are returned as data; input terms get the same cleaning, so a soft hyphen pasted into a name does not split it. `citation` also has HTML comments, tags and named or numeric entity-encoded tags removed. Nothing in a record is executed or followed.
-- Only an allowlist of fields is returned. Record-level internal fields (batch ids, operator notes, image and film identifiers, sort keys) and unlisted person fields are dropped. No document image, image URL or account identifier is returned.
-- People in newer collections (for example the 1950 US census) may still be living. The tools return only what FamilySearch itself shows this browser; use the results for research, not to profile individuals, and do not store them.
+- Reads only: `/service/search/hr/v2/personas`, `/ark:/61903/1:[12]:ID`, `/search/orchestration/collectionListData`, `/service/search/hr/v2/collections/ID`, `/search/orchestration/wikiurl/ID`. No POST, tree access, images, saves, attachments, memories, edits, preferences, messages or account creation.
+- Record reads (`get_record`, `prepare_source`) send the current page's `fssessionid` as bearer, matching the site's record mechanism. It is used only on the fixed same-origin record path and never returned/logged. Other tools send no bearer. Nothing persists cookies/profiles or borrows another account.
+- `signed_in` is the current header's sign-in indication, not verified account identity or session validity. These tools do not target an account or tree person. Refused reads fail explicitly; preparation grants no write permission.
+- Site text and caller notes are untrusted data. Fields are allowlisted and length-bounded. Default-ignorable Unicode characters are removed; other controls become spaces. Citations/descriptions have literal and once-decoded entity tags/comments removed. Text is not executed or interpreted as instructions. Only canonical record/collection URLs and bounded same-origin wiki paths are returned as URL fields; raw API links/internal fields are omitted.
+- Do not use newer public records to profile living people. Private/living-person Family Tree records are not supported. Draft notes must not include credentials or private account information.
 
 ## Site quirks
 
-- Search results depend on the session. The same query returned 941 hits signed out and 299,883 signed in; signed-out searches are dominated by a few open collections (for example the 1950 US census).
-- The search API answers HTTP 401 when the page has no FamilySearch session cookie, even signed out. The site's scripts set an anonymous one after a page loads, and the delay varied in independent QA from under 2 s in one browser to more than 12 s in another; a tab that showed a bot-protection page had none after 12 s and got one only after a minute or two. `search_records` waits up to 10 s for it and returns `site_error` if it does not appear, so it does not tell an agent to sign in when the browser only lacks the anonymous session.
-- Filtering by collection is refused with HTTP 401 for some collections when signed out (the 1950 US census and unknown ids answered 401) and allowed for others (independent QA searched a New Zealand passenger list collection signed out); `search_records` reports `login_required` for the refused ones.
-- The results page sends `m.defaultFacets`, `m.facetNestCollectionInCategory` and `m.queryRequireDefault`; the tool sends the same. Without the three flags one name query matched about 1.6 million records instead of 941.
-- The search API rejects `count` above 100 and `offset + count` of 5000 or more (HTTP 400). The tool caps `limit` at 50 and `offset + limit` at 4999.
-- Place and date terms are the site's "like" terms: a place can also match a related event in the record (for example a census residence), which is the site's behavior. Only the terms on the site's default search form are exposed; the API also accepts death, marriage and residence terms, sex and a spouse name, which are not exposed because their "like" semantics were not characterised.
-- The collection list is one ~1.2 MB JSON document (about 3,500 collections) that the page itself filters in the browser; `list_collections` fetches it on each call and filters locally; `query` words match whole words only, ignoring case, accents (including đ, ß, ø, ł, æ, œ) and punctuation. Collections are matched to places through the site's Place filter, so a state name leaves out nationwide collections; use `United States` for those. `record_count` 0 means the collection has images but is not name-searchable.
-- Independent QA found that the Kernel runtime (2026-09-29) delivers `output` as a JSON string instead of an object exactly when the result contains a character from U+0080 to U+00FF (for example é, ñ, ß, as in the collection titles returned for `Córdoba` or `Liège`); results with only ASCII text, an en dash, đ, ł or CJK text arrived as objects. The local extension always returned objects. This is runtime behavior, not tool code: parse `output` when `typeof output === "string"`.
+- Signed-out searches cover a subset. The site's anonymous session cookie may appear later than page load; search waits up to 10 seconds. A 401 without that cookie becomes `site_error`, not sign-in advice. Some collection filters work signed out while others return `login_required`.
+- Search requires the observed `m.defaultFacets`, `m.facetNestCollectionInCategory`, `m.queryRequireDefault` flags. Birth-like place/date matching may also match related record events, as on the site.
+- `list_collections` fetches the site's approximately 1.2 MB list and filters locally. Title words match whole words, ignoring accents/punctuation and folding letters such as đ/ß/ø/ł/æ/œ. Place uses the site's filter names, case-insensitively; a state can omit nationwide collections. Zero indexed records can mean image-only.
+- Collection-level record/person/image counts are distinct and may differ from the list endpoint; missing counts are null in `get_collection`, not proof of zero or access.
+- Earlier independent QA observed Kernel returning JSON-string `output` for U+0080–U+00FF text, and objects otherwise. The local extension returned objects. Consumers should parse string outputs. This is a runtime behavior, not tool code.
 
 ## Known limitations
 
-- Only public and signed-in Historical Records are covered. Family Tree search and person pages, Genealogies, Full-Text, Catalog, Books, Newspapers, Memories, the Research Wiki, `ancestors.familysearch.org` and account features have no tool. In the browsers used while building, Family Tree endpoints answered HTTP 403 and the tree person page said "Feature Not Available in Your Location", so they were not attempted.
-- Live checks covered census and passenger-list records signed out, and one signed-in account that could search and read a church-register record. Other collections may carry different fact and field names; only `Age`, `RelationshipToHead` and `OccupationIndustry` person fields are returned besides fact values. Unexpected shapes return `site_changed` rather than partial data.
-- A hit is not verified to be the person asked about, and transcription errors are common.
-- `get_record` returns no document image or image link, no hints, tree matches or attached sources, and at most 40 people and 80 links of very large records (`persons_truncated`, `relationships_truncated`).
-- `signed_in` can be `null`, and it is read from the page header, so it says what the page shows and not that the session is still valid; an expired session appears as `login_required`.
-- The `collection_id` filter succeeding for refused collections, `get_record` on non-public records and `signed_in: true` were verified only in one signed-in account. No wrong-account, MFA or account-lock behavior was exercised because no tool signs in.
-- Rate limits were not measured; the tools do not retry. HTTP 429 returns `rate_limited`.
-- Whether FamilySearch's terms permit automated reading was not reviewed.
-- `wrong_page` was exercised by fixtures and, in independent QA, live on a page whose top document was `https://example.com/` with an embedded `www.familysearch.org` frame (the Kernel runtime registers the tools there). The Chrome extension registers a tool only when the top document matches (`spec/cdp-tools.md` §9), so `wrong_page` is not reachable in it.
-- Local Chrome extension: independent QA ran the tools in Chromium 153 with the unpacked extension on signed-out pages only. For 18 identical inputs on the last reviewed revision, 15 gave the same result as on Kernel once parsed; the other 3 differed only in `signed_in`, which was `null` in the extension on a tab that showed a bot-protection page without the site header and `false` on Kernel. Google Chrome itself and signed-in flows were not run.
+- Family Tree returned HTTP 403 and a location-unavailable page during earlier discovery. No tree search/edit/attach/delete, hints, matches, private/living-person records or memory tools are implemented. No new access or bypass attempts were made.
+- Catalog, Full-Text, Books, Genealogies and images are omitted. The research guide is only a collection-provided navigation handoff, not a general Wiki search tool.
+- Public collection details do not establish permission to view images or records. A missing/malformed guide lookup fails explicitly; no guide URL is guessed.
+- Records are indexed transcriptions, not proof of identity. Fact names vary by collection; only the existing fact allowlist and three person fields (Age, RelationshipToHead, OccupationIndustry) are returned.
+- No action changes the account. Live mutation success, shared-tree approval or restoration of user state cannot be claimed. There is no confirmed execution tool.
+- Signed-in tests in the earlier implementation used one approved account. This revision is tested publicly only; signed-in and wrong-account cases remain fixture-only or untested as applicable.
+- Real 429/5xx/challenge responses and large-record caps are not required for live tests; their fixtures must remain separately labeled.
 
 ## QA summary
 
-Independent QA (Hypeship agent `agt_3c46f73a3268da8f5354`, Kernel runtime and a local Chromium 153 extension, signed-out surfaces only) reviewed three revisions of this PR and returned FAIL each time; it gave no sign-off. The last review, on head `4bc44b36098a73b1d2bee0d838984842b1044b65`, found no blocking defects and these should-fix ones, all fixed in the commit after it:
+Earlier independent reviews found text-cleaning, input-normalization and documentation defects. The last inherited source fixed them without re-review. This revision retains those fixes, corrects record-id guidance, adds cancellation, bounds hits when the server ignores count, and adds collection details/source preparation. All tools remain draft pending independent QA of this source.
 
-- Some default-ignorable characters (variation selectors 17 to 256, Mongolian variation selectors, Hangul and Khmer fillers) survived the text cleaning.
-- Invisible format characters in input terms were replaced by a space, so a pasted soft hyphen split a name and changed the search.
-
-Its nits (JSON-string wording, citation cleanup of numeric entities, comments and autolinks, missing fixture cases) are also addressed. The review-round limit was reached, so the commit that fixes these was not independently re-reviewed and all three tools stay `draft`.
-
-Authoring-time live checks (2026-09-29, Kernel browser, page-tool invocation through `POST /browsers/{id}/webmcp/invoke`):
-
-- Signed out: `search_records` (name, place, years, keyword, exact, wildcards, `collection_id` refused with `login_required` for the 1950 census), `get_record` (persona and household arks, unknown id, malformed input), `list_collections` (title, place, type, years, size, sort, unknown place).
-- Signed in (one approved account, read-only calls): `search_records` with and without `collection_id`, `get_record` on a church-register record.
-
-## Sessions
-
-Ephemeral Kernel browser session ids used while authoring are recorded in the PR discussion, not here.
+Fixture tests use fabricated people, collections and session values only. Live and local-extension evidence for this revision will be recorded after independent review; historical checks do not establish final-source sign-off.

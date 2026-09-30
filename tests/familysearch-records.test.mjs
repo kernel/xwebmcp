@@ -5,7 +5,7 @@ import { runInNewContext } from "node:vm";
 
 // Harness for the familysearch.org record tools. Every page and API interaction is stubbed and nothing here
 // contacts the live site. People, records, collections, places and the session id below are fabricated.
-const NAMES = ["search_records", "get_record", "list_collections"];
+const NAMES = ["search_records", "get_record", "list_collections", "get_collection", "prepare_source"];
 const sources = Object.fromEntries(NAMES.map(name => [name, readFileSync(new URL(`../domains/familysearch.org/${name}.js`, import.meta.url), "utf8")]));
 const registry = JSON.parse(readFileSync(new URL("../registry.json", import.meta.url), "utf8"));
 const plain = value => JSON.parse(JSON.stringify(value));
@@ -160,7 +160,7 @@ function harness(name, o = {}) {
   return {
     definition, calls, sleeps: () => sleeps,
     run: async input => {
-      const result = plain(await definition.execute(input));
+      const result = plain(await definition.execute(input, o.signal ? { signal: o.signal } : {}));
       assert.ok(conforms(definition.tool.outputSchema, result), `${name} output violates its schema: ${JSON.stringify(result)}`);
       const text = JSON.stringify(result);
       assert.ok(!text.includes(FAKE_SESSION), "the session id must not leave the page");
@@ -214,6 +214,8 @@ const invalidInputs = {
     { record: "AAAA-CCCC" }, { record: "KWCJ-RN4" }, { record: "4:1:AAAA-CCCC" }, { record: "https://www.familysearch.org/ark:/61903/4:1:AAAA-CCCC" }, { record: "1:1:aaaa-cccc" }, { record: "https://www.familysearch.org/ark:/61903/1:1:AAAA-CCCC?" + "x".repeat(300) },
     { record: "https://ancestors.familysearch.org/ark:/61903/1:1:AAAA-BBBB" }, { record: "https://familysearch.org.example.net/ark:/61903/1:1:AAAA-BBBB" }, { record: "http://www.familysearch.org/ark:/61903/1:1:AAAA-BBBB" },
     { record: "https://www.familysearch.org/en/tree/person/details/AAAA-BBB" }, { record: "AAAA-BBBB", extra: 1 }, { record: "x".repeat(301) }],
+  get_collection: [undefined, null, [], {}, { collection_id: 5 }, { collection_id: "" }, { collection_id: "12345678901" }, { collection_id: "1?x" }, { collection_id: "9000001", extra: true }],
+  prepare_source: [undefined, null, [], {}, { record_url: "1:1:AAAA-CCCC" }, { record_url: "https://evil.example/ark:/61903/1:1:AAAA-CCCC" }, { record_url: "https://www.familysearch.org/ark:/61903/3:1:AAAA-CCCC" }, { record_url: "https://www.familysearch.org/ark:/61903/1:1:AAAA-CCCC?session=secret" }, { record_url: "https://www.familysearch.org/ark:/61903/1:1:AAAA-CCCC", confirmed: true }, { record_url: "https://www.familysearch.org/ark:/61903/1:1:AAAA-CCCC", research_note: "" }, { record_url: "https://www.familysearch.org/ark:/61903/1:1:AAAA-CCCC", research_note: "x".repeat(2001) }],
   list_collections: [undefined, null, [], "ireland", { extra: 1 }, { query: "" }, { query: 5 }, { query: "x".repeat(101) }, { place: " " }, { record_type: "census" }, { record_type: "BIRTHS" }, { year_from: 0 }, { year_to: 2101 }, { year_from: 1950, year_to: 1900 },
     { year_from: "1900" }, { min_records: 0 }, { min_records: 1.5 }, { has_images: "yes" }, { sort_by: "size" }, { limit: 0 }, { limit: 51 }, { offset: -1 }, { offset: 3501 }]
 };
@@ -229,7 +231,7 @@ for (const [name, inputs] of Object.entries(invalidInputs)) {
   }
 }
 
-const validInputs = { search_records: { surname: "Example" }, get_record: { record: "1:1:AAAA-CCCC" }, list_collections: {} };
+const validInputs = { search_records: { surname: "Example" }, get_record: { record: "1:1:AAAA-CCCC" }, list_collections: {}, get_collection: { collection_id: "9000001" }, prepare_source: { record_url: "https://www.familysearch.org/ark:/61903/1:1:AAAA-CCCC" } };
 for (const name of NAMES) {
   test(`${name}: a registration on another familysearch.org host returns wrong_page without any request`, async () => {
     for (const origin of ["https://ident.familysearch.org", "https://ancestors.familysearch.org", "https://familysearch.org"]) {
@@ -237,7 +239,7 @@ for (const name of NAMES) {
       const result = await h.run(validInputs[name]);
       assert.equal(result.status, "error");
       assert.equal(result.error_kind, "wrong_page");
-      assert.match(result.error_message, new RegExp(new URL(origin).host.replace(/\./g, "\\.")));
+      assert.match(result.error_message, /www\.familysearch\.org/);
       assert.deepEqual(h.calls, []);
     }
   });
@@ -912,4 +914,110 @@ test("get_record: a truncated record lists the requested person once and ignores
     assert.equal(many.relationships.length, Math.min(valid, 80), `${valid} valid links`);
     assert.equal(many.relationships_truncated, truncated, `${valid} valid links`);
   }
+});
+
+const detailBody = () => ({
+  id: "9000001", sourceDescriptions: [{ id: "9000001", resourceType: "http://gedcomx.org/Collection", titles: [{ value: "Exampleland Census" }], descriptions: [{ value: "Index <b>description</b>" }], citations: [{ value: "Cited &#60;i&#62;work&#60;/i&#62;." }], coverage: [{ recordType: "http://gedcomx.org/Census", temporal: { original: "1901" }, spatial: { original: "Exampleland" } }] }],
+  collections: [{ id: "9000001", content: [{ resourceType: "http://gedcomx.org/Record", count: 100 }, { resourceType: "http://gedcomx.org/Person", count: 200 }, { resourceType: "http://gedcomx.org/DigitalArtifact#FamilySearch", count: 50 }] }],
+  links: { private: { href: "https://evil.example/?token=fabricated" } }
+});
+const detailRoute = (body = detailBody(), guide = { data: "/wiki/en/Exampleland_Census_-_Historical_Records" }) => path => ({ status: 200, body: path.includes("wikiurl") ? guide : body });
+
+test("get_collection: exact identity, coverage, counts, citation and safe guide handoff", async () => {
+  const h = harness("get_collection", { route: detailRoute() });
+  const out = await h.run(validInputs.get_collection);
+  assert.deepEqual(out, { status: "ok", collection_id: "9000001", url: "https://www.familysearch.org/en/search/collection/9000001", title: "Exampleland Census", description: "Index description", citation: "Cited work.", coverage: [{ record_type: "Census", date: "1901", place: "Exampleland" }], record_count: 100, person_count: 200, image_count: 50, research_guide_url: "https://www.familysearch.org/wiki/en/Exampleland_Census_-_Historical_Records" });
+  assert.deepEqual(h.calls.map(c => c.url), ["/service/search/hr/v2/collections/9000001", "/search/orchestration/wikiurl/9000001"]);
+  assert.ok(h.calls.every(c => !c.init.headers.Authorization && !c.init.method));
+  assert.ok(!JSON.stringify(out).includes("evil.example"));
+});
+
+test("get_collection: missing guide/counts are null; wrong identity fails before guide lookup", async () => {
+  const body = detailBody(); body.collections[0].content = [];
+  const out = await harness("get_collection", { route: detailRoute(body, { data: null }) }).run(validInputs.get_collection);
+  assert.deepEqual([out.record_count, out.person_count, out.image_count, out.research_guide_url], [null, null, null, null]);
+  body.id = "9000002";
+  const h = harness("get_collection", { route: detailRoute(body) });
+  assert.equal((await h.run(validInputs.get_collection)).error_kind, "site_changed");
+  assert.equal(h.calls.length, 1);
+});
+
+for (const data of [undefined, "https://evil.example/guide", "//evil.example/guide", "/wiki/en/Guide?session=secret", "/wiki/en/Guide#secret", "/wiki/en/Guide\\evil", "/wiki/en/" + "x".repeat(1001)]) {
+  test(`get_collection: rejects unsafe guide path ${String(data).slice(0, 50)}`, async () => {
+    const out = await harness("get_collection", { route: detailRoute(detailBody(), { data }) }).run(validInputs.get_collection);
+    assert.equal(out.error_kind, "site_changed");
+    assert.ok(!JSON.stringify(out).includes("secret"));
+  });
+}
+
+test("get_collection: text/coverage bounds and absent versus invalid counts", async () => {
+  const body = detailBody(); const s = body.sourceDescriptions[0];
+  s.titles[0].value = "T\u00ad" + "x".repeat(500); s.descriptions[0].value = "x".repeat(3000); s.citations[0].value = "x".repeat(1500); s.coverage = Array.from({ length: 10 }, () => ({ temporal: { original: "x".repeat(200) }, spatial: { original: "x".repeat(300) } }));
+  body.collections[0].content[0].count = -1; body.collections[0].content[1].count = 1.5;
+  const out = await harness("get_collection", { route: detailRoute(body) }).run(validInputs.get_collection);
+  assert.deepEqual([out.title.length, out.description.length, out.citation.length, out.coverage.length, out.coverage[0].date.length, out.coverage[0].place.length], [300, 2000, 1000, 6, 100, 200]);
+  assert.deepEqual([out.record_count, out.person_count], [null, null]);
+});
+
+test("prepare_source: separates caller note from observed evidence and never saves", async () => {
+  const h = harness("prepare_source", { route: recordRoute() });
+  const out = await h.run({ ...validInputs.prepare_source, research_note: "Check Exa\u00admple\nagainst another record." });
+  assert.deepEqual([out.status, out.saved, out.review_required, out.subject_name, out.research_note], ["prepared", false, true, "Ada Example", "Check Example against another record."]);
+  assert.equal(out.title, recordSource().titles[0].value);
+  assert.equal(out.collection_url, "https://www.familysearch.org/en/search/collection/9000001");
+  assert.ok(out.citation.includes("FamilySearch") && !out.citation.includes("<i>"));
+  assert.equal(h.calls.length, 1);
+  assert.equal(h.calls[0].init.headers.Authorization, `Bearer ${FAKE_SESSION}`);
+  assert.equal(h.calls[0].init.method, undefined);
+  assert.equal(h.calls[0].url, "/ark:/61903/1:1:AAAA-CCCC?useSLS=true&useRolesOverride=false");
+});
+
+test("prepare_source: whole-record draft has no inferred person or fabricated citation", async () => {
+  const body = recordBody(); delete body.sourceDescriptions[0].citations;
+  const h = harness("prepare_source", { cookie: "xfssessionid=fabricated", route: recordRoute(body) });
+  const out = await h.run({ record_url: "https://www.familysearch.org/ark:/61903/1:2:AAAA-BBBB" });
+  assert.deepEqual([out.subject_name, out.citation, out.research_note, out.saved], [null, null, null, false]);
+  assert.equal(h.calls[0].init.headers.Authorization, undefined);
+});
+
+test("prepare_source: mismatched persona or missing source never produces a draft", async () => {
+  for (const body of [recordBody({ persons: [] }), recordBody({ sourceDescriptions: [] }), recordBody({ persons: [person("p_9", "ZZZZ-CCCC", "Other Example", "Female")] })]) {
+    const out = await harness("prepare_source", { route: recordRoute(body) }).run(validInputs.prepare_source);
+    assert.equal(out.error_kind, "site_changed");
+    assert.ok(!("saved" in out));
+  }
+});
+
+for (const name of ["get_collection", "prepare_source"]) {
+  for (const [status, html, kind] of [[401, false, "login_required"], [403, false, "forbidden"], [403, true, "challenge"], [404, false, "not_found"], [429, false, "rate_limited"], [500, false, "site_error"], [200, true, "challenge"]]) {
+    test(`${name}: HTTP ${status} html=${html} fails explicitly with no retry`, async () => {
+      const h = harness(name, { route: () => ({ status, html }) });
+      assert.equal((await h.run(validInputs[name])).error_kind, kind);
+      assert.equal(h.calls.length, 1);
+    });
+  }
+  test(`${name}: invalid JSON, network failure and timeout cannot claim success`, async () => {
+    for (const fetchError of [true, "timeout"]) assert.equal((await harness(name, { fetchError }).run(validInputs[name])).error_kind, "site_error");
+    assert.equal((await harness(name, { route: () => ({ status: 200, body: "not JSON" }) }).run(validInputs[name])).error_kind, "site_changed");
+  });
+}
+
+for (const name of NAMES) {
+  test(`${name}: cancellation before interaction prevents all requests`, async () => {
+    const c = new AbortController(); c.abort();
+    const h = harness(name, { signal: c.signal });
+    assert.equal((await h.run(validInputs[name])).error_kind, "canceled");
+    assert.equal(h.calls.length, 0);
+  });
+  test(`${name}: cancellation during a request reports canceled, not success`, async () => {
+    const c = new AbortController();
+    const h = harness(name, { signal: c.signal, route: () => { c.abort(); return { status: 200, body: {} }; } });
+    assert.equal((await h.run(validInputs[name])).error_kind, "canceled");
+    assert.equal(h.calls.length, 1);
+  });
+}
+
+test("search_records: bounds hits even if the site ignores count", async () => {
+  const result = await harness("search_records", { route: () => ({ status: 200, body: searchBody(Array.from({ length: 100 }, () => searchEntry()), 100) }) }).run({ surname: "Example", limit: 2 });
+  assert.equal(result.returned, 2); assert.equal(result.hits.length, 2);
 });

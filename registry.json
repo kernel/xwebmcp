@@ -238,6 +238,19 @@
     },
     {
       "domain": "familysearch.org",
+      "tool": "get_collection",
+      "file": "domains/familysearch.org/get_collection.js",
+      "kind": "page",
+      "namespace": "familysearch.org",
+      "url_patterns": [
+        "https://www.familysearch.org/*"
+      ],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Read-only collection details, coverage, counts, citation and a research guide navigation handoff. No images or navigation."
+    },
+    {
+      "domain": "familysearch.org",
       "tool": "get_record",
       "file": "domains/familysearch.org/get_record.js",
       "kind": "page",
@@ -261,6 +274,19 @@
       "status": "draft",
       "last_verified": null,
       "notes": "Read-only. Filters the site's public list of about 3,500 record collections by title words, place, type, years, size and images. Fixture-tested; live on a signed-out Kernel browser during authoring. Not independently QA'd yet."
+    },
+    {
+      "domain": "familysearch.org",
+      "tool": "prepare_source",
+      "file": "domains/familysearch.org/prepare_source.js",
+      "kind": "page",
+      "namespace": "familysearch.org",
+      "url_patterns": [
+        "https://www.familysearch.org/*"
+      ],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Unsaved source/note preparation from observed record evidence. No tree target, source creation, attachment or memory write. Requires manual review."
     },
     {
       "domain": "familysearch.org",
