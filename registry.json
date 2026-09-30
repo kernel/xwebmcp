@@ -909,9 +909,12 @@
       "url_patterns": [
         "https://www.stubhub.com/*"
       ],
-      "status": "draft",
-      "last_verified": null,
-      "notes": "Public first ten quantity-eligible listings and event details; fees-inclusive site quote, taxes/final payable total unknown. No navigation, selections, holds or checkout."
+      "status": "qa_passed",
+      "last_verified": "2026-09-30",
+      "notes": "Independent final-source fixture and extension QA passed. First ten quantity-eligible listings and event details; fees-inclusive site quote, final taxes/delivery/payable total unknown. Final live Kernel request challenged and stopped; no retries, bypass, selection or holds.",
+      "provenance": {
+        "qa_agent": "agt_b9e333f8bafdb9dbb2fb"
+      }
     },
     {
       "domain": "stubhub.com",
@@ -922,9 +925,12 @@
       "url_patterns": [
         "https://www.stubhub.com/*"
       ],
-      "status": "draft",
-      "last_verified": null,
-      "notes": "Read-only exact listing/quantity/price/currency recheck on the first page. Preview/handoff only; no trusted human approval mechanism for purchase or holds exists in this runtime."
+      "status": "qa_passed",
+      "last_verified": "2026-09-30",
+      "notes": "Independent final-source fixture and extension QA passed. Exact listing/quantity/price/currency recheck, first ten offers only; conflicts fail closed. Preview/handoff only, no reservation or execution. Final-source live success unverified; purchase/holds lack trusted per-action human approval enforcement.",
+      "provenance": {
+        "qa_agent": "agt_b9e333f8bafdb9dbb2fb"
+      }
     },
     {
       "domain": "stubhub.com",

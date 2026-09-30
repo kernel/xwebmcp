@@ -4,8 +4,8 @@ Tools for StubHub US (https://www.stubhub.com): event search, quantity-specific 
 
 | tool | file | status | notes |
 |------|------|--------|-------|
-| get_ticket_offers | [get_ticket_offers.js](get_ticket_offers.js) | draft | Event details and first ten quantity-eligible listings; fees-inclusive site quotes, final payable cost unknown |
-| prepare_ticket_choice | [prepare_ticket_choice.js](prepare_ticket_choice.js) | draft | Recheck exact listing, quantity, price and currency; preview/handoff only, never selects or reserves |
+| get_ticket_offers | [get_ticket_offers.js](get_ticket_offers.js) | qa_passed | Event details and first ten quantity-eligible listings; fees-inclusive site quotes, final payable cost unknown |
+| prepare_ticket_choice | [prepare_ticket_choice.js](prepare_ticket_choice.js) | qa_passed | Recheck exact listing, quantity, price and currency; preview/handoff only, never selects or reserves |
 | search_events | [search_events.js](search_events.js) | verified | Keyword search, first results page only (up to 20 events, site relevance order), optional UTC date window, venue-local date and time per event; no prices, seats or listings |
 
 ## Native WebMCP tools
@@ -37,7 +37,7 @@ Use the `tool_ref` whose `source.target_id` is the tab you drive; a live call ta
 
 Preparation is a read-only recheck, not human approval, a hold, a cart, or a purchase. It reports `inventory_reserved: false` and `execution_supported: false`. The current runtime does not provide a trusted exact-action approval path binding account, listing, quantity, final cost and terms. A model-supplied `confirmed` field is rejected before interaction. No executable purchase, checkout, hold, cancellation, transfer or seller-publishing tool is shipped. A person must independently inspect the listing and final terms on the site; preparation never triggers execution automatically.
 
-No live carts, favorites, accounts or seller data are changed by development/QA. The public tools need no login, so the previously authorized private session is not used. Offer and preparation reads issue one GET, use only current page credentials, disallow redirects and do not retry unknown failures. Aborted offer/preparation reads return `canceled`. Contradictory inventory counts and conflicting duplicate listing rows fail closed as `site_changed`; identical duplicates are deduplicated. Nothing here selects a listing, opens an event page, follows a link, favorites, signs in or touches an account. The site's per-request tracking values in each result (`qid`, `iid`, `ut`, `auth`) are dropped: event URLs are rebuilt as `https://www.stubhub.com/<slug>/event/<id>/`.
+No live carts, favorites, accounts or seller data are changed by development/QA. The public tools need no login. Offer and preparation reads issue one GET, use only current page credentials, disallow redirects and do not retry unknown failures. Aborted offer/preparation reads return `canceled`. Contradictory inventory counts and conflicting duplicate listing rows fail closed as `site_changed`; identical duplicates are deduplicated. Nothing here selects a listing, opens an event page, follows a link, favorites, signs in or touches an account. The site's per-request tracking values in each result (`qid`, `iid`, `ut`, `auth`) are dropped: event URLs are rebuilt as `https://www.stubhub.com/<slug>/event/<id>/`.
 
 ### Date input
 
@@ -61,7 +61,7 @@ No live carts, favorites, accounts or seller data are changed by development/QA.
 
 ## URL patterns
 
-The tool matches only `https://www.stubhub.com/*`, not the default `https://stubhub.com/*` and `https://*.stubhub.com/*`. Other hosts under the registrable domain are separate products or infrastructure: `my.stubhub.com` (sign-in, orders, seller pages), `newsroom.` and `investors.stubhub.com`, and `crowdcontrol.stubhub.com` (the bot-protection proxy). The search page and its results are same-origin only on `www.stubhub.com`, so a page tool on those hosts could not call it. `viagogo.com`, which serves other country editions from the same backend, is a different registrable domain and is out of scope, as are `stubhub.com/<country>` editions (not tested).
+The tools match only `https://www.stubhub.com/*`, not the default `https://stubhub.com/*` and `https://*.stubhub.com/*`. Other hosts under the registrable domain are separate products or infrastructure: `my.stubhub.com` (sign-in, orders, seller pages), `newsroom.` and `investors.stubhub.com`, and `crowdcontrol.stubhub.com` (the bot-protection proxy). The search page and its results are same-origin only on `www.stubhub.com`, so a page tool on those hosts could not call it. `viagogo.com`, which serves other country editions from the same backend, is a different registrable domain and is out of scope, as are `stubhub.com/<country>` editions (not tested).
 
 ## Site quirks
 
@@ -87,9 +87,17 @@ The tool matches only `https://www.stubhub.com/*`, not the default `https://stub
 
 ## Current expansion QA
 
-The two additional tools are initially `draft` pending independent review of their final source. Fixtures cover input validation before requests, wrong/account pages, challenges, rate limits, cancellation, mismatched event/quantity/fees/page, quote changes, first-page absence, hidden seats, sensitive-field omission and no execution despite a caller's `confirmed` flag. Website probing was public and read-only; no listing was clicked, no cart or hold was created.
+Independent reviewer `agt_b9e333f8bafdb9dbb2fb` passed all three tools at source SHA `d2a3067d7e572e1523a3222d3fb04fe1e89c250b` on 2026-09-30. Initial review of `77927dd` found two fixture defects: nonempty inventory with a zero count and conflicting duplicate listing ids. Both were fixed, with regressions for either ordering, identical duplicates and eligible/ineligible conflicts; one queued fix/recheck round passed with no remaining findings. New readers are `qa_passed`, not `verified`; search retains `verified` with unchanged source. Any further source change requires fresh review.
 
-On 2026-09-30 the builder fetched a Metallica event from an event document with quantities 1, 2 and 4, and a Hamilton event in London from the unrelated Metallica event document. All returned HTTP 200 and quantity-specific embedded listing data; London still quoted USD. The first ten displayed listings and their rounded prices were compared to the site's event DOM. Event-page native WebMCP discovery returned no tools. Registration/invocation and independent QA evidence will be recorded below after testing.
+- Final checks: 82 registry tools valid; full Node suite 1,727/1,727; Go tests pass; reviewer extension unit tests 14/14. Strict Ajv validated 257 independent final-source fixture outputs with no violations. Reviewer mutation checks caught 84/88; four survivors retain the same failure outcomes through redundant checks. Node 26 was used; Node 22 was not run.
+- Final-source fixtures cover success and empty inventory, malformed input before requests, wrong/account hosts, challenges, rate limits, cancellation, mismatched event/quantity/fees/page/count, conflicting duplicates, quote changes, first-page absence, hidden seats, sensitive-field omission and no execution despite a caller's `confirmed` flag. Real account, cart, hold or purchase state was never changed.
+- **Kernel, pre-fix live success (2026-09-30):** the builder fetched Metallica quantity 1, 2 and 4 and Hamilton London quantity 2 from an unrelated event document; registered and atomically replaced the entire namespace with search preserved. `get_ticket_offers` returned a numeric fees-inclusive quote and `prepare_ticket_choice` returned `ready_for_review`. London quoted USD. URL/document marker and storage keys were unchanged, with two fetches for two tool invocations. Event-page native discovery returned no tools. This is grounding evidence for `77927dd`, not final-source success.
+- **Kernel, final source:** the builder registered all three tools from `d2a3067` in a fresh signed-out browser on a performer page. The event request returned `challenge` and stopped without retry. The reviewer's initial browser also hit a DataDome device check and stopped after one navigation; no live retry in the fix round. No final-source live success is claimed for the new tools.
+- **Local extension, pre-fix live success:** the builder installed the exact `77927dd` three-tool namespace in a throwaway Chromium 153 profile, granted only the site's access in the real browser dialog, and invoked through an extension-owned performer tab. Five invocations covered offers, readiness, changed quote, invalid quantity and search. Eight builder live outputs across Kernel and extension were strict-Ajv valid. No desktop Chrome or broader parity claim.
+- **Local extension, final-source fixtures:** the reviewer installed exact `d2a3067` sources, checked all file hashes and whole-namespace replacement, and validated 18 saved synthetic extension outputs. An instrumented fixture read made one GET without navigation or cookie/storage changes. External traffic was blocked in that harness; this proves runtime fixture execution, not real-site or mutation success.
+- HTTP 202/405/403 challenge, rate-limit, login-required, redirect, empty-inventory and other rare paths remain fixture-only unless noted above. No bypass, fingerprint rotation, checkout, selection or seller publishing occurred. Full final taxes/delivery/payment terms remain unverified.
+
+Ephemeral expansion browsers: builder `rynixw4uvqfhafo8ertp3z6m` and `hvjzoev8qax66jsu9nbs6jin`, reviewer `eiao0xmpj8uldehlwyfjloy8`; all deleted and browser artifacts removed. Throwaway local profiles/processes were removed.
 
 ## Prior search QA
 
