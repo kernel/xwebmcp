@@ -161,16 +161,22 @@
     const cut = (v, n) => { const s = str(v); return s ? (s.length > n ? s.slice(0, n) : s) : null; };
     const bool = v => (typeof v === "boolean" ? v : null);
     const num = v => (typeof v === "number" && Number.isFinite(v) ? v : null);
+    const decimalNumber = (units, decimals) => {
+      if (units > BigInt(Number.MAX_SAFE_INTEGER)) return null;
+      const value = Number(units) / 10 ** decimals;
+      const [whole, fraction = ""] = String(value).split(".");
+      return fraction.length <= decimals && BigInt(whole + fraction.padEnd(decimals, "0")) === units ? value : null;
+    };
     const money = m => {
       const decimals = m?.decimalPoint ?? 2;
-      return m && Number.isSafeInteger(m.amount) && m.amount >= 0 && Number.isInteger(decimals) && decimals >= 0 && decimals <= 6 ? Number((m.amount / Math.pow(10, decimals)).toFixed(decimals)) : null;
+      return m && Number.isSafeInteger(m.amount) && m.amount >= 0 && Number.isInteger(decimals) && decimals >= 0 && decimals <= 6 ? decimalNumber(BigInt(m.amount), decimals) : null;
     };
     const estimate = m => {
       if (money(m) === null) return null;
       const decimals = m.decimalPoint ?? 2, units = BigInt(m.amount) * BigInt(nights * rooms);
       const divisor = 10n ** BigInt(Math.max(decimals - 2, 0));
       const cents = decimals <= 2 ? units * (10n ** BigInt(2 - decimals)) : (units + divisor / 2n) / divisor;
-      return cents <= BigInt(Number.MAX_SAFE_INTEGER) ? Number(cents) / 100 : null;
+      return decimalNumber(cents, 2);
     };
     const problem = r => {
       if (r.body === null) {

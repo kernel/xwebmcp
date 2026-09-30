@@ -920,6 +920,35 @@ test("search_hotels: an estimate that exceeds safe integer cents is omitted", as
   assert.deepEqual(result.cash_comparison, []);
 });
 
+for (const decimals of [2, 6]) {
+  test(`search_hotels: a safe integer amount with nonrepresentable decimal output (${decimals}) is omitted`, async () => {
+    const rate = cashRate({ fees: 0, taxes: 0 });
+    rate.rateModes.lowestAverageRate.amount = { amount: Number.MAX_SAFE_INTEGER, currency: "USD", decimalPoint: decimals };
+    rate.rateModes.lowestAverageRate.totalAmount = { ...rate.rateModes.lowestAverageRate.amount };
+    const result = await harness("search_hotels", { respond: onSearch({ body: searchBody([edge("ABCDE", "Example", 1, [rate])]) }) }).run({ ...VALID, check_out: "2026-10-21" });
+    assert.equal(result.hotels[0].cash_rate.per_night.total, null);
+    assert.deepEqual(result.cash_comparison, []);
+  });
+}
+
+test("search_hotels: a representable nightly amount cannot produce an inexact serialized estimate", async () => {
+  const rate = cashRate({ fees: 0, taxes: 0 });
+  rate.rateModes.lowestAverageRate.amount = money(3002399751580329);
+  rate.rateModes.lowestAverageRate.totalAmount = money(3002399751580329);
+  const result = await harness("search_hotels", { respond: onSearch({ body: searchBody([edge("ABCDE", "Example", 1, [rate])]) }) }).run({ ...VALID, check_out: "2026-10-23" });
+  assert.equal(result.hotels[0].cash_rate.per_night.total, 30023997515803.29);
+  assert.deepEqual(result.cash_comparison, []);
+});
+
+test("search_hotels: large amounts with exact decimal serialization can still be compared", async () => {
+  const rate = cashRate({ fees: 0, taxes: 0 });
+  rate.rateModes.lowestAverageRate.amount = money(Number.MAX_SAFE_INTEGER - 1);
+  rate.rateModes.lowestAverageRate.totalAmount = money(Number.MAX_SAFE_INTEGER - 1);
+  const result = await harness("search_hotels", { respond: onSearch({ body: searchBody([edge("ABCDE", "Example", 1, [rate])]) }) }).run({ ...VALID, check_out: "2026-10-21" });
+  assert.equal(result.hotels[0].cash_rate.per_night.total, 90071992547409.9);
+  assert.equal(result.cash_comparison[0].quotes[0].estimated_stay_total, 90071992547409.9);
+});
+
 test("search_hotels: a huge property identifier is schema drift, not oversized success", async () => {
   const result = await harness("search_hotels", { respond: onSearch({ body: searchBody([edge("A".repeat(600000), "Example", 1, [cashRate()])]) }) }).run(VALID);
   assert.equal(result.error_kind, "site_changed");
