@@ -212,3 +212,80 @@ test("continue_to_review_and_pay: schedules the Continue click after settling; r
   assert.equal((await run("continue_to_review_and_pay", page, {}, { url: "https://www.delta.com/completepurchase/review-pay?cartId=c-1" })).out.status, "error");
   assert.equal((await run("continue_to_review_and_pay", page.replace("<body>", '<body><div class="spinnerView">x</div>'), {}, { url: "https://www.delta.com/completepurchase/trip-summary?cartId=c-1" })).out.status, "not_ready");
 });
+
+// --- QA subagent findings (2026-09-30) ------------------------------------------------------
+test("get_trip_summary: amount due followed by a seat badge, footnoted flight numbers, AMEX block ignored", async () => {
+  const html = summaryHtml
+    .replace('<span class="hide">Flight number </span>DL2441, DL693', '<span class="hide">Flight number </span>DL2441, DL5280<sup>1</sup>')
+    .replace(/<div class="line-item">Amount Due[\s\S]*?<\/div>\s*<div class="line-item">Amount Due[\s\S]*?<\/div>/, '<div class="line-item">Amount Due <span>opens in a new popup</span> <span>(1 Passenger)</span> $463.20 USD 5 left at this price</div>')
+    + '<div class="amex">Total After Statement Credit $0.00 USD</div>';
+  const { out } = await run("get_trip_summary", html, {}, { url: "https://www.delta.com/completepurchase/review-pay?cartId=c" });
+  assert.equal(out.step, "review_and_pay");
+  assert.deepEqual(out.slices[0].flight_numbers, ["DL 2441", "DL 5280"]);
+  assert.equal(out.amount_due, 463.2);
+  assert.equal(out.currency, "USD");
+  assert.deepEqual(out.warnings, []);
+});
+
+test("get_trip_summary: unreadable amount due is a warning, not a silent null", async () => {
+  const html = summaryHtml.replace(/<div class="line-item">Amount Due[\s\S]*?<\/div>\s*<div class="line-item">Amount Due[\s\S]*?<\/div>/, "");
+  const { out } = await run("get_trip_summary", html, {}, { url: "https://www.delta.com/completepurchase/trip-summary?cartId=c" });
+  assert.equal(out.amount_due, null);
+  assert.match(out.warnings[0], /Amount Due could not be read/);
+});
+
+test("select_fare: on return results, an experience-specific cell selects directly (navigation_scheduled, no drawer)", async () => {
+  const clicks = [];
+  const html = results().replace('<a id="#BMAIN-0-row-5" role="button">Delta Main</a>', '<span class="brand-name">Delta Main Classic</span>');
+  const { out, scheduled } = await run("select_fare", html, { result_index: 5, brand_code: "BMAIN" },
+    { url: "https://www.delta.com/flightsearch/search-results/return?cacheKeySuffix=k", onClick: el => clicks.push(el.getAttribute("tabindex")) });
+  assert.equal(out.status, "navigation_scheduled");
+  assert.equal(out.fare_label, "Delta Main Classic");
+  assert.equal(out.price_display, "$399");
+  assert.deepEqual(clicks, []);
+  scheduled[0]();
+  assert.deepEqual(clicks, ["0"]);
+});
+
+test("select_fare: 'Round Trip From' and 'Accept Conditions' labels do not leak into details", async () => {
+  const drawer = drawerHtml.replace("<span>One-Way</span><span>$399</span>", "<span>Round Trip From</span><span>$399</span>").replace("Accept Restrictions", "Accept Conditions");
+  const html = results().replace("</idp-search-results>", "</idp-search-results>");
+  const { out } = await run("select_fare", html, { result_index: 5, brand_code: "BMAIN" }, {
+    url: resultsUrl,
+    onClick: (el, doc) => { if (el.getAttribute("tabindex") === "0") { const holder = new Document(drawer).root.children[0]; const row = doc.getElementById("flight-results-grid-5"); row.childNodes.push(holder); holder.parentNode = row; } }
+  });
+  assert.ok(!out.experiences[0].details.some(d => /Round Trip|Accept/.test(d)), out.experiences[0].details.join(" | "));
+});
+
+test("select_fare_experience: round-trip outbound goes to return results, not Trip Summary", async () => {
+  const document = new Document(results(true));
+  const { out } = await (async () => {
+    const r = await run("select_fare_experience", results(true), { code: "CMAIN" }, { url: resultsUrl });
+    return r;
+  })();
+  assert.equal(out.next_page, "trip_summary", "no stored round trip -> trip summary");
+  // with a stored ROUND_TRIP search
+  const src = load("select_fare_experience");
+  const doc = new Document(results(true));
+  Object.getPrototypeOf(doc.body).click = function () {};
+  const ctx = { document: doc, URL, URLSearchParams, JSON, Number, Date, location: { href: resultsUrl, pathname: "/flightsearch/search-results", search: "?cacheKeySuffix=k" },
+    localStorage: { getItem: () => JSON.stringify({ tripType: "ROUND_TRIP" }) }, getComputedStyle: () => ({ visibility: "visible" }), setTimeout: fn => 0 };
+  const [tool] = runInNewContext(`(${src})`, ctx);
+  const rt = plain(await tool.execute({ code: "CMAIN" }));
+  assert.equal(rt.next_page, "return_results");
+  assert.match(rt.next_step, /return flights/);
+});
+
+test("get_page_context: return results leg; styling classes named *alert are not messages", async () => {
+  const html = `<html><body><div class="flight-line__date-alert">Fri, Oct 9</div><div class="fare-cell-seats-left text-alert">2 left at this price</div><div role="alert">Real problem here</div></body></html>`;
+  const { out } = await run("get_page_context", html, {}, { url: "https://www.delta.com/flightsearch/search-results/return?cacheKeySuffix=k", tools: ["list_flight_results", "select_fare"] });
+  assert.equal(out.page_type, "flight_results");
+  assert.equal(out.results_leg, "return");
+  assert.deepEqual(out.page_messages, ["Real problem here"]);
+  assert.ok(out.suggested_next_steps.some(s => s.includes("return flights")));
+});
+
+test("continue_to_review_and_pay: on Review and Pay says it is already there", async () => {
+  const { out } = await run("continue_to_review_and_pay", "<html><body></body></html>", {}, { url: "https://www.delta.com/completepurchase/review-pay?cartId=c" });
+  assert.match(out.error_message, /Already on Review and Pay/);
+});

@@ -3,7 +3,7 @@
   match: { url_patterns: ["https://www.delta.com/flightsearch/search-results*"] },
   tool: {
     name: "list_flight_results",
-    description: "Read the Delta flight results already shown on this results page, without searching again: every visible first-page itinerary with flight numbers, airports, local times, overnight-arrival marker, duration, stops, and every fare column (brand code, brand name, rounded display price, seats-left hint, sold out). Sort by departure, arrival, price, or duration, and optionally filter by maximum stops. Each fare also carries its column's cabin name (Main, Comfort, First, Delta One) even when sold out; brand_name is Delta's label inside the cell, which for mixed-cabin connections reads like \"Delta Comfort, Delta Main\" (one leg in each cabin). more_results_available says whether Delta offers a \"See More Results\" button; pass load_more_results: true to press it first (loads more rows on the same page, no navigation). Also returns the search this page belongs to (origin, destination, dates, trip type, passengers) as Delta stored it. result_index and brand_code match Delta's own element ids (flight-results-grid-{result_index}, grid-row-{result_index}-fare-cell-desktop-{brand_code}) so a later selection step can target exactly what was listed. Never selects a fare or navigates; the only click it can make is See More Results when load_more_results is true. Prices are rounded display fares per adult, not totals; call it after search_flights or after submitting the booking form. If results are still loading it waits up to wait_seconds; a Delta site error (for example SFAF001) is returned as status=\"error\", not as zero flights.",
+    description: "Read the Delta flight results already shown on this results page, without searching again: every visible first-page itinerary with flight numbers, airports, local times, overnight-arrival marker, duration, stops, and every fare column (brand code, brand name, rounded display price, seats-left hint, sold out). Sort by departure, arrival, price, or duration, and optionally filter by maximum stops. Each fare also carries its column's cabin name (Main, Comfort, First, Delta One) even when sold out; brand_name is Delta's label inside the cell, which for mixed-cabin connections reads like \"Delta Comfort, Delta Main\" (one leg in each cabin). more_results_available says whether Delta offers a \"See More Results\" button; pass load_more_results: true to press it first (loads more rows on the same page, no navigation). For round trips, leg says whether these are outbound or return rows (the return page also reports the outbound already chosen); flights' departure/arrival airports give each row's direction, while search stays the round trip as Delta stored it. Also returns the search this page belongs to (origin, destination, dates, trip type, passengers) as Delta stored it. result_index and brand_code match Delta's own element ids (flight-results-grid-{result_index}, grid-row-{result_index}-fare-cell-desktop-{brand_code}) so a later selection step can target exactly what was listed. Never selects a fare or navigates; the only click it can make is See More Results when load_more_results is true. Prices are rounded display fares per adult, not totals; call it after search_flights or after submitting the booking form. If results are still loading it waits up to wait_seconds; a Delta site error (for example SFAF001) is returned as status=\"error\", not as zero flights.",
     inputSchema: {
       type: "object", additionalProperties: false,
       properties: {
@@ -19,10 +19,12 @@
       oneOf: [
         {
           type: "object", additionalProperties: false,
-          required: ["status", "results_url", "search", "total_rows", "skipped_rows", "more_results_available", "flights"],
+          required: ["status", "results_url", "leg", "selected_outbound", "search", "total_rows", "skipped_rows", "more_results_available", "flights"],
           properties: {
             status: { enum: ["ok", "no_results"] },
             results_url: { type: "string" },
+            leg: { enum: ["outbound", "return"], description: "Which direction these rows are: round trips show outbound results first, then return results (/search-results/return) after an outbound experience is chosen." },
+            selected_outbound: { type: ["string", "null"], description: "On the return page, Delta's summary of the outbound already chosen." },
             search: {
               type: ["object", "null"], additionalProperties: false,
               required: ["origin", "destination", "depart_date", "return_date", "trip_type", "adults"],
@@ -126,7 +128,15 @@
     // Column headers render once, in the same left-to-right order as each row's fare cells.
     const cabins = [...document.querySelectorAll('[id^="mach-cabin-header-desktop-"]')].filter(visible)
       .map((h) => text(h).replace(/®/g, "").trim() || null);
-    if (!rowsNow().length) return { status: "no_results", results_url: url, search, total_rows: 0, skipped_rows: 0, more_results_available: moreAvailable, flights: [] };
+    const leg = /\/search-results\/return/.test(location.pathname) ? "return" : "outbound";
+    let selectedOutbound = null;
+    if (leg === "return") {
+      const label = [...document.querySelectorAll("h1,h2,h3,h4,[class*=heading],[class*=title]")].find((e) => visible(e) && text(e) === "Outbound");
+      let box = label;
+      for (let i = 0; i < 5 && box && !/\d{1,2}:\d{2}\s*[ap]m/i.test(text(box)); i++) box = box.parentElement;
+      selectedOutbound = box ? (box.innerText || text(box)).replace(/\s+/g, " ").replace(/^Outbound\s*/, "").replace(/\bChange Flight\s*/i, "").trim().slice(0, 200) : null;
+    }
+    if (!rowsNow().length) return { status: "no_results", results_url: url, leg, selected_outbound: selectedOutbound, search, total_rows: 0, skipped_rows: 0, more_results_available: moreAvailable, flights: [] };
 
     const minutes = (clock) => { const m = /(\d{1,2}):(\d{2})\s*(AM|PM)/i.exec(clock || ""); if (!m) return null; let h = +m[1] % 12; if (/pm/i.test(m[3])) h += 12; return h * 60 + +m[2]; };
     const flights = [];
@@ -197,6 +207,6 @@
       .filter((f) => input?.max_stops === undefined || f.stops <= input.max_stops)
       .sort((a, b) => keyFor(a) - keyFor(b) || a.result_index - b.result_index)
       .slice(0, limit);
-    return { status: "ok", results_url: url, search, total_rows: rows.length, skipped_rows: skipped, more_results_available: moreAvailable, flights: chosen };
+    return { status: "ok", results_url: url, leg, selected_outbound: selectedOutbound, search, total_rows: rows.length, skipped_rows: skipped, more_results_available: moreAvailable, flights: chosen };
   }
 }]

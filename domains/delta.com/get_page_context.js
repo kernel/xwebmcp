@@ -12,12 +12,13 @@
     },
     outputSchema: {
       type: "object", additionalProperties: false,
-      required: ["current_url", "current_path", "page_title", "page_type", "available_tools", "unsettled", "unsettled_reasons", "pending_choice", "cart_id", "signed_in", "login_flyout_open", "page_messages", "suggested_next_steps"],
+      required: ["current_url", "current_path", "page_title", "page_type", "results_leg", "available_tools", "unsettled", "unsettled_reasons", "pending_choice", "cart_id", "signed_in", "login_flyout_open", "page_messages", "suggested_next_steps"],
       properties: {
         current_url: { type: "string" },
         current_path: { type: "string" },
         page_title: { type: "string" },
         page_type: { type: "string", enum: ["home", "booking_form", "flight_results", "trip_summary", "review_and_pay", "confirmation", "login", "my_trips", "flight_status", "skymiles", "info", "other"] },
+        results_leg: { type: ["string", "null"], enum: ["outbound", "return", null], description: "On results pages: outbound, or return (round trip, after the outbound was chosen)." },
         available_tools: { type: ["array", "null"], items: { type: "string" }, description: "Tool names this page exposes now, or null when the page does not expose document.modelContext." },
         unsettled: { type: "boolean", description: "True while a known loading state is visible; tools may be missing or results partial." },
         unsettled_reasons: { type: "array", items: { type: "string", enum: ["document_loading", "results_loading", "page_spinner", "checkout_loading", "busy_region"] } },
@@ -82,6 +83,7 @@
     } catch { availableTools = null; }
     const has = (name) => availableTools === null || availableTools.includes(name);
 
+    const resultsLeg = pageType === "flight_results" ? (/\/search-results\/return/.test(location.pathname) ? "return" : "outbound") : null;
     const drawer = document.getElementById("idp-upsell-drawer-id");
     const pendingChoice = visible(drawer) && drawer.querySelector('button[id^="drawer-select-cta-"]') ? "fare_experience" : null;
     const cartId = new URLSearchParams(location.search).get("cartId");
@@ -97,6 +99,8 @@
     const messages = [];
     for (const el of document.querySelectorAll('[role="alert"], [aria-live="assertive"], .message-banner, [class*="error-message"], [class*="alert"]')) {
       const t = text(el).slice(0, 300);
+      // Delta's utility classes (text-alert, date-alert, seats-left badges) are styling, not alerts.
+      if (!el.matches('[role="alert"], [aria-live="assertive"], .message-banner') && /text-alert|date-alert|seats-left|icon-|feed-counter/.test(String(el.className))) continue;
       if (!t || t.length <= 3 || !visible(el) || /^\d+ left at this price$/i.test(t) || messages.includes(t)) continue;
       messages.push(t);
       if (messages.length >= 10) break;
@@ -117,6 +121,9 @@
       if (code) steps.push("Delta returned " + code[0] + " (often a rate limit): wait before searching again; do not treat it as zero flights");
       if (pendingChoice) {
         if (has("select_fare_experience")) steps.push("An experience drawer is open: show the options from select_fare to the user, then use select_fare_experience with their choice (Basic needs their explicit agreement to its restrictions)");
+      } else if (resultsLeg === "return") {
+        if (has("list_flight_results")) steps.push("These are the return flights for the round trip (the outbound is already chosen): use list_flight_results to read them");
+        if (has("select_fare")) steps.push("Use select_fare on a return row; return fares are specific experiences and go straight to Trip Summary");
       } else {
         if (has("list_flight_results")) steps.push("Use list_flight_results (sort_by departure, arrival, price or duration) to read these results without searching again");
         if (has("select_fare")) steps.push("Use select_fare with a result_index and brand_code from list_flight_results to choose a fare");
@@ -138,6 +145,7 @@
       current_path: location.pathname + location.search,
       page_title: document.title || "",
       page_type: pageType,
+      results_leg: resultsLeg,
       available_tools: availableTools,
       unsettled: unsettledReasons.length > 0,
       unsettled_reasons: unsettledReasons,

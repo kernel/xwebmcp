@@ -23,6 +23,7 @@
   execute: async () => {
     const visible = (e) => !!e && e.getClientRects().length > 0 && !e.closest('[hidden],[aria-hidden="true"]') && getComputedStyle(e).visibility !== "hidden";
     const text = (e) => (e?.textContent || "").replace(/\s+/g, " ").trim();
+    if (/\/completepurchase\/review-pay/.test(location.pathname)) return { status: "error", error_message: "Already on Review and Pay; nothing to continue. Use get_trip_summary to re-check the total." };
     if (!/\/completepurchase\/trip-summary/.test(location.pathname)) return { status: "error", error_message: "Not on Delta's Trip Summary page." };
     if (document.readyState !== "complete" || [...document.querySelectorAll(".review-pay-loading-view,.spinnerView,.spinner-overlay,idp-spinner,.page-loader")].some(visible)) {
       return { status: "not_ready", error_message: "Trip Summary is still loading; call get_page_context with wait_for_settled_seconds, then retry." };

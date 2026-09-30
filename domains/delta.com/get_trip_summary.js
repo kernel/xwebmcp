@@ -10,7 +10,7 @@
       oneOf: [
         {
           type: "object", additionalProperties: false,
-          required: ["status", "step", "cart_id", "slices", "passengers", "price_lines", "amount_due", "currency", "refundability", "url"],
+          required: ["status", "step", "cart_id", "slices", "passengers", "price_lines", "amount_due", "currency", "refundability", "warnings", "url"],
           properties: {
             status: { const: "ok" },
             step: { enum: ["trip_summary", "review_and_pay", "confirmation", "other"] },
@@ -33,6 +33,7 @@
             amount_due: { type: ["number", "null"] },
             currency: { type: ["string", "null"] },
             refundability: { type: ["string", "null"] },
+            warnings: { type: "array", items: { type: "string" }, description: "Anything that could not be read or does not add up; empty when the summary is consistent." },
             url: { type: "string" }
           }
         },
@@ -48,6 +49,8 @@
     const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     const visible = (e) => !!e && e.getClientRects().length > 0 && !e.closest('[hidden],[aria-hidden="true"]') && getComputedStyle(e).visibility !== "hidden";
     const text = (e) => (e?.textContent || "").replace(/\s+/g, " ").trim();
+    // Operated-by footnotes are <sup> markers glued to flight numbers ("DL5280" + "1").
+    const noSup = (node) => node.nodeType === 3 ? node.data : node.tagName === "SUP" ? " " : [...node.childNodes].map(noSup).join("");
     const url = location.href;
     const path = location.pathname;
     const step = /\/trip-summary/.test(path) ? "trip_summary" : /\/review-pay/.test(path) ? "review_and_pay" : /confirm/i.test(path) ? "confirmation" : "other";
@@ -66,7 +69,7 @@
       const stopsText = field(root, ".stop-count", /^Number of stops/i);
       return {
         trip_type: field(root, ".summary-text__flight-type", /^/),
-        flight_numbers: (strip(text(idEl), /^Flight number/i) || "").split(/\s*,\s*/).filter(Boolean).map((n) => n.replace(/^([A-Z0-9]{2})\s*(\d+)$/, "$1 $2")),
+        flight_numbers: [...(strip(noSup(idEl).replace(/\s+/g, " "), /^Flight number/i) || "").matchAll(/\b([A-Z0-9]{2})\s?(\d{1,4})\b/g)].map((m) => m[1] + " " + m[2]),
         origin: field(root, ".flight-origin-code", /^Departure Airport code/i),
         destination: field(root, ".flight-depart-code", /^Arrival Airport code/i),
         date_display: field(root, ".flight-date", /^Journey Date/i),
@@ -82,15 +85,13 @@
     const priceLines = [];
     let amountDue = null, currency = null, passengers = null;
     for (const li of total.querySelectorAll(".line-item")) {
-      const raw = text(li).replace(/opens in a new popup/gi, "").replace(/\s+/g, " ").trim();
-      const t = raw.replace(/\s*\(\d+ Passengers?\)/gi, "").replace(/\s+([A-Z]{3})\s*(\$)/, " $2").trim();
-      const code = (/\b([A-Z]{3})\b/.exec(raw.replace(/\$[\d,.]+/g, "")) || [])[1] || null;
+      const t = text(li).replace(/opens in a new popup/gi, "").replace(/\s*\(\d+ Passengers?\)/gi, "").replace(/\d+ left at this price/gi, "").replace(/\s+/g, " ").trim();
       const pax = /^(\d+) Passengers?$/i.exec(t);
       if (pax) { passengers = Number(pax[1]); continue; }
-      const m = /^(.*?)\s*\$\s?([\d,]+(?:\.\d{2})?)\s*([A-Z]{3})?$/.exec(t);
+      const m = /^(.*?)\s*\$\s?([\d,]+(?:\.\d{2})?)(?:\s*([A-Z]{3})\b)?/.exec(t);
       if (!m) continue;
       const label = m[1].trim(), amount = Number(m[2].replace(/,/g, ""));
-      if (/^Amount Due\b/i.test(label)) { amountDue = amount; currency = m[3] || code || currency; continue; }
+      if (/^Amount Due\b/i.test(label)) { if (amountDue === null) { amountDue = amount; currency = m[3] || null; } continue; }
       const key = label + "|" + amount;
       if (seen.has(key)) continue;
       seen.add(key);
@@ -98,11 +99,16 @@
     }
     if (!slices.length && amountDue === null) return { status: "error", error_message: "No itinerary or amount due found on this page.", url };
     const refund = ([...document.querySelectorAll(".changeableNonrefundable, idp-link.changeLink, .terms-conditions-msg b")].map(text).find((s) => /refundable|changeable/i.test(s)) || "").replace(/opens in a new popup/gi, "").trim() || null;
+    const warnings = [];
+    if (amountDue === null) warnings.push("Amount Due could not be read from the Trip Total panel.");
+    else if (!currency) warnings.push("Amount Due has no currency code next to it.");
+    const sum = priceLines.reduce((a, l) => a + l.amount, 0);
+    if (amountDue !== null && priceLines.length && Math.abs(sum - amountDue) > 0.02) warnings.push("Price lines add up to " + sum.toFixed(2) + ", not the amount due " + amountDue.toFixed(2) + ".");
     return {
       status: "ok", step,
       cart_id: new URL(url).searchParams.get("cartId"),
       slices, passengers, price_lines: priceLines,
-      amount_due: amountDue, currency, refundability: refund, url
+      amount_due: amountDue, currency, refundability: refund, warnings, url
     };
   }
 }]

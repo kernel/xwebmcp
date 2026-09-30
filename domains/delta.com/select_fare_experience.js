@@ -3,7 +3,7 @@
   match: { url_patterns: ["https://www.delta.com/flightsearch/search-results*"] },
   tool: {
     name: "select_fare_experience",
-    description: "Pick one experience (for example Main Classic) in the Delta \"Select an Experience to Continue\" drawer that select_fare opened, which takes the browser to Delta's Trip Summary with this itinerary in the cart. It does not purchase, enter passenger or payment details, or add extras. Some experiences (Main Basic) require accepting restrictions: for those you must pass accept_restrictions: true, and you may do so only after showing the user the restrictions returned by select_fare and getting their agreement; the tool then ticks Delta's \"Accept Restrictions\" box before selecting. The navigation happens after this tool returns, so its result only confirms what was clicked; call get_page_context and get_trip_summary on the next page to confirm the cart and total.",
+    description: "Pick one experience (for example Main Classic) in the Delta \"Select an Experience to Continue\" drawer that select_fare opened, which takes the browser to Delta's Trip Summary with this itinerary in the cart, or, for the outbound of a round trip, to the return results (/search-results/return) where you choose the return with list_flight_results and select_fare. It does not purchase, enter passenger or payment details, or add extras. Some experiences (Main Basic) require accepting restrictions: for those you must pass accept_restrictions: true, and you may do so only after showing the user the restrictions returned by select_fare and getting their agreement; the tool then ticks Delta's \"Accept Restrictions\" box before selecting. The navigation happens after this tool returns, so its result only confirms what was clicked; call get_page_context and get_trip_summary on the next page to confirm the cart and total.",
     inputSchema: {
       type: "object", additionalProperties: false, required: ["code"],
       properties: {
@@ -16,9 +16,10 @@
       oneOf: [
         {
           type: "object", additionalProperties: false,
-          required: ["status", "code", "name", "price_display", "restrictions_accepted", "next_step"],
+          required: ["status", "next_page", "code", "name", "price_display", "restrictions_accepted", "next_step"],
           properties: {
             status: { const: "navigation_scheduled" },
+            next_page: { enum: ["trip_summary", "return_results"] },
             code: { type: "string" }, name: { type: "string" }, price_display: { type: ["string", "null"] },
             restrictions_accepted: { type: "boolean" },
             next_step: { type: "string" }
@@ -68,12 +69,21 @@
       accepted = true;
     }
     if (button.disabled || button.getAttribute("aria-disabled") === "true") return { status: "error", error_message: "The Select button for " + name + " is disabled." };
-    // Settle before selecting: Delta navigates to Trip Summary, replacing this document.
+    let roundTripOutbound = false;
+    try {
+      const key = new URLSearchParams(location.search).get("cacheKeySuffix");
+      const stored = key && JSON.parse(localStorage.getItem("postData" + key) || "null");
+      roundTripOutbound = stored?.tripType === "ROUND_TRIP" && !/\/search-results\/return/.test(location.pathname);
+    } catch { roundTripOutbound = false; }
+    // Settle before selecting: Delta navigates away, replacing this document.
     setTimeout(() => button.click(), 100);
     return {
       status: "navigation_scheduled",
+      next_page: roundTripOutbound ? "return_results" : "trip_summary",
       code, name, price_display: price, restrictions_accepted: accepted,
-      next_step: "Delta navigates to Trip Summary now (about 3 s). Call get_page_context with wait_for_settled_seconds (e.g. 15) before listing tools, since the next page's tools appear only after it loads; then get_trip_summary to confirm the itinerary, fare and amount due with the user. Nothing has been purchased."
+      next_step: (roundTripOutbound
+        ? "Delta now shows the return flights (about 3 s). Call get_page_context with wait_for_settled_seconds (e.g. 15; retry once if it reports the outcome could not be observed), then list_flight_results and select_fare to choose the return, which goes straight to Trip Summary."
+        : "Delta navigates to Trip Summary now (about 3 s). Call get_page_context with wait_for_settled_seconds (e.g. 15; retry once if it reports the outcome could not be observed, since it may start before the old page is gone), then get_trip_summary to confirm the itinerary, fare and amount due with the user.") + " Nothing has been purchased."
     };
   }
 }]
