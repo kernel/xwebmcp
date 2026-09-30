@@ -1,5 +1,8 @@
 import assert from "node:assert/strict";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { createServer } from "node:net";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { runBrowserFixture } from "./united-browser-fixture.mjs";
 import test from "node:test";
 import { runInNewContext } from "node:vm";
@@ -236,8 +239,27 @@ test("browser DOM: only a visible no-flights notice establishes absence", browse
         await reportFixture({results});
       })().catch(error => reportFixture({error: error.message}));
       </script>`;
-  const results = await runBrowserFixture(html, { browser: chromium });
-  assert.deepEqual(results, ["no_results", "site_changed", "site_changed", "site_changed", "site_changed", "site_changed"]);
+  const dir = mkdtempSync(join(tmpdir(), "united-bus-test-"));
+  const sockets = new Set();
+  let connections = 0;
+  const bus = createServer(socket => { connections++; sockets.add(socket); socket.on("close", () => sockets.delete(socket)); });
+  const inheritedAddress = process.env.DBUS_SESSION_BUS_ADDRESS;
+  try {
+    if (process.platform === "linux") {
+      const path = join(dir, "stalled-bus");
+      await new Promise((yes, no) => { bus.once("error", no); bus.listen(path, yes); });
+      process.env.DBUS_SESSION_BUS_ADDRESS = `unix:path=${path}`;
+    }
+    const results = await runBrowserFixture(html, { browser: chromium });
+    assert.deepEqual(results, ["no_results", "site_changed", "site_changed", "site_changed", "site_changed", "site_changed"]);
+    assert.equal(connections, 0, "the isolated browser must not contact the inherited session bus");
+  } finally {
+    if (inheritedAddress === undefined) delete process.env.DBUS_SESSION_BUS_ADDRESS;
+    else process.env.DBUS_SESSION_BUS_ADDRESS = inheritedAddress;
+    for (const socket of sockets) socket.destroy();
+    if (bus.listening) await new Promise(yes => bus.close(yes));
+    rmSync(dir, { recursive: true, force: true });
+  }
 });
 test("browser fixture reports script errors rather than parsing missing output", browserOptions, async () => {
   await assert.rejects(runBrowserFixture('<script>throw new Error("synthetic failure")</script>', { browser: chromium }), /Browser fixture failed: Uncaught Error: synthetic failure/);
