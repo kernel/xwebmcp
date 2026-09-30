@@ -1284,9 +1284,12 @@
       "url_patterns": [
         "https://www.walmart.com/*"
       ],
-      "status": "draft",
-      "last_verified": null,
-      "notes": "Broad implementation pending fresh independent QA; cart mutation success is fixture-only, never live-tested."
+      "status": "qa_passed",
+      "last_verified": "2026-09-30",
+      "notes": "Independent final-source QA passed; Bed Sheets additions only. Action success is fabricated fixture-only; no live mutation/restoration or final-source extension success verified.",
+      "provenance": {
+        "qa_agent": "agt_43bb0ce72ad9154374be"
+      }
     },
     {
       "domain": "walmart.com",
@@ -1297,9 +1300,12 @@
       "url_patterns": [
         "https://www.walmart.com/*"
       ],
-      "status": "draft",
-      "last_verified": null,
-      "notes": "Broad implementation pending fresh independent QA; cart mutation success is fixture-only, never live-tested."
+      "status": "qa_passed",
+      "last_verified": "2026-09-30",
+      "notes": "Independent final-source QA passed. Historical guest/signed-in reads; final-source category-page read explicitly failed site_changed. Final-source live success and extension invocation untested.",
+      "provenance": {
+        "qa_agent": "agt_43bb0ce72ad9154374be"
+      }
     },
     {
       "domain": "walmart.com",
@@ -1310,9 +1316,12 @@
       "url_patterns": [
         "https://www.walmart.com/*"
       ],
-      "status": "draft",
-      "last_verified": null,
-      "notes": "Broad implementation pending fresh independent QA; cart mutation success is fixture-only, never live-tested."
+      "status": "qa_passed",
+      "last_verified": "2026-09-30",
+      "notes": "Independent final-source QA passed; reviewer/builder Kernel read success at byte-identical dba80aef. Historical local product read only; final-source live extension invocation untested.",
+      "provenance": {
+        "qa_agent": "agt_43bb0ce72ad9154374be"
+      }
     },
     {
       "domain": "walmart.com",
@@ -1323,9 +1332,12 @@
       "url_patterns": [
         "https://www.walmart.com/*"
       ],
-      "status": "draft",
-      "last_verified": null,
-      "notes": "Broad implementation pending fresh independent QA; cart mutation success is fixture-only, never live-tested."
+      "status": "qa_passed",
+      "last_verified": "2026-09-30",
+      "notes": "Independent final-source QA passed; reviewer Kernel pages 8/9 pagination success at byte-identical dba80aef. Final-source live extension invocation untested.",
+      "provenance": {
+        "qa_agent": "agt_43bb0ce72ad9154374be"
+      }
     },
     {
       "domain": "walmart.com",
@@ -1336,9 +1348,12 @@
       "url_patterns": [
         "https://www.walmart.com/*"
       ],
-      "status": "draft",
-      "last_verified": null,
-      "notes": "Broad implementation pending fresh independent QA; cart mutation success is fixture-only, never live-tested."
+      "status": "qa_passed",
+      "last_verified": "2026-09-30",
+      "notes": "Independent final-source QA passed; builder Kernel read success at byte-identical dba80aef. Historical reviewer Kernel/local read success; final-source extension invocation untested.",
+      "provenance": {
+        "qa_agent": "agt_43bb0ce72ad9154374be"
+      }
     },
     {
       "domain": "walmart.com",
@@ -1349,9 +1364,12 @@
       "url_patterns": [
         "https://www.walmart.com/*"
       ],
-      "status": "draft",
-      "last_verified": null,
-      "notes": "Broad implementation pending fresh independent QA; cart mutation success is fixture-only, never live-tested."
+      "status": "qa_passed",
+      "last_verified": "2026-09-30",
+      "notes": "Independent final-source QA passed; exact ordinary line removal, not cart clear. Action success is fabricated fixture-only; no live mutation/restoration or final-source extension success verified.",
+      "provenance": {
+        "qa_agent": "agt_43bb0ce72ad9154374be"
+      }
     },
     {
       "domain": "walmart.com",
@@ -1362,9 +1380,12 @@
       "url_patterns": [
         "https://www.walmart.com/*"
       ],
-      "status": "draft",
-      "last_verified": null,
-      "notes": "Broad implementation pending fresh independent QA; cart mutation success is fixture-only, never live-tested."
+      "status": "qa_passed",
+      "last_verified": "2026-09-30",
+      "notes": "Independent final-source QA passed; saved-for-later, not shopping-list editing. Capacity/selection safeguards exercised in fabricated flows only; no live mutation/restoration or extension success verified.",
+      "provenance": {
+        "qa_agent": "agt_43bb0ce72ad9154374be"
+      }
     },
     {
       "domain": "walmart.com",
@@ -1375,9 +1396,12 @@
       "url_patterns": [
         "https://www.walmart.com/*"
       ],
-      "status": "draft",
-      "last_verified": null,
-      "notes": "Broad implementation pending fresh independent QA; cart mutation success is fixture-only, never live-tested."
+      "status": "qa_passed",
+      "last_verified": "2026-09-30",
+      "notes": "Independent final-source QA passed; historical Kernel success, latest reviewer request at byte-identical dba80aef returned challenge and testing stopped. Final-source extension invocation untested.",
+      "provenance": {
+        "qa_agent": "agt_43bb0ce72ad9154374be"
+      }
     },
     {
       "domain": "walmart.com",
@@ -1388,9 +1412,12 @@
       "url_patterns": [
         "https://www.walmart.com/*"
       ],
-      "status": "draft",
-      "last_verified": null,
-      "notes": "Broad implementation pending fresh independent QA; cart mutation success is fixture-only, never live-tested."
+      "status": "qa_passed",
+      "last_verified": "2026-09-30",
+      "notes": "Independent final-source QA passed; absolute ordinary-line quantities and unchanged no-op. Action success is fabricated fixture-only; no live mutation/restoration or final-source extension success verified.",
+      "provenance": {
+        "qa_agent": "agt_43bb0ce72ad9154374be"
+      }
     }
   ]
 }

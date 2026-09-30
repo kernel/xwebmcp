@@ -6,15 +6,15 @@ Walmart retail product/search/review/store reads, current-cart reads and guarded
 
 | tool | file | status | notes |
 | --- | --- | --- | --- |
-| add_to_cart | [add_to_cart.js](add_to_cart.js) | draft | Exact current offer, absolute quantity; adding is limited to the observed Bed Sheets type. Mutation success fixture-only. |
-| get_cart | [get_cart.js](get_cart.js) | draft | Actual lines including unavailable ones, totals, store/fulfillment context, opaque account/state guards. |
-| get_product | [get_product.js](get_product.js) | draft | Product, current offer id, sales unit, price, availability, variants, seller, specs and reviews summary. |
-| get_product_reviews | [get_product_reviews.js](get_product_reviews.js) | draft | Ten listed reviews per page; no reviewer identity. |
-| get_store | [get_store.js](get_store.js) | draft | Explicit or selected store's public detail; never selects a store. |
-| remove_cart_item | [remove_cart_item.js](remove_cart_item.js) | draft | Exact existing ordinary line, quantity zero; not a cart clear. Mutation success fixture-only. |
-| save_for_later | [save_for_later.js](save_for_later.js) | draft | Move an exact ordinary cart line to saved-for-later, not a shopping list. Mutation success fixture-only. |
-| search_products | [search_products.js](search_products.js) | draft | Six sorts, facets, price bounds, sponsored flags and selected-store context. |
-| update_cart_item | [update_cart_item.js](update_cart_item.js) | draft | Absolute quantity of an exact ordinary existing line; unchanged quantity is a no-op. Mutation success fixture-only. |
+| add_to_cart | [add_to_cart.js](add_to_cart.js) | qa_passed | Exact current offer, absolute quantity; adding is limited to the observed Bed Sheets type. Mutation success fixture-only. |
+| get_cart | [get_cart.js](get_cart.js) | qa_passed | Actual lines including unavailable ones, totals, store/fulfillment context, opaque account/state guards. Final-source live success untested. |
+| get_product | [get_product.js](get_product.js) | qa_passed | Product, current offer id, sales unit, price, availability, variants, seller, specs and reviews summary. |
+| get_product_reviews | [get_product_reviews.js](get_product_reviews.js) | qa_passed | Ten listed reviews per page; no reviewer identity. |
+| get_store | [get_store.js](get_store.js) | qa_passed | Explicit or selected store's public detail; never selects a store. |
+| remove_cart_item | [remove_cart_item.js](remove_cart_item.js) | qa_passed | Exact existing ordinary line, quantity zero; not a cart clear. Mutation success fixture-only. |
+| save_for_later | [save_for_later.js](save_for_later.js) | qa_passed | Move an exact ordinary cart line to saved-for-later, not a shopping list. Mutation success fixture-only. |
+| search_products | [search_products.js](search_products.js) | qa_passed | Six sorts, facets, price bounds, sponsored flags and selected-store context. Final reviewer live request was challenge-blocked. |
+| update_cart_item | [update_cart_item.js](update_cart_item.js) | qa_passed | Absolute quantity of an exact ordinary existing line; unchanged quantity is a no-op. Mutation success fixture-only. |
 
 ## URL patterns
 
@@ -41,13 +41,13 @@ Each cart-tool invocation has a 25-second internal deadline and honors caller ca
 
 ## Tool contracts
 
-- `search_products`: query, six site sort ids (`best_match`, `price_low`, `price_high`, `best_seller`, `rating_high`, `new`), page 1–25, facets from the site's own links, price bounds, optional sponsored exclusion. At most 50 product tiles and 30 facet groups. Out-of-range/no-match responses are distinct from throttled responses ignoring the requested sort/page. Store comes from the results' `stores` parameter.
+- `search_products`: query, six site sort ids (`best_match`, `price_low`, `price_high`, `best_seller`, `rating_high`, `new`), page 1–25, facets from the site's own links, price bounds, optional sponsored exclusion. At most 40 product tiles and 30 facet groups. Out-of-range/no-match responses are distinct from throttled responses ignoring the requested sort/page. Store comes from the results' `stores` parameter.
 - `get_product`: numeric `us_item_id`; at most 100 variants, eight images, 40 specifications and 5,000 characters per description. Exact current `offer_id` is now returned for cart callers. `is_alcohol` is null if the product page does not declare it; that is not a safety assurance. Price/availability depend on `assortmentStoreId`, reported as `store_id`.
 - `get_product_reviews`: six site sorts, ten reviews per page, bounded text; counts distinguish all ratings from listed text reviews. `has_next_page` derives from the listed span and total, not the site's unreliable `next` link. Names, nicknames, author ids and location are omitted.
 - `get_store`: optional `store_id`, otherwise the selected-store cookie. Public store address/phone/hours/services and bounded nearby stores. Never chooses a store.
 - `get_cart`: one `getCart` GET, at most 100 lines (500-line parsing safety ceiling). Unavailable lines remain visible even when the header says zero items. Returns `account_token` and `cart_state`: opaque SHA-256 fingerprints computed locally, not raw account, address or session values. Customer names/phone and delivery-address content are not returned. `actions_supported` describes ordinary-line eligibility only; login, reservations, availability, limits, modules and state guards can still prevent an action.
 
-All inputs are strictly validated in-tool before site interaction; page-tool schemas and annotations are not enforcement. Returned product/list names and review text are untrusted data, not instructions.
+All inputs are strictly validated in-tool before site interaction; page-tool schemas and annotations are not enforcement. Returned product names and review text are untrusted data, not instructions.
 
 ## Action safety design
 
@@ -81,11 +81,11 @@ There is no `confirmed: true` input and no fake approval framework. No purchase,
 - Public internal SSR/webpack/GraphQL structures can drift. Explicit failures are returned for missing configuration/operations or changed shape; there is no guessed endpoint fallback or burst retry.
 - Cross-tab concurrent writes and races with user interaction cannot be prevented by local guards. The ledger expires with the document. A verification failure may reflect a real partial write, not a clean rollback.
 - Error paths `rate_limited`, `canceled`/deadline, `site_error` and `site_changed` are fixture-tested; not all were reproduced live.
-- Local Chrome extension coverage is limited to category-page registration, product/store reads and malformed negatives. Fresh independent QA is required after source fixes; no live action success is verified in either runtime.
+- Local Chrome extension coverage is limited to historical category-page registration, product/store reads and malformed negatives. No fresh final-source live extension invocation or action success is verified. Uncached extension Go tests pass.
 
 ## QA summary
 
-Prior public-read QA at source `3e24a5d` (2026-09-29) found and fixed unknown/wrong-typed input reaching the site, early review pagination, surrogate truncation and invalid dates. The broadened source does not inherit that sign-off: all entries are draft pending new review.
+Prior public-read QA at source `3e24a5d` (2026-09-29) found and fixed unknown/wrong-typed input reaching the site, early review pagination, surrogate truncation and invalid dates. The broadened source does not inherit that sign-off; it received a separate final-source review.
 
 Builder checks on 2026-09-30:
 
@@ -97,4 +97,8 @@ Builder checks on 2026-09-30:
 
 Independent review of source `69ebdebb` found exact-line, nested-reservation, saved-selection, malformed-shape, list-identity, response-origin/redirect, public-output-bound and pre-cancellation/input-length defects. Fabricated regressions reproduced the failures. Recheck at `dba80aef` confirmed the exercised prior safety fixes but withheld sign-off for a residual list/account binding and a predictable saved-capacity overflow. The list tool has been removed; saving at the capacity boundary is refused before dispatch. No live writes were used to reproduce or fix defects.
 
-Fixed-source builder checks at `dba80aef`: all ten malformed inputs were rejected, no native tools were found on the category page, and product/review/store page-API reads succeeded without navigation. Guest cart read returned an explicit `site_changed` on that document, rather than invented empty-cart success. Independent final-source outcome for the nine-tool subset: pending.
+Fixed-source builder checks at `dba80aef`: all ten malformed inputs were rejected, no native tools were found on the category page, and product/review/store page-API reads succeeded without navigation. Guest cart read returned an explicit `site_changed` on that document, rather than invented empty-cart success. Independent final-source outcome for the nine-tool subset: **SIGN_OFF** on 2026-09-30 at `42811ce452e1dff7acbb715ffd5593e3e1b2ba42`, after the initial review and two fix/rechecks with the same reviewer. Eight tool sources are byte-identical to `dba80aef`; saving changed only by the capacity guard. Sign-off covers source, isolated action flows and explicitly labeled historical read evidence, not live mutations, restoration or cross-runtime reliability.
+
+Final validation: 88 registry tools valid; 1,715 Node tests passed with no failures/canceled; 138 Walmart tests passed with independent Ajv validation (78 reads, 60 cart/actions); all 18 schemas compile; 617 schema-invalid cases made zero requests; 184 additional independent controls passed; uncached `go test -count=1 ./extension/...` passed.
+
+No fresh browser or registration was performed in the final QA round; the exact-nine namespace is source/registry/fixture evidence. The reviewer did not rotate browsers after the preceding search challenge. Product and review pages 8/9 have inherited reviewer live success at byte-identical `dba80aef`; store has historical reviewer and builder read success. Cart has earlier guest and signed-in evidence but no final-source live success. All four action successes remain fabricated only. All entries are `qa_passed`, not `verified`.
