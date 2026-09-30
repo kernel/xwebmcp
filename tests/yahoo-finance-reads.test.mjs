@@ -40,17 +40,24 @@ function conforms(schema, value) {
   return true;
 }
 
+const blockingDialog = (hidden = false) => ({
+  textContent: "Verify you are human. Complete the CAPTCHA to continue",
+  getAttribute: () => null,
+  getClientRects: () => hidden ? [] : [{}]
+});
+
 function harness(name, options = {}) {
   const calls = [];
   const stats = { titleReads: 0, cleared: false, canceled: false, abortSignal: null };
   const currentUrl = options.url ?? "https://finance.yahoo.com/news/";
   const responseBody = options.raw ?? JSON.stringify(options.data ?? (name === "search_symbols" ? search() : chart()));
   const context = {
-    URL, URLSearchParams, TextDecoder, AbortController,
+    URL, URLSearchParams, TextDecoder, AbortController, getComputedStyle: element => ({ visibility: element.visibility ?? "visible" }),
     location: new URL(currentUrl),
     document: {
       get title() { stats.titleReads++; return options.title ?? "Yahoo Finance"; },
-      querySelector: selector => selector.includes("Consent Management") && options.consent ? { getClientRects: () => options.hiddenConsent ? [] : [{}] } : selector.includes("Sign In Modal") && options.signInModal ? {} : null
+      querySelector: selector => selector.includes("Consent Management") && options.consent ? { getClientRects: () => options.hiddenConsent ? [] : [{}] } : selector.includes("Sign In Modal") && options.signInModal ? {} : null,
+      querySelectorAll: () => options.blockingDialogs ?? []
     },
     setTimeout: callback => { stats.timer = callback; return 1; },
     clearTimeout: () => { stats.cleared = true; },
@@ -127,6 +134,10 @@ for (const name of names) {
     }
     assert.equal((await harness(name, { consent: true, hiddenConsent: true }).run()).status, "ok");
     assert.equal((await harness(name, { title: "Fabricated Robotics Company - Yahoo Finance" }).run()).status, "ok");
+    const challenged = harness(name, { blockingDialogs: [blockingDialog()] });
+    assert.equal((await challenged.run()).error_kind, "challenge"); assert.equal(challenged.calls.length, 0);
+    assert.equal((await harness(name, { blockingDialogs: [blockingDialog(true)] }).run()).status, "ok");
+    assert.equal((await harness(name, { blockingDialogs: Array(51).fill(blockingDialog()) }).run()).error_kind, "site_changed");
   });
   test(`${name}: HTTP denials never become empty success or retry`, async () => {
     for (const [status, kind] of [[401, "login_required"], [402, "gated"], [403, "forbidden"], [429, "rate_limited"], [500, "site_error"]]) {
@@ -269,7 +280,7 @@ function watchlistHarness(options = {}) {
     document: {
       get title() { stats.reads++; return options.title ?? "My Watchlist - Yahoo Finance"; },
       querySelector: selector => { stats.reads++; return selector.includes("Consent Management") && options.consent ? { getClientRects: () => options.hiddenConsent ? [] : [{}] } : selector.includes("Sign In Modal") && options.signInModal ? {} : null; },
-      querySelectorAll: selector => { stats.reads++; return selector === "h1,h2" ? [{ textContent: options.heading ?? "My Watchlist" }] : selector === "table" ? (options.noTable ? [] : options.ambiguous ? [table, table] : [table]) : []; }
+      querySelectorAll: selector => { stats.reads++; return selector.includes("aria-modal") ? options.blockingDialogs ?? [] : selector === "h1,h2" ? [{ textContent: options.heading ?? "My Watchlist" }] : selector === "table" ? (options.noTable ? [] : options.ambiguous ? [table, table] : [table]) : []; }
     },
     fetch: () => { assert.fail("watchlist must not fetch"); },
     click: () => { assert.fail("watchlist must not click"); }
@@ -311,7 +322,7 @@ test("get_watchlist: wrong origin/view, loading, gates and malformed targets fai
   for (const [options, kind] of [
     [{ url: "https://mail.yahoo.com/" }, "wrong_page"], [{ url: "https://finance.yahoo.com/quote/EXAMPLE/" }, "wrong_page"],
     [{ url: "https://finance.yahoo.com/portfolio/p_123/view/v1" }, "wrong_watchlist"], [{ title: "Sign in - Yahoo" }, "login_required"],
-    [{ title: "Verify you are human" }, "challenge"], [{ title: "Consent" }, "gated"], [{ consent: true }, "gated"], [{ signInModal: true }, "login_required"], [{ heading: "A different list" }, "site_changed"],
+    [{ title: "Verify you are human" }, "challenge"], [{ blockingDialogs: [blockingDialog()] }, "challenge"], [{ title: "Consent" }, "gated"], [{ consent: true }, "gated"], [{ signInModal: true }, "login_required"], [{ heading: "A different list" }, "site_changed"],
     [{ rows: [] }, "site_changed"], [{ fields: ["symbol"] }, "site_changed"], [{ noTable: true }, "site_changed"],
     [{ ambiguous: true }, "site_changed"], [{ rows: ["https://evil.test/"] }, "site_changed"], [{ badLink: true }, "site_changed"]
   ]) assert.equal((await watchlistHarness(options).run()).error_kind, kind);
