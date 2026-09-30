@@ -62,9 +62,9 @@
       "url_patterns": [
         "https://radar.cloudflare.com/*"
       ],
-      "status": "verified",
-      "last_verified": "2026-09-29",
-      "notes": "Independent QA passed on the final source, live on Kernel and in a local Chromium extension. Page tool on radar.cloudflare.com: category, ASN, DNSSEC, exact-name Top 100 position, DNS records and post-quantum TLS support for one hostname; WHOIS is opt-in because Radar rate-limits it hard. Sections Radar cannot answer are reported, never returned empty. Unassigned TLDs with default sections give site_error.",
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Page tool on radar.cloudflare.com: category, ASN, DNSSEC, exact-name Top 100 position, bounded DNS records and post-quantum TLS support. WHOIS opt-in. Pending independent QA of updated cancellation, bounds and redaction. Unassigned TLDs with default sections give site_error.",
       "provenance": {
         "qa_agent": "agt_37ff3f484ac4461bb423"
       }
@@ -78,9 +78,9 @@
       "url_patterns": [
         "https://radar.cloudflare.com/*"
       ],
-      "status": "verified",
-      "last_verified": "2026-09-29",
-      "notes": "Independent QA passed on the final source, live on Kernel and in a local Chromium extension. Page tool on radar.cloudflare.com: Outage Center outages and traffic anomalies for a window, worldwide or for one country or ASN, with the applied filter read back from Radar's response. Continents are rejected because Radar returns worldwide data for them. Radar's location filters are not exact.",
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Page tool on radar.cloudflare.com: bounded outages and anomalies, worldwide or for one country or 32-bit ASN, with applied filter checks. Pending independent QA of updated cancellation, bounds and redaction. Continents rejected; country/ASN coverage is not exact.",
       "provenance": {
         "qa_agent": "agt_37ff3f484ac4461bb423"
       }

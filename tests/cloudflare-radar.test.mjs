@@ -87,7 +87,7 @@ function harness(name, o = {}) {
     ...(o.routes ?? {})
   };
   const pageContext = {
-    JSON, URL, URLSearchParams, Promise, Intl, Math, Date, Number, Object, Array, String, RegExp, Map, Set, Error, encodeURIComponent, isFinite, Infinity, NaN,
+    JSON, URL, URLSearchParams, TextEncoder, Promise, Intl, Math, Date, Number, Object, Array, String, RegExp, Map, Set, Error, encodeURIComponent, isFinite, Infinity, NaN,
     window: { location: { origin: o.origin ?? ORIGIN } },
     fetch: async (path, init = {}) => {
       calls.fetches.push({ path, init });
@@ -95,7 +95,7 @@ function harness(name, o = {}) {
       assert.equal(init.method, undefined, "only GET requests");
       assert.equal(init.credentials, undefined, "no credentials override needed for same-origin GETs");
       const chart = /^\/charts\/([A-Za-z]+)\/fetch\?/.exec(path)?.[1];
-      const r = (routes[chart] ?? (() => ({ status: 404, text: "Not Found" })))(path);
+      const r = await (routes[chart] ?? (() => ({ status: 404, text: "Not Found" })))(path);
       const headers = { "retry-after": null, "cf-mitigated": null, ...(r.headers ?? {}) };
       return { status: r.status, headers: { get: k => headers[k.toLowerCase()] ?? null }, text: async () => (r.text ?? JSON.stringify(r.body)) };
     }
@@ -103,8 +103,8 @@ function harness(name, o = {}) {
   const [definition] = runInNewContext(`(${sources[name]})`, pageContext);
   return {
     definition, calls,
-    run: async input => {
-      const result = plain(await definition.execute(input));
+    run: async (input, context) => {
+      const result = plain(await definition.execute(input, context));
       assert.ok(conforms(definition.tool.outputSchema, result), `${name} output violates its schema: ${JSON.stringify(result)}`);
       const text = JSON.stringify(result);
       assert.ok(!text.includes("must not leave the page"), "fields outside the allowlist must not be returned");
@@ -153,7 +153,7 @@ test("tool names do not collide with Radar's native tools", () => {
 // --- input validation happens before any request ---------------------------------------------------------
 
 const invalidInputs = {
-  list_internet_outages: [null, [], "US", { extra: 1 }, { location: "" }, { location: "united states" }, { location: "USA" }, { location: "AS12345678901" }, { location: "AS0" }, { location: "AS013335" }, { location: "antarctica" }, { location: "Europe" }, { location: "europe" }, { location: "north-america" }, { location: 5 },
+  list_internet_outages: [null, [], "US", { extra: 1 }, { location: "" }, { location: "united states" }, { location: "USA" }, { location: "AS12345678901" }, { location: "AS4294967296" }, { location: "AS9999999999" }, { location: "AS0" }, { location: "AS013335" }, { location: "antarctica" }, { location: "Europe" }, { location: "europe" }, { location: "north-america" }, { location: 5 },
     { date_range: "5d" }, { date_range: 7 }, { date_range: "7d", date_start: "2026-09-01", date_end: "2026-09-02" }, { date_start: "2026-09-01" }, { date_end: "2026-09-02" },
     { date_start: "2026-02-30", date_end: "2026-03-01" }, { date_start: "2026-13-01", date_end: "2026-13-05" }, { date_start: "2026-01-00", date_end: "2026-01-05" }, { date_start: "2026-01-01", date_end: "2026-00-10" }, { date_start: "09/01/2026", date_end: "09/02/2026" }, { date_start: "2026-09-05", date_end: "2026-09-01" }, { date_start: "2025-01-01", date_end: "2026-06-01" },
     { include: "all" }, { limit: 0 }, { limit: 51 }, { limit: 2.5 }, { limit: "5" }],
@@ -192,7 +192,7 @@ test("list_internet_outages: default request, allowlisted fields, newest first",
   const h = harness("list_internet_outages");
   const result = await h.run({});
   assert.equal(h.calls.fetches.length, 1);
-  assert.equal(h.calls.fetches[0].path, "/charts/OutagesMap/fetch?");
+  assert.equal(h.calls.fetches[0].path, "/charts/OutagesMap/fetch?dateRange=7d");
   assert.equal(result.status, "ok");
   assert.equal(result.source_url, "https://radar.cloudflare.com/outage-center");
   assert.deepEqual(result.applied, { location: { type: "global", id: null, name: null }, date_range: "7d", date_start: null, date_end: null });
@@ -212,7 +212,7 @@ test("list_internet_outages: default request, allowlisted fields, newest first",
 
 test("list_internet_outages: filters go to the site as Radar's own query parameters", async () => {
   for (const [input, expected, state] of [
-    [{ location: "US" }, { location: "us" }, { location: { type: "country", code: "US", name: "United States" }, dateRange: "7d" }],
+    [{ location: "US" }, { location: "us", dateRange: "7d" }, { location: { type: "country", code: "US", name: "United States" }, dateRange: "7d" }],
     [{ location: "As13335", date_range: "28d" }, { location: "as13335", dateRange: "28d" }, { location: { type: "asn", asn: "13335" }, dateRange: "28d" }],
     [{ date_start: "2026-09-01", date_end: "2026-09-15" }, { dateStart: "2026-09-01", dateEnd: "2026-09-15" }, { location: { type: "global" }, dateRange: "", dateStart: "2026-09-01", dateEnd: "2026-09-15" }]
   ]) {
@@ -303,7 +303,7 @@ test("list_internet_outages: site failures are explicit errors", async () => {
   assert.equal(notSupported.error_kind, "location_not_supported");
   const thrown = await harness("list_internet_outages", { routes: { OutagesMap: () => { throw new Error("network down"); } } }).run({});
   assert.equal(thrown.error_kind, "site_error");
-  assert.match(thrown.error_message, /network down/);
+  assert.match(thrown.error_message, /no automatic retry/);
 });
 
 test("list_internet_outages: a filter the site did not apply is reported as site_changed, never trusted", async () => {
@@ -420,7 +420,7 @@ test("get_domain_info: empty answers are no_data, not a fabricated success", asy
   const all = await h.run({ domain: "host.example.net", sections: ["details", "dns", "pq", "whois"] });
   assert.equal(all.status, "no_data");
   assert.deepEqual(all.unavailable.map(u => [u.section, u.kind]), [["details", "no_data"], ["dns", "no_data"], ["pq", "no_data"], ["whois", "no_data"]]);
-  assert.match(all.unavailable[2].message, /api-error/);
+  assert.match(all.unavailable[2].message, /could not test/);
   const some = await harness("get_domain_info", { routes: { ...empty, DomainDetailsPanel: () => ({ status: 200, body: details() }) } }).run({ domain: "host.example.net" });
   assert.equal(some.status, "ok");
   assert.deepEqual(some.unavailable.map(u => u.section), ["dns", "pq"]);
@@ -454,4 +454,72 @@ test("get_domain_info: requests are one GET per section against Radar's chart ro
     "/charts/DomainDetailsPanel/fetch?domain=xn--bcher-kva.example.com", "/charts/TopDomainsTable/fetch?",
     "/charts/DnsRecordsTable/fetch?domain=xn--bcher-kva.example.com", "/charts/DomainPqSupport/fetch?domain=xn--bcher-kva.example.com", "/charts/WhoisPanel/fetch?domain=xn--bcher-kva.example.com"
   ]);
+});
+
+for (const name of NAMES) {
+  test(`${name}: cancellation stops requests and errors do not echo credentials`, async () => {
+    const input = name === "get_domain_info" ? { domain: "host.example.net" } : {};
+    const controller = new AbortController();
+    controller.abort();
+    const before = harness(name);
+    assert.equal((await before.run(input, { signal: controller.signal })).error_kind, "canceled");
+    assert.equal(before.calls.fetches.length, 0);
+    const during = new AbortController();
+    const route = name === "get_domain_info" ? "DomainDetailsPanel" : "OutagesMap";
+    const mid = harness(name, { routes: { [route]: () => { during.abort(); return { status: 200, body: name === "get_domain_info" ? details() : outageBody() }; } } });
+    assert.equal((await mid.run(input, { signal: during.signal })).error_kind, "canceled");
+    assert.equal(mid.calls.fetches.length, 1);
+    assert.equal(mid.calls.fetches[0].init.signal, during.signal);
+    const thrown = harness(name, { routes: { [route]: () => { throw new Error("https://example.net/?token=secret-fixture"); } } });
+    assert.equal((await thrown.run(input)).error_kind, "site_error");
+    assert.equal(JSON.stringify(await thrown.run(input)).includes("secret-fixture"), false);
+  });
+}
+
+test("list_internet_outages: default window and unknown location state fail closed", async () => {
+  for (const state of [{ location: { type: "continent", slug: "europe" }, dateRange: "7d" }, { location: { type: "global" }, dateRange: "28d" }]) {
+    const result = await harness("list_internet_outages", { routes: { OutagesMap: () => ({ status: 200, body: outageBody({ state }) }) } }).run({});
+    assert.equal(result.error_kind, "site_changed");
+  }
+  const h = harness("list_internet_outages", { routes: { OutagesMap: () => ({ status: 200, body: outageBody({ state: { location: { type: "asn", asn: "4294967295" }, dateRange: "7d" } }) }) } });
+  assert.equal((await h.run({ location: "AS4294967295" })).status, "ok");
+});
+
+test("list_internet_outages: nested lists and text are bounded; credential-bearing links are omitted", async () => {
+  const huge = "x".repeat(10000);
+  const rows = Array.from({ length: 10 }, () => ({ code: "XA", name: huge }));
+  const body = outageBody({ outages: [outage("1", "2026-09-01T00:00:00Z", { locationsDetails: rows, asnsDetails: rows.map(x => ({ asn: 64500, name: x.name })), originsDetails: rows.map(x => ({ origin: "example", name: x.name })), tags: rows.map(x => x.name), linkedUrl: "https://user:pass@example.net/?token=secret-fixture" })] });
+  const result = await harness("list_internet_outages", { routes: { OutagesMap: () => ({ status: 200, body }) } }).run({});
+  assert.equal(result.outages[0].locations.length, 5);
+  assert.equal(result.outages[0].locations[0].name.length, 96);
+  assert.equal(result.outages[0].linked_url, null);
+  assert.ok(result.warnings.some(w => w.includes("five items")));
+  for (const linkedUrl of ["https://example.net/?token=secret-fixture", "https://example.net/#secret-fixture", "https://example.net/" + huge]) {
+    const r = await harness("list_internet_outages", { routes: { OutagesMap: () => ({ status: 200, body: outageBody({ outages: [outage("1", "2026-09-01", { linkedUrl })] }) }) } }).run({});
+    assert.equal(r.outages[0].linked_url, null);
+  }
+});
+
+test("get_domain_info: auxiliary text is bounded, invalid rankings ignored, PQ errors not echoed", async () => {
+  const many = Array.from({ length: 100 }, () => "x".repeat(10000));
+  const h = harness("get_domain_info", { routes: {
+    DomainDetailsPanel: () => ({ status: 200, body: details({ categories: many.map(x => ({ label: [x] })) }) }),
+    TopDomainsTable: () => ({ status: 200, body: { domains: [{ domain: "host.example.net", rank: 101 }] } }),
+    WhoisPanel: () => ({ status: 200, body: { ...whois, nameservers: many, status: many } }),
+    DomainPqSupport: () => ({ status: 200, body: { pq: null, error: "secret-fixture" } })
+  } });
+  const result = await h.run({ domain: "host.example.net", sections: ["details", "whois", "pq"] });
+  assert.equal(result.details.categories.length, 20);
+  assert.equal(result.details.categories[0].length, 253);
+  assert.equal(result.details.top_100_rank, null);
+  assert.equal(result.whois.nameservers.length, 20);
+  assert.equal(JSON.stringify(result).includes("secret-fixture"), false);
+});
+
+test("get_domain_info: serialized output cap accounts for JSON escaping", async () => {
+  const records = Array.from({ length: 200 }, () => ({ type: "TXT", name: "host.example.net", data: "\u0000".repeat(512) }));
+  const h = harness("get_domain_info", { routes: { DnsRecordsTable: () => ({ status: 200, body: { records } }) } });
+  const result = await h.run({ domain: "host.example.net", sections: ["dns"], dns_record_limit: 200 });
+  assert.equal(result.error_kind, "site_changed");
+  assert.ok(new TextEncoder().encode(JSON.stringify(result)).length < 200000);
 });
