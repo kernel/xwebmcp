@@ -4,8 +4,8 @@ Tools for ESPN's public sports site (https://www.espn.com): scoreboards and site
 
 | tool | file | status | notes |
 |------|------|--------|-------|
-| get_scoreboard | [get_scoreboard.js](get_scoreboard.js) | draft | NFL, NBA and NHL games for one date (NBA, NHL) or one week (NFL): start time, state, score, record, broadcasters, venue; echoes the effective date or week and reports no_games separately from errors |
-| search | [search.js](search.js) | draft | Teams, players, articles and upcoming Watch ESPN events, capped per type, with ESPN page URLs and uids; clips, replays and films omitted |
+| get_scoreboard | [get_scoreboard.js](get_scoreboard.js) | verified | NFL, NBA and NHL games for one date (NBA, NHL) or one week (NFL): start time, state, score, record, broadcasters, venue; echoes the effective date or week and reports no_games separately from errors |
+| search | [search.js](search.js) | verified | Teams, players, articles and upcoming Watch ESPN events, capped per type, with ESPN page URLs and uids; clips, replays and films omitted |
 
 ## Native WebMCP tools
 
@@ -78,21 +78,17 @@ Both tools match only `https://www.espn.com/*`, not the default `https://espn.co
 
 ## QA
 
-The hardened source is awaiting a final-source recheck. Earlier source evidence below is historical, not sign-off for the current files. Current changes bound omitted types and duplicate search groups, reject non-primitive identifiers and raw invalid query text, bound invalid-input errors, and disclose skipped scoreboard events. A fresh independent review of `21fdf3b` found malformed search errors/recognized-group contents returning `no_results` and controls in scoreboard links. All three findings have been corrected and have regression fixtures.
+Independent QA by `agt_38231d3040927db065c6`, using `pi` / `openai-codex/gpt-6.1-sol`, thinking high, fast false, context 272k, with Codex auth checked before each review:
 
-### Historical source evidence
+1. `21fdf3b`: FAIL. Malformed search errors/recognized-group contents returned `no_results`, and scoreboard links retained controls. All three were fixed with regression fixtures.
+2. `4df51f9676bfe41314b4d4acf3d11be568e97cbc`: PASS, no concrete defects in the bounded recheck. Reviewed source blobs: `get_scoreboard.js` = `39131d29f742ca881c3424138194339d5ad4136c`, `search.js` = `9ddbe98ca1d74e856ea8a6bc6d675b2afb4ab410`. Later updates only record documentation and registry status.
 
-Independent QA by Hypeship agent `agt_38231d3040927db065c6` (claude-bridge/claude-sonnet-5-5, thinking xhigh), three rounds on 2026-09-29:
+Final-source evidence, signed out, 2026-09-30:
 
-1. Head `8aa4545`: FAIL. One major defect (`search` returned `no_results` for an HTTP 200 `errors` body) and two minor ones (uncapped fields, untested input schemas). Fixed in `af7438f`.
-2. Head `af7438f`: PASS with five minor items (an overclaim of control-character removal, README wording, a stale PR body, uncovered caps, unknown 200 bodies giving `no_results`). Fixed in `4b54244`.
-3. Head `4b54244` (`get_scoreboard.js` git blob `718c465`, `search.js` git blob `7957086`): PASS, with four minor hostile-content items recorded under Known limitations. The tool files subsequently changed; these results do not verify the current source.
+- **Kernel real site, 02:34 UTC:** starting from an NFL game page, search returned six results; an errors-only query returned `site_error`; NFL week 3 returned 16 games and NHL dated scoreboard returned three, each truncated to one when requested. Both whole-namespace overwrites preserved both tools, no native conflicts were found, navigation re-registered tools and rejected the stale ref, and cookie/storage equality checks passed.
+- **Local Chrome extension real site, 02:40 UTC:** SHA-pinned final files in a throwaway Chromium profile; search success/error, NFL scoreboard success and NBA `no_games` from an NFL game page; post-navigation search succeeded and the stale ref was rejected. Requests used `credentials: "omit"`; cookie/storage equality checks passed. This is observed parity only for the cases listed, not a blanket cross-runtime guarantee.
+- **Fixture-only:** 25 focused response cases in each runtime, separate from real site evidence. Includes malformed/null/mixed search errors and groups, C0/DEL/C1 link controls, giant omitted arrays, repeated group limits, identifier types/caps, all-unusable and partially unreadable scoreboards, HTTP 202-empty, blocked/rate-limited responses and unrelated-origin guards. 46 standalone malformed inputs were rejected before origin/network access; 40 Kernel and eight extension negative cases made zero requests. 210 fresh outputs independently validated with Ajv, zero violations.
+- **Local checks:** registry validator 81 valid; full suite 1612 pass including 35 ESPN tests. Go extension embedding/toolsource checks and extension sidepanel test pass. The initial fresh-source review's 23 targeted hardening mutants were all killed.
+- **Unverified:** real challenges/403/429, slow responses, overtime/postponement and account behavior. In-progress game handling remains fixture-only.
 
-Final-round coverage, signed out, 2026-09-29:
-
-- Kernel runtime, fresh browser: whole namespace registered together; no native tools on any page checked; both tools invoked from the homepage, scoreboard, game, article, search and 404 pages; 80 outputs validated against `outputSchema`; scoreboard results compared with the page's own games (NFL week 3 with 16 games, NHL default with 5, NBA 2026-10-08 with 6) with no mismatches; truncation and `no_games`; 48 search queries including ESPN's failure modes and non-Latin queries; 79 malformed inputs with no ESPN request; 62 stubbed failure and layout shapes; re-registration after navigation with the old `tool_ref` rejected; `wrong_page` on `fantasy.espn.com` and `secure.espn.com`; largest live output 8.66 KiB; cookie and storage names unchanged; tool requests limited to the documented endpoints.
-- Local Chrome extension (Chromium 153, throwaway profile, tools installed pinned to `4b54244`): 24 live invocations and 11 stubbed shapes matched the Kernel runtime; the extension listed no tools on `fantasy.espn.com` or `secure.espn.com`. Not tested: `xwebmcp invoke <tool_ref>` on an extension-opened tab, and `www.espn.co.uk` in the extension.
-- Mutation testing: 100 scratch mutants, 91 killed by the tests at that head; the 9 survivors were range-boundary control characters, which the last test in `tests/espn-tools.test.mjs` now pins (behaviour was already correct).
-- Not verified: games in progress, real HTTP 403/429 or challenge pages, postponed and overtime games, and any signed-in behaviour.
-
-Sessions (ephemeral): the builder's and the reviewer's temporary browsers were created and deleted by each agent.
+All temporary public browsers and throwaway extension profiles used for this revision were deleted. No authorized login session or cleanup deadline was changed.

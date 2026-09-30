@@ -139,9 +139,9 @@
       "url_patterns": [
         "https://www.espn.com/*"
       ],
-      "status": "draft",
-      "last_verified": null,
-      "notes": "NFL, NBA and NHL public scoreboards; echoes the effective date or week, reports no_games separately from errors and warns about unreadable events. Read-only, no cookies or navigation. Hardened source awaiting independent re-verification; Fantasy and account tools unsupported.",
+      "status": "verified",
+      "last_verified": "2026-09-30",
+      "notes": "NFL, NBA and NHL public scoreboards; effective date/week, capped output, distinct no_games and skipped-event warnings. Read-only, no cookies or navigation. Independent final-source Kernel and Chrome extension success/failure checks on 2026-09-30. Availability varies (one browser received an empty HTTP 202); real 403/429 and overtime/postponement untested. Fantasy/account tools unsupported.",
       "provenance": {
         "qa_agent": "agt_38231d3040927db065c6"
       }
@@ -155,9 +155,9 @@
       "url_patterns": [
         "https://www.espn.com/*"
       ],
-      "status": "draft",
-      "last_verified": null,
-      "notes": "Public search for teams, players, articles and upcoming Watch ESPN events; capped per type including repeated groups, with bounded omitted_types and explicit errors or partial-result warnings. Read-only, no cookies or navigation. Hardened source awaiting independent re-verification; Fantasy and account tools unsupported.",
+      "status": "verified",
+      "last_verified": "2026-09-30",
+      "notes": "Public search for teams, players, articles and upcoming Watch ESPN events; capped per type including repeated groups, bounded omitted_types, explicit errors and partial-result warnings. Read-only, no cookies or navigation. Independent final-source Kernel and Chrome extension success/failure checks on 2026-09-30; real 403/429 untested. Fantasy/account tools unsupported.",
       "provenance": {
         "qa_agent": "agt_38231d3040927db065c6"
       }
