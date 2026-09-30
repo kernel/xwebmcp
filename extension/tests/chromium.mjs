@@ -22,7 +22,7 @@ export async function chromium(extension) {
   async function close() {
     if (closeBrowser) await closeBrowser().catch(() => undefined);
     socket?.close();
-    const exited = child.exitCode === null ? new Promise(resolve => child.once('exit', resolve)) : null;
+    const exited = child.exitCode === null && child.signalCode === null ? new Promise(resolve => child.once('exit', resolve)) : null;
     signal('SIGTERM');
     if (exited) {
       const timer = setTimeout(() => signal('SIGKILL'), 3000);
@@ -35,7 +35,7 @@ export async function chromium(extension) {
   try {
     let address;
     for (let i = 0; i < 100; i++) {
-      if (child.exitCode !== null) throw new Error(`Chromium exited: ${stderr}`);
+      if (child.exitCode !== null || child.signalCode !== null) throw new Error(`Chromium exited: ${stderr}`);
       try {
         const [port, path] = (await readFile(join(profile, 'DevToolsActivePort'), 'utf8')).trim().split('\n');
         address = `ws://127.0.0.1:${port}${path}`;
