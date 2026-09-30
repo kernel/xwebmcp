@@ -108,9 +108,12 @@
     const url = "https://finance.yahoo.com/quote/" + encodeURIComponent(symbol) + "/";
     const requestUrl = "https://query1.finance.yahoo.com/v8/finance/chart/" + encodeURIComponent(symbol) + "?interval=1d&range=1d";
     if (location.origin !== "https://finance.yahoo.com") return fail("wrong_page", "Open a public https://finance.yahoo.com page first. This tool never navigates.");
-    if (/captcha|verify (you are|you're) human|robot|unusual activity|access denied/i.test(document.title)) return fail("challenge", "Yahoo is showing a verification page. Do not retry automatically.");
+    if (/captcha|verify (you are|you're) human|are you a robot|unusual activity|access denied/i.test(document.title)) return fail("challenge", "Yahoo is showing a verification page. Do not retry automatically.");
     if (/sign in|log in/i.test(document.title)) return fail("login_required", "Yahoo requires sign-in; this tool does not log in.");
     if (/consent|subscription required|upgrade required/i.test(document.title)) return fail("gated", "Yahoo is showing an access gate; this tool does not dismiss it.");
+    const consent = document.querySelector('[role="dialog"][aria-label="Welcome to Yahoo Consent Management"]');
+    if (consent?.getClientRects().length) return fail("gated", "Yahoo's consent dialog is open; no data request was made.");
+    if (document.querySelector('dialog[aria-label="Sign In Modal"][open]')) return fail("login_required", "Yahoo's sign-in dialog is open; no data request was made.");
 
     const controller = new AbortController();
     const cancel = () => controller.abort();

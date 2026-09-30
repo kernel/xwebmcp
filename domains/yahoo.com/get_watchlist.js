@@ -58,9 +58,12 @@
     if (!Number.isInteger(limit) || limit < 1 || limit > 50) return fail("invalid_input", "limit must be an integer from 1 to 50.");
     if (context?.signal?.aborted) return fail("canceled", "The read was canceled before any document inspection.");
     if (location.origin !== "https://finance.yahoo.com") return fail("wrong_page", "Open the authorized My Watchlist view on finance.yahoo.com first. This tool never navigates.");
-    if (/captcha|verify (you are|you're) human|robot|unusual activity|access denied/i.test(document.title)) return fail("challenge", "Yahoo is showing a verification page; this tool does not dismiss it.");
+    if (/captcha|verify (you are|you're) human|are you a robot|unusual activity|access denied/i.test(document.title)) return fail("challenge", "Yahoo is showing a verification page; this tool does not dismiss it.");
     if (/sign in|log in/i.test(document.title)) return fail("login_required", "Sign-in is required. This tool never logs in or chooses an account.");
     if (/consent|subscription required|upgrade required/i.test(document.title)) return fail("gated", "Yahoo is showing an access gate; this tool does not dismiss it.");
+    const consent = document.querySelector('[role="dialog"][aria-label="Welcome to Yahoo Consent Management"]');
+    if (consent?.getClientRects().length) return fail("gated", "Yahoo's consent dialog is open; no watchlist rows were read.");
+    if (document.querySelector('dialog[aria-label="Sign In Modal"][open]')) return fail("login_required", "Yahoo's sign-in dialog is open; no watchlist rows were read.");
     if (/^\/portfolio\//.test(location.pathname) && !/^\/portfolio\/p_0\/view\/v1\/?$/.test(location.pathname)) return fail("wrong_watchlist", "This is not the supported My Watchlist p_0 view; no portfolio was read.");
     if (!/^\/portfolio\/p_0\/view\/v1\/?$/.test(location.pathname)) return fail("wrong_page", "Open https://finance.yahoo.com/portfolio/p_0/view/v1 in the intended account first.");
     if (![...document.querySelectorAll("h1,h2")].some(heading => heading.textContent.trim() === "My Watchlist")) return fail("site_changed", "The expected My Watchlist heading is missing; no other list was read.");
@@ -70,9 +73,10 @@
     const headers = [...table.querySelectorAll("thead th")].map(header => header.getAttribute("data-testid-header"));
     const fields = ["symbol", "regularMarketPrice", "currency", "regularMarketTime"];
     if (fields.some(field => headers.filter(header => header === field).length !== 1)) return fail("site_changed", "Watchlist column identifiers are missing or ambiguous.");
-    const visibleRows = [...table.querySelectorAll("tbody tr")];
-    if (!visibleRows.length) return fail("site_changed", "No rendered watchlist rows are available; an empty/loading state has not been verified.");
-    if (visibleRows.length > 1000) return fail("site_changed", "The rendered watchlist exceeds the read bound.");
+    const sourceRows = [...table.querySelectorAll("tbody tr")];
+    if (sourceRows.length > 1000) return fail("site_changed", "The watchlist table exceeds the read bound.");
+    const visibleRows = sourceRows.filter(row => row.getClientRects().length && !["hidden", "collapse"].includes(getComputedStyle(row).visibility));
+    if (!visibleRows.length) return fail("site_changed", "No visible watchlist rows are available; an empty/loading state has not been verified.");
     const text = cell => cell?.textContent.trim().slice(0, 80) || null;
     const rows = [];
     for (const row of visibleRows.slice(0, limit)) {

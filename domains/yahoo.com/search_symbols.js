@@ -92,14 +92,17 @@
     if (!input || typeof input !== "object" || Array.isArray(input) || Object.keys(input).some(key => !["query", "limit"].includes(key))) return fail("invalid_input", "Provide query and optionally limit.");
     const query = typeof input.query === "string" ? input.query.trim() : "";
     const limit = input.limit === undefined ? 5 : input.limit;
-    if (!query || query.length > 80 || /[\x00-\x1f\x7f]/.test(query)) return fail("invalid_input", "query must be 1 to 80 characters without control characters.");
+    if (!query || input.query.length > 80 || !query.isWellFormed() || /[\x00-\x1f\x7f]/.test(input.query)) return fail("invalid_input", "query must be 1 to 80 well-formed Unicode characters without control characters.");
     if (!Number.isInteger(limit) || limit < 1 || limit > 10) return fail("invalid_input", "limit must be an integer from 1 to 10.");
     const url = "https://finance.yahoo.com/lookup/?s=" + encodeURIComponent(query);
     const requestUrl = "https://query1.finance.yahoo.com/v1/finance/search?" + new URLSearchParams({ q: query, quotesCount: String(limit), newsCount: "0" });
     if (location.origin !== "https://finance.yahoo.com") return fail("wrong_page", "Open a public https://finance.yahoo.com page first. This tool never navigates.");
-    if (/captcha|verify (you are|you're) human|robot|unusual activity|access denied/i.test(document.title)) return fail("challenge", "Yahoo is showing a verification page. Do not retry automatically.");
+    if (/captcha|verify (you are|you're) human|are you a robot|unusual activity|access denied/i.test(document.title)) return fail("challenge", "Yahoo is showing a verification page. Do not retry automatically.");
     if (/sign in|log in/i.test(document.title)) return fail("login_required", "Yahoo requires sign-in; this tool does not log in.");
     if (/consent|subscription required|upgrade required/i.test(document.title)) return fail("gated", "Yahoo is showing an access gate; this tool does not dismiss it.");
+    const consent = document.querySelector('[role="dialog"][aria-label="Welcome to Yahoo Consent Management"]');
+    if (consent?.getClientRects().length) return fail("gated", "Yahoo's consent dialog is open; no data request was made.");
+    if (document.querySelector('dialog[aria-label="Sign In Modal"][open]')) return fail("login_required", "Yahoo's sign-in dialog is open; no data request was made.");
 
     const controller = new AbortController();
     const cancel = () => controller.abort();

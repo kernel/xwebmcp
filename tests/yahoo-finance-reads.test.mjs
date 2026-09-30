@@ -48,7 +48,10 @@ function harness(name, options = {}) {
   const context = {
     URL, URLSearchParams, TextDecoder, AbortController,
     location: new URL(currentUrl),
-    document: { get title() { stats.titleReads++; return options.title ?? "Yahoo Finance"; } },
+    document: {
+      get title() { stats.titleReads++; return options.title ?? "Yahoo Finance"; },
+      querySelector: selector => selector.includes("Consent Management") && options.consent ? { getClientRects: () => options.hiddenConsent ? [] : [{}] } : selector.includes("Sign In Modal") && options.signInModal ? {} : null
+    },
     setTimeout: callback => { stats.timer = callback; return 1; },
     clearTimeout: () => { stats.cleared = true; },
     fetch: async (url, init) => {
@@ -117,6 +120,13 @@ for (const name of names) {
       assert.equal((await h.run()).error_kind, kind);
       assert.equal(h.calls.length, 0);
     }
+  });
+  test(`${name}: open consent/login dialogs fail before data access; hidden consent does not block`, async () => {
+    for (const [options, kind] of [[{ consent: true }, "gated"], [{ signInModal: true }, "login_required"]]) {
+      const h = harness(name, options); assert.equal((await h.run()).error_kind, kind); assert.equal(h.calls.length, 0);
+    }
+    assert.equal((await harness(name, { consent: true, hiddenConsent: true }).run()).status, "ok");
+    assert.equal((await harness(name, { title: "Fabricated Robotics Company - Yahoo Finance" }).run()).status, "ok");
   });
   test(`${name}: HTTP denials never become empty success or retry`, async () => {
     for (const [status, kind] of [[401, "login_required"], [402, "gated"], [403, "forbidden"], [429, "rate_limited"], [500, "site_error"]]) {
@@ -219,7 +229,7 @@ test("search_symbols: bounded symbol directory with no news/private fields", asy
   assert.equal(r.results[0].symbol, symbol);
   const params = new URL(h.calls[0].url).searchParams;
   assert.equal(params.get("q"), "company & type"); assert.equal(params.get("quotesCount"), "1"); assert.equal(params.get("newsCount"), "0");
-  for (const input of [{ query: "x".repeat(81) }, { query: "x", limit: 11 }, { query: "x", limit: 0 }, { query: "x", limit: "1" }]) {
+  for (const input of [{ query: "x".repeat(81) }, { query: "\ud800" }, { query: "\udc00" }, { query: "\nexample" }, { query: "example\t" }, { query: "x", limit: 11 }, { query: "x", limit: 0 }, { query: "x", limit: "1" }]) {
     const invalid = harness("search_symbols"); assert.equal((await invalid.run(input)).error_kind, "invalid_input"); assert.equal(invalid.calls.length, 0);
   }
 });
@@ -238,22 +248,27 @@ function watchlistHarness(options = {}) {
   const fieldList = options.fields ?? fields;
   const headers = fieldList.map(field => ({ getAttribute: () => field }));
   const data = options.rows ?? ["EXAMPLE", "^EXAMPLE", "EXAMPLE=X"];
-  const rowNodes = data.map((s, index) => ({ querySelectorAll: () => fieldList.map(field => {
-    const content = { symbol: s, regularMarketPrice: "10.50", currency: "USD", regularMarketTime: "4:00 PM EDT", quantity: "DO_NOT_RETURN" }[field] ?? "";
-    return {
-      textContent: content,
-      querySelector: selector => field === "symbol" && selector === 'a[href^="/quote/"]' ? { textContent: s, getAttribute: () => options.badLink ? "/quote/OTHER/" : "/quote/" + encodeURIComponent(s) + "/" }
-        : field === "regularMarketTime" && !options.noTime ? { getAttribute: () => options.badTime ? "unknown" : String(marketTime + index) } : null
-    };
-  }) }));
+  const rowNodes = data.map((s, index) => ({
+    getClientRects: () => options.hiddenRows?.includes(index) ? [] : [{}],
+    visibility: options.invisibleRows?.includes(index) ? "hidden" : "visible",
+    querySelectorAll: () => fieldList.map(field => {
+      const content = { symbol: s, regularMarketPrice: "10.50", currency: "USD", regularMarketTime: "4:00 PM EDT", quantity: "DO_NOT_RETURN" }[field] ?? "";
+      return {
+        textContent: content,
+        querySelector: selector => field === "symbol" && selector === 'a[href^="/quote/"]' ? { textContent: s, getAttribute: () => options.badLink ? "/quote/OTHER/" : "/quote/" + encodeURIComponent(s) + "/" }
+          : field === "regularMarketTime" && !options.noTime ? { getAttribute: () => options.badTime ? "unknown" : String(marketTime + index) } : null
+      };
+    })
+  }));
   const table = {
     querySelector: () => fieldList.includes("symbol") ? {} : null,
     querySelectorAll: selector => selector === "thead th" ? headers : selector === "tbody tr" ? rowNodes : []
   };
   const context = {
-    URL, location: new URL(options.url ?? "https://finance.yahoo.com/portfolio/p_0/view/v1"),
+    URL, getComputedStyle: row => ({ visibility: row.visibility }), location: new URL(options.url ?? "https://finance.yahoo.com/portfolio/p_0/view/v1"),
     document: {
       get title() { stats.reads++; return options.title ?? "My Watchlist - Yahoo Finance"; },
+      querySelector: selector => { stats.reads++; return selector.includes("Consent Management") && options.consent ? { getClientRects: () => options.hiddenConsent ? [] : [{}] } : selector.includes("Sign In Modal") && options.signInModal ? {} : null; },
       querySelectorAll: selector => { stats.reads++; return selector === "h1,h2" ? [{ textContent: options.heading ?? "My Watchlist" }] : selector === "table" ? (options.noTable ? [] : options.ambiguous ? [table, table] : [table]) : []; }
     },
     fetch: () => { assert.fail("watchlist must not fetch"); },
@@ -278,6 +293,12 @@ test("get_watchlist: current-document authorized read, market time, bounds, no h
   assert.equal((await watchlistHarness({ badTime: true }).run()).rows[0].market_time, null);
 });
 
+test("get_watchlist: hidden rows are excluded before limits and visible counts", async () => {
+  const r = await watchlistHarness({ hiddenRows: [0], invisibleRows: [1] }).run({ limit: 1 });
+  assert.equal(r.total_visible_rows, 1); assert.equal(r.rows[0].symbol, "EXAMPLE=X"); assert.equal(r.truncated, false);
+  assert.equal((await watchlistHarness({ hiddenRows: [0, 1, 2] }).run()).error_kind, "site_changed");
+});
+
 test("get_watchlist: validation/cancellation before any account/document inspection", async () => {
   for (const input of [null, [], { limit: 0 }, { limit: 51 }, { limit: 1.5 }, { watchlist_id: "p_123" }, { account_id: "DO_NOT_RETURN" }]) {
     const h = watchlistHarness(); assert.equal((await h.run(input)).error_kind, "invalid_input"); assert.equal(h.stats.reads, 0);
@@ -290,7 +311,7 @@ test("get_watchlist: wrong origin/view, loading, gates and malformed targets fai
   for (const [options, kind] of [
     [{ url: "https://mail.yahoo.com/" }, "wrong_page"], [{ url: "https://finance.yahoo.com/quote/EXAMPLE/" }, "wrong_page"],
     [{ url: "https://finance.yahoo.com/portfolio/p_123/view/v1" }, "wrong_watchlist"], [{ title: "Sign in - Yahoo" }, "login_required"],
-    [{ title: "Verify you are human" }, "challenge"], [{ title: "Consent" }, "gated"], [{ heading: "A different list" }, "site_changed"],
+    [{ title: "Verify you are human" }, "challenge"], [{ title: "Consent" }, "gated"], [{ consent: true }, "gated"], [{ signInModal: true }, "login_required"], [{ heading: "A different list" }, "site_changed"],
     [{ rows: [] }, "site_changed"], [{ fields: ["symbol"] }, "site_changed"], [{ noTable: true }, "site_changed"],
     [{ ambiguous: true }, "site_changed"], [{ rows: ["https://evil.test/"] }, "site_changed"], [{ badLink: true }, "site_changed"]
   ]) assert.equal((await watchlistHarness(options).run()).error_kind, kind);
