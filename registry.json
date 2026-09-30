@@ -67,9 +67,12 @@
         "https://whatson.bfi.org.uk/lff/Online/default.asp*",
         "https://whatson.bfi.org.uk/lff/Online/article/*"
       ],
-      "status": "draft",
-      "last_verified": null,
-      "notes": "Read-only page tool for one film or event page on the tab's own BFI ticketing programme (Southbank, IMAX or London Film Festival): credits, description text and the first 50 performances the site lists, each with sales status, availability band and signed-out price range. Cookieless requests; a different programme is rejected before any request. Never opens booking. Not yet independently QA'd."
+      "status": "qa_passed",
+      "last_verified": "2026-09-29",
+      "notes": "Read-only page tool for one film or event page on the tab's own BFI ticketing programme (Southbank, IMAX or London Film Festival): credits, description text and the first 50 performances the site lists, each with sales status, availability band and signed-out price range. Cookieless requests; a different programme is rejected before any request. Never opens booking. Independent QA passed on 2026-09-29 (signed out; see the domain README for what was and was not tested, and its known limitations).",
+      "provenance": {
+        "qa_agent": "agt_a9b0628177efb43e1e72"
+      }
     },
     {
       "domain": "bfi.org.uk",
@@ -85,9 +88,12 @@
         "https://whatson.bfi.org.uk/lff/Online/default.asp*",
         "https://whatson.bfi.org.uk/lff/Online/article/*"
       ],
-      "status": "draft",
-      "last_verified": null,
-      "notes": "Read-only page tool that searches the tab's own BFI ticketing programme (Southbank, IMAX or London Film Festival) by keyword and date range; one 50-row site page per call with pagination; signed-out prices and availability bands. Cookieless requests; a different programme is rejected before any request. Never opens booking. Not yet independently QA'd."
+      "status": "qa_passed",
+      "last_verified": "2026-09-29",
+      "notes": "Read-only page tool that searches the tab's own BFI ticketing programme (Southbank, IMAX or London Film Festival) by keyword and date range; one 50-row site page per call with pagination; signed-out prices and availability bands. Cookieless requests; a different programme is rejected before any request. Never opens booking. Independent QA passed on 2026-09-29 (signed out; see the domain README for what was and was not tested, and its known limitations).",
+      "provenance": {
+        "qa_agent": "agt_a9b0628177efb43e1e72"
+      }
     },
     {
       "domain": "delta.com",

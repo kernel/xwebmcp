@@ -4,8 +4,8 @@ Tools for the BFI's ticketing site (https://whatson.bfi.org.uk): films and event
 
 | tool | file | status | notes |
 |------|------|--------|-------|
-| search_events | [search_events.js](search_events.js) | draft | Keyword and date-range search of the tab's own programme; one 50-row site page per call with pagination; availability band, count and signed-out price range per performance |
-| get_event | [get_event.js](get_event.js) | draft | One film or event page of the tab's own programme: credits, description text and the performances the site lists for it (the first 50, read across the site's pages; at most 10 pages) |
+| search_events | [search_events.js](search_events.js) | qa_passed | Keyword and date-range search of the tab's own programme; one 50-row site page per call with pagination; availability band, count and signed-out price range per performance |
+| get_event | [get_event.js](get_event.js) | qa_passed | One film or event page of the tab's own programme: credits, description text and the performances the site lists for it (the first 50, read across the site's pages; at most 10 pages) |
 
 Register both together as one array with `forceOverwriteNamespace: true`; registering one file that way removes the other:
 
@@ -77,7 +77,7 @@ Trade-off, observed: the site sits behind Cloudflare, whose bot protection chall
 
 ## Safety and trust boundary
 
-- No booking flow: nothing here requests `seatSelect.asp`, `mapSelect.asp`, `shoppingCart.asp`, `orderQuestions.asp`, an account page or a sign-in page, and no request carries an action parameter other than the site's own search, paging and article-load ones. The tests fail if any request carries a parameter outside that list, a cookie, or a path outside the tab's programme, and the sources are scanned for the purchase and account surfaces.
+- No booking flow: nothing here requests `seatSelect.asp`, `mapSelect.asp`, `shoppingCart.asp`, `orderQuestions.asp`, an account page or a sign-in page, and no request carries an action parameter other than the site's own search, paging and article-load ones. The tests fail if any request is sent with `credentials` other than `omit`, carries a parameter outside that list, or goes to a path outside the tab's programme, and the sources are scanned for the purchase and account surfaces.
 - Page content is untrusted data: titles and text are entity-decoded through a detached `textarea` (no markup is parsed or executed), truncated and returned as strings only. Article text is parsed with `DOMParser`, which does not run scripts.
 - The site's search criteria are normally stored in the caller's session. With no cookie sent, the request cannot reach the user's session (inferred from the cookie behaviour above, not separately observed).
 - Prices and availability are quotes at `observed_at`; they change with every sale.
@@ -94,7 +94,10 @@ Trade-off, observed: the site sits behind Cloudflare, whose bot protection chall
 - The meaning of `availability_count`, the `U` availability code, the `C` sales status beyond "not on sale", and rows with an access value other than `Public` (all rows seen were `Public`) are not documented by the site.
 - A waiting room or virtual queue (for example on the festival's on-sale days) was not observed and is not handled beyond the redirect check (`site_error`).
 - All live checks used an eu-west Kernel stealth browser; UK-address behaviour was not checked.
-- Not verified live: a successful data response through the local Chrome extension (the site challenged cookieless requests from the plain Chromium available for that check; see QA), the `challenge` path against a real challenge on a Kernel browser (only the local Chromium produced one), and every signed-in and wrong-account case (fixtures only).
+- Not verified: every signed-in and wrong-account case (fixtures only), a real waiting room, UK-address behaviour, and the 10-page cap of `get_event` on a live event (no live event is that long; fixtures only).
+- `get_event` treats any page with credits or a booking widget as an event. A season page that carries an empty booking widget (for example the IMAX season page `/imax/Online/article/cinema-alejandro-g-inarritu`, 1 of 13 live pages with a widget) returns `ok` with no details, no performances and the "separate booking page" warning, not `not_an_event` as the tool description says of season lists.
+- When a page's booking widget lists rows that all point at one other event, `get_event` reads that event's performances as the page's own, and applies the same rule to each later page of an event; this was not seen on 74 live pages but was shown with fixtures. A stray row in a name-linked widget makes the round trip of a booking page's `event_id` return no performances with a misleading warning; the live booking page's rows are all one name.
+- The bot-protection check on the tab is a substring test of its title: a tab whose title contains "Just a moment" or "Access denied" returns `challenge` without sending a request.
 - Lower-case `/online/` URLs are not matched by the URL patterns.
 
 ## QA
@@ -104,7 +107,7 @@ Author checks, 2026-09-29, signed out, on Kernel stealth browsers (eu-west) unle
 - `search_events`: valid queries on all three programmes from their own tabs; keyword, single day, month range with paging (pages 1-4 contiguous, page 5 and page 9 as `no_results`), `available_only`, an empty keyword result, malformed inputs, `programme_mismatch` from every tab, and starting pages (home, film page, season article, search results page). Fixtures cover statuses, redirects, format changes and skipped rows.
 - `get_event`: article id, URL with hostile extra parameters (only two validated keys sent, confirmed in the network log), `/article/<name>`, festival permalink, an IMAX event with 25 performances over five pages (matched the keyword search's 25), information page as `not_an_event` without paging, unknown id and unknown name as `not_found`, another programme's URL as `programme_mismatch`.
 - Registration of the whole namespace with `forceOverwriteNamespace`; discovery on the six content page types and absence on five other page types.
-- Local Chrome extension (Chromium 153 in an isolated profile, extension built from this repository): registration, discovery, tab ownership, input validation, the programme guard and the `challenge` result were exercised through `xwebmcp mcp`; the session cookie hash was unchanged. Successful data responses could not be obtained there because of the challenge.
+- Local Chrome extension (Chromium 153 in an isolated profile, extension built from this repository): registration, discovery, tab ownership, input validation, the programme guard and the `challenge` result were exercised through `xwebmcp mcp`; the session cookie hash was unchanged. Successful data responses could not be obtained there because of the challenge (the independent reviewer later obtained them; see round 3).
 
 Independent QA round 1 (a fresh reviewer, Kernel stealth eu-west browsers plus a local Chromium extension run, about 350 paced requests) on the first revision (head `0316103`): **FAIL**, with these findings, all fixed in the next revision and re-checked by the author live:
 
@@ -123,6 +126,19 @@ Independent QA round 2 (same reviewer, second revision, head `4322f47`): **FAIL*
 3. README precision about default Kernel browsers: corrected above.
 4. Test gaps: the reviewer's mutants that survived (name matching ignoring the programme, case sensitivity, pages 21-50, the long venue label in `get_event`) now have tests.
 
-Independent QA of the current revision: pending. Both tools stay `draft` until an independent reviewer signs off on the final source.
+Independent QA round 3 (same reviewer, third revision, head `d986879aa05aac9294fe2e6d73b760cf1fff7496`, 2026-09-29): **PASS**, no blocker or major defect. Both tools are `qa_passed`; the tool source files at this commit are byte-identical to the reviewed ones (later commits change only this README and the registry entries). What it checked, signed out, on stealth eu-west Kernel browsers and in a local Chromium 153 with the extension built from this repository, with about 420 paced requests:
 
-Sessions: the author's scratch browsers were deleted after the run; none is retained.
+- The round-2 fixes: the booking page's slug, `event_id`, `url` and permalink return identical 50-performance sets with the warning; the information permalink still warns. Paging instability: documenting it is adequate (a single festival day of 97 rows over 2 pages was identical across 3 runs; a 3-day range of 238 rows over 5 pages repeated one boundary row in 2 of 3 runs; Southbank's October had 0 repeats).
+- Search on all three programmes matched the site's rendered pages and an independent oracle (IMAX 42 rows; festival pages 1, 2, 20; page 21 and 50 accepted, 51 rejected); about 40 malformed inputs returned `invalid_input` with no request; 200 live outputs had 0 output-schema violations, no session token, and a maximum size of 32 KB.
+- Isolation: about 15 `programme_mismatch` results with no request; a hostile URL set (parent-directory and encoded paths, `//`, backslash, user info, foreign GUIDs, pasted action parameters) reached no other programme; mixed workloads on three tabs sent no `Cookie` header, stayed under the tab's prefix, and left the cookie fingerprint unchanged; nothing was returned or sent that the tool had not built itself.
+- `get_event`: 26 live pages identical to the previous revision except for the round-trip fix; GUID (either case), URL, name, permalink, IMAX names and multi-page events (25 of 25, 20, 40 of 40) matched search; the detached-`textarea` decoding was tested in a real DOM and executed nothing, including a `</textarea>` breakout.
+- Lifetime: URL, basket text, history and cookie fingerprint unchanged; 3 concurrent calls fine; a stale `tool_ref` errors; an invocation racing a navigation completed.
+- `challenge`: a default eu-west browser gave `challenge` from both tools with one request each and no data.
+- Local extension: registration, discovery, tab ownership (a user-opened tab is refused unless `allow_user_tabs`), month-13 dates, the programme guard and a data success identical to Kernel's (search of 15 rows, an event of 20 performances, the 50-performance booking page, in the same order); 2 of its 3 first data calls were challenged, then succeeded; the cookie fingerprint was unchanged.
+- Not testable and untested: every signed-in and wrong-account case (no authorised account).
+
+Remaining minor findings from round 3, left as documented limitations rather than fixed, because a change to a tool file would invalidate the sign-off and no review round remained: the season page with an empty booking widget (Known limitations), adoption of a widget's rows on later paging responses (Known limitations), the substring title check (Known limitations), and test gaps for row-id case handling, a widget whose rows lack a link, an IMAX URL passed with `programme: "southbank"` on a Southbank tab, and the "access denied" title branch (each behaves correctly in the shipped code, confirmed with fixtures by the reviewer).
+
+The live cases that back the status: `search_events` and `get_event` succeeded from a film page, a season article page, a search results page and each programme's home page on 2026-09-29, through the Kernel runtime and through the local extension.
+
+Sessions: the author's and the reviewer's browsers were deleted after the runs; none is retained. QA agent (ephemeral identifier): `agt_a9b0628177efb43e1e72`.
