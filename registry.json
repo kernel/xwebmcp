@@ -886,9 +886,10 @@
         "https://eu.sevenrooms.com/experiences/*",
         "https://eu.sevenrooms.com/events/*"
       ],
-      "status": "draft",
-      "last_verified": null,
-      "notes": "QA evidence is recorded in the domain README and PR. Page tool on the SevenRooms guest booking hosts (www, fp, eu): bookable times for one venue, date and party size as venue-local and UTC starts with the widget label, shift, card and payment fields and deduplicated plain-text venue policy text. Lists only the site's book entries (what the widget shows as time buttons); request entries are counted, not listed. Never selects, holds or books, and drops booking handles."
+      "status": "verified",
+      "last_verified": "2026-09-30",
+      "provenance": { "qa_agent": "agt_9ef0b7c18f7120fe21ee" },
+      "notes": "Independent QA passed; live public reads verified in Kernel and the local extension. Page tool on the SevenRooms guest booking hosts (www, fp, eu): bookable times for one venue, date and party size as venue-local and UTC starts with the widget label, shift, card and payment fields and deduplicated plain-text venue policy text. Lists only the site's book entries (what the widget shows as time buttons); request entries are counted, not listed. Never selects, holds or books, and drops booking handles."
     },
     {
       "domain": "sevenrooms.com",
@@ -910,9 +911,10 @@
         "https://eu.sevenrooms.com/experiences/*",
         "https://eu.sevenrooms.com/events/*"
       ],
-      "status": "draft",
-      "last_verified": null,
-      "notes": "QA evidence is recorded in the domain README and PR. Page tool on the SevenRooms guest booking hosts (www, fp, eu): one venue's public widget details by venue_url_key (address, party sizes, booking window, currency, languages); a venue is found only on the hosts that serve it. Read-only, signed out, no navigation; returns none of the site's payment, map or analytics keys."
+      "status": "verified",
+      "last_verified": "2026-09-30",
+      "provenance": { "qa_agent": "agt_9ef0b7c18f7120fe21ee" },
+      "notes": "Independent QA passed; live public reads verified in Kernel and the local extension. Page tool on the SevenRooms guest booking hosts (www, fp, eu): one venue's public widget details by venue_url_key (address, party sizes, booking window, currency, languages); a venue is found only on the hosts that serve it. Read-only, signed out, no navigation; returns none of the site's payment, map or analytics keys."
     },
     {
       "domain": "sevenrooms.com",
@@ -934,9 +936,10 @@
         "https://eu.sevenrooms.com/experiences/*",
         "https://eu.sevenrooms.com/events/*"
       ],
-      "status": "draft",
-      "last_verified": null,
-      "notes": "Public active offer directory only; displayed price text is not a quote or availability."
+      "status": "verified",
+      "last_verified": "2026-09-30",
+      "provenance": { "qa_agent": "agt_9ef0b7c18f7120fe21ee" },
+      "notes": "Independent QA passed; public directory reads verified in Kernel and the local extension. Displayed price text is not a quote or availability."
     },
     {
       "domain": "sevenrooms.com",
@@ -958,9 +961,10 @@
         "https://eu.sevenrooms.com/experiences/*",
         "https://eu.sevenrooms.com/events/*"
       ],
-      "status": "draft",
-      "last_verified": null,
-      "notes": "Read-only exact dining target preparation and manual handoff; no holds or execution approval path."
+      "status": "verified",
+      "last_verified": "2026-09-30",
+      "provenance": { "qa_agent": "agt_9ef0b7c18f7120fe21ee" },
+      "notes": "Independent QA passed; exact read-only prepaid target preparation verified in Kernel and the local extension. Manual handoff only; no holds or execution approval path."
     },
     {
       "domain": "sevenrooms.com",
@@ -982,9 +986,10 @@
         "https://eu.sevenrooms.com/experiences/*",
         "https://eu.sevenrooms.com/events/*"
       ],
-      "status": "draft",
-      "last_verified": null,
-      "notes": "Public event schedules only; not ticket availability or prices. Pagination covers a bounded relative-day window."
+      "status": "verified",
+      "last_verified": "2026-09-30",
+      "provenance": { "qa_agent": "agt_9ef0b7c18f7120fe21ee" },
+      "notes": "Independent QA passed; public schedule reads verified in Kernel and the local extension. Not ticket availability or prices. Pagination covers a bounded relative-day window."
     },
     {
       "domain": "southwest.com",

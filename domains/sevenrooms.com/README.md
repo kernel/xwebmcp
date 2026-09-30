@@ -6,11 +6,11 @@ preparation. All tools are read-only, work signed out, and do not sign in, hold 
 
 | tool | file | status | notes |
 |------|------|--------|-------|
-| get_restaurant | [get_restaurant.js](get_restaurant.js) | draft | One venue's public widget details by `venue_url_key`: address, website, party sizes, booking window, currency, languages |
-| get_availability | [get_availability.js](get_availability.js) | draft | Bookable times for one venue, date and party size as venue-local and UTC starts with the widget's label, shift, card and payment fields and deduplicated plain-text venue policies; lists only the site's `book` entries |
-| list_experiences | [list_experiences.js](list_experiences.js) | draft | Public active offer directory, plain descriptions, displayed price text and landing-page links; not availability or a quote |
-| prepare_reservation | [prepare_reservation.js](prepare_reservation.js) | draft | Re-read one exact dining target and current terms, fail on duplicates or missing times, then return a manual search-page handoff; never creates a hold |
-| search_events | [search_events.js](search_events.js) | draft | Public event occurrence dates and venue-local clock times in an inclusive window of at most 31 days; not ticket inventory |
+| get_restaurant | [get_restaurant.js](get_restaurant.js) | verified | One venue's public widget details by `venue_url_key`: address, website, party sizes, booking window, currency, languages |
+| get_availability | [get_availability.js](get_availability.js) | verified | Bookable times for one venue, date and party size as venue-local and UTC starts with the widget's label, shift, card and payment fields and deduplicated plain-text venue policies; lists only the site's `book` entries |
+| list_experiences | [list_experiences.js](list_experiences.js) | verified | Public active offer directory, plain descriptions, displayed price text and landing-page links; not availability or a quote |
+| prepare_reservation | [prepare_reservation.js](prepare_reservation.js) | verified | Re-read one exact dining target and current terms, fail on duplicates or missing times, then return a manual search-page handoff; never creates a hold |
+| search_events | [search_events.js](search_events.js) | verified | Public event occurrence dates and venue-local clock times in an inclusive window of at most 31 days; not ticket inventory |
 
 ## Native WebMCP tools
 
@@ -134,7 +134,8 @@ patterns, and the tools were only exercised on the search step, an experiences p
   `/api-yoa/events/widget` and experience discovery adds the public directory HTML. Tests assert read-only requests,
   omitted cookies, no storage, clicks, submissions or navigation, and no booking-handle or secret output.
 - The tools add no cookies, headers or body of their own and only call the current origin's documented public paths. The site's
-  own `fetch` wrapper, if any, is outside their control; on the pages checked it added none. Each request has a 25 second
+  own `fetch` wrapper is outside their control and added tracing headers during independent QA. Automatic background
+  analytics requests were observed separately; they were not tool requests. Each request has a 25 second
   deadline that is raced against the request, so a page whose `fetch` ignores the abort signal still ends in `site_error`.
 - The booking handle each entry carries (`access_persistent_id`), capacity fields (pacing), and the site's payment,
   map and analytics values are never read into output. The tests assert none of them ever appears.
@@ -233,12 +234,25 @@ patterns, and the tools were only exercised on the search step, an experiences p
 
 ## QA
 
-All five tools remain `draft` while this PR is open; the PR records the current independent QA verdict. The prior three
-reviews of the dining reads failed, the last two on minor test/documentation gaps only. The previous head fixed those gaps
-without another review; that was not a sign-off. Expanded-scope initial QA verified those corrections and exercised all
-five tools in Kernel and the local extension, but found three preparation defects: malformed seating text could match null,
-unknown card requirements became false, and incomplete schedules still asserted uniqueness. Preparation now fails explicitly
-on those unreadable fields; fabricated regression tests pin each case. A new source revision requires independent recheck.
+All five tools are `verified` for the documented public read-only scope, not booking execution. Independent recheck on
+2026-09-30 passed tool source at `c55640041138741a2d6a92ef6c71b8ff1e6a57a0`: 84 registry entries valid, 1682 tests
+passing, 32 additional fixture outputs validated with actual Ajv, and all three preparation regression tests independently
+shown to fail on old source and pass on the revised source. Final-source Kernel checks made 12 invocations, including full
+namespace replacement; local Chromium extension checks made 8 invocations, all matching Kernel apart from `observed_at`.
+All 20 live outputs were Ajv-valid, no tested leak patterns appeared, and URL/document lifetime stayed unchanged.
+
+Live cases (signed out, 2026-09-30, starting on an unrelated `/events/blackrabbit` page): `get_restaurant` and
+`get_availability` for `kumiko` returned venue details and 65 slots; `prepare_reservation` re-read an exact prepaid
+185 USD/person target with current terms and `execution_supported: false`; `list_experiences` paginated 7
+`blueducktavernhyatt` offers as 3+4; `search_events` returned the `blackrabbit` 26-occurrence public schedule. Empty
+results, unavailable targets, fake approval fields and invalid windows were explicit. No selection or hold occurred.
+Twenty-two tool requests were same-origin GETs with omitted cookies and no bodies; one background analytics POST was
+recorded separately. No authenticated/account or consequential execution claim is made.
+
+Expanded-scope initial QA found three preparation defects: malformed seating text could match null, unknown card
+requirements became false, and incomplete schedules still asserted uniqueness. The recheck confirmed all three fixed.
+Earlier dining reviews failed, the last two on minor test/documentation gaps; their final corrections were independently
+verified in the expanded review. A tool-source change invalidates this sign-off and requires another independent review.
 
 Author checks (not independent, 2026-09-29, signed out, Kernel stealth browsers, read-only): both tools were registered
 through `webmcp.addCustomTools` and invoked through `webmcp.invokeTool` from booking, experiences and events pages on `www`,
@@ -251,7 +265,7 @@ label field was not returned, and text sanitization was narrower than documented
 found both fixed and no major defect, and failed on minor items only: surviving test mutants, a stale README number, half
 surrogate pairs from length cuts, block boundaries and quoted attributes in the HTML conversion, and a slow worst case on
 hostile policy text. The last prior review (`8414b81`) still failed on individual test pins, two schema descriptions and one README sentence.
-Head `a32fea6` corrected those with only schema-description changes to tool source. The new independent review must verify
+Head `a32fea6` corrected those with only schema-description changes to tool source. The expanded independent review verified
 those corrections alongside the added discovery and preparation tools.
 
 Additional author checks (2026-09-30, signed out, read-only): all five tools registered together in Kernel and the local
