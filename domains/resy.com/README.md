@@ -1,220 +1,153 @@
 # resy.com
 
-Tools for Resy (https://resy.com), the restaurant reservation site: restaurant search with
-availability, venue profiles, open slots and booking calendars. All four are read-only, work
-signed out, and do not sign in, book, hold a table or join a wait list.
+Resy restaurant discovery, account reads, reversible favorites and reservation handoff.
+
+## Tools
 
 | tool | file | status | notes |
-|------|------|--------|-------|
-| search_restaurants | [search_restaurants.js](search_restaurants.js) | verified | Keyword, cuisine and place search with optional date, party size and time; lists open slots per venue as venue-local date-times; flags Tock-booked venues |
-| get_restaurant | [get_restaurant.js](get_restaurant.js) | verified | Venue profile by resy.com venue URL or city and venue slug: cuisine, rating, address, contact, About and Need to Know text, party-size limits |
-| get_availability | [get_availability.js](get_availability.js) | verified | Open slots for one venue, date and party size as venue-local date-times, seating type and each slot's raw cancellation and payment fields; never returns booking handles |
-| get_availability_calendar | [get_availability_calendar.js](get_availability_calendar.js) | verified | Per-date reservation, event and walk-in state for one venue and party size inside the venue's booking window |
-
-## Native WebMCP tools
-
-None found (checked 2026-09-29 with `webmcp.listTools()` and `document.modelContext.getTools()`,
-signed out and signed in, on the home page, a city search page, a venue page and an event page).
-`document.modelContext.getTools()` resolves to an empty list, `navigator.modelContext` is
-undefined and no element carries a `toolname` attribute, so the custom namespace `resy.com` does not
-overlap with anything the site registers.
+|---|---|---|---|
+| get_account_status | [get_account_status.js](get_account_status.js) | draft | Opaque current-account reference; no profile/payment output |
+| get_availability | [get_availability.js](get_availability.js) | draft | Public slots as full venue-local date-times and raw policy fields |
+| get_availability_calendar | [get_availability_calendar.js](get_availability_calendar.js) | draft | Public per-date booking states |
+| get_reservation | [get_reservation.js](get_reservation.js) | draft | Allowed details for one reservation on one account list page |
+| get_restaurant | [get_restaurant.js](get_restaurant.js) | draft | Public profile by URL or city/venue slug |
+| list_notify_requests | [list_notify_requests.js](list_notify_requests.js) | draft | Read current Notify time-window preferences, maximum 100 |
+| list_reservations | [list_reservations.js](list_reservations.js) | draft | One bounded upcoming/past account page, maximum 20 |
+| prepare_reservation | [prepare_reservation.js](prepare_reservation.js) | draft | Exact public slot match and human handoff, not a quote or hold |
+| search_restaurants | [search_restaurants.js](search_restaurants.js) | draft | Keyword/cuisine/place search; up to 12 sorted slots per venue |
+| set_favorite | [set_favorite.js](set_favorite.js) | draft | Reversible My Hit List favorite only; fixture-tested writes |
 
 ## Scope and loading
 
-Register all four together, because `forceOverwriteNamespace: true` replaces the whole namespace:
+Register the entire namespace atomically, including all ten tools. Every tool is `page`: requests execute in
+an existing resy.com document without navigation. There is no demonstrated CDP exception. Calls do not depend
+on the home page, a previous invocation or a reservation widget. Caller navigation destroys a running page
+invocation; treat missing output as unknown, especially for writes, and never retry a write automatically.
+Use a 60-second invocation timeout; individual requests time out after 20 seconds (account tools) or 25 seconds
+(public tools). Cancellation is passed to fetch. No tool calls an authentication, booking, details, hold,
+change, cancellation, payment or marketing endpoint.
 
-```javascript
-const fs = await import("node:fs");
-const read = name => fs.readFileSync(`domains/resy.com/${name}.js`, "utf8");
-const tools = ["search_restaurants", "get_restaurant", "get_availability", "get_availability_calendar"].flatMap(name => eval(read(name)));
-await webmcp.addCustomTools({ namespace: "resy.com", tools, forceOverwriteNamespace: true });
-```
+Public tools read the client key at runtime from `window.apiConfig.Config.apiKey`, use `credentials: omit`
+and never send account headers. Resolving a search city slug/code downloads about 2 MB of location data; pass
+coordinates to skip that. Date inputs accept yesterday UTC through 366 days ahead to cover venue time zones.
+Slots use venue-local `YYYY-MM-DDTHH:MM` values without offsets, including their own calendar date after midnight.
+Party sizes are bounded at 1–20. Slugs are exact; venue slugs can contain capital letters.
 
-Pick the `tool_ref` whose `source.target_id` is the tab you drive. Runs took 0.1 to 0.8 s; `timeoutSec: 60`
-is plenty. Typical flow: `search_restaurants` (returns `venue_id`, `city_slug`, `url_slug`) →
-`get_availability_calendar` to find open days → `get_availability` for the times. `get_restaurant`
-takes the venue URL or `city_slug` plus `url_slug` and returns `venue_id`. Venue slugs are case-sensitive as
-returned (some contain capital letters); city slugs are lowercase.
+Account tools use only the current document's `window.apiAuthToken` in Resy's own auth headers, only to
+`https://api.resy.com`, with redirect rejection and no cookie credentials. `get_account_status` hashes the
+current `/2/user` id into `account_ref`; it returns no raw id, name, phone, email or payment data. This
+pseudonymous reference detects an unintended account switch; it is not a credential, anonymous identity,
+permission to switch accounts or proof of human approval. Reads and favorites require `expected_account_ref`
+and recheck the current identity before releasing account results. Tokens stay in the invocation, are never
+persisted, and a token switch during a call fails closed. Account tools do not refresh/login automatically.
 
-All four are `kind: "page"`. Each runs inside the current `resy.com` document, reads the site's API client key
-from `window.apiConfig.Config.apiKey` at run time, and calls `api.resy.com` with the same header set the site's
-own requests use. None of them navigates, so no CDP exception applies.
+`list_reservations` passes the specified type/offset/limit through and performs no automatic paging. The site
+uses offset 1 initially; whether it denotes a page or row is unverified. `get_reservation` only searches that
+same bounded page, using a reservation id, not a secret `resy_token`; not_found is not proof of global absence.
+Both return only venue/date/time/party/seating, numeric raw price if present, currency and bounded cancellation
+text. No attendees, personal requests, guest data, auth/cancellation tokens, payment methods or signed links
+are returned. Populated schemas are grounded in the site's current public bundle, not a populated live account.
 
-- **search_restaurants** posts the site's venue search (`POST /3/venuesearch/search`). With `date` it asks
-  for availability the way the results page does (`availability`, `slot_filter` with day, party size and an optional
-  `time_filter`, `order_by: "availability"`). A `location` is a Resy city slug (`new-york-ny`) or code (`ny`), resolved to the
-  city's map center from `GET /3/location/config`, which is Resy's whole city list (about 2 MB); pass
-  `latitude` and `longitude` to skip it. `resolved_location` in the output gives the coordinates to reuse.
-  Distances are straight-line miles computed from the search center. Page size is at most 20 and at most 12
-  slots are listed per venue, sorted earliest first, with the full `slot_count`. Coordinates whose search circle
-  reaches longitude +/-180 or comes within 1 degree of a pole are rejected because the site's search answers 502
-  there.
-- **get_restaurant** reads `GET /3/venue?url_slug=&location=`. It returns a fixed allowlist of fields; the
-  venue payload also carries announcements, images, social links, venue group and, when signed in, favorite
-  and list membership, none of which are returned. Text fields are truncated to 4000 characters.
-- **get_availability** posts `POST /4/find` with the venue id, date and party size (`lat` and `long` are 0, as
-  the venue page sends them). Each slot has `local_start` and `local_end` (venue-local `YYYY-MM-DDTHH:MM`, no offset; a
-  slot after midnight belongs to the requested date but carries the next calendar date), `seating_type` and a
-  `policy` object with the site's raw fields for that slot's template (`requires_payment`,
-  `cancellation_fee`, `cancel_cutoff_secs`, `cancel_cutoff_time`, `deposit_fee`, `service_charge`). At most the
-  first 300 slots are returned, sorted earliest first, with the full `slot_count` and `slots_truncated`; a venue with a slot
-  every five minutes all day has about 288.
-- **get_availability_calendar** reads `GET /4/venue/calendar` and returns each date's `reservation`,
-  `event` and `walk_in` state plus `last_bookable_date`. Observed reservation values are `available`, `sold-out`
-  and `closed`; the strings are passed through as the site sends them.
+## Reversible action safety: set_favorite
 
-Every result carries `observed_at` where it reports data. Slots and states are snapshots.
+- Scope: set one exact venue's boolean My Hit List favorite, not a custom list or communication setting.
+- Required: manual login, matching account reference, venue id plus city/venue slugs, desired `favorite` and
+  observed `expected_favorite`. No confirmation flag is accepted or treated as approval.
+- GET `/2/user` and GET `/3/venue?url_slug=...&location=...` establish account, venue id and boolean saved state.
+  Identity is checked again immediately before writing. A venue mismatch, unknown saved-state shape, wrong
+  account or stale expected state makes no write. Already-at-desired-state returns `unchanged` without a POST.
+- The site's public bundle uses form-encoded POST `/3/user/favorites` with `venue_id` and `favorite: 1|0`.
+  The tool sends at most one such request. It then rereads venue and account and reports `updated` only when
+  both postconditions match. This is not an atomic server compare-and-set: another browser can change state
+  between the reads and write. Do not run concurrent favorite changes.
+- Cancellation after dispatch, timeout, blocked response, session switch or failed postcondition produces
+  `outcome_unknown`; no automatic retries, rollback or compensating write. Read the state before deciding.
+- Development and QA never mutate the authorized user's live favorites. Fixture flows record initial state,
+  set/unset their fabricated venue and verify exact restoration. No dedicated mutation test account was approved.
+  Live update success must not be inferred from mocks, a no-op or a missing-login test.
+
+## Consequential-action safety: reservation preparation and execution blockers
+
+`prepare_reservation` re-fetches public `/4/find` inventory and matches exactly `venue_id`, service `date`,
+`party_size`, full `local_start` and `seating_type` from availability. Venue identity must match; absent or
+ambiguous slots fail closed. A match returns `handoff_required`, the exact observed slot, venue URL with
+service date/party size, currency and raw policy fields. It never sends a slot token, selects a widget slot,
+requests `/3/details`, binds an account, navigates, holds or books. It accepts no `confirmed` argument.
+
+**Not booking-ready:** `exact_total: null`, `terms_confirmed: false`, `account_binding: not_selected` and
+`execution_supported: false` are explicit. Null total is unknown, never zero. Cancellation/deposit fields do
+not establish per-guest vs per-reservation charges or the final cutoff. The human must review the exact venue,
+time, party, account, payable amount and cancellation terms on Resy. A venue-level URL is a handoff, not a
+preselected reservation, approval or promise of availability.
+
+Booking, inventory hold and cancellation execution tools are deliberately unshipped. The current runtime
+specification provides no trusted human approval bound to the exact account, action, slot/quantity, cost and
+terms. A model-supplied boolean/string, description or annotation cannot enforce that approval. Also, whether
+opening the widget/details step creates a hold is unverified, so no such step was opened just to learn prices.
+No automatic execution follows preparation. Shipping final execution requires a separate per-tool safety
+design, a supported trusted approval path and evidence of the details/hold lifecycle without live discovery holds.
+
+Notify creation/updating/removal is also unshipped. The bundle shows form-encoded `/3/notify` creation with
+`struct_data.notifies` and DELETE `/2/notify` keyed by venue/day/seats/service type. The authorized collection
+was empty, and upsert/duplicate semantics and exact restoration after replacement were not established. The
+read tool is grounded; sending future alerts or editing windows is not presented as verified mutation behavior.
 
 ## URL patterns
 
-All four tools match only `https://resy.com/*`, not the default `https://*.resy.com/*`. Other hosts under
-the registrable domain are separate products: `blog.resy.com` (editorial), `widgets.resy.com` (the booking widget
-and reservation-details step), `helpdesk.resy.com` and `os.resy.com` (which redirects to `resyos.com`, a different
-domain). The tools call the API cross-origin from a `resy.com` document and read a page global that only that
-origin was seen to expose, and none of them should be listed on a booking or details page. `www.resy.com`
-redirects to `resy.com`. The check `window.location.origin === "https://resy.com"` inside each tool returns
-`wrong_page` if it is ever invoked elsewhere.
-
-## Safety and trust boundary
-
-- Nothing here selects a slot, opens the reservation-details step, holds a table, books, cancels, joins a wait
-  list, requests Notify, saves a restaurant or list, or reads or changes account data. The tests fail if the
-  sources reference booking, cancel, account, notify or token endpoints.
-- The tools never send the signed-in user's auth token. Requests carry only the site's public client key, so the
-  same results come back signed in or out. The client key and the booking handle each slot carries are used or
-  dropped inside the page and never returned, logged or committed. The tests assert neither ever appears in
-  output.
-- Venue and slot text comes from the site and is untrusted: it is returned as data, length-bounded, URLs are
-  only returned when they are `http(s)`, and slugs are only put into a URL when they match a conservative
-  pattern.
-- Dates are validated before any request: the site accepts past dates and out-of-range values and answers with
-  empty results rather than errors, and some malformed values (a huge radius, page 0, an invalid latitude, a
-  search circle that reaches longitude +/-180 or a pole) make its API answer with a 502 error page. The tools
-  reject those inputs themselves. The circle rule is an approximation of where the site failed in testing: it also
-  rejects a few coordinates the site accepts (a narrow band of the equator within about 0.9 degrees of +/-180, and
-  `latitude: 89.5` with a small radius) and lets at least one odd combination through (`latitude: 89` with
-  `longitude: +/-179` and a small radius), which the site answers with 502 and the tool reports as `site_error`. No Resy city is near the antimeridian or the poles.
+All tools use `https://resy.com/*`. `www.resy.com` redirects here. `blog.resy.com` is editorial,
+`helpdesk.resy.com` support, `widgets.resy.com` a distinct booking widget and `os.resy.com` redirects to the
+operator product `resyos.com`. They are not equivalent consumer documents and do not share a proven page API
+configuration/CORS contract. `api.resy.com` is a request destination, not a matching tab host.
 
 ## Site quirks
 
-- The API's cross-origin requests fail at the network layer unless `Cache-Control: no-cache` is sent, which is
-  why every request includes it. `credentials` is omitted; authentication is by the `Authorization` key header.
-- Slot times (`date.start`, `date.end`) are the venue's local wall-clock times, and late-night slots after
-  midnight are dated the next calendar day, so a request for one date can list slots on the next. The tools return
-  the full date-time for that reason and sort by it. A request with a time returns slots roughly an hour either
-  side of it, interpreted within the service date: `time: "00:30"` with date D listed slots around the end of D
-  (for example D 23:45 and D+1 00:00), not the early morning of D.
-- `notify_offered` reports whether Resy offers Notify for that venue and date. It does not say whether the
-  date is sold out.
-- The calendar only reports days inside the venue's booking window (`last_calendar_day`, observed 30 to 33 days
-  ahead); a request for later dates returns no days rather than an error.
-- Some venues list their tables through Tock. Search returns them with `is_tock_inventory: true` and lists
-  informational slot times without a Resy booking handle. The venue and find endpoints answer with 404/400 for
-  them exactly as for a nonexistent id, so `get_restaurant` and `get_availability` return `not_found` with that
-  caveat; closed venues and wrong slugs look the same. The calendar endpoint answers 404 for about half of the
-  Tock venues tried and 200 with no days and a null `last_calendar_day` for the rest, which
-  `get_availability_calendar` reports as `no_results` with `last_bookable_date` null and a message saying so.
-- A search with a `query` and no `location` covers every Resy city. With a location the default radius is
-  16100 m (about 10 miles). `radius_meters` of 0 means no limit on the site, so the tools do not accept it.
-- The `cuisine` filter is case-sensitive: `Italian` matches, `italian` returns nothing.
-- Resy's bot protection (Imperva) can answer a request with a 403 page that carries no cross-origin headers. The
-  browser then rejects the `fetch` and the page never sees the status, so such blocks surface as `site_error`
-  ("failed before a response arrived"), not `challenge`. A few inputs with markup or SQL-like text were blocked
-  this way consistently in QA, and one ordinary query failed once and then passed.
-- On the Kernel runtime, `webmcp.invokeTool` returns a page tool's output as a JSON string when the value
-  contains non-ASCII characters (restaurant names with accents); parse it when `typeof output === "string"`.
-  This is runtime behavior, not tool code.
-- Search can list the same restaurant name more than once when a group has several venue ids.
+- `Cache-Control: no-cache` is necessary for the observed cross-origin header set. WAF responses can omit CORS
+  headers and surface as fetch failures (`site_error`), not readable `challenge` status. No bypass/retry loops.
+- Cuisine filters are case-sensitive. Broad search totals can change between pages. Search accepts at most
+  20 venues per call and page 1–100, and returns at most 12 slots per venue; availability caps at 300, calendar
+  at 400 days. Full readable slot count and truncation are explicit.
+- The antimeridian/pole search guard approximates observed deterministic 502s. It over-rejects some equatorial
+  points near ±180 and misses a rare combination near latitude 89/longitude ±179. No supported Resy city tested
+  required those coordinates. Site failures still return errors, not fabricated empty results.
+- Midnight uses a service date: `time: "00:30"` for date D can list D 23:45 and D+1 00:00, not early morning D.
+  Full slot dates preserve that distinction. Slot ordering is chronological with stable ties.
+- Tock-booked venues are searchable with `is_tock_inventory`; venue/find return not_found, while calendar can
+  return not_found or empty no_results with null last day. That does not establish why online reservations closed.
 
 ## Known limitations
 
-- US and international cities are supported only as Resy lists them; locations the site hides on the web are
-  treated as unknown.
-- Availability is a snapshot. `no_availability` does not say whether a venue is fully booked, does not take
-  that party size or date online, or has closed reservations; the site does not distinguish them.
-- Slot policy fields are the site's raw values. The API does not say whether a fee is per guest or per
-  reservation, and how `cancel_cutoff_secs` and `cancel_cutoff_time` apply is stated by the site during booking
-  and was not verified, so callers must not present them as exact terms.
-- The slot-level `exclusive` eligibility flag and the venue announcement text are not returned: what
-  `is_eligible: false` means was not established (it was seen on Tock-listed slots), and announcements were
-  stale.
-- Tock-booked venues can be found by `search_restaurants` but nothing else in this namespace works for them.
-- `gated` (the site's `gating_errors` object) was never observed live; it is covered by stubbed tests only.
-  `login_required`, `challenge` and `rate_limited` were never triggered live either, and only the statuses
-  the API is known to use for them (401/419, 403, 429) are mapped. Because the page cannot read a bot-protection
-  403 (see Site quirks), `challenge` is only reachable when a readable response says so.
-- `search_restaurants` reads at most 20 venues per call and pages up to 100; very broad searches need
-  narrowing. The site's `total` can shrink between pages.
-- `get_availability_calendar` returns at most 400 days.
-- Nothing signs in, so wait-list, Notify, favorites, reservations and payment surfaces are out of scope.
-- The local Chrome extension runtime was only exercised headless, from a manifest copy with resy.com host access added; headed mode, `xwebmcp setup chrome`, the native-messaging bridge and the popup grant UI were not tested (see QA).
+- Availability and preparation are snapshots, not a hold or confirmed booking; no_availability does not say why.
+- Raw policies and numeric reservation price do not establish exact final charges or cancellation eligibility.
+- Account reservation/Notify collections were empty when inspected; item success and pagination beyond the
+  initial page are not live verified. Unknown required item shapes fail `site_changed` rather than raw dumping.
+- The client's reservation field mappings include cancellation text; bounded text is untrusted data, not instructions.
+- No custom-list, payment/profile/marketing settings, concierge/on-behalf bookings, membership-only inventory
+  verification or automatic login tools. No new account or purchases/bookings requested to populate fixtures.
+- Live challenge/rate-limit/gated outcomes have not been deliberately triggered. No paid quota or live mutation QA.
+- Local extension testing is separate from Kernel; headed mode, native bridge and popup grants remain untested.
 
 ## QA
 
-Independent QA round 1 (QA agent `agt_221f5a5f11361477ff09`, revision `2a97e7e`): **FAIL**. It ran the whole
-namespace live on a Kernel browser (322 schema-validated outputs from tool calls on six resy.com starting pages,
-about 143 captured API requests) and in a local headless Chromium 153 with the repo extension. Findings, fixed in
-the next commit with new tests:
+Prior public-tool review (2026-09-29) found and fixed mixed-case venue slugs, Tock calendar wording, null date,
+WAF error wording, an overly restrictive longitude guard, truncated evening slots, and missing dates on
+post-midnight slots. The last public-source review passed, but this revision adds cancellation support,
+bounded warnings, account tools and preparation, so the old sign-off does not cover it.
 
-1. `get_restaurant` rejected venue slugs with capital letters, which `search_restaurants` can return.
-2. `get_availability_calendar` returned `no_results` (200, no days, null last day) rather than `not_found` for
-   about half of the Tock-listed venues, contradicting the docs. The docs and the result message now describe both
-   outcomes.
-3. `search_restaurants` accepted `date: null` as if omitted.
-4. A bot-protection block on the API is invisible to the page (no cross-origin headers) and surfaces as
-   `site_error`; the error message and this README now say so.
-5. Longitudes near +/-180 made the site answer 502; they are rejected (see finding 8).
-6. The 100-slot cap in `get_availability` cut off the evening for a venue with 144 slots; the cap is now 300 and
-   documented, with `slot_count` and `slots_truncated`.
+Builder checks on 2026-09-30: Kernel discovery found no native tools before adding the entire ten-tool
+namespace. From `/global-dining-access`, search, profile, availability and calendar returned success, and
+preparation matched a next-day slot while reporting unknown total/terms and no execution. Five captured public
+requests used no account headers or cookies. Signed-out account/favorite calls returned login_required without
+requests. On the previously authorized signed-in document, account status succeeded and reservation/Notify
+reads returned empty no_results; no favorite call was made there.
 
-Independent QA round 2 (same agent, revision `6f23528`): **FAIL**, with all six round-1 fixes confirmed live and in
-the extension, and these new findings, fixed in the next commit with new tests:
+Separately, headless Chromium 153 ran the current local extension with a temporary manifest granting resy.com
+and a test-only API exposure hook. All ten tools registered after loading a venue URL with date/seats already
+present. Public search/profile/availability/calendar and preparation succeeded with Ajv-valid outputs;
+account status/favorite returned login_required. Without date/seats the site's initial URL rewrite raced
+registration and the extension reported document-changed errors; no shared runtime code was changed.
+Headed mode, native messaging, popup permissions and authenticated local behavior remain untested.
 
-7. A slot that starts after midnight lost its calendar date because only `HH:MM` was returned, so the list looked
-   unsorted and a caller combining `date` and time got a slot 24 hours early. Slots now carry `local_start` and
-   `local_end` as full venue-local date-times and are sorted by start.
-8. The `abs(longitude) <= 179` guard was a heuristic that rejected coordinates the site accepts and missed
-   `{latitude: 45, longitude: 179, radius_meters: 100000}` and a pole case. It is now a check on whether the
-   search circle reaches +/-180 or comes within 1 degree of a pole, documented as an approximation.
-
-Smaller round-2 corrections: the null-window calendar message no longer claims a cause it did not verify, the
-network-failure message says a block can repeat for the same input, and this section's request counts were
-corrected. Twenty-six mutants were tried in round 2; those that survived were turned into tests.
-
-Verified live by QA (signed out, 2026-09-29): discovery of exactly four custom page tools registered atomically,
-no native tools on the pages checked, tools not listed on `blog.`, `widgets.`, `helpdesk.` or an unrelated site,
-all four tools from several starting pages, 105 of 106 malformed inputs rejected with no network request (the
-exception was finding 3), slot times and profile fields against four public venue pages (New York, Los Angeles,
-Chicago), venue-local times, no cookies or account headers sent and no key or booking handle in any output, and a
-largest live output of about 48 KB. Kernel-runtime and local-extension results were kept separate: in the extension
-the four tools registered and returned completed results on resy.com with the same findings reproducing; headed
-mode, `xwebmcp setup chrome`, the native-messaging bridge and the popup grant UI were not tested. Not tested at
-all: signed-in behavior, live `challenge`, `rate_limited`, `login_required` and `gated` outside the bot-protection
-case, and a live venue with more than 300 slots (the cap is stub-tested).
-
-Independent QA round 3 (same agent, revision `b176ac8`): **PASS**, with a sign-off on that exact source: no
-concrete defect found in any of the four tools, and all findings from rounds 1 and 2 confirmed fixed. Sign-off
-covers these tool sources (first 16 hex characters of their SHA-256): `get_availability_calendar.js`
-`df1b79e14cf1f1ca`, `get_availability.js` `f65ff50d4edfa7b2`, `get_restaurant.js` `a3ef9ed3c9d6bf15`,
-`search_restaurants.js` `3b0a6cc338b70fa0`; a change to any of them needs fresh QA. Live cases from that round
-(signed out, Kernel browser, 2026-09-29, invoked from a venue page and from `/global-dining-access`, not the home
-page): `search_restaurants` by city slug with `date` and a late `time` (venues carrying next-day slots, all
-sorted), `get_restaurant` by mixed-case venue slug, `get_availability` for venues with 33, 144 and 186 slots (the
-last with post-midnight slots ending `2026-10-10T03:15`), and `get_availability_calendar` for an open venue and for
-two Tock-listed venues (`no_results`, null last day). All 32 stored live outputs, 6 stub outputs and 2 late-`time`
-outputs validated against their `outputSchema` with Ajv. In the local headless Chromium 153 with the repo
-extension, the four tools registered and 10 invocations returned the same results and validated (headed mode,
-`xwebmcp setup chrome`, the native-messaging bridge and the popup grant UI not tested). QA also confirmed 30 wire
-requests, all to the five allowlisted endpoints, with no cookies, no `x-resy-*` headers and no client key or
-booking handle in any output.
-
-Not covered by QA: signed-in behavior, live `challenge`, `rate_limited`, `login_required` and `gated`, a live
-venue with more than 300 slots (the cap is fixture-tested), and mid-call navigation (unchanged since round 1,
-where a navigation during a call left the Kernel caller waiting until the call timeout and then `outcome_unknown`).
-Tests added after the sign-off cover more of the boundary behavior it listed as untested by fixtures; the tool
-sources did not change.
-
-All four tools are `verified` as of 2026-09-29: independent QA passed on the final source and each returned its
-success output live on the real site from a page other than the home page.
-
-Sessions (ephemeral): builder and QA browsers were created and deleted.
+Current independent review is pending. All ten entries start draft. Fixtures use fabricated identities,
+venues, tokens and policies and cover malformed input before interaction, account/venue mismatches, omitted
+login, cancellation, duplicates, stale state, uncertain write outcomes, restoration and read-only handoff.
+Live-account empty envelopes and bundle field mappings are evidence, not live populated-item or write success.

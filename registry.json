@@ -868,19 +868,25 @@
     },
     {
       "domain": "resy.com",
+      "tool": "get_account_status",
+      "file": "domains/resy.com/get_account_status.js",
+      "kind": "page",
+      "namespace": "resy.com",
+      "url_patterns": ["https://resy.com/*"],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Read an opaque current-account reference without profile or payment data. No login or mutation."
+    },
+    {
+      "domain": "resy.com",
       "tool": "get_availability",
       "file": "domains/resy.com/get_availability.js",
       "kind": "page",
       "namespace": "resy.com",
-      "url_patterns": [
-        "https://resy.com/*"
-      ],
-      "status": "verified",
-      "last_verified": "2026-09-29",
-      "notes": "Independent QA passed on the final source. Page tool on resy.com: open slots for one venue, date and party size as venue-local date-times, earliest first (up to 300), with each slot's raw cancellation and payment fields; never returns booking handles. no_availability does not say why; Tock-booked and unknown venues return not_found.",
-      "provenance": {
-        "qa_agent": "agt_221f5a5f11361477ff09"
-      }
+      "url_patterns": ["https://resy.com/*"],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Public slots as full venue-local date-times, sorted and capped at 300. Raw policy fields are not confirmed charges."
     },
     {
       "domain": "resy.com",
@@ -888,15 +894,21 @@
       "file": "domains/resy.com/get_availability_calendar.js",
       "kind": "page",
       "namespace": "resy.com",
-      "url_patterns": [
-        "https://resy.com/*"
-      ],
-      "status": "verified",
-      "last_verified": "2026-09-29",
-      "notes": "Independent QA passed on the final source. Page tool on resy.com: per-date reservation, event and walk-in state inside the venue's booking window. Tock-booked venues return not_found or an empty no_results with a null last_bookable_date.",
-      "provenance": {
-        "qa_agent": "agt_221f5a5f11361477ff09"
-      }
+      "url_patterns": ["https://resy.com/*"],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Public per-date booking states. Tock venues can return not_found or empty no_results."
+    },
+    {
+      "domain": "resy.com",
+      "tool": "get_reservation",
+      "file": "domains/resy.com/get_reservation.js",
+      "kind": "page",
+      "namespace": "resy.com",
+      "url_patterns": ["https://resy.com/*"],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Account-guarded details of one reservation on a specified list page, not all pages. Populated items are fixture-only. No cancellation tokens."
     },
     {
       "domain": "resy.com",
@@ -904,15 +916,43 @@
       "file": "domains/resy.com/get_restaurant.js",
       "kind": "page",
       "namespace": "resy.com",
-      "url_patterns": [
-        "https://resy.com/*"
-      ],
-      "status": "verified",
-      "last_verified": "2026-09-29",
-      "notes": "Independent QA passed on the final source. Page tool on resy.com: venue profile by venue URL or city and venue slug (venue slugs are case-sensitive as search returns them). Tock-booked, closed and unknown venues return not_found.",
-      "provenance": {
-        "qa_agent": "agt_221f5a5f11361477ff09"
-      }
+      "url_patterns": ["https://resy.com/*"],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Public venue profile by URL or city and venue slug."
+    },
+    {
+      "domain": "resy.com",
+      "tool": "list_notify_requests",
+      "file": "domains/resy.com/list_notify_requests.js",
+      "kind": "page",
+      "namespace": "resy.com",
+      "url_patterns": ["https://resy.com/*"],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Account-guarded read of up to 100 Notify time windows. Empty collection observed live; populated items fixture-only. No notification writes."
+    },
+    {
+      "domain": "resy.com",
+      "tool": "list_reservations",
+      "file": "domains/resy.com/list_reservations.js",
+      "kind": "page",
+      "namespace": "resy.com",
+      "url_patterns": ["https://resy.com/*"],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Account-guarded reservation page, maximum 20 items, no automatic pagination. Empty collection observed live; populated items fixture-only."
+    },
+    {
+      "domain": "resy.com",
+      "tool": "prepare_reservation",
+      "file": "domains/resy.com/prepare_reservation.js",
+      "kind": "page",
+      "namespace": "resy.com",
+      "url_patterns": ["https://resy.com/*"],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Public exact-slot match and human handoff only. No hold, details request, account binding or booking; exact price and final terms unavailable."
     },
     {
       "domain": "resy.com",
@@ -920,15 +960,21 @@
       "file": "domains/resy.com/search_restaurants.js",
       "kind": "page",
       "namespace": "resy.com",
-      "url_patterns": [
-        "https://resy.com/*"
-      ],
-      "status": "verified",
-      "last_verified": "2026-09-29",
-      "notes": "Independent QA passed on the final source. Page tool on resy.com: keyword, cuisine and place search with optional date, party size and time; lists open slots per venue as venue-local date-times, earliest first (12 per venue); flags Tock-booked venues, whose listed slots are informational. A rejected cross-origin request, which can be a bot-protection block, is reported as site_error.",
-      "provenance": {
-        "qa_agent": "agt_221f5a5f11361477ff09"
-      }
+      "url_patterns": ["https://resy.com/*"],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Public restaurant search and up to 12 sorted slots per venue. Tock slots are informational; cross-origin blocks can surface as site_error."
+    },
+    {
+      "domain": "resy.com",
+      "tool": "set_favorite",
+      "file": "domains/resy.com/set_favorite.js",
+      "kind": "page",
+      "namespace": "resy.com",
+      "url_patterns": ["https://resy.com/*"],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Reversible My Hit List favorite with exact account/venue and expected-state guards, one write and readback. Live mutation not tested. Never retry uncertain writes automatically."
     },
     {
       "domain": "southwest.com",

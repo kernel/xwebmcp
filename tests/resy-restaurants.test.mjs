@@ -133,8 +133,8 @@ function harness(name, o = {}) {
   const [definition] = runInNewContext(`(${sources[name]})`, context);
   return {
     definition, calls,
-    run: async input => {
-      const result = plain(await definition.execute(input));
+    run: async (input, context) => {
+      const result = plain(await definition.execute(input, context));
       assert.ok(conforms(definition.tool.outputSchema, result), `${name} output violates its schema: ${JSON.stringify(result)}`);
       const text = JSON.stringify(result);
       assert.ok(!text.includes(FAKE_KEY), "the page's API key must not leave the page");
@@ -178,7 +178,7 @@ for (const name of NAMES) {
 }
 
 test("registry lists every resy.com tool exactly once", () => {
-  assert.deepEqual(registry.tools.filter(t => t.domain === "resy.com").map(t => t.tool).sort(), [...NAMES].sort());
+  assert.deepEqual(registry.tools.filter(t => t.domain === "resy.com").map(t => t.tool).sort(), [...NAMES, "get_account_status", "get_reservation", "list_notify_requests", "list_reservations", "prepare_reservation", "set_favorite"].sort());
 });
 
 // --- input validation happens before any request ----------------------------------------------------------
@@ -247,6 +247,13 @@ test("input schemas state the bounds the tools enforce", () => {
 
 for (const name of NAMES) {
   const good = { search_restaurants: { query: "trattoria" }, get_restaurant: { city_slug: "exampleton-xa", url_slug: "x" }, get_availability: ok, get_availability_calendar: { venue_id: 1001, start_date: "2026-10-09" } }[name];
+  test(`${name}: pre-aborted call makes no request`, async () => {
+    const h = harness(name);
+    const controller = new AbortController();
+    controller.abort();
+    assert.equal((await h.run(good, { signal: controller.signal })).error_kind, "canceled");
+    assert.deepEqual(h.calls.requests, []);
+  });
   test(`${name}: wrong_page on another origin makes no request`, async () => {
     const h = harness(name, { origin: "https://blog.resy.com" });
     const result = await h.run(good);

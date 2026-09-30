@@ -31,7 +31,7 @@
             notify_offered: { type: "boolean", description: "Resy offers Notify for this venue and date." },
             slot_count: { type: "integer", minimum: 1, description: "Readable slots the site listed; slots holds at most the first 300, earliest first." },
             slots_truncated: { type: "boolean" },
-            warnings: { type: "array", items: { type: "string" } },
+            warnings: { type: "array", maxItems: 10, items: { type: "string" } },
             slots: {
               type: "array", minItems: 1, maxItems: 300,
               items: {
@@ -75,13 +75,13 @@
         },
         {
           type: "object", additionalProperties: false, required: ["status", "error_kind", "error_message"],
-          properties: { status: { const: "error" }, error_kind: { enum: ["invalid_input", "not_found", "wrong_page", "login_required", "challenge", "rate_limited", "site_changed", "site_error"] }, error_message: { type: "string", minLength: 1 } }
+          properties: { status: { const: "error" }, error_kind: { enum: ["invalid_input", "not_found", "wrong_page", "login_required", "challenge", "rate_limited", "site_changed", "site_error", "canceled"] }, error_message: { type: "string", minLength: 1 } }
         }
       ]
     },
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true }
   },
-  execute: async (input) => {
+  execute: async (input, { signal } = {}) => {
     const ORIGIN = "https://resy.com";
     const API = "https://api.resy.com";
     const fail = (kind, message) => ({ status: "error", error_kind: kind, error_message: message });
@@ -101,13 +101,17 @@
     const byStart = (a, b) => (a.local_start < b.local_start ? -1 : a.local_start > b.local_start ? 1 : 0);
     // Calls api.resy.com from the current resy.com document with the header set the site's own requests use.
     const connect = async () => {
+      if (signal?.aborted) return { error: fail("canceled", "Canceled before any site request.") };
       if (window.location.origin !== ORIGIN) return { error: fail("wrong_page", "Open a page on https://resy.com first; this tool calls Resy's API from that page.") };
       const read = () => { const k = window.apiConfig && window.apiConfig.Config && window.apiConfig.Config.apiKey; return typeof k === "string" && /^[^\s"\\]{8,128}$/.test(k) ? k : null; };
       let key = read();
       for (let i = 0; !key && i < 20; i++) { await new Promise(resolve => setTimeout(resolve, 250)); key = read(); }
       if (!key) return { error: fail("site_changed", "This resy.com page does not expose the API client configuration the tool reads (window.apiConfig.Config.apiKey). Reload a normal resy.com page; if it persists the site has changed.") };
       const request = async (method, path, body) => {
+        if (signal?.aborted) return { error: fail("canceled", "Canceled before the site request.") };
         const controller = new AbortController();
+        const abort = () => controller.abort();
+        signal?.addEventListener("abort", abort, { once: true });
         const timer = setTimeout(() => controller.abort(), 25000);
         let res;
         let raw;
@@ -119,8 +123,8 @@
           });
           raw = await res.text();
         } catch {
-          return { error: fail("site_error", controller.signal.aborted ? "Resy's API did not answer within 25 seconds." : "The request to Resy's API failed before a response arrived. This can be a network fault or Resy's bot protection blocking the request; its block pages carry no cross-origin headers, so the status is not visible to the page. A block can repeat for the same input.") };
-        } finally { clearTimeout(timer); }
+          return { error: fail(signal?.aborted ? "canceled" : "site_error", controller.signal.aborted ? "Resy's API did not answer within 25 seconds." : "The request to Resy's API failed before a response arrived. This can be a network fault or Resy's bot protection blocking the request; its block pages carry no cross-origin headers, so the status is not visible to the page. A block can repeat for the same input.") };
+        } finally { clearTimeout(timer); signal?.removeEventListener("abort", abort); }
         let json = null;
         try { json = JSON.parse(raw); } catch { json = null; }
         if (res.status === 401 || res.status === 419) return { error: fail("login_required", "Resy rejected the request as unauthorized (HTTP " + res.status + "). This tool does not sign in.") };
@@ -167,7 +171,7 @@
     const slots = [];
     for (const s of entry.slots) {
       const start = isPlain(s) && isPlain(s.date) ? localStamp(s.date.start) : null;
-      if (!start) { warnings.push("Skipped a slot without a readable start time."); continue; }
+      if (!start) { if (warnings.length < 10) warnings.push("Skipped a slot without a readable start time."); continue; }
       const t = isPlain(s.template) && isPlain(templates[String(s.template.id)]) ? templates[String(s.template.id)] : null;
       slots.push({
         local_start: start, local_end: localStamp(s.date.end), seating_type: isPlain(s.config) ? text(s.config.type, 60) : null,
