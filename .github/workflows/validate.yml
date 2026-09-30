@@ -28,6 +28,8 @@ jobs:
           npx --yes @puppeteer/browsers@3.2.3 install chrome@stable --path "$RUNNER_TEMP/chrome"
           CHROME_BIN="$(find "$RUNNER_TEMP/chrome" -type f -path '*/chrome-linux64/chrome' -print -quit)"
           test -n "$CHROME_BIN"
+          test -u /opt/google/chrome/chrome-sandbox
+          echo "CHROME_DEVEL_SANDBOX=/opt/google/chrome/chrome-sandbox" >> "$GITHUB_ENV"
           echo "XWEBMCP_CHROME_BIN=$CHROME_BIN" >> "$GITHUB_ENV"
       - name: Run extension tests
         run: node --test "extension/**/*.test.mjs"

@@ -17,18 +17,15 @@ export async function chromium(extension) {
   const pending = new Map(), listeners = new Set();
   let id = 0;
   function signal(name) {
-    try { process.kill(-child.pid, name); } catch (error) { if (error.code !== 'ESRCH') throw error; }
+    try { process.kill(-child.pid, name); return true; } catch (error) { if (error.code !== 'ESRCH') throw error; return false; }
   }
   async function close() {
     if (closeBrowser) await closeBrowser().catch(() => undefined);
     socket?.close();
-    const exited = child.exitCode === null && child.signalCode === null ? new Promise(resolve => child.once('exit', resolve)) : null;
     signal('SIGTERM');
-    if (exited) {
-      const timer = setTimeout(() => signal('SIGKILL'), 3000);
-      await exited;
-      clearTimeout(timer);
-    }
+    const deadline = Date.now() + 3000;
+    while (signal(0) && Date.now() < deadline) await new Promise(resolve => setTimeout(resolve, 50));
+    signal('SIGKILL');
     child.stderr.destroy();
     await rm(profile, {recursive: true, force: true, maxRetries: 5, retryDelay: 100});
   }
