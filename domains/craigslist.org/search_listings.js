@@ -110,13 +110,15 @@
       let body;
       try { body = JSON.parse(text); } catch { return fail("site_changed", "craigslist did not return the observed JSON search format."); }
       const data = body?.data, decode = data?.decode;
-      if (body?.apiVersion !== 8 || !decode || typeof decode !== "object" || Array.isArray(decode) || data?.categoryAbbr !== input.category || data?.location?.country !== "US" || data?.location?.url !== "sfbay.craigslist.org" || !Array.isArray(data.items) || data.items.length > 360 || !Number.isSafeInteger(data.totalResultCount) || data.totalResultCount < 0 || (Array.isArray(body.errors) ? body.errors.length : body.errors && Object.keys(body.errors).length)) return fail("site_changed", "The search envelope, category, locale or wire version differs from the observed format.");
+      if (body?.apiVersion !== 8 || data?.categoryAbbr !== input.category || data?.location?.country !== "US" || data?.location?.url !== "sfbay.craigslist.org" || !Array.isArray(data.items) || data.items.length > 360 || !Number.isSafeInteger(data.totalResultCount) || data.totalResultCount < 0 || !Array.isArray(body.errors) || body.errors.length) return fail("site_changed", "The search envelope, category, locale or wire version differs from the observed format.");
+      const decodeObject = decode !== null && typeof decode === "object" && !Array.isArray(decode);
+      const validDecode = decodeObject && decode.version === 2 && Array.isArray(decode.locations) && Number.isSafeInteger(decode.minPostingId) && decode.minPostingId > 0 && Number.isSafeInteger(decode.minPostedDate) && decode.minPostedDate >= 0;
       const observedAt = new Date().toISOString();
       if (data.totalResultCount === 0 && data.items.length === 0) {
-        if (Object.keys(decode).length && decode.version !== 2) return fail("site_changed", "An empty search returned an unrecognized decoding version.");
+        if (decode !== 0 && !(decodeObject && Object.keys(decode).length === 0) && !validDecode) return fail("site_changed", "An empty search returned missing or malformed decoding metadata.");
         return { status: "no_results", area: "sfbay", category: input.category, site_total: 0, observed_at: observedAt };
       }
-      if (decode?.version !== 2 || !Array.isArray(decode.locations) || !data.items.length || data.totalResultCount < 1 || !Number.isSafeInteger(decode.minPostingId) || decode.minPostingId < 1 || !Number.isSafeInteger(decode.minPostedDate) || decode.minPostedDate < 0) return fail("site_changed", "The first batch has inconsistent counts or decoding offsets.");
+      if (!validDecode || !data.items.length || data.totalResultCount < 1) return fail("site_changed", "The first batch has inconsistent counts or decoding offsets.");
       const listings = [], seen = new Set();
       let omitted = 0, outsideArea = 0;
       for (const item of data.items) {

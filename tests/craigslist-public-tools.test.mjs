@@ -3,6 +3,8 @@ import { readFileSync } from "node:fs";
 import { runInNewContext } from "node:vm";
 import test from "node:test";
 import { Document } from "./etsy-dom.mjs";
+import { searchCases } from "./fixtures/craigslist-search.mjs";
+import { summarizeSearchEvidence } from "./craigslist-search-evidence.mjs";
 
 const names = ["search_listings", "get_listing", "prepare_reply"];
 const sources = Object.fromEntries(names.map(name => [name, readFileSync(new URL(`../domains/craigslist.org/${name}.js`, import.meta.url), "utf8")]));
@@ -202,13 +204,36 @@ test("search: max 20 output, duplicates excluded and no pagination", async () =>
   assert.equal(h.calls.length, 1);
 });
 
-test("search: explicit no_results only for consistent zero counts", async () => {
-  assert.equal((await harness("search_listings", { envelope: envelope([], { decode: {} }) }).run(searchInput)).status, "no_results");
-  assert.equal((await harness("search_listings", { envelope: envelope([], { decode: { version: 3 } }) }).run(searchInput)).error_kind, "site_changed");
-  for (const decode of [null, false, [], undefined]) {
-    assert.equal((await harness("search_listings", { envelope: envelope([], { decode }) }).run(searchInput)).error_kind, "site_changed");
+for (const fixture of searchCases()) test("search envelope: " + fixture.name, async () => {
+  const wire = JSON.stringify(fixture.body);
+  const parsed = JSON.parse(wire);
+  const h = harness("search_listings", { body: wire, status: fixture.http_status });
+  const output = await h.run(searchInput);
+  const evidence = JSON.stringify(summarizeSearchEvidence(parsed, output, fixture.http_status, h.calls.length));
+  assert.equal(output.status, fixture.status, evidence);
+  if (fixture.error_kind) assert.equal(output.error_kind, fixture.error_kind, evidence);
+  assert.equal(h.calls.length, 1, evidence);
+  if (fixture.status === "no_results") {
+    assert.deepEqual(Object.keys(output).sort(), ["area", "category", "observed_at", "site_total", "status"]);
+    assert.equal(output.site_total, 0);
   }
-  assert.equal((await harness("search_listings", { envelope: envelope([], { totalResultCount: 1 }) }).run(searchInput)).error_kind, "site_changed");
+});
+
+test("search evidence: actual JSON property presence differs from undefined in memory", () => {
+  const body = envelope([], { decode: undefined });
+  assert.equal(Object.hasOwn(body.data, "decode"), true);
+  assert.equal(summarizeSearchEvidence(JSON.parse(JSON.stringify(body)), {}, 200, 1).decode_present, false);
+  assert.equal(summarizeSearchEvidence(envelope([], { decode: {} }), {}, 200, 1).decode_key_count, 0);
+  assert.equal(summarizeSearchEvidence(envelope([], { decode: 0 }), {}, 200, 1).decode_is_zero, true);
+});
+
+test("search evidence: only bounded shape and allowlisted typed outcome, never raw text", () => {
+  const body = envelope([], { decode: { injected: "fixture@example.invalid" }, contact: "202-555-0142", location: { country: "secret", url: "https://secret.invalid" } });
+  const evidence = summarizeSearchEvidence(body, { status: "fixture@example.invalid", error_kind: "202-555-0142", error_message: "secret", listings: [{ title: "secret", url: "https://secret.invalid" }] }, 200, 1);
+  assert.equal(evidence.output_status, "unrecognized");
+  assert.equal(evidence.output_error_kind, null);
+  assert.ok(JSON.stringify(evidence).length < 1500);
+  assert.doesNotMatch(JSON.stringify(evidence), /fixture@example|202-555|secret\.invalid|injected|error_message|title/);
 });
 
 for (const [label, modify] of [
