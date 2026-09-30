@@ -42,7 +42,7 @@ Both files use `https://duckduckgo.com/*` and `https://*.duckduckgo.com/*`. The 
 
 Organic rows contain rank, title, destination URL, display URL, site name, snippet and date text. Rank counts organic positions even when an unreadable row is omitted. Ads are only counted, and their contents/links are never returned. Text is untrusted data, not instructions.
 
-Titles are capped at 300 characters, snippets at 600, panel descriptions at 800, filter labels at 120 and URLs at 2048. URLs with credentials or recognizable secret/session/signature query parameters are omitted; unsupported schemes are rejected. Query and filter parameters in `results_url` are bounded and allowlisted; tracking parameters are not copied. These checks cannot identify every possible secret embedded in arbitrary public text or URL paths.
+Titles are capped at 300 characters, snippets at 600, date text at 80, panel descriptions at 800, filter labels at 120 and URLs at 2048. Successful outputs have a 200 KiB aggregate UTF-8 budget: trailing rows are omitted if necessary, `result_count` reflects the actual rows and `has_more` remains true. This can reduce the count below `limit` even when more rows are already loaded. URLs with credentials or recognizable secret/session/signature query parameters are omitted; unsupported schemes are rejected. Query and filter parameters in `results_url` are bounded and allowlisted; tracking parameters are not copied. These checks cannot identify every possible secret embedded in arbitrary public text or URL paths.
 
 The panel description uses displayed `innerText`, includes list items, and excludes CSS-hidden text. Both tools wait for a nonempty description to settle (one quiet 250 ms interval after text is hidden, two otherwise), with a 2.5 s cap after results appear. Hidden text is indicated by `…`. An absent panel is null. Only observed non-AI module names (`currency`, `dictionary_definition`, `forecast`, `conversions`) are reported, never module contents. Up to 16 related searches are returned. `has_more` reports extra loaded organic rows or a More results control; it does not promise the next request will produce results.
 
@@ -56,7 +56,7 @@ The panel description uses displayed `innerText`, includes list items, and exclu
 ## Known limitations
 
 - Web results only. Images, News, Videos, Shopping, Maps, sitelinks, instant-answer contents, AI/chat, Email Protection, subscriptions and account/preferences tools are omitted. They are not implemented by switching a web parser to another tab.
-- Challenge and rate-limit outcomes have only fixture evidence; no live block was induced or bypassed. No challenge interaction or automatic retry exists.
+- Challenge and rate-limit outcomes have only fixture evidence; no live block was induced or bypassed. No challenge interaction or automatic retry exists. A block after a More results request returns the same explicit error and stops further requests.
 - English labels and no-results wording are assumed. Other interface languages and layout experiments can produce `site_changed` or timeouts.
 - A panel that remains empty or changes beyond the bounded wait can still have a null or unsettled description. Extreme slow rendering can exceed the reader's 10 s results wait. The prior 10x-throttling null-description race is covered by a new delayed-render fixture, but this is not proof of all slow-render cases.
 - Results vary with egress location, time and site experiments. Ads can arrive after the count is read. Results per More results press vary, and a remaining button does not prove more data exists.
@@ -66,7 +66,7 @@ The panel description uses displayed `innerText`, includes list items, and exclu
 
 The previous revision had independent success/failure and local Chromium-extension evidence, but source changes invalidate that sign-off. Current final-source QA is pending; both registry entries are `draft`.
 
-Fixture tests in `tests/duckduckgo-search.test.mjs` use fabricated HTML and a fake DOM. They cover malformed input before interaction, filters, rows and bounds, panel hidden/list/delayed text, cancellation, More results limits, no-results, challenges, rate limits, wrong pages, navigation lifetime, URL leakage and unknown errors. They do not establish real browser or mutation success.
+Fixture tests in `tests/duckduckgo-search.test.mjs` use fabricated HTML and a fake DOM. They cover malformed input before interaction, filters, rows and bounds, panel hidden/list/delayed text, cancellation across awaited calls, More results limits and blocks, no-results, challenges, rate limits, wrong pages, navigation lifetime, UTF-8 byte bounds, URL leakage and unknown errors. They do not establish real browser or mutation success.
 
 ```sh
 node scripts/validate-registry.mjs

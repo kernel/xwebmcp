@@ -84,6 +84,7 @@ function harness(name, options = {}) {
       const have = list.querySelectorAll("article[data-testid=result]").length;
       list.innerHTML = list.innerHTML + moreCards(have + 1, options.moreBatch ?? 10);
       if (presses >= (options.morePresses ?? 3)) button.parentNode.childNodes.length = 0;
+      if (options.onMore) options.onMore(presses, install);
     });
     for (const el of doc.querySelectorAll("a, button")) if (el !== button) el.addEventListener("click", () => calls.clicked.push(el.id || el.getAttribute("data-testid") || el.localName));
   };
@@ -116,6 +117,7 @@ function harness(name, options = {}) {
     waitMs: async ms => { calls.waits++; clock += ms ?? 1000; if (options.onTick) options.onTick(calls.waits, install); },
     js: async (fn, opts = {}) => {
       calls.js++;
+      if (options.onJs) await options.onJs(calls.js);
       if (pending && --pending.polls < 0) { setUrl(pending.url); pending = null; }
       const f = runInContext(`(${fn.toString()})`, pageContext);
       return plain(await f(opts.arg === undefined ? undefined : plain(opts.arg)));
@@ -652,6 +654,50 @@ for (const name of NAMES) {
     assert.equal(result.filters.region_label.length, 120);
     assert.deepEqual(result.modules, ["currency"]);
     assert.ok(JSON.stringify(result).length < 240 * 1024);
+  });
+}
+
+test("search: cancellation during the marker call prevents subsequent navigation", async () => {
+  const controller = new AbortController();
+  const h = harness("search", { signal: controller.signal, onJs: async () => controller.abort() });
+  const result = await h.run({ query: "fabricated query" });
+  assert.equal(result.error_kind, "canceled");
+  assert.deepEqual(h.calls.navigations, []);
+  assert.equal(h.calls.js, 1);
+  assert.deepEqual(h.calls.clicked, []);
+});
+
+for (const name of NAMES) {
+  for (const kind of ["challenge", "rate_limited"]) {
+    test(`${name}: a block during More results is explicit and never retried (${kind})`, async () => {
+      const blocked = kind === "challenge" ? fixture("challenge") : "<html><body>Too many requests. Rate limit exceeded.</body></html>";
+      const h = harness(name, { onMore: (press, install) => install(blocked) });
+      const result = await h.run(name === "search" ? { query: "fabricated query", limit: 50 } : { limit: 50, load_more: true });
+      assert.equal(result.error_kind, kind);
+      assert.deepEqual(h.calls.clicked, ["more-results"]);
+    });
+  }
+
+  test(`${name}: maximum-length multilingual rows fit the aggregate UTF-8 budget`, async () => {
+    const cards = moreCards(1, 50)
+      .replace(/More result \d+/g, "界".repeat(300))
+      .replace(/Snippet \d+\./g, "界".repeat(600))
+      .replace(/Site \d+/g, "界".repeat(120))
+      .replace(/https:\/\/site\d+\.example\.org\//g, `https://safe.example.org/${"x".repeat(2000)}`);
+    const page = `<html><body><section data-area="mainline"><ol class="react-results--main">${cards}</ol></section></body></html>`;
+    const result = await harness(name, { pageFor: () => page }).run(name === "search" ? { query: "fabricated query", limit: 50 } : { limit: 50 });
+    assert.equal(result.status, "ok");
+    assert.ok(Buffer.byteLength(JSON.stringify(result), "utf8") <= 200 * 1024);
+    assert.ok(result.result_count > 0 && result.result_count < 50);
+    assert.equal(result.result_count, result.results.length);
+    assert.equal(result.has_more, true);
+    assert.deepEqual(result.results.map(r => r.rank), Array.from({ length: result.result_count }, (_, i) => i + 1));
+  });
+
+  test(`${name}: date text is bounded independently of the other text fields`, async () => {
+    const page = fixture("results").replace("Jul 1, 2026", `${"1".repeat(2000)} days ago`);
+    const result = await harness(name, { pageFor: () => page }).run(name === "search" ? { query: "fabricated query", limit: 4 } : {});
+    assert.equal(result.results[1].date_text.length, 80);
   });
 }
 
