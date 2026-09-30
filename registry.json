@@ -634,12 +634,22 @@
       "url_patterns": [
         "https://www.marriott.com/*"
       ],
-      "status": "verified",
-      "last_verified": "2026-09-29",
-      "notes": "Independent QA passed on the final source; live-checked signed out on 2026-09-29 from the homepage, /offers.mi and a hotel page. Page tool on www.marriott.com: one hotel's address, phone, check-in/out times, amenities, coordinates and FAQ answers from the overview page's structured data, by property code, slug or overview URL. Some search-result properties have no overview page (not_found). Akamai Access Denied is reported as challenge.",
-      "provenance": {
-        "qa_agent": "agt_969930ee72c8218556a6"
-      }
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Public overview facts. Updated cancellation and HTTP-200 Akamai challenge detection; current public overview requests are blocked. No account, booking, hold or payment operations."
+    },
+    {
+      "domain": "marriott.com",
+      "tool": "prepare_reservation",
+      "file": "domains/marriott.com/prepare_reservation.js",
+      "kind": "page",
+      "namespace": "marriott.com",
+      "url_patterns": [
+        "https://www.marriott.com/*"
+      ],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Unsaved public itinerary and manual handoff; verifies exact hotel property code from the overview. No rates, availability, booking, hold, account save or payment."
     },
     {
       "domain": "marriott.com",
@@ -650,12 +660,9 @@
       "url_patterns": [
         "https://www.marriott.com/*"
       ],
-      "status": "verified",
-      "last_verified": "2026-09-29",
-      "notes": "Independent QA passed on the final source; live-checked signed out on 2026-09-29 from the homepage, /offers.mi and a hotel page, and matched the site's own results list. Page tool on www.marriott.com: hotels by distance for a city, airport or point-of-interest destination with per-night cash rates (fees and taxes as the site reports them) and optional points per room. Region and country destinations are refused. Anonymous public quotes only. Depends on the site's persisted GraphQL signatures (site_changed if they change); Akamai Access Denied is reported as challenge and heavy use of one session can trigger it or HTTP 429.",
-      "provenance": {
-        "qa_agent": "agt_969930ee72c8218556a6"
-      }
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Public hotel search with cash/points availability and same-currency comparison on the returned page only. All-room stay totals are estimates, not final prices or inventory holds. Persisted query signatures can change; Akamai can refuse or rate-limit public access."
     },
     {
       "domain": "purelymail.com",

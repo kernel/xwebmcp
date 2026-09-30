@@ -3,7 +3,7 @@
   match: { url_patterns: ["https://www.marriott.com/*"] },
   tool: {
     name: "search_hotels",
-    description: "Search Marriott hotels near a destination for a stay: name, brand, distance, rating, review count, and the lowest displayed cash rate per night (or points per room for the stay when use_points is true). Give either destination (free text, resolved to the first suggestion the site's destination box offers) or place_id (from a previous result's resolved_destination or other_destinations, to pick a different match). Only city, airport and point-of-interest destinations are supported. Rates are quotes for the signed-out public search: amounts are average per night per room in the reported currency, before or after mandatory daily fees and taxes as labelled, and a hotel with available false has no bookable rate for that party and dates. It does not select a room or rate, and it does not prove a room can be booked. Results are ordered by distance and paged with limit/offset (an offset past the last hotel returns an empty page). Runs inside the current www.marriott.com page without navigating; read-only.",
+    description: "Search Marriott hotels near a destination for a stay: name, brand, distance, rating, review count, and the lowest displayed cash rate per night (or points per room for the stay when use_points is true). Give either destination (free text, resolved to the first suggestion the site's destination box offers) or place_id (from a previous result's resolved_destination or other_destinations, to pick a different match). Only city, airport and point-of-interest destinations are supported. Rates are quotes for the signed-out public search: amounts are average per night per room in the reported currency, before or after mandatory daily fees and taxes as labelled, and a hotel with available false has no bookable rate for that party and dates. It does not select a room or rate, and it does not prove a room can be booked. Results are ordered by distance and paged with limit/offset (an offset past the last hotel returns an empty page). cash_comparison ranks available, bookable cash quotes on this page only, separately by currency, with an estimated total for all requested rooms and nights. It never mixes currencies; member-only prices remain labelled and do not establish eligibility. Estimates are not checkout totals or held inventory. Runs inside the current www.marriott.com page without navigating; read-only.",
     inputSchema: {
       type: "object", additionalProperties: false, required: ["check_in", "check_out"],
       properties: {
@@ -25,7 +25,7 @@
       oneOf: [
         {
           type: "object", additionalProperties: false,
-          required: ["status", "resolved_destination", "other_destinations", "check_in", "check_out", "nights", "rooms", "adults_per_room", "radius_miles", "use_points", "site_total", "offset", "has_more", "next_offset", "hotels", "warnings", "observed_at"],
+          required: ["status", "resolved_destination", "other_destinations", "check_in", "check_out", "nights", "rooms", "adults_per_room", "radius_miles", "use_points", "site_total", "offset", "has_more", "next_offset", "hotels", "cash_comparison", "warnings", "observed_at"],
           properties: {
             status: { enum: ["ok", "no_results"] },
             resolved_destination: {
@@ -80,6 +80,26 @@
                 }
               }
             },
+            cash_comparison: {
+              type: "array", maxItems: 40, description: "Available, bookable cash quotes from this result page only, grouped by currency and sorted by average nightly total per room. Missing currency or incomplete totals are omitted. No currency conversion or points-to-cash valuation.",
+              items: {
+                type: "object", additionalProperties: false, required: ["currency", "quotes"],
+                properties: {
+                  currency: { type: "string", pattern: "^[A-Z]{3}$" },
+                  quotes: {
+                    type: "array", minItems: 1, maxItems: 40,
+                    items: {
+                      type: "object", additionalProperties: false, required: ["property_id", "members_only", "average_nightly_total_per_room", "estimated_stay_total"],
+                      properties: {
+                        property_id: { type: "string" }, members_only: { type: ["boolean", "null"] },
+                        average_nightly_total_per_room: { type: "number", minimum: 0 },
+                        estimated_stay_total: { type: "number", minimum: 0, description: "Average nightly total multiplied by nights and rooms; rounded to two decimal places. This is an estimate, not a final payable total." }
+                      }
+                    }
+                  }
+                }
+              }
+            },
             warnings: { type: "array", maxItems: 8, items: { type: "object", additionalProperties: false, required: ["code", "message"], properties: { code: { type: "string" }, message: { type: "string" } } }, description: "Warnings the site attached to the search, for example no availability for some hotels." },
             observed_at: { type: "string" }
           }
@@ -88,7 +108,7 @@
           type: "object", additionalProperties: false, required: ["status", "error_kind", "error_message"],
           properties: {
             status: { const: "error" },
-            error_kind: { enum: ["invalid_input", "wrong_page", "challenge", "rate_limited", "destination_not_found", "destination_not_supported", "site_changed", "site_error"] },
+            error_kind: { enum: ["invalid_input", "wrong_page", "challenge", "rate_limited", "destination_not_found", "destination_not_supported", "site_changed", "site_error", "canceled"] },
             error_message: { type: "string", minLength: 1 },
             suggestions: { type: "array", minItems: 1, maxItems: 4, items: { type: "object", additionalProperties: false, required: ["place_id", "description"], properties: { place_id: { type: "string" }, description: { type: "string" } } }, description: "Present for destination_not_supported when the site offered other matches for the same text; pass one as place_id. They are not checked to be searchable." }
           }
@@ -97,7 +117,7 @@
     },
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true }
   },
-  execute: async (input) => {
+  execute: async (input, { signal } = {}) => {
     const ORIGIN = "https://www.marriott.com";
     const SIGNATURES = {
       phoenixShopSuggestedPlacesQuery: "70b3555c91797ca8945e4f4b1bdda42c3e37fa1f08fa99feafb73195702c1d34",
@@ -141,25 +161,29 @@
     const cut = (v, n) => { const s = str(v); return s ? (s.length > n ? s.slice(0, n) : s) : null; };
     const bool = v => (typeof v === "boolean" ? v : null);
     const num = v => (typeof v === "number" && Number.isFinite(v) ? v : null);
-    const money = m => (m && typeof m.amount === "number" ? Number((m.amount / Math.pow(10, m.decimalPoint ?? 2)).toFixed(m.decimalPoint ?? 2)) : null);
+    const money = m => {
+      const decimals = m?.decimalPoint ?? 2;
+      return m && Number.isFinite(m.amount) && m.amount >= 0 && Number.isInteger(decimals) && decimals >= 0 && decimals <= 6 ? Number((m.amount / Math.pow(10, decimals)).toFixed(decimals)) : null;
+    };
     const problem = r => {
       if (r.body === null) {
         if (r.http === 429) return fail("rate_limited", "Marriott returned HTTP 429; wait a few minutes before searching again.");
-        if (r.http === 403 || /access denied/i.test(r.text)) return fail("challenge", "Marriott's bot protection refused the request (Access Denied); use a different browser session or network and try again later.");
+        if (r.http === 403 || /access denied/i.test(r.text)) return fail("challenge", "Marriott's bot protection refused the request (Access Denied); stop and report the access restriction.");
         return fail("site_error", "Marriott returned HTTP " + r.http + " without JSON.");
       }
       const code = r.body.errors?.[0]?.extensions?.code;
       if (code === "PERSISTED_QUERY_NOT_IN_LIST") return fail("site_changed", "Marriott no longer recognizes the search request this tool sends (persisted query removed); the tool needs updating.");
       if (r.http === 429) return fail("rate_limited", "Marriott returned HTTP 429; wait a few minutes before searching again.");
-      if (r.body.errors?.length || r.http >= 400) return fail("site_error", "Marriott returned an error: " + (str(r.body.errors?.[0]?.message) || "HTTP " + r.http).slice(0, 200));
+      if (r.body.errors?.length || r.http >= 400) return fail("site_error", "Marriott rejected the public search request (HTTP " + r.http + "). No reservation or hold was requested.");
       return null;
     };
     try {
       if (window.location.origin !== ORIGIN) return fail("wrong_page", "Open any https://www.marriott.com page first; this tool sends the site's own search requests from that page.");
-      if (/access denied/i.test(document.title || "")) return fail("challenge", "Marriott is showing its bot-protection page (Access Denied) to this browser; use a different browser session or network and try again later.");
+      if (/access denied/i.test(document.title || "")) return fail("challenge", "Marriott is showing its bot-protection page (Access Denied) to this browser; stop and report the access restriction.");
+      if (signal?.aborted) return fail("canceled", "Search canceled before any request.");
       const gql = async (operation, variables) => {
         const res = await fetch("/mi/query/" + operation, {
-          method: "POST", credentials: "include", signal: AbortSignal.timeout(30000),
+          method: "POST", credentials: "include", signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(30000)]) : AbortSignal.timeout(30000),
           headers: {
             "accept": "*/*", "content-type": "application/json", "accept-language": "en-US",
             "apollographql-client-name": "phoenix_shop", "apollographql-client-version": "v1",
@@ -220,8 +244,8 @@
       const statuses = Array.isArray(result.status) ? result.status : [];
       const rejected = statuses.find(s => s && s.code && s.code !== "SUCCESS");
       if (rejected) {
-        const message = "Marriott rejected the search (" + rejected.code + "): " + (str(rejected.errors?.[0]?.message) || "no detail").slice(0, 200);
-        return fail(/^INVALID_/.test(rejected.code) ? "invalid_input" : "site_error", message);
+        const code = typeof rejected.code === "string" && /^[A-Z0-9_]{1,64}$/.test(rejected.code) ? rejected.code : "UNKNOWN";
+        return fail(/^INVALID_/.test(code) ? "invalid_input" : "site_error", "Marriott rejected the search (" + code + "). No reservation or hold was requested.");
       }
       const seen = new Set();
       const warnings = [];
@@ -229,7 +253,7 @@
         const code = str(w?.code);
         if (code && !seen.has(code) && warnings.length < 8) { seen.add(code); warnings.push({ code, message: cut(String(w.message ?? w.devMessage ?? "").replace(/<[^>]*>/g, " ").replace(/\s+/g, " "), 200) ?? "" }); }
       }
-      const hotels = result.edges.map(e => e?.node).filter(n => n?.property && typeof n.property.id === "string").map(n => {
+      const hotels = result.edges.map(e => e?.node).filter(n => n?.property && typeof n.property.id === "string").slice(0, limit).map(n => {
         const p = n.property, info = p.basicInformation ?? {};
         const rates = Array.isArray(n.rates) ? n.rates : [];
         const cash = rates.find(r => r?.rateCategory?.code === "StandardRates");
@@ -249,11 +273,20 @@
           bookable: bool(info.bookable), adults_only: bool(info.isAdultsOnly), resort: bool(info.resort),
           cash_rate: cash ? {
             available: cash.status?.code === "AvailableForSale", status_code: str(cash.status?.code) || "unknown", members_only: bool(cash.membersOnly), currency: str(avg?.amount?.currency),
-            per_night: avg ? { rate: money(avg.amount), mandatory_fees: money(avg.mandatoryFees), rate_with_mandatory_fees: money(avg.amountPlusMandatoryFees), fees: money(avg.fees), taxes: money(avg.taxes), total: money(avg.totalAmount) } : null
+            per_night: avg ? { rate: money(avg.amount), mandatory_fees: money(avg.mandatoryFees), rate_with_mandatory_fees: money(avg.amountPlusMandatoryFees), fees: money(avg.fees), taxes: money(avg.taxes), total: str(avg.totalAmount?.currency) === str(avg.amount?.currency) ? money(avg.totalAmount) : null } : null
           } : null,
           points_rate: points ? { available: points.status?.code === "AvailableForSale", status_code: str(points.status?.code) || "unknown", points_per_room: Number.isInteger(points.rateModes.pointsPerUnit.points) ? points.rateModes.pointsPerUnit.points : null } : null
         };
       });
+      const currencies = new Map();
+      for (const hotel of hotels) {
+        const cash = hotel.cash_rate, total = cash?.per_night?.total;
+        if (hotel.bookable !== true || cash?.available !== true || !/^[A-Z]{3}$/.test(cash.currency ?? "") || !Number.isFinite(total) || total < 0) continue;
+        const quotes = currencies.get(cash.currency) ?? [];
+        quotes.push({ property_id: hotel.property_id, members_only: cash.members_only, average_nightly_total_per_room: total, estimated_stay_total: Math.round(total * nights * rooms * 100) / 100 });
+        currencies.set(cash.currency, quotes);
+      }
+      const cashComparison = [...currencies].map(([currency, quotes]) => ({ currency, quotes: quotes.sort((a, b) => a.average_nightly_total_per_room - b.average_nightly_total_per_room) }));
       const nextOffset = result.pageInfo?.hasNextPage && Number.isInteger(result.pageInfo.nextOffset) ? result.pageInfo.nextOffset : null;
       return {
         status: hotels.length || offset > 0 ? "ok" : "no_results",
@@ -261,10 +294,10 @@
         other_destinations: alternatives,
         check_in: input.check_in, check_out: input.check_out, nights, rooms, adults_per_room: adults, radius_miles: radius, use_points: usePoints,
         site_total: Number.isInteger(result.total) ? result.total : hotels.length, offset, has_more: nextOffset !== null, next_offset: nextOffset,
-        hotels, warnings, observed_at: new Date().toISOString()
+        hotels, cash_comparison: cashComparison, warnings, observed_at: new Date().toISOString()
       };
-    } catch (error) {
-      return fail("site_error", "The request from the page failed: " + (error && error.message ? error.message : String(error)));
+    } catch {
+      return signal?.aborted ? fail("canceled", "Search canceled; no reservation or hold was requested.") : fail("site_error", "The request from the page failed; no reservation or hold was requested.");
     }
   }
 }]

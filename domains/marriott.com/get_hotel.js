@@ -36,13 +36,13 @@
         },
         {
           type: "object", additionalProperties: false, required: ["status", "error_kind", "error_message"],
-          properties: { status: { const: "error" }, error_kind: { enum: ["invalid_input", "unsupported_host", "wrong_page", "not_found", "challenge", "rate_limited", "site_changed", "site_error"] }, error_message: { type: "string", minLength: 1 } }
+          properties: { status: { const: "error" }, error_kind: { enum: ["invalid_input", "unsupported_host", "wrong_page", "not_found", "challenge", "rate_limited", "site_changed", "site_error", "canceled"] }, error_message: { type: "string", minLength: 1 } }
         }
       ]
     },
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true }
   },
-  execute: async (input) => {
+  execute: async (input, { signal } = {}) => {
     const ORIGIN = "https://www.marriott.com";
     const fail = (kind, message) => ({ status: "error", error_kind: kind, error_message: message });
     if (!input || typeof input !== "object" || Array.isArray(input) || Object.keys(input).some(k => k !== "hotel")) return fail("invalid_input", "Provide only hotel: a property code, hotel slug or hotel overview URL.");
@@ -65,12 +65,13 @@
     const cut = (v, n) => { const s = str(v); return s ? (s.length > n ? s.slice(0, n) : s) : null; };
     try {
       if (window.location.origin !== ORIGIN) return fail("wrong_page", "Open any https://www.marriott.com page first; this tool reads the hotel page from that page.");
-      if (/access denied/i.test(document.title || "")) return fail("challenge", "Marriott is showing its bot-protection page (Access Denied) to this browser; use a different browser session or network and try again later.");
-      const res = await fetch(path, { credentials: "include", redirect: "follow", signal: AbortSignal.timeout(30000), headers: { accept: "text/html" } });
+      if (/access denied/i.test(document.title || "")) return fail("challenge", "Marriott is showing its bot-protection page (Access Denied) to this browser; stop and report the access restriction.");
+      if (signal?.aborted) return fail("canceled", "Hotel read canceled before any request.");
+      const res = await fetch(path, { credentials: "include", redirect: "follow", signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(30000)]) : AbortSignal.timeout(30000), headers: { accept: "text/html" } });
       const html = await res.text();
       if (res.status === 404) return fail("not_found", "Marriott has no hotel page at that address.");
       if (res.status === 429) return fail("rate_limited", "Marriott returned HTTP 429; wait a few minutes before trying again.");
-      if (res.status === 403 || /<title>\s*access denied/i.test(html)) return fail("challenge", "Marriott's bot protection refused the request (Access Denied); use a different browser session or network and try again later.");
+      if (res.status === 403 || /<title>\s*access denied|id=["']sec-if-cpt-container["']/i.test(html)) return fail("challenge", "Marriott's bot protection refused the overview request; stop and report the access restriction.");
       if (res.status >= 400) return fail("site_error", "Marriott returned HTTP " + res.status + ".");
       let final;
       try { final = new URL(res.url); } catch { return fail("site_error", "The response has no usable address."); }
@@ -97,8 +98,8 @@
         description: cut(hotel.description, 1000),
         observed_at: new Date().toISOString()
       };
-    } catch (error) {
-      return fail("site_error", "The request from the page failed: " + (error && error.message ? error.message : String(error)));
+    } catch {
+      return signal?.aborted ? fail("canceled", "Hotel read canceled.") : fail("site_error", "The hotel overview request failed; no automatic retry was attempted.");
     }
   }
 }]
