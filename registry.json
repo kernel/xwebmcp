@@ -62,9 +62,9 @@
       "url_patterns": [
         "https://radar.cloudflare.com/*"
       ],
-      "status": "draft",
-      "last_verified": null,
-      "notes": "Page tool on radar.cloudflare.com: category, ASN, DNSSEC, exact-name Top 100 position, bounded DNS records and post-quantum TLS support. WHOIS opt-in. Pending independent QA of updated cancellation, bounds and redaction. Unassigned TLDs with default sections give site_error.",
+      "status": "verified",
+      "last_verified": "2026-09-30",
+      "notes": "Independent final-source QA and public Kernel/local Chromium live reads passed. Radar page tool: bounded category, ASN, DNSSEC, exact-name Top 100 position, DNS and TLS data; cancellation and redaction. WHOIS opt-in, rate-limited; normalization guards fixture-tested. Unassigned TLDs with default sections may give site_error. No dashboard actions.",
       "provenance": {
         "qa_agent": "agt_37ff3f484ac4461bb423"
       }
@@ -78,9 +78,9 @@
       "url_patterns": [
         "https://radar.cloudflare.com/*"
       ],
-      "status": "draft",
-      "last_verified": null,
-      "notes": "Page tool on radar.cloudflare.com: bounded outages and anomalies, worldwide or for one country or 32-bit ASN, with applied filter checks. Pending independent QA of updated cancellation, bounds and redaction. Continents rejected; country/ASN coverage is not exact.",
+      "status": "verified",
+      "last_verified": "2026-09-30",
+      "notes": "Independent final-source QA and public Kernel/local Chromium live reads passed. Radar page tool: bounded outages and anomalies, worldwide or for one country or 32-bit ASN; applied filter checks, cancellation and redaction. Continents rejected; country/ASN coverage imperfect. Induced failures fixture-tested; no dashboard actions.",
       "provenance": {
         "qa_agent": "agt_37ff3f484ac4461bb423"
       }

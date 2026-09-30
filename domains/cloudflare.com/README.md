@@ -4,8 +4,8 @@ Tools for Cloudflare Radar (https://radar.cloudflare.com), Cloudflare's public I
 
 | tool | file | status | notes |
 | --- | --- | --- | --- |
-| list_internet_outages | [list_internet_outages.js](list_internet_outages.js) | draft | Outage Center outages and traffic anomalies for a window, worldwide or for one country or ASN; the filter Radar applied is read back and checked |
-| get_domain_info | [get_domain_info.js](get_domain_info.js) | draft | Radar's category, ASN, DNSSEC and Top 100 position, DNS records and post-quantum TLS support for one hostname; WHOIS is opt-in because Radar rate-limits it hard |
+| list_internet_outages | [list_internet_outages.js](list_internet_outages.js) | verified | Outage Center outages and traffic anomalies for a window, worldwide or for one country or ASN; the filter Radar applied is read back and checked |
+| get_domain_info | [get_domain_info.js](get_domain_info.js) | verified | Radar's category, ASN, DNSSEC and Top 100 position, DNS records and post-quantum TLS support for one hostname; WHOIS is opt-in because Radar rate-limits it hard |
 
 ## Native WebMCP tools
 
@@ -76,11 +76,17 @@ No DNS, deployment, security, billing, token or other account execution tool is 
 
 ## QA summary
 
-Current source is draft pending a fresh independent review after rebasing onto current main and adding ASN bounds, explicit default-window validation, cancellation, nested/text/output bounds and credential-bearing-link/error redaction. Author public Kernel check on 2026-09-30, starting from `/domains`: Iraq 14-day outages succeeded (2 outages, 2 anomalies), `cloudflare.com` returned rank 6 and 42 DNS records, `.lan` DNS-only returned `no_data`, continent/out-of-range ASN inputs returned `invalid_input`, entire namespace replacement preserved both tools alongside six native tools, and page URL/cookies/web storage were unchanged. No live write was attempted.
+Independent reviewer `agt_37ff3f484ac4461bb423` signed off on final source `0fe4cb9229fe68d9b0dd906b2db2b86301d1f7cd` on 2026-09-30 using `pi`, `openai-codex/gpt-6.1-sol`, high reasoning. Initial review plus two fix/rechecks found and resolved two fixture-only empty-success paths: malformed WHOIS nameservers and malformed domain-detail ASNs were checked before normalization. Both now return `no_data` when normalization leaves no meaningful data. The 96 Radar tests pass; the reviewer additionally passed 189 independent fixture cases with strict Ajv, including cancellation, redaction, output bounds, action/account extra-field rejection before interaction and partial responses. Full Node suite: 1,673 pass; registry: 81 valid; Go and 14 extension unit tests pass.
+
+**Final-source Kernel live (2026-09-30):** from Radar home, `cloudflare.com` details returned Technology, AS13335, DNSSEC true and Top 100 rank 6; IQ 14-day outages returned 2 outages and 2 anomalies. Whole-namespace replacement preserved both tools beside six natives; stale references were rejected after navigation. Outputs were schema-valid, requests GET-only, and invocations preserved URL/document/cookies/web storage. Earlier restart checks from `/domains` also covered DNS/CNAME data, no-data and invalid-input cases.
+
+**Final-source local Chromium extension:** pinned SHA/file hashes matched; default 7-day outages and `cloudflare.com` details succeeded beside the six native tools. Schema-valid, GET-only, no invocation navigation or storage changes. Extension navigation-reference lifetime, other-origin discovery and forced CSP failure were not rechecked.
+
+No live WHOIS request or account write was made in this fresh review. WHOIS normalization, cancellation, extreme bounds and induced failure responses are fixture evidence only. No dashboard/account target checks or trusted approval enforcement are claimed. Historical evidence below applies only to unchanged paths.
 
 ### Historical QA (superseded for changed source)
 
-Independent QA by Hypeship agent `agt_37ff3f484ac4461bb423` on 2026-09-29, two rounds. Round 1 on `b326f9d` returned no sign-off with four defects, all fixed: continent filters returned worldwide data as if filtered, hostnames under unassigned TLDs returned the root name servers as DNS records, impossible dates like `2026-13-01` threw instead of returning `invalid_input`, and a valid but falsy JSON body was treated as an empty success. Round 2 on `e1d594b` signed off with no blocking defects. That sign-off applies only to the historical source, not the changed source now awaiting QA. The ASN-range finding is now fixed; default-sections behavior for unassigned TLDs remains documented.
+Independent QA by Hypeship agent `agt_37ff3f484ac4461bb423` on 2026-09-29, two rounds. Round 1 on `b326f9d` returned no sign-off with four defects, all fixed: continent filters returned worldwide data as if filtered, hostnames under unassigned TLDs returned the root name servers as DNS records, impossible dates like `2026-13-01` threw instead of returning `invalid_input`, and a valid but falsy JSON body was treated as an empty success. Round 2 on `e1d594b` signed off with no blocking defects. That sign-off applies only to the historical source, not the current source. The ASN-range finding is now fixed; default-sections behavior for unassigned TLDs remains documented.
 
 **Kernel runtime** (one fresh stealth browser, signed out, 2026-09-29): atomic namespace registration and discovery next to Radar's six native tools with no name collision; the tools are not listed on `www.cloudflare.com` or `developers.cloudflare.com`; a `tool_ref` is invalid after navigation and new refs are issued on return to Radar. Invoked from Radar's home page, `/outage-center`, a domain page and a nonexistent path: the document never navigated, cookies and web storage were identical before and after, and only same-origin `GET /charts/...` requests were made. Outputs validated against the declared schemas. About 95 invocations, including:
 
