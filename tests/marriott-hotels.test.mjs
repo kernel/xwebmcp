@@ -133,7 +133,11 @@ function harness(name, o = {}) {
       const forced = respond(entry, calls, init);
       if (forced === "throw") throw new Error("network down");
       const r = forced ?? defaultRoute(entry);
-      return { status: r.status ?? 200, url: r.url ?? `${origin}${path}`, text: async () => (typeof r.body === "string" ? r.body : JSON.stringify(r.body)) };
+      return { status: r.status ?? 200, url: r.url ?? `${origin}${path}`, text: async () => {
+        const body = await new Response(typeof r.body === "string" ? r.body : JSON.stringify(r.body)).text();
+        o.afterText?.(entry);
+        return body;
+      } };
     }
   };
   const [definition] = runInNewContext(`(${sources[name]})`, context);
@@ -870,4 +874,60 @@ test("search_hotels: site error text and network details are not reflected into 
   const result = await h.run(VALID);
   assert.equal(result.error_kind, "site_error");
   assert.equal(JSON.stringify(result).includes("fixture-secret"), false);
+});
+
+for (const name of NAMES) {
+  test(`${name}: cancellation after native response consumption cannot return success`, async () => {
+    const controller = new AbortController();
+    const h = harness(name, {
+      respond: name === "search_hotels" ? undefined : hotelRoute(),
+      afterText: call => {
+        if (name !== "search_hotels" || call.body?.operationName === "phoenixShopDatedSearchByGeoQuery") controller.abort();
+      }
+    });
+    const result = await h.run(sample(name), { signal: controller.signal });
+    assert.equal(controller.signal.aborted, true);
+    assert.equal(result.error_kind, "canceled");
+    assert.equal(h.calls.length, name === "search_hotels" ? 3 : 1);
+  });
+}
+
+for (const [decimals, amount, nights, rooms, expected] of [[3, 30025, 3, 1, 90.08], [3, 30005, 1, 1, 30.01], [4, 100049, 1, 1, 10], [4, 100050, 1, 1, 10.01], [0, 100, 3, 2, 600], [2, 30025, 3, 2, 1801.5], [6, 123450000, 3, 2, 740.7]]) {
+  test(`search_hotels: estimate uses decimal half-up arithmetic (${decimals}, ${amount}, ${nights}, ${rooms})`, async () => {
+    const rate = cashRate();
+    rate.rateModes.lowestAverageRate.amount = { amount, currency: "BHD", decimalPoint: decimals };
+    rate.rateModes.lowestAverageRate.totalAmount = { amount, currency: "BHD", decimalPoint: decimals };
+    const h = harness("search_hotels", { respond: onSearch({ body: searchBody([edge("ABCDE", "Example", 1, [rate])]) }) });
+    const result = await h.run({ ...VALID, rooms, check_out: `2026-10-${20 + nights}` });
+    assert.equal(result.cash_comparison[0].quotes[0].estimated_stay_total, expected);
+  });
+}
+
+for (const amount of [1e308, Number.MAX_SAFE_INTEGER + 1, 10.1]) {
+  test(`search_hotels: unsafe minor-unit amount ${amount} cannot overflow a serialized comparison`, async () => {
+    const rate = cashRate();
+    rate.rateModes.lowestAverageRate.totalAmount = { amount, currency: "USD", decimalPoint: 0 };
+    const result = await harness("search_hotels", { respond: onSearch({ body: searchBody([edge("ABCDE", "Example", 1, [rate])]) }) }).run(VALID);
+    assert.deepEqual(result.cash_comparison, []);
+    assert.equal(result.hotels[0].cash_rate.per_night.total, null);
+  });
+}
+
+test("search_hotels: an estimate that exceeds safe integer cents is omitted", async () => {
+  const rate = cashRate();
+  rate.rateModes.lowestAverageRate.totalAmount = { amount: Number.MAX_SAFE_INTEGER, currency: "USD", decimalPoint: 2 };
+  const result = await harness("search_hotels", { respond: onSearch({ body: searchBody([edge("ABCDE", "Example", 1, [rate])]) }) }).run({ ...VALID, rooms: 9 });
+  assert.deepEqual(result.cash_comparison, []);
+});
+
+test("search_hotels: a huge property identifier is schema drift, not oversized success", async () => {
+  const result = await harness("search_hotels", { respond: onSearch({ body: searchBody([edge("A".repeat(600000), "Example", 1, [cashRate()])]) }) }).run(VALID);
+  assert.equal(result.error_kind, "site_changed");
+  assert.ok(JSON.stringify(result).length < 300);
+});
+
+test("search_hotels: a huge suggestion identifier is rejected before details or search", async () => {
+  const h = harness("search_hotels", { respond: onPlaces({ body: { data: { suggestedPlaces: { edges: [{ node: { placeId: "A".repeat(600000), description: "Example" } }] } } } }) });
+  assert.equal((await h.run(VALID)).error_kind, "site_changed");
+  assert.equal(h.calls.length, 1);
 });

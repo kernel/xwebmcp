@@ -46,7 +46,7 @@
                 type: "object", additionalProperties: false,
                 required: ["property_id", "name", "brand", "url", "latitude", "longitude", "distance_miles", "rating", "review_count", "caption", "fee_notes", "bookable", "adults_only", "resort", "cash_rate", "points_rate"],
                 properties: {
-                  property_id: { type: "string", description: "Marriott property code, e.g. 5 letters." }, name: { type: "string" },
+                  property_id: { type: "string", maxLength: 40, description: "Marriott property code, e.g. 5 letters." }, name: { type: "string" },
                   brand: { type: ["object", "null"], additionalProperties: false, required: ["id", "name"], properties: { id: { type: "string" }, name: { type: "string" } } },
                   url: { type: ["string", "null"], description: "Hotel overview page address; pass it to get_hotel. A few listed properties (for example residences) have no overview page and get_hotel returns not_found for them." },
                   latitude: { type: ["number", "null"] }, longitude: { type: ["number", "null"] }, distance_miles: { type: ["number", "null"] },
@@ -91,7 +91,7 @@
                     items: {
                       type: "object", additionalProperties: false, required: ["property_id", "members_only", "average_nightly_total_per_room", "estimated_stay_total"],
                       properties: {
-                        property_id: { type: "string" }, members_only: { type: ["boolean", "null"] },
+                        property_id: { type: "string", maxLength: 40 }, members_only: { type: ["boolean", "null"] },
                         average_nightly_total_per_room: { type: "number", minimum: 0 },
                         estimated_stay_total: { type: "number", minimum: 0, description: "Average nightly total multiplied by nights and rooms; rounded to two decimal places. This is an estimate, not a final payable total." }
                       }
@@ -163,7 +163,14 @@
     const num = v => (typeof v === "number" && Number.isFinite(v) ? v : null);
     const money = m => {
       const decimals = m?.decimalPoint ?? 2;
-      return m && Number.isFinite(m.amount) && m.amount >= 0 && Number.isInteger(decimals) && decimals >= 0 && decimals <= 6 ? Number((m.amount / Math.pow(10, decimals)).toFixed(decimals)) : null;
+      return m && Number.isSafeInteger(m.amount) && m.amount >= 0 && Number.isInteger(decimals) && decimals >= 0 && decimals <= 6 ? Number((m.amount / Math.pow(10, decimals)).toFixed(decimals)) : null;
+    };
+    const estimate = m => {
+      if (money(m) === null) return null;
+      const decimals = m.decimalPoint ?? 2, units = BigInt(m.amount) * BigInt(nights * rooms);
+      const divisor = 10n ** BigInt(Math.max(decimals - 2, 0));
+      const cents = decimals <= 2 ? units * (10n ** BigInt(2 - decimals)) : (units + divisor / 2n) / divisor;
+      return cents <= BigInt(Number.MAX_SAFE_INTEGER) ? Number(cents) / 100 : null;
     };
     const problem = r => {
       if (r.body === null) {
@@ -195,6 +202,7 @@
         const text = await res.text();
         let body = null;
         try { body = JSON.parse(text); } catch { /* not JSON */ }
+        if (signal?.aborted) throw new Error("Search canceled");
         return { http: res.status, body, text };
       };
 
@@ -206,6 +214,7 @@
         const edges = found.body?.data?.suggestedPlaces?.edges;
         if (!Array.isArray(edges)) return fail("site_changed", "Marriott's destination suggestions no longer have the shape this tool reads.");
         const nodes = edges.map(e => e?.node).filter(n => n && typeof n.placeId === "string" && str(n.description));
+        if (nodes.some(n => !/^[A-Za-z0-9_-]{10,200}$/.test(n.placeId))) return fail("site_changed", "Marriott returned an invalid destination identifier.");
         if (!nodes.length) return fail("destination_not_found", "Marriott's destination search has no suggestion for '" + query + "'.");
         placeId = nodes[0].placeId;
         description = cut(nodes[0].description, 200);
@@ -219,7 +228,7 @@
       if (!place) return fail("destination_not_found", "Marriott has no destination for that place_id.");
       const searchType = DESTINATION_TYPES[place.destinationType];
       const lat = num(place.location?.latitude), lon = num(place.location?.longitude);
-      if (!searchType || lat === null || lon === null) return fail("destination_not_supported", "'" + (description || cut(place.description, 200) || placeId) + "' is a " + (str(place.destinationType) || "region-level") + " destination; only city, airport and point-of-interest destinations can be searched. Use a more specific place" + (alternatives.length ? " or one of the suggestions." : "."), alternatives);
+      if (!searchType || lat === null || lon === null) return fail("destination_not_supported", "'" + (description || cut(place.description, 200) || placeId) + "' is a " + (cut(place.destinationType, 64) || "region-level") + " destination; only city, airport and point-of-interest destinations can be searched. Use a more specific place" + (alternatives.length ? " or one of the suggestions." : "."), alternatives);
 
       const found = await gql("phoenixShopDatedSearchByGeoQuery", {
         search: {
@@ -250,10 +259,13 @@
       const seen = new Set();
       const warnings = [];
       for (const w of statuses.flatMap(s => s?.warnings ?? [])) {
-        const code = str(w?.code);
+        const code = cut(w?.code, 64);
         if (code && !seen.has(code) && warnings.length < 8) { seen.add(code); warnings.push({ code, message: cut(String(w.message ?? w.devMessage ?? "").replace(/<[^>]*>/g, " ").replace(/\s+/g, " "), 200) ?? "" }); }
       }
-      const hotels = result.edges.map(e => e?.node).filter(n => n?.property && typeof n.property.id === "string").slice(0, limit).map(n => {
+      const nodes = result.edges.slice(0, limit).map(e => e?.node);
+      if (nodes.some(n => typeof n?.property?.id !== "string" || !/^[A-Za-z0-9_-]{1,40}$/.test(n.property.id))) return fail("site_changed", "Marriott returned an invalid property identifier.");
+      const estimates = new Map();
+      const hotels = nodes.map(n => {
         const p = n.property, info = p.basicInformation ?? {};
         const rates = Array.isArray(n.rates) ? n.rates : [];
         const cash = rates.find(r => r?.rateCategory?.code === "StandardRates");
@@ -261,9 +273,9 @@
         const avg = cash?.rateModes?.lowestAverageRate;
         const slug = typeof p.seoNickname === "string" && /^[a-z0-9-]{3,160}$/.test(p.seoNickname) ? p.seoNickname : null;
         const descriptions = Array.isArray(info.descriptions) ? info.descriptions : [];
-        return {
+        const hotel = {
           property_id: p.id, name: cut(info.name, 200) || p.id,
-          brand: str(info.brand?.id) && str(info.brand?.name) ? { id: info.brand.id, name: cut(info.brand.name, 100) } : null,
+          brand: str(info.brand?.id) && str(info.brand?.name) ? { id: cut(info.brand.id, 40), name: cut(info.brand.name, 100) } : null,
           url: slug ? ORIGIN + "/en-us/hotels/" + slug + "/overview/" : null,
           latitude: num(info.latitude), longitude: num(info.longitude),
           distance_miles: num(n.distance) === null ? null : Math.round(n.distance / 1609.344 * 100) / 100,
@@ -272,25 +284,28 @@
           fee_notes: descriptions.filter(d => FEE_TYPES.includes(d?.type?.enumCode) && str(d.text)).slice(0, 6).map(d => ({ type: d.type.enumCode, text: cut(d.text, 300) })),
           bookable: bool(info.bookable), adults_only: bool(info.isAdultsOnly), resort: bool(info.resort),
           cash_rate: cash ? {
-            available: cash.status?.code === "AvailableForSale", status_code: str(cash.status?.code) || "unknown", members_only: bool(cash.membersOnly), currency: str(avg?.amount?.currency),
+            available: cash.status?.code === "AvailableForSale", status_code: cut(cash.status?.code, 64) || "unknown", members_only: bool(cash.membersOnly), currency: /^[A-Z]{3}$/.test(str(avg?.amount?.currency) ?? "") ? str(avg.amount.currency) : null,
             per_night: avg ? { rate: money(avg.amount), mandatory_fees: money(avg.mandatoryFees), rate_with_mandatory_fees: money(avg.amountPlusMandatoryFees), fees: money(avg.fees), taxes: money(avg.taxes), total: str(avg.totalAmount?.currency) === str(avg.amount?.currency) ? money(avg.totalAmount) : null } : null
           } : null,
-          points_rate: points ? { available: points.status?.code === "AvailableForSale", status_code: str(points.status?.code) || "unknown", points_per_room: Number.isInteger(points.rateModes.pointsPerUnit.points) ? points.rateModes.pointsPerUnit.points : null } : null
+          points_rate: points ? { available: points.status?.code === "AvailableForSale", status_code: cut(points.status?.code, 64) || "unknown", points_per_room: Number.isInteger(points.rateModes.pointsPerUnit.points) ? points.rateModes.pointsPerUnit.points : null } : null
         };
+        estimates.set(hotel, estimate(avg?.totalAmount));
+        return hotel;
       });
       const currencies = new Map();
       for (const hotel of hotels) {
         const cash = hotel.cash_rate, total = cash?.per_night?.total;
-        if (hotel.bookable !== true || cash?.available !== true || !/^[A-Z]{3}$/.test(cash.currency ?? "") || !Number.isFinite(total) || total < 0) continue;
+        const stayTotal = estimates.get(hotel);
+        if (hotel.bookable !== true || cash?.available !== true || !/^[A-Z]{3}$/.test(cash.currency ?? "") || !Number.isFinite(total) || total < 0 || stayTotal === null) continue;
         const quotes = currencies.get(cash.currency) ?? [];
-        quotes.push({ property_id: hotel.property_id, members_only: cash.members_only, average_nightly_total_per_room: total, estimated_stay_total: Math.round(total * nights * rooms * 100) / 100 });
+        quotes.push({ property_id: hotel.property_id, members_only: cash.members_only, average_nightly_total_per_room: total, estimated_stay_total: stayTotal });
         currencies.set(cash.currency, quotes);
       }
       const cashComparison = [...currencies].map(([currency, quotes]) => ({ currency, quotes: quotes.sort((a, b) => a.average_nightly_total_per_room - b.average_nightly_total_per_room) }));
       const nextOffset = result.pageInfo?.hasNextPage && Number.isInteger(result.pageInfo.nextOffset) ? result.pageInfo.nextOffset : null;
       return {
         status: hotels.length || offset > 0 ? "ok" : "no_results",
-        resolved_destination: { place_id: placeId, description: description || cut(place.description, 200) || placeId, type: searchType.toLowerCase(), latitude: lat, longitude: lon, city: str(place.location.city), state: str(place.location.state), country: str(place.location.country) },
+        resolved_destination: { place_id: placeId, description: description || cut(place.description, 200) || placeId, type: searchType.toLowerCase(), latitude: lat, longitude: lon, city: cut(place.location.city, 100), state: cut(place.location.state, 100), country: cut(place.location.country, 100) },
         other_destinations: alternatives,
         check_in: input.check_in, check_out: input.check_out, nights, rooms, adults_per_room: adults, radius_miles: radius, use_points: usePoints,
         site_total: Number.isInteger(result.total) ? result.total : hotels.length, offset, has_more: nextOffset !== null, next_offset: nextOffset,

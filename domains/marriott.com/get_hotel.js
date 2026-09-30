@@ -69,6 +69,7 @@
       if (signal?.aborted) return fail("canceled", "Hotel read canceled before any request.");
       const res = await fetch(path, { credentials: "include", redirect: "follow", signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(30000)]) : AbortSignal.timeout(30000), headers: { accept: "text/html" } });
       const html = await res.text();
+      if (signal?.aborted) return fail("canceled", "Hotel read canceled after reading the response.");
       if (res.status === 404) return fail("not_found", "Marriott has no hotel page at that address.");
       if (res.status === 429) return fail("rate_limited", "Marriott returned HTTP 429; wait a few minutes before trying again.");
       if (res.status === 403 || /<title>\s*access denied|id=["']sec-if-cpt-container["']/i.test(html)) return fail("challenge", "Marriott's bot protection refused the overview request; stop and report the access restriction.");
