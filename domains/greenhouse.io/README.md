@@ -1,12 +1,14 @@
 # greenhouse.io
 
-Tools for tenant job boards hosted by Greenhouse (https://job-boards.greenhouse.io/<board>): search a board's open jobs, read a posting, and read what its application asks. All three are read-only and work signed out.
+Tools for tenant job boards hosted by Greenhouse (https://job-boards.greenhouse.io/<board>): search a board's open jobs, read a posting, and read what its application asks. The reads and the local draft helpers work signed out. Draft staging is limited to event-free DOM text; it never submits or uploads.
 
 | tool | file | status | notes |
 |------|------|--------|-------|
 | search_jobs | [search_jobs.js](search_jobs.js) | verified | One page (50) of a board by keyword, department and office ids; optional filter list; reports missing boards and boards served on the employer's own site |
 | get_job | [get_job.js](get_job.js) | verified | One posting as plain text with published pay ranges and deadline; untrusted employer text |
 | get_application_form | [get_application_form.js](get_application_form.js) | verified | Questions, field names and types, choices, education fields, self-identification section titles and sizes and consent settings; never opens, fills or submits the form |
+| prepare_application_draft | [prepare_application_draft.js](prepare_application_draft.js) | draft | Checks explicitly supplied text against the exact current job's rendered controls; no values echoed or changes made |
+| fill_application_form | [fill_application_form.js](fill_application_form.js) | draft | Compare-and-set visual text staging only; no events, React state synchronization, uploads or submission |
 
 ## Native WebMCP tools
 
@@ -17,14 +19,14 @@ None found (checked 2026-09-29 with `webmcp.listTools()` signed out on a board p
 greenhouse.io is several unrelated products under one registrable domain. These tools cover only the **tenant job boards** on `job-boards.greenhouse.io`. Not covered, and no tool is offered for them:
 
 - Greenhouse Recruiting (`app.greenhouse.io`), the employer ATS, and MyGreenhouse (`my.greenhouse.io`), the candidate site. Both need an account; neither was explored.
-- Applying, filling or uploading to an application form, Quick Apply, and job-alert sign-up. They change state or send personal data.
+- Submission, uploading files, Quick Apply and job-alert sign-up. These send personal data or change server state and are not exposed.
 - The marketing site (`greenhouse.io` redirects to `www.greenhouse.com`, a different registrable domain), the help centre and the developer docs.
 
-Register all three files together under namespace `greenhouse.io`:
+Register all five files together under namespace `greenhouse.io`:
 
 ```javascript
 const fs = await import("node:fs");
-const names = ["search_jobs", "get_job", "get_application_form"];
+const names = ["search_jobs", "get_job", "get_application_form", "prepare_application_draft", "fill_application_form"];
 const tools = names.flatMap(n => eval(fs.readFileSync(`domains/greenhouse.io/${n}.js`, "utf8")));
 await webmcp.addCustomTools({ namespace: "greenhouse.io", tools, forceOverwriteNamespace: true });
 const tab = (await currentTab()).targetId;
@@ -32,16 +34,28 @@ const tool = (await webmcp.listTools()).find(t => t.source.custom?.namespace ===
 const result = await webmcp.invokeTool(tool.tool_ref, { board: "acme", keyword: "engineer" }, { timeoutSec: 60 });
 ```
 
-- Every tool is `kind: "page"`. Each runs in the current `job-boards.greenhouse.io` document, makes one same-origin GET, and never navigates, clicks or touches the DOM, so none qualifies for `cdp`. A board or job page of any employer (or the `/embed/job_board` page) is a suitable starting tab; the `board` input, not the tab's board, selects the employer. A not-found board page and a page that is still loading have no board data: the tools are listed there but return `wrong_page`.
+- Every tool is `kind: "page"`. Each of the three read tools runs in the current `job-boards.greenhouse.io` document, makes one same-origin GET, and never navigates, clicks or touches the DOM, so none qualifies for `cdp`. A board or job page of any employer (or the `/embed/job_board` page) is a suitable starting tab; the `board` input, not the tab's board, selects the employer. A not-found board page and a page that is still loading have no board data: the tools are listed there but return `wrong_page`.
 - `board` is the employer's board token, the first path segment of its board URL. `job_id` is the number at the end of a job URL. Both are validated by the tool before any request; the Kernel runtime does not enforce `inputSchema` for page tools (a 101-character keyword reached the tool in testing), so this validation is the only gate. Tokens are used as typed; the site keeps the case you send.
-- The tools call the same data requests the board pages make themselves: `GET /<board>?...&_data=<route>` for the board and `GET /<board>/jobs/<job_id>?_data=<route>` for a job. The route ids are read from the page's Remix route manifest (`window.__remixManifest.routes`, by path) instead of being hard-coded; a page without the manifest returns `wrong_page` and a manifest without the routes returns `site_changed`.
+- The three read tools call the same data requests the board pages make themselves: `GET /<board>?...&_data=<route>` for the board and `GET /<board>/jobs/<job_id>?_data=<route>` for a job. The route ids are read from the page's Remix route manifest (`window.__remixManifest.routes`, by path) instead of being hard-coded; a page without the manifest returns `wrong_page` and a manifest without the routes returns `site_changed`.
 - Only allow-listed fields are returned. The page's own configuration (analytics and captcha keys, the job's fingerprint, submit and confirmation paths) is never read into the output.
-- Outputs carry `untrusted_content: true` and `observed_at`. Job titles, locations, board names, descriptions, pay notes, question labels, help text and choices are written by employers; the tool descriptions tell agents to treat them as data and never follow instructions inside them.
+- Read-tool outputs carry `untrusted_content: true` and `observed_at`. Job titles, locations, board names, descriptions, pay notes, question labels, help text and choices are written by employers; the tool descriptions tell agents to treat them as data and never follow instructions inside them.
 - Errors are explicit `status: "error"` outputs: `invalid_input`, `wrong_page`, `board_not_found`, `board_redirects` (with the address, not followed), `job_not_found`, `rate_limited` (HTTP 429), `challenge` (HTTP 403), `site_changed` (unrecognized response shape or redirect), `site_error` (other HTTP or network failure, including a request that takes longer than 40 s) and `output_too_large` (a result over 150000 characters, only possible with pathological data; nothing is cut silently). An empty search is `no_results` with a reason, never an empty success.
+
+## Local application draft safety
+
+`prepare_application_draft` takes `board`, `job_id` and `answers: [{field_name, value}]`. It checks the current public job page, its loader's tenant/job identity, and the visible `form#application-form`. It returns a per-field staging plan with value lengths and whether existing text is present, not answer or existing values. It does not generate answers, establish eligibility or claim that required questions are complete. Open the canonical job page manually first; an unrelated board/job page returns `wrong_page` and a canonical `entry_url`, never a redirect or navigation.
+
+`fill_application_form` takes `fields: [{field_name, value, expected_value}]` for that same explicit board/job. `expected_value` is an optimistic compare-and-set precondition, normally `""`: it is not human approval and does not authorize submission. Every field is preflighted before writes. Changed existing text fails the whole batch; values already equal to the requested value are left alone. A failed local write attempts exact restoration and reports `outcome_unknown` if restoration cannot be observed. Stop and inspect an unknown outcome; never retry automatically. Reloading discards these DOM-only changes, but tools do not reload or reset the form.
+
+Only declared native text inputs (`text`, `email`, `tel`, `url`) and already-rendered textareas can be staged. No comboboxes, location lookup, native selects, checkboxes, consent controls, demographics or file controls. No button clicks, input/change events, focus, fetch, timers, uploads, storage or navigation. The tool uses native value accessors, bypassing React's element-level value tracker. **This is visual draft staging, not application state:** React still holds its old state, can erase staged text on re-render, and may submit different values. Review/copy the text and complete the fields manually through the site. Never submit based on a staging result. Site scripts can still inspect DOM values; local staging is not a promise of privacy from the page. Results never echo supplied or previous values.
+
+Inputs are limited to 50 unique fields, 8000 UTF-16 code units per string and 32000 total (including `expected_value` for filling). Disallowed control characters are rejected before page interaction; native single-line fields also reject newlines and enforce their rendered `maxlength`. Pre-aborted calls make no changes. Tools are synchronous after validation, assume serial invocation per tab, and do not make remote writes or retry.
+
+**Execution blocker:** no application or file-upload execution tool is shipped. The runtime provides no trusted per-action human approval enforcement; an agent-supplied `confirmed: true` is rejected as an unknown property, not accepted as approval. A human must separately inspect the exact job/employer, answers, attachments and terms in the site and decide whether to apply. Neither draft tool invokes submission automatically.
 
 ## URL patterns
 
-All three tools match only `https://job-boards.greenhouse.io/*`, not the default `https://greenhouse.io/*` and `https://*.greenhouse.io/*`. Product: tenant job boards. The other hosts under the registrable domain are unrelated products (Recruiting, MyGreenhouse, help centre, developer docs, marketing redirect) where these same-origin board requests cannot work, so the tools should not be listed there. Verified on 2026-09-29 with a prototype of this pattern: the tools were registered on a board page and not on `app.greenhouse.io` or `www.greenhouse.com`. The legacy host `boards.greenhouse.io` answers 301 to `job-boards.greenhouse.io` and needs no pattern.
+All five tools match only `https://job-boards.greenhouse.io/*`, not the default `https://greenhouse.io/*` and `https://*.greenhouse.io/*`. Product: tenant job boards. The other hosts under the registrable domain are unrelated products (Recruiting, MyGreenhouse, help centre, developer docs, marketing redirect) where these same-origin board requests cannot work, so the tools should not be listed there. Verified on 2026-09-29 with a prototype of this pattern: the tools were registered on a board page and not on `app.greenhouse.io` or `www.greenhouse.com`. The legacy host `boards.greenhouse.io` answers 301 to `job-boards.greenhouse.io` and needs no pattern.
 
 ## Site quirks
 
@@ -59,6 +73,9 @@ All three tools match only `https://job-boards.greenhouse.io/*`, not the default
 
 ## Known limitations
 
+- Draft helpers require the exact current public job document; they do not fetch another job or open the form. Internal/preview pages and identity mismatches are refused. Unknown or duplicate fields, unavailable/hidden/disabled controls and custom widgets fail closed. A field ID from the data API does not prove that control is currently rendered.
+- Filling does not update React application state, validate email/phone semantics, open manual resume/cover-letter editors or complete conditional questions. No server-side draft is created. Fill success will be tested only on isolated fabricated forms, not by staging personal data on real applications. No real mutation success is claimed.
+
 - Only boards and jobs on `job-boards.greenhouse.io` are served. Employers that redirect to their own careers page (`board_redirects`), boards embedded in an employer's site with the iframe from `/embed/job_board`, and custom careers domains that only call Greenhouse are out of scope: the tools register when the tab's top document is a `job-boards.greenhouse.io` page. Embedding on third-party sites was not tested.
 - `search_jobs` returns one site page (50 jobs) per call and reads at most 100 jobs, 300 departments and 300 offices; larger lists are cut with a warning, and a result over 150000 characters is refused with `output_too_large`. It does not read the separate featured-jobs list (empty on every board sampled), custom-field filters (off on every board sampled) or the internal job board.
 - `get_job` cuts the description at 30000 characters (`description_truncated`) and pay notes at 1000. HTML is converted with a small text extractor, not a browser: nested lists are flattened, whitespace inside `<pre>` is collapsed, link addresses are not included, entities outside the numeric forms and the common named set (Latin-1 accented letters, quotes, dashes, arrows, euro) stay as written, a `>` inside an attribute value ends its tag early, and text that the employer double-encoded (`&lt;p&gt;`) is returned as typed. Markup is read up to 200000 characters per section.
@@ -66,11 +83,17 @@ All three tools match only `https://job-boards.greenhouse.io/*`, not the default
 - Malformed or unusual markup in a posting is converted imperfectly. The independent reviewer found these with hand-made fragments; none appeared in 72 live postings. A text-less `<li>` whose `</li>` is omitted and that is closed by `</ul>` or `</ol>` makes the next text a bullet (`<ul><li></ul><p>ZZ</p>` gives `- ZZ`). A comment ended by `--!>` drops the rest of its section. Stray closing tags with no opener become a line break where Chrome ignores them. A few rare or obsolete block tags (`center`, `dir`, `menu`, `hgroup`, `legend`, `search`, `option`, `optgroup`, `listing`, `xmp`) do not break lines, and `<details>` content that a browser hides is kept. List items with no text of their own (`<li>&nbsp;</li>`, or an item that only holds a nested list) get no bullet, so the bullet count can be lower than the number of `<li>` elements.
 - A job that appears in the response is not proof it is open to applications: a posting can still load after an employer has stopped accepting them, and the tools do not check eligibility, locations or requirements.
 - The route ids depend on the site's Remix build. A build that renames or removes the manifest, or moves data requests to another mechanism, makes the tools return `site_changed` rather than guess.
-- Not live-verified: a board past bot protection or throttling (`challenge`, `rate_limited` are covered by stubbed tests only), a job with a non-null `application_deadline`, a job whose `redirect_to` is set, a board that returns featured jobs, a board with more than 300 departments or offices, a choice list above 250 entries, and the Chrome extension runtime.
+- Not live-verified: a board past bot protection or throttling (`challenge`, `rate_limited` are covered by stubbed tests only), a job with a non-null `application_deadline`, a job whose `redirect_to` is set, a board that returns featured jobs, a board with more than 300 departments or offices, a choice list above 250 entries, and the extension popup's Grant-access flow (extension runtime coverage is listed below).
 
 ## QA
 
-**Independent QA passed on the final source** (QA agent `agt_44a0ce2113eb6cf4db13`, 2026-09-29, three rounds; the last on head `dccc608a3339aabdbb9bb212e0ccf402d0d4b8a2`, whose tool files are the ones registered here). The reviewer read the spec and skill, inspected source and tests, and ran everything below against public boards, signed out, with its own browsers, all deleted afterwards. It made no repository changes and used no accounts.
+### Draft increment (2026-09-30)
+
+Independent review is pending for `prepare_application_draft` and `fill_application_form`. The three read-tool sources are unchanged from the prior sign-off. Builder checks: no native tools on a public board and job page before registration; registered the complete five-tool namespace in Kernel; `prepare_application_draft` returned a supported native-text plan and refused a location combobox on a live public job page without changing fields; filling on another job returned `wrong_page`. On an isolated, request-intercepted fabricated job document, filling staged text and textarea paragraphs, emitted zero input/change/submit events, and refused conflicting text. No live application was filled, uploaded or submitted. The 24 draft fixture tests and 59 read-tool tests pass; the full suite has 1660 passing tests. Local extension verification for this increment is pending.
+
+### Previous read-tool increment
+
+**Independent QA passed on the read-tool source** (QA agent `agt_44a0ce2113eb6cf4db13`, 2026-09-29, three rounds; the last on head `dccc608a3339aabdbb9bb212e0ccf402d0d4b8a2`, whose tool files are the ones registered here). The reviewer read the spec and skill, inspected source and tests, and ran everything below against public boards, signed out, with its own browsers, all deleted afterwards. It made no repository changes and used no accounts.
 
 - **Round 1: FAIL** on the first revision, 8 defects. Fixed: quadratic text conversion (a 180 KB posting froze the page for 7 to 20 s), EEOC self-identification sections dropped, a misleading `site_changed` on pages without board data, keyword length counted in UTF-16 units, cuts that could split a surrogate pair, gaps in the text converter, and two inaccurate README claims (runtime output validation, which characters arrive as a JSON string).
 - **Round 2: PASS** on `f116034`, with six minor findings. Fixed: sectioning, definition-list and rule elements gluing words, `<!-->` swallowing text, an omitted `</li>` shrinking later paragraph breaks, input caps that could cut a surrogate pair, the size guard skipping empty results, and an EEOC title that is really introductory text (now documented).

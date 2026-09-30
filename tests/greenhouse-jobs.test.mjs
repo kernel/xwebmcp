@@ -151,7 +151,7 @@ for (const name of NAMES) {
 }
 
 test("registry lists every greenhouse.io tool exactly once", () => {
-  assert.deepEqual(registry.tools.filter(t => t.domain === "greenhouse.io").map(t => t.tool).sort(), [...NAMES].sort());
+  assert.deepEqual(registry.tools.filter(t => t.domain === "greenhouse.io").map(t => t.tool).sort(), [...NAMES, "prepare_application_draft", "fill_application_form"].sort());
 });
 
 // --- input validation happens before any page access -------------------------------------------------
