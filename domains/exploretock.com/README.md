@@ -4,15 +4,15 @@ Tools for Tock (https://www.exploretock.com): public restaurant, winery and tick
 
 | tool | file | status | notes |
 |------|------|--------|-------|
-| get_availability | [get_availability.js](get_availability.js) | draft | Table-reservation slots, Book versus Notify, seating areas, raw pricing and calendar dates; navigates without clicking |
-| get_restaurant | [get_restaurant.js](get_restaurant.js) | draft | Venue profile, service hours and offerings of all types; published event dates/time ranges are not ticket inventory |
-| prepare_reservation | [prepare_reservation.js](prepare_reservation.js) | draft | Exact-slot public preparation on the already loaded offering page; no hold, checkout, booking, payment or notification submission |
-| search_events | [search_events.js](search_events.js) | draft | Ticketed-event search over up to 31 days, with venue pagination and chronological search times |
-| search_restaurants | [search_restaurants.js](search_restaurants.js) | draft | Dine-in or winery search by city, date, party size and time, with the nearest ten times per offering |
+| get_availability | [get_availability.js](get_availability.js) | verified | Table-reservation slots, Book versus Notify, seating areas, raw pricing and calendar dates; navigates without clicking |
+| get_restaurant | [get_restaurant.js](get_restaurant.js) | verified | Venue profile, service hours and offerings of all types; published event dates/time ranges are not ticket inventory |
+| prepare_reservation | [prepare_reservation.js](prepare_reservation.js) | qa_passed | Exact-slot public preparation on the already loaded offering page; no hold, checkout, booking, payment or notification submission |
+| search_events | [search_events.js](search_events.js) | verified | Ticketed-event search over up to 31 days, with venue pagination and chronological search times |
+| search_restaurants | [search_restaurants.js](search_restaurants.js) | verified | Dine-in or winery search by city, date, party size and time, with the nearest ten times per offering |
 
 ## Native WebMCP tools
 
-No native tools were found on public home, city, venue or offering pages. Rechecked on 2026-09-30 before registering the custom namespace. Custom tools do not replace native capabilities.
+No native tools were found on the sampled public home, city, venue or offering pages. Rechecked on 2026-09-30 before registering the custom namespace. Custom tools do not replace native capabilities.
 
 ## Scope and loading
 
@@ -86,13 +86,30 @@ Every tool matches `https://www.exploretock.com/*`. Consumer pages and first-par
 - Events are searched and their published schedules read, but event-ticket inventory/preparation, pickup and delivery are not supported by table tools.
 - Search/venue outputs have the stated caps. Recurrence rules are not expanded. Output pricing does not capture every checkout condition or calculate a final total. Venue website/menu links with credentials, queries or fragments are omitted rather than returning potentially signed/session-bearing URLs.
 - DOM availability depends on current `data-testid` elements and the alert container; a redesign fails with `site_error` or `site_changed`. No recognized slot/message after 45 seconds is a site error, not proof of no inventory.
-- Preparation only reads the current page. A matching query/path and visible control are public-page observations, not an account-specific eligibility check. Refresh availability when time passes or the page changes.
+- Preparation only reads the current page. A matching query/path and visible control are public-page observations, not an account-specific eligibility check. Refresh availability when time passes or the page changes. A background tab can contain opacity-zero site dialogs: preparation refuses invisible content; activate the tab and let the site finish rendering before reading again.
+- Independent final-source QA encountered one unresponsive Kernel renderer during public offering navigation; direct page inspection also timed out. The batch stopped without retry or an established cause. The same offering returned `challenge` in the local extension, without bypass or retry. These are runtime limitations, not successful sold-out coverage.
 - Signed-in-only inventory, member presales, unlock codes, genuine HTTP 429 and genuine challenge resolution are untested. Fixtures cover blocked/error branches without bypassing protections or consuming paid quota.
 
 ## QA
 
 The fabricated fixture suites cover schemas, malformed input before interaction, forbidden write helpers/endpoints, unrelated origins, exact offering/date/party/seating prerequisites, extra approval flags, Notify-only and disabled controls, duplicate rows, pricing, event schedules, pagination/bounds, token non-disclosure and stale navigation/readiness.
 
-Prior review fixes are preserved; the final navigation fix and the new event/preparation source require fresh independent review. All tools remain `draft` pending final-source sign-off. Current independent QA results and dated live evidence will be recorded here after that review. Live mutation success is not claimed from fixtures.
+Independent final-source QA passed all five tools on 2026-09-30 at source commit `a1534b8595b4d23590b7276f706fdce84bdb928c`, after one fix/recheck round. The initial five fixture defects and one documentation mismatch were corrected: hidden controls, absent destination scope, malformed source slug, pre-navigation cancellation race, impossible source timestamps and observation/error timestamp wording. Prior empty-message and same-row-count navigation fixes also pass. Source files are unchanged after that sign-off.
 
-Public live development checks on 2026-09-30 observed EVENT search, published event schedules and dedicated sold-out/not-open alert containers. No Book, Notify, favorite, checkout or account control was clicked. Kernel registration/invocation and local extension verification are recorded separately; no parity is inferred from fixtures.
+- Registry validator: **84 tools valid**. Full repository suite: **1790 pass, zero fail** on Node 26.10.0 and 22.23.3 (CI uses Node 22); site suites: **213 pass**. Go tests also pass.
+- Independent rechecks: **7 defect probe groups** and **15 real-CSS fabricated cases** pass. Independent ajv checked **25 live outputs and 37 fixture outputs**, with zero violations. A runtime timeout without an output is excluded. No source mutation experiments or live action successes are inferred from these fixtures.
+- Entire five-tool namespace was registered atomically in Kernel and attached together in a Chrome extension pinned to the tested source. Stale references after navigation fail cleanly. Initial-source runtime checks also verified no custom tools on the sampled unrelated-domain tab; URL matching patterns are unchanged.
+
+Dated exact-source live cases, 2026-09-30:
+
+| tool | Kernel | pinned local Chrome extension (153.0.8010.52) |
+|------|--------|----------------------------------------------|
+| search_events | Chicago, Oct 10–17: 13 venues | same case: 13 venues |
+| search_restaurants | Chicago, Oct 10: 139 venues total | same case: 139 venues total |
+| get_restaurant | public profile with currency and GA_EVENT 619844's four published dates and 18:00–19:30 range | same public SSR profile succeeds |
+| get_availability | public table offering 606492, Oct 10, party 2: 20 slots | same case: 20 slots; June 10, 2027 returns `not_open_yet` |
+| prepare_reservation | exact public 17:00 / Dining Room target: `prepared`; wrong page, wrong size, missing seating and approval flag fail | genuine preparation succeeds; Notify-only and seating/target guards fail |
+
+The four discovery/availability tools succeeded from another page of the domain, not their entry point, and are `verified`. Preparation deliberately requires the exact offering page: although it succeeded live in both runtimes, it conservatively remains `qa_passed`, not a claim of success from an unrelated entry page.
+
+One fresh extension preparation was measured with **zero fetch/XHR requests and zero UI events**, and unchanged URL/document time origin. Site analytics outside that call are not attributed to it. No Book, Notify, favorite, checkout or account control was clicked. Only owned temporary browsers and an isolated extension profile were used and removed; account sessions and their expiry jobs were not changed. Runtime failures are recorded above; no cross-runtime parity beyond these samples is promised.
