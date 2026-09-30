@@ -174,7 +174,7 @@ Independent review signed off on final source `4794e9f` on 2026-09-30 after two 
 
 Chrome-extension live results remain unverified: United rejected the search, and testing stopped without retries. Isolated extension fixtures exercised all six registrations, successful reads/preparation, unavailable cabins, collapsed connections and stale refusal, with no tool requests, DOM changes or navigation. These are not live-site parity evidence.
 
-Fixtures also cover malformed inputs, page/query/payment/locale guards, challenge/rate/login outcomes, bounds, drift, cancellation and no execution. The browser-backed visibility regression uses local HTML only and runs when `CHROMIUM_BIN` or `/usr/bin/chromium` is available. Account and award tooling is not claimed.
+Fixtures also cover malformed inputs, page/query/payment/locale guards, challenge/rate/login outcomes, bounds, drift, cancellation and no execution. The browser-backed visibility regression uses local HTML only and requires `CHROMIUM_BIN` or `/usr/bin/chromium` in CI (optional locally). It waits for an explicit fixture result, including delayed completion, instead of parsing `--dump-dom` output. Script errors, malformed results, launch errors and missing completion fail explicitly; completion has a 30-second deadline and the disposable browser/profile are cleaned up. Account and award tooling is not claimed.
 
 ## Known limitations
 

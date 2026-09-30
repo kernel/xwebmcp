@@ -1,8 +1,6 @@
 import assert from "node:assert/strict";
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { spawnSync } from "node:child_process";
+import { existsSync, readFileSync } from "node:fs";
+import { runBrowserFixture } from "./united-browser-fixture.mjs";
 import test from "node:test";
 import { runInNewContext } from "node:vm";
 
@@ -213,16 +211,17 @@ test("site text is bounded/sanitized and unrelated account content is not return
   assert.doesNotMatch(JSON.stringify(out), /https?:|token|confirmation|passenger_name|account_id/);
 });
 const chromium = process.env.CHROMIUM_BIN ?? "/usr/bin/chromium";
-test("browser DOM: only a visible no-flights notice establishes absence", { skip: !existsSync(chromium) }, () => {
-  const dir = mkdtempSync(join(tmpdir(), "united-no-flights-"));
-  try {
-    const href = "https://www.united.com/en/us/fsr/choose-flights?f=SFO&t=LAX&d=2027-01-10&px=2,0,0,0,0,0,0,0&tqp=R&clm=7&tt=1";
-    const html = `<!doctype html><title>Isolated no-flights fixture</title>
+const browserOptions = { skip: !process.env.CI && !existsSync(chromium) };
+test("browser DOM: only a visible no-flights notice establishes absence", browserOptions, async () => {
+  assert.ok(existsSync(chromium), "Set CHROMIUM_BIN to an installed Chromium browser; CI must run this regression.");
+  const href = "https://www.united.com/en/us/fsr/choose-flights?f=SFO&t=LAX&d=2027-01-10&px=2,0,0,0,0,0,0,0&tqp=R&clm=7&tt=1";
+  const html = `<!doctype html><title>Isolated no-flights fixture</title>
       <button aria-label="Currently in English United States $ enter to change">USD</button>
       <select name="FSRSearch.swap0.travelType"><option value="money">Money</option></select>
       <section id="parent"><div id="notice" class="NoFlights-styles__noFlightTitle">We couldn't find an exact match</div></section>
-      <pre id="out"></pre><script>
+      <script>
       (async () => {
+        await new Promise(resolve => setTimeout(resolve, 500));
         const location = ${JSON.stringify({ origin: "https://www.united.com", pathname: "/en/us/fsr/choose-flights", href })};
         const def = (${sources.get_fare_options})[0];
         const notice = document.getElementById("notice"), parent = document.getElementById("parent");
@@ -233,19 +232,21 @@ test("browser DOM: only a visible no-flights notice establishes absence", { skip
           parent.style.visibility = css === "parent-hidden" ? "hidden" : "visible";
           results.push((await def.execute(${JSON.stringify(input)}, {})).status);
         }
-        document.getElementById("out").textContent = JSON.stringify(results);
-      })().catch(error => document.getElementById("out").textContent = "ERROR: " + error.message);
+        await reportFixture({results});
+      })().catch(error => reportFixture({error: error.message}));
       </script>`;
-    const file = join(dir, "fixture.html");
-    writeFileSync(file, html);
-    const run = spawnSync(chromium, ["--headless", "--no-sandbox", "--disable-gpu", "--disable-extensions", "--disable-background-networking", "--no-first-run", `--user-data-dir=${join(dir, "profile")}`, "--dump-dom", `file://${file}`], { encoding: "utf8", timeout: 30000 });
-    const diagnostics = `browser=${chromium}; error=${run.error?.message}; signal=${run.signal}; status=${run.status}\nstdout=${run.stdout}\nstderr=${run.stderr}`;
-    assert.ok(!run.error, diagnostics);
-    assert.equal(run.status, 0, diagnostics);
-    const json = run.stdout.match(/<pre id="out">([^<]+)<\/pre>/)?.[1];
-    assert.ok(json, diagnostics);
-    assert.deepEqual(JSON.parse(json), ["no_results", "site_changed", "site_changed", "site_changed", "site_changed", "site_changed"]);
-  } finally {
-    rmSync(dir, { recursive: true, force: true });
-  }
+  const results = await runBrowserFixture(html, { browser: chromium });
+  assert.deepEqual(results, ["no_results", "site_changed", "site_changed", "site_changed", "site_changed", "site_changed"]);
+});
+test("browser fixture reports script errors rather than parsing missing output", browserOptions, async () => {
+  await assert.rejects(runBrowserFixture('<script>throw new Error("synthetic failure")</script>', { browser: chromium }), /Browser fixture failed: Uncaught Error: synthetic failure/);
+});
+test("browser fixture rejects malformed completion", browserOptions, async () => {
+  await assert.rejects(runBrowserFixture("<script>reportFixture({})</script>", { browser: chromium }), /invalid completion message/);
+});
+test("browser fixture bounds missing completion and closes its browser", browserOptions, async () => {
+  await assert.rejects(runBrowserFixture("<title>No completion</title>", { browser: chromium, timeoutMs: 2000 }), /Browser fixture did not complete within 2000ms/);
+});
+test("browser fixture reports launch errors", async () => {
+  await assert.rejects(runBrowserFixture("", { browser: "/nonexistent/united-fixture-browser" }), /ENOENT/);
 });
