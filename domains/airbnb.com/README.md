@@ -125,9 +125,9 @@ login and booking starting paths are refused even on the matching host.
 Builder checks on 2026-09-30: 137 fabricated fixture tests passed, as did registry
 validation and the full 1,714-test suite. A separate real-Chromium check passed 22
 preview/starting-page fixtures, with no tool-generated requests or clicks. Fixtures
-cover malformed inputs, denied
-access, unsupported data, price variants, canonical URLs, array/string bounds,
-public-field allowlists, cancellation, request counts, non-navigation, mismatched
+cover malformed inputs, denied access, unsupported data, price variants, canonical
+URLs, array/string bounds, public-field allowlists, abort cancellation, request
+counts, non-navigation, mismatched
 listing/date/guest previews and rejection of fake confirmation inputs.
 
 Kernel live: search and listing reads succeeded from `/help/article/2908` without
@@ -140,15 +140,21 @@ The Kernel page bridge may return non-ASCII output as a JSON string; callers sho
 parse when `typeof output === "string"`. This is runtime behavior, not a changed
 output schema.
 
-Independent initial review found six fixture-reproduced issues: hidden/disabled
-preview controls, unrelated total-stay qualifiers, non-USD currency prefixes, a
-missed verification heading, an account-settings starting path, and the encoded
-Unicode search-URL bound. The first recheck signed off both public readers but
-found inherited disabled controls, conflicting stay-length text and a later visible
-verification heading in the preview. Regression tests cover all of these cases;
-final-source recheck is pending. The revised preview and both public reads succeeded
-live again in builder checks.
+Independent final-source QA at `dcf626a63bd7d379b203cd9f4c26e314a246577c`
+failed all three tools. The previous disabled-control, qualifier, heading, account
+path and URL-bound issues were resolved, but verification classification still
+misses `Verify you’re human` (U+2019) while recognizing the straight-apostrophe
+wording. Real-Chromium fixtures returned `prepared` for that visible heading, and
+both readers issued one mocked GET and returned `ok`. This is a fixture-only
+classification defect, not evidence of a live challenge or access-control bypass.
 
-Local Chromium 153 extension registration succeeded, but optional host permission
-remained ungranted; discovery/invocation could not be verified. Kernel evidence
-alone does not establish parity.
+The independent suite passed 175 of 183 cases; eight failures share that defect.
+All 183 fixture outputs and eight completed Kernel outputs conformed to their
+schemas. The independent Kernel search/listing/dated-preview successes do not
+resolve this semantic failure. Earlier provisional reader sign-offs were withdrawn;
+no source has final QA sign-off. The initial review and both permitted rechecks are
+complete, so all three entries remain `draft`, not `qa_passed` or `verified`.
+
+Local Chromium 153 loaded the extension and stored all three definitions together.
+Optional host permission remained ungranted; discovery/invocation and parity are
+unverified.
