@@ -107,7 +107,12 @@
 
     const str = (v, max = 300) => typeof v === "string" && v.trim() ? v.trim().slice(0, max) : null;
     const int = v => Number.isInteger(v) ? v : null;
-    const iso = v => typeof v === "string" && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2}(\.\d{1,9})?)?(Z|[+-]\d{2}:\d{2})?$/.test(v) && !Number.isNaN(Date.parse(v)) ? v : null;
+    const iso = v => {
+      if (typeof v !== "string" || !/^\d{4}-\d{2}-\d{2}T([01]\d|2[0-3]):[0-5]\d(:[0-5]\d(\.\d{1,9})?)?(Z|[+-]([01]\d|2[0-3]):[0-5]\d)?$/.test(v) || !Number.isFinite(Date.parse(v))) return null;
+      const day = v.slice(0, 10);
+      const stamp = Date.parse(day + "T00:00:00Z");
+      return Number.isFinite(stamp) && new Date(stamp).toISOString().slice(0, 10) === day ? v : null;
+    };
     const observedAt = () => new Date().toISOString();
 
     try {

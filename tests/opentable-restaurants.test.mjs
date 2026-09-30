@@ -132,7 +132,7 @@ const menuData = itemCount => [
 async function run(name, input, o = {}) {
   const calls = { fetch: [] };
   const context = {
-    window: { location: { origin: o.origin ?? ORIGIN } }, document: { title: o.title ?? "OpenTable" }, URL, URLSearchParams,
+    window: { location: { origin: o.origin ?? ORIGIN } }, document: { title: o.title ?? "OpenTable" }, URL, URLSearchParams, TextEncoder,
     fetch: async (path, init) => {
       calls.fetch.push({ path, init });
       const r = typeof o.respond === "function" ? o.respond(path, init) : o.respond;
@@ -174,7 +174,7 @@ test("definitions are page tools on www.opentable.com with registry entries", ()
     assert.equal(entry.kind, "page");
     assert.deepEqual(entry.url_patterns, [ORIGIN + "/*"]);
   }
-  assert.equal(registry.tools.filter(t => t.domain === "opentable.com").length, NAMES.length);
+  assert.equal(registry.tools.filter(t => t.domain === "opentable.com").length, 7);
 });
 
 // --- search_restaurants ----------------------------------------------------------------------------
@@ -432,7 +432,7 @@ test("get_restaurant caps every string field and only returns query-free http(s)
   }
 });
 
-test("get_restaurant returns menus only on request, bounded to 300 items", async () => {
+test("get_restaurant returns menus only on request, bounded to 100 items", async () => {
   const small = profileState(555);
   small.restaurantProfile.menus.menuData = menuData(3);
   const off = await run("get_restaurant", { restaurant_id: 555 }, ok(pageHtml(small)));
@@ -449,7 +449,7 @@ test("get_restaurant returns menus only on request, bounded to 300 items", async
   big.restaurantProfile.menus.menuData = menuData(350);
   const capped = await run("get_restaurant", { restaurant_id: 555, include_menus: true }, ok(pageHtml(big)));
   assert.equal(capped.output.menus.truncated, true);
-  assert.equal(capped.output.menus.menus[0].sections[0].items.length, 300);
+  assert.equal(capped.output.menus.menus[0].sections[0].items.length, 100);
   assertConforms("get_restaurant", capped.output);
   const noMenus = await run("get_restaurant", { restaurant_id: 555, include_menus: true }, ok(pageHtml(profileState(555))));
   assert.deepEqual(noMenus.output.menus, { truncated: false, menus: [] });
@@ -655,6 +655,31 @@ test("get_reviews requires the returned page to equal the requested page and hol
   const ten = await run("get_reviews", { restaurant_id: 555, page: 2 }, ok(pageHtml(exactlyTen)));
   assert.equal(ten.output.status, "ok");
   assert.equal(ten.output.reviews.length, 10);
+});
+
+test("profile arrays and total UTF-8 output are bounded", async () => {
+  const values = Array.from({ length: 70 }, (_, i) => "Value " + i);
+  const state = profileState(555, {}, {}, { cuisines: values.map(name => ({ name })), paymentOptions: values, additionalDetails: values });
+  state.restaurantProfile.restaurant.statistics.reviews.awards = values.map(name => ({ name, location: "Fake" }));
+  state.restaurantProfile.restaurant.statistics.reviews.categories = values.map(name => ({ category: { name } }));
+  const out = await run("get_restaurant", { restaurant_id: 555 }, ok(pageHtml(state)));
+  for (const field of ["cuisines", "payment_options", "amenities", "tags", "awards"]) assert.equal(out.output[field].length, 50);
+  state.restaurantProfile.menus.menuData = [{ title: "Menu", sections: [{ title: "Section", items: Array.from({ length: 100 }, () => ({ title: "🍕".repeat(100), description: "🍕".repeat(250), price: "🍕".repeat(150) })) }] }];
+  const oversized = await run("get_restaurant", { restaurant_id: 555, include_menus: true }, ok(pageHtml(state)));
+  assert.equal(oversized.output.error_kind, "site_changed");
+});
+
+test("invalid search dates fail before fetch and impossible review timestamps become null", async () => {
+  for (const date of ["2099-13-45", "2099-02-30", "2099-00-01"]) {
+    const out = await run("search_restaurants", { query: "pizza Chicago", date }, ok(pageHtml(searchState([]))));
+    assert.equal(out.output.error_kind, "invalid_input");
+    assert.equal(out.calls.fetch.length, 0);
+  }
+  const reviews = [review("D1", { dinedDateTime: "2099-02-30T19:00:00Z", submittedDateTime: "2099-10-10T24:00:00Z" })];
+  const state = profileState(555, {}, { reviewSearchResults: { reviews, totalPages: 1, page: 1, totalCount: 1 } });
+  const out = await run("get_reviews", { restaurant_id: 555 }, ok(pageHtml(state)));
+  assert.equal(out.output.reviews[0].dined_at, null);
+  assert.equal(out.output.reviews[0].submitted_at, null);
 });
 
 test("the tools never navigate, click, submit, or send anything but page GETs", async () => {

@@ -627,6 +627,28 @@
     },
     {
       "domain": "opentable.com",
+      "tool": "get_account_summary",
+      "file": "domains/opentable.com/get_account_summary.js",
+      "kind": "page",
+      "namespace": "opentable.com",
+      "url_patterns": ["https://www.opentable.com/*"],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Authorized account dining points and current-page reservation/invitation counts; expected_account_email is checked against fresh account state. No private item details or writes."
+    },
+    {
+      "domain": "opentable.com",
+      "tool": "get_availability",
+      "file": "domains/opentable.com/get_availability.js",
+      "kind": "page",
+      "namespace": "opentable.com",
+      "url_patterns": ["https://www.opentable.com/*"],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Public standard inventory within 120 minutes of restaurant-local time; same-origin read query, no slot selection or inventory hold. Excludes experience-only and privileged inventory."
+    },
+    {
+      "domain": "opentable.com",
       "tool": "get_restaurant",
       "file": "domains/opentable.com/get_restaurant.js",
       "kind": "page",
@@ -634,12 +656,9 @@
       "url_patterns": [
         "https://www.opentable.com/*"
       ],
-      "status": "verified",
-      "last_verified": "2026-09-29",
-      "notes": "Independent QA passed on the final source. Page tool on www.opentable.com: one restaurant profile by restaurant_id or /r/<slug> URL from the page's server-rendered profile state (address, hours text, amenities, ratings by category, awards, tags, optional published menus). Legacy /<slug> links are rejected before any request; use restaurant_id. No bookable times, reviews or account data. Array fields are not count-capped. Live-verified on Kernel and the local extension.",
-      "provenance": {
-        "qa_agent": "agt_af9a78c90e1647b33555"
-      }
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Public restaurant profile by id or allowlisted profile URL. Array fields capped at 50, menus at 100 items, total output at 200 KB. Revised source awaits independent QA."
     },
     {
       "domain": "opentable.com",
@@ -650,12 +669,31 @@
       "url_patterns": [
         "https://www.opentable.com/*"
       ],
-      "status": "verified",
-      "last_verified": "2026-09-29",
-      "notes": "Independent QA passed on the final source. Page tool on www.opentable.com: one page of 10 diner reviews in the site's newest order (by dining date), read from the profile page's server-rendered state for that page number. Omits reviewer names and photos and restaurant reply text. Out-of-range pages are reported as no_results. Live-verified on Kernel and the local extension.",
-      "provenance": {
-        "qa_agent": "agt_af9a78c90e1647b33555"
-      }
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Public reviews, 10 per page in newest dining-date order, no diner identities. Out-of-range pages return no_results. Calendar timestamp validation revised; awaits independent QA."
+    },
+    {
+      "domain": "opentable.com",
+      "tool": "list_saved_restaurants",
+      "file": "domains/opentable.com/list_saved_restaurants.js",
+      "kind": "page",
+      "namespace": "opentable.com",
+      "url_patterns": ["https://www.opentable.com/*"],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Authorized Favorites restaurant IDs, 50 per page; identity checked before and after read query. Empty live account observed; populated lists require fixture QA. No save/unsave."
+    },
+    {
+      "domain": "opentable.com",
+      "tool": "prepare_reservation",
+      "file": "domains/opentable.com/prepare_reservation.js",
+      "kind": "page",
+      "namespace": "opentable.com",
+      "url_patterns": ["https://www.opentable.com/*"],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Exact standard date/time/party/seating preparation only. No substitution, slot selection, hold or booking. Fees and account not verified; human site review required. No trusted approval execution path."
     },
     {
       "domain": "opentable.com",
@@ -666,12 +704,9 @@
       "url_patterns": [
         "https://www.opentable.com/*"
       ],
-      "status": "verified",
-      "last_verified": "2026-09-29",
-      "notes": "Independent QA passed on the final source. Page tool on www.opentable.com: free-text restaurant search with optional date, time and party size, one results page of up to 50 per call, read from the search page's server-rendered state. Returns no bookable time slots. An Akamai 403, 'Access Denied' page or 200 challenge page is reported as challenge. Live-verified on Kernel and the local extension.",
-      "provenance": {
-        "qa_agent": "agt_af9a78c90e1647b33555"
-      }
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Public free-text search, up to 50 per page, optional date/time/party. Does not prove availability. Malformed calendar dates now fail before interaction; awaits independent QA."
     },
     {
       "domain": "purelymail.com",

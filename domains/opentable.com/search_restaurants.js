@@ -99,7 +99,7 @@
     if (!input || typeof input !== "object" || Array.isArray(input) || Object.keys(input).some(k => !allowed.includes(k))) return fail("invalid_input", "Unknown or missing input; allowed fields are " + allowed.join(", ") + ".");
     if (typeof input.query !== "string" || input.query.trim().length < 2 || input.query.trim().length > 100) return fail("invalid_input", "query must be a string of 2 to 100 characters.");
     const query = input.query.trim().replace(/\s+/g, " ");
-    const isDate = v => typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v) && new Date(v + "T00:00:00Z").toISOString().slice(0, 10) === v;
+    const isDate = v => typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v) && Number.isFinite(Date.parse(v + "T00:00:00Z")) && new Date(v + "T00:00:00Z").toISOString().slice(0, 10) === v;
     if (input.date !== undefined && !isDate(input.date)) return fail("invalid_input", "date must be a real calendar date, YYYY-MM-DD.");
     if (input.time !== undefined && !(typeof input.time === "string" && /^([01]\d|2[0-3]):[0-5]\d$/.test(input.time))) return fail("invalid_input", "time must be HH:MM in 24-hour time.");
     if (input.time !== undefined && input.date === undefined) return fail("invalid_input", "time needs date.");
