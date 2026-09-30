@@ -875,9 +875,12 @@
       "url_patterns": [
         "https://seats.aero/*"
       ],
-      "status": "draft",
-      "last_verified": null,
-      "notes": "Signed-out cached public reads only; no login, PRO, live search or booking navigation. Independent QA pending."
+      "status": "qa_passed",
+      "last_verified": "2026-09-30",
+      "notes": "Signed-out cached reads only; no login, PRO, live search or booking links. Independent success/failure fixtures passed; genuine trip success is unverified because public search was challenged.",
+      "provenance": {
+        "qa_agent": "agt_4742bece3a8f2263e5cf"
+      }
     },
     {
       "domain": "seats.aero",
@@ -888,9 +891,12 @@
       "url_patterns": [
         "https://seats.aero/*"
       ],
-      "status": "draft",
-      "last_verified": null,
-      "notes": "Signed-out cached public reads only; no login, PRO, live search or booking navigation. Independent QA pending."
+      "status": "verified",
+      "last_verified": "2026-09-30",
+      "notes": "Signed-out program reference only; no account or paid access. Independent live listing returned 33 matches on the homepage and /terms without navigation; local extension success is fixture-backed.",
+      "provenance": {
+        "qa_agent": "agt_4742bece3a8f2263e5cf"
+      }
     },
     {
       "domain": "seats.aero",
@@ -901,9 +907,12 @@
       "url_patterns": [
         "https://seats.aero/*"
       ],
-      "status": "draft",
-      "last_verified": null,
-      "notes": "Signed-out cached public reads only; no login, PRO, live search or booking navigation. Independent QA pending."
+      "status": "qa_passed",
+      "last_verified": "2026-09-30",
+      "notes": "Signed-out cached reads through 57 UTC days; no PRO, live search or booking navigation. Independent success/failure fixtures passed; genuine search returned challenge and was not retried.",
+      "provenance": {
+        "qa_agent": "agt_4742bece3a8f2263e5cf"
+      }
     },
     {
       "domain": "southwest.com",

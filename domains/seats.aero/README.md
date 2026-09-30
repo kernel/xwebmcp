@@ -4,9 +4,9 @@ Seats.aero public, cached award flight availability and mileage-program referenc
 
 | tool | file | status | notes |
 | --- | --- | --- | --- |
-| list_award_programs | [list_award_programs.js](list_award_programs.js) | draft | Program names, cabins, alliances and transfer-partner keys; one reference-data read |
-| search_award_availability | [search_award_availability.js](search_award_availability.js) | draft | Cached program/cabin minima within the conservative public date window; one search read |
-| get_award_trips | [get_award_trips.js](get_award_trips.js) | draft | Cached itinerary segments, local times, miles and taxes; one enrichment read, no booking links |
+| list_award_programs | [list_award_programs.js](list_award_programs.js) | verified | Program names, cabins, alliances and transfer-partner keys; one reference-data read |
+| search_award_availability | [search_award_availability.js](search_award_availability.js) | qa_passed | Cached program/cabin minima within the conservative public date window; one search read |
+| get_award_trips | [get_award_trips.js](get_award_trips.js) | qa_passed | Cached itinerary segments, local times, miles and taxes; one enrichment read, no booking links |
 
 ## Scope and loading
 
@@ -148,8 +148,24 @@ an airline code is represented by `airline_code: null`. A far-date search return
 A cookie-free public search request returned Cloudflare HTTP 403; that path was
 stopped without retries or configuration changes. Final-source search/trip success
 has not been live-verified; their success parsing is grounded in the 2026-09-29
-observations and fabricated fixtures. Independent QA is pending; all tools remain
-draft.
+observations and fabricated fixtures.
+
+Independent QA on 2026-09-30 passed final tool source at
+`e598a928e8f873d1b9571810356ed792d0c8aac7`: 1,603 repository tests, 14 extension
+tests, 27 independent adversarial tests and `go test ./...` passed. The review
+resolved regex coercion of array-valued string fields and cabin filtering that could
+hide mismatched trip identities; a 40-case identity/segment matrix across cabin
+filters now fails closed.
+
+Genuine independent Kernel listing on both the homepage and `/terms` returned 33
+programs; the `/terms` invocation returned three with the URL unchanged. That dated
+non-entry-page success establishes `list_award_programs` as `verified`. One ordinary
+signed-out search returned `challenge` and was stopped without retries; no genuine
+trip request followed. Search and trip success/failure fixtures passed independently,
+so those tools are `qa_passed`, not `verified`. The independent run also exercised
+all three tools in real Chromium 153 using intercepted fixtures on the preceding
+source revision. Final changed-source QA used independent fixtures, without claiming
+final-source Kernel/local-extension parity on genuine site data.
 
 A real local Chromium 153 extension check installed the entire namespace and invoked
 all three tools successfully against fabricated HTML/JSON intercepted before network
