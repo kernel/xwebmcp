@@ -4,6 +4,20 @@
   "tools": [
     {
       "domain": "aa.com",
+      "tool": "get_fare_options",
+      "file": "domains/aa.com/get_fare_options.js",
+      "kind": "page",
+      "namespace": "aa.com",
+      "url_patterns": [
+        "https://aa.com/*",
+        "https://*.aa.com/*"
+      ],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Read per-cabin cash or award fares and loaded nearby-date calendar on current outbound results; offset pagination; no selection."
+    },
+    {
+      "domain": "aa.com",
       "tool": "get_flight_status",
       "file": "domains/aa.com/get_flight_status.js",
       "kind": "page",
@@ -12,12 +26,9 @@
         "https://aa.com/*",
         "https://*.aa.com/*"
       ],
-      "status": "verified",
-      "last_verified": "2026-09-29",
-      "notes": "Public flight status for one American-marketed flight number and origin-local date, from American's own flight-status service through one same-origin request; page tool that never navigates. Works only on https://www.aa.com pages (wrong_page elsewhere on aa.com). Independent QA signed off on the final source and saw live successes from two pages in the Kernel runtime and the local Chrome extension. Not observed live: blocked or rate_limited answers from the service itself, cancelled or diverted flights.",
-      "provenance": {
-        "qa_agent": "agt_8e0c8369e539ef0b8159"
-      }
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Public flight status with snake_case schema; one same-origin request. Re-QA pending after schema migration."
     },
     {
       "domain": "aa.com",
@@ -38,6 +49,20 @@
     },
     {
       "domain": "aa.com",
+      "tool": "prepare_itinerary",
+      "file": "domains/aa.com/prepare_itinerary.js",
+      "kind": "page",
+      "namespace": "aa.com",
+      "url_patterns": [
+        "https://aa.com/*",
+        "https://*.aa.com/*"
+      ],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Read-only preview of an exact current fare option; no booking or hold; no executable confirmation mechanism."
+    },
+    {
+      "domain": "aa.com",
       "tool": "search_flights",
       "file": "domains/aa.com/search_flights.js",
       "kind": "cdp",
@@ -46,12 +71,9 @@
         "https://aa.com/*",
         "https://*.aa.com/*"
       ],
-      "status": "verified",
-      "last_verified": "2026-09-24",
-      "notes": "Independent QA of the search implementation plus a live migration check from an expired booking page: 40 exact options. First-page outbound options, per-person from-fares; nearby airports and ground transport are labeled. Challenges and connection failures remain possible. Independent repeated-transition coverage of the radio mitigation and long-haul round-trip coverage remain incomplete; see the domain README.",
-      "provenance": {
-        "qa_agent": "agt_dbdb039786be4bed1121"
-      }
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Cash fares or opt-in award miles and taxes; up to 100 first-page outbound rows. Re-QA pending after award extension; results URLs omit session queries."
     },
     {
       "domain": "alaskaair.com",

@@ -4,28 +4,62 @@ Tools for American Airlines (https://www.aa.com).
 
 | tool | file | status | notes |
 |---|---|---|---|
-| get_flight_status | [get_flight_status.js](get_flight_status.js) | verified | Public status for one American-marketed flight number and origin-local date; page tool, `www.aa.com` pages only. |
-| search_flights | [search_flights.js](search_flights.js) | verified | First-page outbound options; round-trip fares do not select a return flight. |
+| get_fare_options | [get_fare_options.js](get_fare_options.js) | draft | Current-page cabin fares and nearby-date calendar; cash or miles; no interaction. |
+| prepare_itinerary | [prepare_itinerary.js](prepare_itinerary.js) | draft | No-write preview and manual handoff; never selects, books or holds. |
+| get_flight_status | [get_flight_status.js](get_flight_status.js) | draft | Public status for one American-marketed flight number and origin-local date; page tool, `www.aa.com` pages only. |
+| search_flights | [search_flights.js](search_flights.js) | draft | First-page outbound options; round-trip fares do not select a return flight. |
 | login | [login.js](login.js) | qa_passed | DDG-only entry; CAPTCHA is a typed failure. Full authentication remains unverified. |
 
 ## Scope and loading
 
-`search_flights.js` is a single expression returning the tool-definition array, with no imports or external dependencies. Register it with namespace `aa.com`:
+Every file is one expression containing one definition. Register the **entire** namespace atomically; replacing it with just one file removes the other tools:
 
 ```js
-const source = (await import("node:fs")).readFileSync("domains/aa.com/search_flights.js", "utf8");
-await webmcp.addCustomTools({
-  namespace: "aa.com",
-  tools: eval(source),
-  forceOverwriteNamespace: true,
-});
+const fs = await import("node:fs");
+const names = ["get_fare_options", "get_flight_status", "login", "prepare_itinerary", "search_flights"];
+const tools = names.flatMap(name => (0, eval)("(" + fs.readFileSync(`domains/aa.com/${name}.js`, "utf8") + ")"));
+await webmcp.addCustomTools({ namespace: "aa.com", tools, forceOverwriteNamespace: true });
 ```
 
 The CDP tool matches `https://aa.com/*` and `https://*.aa.com/*`. It checks the current origin, path, form action, and visible enabled search controls. If the page is unsuitable, it navigates to `https://www.aa.com/homePage.do` before interacting with the form. It does not depend on prior search state.
 
-Inputs are uppercase IATA codes, ISO dates, `roundTrip` or `oneWay`, and 1–9 adult passengers (default 1). Round trips require a return date; one-way searches reject one. Runtime date validation permits today through 331 days ahead, using UTC dates. This is a cash-fare search, not an award search. It never selects a fare, books, pays, or enters personal data.
+Inputs are uppercase IATA codes, ISO dates, `roundTrip` or `oneWay`, and 1–9 adult passengers (default 1). Round trips require a return date; one-way searches reject one. Runtime date validation permits today through 331 days ahead, using UTC dates. Cash remains the default; `pay_with: "miles"` requests awards with miles and displayed taxes. It never selects a fare, books, pays, or enters personal data.
 
-Outputs include every rendered first-page option, result counts, the results URL, marketing flight numbers/carrier codes, published operator labels, transport modes, local departure/arrival times, arrival-day offset, duration, stops, and the lowest displayed per-person from-fare. A displayed `$` is preserved as a currency symbol rather than guessed to mean a particular ISO currency. Round-trip prices do not identify a selected return itinerary or guarantee the total for all passengers.
+Outputs include up to 100 rendered first-page options, result counts, the results URL without session queries or fragments, marketing flight numbers/carrier codes, published operator labels, transport modes, local departure/arrival times, arrival-day offset, duration, stops, and the lowest displayed per-person from-fare. A displayed `$` is preserved as a currency symbol rather than guessed to mean a particular ISO currency. Round-trip prices do not identify a selected return itinerary or guarantee the total for all passengers.
+
+## Fare exploration and itinerary preparation
+
+`get_fare_options` and `prepare_itinerary` are page tools. They inspect only the current document; no fetch, navigation, click, form write or browser storage. Both require the outbound `/booking/choose-flights/1` page on `www.aa.com`; other pages return `wrong_page`. Default URL patterns are preserved. No native tools were found on the public homepage or booking results on 2026-09-30.
+
+`search_flights` still uses CDP: submitting the search replaces the homepage document and its result contains structured flight rows parsed after arrival. A page prototype of the same public form submission demonstrated that transition. `pay_with` accepts `cash` (default, historical price shape) or `miles` (price contains `miles`, `tax_amount`, `currency_symbol`, `basis`, `per_person`, `fare_label`). Both create a search session but never select a fare, hold inventory, or change account data. Current public award searches succeeded without sign-in; this is not a promise that every search will work anonymously. The award layout does not expose cash-layout transport icons, so `transportTypes` is `unknown` when no mode is published, not an inferred aircraft flight.
+
+`get_fare_options({offset: 0, limit: 10})` reads up to 20 per-cabin offers per call, across at most 100 rendered flight rows and six tiers per row. `next_offset` paginates those already-rendered offers; it does not fetch more flights. An offset beyond the list returns an empty page with the positive `total_options`, not `no_results`. The same response includes at most 31 already-loaded calendar dates (13 observed). No date or carousel control is clicked. Calendar amounts omit award taxes because the calendar does not display them. A cash currency symbol is not asserted to be an ISO currency. Flight times are airport-local and row airports may be nearby alternatives; inspect them before preparing.
+
+`prepare_itinerary({option_id})` re-reads the current results and returns one outbound quote with `status: prepared`, `booking_performed: false`, `execution_available: false`, and three manual handoff steps. Each `option_id` is a SHA-256 digest of the observed date, row/tier position, flight, route, times, fare and price; it is a content snapshot, not a reservation, persistent draft, human identity or approval token. Changed inputs to that digest cause `stale_selection`. Reordering rows also invalidates IDs. The preview does not establish passenger count, a return itinerary, a party total, complete fare rules, refund/change eligibility or miles sufficiency. Re-read after any change.
+
+### Per-tool safety design
+
+- **Search:** bounded form preparation and one search submission; observed payment mode checked before submission. No fare button, passenger identity, seat, payment or confirmation action. Cancellation stops before submission or returns unknown search observation without retries. Results URLs strip query strings and fragments; arbitrary website errors and thrown exception text are not returned.
+- **Fare reads:** current-page allowlist only; no arbitrary scripts, raw page state, member balances, names, session URLs or account endpoints. Input is validated before any page read. Unsupported/missing layouts return `site_changed`, not fabricated availability. Site labels are untrusted data.
+- **Preparation:** read-only computation. No inventory action or write exists, so repeat calls cannot duplicate a booking. Pretend confirmation fields (`confirmed`, `confirm`, extra properties) are rejected. It does not collect credentials or booking identifiers; wrong-account checks are not applicable because no account-specific content or action is used.
+- **Execution withheld:** booking, inventory holds, cancellation, check-in, seats and paid changes need exact account/action/date/price/terms approval and postcondition design. Current runtime spec does not enforce trusted human approval for those parameters. A model boolean, hash or annotation cannot replace that enforcement. No final execution tool or automatic continuation from preparation is shipped, and none of those actions was exercised live.
+- **Authorized trip reads omitted:** prior authorized discovery showed only an empty reservations table; populated row schemas and account/target verification remain unobserved. No reservation identifiers were fabricated, no trip was created for QA, and no new login was pursued. Generic account-summary/preferences tools are outside this increment.
+
+### Broad implementation QA
+
+All changed/new sources are initially `draft` pending the existing independent reviewer's Sol/Codex review. Older QA sections below record historical revisions only.
+
+Author live checks on 2026-09-30 in one public signed-out Kernel browser: full five-tool namespace replacement; public cash and award DFW–ORD one-way 2026-10-15 returned 40 outbound flight rows; fare exploration returned 117 cash tiers and 79 award tiers, a 13-date carousel, and a 20-option output of about 11 KB. Cash and award preview invocations returned `prepared` with no booking/hold. Unknown option ID returned `stale_selection`; `confirmed: true` returned `error`. Migrated flight status returned `ok` from the flight-status search page for AA 100 on 2026-09-30. Login was registered but not invoked. No account or trip mutation occurred.
+
+Local fixtures cover cash/miles parsing, dates and currency, bounded pagination, no-write preparation, stale fare/date/route/flight/label/disabled guards, malformed input before page reads, pretend confirmation, unrelated pages, challenges/login/rate-limit states, missing layout and cancellation. They are fabricated, not live mutation evidence. Independent Kernel and local Chrome extension verification is recorded at closeout; no runtime parity is implied by fixture tests alone.
+
+### Additional known limitations
+
+- Only current rendered outbound results are supported, not return selection, multi-city itineraries, full-month availability or calendar paging.
+- Cash buttons show cabin-group **from** prices, not a fully specified fare product or committed quote. Award values are displayed miles plus taxes, not group totals or a promise of availability.
+- Calendar price availability and search session expiry are site-controlled; missing selected-date or fare signals fail closed. No brute-force date sweeps or access-bypass loops.
+- No populated trip reads, generic account tools, booking/hold execution, cancellation, check-in, seats, paid bags or account writes.
+- Flight-status input/output fields now use snake_case per current main's repository contract (for example `flight_number`, `flight_count`, `status_page_url`, `http_status`). This replaces the earlier unmerged camelCase contract. Site request/response payload names remain unchanged.
 
 ## Site quirks
 
@@ -61,7 +95,7 @@ node --test tests/aa.com.test.mjs
 ## Known limitations
 
 - First results page only; round-trip searches return outbound options with per-person from-fares and never a selected return flight or a party total.
-- Adults only (1–9); no children, infants, award searches, or later result pages.
+- Adults only (1–9); no children, infants, or later result pages.
 - Nearby-airport and bus alternatives can be returned; check `matchesRequestedAirports`, `transportTypes`, and `exactMatchCount` before treating a row as an exact match.
 - American serves human-verification and access-denial pages; these return `blocked`, and a long-haul round trip can also fail on connection errors.
 - Independent repeated-transition coverage of the trip-type radio mitigation and long-haul round-trip coverage remain incomplete.
@@ -75,7 +109,7 @@ node --test tests/aa.com.test.mjs
 
 ## Flight status
 
-`get_flight_status` returns the public flight status American shows on its flight-status page for one American-marketed flight number on one date. It needs no login. It is `verified`: fixture tests, an independent QA sign-off on the final source and live successes from two pages (see QA below).
+`get_flight_status` returns the public flight status American shows on its flight-status page for one American-marketed flight number on one date. It needs no login. Its earlier camelCase source was verified; the current snake_case migration is draft pending fresh independent QA.
 
 ### Native WebMCP
 
@@ -90,17 +124,17 @@ American registers no WebMCP tools of its own. `webmcp.listTools()` returned an 
 Register the whole namespace together. The patterns are the domain default (`https://aa.com/*`, `https://*.aa.com/*`), so the tool is also listed on other aa.com hosts (for example `login.aa.com`), but it only works on a `https://www.aa.com` page and returns `wrong_page` elsewhere without sending anything.
 
 ```js
-const names = ["get_flight_status", "login", "search_flights"];
+const names = ["get_fare_options", "get_flight_status", "login", "prepare_itinerary", "search_flights"];
 const fs = await import("node:fs");
 const tools = names.flatMap(n => (0, eval)("(" + fs.readFileSync(`domains/aa.com/${n}.js`, "utf8") + ")"));
 await webmcp.addCustomTools({ namespace: "aa.com", tools, forceOverwriteNamespace: true });
 const live = (await webmcp.listTools()).find(t => t.source.custom?.namespace === "aa.com" && t.tool.name === "get_flight_status");
-const result = await webmcp.invokeTool(live.tool_ref, { flightNumber: "1938", date: "2026-10-15" }, { timeoutSec: 60 });
+const result = await webmcp.invokeTool(live.tool_ref, { flight_number: "1938", date: "2026-10-15" }, { timeoutSec: 60 });
 ```
 
-Input: `flightNumber` (1–9999, optionally prefixed `AA`, as in the American-marketed entries of `search_flights` `flightNumbers`) and `date` (the flight's departure date at its origin airport, `YYYY-MM-DD`). Other carriers, airport pairs and reservation data are not accepted. The tool rejects malformed input itself before any request; American's service answers a malformed date with HTTP 500, so a bad date must not reach it.
+Input: `flight_number` (1–9999, optionally prefixed `AA`, as in the American-marketed entries of `search_flights` `flightNumbers`) and `date` (the flight's departure date at its origin airport, `YYYY-MM-DD`). Other carriers, airport pairs and reservation data are not accepted. The tool rejects malformed input itself before any request; American's service answers a malformed date with HTTP 500, so a bad date must not reach it.
 
-Output on success: `flights[]` (at most 10 rows; `flightCount` is the number American returned) with status text and key, `canceled`/`diverted`/`landed`/`inFlight`, departure and arrival airport, city, terminal, gate, baggage claim, scheduled/estimated/actual times as ISO 8601 with the airport's UTC offset, aircraft name and code, `operatedBy` for American Eagle flights, wifi and power flags, the incoming flight number (leading zeros removed; the site's `0000` placeholder becomes `null`) and date, and `statusPageUrl`, American's own page for the flight. Fields outside this list, including tail number and everything the site returns about the signed-in member, are dropped. Other outcomes are `no_results`, `blocked`, `rate_limited`, `site_changed`, `wrong_page` and `error`, each with a message and the HTTP status when a request was made. The tool sends exactly one request per call and never retries.
+Output on success: `flights[]` (at most 10 rows; `flight_count` is the number American returned) with status text and key, `canceled`/`diverted`/`landed`/`in_flight`, departure and arrival airport, city, terminal, gate, baggage claim, scheduled/estimated/actual times as ISO 8601 with the airport's UTC offset, aircraft name and code, `operated_by` for American Eagle flights, wifi and power flags, the incoming flight number (leading zeros removed; the site's `0000` placeholder becomes `null`) and date, and `status_page_url`, American's own page for the flight. Fields outside this list, including tail number and everything the site returns about the signed-in member, are dropped. Other outcomes are `no_results`, `blocked`, `rate_limited`, `site_changed`, `wrong_page` and `error`, each with a message and the HTTP status when a request was made. The tool sends exactly one request per call and never retries.
 
 ### Observed mechanism
 
@@ -109,12 +143,12 @@ Public pages, observed by the author on 2026-09-29 (Kernel stealth browser on a 
 - `https://www.aa.com/travelInformation/flights/status` → **Flight number** tab → Search loads `https://www.aa.com/travelInformation/flights/status/detail?search=AA|100|2026,9,29&ref=search`. That page issues `POST https://www.aa.com/flightinfo/v1.2/` with the JSON body `[{"airlineCode":"AA","destAirportCode":"","flightNumber":"100","fltOrgDate":"2026-09-29","orgAirportCode":""}]` and answers `{"flights":[…]}`.
 - The same request sent with `fetch` from a `www.aa.com` page returned the same shape. American's service answered HTTP 400 unless both the `locale: en` and `Client-Details: aa-ct-aacom/flifoui` request headers were present, so the tool sends them; the second is the flight-status page's own client identifier.
 - `fltOrgDate` is the origin-local departure date: independent QA found a Sydney departure at 09:10 local, which falls on the previous UTC day, under its local date. A date about 60 days ahead returned the scheduled times with `Flight status not available`; dates a year or more ahead also returned rows. A date 7 days back returned `Arrived at gate` with actual departure and arrival times and a baggage claim; a date 60 days back returned an empty list. An unknown flight number returned an empty list with HTTP 200. An unparseable date returned HTTP 500.
-- The detail page shows no flight unless the `ref=search` parameter is present, so `statusPageUrl` includes it.
+- The detail page shows no flight unless the `ref=search` parameter is present, so `status_page_url` includes it.
 - An American Eagle flight returned `codeShareInfo.operatedBy: "American Eagle"`.
 
 ### Flight status QA
 
-Status is `verified` (2026-09-29). Independent QA (agent `agt_8e0c8369e539ef0b8159`) reviewed three commits and signed off on each: `0f9b673` (one minor defect: the site's `0000` placeholder and zero-padded numbers leaked into `incomingFlight`, plus README claims that overstated the evidence), `cf023d6` (fixes verified; two nits) and `3defa44`, the final tool source. Every commit after `3defa44` changes only this README and `registry.json`.
+Status is `verified` (2026-09-29). Independent QA (agent `agt_8e0c8369e539ef0b8159`) reviewed three commits and signed off on each: `0f9b673` (one minor defect: the site's `0000` placeholder and zero-padded numbers leaked into `incoming_flight`, plus README claims that overstated the evidence), `cf023d6` (fixes verified; two nits) and `3defa44`, the final tool source. That sign-off applies to the historical camelCase revision, not the current snake_case migration.
 
 Fixture tests (`tests/aa-flight-status.test.mjs`, 21 tests, fabricated flights, stubbed page): input rejection before any request, the exact request, wrong host, challenge pages, field allowlist and cleaning, schedule-only rows, cancellation, incoming-flight normalization, the 10-row cap, no-results, every HTTP failure mapping, the 20 second abort, no navigation, and negative cases against the output schema. QA also mutation-checked the tests and fuzzed the real output schema with about 900 adversarial fixtures (no schema violations, one request per case).
 
@@ -123,9 +157,9 @@ Independent live cases on the final source, 2026-09-29, public and signed out, i
 | Case | Result |
 |---|---|
 | Registration | All three tools listed, `get_flight_status` is `page`, no native tool present |
-| AA 100 on 2026-09-29, invoked from `/homePage.do` and from `/travelInformation/flights/status` | `ok`; identical apart from `observedAt` |
-| AA 4500 on 2026-09-30 | `ok`, two rows (two separate flights sharing the number, one in each direction), `operatedBy` an American Eagle operator, `incomingFlight` null |
-| AA 100 on 2026-09-22 | `ok`, `Arrived at gate` with actual times, `incomingFlight` 101 |
+| AA 100 on 2026-09-29, invoked from `/homePage.do` and from `/travelInformation/flights/status` | `ok`; identical apart from `observed_at` |
+| AA 4500 on 2026-09-30 | `ok`, two rows (two separate flights sharing the number, one in each direction), `operated_by` an American Eagle operator, `incoming_flight` null |
+| AA 100 on 2026-09-22 | `ok`, `Arrived at gate` with actual times, `incoming_flight` 101 |
 | AA 9999 on 2026-09-29 | `no_results`, HTTP 200 |
 | Invoked from `creditcards.aa.com` | `wrong_page`, no request |
 | Malformed input | `error`, no request |
@@ -136,13 +170,13 @@ Runtime parity. Kernel browser runtime: ran, as above. Local Chrome extension ru
 
 Author live checks on 2026-09-29 covered the same cases plus a schedule-only date about 60 days ahead. `blocked` was observed live once: after about an hour of repeated author probing, `www.aa.com/homePage.do` began returning Akamai's "Access Denied" page to that browser and to a fresh browser on the same proxy; the tool returned `blocked` without sending a request. A different proxy loaded the homepage normally. QA confirmed the same behavior with a synthetic denied page.
 
-Not observed live: `blocked` or `rate_limited` answered by the flight-status service itself, `passengerMessage` with text, and a cancelled or diverted flight. These paths are covered by fixtures only.
+Not observed live: `blocked` or `rate_limited` answered by the flight-status service itself, `passenger_message` with text, and a cancelled or diverted flight. These paths are covered by fixtures only.
 
 ### Flight status known limitations
 
 - American-marketed flight numbers only, by number and date. There is no route or airport search; use `search_flights` to find flight numbers.
 - The service is American's own web endpoint, not a documented API. Both required request headers were found by observation and could change; the tool reports `site_changed` when the answer is not in the observed shape.
-- `Flight status not available` means American publishes only the schedule; it is not evidence of a delay or cancellation. On such rows `canceled`, `diverted`, `landed` and `inFlight` are `false` because nothing has been reported, not because the flight is confirmed as operating normally. `no_results` is not proof that the flight never operates: American keeps only a limited window of past dates.
+- `Flight status not available` means American publishes only the schedule; it is not evidence of a delay or cancellation. On such rows `canceled`, `diverted`, `landed` and `in_flight` are `false` because nothing has been reported, not because the flight is confirmed as operating normally. `no_results` is not proof that the flight never operates: American keeps only a limited window of past dates.
 - Wifi and power flags are American's values. `false` was seen on schedule-only rows and on a departed flight, so it does not prove the aircraft lacks them.
 - Only `www.aa.com` pages work. The tool is listed on other aa.com hosts because the namespace uses the domain default patterns.
 - Bot protection can block the page or the request. This is reported as `blocked` and is not an answer about the flight. The page-level denial was seen during the author checks; a denial of the flight-status request itself was not.
@@ -155,7 +189,7 @@ Not observed live: `blocked` or `rate_limited` answered by the flight-status ser
 
 Most useful lead: MFA delivery selection is the furthest verified credential-flow stage. A future authorized end-to-end check should retain the DDG organic-click entry and verify progression from MFA to actual account UI; do not treat MFA alone as logged in.
 
-`login.js` is a self-contained tool-definition array. Register it with namespace `aa.com`, using `tools: eval(source)` as above. Omit `forceOverwriteNamespace` when adding it alongside the search tool so the other registration is not removed. Both apex and wildcard subdomains match; the actual sign-in flow redirects from `www.aa.com/loyalty/login` to `login.aa.com/login`.
+`login.js` is a self-contained tool-definition array. Include it when registering the entire `aa.com` namespace as shown above. Both apex and wildcard subdomains match; the actual sign-in flow redirects from `www.aa.com/loyalty/login` to `login.aa.com/login`.
 
 The tool checks the current page before interacting. From an unsuitable page, including another subdomain or unrelated origin, it opens `https://start.duckduckgo.com/`, issues the fixed public query `american airlines login` through the search URL, and clicks the first organic result. This is the only entry path, using a real organic click rather than a spoofed referrer header. It clicks only if that first result is `https://www.aa.com/loyalty/login` or `https://login.aa.com/login`; it never skips to a later result or navigates directly to AA. Missing results time out after 20 seconds. An unsuitable result, selector miss, unexpected origin, or uncertain navigation/click returns a step-specific failure and stops. Search-page challenges return failure with `error_kind: captcha_or_challenge`; reaching a challenge, MFA, or error on AA never triggers another entry attempt. The search query contains no account input, and no referrer header is spoofed. A suitable existing login form or MFA screen is reused. A detected CAPTCHA stops the flow before any search navigation, filling, or further submission; the referrer route is never retried to work around a challenge. Supply an AAdvantage number or username and password, or explicitly set `use_prefilled: true` after a human or vault fills both fields. Prefilled mode cannot recover values lost when an unsuitable page is replaced. The tool does not support email identifiers, OTP submission, MFA-method selection, account recovery, or account registration. The stealth browser's built-in solver may run normally; the tool does not disable it. No remember-me or third-party SSO control was observed.
 

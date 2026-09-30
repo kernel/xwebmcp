@@ -86,7 +86,7 @@ function setup({ origin = WWW, title = "American Airlines", challengeFrame = fal
   return { tool, calls, navigations, globals, run: (input, context) => tool.execute(input, context).then(plain) };
 }
 
-const good = { flightNumber: "1234", date: "2026-10-01" };
+const good = { flight_number: "1234", date: "2026-10-01" };
 
 test("source is one page-kind definition that matches its registry entry", () => {
   const { tool } = setup();
@@ -110,10 +110,10 @@ test("execute re-created from its source runs with only page globals", async () 
 
 test("invalid input is rejected before any request or page access", async () => {
   const bad = [
-    undefined, null, [], "1234", {}, { flightNumber: "1234" }, { date: "2026-10-01" },
-    { ...good, extra: 1 }, { ...good, flightNumber: 1234 }, { ...good, flightNumber: "0" }, { ...good, flightNumber: "0100" },
-    { ...good, flightNumber: "10000" }, { ...good, flightNumber: "-5" }, { ...good, flightNumber: "aa100" }, { ...good, flightNumber: "AA  100" },
-    { ...good, flightNumber: "BA 100" }, { ...good, flightNumber: "12a" }, { ...good, flightNumber: " 1234" },
+    undefined, null, [], "1234", {}, { flight_number: "1234" }, { date: "2026-10-01" },
+    { ...good, extra: 1 }, { ...good, flight_number: 1234 }, { ...good, flight_number: "0" }, { ...good, flight_number: "0100" },
+    { ...good, flight_number: "10000" }, { ...good, flight_number: "-5" }, { ...good, flight_number: "aa100" }, { ...good, flight_number: "AA  100" },
+    { ...good, flight_number: "BA 100" }, { ...good, flight_number: "12a" }, { ...good, flight_number: " 1234" },
     { ...good, date: "2026-02-30" }, { ...good, date: "2026-13-01" }, { ...good, date: "2026/10/01" }, { ...good, date: "10/01/2026" },
     { ...good, date: "1999-01-01" }, { ...good, date: "2026-10-01T00:00:00Z" }, { ...good, date: 20261001 }
   ];
@@ -122,7 +122,7 @@ test("invalid input is rejected before any request or page access", async () => 
     Object.defineProperty(page.globals.document, "title", { get() { throw new Error("page touched"); } });
     const out = await page.run(input);
     assert.equal(out.status, "error", JSON.stringify(input));
-    assert.equal(out.httpStatus, null);
+    assert.equal(out.http_status, null);
     assert.equal(page.calls.length, 0, JSON.stringify(input));
     assert.ok(conforms(page.tool.tool.outputSchema, out));
   }
@@ -131,7 +131,7 @@ test("invalid input is rejected before any request or page access", async () => 
 test("flight numbers with or without the AA prefix send the same request", async () => {
   for (const shown of ["1938", "AA 1938", "AA1938"]) {
     const page = setup({ respond: () => reply(200, { flights: [flightRow({ flightNumber: "1938" })] }) });
-    const out = await page.run({ flightNumber: shown, date: "2026-10-01" });
+    const out = await page.run({ flight_number: shown, date: "2026-10-01" });
     assert.equal(out.status, "ok", shown);
     assert.equal(page.calls.length, 1);
     assert.deepEqual(JSON.parse(page.calls[0].init.body), [{ airlineCode: "AA", destAirportCode: "", flightNumber: "1938", fltOrgDate: "2026-10-01", orgAirportCode: "" }]);
@@ -179,18 +179,18 @@ test("a published flight maps to the allowlisted fields and conforms to the sche
   assert.ok(conforms(page.tool.tool.outputSchema, out));
   assert.equal(out.status, "ok");
   assert.deepEqual(out.query, good);
-  assert.equal(out.statusPageUrl, "https://www.aa.com/travelInformation/flights/status/detail?search=AA%7C1234%7C2026,10,1&ref=search");
-  assert.equal(out.flightCount, 1);
-  assert.match(out.observedAt, /^\d{4}-\d{2}-\d{2}T/);
+  assert.equal(out.status_page_url, "https://www.aa.com/travelInformation/flights/status/detail?search=AA%7C1234%7C2026,10,1&ref=search");
+  assert.equal(out.flight_count, 1);
+  assert.match(out.observed_at, /^\d{4}-\d{2}-\d{2}T/);
   const [f] = out.flights;
   assert.deepEqual(f, {
-    flightNumber: "1234", airlineCode: "AA", marketingCarrier: "American Airlines", operatedBy: null,
-    statusText: "On time", statusKey: "flight.status.onTime", canceled: false, diverted: false, landed: false, inFlight: false, passengerMessage: null,
-    departure: { airportCode: "DFW", city: "Dallas-Fort Worth", terminal: "A", gate: "A12", scheduled: "2026-10-01T08:00:00.000-05:00", estimated: "2026-10-01T08:10:00.000-05:00", actual: null, scheduledBoarding: "2026-10-01T07:20:00.000-05:00", estimatedBoarding: "2026-10-01T07:30:00.000-05:00" },
-    arrival: { airportCode: "ORD", city: "Chicago", terminal: "3", gate: "H4", baggageClaim: "7", scheduled: "2026-10-01T10:30:00.000-05:00", estimated: "2026-10-01T10:41:00.000-05:00", actual: null },
+    flight_number: "1234", airline_code: "AA", marketing_carrier: "American Airlines", operated_by: null,
+    status_text: "On time", status_key: "flight.status.onTime", canceled: false, diverted: false, landed: false, in_flight: false, passenger_message: null,
+    departure: { airport_code: "DFW", city: "Dallas-Fort Worth", terminal: "A", gate: "A12", scheduled: "2026-10-01T08:00:00.000-05:00", estimated: "2026-10-01T08:10:00.000-05:00", actual: null, scheduled_boarding: "2026-10-01T07:20:00.000-05:00", estimated_boarding: "2026-10-01T07:30:00.000-05:00" },
+    arrival: { airport_code: "ORD", city: "Chicago", terminal: "3", gate: "H4", baggage_claim: "7", scheduled: "2026-10-01T10:30:00.000-05:00", estimated: "2026-10-01T10:41:00.000-05:00", actual: null },
     aircraft: { name: "Airbus A321", code: "321" },
     amenities: { wifi: true, power: true },
-    incomingFlight: { flightNumber: "567", originDate: "2026-10-01" }
+    incoming_flight: { flight_number: "567", origin_date: "2026-10-01" }
   });
 });
 
@@ -202,16 +202,16 @@ test("fields outside the allowlist are never returned", async () => {
 
 test("a schedule-only row keeps the site's wording and turns empty values into null", async () => {
   const page = setup({ respond: () => reply(200, { flights: [scheduleOnly()] }) });
-  const out = await page.run({ flightNumber: "1234", date: "2027-03-01" });
+  const out = await page.run({ flight_number: "1234", date: "2027-03-01" });
   assert.ok(conforms(page.tool.tool.outputSchema, out));
   const [f] = out.flights;
-  assert.equal(f.statusText, "Flight status not available");
-  assert.equal(f.statusKey, null);
+  assert.equal(f.status_text, "Flight status not available");
+  assert.equal(f.status_key, null);
   assert.deepEqual(f.aircraft, { name: null, code: null });
   assert.equal(f.departure.gate, null);
   assert.equal(f.departure.estimated, null);
   assert.deepEqual(f.amenities, { wifi: false, power: false });
-  assert.equal(f.incomingFlight, null);
+  assert.equal(f.incoming_flight, null);
   assert.equal(f.canceled, false);
 });
 
@@ -222,8 +222,8 @@ test("a cancelled flight and a passenger message are passed through", async () =
   });
   const out = await setup({ respond: () => reply(200, { flights: [row] }) }).run(good);
   assert.equal(out.flights[0].canceled, true);
-  assert.equal(out.flights[0].statusText, "Cancelled");
-  assert.equal(out.flights[0].passengerMessage, "This flight has been cancelled.");
+  assert.equal(out.flights[0].status_text, "Cancelled");
+  assert.equal(out.flights[0].passenger_message, "This flight has been cancelled.");
 });
 
 test("several legs are returned in order and capped at ten with the true count", async () => {
@@ -232,7 +232,7 @@ test("several legs are returned in order and capped at ten with the true count",
   const out = await page.run(good);
   assert.ok(conforms(page.tool.tool.outputSchema, out));
   assert.equal(out.flights.length, 10);
-  assert.equal(out.flightCount, 12);
+  assert.equal(out.flight_count, 12);
   assert.equal(out.flights[9].departure.gate, "G9");
 });
 
@@ -250,21 +250,21 @@ test("site text and values are cleaned and bounded", async () => {
   const out = await page.run(good);
   assert.ok(conforms(page.tool.tool.outputSchema, out));
   const [f] = out.flights;
-  assert.equal(f.departure.airportCode, null);
+  assert.equal(f.departure.airport_code, null);
   assert.ok(f.departure.city.length <= 100 && !/[\u0000-\u001f]/.test(f.departure.city));
   assert.equal(f.departure.gate, null);
   assert.equal(f.departure.terminal, "T 1");
   assert.equal(f.departure.scheduled, null);
   assert.equal(f.departure.estimated, "2026-10-01T08:10:00Z");
-  assert.equal(f.arrival.airportCode, null);
+  assert.equal(f.arrival.airport_code, null);
   assert.equal(f.arrival.city, null);
   assert.equal(f.arrival.gate, null);
   assert.equal(f.arrival.scheduled, null);
-  assert.equal(f.passengerMessage.length, 500);
+  assert.equal(f.passenger_message.length, 500);
   assert.equal(f.canceled, null);
   assert.equal(f.landed, null);
   assert.equal(f.amenities.wifi, null);
-  assert.equal(f.airlineCode, null);
+  assert.equal(f.airline_code, null);
   assert.equal(f.aircraft.code, null);
 });
 
@@ -272,7 +272,7 @@ test("an empty flights list is no_results, not a success", async () => {
   const page = setup({ respond: () => reply(200, { flights: [] }) });
   const out = await page.run(good);
   assert.equal(out.status, "no_results");
-  assert.equal(out.httpStatus, 200);
+  assert.equal(out.http_status, 200);
   assert.match(out.message, /AA 1234/);
   assert.ok(conforms(page.tool.tool.outputSchema, out));
 });
@@ -295,11 +295,11 @@ test("challenges, throttling, errors and format changes are typed and never empt
     [() => reply(500, { status: 500, error: "Internal Server Error" }), "error", 500],
     [() => reply(503, "down", html), "error", 503]
   ];
-  for (const [respond, status, httpStatus] of cases) {
+  for (const [respond, status, http_status] of cases) {
     const page = setup({ respond });
     const out = await page.run(good);
-    assert.equal(out.status, status, JSON.stringify({ status, httpStatus }));
-    assert.equal(out.httpStatus, httpStatus);
+    assert.equal(out.status, status, JSON.stringify({ status, http_status }));
+    assert.equal(out.http_status, http_status);
     assert.equal(page.calls.length, 1, "no retries");
     assert.ok(conforms(page.tool.tool.outputSchema, out));
   }
@@ -309,7 +309,8 @@ test("network failure and cancellation return error with an unknown-outcome mess
   const failed = setup({ respond: () => { throw new Error("Failed to fetch"); } });
   const out = await failed.run(good);
   assert.equal(out.status, "error");
-  assert.match(out.message, /Failed to fetch/);
+  assert.match(out.message, /request to American failed/);
+  assert.ok(!out.message.includes("Failed to fetch"));
   assert.ok(conforms(failed.tool.tool.outputSchema, out));
 
   const controller = new AbortController();
@@ -323,7 +324,7 @@ test("network failure and cancellation return error with an unknown-outcome mess
 
 test("the tool never navigates or issues anything but its one POST", async () => {
   const page = setup();
-  for (const input of [good, { flightNumber: "AA 1", date: "2026-12-31" }]) await page.run(input);
+  for (const input of [good, { flight_number: "AA 1", date: "2026-12-31" }]) await page.run(input);
   assert.equal(page.calls.length, 2);
   assert.ok(page.calls.every((c) => c.init.method === "POST" && c.url === "/flightinfo/v1.2/"));
   assert.deepEqual(page.navigations, []);
@@ -331,20 +332,20 @@ test("the tool never navigates or issues anything but its one POST", async () =>
 
 test("the incoming flight drops leading zeros and the site's 0000 placeholder", async () => {
   const cases = [
-    [{ priorLegFlightNumber: "0101", priorLegOriginDate: "2026-09-22" }, { flightNumber: "101", originDate: "2026-09-22" }],
-    [{ priorLegFlightNumber: "2464", priorLegOriginDate: null }, { flightNumber: "2464", originDate: null }],
+    [{ priorLegFlightNumber: "0101", priorLegOriginDate: "2026-09-22" }, { flight_number: "101", origin_date: "2026-09-22" }],
+    [{ priorLegFlightNumber: "2464", priorLegOriginDate: null }, { flight_number: "2464", origin_date: null }],
     [{ priorLegFlightNumber: "0000", priorLegOriginDate: null }, null],
     [{ priorLegFlightNumber: "0000", priorLegOriginDate: "2026-09-22" }, null],
     [{ priorLegFlightNumber: null, priorLegOriginDate: "2026-09-22" }, null],
     [{ priorLegFlightNumber: "12345", priorLegOriginDate: "2026-09-22" }, null],
     [{ priorLegFlightNumber: "1e3", priorLegOriginDate: "2026-09-22" }, null],
-    [{ priorLegFlightNumber: "2464", priorLegOriginDate: ["2026-09-22"] }, { flightNumber: "2464", originDate: null }]
+    [{ priorLegFlightNumber: "2464", priorLegOriginDate: ["2026-09-22"] }, { flight_number: "2464", origin_date: null }]
   ];
   for (const [previousFlightInfo, expected] of cases) {
     const page = setup({ respond: () => reply(200, { flights: [flightRow({ previousFlightInfo })] }) });
     const out = await page.run(good);
     assert.ok(conforms(page.tool.tool.outputSchema, out), JSON.stringify(previousFlightInfo));
-    assert.deepEqual(out.flights[0].incomingFlight, expected, JSON.stringify(previousFlightInfo));
+    assert.deepEqual(out.flights[0].incoming_flight, expected, JSON.stringify(previousFlightInfo));
   }
 });
 
@@ -362,7 +363,7 @@ test("the 20 second guard aborts a hung request and reports an unknown outcome",
   const out = await pending;
   assert.equal(out.status, "error");
   assert.match(out.message, /timed out or was cancelled/);
-  assert.equal(out.httpStatus, null);
+  assert.equal(out.http_status, null);
   assert.equal(page.calls.length, 1);
 });
 
@@ -377,8 +378,8 @@ test("the output schema rejects an incoming flight the tool would never produce"
   const page = setup();
   const ok = await page.run(good);
   assert.ok(conforms(page.tool.tool.outputSchema, ok));
-  for (const incomingFlight of [{ flightNumber: "0000", originDate: null }, { flightNumber: "0101", originDate: null }, { flightNumber: null, originDate: "2026-10-01" }, { flightNumber: "567", originDate: ["2026-10-01"] }]) {
-    const bad = { ...ok, flights: [{ ...ok.flights[0], incomingFlight }] };
-    assert.equal(conforms(page.tool.tool.outputSchema, bad), false, JSON.stringify(incomingFlight));
+  for (const incoming_flight of [{ flight_number: "0000", origin_date: null }, { flight_number: "0101", origin_date: null }, { flight_number: null, origin_date: "2026-10-01" }, { flight_number: "567", origin_date: ["2026-10-01"] }]) {
+    const bad = { ...ok, flights: [{ ...ok.flights[0], incoming_flight }] };
+    assert.equal(conforms(page.tool.tool.outputSchema, bad), false, JSON.stringify(incoming_flight));
   }
 });

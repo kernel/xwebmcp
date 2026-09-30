@@ -5,7 +5,7 @@
     tool: {
       name: "search_flights",
       description:
-        "Search American Airlines cash fares for 1–9 adults. Returns every outbound option on the first results page, not a selected return itinerary. Prices are the lowest displayed per-person from-fares, with the website currency symbol and trip basis; never a guaranteed group total. Times are airport-local; transportTypes flags airline-marketed bus or train segments. American may include nearby airports: each row declares matchesRequestedAirports, and alternatives_only means no returned row matches both requested airports. May return blocked, timeout, or error rather than fabricate empty results. Invoke serially in a dedicated tab.",
+        "Search American Airlines cash fares (default) or award miles plus displayed taxes (pay_with: miles) for 1–9 adults. Creates a search session but never selects a fare or reserves inventory. Returns every outbound option on the first results page, not a selected return itinerary. Prices are the lowest displayed per-person from-fares, with the website currency symbol and trip basis; never a guaranteed group total. Times are airport-local; transportTypes flags airline-marketed bus or train segments. American may include nearby airports: each row declares matchesRequestedAirports, and alternatives_only means no returned row matches both requested airports. May return blocked, timeout, or error rather than fabricate empty results. Invoke serially in a dedicated tab.",
       inputSchema: {
         type: "object",
         additionalProperties: false,
@@ -25,6 +25,7 @@
           },
           tripType: { type: "string", enum: ["roundTrip", "oneWay"] },
           passengers: { type: "integer", minimum: 1, maximum: 9, default: 1 },
+          pay_with: { type: "string", enum: ["cash", "miles"], default: "cash" },
         },
         oneOf: [
           {
@@ -145,6 +146,7 @@
                 durationMinutes: { type: "integer", minimum: 1 },
                 stops: { type: "integer", minimum: 0 },
                 price: {
+                  oneOf: [{
                   type: "object",
                   additionalProperties: false,
                   required: [
@@ -166,6 +168,18 @@
                     perPerson: { type: "boolean", const: true },
                     fareLabel: { type: "string", minLength: 1 },
                   },
+                  }, {
+                    type: "object", additionalProperties: false,
+                    required: ["miles", "tax_amount", "currency_symbol", "basis", "per_person", "fare_label"],
+                    properties: {
+                      miles: { type: "integer", minimum: 1 },
+                      tax_amount: { type: "number", minimum: 0 },
+                      currency_symbol: { type: "string", minLength: 1 },
+                      basis: { type: "string", enum: ["roundTrip", "oneWay"] },
+                      per_person: { const: true, type: "boolean" },
+                      fare_label: { type: "string", minLength: 1 }
+                    }
+                  }]
                 },
               },
             },
@@ -174,7 +188,7 @@
       },
       annotations: { readOnlyHint: true },
     },
-    execute: async (input) => {
+    execute: async (input, context) => {
       const started = Date.now(),
         deadline = started + 105000;
       const seconds = (cap) =>
@@ -186,7 +200,7 @@
         totalResults = null,
       ) => ({
         status,
-        resultsUrl: (await pageInfo()).url,
+        resultsUrl: (await pageInfo()).url.split(/[?#]/)[0],
         resultCount: flights.length,
         totalResults,
         exactMatchCount: flights.filter((f) => f.matchesRequestedAirports)
@@ -206,7 +220,8 @@
         .toISOString()
         .slice(0, 10);
       if (
-        !input ||
+        !input || typeof input !== "object" || Array.isArray(input) ||
+        typeof input.origin !== "string" || typeof input.destination !== "string" ||
         Object.keys(input).some(
           (k) =>
             ![
@@ -216,12 +231,14 @@
               "returnDate",
               "tripType",
               "passengers",
+              "pay_with",
             ].includes(k),
         ) ||
         !/^[A-Z]{3}$/.test(input.origin) ||
         !/^[A-Z]{3}$/.test(input.destination) ||
         input.origin === input.destination ||
         !["oneWay", "roundTrip"].includes(input.tripType) ||
+        !["cash", "miles"].includes(input.pay_with ?? "cash") ||
         !validDate(input.departDate) ||
         input.departDate < today ||
         input.departDate > maxDate ||
@@ -238,6 +255,7 @@
           "error",
           "Invalid input: distinct uppercase IATA airports, real dates from today through 331 days, ordered round-trip dates, no returnDate for one-way, and 1–9 adults required.",
         );
+      if (context?.signal?.aborted) return output("error", "Cancelled before search interaction.");
       const date = (s) => `${s.slice(5, 7)}/${s.slice(8, 10)}/${s.slice(0, 4)}`;
       const state = async () =>
         js(() => {
@@ -262,7 +280,7 @@
             const total = Number(count[1].replaceAll(",", ""));
             if (total === 0) return { kind: "no_results", total };
             if (
-              document.querySelectorAll(".slice-details .per-pax-amount").length
+              document.querySelectorAll(".slice-details .per-pax-amount, .flight-row .per-pax-amount").length
             )
               return { kind: "results", total };
           }
@@ -407,14 +425,19 @@
             "error",
             "Form values did not match the requested search. Search was not submitted.",
           );
-        if (values.miles)
+        const award = input.pay_with === "miles";
+        if (values.miles !== award)
           await click('label[for="flightSearchForm.tripType.redeemMiles"]', {
             timeoutSec: seconds(5),
           });
+        if (await js(() => document.querySelector('[name=redeemMiles]')?.checked) !== award)
+          return output("error", "Payment mode did not match the requested search. Search was not submitted.");
+        if (context?.signal?.aborted) return output("error", "Cancelled before search submission.");
         await click("input[type=submit][value=Search]", {
           timeoutSec: seconds(10),
         });
         while (Date.now() < deadline) {
+          if (context?.signal?.aborted) return output("error", "Search observation cancelled; no flight was selected or reserved. Do not retry automatically.");
           const s = await state();
           if (s.kind === "blocked")
             return output(
@@ -434,14 +457,14 @@
                 const text = (e) =>
                   (e?.textContent ?? "").replace(/\s+/g, " ").trim();
                 const rows = [
-                  ...document.querySelectorAll(".slice-details"),
+                  ...document.querySelectorAll(expected.pay_with === "miles" ? ".flight-row" : ".slice-details"),
                 ].filter((e) => e.getClientRects().length);
-                const flights = rows.map((row, index) => {
+                const flights = rows.slice(0, 100).map((row, index) => {
                   const get = (sel) => text(row.querySelector(sel));
                   const numbers = [
                     ...row.querySelectorAll(".flight-number"),
                   ].map(text);
-                  const transportTypes = [
+                  const modes = [
                     ...row.querySelectorAll(".transportation-type"),
                   ].map((e) =>
                     e.querySelector(".plane")
@@ -452,6 +475,7 @@
                           ? "train"
                           : "unknown",
                   );
+                  const transportTypes = expected.pay_with === "miles" && !modes.length ? numbers.map(() => "unknown") : modes;
                   const time = (sel) => {
                     const raw = get(sel),
                       m = raw.match(/\b(\d{1,2}):([0-5]\d)\s*([AP]M)\b/);
@@ -461,8 +485,8 @@
                       offset: Number(raw.match(/[+-]\d+/)?.[0] ?? 0),
                     };
                   };
-                  const dep = time(".origin .time"),
-                    arr = time(".destination .time");
+                  const dep = time(expected.pay_with === "miles" ? ".origin .flt-times" : ".origin .time"),
+                    arr = time(expected.pay_with === "miles" ? ".destination .flt-times" : ".destination .time");
                   const duration = get(".duration"),
                     h = duration.match(/(\d+)h/),
                     m = duration.match(/(\d+)m/);
@@ -475,7 +499,18 @@
                   const prices = [...row.querySelectorAll("button.btn-flight")]
                     .map((b) => {
                       const raw = text(b.querySelector(".per-pax-amount"));
-                      if (!raw) return null;
+                      if (!raw || b.disabled) return null;
+                      if (expected.pay_with === "miles") {
+                        const match = raw.match(/^([\d,]+(?:\.\d+)?)\s*(K)?$/i);
+                        const addon = text(b.querySelector('.per-pax-addon')).match(/^\+\s*([^\d]+)([\d,]+(?:\.\d{1,2})?)$/);
+                        const label = text(b.querySelector('.hidden-product-type'));
+                        const detail = text(b.querySelector('.trip-type'));
+                        const basis = /Round trip/i.test(detail) ? "roundTrip" : /One way/i.test(detail) ? "oneWay" : null;
+                        const miles = match ? Number(match[1].replaceAll(',', '')) * (match[2] ? 1000 : 1) : NaN;
+                        if (!Number.isInteger(miles) || miles < 1 || !addon || !label || basis !== expected.tripType)
+                          throw Error(`Row ${index + 1}: unrecognized award format`);
+                        return { miles, tax_amount: Number(addon[2].replaceAll(',', '')), currency_symbol: addon[1].trim(), basis, per_person: true, fare_label: label.slice(0, 80) };
+                      }
                       const match = raw.match(
                         /^([^\d]+)([\d,]+(?:\.\d{1,2})?)$/,
                       );
@@ -509,11 +544,11 @@
                       };
                     })
                     .filter(Boolean)
-                    .sort((a, b) => a.amount - b.amount);
+                    .sort((a, b) => expected.pay_with === "miles" ? a.miles - b.miles || a.tax_amount - b.tax_amount : a.amount - b.amount);
                   const departureAirport = get(".origin .city-code"),
                     arrivalAirport = get(".destination .city-code");
                   if (
-                    !numbers.length ||
+                    !numbers.length || numbers.length > 6 ||
                     transportTypes.length !== numbers.length ||
                     numbers.some(
                       (n) => !/^[A-Z0-9]{2} [0-9]{1,4}[A-Z]?$/.test(n),
@@ -524,7 +559,7 @@
                     !Number.isInteger(stops) ||
                     stops < 0 ||
                     !prices.length ||
-                    prices[0].amount <= 0 ||
+                    (expected.pay_with !== "miles" && prices[0].amount <= 0) ||
                     arr.offset < -1 ||
                     arr.offset > 3
                   )
@@ -537,7 +572,7 @@
                     transportTypes,
                     operatingAirlines: [
                       ...row.querySelectorAll(".operated-by"),
-                    ].map(text),
+                    ].slice(0, 6).map(e => text(e).slice(0, 100)),
                     departureAirport,
                     arrivalAirport,
                     departureTime: dep.value,
@@ -571,7 +606,7 @@
                   : `All ${exact} rows match ${input.origin}–${input.destination}.`;
             return output(
               exact === 0 ? "alternatives_only" : "ok",
-              `${scope} First-page outbound options; airport-local times; lowest displayed per-person from-fares. Round-trip fares do not specify a selected return flight. Currency symbol is preserved without guessing its ISO code.`,
+              `${scope} Up to 100 first-page outbound options; airport-local times; lowest displayed per-person ${input.pay_with === "miles" ? "award miles plus taxes" : "from-fares"}. Round-trip fares do not specify a selected return flight. Currency symbol is preserved without guessing its ISO code.`,
               parsed,
               s.total,
             );
@@ -579,7 +614,7 @@
           if (s.errors?.length)
             return output(
               "error",
-              `Website reported: ${s.errors.join(" ").slice(0, 400)}`,
+              "The website reported a search error. Review the current page manually; no flight was selected or reserved.",
             );
           await waitForElement(
             '.result-count, iframe[src*="challenge-assets"], [role=alert]',
@@ -593,7 +628,7 @@
       } catch (error) {
         return output(
           Date.now() >= deadline ? "timeout" : "error",
-          String(error.message ?? error).slice(0, 400),
+          "The flight search could not be completed. No flight was selected or reserved; the current page may require manual review.",
         );
       }
     },
