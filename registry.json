@@ -293,9 +293,12 @@
       "url_patterns": [
         "https://job-boards.greenhouse.io/*"
       ],
-      "status": "draft",
-      "last_verified": null,
-      "notes": "Visual-only native text staging on the exact public job page, with whole-batch validation and expected-value checks. No events, uploads or submission; React application state is not synchronized. QA pending."
+      "status": "qa_passed",
+      "last_verified": "2026-09-30",
+      "notes": "Independent Kernel and extension QA passed; success is isolated/mock-only, not live-verified. Visual-only native text staging on the exact public job page, with whole-batch validation and expected-value checks. No events, uploads or submission; React application state is not synchronized. Unknown outcomes require inspection, not retries.",
+      "provenance": {
+        "qa_agent": "agt_44a0ce2113eb6cf4db13"
+      }
     },
     {
       "domain": "greenhouse.io",
@@ -338,9 +341,12 @@
       "url_patterns": [
         "https://job-boards.greenhouse.io/*"
       ],
-      "status": "draft",
-      "last_verified": null,
-      "notes": "Check supplied answers against visible native text controls on the exact public job page. No field changes, no values echoed; never uploads or submits. QA pending."
+      "status": "qa_passed",
+      "last_verified": "2026-09-30",
+      "notes": "Independent Kernel and extension QA passed. Checks supplied answers against visible native text controls on the exact public job page; required-page-only, not verified from an unrelated starting page. No field changes, no values echoed; never uploads or submits.",
+      "provenance": {
+        "qa_agent": "agt_44a0ce2113eb6cf4db13"
+      }
     },
     {
       "domain": "greenhouse.io",
