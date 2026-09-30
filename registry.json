@@ -94,9 +94,9 @@
       "url_patterns": [
         "https://www.craigslist.org/*"
       ],
-      "status": "draft",
-      "last_verified": null,
-      "notes": "Populated live first-batch search and fixtures pass, but independent final-source no-results outcome remains unclassified; sign-off withheld. No pagination/retries. See README.",
+      "status": "qa_passed",
+      "last_verified": "2026-09-30",
+      "notes": "Independent repaired-source synthetic success/failure QA, including zero-result decoding. Captured-response replay passes; fresh final-source live success and local-extension parity unverified. No pagination/retries.",
       "provenance": {
         "qa_agent": "agt_0f4f29ed144263e4c874"
       }
