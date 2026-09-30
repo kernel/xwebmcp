@@ -37,8 +37,9 @@ Use a runtime timeout of at least 20 seconds; the request has a 15-second deadli
 Both tools share an in-memory one-request-per-minute cooldown in each registering
 document. There is no waiting or retry loop: calls made during the cooldown return
 `rate_limited` without a request. An access denial (401, 403, 429, 999, redirect,
-authwall or challenge) latches a blocked result for that document, preventing more
-requests even after the cooldown. This is a local guard, not an account-wide quota
+authwall or challenge), including a current-page denial before any request, latches
+a blocked result for that document, preventing more requests even after the cooldown.
+This is a local guard, not an account-wide quota
 or permission to resume around a site block. It does not survive navigation.
 
 ## Observed mechanisms
@@ -59,7 +60,7 @@ HTML contained title, organization, location, posting and applicant text,
 `.show-more-less-html__markup`, and criteria labels. The tool keeps applicant counts
 as text (for example, a capped count is not converted to an exact integer).
 Only the four recognized English criterion labels are mapped; others remain null.
-The description is read from an inert template, with scripts, forms, styles and
+All extracted text is read from an inert template, with scripts, forms, styles and
 frames excluded. No fetched HTML is inserted into the live document.
 
 ## Native WebMCP tools
@@ -113,7 +114,7 @@ a model-supplied confirmation flag would not satisfy that requirement.
 
 ## QA summary
 
-Initial source status is `draft`, pending independent review. Fixture tests use
+Source status is `draft`, pending independent final-source sign-off. Fixture tests use
 fabricated fragments to cover schemas, malformed input, safe URLs, request/response
 bounds, cancellation, cooldowns, redirects, rate limits, access gates, changed markup,
 and no navigation or credential leakage.
@@ -135,7 +136,17 @@ passed without navigation or extra requests. The stock permission-grant UI, live
 LinkedIn access and CSP fallback were not exercised. This is fixture-only runtime
 evidence, not a live-site parity claim.
 
-Validation and all 1,687 repository tests passed, including 110 LinkedIn fixtures.
-Independent final-source review is pending; the registry remains `draft`.
+Initial independent review reproduced two access-guard gaps (current-page denials
+were not latched, and response dialogs could be ignored alongside job markup) and
+script/form text in metadata. The fixes latch current-page denials across both tools,
+check explicit response dialogs even alongside job content, and exclude inert-node
+text from every extracted field. Explicitly hidden response modals are not treated
+as active gates; visibility based solely on external CSS is not evaluated in inert HTML.
+The added regression fixtures fail against the initial source and pass after the fixes.
+
+Validation and all 1,709 repository tests passed, including 132 LinkedIn fixtures.
+The local extension fixture check also passed again on the revised sources with DNS
+isolation and intercepted responses. Independent recheck is pending; the registry
+remains `draft`.
 
 Run `node --test tests/linkedin-public-jobs.test.mjs` from the repository root.

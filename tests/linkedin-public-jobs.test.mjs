@@ -75,7 +75,7 @@ function harness(options = {}) {
   };
   const definitions = Object.fromEntries(names.map(n => [n, runInNewContext(`(${sources[n]})`, ctx)[0]]));
   return {
-    calls, definitions, advance: () => { now += 60001; },
+    calls, definitions, document, advance: () => { now += 60001; },
     async run(name, input, context) {
       const result = plain(await definitions[name].execute(input, context));
       assert.ok(conforms(definitions[name].tool.outputSchema, result), JSON.stringify(result));
@@ -139,6 +139,45 @@ for (const name of names) {
       assert.equal(h.calls.length, 0);
     });
   }
+  for (const [page, kind] of [
+    ['<title>Quick security check</title>', "challenge"],
+    ['<title>Access denied</title>', "forbidden"],
+    ['<div role="dialog">Sign in to continue</div>', "login_required"],
+    ['<div role="dialog">Too many requests</div>', "rate_limited"],
+    ['<div role="dialog">Access denied</div>', "forbidden"]
+  ]) {
+    test(`${name}: current-page denial stays latched after the gate disappears`, async () => {
+      const h = harness({ page });
+      assert.equal((await h.run(name, inputs[name])).error_kind, kind);
+      h.document.body.innerHTML = "<title>LinkedIn Jobs</title>";
+      h.advance();
+      assert.equal((await h.run(name, inputs[name])).error_kind, kind);
+      assert.equal(h.calls.length, 0);
+    });
+  }
+  for (const [notice, kind] of [["Quick security check", "challenge"], ["Sign in to continue", "login_required"], ["Too many requests", "rate_limited"], ["Access denied", "forbidden"]]) {
+    test(`${name}: explicit response gates override recognizable job content`, async () => {
+      const html = (name === "search_jobs" ? card() : detail) + `<div role="dialog">${notice}</div>`;
+      const h = harness({ html });
+      assert.equal((await h.run(name, inputs[name])).error_kind, kind);
+      h.advance();
+      assert.equal((await h.run(name, inputs[name])).error_kind, kind);
+      assert.equal(h.calls.length, 1);
+    });
+  }
+  test(`${name}: explicitly hidden response sign-in modal is not an active gate`, async () => {
+    for (const attributes of ['hidden', 'aria-hidden="true"', 'class="hidden"', 'style="display: none"']) {
+      const html = (name === "search_jobs" ? card() : detail) + `<div ${attributes}><div role="dialog">Sign in to continue</div></div>`;
+      assert.equal((await harness({ html }).run(name, inputs[name])).status, "ok");
+    }
+  });
+  test(`${name}: non-description fields exclude inert script and form text`, async () => {
+    const base = name === "search_jobs" ? card() : detail;
+    const html = base.replace("Example Engineer", '<script>INERT_TEXT</script><form>INERT_TEXT</form><style>INERT_TEXT</style>Example Engineer');
+    const r = await harness({ html }).run(name, inputs[name]);
+    assert.equal(r.status, "ok");
+    assert.ok(!JSON.stringify(r).includes("INERT_TEXT"));
+  });
   test(`${name}: hidden sign-in dialog does not block public reads`, async () => {
     const h = harness({ page: '<div role="dialog" hidden>Sign in to continue</div>' });
     assert.equal((await h.run(name, inputs[name])).status, "ok");
@@ -186,6 +225,7 @@ for (const name of names) {
     assert.equal((await harness({ headers: { "content-length": "9999999" } }).run(name, inputs[name])).error_kind, "site_changed");
     assert.equal((await harness({ content_type: "application/json" }).run(name, inputs[name])).error_kind, "site_changed");
     assert.equal((await harness({ no_body: true }).run(name, inputs[name])).error_kind, "site_changed");
+    assert.equal((await harness({ html: "", content_type: "application/json" }).run(name, inputs[name])).error_kind, "site_changed");
   });
 }
 

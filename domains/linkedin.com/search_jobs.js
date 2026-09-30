@@ -265,7 +265,14 @@
     const recency = { "24h": "r86400", week: "r604800", month: "r2592000" }[posted];
     if (recency) params.set("f_TPR", recency);
     const path = "/jobs-guest/jobs/api/seeMoreJobPostings/search?" + params;
-    const text = (node, max = 300) => (node?.textContent || "").replace(/\s+/g, " ").trim().slice(0, max);
+    const readText = node => {
+      if (!node) return "";
+      if (node.nodeType === 3) return node.textContent;
+      if (/^(SCRIPT|STYLE|FORM|IFRAME|NOSCRIPT)$/.test(node.tagName || "")) return "";
+      const value = [...node.childNodes].map(readText).join("");
+      return /^(P|LI|DIV|BR|H[1-6])$/.test(node.tagName || "") ? value + "\n" : value;
+    };
+    const text = (node, max = 300) => readText(node).replace(/\s+/g, " ").trim().slice(0, max);
     const companyUrl = node => {
       const raw = node?.getAttribute("href");
       if (!raw) return null;
@@ -277,22 +284,25 @@
       } catch { return null; }
     };
     if (location.origin !== "https://www.linkedin.com") return fail("wrong_page", "Open a public https://www.linkedin.com/jobs/ page first. Regional and other hosts are not supported.");
-    if (/^\/(authwall|login|uas|signup)(\/|$)/.test(location.pathname)) return fail("login_required", "The current page requires sign-in; this tool does not sign in.");
-    if (/^\/checkpoint(\/|$)/.test(location.pathname) || /security check|captcha|unusual activity/i.test(document.title)) return fail("challenge", "LinkedIn is showing a security challenge. No request was sent.");
-    if (/access denied|forbidden/i.test(document.title)) return fail("forbidden", "The current page denies access. No request was sent.");
-    for (const gate of document.querySelectorAll('[role="dialog"], dialog[open]')) {
-      if (!gate.getClientRects().length) continue;
-      if (/security check|captcha|unusual activity/i.test(text(gate, 2000))) return fail("challenge", "The current page is gated by a security challenge.");
-      if (/sign in to view more jobs|sign in to continue/i.test(text(gate, 2000))) return fail("login_required", "The current page is gated by a sign-in dialog.");
-    }
-    if (!/^\/(?:jobs\/?|jobs\/search\/?|jobs\/view\/[^/]+\/?)?$/.test(location.pathname)) return fail("wrong_page", "Use the public Jobs homepage, search or job-view page; account and other product pages are not supported.");
     const key = Symbol.for("xwebmcp.linkedin.com.public_jobs");
     const state = globalThis[key] || (globalThis[key] = { next_request_at: 0, blocked_kind: null });
-    if (state.blocked_kind) return fail(state.blocked_kind, "A prior public request was blocked in this document. No further request was sent.");
+    const blocked = (kind, message) => { state.blocked_kind = kind; return fail(kind, message); };
+    if (state.blocked_kind) return fail(state.blocked_kind, "A prior public access check was blocked in this document. No further request was sent.");
+    if (/^\/(authwall|login|uas|signup)(\/|$)/.test(location.pathname)) return blocked("login_required", "The current page requires sign-in; this tool does not sign in.");
+    if (/^\/checkpoint(\/|$)/.test(location.pathname) || /security check|captcha|unusual activity/i.test(document.title)) return blocked("challenge", "LinkedIn is showing a security challenge. No request was sent.");
+    if (/access denied|forbidden/i.test(document.title)) return blocked("forbidden", "The current page denies access. No request was sent.");
+    for (const gate of document.querySelectorAll('[role="dialog"], dialog[open]')) {
+      if (!gate.getClientRects().length) continue;
+      const notice = text(gate, 2000);
+      if (/security check|captcha|unusual activity/i.test(notice)) return blocked("challenge", "The current page is gated by a security challenge.");
+      if (/sign (in|up)|login|join now to/i.test(notice)) return blocked("login_required", "The current page is gated by a sign-in dialog.");
+      if (/too many requests/i.test(notice)) return blocked("rate_limited", "The current page is rate-limited. No request was sent.");
+      if (/access denied|forbidden/i.test(notice)) return blocked("forbidden", "The current page denies access. No request was sent.");
+    }
+    if (!/^\/(?:jobs\/?|jobs\/search\/?|jobs\/view\/[^/]+\/?)?$/.test(location.pathname)) return fail("wrong_page", "Use the public Jobs homepage, search or job-view page; account and other product pages are not supported.");
     if (Date.now() < state.next_request_at) return fail("rate_limited", "Public job reads are limited to one request per minute per document, across both tools.");
     if (context?.signal?.aborted) return fail("canceled", "The invocation was canceled before its request.");
     state.next_request_at = Date.now() + 60000;
-    const blocked = (kind, message) => { state.blocked_kind = kind; return fail(kind, message); };
     const controller = new AbortController();
     const abort = () => controller.abort();
     context?.signal?.addEventListener("abort", abort, { once: true });
@@ -320,7 +330,7 @@
         html += decoder.decode(chunk.value, { stream: true });
       }
       html += decoder.decode();
-      if (html.trim() && !/text\/html/i.test(response.headers.get("content-type") || "")) return fail("site_changed", "The guest endpoint did not return HTML.");
+      if (!/text\/html/i.test(response.headers.get("content-type") || "")) return fail("site_changed", "The guest endpoint did not return HTML.");
       const template = document.createElement("template");
       template.innerHTML = html;
       const doc = template.content;
@@ -328,6 +338,19 @@
       if (/security check|captcha|unusual activity/i.test(title) || doc.querySelector('form[action*="/checkpoint/"]')) return blocked("challenge", "LinkedIn returned a security challenge instead of public job content.");
       if (/sign (in|up)|login/i.test(title) || doc.querySelector(".authwall-join-form")) return blocked("login_required", "LinkedIn returned a sign-in page instead of public job content.");
       if (/access denied|forbidden/i.test(title)) return blocked("forbidden", "LinkedIn denied the public request.");
+      for (const gate of doc.querySelectorAll('[role="dialog"], dialog[open]')) {
+        if (gate.closest('[hidden], [aria-hidden="true"], .hidden')) continue;
+        let hidden = false;
+        for (let node = gate; node; node = node.parentElement) {
+          if (/display\s*:\s*none|visibility\s*:\s*hidden/i.test(node.getAttribute("style") || "")) hidden = true;
+        }
+        if (hidden) continue;
+        const notice = text(gate, 2000);
+        if (/security check|captcha|unusual activity/i.test(notice)) return blocked("challenge", "LinkedIn returned a security challenge alongside public job content.");
+        if (/sign (in|up)|login|join now to/i.test(notice)) return blocked("login_required", "LinkedIn returned a sign-in gate alongside public job content.");
+        if (/too many requests/i.test(notice)) return blocked("rate_limited", "LinkedIn rate-limited the public content. It was not retried.");
+        if (/access denied|forbidden/i.test(notice)) return blocked("forbidden", "LinkedIn denied the public request.");
+      }
       if (!doc.querySelector(".base-card[data-entity-urn], .top-card-layout__title")) {
         const notice = text(doc, 1000);
         if (/security check|captcha|unusual activity/i.test(notice)) return blocked("challenge", "LinkedIn returned a security challenge instead of public job content.");
