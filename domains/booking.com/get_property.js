@@ -17,7 +17,7 @@
       children_ages_confirmed: { type: "boolean", description: "True when the page's own room form listed the requested child ages; false when there are no children or the page showed only their number." },
       rooms: { type: "integer" },
       currency: { type: "string", description: "Currency of every price in rooms[]." },
-      signed_in: { type: ["boolean", "null"], description: "Whether the browser session is signed in to Booking.com; null when the page shows neither state." }
+      signed_in: { type: ["boolean", "null"], description: "Whether the browser session is signed in to Booking.com; null when the page shows neither state or conflicting state markers." }
     },
     description: "What the property page says it priced, read from the page, not echoed from the request."
   };
@@ -220,6 +220,9 @@
         const value = /^(\d{1,3}(,\d{3})+|\d+)(\.\d+)?$/.test(token[0]) ? Number(token[0].replace(/,/g, "")) : NaN;
         return Number.isFinite(value) ? value : null;
       };
+      const currencyCodes = new Set(Intl.supportedValuesOf("currency"));
+      const currencyMarkers = [[/\bUS\$/, ["USD"]], [/\b(?:CA\$|C\$)/, ["CAD"]], [/\b(?:AU\$|A\$)/, ["AUD"]], [/\bNZ\$/, ["NZD"]], [/\bHK\$/, ["HKD"]], [/\b(?:SG\$|S\$)/, ["SGD"]], [/\bNT\$/, ["TWD"]], [/€/, ["EUR"]], [/£/, ["GBP"]], [/¥/, ["JPY", "CNY"]], [/₹/, ["INR"]]];
+      const differentCurrency = s => (s.match(/\b[A-Z]{3}\b/g) || []).some(c => currencyCodes.has(c) && c !== query.currency) || currencyMarkers.some(([pattern, currencies]) => pattern.test(s) && !currencies.includes(query.currency));
       const cfg = (html, re) => (re.exec(html) || [])[1] ?? null;
       const observedAt = new Date().toISOString();
 
@@ -267,7 +270,8 @@
           if (shown.length !== asked.length || shown.some((a, i) => a !== asked[i])) return fail("search_not_applied", "Booking.com priced child ages " + shown.join(",") + ", not the " + asked.join(",") + " requested.");
           agesConfirmed = true;
         }
-        const signedIn = pickTid(doc, "header-profile") ? true : pickTid(doc, "header-sign-in-button") ? false : null;
+        const profile = !!pickTid(doc, "header-profile"), signIn = !!pickTid(doc, "header-sign-in-button");
+        const signedIn = profile === signIn ? null : profile;
         const effective = { check_in: checkIn, check_out: checkOut, nights: interval, adults: occ.adults, children: occ.children, children_ages_confirmed: agesConfirmed, rooms: occ.rooms, currency: shownCurrency, signed_in: signedIn };
 
         const scoreBox = pickTid(doc, "review-score-right-component");
@@ -330,6 +334,8 @@
           const breakdown = [...block.querySelectorAll(".prco-pop-breakdown-element")].map(text).filter(Boolean);
           const before = breakdown.indexOf("Total before taxes");
           const memberAt = breakdown.indexOf("Genius discount");
+          const monetaryText = [totalText, text(block.querySelector(".bui-price-display__original")), text(block.querySelector(".js-average-per-night-price")), before >= 0 ? breakdown[before + 1] || "" : "", memberAt >= 0 ? breakdown[memberAt + 1] || "" : ""];
+          if (monetaryText.some(differentCurrency)) return fail("currency_mismatch", "A rate explicitly names a currency different from the requested currency; no price was converted or setting changed.");
           const requiresSignIn = !!block.querySelector(".prd-genius-preview-rate-inline") || /members-only price/i.test(rawText(block));
           if (requiresSignIn) memberOnly++;
           const excludedEl = row.querySelector(".js-us-excluded-fees");

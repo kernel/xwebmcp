@@ -143,6 +143,10 @@ function propertyPage({ rows = null, signedIn = false, currency = "USD", occupan
 function makeEnv({ start = HOME, liveCurrency = "USD", lang = "en-us", liveHtml, routes = [] } = {}) {
   const calls = [];
   const live = new Document(liveHtml ?? `<html lang="${lang}"><body><button data-testid="header-currency-picker-trigger">${liveCurrency}</button></body></html>`);
+  for (const select of live.querySelectorAll("select")) {
+    const matches = select.matches.bind(select);
+    select.matches = selector => selector === ":disabled" ? select.disabled || !!select.closest("fieldset[disabled]") : matches(selector);
+  }
   const fetch = async (url, init = {}) => {
     const u = new URL(url, HOME);
     calls.push({ path: u.pathname, search: u.search, params: u.searchParams, credentials: init.credentials });
@@ -307,10 +311,10 @@ test("search_stays returns the first page with effective dates, guests, currency
 });
 
 test("search_stays warns about a price it cannot read instead of guessing", async () => {
-  const cards = [card({ price: { perNight: "$69", total: "1'234 CHF" } })];
+  const cards = [card({ price: { perNight: "$69", total: "1'234 USD" } })];
   const { output } = await run("search_stays", SEARCH, { routes: [searchRoute({ body: searchPage({ cards }) })] });
   assert.equal(output.properties[0].price.total, null);
-  assert.equal(output.properties[0].price.total_text, "1'234 CHF");
+  assert.equal(output.properties[0].price.total_text, "1'234 USD");
   assert.match(output.warnings.join(" "), /1 returned properties showed no readable price/);
 });
 
@@ -558,10 +562,10 @@ test("get_property reads rooms, rates, cancellation, meal, taxes and the page's 
 });
 
 test("get_property keeps an unreadable price as text and warns instead of guessing", async () => {
-  const rows = [rateRow({ head: ROOM_A, total: "1'234 CHF", original: null })];
+  const rows = [rateRow({ head: ROOM_A, total: "1'234 USD", original: null })];
   const { output } = await run("get_property", PROPERTY, { routes: [propertyRoute({ body: propertyPage({ rows }) })] });
   assert.equal(output.rooms[0].rates[0].price.total, null);
-  assert.equal(output.rooms[0].rates[0].price.total_text, "1'234 CHF");
+  assert.equal(output.rooms[0].rates[0].price.total_text, "1'234 USD");
   assert.match(output.warnings.join(" "), /1 rates showed a price that could not be read/);
 });
 
@@ -906,6 +910,41 @@ test("read tools reject outputs over the byte bound without returning oversized 
   const read = await run("get_property", { ...PROPERTY, max_rates: 40 }, { routes: [propertyRoute({ body: propertyPage({ rows }) })] });
   assert.equal(read.output.error_kind, "site_changed");
   assert.ok(new TextEncoder().encode(JSON.stringify(read.output)).length < 200000);
+});
+
+test("price reads and preparation reject explicit conflicting currencies", async () => {
+  for (const price of ["EUR 316", "€316", "£316", "CA$316", "AU$316", "CHF 316"]) {
+    const property = await run("get_property", PROPERTY, { routes: [propertyRoute({ body: propertyPage({ rows: [rateRow({ head: ROOM_A, total: price })] }) })] });
+    assert.equal(property.output.error_kind, "currency_mismatch", price);
+    const prep = await run("prepare_booking", PREPARE, prepOptions(propertyPage({ rows: [rateRow({ head: ROOM_A, total: price })] })));
+    assert.equal(prep.output.error_kind, "currency_mismatch", price);
+    const search = await run("search_stays", SEARCH, { routes: [searchRoute({ body: searchPage({ cards: [card({ price: { total: price } })] }) })] });
+    assert.equal(search.output.error_kind, "currency_mismatch", price);
+  }
+  const allowed = await run("prepare_booking", PREPARE, prepOptions(propertyPage({ rows: [rateRow({ head: ROOM_A, total: "US$316" })] })));
+  assert.equal(allowed.output.status, "prepared", "US$ must not be mistaken for S$");
+});
+
+test("read tools report unknown sign-in state and preparation blocks conflicting markers", async () => {
+  const conflict = page => page.replace("</header>", '<div data-testid="header-profile">Account</div></header>');
+  const searched = await run("search_stays", SEARCH, { routes: [searchRoute({ body: conflict(searchPage()) })] });
+  const read = await run("get_property", PROPERTY, { routes: [propertyRoute({ body: conflict(propertyPage()) })] });
+  assert.equal(searched.output.effective.signed_in, null);
+  assert.equal(read.output.effective.signed_in, null);
+  const prep = await run("prepare_booking", { ...PREPARE, expected_signed_in: true }, prepOptions(conflict(propertyPage())));
+  assert.equal(prep.output.error_kind, "account_state_changed");
+});
+
+test("prepare_booking rejects inherited disabled select and option states", async () => {
+  const group = propertyPage().replace('<option value="1">1 ($316)</option>', '<optgroup disabled><option value="1">1 ($316)</option></optgroup>');
+  const grouped = await run("prepare_booking", PREPARE, prepOptions(group));
+  assert.equal(grouped.output.error_kind, "rate_not_found");
+  const fieldset = propertyPage().replace('<select name="nr_rooms_1001_2001_2_2_0">', '<fieldset disabled><select name="nr_rooms_1001_2001_2_2_0">').replace("</select>", "</select></fieldset>");
+  const env = makeEnv(prepOptions(fieldset));
+  const definition = register("prepare_booking", env);
+  const output = plain(await definition.execute(PREPARE));
+  assert.equal(output.error_kind, "rate_not_found");
+  assert.equal(env.calls.length, 0);
 });
 
 test("prepare_booking rejects unrelated pages and canceled calls without navigation", async () => {

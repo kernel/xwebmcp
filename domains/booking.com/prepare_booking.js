@@ -81,7 +81,8 @@
     const config = re => (re.exec(scripts) || [])[1] ?? null;
     if (!document.querySelector("#hprt-table") && /awswaf|AwsWafIntegration/i.test(scripts) && /JavaScript is disabled|verify you are human/i.test(rawText(document.body))) return fail("challenge", "The page is a bot check, not a rate page.");
     if (config(/\bb_hotel_id\s*:\s*'(\d+)'/) !== input.property_id) return fail("site_changed", "The property ID does not match the current page.");
-    const signedIn = tid("header-profile") ? true : tid("header-sign-in-button") ? false : null;
+    const profile = !!tid("header-profile"), signIn = !!tid("header-sign-in-button");
+    const signedIn = profile === signIn ? null : profile;
     if (signedIn === null || signedIn !== input.expected_signed_in) return fail("account_state_changed", "The expected sign-in state could not be confirmed; check the intended account manually.");
     if (text(tid("header-currency-picker-trigger")) !== input.currency || config(/\bb_selected_currency\s*:\s*'([A-Za-z_]+)'/) !== input.currency) return fail("currency_mismatch", "The current currency differs from the request; no currency was changed.");
     const occupancy = text(tid("occupancy-config"));
@@ -105,13 +106,16 @@
     const roomId = roomLink?.getAttribute("data-room-id");
     if (!roomId || !/^\d{1,20}$/.test(roomId) || !text(roomLink)) return fail("site_changed", "The rate cannot be attributed to a room with a readable ID.");
     const select = row.querySelector('select[name="nr_rooms_' + input.rate_id + '"]');
-    if (!select || select.disabled || ![...select.querySelectorAll("option")].some(o => o.getAttribute("value") === "1" && !o.disabled)) return fail("rate_not_found", "The page does not offer one unit of this rate.");
+    if (!select || select.disabled || select.matches(":disabled") || ![...select.querySelectorAll("option")].some(o => o.getAttribute("value") === "1" && !o.disabled && !o.closest("optgroup[disabled]"))) return fail("rate_not_found", "The page does not offer one unit of this rate.");
     const capacity = /Max\.? people:\s*(\d+)/i.exec(text(row.querySelector(".hprt-table-cell-occupancy")));
     if (!capacity || Number(capacity[1]) < adults || (/Only for 1 guest/i.test(text(row.querySelector(".hprt-table-cell-occupancy"))) && adults > 1)) return fail("party_not_confirmed", "The rate does not confirm capacity for the whole adult party.");
     const block = row.querySelector(".hprt-price-block");
     if (block?.querySelector(".prd-genius-preview-rate-inline") || /members-only price/i.test(rawText(block))) return fail("login_required", "This displayed rate is a member-only preview; read again after manual sign-in if desired.");
     const totalEl = block?.querySelector(".bui-price-display__value");
     const priceText = text(totalEl?.querySelector("span") || totalEl);
+    const codes = new Set(Intl.supportedValuesOf("currency"));
+    const markers = [[/\bUS\$/, ["USD"]], [/\b(?:CA\$|C\$)/, ["CAD"]], [/\b(?:AU\$|A\$)/, ["AUD"]], [/\bNZ\$/, ["NZD"]], [/\bHK\$/, ["HKD"]], [/\b(?:SG\$|S\$)/, ["SGD"]], [/\bNT\$/, ["TWD"]], [/€/, ["EUR"]], [/£/, ["GBP"]], [/¥/, ["JPY", "CNY"]], [/₹/, ["INR"]]];
+    if ((priceText.match(/\b[A-Z]{3}\b/g) || []).some(c => codes.has(c) && c !== input.currency) || markers.some(([pattern, currencies]) => pattern.test(priceText) && !currencies.includes(input.currency))) return fail("currency_mismatch", "The displayed rate explicitly names a different currency; read the rate again.");
     const token = /[\d][\d,.']*/.exec(priceText)?.[0];
     const total = token && /^(\d{1,3}(,\d{3})+|\d+)(\.\d+)?$/.test(token) ? Number(token.replace(/,/g, "")) : null;
     if (total === null || !Number.isFinite(total)) return fail("site_changed", "The displayed total cannot be read.");
