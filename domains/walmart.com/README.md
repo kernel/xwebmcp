@@ -73,7 +73,7 @@ There is no `confirmed: true` input and no fake approval framework. No purchase,
 
 ## Known limitations
 
-- No live cart or saved-item mutation has been performed. Action successes, restoration and negative confirmation cases are tested only in fabricated isolated flows. No claim of real mutation success is made.
+- No live cart or saved-item mutation has been performed. Action successes and negative confirmation cases are tested only in fabricated isolated flows. No live restoration or end-to-end restoration rehearsal is claimed. No claim of real mutation success is made.
 - Adding is limited to the observed unregulated Bed Sheets product type; public product ids alone do not establish eligibility for other types. Non-current seller offers and weighted goods are unsupported.
 - `save_for_later` requires modules on an already-open cart document and a complete saved-items collection with fewer than 100 lines before dispatch, so the added line fits the 100-line verification bound. It returns `wrong_page`/`site_changed` rather than navigating or using stale operation hashes.
 - No shopping-list tool is shipped. A list-summary prototype was removed because matching document/response bootstrap profiles cannot prove they belong to the account represented by a fresh cart guard. No populated authoritative identity binding is established. List contents and add/remove/create/delete list actions also remain ungrounded. Saved-for-later is not the same as a shopping list.
