@@ -4,12 +4,12 @@ Tools for Reddit's community website: public post reads, guarded save/unsave, an
 
 | tool | file | status | notes |
 |------|------|--------|-------|
-| get_thread | [get_thread.js](get_thread.js) | draft | One post and up to 100 comments; collapsed branches reported, not expanded |
-| list_posts | [list_posts.js](list_posts.js) | draft | One community feed page with an after cursor; no account feeds |
-| prepare_comment | [prepare_comment.js](prepare_comment.js) | draft | Top-level comment preparation and thread handoff; never persists or submits |
-| prepare_post | [prepare_post.js](prepare_post.js) | draft | Text-post preparation, community rules and composer handoff; never persists or submits |
-| search | [search.js](search.js) | draft | Post search site-wide or in one community |
-| set_saved | [set_saved.js](set_saved.js) | draft | Save or unsave one displayed post with expected-account and state guards; changing success is fixture-only |
+| get_thread | [get_thread.js](get_thread.js) | qa_passed | One post and up to 100 comments; collapsed branches reported, not expanded |
+| list_posts | [list_posts.js](list_posts.js) | qa_passed | One community feed page with an after cursor; no account feeds |
+| prepare_comment | [prepare_comment.js](prepare_comment.js) | qa_passed | Top-level comment preparation and thread handoff; never persists or submits |
+| prepare_post | [prepare_post.js](prepare_post.js) | qa_passed | Text-post preparation, community rules and composer handoff; never persists or submits |
+| search | [search.js](search.js) | qa_passed | Post search site-wide or in one community |
+| set_saved | [set_saved.js](set_saved.js) | qa_passed | Save or unsave one displayed post with expected-account and state guards; changing success is fixture-only |
 
 ## Native WebMCP tools
 
@@ -60,10 +60,13 @@ consequential-approval mechanism.
 
 The tool checks a signed-in `shreddit-app`, exactly one visible non-ad target post and its loaded English
 Save/Unsave menu. It reads `/api/me.json` only for account comparison (no raw account object or token is
-returned), and the exact thread JSON only for its saved state. A wrong account, stale expected state,
-ambiguous target, disabled control or mismatch between server state and menu stops before clicking.
+returned), and the exact thread JSON only for its saved state. Account/state fetches disable HTTP caching.
+A wrong account, stale expected state, ambiguous target, disabled control or mismatch between server state
+and menu stops before clicking.
 
-Already-desired state is a no-op. Otherwise it rechecks the account and DOM, clicks the exact control once,
+After the final account read it synchronously re-resolves every target/menu/control prerequisite and
+requires the same nodes, so a still-connected retired control cannot be clicked. This also guards the no-op.
+Already-desired state is a no-op. Otherwise it clicks the exact control once,
 waits 500 ms, then reads the saved state and account again. Optimistic menu text is not proof of success.
 A lost response, cancellation or mismatch after the click returns `outcome_unknown` with `write_attempted: true`.
 **Do not retry automatically**: the write may have happened even if the tool could not confirm it. Cancellation
@@ -124,11 +127,11 @@ No such account was used. Signed-in live checks here are read-only/no-op, not mu
 
 Prior independent QA on 2026-09-29 signed off on three read tools on Kernel and Chromium 153. It found and
 fixed non-ASCII URI encoding, unknown-community redirects and input limits. The remaining URI punctuation
-observation (`[`, `]`, `|`, stray `%`) is now covered and encoded. New source and the rebase invalidate that
-old sign-off as evidence for this revision; all entries are initially draft pending independent review.
+observation (`[`, `]`, `|`, stray `%`) is now covered and encoded. New source and the rebase invalidated that
+old sign-off as evidence for this revision; the independent review below establishes the current statuses.
 
-Builder live checks on 2026-09-30: all six definitions registered in one atomic batch on Kernel without
-removing the three existing reads. From the home page, `prepare_post` for a public text-post community and
+Builder live checks on 2026-09-30, initial expanded source before the final safety fixes: all six definitions
+registered in one atomic batch on Kernel without removing the three existing reads. From the home page, `prepare_post` for a public text-post community and
 `prepare_comment` for a public thread returned `prepared`, with neither persisted nor submitted. A link-only
 community returned `forbidden`. `set_saved` returned a no-op under the authorized account with the target
 already unsaved; no Save/Unsave click was issued. No account names or private content were recorded.
@@ -138,7 +141,32 @@ branches, malformed input before requests/DOM access, account/target/state prere
 cancellation, one-click mocked save/unsave, unknown outcomes without retry, preparation restrictions,
 UTF-16/code-point boundaries, secret exclusion and output bounds. Mocked mutation success is not live verification.
 
-Independent review and local extension results for this revision are pending.
+Independent QA on 2026-09-30 reviewed final source commit `ecdd301`. Initial review found a blocking
+stale-control gap across the final account read, and a restricted-contributor contract mismatch. Both were
+fixed, with regression fixtures; the same reviewer signed off after one fix/recheck round. All six are
+conservatively `qa_passed`, not `verified`.
+
+- Kernel: all-six atomic replacement and dispatch passed, old references rejected, no native conflicts.
+  Real shadow-DOM fixtures covered mocked save/unsave and duplicate no-ops; moved/replaced controls,
+  hidden/duplicated targets, changed menus, ad/login markers, disabled/disconnected controls and identity
+  mismatches stopped with zero clicks and `write_attempted: false`. Unknown outcomes never retried.
+- Local extension: rebuilt and installed all six pinned to the reviewed commit on Chromium 153.0.8010.52.
+  The same independent real shadow-DOM and mocked-network matrices passed, including account switches,
+  cancellation, preparation and confirmation rejection. These are isolated flows, not real Reddit mutations.
+- Both runtimes preserved document identity/URL; navigation invalidated references. Restricted contributor
+  null/omitted/false states failed before rules fetch; approved restricted and public communities prepared.
+- Fresh real-site access was challenge-blocked on both rounds; attempts stopped without bypass. Five read/
+  preparation tools returned schema-valid `challenge`; signed-out save returned `login_required`, malformed
+  save `invalid_input`. Final-source changing save success and authenticated handler compatibility remain
+  unverified, as do real preparation success, HTTP 429, private content and native composer validation.
+- Registry: 85 valid tools; full suite: 1639 pass, zero failures/skips. Real Ajv/URI validation and 140
+  independent scratch checks/probes passed on final source, in addition to both runtime matrices.
+  Builder extension unit checks also passed (10 tests); six isolated safety/limit mutants were detected.
+- All reviewer browsers, extension processes, temporary profiles and test resources were cleaned up.
+  No live save-state mutation, post/comment submission, notification or inbox navigation occurred.
+
+QA provenance is recorded in the Reddit registry entries. Later status/documentation edits do not change
+the reviewed tool source.
 
 ## URL patterns
 
