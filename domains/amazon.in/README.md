@@ -1,22 +1,26 @@
 # amazon.in
 
-Tools for Amazon India (https://www.amazon.in): public catalog search, product details and Best Sellers charts, read-only and usable without signing in.
+Tools for Amazon India (https://www.amazon.in): public catalog search, product details, Best Sellers charts, guest-cart reads and a limited reversible guest-cart add.
 
 | tool | file | status | notes |
 |------|------|--------|-------|
 | search_products | [search_products.js](search_products.js) | draft | One results page with the site's departments, sorts, rupee price bounds and filter options (`include_facets`, then `facet_ids`); sponsored flag and `exclude_sponsored`. |
 | get_product | [get_product.js](get_product.js) | draft | Product page by asin: rupee price and M.R.P., rating, availability, seller, bullets, overview and detail tables, and variation asins. |
+| get_cart | [get_cart.js](get_cart.js) | draft | Guest active-cart items and dedicated recommendations; populated rows have fixture coverage only. |
+| add_to_cart | [add_to_cart.js](add_to_cart.js) | draft | One recommendation into an empty guest cart; fresh price/state checks, one POST and exact readback. Write success is fixture-only. |
 | list_bestsellers | [list_bestsellers.js](list_bestsellers.js) | draft | Best Sellers chart for a department or category node, with the subcategories to drill into. |
 
 ## Scope and loading
 
-The tools read public pages. They never sign in, change the delivery location, touch the cart, wish lists or orders, open checkout, or send anything except one `GET` per call. They do not return delivery estimates, the delivery location, reviews, offers, or anything about the signed-in account. Login for this site is deliberately not covered.
+The three catalog tools read public pages, one GET per call. `get_cart` reads only a recognisable signed-out English guest cart. `add_to_cart` is a reversible action restricted to one recommended item in an empty guest cart; see its safety contract below. None signs in, changes the delivery location, touches wishlists or orders, opens checkout, or pays. Delivery estimates, private addresses, account identifiers and offer/session tokens are never returned. Login remains deferred.
 
-Register all three files together as one namespace:
+Prices and availability use the browser's effective fulfillment context at request time, not an assumed Indian pincode or account. Cart outputs explicitly mark `currency: "INR"` and `fulfillment_context: "current_session_undisclosed"`; no address is disclosed or changed.
+
+Register all five files together as one namespace:
 
 ```javascript
 const fs = await import("node:fs");
-const names = ["search_products", "get_product", "list_bestsellers"];
+const names = ["search_products", "get_product", "list_bestsellers", "get_cart", "add_to_cart"];
 const tools = names.flatMap(name => (0, eval)("(" + fs.readFileSync(`domains/amazon.in/${name}.js`, "utf8") + ")"));
 await webmcp.addCustomTools({ namespace: "amazon.in", tools, forceOverwriteNamespace: true });
 const ref = async name => (await webmcp.listTools()).find(t => t.source.custom?.namespace === "amazon.in" && t.tool.name === name).tool_ref;
@@ -29,7 +33,7 @@ The tools are listed while the tab is on a `www.amazon.in` page. A call took abo
 
 ### Execution kind
 
-All three are `kind: "page"`. Each sends one same-origin `fetch` from the document it is invoked in, parses the returned HTML with `DOMParser`, and returns structured fields. None navigates the tab, so none needs to outlive its document and none qualifies for `cdp`. In the checks made, the fetched HTML matched the rendered page: a sorted search had the identical set of asins fetched and rendered (16 of 16), another query gave the same count (22 of 22), and a Best Sellers chart has 30 tiles in both the fetched HTML and the rendered page before scrolling (50 after).
+All five are `kind: "page"`. Each issues same-origin requests from the registering document and parses HTML. `add_to_cart` uses the observed dedicated recommendation POST, with redirects refused, then reads the cart once; it does not submit or click the mixed product buy-box form. None navigates the tab or needs to outlive its document, so CDP is not justified. In the checks made, the fetched HTML matched the rendered page: a sorted search had the identical set of asins fetched and rendered (16 of 16), another query gave the same count (22 of 22), and a Best Sellers chart has 30 tiles in both the fetched HTML and the rendered page before scrolling (50 after).
 
 ### search_products
 
@@ -53,9 +57,19 @@ All three are `kind: "page"`. Each sends one same-origin `fetch` from the docume
 
 `category` is a department slug (`kitchen`) or `department/node-id` (`kitchen/1379960031`). Every `subcategories[].category` value can be passed back in. Without `category` the tool returns only the list of departments. Bestsellers department slugs are not always the search aliases (Books is `books` here and `stripbooks` in search). The fetched page contains ranks 1 to 30 (page 1) and 51 to 80 (page 2) of each chart; ranks 31 to 50 and 81 to 100 are loaded by the site's scripts as the page scrolls and are not returned.
 
+### get_cart and add_to_cart safety
+
+`get_cart({})` returns active retail-cart lines (asin, title, quantity, canonical URL) and at most 12 recommendations with dedicated single-item POST forms. Saved-for-later items and other carts are not included. Cart selectors were corroborated against the public cart's client templates; only the empty-cart case and recommendations were read live, and populated rows remain fixture-only. Missing/unreadable rows fail as `site_changed`, never as an empty success.
+
+`add_to_cart({"asin":"B0TESTAAA1","expected_price_inr":299.50})` consumes a recommendation from `get_cart` whose `can_add_to_empty_cart` is true. This example asin is fabricated. Quantity is fixed at one. It freshly reads the cart, requires a recognisable guest account and an empty active cart, a unique recommendation, the exact expected INR price, a dedicated `/cart/add-to-cart` POST route, valid offer/CSRF fields and no other named action/customizer controls. A sole matching line already at quantity one returns `already_present` without a POST; any other nonempty cart is refused.
+
+At most one POST is sent. The tool does not follow a POST redirect, and treats HTTP or transport outcomes as insufficient evidence: one subsequent cart GET must show exactly the requested sole line at quantity one. Only that observed postcondition returns `ok`; it does not prove stock, fulfillment eligibility, purchase or the final checkout price. Readback failure, cancellation after the POST starts, account change or mismatched contents returns `outcome_unknown`. A sessionStorage pending guard then blocks another write in that tab; inspect `get_cart` and resolve manually, never retry automatically or create a new tab to bypass uncertainty. Cancellation before the write causes no POST. No model-provided confirmation flag is accepted or presented as human approval.
+
+This is a reversible cart action, not a financial execution tool. Mutation success was tested only with fabricated fixtures. Live development and QA performed no cart mutations. No checkout/order/payment execution exists: those require a separate trusted human approval path for the exact account, item, quantity, total and terms, which the current runtime does not supply.
+
 ### Output contract
 
-Optional fields must be omitted, not passed as `null`. Every tool returns `status: "ok"`, `status: "no_results"` where that applies, or `{ status: "error", error_kind, error_message }`. Shared `error_kind` values: `invalid_input` (checked before any request), `wrong_page`, `login_required`, `challenge`, `rate_limited`, `site_error`, `site_changed`; `get_product` and `list_bestsellers` add `not_found`. Nothing is retried. A challenge or `rate_limited` result means Amazon is throttling the browser; a person has to deal with it in the browser.
+Optional fields must be omitted, not passed as `null`. Tools return `status: "ok"`, `status: "no_results"` where that applies, or `{ status: "error", error_kind, error_message }`. `add_to_cart` additionally returns `already_present` and always includes `write_attempted`. Shared `error_kind` values: `invalid_input` (checked before any request), `wrong_page`, `login_required`, `challenge`, `rate_limited`, `site_error`, `site_changed`; `get_product` and `list_bestsellers` add `not_found`. Nothing is retried. A challenge or `rate_limited` result means Amazon is throttling the browser; a person has to deal with it in the browser.
 
 ## Site quirks
 
@@ -75,16 +89,19 @@ Optional fields must be omitted, not passed as `null`. Every tool returns `statu
 
 ## Known limitations
 
-- Only the public, signed-out experience was inspected. Signed-in pages (orders, saved cart, addresses, wish lists, full reviews) are not covered, and nothing here was tested with an account. An amazon.com account is a different account system and was not tried.
+- Only signed-out public sessions were inspected. Login remains deferred and amazon.com account portability has not been established. Signed-in carts, orders, addresses, wishlists and full reviews are unsupported.
+- Cart additions are limited to quantity-one recommendations into an empty guest retail cart. Arbitrary product adds are not grounded: the observed product form mixes `submit.add-to-cart` with buy-now fields and a `/gp/product/handle-buy-box` action. Populated-cart updates/removals need authenticated or separately approved populated-cart evidence; they are omitted, not guessed. Write success and populated cart rows are fixture-only, not live-verified.
 - Availability and prices follow the delivery location the browser session already has; the tools neither read nor change it. Live checks used a guest session in Kernel's us-east region with the default stealth proxy (the egress country was not checked); its default location was a Mumbai pincode. Results from an Indian address, or for another pincode, were not compared.
 - `search_products` returns one results page per call, at most 60 results. `rating_count` and `bought_past_month` are null when the card does not show them; cards for items with too few ratings show no rating at all.
 - `get_product` reads the fields listed above from the templates seen (a plain product, a product with colour and size variants, and an unavailable phone). Books, Kindle, fashion, Fresh and other templates were not checked. Variation options carry an asin and a label only, not a price or stock status per option. The `details` table includes the manufacturer, packer and importer lines the page prints. Only a bottle with colour and size variants and an unavailable phone were run through the tool; another variant layout (a t-shirt's) was inspected in raw HTML only.
 - `list_bestsellers` returns 30 of every 50 ranks (see above). Other charts on the same site (New Releases, Movers & Shakers, Most Wished For) are not covered.
 - The sponsored flag was checked structurally against one raw fetch that contained twelve sponsored cards and against fixtures; no tool invocation that returned a sponsored card was observed live, because ads are rarely present in the fetched HTML.
 - Page-side fetches follow Amazon's redirects; a redirect to another host, to sign-in, or a robot check is reported, not followed.
-- Not verified in the Chrome extension runtime (see QA summary).
+- The new cart tools have not yet been live-checked in the Chrome extension runtime (see QA summary).
 
 ## QA summary
+
+Restart checks, 2026-09-30: the full five-tool namespace was replaced atomically and remained listed. `get_cart` read the empty guest cart and six INR recommendations. `add_to_cart` returned `not_available` for an absent recommendation and `price_changed` for a mismatched expected price, both with `write_attempted: false`; the tab URL stayed unchanged. The cart GET requires the browser's default Accept header: explicitly sending `Accept: text/html` returned HTTP 406, whereas the ordinary GET returned 200. The new fixtures cover populated reads, a mocked exact add/readback, malformed inputs, account checks, unsupported forms, hidden empty markers, duplicate prevention, cancellation and uncertain outcomes with no retry. No live POST was performed. The current independent review is pending; the prior review below did not cover the new cart tools.
 
 Builder checks, 2026-09-29, guest session on a stealth Kernel browser (region us-east), on the final source. The whole namespace was registered through the WebMCP API and the tools were invoked from `www.amazon.in` pages other than any entry point (the cart page, a product page and a Best Sellers page); every output was checked against its schema:
 
@@ -100,4 +117,4 @@ Independent QA: one reviewer made an initial review and two rechecks, finding ei
 
 ## URL patterns
 
-All three tools use `["https://www.amazon.in/*"]` instead of the default `["https://amazon.in/*", "https://*.amazon.in/*"]`. The shop (search, products, charts, sign-in) lives on `www.amazon.in`, and `amazon.in` redirects there. Other hosts under the registrable domain are unrelated products (for example seller and advertising consoles); the page tools' relative requests would go to those hosts, so the tools are simply not listed there.
+All five tools use `["https://www.amazon.in/*"]` instead of the default `["https://amazon.in/*", "https://*.amazon.in/*"]`. The shop (search, products, charts, sign-in) lives on `www.amazon.in`, and `amazon.in` redirects there. Other hosts under the registrable domain are unrelated products (for example seller and advertising consoles); the page tools' relative requests would go to those hosts, so the tools are simply not listed there.

@@ -55,6 +55,32 @@
     },
     {
       "domain": "amazon.in",
+      "tool": "add_to_cart",
+      "file": "domains/amazon.in/add_to_cart.js",
+      "kind": "page",
+      "namespace": "amazon.in",
+      "url_patterns": [
+        "https://www.amazon.in/*"
+      ],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "One recommended item into an empty guest cart only. One POST, no checkout; uncertain outcomes block retries. Write success fixture-only."
+    },
+    {
+      "domain": "amazon.in",
+      "tool": "get_cart",
+      "file": "domains/amazon.in/get_cart.js",
+      "kind": "page",
+      "namespace": "amazon.in",
+      "url_patterns": [
+        "https://www.amazon.in/*"
+      ],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Guest active-cart read and dedicated one-item recommendations. Signed-in state refused; populated rows fixture-only."
+    },
+    {
+      "domain": "amazon.in",
       "tool": "get_product",
       "file": "domains/amazon.in/get_product.js",
       "kind": "page",
