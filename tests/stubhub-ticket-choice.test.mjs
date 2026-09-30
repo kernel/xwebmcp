@@ -124,6 +124,31 @@ for (const name of Object.keys(sources)) {
   });
 }
 
+for (const name of Object.keys(sources)) {
+  const valid = name === "get_ticket_offers" ? { event: EVENT } : choice;
+  test(`${name}: contradictory counts fail closed`, async () => {
+    const data = fixture(); data.grid.totalCount = 0;
+    assert.equal((await harness(name, { data }).run(valid)).error_kind, "site_changed");
+    data.grid.totalCount = 1; data.grid.items.push({ ...data.grid.items[0], id: 800000002 });
+    assert.equal((await harness(name, { data }).run(valid)).error_kind, "site_changed");
+  });
+  test(`${name}: identical duplicate rows are deduplicated`, async () => {
+    const data = fixture(); data.grid.items.push({ ...data.grid.items[0] });
+    const result = await harness(name, { data }).run(valid);
+    assert.equal(result.status, name === "get_ticket_offers" ? "ok" : "ready_for_review");
+    if (name === "get_ticket_offers") assert.equal(result.offers.length, 1);
+  });
+  test(`${name}: conflicting duplicate quotes/locations/eligibility fail in either order`, async () => {
+    for (const patch of [{ rawPrice: 99.99 }, { section: "B" }, { buyerCurrencyCode: "GBP" }, { showRecentlySold: true }, { availableQuantities: [4] }, { row: "42" }]) {
+      for (const reverse of [false, true]) {
+        const data = fixture(); data.grid.items.push({ ...data.grid.items[0], ...patch });
+        if (reverse) data.grid.items.reverse();
+        assert.equal((await harness(name, { data }).run(valid)).error_kind, "site_changed", JSON.stringify(patch));
+      }
+    }
+  });
+}
+
 test("get_ticket_offers: numeric fees-inclusive quote, rounded display and exact quantity capabilities", async () => {
   const h = harness("get_ticket_offers");
   const result = await h.run({ event: EVENT });

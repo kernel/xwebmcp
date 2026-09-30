@@ -230,23 +230,36 @@
           if (grid.totalCount !== 0) return fail("site_changed", "The site reports listings but the first page is empty.");
           return { status: "choice_unavailable", event, quantity, listing_id: input.listing_id, observed_at: observedAt, message: "No listings are available on this page for the requested quantity; nothing was selected." };
         }
+        if (grid.totalCount === 0) return fail("site_changed", "The site returned listings with a zero inventory count.");
         const offers = [];
         let skipped = 0;
-        const seen = new Set();
+        const seen = new Map();
         for (const item of grid.items.slice(0, 10)) {
           const id = String(item?.id);
           const price = item?.rawPrice;
           const currency = item?.buyerCurrencyCode;
           const quantities = Array.isArray(item?.availableQuantities) ? [...new Set(item.availableQuantities.filter(q => Number.isInteger(q) && q >= 1 && q <= 12))] : [];
-          if (!Number.isSafeInteger(item?.id) || !/^\d{1,16}$/.test(id) || String(item?.eventId) !== eventId || typeof price !== "number" || !Number.isFinite(price) || price < 0.01 || price > 1000000 || typeof currency !== "string" || !/^[A-Z]{3}$/.test(currency) || !quantities.includes(quantity) || item.showRecentlySold === true || seen.has(id)) { skipped++; continue; }
-          seen.add(id);
+          if (!Number.isSafeInteger(item?.id) || !/^\d{1,16}$/.test(id) || String(item?.eventId) !== eventId || typeof price !== "number" || !Number.isFinite(price) || price < 0.01 || price > 1000000 || typeof currency !== "string" || !/^[A-Z]{3}$/.test(currency) || !quantities.includes(quantity) || item.showRecentlySold === true) {
+            if (seen.has(id) && seen.get(id) !== null) return fail("site_changed", "An ineligible duplicate conflicts with a quoted listing.");
+            if (Number.isSafeInteger(item?.id)) seen.set(id, null);
+            skipped++;
+            continue;
+          }
           const hidden = item.hideSeatAndRowInfo !== false;
           const buyerNotes = (Array.isArray(item.listingNotes) ? item.listingNotes : []).slice(0, 10).filter(n => n?.showToBuyer === true).map(n => n.formattedListingNoteContent);
           const buckets = (Array.isArray(item.listingNoteBuckets) ? item.listingNoteBuckets : []).slice(0, 10).map(n => n?.formattedListingNoteContent);
-          offers.push({ listing_id: id, section: text(item.section), row: hidden ? null : text(item.row), seat_from: hidden ? null : text(item.seatFrom), seat_to: hidden ? null : text(item.seatTo),
+          const offer = { listing_id: id, section: text(item.section), row: hidden ? null : text(item.row), seat_from: hidden ? null : text(item.seatFrom), seat_to: hidden ? null : text(item.seatTo),
             seated_together: typeof item.isSeatedTogether === "boolean" ? item.isSeatedTogether : null, sellable_quantities: quantities, ticket_type: text(item.ticketTypeName), notes: notes([...buyerNotes, ...buckets]),
-            price_per_ticket: Math.round(price * 100) / 100, display_price: text(item.price), estimated_total: Math.round(price * quantity * 100) / 100, display_total: text(item.formattedTotalPrice), currency });
+            price_per_ticket: Math.round(price * 100) / 100, display_price: text(item.price), estimated_total: Math.round(price * quantity * 100) / 100, display_total: text(item.formattedTotalPrice), currency };
+          if (seen.has(id)) {
+            if (JSON.stringify(seen.get(id)) !== JSON.stringify(offer)) return fail("site_changed", "Conflicting rows share a listing id; no unambiguous quote can be established.");
+            skipped++;
+            continue;
+          }
+          seen.set(id, offer);
+          offers.push(offer);
         }
+        if (grid.totalCount < offers.length) return fail("site_changed", "The inventory count contradicts the eligible listings.");
         if (!offers.length) return fail("site_changed", "No supported, unsold listing explicitly supports the requested quantity on the first page.");
         const warnings = ["Only the first ten site-priced listings were read; this is not complete inventory.", "Prices include fees according to the site; taxes, delivery costs and the final payable total are unverified. Display prices and totals may be rounded differently."];
         if (skipped) warnings.push(skipped + " unsupported, sold or duplicate listings were omitted.");
