@@ -65,7 +65,20 @@
       ],
       "status": "draft",
       "last_verified": null,
-      "notes": "Read-only page summary: page type, live tool names from document.modelContext, best-effort signed-in state, visible alerts, suggested next steps. Unit-tested with fabricated DOM; exercised live on the homepage and booking form. signed_in=true detection is unverified."
+      "notes": "Read-only page summary: page type (incl. trip_summary / review_and_pay), live tool names, unsettled + reasons from observed Delta loading indicators (optional wait_for_settled_seconds), pending_choice for the fare experience drawer, cart_id, signed-in state, alerts and SFAF codes (seat badges excluded), and flow-aware suggestions that do not abandon an open cart. Unit-tested; exercised live on home, results, booking form and Trip Summary."
+    },
+    {
+      "domain": "delta.com",
+      "tool": "get_trip_summary",
+      "file": "domains/delta.com/get_trip_summary.js",
+      "kind": "page",
+      "namespace": "delta.com",
+      "url_patterns": [
+        "https://www.delta.com/completepurchase/*"
+      ],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Read-only cart reader on Trip Summary / Review and Pay: slices, passengers, price lines, amount due with currency, refundability, cart id. Unit-tested; exercised live on Trip Summary (CVG-SFO one way, Main Classic, $463.20 USD). Review and Pay reading not yet observed live."
     },
     {
       "domain": "delta.com",
@@ -125,6 +138,32 @@
       "status": "draft",
       "last_verified": null,
       "notes": "Back to draft after a source change on 2026-09-29: airport boxes are now cleared through the page and typed with the inlined lib/input.js cadence, and the typed code is checked before choosing (fixes 'CVCVG' on macOS Chrome, where CDP Meta+A does not select all). First successful full live invocation: CVG-SFO one way, 1 adult, regular Chrome 154 on macOS via the xwebmcp extension, status ok with first-page flights. Needs fresh independent QA; earlier qa_passed sign-off (agt_b189571b6d300a05921c) covered the previous source."
+    },
+    {
+      "domain": "delta.com",
+      "tool": "select_fare",
+      "file": "domains/delta.com/select_fare.js",
+      "kind": "page",
+      "namespace": "delta.com",
+      "url_patterns": [
+        "https://www.delta.com/flightsearch/search-results*"
+      ],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Clicks one fare column on a results row (result_index + brand_code from list_flight_results, optional expected_flight_numbers check) and returns the experiences in Delta's drawer with details and the restrictions-consent flag. Does not navigate. Unit-tested; exercised live for Main (Basic/Classic/Extra); Comfort and First drawers observed (Classic/Extra)."
+    },
+    {
+      "domain": "delta.com",
+      "tool": "select_fare_experience",
+      "file": "domains/delta.com/select_fare_experience.js",
+      "kind": "page",
+      "namespace": "delta.com",
+      "url_patterns": [
+        "https://www.delta.com/flightsearch/search-results*"
+      ],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Picks an experience in the open drawer and schedules the Select click after settling (navigates to Trip Summary). Experiences with an Accept Restrictions box (Main Basic) require accept_restrictions: true. Unit-tested; live: Main Basic without consent refused, Main Classic reached Trip Summary. Ticking restrictions not exercised live."
     },
     {
       "domain": "doordash.com",

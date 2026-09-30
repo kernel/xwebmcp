@@ -4,11 +4,14 @@ Tools for Delta Air Lines (https://www.delta.com).
 
 | tool | file | status | notes |
 | --- | --- | --- | --- |
-| get_page_context | [get_page_context.js](get_page_context.js) | draft | Read-only page summary with live tool names and suggested next steps. Unit-tested; exercised live on the homepage and booking form. |
-| search_flights | [search_flights.js](search_flights.js) | draft | Airport entry fixed for macOS Chrome on 2026-09-29 and first successful full live invocation recorded; needs fresh independent QA because the source changed. |
+| get_page_context | [get_page_context.js](get_page_context.js) | draft | Read-only page summary: page type, live tools, unsettled/pending_choice, cart id, suggested next steps. Exercised live. |
+| get_trip_summary | [get_trip_summary.js](get_trip_summary.js) | draft | Read-only cart reader on Trip Summary / Review and Pay. Exercised live on Trip Summary. |
 | list_flight_results | [list_flight_results.js](list_flight_results.js) | draft | Read-only results-page tool: every visible itinerary with all fare columns, sortable; unit-tested and exercised live once. |
 | login | [login.js](login.js) | draft | Homepage-only page tool: opens the top-nav Log in flyout, fills it, and schedules one submit. No output schema; outcome not observed. Live-checked with fabricated credentials and the submit click blocked in-page; no real submission. |
 | navigate_to_page | [navigate_to_page.js](navigate_to_page.js) | draft | Schedules a same-tab navigation to a www.delta.com path; description carries a basic site map. Unit-tested; exercised live. |
+| search_flights | [search_flights.js](search_flights.js) | draft | Airport entry fixed for macOS Chrome on 2026-09-29 and first successful full live invocation recorded; needs fresh independent QA because the source changed. |
+| select_fare | [select_fare.js](select_fare.js) | draft | Opens the experience drawer for one fare on a results row and returns its options. Exercised live. |
+| select_fare_experience | [select_fare_experience.js](select_fare_experience.js) | draft | Picks an experience; Basic requires accept_restrictions. Exercised live (consent refusal, Classic). |
 
 ## Scope
 
