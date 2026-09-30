@@ -3,7 +3,7 @@
   match: { url_patterns: ["https://www.united.com/*"] },
   tool: {
     "name": "get_fare_options",
-    "description": "Read cash cabin starting fares on the current matching English/US economy results page, without expanding or selecting a fare. Use search_flights first. Adults only. Map cabins by column header, not misleading button label. Pagination addresses currently rendered rows only; row IDs are page-local and can change. Returns the primary displayed flight, not complete connecting segments. Roundtrip amounts are per-person advertised entire-trip starting fares, not paired return itineraries. No account data, booking, hold or navigation.",
+    "description": "Read cash cabin starting fares on the current matching English/US economy results page, without expanding or selecting a fare. Use search_flights first. Adults only. Map cabins by column header, not misleading button label. Pagination addresses currently rendered rows only; row IDs are page-local and can change. Returns the primary displayed flight when exposed (null on collapsed connections), not complete connecting segments. Roundtrip amounts are per-person advertised entire-trip starting fares, not paired return itineraries. No account data, booking, hold or navigation.",
     "inputSchema": {
       "type": "object",
       "additionalProperties": false,
@@ -54,27 +54,20 @@
           "maximum": 20
         }
       },
-      "allOf": [
+      "oneOf": [
         {
-          "if": {
-            "properties": {
-              "trip_type": {
-                "const": "roundtrip"
-              }
-            }
+          "properties": {
+            "trip_type": { "const": "one_way" },
+            "return_date": false
           },
-          "then": {
-            "required": [
-              "return_date"
-            ]
+          "required": ["trip_type"]
+        },
+        {
+          "properties": {
+            "trip_type": { "const": "roundtrip" },
+            "return_date": { "type": "string", "format": "date" }
           },
-          "else": {
-            "not": {
-              "required": [
-                "return_date"
-              ]
-            }
-          }
+          "required": ["trip_type", "return_date"]
         }
       ]
     },
@@ -196,7 +189,7 @@
                     "pattern": "^row-[1-9][0-9]{0,3}$"
                   },
                   "primary_flight": {
-                    "type": "string",
+                    "type": ["string", "null"],
                     "pattern": "^[A-Z0-9]{2} [0-9]{1,4}[A-Z]?$"
                   },
                   "departure_airport": {
@@ -333,6 +326,8 @@
       const payment = document.querySelector('select[name="FSRSearch.swap0.travelType"]');
       if (!payment || payment.value !== "money") return fail("wrong_page", "Only the observed Money results are supported, not Miles or Money + Miles.");
       const clean = (value, max = 120) => Array.from(String(value || "").replace(/\p{Cc}/gu, " ").replace(/[\p{Cf}\u034f\ufe00-\ufe0f\u{e0100}-\u{e01ef}]/gu, "").replace(/\s+/g, " ").trim()).slice(0, max).join("").trimEnd();
+      const empty = document.querySelector('[class*="NoFlights-styles__noFlightTitle"]');
+      if (visible(empty) && /no flights|no flight is available|could not find any flights|couldn't find any flights|couldn't find an exact match|no available flights/i.test(empty.textContent || "")) return fail("no_results", "United displays an explicit no-flights result for this query.");
       const disclaimer = document.querySelector('[class*="FareDisclaimer-styles__disclaimer"]')?.textContent || "";
       if (!/per person/i.test(disclaimer) || !(input.trip_type === "roundtrip" ? /roundtrip/i : /one-way/i).test(disclaimer)) return fail("site_changed", "The displayed fare scope is missing or differs from the requested trip.");
       const query = { origin: input.origin, destination: input.destination, depart_date: input.depart_date, return_date: input.return_date ?? null, trip_type: input.trip_type, passengers: input.passengers };
@@ -356,17 +351,17 @@
         const duration_minutes = duration ? +(duration[1] || 0) * 60 + +(duration[2] || 0) : 0;
         const summary = text.split("Flight segment details")[0];
         const stops = /\bNONSTOP\b/.test(summary) ? 0 : +(summary.match(/\b([1-5]) STOP/)?.[1] ?? -1);
-        const buttons = [...row.querySelectorAll('button[aria-labelledby*="priceCardContent"]')].filter(visible);
-        if (buttons.length !== headers.length) return null;
-        const fares = buttons.map((b, i) => {
-          const label = clean(b.innerText, 240);
+        const cells = [...row.querySelectorAll('[role="gridcell"][aria-describedby]')].filter(visible);
+        if (cells.length !== headers.length) return null;
+        const fares = cells.map((cell, i) => {
+          const label = clean(cell.innerText, 240);
           const price = label.match(/^From \$((?:[1-9]\d{0,2}(?:,\d{3})+|[1-9]\d*)(?:\.\d{1,2})?)(?: |$)/);
           if (!price) return /not available|unavailable|not offered/i.test(label) ? false : null;
           const amount = Number(price[1].replace(/,/g, ""));
           return amount > 0 && amount <= 1000000 ? { cabin: headers[i], amount, currency: "USD", per_passenger: true, label } : null;
         });
-        if (!primary || !departure_airport || !arrival_airport || !departure_time || !arrival_time || duration_minutes < 1 || duration_minutes > 5000 || stops < 0 || fares.includes(null) || !fares.some(Boolean)) return null;
-        return { offer_id: "row-" + (index + 1), primary_flight: primary[1] + " " + primary[2], departure_airport, arrival_airport, departure_time, arrival_time, arrival_day_label: clean(row.querySelector('[class*="FlightInfoBlock-styles__arrivalTime"]')?.innerText.match(/Arrives [A-Za-z]{3} \d{1,2}/)?.[0], 40) || null, stops, duration_minutes, fares: fares.filter(Boolean) };
+        if ((!primary && stops === 0) || !departure_airport || !arrival_airport || !departure_time || !arrival_time || duration_minutes < 1 || duration_minutes > 5000 || stops < 0 || fares.includes(null) || !fares.some(Boolean)) return null;
+        return { offer_id: "row-" + (index + 1), primary_flight: primary ? primary[1] + " " + primary[2] : null, departure_airport, arrival_airport, departure_time, arrival_time, arrival_day_label: clean(row.querySelector('[class*="FlightInfoBlock-styles__arrivalTime"]')?.innerText.match(/Arrives [A-Za-z]{3} \d{1,2}/)?.[0], 40) || null, stops, duration_minutes, fares: fares.filter(Boolean) };
       };
 
       const offset = input.offset ?? 0, limit = input.limit ?? 10;

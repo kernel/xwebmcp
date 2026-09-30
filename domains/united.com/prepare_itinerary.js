@@ -75,27 +75,20 @@
           "maximum": 1000000
         }
       },
-      "allOf": [
+      "oneOf": [
         {
-          "if": {
-            "properties": {
-              "trip_type": {
-                "const": "roundtrip"
-              }
-            }
+          "properties": {
+            "trip_type": { "const": "one_way" },
+            "return_date": false
           },
-          "then": {
-            "required": [
-              "return_date"
-            ]
+          "required": ["trip_type"]
+        },
+        {
+          "properties": {
+            "trip_type": { "const": "roundtrip" },
+            "return_date": { "type": "string", "format": "date" }
           },
-          "else": {
-            "not": {
-              "required": [
-                "return_date"
-              ]
-            }
-          }
+          "required": ["trip_type", "return_date"]
         }
       ]
     },
@@ -409,17 +402,17 @@
         const duration_minutes = duration ? +(duration[1] || 0) * 60 + +(duration[2] || 0) : 0;
         const summary = text.split("Flight segment details")[0];
         const stops = /\bNONSTOP\b/.test(summary) ? 0 : +(summary.match(/\b([1-5]) STOP/)?.[1] ?? -1);
-        const buttons = [...row.querySelectorAll('button[aria-labelledby*="priceCardContent"]')].filter(visible);
-        if (buttons.length !== headers.length) return null;
-        const fares = buttons.map((b, i) => {
-          const label = clean(b.innerText, 240);
+        const cells = [...row.querySelectorAll('[role="gridcell"][aria-describedby]')].filter(visible);
+        if (cells.length !== headers.length) return null;
+        const fares = cells.map((cell, i) => {
+          const label = clean(cell.innerText, 240);
           const price = label.match(/^From \$((?:[1-9]\d{0,2}(?:,\d{3})+|[1-9]\d*)(?:\.\d{1,2})?)(?: |$)/);
           if (!price) return /not available|unavailable|not offered/i.test(label) ? false : null;
           const amount = Number(price[1].replace(/,/g, ""));
           return amount > 0 && amount <= 1000000 ? { cabin: headers[i], amount, currency: "USD", per_passenger: true, label } : null;
         });
-        if (!primary || !departure_airport || !arrival_airport || !departure_time || !arrival_time || duration_minutes < 1 || duration_minutes > 5000 || stops < 0 || fares.includes(null) || !fares.some(Boolean)) return null;
-        return { offer_id: "row-" + (index + 1), primary_flight: primary[1] + " " + primary[2], departure_airport, arrival_airport, departure_time, arrival_time, arrival_day_label: clean(row.querySelector('[class*="FlightInfoBlock-styles__arrivalTime"]')?.innerText.match(/Arrives [A-Za-z]{3} \d{1,2}/)?.[0], 40) || null, stops, duration_minutes, fares: fares.filter(Boolean) };
+        if ((!primary && stops === 0) || !departure_airport || !arrival_airport || !departure_time || !arrival_time || duration_minutes < 1 || duration_minutes > 5000 || stops < 0 || fares.includes(null) || !fares.some(Boolean)) return null;
+        return { offer_id: "row-" + (index + 1), primary_flight: primary ? primary[1] + " " + primary[2] : null, departure_airport, arrival_airport, departure_time, arrival_time, arrival_day_label: clean(row.querySelector('[class*="FlightInfoBlock-styles__arrivalTime"]')?.innerText.match(/Arrives [A-Za-z]{3} \d{1,2}/)?.[0], 40) || null, stops, duration_minutes, fares: fares.filter(Boolean) };
       };
 
       const index = Number(input.offer_id.slice(4)) - 1;

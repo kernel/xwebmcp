@@ -44,27 +44,20 @@
           "maximum": 9
         }
       },
-      "allOf": [
+      "oneOf": [
         {
-          "if": {
-            "properties": {
-              "trip_type": {
-                "const": "roundtrip"
-              }
-            }
+          "properties": {
+            "trip_type": { "const": "one_way" },
+            "return_date": false
           },
-          "then": {
-            "required": [
-              "return_date"
-            ]
+          "required": ["trip_type"]
+        },
+        {
+          "properties": {
+            "trip_type": { "const": "roundtrip" },
+            "return_date": { "type": "string", "format": "date" }
           },
-          "else": {
-            "not": {
-              "required": [
-                "return_date"
-              ]
-            }
-          }
+          "required": ["trip_type", "return_date"]
         }
       ]
     },

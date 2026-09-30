@@ -11,11 +11,11 @@ const element = (text, more = {}) => ({ innerText: text, textContent: text, getC
 const terms = "Fares are for the entire one-way trip, per person. Additional bag charges may apply.";
 const headerSelector = '[role="columnheader"][class*="ColumnSortResultHeader-styles__column--"]';
 const rowSelector = '[class*="Flight-styles__flightContainer--"]';
-const fareSelector = 'button[aria-labelledby*="priceCardContent"]';
+const fareSelector = '[role="gridcell"][aria-describedby]';
 function row(over = {}) {
   const text = "NONSTOP\nDeparting at 7:00 AM\nArriving at 8:40 AM\nOrigin Example (SFO)\nDestination Example (LAX)\nDuration 1 hours and 40 minutes\nFlight Number UA 1234. Aircraft Example";
   return element(over.text ?? text, {
-    querySelectorAll: selector => selector === fareSelector ? (over.buttons ?? [element("From $50 United Economy cabin select to view fare options"), element("From $150 United Economy cabin select to view fare options")]) : [],
+    querySelectorAll: selector => selector === fareSelector ? (over.cells ?? [element("From $50 United Economy cabin select to view fare options"), element("From $150 United Economy cabin select to view fare options")]) : [],
     querySelector: () => element(over.arrival_label ?? "8:40 AM"),
     ...over
   });
@@ -42,6 +42,7 @@ function harness(name, opts = {}) {
       reads.push(selector);
       if (selector.includes("travelType")) return opts.payment_missing ? null : { value: opts.payment ?? "money" };
       if (selector.includes("FareDisclaimer")) return element(opts.terms ?? terms);
+      if (selector.includes("NoFlights")) return opts.no_flights ?? null;
       throw new Error("Unexpected selector: " + selector);
     }
   };
@@ -49,6 +50,7 @@ function harness(name, opts = {}) {
   return { def, reads, run: async (args = input, signal) => JSON.parse(JSON.stringify(await def.execute(args, { signal }))) };
 }
 function conforms(s, v) {
+  if (typeof s === "boolean") return s;
   if (s.oneOf && s.oneOf.filter(x => conforms(x, v)).length !== 1) return false;
   if (s.const !== undefined && s.const !== v) return false;
   if (s.enum && !s.enum.includes(v)) return false;
@@ -64,6 +66,14 @@ function conforms(s, v) {
   return true;
 }
 for (const name of names) {
+  test(`${name}: trip-type schema requires roundtrip return dates and forbids one-way return dates`, () => {
+    const schema = harness(name).def.tool.inputSchema;
+    const base = name === "prepare_itinerary" ? choice : input;
+    assert.ok(conforms(schema, base));
+    assert.ok(conforms(schema, { ...base, trip_type: "roundtrip", return_date: "2027-01-15" }));
+    assert.equal(conforms(schema, { ...base, trip_type: "roundtrip" }), false);
+    assert.equal(conforms(schema, { ...base, return_date: "2027-01-15" }), false);
+  });
   test(`${name}: page kind, no site interaction or execution primitives`, () => {
     const { def } = harness(name);
     assert.equal(def.kind, "page");
@@ -113,7 +123,40 @@ test("fare options map misleading labels by column, with typed bounded paginatio
   assert.equal((await h.run({ ...input, offset: 30 })).status, "no_results");
 });
 test("fare options: no partial success on drift, bad currencies, missing scope or oversized pages", async () => {
-  for (const opts of [{ rows: [] }, { rows: Array.from({ length: 201 }, () => row()) }, { headers: [] }, { headers: [element("Economy"), element("Economy")] }, { terms: "one-way fares" }, { terms: "roundtrip per person" }, { rows: [row({ text: "unreadable" })] }, { rows: [row({ buttons: [element("From €50 Economy"), element("From $150 Economy")] })] }, { rows: [row({ buttons: [element("From $0 Economy"), element("From $150 Economy")] })] }, { rows: [row({ buttons: [element("From $1,,2 Economy"), element("From $150 Economy")] })] }]) assert.equal((await harness("get_fare_options", opts).run()).status, "site_changed");
+  for (const opts of [{ rows: [] }, { rows: Array.from({ length: 201 }, () => row()) }, { headers: [] }, { headers: [element("Economy"), element("Economy")] }, { terms: "one-way fares" }, { terms: "roundtrip per person" }, { rows: [row({ text: "unreadable" })] }, { rows: [row({ text: row().innerText.replace("Flight Number UA 1234. Aircraft Example", "") })] }, { rows: [row({ cells: [element("From €50 Economy"), element("From $150 Economy")] })] }, { rows: [row({ cells: [element("From $0 Economy"), element("From $150 Economy")] })] }, { rows: [row({ cells: [element("From $1,,2 Economy"), element("From $150 Economy")] })] }, { rows: [row({ cells: [element("From $50 Economy")] })] }]) assert.equal((await harness("get_fare_options", opts).run()).status, "site_changed");
+});
+test("collapsed connecting rows expose no invented primary flight and cannot be prepared", async () => {
+  const text = row().innerText.replace("NONSTOP", "1 STOP").replace("Flight Number UA 1234. Aircraft Example", "");
+  const opts = { rows: [row(), row({ text })] };
+  const h = harness("get_fare_options", opts);
+  const out = await h.run();
+  assert.equal(out.status, "ok");
+  assert.equal(out.offers[1].primary_flight, null);
+  assert.equal(out.offers[1].stops, 1);
+  assert.ok(conforms(h.def.tool.outputSchema, out));
+  assert.equal((await harness("prepare_itinerary", opts).run({ ...choice, offer_id: "row-2" })).status, "stale_choice");
+});
+test("unavailable cabin cells do not shift later fares or prevent exact available handoff", async () => {
+  const opts = { headers: [element("United Economy"), element("Economy Plus"), element("United First")], rows: [row({ cells: [element("From $50 United Economy"), element("Not available"), element("From $250 United First")] })] };
+  const h = harness("get_fare_options", opts);
+  const out = await h.run();
+  assert.equal(out.status, "ok");
+  assert.deepEqual(out.offers[0].fares.map(f => [f.cabin, f.amount]), [["United Economy", 50], ["United First", 250]]);
+  assert.ok(conforms(h.def.tool.outputSchema, out));
+  const p = harness("prepare_itinerary", opts);
+  const prepared = await p.run({ ...choice, cabin: "United First", expected_amount: 250 });
+  assert.equal(prepared.status, "ok");
+  assert.ok(conforms(p.def.tool.outputSchema, prepared));
+  assert.equal((await p.run({ ...choice, cabin: "Economy Plus" })).status, "stale_choice");
+});
+test("explicit no-flights component precedes missing fare terms, unlike loading or hidden notices", async () => {
+  const opts = { rows: [], terms: "", no_flights: element("We couldn't find an exact match") };
+  const h = harness("get_fare_options", opts);
+  const out = await h.run();
+  assert.equal(out.status, "no_results");
+  assert.ok(conforms(h.def.tool.outputSchema, out));
+  assert.equal((await harness("get_fare_options", { rows: [], terms: "" }).run()).status, "site_changed");
+  assert.equal((await harness("get_fare_options", { ...opts, no_flights: element("We couldn't find an exact match", { getClientRects: () => [] }) }).run()).status, "site_changed");
 });
 test("fare options: pagination rejects non-integers/oversized values before reading", async () => {
   for (const props of [{ offset: -1 }, { offset: 200 }, { offset: "0" }, { limit: 0 }, { limit: 21 }, { limit: 1.2 }]) {
