@@ -68,9 +68,11 @@
     const result = await request("/service/search/hr/v2/collections/" + id);
     if (result.error) return result.error;
     const json = result.json;
-    const source = Array.isArray(json?.sourceDescriptions) ? json.sourceDescriptions.find(s => s?.id === id && s.resourceType === "http://gedcomx.org/Collection") : null;
-    const collection = Array.isArray(json?.collections) ? json.collections.find(c => c?.id === id) : null;
-    if (!source || !collection || json.id !== id) return fail("site_changed", "FamilySearch's response does not identify the requested collection.");
+    const sources = Array.isArray(json?.sourceDescriptions) ? json.sourceDescriptions.filter(s => s?.id === id && s.resourceType === "http://gedcomx.org/Collection") : [];
+    const collections = Array.isArray(json?.collections) ? json.collections.filter(c => c?.id === id) : [];
+    if (sources.length !== 1 || collections.length !== 1 || json.id !== id) return fail("site_changed", "FamilySearch's response does not identify one unambiguous requested collection.");
+    const source = sources[0];
+    const collection = collections[0];
     const scrub = value => typeof value === "string" ? value.replace(/\p{Default_Ignorable_Code_Point}/gu, "").replace(/[\p{Cc}\u2028\u2029\u2800]/gu, " ").replace(/\s+/g, " ").trim() : "";
     const clip = (value, max) => scrub(value).slice(0, max) || null;
     const textOf = values => Array.isArray(values) ? values.find(v => typeof v?.value === "string")?.value : null;
@@ -92,7 +94,12 @@
     let guideUrl = null;
     if (path !== null && path !== "") {
       if (typeof path !== "string" || path.length > 1000 || !/^\/wiki\/en\/[A-Za-z0-9_.,()'%\-]+$/.test(path)) return fail("site_changed", "FamilySearch returned an unexpected research guide path.");
-      guideUrl = "https://www.familysearch.org" + path;
+      let decoded;
+      try { decoded = decodeURIComponent(path); } catch { return fail("site_changed", "FamilySearch returned an invalid encoded research guide path."); }
+      const guideTitle = decoded.slice("/wiki/en/".length);
+      const url = new URL(path, "https://www.familysearch.org");
+      if (guideTitle === "." || guideTitle === ".." || /[/?#\\]/.test(guideTitle) || !url.pathname.startsWith("/wiki/en/") || url.pathname === "/wiki/en/") return fail("site_changed", "FamilySearch returned a research guide path outside the expected subtree.");
+      guideUrl = url.href;
     }
     const content = Array.isArray(collection.content) ? collection.content : [];
     const count = type => {

@@ -143,11 +143,16 @@
     const regions = new Map();
     const regionLabels = [];
     const placeFacet = (Array.isArray(json.facets) ? json.facets : []).find(facet => facet && facet.token === "region");
-    for (const region of (placeFacet && placeFacet.values) || []) {
+    const isObject = value => value !== null && typeof value === "object" && !Array.isArray(value);
+    const objectList = value => value === undefined || (Array.isArray(value) && value.every(isObject));
+    if (!objectList(placeFacet?.values)) return fail("site_changed", "FamilySearch returned malformed Place filter values.");
+    for (const region of placeFacet?.values || []) {
+      if (!objectList(region.facets)) return fail("site_changed", "FamilySearch returned malformed Place filter groups.");
       const regionKey = /^region:(.+)$/.exec(String(region.token || ""));
       if (regionKey && typeof region.displayName === "string") { regions.set(region.displayName.toLowerCase(), regionKey[1]); regionLabels.push(region.displayName); }
-      for (const group of Array.isArray(region.facets) ? region.facets : []) {
-        for (const country of Array.isArray(group.values) ? group.values : []) {
+      for (const group of region.facets || []) {
+        if (!objectList(group.values)) return fail("site_changed", "FamilySearch returned malformed country filter values.");
+        for (const country of group.values || []) {
           const idMatch = /^placeId:(\d+)$/.exec(String(country.token || ""));
           if (idMatch && typeof country.displayName === "string") names.set(Number(idMatch[1]), country.displayName);
         }
@@ -168,6 +173,7 @@
     const queryWords = queryText ? queryText.split(" ") : [];
     const scored = [];
     for (const c of list) {
+      if ([c.recordCount, c.imageCount].some(count => count != null && (!Number.isSafeInteger(count) || count < 0))) return fail("site_changed", "FamilySearch returned invalid collection counts.");
       const titleWords = new Set(norm(c.title).split(" "));
       if (!queryWords.every(word => titleWords.has(word))) continue;
       if (words.place && !(placeRegion && c.region === placeRegion) && !(Array.isArray(c.placeIds) && c.placeIds.some(id => placeIds.includes(id)))) continue;

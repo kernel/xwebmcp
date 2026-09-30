@@ -1020,4 +1020,96 @@ for (const name of NAMES) {
 test("search_records: bounds hits even if the site ignores count", async () => {
   const result = await harness("search_records", { route: () => ({ status: 200, body: searchBody(Array.from({ length: 100 }, () => searchEntry()), 100) }) }).run({ surname: "Example", limit: 2 });
   assert.equal(result.returned, 2); assert.equal(result.hits.length, 2);
+  assert.equal(result.has_more, true);
+});
+
+test("prepare_source: mismatched whole-record evidence and duplicate records/personas fail closed", async () => {
+  const wrongRecord = recordBody(); wrongRecord.sourceDescriptions[0].about = "https://www.familysearch.org/ark:/61903/1:2:ZZZZ-YYYY";
+  assert.equal((await harness("prepare_source", { route: recordRoute(wrongRecord) }).run({ record_url: "https://www.familysearch.org/ark:/61903/1:2:AAAA-BBBB" })).error_kind, "site_changed");
+  const duplicateRecord = recordBody(); duplicateRecord.sourceDescriptions.push(recordSource("Conflicting title"));
+  const duplicatePerson = recordBody(); duplicatePerson.persons.push(person("p_conflict", "AAAA-CCCC", "Other Example", "Male"));
+  for (const body of [duplicateRecord, duplicatePerson]) {
+    const out = await harness("prepare_source", { route: recordRoute(body) }).run(validInputs.prepare_source);
+    assert.equal(out.error_kind, "site_changed");
+    assert.ok(!("saved" in out));
+  }
+});
+
+test("get_collection: duplicate identity matches are ambiguous, not first-match successes", async () => {
+  for (const key of ["sourceDescriptions", "collections"]) {
+    const body = detailBody(); const duplicate = plain(body[key][0]);
+    if (key === "sourceDescriptions") duplicate.titles[0].value = "Conflicting title";
+    else duplicate.content[0].count = 12345;
+    body[key].push(duplicate);
+    const h = harness("get_collection", { route: detailRoute(body) });
+    assert.equal((await h.run(validInputs.get_collection)).error_kind, "site_changed");
+    assert.equal(h.calls.length, 1);
+  }
+});
+
+test("get_collection: normalizes guide paths and rejects encoded traversal or separators", async () => {
+  for (const suffix of [".", "..", "%2e", "%2e%2e", "%2E%2e", "%2f", "x%2fy", "x%5cy", "x%3fy", "x%23y", "%", "%zz"]) {
+    const out = await harness("get_collection", { route: detailRoute(detailBody(), { data: "/wiki/en/" + suffix }) }).run(validInputs.get_collection);
+    assert.equal(out.error_kind, "site_changed", suffix);
+  }
+  const out = await harness("get_collection", { route: detailRoute(detailBody(), { data: "/wiki/en/Example_%C3%A9" }) }).run(validInputs.get_collection);
+  assert.equal(out.research_guide_url, "https://www.familysearch.org/wiki/en/Example_%C3%A9");
+});
+
+test("search_records: capped entries still report another page at the result and depth boundaries", async () => {
+  const entries = Array.from({ length: 5 }, () => searchEntry());
+  for (const [offset, total, expected] of [[0, 5, true], [3, 5, true], [4, 5, false], [4997, 10000, true], [4998, 10000, false]]) {
+    const out = await harness("search_records", { route: () => ({ status: 200, body: searchBody(entries, total) }) }).run({ surname: "Example", offset, limit: 1 });
+    assert.equal(out.returned, 1); assert.equal(out.has_more, expected, `offset ${offset}`);
+  }
+});
+
+test("search_records and list_collections reject negative or unsafe counts", async () => {
+  for (const count of [-1, 1.5, Number.MAX_SAFE_INTEGER + 1]) {
+    const body = searchBody(); body.facets[0].facets[0].facets[0].count = count;
+    assert.equal((await harness("search_records", { route: () => ({ status: 200, body }) }).run(validInputs.search_records)).error_kind, "site_changed");
+    for (const key of ["recordCount", "imageCount"]) {
+      const list = listBody(); list.collectionList[0][key] = count;
+      assert.equal((await harness("list_collections", { route: () => ({ status: 200, body: list }) }).run({})).error_kind, "site_changed");
+    }
+  }
+});
+
+test("get_record and search_records return site_changed for malformed nested record arrays", async () => {
+  const bodies = [];
+  bodies.push(recordBody({ persons: [null] }));
+  const persistent = recordBody(); persistent.persons[0].identifiers["http://gedcomx.org/Persistent"] = {}; bodies.push(persistent);
+  const facts = recordBody(); facts.persons[0].facts = [null]; bodies.push(facts);
+  bodies.push(recordBody({ relationships: [null] }));
+  bodies.push(recordBody({ sourceDescriptions: [null] }));
+  for (const body of bodies) {
+    assert.equal((await harness("get_record", { route: recordRoute(body) }).run(validInputs.get_record)).error_kind, "site_changed");
+    const entry = searchEntry(); entry.content.gedcomx = body;
+    assert.equal((await harness("search_records", { route: () => ({ status: 200, body: searchBody([entry], 1) }) }).run(validInputs.search_records)).error_kind, "site_changed");
+  }
+  const fieldBody = recordBody(); fieldBody.persons[0].fields = [field("Age", "41")]; fieldBody.persons[0].fields[0].values = [null];
+  assert.equal((await harness("get_record", { route: recordRoute(fieldBody) }).run(validInputs.get_record)).error_kind, "site_changed");
+});
+
+test("get_collection and prepare_source pin text sanitization and draft bounds", async () => {
+  const dirty = "Exa\u00admple\u{e0100}\u200b\ntext";
+  const detail = detailBody(); detail.sourceDescriptions[0].titles[0].value = dirty;
+  detail.sourceDescriptions[0].descriptions[0].value = "&#60;B&#62;" + dirty + "&#60;/B&#62;";
+  const collection = await harness("get_collection", { route: detailRoute(detail) }).run(validInputs.get_collection);
+  assert.equal(collection.title, "Example text"); assert.equal(collection.description, "Example text");
+  const body = recordBody(); body.sourceDescriptions[0].titles[0].value = dirty;
+  body.sourceDescriptions[0].citations[0].value = "<!--hidden--><B>" + dirty + "</B>";
+  body.persons[0].display.name = dirty;
+  const draft = await harness("prepare_source", { route: recordRoute(body) }).run({ ...validInputs.prepare_source, research_note: dirty });
+  assert.deepEqual([draft.title, draft.citation, draft.subject_name, draft.research_note], ["Example text", "Example text", "Example text", "Example text"]);
+  body.sourceDescriptions[0].titles[0].value = "x".repeat(500); body.sourceDescriptions[0].citations[0].value = "x".repeat(1500); body.persons[0].display.name = "x".repeat(300);
+  const bounded = await harness("prepare_source", { route: recordRoute(body) }).run({ ...validInputs.prepare_source, research_note: "x".repeat(2000) });
+  assert.deepEqual([bounded.title.length, bounded.citation.length, bounded.subject_name.length, bounded.research_note.length], [300, 1000, 200, 2000]);
+});
+
+test("list_collections returns site_changed for malformed nested Place facets", async () => {
+  for (const change of [body => { body.facets[0].values = [null]; }, body => { body.facets[0].values = {}; }, body => { body.facets[0].values[0].facets = [null]; }, body => { body.facets[0].values[0].facets[0].values = [null]; }]) {
+    const body = listBody(); change(body);
+    assert.equal((await harness("list_collections", { route: () => ({ status: 200, body }) }).run({})).error_kind, "site_changed");
+  }
 });

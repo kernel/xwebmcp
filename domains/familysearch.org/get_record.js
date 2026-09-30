@@ -129,6 +129,15 @@
     if (status !== 200) return fail("site_error", "FamilySearch answered HTTP " + status + ". Nothing was changed.");
     if (!isJson) return fail("challenge", "FamilySearch returned a page instead of record data; its bot protection or a site change is interfering. Do not retry automatically.");
     if (!json || !Array.isArray(json.persons) || json.persons.length === 0) return fail("site_changed", "FamilySearch's record response no longer has the expected shape (persons).");
+    const isObject = value => value !== null && typeof value === "object" && !Array.isArray(value);
+    const objectList = value => value === undefined || (Array.isArray(value) && value.every(isObject));
+    const validPerson = person => {
+      if (!isObject(person) || !objectList(person.facts) || !objectList(person.fields)) return false;
+      if ((person.fields || []).some(field => !objectList(field.values))) return false;
+      const persistent = person.identifiers?.["http://gedcomx.org/Persistent"];
+      return persistent === undefined || (Array.isArray(persistent) && persistent.every(uri => typeof uri === "string"));
+    };
+    if (!json.persons.every(validPerson) || !objectList(json.relationships) || !objectList(json.sourceDescriptions)) return fail("site_changed", "FamilySearch returned malformed nested record data.");
 
     const last = uri => (typeof uri === "string" ? uri.slice(uri.lastIndexOf("/") + 1) : null);
     const personaOf = person => {

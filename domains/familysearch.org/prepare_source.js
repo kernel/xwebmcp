@@ -68,16 +68,20 @@
     if (signal?.aborted) return fail("canceled", "Preparation was canceled. Nothing was saved.");
     if (!Array.isArray(json?.persons) || !json.persons.length || !Array.isArray(json.sourceDescriptions)) return fail("site_changed", "FamilySearch's record response has no expected person/source data. Nothing was saved.");
     const sources = json.sourceDescriptions;
-    const record = sources.find(s => s?.resourceType === "http://gedcomx.org/Record");
+    const records = sources.filter(s => s?.resourceType === "http://gedcomx.org/Record");
+    if (records.length !== 1) return fail("site_changed", "The response does not identify one unambiguous record source. Nothing was saved.");
+    const record = records[0];
+    if (match[1] === "1:2" && record.about !== input.record_url) return fail("site_changed", "The source evidence does not identify the requested whole record. Nothing was saved.");
     const title = scrub(Array.isArray(record?.titles) ? record.titles.find(t => typeof t?.value === "string")?.value : null).slice(0, 300);
     if (!title) return fail("site_changed", "FamilySearch's record response has no usable source title. Nothing was saved.");
     let subject = null;
     if (match[1] === "1:1") {
-      subject = json.persons.find(p => {
+      const subjects = json.persons.filter(p => {
         const ids = p?.identifiers?.["http://gedcomx.org/Persistent"];
         return Array.isArray(ids) && ids.some(uri => uri === input.record_url);
       });
-      if (!subject) return fail("site_changed", "The record does not identify the requested persona. No source draft was prepared or saved.");
+      if (subjects.length !== 1) return fail("site_changed", "The record does not identify one unambiguous requested persona. Nothing was prepared or saved.");
+      subject = subjects[0];
     }
     const rawCitation = Array.isArray(record?.citations) ? record.citations.find(c => typeof c?.value === "string")?.value : null;
     const cleanCitation = value => {

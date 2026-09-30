@@ -185,6 +185,13 @@
     const entries = res.json.entries || [];
     if (entries.length === 0) return { status: "no_results", signed_in: signedIn(), total_results: total, offset };
 
+    const isObject = value => value !== null && typeof value === "object" && !Array.isArray(value);
+    const objectList = value => value === undefined || (Array.isArray(value) && value.every(isObject));
+    const validPerson = person => {
+      if (!isObject(person) || !objectList(person.facts)) return false;
+      const persistent = person.identifiers?.["http://gedcomx.org/Persistent"];
+      return persistent === undefined || (Array.isArray(persistent) && persistent.every(uri => typeof uri === "string"));
+    };
     const last = uri => (typeof uri === "string" ? uri.slice(uri.lastIndexOf("/") + 1) : null);
     const personaOf = person => {
       for (const uri of (person && person.identifiers && person.identifiers["http://gedcomx.org/Persistent"]) || []) {
@@ -198,6 +205,7 @@
     for (const entry of entries.slice(0, limit)) {
       const ged = entry && entry.content && entry.content.gedcomx;
       if (!ged || !Array.isArray(ged.persons)) continue;
+      if (!ged.persons.every(validPerson) || !objectList(ged.sourceDescriptions) || !objectList(ged.relationships)) return fail("site_changed", "FamilySearch returned malformed nested record data.");
       const subject = ged.persons.find(person => personaOf(person) === entry.id);
       if (!subject) continue;
       const sources = Array.isArray(ged.sourceDescriptions) ? ged.sourceDescriptions : [];
@@ -246,19 +254,24 @@
     if (hits.length === 0) return fail("site_changed", "FamilySearch returned search entries but none had the expected persona structure.");
 
     const collections = [];
-    const walk = facets => {
-      for (const facet of Array.isArray(facets) ? facets : []) {
-        const match = /(?:^|&)f\.collectionId=(\d+)(?:&|$)/.exec(String(facet.params || ""));
-        if (match && Number.isInteger(facet.count)) collections.push({ collection_id: match[1], title: clip(facet.displayName, 200), hit_count: facet.count });
-        walk(facet.facets);
+    const walk = (facets, depth = 0) => {
+      if (!objectList(facets) || depth > 10) return false;
+      for (const facet of facets || []) {
+        const match = /(?:^|&)f\.collectionId=([0-9]{1,10})(?:&|$)/.exec(String(facet.params || ""));
+        if (match) {
+          if (!Number.isSafeInteger(facet.count) || facet.count < 0) return false;
+          collections.push({ collection_id: match[1], title: clip(facet.displayName, 200), hit_count: facet.count });
+        }
+        if (!walk(facet.facets, depth + 1)) return false;
       }
+      return true;
     };
-    walk((Array.isArray(res.json.facets) ? res.json.facets : []).filter(facet => /^c\.collectionId=on/.test(String(facet.params || ""))));
+    if (!objectList(res.json.facets) || !walk((res.json.facets || []).filter(facet => /^c\.collectionId=on/.test(String(facet.params || ""))))) return fail("site_changed", "FamilySearch returned malformed collection facets or counts.");
     collections.sort((a, b) => b.hit_count - a.hit_count);
 
     return {
       status: "ok", signed_in: signedIn(), total_results: total, offset, returned: hits.length,
-      has_more: offset + entries.length < total && offset + entries.length <= 4998,
+      has_more: offset + Math.min(entries.length, limit) < total && offset + Math.min(entries.length, limit) <= 4998,
       hits, collections: collections.slice(0, 10)
     }
   }
