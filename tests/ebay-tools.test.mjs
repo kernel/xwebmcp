@@ -219,26 +219,45 @@ test("search: sold_only asks for sold and completed listings and reports sold da
   assert.equal(output.items.some(i => /similar active items|Sell one like this/.test(JSON.stringify(i))), false);
 });
 
-test("search: sold_only redirect reports login_required and never guesses results", async () => {
-  // The redirect is followed once to read a same-origin target; eBay's sign-in redirect is cross-origin, so that follow throws.
-  const signedOut = await run("search", { query: "k", sold_only: true }, { responses: [REDIRECT, "throw"], signedOut: true });
-  assert.equal(signedOut.output.error_kind, "login_required");
-  assert.match(signedOut.output.error_message, /signed out/);
-  const signedIn = await run("search", { query: "k", sold_only: true }, { responses: [REDIRECT, "throw"] });
-  assert.equal(signedIn.output.error_kind, "login_required");
-  assert.match(signedIn.output.error_message, /account-completion/);
-  assert.equal(signedIn.calls.fetches.length, 2, "one request, one follow, no retry");
+const FOLLOW = { credentials: "include", mode: "same-origin" };
+const ERROR_AT = path => ({ status: 403, url: `https://www.ebay.com${path}`, html: ERROR_PAGE.html });
+
+test("search: signed-out sold_only redirect is login_required without a second request", async () => {
+  const { output, calls } = await run("search", { query: "k", sold_only: true }, { responses: [REDIRECT], signedOut: true });
+  assert.equal(output.error_kind, "login_required");
+  assert.match(output.error_message, /signed out/);
+  assert.equal(calls.fetches.length, 1, "the redirect is not followed when the header already shows the sign-in link");
 });
 
-test("search: a redirect to eBay's verification page is a challenge, for sold and ordinary searches alike", async () => {
+test("search: signed-in sold_only redirect to another host is login_required and is never requested", async () => {
+  // The follow-up uses mode "same-origin": eBay's sign-in and account-completion redirects lead to other hosts, which the browser refuses before sending.
+  const { output, calls } = await run("search", { query: "k", sold_only: true }, { responses: [REDIRECT, "throw"] });
+  assert.equal(output.error_kind, "login_required");
+  assert.match(output.error_message, /another host/);
+  assert.equal(calls.fetches.length, 2, "one request, one follow, no retry");
+  assert.deepEqual(calls.fetches[0].init, { credentials: "include", redirect: "manual" });
+  assert.deepEqual(calls.fetches[1].init, FOLLOW);
+});
+
+test("search: a redirect to eBay's verification page is a challenge", async () => {
   for (const input of [{ query: "k" }, { query: "k", sold_only: true }]) {
     const { output, calls } = await run("search", input, { responses: [REDIRECT, CAPTCHA] });
     assert.equal(output.error_kind, "challenge", JSON.stringify(input));
     assert.match(output.error_message, /never tries to solve/);
     assert.equal(calls.fetches.length, 2);
-    assert.deepEqual(calls.fetches[1].init, { credentials: "include" }, "only the follow-up request follows redirects");
+    assert.deepEqual(calls.fetches[1].init, FOLLOW, "only the follow-up request follows redirects, and only within www.ebay.com");
     assert.equal(calls.fetches[1].path, calls.fetches[0].path);
   }
+});
+
+test("search: a redirect whose follow-up is eBay's 403 error page counts as a blocked attempt, not as a redirect type", async () => {
+  const path = "/sch/i.html";
+  const recovered = await run("search", { query: "k" }, { responses: [REDIRECT, ERROR_AT(path), ok(searchPage(CARDS))] });
+  assert.equal(recovered.output.status, "ok");
+  assert.equal(recovered.calls.fetches.length, 3);
+  assert.deepEqual(recovered.calls.delays, [4000]);
+  const stuck = await run("search", { query: "k" }, { responses: [REDIRECT, ERROR_AT(path)] });
+  assert.equal(stuck.output.error_kind, "blocked");
 });
 
 test("search: any other redirect is reported, not followed or treated as results", async () => {
@@ -247,6 +266,8 @@ test("search: any other redirect is reported, not followed or treated as results
   assert.equal(calls.fetches.length, 2);
   const elsewhere = await run("search", { query: "k" }, { responses: [REDIRECT, { status: 200, url: "https://www.ebay.com/b/Keyboards/1/bn_1", html: "<html></html>" }] });
   assert.equal(elsewhere.output.error_kind, "redirected");
+  const lookalike = await run("search", { query: "k" }, { responses: [REDIRECT, { status: 200, url: "https://www.ebay.com/x/splashui/y", html: "<html></html>" }] });
+  assert.equal(lookalike.output.error_kind, "redirected", "only paths that start with /splashui/ are verification pages");
 });
 
 test("search: eBay's error page is retried with backoff, then reported as blocked", async () => {
@@ -481,6 +502,9 @@ test("get_listing: unknown items, redirects and eBay's error page are distinct e
   const challenge = await run("get_listing", { item_id: ID }, { responses: [REDIRECT, CAPTCHA] });
   assert.equal(challenge.output.error_kind, "challenge");
   assert.deepEqual(challenge.calls.fetches.map(f => f.path), [`/itm/${ID}`, `/itm/${ID}`]);
+  assert.deepEqual(challenge.calls.fetches[1].init, FOLLOW);
+  const recovered403 = await run("get_listing", { item_id: ID }, { responses: [REDIRECT, ERROR_AT(`/itm/${ID}`), ok(itemPage())] });
+  assert.equal(recovered403.output.status, "ok", "a 403 on the follow-up is a blocked attempt, then the retry succeeds");
   const blocked = await run("get_listing", { item_id: ID }, { responses: [ERROR_PAGE] });
   assert.equal(blocked.output.error_kind, "blocked");
   assert.equal(blocked.calls.fetches.length, 3);
@@ -533,6 +557,45 @@ test("get_listing: a redirect to another item says which one, other redirects st
   assert.doesNotMatch(same.output.error_message, /relisted/);
   const elsewhere = await run("get_listing", { item_id: ID }, { responses: [REDIRECT, { status: 200, url: "https://www.ebay.com/b/Keyboards/1/bn_1", html: "<html></html>" }] });
   assert.doesNotMatch(elsewhere.output.error_message, /relisted/);
+});
+
+test("get_listing: postal codes of other countries are removed too, without eating ordinary text", async () => {
+  const withDelivery = tail => itemPage().replace('<span class="ux-textspans"> to </span><span class="ux-textspans">10001</span>', tail);
+  const cases = [
+    ['<span class="ux-textspans"> to </span><span class="ux-textspans">SW1A 1AA</span>', "Estimated between Sat, Oct 3 and Fri, Oct 9"],
+    ['<span class="ux-textspans"> to </span><span class="ux-textspans">K1A 0B1</span>', "Estimated between Sat, Oct 3 and Fri, Oct 9"],
+    ['<span class="ux-textspans"> to </span><span class="ux-textspans">123456</span>', "Estimated between Sat, Oct 3 and Fri, Oct 9"],
+    ['<span class="ux-textspans"> in 3 to 5 days</span>', "Estimated between Sat, Oct 3 and Fri, Oct 9 in 3 to 5 days"],
+    ['<span class="ux-textspans"> to 5 days</span>', "Estimated between Sat, Oct 3 and Fri, Oct 9 to 5 days"]
+  ];
+  for (const [tail, expected] of cases) assert.equal((await run("get_listing", { item_id: ID }, { responses: [ok(withDelivery(tail))] })).output.delivery_text, expected, tail);
+  const shipping = itemPage().replace("<span class=\"ux-textspans\">Standard Tracked Shipping</span>", "<span class=\"ux-textspans\">Standard Tracked Shipping to 10001</span>");
+  assert.equal((await run("get_listing", { item_id: ID }, { responses: [ok(shipping)] })).output.shipping_text, "US $10.43 Standard Tracked Shipping. Located in: Testville, Testland", "shipping_text is redacted too");
+});
+
+test("get_listing: gtin must be 8 to 14 digits", async () => {
+  for (const [gtin, expected] of [["1234567", null], ["12345678", "12345678"], ["12345678901234", "12345678901234"], ["123456789012345", null], ["12345678a", null]]) {
+    assert.equal((await run("get_listing", { item_id: ID }, { responses: [ok(itemPage({ gtin }))] })).output.gtin, expected, gtin);
+  }
+});
+
+test("get_listing: only 9 to 14 digit item numbers count as a moved listing", async () => {
+  for (const landed of ["/itm/12345678", "/itm/1234567890123456", "/itm/abc"]) {
+    const { output } = await run("get_listing", { item_id: ID }, { responses: [REDIRECT, { status: 200, url: `https://www.ebay.com${landed}`, html: "<html></html>" }] });
+    assert.equal(output.error_kind, "redirected", landed);
+    assert.doesNotMatch(output.error_message, /relisted/, landed);
+  }
+  const slug = await run("get_listing", { item_id: ID }, { responses: [REDIRECT, { status: 200, url: "https://www.ebay.com/itm/fixture-slug/298000000099", html: "<html></html>" }] });
+  assert.match(slug.output.error_message, /item 298000000099/);
+  const lookalike = await run("get_listing", { item_id: ID }, { responses: [REDIRECT, { status: 200, url: "https://www.ebay.com/x/splashui/y", html: "<html></html>" }] });
+  assert.equal(lookalike.output.error_kind, "redirected");
+});
+
+test("get_listing: duplicate labels of equal length keep the first", async () => {
+  const twice = itemPage().replace('<div class="ux-labels-values col-12"><div class="ux-labels-values__labels col-3"><div class="ux-labels-values__labels-content"><div><span class="ux-textspans">Payments:</span>',
+    '<div class="ux-labels-values col-12"><div class="ux-labels-values__labels"><span>Returns</span></div><div class="ux-labels-values__values"><span>Seller does not accept returns.</span></div></div><div class="ux-labels-values col-12"><div class="ux-labels-values__labels col-3"><div class="ux-labels-values__labels-content"><div><span class="ux-textspans">Payments:</span>');
+  const noReturns = twice.replace('<span class="ux-textspans">Seller does not accept returns</span><span class="ux-textspans">.&nbsp;</span>', '<span class="ux-textspans">AAAAAAAAAAAAAAAAAAAAAAAAAAAAAA</span>').replace("<span>Seller does not accept returns.</span>", "<span>BBBBBBBBBBBBBBBBBBBBBBBBBBBBBB</span>");
+  assert.equal((await run("get_listing", { item_id: ID }, { responses: [ok(noReturns)] })).output.returns_text, "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAA");
 });
 
 test("get_listing: malformed input is rejected before any request, and other origins are refused", async () => {
@@ -616,6 +679,11 @@ test("get_seller_profile: redirects, error pages, rate limits and network failur
   const challenge = await run("get_seller_profile", { seller_username: "fixture_seller_a" }, { responses: [REDIRECT, CAPTCHA] });
   assert.equal(challenge.output.error_kind, "challenge");
   assert.deepEqual(challenge.calls.fetches.map(f => f.path), ["/fdbk/feedback_profile/fixture_seller_a", "/fdbk/feedback_profile/fixture_seller_a"]);
+  assert.deepEqual(challenge.calls.fetches[1].init, FOLLOW);
+  const recovered403 = await run("get_seller_profile", { seller_username: "fixture_seller_a" }, { responses: [REDIRECT, ERROR_AT("/fdbk/feedback_profile/fixture_seller_a"), ok(profilePage())] });
+  assert.equal(recovered403.output.status, "ok");
+  const lookalike = await run("get_seller_profile", { seller_username: "fixture_seller_a" }, { responses: [REDIRECT, { status: 200, url: "https://www.ebay.com/x/splashui/y", html: "<html></html>" }] });
+  assert.equal(lookalike.output.error_kind, "redirected");
   const blocked = await run("get_seller_profile", { seller_username: "fixture_seller_a" }, { responses: [ERROR_PAGE] });
   assert.equal(blocked.output.error_kind, "blocked");
   assert.equal(blocked.calls.fetches.length, 3);

@@ -4,7 +4,7 @@
   tool: {
     name: "get_listing",
     title: "Get eBay listing details",
-    description: "Read one eBay listing by its item number (the item_id from search or the number in an /itm/ URL): title, price and whether it is a current bid or a fixed price, buying format, Best Offer flag, bids and time left for auctions, availability, quantity available and sold, condition, delivery/shipping cost, returns, item specifics, category path, images, brand/model/GTIN when eBay publishes them, the seller's username and feedback, and the listing's variation menus with each option's sold-out flag and the price range across variations. Sold or ended listings load too: status_message then carries eBay's notice such as 'This listing sold on ...' (clock times in it follow eBay's server rendering and may not be in the browser's time zone) and availability is out_of_stock; for a sold Best Offer listing the price shown may differ from the sale price (price_caveat). Read-only: it fetches the listing page from the current document, never navigates, bids, makes offers, or adds to cart or watchlist. It does not return the seller's description text, which eBay serves from a separate domain, and it does not choose or price a specific variation combination. Delivery text reflects the session's shipping location, but the ZIP code eBay appends to the estimate is removed. An item that eBay has since relisted can answer with a redirect to the new item; the result is then redirected and names the new item number. eBay sometimes answers with its error page; the tool retries up to twice (after 4 and 8 seconds) and then returns blocked; space calls by about ten seconds. If eBay redirects to a verification page the result is challenge: a person has to complete it in the browser and the tool never tries.",
+    description: "Read one eBay listing by its item number (the item_id from search or the number in an /itm/ URL): title, price and whether it is a current bid or a fixed price, buying format, Best Offer flag, bids and time left for auctions, availability, quantity available and sold, condition, delivery/shipping cost, returns, item specifics, category path, images, brand/model/GTIN when eBay publishes them, the seller's username and feedback, and the listing's variation menus with each option's sold-out flag and the price range across variations. Sold or ended listings load too: status_message then carries eBay's notice such as 'This listing sold on ...' (clock times in it follow eBay's server rendering and may not be in the browser's time zone) and availability is out_of_stock; for a sold Best Offer listing the price shown may differ from the sale price (price_caveat). Read-only: it fetches the listing page from the current document, never navigates, bids, makes offers, or adds to cart or watchlist. It does not return the seller's description text, which eBay serves from a separate domain, and it does not choose or price a specific variation combination. Delivery text reflects the session's shipping location, but the postal code eBay appends to the estimate is removed. An item that eBay has since relisted can answer with a redirect to the new item; the result is then redirected and names the new item number. eBay sometimes answers with its error page; the tool retries up to twice (after 4 and 8 seconds) and then returns blocked; space calls by about ten seconds. If eBay redirects the request, it is repeated once with redirects limited to www.ebay.com (a redirect to another eBay host is refused without being sent); a redirect to a verification page is reported as challenge: a person has to complete it in the browser and the tool never tries.",
     inputSchema: {
       type: "object", additionalProperties: false, required: ["item_id"],
       properties: {
@@ -108,7 +108,7 @@
     const id = input.item_id;
     if (location.origin !== ORIGIN) return fail("wrong_page", "Open a https://www.ebay.com page in this tab, then call again. Nothing was requested.");
 
-    // The request does not follow redirects; a redirect is followed once to tell a verification page (same-origin) from other redirects.
+    // A redirect is not followed automatically; the request is repeated once with mode "same-origin", which follows a redirect within www.ebay.com and makes the browser refuse one to another host without sending it, to recognize a verification page or a relisted item.
     const request = `/itm/${id}`;
     let html = null;
     for (let attempt = 1; attempt <= 3 && html === null; attempt++) {
@@ -117,11 +117,13 @@
       try { response = await fetch(request, { credentials: "include", redirect: "manual" }); }
       catch { return fail("request_failed", "The request to eBay failed before a response arrived. Nothing was changed; try again."); }
       if (response.type === "opaqueredirect") {
-        let landed = "";
-        try { landed = new URL((await fetch(request, { credentials: "include" })).url).pathname; } catch { /* a cross-origin redirect cannot be followed */ }
+        let followed = null;
+        try { followed = await fetch(request, { credentials: "include", mode: "same-origin" }); } catch { /* the redirect leads to another host */ }
+        const landed = followed ? new URL(followed.url).pathname : "";
         if (/^\/splashui\//.test(landed)) return fail("challenge", "eBay redirected to a verification (CAPTCHA) page instead of returning the listing. A person has to complete it in this browser; the tool never tries to solve it, and repeated calls make it more likely.");
         const moved = (/^\/itm\/(?:[^/?#]*\/)?([0-9]{9,14})\/?$/.exec(landed) || [])[1];
         if (moved && moved !== id) return fail("redirected", `eBay redirected item ${id} to item ${moved}, which usually means the listing ended and was relisted or replaced. Call get_listing with item_id "${moved}" for the current listing.`);
+        if (followed && followed.status === 403) continue;
         return fail("redirected", "eBay redirected the listing request instead of returning the page (it may be a sign-in or regional page). Open the listing in the browser to see it; this tool does not follow or solve it.");
       }
       if (response.status === 429) return fail("rate_limited", "eBay rate-limited the listing request; wait a few minutes before retrying.");
@@ -147,8 +149,8 @@
       if (el) walk(el);
       return clean(out);
     };
-    // Delivery estimates end with the session's ship-to ZIP code ("... to 10001"); it is not returned.
-    const redact = value => value.replace(/\s+to\s+[0-9]{5}(?:-[0-9]{4})?(?![0-9])/g, "");
+    // Delivery estimates end with the session's ship-to postal code ("... to 10001", "... to SW1A 1AA"); it is not returned.
+    const redact = value => value.replace(/\s+to\s+[0-9]{5}(?:-[0-9]{4})?(?![0-9])/g, "").replace(/\s+to\s+(?=[A-Z0-9 -]{0,8}[0-9])[A-Z0-9][A-Z0-9 -]{2,8}$/, "");
     const first = (selector, skip) => { const el = doc.querySelector(selector); return el ? text(el, skip) || null : null; };
     const amount = value => { const m = /^[^\d]{0,4}([\d,]+(?:\.\d+)?)(?:\/ea)?$/.exec(value || ""); return m ? Number(m[1].replace(/,/g, "")) : null; };
     let product = null;
