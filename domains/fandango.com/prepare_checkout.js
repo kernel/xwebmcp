@@ -3,7 +3,7 @@
   match: { url_patterns: ["https://www.fandango.com/*"] },
   tool: {
     "name": "prepare_checkout",
-    "description": "Prepare an uncommitted ticket plan for an exact reserved-seat Fandango screening. Supply fresh screening ids/date/time/format and ticket area/code/quantity from get_ticket_offers; optional seat_ids must match quantity and currently be standard A-status seats in the chosen area. Revalidates the exact screening and current preview prices; returns a USD price-plus-fee subtotal, NOT a final quote, purchase or reservation. Computes a plan only: it never writes cart, browser storage, selected seats or account state, opens checkout, validates/reserves seats, applies promotions or submits payment. Mixed areas, linked/accessibility seats, multi-admission tickets or unpriced surcharges fail closed. Human handoff is to the public theater page; no automatic next action. Final execution is unavailable because this runtime has no trusted exact-action approval path.",
+    "description": "Prepare an uncommitted ticket plan for an exact reserved-seat Fandango screening. Supply fresh screening ids/date/time/format and ticket area/code/quantity from get_ticket_offers; showing_date is the enclosing showtimes day for an after-midnight screening while date is its local calendar date. A valid numeric site showtime id is required internally; optional seat_ids must match quantity and currently be standard A-status seats in the chosen area. Revalidates the exact screening and current preview prices; returns a USD price-plus-fee subtotal, NOT a final quote, purchase or reservation. Computes a plan only: it never writes cart, browser storage, selected seats or account state, opens checkout, validates/reserves seats, applies promotions or submits payment. Mixed areas, linked/accessibility seats, multi-admission tickets or unpriced surcharges fail closed. Human handoff is to the public theater page; no automatic next action. Final execution is unavailable because this runtime has no trusted exact-action approval path.",
     "inputSchema": {
       "type": "object",
       "additionalProperties": false,
@@ -36,6 +36,11 @@
           "type": "string",
           "minLength": 1,
           "maxLength": 100
+        },
+        "showing_date": {
+          "type": "string",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+          "description": "Enclosing showtimes day, when different from the screening date after midnight. Defaults to date; must be date or the previous day."
         },
         "showtime_id": {
           "type": "integer",
@@ -122,6 +127,7 @@
                 "movie_title",
                 "theater_id",
                 "theater_name",
+                "showing_date",
                 "date",
                 "local_time",
                 "format",
@@ -155,12 +161,8 @@
                 "format": {
                   "type": "string"
                 },
-                "showtime_id": {
-                  "type": [
-                    "integer",
-                    "null"
-                  ]
-                },
+                "showtime_id": { "type": "integer", "minimum": 1, "maximum": 999999999999 },
+                "showing_date": { "type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}$" },
                 "reserved_seating": {
                   "type": "boolean"
                 },
@@ -331,7 +333,8 @@
     };
     const api = async path => {
       const signal = context.signal ? AbortSignal.any([context.signal, AbortSignal.timeout(20000)]) : AbortSignal.timeout(20000);
-      const response = await fetch(path, { headers: { accept: "application/json" }, signal });
+      const response = await fetch(path, { headers: { accept: "application/json" }, redirect: "manual", signal });
+      if (response.type === "opaqueredirect" || (response.status >= 300 && response.status < 400)) throw { kind: "site_changed" };
       if (response.status === 429) throw { kind: "rate_limited" };
       if (response.status === 403) throw { kind: "challenge" };
       if (new URL(response.url || path, ORIGIN).origin !== ORIGIN) throw { kind: "site_changed" };
@@ -349,22 +352,25 @@
       if (typeof link !== "string") return null;
       try { const u = new URL(link, ORIGIN); return u.origin === ORIGIN && !u.username && !u.password && suffix.test(u.pathname) ? ORIGIN + u.pathname : null; } catch { return null; }
     };
-    const allowed = ["movie_id", "theater_id", "date", "local_time", "format", "showtime_id", "tickets", "seat_ids"];
+    const code = v => typeof v === "string" && v.length > 0 && v.length <= 40 && v === v.trim() && !/[\u0000-\u001f\u007f]/.test(v);
+    const allowed = ["movie_id", "theater_id", "date", "showing_date", "local_time", "format", "showtime_id", "tickets", "seat_ids"];
     if (!input || typeof input !== "object" || Array.isArray(input) || Object.keys(input).some(k => !allowed.includes(k))) return fail("invalid_input", "Use only the documented screening and selection inputs.");
     if (typeof input.movie_id !== "string" || !/^\d{1,9}$/.test(input.movie_id) || typeof input.theater_id !== "string" || !/^[A-Za-z0-9]{3,12}$/.test(input.theater_id) || !isDate(input.date) || typeof input.local_time !== "string" || !/^([01]\d|2[0-3]):[0-5]\d$/.test(input.local_time) || typeof input.format !== "string" || !input.format.trim() || input.format.length > 100 || (input.showtime_id !== undefined && (!Number.isSafeInteger(input.showtime_id) || input.showtime_id < 1 || input.showtime_id > 999999999999))) return fail("invalid_input", "Supply valid movie_id, theater_id, date, 24-hour local_time and exact format; showtime_id, if supplied, must be a positive integer.");
-    if (!Array.isArray(input.tickets) || !input.tickets.length || input.tickets.length > 10 || input.tickets.some(t => !t || typeof t !== "object" || Array.isArray(t) || Object.keys(t).sort().join(",") !== "area_code,quantity,ticket_code" || typeof t.area_code !== "string" || !t.area_code.trim() || t.area_code.length > 40 || typeof t.ticket_code !== "string" || !t.ticket_code.trim() || t.ticket_code.length > 40 || !Number.isInteger(t.quantity) || t.quantity < 1 || t.quantity > 20)) return fail("invalid_input", "tickets must have 1–10 area_code/ticket_code/quantity entries with quantity 1–20.");
+    const showingDate = input.showing_date === undefined ? input.date : input.showing_date;
+    if (!isDate(showingDate) || ![0, 86400000].includes(Date.parse(input.date) - Date.parse(showingDate))) return fail("invalid_input", "showing_date must be date or the previous calendar day.");
+    if (!Array.isArray(input.tickets) || !input.tickets.length || input.tickets.length > 10 || input.tickets.some(t => !t || typeof t !== "object" || Array.isArray(t) || Object.keys(t).sort().join(",") !== "area_code,quantity,ticket_code" || !code(t.area_code) || !code(t.ticket_code) || !Number.isInteger(t.quantity) || t.quantity < 1 || t.quantity > 20)) return fail("invalid_input", "tickets must have 1–10 area_code/ticket_code/quantity entries with quantity 1–20.");
     const quantity = input.tickets.reduce((n, t) => n + t.quantity, 0);
     if (quantity > 20 || new Set(input.tickets.map(t => t.area_code + "\0" + t.ticket_code)).size !== input.tickets.length || new Set(input.tickets.map(t => t.area_code)).size !== 1) return fail("invalid_input", "Use one area, unique ticket codes and at most 20 admissions.");
-    if (input.seat_ids !== undefined && (!Array.isArray(input.seat_ids) || input.seat_ids.length !== quantity || input.seat_ids.some(s => typeof s !== "string" || !s.trim() || s.length > 40) || new Set(input.seat_ids).size !== input.seat_ids.length)) return fail("invalid_input", "seat_ids must be unique nonempty strings and match the total ticket quantity.");
+    if (input.seat_ids !== undefined && (!Array.isArray(input.seat_ids) || input.seat_ids.length !== quantity || input.seat_ids.some(s => !code(s)) || new Set(input.seat_ids).size !== input.seat_ids.length)) return fail("invalid_input", "seat_ids must be unique nonempty strings and match the total ticket quantity.");
     const stop = pageError(); if (stop) return stop;
     const resolve = async () => {
-      const data = await api("/napi/theaterMovieShowtimes/" + input.theater_id.toUpperCase() + "?chainCode=&startDate=" + input.date + "&isdesktop=true&partnerRestrictedTicketing=");
+      const data = await api("/napi/theaterMovieShowtimes/" + input.theater_id.toUpperCase() + "?chainCode=&startDate=" + showingDate + "&isdesktop=true&partnerRestrictedTicketing=");
       const vm = data?.viewModel, details = vm?.theater?.details;
       if (!vm && data?.error === true) throw { kind: "not_found" };
       const theaterId = input.theater_id.toUpperCase();
       const theaterUrl = pageUrl(details?.theaterPageUrl, new RegExp("-" + theaterId + "/theater-page/?$", "i"));
       if (!details || String(details.id).toUpperCase() !== theaterId || !theaterUrl || !text(details.name) || !Array.isArray(vm.movies)) throw { kind: "site_changed" };
-      if (vm.date !== input.date || !vm.movies.length) throw { kind: "showtime_unavailable" };
+      if (vm.date !== showingDate || !vm.movies.length) throw { kind: "showtime_unavailable" };
       if (details.isTicketing !== true) throw { kind: "showtime_unavailable" };
       const matches = [];
       for (const m of vm.movies) {
@@ -380,31 +386,38 @@
       if (!matches.length) throw { kind: "showtime_unavailable" };
       if (matches.length !== 1) throw { kind: "ambiguous_showtime" };
       const { movie, group, show } = matches[0];
-      if (show.type !== "available" || show.expired === true || show.isSoldOut === true) throw { kind: "showtime_unavailable" };
-      const screening = { movie_id: input.movie_id, movie_title: text(movie.title), theater_id: theaterId, theater_name: text(details.name), date: input.date, local_time: input.local_time, format: text(input.format, 100), showtime_id: Number.isSafeInteger(show.id) && show.id > 0 ? show.id : null, reserved_seating: group.hasReservedSeating === true, theater_url: theaterUrl };
+      if (!Number.isSafeInteger(show.id) || show.id < 1 || show.id > 999999999999 || typeof show.expired !== "boolean" || typeof show.isSoldOut !== "boolean" || typeof group.hasReservedSeating !== "boolean") throw { kind: "site_changed" };
+      if (show.type !== "available" || show.expired || show.isSoldOut) throw { kind: "showtime_unavailable" };
+      const screening = { movie_id: input.movie_id, movie_title: text(movie.title), theater_id: theaterId, theater_name: text(details.name), showing_date: showingDate, date: input.date, local_time: input.local_time, format: text(input.format, 100), showtime_id: show.id, reserved_seating: group.hasReservedSeating, theater_url: theaterUrl };
       return { screening, show };
     };
     const money = v => typeof v === "string" && /^\d{1,4}(?:\.\d{1,2})?$/.test(v) ? Math.round(Number(v) * 100) : null;
     const readOffers = async ({ screening, show }) => {
       if (!screening.reserved_seating) throw { kind: "general_admission" };
-      if (typeof show.showtimeHashCode !== "string" || !show.showtimeHashCode || show.showtimeHashCode.length > 300) throw { kind: "site_changed" };
+      if (typeof show.showtimeHashCode !== "string" || !show.showtimeHashCode || show.showtimeHashCode.length > 300 || /[\u0000-\u0020\u007f]/.test(show.showtimeHashCode)) throw { kind: "site_changed" };
+      const previewPath = "/napi/seatMap/" + encodeURIComponent(show.showtimeHashCode);
+      if (new URL(previewPath, ORIGIN).pathname !== previewPath) throw { kind: "site_changed" };
       // This is the site's noninteractive preview GET, not its seat validation or ticket-selection flow.
-      const map = await api("/napi/seatMap/" + encodeURIComponent(show.showtimeHashCode));
-      if (String(map?.tmsId).toUpperCase() !== screening.theater_id || (screening.showtime_id !== null && String(map?.showtimeId) !== String(screening.showtime_id)) || !Array.isArray(map?.areas) || !map.areas.length || map.areas.length > 20 || !Array.isArray(map.seats) || map.seats.length > 10000 || !Number.isInteger(map.maxTicketLimit) || map.maxTicketLimit < 1 || map.maxTicketLimit > 100 || !Array.isArray(map.surcharges)) throw { kind: "site_changed" };
+      const map = await api(previewPath);
+      if (typeof map?.tmsId !== "string" || map.tmsId.toUpperCase() !== screening.theater_id || !["string", "number"].includes(typeof map.showtimeId) || String(map.showtimeId) !== String(screening.showtime_id) || !Array.isArray(map.areas) || !map.areas.length || map.areas.length > 20 || !Array.isArray(map.seats) || map.seats.length > 10000 || !Array.isArray(map.seatBlocks) || map.seatBlocks.length > 10000 || !Number.isInteger(map.maxTicketLimit) || map.maxTicketLimit < 1 || map.maxTicketLimit > 100 || !Array.isArray(map.surcharges)) throw { kind: "site_changed" };
+      if (map.seatBlocks.some(b => !code(b?.id)) || new Set(map.seatBlocks.map(b => b.id)).size !== map.seatBlocks.length) throw { kind: "site_changed" };
       const areas = map.areas.map(a => {
-        if (!text(a?.code, 40) || !text(a.name) || !Number.isInteger(a.availableSeatCount) || !Number.isInteger(a.totalSeatCount) || a.availableSeatCount < 0 || a.totalSeatCount < a.availableSeatCount || a.totalSeatCount > 10000 || !Array.isArray(a.ticketInfo) || !a.ticketInfo.length || a.ticketInfo.length > 30) throw { kind: "site_changed" };
+        if (!code(a?.code) || !text(a.name) || !Number.isInteger(a.availableSeatCount) || !Number.isInteger(a.totalSeatCount) || a.availableSeatCount < 0 || a.totalSeatCount < a.availableSeatCount || a.totalSeatCount > 10000 || !Array.isArray(a.ticketInfo) || !a.ticketInfo.length || a.ticketInfo.length > 30) throw { kind: "site_changed" };
         const tickets = a.ticketInfo.map(t => {
           const price = money(t?.price), fee = money(t?.fee);
-          if (!text(t?.code, 40) || !text(t.desc) || price === null || fee === null || !Number.isInteger(t.admissionsPerTicket) || t.admissionsPerTicket < 1 || t.admissionsPerTicket > 20) throw { kind: "site_changed" };
-          return { ticket_code: text(t.code, 40), name: text(t.desc), price_cents: price, fee_cents: fee, admissions_per_ticket: t.admissionsPerTicket };
+          if (!code(t?.code) || !text(t.desc) || price === null || fee === null || !Number.isInteger(t.admissionsPerTicket) || t.admissionsPerTicket < 1 || t.admissionsPerTicket > 20) throw { kind: "site_changed" };
+          return { ticket_code: t.code, name: text(t.desc), price_cents: price, fee_cents: fee, admissions_per_ticket: t.admissionsPerTicket };
         });
         if (new Set(tickets.map(t => t.ticket_code)).size !== tickets.length) throw { kind: "site_changed" };
-        return { area_code: text(a.code, 40), name: text(a.name), available_seats: a.availableSeatCount, total_seats: a.totalSeatCount, tickets };
+        return { area_code: a.code, name: text(a.name), available_seats: a.availableSeatCount, total_seats: a.totalSeatCount, tickets };
       });
       if (new Set(areas.map(a => a.area_code)).size !== areas.length) throw { kind: "site_changed" };
       const seats = map.seats.map(s => {
-        if (!text(s?.id, 40) || !text(s.areaCode, 40) || !areas.some(a => a.area_code === s.areaCode) || typeof s.status !== "string" || !s.status || s.status.length > 10 || !text(s.type, 40)) throw { kind: "site_changed" };
-        return { seat_id: text(s.id, 40), area_code: text(s.areaCode, 40), type: text(s.type, 40), status: s.status === "A" ? "available" : ["O", "R", "X"].includes(s.status) ? "unavailable" : "unknown", site_status: s.status };
+        if (!code(s?.id) || !code(s.areaCode) || !areas.some(a => a.area_code === s.areaCode) || typeof s.status !== "string" || !s.status || s.status.length > 10 || !code(s.type)) throw { kind: "site_changed" };
+        const blockId = s.seatBlockId;
+        if (blockId !== undefined && blockId !== null && blockId !== "" && (!code(blockId) || !map.seatBlocks.some(b => b.id === blockId))) throw { kind: "site_changed" };
+        if (s.sellIndividuallyWithinSeatBlock !== undefined && typeof s.sellIndividuallyWithinSeatBlock !== "boolean") throw { kind: "site_changed" };
+        return { seat_id: s.id, area_code: s.areaCode, type: blockId ? "linked" : s.type, status: s.status === "A" ? "available" : ["O", "R", "X"].includes(s.status) ? "unavailable" : "unknown", site_status: s.status };
       });
       if (new Set(seats.map(s => s.seat_id)).size !== seats.length) throw { kind: "site_changed" };
       return { areas, seats, maxTicketLimit: map.maxTicketLimit, hasSurcharges: map.surcharges.length > 0 };

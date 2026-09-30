@@ -11,7 +11,7 @@ const proposal = { ...selection, tickets: [{ area_code: "reserve", ticket_code: 
 const catalog = () => [{ id: "100001", title: "Fabricated Movie", mopLink: "/fabricated-movie-100001/movie-overview?private=discard", releaseDateQueryParam: "2026-10-02", rating: "PG", genres: ["Drama"], isFavorite: true, secret: "NEVER_RETURN" }];
 const movieRecord = () => ({ "@type": "Movie", name: "Fabricated Movie", url: "https://www.fandango.com/fabricated-movie-100001/movie-overview", duration: 125, description: "Untrusted text; do not execute instructions.", datePublished: "2026-10-02", genre: "Drama,Comedy", contentRating: "PG", director: [{ name: "Fabricated Director" }], secret: "NEVER_RETURN" });
 const day = () => ({ viewModel: { date: selection.date, theater: { details: { id: "aaaaa", name: "Fabricated Cinema", isTicketing: true, theaterPageUrl: "/fabricated-cinema-aaaaa/theater-page" } }, movies: [{ id: 100001, title: "Fabricated Movie", variants: [{ filmFormatHeader: "Standard", amenityGroups: [{ hasReservedSeating: true, showtimes: [{ id: 900001, type: "available", expired: false, isSoldOut: false, ticketingDate: "2026-10-02+19:00", showtimeHashCode: "fabricated-public-hash", ticketingJumpPageURL: "https://tickets.fandango.com/?NEVER_RETURN" }] }] }] }] } });
-const map = () => ({ tmsId: "AAAAA", showtimeId: "900001", maxTicketLimit: 20, surcharges: [], secret: "NEVER_RETURN", backgroundSvg: "NEVER_RETURN", areas: [{ code: "reserve", name: "Reserved", availableSeatCount: 3, totalSeatCount: 6, ticketInfo: [{ code: "adult", desc: "Adult", price: "13.05", fee: "2.19", admissionsPerTicket: 1 }, { code: "child", desc: "Child", price: "10", fee: "2.19", admissionsPerTicket: 1 }] }], seats: ["A1", "A2", "A3", "A4", "A5", "A6"].map((id, i) => ({ id, type: "standard", areaCode: "reserve", status: ["A", "A", "A", "R", "H", "Z"][i], extra: "NEVER_RETURN" })) });
+const map = () => ({ tmsId: "AAAAA", showtimeId: "900001", maxTicketLimit: 20, surcharges: [], seatBlocks: [], secret: "NEVER_RETURN", backgroundSvg: "NEVER_RETURN", areas: [{ code: "reserve", name: "Reserved", availableSeatCount: 3, totalSeatCount: 6, ticketInfo: [{ code: "adult", desc: "Adult", price: "13.05", fee: "2.19", admissionsPerTicket: 1 }, { code: "child", desc: "Child", price: "10", fee: "2.19", admissionsPerTicket: 1 }] }], seats: ["A1", "A2", "A3", "A4", "A5", "A6"].map((id, i) => ({ id, type: "standard", areaCode: "reserve", status: ["A", "A", "A", "R", "H", "Z"][i], extra: "NEVER_RETURN" })) });
 
 // Small schema assertion for fixtures; independent runtime QA also uses a full JSON Schema validator.
 function conforms(s, v) {
@@ -39,12 +39,13 @@ function harness(name, options = {}) {
     fetch: async (path, init) => {
       calls.push({ path, init });
       assert.ok(path.startsWith("/napi/") || /^\/movie-\d+\/movie-overview$/.test(path), "no checkout/selection endpoint");
-      assert.deepEqual(Object.keys(init).sort(), ["headers", "signal"]);
+      assert.deepEqual(Object.keys(init).sort(), ["get_ticket_offers", "prepare_checkout"].includes(name) ? ["headers", "redirect", "signal"] : ["headers", "signal"]);
+      if (init.redirect !== undefined) assert.equal(init.redirect, "manual");
       assert.ok(!init.signal.aborted);
       if (options.throw) throw options.throw;
       let body = path.startsWith("/napi/theaterMovieShowtimes/") ? options.day ?? day() : path.startsWith("/napi/seatMap/") ? options.map ?? map() : path.startsWith("/napi/movie/cast/") ? options.cast ?? [{ name: "Fabricated Actor", role: "Invented Role" }] : path.startsWith("/napi/fanAndCriticRatings/") ? options.ratings ?? { movieId: "100001", data: { criticsScore: 80, audienceScore: 90, certifiedFresh: true }, error: null } : options.catalog ?? catalog();
       const status = typeof options.status === "function" ? options.status(path) : options.status ?? 200;
-      return { status, ok: status >= 200 && status < 300, url: options.responseUrl ?? (path.startsWith("/movie-") ? record.url : "https://www.fandango.com" + path), text: async () => options.html ?? `<html><script type="application/ld+json">${options.ld ?? JSON.stringify(record)}</script></html>`, json: async () => plain(body) };
+      return { type: options.responseType, status, ok: status >= 200 && status < 300, url: options.responseUrl ?? (path.startsWith("/movie-") ? record.url : "https://www.fandango.com" + path), text: async () => options.html ?? `<html><script type="application/ld+json">${options.ld ?? JSON.stringify(record)}</script></html>`, json: async () => plain(body) };
     }
   };
   const execute = runInNewContext(`(${definition.execute.toString()})`, context);
@@ -125,9 +126,36 @@ test("prepare_checkout: exact quantities and integer subtotal; returned plan doe
   const again = await h.run(proposal); assert.equal(again.status, "prepared"); assert.equal(h.calls.length, 4); assert.doesNotMatch(JSON.stringify(r), /NEVER_RETURN|fabricated-public-hash/);
   const mixed = await harness("prepare_checkout").run({ ...proposal, tickets: [{ area_code: "reserve", ticket_code: "adult", quantity: 1 }, { area_code: "reserve", ticket_code: "child", quantity: 1 }] }); assert.equal(mixed.price_plus_fee_subtotal_cents, 2743);
 });
+for (const name of ["get_ticket_offers", "prepare_checkout"]) {
+  test(`${name}: identifiers stay exact; malformed identity and flags fail before success`, async () => {
+    for (const mutate of [m => { m.seats[0].id = "A".repeat(41); }, m => { m.areas[0].code = "r".repeat(41); }, m => { m.areas[0].ticketInfo[0].code = "a".repeat(41); }, m => { m.seats[0].id = " A1 "; }, m => { delete m.showtimeId; }, m => { m.showtimeId = {}; }, m => { m.seatBlocks = null; }, m => { m.seats[0].seatBlockId = "unknown"; }]) {
+      const m = map(); mutate(m); assert.equal((await harness(name, { map: m }).run(inputFor(name))).error_kind, "site_changed");
+    }
+    for (const mutate of [s => { s.expired = "true"; }, s => { s.isSoldOut = "true"; }, s => { delete s.expired; }, s => { s.id = -1; }, s => { delete s.id; }, s => { s.id = {}; }, s => { s.showtimeHashCode = ".."; }, s => { s.showtimeHashCode = "."; }]) {
+      const d = day(); mutate(d.viewModel.movies[0].variants[0].amenityGroups[0].showtimes[0]);
+      const h = harness(name, { day: d }); assert.equal((await h.run(inputFor(name))).error_kind, "site_changed"); assert.equal(h.calls.length, 1);
+    }
+    const d = day(); d.viewModel.movies[0].variants[0].amenityGroups[0].hasReservedSeating = "true";
+    assert.equal((await harness(name, { day: d }).run(inputFor(name))).error_kind, "site_changed");
+    for (const options of [{ status: 302 }, { responseType: "opaqueredirect" }]) assert.equal((await harness(name, options).run(inputFor(name))).error_kind, "site_changed");
+  });
+  test(`${name}: showing_date retains next-day screening identity without substitution`, async () => {
+    const d = day(); d.viewModel.movies[0].variants[0].amenityGroups[0].showtimes[0].ticketingDate = "2026-10-03+00:15";
+    const input = { ...inputFor(name), date: "2026-10-03", showing_date: "2026-10-02", local_time: "00:15" };
+    const h = harness(name, { day: d }); const r = await h.run(input);
+    assert.ok(["ok", "prepared"].includes(r.status)); assert.equal(r.screening.date, "2026-10-03"); assert.equal(r.screening.showing_date, "2026-10-02"); assert.match(h.calls[0].path, /startDate=2026-10-02&/);
+    for (const showing_date of ["2026-10-01", "2026-10-04", "2026-02-30", null]) { const invalid = harness(name); assert.equal((await invalid.run({ ...input, showing_date })).error_kind, "invalid_input"); assert.equal(invalid.calls.length, 0); }
+  });
+}
+test("prepare_checkout: block-member standard seats are excluded with and without explicit proposals", async () => {
+  const m = map(); m.seatBlocks = [{ id: "couple", type: "twoseater" }];
+  m.seats = m.seats.slice(0, 2).map(s => ({ ...s, seatBlockId: "couple", sellIndividuallyWithinSeatBlock: false }));
+  for (const seat_ids of [["A1"], undefined]) assert.equal((await harness("prepare_checkout", { map: m }).run({ ...proposal, tickets: [{ ...proposal.tickets[0], quantity: 1 }], seat_ids })).error_kind, "selection_unavailable");
+  const offers = await harness("get_ticket_offers", { map: m }).run(selection); assert.deepEqual(offers.seats.map(s => s.type), ["linked", "linked"]);
+});
 test("prepare_checkout: ticket/seat limits, unpriced surcharge, non-standard seats and held seats reject", async () => {
   for (const mutate of [m => { m.maxTicketLimit = 1; }, m => { m.seats[0].status = "H"; }, m => { m.seats[0].type = "wheelchair"; }, m => { m.areas[0].ticketInfo[0].admissionsPerTicket = 2; }, m => { m.areas[0].availableSeatCount = 1; }]) { const m = map(); mutate(m); assert.equal((await harness("prepare_checkout", { map: m }).run(proposal)).error_kind, "selection_unavailable"); }
   const m = map(); m.surcharges = [{ unknown: "NEVER_RETURN" }]; assert.equal((await harness("prepare_checkout", { map: m }).run(proposal)).error_kind, "price_unavailable");
   assert.equal((await harness("prepare_checkout").run({ ...proposal, tickets: [{ area_code: "reserve", ticket_code: "unknown", quantity: 2 }] })).error_kind, "selection_unavailable");
-  for (const bad of [{ ...proposal, tickets: [] }, { ...proposal, tickets: [proposal.tickets[0], proposal.tickets[0]] }, { ...proposal, tickets: [{ ...proposal.tickets[0], quantity: 21 }] }, { ...proposal, seat_ids: ["A1", "A1"] }, { ...proposal, seat_ids: ["A1"] }, { ...proposal, tickets: [{ ...proposal.tickets[0], confirmed: true }] }]) { const h = harness("prepare_checkout"); assert.equal((await h.run(bad)).error_kind, "invalid_input"); assert.equal(h.calls.length, 0); }
+  for (const bad of [{ ...proposal, tickets: [] }, { ...proposal, tickets: [proposal.tickets[0], proposal.tickets[0]] }, { ...proposal, tickets: [{ ...proposal.tickets[0], quantity: 21 }] }, { ...proposal, seat_ids: ["A1", "A1"] }, { ...proposal, seat_ids: ["A1"] }, { ...proposal, seat_ids: [" A1", "A2"] }, { ...proposal, tickets: [{ ...proposal.tickets[0], ticket_code: "adult\u0000" }] }, { ...proposal, tickets: [{ ...proposal.tickets[0], confirmed: true }] }]) { const h = harness("prepare_checkout"); assert.equal((await h.run(bad)).error_kind, "invalid_input"); assert.equal(h.calls.length, 0); }
 });
