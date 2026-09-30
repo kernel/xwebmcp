@@ -22,14 +22,17 @@ await webmcp.addCustomTools({ namespace: "instagram.com", tools, forceOverwriteN
   even when the tab is signed in. It follows no redirects. It returns title, caption
   excerpt and displayed count/date text from the page's metadata. It does not read
   comments or return signed CDN image/video URLs. The request has a 15-second deadline
-  and a 2 MiB streamed-body limit. Output is under 4 KiB.
+  and a 2 MiB streamed-body limit. JSON output is under 16 KiB (UTF-8).
 - `get_profile({username})` opens one profile, then observes only the page's
   `PolarisProfilePageContentQuery` response to `/api/graphql`. It reads `data.user`,
+  binds the header request to the top frame and destination navigation loader,
   verifies that its username matches the requested target, and requires
   `is_private === false` before returning any header fields. Other privacy/restriction
   flags cause a `gated` error, including for private accounts the viewer follows.
   There is no GraphQL replay, scrolling or pagination. The response-read window is
-  15 seconds; the accepted header body is at most 256 KiB. Output is under 4 KiB.
+  15 seconds, with event waiters armed before navigation; a document-load wait of
+  at most 5 seconds follows capture. HTTP-200 GraphQL errors are refused. The header body
+  is at most 256 KiB (UTF-8). JSON output is under 16 KiB.
   Instagram itself may load other resources when opening a profile; the tool does
   not inspect their bodies or interact with their UI.
 
@@ -103,8 +106,20 @@ from a different public profile page: `get_profile` returned public header field
 from the destination's observed header response; `get_post` returned public permalink
 metadata with cookies omitted, without changing the registering document.
 
-74 fabricated-fixture tests cover valid and malformed inputs, public/private/unknown
+87 fabricated-fixture tests cover valid and malformed inputs, public/private/unknown
 privacy, unrelated viewer data, redirects, login/challenge/forbidden/rate-limited
-outcomes, output/request bounds and read-only behavior. The full repository suite
-passed (1651 tests). No live private-account or state-changing tests were performed.
-Independent final-source QA and local-extension checks are pending.
+outcomes, UTF-8 response/output bounds and read-only behavior. No live private-account
+or state-changing tests were performed. Initial independent review identified four
+profile defects: frame/navigation attribution, HTTP-200 access errors, UTF-8 limits,
+and early-event eviction during load. Regression fixtures cover the fixes; independent
+final-source recheck is pending.
+
+Author local-extension checks used isolated Chromium 153 and fabricated HTTPS pages,
+with the actual extension runtime and both tool sources registered together. Both
+success paths worked across navigation; private/unknown profile, post rate limit and
+malformed-input cases failed closed. A fabricated cookie was omitted on both post
+requests. Inert HTML image/iframe canaries were not loaded. Fixture CSP disallowed
+`unsafe-eval`; page registration and invocation still worked. A test-only extension
+copy preset the fixture-origin permission and exposed the existing background API
+for instrumentation; runtime modules were unchanged. The optional-permission prompt,
+popup/sidepanel flow and live-site local-extension behavior remain unverified.

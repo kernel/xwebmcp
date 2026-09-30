@@ -58,73 +58,88 @@
 
     try {
       await cdp("Network.enable");
+      const { frameTree } = await cdp("Page.getFrameTree");
+      const frameId = frameTree.frame.id;
       await drainEvents();
-      await gotoUrl(url);
-      await waitForLoad(5);
       let requestId = null;
-      let responseStatus = null;
-      let finished = false;
-      const deadline = Date.now() + 15000;
-      while (Date.now() < deadline) {
-        if (context?.signal?.aborted) return fail("canceled", "The profile read was canceled.");
-        for (const event of await drainEvents()) {
+      const requestTask = waitForEvent("Network.requestWillBeSent", {
+        timeoutSec: 15,
+        predicate: event => {
           const params = event.params;
-          if (event.method === "Network.requestWillBeSent" && !requestId && params.request.url === "https://www.instagram.com/api/graphql") {
-            const form = new URLSearchParams(params.request.postData || "");
-            if (form.get("fb_api_req_friendly_name") === "PolarisProfilePageContentQuery") requestId = params.requestId;
-          }
-          if (event.method === "Network.responseReceived") {
-            const response = params.response;
-            const relevant = params.requestId === requestId || (params.type === "Document" && response.url.split("?")[0] === url);
-            if (relevant && response.status === 429) return fail("rate_limited", "Instagram rate-limited the profile; no retry was attempted.");
-            if (relevant && response.status === 403) return fail("forbidden", "Instagram denied the profile read; no retry was attempted.");
-            if (relevant && response.status === 401) return fail("login_required", "Instagram requires authentication; no login was attempted.");
-            if (relevant && [404, 410].includes(response.status)) return fail("unavailable", "The public profile is unavailable.");
-            if (params.requestId === requestId) responseStatus = response.status;
-          }
-          if (params.requestId === requestId && event.method === "Network.loadingFinished") finished = true;
-          if (params.requestId === requestId && event.method === "Network.loadingFailed") return fail("navigation_failed", "The profile-header request failed; no retry was attempted.");
+          if (params.frameId !== frameId || params.request.url !== "https://www.instagram.com/api/graphql") return false;
+          const form = new URLSearchParams(params.request.postData || "");
+          if (form.get("fb_api_req_friendly_name") !== "PolarisProfilePageContentQuery") return false;
+          requestId = params.requestId;
+          return true;
         }
-        const state = await js(() => ({
-          origin: location.origin,
-          path: location.pathname,
-          title: document.title,
-          missing: /sorry, this page isn't available|page not found/i.test(document.querySelector('h1')?.textContent || ""),
-          login: !!document.querySelector('input[type="password"]'),
-          challenge: !!document.querySelector('iframe[src*="captcha"], form[action*="/challenge/"]')
-        }));
-        if (state.origin !== "https://www.instagram.com") return fail("gated", "Instagram redirected outside the supported site; no content was returned.");
-        if (/^\/(challenge|checkpoint)(\/|$)/.test(state.path) || state.challenge || /captcha|access denied|checkpoint/i.test(state.title)) return fail("challenge", "Instagram requires verification; no challenge was handled.");
-        if (/^\/accounts\/login(?:\/|$)/.test(state.path) || state.login) return fail("login_required", "Instagram requires a signed-in session; no login was attempted.");
-        if (state.missing) return fail("unavailable", "The public profile is unavailable.");
-        if (requestId && finished) {
-          if (responseStatus !== 200) return fail("gated", "Instagram did not return a successful profile-header response.");
-          const result = await cdp("Network.getResponseBody", { requestId });
-          if (result.base64Encoded || result.body.length > 262144) return fail("response_too_large", "The profile-header response is encoded or exceeds the 256 KiB limit.");
-          let data;
-          try { data = JSON.parse(result.body); } catch { return fail("site_changed", "Instagram returned an unreadable profile-header response."); }
-          const user = data.data?.user;
-          if (!user || typeof user.username !== "string" || user.username.toLowerCase() !== username) return fail("unavailable", "The response did not identify the requested public profile.");
-          if (user.is_private !== false || user.gating != null || user.is_unpublished === true || user.is_coppa_enforced === true || user.is_regulated_c18 === true) return fail("gated", "The requested profile is private, restricted or has unknown privacy; no profile fields were returned.");
-          if (state.path.toLowerCase().replace(/\/$/, "") !== `/${username}`) return fail("site_changed", "The tab no longer shows the requested profile.");
-          const count = value => Number.isSafeInteger(value) && value >= 0 ? value : null;
-          return {
-            status: "ok",
-            username,
-            url,
-            display_name: typeof user.full_name === "string" ? user.full_name.slice(0, 150) : null,
-            biography: typeof user.biography === "string" ? user.biography.slice(0, 2200) : null,
-            is_private: false,
-            is_verified: typeof user.is_verified === "boolean" ? user.is_verified : null,
-            follower_count: count(user.follower_count),
-            following_count: count(user.following_count),
-            post_count: count(user.media_count),
-            observed_at: new Date().toISOString()
-          };
-        }
-        await waitMs(200);
+      });
+      const sameRequest = event => requestId !== null && event.params.requestId === requestId;
+      const responseTask = waitForEvent("Network.responseReceived", { timeoutSec: 15, predicate: sameRequest });
+      const completionTask = Promise.race([
+        waitForEvent("Network.loadingFinished", { timeoutSec: 15, predicate: sameRequest }),
+        waitForEvent("Network.loadingFailed", { timeoutSec: 15, predicate: sameRequest })
+      ]);
+      const documentTask = waitForEvent("Network.responseReceived", {
+        timeoutSec: 15,
+        predicate: event => event.params.frameId === frameId && event.params.type === "Document" && event.params.response.url.split("?")[0] === url
+      });
+      const navigation = await gotoUrl(url);
+      const [request, response, completion, documentResponse] = await Promise.all([requestTask, responseTask, completionTask, documentTask]);
+      if (context?.signal?.aborted) return fail("canceled", "The profile read was canceled.");
+      const statusError = status => {
+        if (status === 429) return fail("rate_limited", "Instagram rate-limited the profile; no retry was attempted.");
+        if (status === 403) return fail("forbidden", "Instagram denied the profile read; no retry was attempted.");
+        if (status === 401) return fail("login_required", "Instagram requires authentication; no login was attempted.");
+        if ([404, 410].includes(status)) return fail("unavailable", "The public profile is unavailable.");
+        return null;
+      };
+      if (documentResponse?.params.loaderId === navigation.loaderId) {
+        const error = statusError(documentResponse.params.response.status);
+        if (error) return error;
       }
-      return fail("site_changed", "No readable profile-header response arrived within 15 seconds. No retry was attempted.");
+      await waitForLoad(5);
+      const state = await js(() => ({
+        origin: location.origin,
+        path: location.pathname,
+        title: document.title,
+        missing: /sorry, this page isn't available|page not found/i.test(document.querySelector('h1')?.textContent || ""),
+        login: !!document.querySelector('input[type="password"]'),
+        challenge: !!document.querySelector('iframe[src*="captcha"], form[action*="/challenge/"]')
+      }));
+      if (state.origin !== "https://www.instagram.com") return fail("gated", "Instagram redirected outside the supported site; no content was returned.");
+      if (/^\/(challenge|checkpoint)(\/|$)/.test(state.path) || state.challenge || /captcha|access denied|checkpoint/i.test(state.title)) return fail("challenge", "Instagram requires verification; no challenge was handled.");
+      if (/^\/accounts\/login(?:\/|$)/.test(state.path) || state.login) return fail("login_required", "Instagram requires a signed-in session; no login was attempted.");
+      if (state.missing) return fail("unavailable", "The public profile is unavailable.");
+      if (!request || !response || !completion) return fail("site_changed", "No readable profile-header response arrived within 15 seconds. No retry was attempted.");
+      if (!navigation.loaderId || navigation.frameId !== frameId || request.params.loaderId !== navigation.loaderId) return fail("site_changed", "The profile-header response did not belong to the requested navigation.");
+      if (completion.method === "Network.loadingFailed") return fail("navigation_failed", "The profile-header request failed; no retry was attempted.");
+      const responseStatus = response.params.response.status;
+      const error = statusError(responseStatus);
+      if (error) return error;
+      if (responseStatus !== 200) return fail("gated", "Instagram did not return a successful profile-header response.");
+      const result = await cdp("Network.getResponseBody", { requestId });
+      if (result.base64Encoded || new TextEncoder().encode(result.body).byteLength > 262144) return fail("response_too_large", "The profile-header response is encoded or exceeds the 256 KiB limit.");
+      let data;
+      try { data = JSON.parse(result.body); } catch { return fail("site_changed", "Instagram returned an unreadable profile-header response."); }
+      if (data.errors != null && (!Array.isArray(data.errors) || data.errors.length > 0)) return fail("gated", "Instagram returned a profile-header error; no profile fields were returned.");
+      const user = data.data?.user;
+      if (!user || typeof user.username !== "string" || user.username.toLowerCase() !== username) return fail("unavailable", "The response did not identify the requested public profile.");
+      if (user.is_private !== false || user.gating != null || user.is_unpublished === true || user.is_coppa_enforced === true || user.is_regulated_c18 === true) return fail("gated", "The requested profile is private, restricted or has unknown privacy; no profile fields were returned.");
+      if (state.path.toLowerCase().replace(/\/$/, "") !== `/${username}`) return fail("site_changed", "The tab no longer shows the requested profile.");
+      const count = value => Number.isSafeInteger(value) && value >= 0 ? value : null;
+      return {
+        status: "ok",
+        username,
+        url,
+        display_name: typeof user.full_name === "string" ? user.full_name.slice(0, 150) : null,
+        biography: typeof user.biography === "string" ? user.biography.slice(0, 2200) : null,
+        is_private: false,
+        is_verified: typeof user.is_verified === "boolean" ? user.is_verified : null,
+        follower_count: count(user.follower_count),
+        following_count: count(user.following_count),
+        post_count: count(user.media_count),
+        observed_at: new Date().toISOString()
+      };
     } catch {
       if (context?.signal?.aborted) return fail("canceled", "The profile read was canceled.");
       return fail("navigation_failed", "The profile read could not be completed; no retry was attempted.");

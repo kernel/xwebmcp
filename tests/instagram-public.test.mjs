@@ -28,7 +28,7 @@ function conforms(schema, value) {
 function check(definition, output) {
   const result = plain(output);
   assert.ok(conforms(definition.tool.outputSchema, result), JSON.stringify(result));
-  assert.ok(JSON.stringify(result).length < 5000);
+  assert.ok(Buffer.byteLength(JSON.stringify(result), "utf8") < 16384);
   return result;
 }
 
@@ -86,32 +86,53 @@ const publicUser = { username: "example_account", full_name: "Fabricated Public 
 function profileHarness(options = {}) {
   const calls = [];
   const controller = new AbortController();
-  let now = 0;
-  let navigated = false;
-  let drained = false;
-  class Clock extends Date { static now() { return now; } }
+  const waiters = [];
+  const emit = event => {
+    for (const waiter of waiters) {
+      if (!waiter.done && event.method === waiter.method && (!event.sessionId || event.sessionId === "main") && waiter.options.predicate(event)) {
+        waiter.done = true;
+        waiter.resolve(event);
+      }
+    }
+  };
   const state = { origin, path: "/example_account/", title: "Instagram", missing: false, login: false, challenge: false, ...(options.state || {}) };
   const response = options.body ?? JSON.stringify({ data: { user: { ...publicUser, ...(options.user || {}) }, viewer: { username: "another_viewer", is_private: false, token: "DO_NOT_RETURN" } } });
   const [definition] = runInNewContext(`(${source("get_profile")})`, {
-    URL, URLSearchParams, Date: Clock,
+    URL, URLSearchParams, TextEncoder, Date, Promise,
     pageInfo: async () => { calls.push(["pageInfo"]); return { url: options.start || `${origin}/popular/` }; },
-    cdp: async (method, params) => { calls.push([method, params]); if (method === "Network.getResponseBody") return { body: response, base64Encoded: options.encoded ?? false }; return {}; },
-    drainEvents: async () => {
-      calls.push(["drainEvents"]);
-      if (!navigated || drained || options.noResponse) return [];
-      drained = true;
-      return [
-        { method: "Network.requestWillBeSent", params: { requestId: "unrelated", request: { url: `${origin}/api/graphql`, postData: "fb_api_req_friendly_name=UnrelatedQuery" } } },
-        { method: "Network.responseReceived", params: { requestId: "unrelated", response: { status: 200 } } },
-        { method: "Network.requestWillBeSent", params: { requestId: "header", request: { url: `${origin}/api/graphql`, postData: "fb_api_req_friendly_name=PolarisProfilePageContentQuery" } } },
-        { method: "Network.responseReceived", params: { requestId: "header", response: { status: options.status ?? 200 } } },
-        { method: options.failed ? "Network.loadingFailed" : "Network.loadingFinished", params: { requestId: "header" } }
-      ];
+    cdp: async (method, params) => {
+      calls.push([method, params]);
+      if (method === "Page.getFrameTree") return { frameTree: { frame: { id: "main-frame" } } };
+      if (method === "Network.getResponseBody") return { body: response, base64Encoded: options.encoded ?? false };
+      return {};
     },
-    gotoUrl: async url => { calls.push(["gotoUrl", url]); navigated = true; },
-    waitForLoad: async () => true,
-    js: async () => { calls.push(["js"]); if (options.jsError) throw new Error("secret must not leak"); return state; },
-    waitMs: async ms => { now += ms; calls.push(["waitMs", ms]); }
+    drainEvents: async () => { calls.push(["drainEvents"]); return []; },
+    waitForEvent: (method, eventOptions) => {
+      calls.push(["waitForEvent", method, eventOptions.timeoutSec]);
+      return new Promise(resolve => waiters.push({ method, options: eventOptions, resolve, done: false }));
+    },
+    gotoUrl: async url => {
+      calls.push(["gotoUrl", url]);
+      const header = (requestId, frameId, loaderId, sessionId = "main") => {
+        emit({ method: "Network.requestWillBeSent", sessionId, params: { requestId, frameId, loaderId, request: { url: `${origin}/api/graphql`, postData: "fb_api_req_friendly_name=PolarisProfilePageContentQuery" } } });
+        emit({ method: "Network.responseReceived", sessionId, params: { requestId, frameId, loaderId, response: { status: options.status ?? 200 } } });
+        emit({ method: options.failed ? "Network.loadingFailed" : "Network.loadingFinished", sessionId, params: { requestId } });
+      };
+      emit({ method: "Network.responseReceived", params: { requestId: "document", frameId: "main-frame", loaderId: "new-loader", type: "Document", response: { url, status: options.documentStatus ?? 200 } } });
+      if (!options.noResponse) {
+        if (options.childFirst) header("child", "iframe", "child-loader");
+        if (options.otherSessionFirst) header("foreign", "main-frame", "new-loader", "foreign-session");
+        header("header", "main-frame", options.oldLoader ? "old-loader" : "new-loader");
+      }
+      for (const waiter of waiters) if (!waiter.done) { waiter.done = true; waiter.resolve(null); }
+      return { frameId: "main-frame", loaderId: options.missingLoader ? undefined : "new-loader" };
+    },
+    waitForLoad: async () => {
+      calls.push(["waitForLoad"]);
+      for (let i = 0; i < (options.noisyLoad ? 600 : 0); i++) emit({ method: "Network.requestWillBeSent", params: { requestId: `noise-${i}`, frameId: "main-frame", request: { url: `${origin}/resource/${i}` } } });
+      return true;
+    },
+    js: async () => { calls.push(["js"]); if (options.jsError) throw new Error("secret must not leak"); return state; }
   });
   return { definition, calls, controller, run: async input => check(definition, await definition.execute(input, { signal: controller.signal })) };
 }
@@ -210,6 +231,57 @@ for (const [options, error] of [
   const h = profileHarness(options); const out = await h.run({ username: "example_account" });
   assert.equal(out.error_kind, error); assert.equal(h.calls.filter(c=>c[0] === "gotoUrl").length, 1);
   assert.ok(!JSON.stringify(out).includes("secret"));
+});
+
+test("get_profile: frame and default-session binding ignore earlier unrelated headers", async () => {
+  for (const options of [{ childFirst: true }, { otherSessionFirst: true }]) {
+    const h = profileHarness({ ...options, user: { is_private: true } });
+    assert.equal((await h.run({ username: "example_account" })).error_kind, "gated");
+    assert.deepEqual(plain(h.calls.filter(c => c[0] === "Network.getResponseBody").map(c => c[1])), [{ requestId: "header" }]);
+  }
+});
+
+for (const options of [{ oldLoader: true }, { missingLoader: true }]) test(`get_profile: wrong or unknown navigation loader ${JSON.stringify(options)} returns no fields`, async () => {
+  const h = profileHarness(options);
+  assert.equal((await h.run({ username: "example_account" })).error_kind, "site_changed");
+  assert.equal(h.calls.filter(c => c[0] === "Network.getResponseBody").length, 0);
+});
+
+for (const errors of [[{ extensions: { code: "FORBIDDEN" }, message: "DO_NOT_RETURN" }], "malformed errors"]) test("get_profile: HTTP-200 header errors reject partial public data", async () => {
+  const h = profileHarness({ body: JSON.stringify({ data: { user: publicUser }, errors }) });
+  const out = await h.run({ username: "example_account" });
+  assert.equal(out.error_kind, "gated");
+  assert.ok(!JSON.stringify(out).includes("DO_NOT_RETURN"));
+});
+
+for (const [documentStatus, error] of [[401, "login_required"], [403, "forbidden"], [429, "rate_limited"], [404, "unavailable"]]) test(`get_profile: main document ${documentStatus} with no header fails closed`, async () => {
+  const h = profileHarness({ noResponse: true, documentStatus });
+  assert.equal((await h.run({ username: "example_account" })).error_kind, error);
+});
+
+test("get_profile: event waiters capture header before a noisy load, not through the ring", async () => {
+  const h = profileHarness({ noisyLoad: true });
+  assert.equal((await h.run({ username: "example_account" })).status, "ok");
+  const navigationIndex = h.calls.findIndex(c => c[0] === "gotoUrl");
+  assert.ok(h.calls.filter(c => c[0] === "waitForEvent").every(c => h.calls.indexOf(c) < navigationIndex));
+  assert.equal(h.calls.filter(c => c[0] === "drainEvents").length, 1);
+});
+
+test("get_profile: response limit counts UTF-8 bytes, not code units", async () => {
+  const body = JSON.stringify({ data: { user: { ...publicUser, biography: "界".repeat(90000) } } });
+  assert.ok(body.length < 262144);
+  assert.ok(Buffer.byteLength(body, "utf8") > 262144);
+  const h = profileHarness({ body });
+  assert.equal((await h.run({ username: "example_account" })).error_kind, "response_too_large");
+});
+
+for (const [name, harness, input, options] of [
+  ["get_post", postHarness, { shortcode: "Example_123" }, { html: postHtml(`2 likes, 3 comments - example_account on January 1, 2026: "${"😀".repeat(3000)}"`).replace("Fabricated public post", "😀".repeat(1000)) }],
+  ["get_profile", profileHarness, { username: "example_account" }, { user: { biography: "😀".repeat(3000), full_name: "😀".repeat(1000) } }]
+]) test(`${name}: multibyte output stays within its documented byte limit`, async () => {
+  const out = await harness(options).run(input);
+  assert.equal(out.status, "ok");
+  assert.ok(Buffer.byteLength(JSON.stringify(out), "utf8") < 16384);
 });
 
 test("get_profile: bounded text and invalid numeric counts become null", async () => {
