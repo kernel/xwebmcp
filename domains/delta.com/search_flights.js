@@ -1,7 +1,7 @@
 [
   {
     kind: "cdp",
-    match: { url_patterns: ["https://delta.com/*", "https://*.delta.com/*"] },
+    match: { url_patterns: ["https://www.delta.com/*"] },
     tool: {
       name: "search_flights",
       description:
@@ -53,11 +53,11 @@
             type: ["string", "null"],
             format: "uri",
             description:
-              "Verified results page URL; null if no results page was reached.",
+              "Canonical results page URL without session/cache parameters; null if no results page was reached.",
           },
-          message: { type: "string" },
+          message: { type: "string", maxLength: 700 },
           flights: {
-            type: "array",
+            type: "array", maxItems: 60,
             items: {
               type: "object",
               additionalProperties: false,
@@ -172,7 +172,7 @@
         openWorldHint: true,
       },
     },
-    execute: async (input) => {
+    execute: async (input, context) => {
       // @xwebmcp-inline lib/input.js
       const typeInto = async (target, text, options = {}) => {
         await click(target);
@@ -242,6 +242,7 @@
         message,
       });
       const remaining = () => {
+        if (context?.signal?.aborted) throw Error("CANCELED: search stopped; no retry was made");
         const s = (deadline - Date.now()) / 1000;
         if (s <= 0)
           throw Error("TIMEOUT: search did not finish within 105 seconds");
@@ -263,6 +264,8 @@
         await click(n, { timeoutSec: Math.min(10, remaining()) });
       };
       try {
+        if (!input || typeof input !== "object" || Array.isArray(input))
+          throw Error("INVALID_INPUT: an input object is required");
         const p = input.passengers ?? 1;
         if (
           Object.keys(input).some(
@@ -276,12 +279,12 @@
                 "passengers",
               ].includes(k),
           ) ||
-          !Number.isInteger(p) ||
+          input.passengers === null || !Number.isInteger(p) ||
           p < 1 ||
           p > 9 ||
           !["one_way", "round_trip"].includes(input.trip_type) ||
-          !/^[A-Z]{3}$/.test(input.origin) ||
-          !/^[A-Z]{3}$/.test(input.destination) ||
+          typeof input.origin !== "string" || !/^[A-Z]{3}$/.test(input.origin) ||
+          typeof input.destination !== "string" || !/^[A-Z]{3}$/.test(input.destination) ||
           input.origin === input.destination
         )
           throw Error(
@@ -313,6 +316,7 @@
           last.toISOString().slice(0, 10)
         )
           throw Error("INVALID_INPUT: supported booking window is 330 days");
+        remaining();
         const entryUrl = "https://www.delta.com/flightsearch/book-a-flight";
         const currentPage = await pageInfo();
         const suitable =
@@ -347,10 +351,16 @@
               n.startsWith(label + ",") ||
               n.toLowerCase().endsWith(" " + label.toLowerCase()),
           );
-          await choose("textbox", (n) => n === label);
-          const n = (await accessibilitySnapshot()).nodes.find(
-            (n) => n.role === "textbox" && n.name === label,
-          );
+          let n;
+          for (let attempt = 0; attempt < 20; attempt++) {
+            remaining();
+            n = (await accessibilitySnapshot()).nodes.find(
+              (n) => n.role === "textbox" && n.name === label,
+            );
+            if (n) break;
+            await waitMs(150);
+          }
+          if (!n) throw Error("UI_CHANGED: missing " + label + " textbox");
           // The airport box opens prefilled (e.g. the geolocated origin) and the click leaves
           // the caret inside that text; typeInto clears it before typing. Check the box holds
           // exactly the code before choosing an option.
@@ -438,7 +448,8 @@
           35,
         );
         const info = await pageInfo();
-        if (info.url.includes("/search-results")) resultsUrl = info.url;
+        if (new URL(info.url).origin === "https://www.delta.com" && new URL(info.url).pathname === "/flightsearch/search-results")
+          resultsUrl = "https://www.delta.com/flightsearch/search-results";
         const ready = await js(
           (timeout) =>
             new Promise((resolve) => {
@@ -539,7 +550,7 @@
         const parsed = await js(
           (input) => {
             const text = (e) =>
-              (e?.textContent || "").replace(/\s+/g, " ").trim();
+              (e?.textContent || "").replace(/[\u0000-\u001f\u007f]/g, " ").replace(/\s+/g, " ").trim().slice(0, 200);
             const visible = (e) =>
               !!e &&
               e.getClientRects().length > 0 &&
@@ -583,8 +594,8 @@
                 search.segments?.[0]?.returnDate !== input.return_date)
             )
               throw Error("PARSE_ERROR: search context does not match input");
-            if (!rows.length)
-              throw Error("PARSE_ERROR: no verified flight rows");
+            if (!rows.length || rows.length > 60)
+              throw Error("PARSE_ERROR: missing or excessive flight rows");
             const flights = rows.map((row) => {
               const card = row.querySelector("idp-mach-core-flight-card");
               const get = (id) => {
@@ -673,7 +684,7 @@
                   '[data-testid^="flight-card-layover-stop-"],.flight-stop__leg--layover',
                 ).length || 0;
               if (
-                !numbers.length ||
+                !numbers.length || numbers.length > 16 ||
                 !durationMinutes ||
                 dep !== input.origin ||
                 arr !== input.destination ||
@@ -717,7 +728,7 @@
           { arg: input },
         );
         if (parsed.empty) {
-          resultsUrl = parsed.url;
+          resultsUrl = "https://www.delta.com/flightsearch/search-results";
           return output(
             "no_results",
             [],
@@ -734,9 +745,9 @@
             return output("no_results", [], parsed.error.slice(0, 600));
           throw Error("SITE_ERROR: " + parsed.error.slice(0, 600));
         }
-        if (!parsed.url.includes("/search-results"))
+        if (new URL(parsed.url).origin !== "https://www.delta.com" || new URL(parsed.url).pathname !== "/flightsearch/search-results")
           throw Error("PARSE_ERROR: not on results page");
-        resultsUrl = parsed.url;
+        resultsUrl = "https://www.delta.com/flightsearch/search-results";
         return output(
           "ok",
           parsed.flights,

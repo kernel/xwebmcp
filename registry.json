@@ -85,6 +85,19 @@
     },
     {
       "domain": "delta.com",
+      "tool": "list_flight_deals",
+      "file": "domains/delta.com/list_flight_deals.js",
+      "kind": "page",
+      "namespace": "delta.com",
+      "url_patterns": [
+        "https://www.delta.com/*"
+      ],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Read-only visible advertised cash/SkyMiles deals with route/pricing filters and bounded offset pagination. No inventory availability or guaranteed quotes; requires an already-open supported deals page."
+    },
+    {
+      "domain": "delta.com",
       "tool": "login",
       "file": "domains/delta.com/login.js",
       "kind": "page",
@@ -117,17 +130,42 @@
     },
     {
       "domain": "delta.com",
+      "tool": "prepare_itinerary",
+      "file": "domains/delta.com/prepare_itinerary.js",
+      "kind": "page",
+      "namespace": "delta.com",
+      "url_patterns": [
+        "https://www.delta.com/*"
+      ],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Read-only revalidation of one advertised deal and exact displayed price, returning a constructed public search-form handoff. Does not open it, select fares, hold inventory, redeem miles, book or pay. No supported trusted approval path for execution."
+    },
+    {
+      "domain": "delta.com",
+      "tool": "search_flight_status",
+      "file": "domains/delta.com/search_flight_status.js",
+      "kind": "page",
+      "namespace": "delta.com",
+      "url_patterns": [
+        "https://www.delta.com/*"
+      ],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Public first-30 Delta-marketed route schedules/statuses via one observed page request. Validates route, date and leg continuity; not seat/fare availability. No navigation or retries."
+    },
+    {
+      "domain": "delta.com",
       "tool": "search_flights",
       "file": "domains/delta.com/search_flights.js",
       "kind": "cdp",
       "namespace": "delta.com",
       "url_patterns": [
-        "https://delta.com/*",
-        "https://*.delta.com/*"
+        "https://www.delta.com/*"
       ],
       "status": "draft",
       "last_verified": null,
-      "notes": "Back to draft after a source change on 2026-09-29: airport boxes are now cleared through the page and typed with the inlined lib/input.js cadence, and the typed code is checked before choosing (fixes 'CVCVG' on macOS Chrome, where CDP Meta+A does not select all). First successful full live invocation: CVG-SFO one way, 1 adult, regular Chrome 154 on macOS via the xwebmcp extension, status ok with first-page flights. Needs fresh independent QA; earlier qa_passed sign-off (agt_b189571b6d300a05921c) covered the previous source."
+      "notes": "Cash-fare shopping only. Adds a bounded wait for delayed airport textboxes, bounds rendered rows/text, and removes cache/session parameters from results URLs. Current source requires fresh independent QA; earlier live success does not verify this revision. Delta may deny searches with SFAF/444/429."
     },
     {
       "domain": "doordash.com",

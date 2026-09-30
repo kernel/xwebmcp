@@ -12,25 +12,27 @@ const input = { origin: "CVG", destination: "SFO", depart_date: day, trip_type: 
 // macOS run produced "CVCVG". The harness stops at the trip-type combobox, which it omits.
 function harness(options = {}) {
   const box = { value: "", label: null, selected: false };
-  const events = { selectAll: 0, typed: [], chosen: [], keys: [] };
+  const events = { selectAll: 0, typed: [], chosen: [], keys: [], snapshots: 0, waits: [], navigations: 0 };
+  let pending = 0;
   const nodes = () => [
     { role: "button", name: "Origin, CVG, Cincinnati, OH", backendDOMNodeId: 1 },
     { role: "button", name: "One Way Route Picker Destination", backendDOMNodeId: 2 },
-    ...(box.label ? [{ role: "textbox", name: box.label, backendDOMNodeId: 3 }] : []),
+    ...(box.label && !options.missingTextbox && pending-- <= 0 ? [{ role: "textbox", name: box.label, backendDOMNodeId: 3 }] : []),
     ...(box.label && box.value.length === 3 ? [{ role: "option", name: `${box.value} ${box.value} airport`, backendDOMNodeId: 4 }] : [])
   ];
   const context = {
     URL, Math, Date, Error, JSON, Object, Event: class {},
     pageInfo: async () => ({ url: "https://www.delta.com/flightsearch/book-a-flight" }),
-    gotoUrl: async () => {},
+    gotoUrl: async () => { events.navigations++; },
     waitForElement: async () => true,
-    waitMs: async () => {},
+    waitMs: async ms => { events.waits.push(ms); },
     cdp: async (method, params) => {
       if (params?.commands?.includes("selectAll")) { events.selectAll++; if (!options.clearFails) box.selected = true; }
       return {};
     },
-    accessibilitySnapshot: async () => ({ nodes: nodes() }),
+    accessibilitySnapshot: async () => { events.snapshots++; return { nodes: nodes() }; },
     click: async n => {
+      if (n?.role === "button") pending = options.delayedSnapshots ?? 0;
       if (n?.role === "button") box.label = n.name.startsWith("Origin") ? "Origin" : "Destination";
       if (n?.role === "button") box.value = box.label === "Origin" ? "CVG" : "";
       if (n?.role === "option") { events.chosen.push(n.name.slice(0, 3)); box.label = null; }
@@ -51,7 +53,7 @@ function harness(options = {}) {
     }
   };
   const [tool] = runInNewContext(`(${source})`, context);
-  return { run: () => tool.execute(input), events };
+  return { run: (value = input) => tool.execute(value), events };
 }
 
 test("clears the prefilled airport box before typing and chooses the typed airport", async () => {
@@ -72,6 +74,34 @@ test("reports INPUT_MISMATCH instead of choosing a wrong airport", async () => {
   assert.match(out.message, /INPUT_MISMATCH: Origin box holds "CCVVGG" instead of CVG/);
   assert.deepEqual(h.events.chosen, []);
 });
+
+test("waits for asynchronous airport textboxes before typing", async () => {
+  const h = harness({ delayedSnapshots: 3 });
+  const out = await h.run();
+  assert.deepEqual(h.events.chosen, ["CVG", "SFO"]);
+  assert.ok(h.events.waits.filter(ms => ms === 150).length >= 6);
+  assert.match(out.message, /UI_CHANGED: missing combobox/);
+});
+
+test("a missing airport textbox fails after a bounded wait without typing", async () => {
+  const h = harness({ missingTextbox: true });
+  const out = await h.run();
+  assert.match(out.message, /UI_CHANGED: missing Origin textbox/);
+  assert.equal(h.events.waits.filter(ms => ms === 150).length, 20);
+  assert.deepEqual(h.events.chosen, []);
+  assert.deepEqual(h.events.keys, []);
+});
+
+for (const bad of [null, [], {}, { ...input, origin: "AAA", destination: "AAA" }, { ...input, depart_date: "2026-02-30" }, { ...input, confirmed: true }]) {
+  test(`invalid search input precedes interaction: ${JSON.stringify(bad)}`, async () => {
+    const h = harness();
+    const out = await h.run(bad);
+    assert.match(out.message, /^INVALID_INPUT:/);
+    assert.equal(h.events.snapshots, 0);
+    assert.equal(h.events.navigations, 0);
+    assert.deepEqual(h.events.keys, []);
+  });
+}
 
 test("stops when the airport box cannot be cleared", async () => {
   const h = harness({ clearFails: true });

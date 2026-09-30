@@ -6,13 +6,16 @@ Tools for Delta Air Lines (https://www.delta.com).
 | --- | --- | --- | --- |
 | get_flight_status | [get_flight_status.js](get_flight_status.js) | verified | Public, read-only status lookup for one Delta flight number and date from any www.delta.com page (`page` kind, no navigation). Returns every leg and checks optional origin/destination against them. Independently QA'd and live-verified in Kernel browsers on 2026-09-29; Delta's bot protection makes it unreliable without a warm session. Extension success path untested. |
 | get_page_context | [get_page_context.js](get_page_context.js) | draft | Read-only page summary with live tool names and suggested next steps. Unit-tested; exercised live on the homepage and booking form. |
-| search_flights | [search_flights.js](search_flights.js) | draft | Airport entry fixed for macOS Chrome on 2026-09-29 and first successful full live invocation recorded; needs fresh independent QA because the source changed. |
+| list_flight_deals | [list_flight_deals.js](list_flight_deals.js) | draft | Read visible advertised cash/SkyMiles deals, with route/pricing filters and bounded pagination. No inventory/quote guarantee. |
+| prepare_itinerary | [prepare_itinerary.js](prepare_itinerary.js) | draft | Recheck one visible advertised deal and exact price, then return a public search-form handoff only. No navigation, holds, booking or redemption. |
+| search_flight_status | [search_flight_status.js](search_flight_status.js) | draft | First 30 Delta-marketed route schedules/statuses; validates route, date and connected legs. Not seat/fare availability. |
+| search_flights | [search_flights.js](search_flights.js) | draft | Cash-fare search with bounded airport-render wait and output, canonical results URL. Current revision requires fresh QA; full success unverified. |
 | login | [login.js](login.js) | draft | Homepage-only page tool: opens the top-nav Log in flyout, fills it, and schedules one submit. No output schema; outcome not observed. Live-checked with fabricated credentials and the submit click blocked in-page; no real submission. |
 | navigate_to_page | [navigate_to_page.js](navigate_to_page.js) | draft | Schedules a same-tab navigation to a www.delta.com path; description carries a basic site map. Unit-tested; exercised live. |
 
 ## Scope
 
-- Namespace: `delta.com`. Default match patterns: `https://delta.com/*` and `https://*.delta.com/*`; `login` and `get_flight_status` are narrowed (see URL patterns).
+- Namespace: `delta.com`. Default match patterns: `https://delta.com/*` and `https://*.delta.com/*`; `login`, the status tools, fare shopping and advertised-deal tools are narrowed (see URL patterns).
 - CDP-backed, read-only flight shopping for one-way and round-trip cash fares, 1–9 adults, within a 330-day booking window. No fare selection, purchases, payments, or personal-data entry.
 - On invocation, check for an idle, usable booking form at the exact entry URL. Otherwise navigate to `https://www.delta.com/flightsearch/book-a-flight` before interacting. An unrelated page, a baggage page, results, query-bearing booking state, or an open form overlay does not satisfy this check.
 - Return structured first-page outbound options: marketing airline and flight numbers, airports, local times, displayed overnight-arrival date, duration, stops, and lowest available displayed fare per row. Round trips do not return selected outbound/return pairs. Prices are rounded display fares, not passenger totals or guaranteed quotes; the currency symbol is preserved without guessing its ISO code.
@@ -85,8 +88,7 @@ stays `draft`; this is not fresh independent QA.
 
 ## QA summary
 
-The independent QA below covered the source before the airport entry fix; it no longer signs off
-the current file.
+The independent QA below covered the source before the airport entry fix and subsequent bounded-wait changes; it no longer signs off the current file.
 
 
 Independent QA agent: `agt_b189571b6d300a05921c`, three passes on 2026-09-24. No actionable defect reproduced in the final targeted regression cases of that earlier source.
@@ -110,7 +112,8 @@ Local checks also evaluate the file as one array expression, compare both schema
 
 ## Known limitations
 
-- `search_flights` is `draft` again because its source changed after QA. One full live invocation succeeded on 2026-09-29 (CVG→SFO one way); Delta's intermittent HTTP 429 / `SFAF001` responses can still block searches.
+- `search_flights` is `draft` because its source changed after QA. Earlier-source live invocations succeeded on 2026-09-29; current-source success remains unverified. Delta's HTTP 444/429 and `SFAF` responses can block searches.
+- The new route tool covers the first 30 Delta-marketed schedules only. Deals/preparation cover current visible advertised English-page offers, not calendar inventory or guaranteed quotes; no account/trip mutations or confirmed execution are supported. See the expanded-subset section for evidence and omitted capabilities.
 - First results page only; round trips return outbound options, not outbound/return pairs. Prices are rounded display fares, not passenger totals.
 - Adults only (1–9), 330-day booking window, English desktop layout only.
 - Completeness beyond the 1.5-second DOM-quiescence heuristic and real zero-results behaviour remain unverified.
@@ -305,6 +308,100 @@ Not observed anywhere: HTTP 429, a `site_error`, an `unexpected_response`, a `ne
 caller abort against the live site (fixtures only); a cancelled, diverted, or partner-operated flight; more than two legs; a successful non-US
 locale lookup; a signed-in session.
 
+## Public route and advertised-fare exploration (2026-09-30)
+
+### `search_flight_status`
+
+Page-first prototype: Delta's route schedule page sends one POST to
+`https://flightinformation-api.delta.com/flight-status/schedules`. The new `page` tool sends the
+observed body/headers from the current authorized www.delta.com document, with records 1–30 and
+availability disabled. It does not navigate, access an account or retry. Output contains only
+allowlisted flight numbers, operating-carrier display text, stops, duration and airport-local
+scheduled/estimated/actual times/status. Route echoes, first departure date, itinerary endpoints,
+leg numbers, airport continuity and chronological connections must match; a mismatched or
+malformed itinerary fails the entire call as `site_changed`, never substitutes another route.
+The 20-second request timer and caller cancellation are handled. HTTP 403/444 is `blocked`, 429
+is `rate_limited`; network/site/shape errors are not empty results. An echoed empty `trip` array
+is `no_results` (fixture-only). No pagination beyond the observed first 30 records is claimed.
+
+Builder live case on 2026-09-30: invoked from `/us/en/baggage/overview`, ATL–LGA for 2026-09-30
+returned 15 itineraries; document and URL unchanged. Connections, no-results, caller abort and
+HTTP failures remain fixture-only for this new tool.
+
+### `list_flight_deals` and `prepare_itinerary`
+
+Both are page-local reads on `/us/en/flight-deals/current-flight-deals` or
+`/us/en/flight-deals/skymiles-award-deals`. From other www.delta.com pages they return `wrong_page`
+without navigation; the caller must navigate separately and rediscover. No fetch, clicks, form
+changes or storage writes occur. Native discovery on the public deals page found no site tools.
+
+`list_flight_deals` reads visible `.fares-table__row` data rows (excluding the header). Optional
+route/pricing filters apply only to the current visible rows, not Delta's page filters. Offset
+pagination returns up to 20 fare cells, not an invented inventory total. Header/hidden rows are
+excluded; unsupported prices, targets, duplicate identifiers or malformed routes fail closed
+rather than silently return partial data. A filter/page with no matches is `no_results`, but an
+absent table is `site_changed`. Error/schema fixtures use fabricated routes and fares.
+
+Delta's tracking links place the full search URL in an **unencoded** `redirecturl` suffix;
+encoded equivalents are supported too. Only the exact tracking host/path and www.delta.com search
+host/path are accepted. The tool checks link route against row labels, real ordered dates,
+round-trip, one adult, cabin and money/miles pairing. It returns no tracking link or raw state.
+`travel_period_display` is separate from `depart_date`/`return_date`: live, an advertised
+Oct 31–Nov 6 period linked to a Nov 3–Nov 9 search. Prices are displayed advertised minima, not
+live fare inventory, passenger totals, ISO currency assertions or guaranteed quotes.
+
+`prepare_itinerary` consumes the returned `deal_id` plus `expected_price_display`, rechecks the
+exact visible target and price, and constructs a public search-form URL from allowlisted values.
+Unknown targets, changed prices or ambiguous identifiers do not prepare. Tracking/session/unknown
+query fields are discarded. The result says `prepared`, `execution_supported: false`, not booked.
+Repeated calls make no writes. Extra confirmation flags are invalid inputs, not human approval.
+
+Builder live checks on 2026-09-30: the complete eight-tool namespace was replaced atomically,
+with existing definitions preserved and no legacy login tool invoked. Deals returned advertised
+cash and miles fares; preparation returned the cash handoff and a stale price returned
+`price_changed`. Document/URL unchanged. A separately opened advertised award search populated
+route, dates and miles mode, but Delta returned `SFAF052_444`. Its `datesFlexible=true` link flag
+did **not** check the form's flexible-date checkbox. Accordingly, the handoff explicitly requires
+manual form verification; it does not claim a populated fare calendar or successful award search.
+No booking, fare selection, inventory hold, check-in, payment or account mutation was performed.
+
+### Safety and omitted capabilities
+
+There are no new reversible account actions or confirmed-execution tools. Booking, cancellation,
+seat changes, check-in and payment need a trusted human approval path tied to the exact account,
+trip/action, dates, cost and terms; the runtime does not provide it. A model-supplied boolean or
+annotation cannot supply that approval. Preparation never transitions automatically to execution.
+
+Own-trip/credit reads are omitted: authorized discovery saw only empty account states, not
+populated schemas; an empty or expired session does not verify real trip access. No new login or
+account was used. Calendar inventory and full award-result parsing are omitted because the
+public search was concretely denied and their result structure was not established. No bypass,
+retry loop or invented endpoint/schema was used. Non-English deals, other cabins/pricing formats
+and populated account flows remain unverified.
+
+### Cash-search updates and kind
+
+`search_flights` remains `cdp`: its established flow navigates from an unrelated page to the
+booking form, submits a public search that replaces the document, and reads structured fares from
+the destination. New code waits at most 20 × 150 ms for the asynchronous airport textbox, rather
+than snapshotting it immediately. The existing trusted typing snippet is unchanged. Invalid
+object/passenger types fail before site interaction, cancellation is checked at bounded steps,
+and output is capped at 60 rows with bounded parsed text. `results_url` is now the canonical
+results path without `cacheKeySuffix`/session parameters; it is not a resumable search link.
+No shared input/runtime files changed. The final search revision's live success is unverified;
+prior successes do not sign off this source. The 1.5-second readiness heuristic and Delta gates
+remain limitations.
+
+### QA for the expanded subset
+
+Pending fresh independent review of the final source. Existing flight-status QA above is historical;
+`get_flight_status.js` is unchanged. New fixtures cover schema conformance, serialized execution,
+malformed inputs before interaction, wrong pages, network gates, route/date/connection mismatch,
+response bounds, advertised deal filtering/pagination, raw and encoded tracking links,
+price-change/target ambiguity, secret-query removal and confirmation-negative cases. Fixtures
+are not evidence of live mutation success. Kernel live successes above are builder observations;
+local extension verification of the additions is not yet established.
+
 ## URL patterns
 
 `login` is narrowed to the homepage (`https://www.delta.com/`, `/us/en`, `/us/en/`, each also
@@ -312,7 +409,9 @@ with `?*`) because it drives the homepage header flyout and should only be offer
 flyout exists. `get_flight_status` is narrowed to `https://www.delta.com/*`: it belongs to the
 airline site and its request carries that site's session, while `shop.delta.com` is an unrelated
 storefront with its own native WebMCP tools. It was not tried from other Delta hosts, so it is not
-offered there. The remaining Delta tools keep the default domain-wide patterns.
+offered there. `search_flight_status`, `search_flights`, `list_flight_deals` and `prepare_itinerary`
+use the same www.delta.com airline-product scope; they do not list on the unrelated shop storefront.
+`get_page_context` and `navigate_to_page` retain their existing domain-wide patterns.
 
 ## Sessions
 
