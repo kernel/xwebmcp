@@ -14,8 +14,8 @@
           properties: {
             status: { const: "ok" },
             training_data_opt_out: { type: "boolean", description: "True when the \"Improve Instinct for everyone\" switch is off, i.e. the account has opted out of future training." },
-            icloud_email_linked: { type: ["boolean", "null"], description: "false when the site says \"Not linked\"; null when the row is missing or shows anything else (unobserved layout)." },
-            whatsapp_connected: { type: ["boolean", "null"], description: "false when the site says \"Not connected\"; null when the section is missing or shows anything else (unobserved layout)." }
+            icloud_email_linked: { type: ["boolean", "null"], enum: [false, null], description: "false when the site says \"Not linked\"; null when the row is missing or shows anything else (unobserved layout)." },
+            whatsapp_connected: { type: ["boolean", "null"], enum: [false, null], description: "false when the site says \"Not connected\"; null when the section is missing or shows anything else (unobserved layout)." }
           }
         },
         {
@@ -23,7 +23,7 @@
           required: ["status", "error_kind", "error_message"],
           properties: {
             status: { const: "error" },
-            error_kind: { type: "string", enum: ["invalid_input", "wrong_page", "not_logged_in", "not_ready", "site_changed"] },
+            error_kind: { type: "string", enum: ["invalid_input", "wrong_page", "not_logged_in", "not_ready", "site_changed", "canceled"] },
             error_message: { type: "string", minLength: 1 },
             entry_url: { type: "string", description: "Only with wrong_page: the page this tool reads." }
           }
@@ -32,12 +32,13 @@
     },
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true }
   },
-  execute: async (input) => {
+  execute: async (input, context = {}) => {
     const ENTRY_URL = "https://app.instinct.com/settings";
     const failure = (kind, message) => ({ status: "error", error_kind: kind, error_message: message });
     const wrongPage = () => ({ ...failure("wrong_page", "Open " + ENTRY_URL + " first; this tool reads the settings there."), entry_url: ENTRY_URL });
     if (!input || typeof input !== "object" || Array.isArray(input)) return failure("invalid_input", "Input must be an object.");
     if (Object.keys(input).length) return failure("invalid_input", "This tool takes no input fields.");
+    if (context.signal?.aborted) return failure("canceled", "The read was canceled; no state was changed.");
     if (location.protocol !== "https:" || location.hostname !== "app.instinct.com") return wrongPage();
     const text = element => element.textContent.replace(/\s+/g, " ").trim();
     const hasLeafText = (root, value) => [...root.querySelectorAll("span")].some(s => !s.children.length && text(s) === value);
@@ -45,6 +46,7 @@
     let control = null;
     let label = null;
     for (;;) {
+      if (context.signal?.aborted) return failure("canceled", "The read was canceled; no state was changed.");
       if (location.pathname === "/login") return failure("not_logged_in", "The tab is on the Instinct sign-in page; sign in, then open " + ENTRY_URL + ".");
       if (location.pathname !== "/settings") return wrongPage();
       control = document.getElementById("training-data-preference");

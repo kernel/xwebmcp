@@ -502,12 +502,9 @@
         "https://instinct.com/*",
         "https://*.instinct.com/*"
       ],
-      "status": "qa_passed",
-      "last_verified": "2026-09-29",
-      "notes": "Page tool, read-only, on app.instinct.com/settings only. Returns whether the training switch is off (training_data_opt_out) and whether the iCloud email and WhatsApp number are linked (false, or null for layouts not yet observed). Never returns the display name, phone, email or number. Independent QA signed off 2026-09-29 on public signed-out surfaces, real-browser synthetic pages and fixtures, in the Kernel runtime and, for wrong-page, sign-in and malformed-input cases, a local Chrome extension. Signed-in success was only checked by the author (2026-09-29, one account with nothing linked); connected and linked layouts are unobserved.",
-      "provenance": {
-        "qa_agent": "agt_8de63a81502a3f33ffe8"
-      }
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Read-only settings summary, no identity or channel values. Link flags are false or null; linked layouts remain unobserved. Explicit cancellation and supported-value schemas; current source awaiting independent QA."
     },
     {
       "domain": "instinct.com",
@@ -519,12 +516,9 @@
         "https://instinct.com/*",
         "https://*.instinct.com/*"
       ],
-      "status": "qa_passed",
-      "last_verified": "2026-09-29",
-      "notes": "Page tool, read-only, on app.instinct.com/workspace only. Lists the Connectors rows with id and name; badge and description only for rows whose button says Connect (connected false). Any other row returns id and name with connected null and no text, since its layout is unobserved. Never returns text containing an email or a phone-like run of seven or more digits. Independent QA signed off 2026-09-29 on public signed-out surfaces, real-browser synthetic pages and fixtures, in the Kernel runtime and, for wrong-page, sign-in and malformed-input cases, a local Chrome extension. Signed-in success was only checked by the author (2026-09-29, one account with no connectors linked).",
-      "provenance": {
-        "qa_agent": "agt_8de63a81502a3f33ffe8"
-      }
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Read-only public connector catalog summary on workspace. Eight allow-listed service ids/names; exact catalog badge/description only for Connect rows. Unknown, duplicate or renamed services fail closed; connected states remain null. No account or arbitrary page text. Current source awaiting independent QA."
     },
     {
       "domain": "jetblue.com",
