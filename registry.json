@@ -1248,9 +1248,10 @@
       "kind": "page",
       "namespace": "united.com",
       "url_patterns": ["https://www.united.com/*"],
-      "status": "draft",
-      "last_verified": null,
-      "notes": "Read the already-open one-way cash Flexible dates calendar; historical per-person fares, no date selection or navigation. Roundtrip and award calendars are not supported. Independent QA pending."
+      "status": "qa_passed",
+      "last_verified": "2026-09-30",
+      "notes": "Independent success/failure QA passed on Kernel and in extension fixtures; live extension results remain unverified. Read the already-open one-way cash calendar: historical per-person fares, no date selection or navigation. Roundtrip and award calendars are unsupported.",
+      "provenance": { "qa_agent": "agt_11fb3fa488a39a5807eb" }
     },
     {
       "domain": "united.com",
@@ -1259,9 +1260,10 @@
       "kind": "page",
       "namespace": "united.com",
       "url_patterns": ["https://www.united.com/*"],
-      "status": "draft",
-      "last_verified": null,
-      "notes": "Read current cash cabin starting fares with bounded pagination; no fare selection, hold or navigation. Primary displayed flight only, not complete connections or confirmed roundtrip pairs. Independent QA pending."
+      "status": "qa_passed",
+      "last_verified": "2026-09-30",
+      "notes": "Independent success/failure QA passed on Kernel and in extension fixtures; live extension results remain unverified. Bounded current cash cabin starting fares; collapsed connections may have null primary identifiers. No complete connections, paired returns, fare selection, hold or navigation.",
+      "provenance": { "qa_agent": "agt_11fb3fa488a39a5807eb" }
     },
     {
       "domain": "united.com",
@@ -1303,9 +1305,10 @@
       "kind": "page",
       "namespace": "united.com",
       "url_patterns": ["https://www.united.com/*"],
-      "status": "draft",
-      "last_verified": null,
-      "notes": "Re-read an exact nonstop cash offer for a human handoff; detects changed flight/time/cabin/price. Displayed terms remain incomplete; no booking, checkout, hold, cancellation, check-in or seat changes. Trusted execution approval is unsupported by the runtime. Independent QA pending."
+      "status": "qa_passed",
+      "last_verified": "2026-09-30",
+      "notes": "Independent success/failure QA passed on Kernel and in extension fixtures; live extension results remain unverified. Exact nonstop handoff with stale-choice checks and incomplete terms. No booking, checkout, hold, cancellation, check-in or seat changes; trusted execution approval is unsupported.",
+      "provenance": { "qa_agent": "agt_11fb3fa488a39a5807eb" }
     },
     {
       "domain": "united.com",

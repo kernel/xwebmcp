@@ -7,9 +7,9 @@ Tools for United Airlines (https://www.united.com).
 | search_flights | [search_flights.js](search_flights.js) | verified | Initial outbound results, including connections and nearby-airport alternatives |
 | login | [login.js](login.js) | draft | Challenge classification live-verified; successful login and MFA unverified |
 | get_flight_status | [get_flight_status.js](get_flight_status.js) | verified | Public status by flight number or route for a date within two days of today; page tool, no navigation, no passenger data |
-| get_fare_calendar | [get_fare_calendar.js](get_fare_calendar.js) | draft | Read the open one-way cash Flexible dates calendar; historical starting fares |
-| get_fare_options | [get_fare_options.js](get_fare_options.js) | draft | Read current cash cabin fares, with page-local IDs and pagination |
-| prepare_itinerary | [prepare_itinerary.js](prepare_itinerary.js) | draft | Re-read an exact nonstop offer for human handoff; no fare selection or execution |
+| get_fare_calendar | [get_fare_calendar.js](get_fare_calendar.js) | qa_passed | Read the open one-way cash Flexible dates calendar; historical starting fares |
+| get_fare_options | [get_fare_options.js](get_fare_options.js) | qa_passed | Read current cash cabin fares, with page-local IDs and pagination |
+| prepare_itinerary | [prepare_itinerary.js](prepare_itinerary.js) | qa_passed | Re-read an exact nonstop offer for human handoff; no fare selection or execution |
 
 ## Scope and loading
 
@@ -170,7 +170,7 @@ Preparation is local and read-only, not consent to book. `terms_complete: false`
 
 Author Kernel checks on 2026-09-30 returned all 23 SFO–LAX rows across two pages, 30 historical calendar dates, exact preparation and stale-price refusal. Native count was zero; whole-namespace replacement retained all six tools without invoking search/login. Page lifetime was unchanged.
 
-Independent review found collapsed-connection, unavailable-column and empty-search defects. Recheck confirmed the fixes live on SFO–LAX, EWR–LHR and EWR–JFK, plus calendar, repeated preparation, stale-choice and fake-approval guards. A later fixture-only invisible-notice finding is fixed with CSS visibility/opacity checks; final independent recheck is pending. Strict Ajv compilation passes. New tools remain `draft`; required-page/modal successes alone do not establish `verified`.
+Independent review signed off on final source `4794e9f` on 2026-09-30 after two fix/recheck rounds. Collapsed connections, unavailable columns and empty searches were confirmed fixed live on SFO–LAX, EWR–LHR and EWR–JFK, plus calendar, repeated preparation, stale-choice and fake-approval guards. A fixture-only invisible-notice finding was fixed and rechecked in the actual browser/extension runtime. All 17 final extension fixtures and 210 independent isolated checks passed; 20 final runtime outputs passed schema/serialization validation. The full suite passed 1654 tests without skips, including 28 fare tests; Go tests, the 83-tool registry validator and fully strict Ajv compilation passed. All three additions are `qa_passed`, not `verified`: required-page/modal successes do not meet the unrelated-entry-page verification rule.
 
 Chrome-extension live results remain unverified: United rejected the search, and testing stopped without retries. Isolated extension fixtures exercised all six registrations, successful reads/preparation, unavailable cabins, collapsed connections and stale refusal, with no tool requests, DOM changes or navigation. These are not live-site parity evidence.
 
