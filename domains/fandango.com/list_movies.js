@@ -184,16 +184,16 @@
       if (context.signal?.aborted) return fail("canceled", "The lookup was canceled before any request.");
       return null;
     };
-    const api = async (path, html = false) => {
+    const api = async path => {
       const signal = context.signal ? AbortSignal.any([context.signal, AbortSignal.timeout(20000)]) : AbortSignal.timeout(20000);
-      const response = await fetch(path, { headers: { accept: html ? "text/html" : "application/json" }, signal });
+      const response = await fetch(path, { headers: { accept: "application/json" }, signal });
       if (response.status === 429) throw { kind: "rate_limited" };
       if (response.status === 403) throw { kind: "challenge" };
       if (new URL(response.url || path, ORIGIN).origin !== ORIGIN) throw { kind: "site_changed" };
       if (new URL(response.url || path, ORIGIN).pathname === "/region-error") throw { kind: "region_blocked" };
       if (response.status === 404) throw { kind: "not_found" };
       if (!response.ok) throw { kind: "site_error" };
-      return html ? { body: await response.text(), url: response.url || ORIGIN + path } : await response.json();
+      return await response.json();
     };
     const caught = error => {
       const kind = context.signal?.aborted || error?.name === "AbortError" ? "canceled" : error?.kind || "site_error";
