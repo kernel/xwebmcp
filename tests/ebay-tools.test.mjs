@@ -875,6 +875,22 @@ test("get_listing: malformed variation models fail closed with no partial menus"
   }
 });
 
+test("get_listing: malformed nested price data never triggers object coercion", async () => {
+  const malformed = { toString: null, valueOf: null };
+  const variation = itemPage({ withVariations: true }).replace('"value":93.88,"currency":"USD"', `"value":${JSON.stringify(malformed)},"currency":"USD"`);
+  assert.equal((await run("get_listing", INPUTS.get_listing, { responses: [ok(variation)] })).output.error_kind, "site_changed");
+  const shipping = itemPage().replace('"value":"10.43","currency":"USD"', `"value":${JSON.stringify(malformed)},"currency":"USD"`);
+  assert.equal((await run("get_listing", INPUTS.get_listing, { responses: [ok(shipping)] })).output.error_kind, "site_changed");
+  for (const [html, field] of [
+    [itemPage().replace('"priceCurrency":"USD"', `"priceCurrency":${JSON.stringify(malformed)}`), "currency"],
+    [itemPage().replace('"value":"10.43","currency":"USD"', `"value":"10.43","currency":${JSON.stringify(malformed)}`), "shipping_cost"]
+  ]) {
+    const { output } = await run("get_listing", INPUTS.get_listing, { responses: [ok(html)] });
+    assert.equal(output.status, "ok");
+    assert.equal(output[field], null);
+  }
+});
+
 test("all tools: malformed field names cannot produce oversized error output", async () => {
   for (const name of NAMES) {
     const { output, calls } = await run(name, { ...INPUTS[name], ["x".repeat(10000)]: true });

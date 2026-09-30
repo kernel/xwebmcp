@@ -163,6 +163,7 @@
     const redact = value => value.replace(/\s+to\s+(?:[0-9]{5}(?:-[0-9]{4})?|[A-Z][0-9][A-Z]\s?[0-9][A-Z][0-9]|[A-Z]{1,2}[0-9][A-Z0-9]?\s?[0-9][A-Z]{2}|[0-9]{6})(?=$|[.,;\s])(?![A-Z0-9])/gi, "");
     const first = (selector, skip) => { const el = doc.querySelector(selector); return el ? text(el, skip) || null : null; };
     const amount = value => { const m = /^[^\d]{0,4}([\d,]+(?:\.\d+)?)(?:\/ea)?$/.exec(value || ""); return m ? Number(m[1].replace(/,/g, "")) : null; };
+    const numeric = value => typeof value === "number" || (typeof value === "string" && clean(value) !== "") ? Number(value) : NaN;
     let product = null;
     for (const script of doc.querySelectorAll('script[type="application/ld+json"]')) {
       try { const data = JSON.parse(script.textContent); product = (Array.isArray(data) ? data : [data]).find(d => d && d["@type"] === "Product") || product; } catch { /* another structured-data block */ }
@@ -194,7 +195,8 @@
       if (label && value && (!Object.hasOwn(rows, label) || value.length > rows[label].length)) rows[label] = value;
     }
     const rate = offer && Array.isArray(offer.shippingDetails) && offer.shippingDetails[0] ? offer.shippingDetails[0].shippingRate : null;
-    const rateAmount = rate && rate.value !== undefined ? Number(rate.value) : NaN;
+    const rateAmount = rate && rate.value !== undefined ? numeric(rate.value) : NaN;
+    if (rate && rate.value !== undefined && !Number.isFinite(rateAmount)) return fail("site_changed", "The listing's shipping rate is malformed. Nothing was changed.");
     const specifics = [];
     for (const col of doc.querySelectorAll('[data-testid="x-about-this-item"] .ux-layout-section-evo__col')) {
       const name = text(col.querySelector("dt")).replace(/:$/, "");
@@ -254,7 +256,14 @@
       const validItem = value => record(value) && typeof (value.displayName || value.valueName) === "string" && typeof value.outOfStock === "boolean";
       const validMenu = menu => record(menu) && typeof menu.displayLabel === "string" && Array.isArray(menu.menuItemValueIds) && menu.menuItemValueIds.every(id => (typeof id === "string" || Number.isInteger(id)) && validItem(items[String(id)]));
       if (!Array.isArray(menus) || !record(items) || !record(combos) || !menus.every(validMenu) || !Object.values(combos).every(record)) return fail("site_changed", "The listing shows variation menus but eBay's variation data is missing or malformed. Nothing was changed.");
-      const prices = Object.values(combos).map(v => v && v.binModel && v.binModel.price && v.binModel.price.value ? Number(v.binModel.price.value.value) : NaN).filter(isFinite);
+      const prices = [];
+      for (const combo of Object.values(combos)) {
+        const value = combo.binModel?.price?.value?.value;
+        if (value === undefined) continue;
+        const price = numeric(value);
+        if (!Number.isFinite(price)) return fail("site_changed", "The listing's variation price is malformed. Nothing was changed.");
+        prices.push(price);
+      }
       variations = {
         menus: menus.slice(0, 6).map(menu => ({
           name: clean(menu.displayLabel).slice(0, 80),
@@ -277,7 +286,7 @@
       price_kind: buyingFormat === "auction" ? "current_bid" : buyingFormat === "buy_it_now" ? "fixed_price" : null,
       price: amount(priceText),
       price_text: priceText ? priceText.slice(0, 80) : null,
-      currency: offer && /^[A-Z]{3}$/.test(offer.priceCurrency || "") ? offer.priceCurrency : null,
+      currency: offer && typeof offer.priceCurrency === "string" && /^[A-Z]{3}$/.test(offer.priceCurrency) ? offer.priceCurrency : null,
       best_offer: bestOffer,
       price_caveat: soldNotice && bestOffer ? "This listing accepts Best Offer, so the sale price may differ from the price shown." : null,
       bid_count: bids ? Number(bids[1].replace(/,/g, "")) : null,
@@ -288,7 +297,7 @@
       quantity_available_text: (availabilitySpans.find(t => /available|left|last one/i.test(t)) || "").slice(0, 80) || null,
       quantity_sold_text: (availabilitySpans.find(t => /\bsold$/i.test(t)) || "").slice(0, 80) || null,
       shipping_text: rows.Shipping ? redact(rows.Shipping).slice(0, 300) : null,
-      shipping_cost: isFinite(rateAmount) && rate && /^[A-Z]{3}$/.test(rate.currency || "") ? { amount: rateAmount, currency: rate.currency } : null,
+      shipping_cost: Number.isFinite(rateAmount) && rate && typeof rate.currency === "string" && /^[A-Z]{3}$/.test(rate.currency) ? { amount: rateAmount, currency: rate.currency } : null,
       delivery_text: rows.Delivery ? redact(rows.Delivery).slice(0, 300) : null,
       returns_text: rows.Returns ? rows.Returns.slice(0, 300) : null,
       item_specifics: specifics,

@@ -108,7 +108,7 @@ and schema tests. That sign-off does **not** cover the updated sources. Historic
 these changes included cross-host redirect credential leakage (already fixed), incomplete postal-code
 redaction, malformed follow-up URL throws, request-count wording and fixture gaps.
 
-Updated fixtures: `node --test tests/ebay-tools.test.mjs` — 66 passing. Full tool suite — 1643 passing;
+Updated fixtures: `node --test tests/ebay-tools.test.mjs` — 67 passing. Full tool suite — 1644 passing;
 registry validator — 82 tools valid. Tests use fabricated HTML and mocked fetches, not real account state.
 They cover malformed inputs before interaction, same-origin requests, bounded outputs, sold caveats,
 redaction, exact image hosts, cancellation before/during reads, body errors, bad redirect URLs, verification
@@ -118,11 +118,14 @@ Independent replacement review on `9f8f3bb`: not signed off. Two defects were re
 fixtures and both runtimes: an empty-string extra input key bypassed validation, and a null variation menu
 threw an untyped error. Both are fixed in the next revision with regression tests. Variation collections,
 referenced options and stock-flag types now fail closed; large price collections no longer use argument
-spreading. Final-source recheck is pending, so statuses remain `draft`.
+spreading. Recheck on `5cda1c1` signed off search and seller profile, but found one additional listing
+price-coercion error on malformed nested data. The next revision rejects nonnumeric variation/shipping
+amounts and avoids coercing unknown currency objects; a regression fixture covers these cases. Final
+recheck is pending, so statuses remain `draft`.
 
 ## Verification
 
-**Kernel, updated source, 2026-09-30:** all three files registered together. In the authorized session,
+**Kernel, builder source `9f8f3bb`, 2026-09-30:** all three files registered together. In the authorized session,
 `search` with `sold_only`, `ended_recently` and limit 1 returned one sold item successfully; temporary
 registrations were then removed. No account/cart/watchlist mutation occurred. A signed-out scratch browser
 on the verification page discovered all three custom tools and each returned `challenge` with no request.
@@ -130,12 +133,15 @@ Independent Kernel review of `9f8f3bb`: first real public search returned `chall
 All-three successes and unrelated-page checks were emulated, not real successes. Atomic whole-namespace
 replacement preserved all three tools, invalidated old references, and refused duplicate registration.
 Cancellation and cross-host refusal were exercised through runtime interception, not account mutations.
+Independent recheck on `5cda1c1` made exactly three real public reads, one per tool; all returned success
+without changing the tab's URL/title. These live results do not establish signed-in or action behavior.
 
 **Local Chrome extension:** 14 unit tests pass. Independent review on `9f8f3bb` installed the real extension
 with a scratch profile and native site grant: public search returned real `ok`; the later listing request
 returned `challenge`, and live reads stopped. Seller success, additional successes and failure paths were
 emulated. Across runtimes 54 collected outputs validated with Ajv; two malformed-variation executions had
-no output. Final-source recheck is pending. No all-tool real-success parity is claimed.
+no output. Extension recheck on `5cda1c1` was entirely emulated; 71 cross-runtime outputs passed schema
+checks in that round. Final-source recheck is pending. No all-tool real-success parity is claimed.
 
 ## Sessions
 
