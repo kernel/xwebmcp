@@ -185,16 +185,18 @@
       const listings = [];
       for (const t of body.tickets) {
         const all = Number(t && t.allInPricePerTicket);
-        const tickets = Number.parseInt(t && t.quantity, 10);
+        const tickets = t && typeof t.quantity === "string" && /^\d+$/.test(t.quantity) ? Number(t.quantity) : NaN;
         const section = t ? str(t.sectionName, 100) : null;
         if (!t || !section || !Number.isFinite(all) || all <= 0 || !Number.isInteger(tickets) || tickets < 1) { malformed++; continue; }
-        const can = String(t.m ?? "").split(",").map(s => Number.parseInt(s, 10)).filter(n => Number.isInteger(n) && n >= 1).slice(0, 50);
+        const quantities = typeof t.m === "string" && /^\d+(?:,\d+)*$/.test(t.m) ? t.m.split(",").map(Number) : null;
+        if (!quantities || quantities.some(n => !Number.isSafeInteger(n) || n < 1 || n > tickets)) { malformed++; continue; }
+        const can = quantities.slice(0, 50);
         listings.push({
           id: typeof t.i === "string" && /^[A-Za-z0-9_-]{1,40}$/.test(t.i) ? t.i : null, section, row: str(t.row, 20), zone: zones.get(String(t.c)) ?? null,
           tickets, can, price: money(all), delivery: str(t.stp, 60), badges: labels((Array.isArray(t.badges) ? t.badges : []).map(b => b && b.title), 5), perks: labels(t.perks, 5)
         });
       }
-      if (malformed) warnings.push(malformed + " listing(s) without a section, quantity or all-in price were skipped.");
+      if (malformed) warnings.push(malformed + " listing(s) without a valid section, quantity, purchasable quantities or all-in price were skipped.");
       if (!listings.length) return fail("site_changed", "Vivid Seats' listings no longer have the expected sectionName, quantity and allInPricePerTicket fields.");
 
       const matching = listings.filter(l =>
@@ -237,7 +239,7 @@
         matching_listings: matching.length, matching_tickets: matching.reduce((sum, l) => sum + l.tickets, 0), observed_at: observedAt, warnings, offers, groups
       };
     } catch (error) {
-      return fail("site_error", "The request from the page failed: " + (error && error.message ? error.message : String(error)));
+      return fail("site_error", "The request from the page failed; no automatic retry was attempted.");
     }
   }
 }]

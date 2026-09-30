@@ -1277,6 +1277,19 @@
     },
     {
       "domain": "vividseats.com",
+      "tool": "get_event",
+      "file": "domains/vividseats.com/get_event.js",
+      "kind": "page",
+      "namespace": "vividseats.com",
+      "url_patterns": [
+        "https://www.vividseats.com/*"
+      ],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Public read-only page details."
+    },
+    {
+      "domain": "vividseats.com",
       "tool": "get_ticket_offers",
       "file": "domains/vividseats.com/get_ticket_offers.js",
       "kind": "page",
@@ -1284,12 +1297,35 @@
       "url_patterns": [
         "https://www.vividseats.com/*"
       ],
-      "status": "verified",
-      "last_verified": "2026-09-29",
-      "notes": "Independent QA passed on the final source; live success from the home, Explore, performer and 404 pages on Kernel. Public, read-only page tool on www.vividseats.com: an event's listings with all-in USD price per ticket (cheapest first), optional quantity, price-range, zone and section filters and zone/section grouping, plus the price components the site says the all-in price includes. Rows and prices matched the event page on the events compared; the page collapses same-section general-admission rows. Never selects, carts or buys.",
-      "provenance": {
-        "qa_agent": "agt_0257fb751e04553b9365"
-      }
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Independent QA passed on the final source; live success from the home, Explore, performer and 404 pages on Kernel. Public, read-only page tool on www.vividseats.com: an event's listings with all-in USD price per ticket (cheapest first), optional quantity, price-range, zone and section filters and zone/section grouping, plus the price components the site says the all-in price includes. Rows and prices matched the event page on the events compared; the page collapses same-section general-admission rows. Never selects, carts or buys."
+    },
+    {
+      "domain": "vividseats.com",
+      "tool": "get_venue",
+      "file": "domains/vividseats.com/get_venue.js",
+      "kind": "page",
+      "namespace": "vividseats.com",
+      "url_patterns": [
+        "https://www.vividseats.com/*"
+      ],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Public read-only page details."
+    },
+    {
+      "domain": "vividseats.com",
+      "tool": "prepare_ticket_selection",
+      "file": "domains/vividseats.com/prepare_ticket_selection.js",
+      "kind": "page",
+      "namespace": "vividseats.com",
+      "url_patterns": [
+        "https://www.vividseats.com/*"
+      ],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Public quote preparation only; no site selection, checkout, hold or payment."
     },
     {
       "domain": "vividseats.com",
@@ -1300,12 +1336,9 @@
       "url_patterns": [
         "https://www.vividseats.com/*"
       ],
-      "status": "verified",
-      "last_verified": "2026-09-29",
-      "notes": "Independent QA passed on the final source; live success from the home, Explore, performer and 404 pages on Kernel. Public, read-only page tool on www.vividseats.com: events by text, place (city lookup or coordinates), dates, category, performer, venue and lowest-price ceiling, one page at a time within the site's 1000-match window. Prices and counts come from the site's search index and can be stale; the radius is approximate (the tool warns); USD only.",
-      "provenance": {
-        "qa_agent": "agt_0257fb751e04553b9365"
-      }
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Independent QA passed on the final source; live success from the home, Explore, performer and 404 pages on Kernel. Public, read-only page tool on www.vividseats.com: events by text, place (city lookup or coordinates), dates, category, performer, venue and lowest-price ceiling, one page at a time within the site's 1000-match window. Prices and counts come from the site's search index and can be stale; the radius is approximate (the tool warns); USD only."
     }
   ]
 }

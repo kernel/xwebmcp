@@ -49,7 +49,7 @@
             observed_at: { type: "string" },
             warnings: { type: "array", items: { type: "string" } },
             events: {
-              type: "array", minItems: 1,
+              type: "array", minItems: 1, maxItems: 50,
               items: {
                 type: "object", additionalProperties: false,
                 required: ["rank", "production_id", "name", "url", "local_date", "local_time", "weekday", "time_zone", "start_utc", "date_tbd", "time_tbd", "if_necessary", "delay_type", "venue", "performers", "category_id", "subcategory_id", "distance_miles", "listing_count", "ticket_count", "lowest_all_in_price", "highest_all_in_price", "pricing_refreshed_at"],
@@ -248,10 +248,12 @@
           pricing_refreshed_at: instant(e.lastPricingRefresh)
         };
       };
-      const events = body.items.map(normalize).filter(Boolean);
+      const pageItems = body.items.slice(0, pageSize);
+      const events = pageItems.map(normalize).filter(Boolean);
       if (!events.length) return fail("site_changed", "Vivid Seats returned events without the expected id and name fields.");
       const warnings = [];
-      if (events.length < body.items.length) warnings.push((body.items.length - events.length) + " result(s) without an id or name were skipped.");
+      if (events.length < pageItems.length) warnings.push((pageItems.length - events.length) + " result(s) without an id or name were skipped.");
+      if (body.items.length > pageSize) warnings.push("The site returned more than page_size results; only the requested page size is shown.");
       if (body.total >= 1000) warnings.push("The site reports at most 1000 matches; narrow the search to reach events beyond them.");
       if (checks.ceiling.value && events.some(e => e.listing_count === 0)) warnings.push("Some events under the price ceiling have no listings (listing_count 0); the site's price filter keeps them.");
       const beyond = place ? events.filter(e => e.distance_miles !== null && e.distance_miles > radius + 0.05).length : 0;
@@ -261,11 +263,11 @@
       if (started) warnings.push(started + " event(s) have already started; the index prices and listing counts for them can be stale, and get_ticket_offers shows whether any tickets remain.");
       return {
         status: "ok", query: echo(), resolved_location: resolved, currency: "USD",
-        price_basis: "Prices are per ticket in USD as the site's search index shows them: the listing price plus the fees the site includes in its all-in price, not taxes. The index refreshes periodically (pricing_refreshed_at) and can differ from the event page; get_ticket_offers reads the live listings.",
+        price_basis: "Prices are per ticket in USD as the site's search index shows them. Included fees and VAT vary by event; use get_ticket_offers for the site's explicit price basis, not a final checkout total. The index refreshes periodically (pricing_refreshed_at) and can differ from the event page; get_ticket_offers reads the live listings.",
         page, page_size: pageSize, total: body.total, number_of_pages: body.numberOfPages, has_more: page < body.numberOfPages, observed_at: observedAt, warnings, events
       };
     } catch (error) {
-      return fail("site_error", "The request from the page failed: " + (error && error.message ? error.message : String(error)));
+      return fail("site_error", "The request from the page failed; no automatic retry was attempted.");
     }
   }
 }]

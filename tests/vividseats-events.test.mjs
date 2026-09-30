@@ -166,13 +166,15 @@ for (const name of NAMES) {
   });
 }
 
-test("registry lists exactly the two vividseats.com tools, sorted, with their QA provenance", () => {
+test("registry lists the vividseats.com namespace sorted with status-consistent provenance", () => {
   const entries = registry.tools.filter(t => t.domain === "vividseats.com");
-  assert.deepEqual(entries.map(t => t.tool), ["get_ticket_offers", "search_events"]);
+  assert.deepEqual(entries.map(t => t.tool), ["get_event", "get_ticket_offers", "get_venue", "prepare_ticket_selection", "search_events"]);
   for (const entry of entries) {
-    assert.equal(entry.status, "verified");
-    assert.match(entry.last_verified, /^\d{4}-\d{2}-\d{2}$/);
-    assert.match(entry.provenance.qa_agent, /^agt_[0-9a-f]{20}$/);
+    if (entry.status === "draft") assert.equal(entry.last_verified, null);
+    else {
+      assert.match(entry.last_verified, /^\d{4}-\d{2}-\d{2}$/);
+      assert.match(entry.provenance.qa_agent, /^agt_[0-9a-f]{20}$/);
+    }
     assert.equal(entry.namespace, "vividseats.com");
   }
 });
@@ -635,6 +637,21 @@ test("search_events warns that the site's radius is approximate and that started
   const noPlace = harness("search_events", { route: p => (p.startsWith("/hermes/api/v1/productions?") ? { status: 200, body: productions([production(6001, "Anywhere", { distance: null })]) } : null) });
   assert.deepEqual((await noPlace.run({})).warnings, []);
 });
+
+test("search_events bounds a site response that exceeds page_size", async () => {
+  const items = Array.from({ length: 100 }, (_, i) => production(6001 + i, "Example Event"));
+  const h = harness("search_events", { route: p => p.startsWith("/hermes/api/v1/productions?") ? { status: 200, body: productions(items) } : null });
+  const result = await h.run({ page_size: 3 });
+  assert.equal(result.events.length, 3);
+  assert.ok(result.warnings.some(w => /more than page_size/.test(w)));
+});
+
+for (const changed of [{ m: "2junk" }, { m: "1,8" }, { quantity: "4junk" }]) {
+  test("get_ticket_offers rejects malformed split/quantity fields", async () => {
+    const h = harness("get_ticket_offers", { route: p => p.startsWith("/hermes/api/v1/listings?") ? { status: 200, body: listings([ticket("VB1", "Orchestra", "A", 4, 100, changed)]) } : null });
+    assert.equal((await h.run({ event: "6001", quantity: 2 })).error_kind, "site_changed");
+  });
+}
 
 test("get_ticket_offers keeps the full list of quantities a listing can be bought in", async () => {
   const wide = ticket("VB1", "Orchestra", "A", 30, 100, { m: Array.from({ length: 30 }, (_, i) => i + 1).join(",") });

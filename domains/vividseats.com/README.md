@@ -1,94 +1,76 @@
 # vividseats.com
 
-Tools for the Vivid Seats US marketplace (https://www.vividseats.com): event search and live ticket listings with all-in prices. Both tools are public and read-only.
+Tools for the public Vivid Seats marketplace at https://www.vividseats.com: event search, ticket offers, event/venue details and exact ticket-selection preparation.
 
 | tool | file | status | notes |
-|------|------|--------|-------|
-| get_ticket_offers | [get_ticket_offers.js](get_ticket_offers.js) | verified | Listings for one event, cheapest first, with quantity, all-in price range, zone and section filters, zone/section grouping and the site's stated price basis |
-| search_events | [search_events.js](search_events.js) | verified | Events by text, place, dates, category, performer, venue and lowest-price ceiling, one bounded page at a time |
+|---|---|---|---|
+| get_event | [get_event.js](get_event.js) | draft | Stated date/time, lineup, seat restrictions and venue address from an exact event URL. |
+| get_ticket_offers | [get_ticket_offers.js](get_ticket_offers.js) | draft | Live listings, quantity eligibility, all-in USD prices and zone/section groups. |
+| get_venue | [get_venue.js](get_venue.js) | draft | Address, coordinates, time zone and catalog capacity from an exact venue URL. |
+| prepare_ticket_selection | [prepare_ticket_selection.js](prepare_ticket_selection.js) | draft | Revalidate an exact listing/quantity/price and return a quote and event-page handoff. Does not select on the site or hold inventory. |
+| search_events | [search_events.js](search_events.js) | draft | Bounded event search by text, place, date, venue, performer, category or price ceiling. |
 
 ## Native WebMCP tools
 
-None found (checked 2026-09-29 with `webmcp.listTools()` and `document.modelContext.getTools()` signed out on the home page, Explore, a performer page, an event page and a venue page, and signed in on the account pages). `document.modelContext` exists with zero registered tools and `navigator.modelContext` is undefined, so the custom namespace `vividseats.com` does not overlap with anything the site registers.
+None observed on 2026-09-29 or 2026-09-30: awaited `document.modelContext.getTools()` returned an empty array before custom registration on public marketplace pages. Existing equivalent names are reused; there are no aliases for native capabilities.
 
 ## Scope and loading
 
-Register both tools together, because `forceOverwriteNamespace: true` replaces the whole namespace:
+All five tools are `kind: "page"`. They read same-origin data without navigating, so no CDP exception is needed. They work from any `www.vividseats.com` document, not only an event page, and fail explicitly off the marketplace origin. A navigation during a call destroys that document; rediscover tool references on the new document. Cancellation of the new detail/preparation reads is passed to `fetch`; nothing is retried.
+
+Register the **entire namespace** when replacing it atomically:
 
 ```javascript
 const fs = await import("node:fs");
-const read = name => fs.readFileSync(`domains/vividseats.com/${name}.js`, "utf8");
-const tools = ["search_events", "get_ticket_offers"].flatMap(name => eval(read(name)));
-await webmcp.addCustomTools({ namespace: "vividseats.com", tools, forceOverwriteNamespace: true });
+const names = ["get_event", "get_ticket_offers", "get_venue", "prepare_ticket_selection", "search_events"];
+const sources = await Promise.all(names.map(name => fs.promises.readFile(`domains/vividseats.com/${name}.js`, "utf8")));
+await webmcp.addCustomTools({
+  namespace: "vividseats.com",
+  tools: sources.flatMap(source => eval(`(${source})`)),
+  forceOverwriteNamespace: true
+});
 ```
 
-Both tools are `kind: "page"`. They run in the current `www.vividseats.com` document, call the site's own same-origin JSON endpoints with `fetch`, and never navigate. Use `timeoutSec: 60`; live calls took well under 5 s.
+### Search, details and prices
 
-- **search_events** calls `GET /hermes/api/v1/productions`, the endpoint behind the site's Explore and search pages. With `location`, it first resolves the place through the site's three-call place lookup (`/location/search/token`, `/location/search/query`, `/location/<placeId>`, with the `x-places-session-token` header the lookup requires) and uses the first match, returned as `resolved_location`. Coordinates can be given directly instead. Dates are the venue's local calendar dates; `end_date` is inclusive and both dates are optional. `radius_miles` is sent to the site in metres (miles × 1609) and is approximate: independent review found venues up to about a third farther away than a 25-mile radius (Joliet at 33.7 mi from central Chicago), so the tool warns when a returned event is beyond it and `distance_miles` (the site's per-event `distance`, metres on the wire) is the value to filter on. The site serves only the first 1000 matches: a `page` whose first result would be past the 1000th is rejected as `invalid_input` before any request (the site answers those with HTTP 400), and a `page` past the last page of a smaller result set returns `no_results`, because the site would otherwise answer with the last page again under a new page number. Results carry the event's `production_id`, which `get_ticket_offers` takes.
-- **get_ticket_offers** calls `GET /hermes/api/v1/listings?productionId=…`, the endpoint the event page itself uses. The site returns every listing at once; quantity, price, zone and section filtering and the grouping are done in the tool, so `limit` bounds only `offers` and the counts and groups cover all matches. A listing's `purchasable_quantities` come from the site's per-listing quantity list (a listing of 4 can be sold as 1, 2 or 4 but not 3); with `quantity` set, the tool keeps listings whose list contains it. On two theatre events the builder checked (2026-09-29) this reproduced the page's "Any Quantity" and 2-ticket views: the same listing count and the same first twelve rows (section, row, price to the dollar). The page groups same-section general-admission listings into one row ("GA Floor 1–15 tickets from $1,342"), so on an event with such listings the page's "N listings" is smaller than `matching_listings` while the ordinary rows still match. Listings are ordered by all-in price ascending; equal prices keep the site's order.
-- **Price basis.** Prices are per ticket in USD. `price_basis.includes` is built from the site's own `aipIncludedPrices` for that event (`CUSTOMER_PRICE` → `listing_price`, `SERVICE_FEE` → `service_fee`, `ELECTRONIC_DELIVERY_FEE` → `electronic_delivery_fee`, `HARDSTOCK_DELIVERY_FEE` → `hardstock_delivery_fee`; unknown components are passed through in lower case) and `vat_included` from `vatAddedToAip`. On the observed events the components differed: a US theatre event listed three components without VAT, and a London event listed four with VAT. The tool refuses (`price_basis_unavailable`) instead of guessing when the site does not say what its all-in price contains. The site also states that taxes and delivery are not included "where applicable"; the tool cannot see checkout and says so in `price_basis.note`.
-- **Price group.** Vivid Seats prices per browser session: the page sends a `priceGroupId` equal to its `pgid` cookie. Sessions observed had `pgid` 416, where all-in prices differed from the same request without the parameter by about 2% (higher on one event, lower on another), and 21, where they were identical. `get_ticket_offers` sends the page's `pgid` and returns it as `price_group_id`; without the cookie it omits the parameter and warns.
-- **Search prices are an index.** `search_events` prices, listing counts and ticket counts come from the site's search index, which refreshes periodically (`pricing_refreshed_at`). On 2026-09-29 an evening show the same day still showed 25 listings and a "from" price in the index while its event page said "no tickets available" and the listings endpoint returned none. Treat search prices as a guide and quote from `get_ticket_offers`.
-- Everything site-authored that is returned (event, venue, section, row, delivery type, badge and perk labels) is control-character-stripped and length-bounded. Seller notes, seller identity and the listing's cost components are not returned.
+- `search_events` calls `GET /hermes/api/v1/productions`. Location text uses the observed token → query → place-details GET chain, with its transient `x-places-session-token` kept inside the page. Search radius is approximate (25 miles returned a venue 33.7 miles away); returned distances and a warning let callers apply their own hard limit. The site serves at most 1000 matches. Requests whose first rank exceeds 1000 fail before interaction; past-the-end pages of a smaller search return `no_results` rather than repeat the last page. Dates are local, inclusive, independently optional; events already started can remain in the index with stale prices/counts.
+- `get_ticket_offers` calls `GET /hermes/api/v1/listings` and sorts by all-in price. Exact quantity eligibility uses `m` (not inventory quantity alone); zone and section filters are exact names, case-insensitive. Offers, events and groups are bounded to 50; the first 50 purchasable quantities and first five badges/perks are returned. The page collapses same-section general-admission listings into one row, so its displayed listing count can be smaller than the tool's raw-listing count.
+- `get_event` and `get_venue` require the full public URL, not an id alone. Get an event URL from `search_events`, then a venue URL from `get_event`. They fetch that public HTML page without executing its scripts and allowlist the relevant `__NEXT_DATA__` record. Event data comes from `initialProductionDetailsData.data`; venue data from `initialVenueData.items`. Account, experiment, geo-article and runtime data are never returned. Identity and canonical paths must match. Unknown fields stay null, and TBD start instants are not treated as real times.
+- Prices are USD per ticket. `get_ticket_offers.price_basis` and preparation's basis name the site's `aipIncludedPrices` components and VAT flag. US theatre and London events differ: London has four components and VAT. Taxes/delivery not named as included may still appear at checkout. No tool claims a final payable total.
+- The listing request sends the current readable `pgid` cookie as `priceGroupId`, matching the page. Its value is returned as the non-credential `price_group_id`. Observed groups 21 and 416 sometimes matched defaults and sometimes changed prices by about 2%, in either direction. No value is hardcoded. A missing group produces a warning in offers; preparation requires the caller explicitly pass the earlier group's string or null.
+
+### Exact ticket-selection preparation and safety
+
+`prepare_ticket_selection` consumes the **exact** `event` URL, `listing_id`, `quantity`, `expected_all_in_price_per_ticket` and `expected_price_group_id` from a recent offers result. It only reads the public event page and listings feed:
+
+1. Validate every input before any page or network interaction; reject extra fields, including `confirmed`.
+2. Check the current marketplace origin, cancellation and challenge state. Compare the current price group to the caller's quoted group before the first request.
+3. Verify the event's exact identity, future stated date/time and venue. Unknown/TBD or started events fail `event_unavailable`.
+4. Re-read inventory; require exactly one matching listing id, exact quantity eligibility, unchanged all-in price and group, and an explicit fee/VAT basis. Never choose a replacement listing. Fail `listing_unavailable`, `quantity_unavailable`, `stale_selection`, `site_changed` or `price_basis_unavailable` rather than pretend success.
+5. Return `prepared` with the quote, event/date/venue, exact section/row/delivery, quantity and estimated total. `inventory_reserved` and `site_selection_made` are **always false**. Seat numbers are unavailable in this feed. The handoff URL is only the ordinary event page with `?quantity=N`, not checkout; the tool does not follow it.
+
+**Safety boundary:** no tool clicks a listing, changes UI selection, opens cart/checkout, accepts terms, creates inventory holds, transfers tickets, publishes seller listings or pays. Preparation is repeatable GET-only computation, not consent and not an executable authorization token. Page text and restrictions are untrusted data. There is no automatic execution after preparation, no cached reservation and no retry on an unknown outcome. A changed document requires fresh discovery and a fresh quote.
+
+**Execution blocker:** checkout transitions may reserve inventory, and the current runtime does not enforce a trusted per-action human approval path bound to the exact account, event/date, listing/quantity, cost, delivery and terms. A model-provided `confirmed=true`, schema annotation or description is not such approval. No hold, checkout or purchase execution tool is shipped. A human must separately review those steps on the site.
 
 ## URL patterns
 
-Both tools match only `https://www.vividseats.com/*`, not the default `https://vividseats.com/*` and `https://*.vividseats.com/*`. The registrable domain hosts unrelated products: `corporate.vividseats.com` (company site, careers, press, partners) and `investors.vividseats.com` (investor relations) have no event marketplace and no `/hermes` endpoints. The JSON endpoints the tools call are same-origin on `www.vividseats.com`, so a page tool on those hosts could not work. The bare `vividseats.com` redirects to `www`; open `https://www.vividseats.com/` first when the tab is elsewhere.
-
-## Safety and trust boundary
-
-- The tools issue only `GET` requests to `/hermes/api/v1/productions`, `/hermes/api/v1/listings` and the three `/hermes/api/v1/location/…` place-lookup endpoints. A test fails if the source references any other `/hermes` path or sets a request method. Nothing selects a listing, opens the event's purchase flow, adds to a cart, reads or changes an account, favorites, rewards or seller listings, or touches payment.
-- Requests are made with the page's ordinary same-origin cookies; the tools add no credentials and never read the site's account cookies or headers. The place-lookup session token is used inside the page and never returned.
-- Results are quotes at `observed_at`, not reservations. A listing being returned does not prove it can still be bought.
-- The listing id (`listing_id`) is the site's own identifier; the tools never build listing or checkout URLs from it.
-
-## Site quirks
-
-- Location and currency are chosen from the browser's IP address. The tools always request USD and refuse (`site_changed`) a response that says its prices need a currency conversion. With `currency=EUR` the same numeric fields came back unchanged alongside a conversion rate, which is why only USD is supported. International events are priced in USD by the site (a London theatre listing showed "$139 USD" on its page and `allInPricePerTicket` 139.00).
-- The site's bot protection cookies (Akamai-style names) and a first-party obfuscated script are present on every page. Several hundred same-origin reads from stealth Kernel browsers with US residential egress were never blocked. A 403 is reported as `challenge` and a 429 as `rate_limited`; both are also possible on other IPs or at higher rates than were tried.
-- The search endpoint's `total` stops at 1000 on broad searches (a performer or venue search reported its real count, 856 and 291 in testing). `pageSize` values above 100 were accepted by the site, but the tool stops at 50.
-- The site's "under $N" price filter (`minListingPriceCeiling`) compares the lowest all-in price in the index and keeps events with no listings (index price 0). Its parameter takes whole dollars only.
-- Sorting by price exists on the site but orders by the pre-fee price and puts unpriced events first, so the tool offers only popularity and date.
-- A date range that ends before today answers HTTP 404 with the message "Event date has passed" (checked 2026-09-29 for yesterday and for 2020 dates); the tool reports `no_results` for exactly that message and treats any other 404 as `site_error`. A range that starts in the past but ends today or later works. Reversed or impossible dates are rejected by the site with 400 and by the tool before any request. An unknown performer or venue id answers 200 with no items.
-- The parking passes the site sells as separate events are hidden with `excludeParking`; without it a plain search returns them mixed in.
-- Category ids observed: 2 concerts, 3 sports, 4 theater (comedy is theater, subcategory 11). The tool supports the three categories, not subcategories.
-- Events that have already started stay in the search index for the rest of the day with prices and listing counts that can be stale, so a plain search for today can list them first; the tool warns when it returns any. `delay_type` values seen live are `NONE` and `RESCHEDULED`. Events with a date or time still to be announced exist (`date_tbd`, `time_tbd`) and can match a date filter through the site's placeholder date.
-- A query containing HTML or script-like text drew a 403 from the site's bot protection in one review probe; the tool reports it as `challenge`.
-- On the Kernel runtime, an output that contains non-ASCII text (for example a query for an accented performer name) can reach the caller as a JSON string instead of an object, as the ticketmaster.com README also notes; parse the string when `typeof output === "string"`. The Chrome extension returned an object.
-- A cookie-consent banner can appear on a fresh session. The tools do not interact with it, and the endpoints they read answered while it was showing.
+Patterns are narrowed to `https://www.vividseats.com/*`: the JSON and public page data belong to this marketplace, whereas `corporate.vividseats.com` and `investors.vividseats.com` are unrelated corporate products. The apex redirects to `www`. Details accept apex URLs but normalize requests to same-origin `www`; credentials, custom ports, encoded path segments, account/checkout URLs and other hosts are rejected. Query/fragment input is discarded before reads. Redirects during new reads fail rather than following an unexpected destination.
 
 ## Known limitations
 
-- US marketplace only, USD only. Other country sites and the `/es*` locales were not assessed.
-- `get_ticket_offers` returns section, row, zone and prices, not seat numbers: the listings endpoint has none, and the seat map and listing detail views were not opened. It does not read the event's date; take that from `search_events`.
-- `quantity` accepts 1 to 8, the counts the site's quantity picker lists individually; the picker's "8+" is not covered.
-- Deal scores, the site's "Best Value" style ordering, sold-listing history and resale price alerts exist on the page and are not exposed. Sorting is cheapest all-in price first only.
-- The lowest-price ceiling and search prices depend on the index described above; `listing_count` 0 in search does not prove there are no tickets and a positive count does not prove there are.
-- A place name resolves to the site's first match with no disambiguation input (a bare "Springfield" or "Portland" resolves to whichever state the site ranks first); check `resolved_location`, use 'City, ST', or pass coordinates.
-- The listing endpoint returns every listing in one response; an event with about one thousand listings (a stadium game) was read in a single call in testing. Much larger responses were not seen.
-- Waiting rooms, purchase-time holds, sign-in-gated inventory and member pricing were not assessed. The tools are public reads; in one signed-in session the listings endpoint returned the same listings and prices as signed out, but the tools themselves were only run signed out.
-- Only the response fields listed in the output schemas were observed and used. If the site renames them the tools return `site_changed` rather than partial data.
-- Not live-verified (stubbed tests only): the `challenge` and `rate_limited` branches for a genuine block, the `site_changed` and `price_basis_unavailable` branches, and the currency-conversion refusal (the site does convert when a non-USD currency is requested, which the tools never do). Events priced in a non-US currency were checked for a London event (builder) and Paris and Toronto events (reviewer); all came back in USD.
+- Public marketplace only. No login, enrollment, orders, favorites, seller reads/writes, rewards, account settings or payment tools. Prior explicitly approved account access was empty: no order/sales/listing items to validate. Empty schemas do not ground useful account tools; no account is populated for QA.
+- All prices are quotes, not guarantees of inventory or final payment. Search index counts/prices may be stale. The page's all-in fee labels vary by event; no checkout fee breakdown or signed checkout URLs are read or returned.
+- A bare place name resolves to the site's first match; prefer `City, ST` or coordinates. Catalog capacity is not configuration-specific availability. Event/venue detail URLs must have the real slug; an id alone is insufficient.
+- Quantity input is 1–8, not the site's `8+` picker. No seat numbers, seller notes or guarantees of seated-together beyond the site's labels. Caller must review restrictions, delivery and applicable terms manually.
+- Genuine challenge/rate-limit, response drift and unknown fee-basis branches are tested with fixtures; no bypass loops are used. Unexpected failures are never converted to empty successes.
+- The new tools bound allowlisted text; fetched HTML is parsed but never returned wholesale. Browser/site scripts can still update their own telemetry cookies during normal browsing; tools do not write storage or account state.
+- A time-TBD placeholder whose instant is already past was not found live in prior QA; suppression was verified by replay/fixtures. Date/time flags and fields are only as accurate as the site's public record.
+- Kernel has previously delivered non-ASCII output as a JSON string; parse it if necessary. The extension has returned objects. In-flight navigation can yield `outcome_unknown`; no mutation occurred in these GET-only tools.
+- Interactive extension access grant, popup and side panel are unverified in previous headless checks. Do not equate a simulated host grant with user-facing UI verification.
 
 ## QA
 
-Both tools are `verified` as of 2026-09-29: an independent reviewer (`agt_0257fb751e04553b9365`) signed off on the final source (`search_events.js` and `get_ticket_offers.js` as of `62722a2`) after three review rounds, and live success was shown on the real site from pages other than an event page. The status describes the Kernel browser runtime; the Chrome extension was only exercised headlessly with a simulated site grant (below).
+Restarted implementation is **pending fresh independent QA**; all registry entries are draft until the final source is reviewed. Previous read-tool QA identified and fixed last-page repetition, the 1000-match boundary, soft-radius and started-event warnings, null quantity, and a time-TBD warning false positive. Those fixtures remain. Historical sign-off covered only the two original reads, not this expanded namespace.
 
-Independent QA round 1 (Hypeship reviewer `agt_0257fb751e04553b9365`, 2026-09-29) on `d759de8`: **FAIL**. About 230 live invocations on Kernel browsers (US residential, default stealth and Japan residential egress), 23 more through the Chrome extension, and 168 outputs validated against the output schemas with no violations. Findings, all fixed in the next commit:
-
-1. (blocking) `search_events` with a `page` past the last page of a small result set returned `ok` with the last page's events under new ranks, because the site clamps to its last page. It now returns `no_results`.
-2. A `page` past the 1000-match window was reported as `site_error` (the site answers HTTP 400). It is now `invalid_input` before any request.
-3. `radius_miles` is approximate on the site; the description now says so and the tool warns when an event is beyond it.
-4. Events that had already started lead a plain search for today with stale index data; the tool now warns.
-5. `get_ticket_offers` accepted `quantity: null`; it now rejects it.
-6. README and schema text that live behavior contradicted (`RESCHEDULED` and TBD events do occur; the direction of the price-group difference varies by event; the page collapses same-section general-admission rows so its listing count can be smaller; the bare apex redirects to `www`) were corrected. `purchasable_quantities` is no longer cut off at 20.
-
-Independent QA round 2 (same reviewer, 2026-09-29) on `7300723`: **PASS**. All six round-1 findings reproduced as fixed on Kernel and, for 1, 2 and 5, in the extension; about 280 more outputs validated against the output schemas with no violations; paging was checked at the window edges and at exact-multiple totals. One minor finding, fixed in the next commit: the "already started" warning also fired for time-TBD events, whose placeholder start instant (23:59Z on the local date) is not a stated start time. The past-the-end message also now reads "N page(s) at page_size M".
-
-Independent QA round 3 (same reviewer, 2026-09-29) on `62722a2`: **PASS**, no defects. The time-TBD warning fix was checked by frozen-clock replay of a live response and by scanning 797 live events for today through 1 October (the warning count equalled the events with a stated start time before the observation on every page); a time-TBD event whose placeholder instant is already past could not be found live, so that suppression is proven by replay and the unit test only. The past-the-end message, window edges and `has_more` arithmetic were unchanged. `get_ticket_offers.js` was byte-identical to round 2.
-
-Live end-to-end success cases (2026-09-29, Kernel, signed out): `search_events {query: "olivia rodrigo", page_size: 3}` and `get_ticket_offers {event: "6969246", limit: 3}` from `/explore`; both tools from a performer page (`/olivia-rodrigo-tickets/performer/130861`), from a 404 page, and from the home page; in the extension, both from `/explore` (`get_ticket_offers {event: "6969246", quantity: 2}` returned 3 offers from 44 matching listings). Page-versus-tool comparison: the reviewer matched the event page's first 12 rows (section, row, price) at quantity 1 and 2 on event 6969246, and the page's listing counts on two theatre events (136 for any quantity and 112 for two tickets on one, 44 and 44 on the other); the builder matched 41 of 41 listings and the first 12 rows at quantity 2 on another event. The page groups same-section general-admission rows, so its count is smaller than the tool's on events that have them.
-
-The reviewer's Kernel and extension results matched each other apart from two runtime differences: non-ASCII output reaches the caller as a JSON string on Kernel and as an object in the extension, and a navigation that interrupts a call ends as `outcome_unknown` immediately in the extension and after the full timeout on Kernel. The extension run was headless Chromium 153 with the site-access grant simulated by a `host_permissions` entry in a scratch copy of the manifest, so the interactive grant, the popup and the side panel are unverified.
-
-Builder checks (2026-09-29): 121 stubbed-fixture tests in `tests/vividseats-events.test.mjs`, live read-only calls to every endpoint used from stealth Kernel browsers, and a separate run of both tools through the repo's Chrome extension on a local headless Chromium 153 profile (same grant caveat). Sessions were created and deleted by the builder and are not recorded here.
+Builder public observations on 2026-09-30: native tool list empty on Explore; event HTML for Hamilton on 2026-09-30 matched the production id, stated date/time and Richard Rodgers Theatre address; venue HTML matched its id/path and catalog capacity. No listing or checkout control was clicked. New detail/preparation fixtures cover malformed/approval-shaped input before interaction, identity mismatch, unrelated pages, cancellation, explicit HTTP failures, quantity splits, stale prices/groups, missing inventory, fee basis, no redirects, no state writes and secret-field exclusion. Live tool and independent results will be recorded after testing the final source.
