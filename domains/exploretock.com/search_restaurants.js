@@ -72,7 +72,7 @@
                         offering_slug: { type: ["string", "null"] },
                         name: { type: ["string", "null"] },
                         type: { type: ["string", "null"], description: "The site's offering type: RESERVATION, PRIX_FIXE or DEPOSIT in dine-in and winery searches." },
-                        party_sizes: { type: "array", maxItems: 100, items: { type: "integer", minimum: 1 }, description: "Every party size the offering accepts, ascending. It can skip sizes (for example 2 and 4 only)." },
+                        party_sizes: { type: "array", maxItems: 100, items: { type: "integer", minimum: 1 }, description: "Every party size the offering accepts, ascending, at most the first 100. It can skip sizes (for example 2 and 4 only)." },
                         pricing: {
                           type: ["object", "null"], additionalProperties: false, required: ["description", "price_type", "amount_cents", "per", "fees"],
                           description: "The site's pricing fields for the requested party size. description is the site's own price text for guests (for example a per-person price that already includes a service charge, or a flat table fee). price_type, amount_cents and per are its raw ticket fields (PAYMENT_CARD_HOLD, DEPOSIT, PREPAID and FREE were observed) and can be 0 while fees or a minimum spend still apply; fees are its raw fee entries (PERCENT values are percents, FLAT values are cents). The tool does not add these up or say whether a card is charged.",
@@ -133,6 +133,7 @@
       return !Number.isNaN(t) && new Date(t).toISOString().slice(0, 10) === v;
     };
     const localToday = zone => {
+      if (typeof zone !== "string" || !zone) return null;
       try {
         const day = new Intl.DateTimeFormat("en-CA", { timeZone: zone, year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
         return /^\d{4}-\d{2}-\d{2}$/.test(day) ? day : null;

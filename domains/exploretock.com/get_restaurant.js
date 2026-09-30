@@ -67,7 +67,7 @@
                   slots_supported: { type: "boolean", description: "True for table reservations (RESERVATION, PRIX_FIXE, DEPOSIT), which get_availability can read. False for pickup, delivery, ticketed events and any other type." },
                   state: { type: ["string", "null"], description: "The site's raw offering state, for example AVAILABLE." },
                   description: { type: ["string", "null"], maxLength: 600 },
-                  party_sizes: { type: "array", maxItems: 100, items: { type: "integer", minimum: 1 }, description: "Every party size the offering accepts, ascending. It can skip sizes (for example 2 and 4 only)." },
+                  party_sizes: { type: "array", maxItems: 100, items: { type: "integer", minimum: 1 }, description: "Every party size the offering accepts, ascending, at most the first 100. It can skip sizes (for example 2 and 4 only)." },
                   seating_areas: {
                     type: "array", maxItems: 12,
                     items: { type: "object", additionalProperties: false, required: ["name", "party_size"], properties: { name: { type: ["string", "null"] }, party_size: { type: "object", additionalProperties: false, required: ["min", "max"], properties: { min: { type: ["integer", "null"] }, max: { type: ["integer", "null"] } } } } }

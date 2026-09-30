@@ -93,6 +93,12 @@ const venueState = (o = {}) => ({
   patron: { email: "private@example.test" }
 });
 
+// A stand-in for Intl.DateTimeFormat whose "today" depends only on the zone name, so the zone checks do not depend on the clock or TZ of the machine running the tests.
+const fakeIntl = (todayByZone = {}) => {
+  const seen = [];
+  return { seen, DateTimeFormat: function (locale, options) { seen.push(options.timeZone); return { format: () => { if (!(options.timeZone in todayByZone)) throw new RangeError("Invalid time zone specified: " + options.timeZone); return todayByZone[options.timeZone]; } }; } };
+};
+
 // --- page-tool harness ---------------------------------------------------------------------------------
 
 function pageHarness(name, o = {}) {
@@ -100,7 +106,7 @@ function pageHarness(name, o = {}) {
   const responder = o.respond ?? (() => ({ status: 200, html: stateHtml(FUNCTION_STATE) }));
   class FakeAbortController { constructor() { this.signal = { aborted: false }; } abort() { this.signal.aborted = true; } }
   const context = {
-    JSON, URL, URLSearchParams, Promise, Math, Date, Number, Object, Array, String, RegExp, encodeURIComponent, AbortController: FakeAbortController,
+    JSON, URL, URLSearchParams, Promise, Math, Date, Number, Object, Array, String, RegExp, encodeURIComponent, AbortController: FakeAbortController, Intl: o.intl ?? Intl,
     setTimeout: () => 0, clearTimeout: () => {},
     window: { location: new URL(o.url ?? ORIGIN + "/") },
     fetch: async (path, init) => {
@@ -159,7 +165,7 @@ function cdpHarness(o = {}) {
   };
   const state = offerings => ({ app: { config: { business: { domainName: "fabricated-bistro", name: "Fabricated Bistro", timeZone: "America/Chicago" } } }, calendar: { offerings: { experience: offerings ?? [experience(1, "Dinner Reservation"), experience(2, "Chef Table", { partySize: [2, 3, 4] })] } } });
   const helpers = {
-    URL, URLSearchParams, JSON, encodeURIComponent, Set,
+    URL, URLSearchParams, JSON, encodeURIComponent, Set, Intl: o.intl ?? Intl,
     Date: class extends Date { static now() { return clock.now; } },
     gotoUrl: async url => { calls.goto.push(url); },
     waitMs: async ms => { calls.waits++; clock.now += ms; poll++; },
@@ -758,4 +764,94 @@ test("get_availability: a cancelled invocation stops polling", async () => {
   const result = await h.run(availability, { aborted: true });
   assert.equal(result.error_kind, "site_error");
   assert.match(result.error_message, /cancelled/);
+});
+
+// --- second-round review: zones, sold-out offerings, pricing edges and boundaries -----------------------
+
+test("search_restaurants: the zone check uses the city's zone, accepts the city's own today and skips cities without a zone", async () => {
+  const intl = fakeIntl({ "Test/Ahead": day(1), "Test/Behind": day(-1) });
+  const metro = zone => ({ ...METRO, slug: "zoned", name: "Zoned", ...(zone ? { timezone: zone } : { timezone: undefined }) });
+  const run = (zone, date) => pageHarness("search_restaurants", { intl, respond: searchRespond(searchRows, { metro: metro(zone) }) }).run({ city: "zoned", date });
+  assert.equal((await run("Test/Ahead", day(0))).error_kind, "invalid_input", "the city's today is a day ahead of UTC");
+  assert.equal((await run("Test/Ahead", day(1))).status, "ok", "the city's own today is accepted");
+  assert.equal((await run("Test/Behind", day(-1))).status, "ok", "a city behind UTC may still be on yesterday's UTC date");
+  const before = intl.seen.length;
+  assert.equal((await run(undefined, day(-1))).status, "ok", "no zone in the state: the browser's own zone must not stand in for it");
+  assert.equal(intl.seen.length, before, "Intl was not asked about a missing zone");
+  assert.deepEqual(intl.seen.slice(0, 3), ["Test/Ahead", "Test/Ahead", "Test/Behind"]);
+});
+
+test("get_availability: the zone check uses the venue's zone and accepts the venue's own today", async () => {
+  const intl = fakeIntl({ "Test/Ahead": day(1), "Test/Behind": day(-1) });
+  const stateFor = zone => ({ app: { config: { business: { domainName: "fabricated-bistro", name: "Fabricated Bistro", timeZone: zone } } }, calendar: { offerings: { experience: [experience(1, "Dinner Reservation")] } } });
+  const run = (zone, date) => cdpHarness({ intl, page: { ...listPage(), state: stateFor(zone), search: `?date=${date}&size=2` } }).run({ ...availability, date });
+  assert.equal((await run("Test/Ahead", day(0))).error_kind, "invalid_input");
+  assert.equal((await run("Test/Ahead", day(1))).status, "ok");
+  assert.equal((await run("Test/Behind", day(-1))).status, "ok");
+  const before = intl.seen.length;
+  assert.equal((await run(null, day(-1))).status, "ok");
+  assert.equal(intl.seen.length, before);
+});
+
+test("get_availability: a sold-out one-time offering is no_availability with the site's message, not a 45 s wait", async () => {
+  const h = cdpHarness({ page: { slots: [], days: monthDays, lines: ["A Fabricated Supper: Thursday Oct 15 is sold out."] } });
+  const result = await h.run(availability);
+  assert.equal(result.status, "no_availability");
+  assert.equal(result.reason, "sold_out");
+  assert.match(result.message, /is sold out/);
+  assert.ok(h.calls.waits <= 3);
+});
+
+test("get_availability: the venue slug is matched case-insensitively", async () => {
+  const result = await cdpHarness({ page: listPage() }).run({ ...availability, slug: "Fabricated-Bistro" });
+  assert.equal(result.status, "ok");
+});
+
+test("search_restaurants: a party size exactly at a party range's minimum uses that range", async () => {
+  const price = priceOf("PAYMENT_CARD_HOLD", 2000, { partyRangeConfigs: [{ minPartySize: 1, ticketPriceInformation: { priceType: "PAYMENT_CARD_HOLD", priceDistribution: "PER_TICKET", amountCents: 2000 } }, { minPartySize: 6, ticketPriceInformation: { priceType: "PREPAID", priceDistribution: "PER_TICKET", amountCents: 9000 } }] });
+  const result = await pageHarness("search_restaurants", { respond: searchRespond([row("edge", "Edge", [offeringRow(60, "Table", [ticket(`${DATE}T19:00`)], { price, partySize: [1, 6, 7] })])]) }).run({ city: "exampleton", date: DATE, party_size: 6 });
+  assert.equal(result.venues[0].offerings[0].pricing.price_type, "PREPAID");
+});
+
+test("search_restaurants: page boundaries, price ranges and the tie at the tenth-nearest time", async () => {
+  const rows = Array.from({ length: 11 }, (_, i) => row(`b-${i}`, `B ${i}`, [offeringRow(700 + i, "Table", [ticket(`${DATE}T19:00`)])], { priceRange: i === 0 ? "$$$$$" : i === 1 ? "$$$$" : "$" }));
+  const h = pageHarness("search_restaurants", { respond: searchRespond(rows) });
+  const first = await h.run({ city: "exampleton", date: DATE, per_page: 10 });
+  assert.equal(first.has_more, true);
+  assert.deepEqual([first.venues[0].price_range, first.venues[1].price_range, first.venues[2].price_range], [null, 4, 1]);
+  const second = await h.run({ city: "exampleton", date: DATE, per_page: 10, page: 2 });
+  assert.equal(second.venues.length, 1);
+  assert.equal(second.has_more, false);
+  const exact = pageHarness("search_restaurants", { respond: searchRespond(rows.slice(0, 10)) });
+  assert.equal((await exact.run({ city: "exampleton", date: DATE, per_page: 10, page: 2 })).status, "no_results", "a page that starts at the row count is beyond the last page");
+  const times = ["09:30", "10:00", "10:30", "11:00", "11:30", "12:00", "12:30", "13:00", "13:30", "14:00", "14:30"];
+  const tie = await pageHarness("search_restaurants", { respond: searchRespond([row("tie", "Tie", [offeringRow(71, "Table", times.map(t => ticket(`${DATE}T${t}`)))])]) }).run({ city: "exampleton", date: DATE, time: "12:00" });
+  const kept = tie.venues[0].offerings[0].slots.map(s => s.local_datetime.slice(11));
+  assert.ok(kept.includes("09:30") && !kept.includes("14:30"), "of two equally near times the earlier one is kept: " + kept.join(","));
+});
+
+test("search_restaurants: seating areas are de-duplicated and pricing edge cases keep what the site gave", async () => {
+  const dupes = [ticket(`${DATE}T19:00`, "Bar"), ticket(`${DATE}T19:00`, "Bar"), ticket(`${DATE}T19:00`, "Room")];
+  const fees = Array.from({ length: 7 }, (_, i) => ({ name: `fee ${i}`, min: 10 + i, max: 30 + i, type: "FLAT" }));
+  const rows = [
+    row("dupes", "Dupes", [offeringRow(80, "Table", dupes, { price: { fees, priceDescription: "x".repeat(200) } })]),
+    row("only-text", "Only Text", [offeringRow(81, "Table", [ticket(`${DATE}T19:00`)], { price: { priceDescription: "$5" } })]),
+    row("empty-price", "Empty Price", [offeringRow(82, "Table", [ticket(`${DATE}T19:00`)], { price: {} })])
+  ];
+  const result = await pageHarness("search_restaurants", { respond: searchRespond(rows) }).run({ city: "exampleton", date: DATE });
+  const [a, b, c] = result.venues.map(v => v.offerings[0]);
+  assert.deepEqual(a.slots[0].seating_areas, ["Bar", "Room"]);
+  assert.equal(a.pricing.fees.length, 5);
+  assert.deepEqual(a.pricing.fees[0], { name: "fee 0", type: "FLAT", min: 10, max: 30 });
+  assert.equal(a.pricing.description.length, 120);
+  assert.deepEqual(b.pricing, { description: "$5", price_type: null, amount_cents: null, per: null, fees: [] });
+  assert.equal(c.pricing, null);
+});
+
+test("get_restaurant: every table-reservation type is supported, party sizes sort numerically and pricing survives a missing ticket range", async () => {
+  const experiences = [experience(1, "A", { type: "RESERVATION", partySize: [10, 2, 9] }), experience(2, "B", { type: "PRIX_FIXE" }), experience(3, "C", { type: "DEPOSIT" }), experience(4, "D", { type: "ORDER_DELIVERY", price: { priceDescription: "$3", fees: [{ name: "f", min: 1, max: 2, type: "PERCENT" }] } })];
+  const result = await pageHarness("get_restaurant", { respond: venueRespond({ experiences }) }).run({ slug: "fabricated-bistro" });
+  assert.deepEqual(result.offerings.map(o => o.slots_supported), [true, true, true, false]);
+  assert.deepEqual(result.offerings[0].party_sizes, [2, 9, 10]);
+  assert.deepEqual(result.offerings[3].pricing, { description: "$3", price_type: null, amount_cents: null, per: null, fees: [{ name: "f", type: "PERCENT", min: 1, max: 2 }] });
 });
