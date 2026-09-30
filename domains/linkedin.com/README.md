@@ -4,8 +4,8 @@ Public LinkedIn Jobs reads: a bounded first search fragment and one job posting.
 
 | tool | file | status | notes |
 | --- | --- | --- | --- |
-| get_job | [get_job.js](get_job.js) | draft | Public description and criteria by job id; one request, no application links |
-| search_jobs | [search_jobs.js](search_jobs.js) | draft | First fragment only, at most ten jobs; keyword, location and date posted |
+| get_job | [get_job.js](get_job.js) | qa_passed | Public description and criteria by job id; one request, no application links |
+| search_jobs | [search_jobs.js](search_jobs.js) | qa_passed | First fragment only, at most ten jobs; keyword, location and date posted |
 
 ## Scope and loading
 
@@ -114,7 +114,8 @@ a model-supplied confirmation flag would not satisfy that requirement.
 
 ## QA summary
 
-Source status is `draft`, pending independent final-source sign-off. Fixture tests use
+Source status is `qa_passed` after independent final-source fixture QA, not `verified`.
+The pull request remains draft because live verification is incomplete. Fixture tests use
 fabricated fragments to cover schemas, malformed input, safe URLs, request/response
 bounds, cancellation, cooldowns, redirects, rate limits, access gates, changed markup,
 and no navigation or credential leakage.
@@ -150,7 +151,20 @@ own-key match against the four-label allowlist; unsupported labels remain null.
 
 Validation and all 1,710 repository tests passed, including 133 LinkedIn fixtures.
 The local extension fixture check also passed again on the revised sources with DNS
-isolation and intercepted responses. Independent recheck is pending; the registry
-remains `draft`.
+isolation and intercepted responses.
+
+Independent final recheck, 2026-09-30, passed both exact tool sources at commit
+`c048ce6a77a674df15578ca58aa18b3085470d36`: all 1,710 repository tests,
+131 independent Chromium/Node/Ajv fixtures, 20 settled-finding edge cases and
+20 local extension checks passed. No outstanding defect was verified within that
+bounded offline scope. Extension checks also covered native same-name coexistence,
+stale references and document replacement during an in-flight page call. This is
+not live LinkedIn success; independent Kernel invocation was not performed. The
+stock permission UI, live-site CSP/fallback, extension bridge cancellation wiring
+and real access-denial behavior remain unverified. Direct tool cancellation was
+tested with fixtures. Node v26.10.0 was used; Node LTS was not separately exercised.
+
+The final status change records QA metadata only; the independently tested tool
+source bytes are unchanged. Earlier live successes are not counted toward `verified`.
 
 Run `node --test tests/linkedin-public-jobs.test.mjs` from the repository root.

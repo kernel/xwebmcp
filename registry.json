@@ -635,9 +635,12 @@
         "https://linkedin.com/*",
         "https://*.linkedin.com/*"
       ],
-      "status": "draft",
-      "last_verified": null,
-      "notes": "Public guest job read; one request per call, shared document cooldown, no retries or login. Independent QA pending."
+      "status": "qa_passed",
+      "last_verified": "2026-09-30",
+      "notes": "Independent fixture and extension QA passed. Public guest read with shared document cooldown and denial latch; no retries or login. Final-source live verification incomplete.",
+      "provenance": {
+        "qa_agent": "agt_96f809f4a41246af0791"
+      }
     },
     {
       "domain": "linkedin.com",
@@ -649,9 +652,12 @@
         "https://linkedin.com/*",
         "https://*.linkedin.com/*"
       ],
-      "status": "draft",
-      "last_verified": null,
-      "notes": "Public guest job read; one request per call, shared document cooldown, no retries or login. Independent QA pending."
+      "status": "qa_passed",
+      "last_verified": "2026-09-30",
+      "notes": "Independent fixture and extension QA passed. Public guest read with shared document cooldown and denial latch; no retries or login. Final-source live verification incomplete.",
+      "provenance": {
+        "qa_agent": "agt_96f809f4a41246af0791"
+      }
     },
     {
       "domain": "purelymail.com",
