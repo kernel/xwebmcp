@@ -55,9 +55,11 @@
       items.push({ asin, title, quantity: Number(quantityText), url: ORIGIN + "/dp/" + asin });
     }
     const emptyMarker = active.querySelector("#sc-empty-cart");
-    const hiddenEmpty = emptyMarker && (emptyMarker.closest("[hidden], [aria-hidden='true'], .aok-hidden, .sc-hidden") || /display\s*:\s*none/i.test(emptyMarker.getAttribute("style") || ""));
+    let hiddenEmpty = !!emptyMarker?.closest("[hidden], [aria-hidden='true'], .aok-hidden, .sc-hidden");
+    for (let node = emptyMarker; node; node = node.parentElement) if (/(?:display\s*:\s*none|visibility\s*:\s*(?:hidden|collapse))/i.test(node.getAttribute("style") || "")) hiddenEmpty = true;
     const cartQuantity = doc.querySelector("#sc-buy-box")?.getAttribute("data-quantity");
-    if (!items.length && (!emptyMarker || hiddenEmpty || (cartQuantity && cartQuantity !== "0"))) return fail("site_changed", "Neither readable active items nor a consistent visible empty-cart marker were found.");
+    if (cartQuantity !== null && cartQuantity !== undefined && (!/^\d+$/.test(cartQuantity) || Number(cartQuantity) !== items.reduce((sum, item) => sum + item.quantity, 0))) return fail("site_changed", "The cart summary contradicts its readable active lines.");
+    if (!items.length && (!emptyMarker || hiddenEmpty)) return fail("site_changed", "Neither readable active items nor a consistent visible empty-cart marker were found.");
     const recommendations = [];
     let truncated = false;
     for (const form of doc.querySelectorAll("form.add-to-cart-data")) {
@@ -73,11 +75,16 @@
       const asin = value("items[0.base][asin]");
       const card = form.closest(".a-fixed-left-grid-inner, li.a-carousel-card");
       if (!/^[A-Z0-9]{10}$/.test(asin) || !card) continue;
+      const productAsins = new Set([...card.querySelectorAll("a[href]")].flatMap(a => {
+        try { const u = new URL(a.getAttribute("href"), ORIGIN); const match = /\/dp\/([A-Z0-9]{10})(?:\/|$)/.exec(u.pathname); return u.origin === ORIGIN && match ? [match[1]] : []; } catch { return []; }
+      }));
+      const prices = [...card.querySelectorAll(".a-price:not([data-a-strike='true']) .a-offscreen")];
+      if (productAsins.size !== 1 || !productAsins.has(asin) || prices.length !== 1) continue;
       const titleLink = [...card.querySelectorAll("a[href]")].find(a => {
         try { const u = new URL(a.getAttribute("href"), ORIGIN); return u.origin === ORIGIN && u.pathname.includes("/dp/" + asin + "/") && clean(a.textContent) && !a.querySelector(".a-price"); } catch { return false; }
       });
       const title = clean(titleLink?.textContent).slice(0, 500);
-      const priceText = clean(card.querySelector(".a-price:not([data-a-strike='true']) .a-offscreen")?.textContent);
+      const priceText = clean(prices[0].textContent);
       const match = /^₹\s*(\d[\d,]*(?:\.\d{1,2})?)$/.exec(priceText);
       const price = match ? Number(match[1].replace(/,/g, "")) : null;
       if (!title || !price || price > 10000000 || recommendations.some(r => r.asin === asin)) continue;

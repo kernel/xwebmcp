@@ -61,7 +61,7 @@ function harness(name, respond, { url = `${ORIGIN}/` } = {}) {
     const headers = r.headers || {};
     return { status, ok: status >= 200 && status < 300, url: r.url ?? requested.href, headers: { get: key => headers[key.toLowerCase()] ?? null }, text: async () => r.body ?? "" };
   };
-  const pageContext = createContext({ location, fetch, DOMParser, URL, URLSearchParams });
+  const pageContext = createContext({ location, fetch, DOMParser, URL, URLSearchParams, TextEncoder });
   const [definition] = runInNewContext(`(${sources[name]})`, {});
   // Page tools run in the document, re-created from their source the way the runtime does it.
   const execute = runInContext(`(${definition.execute.toString()})`, pageContext);
@@ -642,6 +642,24 @@ test("search_products keeps its largest possible output well under the 240 KiB A
   assert.equal(big.facets_truncated, true);
   const size = Buffer.byteLength(JSON.stringify(big));
   assert.ok(size < 200 * 1024, `worst-case output is ${size} bytes`);
+});
+
+test("search_products enforces its serialized UTF-8 budget for multibyte facets", async () => {
+  const groups = Array.from({ length: 15 }, (_, g) => `<div id="g${g}-title"><span>${"界".repeat(80)}</span></div><ul aria-labelledby="g${g}-title">${Array.from({ length: 40 }, (_, o) => `<li><a href="/s?k=x&amp;rh=${encodeURIComponent(`p_brand${g}:${"界".repeat(118)}${String(o).padStart(2, "0")}`)}"><span>${"界".repeat(80)}</span></a></li>`).join("")}</ul>`).join("");
+  const cards = Array.from({ length: 60 }, (_, i) => `<div data-component-type="s-search-result" data-asin="B0${String(i).padStart(8, "0")}"><h2>${"界".repeat(500)}</h2></div>`).join("");
+  const { result } = await search({ query: "x", include_facets: true, limit: 60 }, searchSite({ cards, facetsHtml: groups }));
+  assert.equal(result.status, "ok");
+  assert.equal(result.results.length, 60);
+  assert.equal(result.facets_truncated, true);
+  assert.ok(result.facets.reduce((n, g) => n + g.options.length, 0) < 600);
+  assert.ok(Buffer.byteLength(JSON.stringify(result)) <= 200 * 1024);
+});
+
+test("search_products refuses oversized product fields instead of returning an over-budget success", async () => {
+  const cards = `<div data-component-type="s-search-result" data-asin="B0TESTAAA1"><h2>Acme</h2><img class="s-image" src="https://m.media-amazon.com/${"x".repeat(210000)}"></div>`;
+  const { result } = await search({ query: "x" }, searchSite({ cards }));
+  assert.equal(result.error_kind, "site_changed");
+  assert.ok(Buffer.byteLength(JSON.stringify(result)) < 1024);
 });
 
 // The runtime may check input against inputSchema before execute runs, so the schema has to agree with the code.

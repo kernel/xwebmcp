@@ -49,9 +49,11 @@
         items.push({ asin, quantity: Number(quantity) });
       }
       const emptyMarker = active.querySelector("#sc-empty-cart");
-      const hiddenEmpty = emptyMarker && (emptyMarker.closest("[hidden], [aria-hidden='true'], .aok-hidden, .sc-hidden") || /display\s*:\s*none/i.test(emptyMarker.getAttribute("style") || ""));
+      let hiddenEmpty = !!emptyMarker?.closest("[hidden], [aria-hidden='true'], .aok-hidden, .sc-hidden");
+      for (let node = emptyMarker; node; node = node.parentElement) if (/(?:display\s*:\s*none|visibility\s*:\s*(?:hidden|collapse))/i.test(node.getAttribute("style") || "")) hiddenEmpty = true;
       const cartQuantity = doc.querySelector("#sc-buy-box")?.getAttribute("data-quantity");
-      if (!items.length && (!emptyMarker || hiddenEmpty || (cartQuantity && cartQuantity !== "0"))) return { error: "site_changed" };
+      if (cartQuantity !== null && cartQuantity !== undefined && (!/^\d+$/.test(cartQuantity) || Number(cartQuantity) !== items.reduce((sum, item) => sum + item.quantity, 0))) return { error: "site_changed" };
+      if (!items.length && (!emptyMarker || hiddenEmpty)) return { error: "site_changed" };
       return { doc, items };
     };
     let before;
@@ -75,10 +77,15 @@
     if (fields.some(e => !allowed.includes(e.getAttribute("name")) || e.hasAttribute("disabled") || (e.getAttribute("value") || "").length > 4096) || new Set(fields.map(e => e.getAttribute("name"))).size !== fields.length || value("customizers") || !value("anti-csrftoken-a2z") || !value("items[0.base][offerListingId]") || value("items[0.base][quantity]") !== "1" || !form.querySelector("input[type='submit'][name='submit.addToCart']") || form.querySelector("select[name], textarea[name], button[name]")) return fail("site_changed", "The form contains unsupported controls or lacks required offer data; no write was made.");
     const card = form.closest(".a-fixed-left-grid-inner, li.a-carousel-card");
     if (!card) return fail("site_changed", "The recommendation card is missing.");
+    const productAsins = new Set([...card.querySelectorAll("a[href]")].flatMap(a => {
+      try { const u = new URL(a.getAttribute("href"), ORIGIN); const match = /\/dp\/([A-Z0-9]{10})(?:\/|$)/.exec(u.pathname); return u.origin === ORIGIN && match ? [match[1]] : []; } catch { return []; }
+    }));
+    const prices = [...card.querySelectorAll(".a-price:not([data-a-strike='true']) .a-offscreen")];
+    if (productAsins.size !== 1 || !productAsins.has(input.asin) || prices.length !== 1) return fail("site_changed", "The recommendation's product/price container is ambiguous; no write was made.");
     const titleLink = [...card.querySelectorAll("a[href]")].find(a => {
       try { const u = new URL(a.getAttribute("href"), ORIGIN); return u.origin === ORIGIN && u.pathname.includes("/dp/" + input.asin + "/") && clean(a.textContent) && !a.querySelector(".a-price"); } catch { return false; }
     });
-    const priceText = clean(card.querySelector(".a-price:not([data-a-strike='true']) .a-offscreen")?.textContent);
+    const priceText = clean(prices[0].textContent);
     const priceMatch = /^₹\s*(\d[\d,]*(?:\.\d{1,2})?)$/.exec(priceText);
     const price = priceMatch ? Number(priceMatch[1].replace(/,/g, "")) : null;
     if (!titleLink || !price) return fail("site_changed", "The recommendation's title or INR price could not be checked.");

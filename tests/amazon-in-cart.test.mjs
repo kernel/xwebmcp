@@ -128,6 +128,33 @@ test("ambiguous recommendations and disabled/unsupported forms are not advertise
     assert.equal((await harness('add_to_cart', { before }).run()).error_kind, 'site_changed');
   }
 });
+test("empty markers hidden by ancestor inline styles cannot authorise writes", async () => {
+  for (const style of ["display:none", "visibility:hidden", "visibility:collapse"]) for (const name of names) {
+    const before = empty.replace('<div id="sc-empty-cart">Your cart is empty</div>', `<section style="${style}"><div id="sc-empty-cart">Your cart is empty</div></section>`);
+    const h = harness(name, { before }); assert.equal((await h.run()).error_kind, "site_changed"); assert.ok(h.requests.every(r => r.method !== "POST"));
+  }
+});
+test("cart summary quantity must agree with populated rows before and after writes", async () => {
+  const contradictory = filled().replace('</nav>', '</nav><div id="sc-buy-box" data-quantity="2"></div>');
+  for (const name of names) {
+    const h = harness(name, { before: contradictory }); assert.equal((await h.run()).error_kind, "site_changed"); assert.ok(h.requests.every(r => r.method !== "POST"));
+  }
+  const h = harness("add_to_cart", { after: contradictory }); const r = await h.run();
+  assert.equal(r.error_kind, "outcome_unknown"); assert.equal(r.write_attempted, true); assert.equal(h.store.size, 1);
+  const count = h.requests.length; assert.equal((await h.run()).error_kind, "outcome_unknown"); assert.equal(h.requests.length, count);
+  assert.equal((await harness("get_cart", { before: filled().replace('</nav>', '</nav><div id="sc-buy-box" data-quantity="1"></div>') }).run()).line_count, 1);
+});
+test("another product's price or multiple prices in a card never authorise a write", async () => {
+  for (const extra of [
+    '<a href="/Example/dp/B0TESTBBB2/ref=example"><span class="a-price"><span class="a-offscreen">₹199.00</span></span></a>',
+    '<span class="a-price"><span class="a-offscreen">₹199.00</span></span>',
+    '<a href="/Example/dp/B0TESTBBB2/ref=example">Another item</a>'
+  ]) {
+    const before = empty.replace('<div class="a-fixed-left-grid-inner">', '<div class="a-fixed-left-grid-inner">' + extra);
+    assert.equal((await harness("get_cart", { before }).run()).recommendations.length, 0);
+    const h = harness("add_to_cart", { before }); assert.equal((await h.run()).error_kind, "site_changed"); assert.equal(h.requests.length, 1);
+  }
+});
 test("already present and other cart contents cause no duplicate write", async () => {
   assert.equal((await harness("add_to_cart", { before: filled() }).run()).status, "already_present");
   for (const before of [filled(asin, 2), filled("B0TESTBBB2"), template.replace("{{ITEMS}}", line() + line("B0TESTBBB2"))]) {
