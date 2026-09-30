@@ -634,9 +634,12 @@
       "url_patterns": [
         "https://www.marriott.com/*"
       ],
-      "status": "draft",
-      "last_verified": null,
-      "notes": "Public overview facts. Updated cancellation and HTTP-200 Akamai challenge detection; current public overview requests are blocked. No account, booking, hold or payment operations."
+      "status": "qa_passed",
+      "last_verified": "2026-09-30",
+      "notes": "Independent final-source success/failure QA is fixture-only (840f6d97). Historical public overview GETs were blocked by HTTP-200 Akamai. No final-source live success, account, booking, hold or payment operations.",
+      "provenance": {
+        "qa_agent": "agt_969930ee72c8218556a6"
+      }
     },
     {
       "domain": "marriott.com",
@@ -647,9 +650,12 @@
       "url_patterns": [
         "https://www.marriott.com/*"
       ],
-      "status": "draft",
-      "last_verified": null,
-      "notes": "Unsaved public itinerary and manual handoff; verifies exact hotel property code from the overview. No rates, availability, booking, hold, account save or payment."
+      "status": "qa_passed",
+      "last_verified": "2026-09-30",
+      "notes": "Independent final-source QA is fixture-only (840f6d97); historical live overview reads were challenged. Property-validated unsaved itinerary, not a quote or reservation. Manual handoff does not populate dates/guests. No execution or account save; trusted human approval is unavailable.",
+      "provenance": {
+        "qa_agent": "agt_969930ee72c8218556a6"
+      }
     },
     {
       "domain": "marriott.com",
@@ -660,9 +666,12 @@
       "url_patterns": [
         "https://www.marriott.com/*"
       ],
-      "status": "draft",
-      "last_verified": null,
-      "notes": "Public hotel search with cash/points availability and same-currency comparison on the returned page only. All-room stay totals are estimates, not final prices or inventory holds. Persisted query signatures can change; Akamai can refuse or rate-limit public access."
+      "status": "qa_passed",
+      "last_verified": "2026-09-30",
+      "notes": "Independent final-source QA is fixture-only (840f6d97); historical live search returned HTTP429. Page-only same-currency comparison and exact representable stay estimates, not final prices or holds. No final-source live success. Embedded public query signatures can change; lower consumer payload caps may reject large pages.",
+      "provenance": {
+        "qa_agent": "agt_969930ee72c8218556a6"
+      }
     },
     {
       "domain": "purelymail.com",

@@ -4,9 +4,9 @@ Public Marriott Bonvoy hotel search, cash/points quotes, hotel facts, and unsave
 
 | tool | file | status | notes |
 |------|------|--------|-------|
-| get_hotel | [get_hotel.js](get_hotel.js) | draft | Public hotel facts; updated HTTP-200 challenge recognition and cancellation |
-| prepare_reservation | [prepare_reservation.js](prepare_reservation.js) | draft | Property-validated, unsaved itinerary and manual handoff; never books, holds or saves |
-| search_hotels | [search_hotels.js](search_hotels.js) | draft | Public search with cash/points availability; same-currency cash comparison on the returned page only |
+| get_hotel | [get_hotel.js](get_hotel.js) | qa_passed | Public hotel facts; updated HTTP-200 challenge recognition and cancellation |
+| prepare_reservation | [prepare_reservation.js](prepare_reservation.js) | qa_passed | Property-validated, unsaved itinerary and manual handoff; never books, holds or saves |
+| search_hotels | [search_hotels.js](search_hotels.js) | qa_passed | Public search with cash/points availability; same-currency cash comparison on the returned page only |
 
 ## Native WebMCP tools
 
@@ -65,7 +65,8 @@ All tools match only `https://www.marriott.com/*`. Other hosts under this domain
 - Taxes and fees are the site's figures; `includeTaxesAndFees: false` still returns tax and total fields. The tax basis is undocumented; nightly rounding can differ from final stay totals.
 - Dependencies are undocumented public persisted queries and overview JSON-LD. Failures are explicit (`challenge`, `rate_limited`, `wrong_page`, `site_changed`, `site_error`, destination failures, `not_found` or canceled as applicable), not fabricated availability or success.
 - No live mutation was performed or authorized for QA. No mutation success can be inferred from fixture tests.
-- Updated search/preparation live success and local extension against live Marriott are not yet verified. Previous source QA does not sign off the updated search source.
+- Final-source live success/parity, local extension against live Marriott, externally destroying a document mid-invocation and Chrome's live cancellation dispatch remain unverified. Native-Response signal cancellation is fixture-tested, not proof of every runtime's dispatch.
+- The mandatory 1 MiB output bound passed a 666,419-byte extreme escaped-text 40-hotel fixture. Kernel's API-specific 240 KiB cap was not exercised on this head and can reject such a page. Use a smaller `limit` on consumers with lower output caps; no automatic retry is implemented.
 
 ## QA
 
@@ -82,4 +83,13 @@ Independent review passed source `0726e05` for the original `search_hotels` and 
 - Independent current round 1 (source `5e9dec51`, 2026-09-30): **FAIL**, four fixture-only defects: half-cent rounding for a three-decimal currency, late cancellation after response consumption, overflowing estimates and oversized property IDs. Fixed with exact integer minor-unit arithmetic, post-consumption cancellation checks, representability guards and identifier validation. Native-response and adversarial fixtures reproduce all four and pass after the fixes.
 - Reviewer independently ran 1765 full-suite tests on Node 24 LTS and 26, 5 extension regression tests, and 17 actual unpacked-extension fixture checks (14 invocations), including preservation of a fabricated native tool and stale custom references. One fresh public Kernel browser discovered the full namespace but search returned 429 and both overview tools returned HTTP-200 `challenge`; URL, tabs, local/session storage unchanged. No live success or mutations. Its browser and local fixtures were cleaned up.
 - Independent fix/recheck 1 (source `2aa8ce93`): **FAIL**, one extreme-value fixture defect remained. A safe integer minor-unit amount could still lose a cent during numeric JSON serialization. Native-response and actual-extension probes reproduced it; the original four findings passed. Added decimal serialization round-trip validation for amounts and estimates, with regression fixtures for inexact and valid large amounts. No additional live attempts.
-- Independent final fix/recheck is pending; all three tools stay draft until the final source passes.
+- Independent final fix/recheck 2 of 2: **PASS** for exact implementation `840f6d97e20f536562a7f15fec4718fa6ec1ec65`, with no remaining concrete source findings. All three tools are `qa_passed`, **not `verified`**; their dated status is 2026-09-30. There is no final-source live success. Subsequent changes are README/registry status metadata only, with all three JavaScript sources unchanged.
+- Final independent results: 82 valid tools; 1785/1785 full-suite passes on Node 24 LTS and 26; 208/208 Marriott tests; 5/5 extension regressions; 321/321 additional arithmetic/bounds probes; 2442/2442 independent decimal/JSON-roundtrip boundary probes. Actual unpacked Chromium 153 extension: 24/24 fabricated HTTPS fixture checks, 21 invocations, all outputs schema-valid. Covered original/residual defects, currency and fee identity, namespace/native preservation/stale references, canonical redirects, malformed/approval/account/payment rejection, no navigation/storage changes and unsaved preparation. No additional live attempts. Reviewer cleaned up its local fixture services/profile; no source/PR writes.
+
+Reviewed JavaScript SHA-256 digests (unchanged after status promotion):
+
+| source | SHA-256 |
+| --- | --- |
+| search_hotels.js | `4df1b390a9a8df27dac16b1d3cced6d917084f0e89ba835630fea08a3ba6f1c4` |
+| get_hotel.js | `72cb9f9cfe695a273bb28c1acbe7978120ec0768ec0e89a4339b6bcec55322fa` |
+| prepare_reservation.js | `b9e6cd936b9179fc0e69656174d03d84a6679012cd9b88768dfbe08b126405d2` |
