@@ -205,7 +205,9 @@
       const request = async (url, options = {}) => {
         if (controller.signal.aborted) throw { kind: "canceled" };
         const response = await fetch(url, { ...options, credentials: "same-origin", signal: controller.signal });
-        const path = new URL(response.url || url, location.origin).pathname;
+        const finalUrl = new URL(response.url || url, location.origin);
+        if (finalUrl.origin !== location.origin) throw { kind: "site_changed" };
+        const path = finalUrl.pathname;
         if (/^\/blocked(?:\/|$)/.test(path) || [403, 418].includes(response.status)) throw { kind: "challenge" };
         if (response.status === 429) throw { kind: "rate_limited" };
         if (response.status === 401 || /\/(?:login|signin|identity)(?:\/|$)/.test(path)) throw { kind: "login_required" };
@@ -243,10 +245,14 @@
       const before = await readCart();
       if (before.customer.isGuest) return fail("login_required", "Sign in to the intended account to read its lists.");
       if (await accountKey(before) !== input.expected_account_token) return fail("wrong_account", "Account does not match the get_cart account token.");
+      const documentAccount = next?.props?.pageProps?.bootstrapData?.account?.data?.account;
+      if (typeof documentAccount?.profile?.emailAddress !== "string" || !documentAccount.profile.emailAddress.trim()) return fail("site_changed", "The document account identity is unavailable; no lists are returned.");
       const html = await request("/lists", { method: "GET" });
       const listNode = new DOMParser().parseFromString(html, "text/html").getElementById("__NEXT_DATA__");
       const props = listNode ? JSON.parse(listNode.textContent).props?.pageProps : null;
-      if (!props?.bootstrapData?.account?.data?.account) return fail("login_required", "The lists page requires sign-in.");
+      const responseAccount = props?.bootstrapData?.account?.data?.account;
+      if (!responseAccount) return fail("login_required", "The lists page requires sign-in.");
+      if (await digest(responseAccount) !== await digest(documentAccount)) return fail("wrong_account", "The lists response does not match this document's account; no lists are returned.");
       const lists = props.initialData?.data?.shoppingListsExtended;
       if (!lists || !Array.isArray(lists.lists) || lists.lists.some(l => !validId(l.id) || typeof l.name !== "string" || !Number.isInteger(l.lineItemCount) || l.lineItemCount < 0)) return fail("site_changed", "Lists response shape changed.");
       const after = await readCart();

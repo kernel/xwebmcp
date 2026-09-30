@@ -289,7 +289,9 @@
       const request = async (url, options = {}) => {
         if (controller.signal.aborted) throw { kind: "canceled" };
         const response = await fetch(url, { ...options, credentials: "same-origin", signal: controller.signal });
-        const path = new URL(response.url || url, location.origin).pathname;
+        const finalUrl = new URL(response.url || url, location.origin);
+        if (finalUrl.origin !== location.origin) throw { kind: "site_changed" };
+        const path = finalUrl.pathname;
         if (/^\/blocked(?:\/|$)/.test(path) || [403, 418].includes(response.status)) throw { kind: "challenge" };
         if (response.status === 429) throw { kind: "rate_limited" };
         if (response.status === 401 || /\/(?:login|signin|identity)(?:\/|$)/.test(path)) throw { kind: "login_required" };
@@ -325,6 +327,7 @@
       const stateKey = cart => digest({ id: cart.id, customer: { id: cart.customer.id, isGuest: cart.customer.isGuest }, fulfillment: cart.fulfillment, store: store(), lines: [...cart.lineItems].sort((a, b) => a.id.localeCompare(b.id)) });
       const ordinary = line => {
         const p = line.product;
+        if (line.selectedAddOnServices != null && !Array.isArray(line.selectedAddOnServices) || line.bundleComponents != null && !Array.isArray(line.bundleComponents) || line.selectedVariants != null && (!Array.isArray(line.selectedVariants) || line.selectedVariants.some(v => !v || typeof v !== "object" || Array.isArray(v))) || line.subscription != null && (typeof line.subscription !== "object" || Array.isArray(line.subscription) || typeof line.subscription.isSelected !== "boolean")) return false;
         return Number.isInteger(line.quantity) && line.quantity >= 0 && line.quantity <= 99 && p?.salesUnit === "EACH" && p.isAlcohol === false && !/pharmacy|prescription|vision|gift.?card|tire|qsr|service/i.test([p.itemType, p.itemTypeV2, p.type, p.productType, p.departmentName].join(" "))
           && !p.rxDetails && !p.vision?.visionCenterApproved && !p.petRx?.eligible && !p.petRxEligible && !p.isPharmacyPrescription && !p.isPetRxItem && !p.digitalDelivery && !line.rxDetails && !line.isPetRxItem && !line.isPharmacyPrescription && !line.isPreOrder && !line.registryId && !line.personalizedItemDetails && !line.wirelessPlan && !line.vehicleDetails
           && !line.groupMetaData && !line.customizationId && !line.customizationHash && !line.subscription?.isSelected && !p.isQSRItem && !p.isCustomizable && !p.personalizable && !p.preOrder?.isPreOrder

@@ -91,6 +91,7 @@
     const int = value => typeof value === "number" && Number.isInteger(value) && value >= 0 ? value : null;
     const request = async path => {
       if (location.origin !== ORIGIN) return { error: fail("wrong_page", "Open https://www.walmart.com/ (any www.walmart.com page) in this tab, then call again. Nothing was changed.") };
+      if (context?.signal?.aborted) return { error: fail("timeout", "The caller canceled before the request. Nothing was requested.") };
       const ctl = new AbortController();
       const timer = setTimeout(() => ctl.abort(), 25000);
       const abort = () => ctl.abort();
@@ -144,6 +145,7 @@
     const total = int(summary.totalReviewCount);
     const listed = int(summary.filteredReviewsCount);
     const list = Array.isArray(summary.customerReviews) ? summary.customerReviews : [];
+    if (list.length > 10) return fail("site_changed", "The review page exceeded the expected 10-review bound. Nothing was changed.");
     if (!list.length) return { status: "no_results", reason: page > 1 ? "page_out_of_range" : "no_listed_reviews", us_item_id: id, sort, page, total_review_count: total, listed_review_count: listed };
     // Observed live: a page past the last one is answered with page 1 rather than an error, so check the span. The
     // site's own next link is null before the last page on some items, so the flag comes from the span and the total.

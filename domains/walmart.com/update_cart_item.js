@@ -222,7 +222,9 @@
       const request = async (url, options = {}) => {
         if (controller.signal.aborted) throw { kind: "canceled" };
         const response = await fetch(url, { ...options, credentials: "same-origin", signal: controller.signal });
-        const path = new URL(response.url || url, location.origin).pathname;
+        const finalUrl = new URL(response.url || url, location.origin);
+        if (finalUrl.origin !== location.origin) throw { kind: "site_changed" };
+        const path = finalUrl.pathname;
         if (/^\/blocked(?:\/|$)/.test(path) || [403, 418].includes(response.status)) throw { kind: "challenge" };
         if (response.status === 429) throw { kind: "rate_limited" };
         if (response.status === 401 || /\/(?:login|signin|identity)(?:\/|$)/.test(path)) throw { kind: "login_required" };
@@ -237,7 +239,7 @@
         if (controller.signal.aborted) throw { kind: "canceled" };
         if (write) { attempted = true; record.state = "pending"; }
         const body = await request(write ? url : `${url}?variables=${encodeURIComponent(JSON.stringify(variables))}`, write
-          ? { method: "POST", headers: headers(op), body: JSON.stringify({ variables }) }
+          ? { method: "POST", redirect: "error", headers: headers(op), body: JSON.stringify({ variables }) }
           : { method: "GET", headers: headers(op) });
         let result;
         try { result = JSON.parse(body); } catch { throw { kind: /px-captcha|robot or human/i.test(body) ? "challenge" : "site_changed" }; }
@@ -258,6 +260,7 @@
       const stateKey = cart => digest({ id: cart.id, customer: { id: cart.customer.id, isGuest: cart.customer.isGuest }, fulfillment: cart.fulfillment, store: store(), lines: [...cart.lineItems].sort((a, b) => a.id.localeCompare(b.id)) });
       const ordinary = line => {
         const p = line.product;
+        if (line.selectedAddOnServices != null && !Array.isArray(line.selectedAddOnServices) || line.bundleComponents != null && !Array.isArray(line.bundleComponents) || line.selectedVariants != null && (!Array.isArray(line.selectedVariants) || line.selectedVariants.some(v => !v || typeof v !== "object" || Array.isArray(v))) || line.subscription != null && (typeof line.subscription !== "object" || Array.isArray(line.subscription) || typeof line.subscription.isSelected !== "boolean")) return false;
         return Number.isInteger(line.quantity) && line.quantity >= 0 && line.quantity <= 99 && p?.salesUnit === "EACH" && p.isAlcohol === false && !/pharmacy|prescription|vision|gift.?card|tire|qsr|service/i.test([p.itemType, p.itemTypeV2, p.type, p.productType, p.departmentName].join(" "))
           && !p.rxDetails && !p.vision?.visionCenterApproved && !p.petRx?.eligible && !p.petRxEligible && !p.isPharmacyPrescription && !p.isPetRxItem && !p.digitalDelivery && !line.rxDetails && !line.isPetRxItem && !line.isPharmacyPrescription && !line.isPreOrder && !line.registryId && !line.personalizedItemDetails && !line.wirelessPlan && !line.vehicleDetails
           && !line.groupMetaData && !line.customizationId && !line.customizationHash && !line.subscription?.isSelected && !p.isQSRItem && !p.isCustomizable && !p.personalizable && !p.preOrder?.isPreOrder
@@ -307,13 +310,14 @@
         const after = await readCart();
         const contextOf = cart => canonical({ customer: { id: cart.customer.id, isGuest: cart.customer.isGuest }, intent: cart.fulfillment?.intent,
           assortment_intent: cart.fulfillment?.assortmentIntent, pickup_store: cart.fulfillment?.pickupStore, delivery_store: cart.fulfillment?.deliveryStore,
-          address: cart.fulfillment?.deliveryAddress, access_point: cart.fulfillment?.accessPoint, reservation: cart.fulfillment?.reservation, store_id: cart.fulfillment?.storeId });
+          address: cart.fulfillment?.deliveryAddress, access_point: cart.fulfillment?.accessPoint, reservation: cart.fulfillment?.reservation, store_id: cart.fulfillment?.storeId,
+          group_reservations: (cart.fulfillment?.fulfillmentItemGroups || []).map(g => g.reservation).filter(r => r != null) });
         if (store() !== selectedStore || after.id !== before.id || await accountKey(after) !== account || JSON.stringify(contextOf(before)) !== JSON.stringify(contextOf(after))) throw { kind: "outcome_unknown" };
-        const target = l => l.product?.offerId === product.offerId && l.product?.usItemId === product.usItemId;
+        const target = l => l.id === line.id;
         const others = cart => [...cart.lineItems].filter(l => !target(l)).sort((a, b) => a.id.localeCompare(b.id));
         if (JSON.stringify(canonical(others(before))) !== JSON.stringify(canonical(others(after)))) throw { kind: "outcome_unknown" };
         const afterLines = after.lineItems.filter(target);
-        if (quantity === 0 ? afterLines.length !== 0 : afterLines.length !== 1 || afterLines[0].quantity !== quantity || afterLines[0].fulfillmentPreference !== line.fulfillmentPreference || (line.id && afterLines[0].id !== line.id)) throw { kind: "outcome_unknown" };
+        if (quantity === 0 ? afterLines.length !== 0 : afterLines.length !== 1 || afterLines[0].quantity !== quantity || afterLines[0].product.usItemId !== product.usItemId || afterLines[0].product.offerId !== product.offerId || afterLines[0].fulfillmentPreference !== line.fulfillmentPreference || (line.id && afterLines[0].id !== line.id)) throw { kind: "outcome_unknown" };
 
         const selection = value => canonical({ variants: value.selectedVariants, services: value.selectedAddOnServices, subscription: value.subscription, registry: value.registryId, customization: value.customizationId, group: value.groupMetaData, personalization: value.personalizedItemDetails });
         if (!ordinary(afterLines[0]) || JSON.stringify(selection(line)) !== JSON.stringify(selection(afterLines[0]))) throw { kind: "outcome_unknown" };

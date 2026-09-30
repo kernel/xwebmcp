@@ -103,6 +103,7 @@
     const flag = value => typeof value === "boolean" ? value : null;
     const request = async path => {
       if (location.origin !== ORIGIN) return { error: fail("wrong_page", "Open https://www.walmart.com/ (any www.walmart.com page) in this tab, then call again. Nothing was changed.") };
+      if (context?.signal?.aborted) return { error: fail("timeout", "The caller canceled before the request. Nothing was requested.") };
       const ctl = new AbortController();
       const timer = setTimeout(() => ctl.abort(), 25000);
       const abort = () => ctl.abort();

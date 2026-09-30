@@ -691,6 +691,32 @@ test("get_store: caps hold and malformed coordinates are dropped", async () => {
   assert.deepEqual(clocks.hours, [{ day: "Sunday", opens: null, closes: null, closed: false }]);
 });
 
+for (const name of NAMES) test(`${name}: already-canceled reads make zero requests`, async () => {
+  const h = harness(name, { props: CASES[name].props });
+  const controller = new AbortController(); controller.abort();
+  assert.equal(errorKind(await h.run(CASES[name].input, controller.signal)), "timeout");
+  assert.equal(h.calls.length, 0);
+});
+
+test("get_product_reviews: an oversized page fails without violating the output bound", async () => {
+  const h = harness("get_product_reviews", { props: reviewProps({ reviews: Array.from({ length: 11 }, (_, i) => review(`r${i}`)) }) });
+  assert.equal(errorKind(await h.run({ us_item_id: "20000001" })), "site_changed");
+});
+
+test("search_products: null facet options are skipped safely", async () => {
+  const h = harness("search_products", { props: searchProps({ facets: [{ type: "brand", title: "Brand", values: [null, facetOption("brand", "Testbrand")] }] }) });
+  const r = await h.run({ query: "towels", include_facets: true });
+  assert.equal(r.status, "ok"); assert.equal(r.facets[0].options.length, 1);
+});
+
+test("search_products: original query length and controls are validated before normalization", async () => {
+  const h = harness("search_products", { props: searchProps() });
+  for (const query of [" ".repeat(250) + "towels", "tow" + String.fromCharCode(10) + "els", "tow" + String.fromCharCode(9) + "els", "towels" + "😀".repeat(200)]) {
+    assert.equal(errorKind(await h.run({ query })), "invalid_input");
+  }
+  assert.equal(h.calls.length, 0);
+});
+
 test("unknown-field errors name at most three keys, truncated", async () => {
   const input = { ...VALID.get_store, ["k".repeat(80)]: 1, b: 1, c: 1, d: 1 };
   const result = await harness("get_store", { props: storeProps() }).run(input);

@@ -12,7 +12,8 @@ const copy = value => JSON.parse(JSON.stringify(value));
 const product = () => ({ usItemId: "20000001", offerId: "TEST_OFFER", name: "Test towels", salesUnit: "EACH", isAlcohol: false, type: "Bed Sheets", legalRestriction: false, isLMPAlcoholItem: false, showAtc: true, orderLimit: 12, orderMinLimit: 1, availabilityStatus: "IN_STOCK", canAddToCart: true, sellerName: "Test seller", fulfillmentOptions: [{ type: "SHIPPING", availabilityStatus: "IN_STOCK" }] });
 const line = (id = "TEST_LINE", p = product()) => ({ id, quantity: 2, product: p, fulfillmentPreference: "SHIPPING", priceInfo: { itemPrice: { value: 3 }, linePrice: { value: 6 } } });
 const cart = () => ({ id: "TEST_CART", customer: { id: "TEST_ACCOUNT", isGuest: false, firstName: "Never Return", phone: "555-000-0000" }, lineItems: [line()], checkoutable: true, fulfillment: { intent: "SHIPPING", pickupStore: { storeId: "1234" }, deliveryStore: { storeId: "2222" }, deliveryAddress: { addressLineOne: "1 Fabricated Street" }, fulfillmentItemGroups: [{ collapsedItemIds: ["TEST_LINE"] }] }, priceDetails: { subTotal: { value: 6 } } });
-const next = (props = {}) => ({ runtimeConfig: { tenant: "test-tenant", tenantV2: { bu: "WALMART-US", mart: "B2C" }, appVersion: "test-version" }, props: { pageProps: props } });
+const accountProfile = () => ({ profile: { emailAddress: "reader@example.invalid", firstName: "Fabricated" } });
+const next = (props = { bootstrapData: { account: { data: { account: accountProfile() } } } }) => ({ runtimeConfig: { tenant: "test-tenant", tenantV2: { bu: "WALMART-US", mart: "B2C" }, appVersion: "test-version" }, props: { pageProps: props } });
 const html = data => `<script id="__NEXT_DATA__">${JSON.stringify(data)}</script>`;
 const operation = (name, type) => ({ toString: () => `let op={type:"${type}",name:"${name}",hash:"${"a".repeat(64)}"}` });
 
@@ -50,7 +51,7 @@ function harness(options = {}) {
     }
     let data;
     const path = new URL(url, "https://www.walmart.com").pathname;
-    if (path === "/lists") return response(html(next({ bootstrapData: { account: { data: { account: { profile: {} } } } }, initialData: { data: { shoppingListsExtended: { maxListsReached: false, lists: [{ id: "TEST_LIST", name: "Test list", type: "SL", lineItemCount: 2, primary: true, ownerDetails: { private: "Never Return" } }] } } } })), url);
+    if (path === "/lists") return response(html(next({ bootstrapData: { account: { data: { account: accountProfile() } } }, initialData: { data: { shoppingListsExtended: { maxListsReached: false, lists: [{ id: "TEST_LIST", name: "Test list", type: "SL", lineItemCount: 2, primary: true, ownerDetails: { private: "Never Return" } }] } } } })), url);
     if (path.startsWith("/ip/")) return response(html({ props: { pageProps: { initialData: { data: { product: product() } } } } }), url);
     const op = path.split("/").at(-2);
     if (op === "getCart") data = { cart: copy(state.cart) };
@@ -244,6 +245,95 @@ test("model-supplied confirmation and invalid quantities never reach the site", 
       assert.equal((await h.run(name, { ...valid, quantity })).error_kind, "invalid_input"); assert.equal(h.state.calls.length, before);
     }
   }
+});
+
+for (const name of writes) {
+  test(`${name}: nested reservations introduced after dispatch never report success`, async () => {
+    const c = cart(); if (name === "add_to_cart") c.lineItems = [];
+    const h = harness({ cart: c, afterWrite: s => s.cart.fulfillment.fulfillmentItemGroups[0].reservation = { reservedSlot: {} } });
+    const r = await h.run(name, await inputFor(h, name));
+    assert.equal(r.error_kind, "outcome_unknown"); assert.equal(h.state.posts, 1);
+  });
+  test(`${name}: mutation redirects are disabled and foreign responses are unknown`, async () => {
+    const c = cart(); if (name === "add_to_cart") c.lineItems = [];
+    const h = harness({ cart: c, respond: (url, init) => {
+      if (init.method !== "POST") return null;
+      return response(JSON.stringify({ data: { updateItems: c, moveToSFL: { cart: c } } }), "https://other.example.invalid/redirected");
+    } });
+    const r = await h.run(name, await inputFor(h, name));
+    assert.equal(r.error_kind, "outcome_unknown"); assert.equal(r.mutation_attempted, true);
+    const posts = h.state.calls.filter(c => c.init.method === "POST");
+    assert.equal(posts.length, 1); assert.equal(posts[0].init.redirect, "error");
+  });
+}
+
+for (const name of writes.filter(n => n !== "add_to_cart")) {
+  test(`${name}: exact-line verification preserves a second same-offer line`, async () => {
+    for (const loseSecond of [false, true]) {
+      const c = cart(); c.lineItems.push(line("SECOND_LINE"));
+      const h = harness({ cart: c, afterWrite: s => { if (loseSecond) s.cart.lineItems = s.cart.lineItems.filter(l => l.id !== "SECOND_LINE"); } });
+      const r = await h.run(name, await inputFor(h, name));
+      assert.equal(loseSecond ? r.error_kind : r.status, loseSecond ? "outcome_unknown" : "ok");
+      assert.equal(h.state.posts, 1);
+    }
+  });
+  test(`${name}: malformed safety structures are rejected before POST`, async () => {
+    for (const mutate of [l => l.selectedAddOnServices = {}, l => l.bundleComponents = {}, l => l.subscription = [], l => l.subscription = {}, l => l.selectedVariants = {}]) {
+      const c = cart(); mutate(c.lineItems[0]); const h = harness({ cart: c });
+      const r = await h.run(name, await inputFor(h, name));
+      assert.equal(r.error_kind, "unsupported_item"); assert.equal(h.state.posts, 0);
+    }
+  });
+}
+
+test("save_for_later: saved target restriction and selection changes are unknown", async () => {
+  for (const mutate of [l => l.subscription = { isSelected: true }, l => l.product.salesUnit = "WEIGHT", l => l.selectedVariants = [{ name: "Different" }], l => l.selectedAddOnServices = {}]) {
+    const h = harness({ afterWrite: s => mutate(s.saved.lineItems[0]) });
+    const r = await h.run("save_for_later", await inputFor(h, "save_for_later"));
+    assert.equal(r.error_kind, "outcome_unknown"); assert.equal(h.state.posts, 1);
+  }
+});
+
+test("save_for_later: malformed saved entries are refused before POST", async () => {
+  for (const entries of [[{ quantity: 0 }], [null], [line("DUPLICATE"), line("DUPLICATE")], [{ ...line("OTHER"), product: {} }]]) {
+    const h = harness(); h.state.saved.lineItems = entries;
+    h.state.saved.totalQuantity = entries.reduce((sum, l) => sum + (l?.quantity || 0), 0);
+    const r = await h.run("save_for_later", await inputFor(h, "save_for_later"));
+    assert.equal(r.status, "error"); assert.equal(h.state.posts, 0);
+  }
+});
+
+test("list_lists: intervening HTML must identify the same document account", async () => {
+  const h = harness({ respond: url => url === "/lists" ? response(html(next({ bootstrapData: { account: { data: { account: { profile: { emailAddress: "other@example.invalid", firstName: "Other" } } } } }, initialData: { data: { shoppingListsExtended: { lists: [{ id: "OTHER_LIST", name: "Must not return", lineItemCount: 1 }] } } } })), url) : null });
+  const r = await h.run("list_lists", { expected_account_token: (await h.guards()).expected_account_token });
+  assert.equal(r.error_kind, "wrong_account"); assert.equal(JSON.stringify(r).includes("Must not return"), false);
+  assert.equal(h.state.posts, 0);
+});
+
+for (const name of names) test(`${name}: foreign-origin cart responses are rejected`, async () => {
+  const base = harness();
+  const input = name === "get_cart" ? {} : name === "list_lists" ? { expected_account_token: (await base.guards()).expected_account_token } : await inputFor(base, name);
+  const h = harness({ respond: () => response(JSON.stringify({ data: { cart: cart() } }), "https://other.example.invalid/orchestra/home/graphql/getCart/test") });
+  assert.equal((await h.run(name, input)).error_kind, "site_changed"); assert.equal(h.state.posts, 0);
+});
+
+test("get_cart: malformed selections are not advertised as action-supported", async () => {
+  const c = cart(); c.lineItems[0].selectedAddOnServices = {};
+  const r = await harness({ cart: c }).run("get_cart", {});
+  assert.equal(r.lines[0].actions_supported, false);
+});
+
+test("list_lists: missing document identity fails before the lists fetch", async () => {
+  const h = harness(); h.document.getElementById = () => ({ textContent: JSON.stringify(next({ bootstrapData: { account: { data: { account: { profile: {} } } } } })) });
+  const r = await h.run("list_lists", { expected_account_token: (await h.guards()).expected_account_token });
+  assert.equal(r.error_kind, "site_changed"); assert.equal(h.state.calls.some(c => c.url === "/lists"), false);
+});
+
+test("save_for_later: zero-quantity targets are rejected without POST", async () => {
+  const c = cart(); c.lineItems[0].quantity = 0;
+  const h = harness({ cart: c });
+  const r = await h.run("save_for_later", await inputFor(h, "save_for_later"));
+  assert.equal(r.error_kind, "unsupported_item"); assert.equal(h.state.posts, 0);
 });
 
 test("ten tools form the complete atomic Walmart namespace", () => {

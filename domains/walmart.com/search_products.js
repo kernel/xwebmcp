@@ -134,6 +134,7 @@
     };
     const request = async path => {
       if (location.origin !== ORIGIN) return { error: fail("wrong_page", "Open https://www.walmart.com/ (any www.walmart.com page) in this tab, then call again. Nothing was changed.") };
+      if (context?.signal?.aborted) return { error: fail("timeout", "The caller canceled before the request. Nothing was requested.") };
       const ctl = new AbortController();
       const timer = setTimeout(() => ctl.abort(), 25000);
       const abort = () => ctl.abort();
@@ -172,7 +173,7 @@
     const page = input.page === undefined ? 1 : input.page;
     const limit = input.limit === undefined ? 20 : input.limit;
     const filters = input.filters === undefined ? [] : input.filters;
-    if (!query || query.length > 200 || /[\u0000-\u001f]/.test(query)) return fail("invalid_input", "query must be 1 to 200 characters of plain text. Nothing was requested.");
+    if (!query || Array.from(input.query).length > 200 || /[\u0000-\u001f]/.test(input.query)) return fail("invalid_input", "query must be 1 to 200 characters of plain text. Nothing was requested.");
     if (!SORTS.includes(sortBy)) return fail("invalid_input", "sort_by must be one of " + SORTS.join(", ") + ". Nothing was requested.");
     if (!Number.isInteger(page) || page < 1 || page > 25) return fail("invalid_input", "page must be an integer from 1 to 25. Nothing was requested.");
     if (!Number.isInteger(limit) || limit < 1 || limit > 40) return fail("invalid_input", "limit must be an integer from 1 to 40. Nothing was requested.");
@@ -264,6 +265,7 @@
         const options = [];
         let total = 0;
         for (const option of group.values) {
+          if (!option || typeof option !== "object" || Array.isArray(option)) continue;
           // Only options whose own link confirms the exact facet string are offered, so a filter always round-trips.
           let facet = null;
           try { facet = new URLSearchParams(option.url).get("facet"); } catch { /* option without a link */ }
