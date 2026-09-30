@@ -2,225 +2,70 @@
   kind: "cdp",
   match: { url_patterns: ["https://www.facebook.com/marketplace/*"] },
   tool: {
-  "name": "search_marketplace",
-  "description": "Search public Facebook Marketplace listings in nyc or sanfrancisco by keyword. Navigates the current tab once to the public search page and reads only its initial embedded listing feed, at most 24 listings, with IDs, prices, approximate city/state and availability flags. No scrolling, pagination, retries, seller/profile data, media, messages or writes. Requires normal access to Marketplace: a login overlay, challenge or restricted page returns an error; never signs in or dismisses a gate. Pass a listing_id to get_listing. Prices are site-reported decimal strings and display text, not offers or confirmed availability.",
-  "inputSchema": {
-    "type": "object",
-    "additionalProperties": false,
-    "required": [
-      "query",
-      "location"
-    ],
-    "properties": {
-      "query": {
-        "type": "string",
-        "minLength": 1,
-        "maxLength": 100,
-        "pattern": "\\S"
-      },
-      "location": {
-        "type": "string",
-        "enum": [
-          "nyc",
-          "sanfrancisco"
-        ],
-        "description": "Observed Marketplace city slug; required, no account location changes."
-      },
-      "max_results": {
-        "type": "integer",
-        "minimum": 1,
-        "maximum": 24,
-        "default": 10
+    name: "search_marketplace",
+    description: "Search public Facebook Marketplace listings in nyc or sanfrancisco by keyword. Navigates the current tab once to the public search page and reads only its initial embedded listing feed, at most 24 listings, with IDs, prices, approximate city/state and availability flags. No scrolling, pagination, retries, seller/profile data, media, messages or writes. Requires normal access to Marketplace: a login overlay, challenge or restricted page returns an error; never signs in or dismisses a gate. Pass a listing_id to get_listing. Prices are site-reported decimal strings and display text, not offers or confirmed availability.",
+    inputSchema: {
+      type: "object", additionalProperties: false, required: ["query", "location"],
+      properties: {
+        query: { type: "string", minLength: 1, maxLength: 100, pattern: "\\S" },
+        location: { type: "string", enum: ["nyc", "sanfrancisco"], description: "Observed Marketplace city slug; required, no account location changes." },
+        max_results: { type: "integer", minimum: 1, maximum: 24, default: 10 }
       }
-    }
-  },
-  "outputSchema": {
-    "type": "object",
-    "oneOf": [
-      {
-        "type": "object",
-        "additionalProperties": false,
-        "required": [
-          "status",
-          "search_url",
-          "first_page_only",
-          "has_next_page",
-          "truncated",
-          "listings"
-        ],
-        "properties": {
-          "status": {
-            "const": "ok"
-          },
-          "search_url": {
-            "type": "string",
-            "maxLength": 1500
-          },
-          "first_page_only": {
-            "const": true
-          },
-          "has_next_page": {
-            "type": "boolean"
-          },
-          "truncated": {
-            "type": "boolean"
-          },
-          "listings": {
-            "type": "array",
-            "minItems": 1,
-            "maxItems": 24,
-            "items": {
-              "type": "object",
-              "additionalProperties": false,
-              "required": [
-                "listing_id",
-                "url",
-                "title",
-                "price",
-                "price_text",
-                "is_live",
-                "is_pending",
-                "is_sold",
-                "created_timestamp",
-                "city",
-                "state"
-              ],
-              "properties": {
-                "listing_id": {
-                  "type": "string",
-                  "pattern": "^[0-9]{1,30}$"
-                },
-                "url": {
-                  "type": "string",
-                  "pattern": "^https://www\\.facebook\\.com/marketplace/item/[0-9]{1,30}/$"
-                },
-                "title": {
-                  "type": "string",
-                  "maxLength": 300
-                },
-                "price": {
-                  "type": [
-                    "string",
-                    "null"
-                  ],
-                  "maxLength": 40
-                },
-                "price_text": {
-                  "type": [
-                    "string",
-                    "null"
-                  ],
-                  "maxLength": 100
-                },
-                "is_live": {
-                  "type": [
-                    "boolean",
-                    "null"
-                  ]
-                },
-                "is_pending": {
-                  "type": [
-                    "boolean",
-                    "null"
-                  ]
-                },
-                "is_sold": {
-                  "type": [
-                    "boolean",
-                    "null"
-                  ]
-                },
-                "created_timestamp": {
-                  "type": [
-                    "integer",
-                    "null"
-                  ],
-                  "minimum": 0
-                },
-                "city": {
-                  "type": [
-                    "string",
-                    "null"
-                  ],
-                  "maxLength": 100
-                },
-                "state": {
-                  "type": [
-                    "string",
-                    "null"
-                  ],
-                  "maxLength": 100
+    },
+    outputSchema: {
+      type: "object",
+      oneOf: [
+        {
+          type: "object", additionalProperties: false,
+          required: ["status", "search_url", "first_page_only", "has_next_page", "truncated", "listings"],
+          properties: {
+            status: { const: "ok" },
+            search_url: { type: "string", maxLength: 1500 },
+            first_page_only: { const: true },
+            has_next_page: { type: "boolean" },
+            truncated: { type: "boolean" },
+            listings: {
+              type: "array", minItems: 1, maxItems: 24,
+              items: {
+                type: "object", additionalProperties: false,
+                required: ["listing_id", "url", "title", "price", "price_text", "is_live", "is_pending", "is_sold", "created_timestamp", "city", "state"],
+                properties: {
+                  listing_id: { type: "string", pattern: "^[0-9]{1,30}$" },
+                  url: { type: "string", pattern: "^https://www\\.facebook\\.com/marketplace/item/[0-9]{1,30}/$" },
+                  title: { type: "string", maxLength: 300 },
+                  price: { type: ["string", "null"], maxLength: 40 },
+                  price_text: { type: ["string", "null"], maxLength: 100 },
+                  is_live: { type: ["boolean", "null"] },
+                  is_pending: { type: ["boolean", "null"] },
+                  is_sold: { type: ["boolean", "null"] },
+                  created_timestamp: { type: ["integer", "null"], minimum: 0 },
+                  city: { type: ["string", "null"], maxLength: 100 },
+                  state: { type: ["string", "null"], maxLength: 100 }
                 }
               }
             }
           }
-        }
-      },
-      {
-        "type": "object",
-        "additionalProperties": false,
-        "required": [
-          "status",
-          "search_url",
-          "listings"
-        ],
-        "properties": {
-          "status": {
-            "const": "no_results"
-          },
-          "search_url": {
-            "type": "string",
-            "maxLength": 1500
-          },
-          "listings": {
-            "type": "array",
-            "maxItems": 0
+        },
+        {
+          type: "object", additionalProperties: false, required: ["status", "search_url", "listings"],
+          properties: {
+            status: { const: "no_results" },
+            search_url: { type: "string", maxLength: 1500 },
+            listings: { type: "array", maxItems: 0 }
+          }
+        },
+        {
+          type: "object", additionalProperties: false, required: ["status", "error_kind", "error_message"],
+          properties: {
+            status: { const: "error" },
+            error_kind: { enum: ["invalid_input", "wrong_page", "challenge", "login_required", "forbidden", "rate_limited", "gated", "site_changed", "timeout", "canceled", "site_error"] },
+            error_message: { type: "string", minLength: 1, maxLength: 300 }
           }
         }
-      },
-      {
-        "type": "object",
-        "additionalProperties": false,
-        "required": [
-          "status",
-          "error_kind",
-          "error_message"
-        ],
-        "properties": {
-          "status": {
-            "const": "error"
-          },
-          "error_kind": {
-            "enum": [
-              "invalid_input",
-              "wrong_page",
-              "challenge",
-              "login_required",
-              "forbidden",
-              "rate_limited",
-              "gated",
-              "site_changed",
-              "timeout",
-              "canceled",
-              "site_error"
-            ]
-          },
-          "error_message": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 300
-          }
-        }
-      }
-    ]
+      ]
+    },
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true }
   },
-  "annotations": {
-    "readOnlyHint": true,
-    "destructiveHint": false,
-    "idempotentHint": true,
-    "openWorldHint": true
-  }
-},
   execute: async (input, context = {}) => {
     const fail = (kind, message) => ({ status: "error", error_kind: kind, error_message: message });
     const fields = ["query", "location", "max_results"];

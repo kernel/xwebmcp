@@ -2,207 +2,58 @@
   kind: "cdp",
   match: { url_patterns: ["https://www.facebook.com/marketplace/*"] },
   tool: {
-  "name": "get_listing",
-  "description": "Read one public Facebook Marketplace listing by its numeric listing_id. Navigates the current tab once to its canonical public item page and returns title, price/currency, bounded description, condition, approximate location and reported availability. Never opens chats, messages sellers, saves listings, purchases or visits checkout. No seller identity, exact coordinates, viewer state or media URLs returned. Requires normal Marketplace access; login overlays, hidden/private/draft listings, challenges and denied pages fail closed. A result is not an offer or proof the item is available.",
-  "inputSchema": {
-    "type": "object",
-    "additionalProperties": false,
-    "required": [
-      "listing_id"
-    ],
-    "properties": {
-      "listing_id": {
-        "type": "string",
-        "pattern": "^[0-9]{1,30}$"
-      },
-      "description_max_chars": {
-        "type": "integer",
-        "minimum": 0,
-        "maximum": 4000,
-        "default": 1000
+    name: "get_listing",
+    description: "Read one public Facebook Marketplace listing by its numeric listing_id. Navigates the current tab once to its canonical public item page and returns title, price/currency, bounded description, condition, approximate location and reported availability. Never opens chats, messages sellers, saves listings, purchases or visits checkout. No seller identity, exact coordinates, viewer state or media URLs returned. Requires normal Marketplace access; login overlays, hidden/private/draft listings, challenges and denied pages fail closed. A result is not an offer or proof the item is available.",
+    inputSchema: {
+      type: "object", additionalProperties: false, required: ["listing_id"],
+      properties: {
+        listing_id: { type: "string", pattern: "^[0-9]{1,30}$" },
+        description_max_chars: { type: "integer", minimum: 0, maximum: 4000, default: 1000 }
       }
-    }
-  },
-  "outputSchema": {
-    "type": "object",
-    "oneOf": [
-      {
-        "type": "object",
-        "additionalProperties": false,
-        "required": [
-          "status",
-          "listing"
-        ],
-        "properties": {
-          "status": {
-            "const": "ok"
-          },
-          "listing": {
-            "type": "object",
-            "additionalProperties": false,
-            "required": [
-              "listing_id",
-              "url",
-              "title",
-              "price",
-              "price_text",
-              "is_live",
-              "is_pending",
-              "is_sold",
-              "created_timestamp",
-              "currency",
-              "description",
-              "description_truncated",
-              "condition",
-              "location_text",
-              "availability",
-              "delivery_types"
-            ],
-            "properties": {
-              "listing_id": {
-                "type": "string",
-                "pattern": "^[0-9]{1,30}$"
-              },
-              "url": {
-                "type": "string",
-                "pattern": "^https://www\\.facebook\\.com/marketplace/item/[0-9]{1,30}/$"
-              },
-              "title": {
-                "type": "string",
-                "maxLength": 300
-              },
-              "price": {
-                "type": [
-                  "string",
-                  "null"
-                ],
-                "maxLength": 40
-              },
-              "price_text": {
-                "type": [
-                  "string",
-                  "null"
-                ],
-                "maxLength": 100
-              },
-              "is_live": {
-                "type": [
-                  "boolean",
-                  "null"
-                ]
-              },
-              "is_pending": {
-                "type": [
-                  "boolean",
-                  "null"
-                ]
-              },
-              "is_sold": {
-                "type": [
-                  "boolean",
-                  "null"
-                ]
-              },
-              "created_timestamp": {
-                "type": [
-                  "integer",
-                  "null"
-                ],
-                "minimum": 0
-              },
-              "currency": {
-                "type": [
-                  "string",
-                  "null"
-                ],
-                "maxLength": 10
-              },
-              "description": {
-                "type": [
-                  "string",
-                  "null"
-                ],
-                "maxLength": 4000
-              },
-              "description_truncated": {
-                "type": "boolean"
-              },
-              "condition": {
-                "type": [
-                  "string",
-                  "null"
-                ],
-                "maxLength": 100
-              },
-              "location_text": {
-                "type": [
-                  "string",
-                  "null"
-                ],
-                "maxLength": 200
-              },
-              "availability": {
-                "type": [
-                  "string",
-                  "null"
-                ],
-                "maxLength": 40
-              },
-              "delivery_types": {
-                "type": "array",
-                "maxItems": 8,
-                "items": {
-                  "type": "string",
-                  "maxLength": 40
-                }
+    },
+    outputSchema: {
+      type: "object",
+      oneOf: [
+        {
+          type: "object", additionalProperties: false, required: ["status", "listing"],
+          properties: {
+            status: { const: "ok" },
+            listing: {
+              type: "object", additionalProperties: false,
+              required: ["listing_id", "url", "title", "price", "price_text", "is_live", "is_pending", "is_sold", "created_timestamp", "currency", "description", "description_truncated", "condition", "location_text", "availability", "delivery_types"],
+              properties: {
+                listing_id: { type: "string", pattern: "^[0-9]{1,30}$" },
+                url: { type: "string", pattern: "^https://www\\.facebook\\.com/marketplace/item/[0-9]{1,30}/$" },
+                title: { type: "string", maxLength: 300 },
+                price: { type: ["string", "null"], maxLength: 40 },
+                price_text: { type: ["string", "null"], maxLength: 100 },
+                is_live: { type: ["boolean", "null"] },
+                is_pending: { type: ["boolean", "null"] },
+                is_sold: { type: ["boolean", "null"] },
+                created_timestamp: { type: ["integer", "null"], minimum: 0 },
+                currency: { type: ["string", "null"], maxLength: 10 },
+                description: { type: ["string", "null"], maxLength: 4000 },
+                description_truncated: { type: "boolean" },
+                condition: { type: ["string", "null"], maxLength: 100 },
+                location_text: { type: ["string", "null"], maxLength: 200 },
+                availability: { type: ["string", "null"], maxLength: 40 },
+                delivery_types: { type: "array", maxItems: 8, items: { type: "string", maxLength: 40 } }
               }
             }
           }
-        }
-      },
-      {
-        "type": "object",
-        "additionalProperties": false,
-        "required": [
-          "status",
-          "error_kind",
-          "error_message"
-        ],
-        "properties": {
-          "status": {
-            "const": "error"
-          },
-          "error_kind": {
-            "enum": [
-              "invalid_input",
-              "wrong_page",
-              "challenge",
-              "login_required",
-              "forbidden",
-              "rate_limited",
-              "gated",
-              "site_changed",
-              "timeout",
-              "canceled",
-              "site_error"
-            ]
-          },
-          "error_message": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 300
+        },
+        {
+          type: "object", additionalProperties: false, required: ["status", "error_kind", "error_message"],
+          properties: {
+            status: { const: "error" },
+            error_kind: { enum: ["invalid_input", "wrong_page", "challenge", "login_required", "forbidden", "rate_limited", "gated", "site_changed", "timeout", "canceled", "site_error"] },
+            error_message: { type: "string", minLength: 1, maxLength: 300 }
           }
         }
-      }
-    ]
+      ]
+    },
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true }
   },
-  "annotations": {
-    "readOnlyHint": true,
-    "destructiveHint": false,
-    "idempotentHint": true,
-    "openWorldHint": true
-  }
-},
   execute: async (input, context = {}) => {
     const fail = (kind, message) => ({ status: "error", error_kind: kind, error_message: message });
     const fields = ["listing_id", "description_max_chars"];
