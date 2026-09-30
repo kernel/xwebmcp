@@ -5,6 +5,9 @@ Tools for DoorDash (https://www.doordash.com).
 | tool | file | status | notes |
 |------|------|--------|-------|
 | login | [login.js](login.js) | qa_passed | Email + password sign-in with a two-step guided flow; existing sessions verified against the profile page; `otp` mode for the 2-Step Verification modal |
+| get_cart | [get_cart.js](get_cart.js) | draft | Account-checked open-cart read with line ids, options, provisional totals and revision |
+| get_checkout_summary | [get_checkout_summary.js](get_checkout_summary.js) | draft | Read-only preparation and manual checkout handoff; never opens checkout or orders |
+| remove_cart_item | [remove_cart_item.js](remove_cart_item.js) | draft | Exact non-last personal cart-line removal with account/revision/duplicate guards; fixture-only mutation evidence |
 | get_store | [get_store.js](get_store.js) | qa_passed | Page tool: store hours, service modes, delivery and pickup availability with estimates and fee strings, and menu ids, with the delivery basis (selected address, none selected, unknown) stated explicitly and delivery figures returned only for a selected address; never changes the address |
 
 ## Native WebMCP tools
@@ -102,7 +105,7 @@ challenge appeared in any run.
 
 ```javascript
 const fs = await import("node:fs");
-const tools = ["login", "get_store"].map(name => eval(fs.readFileSync(`domains/doordash.com/${name}.js`, "utf8"))[0]);
+const tools = ["login", "get_store", "get_cart", "get_checkout_summary", "remove_cart_item"].map(name => eval(fs.readFileSync(`domains/doordash.com/${name}.js`, "utf8"))[0]);
 await webmcp.addCustomTools({ namespace: "doordash.com", tools, forceOverwriteNamespace: true });
 const tool = (await webmcp.listTools()).find(t => t.source.custom?.namespace === "doordash.com" && t.tool.name === "login");
 const result = await webmcp.invokeTool(tool.tool_ref, { email: "qa@example.invalid", password: "fabricated" }, { timeoutSec: 120 });
@@ -110,7 +113,7 @@ const result = await webmcp.invokeTool(tool.tool_ref, { email: "qa@example.inval
 // await webmcp.invokeTool(tool.tool_ref, { email: "qa@example.invalid", otp: "123456" }, { timeoutSec: 120 });
 ```
 
-`forceOverwriteNamespace: true` replaces every tool in `doordash.com`, so register `login` and `get_store`
+`forceOverwriteNamespace: true` replaces every tool in `doordash.com`, so register all five tools
 together as one array. Take a fresh `tool_ref` after navigation. Use `timeoutSec: 120`
 (the WebMCP maximum); the post-submit observation window is 45 seconds and a full search-entry run
 took about 15 seconds. The runtime only lists a CDP tool on pages matching its `url_patterns`, so
@@ -486,3 +489,76 @@ namespace; this is flagged for review.
 - Long-lived signed-in browser (profile `personal-stuff`, residential proxy): `wjdkr9p7ugcc9ui4ssf7e4mm` (24-hour inactivity timeout; left alive for the search and cart phase).
 - Exploration browser (no profile): `f8hxya0e603z86s1nsamz01b` (deleted after this work).
 - Source: this repository is canonical; sessions expire but files do not. No credentials or codes are stored here.
+
+
+## Cart reads, reversible removal and order preparation
+
+Rechecked native coverage on 2026-09-30 in the explicitly authorized session: home exposes search/context/navigation;
+restaurant store exposes `get_restaurant_menu`, `get_item_details`, `add_to_cart`, context/navigation. These
+menu/item/add capabilities are not duplicated. The native page polyfill still lists them after custom
+namespace registration, although the current Kernel discovery API did not surface them in this recheck.
+
+All three new tools are `page`: same-origin requests from the current session, no navigation. They require
+`expected_account_email`, supplied by the user for the intended account, and compare it against the site's
+`consumerBucketing` query before reading private cart data. No email, account id, payment data, address street,
+entry codes, instructions, raw errors, cookies or signed URLs are returned. Do not infer the intended account
+from whatever session happens to be present. This account comparison is not human approval.
+
+- `get_cart`: reads `listDetailedCarts`, at most 20 open carts, 100 lines/cart, 50 options/line and 30 fee lines;
+  returns truncation flags, currency and integer minor-unit amounts (null when the site omits them). Every cart
+  has a SHA-256 `revision` of the queried cart shape for a fresh-state check. A whole output over 180 KB is refused.
+- `get_checkout_summary`: reads the same list and selects the exact `cart_id`, with an allowlisted cart summary,
+  explicit delivery context and a generated manual checkout URL. It does not load checkout or create checkout
+  state. Totals and fee lines are provisional and can be incomplete. `ready_for_order` is always false.
+- `remove_cart_item`: requires exact `cart_id`, `line_id` (cart line id, not menu item id), `expected_store_id`
+  and `expected_revision` from `get_cart`. It removes only an ordinary personal non-bundle, non-catering,
+  non-shipping cart line, with one non-finalized order and at least two lines. It refuses last-line removal,
+  incomplete/truncated carts, a missing/duplicate line, wrong store/account and stale revision before writing.
+
+### Safety design
+
+Removal uses the site's `removeCartItemV2` mutation, one attempt, with `returnCartFromOrderService: false`,
+`monitoringContext.isGroup: false` and `cartContext.deleteBundleCarts: false`. It never calls checkout,
+quantity/option updates, address/default changes, payment selection, scheduling, or order placement. The
+query and mutation were extracted from the site's public client bundle; the trimmed cart query and account
+query were accepted live. No mutation was sent to a live cart. The intended account is checked again before
+and after the write. A per-cart sessionStorage guard is installed synchronously before the write; an uncertain
+outcome retains it with no automatic expiry or retry. A fresh read must prove the line absent and every other
+queried cart identity and line field unchanged before reporting `removed: true` and clearing the guard.
+Fee/subtotal/total changes are expected and excluded from the unchanged-line check.
+
+The guard is per tab and is not a server-side lock. There is no observed atomic compare-and-swap API: a
+cross-tab change or account switch between the final read and write remains a race. Run serially and do
+not edit the cart elsewhere during a call. The site UI's Apollo cache is not updated by this request; refresh
+or read with `get_cart` rather than treating the old drawer as current. A cancelled/failed/partial write
+returns `outcome_unknown`, `write_attempted: true`; inspect manually and do not retry. No automatic guard
+clearance is exposed as a tool.
+
+`place_order` and payment execution are deliberately unshipped: the runtime provides no supported trusted
+human approval path bound to exact account, cart/items/quantities, address, final price, tip, delivery time
+and terms. A model-supplied `confirmed=true` is not authorization and is rejected as an extra field. The
+summary produces only preparation/handoff; it never triggers execution automatically.
+
+### Delivery context and limitations
+
+Header `basis` uses the same conservative rule as `get_store`. `default_address_region` is the account's
+saved default city/state/postal/country, not the actual cart address. The description and note explicitly
+state that distinction; neither address is changed. The cart query has no observed per-cart delivery-address
+field, so do not claim the default is selected for checkout. No real street, coordinates or address id is
+returned. Preview totals are not a final payable quote; tax/tip/promos/benefits can change at checkout.
+
+Quantity updates are omitted: the site's `updateCartItemV2` input includes fulfillment and customization
+context, and a complete preserve-options contract has not been observed. Removal is grounded separately
+and does not rebuild item options. New menu/item/add tools are omitted because the site provides them natively.
+
+### New-tool QA evidence and known limitations
+
+Author, 2026-09-30: authorized session still alive with its original 12-hour expiration unchanged. `consumerBucketing`
+confirmed a non-guest account and a default region (only field names recorded); trimmed `listDetailedCarts`
+returned HTTP 200 with an empty list. Whole five-tool namespace registered atomically, `get_cart` returned
+`ok`, empty list and `account_matched: true` from a different store page; wrong intended account returned
+`wrong_account` before the private cart query. No user cart/address/payment changed. Populated cart, actual
+fee/total semantics, and removal success remain fixture-only; no live mutation consent was supplied.
+
+Independent QA for the broadened source is pending. Prior `get_store`/`login` evidence above is historical,
+not sign-off on new cart tools. All new entries remain draft until this review completes.

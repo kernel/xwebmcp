@@ -115,6 +115,32 @@
     },
     {
       "domain": "doordash.com",
+      "tool": "get_cart",
+      "file": "domains/doordash.com/get_cart.js",
+      "kind": "page",
+      "namespace": "doordash.com",
+      "url_patterns": [
+        "https://www.doordash.com/*"
+      ],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Account-checked cart read/order preparation."
+    },
+    {
+      "domain": "doordash.com",
+      "tool": "get_checkout_summary",
+      "file": "domains/doordash.com/get_checkout_summary.js",
+      "kind": "page",
+      "namespace": "doordash.com",
+      "url_patterns": [
+        "https://www.doordash.com/*"
+      ],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Account-checked cart read/order preparation."
+    },
+    {
+      "domain": "doordash.com",
       "tool": "get_store",
       "file": "domains/doordash.com/get_store.js",
       "kind": "page",
@@ -145,6 +171,19 @@
       "provenance": {
         "qa_agent": "agt_5b1753eb7444ed26b1d6"
       }
+    },
+    {
+      "domain": "doordash.com",
+      "tool": "remove_cart_item",
+      "file": "domains/doordash.com/remove_cart_item.js",
+      "kind": "page",
+      "namespace": "doordash.com",
+      "url_patterns": [
+        "https://www.doordash.com/*"
+      ],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Exact personal cart-line removal with revision, account and duplicate-write guards. Mutation QA is fixture-only; no live cart consent."
     },
     {
       "domain": "etsy.com",
@@ -534,7 +573,7 @@
       ],
       "status": "verified",
       "last_verified": "2026-09-24",
-      "notes": "Independent search/parser QA passed; domain migration live-verified from /travel-agents. Returns initial outbound cards only, including round trips; 1\u20137 adults; displayed cash fares are not trip totals. Inventory failures remain explicit errors.",
+      "notes": "Independent search/parser QA passed; domain migration live-verified from /travel-agents. Returns initial outbound cards only, including round trips; 1–7 adults; displayed cash fares are not trip totals. Inventory failures remain explicit errors.",
       "provenance": {
         "qa_agent": "agt_8da83a2e489269a5ff05"
       }
