@@ -855,3 +855,41 @@ test("get_restaurant: every table-reservation type is supported, party sizes sor
   assert.deepEqual(result.offerings[0].party_sizes, [2, 9, 10]);
   assert.deepEqual(result.offerings[3].pricing, { description: "$3", price_type: null, amount_cents: null, per: null, fees: [{ name: "f", type: "PERCENT", min: 1, max: 2 }] });
 });
+
+// --- third-round review: empty-state matching, pricing fallbacks and load state --------------------------
+
+test("get_availability: only the site's sold-out sentence counts, not a bare Sold out chip, and the match ignores case", async () => {
+  const chip = await cdpHarness({ page: { slots: [], days: monthDays, lines: ["Sold out"] } }).run(availability);
+  assert.equal(chip.status, "error");
+  assert.equal(chip.error_kind, "site_error", "a chip with no message is not an availability message");
+  const cased = await cdpHarness({ page: { slots: [], days: monthDays, lines: ["A Fabricated Supper Is Sold Out."] } }).run(availability);
+  assert.equal(cased.reason, "sold_out");
+  const stray = await cdpHarness({ page: listPage({ lines: ["Our patio is sold out most weekends."] }) }).run(availability);
+  assert.equal(stray.status, "ok", "a stray sentence is ignored when the page lists slots");
+});
+
+test("get_availability: pricing is built from whatever price fields exist and falls back to the first party range", async () => {
+  const noRange = await cdpHarness({ page: listPage(), offerings: [experience(1, "A", { price: { priceDescription: "$5", fees: [{ name: "f", min: 1, max: 2, type: "FLAT" }] } })] }).run(availability);
+  assert.deepEqual(noRange.offering.pricing, { description: "$5", price_type: null, amount_cents: null, per: null, fees: [{ name: "f", type: "FLAT", min: 1, max: 2 }] });
+  const none = await cdpHarness({ page: listPage(), offerings: [experience(1, "A", { price: {} })] }).run(availability);
+  assert.equal(none.offering.pricing, null);
+  const late = { partyRangeConfigs: [{ minPartySize: 3, ticketPriceInformation: { priceType: "PREPAID", priceDistribution: "PER_TICKET", amountCents: 700 } }] };
+  const fallback = await cdpHarness({ page: listPage(), offerings: [experience(1, "A", { price: late })] }).run(availability);
+  assert.equal(fallback.offering.pricing.amount_cents, 700, "no range covers a party of 2, so the first range is shown rather than nothing");
+});
+
+test("get_availability: a tab that never reaches the new page does not return the old page's slots", async () => {
+  const h = cdpHarness({ page: { ...listPage(), origin: 1 } });
+  const result = await h.run(availability);
+  assert.equal(result.status, "error");
+  assert.equal(result.error_kind, "site_error");
+  const hung = cdpHarness({ pages: [{ origin: 1, ...listPage() }, { origin: 1, ...listPage() }, { origin: 3, ready: "loading", slots: [] }] });
+  assert.equal((await hung.run(availability)).error_kind, "site_error", "a new document that never finishes loading is not replaced by the old one");
+});
+
+test("get_availability: a document that has not finished loading is never read", async () => {
+  const h = cdpHarness({ page: { ...listPage(), ready: "interactive" } });
+  const result = await h.run(availability);
+  assert.equal(result.error_kind, "site_error");
+  assert.match(result.error_message, /within 45 seconds/);
+});

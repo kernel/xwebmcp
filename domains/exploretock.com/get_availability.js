@@ -212,6 +212,7 @@
     const SUPPORTED = ["RESERVATION", "PRIX_FIXE", "DEPOSIT"];
     const deadline = Date.now() + 45000;
     let snap = null;
+    let settled = null;
     let seen = null;
     let missing = 0;
     while (Date.now() < deadline) {
@@ -234,12 +235,15 @@
       if (today && input.date < today) return fail("invalid_input", "date is before today at the venue (" + today + " there).");
       if (!snap.slots.length && !snap.empty_message) continue;
       const signature = snap.slots.length + "|" + snap.empty_message;
-      if (signature === seen) break;
+      if (signature === seen) { settled = snap; break; }
       seen = signature;
     }
-    if (!snap || !snap.business || !(snap.slots.length || snap.empty_message)) return fail("site_error", "The offering page did not show a slot list or an availability message within 45 seconds.");
-    const offering = snap.offerings && snap.offerings.find(o => o.id === input.offering_id);
-    if (!offering) return fail("site_changed", "The page state lists no offerings, so the offering could not be confirmed; the site may have changed.");
+    if (!settled) {
+      if (snap && snap.origin !== before && snap.ready === "complete" && snap.business && !snap.offerings) return fail("site_changed", "The page state lists no offerings, so the offering could not be confirmed; the site may have changed.");
+      return fail("site_error", "The offering page did not show a slot list or an availability message within 45 seconds.");
+    }
+    snap = settled;
+    const offering = snap.offerings.find(o => o.id === input.offering_id);
     if (snap.query_size !== null && snap.query_size !== String(partySize)) return fail("invalid_input", "The site changed the party size to " + snap.query_size + " instead of " + partySize + ".");
     if (snap.query_date !== null && snap.query_date !== input.date) return fail("invalid_input", "The site changed the date to " + snap.query_date + " instead of " + input.date + ".");
 
