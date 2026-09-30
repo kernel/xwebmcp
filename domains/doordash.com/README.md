@@ -500,7 +500,8 @@ namespace registration, although the current Kernel discovery API did not surfac
 
 All three new tools are `page`: same-origin requests from the current session, no navigation. They require
 `expected_account_email`, supplied by the user for the intended account, and compare it against the site's
-`consumerBucketing` query before reading private cart data. No email, account id, payment data, address street,
+`consumerBucketing` query before and after reading private cart data; an observable account switch discards
+all results. No email, account id, payment data, address street,
 entry codes, instructions, raw errors, cookies or signed URLs are returned. Do not infer the intended account
 from whatever session happens to be present. This account comparison is not human approval.
 
@@ -512,8 +513,10 @@ from whatever session happens to be present. This account comparison is not huma
   state. Totals and fee lines are provisional and can be incomplete. `ready_for_order` is always false.
 - `remove_cart_item`: requires exact `cart_id`, `line_id` (cart line id, not menu item id), `expected_store_id`
   and `expected_revision` from `get_cart`. It removes only an ordinary personal non-bundle, non-catering,
-  non-shipping cart line, with one non-finalized order and at least two lines. It refuses last-line removal,
-  incomplete/truncated carts, a missing/duplicate line, wrong store/account and stale revision before writing.
+  non-shipping, non-prescription cart line, with one non-finalized order and at least two lines. All lines
+  must have explicit non-prescription status, matching item/store ids, complete option ids and a positive
+  finite quantity. It refuses last-line removal, incomplete/truncated carts, a missing/duplicate line,
+  wrong store/account and stale revision before writing.
 
 ### Safety design
 
@@ -560,5 +563,23 @@ returned HTTP 200 with an empty list. Whole five-tool namespace registered atomi
 `wrong_account` before the private cart query. No user cart/address/payment changed. Populated cart, actual
 fee/total semantics, and removal success remain fixture-only; no live mutation consent was supplied.
 
-Independent QA for the broadened source is pending. Prior `get_store`/`login` evidence above is historical,
-not sign-off on new cart tools. All new entries remain draft until this review completes.
+Independent QA round 1, 2026-09-30, same reviewer `agt_e3cd254315c78d609b12` using
+`openai-codex/gpt-6.1-sol` (high reasoning; Codex auth runtime-checked), at `dd01703`: defects found.
+Two major findings were reproduced with isolated fixtures: account switches after the private cart read
+could release mismatched results, and line-level prescription/incomplete identity data did not block removal.
+Both are now guarded with regressions. A minor late-cancellation case could clear the guard after the final
+hash completed; cancellation is now checked before guard clearance and returns `outcome_unknown`.
+
+That review passed 1637 tests and 89 independent scratch cases, compiled all new schemas with Ajv, and
+exercised the full namespace on Kernel and the local extension (23 extension invocations). All populated
+cart, preview and removal successes were fixture-only, with zero tool-fetch escapes; live guest calls failed
+as `login_required`. Existing `get_store` locale/distance safeguards remained unchanged. Native menu/item/add
+were seen alongside all customs on a fully loaded Kernel store page; native home tools remained available
+in navigator but not API discovery. Re-review of the fixes is pending; new entries remain draft.
+
+Author local-extension check at `dd01703`: exact-SHA install in a throwaway Chromium 153 profile, atomic
+five-tool attach and site grant; page-originated mocked cart→preview→remove success made one mocked write,
+zero network escapes and preserved the document marker. Extension-owned-tab calls covered live guest and
+malformed-input failures plus signed-out `get_store` success. These are not claims of live cart mutation.
+The original authorized login session reached its unchanged expiration and was deleted after the deadline.
+No signed-in/populated extension profile was used.

@@ -187,6 +187,7 @@
       if (projectedBefore.truncated || new TextEncoder().encode(JSON.stringify(projectedBefore)).byteLength > 170000) return fail("blocked", "The complete cart exceeds safe bounds. Nothing was changed.");
       const lines = before.orders[0].orderItems;
       if (!Array.isArray(lines) || lines.length < 2 || lines.length > 100 || lines.some(l => !l || !ident(l.id))) return fail("blocked", "Last-line removal or an incomplete/unsupported cart is not supported.");
+      if (lines.some(l => l.isPrescriptionItem !== false || !ident(l.item?.id) || String(l.item?.storeId) !== input.expected_store_id || !Array.isArray(l.options) || l.options.some(o => !o || !ident(o.id)) || typeof l.quantity !== "number" || !Number.isFinite(l.quantity) || l.quantity <= 0)) return fail("blocked", "Prescription, incomplete or conflicting cart lines are not supported. Nothing was changed.");
       if (lines.filter(l => String(l.id) === input.line_id).length !== 1) return fail("not_found", "That exact line is not present exactly once in this cart.");
       if (await revision(before) !== input.expected_revision) return fail("stale_state", "The cart changed after get_cart. Read it again; no write was sent.");
       await readAccount();
@@ -211,6 +212,7 @@
       const expected = { ...before, subtotal: after.subtotal, total: after.total, orders: before.orders.map(o => ({ ...o, orderItems: o.orderItems.filter(l => String(l.id) !== input.line_id), lineItems: after.orders?.[0]?.lineItems })) };
       if (JSON.stringify(canonical(expected)) !== JSON.stringify(canonical(after))) return fail("outcome_unknown", "The exact removal with unchanged other lines was not confirmed. Inspect manually; do not retry.", true);
       const remaining = await project(after);
+      if (signal.aborted) return fail("outcome_unknown", "Cancelled before the final cart result was returned. Inspect manually; do not retry.", true);
       if (remaining.truncated || new TextEncoder().encode(JSON.stringify(remaining)).byteLength > 170000) return fail("outcome_unknown", "The remaining cart exceeds safe observation bounds. Inspect manually; do not retry.", true);
       if (sessionStorage.getItem(key) === lock) sessionStorage.removeItem(key);
       return { status: "ok", account_matched: true, removed: true, cart_id: input.cart_id, line_id: input.line_id, write_attempted: true, remaining_cart: remaining };

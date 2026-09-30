@@ -194,8 +194,9 @@
       return { basis, default_address_region: { city: text(c.defaultAddress?.city), state: text(c.defaultAddress?.state), postal_code: text(c.defaultAddress?.zipCode), country_code: text(c.defaultAddress?.countryCode) }, note: "Basis describes the current header, not a verified cart delivery address. The region is the account's saved default, which may differ. No address is selected or changed. Totals and fees are provisional, not a payable quote." };
     };
     try {
-      const account = await readAccount();
+      await readAccount();
       const carts = await readCarts();
+      const account = await readAccount();
       const matching = carts.filter(c => c?.id === input.cart_id);
       if (matching.length !== 1) return fail("not_found", "The exact open cart was not found in this account.");
       const projected = await project(matching[0]);

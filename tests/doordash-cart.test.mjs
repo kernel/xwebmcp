@@ -9,7 +9,7 @@ const sources = Object.fromEntries(["get_cart", "get_checkout_summary", "remove_
 const plain = value => JSON.parse(JSON.stringify(value));
 const email = "shopper@example.invalid";
 const account = () => ({ email, isGuest: false, defaultAddress: { city: "Testville", state: "ZZ", zipCode: "00000", countryCode: "US", entryCode: "secret-entry" } });
-const item = (id, quantity = 1) => ({ id, quantity, singlePrice: 700, priceOfTotalQuantity: 700 * quantity, priceDisplayString: "$7.00", cartItemStatusType: "CART_ITEM_STATUS_TYPE_UNSPECIFIED", options: [{ id: "extra-1", name: "Tofu", quantity: 1, price: 100 }], item: { id: "menu-" + id, name: "Fabricated bowl", storeId: "1001" } });
+const item = (id, quantity = 1) => ({ id, quantity, singlePrice: 700, priceOfTotalQuantity: 700 * quantity, priceDisplayString: "$7.00", cartItemStatusType: "CART_ITEM_STATUS_TYPE_UNSPECIFIED", isPrescriptionItem: false, options: [{ id: "extra-1", name: "Tofu", quantity: 1, price: 100 }], item: { id: "menu-" + id, name: "Fabricated bowl", storeId: "1001" } });
 const cart = () => ({ id: "cart-1", groupCart: false, isBundle: false, isCatering: false, isMerchantShipping: false, isPrescriptionDelivery: false, isConsumerPickup: false, currencyCode: "USD", subtotal: 1400, total: 1700, restaurant: { id: "1001", name: "Fabricated Kitchen" }, orders: [{ id: "order-1", isSubCartFinalized: false, orderItems: [item("line-1"), item("line-2")], lineItems: [{ label: "Service fee", finalMoney: { unitAmount: 300, displayString: "$3.00" } }] }] });
 
 function conforms(s, v) {
@@ -50,7 +50,7 @@ function harness(options = {}) {
     } else throw new Error("unexpected operation");
     return { status: 200, ok: true, text: async () => JSON.stringify({ data }) };
   };
-  const context = { location: { origin: options.origin ?? "https://www.doordash.com", pathname: "/home" }, document: { cookie: "csrf_token=fabricated-token; dd_cx_logged_in=true", querySelector: selector => selector.includes("addressTextButton") && options.header !== null ? { innerText: options.header ?? "1 Fabricated Street" } : null }, fetch, crypto: webcrypto, TextEncoder, AbortSignal, sessionStorage: { getItem: k => options.storageError ? (() => { throw Error("blocked"); })() : store.get(k) ?? null, setItem: (k, v) => store.set(k, v), removeItem: k => store.delete(k) } };
+  const context = { location: { origin: options.origin ?? "https://www.doordash.com", pathname: "/home" }, document: { cookie: "csrf_token=fabricated-token; dd_cx_logged_in=true", querySelector: selector => selector.includes("addressTextButton") && options.header !== null ? { innerText: options.header ?? "1 Fabricated Street" } : null }, fetch, crypto: options.crypto ?? webcrypto, TextEncoder, AbortSignal, sessionStorage: { getItem: k => options.storageError ? (() => { throw Error("blocked"); })() : store.get(k) ?? null, setItem: (k, v) => store.set(k, v), removeItem: k => store.delete(k) } };
   const definitions = Object.fromEntries(Object.entries(sources).map(([name, source]) => [name, runInNewContext(`(${source})`, context)[0]]));
   const run = async (name, input, signal) => {
     const result = plain(await definitions[name].execute(input, { signal }));
@@ -109,7 +109,7 @@ test("cart read exposes only allowlisted fields, minor amounts, options and revi
   assert.match(out.carts[0].revision, /^[a-f0-9]{64}$/);
   assert.equal(out.delivery_context.basis, "selected_address");
   for (const secret of [email, "private-password", "private-stripe", "private-instruction", "secret-entry", "fabricated-token", "1 Fabricated Street"]) assert.ok(!JSON.stringify(out).includes(secret));
-  assert.equal(h.calls.length, 2); assert.ok(h.calls.every(c => c.query.startsWith("query ")));
+  assert.equal(h.calls.length, 3); assert.ok(h.calls.every(c => c.query.startsWith("query ")));
   assert.equal(h.calls[0].headers["x-csrftoken"], "fabricated-token");
 });
 
@@ -221,4 +221,58 @@ test("concurrent removals share a per-cart guard, at most one write", async () =
   const h = harness({ writeError: true }); const input = await removalInput(h);
   const out = await Promise.all([h.run("remove_cart_item", input), h.run("remove_cart_item", input)]);
   assert.ok(out.some(o => o.error_kind === "busy")); assert.equal(writes(h).length, 1);
+});
+
+
+for (const name of ["get_cart", "get_checkout_summary"]) {
+  test(`${name}: observable account switch after private read discards all cart data`, async () => {
+    let h;
+    h = harness({ respond: body => {
+      if (body.operationName === "listDetailedCarts") {
+        h.setConsumer({ ...account(), email: "other@example.invalid" });
+        const other = cart(); other.restaurant.name = "OTHER_ACCOUNT_CART";
+        return { json: { data: { listDetailedCarts: { detailedCarts: [{ cart: other }] } } } };
+      }
+    } });
+    const out = await h.run(name, name === "get_cart" ? read : { ...read, cart_id: "cart-1" });
+    assert.equal(out.error_kind, "wrong_account");
+    assert.ok(!JSON.stringify(out).includes("OTHER_ACCOUNT_CART"));
+    assert.equal(writes(h).length, 0);
+  });
+}
+
+for (const [label, change] of [
+  ["prescription", l => { l.isPrescriptionItem = true; }],
+  ["unknown prescription status", l => { delete l.isPrescriptionItem; }],
+  ["missing item", l => { l.item = null; }],
+  ["missing item id", l => { l.item.id = null; }],
+  ["conflicting store", l => { l.item.storeId = "1002"; }],
+  ["missing options", l => { l.options = null; }],
+  ["missing option id", l => { l.options[0].id = null; }],
+  ["invalid quantity", l => { l.quantity = 0; }]
+]) {
+  test(`removal refuses ${label} before any guard or write`, async () => {
+    for (const lineIndex of [0, 1]) {
+      const c = cart(); change(c.orders[0].orderItems[lineIndex]);
+      const h = harness({ carts: [c] }); const input = await removalInput(h);
+      const out = await h.run("remove_cart_item", input);
+      assert.equal(out.error_kind, "blocked"); assert.equal(out.write_attempted, false);
+      assert.equal(writes(h).length, 0); assert.equal(h.store.size, 0);
+    }
+  });
+}
+
+test("late cancellation during final digest retains the uncertain-outcome guard", async () => {
+  const controller = new AbortController();
+  let actionStarted = false, digests = 0;
+  const crypto = { randomUUID: () => webcrypto.randomUUID(), subtle: { digest: async (...args) => {
+    if (actionStarted && ++digests === 3) controller.abort();
+    return webcrypto.subtle.digest(...args);
+  } } };
+  const h = harness({ crypto }); const input = await removalInput(h);
+  actionStarted = true;
+  const out = await h.run("remove_cart_item", input, controller.signal);
+  assert.equal(out.error_kind, "outcome_unknown"); assert.equal(out.write_attempted, true);
+  assert.equal(writes(h).length, 1); assert.equal(h.store.size, 1);
+  await h.run("remove_cart_item", input); assert.equal(writes(h).length, 1);
 });

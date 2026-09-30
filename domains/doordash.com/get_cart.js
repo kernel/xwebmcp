@@ -195,8 +195,9 @@
       return { basis, default_address_region: { city: text(c.defaultAddress?.city), state: text(c.defaultAddress?.state), postal_code: text(c.defaultAddress?.zipCode), country_code: text(c.defaultAddress?.countryCode) }, note: "Basis describes the current header, not a verified cart delivery address. The region is the account's saved default, which may differ. No address is selected or changed. Totals and fees are provisional, not a payable quote." };
     };
     try {
-      const account = await readAccount();
+      await readAccount();
       const carts = await readCarts();
+      const account = await readAccount();
       const output = { status: "ok", account_matched: true, carts: await Promise.all(carts.slice(0, 20).map(project)), carts_truncated: carts.length > 20, delivery_context: deliveryContext(account) };
       if (new TextEncoder().encode(JSON.stringify(output)).byteLength > 180000) return fail("blocked", "The cart list exceeds the safe output limit; inspect the site manually.");
       return output;
