@@ -119,15 +119,13 @@
       "idempotentHint": true,
       "openWorldHint": true
     }
-  }
-,
+  },
   execute: async (input, { signal } = {}) => {
     const ORIGIN = "https://www.opentable.com";
     const fail = (kind, message) => ({ status: "error", error_kind: kind, error_message: message });
     const allowed = ["expected_account_email"];
     if (!input || typeof input !== "object" || Array.isArray(input) || Object.keys(input).some(k => !allowed.includes(k))) return fail("invalid_input", "Unknown or missing input fields.");
     if (typeof input.expected_account_email !== "string" || input.expected_account_email.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(input.expected_account_email)) return fail("invalid_input", "expected_account_email must be the email of the explicitly authorized account.");
-    
     if (signal?.aborted) return fail("canceled", "The account read was canceled before any request.");
     if (window.location.origin !== ORIGIN) return fail("wrong_page", "Open a https://www.opentable.com page first.");
     if (/access denied/i.test(document.title || "") || document.querySelector("#sec-if-cpt-container, #sec-bc-tile-parent")) return fail("challenge", "OpenTable is challenging this browser; no request was sent.");

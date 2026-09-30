@@ -228,12 +228,11 @@
       "idempotentHint": true,
       "openWorldHint": true
     }
-  }
-,
+  },
   execute: async (input, { signal } = {}) => {
     const ORIGIN = "https://www.opentable.com";
     const fail = (kind, message) => ({ status: "error", error_kind: kind, error_message: message });
-    const allowed = ["restaurant_id","date","time","party_size","seating_type"];
+    const allowed = ["restaurant_id", "date", "time", "party_size", "seating_type"];
     if (!input || typeof input !== "object" || Array.isArray(input) || Object.keys(input).some(k => !allowed.includes(k))) return fail("invalid_input", "Unknown or missing input fields.");
     if (!Number.isInteger(input.restaurant_id) || input.restaurant_id < 1 || input.restaurant_id > 2147483647) return fail("invalid_input", "restaurant_id must be an integer from 1 to 2147483647.");
     const date = input.date;

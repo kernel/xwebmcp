@@ -117,12 +117,11 @@
       "idempotentHint": true,
       "openWorldHint": true
     }
-  }
-,
+  },
   execute: async (input, { signal } = {}) => {
     const ORIGIN = "https://www.opentable.com";
     const fail = (kind, message) => ({ status: "error", error_kind: kind, error_message: message });
-    const allowed = ["expected_account_email","page"];
+    const allowed = ["expected_account_email", "page"];
     if (!input || typeof input !== "object" || Array.isArray(input) || Object.keys(input).some(k => !allowed.includes(k))) return fail("invalid_input", "Unknown or missing input fields.");
     if (typeof input.expected_account_email !== "string" || input.expected_account_email.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(input.expected_account_email)) return fail("invalid_input", "expected_account_email must be the email of the explicitly authorized account.");
     const page = input.page ?? 1;
