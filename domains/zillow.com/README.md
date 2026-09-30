@@ -4,9 +4,9 @@ Zillow public property search, core facts and listing-agent contact preparation.
 
 | tool | file | status | notes |
 |---|---|---|---|
-| `get_listing` | `get_listing.js` | draft | Core public facts from one canonical property URL. |
-| `prepare_contact` | `prepare_contact.js` | draft | Local review-only preview; never fills or submits the contact form. |
-| `search` | `search.js` | draft | Exact US city/state sale search, one bounded result page. |
+| `get_listing` | `get_listing.js` | verified | Core public facts; independent QA and unrelated-page live read passed. |
+| `prepare_contact` | `prepare_contact.js` | qa_passed | Independent QA passed; local preview requires the exact property dialog. |
+| `search` | `search.js` | verified | Exact city/state sale search; independent QA and unrelated-page live read passed. |
 
 ## Scope and loading
 
@@ -115,13 +115,27 @@ extension fixtures, and identified two fixture-only defects: hidden contact
 consent text and contradictory rental rows in sale results. Both are now rejected
 or excluded by source guards with regression tests. A subsequent recheck found
 hidden descendants inside a visible consent paragraph; rendered `innerText` now
-replaces `textContent`, with an additional regression test. Final-source recheck
-is pending.
+replaces `textContent`, with an additional regression test. Independent QA signed
+off final tool source `750a5613b422818865c986686f9331c538eb3e8a` on
+2026-09-30 after the initial review and two fix/rechecks. All reported defects are
+closed. Metadata-only status/documentation updates do not change that source.
+
+The final independent pass ran 1,711 full-suite tests, 134 Zillow tests and 13
+extension unit checks, compiled all six schemas with Ajv, and validated exercised
+outputs. Final-source Kernel live search/core-facts/preview cases succeeded,
+including unrelated-page reads. Contact preview made zero fetches and preserved
+fields/cookies. Blocked, auth, contradictory payload, hidden consent and
+cancellation cases were fixture-tested rather than manufacturing live denials or
+account activity. Final local extension fixture tests also covered native-name
+coexistence, namespace replacement, deadlines and private-state exclusion.
 
 Author local Chromium extension checks also registered/discovered all three tools,
-returned live public search/core-facts success from the homepage, returned
-`wrong_property` for contact preview there, and replaced the full namespace.
-The test copy pregranted only the Zillow host permission in its manifest; runtime
-JavaScript and tool sources were unchanged. This does not verify the extension's
-interactive permission-grant UI or live contact-preview success locally. The
-extension page-tool/input/invoker unit checks pass.
+returned final-source live public search/core-facts success from the homepage,
+returned `wrong_property` for contact preview there, and replaced the full
+namespace. Final-source local live preview from the property's open contact
+dialog also returned `prepared`, with fields unchanged and no submission.
+The isolated test copy pregranted only the Zillow host permission in its manifest;
+runtime JavaScript and tool sources were unchanged. This does not verify the
+interactive permission-grant UI. Independent local verification was fixture-only;
+independent live cross-runtime parity is not claimed. All temporary test browsers
+were deleted/closed after testing.

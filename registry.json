@@ -1284,9 +1284,12 @@
       "url_patterns": [
         "https://www.zillow.com/*"
       ],
-      "status": "draft",
-      "last_verified": null,
-      "notes": "One anonymous public HTML read for core property facts; no navigation, tracking scripts or contact actions."
+      "status": "verified",
+      "last_verified": "2026-09-30",
+      "notes": "Independent final-source QA and live read from homepage passed. One anonymous HTML GET for core facts; no navigation, personalized state or contact action.",
+      "provenance": {
+        "qa_agent": "agt_d1036a3d605c8c4f3d7b"
+      }
     },
     {
       "domain": "zillow.com",
@@ -1297,9 +1300,12 @@
       "url_patterns": [
         "https://www.zillow.com/*"
       ],
-      "status": "draft",
-      "last_verified": null,
-      "notes": "Local review-only preview from an already-open listing-agent dialog; no fields filled, terms accepted or request sent."
+      "status": "qa_passed",
+      "last_verified": "2026-09-30",
+      "notes": "Independent final-source QA and Kernel live preview passed. Requires exact property and open dialog; reads rendered consent and previews supplied details without filling, sending or approval. Local independent testing is fixture-only.",
+      "provenance": {
+        "qa_agent": "agt_d1036a3d605c8c4f3d7b"
+      }
     },
     {
       "domain": "zillow.com",
@@ -1310,9 +1316,12 @@
       "url_patterns": [
         "https://www.zillow.com/*"
       ],
-      "status": "draft",
-      "last_verified": null,
-      "notes": "Exact city/state sale search; at most two anonymous HTML reads, one results page, 41 rows and no retries."
+      "status": "verified",
+      "last_verified": "2026-09-30",
+      "notes": "Independent final-source QA and live search from a property page passed. Exact US city/state sale-only; at most two anonymous HTML GETs, one page, 41 rows and no retries.",
+      "provenance": {
+        "qa_agent": "agt_d1036a3d605c8c4f3d7b"
+      }
     }
   ]
 }
