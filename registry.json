@@ -1284,9 +1284,12 @@
       "url_patterns": [
         "https://www.vividseats.com/*"
       ],
-      "status": "draft",
-      "last_verified": null,
-      "notes": "Public read-only page details."
+      "status": "verified",
+      "last_verified": "2026-09-30",
+      "notes": "Public event details from an exact URL: identity, stated local date/time, lineup, restrictions and venue address. Independent live success from Explore in Kernel and the extension; TBD placeholder time/start stay null. No navigation or inventory hold.",
+      "provenance": {
+        "qa_agent": "agt_0257fb751e04553b9365"
+      }
     },
     {
       "domain": "vividseats.com",
@@ -1297,9 +1300,12 @@
       "url_patterns": [
         "https://www.vividseats.com/*"
       ],
-      "status": "draft",
-      "last_verified": null,
-      "notes": "Public, read-only page tool on www.vividseats.com: an event's listings with all-in USD price per ticket (cheapest first), optional quantity, price-range, zone and section filters and zone/section grouping, plus the price components the site says the all-in price includes. Rows and prices matched the event page on the events compared; the page collapses same-section general-admission rows. Never selects, carts or buys."
+      "status": "verified",
+      "last_verified": "2026-09-30",
+      "notes": "Public, read-only listings with all-in USD prices, exact quantity splits, price/zone/section filters and grouping. Independent live success from Explore in Kernel and the extension. Unknown fee/VAT basis fails closed; page GA rows may collapse multiple listings. Never selects, carts or buys.",
+      "provenance": {
+        "qa_agent": "agt_0257fb751e04553b9365"
+      }
     },
     {
       "domain": "vividseats.com",
@@ -1310,9 +1316,12 @@
       "url_patterns": [
         "https://www.vividseats.com/*"
       ],
-      "status": "draft",
-      "last_verified": null,
-      "notes": "Public read-only page details."
+      "status": "verified",
+      "last_verified": "2026-09-30",
+      "notes": "Public venue address, coordinates, timezone and catalog capacity from an exact URL. Independent live success from Explore in Kernel and the extension. Capacity is not configuration-specific availability; no navigation or account reads.",
+      "provenance": {
+        "qa_agent": "agt_0257fb751e04553b9365"
+      }
     },
     {
       "domain": "vividseats.com",
@@ -1323,9 +1332,12 @@
       "url_patterns": [
         "https://www.vividseats.com/*"
       ],
-      "status": "draft",
-      "last_verified": null,
-      "notes": "Public quote preparation only; no site selection, checkout, hold or payment."
+      "status": "verified",
+      "last_verified": "2026-09-30",
+      "notes": "Independent live GET-only quote preparation from Explore in Kernel and the extension. Revalidates exact event/listing/quantity/price/group and fee basis. Returns an ordinary event-page handoff; no site selection, checkout, hold, approval or payment execution.",
+      "provenance": {
+        "qa_agent": "agt_0257fb751e04553b9365"
+      }
     },
     {
       "domain": "vividseats.com",
@@ -1336,9 +1348,12 @@
       "url_patterns": [
         "https://www.vividseats.com/*"
       ],
-      "status": "draft",
-      "last_verified": null,
-      "notes": "Public, read-only page tool on www.vividseats.com: events by text, place (city lookup or coordinates), dates, category, performer, venue and lowest-price ceiling, one page at a time within the site's 1000-match window. Prices and counts come from the site's search index and can be stale; the radius is approximate (the tool warns); USD only."
+      "status": "verified",
+      "last_verified": "2026-09-30",
+      "notes": "Public read-only events by text, location, local dates, category, performer, venue and price ceiling, within the site's 1000-match window. Independent live success from Explore in Kernel and the extension. Search-index prices/counts can be stale; radius is approximate and warns; USD only.",
+      "provenance": {
+        "qa_agent": "agt_0257fb751e04553b9365"
+      }
     }
   ]
 }

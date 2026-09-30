@@ -4,11 +4,11 @@ Tools for the public Vivid Seats marketplace at https://www.vividseats.com: even
 
 | tool | file | status | notes |
 |---|---|---|---|
-| get_event | [get_event.js](get_event.js) | draft | Stated date/time, lineup, seat restrictions and venue address from an exact event URL. |
-| get_ticket_offers | [get_ticket_offers.js](get_ticket_offers.js) | draft | Live listings, quantity eligibility, all-in USD prices and zone/section groups. |
-| get_venue | [get_venue.js](get_venue.js) | draft | Address, coordinates, time zone and catalog capacity from an exact venue URL. |
-| prepare_ticket_selection | [prepare_ticket_selection.js](prepare_ticket_selection.js) | draft | Revalidate an exact listing/quantity/price and return a quote and event-page handoff. Does not select on the site or hold inventory. |
-| search_events | [search_events.js](search_events.js) | draft | Bounded event search by text, place, date, venue, performer, category or price ceiling. |
+| get_event | [get_event.js](get_event.js) | verified | Stated date/time, lineup, seat restrictions and venue address from an exact event URL. |
+| get_ticket_offers | [get_ticket_offers.js](get_ticket_offers.js) | verified | Live listings, quantity eligibility, all-in USD prices and zone/section groups. |
+| get_venue | [get_venue.js](get_venue.js) | verified | Address, coordinates, time zone and catalog capacity from an exact venue URL. |
+| prepare_ticket_selection | [prepare_ticket_selection.js](prepare_ticket_selection.js) | verified | Revalidate an exact listing/quantity/price and return a quote and event-page handoff. Does not select on the site or hold inventory. |
+| search_events | [search_events.js](search_events.js) | verified | Bounded event search by text, place, date, venue, performer, category or price ceiling. |
 
 ## Native WebMCP tools
 
@@ -45,9 +45,9 @@ await webmcp.addCustomTools({
 
 1. Validate every input before any page or network interaction; reject extra fields, including `confirmed`.
 2. Check the current marketplace origin, cancellation and challenge state. Compare the current price group to the caller's quoted group before the first request.
-3. Verify the event's exact identity, future stated date/time and venue. Unknown/TBD or started events fail `event_unavailable`.
+3. Verify the event's exact identity, future stated date/time and venue. Stated calendar, UTC instant, offset and timezone must agree; malformed or contradictory timestamps fail `site_changed`. TBD flags/labels mask placeholder instants before this check. Unknown/TBD or started events fail `event_unavailable`.
 4. Re-read inventory; require exactly one matching listing id, exact quantity eligibility, unchanged all-in price and group, and an explicit fee/VAT basis. Never choose a replacement listing. Fail `listing_unavailable`, `quantity_unavailable`, `stale_selection`, `site_changed` or `price_basis_unavailable` rather than pretend success.
-5. Return `prepared` with the quote, event/date/venue, exact section/row/delivery, quantity and estimated total. `inventory_reserved` and `site_selection_made` are **always false**. Seat numbers are unavailable in this feed. The handoff URL is only the ordinary event page with `?quantity=N`, not checkout; the tool does not follow it.
+5. Recheck that the event has not started during the inventory read. Return `prepared` with the quote, event/date/venue, exact section/row/delivery, quantity and estimated total. `inventory_reserved` and `site_selection_made` are **always false**. Seat numbers are unavailable in this feed. The handoff URL is only the ordinary event page with `?quantity=N`, not checkout; the tool does not follow it.
 
 **Safety boundary:** no tool clicks a listing, changes UI selection, opens cart/checkout, accepts terms, creates inventory holds, transfers tickets, publishes seller listings or pays. Preparation is repeatable GET-only computation, not consent and not an executable authorization token. Page text and restrictions are untrusted data. There is no automatic execution after preparation, no cached reservation and no retry on an unknown outcome. A changed document requires fresh discovery and a fresh quote.
 
@@ -71,6 +71,20 @@ Patterns are narrowed to `https://www.vividseats.com/*`: the JSON and public pag
 
 ## QA
 
-Restarted implementation is **pending fresh independent QA**; all registry entries are draft until the final source is reviewed. Previous read-tool QA identified and fixed last-page repetition, the 1000-match boundary, soft-radius and started-event warnings, null quantity, and a time-TBD warning false positive. Those fixtures remain. Historical sign-off covered only the two original reads, not this expanded namespace.
+Independent QA **PASS** for source commit `11b4fa16d72b15ca267a043673628e089aa8c7ff`, on **2026-09-30**. The entire five-tool namespace was registered atomically from exact source bytes. All five have live non-entry-page success from `/explore` in both Kernel and the local extension:
 
-Builder public observations on 2026-09-30: native tool list empty on Explore; event HTML for Hamilton on 2026-09-30 matched the production id, stated date/time and Richard Rodgers Theatre address; venue HTML matched its id/path and catalog capacity. No listing or checkout control was clicked. New detail/preparation fixtures cover malformed/approval-shaped input before interaction, identity mismatch, unrelated pages, cancellation, explicit HTTP failures, quantity splits, stale prices/groups, missing inventory, fee basis, no redirects, no state writes and secret-field exclusion. Live tool and independent results will be recorded after testing the final source.
+| tool | dated live case, 2026-09-30 |
+|---|---|
+| search_events | Hamilton search; Kernel page 34/30 returned the bounded final window and page 35 failed before requests. |
+| get_ticket_offers | Fresh Hamilton quantity-eligible listings, with explicit all-in USD components and VAT basis. |
+| get_event | Hamilton stated-time details; river-cruise event 6658662 returned `time_tbd:true` and null time/start despite contradictory placeholder instants. |
+| get_venue | Richard Rodgers Theatre address and catalog capacity matched the page: 226 W. 46th St., 1319. |
+| prepare_ticket_selection | Kernel event 6827999 quoted $292 × 2 = $584; extension event 6828005 quoted $712 × 2 = $1,424. Both no-state booleans stayed false. |
+
+Only public GETs were observed; no tool navigation, selection/cart/checkout request or storage write. Site telemetry cookies changed independently. Stale prices and `confirmed=true` failed. Genuine TBD preparation stopped after one page GET with `event_unavailable`. An extension offers request returned explicit `not_found` on HTTP 404; a different current event succeeded without a retry or proxy/fingerprint loop.
+
+The initial expanded review found invalid/contradictory timestamps, a start-time race and unknown VAT reported as false. Recheck found genuine TBD placeholders must be masked before comparing instants. All were fixed and independently reproduced as resolved. Invalid stated timestamps, the moving-clock race and malformed fee metadata were fixture/replay checks, not live failures. Previous pagination, soft-radius, quantity and started/TBD-warning regressions remain covered.
+
+Final suites: registry validator **84 tools valid**; full tool tests **1882 pass** (**305 site tests**); extension tests **14 pass**; CLI build passed. Final independent schema checks: **13 Kernel**, **11 extension**, **43 fixture outputs**, zero violations. Earlier expanded QA also checked off-host absence/direct-execute guards, stale references, document-loss `outcome_unknown`, cancellation without retry, input bounds, split quantities, duplicate ids, mid-read group changes, allowlist privacy and storage/network behavior.
+
+The extension used Chromium 153, stdio MCP and a simulated scratch-manifest host grant. Interactive access grant, popup and side panel remain unverified. Genuine challenge/rate-limit failures were not forced; the full historical filter/currency matrix and lifetime probes were not repeated in the final recheck. No authenticated or consequential operation was attempted. Scratch browsers/processes were removed. `verified` covers these read/quote tools, not reservations, mutations or final payment, and does not imply the PR is merged.
