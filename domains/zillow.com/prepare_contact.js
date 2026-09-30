@@ -77,7 +77,7 @@
     }
     const buttons = Array.from(form.querySelectorAll("button")).filter(button => button.textContent.trim() === "Contact Agent");
     if (buttons.length !== 1 || !visible(buttons[0])) return fail("site_changed", "The contact submission control changed; nothing was prepared.");
-    const paragraphs = Array.from(dialog.querySelectorAll("p"));
+    const paragraphs = Array.from(dialog.querySelectorAll("p")).filter(visible);
     const disclosure = paragraphs.map(node => node.textContent.trim()).find(value => value.startsWith("By pressing Contact Agent,"));
     if (!disclosure || disclosure.length > 3000 || !/Terms of Use/.test(disclosure)) return fail("site_changed", "The contact consent disclosure is missing or unsupported; nothing was prepared.");
     return {

@@ -253,7 +253,7 @@
         const id = String(row?.zpid ?? "");
         const url = listingUrl(row?.detailUrl);
         const home = row?.hdpData?.homeInfo;
-        if (!/^[1-9][0-9]{0,14}$/.test(id) || !url || !url.endsWith("/" + id + "_zpid/") || row.isBuilding || !home || String(home.zpid) !== id) return fail("site_changed", "Zillow returned an unsupported listing row or mismatched property identity.");
+        if (!/^[1-9][0-9]{0,14}$/.test(id) || !url || !url.endsWith("/" + id + "_zpid/") || row.isBuilding || !home || String(home.zpid) !== id || home.homeStatus !== "FOR_SALE") return fail("site_changed", "Zillow returned an unsupported listing row or mismatched property identity.");
         if (seen.has(id)) continue;
         seen.add(id);
         results.push({

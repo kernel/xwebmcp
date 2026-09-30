@@ -266,7 +266,7 @@ test("zillow search: bounds rows, removes within-page duplicates and preserves n
   assert.equal(output.results[1].price, null);
   assert.ok(JSON.stringify(output).length < 5000);
 });
-for (const rows of [[row("12345678", { detailUrl: "https://evil.test/private?token=secret" })], [row("12345678", { isBuilding: true })], [row("12345678", { detailUrl: listing.replace("12345678", "99999999") })], Array.from({ length: 42 }, () => row())]) {
+for (const rows of [[row("12345678", { hdpData: { homeInfo: { zpid: 12345678, homeStatus: "FOR_RENT" } }, unformattedPrice: 2500 })], [row("12345678", { detailUrl: "https://evil.test/private?token=secret" })], [row("12345678", { isBuilding: true })], [row("12345678", { detailUrl: listing.replace("12345678", "99999999") })], Array.from({ length: 42 }, () => row())]) {
   test("zillow search: unsupported/unsafe result rows are site_changed, not silently skipped", async () => {
     const h = harness("search", { respond: (path, n) => n === 2 ? { data: embedded({ searchPageState: searchState(JSON.parse(new URL(path, home).searchParams.get("searchQueryState")), rows) }) } : null });
     assert.equal((await h.run(valid("search"))).error_kind, "site_changed");

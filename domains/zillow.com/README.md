@@ -110,6 +110,15 @@ public dialog. All returned structured outputs without navigation. The preview
 did not populate the inputs; the search cookie remained absent. Native discovery
 before registration was empty. No signed-in account was used for these checks.
 
-Independent review is pending. The extension page-tool/input/invoker unit checks
-pass; a local unpacked Chromium extension started, but host-permission approval
-has not yet completed, so local live invocation/parity is not claimed.
+Initial independent QA exercised all three Kernel live happy paths and local
+extension fixtures, and identified two fixture-only defects: hidden contact
+consent text and contradictory rental rows in sale results. Both are now rejected
+or excluded by source guards with regression tests. Final-source recheck is pending.
+
+Author local Chromium extension checks also registered/discovered all three tools,
+returned live public search/core-facts success from the homepage, returned
+`wrong_property` for contact preview there, and replaced the full namespace.
+The test copy pregranted only the Zillow host permission in its manifest; runtime
+JavaScript and tool sources were unchanged. This does not verify the extension's
+interactive permission-grant UI or live contact-preview success locally. The
+extension page-tool/input/invoker unit checks pass.

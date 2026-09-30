@@ -33,7 +33,11 @@ function harness(options = {}) {
     querySelectorAll: selector => {
       if (selector === "h4") return [{ textContent: options.otherDialog ? "Request a tour" : "Contact Listing Agent" }];
       if (selector === '[data-testid="contact-form"] form') return options.ambiguous ? [form, form] : [form];
-      if (selector === "p") return [{ textContent: options.disclosure ?? disclosure }];
+      if (selector === "p") {
+        const current = { ...element({}), textContent: options.disclosure ?? disclosure };
+        const hidden = { ...element({}), getClientRects: () => [], textContent: "By pressing Contact Agent, hidden outdated Terms of Use." };
+        return options.onlyHiddenDisclosure ? [hidden] : options.hiddenDisclosure ? [hidden, current] : [current];
+      }
       return [];
     }
   };
@@ -76,7 +80,7 @@ for (const value of [undefined, null, [], {}, { ...input, confirmed: true }, { .
 for (const [options, kind] of [
   [{ url: "https://example.test/" }, "wrong_page"], [{ url: listing.replace("12345678", "99999999") }, "wrong_property"], [{ challenge: true }, "challenge"],
   [{ noDialog: true }, "form_not_open"], [{ hidden: true }, "form_not_open"], [{ otherDialog: true }, "form_not_open"], [{ missingField: true }, "site_changed"],
-  [{ optionalField: true }, "site_changed"], [{ ambiguous: true }, "site_changed"], [{ disclosure: "changed consent" }, "site_changed"], [{ disclosure: "By pressing Contact Agent, " + "x".repeat(3100) }, "site_changed"]
+  [{ optionalField: true }, "site_changed"], [{ ambiguous: true }, "site_changed"], [{ onlyHiddenDisclosure: true }, "site_changed"], [{ disclosure: "changed consent" }, "site_changed"], [{ disclosure: "By pressing Contact Agent, " + "x".repeat(3100) }, "site_changed"]
 ]) {
   test(`zillow prepare_contact: prerequisite failure ${JSON.stringify(options)} is ${kind}`, async () => {
     const result = await harness(options).run();
@@ -84,6 +88,12 @@ for (const [options, kind] of [
     assert.equal(result.error_kind, kind);
   });
 }
+test("zillow prepare_contact: ignores hidden consent text before the visible disclosure", async () => {
+  const result = await harness({ hiddenDisclosure: true }).run();
+  assert.equal(result.status, "prepared");
+  assert.equal(result.consent_disclosure, disclosure);
+});
+
 test("zillow prepare_contact: cancellation is checked before page access", async () => {
   const h = harness();
   assert.equal((await h.run(input, { signal: { aborted: true } })).error_kind, "canceled");
