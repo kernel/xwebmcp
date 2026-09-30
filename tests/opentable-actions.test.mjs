@@ -164,6 +164,36 @@ test("preparation requires the exact time and seating, does not substitute, and 
   assert.ok(out.requests.every(r => !/booking|hold|reservation\/create|notify/i.test(r.path)));
 });
 
+test("unknown seating-specific experience data fails closed", async () => {
+  for (const name of ["get_availability", "prepare_reservation"]) {
+    for (const value of [undefined, null, "unknown", [{}], [{ isMandatory: "unknown" }]]) {
+      await failure(name, query, "site_changed", { availability: availability([slot({ isMandatoryBySeating: value })]) });
+    }
+  }
+});
+
+test("challenge words inside valid profile and account state are not challenge pages", async () => {
+  for (const marker of ["sec-if-cpt-container", "sec-bc-tile-parent"]) {
+    const p = { restaurantProfile: { ...profile.restaurantProfile, restaurant: { ...profile.restaurantProfile.restaurant, name: marker } } };
+    for (const name of ["get_availability", "prepare_reservation"]) {
+      const out = await run(name, query, { profile: p });
+      assert.equal(out.result.status, name === "get_availability" ? "ok" : "prepared");
+    }
+    const d = { ...dashboard, header: { userProfile: { ...dashboard.header.userProfile, firstName: marker } } };
+    assert.equal((await run("get_account_summary", account, { dashboard: d })).result.status, "ok");
+    assert.equal((await run("list_saved_restaurants", account, { dashboard: d })).result.status, "no_results");
+  }
+});
+
+test("exact preparation searches beyond the display cap and refuses incomplete oversized inventory", async () => {
+  const slots = Array.from({ length: 50 }, () => slot({ timeOffsetMinutes: -15 }));
+  slots.push(slot());
+  const out = await run("prepare_reservation", query, { availability: availability(slots) });
+  assert.equal(out.result.status, "prepared");
+  assert.equal(out.result.selected_slot.time, query.time);
+  await failure("prepare_reservation", query, "site_changed", { availability: availability(Array.from({ length: 201 }, () => slot())) });
+});
+
 test("account summary is grounded in containers, does not return private items, and rejects wrong accounts", async () => {
   const out = await run("get_account_summary", account);
   assert.equal(out.result.points, 1200);

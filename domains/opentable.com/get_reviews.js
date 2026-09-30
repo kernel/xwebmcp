@@ -70,7 +70,7 @@
           type: "object", additionalProperties: false, required: ["status", "error_kind", "error_message"],
           properties: {
             status: { const: "error" },
-            error_kind: { enum: ["invalid_input", "unsupported_host", "wrong_page", "not_found", "challenge", "rate_limited", "site_changed", "site_error"] },
+            error_kind: { enum: ["invalid_input", "unsupported_host", "wrong_page", "not_found", "challenge", "rate_limited", "site_changed", "site_error", "canceled"] },
             error_message: { type: "string", minLength: 1 }
           }
         }
@@ -78,7 +78,7 @@
     },
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true }
   },
-  execute: async (input) => {
+  execute: async (input, { signal } = {}) => {
     const ORIGIN = "https://www.opentable.com";
     const PAGE_SIZE = 10;
     const fail = (kind, message) => ({ status: "error", error_kind: kind, error_message: message });
@@ -116,10 +116,11 @@
     const observedAt = () => new Date().toISOString();
 
     try {
+      if (signal?.aborted) return fail("canceled", "The review read was canceled before any request.");
       if (window.location.origin !== ORIGIN) return fail("wrong_page", "Open any https://www.opentable.com page first; this tool reads the restaurant page from that page.");
       if (/access denied/i.test(document.title || "")) return fail("challenge", "OpenTable's bot protection is showing 'Access Denied' to this browser; wait or use a different browser session.");
 
-      const res = await fetch(page > 1 ? path + "?page=" + page : path, { credentials: "same-origin", headers: { accept: "text/html" } });
+      const res = await fetch(page > 1 ? path + "?page=" + page : path, { credentials: "same-origin", headers: { accept: "text/html" }, signal });
       const html = await res.text();
       const title = /<title[^>]*>([^<]*)/i.exec(html)?.[1] ?? "";
       if (res.status === 429) return fail("rate_limited", "OpenTable answered HTTP 429; wait a few minutes before trying again.");
@@ -163,6 +164,7 @@
       if (!reviews.length) return fail("site_changed", "The review page listed reviews without the ids this tool reads.");
       return { status: "ok", restaurant_id: r.restaurantId, name, url, page, total_count: results.totalCount, total_pages: results.totalPages, sort: "newest", observed_at: observedAt(), reviews };
     } catch (error) {
+      if (signal?.aborted) return fail("canceled", "The review read was canceled.");
       return fail("site_error", "The request from the page failed: " + (error && error.message ? error.message : String(error)));
     }
   }

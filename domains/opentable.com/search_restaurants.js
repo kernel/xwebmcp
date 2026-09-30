@@ -84,7 +84,7 @@
           type: "object", additionalProperties: false, required: ["status", "error_kind", "error_message"],
           properties: {
             status: { const: "error" },
-            error_kind: { enum: ["invalid_input", "wrong_page", "challenge", "rate_limited", "site_changed", "site_error"] },
+            error_kind: { enum: ["invalid_input", "wrong_page", "challenge", "rate_limited", "site_changed", "site_error", "canceled"] },
             error_message: { type: "string", minLength: 1 }
           }
         }
@@ -92,7 +92,7 @@
     },
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true }
   },
-  execute: async (input) => {
+  execute: async (input, { signal } = {}) => {
     const ORIGIN = "https://www.opentable.com";
     const fail = (kind, message) => ({ status: "error", error_kind: kind, error_message: message });
     const allowed = ["query", "date", "time", "party_size", "page"];
@@ -123,6 +123,7 @@
     const observedAt = new Date().toISOString();
 
     try {
+      if (signal?.aborted) return fail("canceled", "The search was canceled before any request.");
       if (window.location.origin !== ORIGIN) return fail("wrong_page", "Open any https://www.opentable.com page first; this tool reads the site's search page from that page.");
       if (/access denied/i.test(document.title || "")) return fail("challenge", "OpenTable's bot protection is showing 'Access Denied' to this browser; wait or use a different browser session.");
 
@@ -131,7 +132,7 @@
       if (partySize) params.set("covers", String(partySize));
       params.set("term", query);
       if (page > 1) params.set("page", String(page));
-      const res = await fetch("/s?" + params.toString().replace(/\+/g, "%20"), { credentials: "same-origin", headers: { accept: "text/html" } });
+      const res = await fetch("/s?" + params.toString().replace(/\+/g, "%20"), { credentials: "same-origin", headers: { accept: "text/html" }, signal });
       const html = await res.text();
       const title = /<title[^>]*>([^<]*)/i.exec(html)?.[1] ?? "";
       if (res.status === 429) return fail("rate_limited", "OpenTable answered HTTP 429; wait a few minutes before searching again.");
@@ -174,6 +175,7 @@
         has_more: search.totalRestaurantCount > (page - 1) * pageSize + shown.length, location, observed_at: observedAt, restaurants
       };
     } catch (error) {
+      if (signal?.aborted) return fail("canceled", "The search was canceled.");
       return fail("site_error", "The request from the page failed: " + (error && error.message ? error.message : String(error)));
     }
   }

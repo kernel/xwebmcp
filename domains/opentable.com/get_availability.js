@@ -220,7 +220,8 @@
     if (/access denied/i.test(document.title || "") || document.querySelector("#sec-if-cpt-container, #sec-bc-tile-parent")) return fail("challenge", "OpenTable is challenging this browser; no request was sent.");
     const check = (res, text) => {
       if (res.status === 429) return fail("rate_limited", "OpenTable rate limited the request; nothing was retried.");
-      if (res.status === 403 || /<title[^>]*>\s*Access Denied/i.test(text) || /sec-if-cpt-container|sec-bc-tile-parent/.test(text.slice(0, 10000))) return fail("challenge", "OpenTable refused or challenged the request; nothing was retried.");
+      const hasState = /<script\b[^>]*\bid="primary-window-vars"/.test(text);
+      if (res.status === 403 || (!hasState && (/<title[^>]*>\s*Access Denied/i.test(text) || /sec-if-cpt-container|sec-bc-tile-parent/.test(text.slice(0, 10000))))) return fail("challenge", "OpenTable refused or challenged the request; nothing was retried.");
       if (res.status === 404) return fail("not_found", "The requested restaurant or site resource was not found.");
       if (!res.ok) return fail("site_error", "OpenTable returned HTTP " + res.status + ".");
       return null;
@@ -286,11 +287,11 @@
       const slots = [];
       for (const s of day.slots.slice(0, 200)) {
         if (s?.isAvailable !== true || s.type !== "Standard") continue;
-        if (!Number.isInteger(s.timeOffsetMinutes) || Math.abs(s.timeOffsetMinutes) > (input.window_minutes ?? 120) || !Array.isArray(s.attributes) || typeof s.isMandatory !== "boolean") return fail("site_changed", "An available slot did not have the supported fields.");
+        if (!Number.isInteger(s.timeOffsetMinutes) || Math.abs(s.timeOffsetMinutes) > (input.window_minutes ?? 120) || !Array.isArray(s.attributes) || typeof s.isMandatory !== "boolean" || !Array.isArray(s.isMandatoryBySeating) || s.isMandatoryBySeating.some(x => !x || typeof x.isMandatory !== "boolean")) return fail("site_changed", "An available slot did not have the supported fields.");
         const minutes = startMinutes + s.timeOffsetMinutes;
         if (minutes < 0 || minutes >= 1440) continue;
         const seatingTypes = s.attributes.filter(x => typeof x === "string" && /^[a-zA-Z][a-zA-Z0-9_]{0,39}$/.test(x)).slice(0, 10);
-        const mandatory = s.isMandatory || (Array.isArray(s.isMandatoryBySeating) && s.isMandatoryBySeating.some(x => x?.isMandatory === true));
+        const mandatory = s.isMandatory || s.isMandatoryBySeating.some(x => x.isMandatory);
         slots.push({ date, time: String(Math.floor(minutes / 60)).padStart(2, "0") + ":" + String(minutes % 60).padStart(2, "0"), seating_types: seatingTypes, points: Number.isSafeInteger(s.pointsValue) && s.pointsValue >= 0 ? s.pointsValue : null, requires_experience: mandatory });
         if (slots.length === 50) break;
       }

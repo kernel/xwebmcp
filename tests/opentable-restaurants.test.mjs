@@ -143,7 +143,7 @@ async function run(name, input, o = {}) {
   const [definition] = runInNewContext(`(${sources[name]})`, {});
   // The runtime serializes a page tool's execute into the page, so run the serialized text against stubbed globals only.
   const execute = runInNewContext("(" + definition.execute.toString() + ")", context);
-  const output = plain(await execute(input));
+  const output = plain(await execute(input, { signal: o.signal }));
   return { output, calls, definition };
 }
 const definitionOf = name => runInNewContext(`(${sources[name]})`, {})[0];
@@ -680,6 +680,21 @@ test("invalid search dates fail before fetch and impossible review timestamps be
   const out = await run("get_reviews", { restaurant_id: 555 }, ok(pageHtml(state)));
   assert.equal(out.output.reviews[0].dined_at, null);
   assert.equal(out.output.reviews[0].submitted_at, null);
+});
+
+test("retained reads honor cancellation before requests and during a failed fetch", async () => {
+  for (const [name, input] of [["search_restaurants", { query: "pizza Chicago" }], ["get_restaurant", { restaurant_id: 555 }], ["get_reviews", { restaurant_id: 555 }]]) {
+    const before = await run(name, input, { signal: { aborted: true }, ...ok(pageHtml(profileState(555))) });
+    assert.equal(before.output.error_kind, "canceled");
+    assert.equal(before.calls.fetch.length, 0);
+    assertConforms(name, before.output);
+    const signal = { aborted: false };
+    const during = await run(name, input, { signal, respond: () => { signal.aborted = true; return new Error("Abort"); } });
+    assert.equal(during.output.error_kind, "canceled");
+    assert.equal(during.calls.fetch.length, 1);
+    assert.equal(during.calls.fetch[0].init.signal, signal);
+    assertConforms(name, during.output);
+  }
 });
 
 test("the tools never navigate, click, submit, or send anything but page GETs", async () => {

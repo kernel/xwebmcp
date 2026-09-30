@@ -132,7 +132,8 @@
     const check = (res, text) => {
       if (res.status === 429) return fail("rate_limited", "OpenTable rate limited the read; nothing was retried.");
       if (res.status === 401) return fail("login_required", "Sign in manually to the authorized OpenTable account first.");
-      if (res.status === 403 || /<title[^>]*>\s*Access Denied/i.test(text) || /sec-if-cpt-container|sec-bc-tile-parent/.test(text.slice(0, 10000))) return fail("challenge", "OpenTable refused or challenged the read.");
+      const hasState = /<script\b[^>]*\bid="primary-window-vars"/.test(text);
+      if (res.status === 403 || (!hasState && (/<title[^>]*>\s*Access Denied/i.test(text) || /sec-if-cpt-container|sec-bc-tile-parent/.test(text.slice(0, 10000))))) return fail("challenge", "OpenTable refused or challenged the read.");
       if (!res.ok) return fail("site_error", "OpenTable returned HTTP " + res.status + ".");
       return null;
     };

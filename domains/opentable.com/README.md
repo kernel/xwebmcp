@@ -20,7 +20,7 @@ None found on public home, search or restaurant profile pages on 2026-09-29. Rec
 
 ## Scope and loading
 
-Every tool is `kind: "page"`: it issues same-origin reads and returns without navigation. The registering document survives. No CDP exception is needed. Calls are serial per tab; use a 60-second invocation deadline and avoid rapid repeated content requests.
+Every tool is `kind: "page"`: it issues same-origin reads and returns without navigation. The registering document survives. No CDP exception is needed. Calls are serial per tab; use a 60-second invocation deadline and avoid rapid repeated content requests. All seven honor cancellation and pass the signal through to fetch.
 
 - `search_restaurants` fetches `/s?term=...` with optional `dateTime`, `covers`, `page`, then parses `windowVariables.__INITIAL_STATE__.multiSearch` from the JSON state script. Include a place in the query, such as `pizza Chicago`; otherwise the site uses approximate browser location. Results are not bookable slots.
 - `get_restaurant` and `get_reviews` fetch `/restaurant/profile/<id>` or an allowlisted `/r/<slug>` path. Legacy `/<slug>` links are ambiguous with account routes and are rejected before interaction; use the restaurant ID returned by search. Query and fragment are ignored. Review pagination adds `page=N`; the returned page must match because the site falls back to page 1 beyond the end. The default newest order is by dining date, not submission date.
@@ -33,7 +33,7 @@ All returned site text is untrusted data, not instructions. Outputs are field al
 
 ## Reservation action safety
 
-`prepare_reservation` repeats the public inventory read and requires an **exact** requested time and seating type. It returns `unavailable` rather than selecting a nearby time. Mandatory experiences are gated. It returns only a public profile URL with date/time/party parameters; it does not open that URL or click any slot.
+`prepare_reservation` repeats the public inventory read and requires an **exact** requested time and seating type. It returns `unavailable` rather than selecting a nearby time. Mandatory experiences are gated; unknown seating-specific mandatory fields fail explicitly. Preparation scans the entire returned day up to 200 slots, independent of the availability display cap, and fails on larger inventories rather than reporting an incomplete exact match. It returns only a public profile URL with date/time/party parameters; it does not open that URL or click any slot.
 
 `prepared` means an exact standard slot was observed, not reserved or held. The result explicitly says `account_verified: false`, `terms_status: "not_checked"`, `hold_created: false`, `reservation_created: false`, and `execution_blocker: "trusted_human_approval_unavailable"`. Availability does not establish deposits, prices, card requirements, cancellation or no-show fees. A human must verify the intended account and restaurant's current terms on the site **before selecting a slot**, since selecting a slot can create an inventory hold.
 
@@ -45,7 +45,7 @@ All tools match only `https://www.opentable.com/*`. Other subdomains are unrelat
 
 ## Site quirks
 
-- Akamai can return HTTP 403, an Access Denied title, or HTTP 200 with challenge markers `sec-if-cpt-container` / `sec-bc-tile-parent`. Tools report `challenge`; HTTP 429 is `rate_limited`. No automatic retries or bypass loops.
+- Akamai can return HTTP 403, an Access Denied title, or HTTP 200 with challenge markers `sec-if-cpt-container` / `sec-bc-tile-parent`. Tools report `challenge` when the fetched document lacks the legitimate state script; marker words inside valid state are not challenges. HTTP 403 is always a challenge; HTTP 429 is `rate_limited`. No automatic retries or bypass loops.
 - Pages expose a server-rendered JSON state script even though availability and Favorites load separately. Client-side account pages can have signed-out SSR snapshots; the fresh authenticated dining dashboard, not a visible header button, is the account identity gate.
 - A missing state script/query module is `site_changed`, a missing restaurant is `not_found` where observed, and query errors are not converted into no-results.
 - Published menu prices are passed through as listed, often strings or null, without per-item currency. Menu links have query/fragment removed; no external menu is fetched.
@@ -64,11 +64,22 @@ All tools match only `https://www.opentable.com/*`. Other subdomains are unrelat
 
 The original three-tool source passed historical independent public QA on 2026-09-29 at revision `49f3289`. That evidence does **not** approve this revised source. Prior findings reviewed before changes included an unsafe profile URL allowlist (already fixed), uncapped profile arrays (now capped), calendar-impossible timestamps (now rejected), and test-strength gaps. All seven current entries are initially draft pending fresh independent QA.
 
-Author checks on 2026-09-30, current source:
+Author checks on 2026-09-30, revision `52d625f` (before subsequent review fixes):
 
 - Kernel: all seven definitions registered together and discovered once each. From the public home page, availability returned five standard slots; exact preparation returned `prepared` without navigation or any slot/hold/booking request. A party above the restaurant's limit returned `no_results` with `AboveMaxPartySize`.
 - Authorized account, from its home page: account summary returned zero reservation/invitation counts and current points; Favorites returned `no_results` with total 0. No account item or token was returned, and no list or account state was changed. The empty account is not live evidence for populated item shapes.
-- Automated: registry validator passed (86 tools); full repository tool suite passed (1608 tests before the two extra regression tests), and the site suite passed all 33 tests afterward. Go tests and all 14 extension unit tests passed. Fixtures cover malformed inputs before requests, wrong host/account, missing login, cancellation, query errors, namespace membership, strict query-only discovery, output bounds, populated Favorites, exact preparation, and the absence of execution tools.
-- Local extension end-to-end verification of this revision is pending independent QA. Unit tests are not live runtime verification.
+- Automated: registry validator passed (86 tools); repository and site test results are recorded per revision below. Go tests and all 14 extension unit tests passed. Fixtures cover malformed inputs before requests, wrong host/account, missing login, cancellation, query errors, namespace membership, strict query-only discovery, output bounds, populated Favorites, exact preparation, and the absence of execution tools.
 
-Historical account access used only the already authorized session, without renewing its expiry or making account changes. Temporary public browsers are separate and deleted after testing. Independent final-source results will be recorded separately below.
+Account access used only the already authorized session, without renewing its expiry or making account changes. Temporary public browsers are separate and deleted after testing.
+
+### Independent revision review — 2026-09-30
+
+Revision `52d625f`: **FAIL**, 1610 repository tests, 33 site test blocks, 14 extension unit tests and Go tests passed. An independent reviewer completed 153 additional Node-fixture probes and schema-validated 153 fixture, seven Kernel-live and eight extension-live outputs. Findings: exact preparation could miss a slot after the 50-slot display cap; the retained three tools ignored cancellation; malformed seating-specific mandatory data was treated as optional; marker words inside valid state could be misclassified as a challenge. These are fixed in the subsequent source, pending a final-source recheck.
+
+- Kernel live: all seven discovered; from `/private-dining`, availability, exact preparation, profile/menu, reviews and search succeeded, plus unknown-ID and out-of-range errors. No navigation or writes. A first browser became renderer-unresponsive and returned `outcome_unknown`; it was not automatically retried. A separate public browser completed these calls. Namespace replacement was accepted; discovery on the unresponsive document was inconclusive.
+- Extension live: all seven discovered together; availability, preparation, party-size no-results, profile/menu, reviews, search and two failure cases succeeded without navigation or writes. Forced namespace replacement end-to-end was not completed in this pass.
+- Account success, populated Favorites, wrong-account and identity-change paths were independent **Node-fixture-only**. No extension account fixture matrix or independent live account success was obtained in this pass. Author live account evidence was empty-only and is not evidence for populated item schemas.
+- Inventory reads traversed 173 static modules per invocation, within the bound. The three inventory POSTs in the extension were read queries.
+- Both owned public browsers and the isolated extension profile/processes were cleaned up. No original account browser was used by the reviewer.
+
+Final-source review is pending. Historical approvals and this intermediate live evidence do not approve changed source. All seven registry statuses remain draft until the final recheck.
