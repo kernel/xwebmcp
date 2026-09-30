@@ -442,6 +442,7 @@
           }
         }
         await choose("button", (n) => n.endsWith("Done Button"));
+        remaining();
         await click("#findFilghtsCta");
         await wait(
           "idp-search-results, idp-adv-search-error-message:not(:empty)",
@@ -545,6 +546,7 @@
             }),
           { arg: Math.min(75000, remaining() * 1000) },
         );
+        remaining();
         if (ready === "timeout")
           throw Error("TIMEOUT: no terminal result signal");
         const parsed = await js(
@@ -727,6 +729,7 @@
           },
           { arg: input },
         );
+        remaining();
         if (parsed.empty) {
           resultsUrl = "https://www.delta.com/flightsearch/search-results";
           return output(

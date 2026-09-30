@@ -133,19 +133,19 @@ function element(text = "", selectors = {}, attributes = {}) {
 const dealId = "AAA-BBB-2026-11-03-2026-11-09-MAIN-money";
 function dealRow(options = {}) {
   const origin = options.origin ?? "AAA", destination = options.destination ?? "BBB";
-  const cells = ["money","miles"].map(pricing => {
+  const cells = (options.cabins ?? ["MAIN"]).flatMap(cabin => ["money","miles"].map(pricing => {
     const target = new URL("https://www.delta.com/flightsearch/search");
-    target.search = new URLSearchParams({ originCity: origin, destinationCity: destination, departureDate:"11/03/2026",returnDate:"11/09/2026",tripType:"ROUND_TRIP",paxCount:"1", cabinFareClass:"MAIN",awardTravel: pricing === "miles" ? "true":"false", sessionToken:"not-returned" }).toString();
+    target.search = new URLSearchParams({ originCity: origin, destinationCity: destination, departureDate:"11/03/2026",returnDate:"11/09/2026",tripType:"ROUND_TRIP",paxCount:"1", cabinFareClass:cabin,awardTravel: pricing === "miles" ? "true":"false", sessionToken:"not-returned" }).toString();
     if (options.duplicateQuery) target.searchParams.append("originCity",origin);
     if (options.targetHost) target.hostname = options.targetHost;
     const wrapper = new URL("https://tkpi.delta.com/redirect"); wrapper.searchParams.set("redirecturl",target.href);
     const link = element("BOOK",{}, { href:options.rawRedirect ? "https://tkpi.delta.com/redirect?requesttype=xcheck.click&id=123&redirecturl=" + target.href : wrapper.href });
     const price = pricing === "miles" ? "16,200 Miles + $12" : options.price ?? "$207";
-    const value = element(price);
+    const value = element(price, {}, { hidden:options.hiddenPrice });
     value.childNodes.push({ nodeType: 1, textContent: "BOOK private-noise" });
-    return element("", { "a.fares-table__button":link, ".fares-table__cell--value":value, ".fares-table__cell--label":element("Delta Main Round Trip Fare From") }, { "data-key":`price_MAIN_${pricing === "miles" ? "points":"cash"}` });
-  });
-  return element("", { '[data-key="period"] .fares-table__cell--value':element("Oct 31 – Nov 6, 2026"), '[data-key="table_origin"] .fares-table__cell--value':element(`Example Origin (${options.rowOrigin ?? origin})`), '[data-key="table_destination"] .fares-table__cell--value':element(`Example Destination (${destination})`), '[data-key^="price_"]':cells },{ hidden: options.hidden });
+    return element("", { "a.fares-table__button":link, ".fares-table__cell--value":value, ".fares-table__cell--label":element("Delta Main Round Trip Fare From", {}, {hidden:options.hiddenLabel}) }, { "data-key":`price_${cabin}_${pricing === "miles" ? "points":"cash"}` });
+  }));
+  return element("", { '[data-key="period"] .fares-table__cell--value':element("Oct 31 – Nov 6, 2026"), '[data-key="table_origin"] .fares-table__cell--value':element(`Example Origin (${options.rowOrigin ?? origin})`, {}, { hidden:options.hiddenOrigin }), '[data-key="table_destination"] .fares-table__cell--value':element(`Example Destination (${destination})`), '[data-key^="price_"]':cells },{ hidden: options.hidden });
 }
 function deals(name = "list_flight_deals", rows = [dealRow()], opts = {}) {
   let writes = 0;
@@ -181,10 +181,29 @@ test("deals: pricing/route filters, stable pagination, hidden rows", async () =>
 for (const input of [null, [], { offset:null },{ limit:null },{limit:21},{ offset:-1 },{pricing:"cash"},{origin:"aaa"},{destination:123},{confirmed:true}]) test(`deals: invalid before DOM ${JSON.stringify(input)}`, async () => {
   const h = harness("list_flight_deals"); assert.equal((await h.run(input)).error_kind,"invalid_input"); assert.equal(h.interactions(),0);
 });
-for (const options of [{targetHost:"evil.example"},{duplicateQuery:true},{rowOrigin:"CCC"},{price:"$0<script>"}]) test(`deals/preparation: malformed target fails closed ${JSON.stringify(options)}`, async () => {
+for (const options of [{targetHost:"evil.example"},{duplicateQuery:true},{rowOrigin:"CCC"},{price:"$0<script>"},{price:"$..."},{price:"$20,70"},{hiddenPrice:true},{hiddenOrigin:true}]) test(`deals/preparation: malformed target fails closed ${JSON.stringify(options)}`, async () => {
   assert.equal((await deals("list_flight_deals",[dealRow(options)]).run({})).error_kind,"site_changed");
   assert.equal((await deals("prepare_itinerary",[dealRow(options)]).run({deal_id:dealId,expected_price_display:"$207"})).error_kind,"site_changed");
 });
+test("responsive basis labels may be hidden while the actual price remains visible", async () => {
+  const rows = [dealRow({hiddenLabel:true})];
+  assert.equal((await deals("list_flight_deals",rows).run({})).status,"ok");
+  assert.equal((await deals("prepare_itinerary",rows).run({deal_id:dealId,expected_price_display:"$207"})).status,"prepared");
+});
+
+test("deals: total and per-row bounds keep pagination inside the input/output schema", async () => {
+  const code = n => "A" + String.fromCharCode(65 + Math.floor(n / 26)) + String.fromCharCode(65 + n % 26);
+  const large = Array.from({length:200},(_,i) => dealRow({origin:code(i),destination:"ZZZ",cabins:["MAIN","PLUS","EXTRA"]}));
+  assert.equal((await deals("list_flight_deals",large).run({offset:995,limit:20})).error_kind,"site_changed");
+  const exact = Array.from({length:250},(_,i) => dealRow({origin:code(i),destination:"ZZZ",cabins:["MAIN","PLUS"]}));
+  const out = await deals("list_flight_deals",exact).run({offset:995,limit:20});
+  assert.equal(out.status,"ok"); assert.equal(out.result_count,5); assert.equal(out.next_offset,null);
+  for (const name of ["list_flight_deals","prepare_itinerary"]) {
+    const h = deals(name,[dealRow({cabins:["MAIN","ONE","TWO","THREE","FOUR"]})]);
+    assert.equal((await h.run(name === "list_flight_deals" ? {} : {deal_id:dealId,expected_price_display:"$207"})).error_kind,"site_changed");
+  }
+});
+
 for (const name of ["list_flight_deals","prepare_itinerary"]) {
   const input = name === "list_flight_deals" ? {} : {deal_id:dealId,expected_price_display:"$207"};
   test(`${name}: no row is site_changed, duplicates ambiguous, unrelated page and access gates explicit`, async () => {

@@ -63,6 +63,7 @@
     try {
       for (const row of rows) {
         const cells = [...row.querySelectorAll('[data-key^="price_"]')].filter(visible);
+        if (cells.length > 8) throw Error("bound");
         for (const cell of cells) {
           const link = cell.querySelector("a.fares-table__button");
           if (!visible(link)) continue;
@@ -76,15 +77,18 @@
           if (!Object.entries(expected).every(([k,v]) => q.get(k) === v)) continue;
           for (const key of [...Object.keys(expected), "tripType", "paxCount"])
             if (q.getAll(key).length !== 1) throw Error("link");
+          const originNode = row.querySelector('[data-key="table_origin"] .fares-table__cell--value');
+          const destinationNode = row.querySelector('[data-key="table_destination"] .fares-table__cell--value');
+          const label = cell.querySelector(".fares-table__cell--label");
+          const value = cell.querySelector(".fares-table__cell--value");
+          if (![originNode, destinationNode, value].every(visible)) throw Error("hidden");
           if (q.get("tripType") !== "ROUND_TRIP" || q.get("paxCount") !== "1" ||
             cell.getAttribute("data-key") !== `price_${cabin}_${pricing === "miles" ? "points" : "cash"}` ||
-            !clean(row.querySelector('[data-key="table_origin"] .fares-table__cell--value')).endsWith(`(${origin})`) ||
-            !clean(row.querySelector('[data-key="table_destination"] .fares-table__cell--value')).endsWith(`(${destination})`) ||
-            !/Round Trip Fare From/i.test(clean(cell.querySelector(".fares-table__cell--label")))) throw Error("context");
-          const value = cell.querySelector(".fares-table__cell--value");
-          const price = [...(value?.childNodes || [])].filter(n => n.nodeType === 3).map(n => n.textContent).join(" ").replace(/\s+/g, " ").trim();
+            !clean(originNode).endsWith(`(${origin})`) || !clean(destinationNode).endsWith(`(${destination})`) ||
+            !/Round Trip Fare From/i.test(clean(label))) throw Error("context");
+          const price = [...value.childNodes].filter(n => n.nodeType === 3).map(n => n.textContent).join(" ").replace(/\s+/g, " ").trim();
           if (!price || price.length > 120 || /[\u0000-\u001f\u007f<>]/.test(price) ||
-            !(pricing === "miles" ? /^[\d,]+ Miles \+ [A-Z$€£¥\s]*[\d,.]+$/ : /^[A-Z$€£¥\s]*[\d,.]+$/).test(price)) throw Error("price");
+            !(pricing === "miles" ? /^(?:\d{1,3}(?:,\d{3})+|\d+) Miles \+ [A-Z$€£¥\s]*(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d{1,2})?$/ : /^[A-Z$€£¥\s]*(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d{1,2})?$/).test(price)) throw Error("price");
           candidates.push(price);
         }
       }

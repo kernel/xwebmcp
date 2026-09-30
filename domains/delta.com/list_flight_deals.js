@@ -84,11 +84,13 @@
     const deals = [];
     try {
       for (const row of rows) {
-        const period = clean(row.querySelector('[data-key="period"] .fares-table__cell--value'), 120);
-        const originText = clean(row.querySelector('[data-key="table_origin"] .fares-table__cell--value'), 120);
-        const destinationText = clean(row.querySelector('[data-key="table_destination"] .fares-table__cell--value'), 120);
+        const periodNode = row.querySelector('[data-key="period"] .fares-table__cell--value');
+        const originNode = row.querySelector('[data-key="table_origin"] .fares-table__cell--value');
+        const destinationNode = row.querySelector('[data-key="table_destination"] .fares-table__cell--value');
+        if (![periodNode, originNode, destinationNode].every(visible)) throw Error("hidden");
+        const period = clean(periodNode, 120), originText = clean(originNode, 120), destinationText = clean(destinationNode, 120);
         const cells = [...row.querySelectorAll('[data-key^="price_"]')].filter(visible);
-        if (!period || !cells.length) throw Error("shape");
+        if (!period || !cells.length || cells.length > 8) throw Error("shape");
         for (const cell of cells) {
           const link = cell.querySelector("a.fares-table__button");
           if (!link || !visible(link)) throw Error("link");
@@ -109,13 +111,16 @@
           const pricing = q.get("awardTravel") === "true" ? "miles" : "money";
           if (cell.getAttribute("data-key") !== `price_${cabin_code}_${pricing === "miles" ? "points" : "cash"}`) throw Error("context");
           const value = cell.querySelector(".fares-table__cell--value");
-          const price_display = [...(value?.childNodes || [])].filter(n => n.nodeType === 3).map(n => n.textContent).join(" ").replace(/\s+/g, " ").trim();
-          const basis_display = clean(cell.querySelector(".fares-table__cell--label"), 200);
+          const label = cell.querySelector(".fares-table__cell--label");
+          if (!visible(value)) throw Error("hidden");
+          const price_display = [...value.childNodes].filter(n => n.nodeType === 3).map(n => n.textContent).join(" ").replace(/\s+/g, " ").trim();
+          const basis_display = clean(label, 200);
           if (!price_display || price_display.length > 120 || /[\u0000-\u001f\u007f<>]/.test(price_display) ||
             !/Round Trip Fare From/i.test(basis_display) ||
-            !(pricing === "miles" ? /^[\d,]+ Miles \+ [A-Z$€£¥\s]*[\d,.]+$/ : /^[A-Z$€£¥\s]*[\d,.]+$/).test(price_display)) throw Error("price");
+            !(pricing === "miles" ? /^(?:\d{1,3}(?:,\d{3})+|\d+) Miles \+ [A-Z$€£¥\s]*(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d{1,2})?$/ : /^[A-Z$€£¥\s]*(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d{1,2})?$/).test(price_display)) throw Error("price");
           const deal_id = [origin, destination, depart_date, return_date, cabin_code, pricing].join("-");
           deals.push({ deal_id, origin, destination, depart_date, return_date, cabin_code, pricing, price_display, basis_display, travel_period_display: period });
+          if (deals.length > 1000) throw Error("bound");
         }
       }
       if (new Set(deals.map(d => d.deal_id)).size !== deals.length) throw Error("duplicate");

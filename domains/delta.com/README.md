@@ -337,8 +337,10 @@ changes or storage writes occur. Native discovery on the public deals page found
 
 `list_flight_deals` reads visible `.fares-table__row` data rows (excluding the header). Optional
 route/pricing filters apply only to the current visible rows, not Delta's page filters. Offset
-pagination returns up to 20 fare cells, not an invented inventory total. Header/hidden rows are
-excluded; unsupported prices, targets, duplicate identifiers or malformed routes fail closed
+pagination returns up to 20 fare cells, not an invented inventory total. At most 250 visible data
+rows, eight fare cells per row and 1,000 total deals are supported; exceeding those bounds fails
+closed so every returned next offset remains invocable. Header/hidden rows and hidden price
+or route fields cannot supply an offer; unsupported prices, targets, duplicate identifiers or malformed routes fail closed
 rather than silently return partial data. A filter/page with no matches is `no_results`, but an
 absent table is `site_changed`. Error/schema fixtures use fabricated routes and fares.
 
@@ -385,8 +387,9 @@ and populated account flows remain unverified.
 booking form, submits a public search that replaces the document, and reads structured fares from
 the destination. New code waits at most 20 × 150 ms for the asynchronous airport textbox, rather
 than snapshotting it immediately. The existing trusted typing snippet is unchanged. Invalid
-object/passenger types fail before site interaction, cancellation is checked at bounded steps,
-and output is capped at 60 rows with bounded parsed text. `results_url` is now the canonical
+object/passenger types fail before site interaction. Cancellation is checked at bounded steps,
+before search submission and after readiness/parsing before accepting a result. Output is capped
+at 60 rows with bounded parsed text. `results_url` is now the canonical
 results path without `cacheKeySuffix`/session parameters; it is not a resumable search link.
 No shared input/runtime files changed. The final search revision's live success is unverified;
 prior successes do not sign off this source. The 1.5-second readiness heuristic and Delta gates
@@ -394,8 +397,12 @@ remain limitations.
 
 ### QA for the expanded subset
 
-Pending fresh independent review of the final source. Existing flight-status QA above is historical;
-`get_flight_status.js` is unchanged. New fixtures cover schema conformance, serialized execution,
+Independent reviewer `agt_18586dcff5a8cb64565a` reviewed head `b77af1546a64d87a06d549a00c4b8e1027f3877e`
+on 2026-09-30 with the Codex provider. Its initial verdict was FAIL: hidden price elements were
+accepted, nonnumeric price text was accepted, next offsets could exceed the schema/input bound,
+and cash search could submit/return success after caller cancellation. Guards and fabricated
+regression tests now address those four findings; final source re-check is pending. Existing
+flight-status QA above is historical; `get_flight_status.js` is unchanged. New fixtures cover schema conformance, serialized execution,
 malformed inputs before interaction, wrong pages, network gates, route/date/connection mismatch,
 response bounds, advertised deal filtering/pagination, raw and encoded tracking links,
 price-change/target ambiguity, secret-query removal and confirmation-negative cases. Fixtures
