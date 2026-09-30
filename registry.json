@@ -867,6 +867,45 @@
       }
     },
     {
+      "domain": "seats.aero",
+      "tool": "get_award_trips",
+      "file": "domains/seats.aero/get_award_trips.js",
+      "kind": "page",
+      "namespace": "seats.aero",
+      "url_patterns": [
+        "https://seats.aero/*"
+      ],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Signed-out cached public reads only; no login, PRO, live search or booking navigation. Independent QA pending."
+    },
+    {
+      "domain": "seats.aero",
+      "tool": "list_award_programs",
+      "file": "domains/seats.aero/list_award_programs.js",
+      "kind": "page",
+      "namespace": "seats.aero",
+      "url_patterns": [
+        "https://seats.aero/*"
+      ],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Signed-out cached public reads only; no login, PRO, live search or booking navigation. Independent QA pending."
+    },
+    {
+      "domain": "seats.aero",
+      "tool": "search_award_availability",
+      "file": "domains/seats.aero/search_award_availability.js",
+      "kind": "page",
+      "namespace": "seats.aero",
+      "url_patterns": [
+        "https://seats.aero/*"
+      ],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Signed-out cached public reads only; no login, PRO, live search or booking navigation. Independent QA pending."
+    },
+    {
       "domain": "southwest.com",
       "tool": "login",
       "file": "domains/southwest.com/login.js",
