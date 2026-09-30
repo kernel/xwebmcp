@@ -92,9 +92,12 @@
       "url_patterns": [
         "https://www.delta.com/*"
       ],
-      "status": "draft",
-      "last_verified": null,
-      "notes": "Read-only visible advertised cash/SkyMiles deals with route/pricing filters and bounded offset pagination. No inventory availability or guaranteed quotes; requires an already-open supported deals page."
+      "status": "qa_passed",
+      "last_verified": "2026-09-30",
+      "notes": "Independent final-source QA passed with Kernel cash/miles listing, pagination and negative cases. Read-only current visible advertised offers, not inventory availability or guaranteed quotes. Requires a supported deals page; up to 250 rows, eight fare cells per row and 1000 total deals. Extension listing success and success from another eligible page remain unverified.",
+      "provenance": {
+        "qa_agent": "agt_18586dcff5a8cb64565a"
+      }
     },
     {
       "domain": "delta.com",
@@ -137,9 +140,12 @@
       "url_patterns": [
         "https://www.delta.com/*"
       ],
-      "status": "draft",
-      "last_verified": null,
-      "notes": "Read-only revalidation of one advertised deal and exact displayed price, returning a constructed public search-form handoff. Does not open it, select fares, hold inventory, redeem miles, book or pay. No supported trusted approval path for execution."
+      "status": "qa_passed",
+      "last_verified": "2026-09-30",
+      "notes": "Independent final-source QA passed: cash/miles preparation, repeated identical handoffs, stale-price and confirmation-flag rejection, with no requests or writes. Revalidates one visible advertised deal and returns a constructed search-form handoff only. Does not open it, select fares, hold inventory, redeem miles, book or pay. Execution lacks a trusted approval path. Extension success remains untested.",
+      "provenance": {
+        "qa_agent": "agt_18586dcff5a8cb64565a"
+      }
     },
     {
       "domain": "delta.com",
@@ -150,9 +156,12 @@
       "url_patterns": [
         "https://www.delta.com/*"
       ],
-      "status": "draft",
-      "last_verified": null,
-      "notes": "Public first-30 Delta-marketed route schedules/statuses via one observed page request. Validates route, date and leg continuity; not seat/fare availability. No navigation or retries."
+      "status": "verified",
+      "last_verified": "2026-09-30",
+      "notes": "Independent Kernel and local extension successes from the baggage page returned 15 ATL-LGA schedules on 2026-09-30, one fetch and unchanged document/URL. Public first-30 Delta-marketed schedules/statuses with route/date/leg-continuity checks, not seat/fare availability. Connections, empty results and HTTP failures are fixture-only. No navigation or retries.",
+      "provenance": {
+        "qa_agent": "agt_18586dcff5a8cb64565a"
+      }
     },
     {
       "domain": "delta.com",
@@ -165,7 +174,7 @@
       ],
       "status": "draft",
       "last_verified": null,
-      "notes": "Cash-fare shopping only. Adds a bounded wait for delayed airport textboxes, bounds rendered rows/text, and removes cache/session parameters from results URLs. Current source requires fresh independent QA; earlier live success does not verify this revision. Delta may deny searches with SFAF/444/429."
+      "notes": "Cash-fare shopping only. Independently reviewed airport-render wait, output/session-URL bounds and cancellation guards; retains draft because current-source rendered success and real no-results coverage remain incomplete. Prior review attempt reached Access Denied and an explicit timeout, not no_results; no retry. Delta may deny searches with SFAF/444/429."
     },
     {
       "domain": "doordash.com",

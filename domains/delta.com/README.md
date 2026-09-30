@@ -6,10 +6,10 @@ Tools for Delta Air Lines (https://www.delta.com).
 | --- | --- | --- | --- |
 | get_flight_status | [get_flight_status.js](get_flight_status.js) | verified | Public, read-only status lookup for one Delta flight number and date from any www.delta.com page (`page` kind, no navigation). Returns every leg and checks optional origin/destination against them. Independently QA'd and live-verified in Kernel browsers on 2026-09-29; Delta's bot protection makes it unreliable without a warm session. Extension success path untested. |
 | get_page_context | [get_page_context.js](get_page_context.js) | draft | Read-only page summary with live tool names and suggested next steps. Unit-tested; exercised live on the homepage and booking form. |
-| list_flight_deals | [list_flight_deals.js](list_flight_deals.js) | draft | Read visible advertised cash/SkyMiles deals, with route/pricing filters and bounded pagination. No inventory/quote guarantee. |
-| prepare_itinerary | [prepare_itinerary.js](prepare_itinerary.js) | draft | Recheck one visible advertised deal and exact price, then return a public search-form handoff only. No navigation, holds, booking or redemption. |
-| search_flight_status | [search_flight_status.js](search_flight_status.js) | draft | First 30 Delta-marketed route schedules/statuses; validates route, date and connected legs. Not seat/fare availability. |
-| search_flights | [search_flights.js](search_flights.js) | draft | Cash-fare search with bounded airport-render wait and output, canonical results URL. Current revision requires fresh QA; full success unverified. |
+| list_flight_deals | [list_flight_deals.js](list_flight_deals.js) | qa_passed | Read visible advertised cash/SkyMiles deals, with route/pricing filters and bounded pagination. No inventory/quote guarantee. |
+| prepare_itinerary | [prepare_itinerary.js](prepare_itinerary.js) | qa_passed | Recheck one visible advertised deal and exact price, then return a public search-form handoff only. No navigation, holds, booking or redemption. |
+| search_flight_status | [search_flight_status.js](search_flight_status.js) | verified | First 30 Delta-marketed route schedules/statuses; validates route, date and connected legs. Not seat/fare availability. |
+| search_flights | [search_flights.js](search_flights.js) | draft | Cash-fare search with bounded airport-render wait and output, canonical results URL. Independently reviewed cancellation guards; final-source rendered success remains unverified. |
 | login | [login.js](login.js) | draft | Homepage-only page tool: opens the top-nav Log in flyout, fills it, and schedules one submit. No output schema; outcome not observed. Live-checked with fabricated credentials and the submit click blocked in-page; no real submission. |
 | navigate_to_page | [navigate_to_page.js](navigate_to_page.js) | draft | Schedules a same-tab navigation to a www.delta.com path; description carries a basic site map. Unit-tested; exercised live. |
 
@@ -397,17 +397,40 @@ remain limitations.
 
 ### QA for the expanded subset
 
-Independent reviewer `agt_18586dcff5a8cb64565a` reviewed head `b77af1546a64d87a06d549a00c4b8e1027f3877e`
-on 2026-09-30 with the Codex provider. Its initial verdict was FAIL: hidden price elements were
-accepted, nonnumeric price text was accepted, next offsets could exceed the schema/input bound,
-and cash search could submit/return success after caller cancellation. Guards and fabricated
-regression tests now address those four findings; final source re-check is pending. Existing
-flight-status QA above is historical; `get_flight_status.js` is unchanged. New fixtures cover schema conformance, serialized execution,
-malformed inputs before interaction, wrong pages, network gates, route/date/connection mismatch,
-response bounds, advertised deal filtering/pagination, raw and encoded tracking links,
-price-change/target ambiguity, secret-query removal and confirmation-negative cases. Fixtures
-are not evidence of live mutation success. Kernel live successes above are builder observations;
-local extension verification of the additions is not yet established.
+Independent reviewer `agt_18586dcff5a8cb64565a` signed off PASS on final tool-source head
+`f0d94c7b3b2ae970d2bbb55dc5eed1995d5f62ba` on 2026-09-30 after one fix/re-check round.
+Its initial four findings are closed: hidden prices, nonnumeric prices, out-of-bounds pagination,
+and cash-search cancellation during Done/readiness/parser execution. It independently exercised
+37 deal probes and cancellation probes with a non-cancelled fixture control. Status tools were
+source-identical throughout. Subsequent edits only record this evidence and registry statuses.
+
+- Registry: 83 valid tools. Full suite: 1,710 pass, zero failures/skips/cancellations.
+- Targeted suites: 66 public-exploration, 14 cash-search, 56 flight-status tests, all pass.
+- Relevant extension suites: 14 pass, including sidepanel 1 pass.
+- Page-tool schemas passed strict Ajv draft-07/2020 checks. Thirteen final-source live outputs
+  passed output validation; serialized execution and secret-query removal were checked.
+- Kernel: all eight definitions registered together. The unchanged route tool returned 15
+  ATL–LGA schedules from the baggage page, one fetch and unchanged document/URL.
+- Kernel final-source deals: normal ATL page filter yielded cash/miles listing and pagination;
+  cash preparation succeeded twice with identical handoffs, miles preparation succeeded,
+  stale prices returned `price_changed`, confirmation flags returned `invalid_input`.
+  Calls made zero fetch/XHR requests and left table/document/URL unchanged; no handoff opened.
+- Local extension: all eight definitions registered; route lookup independently succeeded
+  from baggage. Final-source deal wrong-page/confirmation-negative paths passed, but its
+  advertised table had no offers (`site_changed`). Successful deal listing/preparation in
+  the extension remains unverified; no comprehensive success-parity claim.
+- A cash-search attempt before the cancellation fix reached Access Denied and an explicit
+  timeout. Full final-source rendered success and real no-results remain unverified; draft
+  status retained. The status detail lookup returned blocked HTTP 444 in this run; its
+  existing verified status is supported by the earlier historical QA, not a fresh success.
+- New deal/preparation tools remain `qa_passed`, not `verified`: success from another
+  eligible page beyond Current Flight Deals has not been established.
+
+Fixtures cover malformed inputs before interaction, wrong pages, network gates, route/date/leg
+mismatch, response bounds, advertised filtering/pagination, raw/encoded tracking links,
+price-change/target ambiguity and confirmation-negative cases. They are not live data or paid
+Delta actions. The reviewer deleted its public browsers and stopped the disposable extension
+browser; no account, legacy write tool or actual execution was used.
 
 ## URL patterns
 
