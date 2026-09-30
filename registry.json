@@ -501,9 +501,12 @@
       "url_patterns": [
         "https://www.instagram.com/*"
       ],
-      "status": "draft",
-      "last_verified": null,
-      "notes": "One anonymous permalink read, no cookies or redirects. Returns only public metadata; private content, media URLs and comment bodies are excluded. Terms and access restrictions apply."
+      "status": "verified",
+      "last_verified": "2026-09-30",
+      "notes": "One anonymous permalink read, no cookies or redirects. Public metadata only; private content, media URLs and comment bodies excluded. Independent public Kernel success and local-extension fixture QA passed. Local live-site and permission UI unverified. Terms and access restrictions apply.",
+      "provenance": {
+        "qa_agent": "agt_280ef7d8a77df2201bb7"
+      }
     },
     {
       "domain": "instagram.com",
@@ -514,9 +517,12 @@
       "url_patterns": [
         "https://www.instagram.com/*"
       ],
-      "status": "draft",
-      "last_verified": null,
-      "notes": "One profile navigation and one observed header response. Requires target-specific is_private=false; refuses private/restricted/unknown-privacy profiles without returning fields. Existing session only, no login or retries. Terms and access restrictions apply."
+      "status": "verified",
+      "last_verified": "2026-09-30",
+      "notes": "One profile navigation and one observed header response bound to its top frame and navigation loader. Requires target-specific public privacy; refuses restrictions and HTTP-200 errors. Independent public Kernel success and local-extension fixture QA passed. Live private cases, local live-site and permission UI unverified. Existing session only, no login or retries. Terms and access restrictions apply.",
+      "provenance": {
+        "qa_agent": "agt_280ef7d8a77df2201bb7"
+      }
     },
     {
       "domain": "jetblue.com",

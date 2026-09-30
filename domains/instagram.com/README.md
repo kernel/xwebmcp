@@ -4,8 +4,8 @@ Bounded, read-only access to public Instagram post metadata and profile headers.
 
 | tool | file | status | notes |
 |------|------|--------|-------|
-| get_post | [get_post.js](get_post.js) | draft | One anonymous permalink request; public metadata only, no cookies, redirects, media or comments. |
-| get_profile | [get_profile.js](get_profile.js) | draft | One profile navigation; observes its header response and refuses private or restricted profiles. |
+| get_post | [get_post.js](get_post.js) | verified | One anonymous permalink request; public metadata only, no cookies, redirects, media or comments. |
+| get_profile | [get_profile.js](get_profile.js) | verified | One profile navigation; observes its header response and refuses private or restricted profiles. |
 
 ## Scope and loading
 
@@ -101,18 +101,25 @@ coverage for every Instagram product surface.
 
 ## QA summary
 
-Initial status is `draft`. On 2026-09-30, author Kernel checks invoked both tools
-from a different public profile page: `get_profile` returned public header fields
-from the destination's observed header response; `get_post` returned public permalink
-metadata with cookies omitted, without changing the registering document.
+Both tools are `verified` as of 2026-09-30. Independent source QA passed on
+`72a45911ece52080f279b0919bc0de0a36e87a83` after four profile defects were fixed:
+frame/navigation attribution, HTTP-200 access errors, UTF-8 limits and early-event
+capture during load. The independent run is linked in registry provenance.
+
+Kernel live checks registered both tools atomically after native discovery found
+none. From `/meta/`, `get_profile({username: "natgeo"})` succeeded with exact-target
+public privacy and header fields. `get_post` succeeded for a public post shortcode
+from a public profile page without replacing that document. Malformed/reserved
+inputs and fabricated nonexistent targets failed closed. Author public checks also
+passed. No live private-account, age-gated-account or state-changing tests occurred.
 
 87 fabricated-fixture tests cover valid and malformed inputs, public/private/unknown
 privacy, unrelated viewer data, redirects, login/challenge/forbidden/rate-limited
-outcomes, UTF-8 response/output bounds and read-only behavior. No live private-account
-or state-changing tests were performed. Initial independent review identified four
-profile defects: frame/navigation attribution, HTTP-200 access errors, UTF-8 limits,
-and early-event eviction during load. Regression fixtures cover the fixes; independent
-final-source recheck is pending.
+outcomes, UTF-8 response/output bounds and read-only behavior. Independent results:
+81 registry entries valid, 1664 repository tests passed, 14 extension unit tests
+passed, 28 scratch checks and 18 actual local-extension invocations passed. The local
+checks reproduced all four profile defects against controlled pages and confirmed
+the fixes, including a competing iframe header and noisy delayed document load.
 
 Author local-extension checks used isolated Chromium 153 and fabricated HTTPS pages,
 with the actual extension runtime and both tool sources registered together. Both
