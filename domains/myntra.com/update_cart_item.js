@@ -85,7 +85,7 @@
   execute: async (input, context) => {
     const fail = (error_kind, error_message) => ({ status: "error", error_kind, error_message });
     const object = value => value !== null && typeof value === "object" && !Array.isArray(value);
-    const id = value => /^(?:[1-9][0-9]{0,14})$/.test(String(value)) && Number.isSafeInteger(Number(value));
+    const id = value => (typeof value === "string" || Number.isSafeInteger(value)) && /^(?:[1-9][0-9]{0,14})$/.test(String(value)) && Number.isSafeInteger(Number(value));
     const itemId = value => (typeof value === "string" || Number.isSafeInteger(value)) && /^(?:[a-zA-Z0-9_-]{1,80})$/.test(String(value));
     const money = value => typeof value === "number" && Number.isFinite(value) && value >= 0 && value <= 10000000;
     const text = value => typeof value === "string" ? value.slice(0, 500).replace(/<[^>]{0,300}>/g, "").replace(/[\u0000-\u001f\u007f]/g, " ").trim().slice(0, 200) : null;
@@ -113,8 +113,10 @@
     const timer = setTimeout(abort, 12000);
     let attempted = false;
     const request = async (path, method = "GET", body) => {
+      const options = { method, credentials: "same-origin", redirect: "error", headers: headers(), signal: controller.signal, ...(body === undefined ? {} : { body: JSON.stringify(body) }) };
       if (controller.signal.aborted) throw fail("canceled", "Canceled before the request. Nothing was changed by this tool.");
-      const response = await fetch(path, { method, credentials: "same-origin", redirect: "error", headers: headers(), signal: controller.signal, ...(body === undefined ? {} : { body: JSON.stringify(body) }) });
+      if (method !== "GET") attempted = true;
+      const response = await fetch(path, options);
       if (response.status === 429) throw fail("rate_limited", "Myntra rate-limited the request. Do not retry automatically.");
       if (response.status === 401) throw fail("login_required", "Myntra requires login. Login is not performed by this tool.");
       if (response.status === 403) throw fail("challenge", "Myntra denied the request. Stop; do not retry or bypass the block.");
@@ -158,14 +160,15 @@
         try { state = JSON.parse(raw.slice(start, end === -1 ? undefined : end).trim().replace(/;$/, "")); } catch {}
       }
       const p = state?.pdpData;
-      if (!object(p) || String(p.id) !== styleId || !Array.isArray(p.sizes)) {
+      if (!object(p) || !id(p.id) || String(p.id) !== styleId || !Array.isArray(p.sizes) || p.sizes.some(s => !object(s) || !id(s.skuId))) {
         if (/access denied|captcha|errors\.edgesuite\.net|are you a (?:robot|human)/i.test(raw.slice(0, 20000))) throw fail("challenge", "Myntra returned a product block page. Nothing was changed.");
         throw fail("site_changed", "The exact product could not be verified. Nothing was changed.");
       }
       if (p.styleType !== "P" || p.preOrder || p.showAsFreeGift || p.subscriptionInfo) throw fail("unsupported_item", "Only ordinary, non-preorder merchandise is supported. Nothing was changed.");
       const size = p.sizes.find(s => String(s.skuId) === skuId);
       const seller = size?.selectedSeller;
-      if (!size || size.available !== true || !object(seller) || !id(seller.sellerPartnerId) || !money(seller.discountedPrice) || !Number.isInteger(seller.availableCount) || seller.availableCount < 1) throw fail("unavailable", "The selected SKU has no supported available seller. Nothing was changed.");
+      if (seller && (!object(seller) || !id(seller.sellerPartnerId))) throw fail("site_changed", "The selected seller has an unsupported identity. Nothing was changed.");
+      if (!size || size.available !== true || !object(seller) || !money(seller.discountedPrice) || !Number.isInteger(seller.availableCount) || seller.availableCount < 1) throw fail("unavailable", "The selected SKU has no supported available seller. Nothing was changed.");
       return { seller_id: String(seller.sellerPartnerId), price: seller.discountedPrice, stock: seller.availableCount };
     };
     try {
@@ -181,7 +184,6 @@
       const ready = await readCart();
       if (snapshot(ready) !== snapshot(before)) return fail("state_changed", "The bag changed during preparation. Nothing was changed.");
       if (!sameSession()) return fail("wrong_account", "The guest session changed. Nothing was changed.");
-      attempted = true;
       await request("/gateway/v1/cart/default/edit?unselected=true", "PUT", [{ itemId: target.itemId, skuId: target.skuId, sellerPartnerId: target.selectedSeller.partnerId, quantity: input.quantity, selectedForCheckout: target.selectedForCheckout }]);
       const after = await readCart();
       const expected = { products: before.products.map(p => p === target ? { ...p, quantity: input.quantity } : p) };

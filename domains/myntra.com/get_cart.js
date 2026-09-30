@@ -76,7 +76,7 @@
   execute: async (input, context) => {
     const fail = (error_kind, error_message) => ({ status: "error", error_kind, error_message });
     const object = value => value !== null && typeof value === "object" && !Array.isArray(value);
-    const id = value => /^(?:[1-9][0-9]{0,14})$/.test(String(value)) && Number.isSafeInteger(Number(value));
+    const id = value => (typeof value === "string" || Number.isSafeInteger(value)) && /^(?:[1-9][0-9]{0,14})$/.test(String(value)) && Number.isSafeInteger(Number(value));
     const itemId = value => (typeof value === "string" || Number.isSafeInteger(value)) && /^(?:[a-zA-Z0-9_-]{1,80})$/.test(String(value));
     const money = value => typeof value === "number" && Number.isFinite(value) && value >= 0 && value <= 10000000;
     const text = value => typeof value === "string" ? value.slice(0, 500).replace(/<[^>]{0,300}>/g, "").replace(/[\u0000-\u001f\u007f]/g, " ").trim().slice(0, 200) : null;
@@ -86,14 +86,17 @@
     const signedIn = () => window.__myx_session__?.isLoggedIn === true || !!window.__myx_session__?.login || window._checkout_?.__myx_session__?.isLoggedIn === true || !!window._checkout_?.__myx_session__?.login || !["", "false"].includes(cookie("ilgim"));
     const cartUrl = "/gateway/v1/cart/default?unselected=true";
     const headers = () => ({ "Accept": "application/json", "Content-Type": "application/json", "pagesource": "cart", "x-meta-app": "channel=web;", "x-myntra-app": "appFamily=MyntraRetailWeb;deviceID=" + cookie("_d_id").replace(/[^a-zA-Z0-9-]/g, "").slice(0, 100) });
+    const token = window.__myx_session__?.USER_TOKEN;
+    const device = cookie("_d_id");
     const controller = new AbortController();
     const abort = () => controller.abort();
     if (context?.signal?.aborted) abort();
     context?.signal?.addEventListener("abort", abort, { once: true });
     const timer = setTimeout(abort, 12000);
     const request = async path => {
+      const options = { method: "GET", credentials: "same-origin", redirect: "error", headers: headers(), signal: controller.signal };
       if (controller.signal.aborted) throw fail("canceled", "Canceled before the request. Nothing was changed by this tool.");
-      const response = await fetch(path, { method: "GET", credentials: "same-origin", redirect: "error", headers: headers(), signal: controller.signal });
+      const response = await fetch(path, options);
       if (response.status === 429) throw fail("rate_limited", "Myntra rate-limited the request. Do not retry automatically.");
       if (response.status === 401) throw fail("login_required", "Myntra requires login. Login is not performed by this tool.");
       if (response.status === 403) throw fail("challenge", "Myntra denied the request. Stop; do not retry or bypass the block.");
@@ -123,6 +126,7 @@
     const line = p => ({ item_id: String(p.itemId), style_id: String(p.id), sku_id: String(p.skuId), seller_id: String(p.selectedSeller.partnerId), name: text(p.name), brand: text(p.brand), size_label: text(p.sizes?.find(s => s.skuId === p.skuId)?.label), quantity: p.quantity, selected_for_checkout: p.selectedForCheckout, line_total: money(p.price?.total) ? p.price.total : null });
     try {
       const cart = await readCart();
+      if ((device && cookie("_d_id") !== device) || (typeof token === "string" && token && window.__myx_session__?.USER_TOKEN !== token)) return fail("state_changed", "The guest session changed while reading the bag. Read the current bag again.");
       return { status: "ok", currency: "INR", items: cart.products.map(line), item_count: cart.products.length, total: money(cart.price?.total) ? cart.price.total : null, subtotal: money(cart.price?.subTotal) ? cart.price.subTotal : null };
     } catch (error) {
       if (controller.signal.aborted) return fail("canceled", "The request was canceled or timed out before any write. Nothing was changed by this tool.");

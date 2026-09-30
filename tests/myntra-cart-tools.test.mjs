@@ -82,6 +82,57 @@ function harness(name, options = {}) {
 }
 const writes = h => h.calls.filter(c => c.init.method !== "GET");
 
+for (const name of names) test(`${name}: nonprimitive site identities fail closed before writes`, async () => {
+  const base = name === "add_to_cart" ? line({ id: 4321002, skuId: 90002 }) : line();
+  for (const extra of [{ id: [base.id] }, { skuId: [base.skuId] }, { selectedSeller: { partnerId: [11] } }, { id: {} }, { skuId: {} }, { selectedSeller: { partnerId: {} } }]) {
+    const h = harness(name, { cart: cart([line({ ...base, ...extra })]) });
+    assert.equal((await h.run()).error_kind, "site_changed");
+    assert.equal(writes(h).length, 0);
+  }
+});
+for (const name of ["add_to_cart", "update_cart_item"]) test(`${name}: malformed product identities cannot authorize writes`, async () => {
+  for (const extra of [{ id: [4321001] }, { sizes: [{ skuId: [90001], available: true, selectedSeller: { sellerPartnerId: 11, discountedPrice: 899, availableCount: 5 } }] }, { sizes: [{ skuId: 90001, available: true, selectedSeller: { sellerPartnerId: [11], discountedPrice: 899, availableCount: 5 } }] }]) {
+    const h = harness(name, { product: product(extra) });
+    assert.equal((await h.run()).error_kind, "site_changed");
+    assert.equal(writes(h).length, 0);
+  }
+});
+for (const name of names.filter(n => n !== "get_cart")) {
+  test(`${name}: cancellation during final preflight remains canceled with zero dispatched writes`, async () => {
+    const c = new AbortController(); let reads = 0;
+    const h = harness(name, { respond: path => {
+      if (path === "/gateway/v1/cart/default?unselected=true" && ++reads === (name === "remove_cart_item" ? 1 : 2)) c.abort();
+      return null;
+    } });
+    assert.equal((await h.run(inputs[name], c.signal)).error_kind, "canceled");
+    assert.equal(writes(h).length, 0);
+  });
+  test(`${name}: device and signed-in switches before dispatch never write`, async () => {
+    for (const change of ["device", "account"]) {
+      const options = { onCall: ({ session }) => {
+        if (change === "device") options.cookie = "_d_id=fabricated-other-device; ilgim=false";
+        else session.isLoggedIn = true;
+      } };
+      const h = harness(name, options);
+      assert.equal((await h.run()).error_kind, "wrong_account");
+      assert.equal(writes(h).length, 0);
+    }
+  });
+}
+test("get_cart: guest identity changes during a read never expose the prior bag", async () => {
+  for (const change of ["token", "device"]) {
+    const options = { onCall: ({ session }) => {
+      if (change === "token") session.USER_TOKEN = "fabricated-other-token";
+      else options.cookie = "_d_id=fabricated-other-device; ilgim=false";
+    } };
+    const h = harness("get_cart", options);
+    const result = await h.run();
+    assert.equal(result.error_kind, "state_changed");
+    assert.equal("items" in result, false);
+    assert.equal(writes(h).length, 0);
+  }
+});
+
 for (const name of names) {
   test(`${name}: page-local single expression, schemas, annotations, no navigation`, () => {
     const { def } = harness(name);

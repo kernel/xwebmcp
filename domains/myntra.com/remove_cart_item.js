@@ -84,7 +84,7 @@
   execute: async (input, context) => {
     const fail = (error_kind, error_message) => ({ status: "error", error_kind, error_message });
     const object = value => value !== null && typeof value === "object" && !Array.isArray(value);
-    const id = value => /^(?:[1-9][0-9]{0,14})$/.test(String(value)) && Number.isSafeInteger(Number(value));
+    const id = value => (typeof value === "string" || Number.isSafeInteger(value)) && /^(?:[1-9][0-9]{0,14})$/.test(String(value)) && Number.isSafeInteger(Number(value));
     const itemId = value => (typeof value === "string" || Number.isSafeInteger(value)) && /^(?:[a-zA-Z0-9_-]{1,80})$/.test(String(value));
     const money = value => typeof value === "number" && Number.isFinite(value) && value >= 0 && value <= 10000000;
     const text = value => typeof value === "string" ? value.slice(0, 500).replace(/<[^>]{0,300}>/g, "").replace(/[\u0000-\u001f\u007f]/g, " ").trim().slice(0, 200) : null;
@@ -112,8 +112,10 @@
     const timer = setTimeout(abort, 12000);
     let attempted = false;
     const request = async (path, method = "GET", body) => {
+      const options = { method, credentials: "same-origin", redirect: "error", headers: headers(), signal: controller.signal, ...(body === undefined ? {} : { body: JSON.stringify(body) }) };
       if (controller.signal.aborted) throw fail("canceled", "Canceled before the request. Nothing was changed by this tool.");
-      const response = await fetch(path, { method, credentials: "same-origin", redirect: "error", headers: headers(), signal: controller.signal, ...(body === undefined ? {} : { body: JSON.stringify(body) }) });
+      if (method !== "GET") attempted = true;
+      const response = await fetch(path, options);
       if (response.status === 429) throw fail("rate_limited", "Myntra rate-limited the request. Do not retry automatically.");
       if (response.status === 401) throw fail("login_required", "Myntra requires login. Login is not performed by this tool.");
       if (response.status === 403) throw fail("challenge", "Myntra denied the request. Stop; do not retry or bypass the block.");
@@ -150,7 +152,6 @@
       if (String(target.id) !== input.style_id || String(target.skuId) !== input.sku_id || target.quantity !== input.expected_quantity) return fail("state_changed", "The target identity or quantity changed. Nothing was removed.");
       if (target.flags?.freeItem || target.subscriptionInfo || (target.styleType && target.styleType !== "P")) return fail("unsupported_item", "This is not an ordinary merchandise line. Nothing was removed.");
       if (!sameSession()) return fail("wrong_account", "The guest session changed. Nothing was removed.");
-      attempted = true;
       await request("/gateway/v1/cart/default/remove?unselected=true", "PUT", [{ itemId: target.itemId }]);
       const after = await readCart();
       const expected = { products: before.products.filter(p => p !== target) };
