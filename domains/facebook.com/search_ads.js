@@ -88,7 +88,11 @@
     if (/captcha|security check|confirm your identity|temporarily blocked/i.test(document.title)) return fail("challenge", "The current page is showing a security check; no request was sent.");
     if (/access denied|forbidden/i.test(document.title)) return fail("forbidden", "The current page denies access; no request was sent.");
     if (/too many requests|rate limit/i.test(document.title)) return fail("rate_limited", "The current page is rate-limited; no request was sent.");
-    if (/log in to facebook|login to facebook/i.test(document.title) || document.querySelector("input[type=password]") || [...document.querySelectorAll("[role=dialog]")].some(d => /log in|sign in|see more on facebook/i.test(d.innerText || ""))) return fail("login_required", "The current page is showing a login gate; no request was sent.");
+    const loginDialog = [...document.querySelectorAll("[role=dialog]")].some(d => {
+      const r = d.getBoundingClientRect();
+      return d.checkVisibility({ checkOpacity: true, checkVisibilityCSS: true }) && r.width > 0 && r.height > 0 && r.left < document.documentElement.clientWidth && r.right > 0 && r.top < document.documentElement.clientHeight && r.bottom > 0 && /log in|sign in|see more on facebook/i.test(d.innerText || "");
+    });
+    if (/log in to facebook|login to facebook/i.test(document.title) || document.querySelector("input[type=password]") || loginDialog) return fail("login_required", "The current page is showing a login gate; no request was sent.");
 
     const params = new URLSearchParams({ active_status: active, ad_type: "all", country, q: input.query.trim(), search_type: "keyword_unordered", media_type: "all" });
     const searchUrl = "https://www.facebook.com/ads/library/?" + params;

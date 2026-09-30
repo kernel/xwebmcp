@@ -72,7 +72,11 @@
         if (/captcha|security check|confirm your identity|temporarily blocked/i.test(document.title)) return "challenge";
         if (/access denied|forbidden/i.test(document.title)) return "forbidden";
         if (/too many requests|rate limit/i.test(document.title)) return "rate_limited";
-        if (/log in to facebook|login to facebook/i.test(document.title) || document.querySelector("input[type=password]") || [...document.querySelectorAll("[role=dialog]")].some(d => /log in|sign in|see more on facebook/i.test(d.innerText || ""))) return "login_required";
+        const loginDialog = [...document.querySelectorAll("[role=dialog]")].some(d => {
+          const r = d.getBoundingClientRect();
+          return d.checkVisibility({ checkOpacity: true, checkVisibilityCSS: true }) && r.width > 0 && r.height > 0 && r.left < document.documentElement.clientWidth && r.right > 0 && r.top < document.documentElement.clientHeight && r.bottom > 0 && /log in|sign in|see more on facebook/i.test(d.innerText || "");
+        });
+        if (/log in to facebook|login to facebook/i.test(document.title) || document.querySelector("input[type=password]") || loginDialog) return "login_required";
         return null;
       });
       if (gate) return fail(gate, "The starting page is gated; no navigation was attempted.");
@@ -88,7 +92,11 @@
         if (/captcha|security check|confirm your identity|temporarily blocked/i.test(document.title)) return fail("challenge", "Marketplace returned a challenge; no bypass was attempted.");
         if (/access denied|forbidden/i.test(document.title)) return fail("forbidden", "Marketplace denied access.");
         if (/too many requests|rate limit/i.test(document.title)) return fail("rate_limited", "Marketplace rate-limited this page; no retry was attempted.");
-        if (/log in to facebook|login to facebook/i.test(document.title) || document.querySelector("input[type=password]") || [...document.querySelectorAll("[role=dialog]")].some(d => /log in|sign in|see more on facebook/i.test(d.innerText || ""))) return fail("login_required", "Marketplace is showing a login gate; it was not dismissed.");
+        const loginDialog = [...document.querySelectorAll("[role=dialog]")].some(d => {
+          const r = d.getBoundingClientRect();
+          return d.checkVisibility({ checkOpacity: true, checkVisibilityCSS: true }) && r.width > 0 && r.height > 0 && r.left < document.documentElement.clientWidth && r.right > 0 && r.top < document.documentElement.clientHeight && r.bottom > 0 && /log in|sign in|see more on facebook/i.test(d.innerText || "");
+        });
+        if (/log in to facebook|login to facebook/i.test(document.title) || document.querySelector("input[type=password]") || loginDialog) return fail("login_required", "Marketplace is showing a login gate; it was not dismissed.");
         if (location.href !== args.target) return fail("gated", "Marketplace redirected away from the requested public page.");
         const matches = [];
         let bytes = 0;

@@ -42,8 +42,12 @@ function harness(options = {}) {
     location: new URL(options.url ?? "https://www.facebook.com/ads/library/api/"),
     document: {
       title: options.startTitle ?? "Ad Library",
+      documentElement: { clientWidth: 785, clientHeight: 600 },
       querySelector: () => options.startPassword ? {} : null,
-      querySelectorAll: () => options.startDialog ? [{ innerText: options.startDialog }] : []
+      querySelectorAll: () => options.startDialog ? [{
+        innerText: options.startDialog, checkVisibility: () => !options.hiddenDialog,
+        getBoundingClientRect: () => options.dialogRect ?? { left: 0, top: 0, right: 500, bottom: 400, width: 500, height: 400 }
+      }] : []
     },
     setTimeout: fn => { timer = fn; return 1; }, clearTimeout: () => { cleared = true; },
     fetch: async (url, init) => {
@@ -178,6 +182,14 @@ test("starting gates stop before a GET and login controls override valid respons
   }
   const gated = '<div role="dialog"><input type="password"></div>' + html(connection());
   assert.equal((await harness({ html: gated }).run()).error_kind, "login_required");
+});
+
+test("closed off-canvas navigation and hidden dialogs are not authentication barriers", async () => {
+  for (const options of [{ dialogRect: { left: 785, top: 0, right: 1090, bottom: 400, width: 305, height: 400 } }, { hiddenDialog: true }]) {
+    const h = harness({ startTitle: "Ad Library API", startDialog: "Log in", ...options });
+    assert.equal((await h.run()).status, "ok");
+    assert.equal(h.requests.length, 1);
+  }
 });
 
 test("changed data and restricted ads fail rather than bypassing or inventing records", async () => {

@@ -54,10 +54,14 @@ function harness(name, options = {}) {
         args: args?.arg, URL, TextEncoder, location: { href: url },
         document: {
           title: (calls.navigations.length ? options.title : options.startTitle) ?? "Marketplace | Facebook",
+          documentElement: { clientWidth: 785, clientHeight: 600 },
           querySelector: () => (calls.navigations.length ? options.password : options.startPassword) ? {} : null,
           querySelectorAll: selector => {
             const dialog = calls.navigations.length ? options.dialog : options.startDialog;
-            return selector === "[role=dialog]" ? (dialog ? [{ innerText: dialog }] : []) : scripts.map(textContent => ({ textContent }));
+            return selector === "[role=dialog]" ? (dialog ? [{
+              innerText: dialog, checkVisibility: () => !options.hiddenDialog,
+              getBoundingClientRect: () => options.dialogRect ?? { left: 0, top: 0, right: 500, bottom: 400, width: 500, height: 400 }
+            }] : []) : scripts.map(textContent => ({ textContent }));
           }
         }
       });
@@ -150,6 +154,14 @@ for (const name of names) {
     assert.equal((await canceled.run(inputFor(name), { signal: controller.signal })).error_kind, "canceled");
     assert.equal(canceled.calls.navigations.length, 0);
     assert.equal(canceled.calls.js, 0);
+  });
+
+  test(`${name}: off-canvas navigation and hidden dialogs do not reject public reads`, async () => {
+    for (const options of [{ dialogRect: { left: 785, top: 0, right: 1090, bottom: 400, width: 305, height: 400 } }, { hiddenDialog: true }]) {
+      const h = harness(name, { startDialog: "Log in", dialog: "Log in", ...options });
+      assert.equal((await h.run()).status, "ok");
+      assert.equal(h.calls.navigations.length, 1);
+    }
   });
 
   test(`${name}: missing and oversized bootstrap JSON cannot become no_results`, async () => {
