@@ -9,7 +9,7 @@
     match: { url_patterns: ["https://www.google.com/travel/explore", "https://www.google.com/travel/explore?*", "https://www.google.com/travel/explore/*"] },
     tool: {
       name: "explore_destinations",
-      description: "Read loaded Google Travel Explore destination suggestions for the origin, flexible-date window, travelers, cabin and filters already configured in the English page. Set an explicit origin in Explore first. Returns at most 40 loaded cards with destination, displayed date range, flight-price label, stops and duration; hotel-price labels are separate and are not whole-trip quotes. Never scrolls, changes filters, clicks a destination, tracks prices or books. Indicative prices are not availability or checkout totals. No account required; do not use device location.",
+      description: "Read loaded Google Travel Explore destination suggestions for the origin, flexible-date window, travelers, cabin and filters already configured in the English page. Set an explicit origin, configure the search, then reload Explore before reading; same-document configuration changes are refused until reload. Returns at most 40 loaded cards with destination, displayed date range, flight-price label, stops and duration; hotel-price labels are separate and are not whole-trip quotes. Never scrolls, changes filters, clicks a destination, tracks prices or books. Indicative prices are not availability or checkout totals. No account required; do not use device location.",
       inputSchema: { type: "object", additionalProperties: false, properties: { limit: { type: "integer", minimum: 1, maximum: 40, default: 10 } } },
       outputSchema: {
         type: "object", additionalProperties: false,
@@ -45,7 +45,13 @@
       if (!origin?.value.trim()) return fail("needs_origin", "Select an explicit origin in Explore; the tool does not request location or choose an airport.");
       const originText = (origin.getAttribute("aria-label") || "").replace(/^Where from\?\s*/, "").trim();
       if (!originText || originText.replace(/\s+[A-Z]{3}$/, "").trim().toLowerCase() !== origin.value.trim().toLowerCase()) return fail("not_ready", "Finish selecting the origin before reading suggestions.");
-      if ([...document.querySelectorAll('[role="listbox"], [role="progressbar"]')].some(visible)) return fail("not_ready", "Finish selecting the origin or wait for results to load.");
+      const navigation = performance.getEntriesByType("navigation")[0];
+      if (window.__xwebmcpGoogleExploreDirty || !navigation || new URL(navigation.name).search !== location.search || origin.value !== origin.getAttribute("value")) {
+        window.__xwebmcpGoogleExploreDirty = true;
+        return fail("not_ready", "Reload Explore after configuring the origin or search settings; in-place changes can retain old prices.");
+      }
+      const loading = e => e.getClientRects().length > 0 && (e.getAttribute("aria-hidden") !== "true" || e.parentElement?.getAttribute("aria-hidden") !== "true");
+      if ([...document.querySelectorAll('[role="listbox"]')].some(visible) || [...document.querySelectorAll('[role="progressbar"]')].some(loading)) return fail("not_ready", "Finish selecting the origin or wait for results to load.");
       const cards = [...document.querySelectorAll('li[role="button"][data-code][data-rank]')].filter(visible);
       if (!cards.length) return fail(/No destinations found|No results found/i.test(body) ? "no_results" : "not_ready", "No loaded destination suggestions are visible.");
       const readPrice = e => e ? { display_text: text(e).slice(0, 100), currency_label: (e.getAttribute("aria-label") || "").slice(0, 100) } : null;

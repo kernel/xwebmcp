@@ -5,7 +5,7 @@
     match: { url_patterns: ["https://www.google.com/travel/flights", "https://www.google.com/travel/flights?*", "https://www.google.com/travel/flights/*"] },
     tool: {
       name: "get_date_grid",
-      description: "Explore alternative dates in the English Google Flights round-trip search currently loaded. Opens the Date grid dialog if necessary and reads at most 49 loaded cells: displayed departure/return date text, price text, price level and selected state. Never clicks a date cell, OK, a fare, tracking or booking controls; leaves the dialog open without applying dates. If another dialog is open, close it yourself first. Prices reflect the page's route, travelers, cabin, currency and filters; labels may omit the year, so do not infer ISO dates. No account needed. One-way price graphs and scrolling the grid are not supported.",
+      description: "Explore alternative dates in the English Google Flights round-trip search currently loaded. Requires two resolved endpoints and a fully loaded search; reload after in-place search changes. Opens the Date grid dialog if necessary and reads at most 49 loaded cells: displayed departure/return date text, price text, price level and selected state. Never clicks a date cell, OK, a fare, tracking or booking controls; leaves the dialog open without applying dates. If another dialog is open, close it yourself first. Prices reflect the page's route, travelers, cabin, currency and filters; labels may omit the year, so do not infer ISO dates. No account needed. One-way price graphs and scrolling the grid are not supported.",
       inputSchema: { type: "object", additionalProperties: false, properties: { limit: { type: "integer", minimum: 1, maximum: 49, default: 49 } } },
       outputSchema: {
         type: "object", additionalProperties: false,
@@ -37,6 +37,18 @@
       const text = e => (e?.textContent || "").replace(/\s+/g, " ").trim();
       const body = document.body?.innerText || "";
       if (/too many requests|rate limit|try again later/i.test(body)) return fail("rate_limited", "Google reports a temporary request limit; do not retry automatically.");
+      const ready = () => {
+        const navigation = performance.getEntriesByType("navigation")[0];
+        const from = [...document.querySelectorAll('input[aria-label^="Where from?"]')].filter(visible);
+        const to = [...document.querySelectorAll('input[aria-label^="Where to?"]')].filter(visible);
+        if (window.__xwebmcpGoogleDateGridDirty || !navigation || new URL(navigation.name).search !== location.search || [...from, ...to].some(e => e.value !== e.getAttribute("value"))) {
+          window.__xwebmcpGoogleDateGridDirty = true;
+          return false;
+        }
+        if (from.length !== 1 || to.length !== 1 || [...from, ...to].some(e => !e.value.trim() || e.getAttribute("aria-expanded") === "true")) return false;
+        return ![...document.querySelectorAll('[role="progressbar"], [aria-busy="true"]')].some(e => visible(e) && (e.getAttribute("aria-hidden") !== "true" || e.parentElement?.getAttribute("aria-hidden") !== "true"));
+      };
+      if (!ready()) return fail("not_ready", "Wait for two resolved search endpoints and prices; reload after changing the search before opening the grid.");
       const dialogs = () => [...document.querySelectorAll('[role="dialog"]')].filter(visible);
       const insights = () => dialogs().find(e => e.getAttribute("aria-label") === "Price insights");
       if (dialogs().some(e => e !== insights())) return fail("dialog_open", "Close the other dialog before reading the date grid.");
@@ -48,6 +60,7 @@
       const start = Date.now();
       while (Date.now() - start < 12000) {
         if (context.signal?.aborted) return fail("canceled", "Read canceled; the dialog may remain open, but no dates were applied.");
+        if (!ready()) return fail("not_ready", "The search changed or prices are pending; reload before reading the grid. No dates were applied.");
         const dialog = insights();
         const grid = dialog?.querySelector('[data-ow="false"]');
         if (dialog?.querySelector('[data-ow="true"]')) return fail("unsupported_trip", "Only the round-trip date grid is supported; no dates were applied.");
@@ -64,8 +77,8 @@
             return { departure_date_text: match[3], return_date_text: match[4], price_text: match[1].slice(0, 100), price_level: match[2] || null, selected: !!match[5] };
           });
           if (cells.some(c => !c)) return fail("site_changed", "A loaded cell lacks recognizable date and price labels; no partial result is returned.");
-          const currency = [...document.querySelectorAll('button, [role="button"]')].find(e => visible(e) && /^[A-Z]{3}$/.test(text(e)));
-          return { ...result, status: "ok", message: "Displayed date labels only (year may be omitted). Prices are indicative for the current search. Dialog left open; no date cell selected or applied.", display_currency: currency ? text(currency) : null, cells, has_more: nodes.length > cells.length };
+          const currency = [...document.querySelectorAll('button, [role="button"][aria-label]')].find(e => visible(e) && /^Currency [A-Z]{3}$/.test(e.getAttribute("aria-label") || ""));
+          return { ...result, status: "ok", message: "Displayed date labels only (year may be omitted). Prices are indicative for the current search. Dialog left open; no date cell selected or applied.", display_currency: currency?.getAttribute("aria-label").slice(-3) || null, cells, has_more: nodes.length > cells.length };
         }
         await new Promise(resolve => setTimeout(resolve, 200));
       }

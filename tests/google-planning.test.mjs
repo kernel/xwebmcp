@@ -6,13 +6,15 @@ import { conforms, El, listedAt, loadTool, makeClock } from "./google-support.mj
 const names = ["prepare_directions", "get_directions", "explore_destinations", "get_date_grid"];
 const el = (tag, attrs = {}, children = []) => new El(tag, attrs, children);
 const hide = e => { e.hiddenFlag = true; return e; };
-function harness(name, { url, lang = "en", body = el("body"), signal = {}, clock = makeClock() } = {}) {
+function harness(name, { url, navigationUrl, lang = "en", body = el("body"), signal = {}, clock = makeClock() } = {}) {
   const tool = loadTool(name);
   const document = {
     body, documentElement: { lang },
     querySelectorAll(selector) { return [...new Set(selector.split(", ").flatMap(s => body.querySelectorAll(s)))]; }
   };
-  const execute = runInNewContext(`(${tool.execute.toString()})`, { location: new URL(url || "https://www.google.com/maps?hl=en"), document, Date: clock.Date, setTimeout: clock.setTimeout }, { timeout: 5000 });
+  const href = url || "https://www.google.com/maps?hl=en";
+  const performance = { getEntriesByType: () => navigationUrl === null ? [] : [{ name: navigationUrl ?? href }] };
+  const execute = runInNewContext(`(${tool.execute.toString()})`, { URL, window: {}, location: new URL(href), performance, document, Date: clock.Date, setTimeout: clock.setTimeout }, { timeout: 5000 });
   return { body, clock, tool, document, async run(input = {}) {
     const out = await execute(input, { signal });
     assert.ok(conforms(tool.tool.outputSchema, out), JSON.stringify(out));
@@ -35,12 +37,12 @@ function routes({ count = 3, malformed = false } = {}) {
   ]);
 }
 function explore({ count = 3, origin = true } = {}) {
-  const from = el("input", { "aria-label": origin ? "Where from? Example City ABC" : "Where from? " }); from.value = origin ? "Example City" : "";
+  const from = el("input", { "aria-label": origin ? "Where from? Example City ABC" : "Where from? ", value: origin ? "Example City" : "" }); from.value = origin ? "Example City" : "";
   return el("body", {}, [from, el("div", { role: "combobox", "aria-labelledby": "trip" }, ["Round trip"]),
     el("div", { role: "combobox", "aria-labelledby": "cabin" }, ["Economy"]),
     el("button", { "aria-label": "2 passengers, change number of passengers." }),
     el("div", { role: "button" }, ["1-week trip in the next 6 months"]),
-    el("div", { role: "progressbar", "aria-hidden": "true" }),
+    el("div", { "aria-hidden": "true" }, [el("div", { role: "progressbar", "aria-hidden": "true" })]),
     ...Array.from({ length: count }, (_, i) => el("li", { role: "button", "data-code": `/m/example_${i}`, "data-rank": String(i) }, [
       el("h3", {}, [`Example Destination ${i}`]), el("div", { class: "xyc80b" }, ["Nov 7 – 14"]),
       el("div", { class: "sPjWyb" }, [el("span", { role: "text", "aria-label": "100 US dollars", "data-gs": "SESSION_TOKEN_DO_NOT_RETURN" }, ["$100"]), el("span", { class: "nx0jzf" }, ["Nonstop"]), el("span", { class: "Xq1DAb" }, ["2 hr"])]),
@@ -56,7 +58,9 @@ function grid({ count = 49, opened = false, oneWay = false, badLabel = false } =
   const dialog = el("div", { role: "dialog", "aria-label": "Price insights" }, [el("button", { role: "tab", "aria-selected": "true" }, ["Dates"]), el("div", { "data-ow": String(oneWay) }, cells), apply]);
   if (!opened) hide(dialog);
   const opener = el("button", {}, ["Date grid"]); opener.handlers.click = () => { openClicks++; dialog.hiddenFlag = false; };
-  const body = el("body", {}, [opener, dialog, el("div", { role: "button" }, ["USD"])]);
+  const from = el("input", { "aria-label": "Where from? Example City ABC", value: "Example City" }); from.value = "Example City";
+  const to = el("input", { "aria-label": "Where to? Second City DEF", value: "Second City" }); to.value = "Second City";
+  const body = el("body", {}, [opener, dialog, el("div", { role: "button", "aria-label": "Currency USD" }, ["CurrencyUSD"]), from, to]);
   return { body, cells, dialog, opener, clicks: () => ({ cellClicks, applyClicks, openClicks }) };
 }
 
@@ -72,7 +76,7 @@ for (const name of names) {
   test(`${name}: malformed inputs fail before reading any site state`, async () => {
     const h = harness(name);
     Object.defineProperty(h.document, "body", { get() { throw new Error("site touched"); } });
-    for (const input of [null, [], "x", { extra: "x" }, { limit: 0 }, { limit: 100 }, { limit: 1.2 }, { limit: null }]) assert.equal((await h.run(input)).status, "invalid_input");
+    for (const input of [null, [], "x", { extra: "x" }, { confirmed: true }, { approved: true }, { limit: 0 }, { limit: 100 }, { limit: 1.2 }, { limit: null }]) assert.equal((await h.run(input)).status, "invalid_input");
   });
   test(`${name}: wrong page and canceled`, async () => {
     const input = name === "prepare_directions" ? { origin: "Example Town", destination: "Second Town" } : {};
@@ -186,6 +190,46 @@ test("get_date_grid cancellation after opening reports no applied dates", async 
   g.opener.handlers.click = () => { g.dialog.hiddenFlag = false; signal.aborted = true; };
   const out = await harness("get_date_grid", { url: "https://www.google.com/travel/flights/search", body: g.body, signal }).run();
   assert.equal(out.status, "canceled"); assert.equal(out.dates_applied, false); assert.equal(g.clicks().applyClicks, 0);
+});
+test("Explore refuses in-place origin and query changes even when old cards remain", async () => {
+  const url = "https://www.google.com/travel/explore?tfs=initial";
+  const body = explore(); body.children[0].value = "New City";
+  body.children[0].attrs["aria-label"] = "Where from? New City XYZ";
+  const h = harness("explore_destinations", { url, body });
+  const changed = await h.run();
+  assert.equal(changed.status, "not_ready"); assert.deepEqual(changed.destinations, []);
+  body.children[0].value = "Example City"; body.children[0].attrs["aria-label"] = "Where from? Example City ABC";
+  assert.equal((await h.run()).status, "not_ready");
+  for (const navigationUrl of [null, url + "&cabin=changed"]) {
+    assert.equal((await harness("explore_destinations", { url, navigationUrl, body: explore() }).run()).status, "not_ready");
+  }
+});
+test("Explore detects the active loading wrapper despite an aria-hidden progressbar", async () => {
+  const body = explore(); delete body.children[5].attrs["aria-hidden"];
+  assert.equal((await harness("explore_destinations", { url: "https://www.google.com/travel/explore", body }).run()).status, "not_ready");
+});
+test("date grid refuses missing or edited endpoints and changed query before opening", async () => {
+  const url = "https://www.google.com/travel/flights/search?tfs=initial";
+  for (const change of [g => { g.body.nodes.pop(); }, g => { g.body.children[3].value = "Unresolved City"; }, g => { g.body.children[3].attrs["aria-expanded"] = "true"; }]) {
+    const g = grid(); change(g);
+    assert.equal((await harness("get_date_grid", { url, body: g.body }).run()).status, "not_ready");
+    assert.equal(g.clicks().openClicks, 0);
+  }
+  const g = grid();
+  assert.equal((await harness("get_date_grid", { url, navigationUrl: url + "&curr=EUR", body: g.body }).run()).status, "not_ready");
+  assert.equal(g.clicks().openClicks, 0);
+});
+test("date grid refuses pending prices, including a search that becomes busy after opening", async () => {
+  const url = "https://www.google.com/travel/flights/search";
+  for (const marker of [el("div", { role: "progressbar" }), el("div", { "aria-busy": "true" }), el("div", {}, [el("div", { role: "progressbar", "aria-hidden": "true" })])]) {
+    const g = grid({ opened: true }); g.body.append(marker);
+    const out = await harness("get_date_grid", { url, body: g.body }).run();
+    assert.equal(out.status, "not_ready"); assert.deepEqual(out.cells, []);
+  }
+  const g = grid();
+  g.opener.handlers.click = () => { g.dialog.hiddenFlag = false; g.dialog.attrs["aria-busy"] = "true"; };
+  assert.equal((await harness("get_date_grid", { url, body: g.body }).run()).status, "not_ready");
+  assert.equal(g.clicks().cellClicks, 0); assert.equal(g.clicks().applyClicks, 0);
 });
 for (const name of names.filter(n => n !== "prepare_directions")) {
   test(`${name}: consent, challenge, rate limit and language failures are explicit`, async () => {
