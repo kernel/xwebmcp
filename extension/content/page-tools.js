@@ -2,7 +2,7 @@
 // run with the page's own globals, so the ISOLATED agent hands the source
 // over and this script materializes and registers it.
 //
-// If page CSP forbids Function, the ISOLATED agent asks the service worker
+// If page CSP or Trusted Types forbids Function, the ISOLATED agent asks the service worker
 // to compile the same source in this document through CDP.
 
 (() => {
@@ -43,13 +43,18 @@
     const registered = [];
     const cspBlocked = [];
     for (const definition of event.data.definitions ?? []) {
+      let compiling = true;
       try {
         const execute = materialize(definition.pageExecuteSource);
+        compiling = false;
         if (typeof execute !== 'function') throw new Error('execute is not a function');
         await globalThis.__xwebmcpPageTools.register(definition, execute);
         registered.push(definition.id);
       } catch (error) {
-        if (error instanceof EvalError && /unsafe-eval|Content Security Policy/i.test(error.message)) {
+        if (compiling && (
+          (error instanceof EvalError && /unsafe-eval|Content Security Policy|Trusted Type assignment requirements/i.test(error.message)) ||
+          (error instanceof TypeError && /This document requires 'TrustedScript' assignment/.test(error.message))
+        )) {
           cspBlocked.push(definition.id);
         } else {
           errors.push(`${definition.name}: ${error instanceof Error ? error.message : String(error)}`);

@@ -43,7 +43,7 @@ async function attachTarget(targetId, invocationId) {
     let pending = pendingAttachments.get(targetId);
     if (!pending) {
       pending = chrome.debugger.attach({targetId}, '1.3').then(() => {
-        const created = {users: new Set(), childSessions: new Map()};
+        const created = {users: new Set(), childSessions: new Map(), contexts: new Map()};
         attachments.set(targetId, created);
         return created;
       }).finally(() => pendingAttachments.delete(targetId));
@@ -87,6 +87,11 @@ chrome.debugger.onEvent.addListener((source, method, params) => {
   } else if (method === 'Target.detachedFromTarget' && params?.sessionId) {
     attachment.childSessions.delete(params.sessionId);
   }
+  if (!source.sessionId) {
+    if (method === 'Runtime.executionContextCreated') attachment.contexts.set(params.context.id, params.context);
+    else if (method === 'Runtime.executionContextDestroyed') attachment.contexts.delete(params.executionContextId);
+    else if (method === 'Runtime.executionContextsCleared') attachment.contexts.clear();
+  }
   const event = {method, params, sessionId: source.sessionId, targetId, time: Date.now()};
   for (const invocationId of attachment.users) {
     sandbox.notify({type: 'event', invocationId, event});
@@ -127,16 +132,25 @@ async function targetForTab(tabId) {
   return target.targetId;
 }
 
-export async function registerPageTool(tabId, url, definition) {
+export async function registerPageTool(tabId, url, definition, documentId) {
   if (definition.kind !== 'page' || !matchesAny(url, definition.match.url_patterns)) {
     throw new Error('page tool is not available in this document');
   }
+  if (!documentId) throw new Error('page tool registering document is unavailable');
   const targetId = await targetForTab(tabId);
   const registrationId = crypto.randomUUID();
   await attachTarget(targetId, registrationId);
   try {
+    await sendCommand(targetId, undefined, 'Runtime.enable');
+    const {frameTree} = await sendCommand(targetId, undefined, 'Page.getFrameTree');
+    const context = [...attachments.get(targetId).contexts.values()].find(context => context.auxData?.isDefault && context.auxData.frameId === frameTree.frame.id);
+    const frame = await chrome.webNavigation.getFrame({tabId, frameId: 0});
+    if (!context?.uniqueId || frame?.documentId !== documentId) {
+      throw new Error('page tool document changed before registration');
+    }
+    if (!matchesAny(frame.url, definition.match.url_patterns)) throw new Error('page tool is not available in this document');
     const script = `async () => {
-      if (location.href !== ${JSON.stringify(url)} || !globalThis.__xwebmcpPageTools) {
+      if (location.href !== ${JSON.stringify(frame.url)} || !globalThis.__xwebmcpPageTools) {
         throw new Error('page tool document changed before registration');
       }
       const execute = (${definition.pageExecuteSource});
@@ -149,6 +163,7 @@ export async function registerPageTool(tabId, url, definition) {
       awaitPromise: true,
       returnByValue: true,
       allowUnsafeEvalBlockedByCSP: true,
+      uniqueContextId: context.uniqueId,
     });
     if (response.exceptionDetails) {
       throw new Error(response.exceptionDetails.exception?.description ?? response.exceptionDetails.text ?? 'page tool registration failed');

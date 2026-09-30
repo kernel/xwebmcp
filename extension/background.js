@@ -79,7 +79,7 @@ chrome.runtime.onMessage.addListener((message, sender, reply) => {
       registry.getDefinition(message.definitionId)
         .then((definition) => {
           if (!definition) throw new Error('page tool is no longer registered');
-          return invoker.registerPageTool(sender.tab.id, sender.url, definition);
+          return invoker.registerPageTool(sender.tab.id, sender.url, definition, sender.documentId);
         })
         .then(() => reply({ok: true}))
         .catch((error) => reply({error: error instanceof Error ? error.message : String(error)}));
