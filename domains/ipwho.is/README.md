@@ -4,7 +4,7 @@ The free, keyless JSON IP-geolocation endpoint at https://ipwho.is.
 
 | tool | file | status | notes |
 |------|------|--------|-------|
-| lookup_ip | [lookup_ip.js](lookup_ip.js) | draft | One lookup per call for an IPv4/IPv6 address or the browser's own egress address; location, ASN/ISP and timezone; approximate, free tier only |
+| lookup_ip | [lookup_ip.js](lookup_ip.js) | verified | One lookup per call for an IPv4/IPv6 address or the browser's own egress address; location, ASN/ISP and timezone; approximate, free tier only |
 
 ## What the site is
 
@@ -158,9 +158,27 @@ and length-capped, and unrecognized error text is not echoed.
 
 ## QA
 
-**Current revision: awaiting independent QA.** Trailing line terminators are rejected in inputs and
-response addresses, and the response `type` must match its address family. Earlier evidence below
-applies to the previous source only.
+**Current independent QA: PASS, 2026-09-30**, on commit
+`18ce3fbc748c635c7e5507de7e03fb55bbaf2322` (QA agent `agt_cc1db635c02b06098b97`).
+The tool source is unchanged by the subsequent documentation/status update. No defects were found.
+Trailing line terminators are rejected in inputs and response addresses, and the response `type`
+must match its address family.
+
+The independent reviewer ran the validator and full suite (80 valid tools, 1612/1612 tests), compiled
+both schemas under strict Ajv 8, and validated 115 collected browser outputs. Independent offline
+checks covered 605 valid addresses and 56 invalid cases; all 18 targeted regression mutants were
+caught. Fresh Kernel checks covered eight live calls, 28 malformed object inputs with no request,
+and 54 fixture invocations using real responses/streams. The disposable Chromium 153 extension
+check covered six live calls, eight malformed inputs and 11 fixture invocations. Both runtimes
+passed address-family/newline rejection, byte bounds, timeout, synthetic cooldown, namespace
+replacement and navigation lifetime. No real 429 was induced. DOM, storage and history stayed
+unchanged. Browser/profile cleanup completed.
+
+**Current live case for `verified`:** on 2026-09-30, independent `lookup_ip` invocations from
+`https://ipwho.is/9.9.9.9` returned `ok` for IPv4, IPv6 and browser-egress lookups in a fresh Kernel
+browser; the same final source also returned live successes through the local extension.
+
+Historical evidence below applies to the previous source only.
 
 Current author checks (2026-09-30): the validator passes; the full suite passes 1612/1612, including
 35 site-specific tests. In a fresh public Kernel browser, the final source registered and replaced
@@ -169,7 +187,10 @@ returned `ok`; a private address returned `reserved_range`. Seven malformed inpu
 trailing newlines, sent no request. A synthetic 429 enforced cooldown without another request;
 a synthetic response with a mismatched address family returned `site_changed`. Invocation left the
 URL unchanged, navigation invalidated the old reference, and the tool was absent on `about:blank`.
-No real 429 was induced. Local-extension verification of this revision is pending.
+No real 429 was induced. The final source also passed the author's disposable Chromium 153
+extension-message-API check: four live successes, reserved-range error, four malformed inputs
+sending no request, synthetic cooldown and family mismatch, atomic namespace replacement,
+unchanged URL and stale-reference rejection. Chromium stopped and its profile was removed.
 
 **Previous independent QA: PASS, 2026-09-29** (QA agent `agt_cc1db635c02b06098b97`,
 recorded in the registry as `provenance.qa_agent`). The reviewer read the source, tests and this README
@@ -196,7 +217,7 @@ lifetime; and the same behavior in the local extension. It did not verify the si
 redirect or stall, an IPv6 egress echo, `*.ipwho.is` documents, parallel calls, the `xwebmcp` CLI, its
 native host or branded Google Chrome.
 
-**Live case for `verified`:** on 2026-09-29 `lookup_ip` was invoked from the `https://ipwho.is/9.9.9.9`
+**Previous live case:** on 2026-09-29 `lookup_ip` was invoked from the `https://ipwho.is/9.9.9.9`
 document, not only from the `https://ipwho.is/` entry page, and returned `ok` (both the author and the
 independent reviewer did this in the Kernel browser).
 

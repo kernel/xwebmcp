@@ -502,9 +502,9 @@
         "https://ipwho.is/*",
         "https://*.ipwho.is/*"
       ],
-      "status": "draft",
-      "last_verified": null,
-      "notes": "Page tool on ipwho.is: one free-endpoint lookup per call for an IPv4/IPv6 address or the browser's own egress address; typed validation, allowlisted output, one request per call with a 16 KiB body cap and a cooldown after HTTP 429. Approximate location, free tier only; the site's real 429 was not triggered. The Kernel API can return accented Latin results as a JSON string. Current validation fixes await independent QA.",
+      "status": "verified",
+      "last_verified": "2026-09-30",
+      "notes": "Independent QA passed on the final source. Live-verified 2026-09-30 from ipwho.is/9.9.9.9 in a fresh Kernel browser and the local Chromium extension. One free-endpoint lookup per call for a validated IPv4/IPv6 address or browser egress; allowlisted output, 16 KiB body cap, 10 s timeout and cooldown after HTTP 429. Approximate location, free tier only; no retries, proactive quota budget or caller cancellation handling. Real 429 was not triggered. The Kernel API can return accented Latin results as a JSON string.",
       "provenance": {
         "qa_agent": "agt_cc1db635c02b06098b97"
       }
