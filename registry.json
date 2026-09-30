@@ -626,6 +626,34 @@
       }
     },
     {
+      "domain": "linkedin.com",
+      "tool": "get_job",
+      "file": "domains/linkedin.com/get_job.js",
+      "kind": "page",
+      "namespace": "linkedin.com",
+      "url_patterns": [
+        "https://linkedin.com/*",
+        "https://*.linkedin.com/*"
+      ],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Public guest job read; one request per call, shared document cooldown, no retries or login. Independent QA pending."
+    },
+    {
+      "domain": "linkedin.com",
+      "tool": "search_jobs",
+      "file": "domains/linkedin.com/search_jobs.js",
+      "kind": "page",
+      "namespace": "linkedin.com",
+      "url_patterns": [
+        "https://linkedin.com/*",
+        "https://*.linkedin.com/*"
+      ],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Public guest job read; one request per call, shared document cooldown, no retries or login. Independent QA pending."
+    },
+    {
       "domain": "purelymail.com",
       "tool": "create_filter",
       "file": "domains/purelymail.com/create_filter.js",
