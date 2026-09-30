@@ -98,6 +98,8 @@ Successful reads and preparations carry `observed_at`. Times are snapshots, not 
 requires the response to identify that exact venue, checks online party-size limits and re-reads dining availability.
 Exactly one `book` entry must match all three selection fields. No match returns `slot_unavailable`; repeated matching
 entries return `ambiguous_slot`, even if their other fields appear identical. It does not choose an arbitrary duplicate.
+Unreadable shifts, time entries, bookable starts, seating text or card requirements return `site_changed` rather than
+asserting uniqueness, absent seating text or no card requirement.
 
 A `prepared` result names the current exact slot, card requirement, raw payment/base-cost fields, currency and bounded
 booking/cancellation terms. The `handoff_url` is the public search route for the service date and party size, **not** a
@@ -213,7 +215,7 @@ patterns, and the tools were only exercised on the search step, an experiences p
 - `guest_login_required` (the site's `is_global_client_login_required`) was false on every venue checked; what `true` does to
   the API was not observed, so `login_required` is only mapped from HTTP 401 and was never seen live.
 - Live `challenge`, `rate_limited`, `login_required` and `site_changed` outcomes were never observed (fixture tests only).
-  All live runs came from Kernel stealth browsers; non-stealth browsers and heavy repeated use were not tried.
+  Kernel stealth browsers and a fresh local Chromium profile were used; heavy repeated use was not tried.
 - At most 300 times (fewer when the output would exceed 150,000 bytes) and 10 distinct policy texts of 2000 characters are
   returned per call. Longer policy text is cut and flagged (its `policy_id` stays set). A venue with more than 10 distinct
   policy texts returns `policy_id: null` for the times whose text is beyond the tenth, and one with more than 60 distinct raw
@@ -224,15 +226,19 @@ patterns, and the tools were only exercised on the search step, an experiences p
 - The HTML conversion is a text filter, not an HTML parser: malformed markup such as `a<b and c>d` reads `b and c` as a tag,
   and text hidden with CSS (not with tags) is not recognized. Invisible characters other than the classes listed under
   Safety are passed through.
-- The local Chrome extension runtime was not exercised by the author.
+- The expanded namespace was exercised through the local Chromium extension on public `www` pages, not authenticated
+  pages. New discovery/preparation reads on `fp` and `eu` have fixture coverage, not new live evidence.
 - The `intent=search` request parameter mirrors the widget's own requests; whether it affects the site's analytics was not
   investigated.
 
 ## QA
 
-All five tools are `draft`: the expanded namespace is awaiting independent review. The prior three reviews of the dining
-reads failed, the last two on minor test/documentation gaps only. The previous head fixed those gaps without another review;
-that is not a sign-off. The new scope requires a fresh review of the full namespace.
+All five tools remain `draft` while this PR is open; the PR records the current independent QA verdict. The prior three
+reviews of the dining reads failed, the last two on minor test/documentation gaps only. The previous head fixed those gaps
+without another review; that was not a sign-off. Expanded-scope initial QA verified those corrections and exercised all
+five tools in Kernel and the local extension, but found three preparation defects: malformed seating text could match null,
+unknown card requirements became false, and incomplete schedules still asserted uniqueness. Preparation now fails explicitly
+on those unreadable fields; fabricated regression tests pin each case. A new source revision requires independent recheck.
 
 Author checks (not independent, 2026-09-29, signed out, Kernel stealth browsers, read-only): both tools were registered
 through `webmcp.addCustomTools` and invoked through `webmcp.invokeTool` from booking, experiences and events pages on `www`,
@@ -248,6 +254,14 @@ hostile policy text. The last prior review (`8414b81`) still failed on individua
 Head `a32fea6` corrected those with only schema-description changes to tool source. The new independent review must verify
 those corrections alongside the added discovery and preparation tools.
 
+Additional author checks (2026-09-30, signed out, read-only): all five tools registered together in Kernel and the local
+Chromium extension; full namespace replacement retained all five. Offer pagination returned 3+4 of 7 items, event pagination
+returned occurrences from a 26-item schedule, and empty directories/schedules were explicit. Exact prepaid preparation,
+unavailable targets and fake approval rejection were checked without selecting any slot. Actual Ajv validated the outputs;
+matching local-extension outputs equaled Kernel outputs apart from `observed_at`. URL and document lifetime stayed unchanged.
+Challenge, rate-limit, authentication, cancellation and response-corruption outcomes remain fixture-only.
+
 ## Sessions
 
-Ephemeral Kernel browsers used while building were created and deleted by the builder.
+Ephemeral Kernel browsers used while building were created and deleted by the builder. The temporary local Chromium
+profile was stopped.

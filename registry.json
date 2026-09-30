@@ -888,7 +888,7 @@
       ],
       "status": "draft",
       "last_verified": null,
-      "notes": "Not independently QA'd. Page tool on the SevenRooms guest booking hosts (www, fp, eu): bookable times for one venue, date and party size as venue-local and UTC starts with the widget label, shift, card and payment fields and deduplicated plain-text venue policy text. Lists only the site's book entries (what the widget shows as time buttons); request entries are counted, not listed. Never selects, holds or books, and drops booking handles."
+      "notes": "QA evidence is recorded in the domain README and PR. Page tool on the SevenRooms guest booking hosts (www, fp, eu): bookable times for one venue, date and party size as venue-local and UTC starts with the widget label, shift, card and payment fields and deduplicated plain-text venue policy text. Lists only the site's book entries (what the widget shows as time buttons); request entries are counted, not listed. Never selects, holds or books, and drops booking handles."
     },
     {
       "domain": "sevenrooms.com",
@@ -912,7 +912,7 @@
       ],
       "status": "draft",
       "last_verified": null,
-      "notes": "Not independently QA'd. Page tool on the SevenRooms guest booking hosts (www, fp, eu): one venue's public widget details by venue_url_key (address, party sizes, booking window, currency, languages); a venue is found only on the hosts that serve it. Read-only, signed out, no navigation; returns none of the site's payment, map or analytics keys."
+      "notes": "QA evidence is recorded in the domain README and PR. Page tool on the SevenRooms guest booking hosts (www, fp, eu): one venue's public widget details by venue_url_key (address, party sizes, booking window, currency, languages); a venue is found only on the hosts that serve it. Read-only, signed out, no navigation; returns none of the site's payment, map or analytics keys."
     },
     {
       "domain": "sevenrooms.com",

@@ -282,17 +282,18 @@
 
     const warnings = [];
     const found = [];
-    let unreadable = 0;
     const otherTypes = new Set();
     for (const shift of shifts) {
-      if (!isPlain(shift) || !Array.isArray(shift.times)) { unreadable++; continue; }
+      if (!isPlain(shift) || !Array.isArray(shift.times)) return fail("site_changed", "A shift was unreadable; exact target uniqueness could not be established.");
       if (shift.is_closed === true) continue;
       for (const t of shift.times) {
-        if (!isPlain(t)) { unreadable++; continue; }
+        if (!isPlain(t)) return fail("site_changed", "A time entry was unreadable; exact target uniqueness could not be established.");
         if (t.type === "request") continue;
         if (t.type !== "book") { otherTypes.add(typeof t.type === "string" ? text(t.type, 30) || "unknown" : "unknown"); continue; }
         const start = localStamp(t.real_datetime_of_slot);
-        if (!start) { unreadable++; continue; }
+        if (!start) return fail("site_changed", "A bookable start was unreadable; exact target uniqueness could not be established.");
+        if ([t.public_time_slot_description, t.public_description_title].some(v => v !== null && typeof v !== "string")) return fail("site_changed", "A bookable seating label or title was unreadable; preparation stopped.");
+        if (typeof t.require_credit_card !== "boolean") return fail("site_changed", "A bookable card requirement was unknown; preparation stopped.");
         found.push({
           local_start: start, start_utc: utcStamp(t.utc_datetime),
           duration_minutes: Number.isInteger(t.duration) && t.duration > 0 ? t.duration : null,
@@ -302,7 +303,6 @@
         });
       }
     }
-    if (unreadable) warnings.push("Skipped " + unreadable + " shift or time entries without a readable start time.");
     if (otherTypes.size) warnings.push("Skipped entries of unrecognized type: " + [...otherTypes].slice(0, 5).join(", ") + ".");
     const selected = found.filter(s => s.local_start === input.local_start && s.label === input.label && s.description_title === input.description_title);
     if (!selected.length) return fail("slot_unavailable", "The exact time and seating texts are no longer listed as bookable. Read get_availability again; no hold was created.");

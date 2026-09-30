@@ -268,6 +268,35 @@ test("prepare_reservation fails closed on mismatched venue and invalid party lim
   }
 });
 
+test("prepare_reservation rejects unreadable seating text instead of matching a null target", async () => {
+  for (const [field, selectedField] of [["public_time_slot_description", "label"], ["public_description_title", "description_title"]]) {
+    for (const value of [undefined, {}, [], 7, true]) {
+      const h = harness("prepare_reservation", slotsRoute([slot({ [field]: value })]));
+      assert.equal((await h.run({ ...target, [selectedField]: null })).error_kind, "site_changed");
+    }
+  }
+});
+
+test("prepare_reservation refuses unknown card requirements instead of reporting no card needed", async () => {
+  for (const value of [undefined, null, 1, "true", {}]) {
+    const h = harness("prepare_reservation", slotsRoute([slot({ require_credit_card: value })]));
+    assert.equal((await h.run(target)).error_kind, "site_changed");
+  }
+  const h = harness("prepare_reservation", slotsRoute([slot({ require_credit_card: false })]));
+  const r = await h.run(target);
+  assert.equal(r.status, "prepared");
+  assert.equal(r.slot.card_required, false);
+});
+
+test("prepare_reservation cannot assert a unique target from an unreadable partial schedule", async () => {
+  for (const times of [[slot(), null], [slot(), slot({ real_datetime_of_slot: null })]]) {
+    const h = harness("prepare_reservation", slotsRoute(times));
+    assert.equal((await h.run(target)).error_kind, "site_changed");
+  }
+  const h = harness("prepare_reservation", { route: path => path.includes("/availability/") ? { body: { data: { availability: { [date]: [availability().data.availability[date][0], { times: null }] } } } } : null });
+  assert.equal((await h.run(target)).error_kind, "site_changed");
+});
+
 test("prepare_reservation keeps post-midnight local dates and bounded terms, including cancellation-only truncation", async () => {
   const local = "2026-10-10T00:15";
   const h = harness("prepare_reservation", slotsRoute([slot({ real_datetime_of_slot: "2026-10-10 00:15:00", public_time_slot_description: null, public_description_title: null, cancellation_policy: "c".repeat(2001) })]));
