@@ -158,7 +158,7 @@ for (const name of NAMES) {
 }
 
 test("registry lists every myntra.com tool exactly once", () => {
-  assert.deepEqual(registry.tools.filter(t => t.domain === "myntra.com").map(t => t.tool).sort(), [...NAMES].sort());
+  assert.deepEqual(registry.tools.filter(t => t.domain === "myntra.com").map(t => t.tool).sort(), [...NAMES, "get_cart", "add_to_cart", "update_cart_item", "remove_cart_item"].sort());
 });
 
 test("the shared text sanitiser is identical in all three tools", () => {

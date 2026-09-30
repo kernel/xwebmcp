@@ -1,12 +1,16 @@
 # myntra.com
 
-Tools for Myntra (https://www.myntra.com), an Indian fashion, beauty and home retailer: public product search, product details and reviews. Everything works signed out.
+Tools for Myntra (https://www.myntra.com), an Indian fashion, beauty and home retailer: public product search, product details, reviews and the signed-out guest bag. Account-backed bags and wishlist access are not supported.
 
 | tool | file | status | notes |
 |------|------|--------|-------|
 | search_products | [search_products.js](search_products.js) | verified | One page of organic results with the site's sorts, `Group:Value` filters, a rupee price range and an opaque cursor; reports `query_substituted` when the site searches different words |
 | get_product | [get_product.js](get_product.js) | verified | Price and MRP in rupees, every size with SKU id, availability and stock, seller, colour variants, attributes, description sections, images, return and cash-on-delivery flags; unknown ids return `not_found` |
 | get_product_reviews | [get_product_reviews.js](get_product_reviews.js) | verified | Public reviews, 12 per page, most helpful or most recent, optional exact star filter; page 1 adds the rating summary; reviewer names are not returned |
+| get_cart | [get_cart.js](get_cart.js) | draft | Read at most 100 guest bag lines; signed-in bags refused |
+| add_to_cart | [add_to_cart.js](add_to_cart.js) | draft | Add one ordinary guest SKU with price/stock/duplicate guards; fixture-only mutation success |
+| update_cart_item | [update_cart_item.js](update_cart_item.js) | draft | Set exact guest line quantity 1–10; preserve SKU, seller and checkout selection; fixture-only mutation success |
+| remove_cart_item | [remove_cart_item.js](remove_cart_item.js) | draft | Remove one exact guest line with an expected quantity; fixture-only mutation success |
 
 ## Native WebMCP tools
 
@@ -19,7 +23,7 @@ nothing here duplicates a native tool.
 
 ## Execution kind
 
-All three tools are `kind: "page"`. Each one calls the site's own same-origin endpoints with
+All seven tools are `kind: "page"`. Each one calls the site's own same-origin endpoints with
 `fetch` from the document it is invoked in and returns a structured result from that response;
 none navigates the tab, submits a form or needs trusted input, so none meets the `cdp` criteria
 in `spec/cdp-tools.md` §2.1 or §2.4. `get_product` reads the product page's HTML with `fetch`
@@ -27,12 +31,12 @@ instead of navigating to it, so the caller stays on the page it was on.
 
 ## Scope and loading
 
-Register all three files together under namespace `myntra.com`; they use the default patterns
+Register all seven files together under namespace `myntra.com`; atomic replacement must not omit the existing reads. They use the default patterns
 `https://myntra.com/*` and `https://*.myntra.com/*`.
 
 ```javascript
 const fs = await import("node:fs");
-const names = ["search_products", "get_product", "get_product_reviews"];
+const names = ["search_products", "get_product", "get_product_reviews", "get_cart", "add_to_cart", "update_cart_item", "remove_cart_item"];
 const tools = names.flatMap(n => eval(fs.readFileSync(`domains/myntra.com/${n}.js`, "utf8")));
 await webmcp.addCustomTools({ namespace: "myntra.com", tools, forceOverwriteNamespace: true });
 const tab = (await currentTab()).targetId;
@@ -40,14 +44,19 @@ const live = async name => (await webmcp.listTools()).find(t => t.source.custom?
 const found = await webmcp.invokeTool((await live("search_products")).tool_ref, { query: "men running shoes", sort_by: "price_low_to_high", limit: 5 }, { timeoutSec: 60 });
 ```
 
-Each tool runs inside the `www.myntra.com` page it is invoked on (any page works, including the
-homepage, a listing, a product page or the reviews page) and never navigates. On another
+Each tool runs inside the `www.myntra.com` page it is invoked on and never navigates. The public
+reads and `get_cart` work from any page; bag mutations require an explicit guest session, normally
+present on a rendered product page. Missing session state returns `wrong_page`, not an attempt to
+navigate or sign in. On another
 `myntra.com` host it returns `wrong_page` without calling the site; open `https://www.myntra.com/`
-in the tab and call again. Requests go only to `www.myntra.com`, use the page's own cookies and
-are plain `GET`s. A call takes about 0.3 to 1.4 s; `timeoutSec: 60` is plenty.
+in the tab and call again. Requests go only to `www.myntra.com` and use the page's own cookies.
+Public reads issue only `GET`; guest bag mutations use the observed `POST`/`PUT` endpoints.
+Bag calls have a 12-second internal cancellation deadline; use `timeoutSec: 60`.
 
-What the tools never do: sign in, use or change an account, touch the bag, wishlist, addresses,
-orders, coupons or payment, set a delivery pincode, or open checkout. Nothing is written.
+The public reads never write. Bag action tools can change only the current signed-out guest bag.
+None signs in, touches a signed-in account, writes the wishlist, changes delivery location, applies
+coupons/credit, reserves inventory, places an order or pays. No checkout or payment execution is
+exposed, and no model-provided confirmation flag is accepted.
 
 Conventions:
 
@@ -133,7 +142,7 @@ Conventions:
 - Only signed-out browsers were exercised. Myntra sign-in takes an Indian mobile number and an
   SMS one-time code, which was not attempted; nothing here depends on an account, and signed-in
   behaviour (personalised prices or coupons) is untested.
-- Not covered: bag, wishlist, addresses, orders, coupons and offers, delivery and pincode
+- Not covered: signed-in bag, wishlist, addresses, orders, coupons and offers, delivery and pincode
   serviceability, questions and answers, size recommendations, related and cross-sell products.
   Prices and stock are not pincode-specific, so a result does not prove an item can be delivered
   to any address.
@@ -169,7 +178,55 @@ Conventions:
   site. The block-page detection (HTTP 403, or a short non-JSON page with "access denied" style
   wording) is a heuristic.
 
+## Guest bag mechanisms and safety
+
+Observed 2026-09-30, signed out, without live bag/wishlist writes:
+
+- `GET /gateway/v1/cart/default?unselected=true` returns the default bag directly, including
+  `createdBy`, `context`, `products`, `count` and `price`. An empty guest response was observed
+  live from a product page. Unlike `/load`, this request does not request cart merging, credit,
+  rewards, location or serviceability changes. The tools refuse a nonempty `createdBy` or a
+  context other than `DEFAULT`. Returned fields omit the cart id, account identifiers, addresses,
+  cookies, session tokens, images and signed URLs.
+- The public product bundle adds with `POST /gateway/v1/cart/default/add`, sending numeric
+  `id`, `skuId`, `sellerPartnerId`, `quantity: 1` and the current page session's `xsrf`.
+  Guest availability and the per-size selected seller were observed on a product page. The
+  token is used only inside that page and never returned or persisted.
+- The public checkout bundle uses `PUT /gateway/v1/cart/default/edit?unselected=true` with
+  an array of exact `itemId`, `skuId`, `sellerPartnerId`, `quantity`, `selectedForCheckout`, and
+  `PUT /gateway/v1/cart/default/remove?unselected=true` with an array of `{itemId}`.
+  These request shapes are source-observed, not live mutation-tested. Populated line fixtures
+  are fabricated using the fields the bundle consumes; no real user's populated bag was used.
+- Add/update re-read the product and guest bag before writing. Add refuses a changed unit price,
+  does not increment an existing SKU, and adds one unit only. Quantity changes require the same
+  currently available default seller and enough stock, including for decreases. Removal does
+  not move an item to wishlist. Only ordinary merchandise is supported, not preorder, gift or
+  subscription operations. Updates/removals name item/style/SKU plus an expected quantity.
+- Mutations require an explicit signed-out page session and stable XSRF token/device cookie.
+  Signed-in/conflicting account signals fail closed. A per-document lock blocks concurrent tool
+  writes, but it cannot lock the site's own UI or another tab; preflight and postflight reads
+  detect supported line/quantity/checkout-selection changes, not an atomic server transaction.
+- Success is reported only after a separate fresh bag read verifies the target and every
+  unrelated line identity, quantity and checkout selection. Prices/promotions can change and
+  are not an invariant. Once a write is attempted, cancellation, denial, transport failure or
+  an unverifiable postcondition returns `outcome_unknown`. Do not automatically retry it.
+  Read the bag and reconcile the observed state instead. Before a write, cancellation stops
+  without a mutation. Missing targets fail explicitly; matching quantities are read-only no-ops.
+
+Additional limitations: bag reads are capped at 100 lines and 1.5 MB of response text; quantities
+are 1–10; signed-in and alternate checkout contexts are refused. A fresh product page is needed
+for bag writes; the homepage may lack guest session state. Account switches, populated bags,
+mutation success and inventory races are fixture-only. Wishlist actions require login: the public
+wishlist displays a login prompt and the site's code checks login before calling wishlist APIs.
+They are deliberately omitted, not replaced by a placeholder login tool. Order/payment execution
+is omitted because this runtime has no trusted per-action human approval path.
+
 ## QA summary
+
+The guest bag additions are initially `draft`, pending independent final-source QA. Fixtures in
+`tests/myntra-cart-tools.test.mjs` test success and failures without any live mutations. Current
+Kernel registration includes the entire seven-tool namespace; live success/failure coverage and
+local extension coverage are recorded separately below after review.
 
 Independent QA (agent `agt_14295d5c1a9f9887b0e9`, recorded in `registry.json` provenance) signed
 off all three tools on the final tool source, commit `a46a1e2368bdad8bbec745b7fa0368eae8ab4d0c`,

@@ -627,6 +627,28 @@
     },
     {
       "domain": "myntra.com",
+      "tool": "add_to_cart",
+      "file": "domains/myntra.com/add_to_cart.js",
+      "kind": "page",
+      "namespace": "myntra.com",
+      "url_patterns": ["https://myntra.com/*", "https://*.myntra.com/*"],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Guest-only add of one ordinary SKU with price, stock, duplicate and session guards. Mutation success is fixture-only; never automatically retry unknown outcomes."
+    },
+    {
+      "domain": "myntra.com",
+      "tool": "get_cart",
+      "file": "domains/myntra.com/get_cart.js",
+      "kind": "page",
+      "namespace": "myntra.com",
+      "url_patterns": ["https://myntra.com/*", "https://*.myntra.com/*"],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Read the default signed-out guest bag; at most 100 allowlisted lines. Signed-in bags are refused."
+    },
+    {
+      "domain": "myntra.com",
       "tool": "get_product",
       "file": "domains/myntra.com/get_product.js",
       "kind": "page",
@@ -661,6 +683,17 @@
     },
     {
       "domain": "myntra.com",
+      "tool": "remove_cart_item",
+      "file": "domains/myntra.com/remove_cart_item.js",
+      "kind": "page",
+      "namespace": "myntra.com",
+      "url_patterns": ["https://myntra.com/*", "https://*.myntra.com/*"],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Guest-only removal by exact item/style/SKU and expected quantity. Fresh absence and unrelated-line checks; fixture-only mutation success."
+    },
+    {
+      "domain": "myntra.com",
       "tool": "search_products",
       "file": "domains/myntra.com/search_products.js",
       "kind": "page",
@@ -675,6 +708,17 @@
       "provenance": {
         "qa_agent": "agt_14295d5c1a9f9887b0e9"
       }
+    },
+    {
+      "domain": "myntra.com",
+      "tool": "update_cart_item",
+      "file": "domains/myntra.com/update_cart_item.js",
+      "kind": "page",
+      "namespace": "myntra.com",
+      "url_patterns": ["https://myntra.com/*", "https://*.myntra.com/*"],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Guest-only absolute quantity 1–10 with stale-state, seller, stock and unrelated-line guards. Fixture-only mutation success."
     },
     {
       "domain": "purelymail.com",
