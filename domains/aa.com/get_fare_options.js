@@ -130,7 +130,7 @@
   },
   "execute": async (input, context) => {
     const fail = (status, message) => ({ status, message });
-    if (!input || typeof input !== "object" || Array.isArray(input) || Object.keys(input).some(k => !["offset", "limit"].includes(k)) || !Number.isInteger(input.offset ?? 0) || (input.offset ?? 0) < 0 || (input.offset ?? 0) > 599 || !Number.isInteger(input.limit ?? 10) || (input.limit ?? 10) < 1 || (input.limit ?? 10) > 20) return fail("error", "Invalid input: only offset (0–599) and limit (1–20) are accepted.");
+    if (!input || typeof input !== "object" || Array.isArray(input) || Object.keys(input).some(k => !["offset", "limit"].includes(k)) || (input.offset !== undefined && !Number.isInteger(input.offset)) || (input.offset ?? 0) < 0 || (input.offset ?? 0) > 599 || (input.limit !== undefined && !Number.isInteger(input.limit)) || (input.limit ?? 10) < 1 || (input.limit ?? 10) > 20) return fail("error", "Invalid input: only offset (0–599) and limit (1–20) are accepted.");
     if (context?.signal?.aborted) return fail("error", "Cancelled before reading the page.");
     if (location.origin !== "https://www.aa.com") return fail("wrong_page", "Open the outbound choose-flights page on https://www.aa.com first.");
     if (/access denied|challenge validation/i.test(document.title) || document.querySelector('iframe[src*="challenge-assets"]')) return fail("blocked", "American is showing a human-verification or access-denied page; no availability conclusion was made.");

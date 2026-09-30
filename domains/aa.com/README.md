@@ -113,7 +113,7 @@ node --test tests/aa.com.test.mjs
 
 ### Native WebMCP
 
-American registers no WebMCP tools of its own. `webmcp.listTools()` returned an empty list on 2026-09-29 on the homepage, the flight-status search page and the travel-alerts page, before and after registering this namespace. Nothing collides with the custom tool names.
+No native WebMCP tools were found on the sampled homepage, flight-status search and travel-alerts pages on 2026-09-29, or the public booking results on 2026-09-30. Custom registrations were checked separately; nothing collided with their names.
 
 ### Execution kind
 
@@ -148,11 +148,11 @@ Public pages, observed by the author on 2026-09-29 (Kernel stealth browser on a 
 
 ### Flight status QA
 
-Status is `verified` (2026-09-29). Independent QA (agent `agt_8e0c8369e539ef0b8159`) reviewed three commits and signed off on each: `0f9b673` (one minor defect: the site's `0000` placeholder and zero-padded numbers leaked into `incoming_flight`, plus README claims that overstated the evidence), `cf023d6` (fixes verified; two nits) and `3defa44`, the final tool source. That sign-off applies to the historical camelCase revision, not the current snake_case migration.
+Historical status was `verified` (2026-09-29). Independent QA (agent `agt_8e0c8369e539ef0b8159`) reviewed three commits and signed off on each: `0f9b673` (one minor defect: the site's `0000` placeholder and zero-padded numbers leaked into `incoming_flight`, plus README claims that overstated the evidence), `cf023d6` (fixes verified; two nits) and `3defa44`, the final tool source. That sign-off applies to the historical camelCase revision, not the current snake_case migration.
 
 Fixture tests (`tests/aa-flight-status.test.mjs`, 21 tests, fabricated flights, stubbed page): input rejection before any request, the exact request, wrong host, challenge pages, field allowlist and cleaning, schedule-only rows, cancellation, incoming-flight normalization, the 10-row cap, no-results, every HTTP failure mapping, the 20 second abort, no navigation, and negative cases against the output schema. QA also mutation-checked the tests and fuzzed the real output schema with about 900 adversarial fixtures (no schema violations, one request per case).
 
-Independent live cases on the final source, 2026-09-29, public and signed out, in a Kernel stealth browser on a US residential proxy with the whole `aa.com` namespace registered together:
+Independent live cases on that historical source, 2026-09-29, public and signed out, in a Kernel stealth browser on a US residential proxy with the whole `aa.com` namespace registered together:
 
 | Case | Result |
 |---|---|

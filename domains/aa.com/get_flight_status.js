@@ -134,7 +134,7 @@
     const shown = /^(AA ?)?([1-9][0-9]{0,3})$/.exec(typeof input?.flight_number === "string" ? input.flight_number : "");
     const dateParts = /^(20[0-9]{2})-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])$/.exec(typeof input?.date === "string" ? input.date : "");
     const calendarDate = dateParts && new Date(Date.UTC(+dateParts[1], +dateParts[2] - 1, +dateParts[3])).toISOString().slice(0, 10) === input.date;
-    if (!input || typeof input !== "object" || Array.isArray(input) || Object.keys(input).some((key) => key !== "flight_number" && key !== "date") || !shown || !calendarDate)
+    if (!input || typeof input !== "object" || Array.isArray(input) || Object.keys(input).some((key) => key !== "flight_number" && key !== "date") || !shown || shown[0] !== input.flight_number || !calendarDate)
       return failure("error", "Invalid input: provide only flight_number (1-9999, optionally prefixed AA) and date (a real calendar date, YYYY-MM-DD). Nothing was requested.");
     const flight_number = shown[2];
     if (location.origin !== ORIGIN)
@@ -168,7 +168,7 @@
         signal: controller.signal
       });
       raw = await res.text();
-    } catch (error) {
+    } catch {
       return failure("error", controller.signal.aborted ? "The request to American timed out or was cancelled; the outcome is unknown and nothing was changed." : "The request to American failed; no flight-status answer was observed.");
     } finally {
       clearTimeout(timer);

@@ -113,7 +113,7 @@ test("invalid input is rejected before any request or page access", async () => 
     undefined, null, [], "1234", {}, { flight_number: "1234" }, { date: "2026-10-01" },
     { ...good, extra: 1 }, { ...good, flight_number: 1234 }, { ...good, flight_number: "0" }, { ...good, flight_number: "0100" },
     { ...good, flight_number: "10000" }, { ...good, flight_number: "-5" }, { ...good, flight_number: "aa100" }, { ...good, flight_number: "AA  100" },
-    { ...good, flight_number: "BA 100" }, { ...good, flight_number: "12a" }, { ...good, flight_number: " 1234" },
+    { ...good, flight_number: "1234\n" }, { ...good, flight_number: "BA 100" }, { ...good, flight_number: "12a" }, { ...good, flight_number: " 1234" },
     { ...good, date: "2026-02-30" }, { ...good, date: "2026-13-01" }, { ...good, date: "2026/10/01" }, { ...good, date: "10/01/2026" },
     { ...good, date: "1999-01-01" }, { ...good, date: "2026-10-01T00:00:00Z" }, { ...good, date: 20261001 }
   ];

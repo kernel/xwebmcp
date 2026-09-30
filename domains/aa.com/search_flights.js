@@ -5,7 +5,7 @@
     tool: {
       name: "search_flights",
       description:
-        "Search American Airlines cash fares (default) or award miles plus displayed taxes (pay_with: miles) for 1–9 adults. Creates a search session but never selects a fare or reserves inventory. Returns every outbound option on the first results page, not a selected return itinerary. Prices are the lowest displayed per-person from-fares, with the website currency symbol and trip basis; never a guaranteed group total. Times are airport-local; transportTypes flags airline-marketed bus or train segments. American may include nearby airports: each row declares matchesRequestedAirports, and alternatives_only means no returned row matches both requested airports. May return blocked, timeout, or error rather than fabricate empty results. Invoke serially in a dedicated tab.",
+        "Search American Airlines cash fares (default) or award miles plus displayed taxes (pay_with: miles) for 1–9 adults. Creates a search session but never selects a fare or reserves inventory. Returns up to 100 outbound options on the first results page, not a selected return itinerary. Prices are the lowest displayed per-person from-fares, with the website currency symbol and trip basis; never a guaranteed group total. Times are airport-local; transportTypes flags airline-marketed bus or train segments. American may include nearby airports: each row declares matchesRequestedAirports, and alternatives_only means no returned row matches both requested airports. May return blocked, timeout, or error rather than fabricate empty results. Invoke serially in a dedicated tab.",
       inputSchema: {
         type: "object",
         additionalProperties: false,
@@ -147,27 +147,20 @@
                 stops: { type: "integer", minimum: 0 },
                 price: {
                   oneOf: [{
-                  type: "object",
-                  additionalProperties: false,
-                  required: [
-                    "amount",
-                    "currencySymbol",
-                    "basis",
-                    "perPerson",
-                    "fareLabel",
-                  ],
-                  properties: {
-                    amount: { type: "number", exclusiveMinimum: 0 },
-                    currencySymbol: {
-                      type: "string",
-                      minLength: 1,
-                      description:
-                        "Literal currency prefix shown by the site; $ is not asserted to be USD.",
+                    type: "object",
+                    additionalProperties: false,
+                    required: ["amount", "currencySymbol", "basis", "perPerson", "fareLabel"],
+                    properties: {
+                      amount: { type: "number", exclusiveMinimum: 0 },
+                      currencySymbol: {
+                        type: "string",
+                        minLength: 1,
+                        description: "Literal currency prefix shown by the site; $ is not asserted to be USD.",
+                      },
+                      basis: { type: "string", enum: ["roundTrip", "oneWay"] },
+                      perPerson: { type: "boolean", const: true },
+                      fareLabel: { type: "string", minLength: 1 },
                     },
-                    basis: { type: "string", enum: ["roundTrip", "oneWay"] },
-                    perPerson: { type: "boolean", const: true },
-                    fareLabel: { type: "string", minLength: 1 },
-                  },
                   }, {
                     type: "object", additionalProperties: false,
                     required: ["miles", "tax_amount", "currency_symbol", "basis", "per_person", "fare_label"],
@@ -238,7 +231,7 @@
         !/^[A-Z]{3}$/.test(input.destination) ||
         input.origin === input.destination ||
         !["oneWay", "roundTrip"].includes(input.tripType) ||
-        !["cash", "miles"].includes(input.pay_with ?? "cash") ||
+        (input.pay_with !== undefined && !["cash", "miles"].includes(input.pay_with)) ||
         !validDate(input.departDate) ||
         input.departDate < today ||
         input.departDate > maxDate ||
@@ -625,7 +618,7 @@
           "timeout",
           "Flight results did not become ready within 105 seconds; this is not a no-flights result.",
         );
-      } catch (error) {
+      } catch {
         return output(
           Date.now() >= deadline ? "timeout" : "error",
           "The flight search could not be completed. No flight was selected or reserved; the current page may require manual review.",

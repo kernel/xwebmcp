@@ -143,9 +143,8 @@ for (const change of ["amount", "date", "route", "flight", "label", "disabled"])
 }
 
 test("malformed input and pretend confirmation fail before reading any page state", async () => {
-  const cases = { get_fare_options: [null, [], {}, { offset: -1 }, { limit: 21 }, { limit: "1" }, { confirmed: true }], prepare_itinerary: [null, [], {}, { option_id: "bad" }, { option_id: "aa_" + "0".repeat(64), confirmed: true }, { option_id: "aa_" + "0".repeat(64), confirm: "book" }] };
+  const cases = { get_fare_options: [null, [], { offset: null }, { limit: null }, { offset: -1 }, { limit: 21 }, { limit: "1" }, { confirmed: true }], prepare_itinerary: [null, [], {}, { option_id: "bad" }, { option_id: "aa_" + "0".repeat(64) + "\n" }, { option_id: "aa_" + "0".repeat(64), confirmed: true }, { option_id: "aa_" + "0".repeat(64), confirm: "book" }] };
   for (const [name, inputs] of Object.entries(cases)) for (const input of inputs) {
-    if (name === "get_fare_options" && input && !Array.isArray(input) && !Object.keys(input).length) continue;
     const p = page(); Object.defineProperty(p.globals, "location", { get() { throw Error("Page touched"); } });
     assert.equal((await p.run(name, input)).status, "error");
   }

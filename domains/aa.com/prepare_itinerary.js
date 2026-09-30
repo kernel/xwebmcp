@@ -107,7 +107,7 @@
   },
   "execute": async (input, context) => {
     const fail = (status, message) => ({ status, message });
-    if (!input || typeof input !== "object" || Array.isArray(input) || Object.keys(input).some(k => k !== "option_id") || typeof input.option_id !== "string" || !/^aa_[a-f0-9]{64}$/.test(input.option_id)) return fail("error", "Invalid input: provide only the exact option_id returned by get_fare_options. Confirmation flags are not accepted.");
+    if (!input || typeof input !== "object" || Array.isArray(input) || Object.keys(input).some(k => k !== "option_id") || typeof input.option_id !== "string" || input.option_id.length !== 67 || !/^aa_[a-f0-9]{64}$/.test(input.option_id)) return fail("error", "Invalid input: provide only the exact option_id returned by get_fare_options. Confirmation flags are not accepted.");
     if (context?.signal?.aborted) return fail("error", "Cancelled before reading the page.");
     if (location.origin !== "https://www.aa.com") return fail("wrong_page", "Open the outbound choose-flights page on https://www.aa.com first.");
     if (/access denied|challenge validation/i.test(document.title) || document.querySelector('iframe[src*="challenge-assets"]')) return fail("blocked", "American is showing a human-verification or access-denied page; no availability conclusion was made.");
