@@ -72,9 +72,9 @@
     },
     {
       "domain": "delta.com",
-      "tool": "login",
-      "file": "domains/delta.com/login.js",
-      "kind": "cdp",
+      "tool": "get_page_context",
+      "file": "domains/delta.com/get_page_context.js",
+      "kind": "page",
       "namespace": "delta.com",
       "url_patterns": [
         "https://delta.com/*",
@@ -82,7 +82,39 @@
       ],
       "status": "draft",
       "last_verified": null,
-      "notes": "Live-verified: search-result entry reaches the login form and submits exactly once, and failures report the step and whether a submission happened. Success path unverified: Delta returns 'login is unavailable right now' to every Kernel browser, including one with no profile, while the same credentials work in an ordinary browser."
+      "notes": "Read-only page summary: page type, live tool names from document.modelContext, best-effort signed-in state, visible alerts, suggested next steps. Unit-tested with fabricated DOM; exercised live on the homepage and booking form. signed_in=true detection is unverified."
+    },
+    {
+      "domain": "delta.com",
+      "tool": "login",
+      "file": "domains/delta.com/login.js",
+      "kind": "page",
+      "namespace": "delta.com",
+      "url_patterns": [
+        "https://www.delta.com/",
+        "https://www.delta.com/?*",
+        "https://www.delta.com/us/en",
+        "https://www.delta.com/us/en?*",
+        "https://www.delta.com/us/en/",
+        "https://www.delta.com/us/en/?*"
+      ],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Homepage-only page tool: opens the top-nav Log in flyout, fills identifier and password, and schedules one submit click after returning; no output schema and the outcome is not observed. Live-checked with fabricated credentials and the submit click intercepted; no real submission or successful login observed."
+    },
+    {
+      "domain": "delta.com",
+      "tool": "navigate_to_page",
+      "file": "domains/delta.com/navigate_to_page.js",
+      "kind": "page",
+      "namespace": "delta.com",
+      "url_patterns": [
+        "https://delta.com/*",
+        "https://*.delta.com/*"
+      ],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Schedules a same-tab navigation to a www.delta.com path after returning; the description carries a basic site map. Unit-tested; live-checked navigating between the homepage and booking form."
     },
     {
       "domain": "delta.com",
@@ -94,12 +126,9 @@
         "https://delta.com/*",
         "https://*.delta.com/*"
       ],
-      "status": "qa_passed",
-      "last_verified": "2026-09-24",
-      "notes": "Independent targeted QA passed, including schema and synthetic parser/readiness regressions. A separate live DOM parse returned 20 rows; successful final full-tool invocation remains unverified due to intermittent Delta HTTP 429/SFAF001 failures. Domain migration invocation from a baggage page reached results and preserved explicit error output. Round trips return outbound options only; prices are displayed fares, not passenger totals. Real zero results and completeness beyond the 1.5-second DOM-quiescence heuristic remain unverified.",
-      "provenance": {
-        "qa_agent": "agt_b189571b6d300a05921c"
-      }
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Back to draft after a source change on 2026-09-29: airport boxes are now cleared through the page and typed with the inlined lib/input.js cadence, and the typed code is checked before choosing (fixes 'CVCVG' on macOS Chrome, where CDP Meta+A does not select all). First successful full live invocation: CVG-SFO one way, 1 adult, regular Chrome 154 on macOS via the xwebmcp extension, status ok with first-page flights. Needs fresh independent QA; earlier qa_passed sign-off (agt_b189571b6d300a05921c) covered the previous source."
     },
     {
       "domain": "doordash.com",
@@ -506,7 +535,7 @@
       ],
       "status": "verified",
       "last_verified": "2026-09-24",
-      "notes": "Independent search/parser QA passed; domain migration live-verified from /travel-agents. Returns initial outbound cards only, including round trips; 1–7 adults; displayed cash fares are not trip totals. Inventory failures remain explicit errors.",
+      "notes": "Independent search/parser QA passed; domain migration live-verified from /travel-agents. Returns initial outbound cards only, including round trips; 1\u20137 adults; displayed cash fares are not trip totals. Inventory failures remain explicit errors.",
       "provenance": {
         "qa_agent": "agt_8da83a2e489269a5ff05"
       }

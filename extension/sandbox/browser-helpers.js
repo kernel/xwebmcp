@@ -332,7 +332,10 @@
       if (clearFirst) {
         const modifiers = this.#platform === 'mac' ? 4 : 2;
         const selectAll = {key: 'a', code: 'KeyA', modifiers, windowsVirtualKeyCode: 65, nativeVirtualKeyCode: 65};
-        await this.#client.sessionCommand('Input.dispatchKeyEvent', {type: 'rawKeyDown', ...selectAll});
+        // macOS Chrome does not run editing shortcuts for synthetic key events; without the
+        // explicit command, Meta+A leaves the caret in place and Backspace deletes one character.
+        const commands = this.#platform === 'mac' ? {commands: ['selectAll']} : {};
+        await this.#client.sessionCommand('Input.dispatchKeyEvent', {type: 'rawKeyDown', ...selectAll, ...commands});
         await this.#client.sessionCommand('Input.dispatchKeyEvent', {type: 'keyUp', ...selectAll});
         await this.pressKey('Backspace');
       }

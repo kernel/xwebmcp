@@ -14,6 +14,30 @@ const fail = (message) => errors.push(message);
 
 // --- minimal JSON Schema 2020-12 subset -------------------------------------
 
+
+// Tools that predate the snake_case field rule (spec/repository.md §4). Migrating one changes
+// its output contract and needs fresh QA; remove it from this list when that happens.
+const LEGACY_CAMEL_CASE_FILES = new Set([
+  "domains/aa.com/search_flights.js",
+  "domains/flyfrontier.com/search_flights.js",
+  "domains/google.com/search_flights.js",
+  "domains/jetblue.com/search_flights.js",
+  "domains/southwest.com/search_flights.js",
+  "domains/united.com/search_flights.js",
+]);
+
+function schemaPropertyNames(schema, out = []) {
+  if (!schema || typeof schema !== "object") return out;
+  if (Array.isArray(schema)) { for (const item of schema) schemaPropertyNames(item, out); return out; }
+  if (schema.properties && typeof schema.properties === "object") {
+    for (const [key, value] of Object.entries(schema.properties)) { out.push(key); schemaPropertyNames(value, out); }
+  }
+  for (const [key, value] of Object.entries(schema)) {
+    if (key !== "properties" && typeof value === "object") schemaPropertyNames(value, out);
+  }
+  return out;
+}
+
 function typeOf(value) {
   if (value === null) return "null";
   if (Array.isArray(value)) return "array";
@@ -181,8 +205,16 @@ function main() {
       fail(`${label}: url_patterns ${JSON.stringify(entry.url_patterns)} differ from the file's ${JSON.stringify(filePatterns)}`);
     }
     if (typeof definition?.tool?.inputSchema !== "object" || definition.tool.inputSchema === null) fail(`${entry.file}: tool.inputSchema must be an object`);
-    if (typeof definition?.tool?.outputSchema !== "object" || definition.tool.outputSchema === null) fail(`${entry.file}: tool.outputSchema must be an object`);
+    // A page tool whose result is only an unconfirmed "submission scheduled" acknowledgment
+    // (cdp-tools.md §2.2) may omit outputSchema; cdp tools must always declare one.
+    const outputSchema = definition?.tool?.outputSchema;
+    if (outputSchema === undefined ? definition?.kind !== "page" : (typeof outputSchema !== "object" || outputSchema === null)) fail(`${entry.file}: tool.outputSchema must be an object`);
     if (typeof definition?.execute !== "function") fail(`${entry.file}: execute must be a function`);
+    if (!LEGACY_CAMEL_CASE_FILES.has(entry.file)) {
+      for (const key of schemaPropertyNames(definition?.tool?.inputSchema).concat(schemaPropertyNames(definition?.tool?.outputSchema))) {
+        if (!/^[a-z][a-z0-9_]*$/.test(key)) fail(`${entry.file}: schema property "${key}" must be snake_case (spec/repository.md §4)`);
+      }
+    }
   });
 
   const domainsDir = join(root, "domains");

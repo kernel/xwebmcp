@@ -676,6 +676,10 @@ checks in ClawBench V1 use a placeholder that no run matches.
   and codes: key events have Shift attribution and pauses between characters; no extra
   synthetic `input`/`change` pair is sent. Its behavior on Uber's forms has not been
   live-tested.
+- The inlined `lib/input.js` snippet changed on 2026-09-29: its clear step now sends the
+  `selectAll` editing command with Control+A (so it also works in macOS Chrome), reads the
+  focused field back, falls back to a page-side select, and throws instead of typing on top of
+  leftover text. The registration tools stay `draft`; no fresh QA on Uber is claimed.
 - The last code digit auto-submits on Uber's code screen. `complete_registration` never
   clicks Next afterward: a code screen that remains visible may still have a request
   in flight. If no result appears within 45 seconds it reports `unknown` and requires
