@@ -910,9 +910,12 @@
         "https://streeteasy.com/*",
         "https://*.streeteasy.com/*"
       ],
-      "status": "draft",
-      "last_verified": null,
-      "notes": "Public page-context read; challenges and schema drift fail closed."
+      "status": "verified",
+      "last_verified": "2026-09-30",
+      "notes": "Independent public detail QA passed from home/area pages; gated prices remain null. No account actions.",
+      "provenance": {
+        "qa_agent": "agt_544e3b89630c41ca5e86"
+      }
     },
     {
       "domain": "streeteasy.com",
@@ -924,9 +927,12 @@
         "https://streeteasy.com/*",
         "https://*.streeteasy.com/*"
       ],
-      "status": "draft",
-      "last_verified": null,
-      "notes": "Local draft only; no submission or trusted approval execution."
+      "status": "qa_passed",
+      "last_verified": "2026-09-30",
+      "notes": "Independent exact-page question/tour draft QA passed with zero observed side effects. No submission or trusted approval execution.",
+      "provenance": {
+        "qa_agent": "agt_544e3b89630c41ca5e86"
+      }
     },
     {
       "domain": "streeteasy.com",
@@ -938,9 +944,12 @@
         "https://streeteasy.com/*",
         "https://*.streeteasy.com/*"
       ],
-      "status": "draft",
-      "last_verified": null,
-      "notes": "Public page-context read; challenges and schema drift fail closed."
+      "status": "verified",
+      "last_verified": "2026-09-30",
+      "notes": "Independent active/rented search QA passed from home/other area pages; bounded pagination and exact criteria. No saves or alerts.",
+      "provenance": {
+        "qa_agent": "agt_544e3b89630c41ca5e86"
+      }
     },
     {
       "domain": "target.com",
