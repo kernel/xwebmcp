@@ -537,6 +537,27 @@ test("search refuses to run outside www.espn.com", async () => {
   assert.equal(h.calls.fetches.length, 0);
 });
 
+test("search never treats malformed errors or recognized groups as no_results", async () => {
+  for (const body of [
+    { results: [], errors: { code: 500 } }, { results: [], errors: "boom" }, { results: [], errors: null },
+    { results: [searchGroup("team", [teamItem])], errors: { code: 500 } },
+    { results: [{ type: "team", contents: {} }] }, { results: [{ type: "player" }] },
+    { results: [searchGroup("team", [teamItem]), { type: "article", contents: null }] }
+  ]) {
+    const result = await harness("search", { respond: () => ({ status: 200, body }) }).run({ query: "ab" });
+    assert.equal(result.error_kind, "site_changed", JSON.stringify(body));
+  }
+  const filtered = await harness("search", { respond: () => ({ status: 200, body: { results: [{ type: "team", contents: {} }] } }) }).run({ query: "ab", types: ["player"] });
+  assert.equal(filtered.error_kind, "site_changed");
+});
+
+test("get_scoreboard drops links containing C0, DEL or C1 controls", async () => {
+  for (const control of ["\u0000", "\u001f", "\u007f", "\u0080", "\u009f"]) {
+    const result = await harness("get_scoreboard", okScoreboard([event("1", { link: "/nba/game/" + control + "x" })])).run({ league: "nba" });
+    assert.equal(result.games[0].url, null);
+  }
+});
+
 test("search rejects raw edge controls and oversized whitespace before any site interaction", async () => {
   const h = harness("search", okSearch([searchGroup("team", [teamItem])]));
   for (const query of ["\tlakers", "lakers\n", "\rab", "\vab", "ab\f", " ".repeat(100) + "ab", "ab" + " ".repeat(100)]) {

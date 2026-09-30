@@ -99,7 +99,7 @@
     if (!response.ok) return fail("site_error", "ESPN search returned HTTP " + response.status + ".");
     let body;
     try { body = await response.json(); } catch (error) { return fail("site_changed", "ESPN search did not return JSON."); }
-    if (!body || typeof body !== "object" || Array.isArray(body) || (body.results !== undefined && !Array.isArray(body.results)) || (body.results === undefined && Object.keys(body).length && !Array.isArray(body.errors))) return fail("site_changed", "ESPN search response no longer has the layout this tool reads.");
+    if (!body || typeof body !== "object" || Array.isArray(body) || (body.errors !== undefined && !Array.isArray(body.errors)) || (body.results !== undefined && !Array.isArray(body.results)) || (body.results === undefined && Object.keys(body).length && !Array.isArray(body.errors))) return fail("site_changed", "ESPN search response no longer has the layout this tool reads.");
 
     const text = (value, max) => {
       const clean = typeof value === "string" ? value.replace(/[\u0000-\u001f\u007f-\u009f]+/g, " ").trim() : "";
@@ -132,7 +132,8 @@
         if (type && omitted.length < 10 && !omitted.includes(type)) omitted.push(type);
         continue;
       }
-      if (!types.includes(group.type) || !Array.isArray(group.contents)) continue;
+      if (!Array.isArray(group.contents)) return fail("site_changed", "ESPN search result groups no longer have the layout this tool reads.");
+      if (!types.includes(group.type)) continue;
       if (Object.hasOwn(totalsByType, group.type)) totals[group.type] = totalsByType[group.type];
       for (const item of group.contents.slice(0, limit - counts[group.type])) {
         const title = item && text(item.displayName, 300);

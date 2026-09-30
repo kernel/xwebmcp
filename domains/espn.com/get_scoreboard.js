@@ -198,7 +198,7 @@
     }
 
     const path2url = value => {
-      const link = typeof value === "string" && /^\/[^/]/.test(value) ? ORIGIN + value.split(/[?#]/)[0] : null;
+      const link = typeof value === "string" && /^\/[^/]/.test(value) && !/[\u0000-\u001f\u007f-\u009f]/.test(value) ? ORIGIN + value.split(/[?#]/)[0] : null;
       return link && link.length <= 300 ? link : null;
     };
     const games = events.slice(0, maxGames).map(event => {

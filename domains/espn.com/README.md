@@ -69,6 +69,8 @@ Both tools match only `https://www.espn.com/*`, not the default `https://espn.co
 - A week or date outside ESPN's calendar returns `no_games` (for NFL a nonexistent week such as regular-season week 19 looks the same as a real empty week).
 - Search rejects queries containing `<`, `>` or `%` (ESPN's search fails on them). When ESPN reports errors together with results, the results are returned with a `warnings` entry and may be incomplete. Search returns only team, player, article and upcoming results; `omitted_types` names other groups ESPN returned. `upcoming` entries are Watch ESPN listings and may need an ESPN subscription to play. Article `premium` reflects ESPN's own flag; premium article text is not read.
 - Not live-tested: HTTP 403 and 429 responses, a challenge page, a slow ESPN response. They are covered by stubbed tests.
+- On 2026-09-30 one public browser received HTTP 202 with an empty scoreboard body (`site_changed`); an independent browser received valid HTTP 200 scoreboards. Availability can differ without a source change; no bypass is attempted.
+- Hostile lone-surrogate text can serialize to about 288 KiB in Node (under the runtime's 1 MiB limit but above the API's optional 240 KiB limit). Tested Kernel output normalized these characters and stayed below 240 KiB; this is not a universal 240 KiB guarantee.
 - Signed-in behaviour is untested and unsupported by design: nothing here reads Fantasy leagues, favorites or entitlements.
 - The scoreboard layout is ESPN's private page data, not a documented API, and can change without notice.
 - Search rejects control characters before trimming, including leading/trailing tabs or newlines. The raw query is limited to 100 characters; whitespace-only queries are invalid.
@@ -76,7 +78,7 @@ Both tools match only `https://www.espn.com/*`, not the default `https://espn.co
 
 ## QA
 
-The hardened source is awaiting a fresh independent review. Earlier source evidence below is historical, not sign-off for the current files. Current changes bound omitted types and duplicate search groups, reject non-primitive identifiers and raw invalid query text, bound invalid-input errors, and disclose skipped scoreboard events.
+The hardened source is awaiting a final-source recheck. Earlier source evidence below is historical, not sign-off for the current files. Current changes bound omitted types and duplicate search groups, reject non-primitive identifiers and raw invalid query text, bound invalid-input errors, and disclose skipped scoreboard events. A fresh independent review of `21fdf3b` found malformed search errors/recognized-group contents returning `no_results` and controls in scoreboard links. All three findings have been corrected and have regression fixtures.
 
 ### Historical source evidence
 
