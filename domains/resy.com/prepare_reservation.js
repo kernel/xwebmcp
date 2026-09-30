@@ -457,6 +457,7 @@
     const entry = venues ? venues[0] : undefined;
     if (res.status !== 200 || !isPlain(entry) || !isPlain(entry.venue) || !Array.isArray(entry.slots)) return fail("site_changed", "Resy's availability response did not have the expected shape (HTTP " + res.status + ").");
 
+    if (!isPlain(j.query) || j.query.day !== input.date || j.query.party_size !== partySize) return fail("site_changed", "The returned inventory did not confirm the exact service date and party size; no slot was selected.");
     const venue = entry.venue;
     if (!isPlain(venue.id) || venue.id.resy !== input.venue_id) return fail("site_changed", "The returned venue did not match the exact requested id; no slot was selected.");
     const name = text(venue.name, 200);

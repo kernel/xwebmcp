@@ -17,7 +17,7 @@ const preparation = { venue_id: 1001, date: "2026-10-09", local_start: "2026-10-
 const reservation = { reservation_id: 2001, venue: { id: 1001, currency: "USD" }, day: "2026-10-09", time_slot: "19:30:00", num_seats: 2, config: { type: "Dining Room" }, price: 25, cancellation_policy: ["<b>Cancel by the stated deadline.</b>"], resy_token: "rgs://private/fabricated", special_request: "private-request", attendee: { name: "private-name" }, payment_method: { token: "private-payment" } };
 const notify = { venue_id: 1001, day: "2026-10-09", num_seats: 2, service_type_id: 2, time_preferred_start: "18:00:00", time_preferred_end: "20:00:00" };
 const slot = { date: { start: "2026-10-10 00:30:00", end: "2026-10-10 02:00:00" }, config: { type: "Bar", token: "rgs://private/fabricated" }, template: { id: 11 } };
-const find = { results: { venues: [{ venue: { id: { resy: 1001 }, name: "Fabricated Trattoria", url_slug: "fabricated-trattoria", location: { url_slug: "exampleton-xa", time_zone: "EST5EDT" }, currency: { code: "USD" } }, slots: [slot], templates: { 11: { is_paid: true, cancellation_fee: 25, deposit_fee: 10 } }, gating_errors: {} }] } };
+const find = { query: { day: "2026-10-09", party_size: 2 }, results: { venues: [{ venue: { id: { resy: 1001 }, name: "Fabricated Trattoria", url_slug: "fabricated-trattoria", location: { url_slug: "exampleton-xa", time_zone: "EST5EDT" }, currency: { code: "USD" } }, slots: [slot], templates: { 11: { is_paid: true, cancellation_fee: 25, deposit_fee: 10 } }, gating_errors: {} }] } };
 
 function conforms(s, v) {
   if (s.oneOf && s.oneOf.filter(x => conforms(x, v)).length !== 1) return false;
@@ -40,7 +40,7 @@ function harness(name, options = {}) {
   let identities = 0;
   const window = { location: { origin: options.origin ?? "https://resy.com" }, apiConfig: { Config: { apiKey: key } }, apiAuthToken: options.loggedOut ? undefined : token };
   class FixedDate extends Date { constructor(...args) { super(...(args.length ? args : ["2026-09-30T01:00:00Z"])); } static now() { return Date.parse("2026-09-30T01:00:00Z"); } }
-  const ctx = { window, URL, URLSearchParams, Date: FixedDate, crypto: webcrypto, TextEncoder, Uint8Array, AbortController, setTimeout, clearTimeout, fetch: async (url, init) => {
+  const ctx = { window, URL, URLSearchParams, Date: FixedDate, crypto: options.crypto ?? webcrypto, TextEncoder, Uint8Array, AbortController, setTimeout, clearTimeout, fetch: async (url, init) => {
     const path = new URL(url).pathname;
     requests.push({ url, init, path });
     assert.equal(new URL(url).origin, "https://api.resy.com");
@@ -206,6 +206,40 @@ test("prepare: exact after-midnight slot and price/terms/account explicitly unkn
   assert.equal(out.account_binding, "not_selected");
   assert.equal(new URL(out.venue_url).searchParams.get("date"), "2026-10-09");
   assert.deepEqual(h.requests.map(r => r.path), ["/4/find"]);
+});
+for (const query of [undefined, null, {}, { day: "2026-10-10", party_size: 2 }, { day: "2026-10-09", party_size: 4 }, { day: "2026-10-09", party_size: "2" }]) test(`prepare: missing or mismatched inventory context ${JSON.stringify(query)} fails closed`, async () => {
+  const mismatched = structuredClone(find);
+  mismatched.query = query;
+  const h = harness("prepare_reservation", { find: mismatched });
+  assert.equal((await h.run(preparation)).error_kind, "site_changed");
+  assert.deepEqual(h.requests.map(r => r.path), ["/4/find"]);
+});
+test("prepare: nondefault party requires and accepts that exact echoed party", async () => {
+  const h = harness("prepare_reservation");
+  assert.equal((await h.run({ ...preparation, party_size: 4 })).error_kind, "site_changed");
+  const four = structuredClone(find);
+  four.query.party_size = 4;
+  assert.equal((await harness("prepare_reservation", { find: four }).run({ ...preparation, party_size: 4 })).status, "handoff_required");
+});
+test("favorite: cancellation during the second identity hash is canceled without a write", async () => {
+  const abort = new AbortController();
+  let hashes = 0;
+  const h = harness("set_favorite", { crypto: { subtle: { digest: async (...args) => {
+    const result = await webcrypto.subtle.digest(...args);
+    if (++hashes === 2) abort.abort();
+    return result;
+  } } } });
+  assert.equal((await h.run(favoriteInput, { signal: abort.signal })).error_kind, "canceled");
+  assert.equal(h.requests.filter(r => r.init.method === "POST").length, 0);
+  assert.equal(h.state(), false);
+});
+test("favorite: cancellation during the pre-write venue response is canceled without a write", async () => {
+  const abort = new AbortController();
+  const h = harness("set_favorite", { route: ({ path }) => {
+    if (path === "/3/venue") { abort.abort(); return { body: { id: { resy: 1001 }, name: "Fabricated Trattoria", favorite: false } }; }
+  } });
+  assert.equal((await h.run(favoriteInput, { signal: abort.signal })).error_kind, "canceled");
+  assert.equal(h.requests.filter(r => r.init.method === "POST").length, 0);
 });
 test("prepare: missing, ambiguous and mismatched venue fail closed", async () => {
   assert.equal((await harness("prepare_reservation").run({ ...preparation, seating_type: "Dining Room" })).error_kind, "slot_unavailable");

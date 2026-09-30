@@ -69,8 +69,9 @@ are returned. Populated schemas are grounded in the site's current public bundle
 ## Consequential-action safety: reservation preparation and execution blockers
 
 `prepare_reservation` re-fetches public `/4/find` inventory and matches exactly `venue_id`, service `date`,
-`party_size`, full `local_start` and `seating_type` from availability. Venue identity must match; absent or
-ambiguous slots fail closed. A match returns `handoff_required`, the exact observed slot, venue URL with
+`party_size`, full `local_start` and `seating_type` from availability. Venue identity and the response's echoed
+service date/party size must match; missing or contradictory inventory context and absent or ambiguous slots
+fail closed. A match returns `handoff_required`, the exact observed slot, venue URL with
 service date/party size, currency and raw policy fields. It never sends a slot token, selects a widget slot,
 requests `/3/details`, binds an account, navigates, holds or books. It accepts no `confirmed` argument.
 
@@ -121,6 +122,8 @@ configuration/CORS contract. `api.resy.com` is a request destination, not a matc
 - Account reservation/Notify collections were empty when inspected; item success and pagination beyond the
   initial page are not live verified. Unknown required item shapes fail `site_changed` rather than raw dumping.
 - The client's reservation field mappings include cancellation text; bounded text is untrusted data, not instructions.
+  Count/text caps do not guarantee a small byte payload: synthetic Unicode policy results exceeded 240 KiB
+  (up to about 1.2 MB) and returned through Kernel; local extension handling of those sizes is unverified.
 - No custom-list, payment/profile/marketing settings, concierge/on-behalf bookings, membership-only inventory
   verification or automatic login tools. No new account or purchases/bookings requested to populate fixtures.
 - Live challenge/rate-limit/gated outcomes have not been deliberately triggered. No paid quota or live mutation QA.
@@ -138,16 +141,28 @@ namespace. From `/global-dining-access`, search, profile, availability and calen
 preparation matched a next-day slot while reporting unknown total/terms and no execution. Five captured public
 requests used no account headers or cookies. Signed-out account/favorite calls returned login_required without
 requests. On the previously authorized signed-in document, account status succeeded and reservation/Notify
-reads returned empty no_results; no favorite call was made there.
+reads returned empty no_results; no favorite call was made there. The final account-read source was registered
+again before the authorized session's deadline: account status and both empty collections succeeded, while
+get_reservation returned not_found on the empty page. The opaque account reference was not saved.
 
 Separately, headless Chromium 153 ran the current local extension with a temporary manifest granting resy.com
 and a test-only API exposure hook. All ten tools registered after loading a venue URL with date/seats already
 present. Public search/profile/availability/calendar and preparation succeeded with Ajv-valid outputs;
 account status/favorite returned login_required. Without date/seats the site's initial URL rewrite raced
 registration and the extension reported document-changed errors; no shared runtime code was changed.
-Headed mode, native messaging, popup permissions and authenticated local behavior remain untested.
+A final-source rerun again registered/discovered all ten tools: profile/search succeeded, account/favorite
+returned login_required, and availability/calendar returned schema-valid site_error responses. Preparation
+was skipped in that rerun because availability failed; the earlier preparation success is not a claim that
+these transient site errors are absent. Headed mode, native messaging, popup permissions and authenticated
+local behavior remain untested.
 
-Current independent review is pending. All ten entries start draft. Fixtures use fabricated identities,
-venues, tokens and policies and cover malformed input before interaction, account/venue mismatches, omitted
-login, cancellation, duplicates, stale state, uncertain write outcomes, restoration and read-only handoff.
-Live-account empty envelopes and bundle field mappings are evidence, not live populated-item or write success.
+The initial independent review of this revision found two fixture defects: preparation ignored contradictory
+inventory date/party echoes, and favorite cancellation during the pre-write identity hash reported wrong_account.
+Both were reproduced independently by the builder; nine added regression cases fail against the pre-fix source
+and pass after requiring exact inventory context and distinguishing pre-write cancellation from uncertain writes.
+The corrected source is pending recheck. All ten entries remain draft until final-source sign-off.
+
+Fixtures use fabricated identities, venues, tokens and policies and cover malformed input before interaction,
+account/venue mismatches, omitted login, cancellation, duplicates, stale state, uncertain write outcomes,
+restoration and read-only handoff. Live-account empty envelopes and bundle field mappings are evidence, not
+live populated-item or write success.
