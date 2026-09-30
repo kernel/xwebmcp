@@ -159,13 +159,14 @@
       reviewCount = aggregateCount;
     } else {
       const shown = fieldFor("Rating") || "";
-      const count = /\(([\d,]+)/.exec(shown);
-      const average = /^(\d+(?:\.\d+)?)/.exec(shown);
+      const count = /\((\d+(?:,\d{3})*)(?:\s+Reviews)?\)/i.exec(shown);
+      const average = /^(\d+(?:\.\d+)?)(?=\s|\(|$)/.exec(shown);
       const displayedCount = count ? Number(count[1].replace(/,/g, "")) : NaN;
       const displayedRating = average ? Number(average[1]) : NaN;
       if (Number.isSafeInteger(displayedCount) && displayedCount >= 0) reviewCount = displayedCount;
       if (Number.isFinite(displayedRating) && displayedRating >= 0 && displayedRating <= 5 && reviewCount > 0) rating = displayedRating;
     }
+    if (reviewCount === null) warnings.push("review count not found");
 
     const developerSection = doc.getElementById("adp-developer");
     const partnerLinkIn = root => (root ? Array.from(root.querySelectorAll("a")).find(a => /^https:\/\/apps\.shopify\.com\/partners\/[a-z0-9][a-z0-9_-]{0,99}\/?(?:[?#].*)?$/.test(a.getAttribute("href") || "")) : null);
@@ -215,11 +216,12 @@
       const star = /^([1-5])\b/.exec(text(li.querySelector("div")));
       if (!star || counts.some(c => c.stars === Number(star[1]))) continue;
       const linked = li.querySelector("a[aria-label]");
-      const fromLink = linked ? /(\d[\d,]*)/.exec(linked.getAttribute("aria-label")) : null;
+      const fromLink = linked ? /^(\d+(?:,\d{3})*)\s+total reviews$/i.exec(linked.getAttribute("aria-label").trim()) : null;
       const last = text(Array.from(li.children).pop());
       const value = fromLink ? fromLink[1] : /^\d+$/.test(last) ? last : null;
       const parsedCount = value !== null ? Number(value.replace(/,/g, "")) : NaN;
       if (Number.isSafeInteger(parsedCount) && parsedCount >= 0) counts.push({ stars: Number(star[1]), count: parsedCount });
+      else warnings.push("skipped unreadable rating count for " + star[1] + " stars");
     }
     counts.sort((a, b) => b.stars - a.stars);
     if (!counts.length) warnings.push("rating breakdown not found");

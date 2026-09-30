@@ -446,6 +446,30 @@ test("get_app omits unreadable rating numbers rather than returning invalid sche
   assertConforms("get_app", output);
 });
 
+test("get_app validates complete displayed count tokens rather than numeric substrings", async () => {
+  for (const token of ["1.5", "-17", "+17", "1,5", "17garbage"]) {
+    const body = fixture("app-detail")
+      .replace(/"aggregateRating":\{[^}]*\}/, '"aggregateRating":{"ratingValue":null,"ratingCount":null}')
+      .replace("(3,183)", `(${token})`)
+      .replace('aria-label="2843 total reviews"', `aria-label="${token} total reviews"`);
+    const { output } = await run("get_app", { handle: "example-loyalty-suite" }, { respond: () => ({ status: 200, body }) });
+    assert.equal(output.review_count, null, token);
+    assert.equal(output.rating, null, token);
+    assert.equal(output.rating_counts.some(c => c.stars === 5), false, token);
+    assert.ok(output.warnings.includes("review count not found"));
+    assert.ok(output.warnings.includes("skipped unreadable rating count for 5 stars"));
+    assertConforms("get_app", output);
+  }
+  const body = fixture("app-detail")
+    .replace(/"aggregateRating":\{[^}]*\}/, '"aggregateRating":{"ratingValue":null,"ratingCount":null}')
+    .replace("(3,183)", "(3183 Reviews)")
+    .replace('aria-label="2843 total reviews"', 'aria-label="2,843 total reviews"');
+  const { output } = await run("get_app", { handle: "example-loyalty-suite" }, { respond: () => ({ status: 200, body }) });
+  assert.equal(output.review_count, 3183);
+  assert.equal(output.rating_counts[0].count, 2843);
+  assertConforms("get_app", output);
+});
+
 test("get_app rejects malformed input before any request", async () => {
   const bad = [
     undefined, null, "example", [], {},

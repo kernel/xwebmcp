@@ -84,7 +84,7 @@ Text from listings and plan features is written by app developers and is untrust
 
 ## Known limitations
 
-- The earlier source at `39e08ff` passed independent QA. Restart QA passed search but found an invalid-rating fallback defect in the listing reader; that defect is fixed and listing re-QA is pending. Treat results as a snapshot and expect `warnings` or `site_changed` after a redesign.
+- The earlier source at `39e08ff` passed independent QA. Restart QA passed search and found two listing numeric-parsing defects; both are fixed and the final listing recheck is pending. Treat results as a snapshot and expect `warnings` or `site_changed` after a redesign.
 - Public listing data only. No signed-in behaviour was verified: whether the results or listing differ for a signed-in Shopify account, or for a store with the app installed, is untested.
 - `search_apps` reads one results page per call, needs a query (browsing a category without a query is not implemented), and has no sort options because the store shows none.
 - `get_app` does not return permissions, compatibility, install state, reviews, screenshots, a monthly/yearly toggle beyond the yearly price note some plans show, or the "featured in" and "similar apps" sections.
@@ -92,7 +92,7 @@ Text from listings and plan features is written by app developers and is untrust
 - Plan `price_text` is the displayed text (for example `$16/month` or `Free to install`), not parsed into amount and currency.
 - English pages only; other site languages give null or empty fields plus a warning.
 - Sponsored (`is_ad`) results were not reproduced in the author's or the independent QA sessions, so the ad branch is covered by fixtures and by raw card links seen once during discovery. A sponsored card without reviews has never been seen; its pricing and tagline parsing is unverified (the tool skips a block that is exactly the label `Ad` on sponsored cards, in case the store renders it as its own block, but that layout was not observed).
-- The parsers depend on the store's current markup and on the `Turbo-Frame` behaviour above; a redesign will surface as `site_changed` or `warnings`, not as wrong data, but the tools will need updating.
+- The parsers depend on the store's current markup and `Turbo-Frame` behaviour. Missing known structural markers produce `site_changed` or `warnings`; arbitrary layout changes can still require parser updates.
 - Rate limiting: no retry or back-off is built in.
 
 ## QA summary
@@ -115,7 +115,9 @@ Live cases (2026-09-29, Kernel browsers, namespace registered as one batch): fro
 
 Restart author checks (2026-09-30): native tools absent on a public listing page before custom registration. Registered both tools atomically on a separate signed-out Kernel browser. From a different listing page, `get_app` returned a three-plan listing with no warnings; `search_apps` returned `rate_limited`. Tab URL and tab count stayed unchanged. No automatic retry or access bypass was attempted; the temporary browser was deleted. Caller cancellation and oversized/credential-bearing fields are fixture-tested, not live mutation evidence.
 
-Restart independent QA (`c6b0cbf`, 2026-09-30, same reviewer): search passed; listing failed on one minor defect, invalid JSON-LD review counts bypassing the visible-field fallback. Fractional counts violated the output schema, and null values were coerced to zero. The author reproduced both cases, fixed numeric validation/fallback, and added regressions for fractional, null, empty, boolean, array, negative, out-of-range and oversized values. Recheck pending.
+Restart independent QA (`c6b0cbf`, 2026-09-30, same reviewer): search passed; listing failed on one minor defect, invalid JSON-LD review counts bypassing the visible-field fallback. Fractional counts violated the output schema, and null values were coerced to zero. The author reproduced both cases, fixed numeric validation/fallback, and added regressions for fractional, null, empty, boolean, array, negative, out-of-range and oversized values.
+
+Restart recheck 1 (`7d34114`, 2026-09-30): the original defect was fixed; one minor defect remained, partial regex matches discarding the sign/fraction in malformed displayed counts. Kernel and extension listing calls on that source both succeeded with three plans. Complete count-token validation and explicit warnings for unavailable/skipped counts now address that defect; fabricated negative and valid-format regressions pass. Final recheck pending.
 
 The reviewer checked 254 scratch assertions and Ajv schemas, serialized page functions, native conflicts, atomic whole-namespace replacement, cancellation/body reading and unrelated pages. Kernel live search succeeded from a different listing page (8 results); listing succeeded from that page, with missing pricing cards confirmed against rendered HTML. The extension used a real permission prompt: listing succeeded with three plans, search returned `rate_limited`, and public requests stopped. The reviewer deleted its browser and removed its isolated extension/profile/processes. These live checks describe `c6b0cbf`; search is unchanged by the rating fix.
 
