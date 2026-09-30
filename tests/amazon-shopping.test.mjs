@@ -209,8 +209,8 @@ test("Amazon's AI-agent Conditions of Use notice is access_gated, never a layout
   }
 });
 
-test("registry has exactly the three amazon.com tools, sorted with the rest of the registry", () => {
-  assert.deepEqual(registry.map(t => t.tool).sort(), [...NAMES].sort());
+test("registry has the shopping reads and guarded retail-cart tools, sorted with the rest of the registry", () => {
+  assert.deepEqual(registry.map(t => t.tool).sort(), [...NAMES, "get_cart", "add_to_cart", "update_cart_item", "remove_cart_item", "prepare_checkout"].sort());
   const all = JSON.parse(readFileSync(new URL("../registry.json", import.meta.url), "utf8")).tools.map(t => `${t.domain}/${t.tool}`);
   assert.deepEqual(all, [...all].sort());
 });

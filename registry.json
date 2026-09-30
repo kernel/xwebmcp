@@ -55,6 +55,17 @@
     },
     {
       "domain": "amazon.com",
+      "tool": "add_to_cart",
+      "file": "domains/amazon.com/add_to_cart.js",
+      "kind": "page",
+      "namespace": "amazon.com",
+      "url_patterns": ["https://www.amazon.com/*"],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Guarded, add-only retail cart POST with price/seller and fresh session/cart expectations. Mocked writes only; no live mutation success claimed. Never checks out or buys."
+    },
+    {
+      "domain": "amazon.com",
       "tool": "get_best_sellers",
       "file": "domains/amazon.com/get_best_sellers.js",
       "kind": "page",
@@ -68,6 +79,17 @@
       "provenance": {
         "qa_agent": "agt_ad94863d92ee1a4357a1"
       }
+    },
+    {
+      "domain": "amazon.com",
+      "tool": "get_cart",
+      "file": "domains/amazon.com/get_cart.js",
+      "kind": "page",
+      "namespace": "amazon.com",
+      "url_patterns": ["https://www.amazon.com/*"],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Bounded retail cart read and opaque session/cart expectations. Other carts flagged, not parsed; unfamiliar or paginated carts fail. Populated state is fixture-only."
     },
     {
       "domain": "amazon.com",
@@ -87,6 +109,28 @@
     },
     {
       "domain": "amazon.com",
+      "tool": "prepare_checkout",
+      "file": "domains/amazon.com/prepare_checkout.js",
+      "kind": "page",
+      "namespace": "amazon.com",
+      "url_patterns": ["https://www.amazon.com/*"],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Read-only retail cart summary and manual handoff. No checkout, purchase, reservation, shipping/payment choice or account mutation."
+    },
+    {
+      "domain": "amazon.com",
+      "tool": "remove_cart_item",
+      "file": "domains/amazon.com/remove_cart_item.js",
+      "kind": "page",
+      "namespace": "amazon.com",
+      "url_patterns": ["https://www.amazon.com/*"],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Remove one exact ordinary retail line with fresh session/cart/quantity guards and exact readback. Mocked writes only; no live mutation success claimed."
+    },
+    {
+      "domain": "amazon.com",
       "tool": "search_products",
       "file": "domains/amazon.com/search_products.js",
       "kind": "page",
@@ -100,6 +144,17 @@
       "provenance": {
         "qa_agent": "agt_ad94863d92ee1a4357a1"
       }
+    },
+    {
+      "domain": "amazon.com",
+      "tool": "update_cart_item",
+      "file": "domains/amazon.com/update_cart_item.js",
+      "kind": "page",
+      "namespace": "amazon.com",
+      "url_patterns": ["https://www.amazon.com/*"],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Set an exact ordinary retail line to an absolute quantity with fresh session/cart/quantity guards and exact readback. Mocked writes only; no live mutation success claimed."
     },
     {
       "domain": "delta.com",
