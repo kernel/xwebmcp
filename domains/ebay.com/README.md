@@ -4,9 +4,9 @@ Tools for eBay's public marketplace and signed-in sold-price research.
 
 | tool | file | status | notes |
 |------|------|--------|-------|
-| get_listing | [get_listing.js](get_listing.js) | draft | Listing price/current bid, stock, shipping, returns, seller and variation menus. |
-| get_seller_profile | [get_seller_profile.js](get_seller_profile.js) | draft | Public feedback aggregates; no buyer comments. |
-| search | [search.js](search.js) | draft | One page, up to 60 listings; sold filters require sign-in. |
+| get_listing | [get_listing.js](get_listing.js) | qa_passed | Listing price/current bid, stock, shipping, returns, seller and variation menus. |
+| get_seller_profile | [get_seller_profile.js](get_seller_profile.js) | qa_passed | Public feedback aggregates; no buyer comments. |
+| search | [search.js](search.js) | qa_passed | One page, up to 60 listings; sold filters require sign-in. |
 
 ## Scope and safety
 
@@ -120,8 +120,19 @@ threw an untyped error. Both are fixed in the next revision with regression test
 referenced options and stock-flag types now fail closed; large price collections no longer use argument
 spreading. Recheck on `5cda1c1` signed off search and seller profile, but found one additional listing
 price-coercion error on malformed nested data. The next revision rejects nonnumeric variation/shipping
-amounts and avoids coercing unknown currency objects; a regression fixture covers these cases. Final
-recheck is pending, so statuses remain `draft`.
+amounts and avoids coercing unknown currency objects; a regression fixture covers these cases.
+
+Final bounded recheck on `0c0688f` signed off all three tools. It independently passed 1644 full tests,
+67 eBay tests, 14 extension tests and 87 Ajv-backed/independent checks, with 82 valid registry entries.
+All 25 collected runtime outputs were schema-valid: one real Kernel listing success, 20 emulated outcomes
+and four no-request guards. Exact malformed variation/shipping cases return typed `site_changed`; malformed
+currencies return the expected null fields. Namespace replacement preserves siblings and invalidates old
+references; five cancellation phases per runtime prevent subsequent retries. Search and seller source
+hashes are unchanged from their signed-off real Kernel successes on `5cda1c1`.
+
+Registry status is `qa_passed`, not `verified`: extension outcomes are emulated, and signed-in sold-only,
+wrong-account behavior and real non-US coverage remain untested on final source. This closes the initial
+review plus two fix/rechecks; no further review loop was run.
 
 ## Verification
 
@@ -141,7 +152,8 @@ with a scratch profile and native site grant: public search returned real `ok`; 
 returned `challenge`, and live reads stopped. Seller success, additional successes and failure paths were
 emulated. Across runtimes 54 collected outputs validated with Ajv; two malformed-variation executions had
 no output. Extension recheck on `5cda1c1` was entirely emulated; 71 cross-runtime outputs passed schema
-checks in that round. Final-source recheck is pending. No all-tool real-success parity is claimed.
+checks in that round. Final-source `0c0688f` extension checks were also entirely emulated. Kernel made
+one real final-source listing read successfully. No all-tool real-success parity is claimed.
 
 ## Sessions
 
