@@ -185,7 +185,7 @@
     const number = value => typeof value === "number" && Number.isFinite(value) && value >= 0;
     const carrierList = value => value === undefined || value === "" ? [] : typeof value === "string" && value.length <= 200 && value.split(",").every(s => /^[A-Z0-9]{2}$/.test(s.trim())) ? value.split(",").map(s => s.trim()) : null;
     for (const row of data.metadata) {
-      if (!row || !/^[A-Za-z0-9]{20,40}$/.test(row.id || "") || !/^[a-z][a-z0-9_]{1,31}$/.test(row.source || "") || !/^[A-Z]{3}$/.test(row.oa || "") || !/^[A-Z]{3}$/.test(row.da || "") || !/^\d{4}-\d{2}-\d{2}$/.test(row.date || "") || !number(row.lsh)) return fail("site_changed", "An availability row is missing expected fields.");
+      if (!row || ["id", "source", "oa", "da", "date"].some(key => typeof row[key] !== "string") || !/^[A-Za-z0-9]{20,40}$/.test(row.id || "") || !/^[a-z][a-z0-9_]{1,31}$/.test(row.source || "") || !/^[A-Z]{3}$/.test(row.oa || "") || !/^[A-Z]{3}$/.test(row.da || "") || !/^\d{4}-\d{2}-\d{2}$/.test(row.date || "") || !number(row.lsh)) return fail("site_changed", "An availability row is missing expected fields.");
       const rowDate = Date.parse(row.date + "T00:00:00Z");
       if (!Number.isFinite(rowDate) || new Date(rowDate).toISOString().slice(0,10) !== row.date) return fail("site_changed", "An availability date is invalid.");
       if (Math.abs(rowDate - parsed) > days * 86400000) return fail("site_changed", "The site returned availability outside the requested departure window.");
@@ -203,7 +203,7 @@
         if (!carriers || typeof direct !== "boolean" || tax !== undefined && (!tax || typeof tax !== "object" || Array.isArray(tax))) return fail("site_changed", "An availability cabin shape changed.");
         let taxes = null;
         if (tax && Object.keys(tax).length) {
-          if (!Number.isSafeInteger(tax.tt) || tax.tt < 0 || !/^[A-Z]{3}$/.test(tax.tc || "")) return fail("site_changed", "An availability tax field is invalid.");
+          if (!Number.isSafeInteger(tax.tt) || tax.tt < 0 || typeof tax.tc !== "string" || !/^[A-Z]{3}$/.test(tax.tc || "")) return fail("site_changed", "An availability tax field is invalid.");
           taxes = { amount_hundredths: tax.tt, currency: tax.tc };
         }
         cabins.push({ cabin: name, min_miles: miles, has_direct: direct, remaining_seats: count ?? null, carriers, taxes });

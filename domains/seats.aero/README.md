@@ -149,5 +149,12 @@ A cookie-free public search request returned Cloudflare HTTP 403; that path was
 stopped without retries or configuration changes. Final-source search/trip success
 has not been live-verified; their success parsing is grounded in the 2026-09-29
 observations and fabricated fixtures. Independent QA is pending; all tools remain
-draft. Extension fixture tests pass, but that alone does not verify installation or
-invocation in a real local Chrome extension.
+draft.
+
+A real local Chromium 153 extension check installed the entire namespace and invoked
+all three tools successfully against fabricated HTML/JSON intercepted before network
+access. It also checked fixture HTTP 403 handling, fresh-document registrations and
+absence on an unrelated origin. The isolated test profile pre-granted the seats.aero
+host permission through a temporary manifest copy; runtime code and tool source were
+unchanged. This establishes extension installation/invocation with fixtures, not
+live-site extension success or parity on actual site responses.

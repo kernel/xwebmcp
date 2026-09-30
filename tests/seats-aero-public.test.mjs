@@ -148,6 +148,14 @@ test("search_award_availability: output cap and changed response don't fabricate
   const noShape=harness("search_award_availability",{body:{error:false,metadata:null}});assert.equal((await noShape.run()).status,"site_changed");
 });
 
+test("search/trips: JSON arrays cannot masquerade as string fields",async()=>{
+  for(const key of ["id","source","oa","da","date"]){const body=searchData();body.metadata[0][key]=[body.metadata[0][key]];assert.equal((await harness("search_award_availability",{body}).run()).status,"site_changed");}
+  const tax=searchData();tax.metadata[0].yt.tc=["USD"];assert.equal((await harness("search_award_availability",{body:tax}).run()).status,"site_changed");
+  for(const key of ["source","originAirport","destinationAirport"]){const body=tripData();body[key]=[body[key]];assert.equal((await harness("get_award_trips",{body}).run()).status,"site_changed");}
+  for(const key of ["ID","TaxesCurrency"]){const body=tripData();body.trips[0][key]=[body.trips[0][key]];assert.equal((await harness("get_award_trips",{body}).run()).status,"site_changed");}
+  for(const key of ["FlightNumber","OriginAirport","DestinationAirport"]){const body=tripData();body.trips[0].AvailabilitySegments[0][key]=[body.trips[0].AvailabilitySegments[0][key]];assert.equal((await harness("get_award_trips",{body}).run()).status,"site_changed");}
+});
+
 test("get_award_trips: local times and safe allowlist",async()=>{
   const out=await harness("get_award_trips").run();assert.equal(out.time_basis,"airport_local");assert.equal(out.trips[0].departure_local,day(15)+"T09:15:00");assert.equal(out.trips[0].arrival_local,day(16)+"T11:20:00");assert.equal(out.trips[0].remaining_seats,0);assert.deepEqual(out.trips[0].taxes,{amount_hundredths:41433,currency:"USD"});
   assert.equal((await harness("get_award_trips").run({...inputs.get_award_trips,cabin:"economy"})).status,"no_results");
