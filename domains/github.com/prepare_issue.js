@@ -150,7 +150,7 @@
       if (meta("octolytics-dimension-repository_public") === "false") return fail("private_repository", "Only public repositories are supported. No private content is returned.");
       if (meta("octolytics-dimension-repository_public") !== "true") return fail("site_changed", "The repository's public visibility could not be established.");
 
-      if (!doc.querySelector('a[href="/' + fullName + '/issues"]')) return fail("blocked", "The repository exposes no Issues link. Issue creation may be disabled.");
+      if (!Array.from(doc.querySelectorAll("a[href]")).some(link => link.getAttribute("href")?.toLowerCase() === ("/" + fullName + "/issues").toLowerCase())) return fail("blocked", "The repository exposes no Issues link. Issue creation may be disabled.");
       return { status: "prepared", full_name: fullName, target_url: url + "/issues/new", title: input.title, body: input.body, submission_attempted: false, human_review_required: true };
 
     } catch {

@@ -187,6 +187,16 @@
       const button = buttons.length === 1 ? buttons[0] : null;
       const label = (initial.starred ? "Unstar " : "Star ") + fullName;
       if (!button || button.getAttribute("aria-label")?.toLowerCase() !== label.toLowerCase() || button.disabled || button.getAttribute("data-loading") !== "false" || !button.getClientRects().length) return fail("site_changed", "No unique, ready star button for this exact repository and state. Nothing was changed.");
+      for (let node = button; node; node = node.parentElement) {
+        const style = getComputedStyle(node);
+        if (node.hasAttribute("hidden") || node.hasAttribute("inert") || style.display === "none" || style.visibility === "hidden" || style.visibility === "collapse" || Number(style.opacity) === 0) return fail("site_changed", "The star button is not visibly ready. Nothing was changed.");
+      }
+      const rect = button.getBoundingClientRect();
+      const left = Math.max(0, rect.left);
+      const right = Math.min(innerWidth, rect.right);
+      const top = Math.max(0, rect.top);
+      const bottom = Math.min(innerHeight, rect.bottom);
+      if (right <= left || bottom <= top || !button.contains(document.elementFromPoint((left + right) / 2, (top + bottom) / 2))) return fail("site_changed", "The star button is outside the viewport or covered. Nothing was changed.");
       if (signal && signal.aborted) return fail("canceled", "Canceled before the star button was pressed.");
       if (location.pathname.replace(/\/$/, "").toLowerCase() !== ("/" + fullName).toLowerCase() || localMeta("user-login") !== localActor) return fail("state_changed", "The document changed before the action. Nothing was changed.");
       attempted = true;

@@ -158,7 +158,7 @@
 
     if (typeof input.body !== "string" || input.body.length > 10000 || !input.body.trim() || input.body.includes("\u0000")) return fail("invalid_input", "body must be nonblank text of at most 10000 UTF-16 code units, with no NUL. Nothing was requested.");
 
-    const branch = value => typeof value === "string" && value.length > 0 && value.length <= 200 && !/[\s\x00-\x1f\x7f~^:?*\[\\]/.test(value) && !value.includes("..") && !value.includes("@{") && value !== "@" && !value.startsWith("-") && !value.endsWith(".") && value.split("/").every(part => part && !part.startsWith(".") && !part.endsWith(".lock"));
+    const branch = value => typeof value === "string" && value.length > 0 && value.length <= 200 && value.isWellFormed() && !/[\s\x00-\x1f\x7f~^:?*\[\\]/.test(value) && !value.includes("..") && !value.includes("@{") && value !== "@" && !value.startsWith("-") && !value.endsWith(".") && value.split("/").every(part => part && !part.startsWith(".") && !part.endsWith(".lock"));
     if (!branch(input.base_branch) || !branch(input.head_branch) || input.base_branch === input.head_branch) return fail("invalid_input", "Specify distinct valid same-repository base_branch and head_branch names. Nothing was requested.");
 
     if (location.origin !== "https://github.com") return fail("wrong_page", "Open github.com in this tab. Nothing was requested.");

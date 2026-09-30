@@ -47,15 +47,21 @@ async function run(name, input = good[name], options = {}) {
       options.onClick?.({ signal, location, doc });
       if (!options.noUiChange) button.setAttribute("aria-label", "Unstar example-org/widgets");
     };
+    button.getBoundingClientRect = () => options.rect ?? { left: 20, right: 100, top: 20, bottom: 50 };
     options.button?.(button, doc);
   }
+  doc.elementFromPoint = () => options.covered ? doc.body : button;
+  const getComputedStyle = node => {
+    const declarations = Object.fromEntries((node.getAttribute("style") || "").split(";").filter(s => s.includes(":")).map(s => s.trim().split(/\s*:\s*/)));
+    return { display: "block", visibility: "visible", opacity: "1", ...declarations, ...options.computedStyle?.(node) };
+  };
   const fetch = async (path, init) => {
     calls.push({ path, init });
     const served = options.route ? await options.route(calls.length, { signal, location, doc }) : { body: repoPage({ starred: clicks > 0 }) };
     const status = served.status ?? 200;
     return { status, ok: status >= 200 && status < 300, url: served.url ?? "https://github.com/example-org/widgets", text: async () => served.body ?? "" };
   };
-  const execute = runInNewContext(`(${definitions[name].execute.toString()})`, { document: doc, location, DOMParser, URL, fetch, setTimeout: resolve => resolve() });
+  const execute = runInNewContext(`(${definitions[name].execute.toString()})`, { document: doc, location, DOMParser, URL, fetch, getComputedStyle, innerWidth: 800, innerHeight: 600, setTimeout: resolve => resolve() });
   const output = JSON.parse(JSON.stringify(await execute(input, { signal })));
   assert.ok(conforms(definitions[name].tool.outputSchema, output), JSON.stringify(output));
   assert.ok(!JSON.stringify(output).includes(token));
@@ -110,7 +116,7 @@ test("GitHub action malformed inputs including fake confirmation are rejected be
 });
 
 test("GitHub PR preparation rejects invalid refs and never checks or creates a comparison", async () => {
-  for (const head_branch of ["main", "", "a..b", "-flag", ".hidden", "a/.hidden", "x.lock", "a/", "a//b", "a b", "a:b", "a?b", "a*b", "a\\b", "a[b", "a~b", "a^b", "a@{b", "@", "a.", "x".repeat(201)]) {
+  for (const head_branch of ["main", "", "a..b", "-flag", ".hidden", "a/.hidden", "x.lock", "a/", "a//b", "a b", "a:b", "a?b", "a*b", "a\\b", "a[b", "a~b", "a^b", "a@{b", "@", "a.", "bad\ud800", "bad\udfff", "x".repeat(201)]) {
     const r = await run("prepare_pull_request", { ...good.prepare_pull_request, head_branch });
     assert.equal(r.output.error_kind, "invalid_input", head_branch);
     assert.equal(r.calls.length, 0);
@@ -173,6 +179,9 @@ test("GitHub repository prerequisite reads fail closed on visibility, identity a
   }
   const noIssues = await run("prepare_issue", good.prepare_issue, { route: () => ({ body: repoPage({ issues: false }) }) });
   assert.equal(noIssues.output.error_kind, "blocked");
+  const cased = await run("prepare_issue", { ...good.prepare_issue, owner: "EXAMPLE-ORG", repo: "Widgets" });
+  assert.equal(cased.output.status, "prepared");
+  assert.equal(cased.output.target_url, "https://github.com/EXAMPLE-ORG/Widgets/issues/new");
 });
 
 test("GitHub star status verifies the expected account without returning it", async () => {
@@ -237,6 +246,12 @@ test("GitHub set_star rejects wrong pages, local accounts and unusable buttons b
     [{ button: b => b.setAttribute("disabled", "") }, "site_changed"],
     [{ button: b => b.setAttribute("data-loading", "true") }, "site_changed"],
     [{ button: b => b.setAttribute("hidden", "") }, "site_changed"],
+    [{ button: b => b.setAttribute("style", "visibility:hidden") }, "site_changed"],
+    [{ button: b => b.setAttribute("style", "opacity:0") }, "site_changed"],
+    [{ button: b => b.setAttribute("inert", "") }, "site_changed"],
+    [{ covered: true }, "site_changed"],
+    [{ computedStyle: node => node.localName === "body" ? { opacity: "0" } : {} }, "site_changed"],
+    [{ rect: { left: 900, right: 950, top: 20, bottom: 50 } }, "site_changed"],
     [{ html: repoPage().replace("</body>", '<button data-testid="star-button"></button></body>') }, "site_changed"],
     [{ button: (b, doc) => doc.documentElement.setAttribute("data-xwebmcp-star-busy", "true") }, "busy"]
   ]) {
