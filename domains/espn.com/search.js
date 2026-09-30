@@ -45,7 +45,7 @@
               properties: { team: { type: "integer" }, player: { type: "integer" }, article: { type: "integer" }, upcoming: { type: "integer" } },
               description: "How many matches ESPN reports per returned type (may exceed the number returned)."
             },
-            omitted_types: { type: "array", items: { type: "string" }, description: "Result types ESPN returned that this tool does not, for example clips." },
+            omitted_types: { type: "array", maxItems: 10, items: { type: "string", maxLength: 40 }, description: "Up to 10 unsupported result types ESPN returned, for example clips; names are capped at 40 characters." },
             warnings: { type: "array", items: { type: "string" }, description: "Present when ESPN reported errors alongside these results, so the results may be incomplete." },
             observed_at: { type: "string" }
           }
@@ -55,7 +55,7 @@
           properties: {
             status: { const: "no_results" },
             query: { type: "string" },
-            omitted_types: { type: "array", items: { type: "string" } },
+            omitted_types: { type: "array", maxItems: 10, items: { type: "string", maxLength: 40 } },
             message: { type: "string" }
           }
         },
@@ -77,9 +77,10 @@
     const TYPES = ["team", "player", "article", "upcoming"];
     if (!input || typeof input !== "object" || Array.isArray(input)) return fail("invalid_input", "Provide an object with query.");
     const unknown = Object.keys(input).filter(key => key !== "query" && key !== "types" && key !== "limit");
-    if (unknown.length) return fail("invalid_input", "Unknown input: " + unknown.join(", ") + ".");
-    const query = typeof input.query === "string" ? input.query.trim().replace(/ +/g, " ") : "";
-    if (query.length < 2 || query.length > 100 || /[\u0000-\u001f\u007f-\u009f<>%]/.test(query)) return fail("invalid_input", "query must be 2 to 100 characters of plain text without <, > or %.");
+    if (unknown.length) return fail("invalid_input", "Only query, types and limit are supported.");
+    if (typeof input.query !== "string" || input.query.length > 100 || /[\u0000-\u001f\u007f-\u009f<>%]/.test(input.query)) return fail("invalid_input", "query must be 2 to 100 characters of plain text without <, > or %.");
+    const query = input.query.trim().replace(/ +/g, " ");
+    if (query.length < 2) return fail("invalid_input", "query must be 2 to 100 characters of plain text without <, > or %.");
     const limit = input.limit === undefined ? 5 : input.limit;
     if (!Number.isInteger(limit) || limit < 1 || limit > 10) return fail("invalid_input", "limit must be an integer from 1 to 10.");
     const types = input.types === undefined ? TYPES : input.types;
@@ -105,7 +106,7 @@
       return clean ? clean.slice(0, max) : null;
     };
     const identifier = (value, max) => {
-      const clean = value === undefined || value === null ? null : text(String(value), max + 1);
+      const clean = typeof value === "string" || (typeof value === "number" && Number.isFinite(value)) ? text(String(value), max + 1) : null;
       return clean && clean.length <= max ? clean : null;
     };
     const pageUrl = value => {
@@ -116,19 +117,24 @@
       const clean = "https://" + url.hostname + url.pathname;
       return clean.length <= 300 ? clean : null;
     };
-    const totalsByType = {};
+    const totalsByType = Object.create(null);
     for (const entry of Array.isArray(body.resultTypes) ? body.resultTypes : []) {
-      if (entry && typeof entry.type === "string" && Number.isInteger(entry.totalFound)) totalsByType[entry.type] = entry.totalFound;
+      if (entry && TYPES.includes(entry.type) && Number.isSafeInteger(entry.totalFound) && entry.totalFound >= 0) totalsByType[entry.type] = entry.totalFound;
     }
     const results = [];
     const totals = {};
     const omitted = [];
+    const counts = Object.fromEntries(TYPES.map(type => [type, 0]));
     for (const group of body.results || []) {
       if (!group || typeof group.type !== "string") continue;
-      if (!TYPES.includes(group.type)) { if (!omitted.includes(group.type)) omitted.push(group.type); continue; }
+      if (!TYPES.includes(group.type)) {
+        const type = text(group.type, 40);
+        if (type && omitted.length < 10 && !omitted.includes(type)) omitted.push(type);
+        continue;
+      }
       if (!types.includes(group.type) || !Array.isArray(group.contents)) continue;
       if (Object.hasOwn(totalsByType, group.type)) totals[group.type] = totalsByType[group.type];
-      for (const item of group.contents.slice(0, limit)) {
+      for (const item of group.contents.slice(0, limit - counts[group.type])) {
         const title = item && text(item.displayName, 300);
         if (!title) continue;
         const result = { type: group.type, title, subtitle: text(item.subtitle, 200), url: pageUrl(item.link && item.link.web) };
@@ -140,6 +146,7 @@
           Object.assign(result, { published_at: text(item.date, 40), byline: text(item.byline, 200), premium: typeof item.isPremium === "boolean" ? item.isPremium : null });
         }
         results.push(result);
+        counts[group.type]++;
       }
     }
     const reported = Array.isArray(body.errors) ? body.errors : [];

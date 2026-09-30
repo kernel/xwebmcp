@@ -112,7 +112,7 @@
     const ALLOWED = ["league", "date", "year", "season_type", "week", "max_games"];
     if (!input || typeof input !== "object" || Array.isArray(input)) return fail("invalid_input", "Provide an object with league.");
     const unknown = Object.keys(input).filter(key => !ALLOWED.includes(key));
-    if (unknown.length) return fail("invalid_input", "Unknown input: " + unknown.join(", ") + ".");
+    if (unknown.length) return fail("invalid_input", "Only league, date, year, season_type, week and max_games are supported.");
     const league = input.league;
     if (league !== "nfl" && league !== "nba" && league !== "nhl") return fail("invalid_input", "league must be nfl, nba or nhl; other leagues are not supported yet.");
     const maxGames = input.max_games === undefined ? 30 : input.max_games;
@@ -186,12 +186,13 @@
       return clean ? clean.slice(0, max) : null;
     };
     const identifier = (value, max) => {
-      const clean = value === undefined || value === null ? null : text(String(value), max + 1);
+      const clean = typeof value === "string" || (typeof value === "number" && Number.isFinite(value)) ? text(String(value), max + 1) : null;
       return clean && clean.length <= max ? clean : null;
     };
     const gameId = event => identifier(event.id, 30);
     const events = board.evts.filter(event => event && typeof event === "object" && gameId(event));
     if (board.evts.length && !events.length) return fail("site_changed", "ESPN's scoreboard events no longer have the fields this tool reads.");
+    if (events.length < board.evts.length) warnings.push("Some scoreboard events had unusable game ids and were omitted; game_count counts readable events only.");
     if (!events.length) {
       return { status: "no_games", league, url, effective, message: "ESPN lists no " + league.toUpperCase() + " games for this " + (league === "nfl" ? "week" : "date") + "." };
     }

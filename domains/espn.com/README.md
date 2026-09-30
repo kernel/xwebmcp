@@ -4,8 +4,8 @@ Tools for ESPN's public sports site (https://www.espn.com): scoreboards and site
 
 | tool | file | status | notes |
 |------|------|--------|-------|
-| get_scoreboard | [get_scoreboard.js](get_scoreboard.js) | verified | NFL, NBA and NHL games for one date (NBA, NHL) or one week (NFL): start time, state, score, record, broadcasters, venue; echoes the effective date or week and reports no_games separately from errors |
-| search | [search.js](search.js) | verified | Teams, players, articles and upcoming Watch ESPN events, capped per type, with ESPN page URLs and uids; clips, replays and films omitted |
+| get_scoreboard | [get_scoreboard.js](get_scoreboard.js) | draft | NFL, NBA and NHL games for one date (NBA, NHL) or one week (NFL): start time, state, score, record, broadcasters, venue; echoes the effective date or week and reports no_games separately from errors |
+| search | [search.js](search.js) | draft | Teams, players, articles and upcoming Watch ESPN events, capped per type, with ESPN page URLs and uids; clips, replays and films omitted |
 
 ## Native WebMCP tools
 
@@ -38,6 +38,8 @@ Outputs:
 - Page-tool outputs have been observed to arrive from the runtime's page bridge as a JSON string rather than an object; parse the string when `typeof output === "string"`. Outputs containing non-ASCII text (accented names) were the usual trigger in independent checks. This is runtime behaviour, not tool code.
 - `search` adds `warnings` when ESPN reported errors alongside the results; the results may then be incomplete (for example a team group can be missing).
 - Every success carries `observed_at`.
+- Search returns at most `limit` results per type even when ESPN repeats a group; `omitted_types` contains at most 10 sanitized names, each capped at 40 characters.
+- Scoreboard events without a usable string or finite-number game id are omitted with a warning. `game_count` counts readable events; an entirely unreadable nonempty board returns `site_changed`.
 
 ## URL patterns
 
@@ -47,7 +49,7 @@ Both tools match only `https://www.espn.com/*`, not the default `https://espn.co
 
 - Nothing here signs in, follows, favorites, subscribes, bets, starts playback, accepts terms or changes any preference. Both tools only read.
 - Requests carry no cookies (`credentials: "omit"`), so they behave the same signed in or out and never expose account state.
-- ESPN page and search content is untrusted text. It is returned as data, with C0 and C1 control characters (U+0000 to U+001F and U+007F to U+009F) replaced by spaces and every returned text field length-capped except `omitted_types` (see Known limitations; URLs longer than 300 characters and identifiers longer than their cap, 20 to 60 characters depending on the field, are dropped rather than truncated), and never interpreted; URLs are limited to `https://*.espn.com` paths with the port, query string and fragment removed.
+- ESPN page and search content is untrusted text. It is returned as data, with C0 and C1 control characters (U+0000 to U+001F and U+007F to U+009F) replaced by spaces and every returned text field length-capped (URLs longer than 300 characters and identifiers longer than their cap, 20 to 60 characters depending on the field, are dropped rather than truncated), and never interpreted; URLs are limited to `https://*.espn.com` paths with the port, query string and fragment removed.
 - Results are quotes at `observed_at`, not live updates.
 
 ## Site quirks
@@ -69,19 +71,20 @@ Both tools match only `https://www.espn.com/*`, not the default `https://espn.co
 - Not live-tested: HTTP 403 and 429 responses, a challenge page, a slow ESPN response. They are covered by stubbed tests.
 - Signed-in behaviour is untested and unsupported by design: nothing here reads Fantasy leagues, favorites or entitlements.
 - The scoreboard layout is ESPN's private page data, not a documented API, and can change without notice.
-- Hostile or malformed ESPN content edge cases, found by independent QA and left unchanged after sign-off (real ESPN responses do not trigger them):
-  - `search` copies the names of omitted result groups into `omitted_types` as ESPN sends them, without sanitising, capping or bounding them, so hostile group names could enlarge the output beyond the API size limit. Real values are `clips`, `replay` and `film`.
-  - An id that is an object rather than a string or number is returned as `"[object Object]"`. Real ids are strings or numbers.
-  - `search` validates the query after trimming, so a query with leading or trailing tab or newline characters is accepted by the tool but rejected by a client that checks the raw string against the schema pattern.
-  - `get_scoreboard` skips events without a usable game id and does not say how many it skipped; `game_count` counts usable events only.
+- Search rejects control characters before trimming, including leading/trailing tabs or newlines. The raw query is limited to 100 characters; whitespace-only queries are invalid.
+- Untrusted text is returned as data, not instructions. Bidirectional text overrides are not stripped, and truncation can split a surrogate pair.
 
 ## QA
+
+The hardened source is awaiting a fresh independent review. Earlier source evidence below is historical, not sign-off for the current files. Current changes bound omitted types and duplicate search groups, reject non-primitive identifiers and raw invalid query text, bound invalid-input errors, and disclose skipped scoreboard events.
+
+### Historical source evidence
 
 Independent QA by Hypeship agent `agt_38231d3040927db065c6` (claude-bridge/claude-sonnet-5-5, thinking xhigh), three rounds on 2026-09-29:
 
 1. Head `8aa4545`: FAIL. One major defect (`search` returned `no_results` for an HTTP 200 `errors` body) and two minor ones (uncapped fields, untested input schemas). Fixed in `af7438f`.
 2. Head `af7438f`: PASS with five minor items (an overclaim of control-character removal, README wording, a stale PR body, uncovered caps, unknown 200 bodies giving `no_results`). Fixed in `4b54244`.
-3. Head `4b54244` (`get_scoreboard.js` git blob `718c465`, `search.js` git blob `7957086`): PASS, with four minor hostile-content items recorded under Known limitations. The tool files were not changed after this sign-off; later commits only add tests, README text and registry status.
+3. Head `4b54244` (`get_scoreboard.js` git blob `718c465`, `search.js` git blob `7957086`): PASS, with four minor hostile-content items recorded under Known limitations. The tool files subsequently changed; these results do not verify the current source.
 
 Final-round coverage, signed out, 2026-09-29:
 

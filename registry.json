@@ -139,9 +139,9 @@
       "url_patterns": [
         "https://www.espn.com/*"
       ],
-      "status": "verified",
-      "last_verified": "2026-09-29",
-      "notes": "NFL, NBA and NHL games for one date (NBA, NHL) or one week (NFL): start time, state, score, record, broadcasters, venue; echoes the effective date or week and reports no_games separately from errors. Public, read-only, no navigation. Other leagues unsupported. Live-verified signed out on the Kernel runtime and in a local Chrome extension (2026-09-29); games in progress and real 403/429 responses untested.",
+      "status": "draft",
+      "last_verified": null,
+      "notes": "NFL, NBA and NHL public scoreboards; echoes the effective date or week, reports no_games separately from errors and warns about unreadable events. Read-only, no cookies or navigation. Hardened source awaiting independent re-verification; Fantasy and account tools unsupported.",
       "provenance": {
         "qa_agent": "agt_38231d3040927db065c6"
       }
@@ -155,9 +155,9 @@
       "url_patterns": [
         "https://www.espn.com/*"
       ],
-      "status": "verified",
-      "last_verified": "2026-09-29",
-      "notes": "ESPN site search for teams, players, articles and upcoming Watch ESPN events, capped per type, with ESPN page URLs and uids; clips, replays and films omitted; ESPN error bodies become typed errors or warnings, never no_results. Public, read-only, no navigation. Live-verified signed out on the Kernel runtime and in a local Chrome extension (2026-09-29); real 403/429 responses untested.",
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Public search for teams, players, articles and upcoming Watch ESPN events; capped per type including repeated groups, with bounded omitted_types and explicit errors or partial-result warnings. Read-only, no cookies or navigation. Hardened source awaiting independent re-verification; Fantasy and account tools unsupported.",
       "provenance": {
         "qa_agent": "agt_38231d3040927db065c6"
       }

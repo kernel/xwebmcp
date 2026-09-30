@@ -537,6 +537,56 @@ test("search refuses to run outside www.espn.com", async () => {
   assert.equal(h.calls.fetches.length, 0);
 });
 
+test("search rejects raw edge controls and oversized whitespace before any site interaction", async () => {
+  const h = harness("search", okSearch([searchGroup("team", [teamItem])]));
+  for (const query of ["\tlakers", "lakers\n", "\rab", "\vab", "ab\f", " ".repeat(100) + "ab", "ab" + " ".repeat(100)]) {
+    assert.ok(!conforms(h.definition.tool.inputSchema, { query }));
+    assert.equal((await h.run({ query })).error_kind, "invalid_input");
+  }
+  assert.equal(h.calls.fetches.length, 0);
+});
+
+test("search bounds omitted types and duplicate groups in both success and no_results", async () => {
+  const omitted = Array.from({ length: 301 }, (_, i) => searchGroup(`unknown-${i}-\u0001` + "x".repeat(1000), []));
+  for (const extra of [[], Array.from({ length: 100 }, () => searchGroup("team", Array(10).fill(teamItem)))]) {
+    const result = await harness("search", okSearch([...omitted, ...extra])).run({ query: "ab", limit: 10 });
+    assert.equal(result.status, extra.length ? "ok" : "no_results");
+    assert.equal(result.omitted_types.length, 10);
+    assert.ok(result.omitted_types.every(type => type.length === 40 && !type.includes("\u0001")));
+    assert.ok(Buffer.byteLength(JSON.stringify(result)) < 240 * 1024);
+    if (extra.length) assert.equal(result.results.length, 10);
+  }
+  const collapsed = await harness("search", okSearch([searchGroup("clips\u0001", []), searchGroup("clips\u0085", []), searchGroup("\u0001", [])])).run({ query: "ab" });
+  assert.deepEqual(collapsed.omitted_types, ["clips"]);
+});
+
+test("identifiers accept only strings and finite numbers, and skipped games are disclosed", async () => {
+  const invalid = [{ a: 1 }, [], [9], true, false, null];
+  const h = harness("get_scoreboard", okScoreboard([...invalid.map(id => event(id)), event(999, { competitors: invalid.map(id => competitor(id, "AAA", "Example", true)) })]));
+  const result = await h.run({ league: "nba" });
+  assert.deepEqual(result.games.map(game => game.game_id), ["999"]);
+  assert.ok(result.games[0].teams.every(team => team.team_id === null));
+  assert.equal(result.warnings.length, 1);
+  assert.match(result.warnings[0], /unusable game ids/);
+  assert.equal((await harness("get_scoreboard", okScoreboard(invalid.map(id => event(id)))).run({ league: "nba" })).error_kind, "site_changed");
+  const found = await harness("search", okSearch([
+    searchGroup("team", invalid.map(uid => ({ ...teamItem, uid }))),
+    searchGroup("upcoming", invalid.map(eventId => ({ ...upcomingItem, eventId })))
+  ])).run({ query: "ab", limit: 10 });
+  assert.ok(found.results.every(item => item.type === "team" ? item.uid === null : item.event_id === null));
+});
+
+test("unknown input errors are bounded and never echo caller field names", async () => {
+  for (const name of NAMES) {
+    const h = harness(name);
+    const result = await h.run({ ...(name === "search" ? { query: "ab" } : { league: "nba" }), ["private-" + "x".repeat(10000)]: true });
+    assert.equal(result.error_kind, "invalid_input");
+    assert.ok(result.error_message.length < 150);
+    assert.ok(!result.error_message.includes("private-"));
+    assert.equal(h.calls.fetches.length, 0);
+  }
+});
+
 test("control-character handling covers the first and last C0 and C1 characters and keeps neighbouring text characters", async () => {
   const dirty = "a\u0000b\u001fc\u007fd\u0080e\u009ff\u00a0g h";
   const clean = "a b c d e f\u00a0g h";
