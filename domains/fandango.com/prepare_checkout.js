@@ -352,7 +352,7 @@
       if (typeof link !== "string") return null;
       try { const u = new URL(link, ORIGIN); return u.origin === ORIGIN && !u.username && !u.password && suffix.test(u.pathname) ? ORIGIN + u.pathname : null; } catch { return null; }
     };
-    const code = v => typeof v === "string" && v.length > 0 && v.length <= 40 && v === v.trim() && !/[\u0000-\u001f\u007f]/.test(v);
+    const code = v => typeof v === "string" && /^[A-Za-z0-9_-]{1,40}$/.test(v);
     const allowed = ["movie_id", "theater_id", "date", "showing_date", "local_time", "format", "showtime_id", "tickets", "seat_ids"];
     if (!input || typeof input !== "object" || Array.isArray(input) || Object.keys(input).some(k => !allowed.includes(k))) return fail("invalid_input", "Use only the documented screening and selection inputs.");
     if (typeof input.movie_id !== "string" || !/^\d{1,9}$/.test(input.movie_id) || typeof input.theater_id !== "string" || !/^[A-Za-z0-9]{3,12}$/.test(input.theater_id) || !isDate(input.date) || typeof input.local_time !== "string" || !/^([01]\d|2[0-3]):[0-5]\d$/.test(input.local_time) || typeof input.format !== "string" || !input.format.trim() || input.format.length > 100 || (input.showtime_id !== undefined && (!Number.isSafeInteger(input.showtime_id) || input.showtime_id < 1 || input.showtime_id > 999999999999))) return fail("invalid_input", "Supply valid movie_id, theater_id, date, 24-hour local_time and exact format; showtime_id, if supplied, must be a positive integer.");
