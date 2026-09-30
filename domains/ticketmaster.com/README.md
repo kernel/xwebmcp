@@ -1,8 +1,8 @@
 # ticketmaster.com
 
 Tools for Ticketmaster US (https://www.ticketmaster.com): event search, event details,
-ticket availability with prices, and artist (attraction) and venue lookup. All are read-only
-and work signed out.
+ticket availability with prices, artist (attraction) and venue lookup, and public ticket-choice
+preparation. No tool purchases, transfers or holds inventory. Public reads work signed out.
 
 | tool | file | status | notes |
 |------|------|--------|-------|
@@ -12,6 +12,7 @@ and work signed out.
 | search_attractions | [search_attractions.js](search_attractions.js) | draft | Name typeahead returning numeric ids for artist-type attractions (performers, teams, shows) and venues |
 | get_artist | [get_artist.js](get_artist.js) | draft | One attraction by id or URL: type, category, plain-text synopsis, optional about/FAQ/news/experience excerpts, and its events by offset and limit |
 | get_venue | [get_venue.js](get_venue.js) | draft | One venue by id or URL: address, coordinates, policy text blocks, optional seat-map images, and its events by offset and limit |
+| prepare_ticket_choice | [prepare_ticket_choice.js](prepare_ticket_choice.js) | draft | Public quote-based preparation on the current classic event page; quantity, exact seat/type criteria and USD budget; no selection, queue or hold |
 
 ## Native WebMCP tools
 
@@ -22,16 +23,18 @@ None found (checked 2026-09-26 with `webmcp.listTools()` and
 is undefined, so the custom namespace `ticketmaster.com` does not overlap with anything
 the site registers. Re-checked 2026-09-29 signed out on the homepage, an artist page, a
 venue page and a discover page with the runtime's tool discovery: still no site-registered tools.
+Re-checked 2026-09-30 on the homepage and a classic event page before registration:
+no native tools were listed.
 
 ## Scope and loading
 
-Register all six together, because `forceOverwriteNamespace: true` replaces the whole
+Register all seven together, because `forceOverwriteNamespace: true` replaces the whole
 namespace:
 
 ```javascript
 const fs = await import("node:fs");
 const read = name => fs.readFileSync(`domains/ticketmaster.com/${name}.js`, "utf8");
-const tools = ["search_events", "get_event", "get_ticket_offers", "search_attractions", "get_artist", "get_venue"].flatMap(name => eval(read(name)));
+const tools = ["search_events", "get_event", "get_ticket_offers", "search_attractions", "get_artist", "get_venue", "prepare_ticket_choice"].flatMap(name => eval(read(name)));
 await webmcp.addCustomTools({ namespace: "ticketmaster.com", tools, forceOverwriteNamespace: true });
 ```
 
@@ -153,9 +156,40 @@ nothing extracted is executed or followed. Artist and venue URL inputs are accep
 on `www.ticketmaster.com` or `ticketmaster.com` (stricter than `get_event`, which accepts
 any ticketmaster.com host).
 
+## Ticket-choice preparation
+
+`prepare_ticket_choice` is a page tool: it reads a public quote from the current classic
+event document and never navigates. Open the intended event manually first; any other
+page or event returns `wrong_page`. It reuses only an observed `/api/ismds/event/<id>/quickpicks`
+GET on `services.ticketmaster.com` or `offeradapter.ticketmaster.com`, with the page's
+credentials and client configuration kept inside the page. There is no guessed request
+fallback. The page's ticket-type and accessibility restrictions stay intact; quantity,
+lowest-price ordering, resale inclusion, limit 40 and offset 0 are quote parameters only.
+
+Required inputs are `event`, `quantity` and `max_total_before_tax` (USD). Optional
+`section`, `row` and `ticket_type` compare exact case-insensitive text, and `inventory_type`
+is `any`, `primary` or `resale`. It prepares the cheapest matching offer in that bounded
+sample, not necessarily in the event's entire inventory. Only online, unprotected USD
+offers with an explicit sellable quantity, usable charge breakdown and assigned seats
+(or general admission) qualify. Missing evidence is not guessed.
+
+The `prepared` result is a quote, not a selection or approval. Ticket prices include
+reported fees before tax; tax and estimated totals are separate, and unknown per-order
+fees are excluded. The budget checks the before-tax total only. Seat numbers, section,
+row and ticket type are plain bounded data. No offer identifiers, client secrets, signed
+URLs, barcode or transfer data are returned. Availability is observed at `observed_at`
+and can change immediately. The tool does not automatically call another tool.
+
+Purchase, reservation and transfer execution are deliberately absent. The current
+runtime has no supported trusted human approval path bound to exact account, action,
+seat/recipient, quantity, final cost/date and terms. A model's `confirmed: true` or
+confirmation string is not approval and is rejected as malformed input. Review event
+terms and final checkout charges manually through the site. No live purchase, hold,
+transfer or settings write is part of development or QA.
+
 ## URL patterns
 
-All six tools match only `https://www.ticketmaster.com/*`, not the default
+All seven tools match only `https://www.ticketmaster.com/*`, not the default
 `https://ticketmaster.com/*` and `https://*.ticketmaster.com/*`. The other hosts under
 the registrable domain are separate products: the help centre (`help.`), sign-in
 (`identity.`), Account Manager (`am.`), the waiting room and
@@ -173,6 +207,10 @@ navigates only within `www.ticketmaster.com`. If the tab is on another host, ope
   signed-in account (orders, tickets, barcodes, favorites, alerts, transfers, resale
   listings), never call reserve, checkout, waiting-list or presale endpoints, and never
   navigate. Presale names and dates in listings are returned as plain data.
+- Preparation changes no browser filters or preferences. The existing newer-layout
+  `get_ticket_offers` does remember quantity and price-order display preferences; it
+  must not be live-tested on a user's session without separate permission. Preparation
+  instead returns `unsupported_page` on that layout. All new-tool QA is read-only.
 - Nothing here selects a listing, clicks a "Select …" seat row, accepts the event's
   ticket terms dialog ("I Agree"), reserves, holds, adds to cart or opens
   `checkout.ticketmaster.com`. The tests fail if any listing is clicked. No tool
@@ -250,7 +288,9 @@ navigates only within `www.ticketmaster.com`. If the tab is on another host, ope
   back empty is therefore checked against page 0's total: if page 0 says that page should
   hold events, the tool returns `site_error` ("empty events page although it reports N
   events; try again") instead of a short or empty result; if page 0's total is at or
-  below the page's start, it is a genuine end of list and costs one extra request. A flake
+  below the page's start, with no larger total already observed, it is a genuine end of
+  list and costs one extra request. A missing or contradictory cross-check total is an
+  error rather than a guessed empty result. A flake
   on page 0 itself (or on a page with events) cannot be detected this way.
 - Artist and venue events include listings sold on other Ticketmaster country sites
   (Canadian shows appeared in a US artist's list with `www.ticketmaster.ca` URLs and
@@ -286,6 +326,16 @@ navigates only within `www.ticketmaster.com`. If the tab is on another host, ope
 
 ## Known limitations
 
+- `prepare_ticket_choice` requires the matching classic event page and its already-observed
+  public quote request. Newer-layout offers, queues, protected offers and signed-in-only
+  inventory are unsupported. It samples at most 40 listings, retains the observed query's
+  restrictions, does not include promoted-only listings, and cannot guarantee the lowest
+  price or continued availability. Final taxes, per-order fees and terms remain manual.
+  A 401 is `login_required`, 403 `challenge`, 429 `rate_limit`; no automatic retries.
+  Cancellation aborts its single GET; there are no writes or uncertain action outcomes.
+- Own-order reads are omitted: the authorized account previously returned empty orders,
+  so populated ticket schemas and safe field selection have not been established. No
+  new login, account selection or account mutation is performed.
 - US site only (`region=200`, `en-us`, USD).
 - `search_events` reads at most 10 location-only pages and 40 date-filtered pages
   (20 events each) and warns when it stops at the date-filtered cap; without dates a
@@ -423,7 +473,8 @@ builder's browser was deleted after the final run.
 
 ### Attraction tools (`search_attractions`, `get_artist`, `get_venue`)
 
-Status `draft`: no independent QA has signed off yet.
+Historical rounds below predate ticket-choice preparation. The expanded source remains
+`draft` pending a new independent review.
 
 Independent QA round 1 (agent `agt_7efe7ebf564202d6ad44`, 2026-09-29) on the first revision
 (commit `20829bf`): **FAIL**, with 1 major and 8 minor findings, fixed in the next commit:
@@ -466,9 +517,8 @@ live synopses, policy blocks and about/FAQ text had no differences from an indep
 parse), but the reviewer found that the site's intermittent empty-page response (see Site
 quirks) made both list tools return a wrong `ok` with a shortened list and a zero total.
 The builder fixed it in the next commit (cross-check against page 0, with fixture tests
-and mutation checks) after the two allowed recheck rounds had been used, so **that final
-change has no independent sign-off**; the tools stay `draft` and need a fresh independent
-review before `qa_passed`.
+and mutation checks) after the two allowed recheck rounds had been used, so that change had no independent sign-off at the previous handoff. The next review cycle
+covers that fix and the expanded preparation tool; statuses remain `draft` until it passes.
 
 Round 1 also reported, live: the whole namespace registered atomically with metadata equal
 to the checked-out files; no site-registered tools and no name collisions on six page
@@ -515,3 +565,23 @@ Builder checks, 2026-09-29, signed out, on a fresh Kernel stealth browser. The w
   and that no unlisted field leaves the page.
 - Not exercised live by the builder: the bot-protection page and HTTP 403/429 paths
   (stubbed tests only), signed-in use, and the Chrome extension runtime.
+
+### Expanded public preparation, 2026-09-30
+
+Builder Kernel checks, signed out: all seven tools atomically replaced the namespace,
+including the three untouched existing tools. From a classic event page,
+`search_attractions` returned arena suggestions, `get_artist` returned a genuine
+past-the-end window (total 270, no events), and `get_venue` returned five events at
+offset 60 (total 457). The intermittent empty-page failure did not occur during this
+bounded live check; its negative path is fixture-covered. `prepare_ticket_choice`
+returned a two-ticket primary choice at $93.70 per ticket before tax, $7.10 reported tax
+per ticket, estimated totals $187.40 before tax and $201.60 with reported taxes. The
+page stayed put, terms remained unaccepted, and no listing or preference was clicked.
+From a discover page preparation returned `wrong_page` without navigation. The quote
+request was a public GET to `services.ticketmaster.com`, matching the page's own request.
+
+Fixture coverage includes malformed input before page access, wrong event/host, queues,
+protection and rate limits, no-match versus changed schemas, protected/unsupported offers,
+integer-cent price arithmetic, explicit quantity, cancellation and secret omission.
+No mocked test establishes live mutation success. No new account or order tool is shipped.
+Independent review and current local-extension results are recorded after the new QA cycle.

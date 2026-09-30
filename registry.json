@@ -1079,6 +1079,19 @@
     },
     {
       "domain": "ticketmaster.com",
+      "tool": "prepare_ticket_choice",
+      "file": "domains/ticketmaster.com/prepare_ticket_choice.js",
+      "kind": "page",
+      "namespace": "ticketmaster.com",
+      "url_patterns": [
+        "https://www.ticketmaster.com/*"
+      ],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Page-local preparation on the matching classic event page. One observed public quick-picks GET; bounded 40-listing sample, explicit quantity and USD budget, reported fees/taxes. No selection, queue, hold, checkout or execution; newer preference-changing layout is unsupported."
+    },
+    {
+      "domain": "ticketmaster.com",
       "tool": "search_attractions",
       "file": "domains/ticketmaster.com/search_attractions.js",
       "kind": "page",

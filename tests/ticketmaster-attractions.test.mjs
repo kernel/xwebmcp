@@ -6,7 +6,7 @@ import { runInNewContext } from "node:vm";
 // Harness for the ticketmaster.com attraction tools (search_attractions, get_artist, get_venue). The page, the site's
 // JSON endpoints and every id below are stubbed or fabricated; nothing here contacts the live site.
 const NAMES = ["search_attractions", "get_artist", "get_venue"];
-const ALL = ["get_artist", "get_event", "get_ticket_offers", "get_venue", "search_attractions", "search_events"];
+const ALL = ["get_artist", "get_event", "get_ticket_offers", "get_venue", "prepare_ticket_choice", "search_attractions", "search_events"];
 const sources = Object.fromEntries(NAMES.map(name => [name, readFileSync(new URL(`../domains/ticketmaster.com/${name}.js`, import.meta.url), "utf8")]));
 const registry = JSON.parse(readFileSync(new URL("../registry.json", import.meta.url), "utf8"));
 const plain = value => JSON.parse(JSON.stringify(value));
@@ -841,6 +841,21 @@ test("look-alike hosts are never treated as Ticketmaster", async () => {
 });
 
 // --- an empty page in the middle of a list (seen live: total 0, no events, HTTP 200) --------------------
+
+test("empty-page cross-check cannot discard an earlier positive total or trust a missing total", async () => {
+  for (const [name, key, routesFor, id] of [["get_artist", "artist", artistRoutes, "1234567"], ["get_venue", "venue", venueRoutes, "12345"]]) {
+    const events = page => page === 2 ? json(200, { total: 457, events: Array.from({ length: 20 }, (_, i) => listing(i + 41)) }) : json(200, { total: 0, events: [] });
+    const r = await harness(name, { routes: routesFor({ events }) }).run({ [key]: id, events_offset: 58, events_limit: 5 });
+    assert.equal(r.error_kind, "site_error");
+    assert.match(r.error_message, /reports 457 events/);
+    for (const total of [null, undefined, -1]) {
+      const bad = page => json(200, { total: page === 0 ? total : 0, events: [] });
+      const result = await harness(name, { routes: routesFor({ events: bad }) }).run({ [key]: id, events_offset: 60 });
+      assert.equal(result.error_kind, "site_error");
+      assert.match(result.error_message, /usable total/);
+    }
+  }
+});
 
 const flakyEvents = (flake, count = 457) => page => (page === flake ? json(200, { total: 0, totalLocal: 0, totalInternational: 0, singleVenue: false, events: [] }) : json(200, { total: count, events: Array.from({ length: Math.max(0, Math.min(20, count - page * 20)) }, (_, i) => listing(page * 20 + i + 1)) }));
 
