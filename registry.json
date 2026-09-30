@@ -122,9 +122,12 @@
       "url_patterns": [
         "https://www.doordash.com/*"
       ],
-      "status": "draft",
-      "last_verified": null,
-      "notes": "Account-checked cart read/order preparation."
+      "status": "qa_passed",
+      "last_verified": "2026-09-30",
+      "notes": "Account-checked open-cart read with bounded lines/options, provisional currency/fee/totals, queried revision and explicit header/default-region context. Independent Kernel and local-extension success/failure QA passed on final source; populated success is fixture-only. Earlier source read an authorized empty live cart. No address, payment or checkout changes.",
+      "provenance": {
+        "qa_agent": "agt_e3cd254315c78d609b12"
+      }
     },
     {
       "domain": "doordash.com",
@@ -135,9 +138,12 @@
       "url_patterns": [
         "https://www.doordash.com/*"
       ],
-      "status": "draft",
-      "last_verified": null,
-      "notes": "Account-checked cart read/order preparation."
+      "status": "qa_passed",
+      "last_verified": "2026-09-30",
+      "notes": "Read-only exact-cart preparation with provisional fees/totals, explicit address-context limitations and a manual checkout URL. Does not load checkout or execute orders/payment; ready_for_order is always false because no trusted approval enforcement exists. Independent Kernel/local-extension success/failure QA passed; populated success is fixture-only.",
+      "provenance": {
+        "qa_agent": "agt_e3cd254315c78d609b12"
+      }
     },
     {
       "domain": "doordash.com",
@@ -181,9 +187,12 @@
       "url_patterns": [
         "https://www.doordash.com/*"
       ],
-      "status": "draft",
-      "last_verified": null,
-      "notes": "Exact personal cart-line removal with revision, account and duplicate-write guards. Mutation QA is fixture-only; no live cart consent."
+      "status": "qa_passed",
+      "last_verified": "2026-09-30",
+      "notes": "Exact non-last ordinary personal cart-line removal with account/store/revision, complete non-prescription line checks, persistent uncertain-write guard and observed postconditions. One attempt, no automatic retries. Independent Kernel/local-extension QA passed; all mutation success is fixture-only, never live-verified. Cross-tab races are not atomically excluded; final order/payment execution is absent.",
+      "provenance": {
+        "qa_agent": "agt_e3cd254315c78d609b12"
+      }
     },
     {
       "domain": "etsy.com",

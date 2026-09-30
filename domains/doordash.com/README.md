@@ -5,9 +5,9 @@ Tools for DoorDash (https://www.doordash.com).
 | tool | file | status | notes |
 |------|------|--------|-------|
 | login | [login.js](login.js) | qa_passed | Email + password sign-in with a two-step guided flow; existing sessions verified against the profile page; `otp` mode for the 2-Step Verification modal |
-| get_cart | [get_cart.js](get_cart.js) | draft | Account-checked open-cart read with line ids, options, provisional totals and revision |
-| get_checkout_summary | [get_checkout_summary.js](get_checkout_summary.js) | draft | Read-only preparation and manual checkout handoff; never opens checkout or orders |
-| remove_cart_item | [remove_cart_item.js](remove_cart_item.js) | draft | Exact non-last personal cart-line removal with account/revision/duplicate guards; fixture-only mutation evidence |
+| get_cart | [get_cart.js](get_cart.js) | qa_passed | Account-checked open-cart read with line ids, options, provisional totals and revision |
+| get_checkout_summary | [get_checkout_summary.js](get_checkout_summary.js) | qa_passed | Read-only preparation and manual checkout handoff; never opens checkout or orders |
+| remove_cart_item | [remove_cart_item.js](remove_cart_item.js) | qa_passed | Exact non-last personal cart-line removal with account/revision/duplicate guards; fixture-only mutation evidence |
 | get_store | [get_store.js](get_store.js) | qa_passed | Page tool: store hours, service modes, delivery and pickup availability with estimates and fee strings, and menu ids, with the delivery basis (selected address, none selected, unknown) stated explicitly and delivery figures returned only for a selected address; never changes the address |
 
 ## Native WebMCP tools
@@ -55,8 +55,9 @@ Schemas as read from the polyfill (inputs only; the polyfill exposes no output s
 
 None of the native tools sign in, so `login` is custom. Search, item options and adding to the cart
 are covered natively. The native tools give no store details (hours, address, availability, fees,
-estimates) and no cart read or edit, address, or order tools; `get_store` below covers the first
-gap only.
+estimates) and no cart read or edit, address, or order tools. `get_store` covers the store-details gap;
+the bounded cart tools below cover reads, limited line removal and preparation, not address selection or
+order execution.
 
 ## Entry path and flow
 
@@ -575,7 +576,7 @@ exercised the full namespace on Kernel and the local extension (23 extension inv
 cart, preview and removal successes were fixture-only, with zero tool-fetch escapes; live guest calls failed
 as `login_required`. Existing `get_store` locale/distance safeguards remained unchanged. Native menu/item/add
 were seen alongside all customs on a fully loaded Kernel store page; native home tools remained available
-in navigator but not API discovery. Re-review of the fixes is pending; new entries remain draft.
+in navigator but not API discovery. The subsequent final-source recheck below supersedes the pending state.
 
 Author local-extension check at `dd01703`: exact-SHA install in a throwaway Chromium 153 profile, atomic
 five-tool attach and site grant; page-originated mocked cart→preview→remove success made one mocked write,
@@ -583,3 +584,39 @@ zero network escapes and preserved the document marker. Extension-owned-tab call
 malformed-input failures plus signed-out `get_store` success. These are not claims of live cart mutation.
 The original authorized login session reached its unchanged expiration and was deleted after the deadline.
 No signed-in/populated extension profile was used.
+
+### final-source independent sign-off — 2026-09-30
+
+Same reviewer, same runtime/auth settings; initial review plus one fix/recheck round, no third reviewer or
+unbounded review loop. At `bd42a0d5322213cbc507804e3e656eb00cbaa582`, verdict **NO DEFECTS**, explicitly
+signed off on all three new tools as `qa_passed`, not `verified`. Hashes matched checked-out and installed
+extension sources:
+
+```text
+get_cart 987beebde9fb872deb4b6c7d0cdcce20418b896457c8219986dbc665a648c91b
+get_checkout_summary 2a1de8f774db4b2d29d3475e434eef803e08aa6f4ea224cd72b61da5a7ec2372
+remove_cart_item dc74c41f35745c7d1e650ff2531604f2229fa8904d993e6d70e379e53c0d091e
+```
+
+Recheck: 83 tools valid, full suite 1648/1648, cart tests 49/49, get_store tests 22/22; six schemas compiled
+with Ajv, 140 independent scratch cases reviewed (132 assertion checks passed, eight exploratory probes),
+four regression mutants killed. All original findings closed; observable account switches/uncertain account
+responses discard reads, unsupported target/other lines fail before guard/write, and late cancellation retains
+the uncertain-outcome guard. Actual page-originated aborts surfaced caller `AbortError` with that guard retained.
+
+Kernel: fresh public browser, atomic five-tool registration, real guest failures, all three fixture-only success
+paths, regression failures, zero fixture fetch escapes and unchanged location/history/marker. Store native
+menu/item/add/context/navigation coexisted with customs; help.doordash.com exposed only login, unrelated
+example.com none. get_store es-US/fr-CA safeguards passed unchanged.
+
+Local extension: exact-SHA install, five-tool attach/grant, 25 schema-valid result-bearing invocations and
+separate late-cancellation check. Owned-tab and page-originated fixture success/failure paths passed, with
+zero fixture fetch escapes/no navigation. Home navigator natives remained intact while extension discovery
+listed customs only; no blanket discovery parity is claimed.
+
+Author independently repeated final-hash Kernel and local-extension registration/discovery, live guest and
+malformed-input failures, signed-out get_store success, and isolated read→preview→remove success (one mocked
+write, zero escapes). Local page marker survived; Kernel marker/path survived real public checks. No final-source
+signed-in/populated read, real removal, checkout/payment/address change or order was tested. Both sides deleted
+only their own scratch browsers and stopped local Chromium/Xvfb. Existing login/get_store hashes remain unchanged;
+metadata/docs-only closeout preserves the signed-off sources.
