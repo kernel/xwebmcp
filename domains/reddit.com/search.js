@@ -33,7 +33,7 @@
             },
             after: { type: ["string", "null"], description: "Pass as after to read the next page; null when there is no further page." },
             posts: {
-              type: "array", minItems: 1,
+              type: "array", minItems: 1, maxItems: 25,
               items: {
                 type: "object", additionalProperties: false,
                 required: ["rank", "id", "fullname", "title", "author", "community", "score", "upvote_ratio", "num_comments", "created_utc", "url", "link_url", "domain", "is_self", "is_video", "over_18", "spoiler", "stickied", "locked", "flair", "text_preview"],
@@ -87,11 +87,11 @@
     const unknown = Object.keys(input).find(key => !["query", "community", "sort", "time", "limit", "after"].includes(key));
     if (unknown) return fail("invalid_input", `Unknown input field '${unknown}'. Nothing was requested.`);
     const query = typeof input.query === "string" ? input.query.trim() : "";
-    if (!query || Array.from(query).length > 512) return fail("invalid_input", "query must be 1-512 characters. Nothing was requested.");
+    if (!query || Array.from(input.query).length > 512) return fail("invalid_input", "query must be 1-512 characters. Nothing was requested.");
     let community = null;
     if (input.community !== undefined) {
       community = typeof input.community === "string" ? input.community.trim().replace(/^\/?r\//i, "") : "";
-      if (!/^[A-Za-z0-9_]{2,21}$/.test(community)) return fail("invalid_input", "community must be a subreddit name of 2-21 letters, digits or underscores, e.g. 'programming'. Nothing was requested.");
+      if (typeof input.community !== "string" || input.community.length > 24 || !/^[A-Za-z0-9_]{2,21}$/.test(community)) return fail("invalid_input", "community must be a subreddit name of 2-21 letters, digits or underscores, e.g. 'programming'. Nothing was requested.");
     }
     const sort = input.sort === undefined ? "relevance" : input.sort;
     if (!["relevance", "hot", "top", "new", "comments"].includes(sort)) return fail("invalid_input", "sort must be relevance, hot, top, new or comments. Nothing was requested.");
@@ -136,6 +136,7 @@
     const http = value => { try { const u = new URL(value); return u.protocol === "https:" || u.protocol === "http:" ? u.href : null; } catch { return null; } };
     const posts = [];
     for (const child of children) {
+      if (posts.length >= limit) break;
       const d = child && child.kind === "t3" ? child.data : null;
       if (!d) continue;
       if (typeof d.id !== "string" || typeof d.title !== "string") return fail("site_changed", "Reddit's search response did not have the expected shape. Nothing was changed.");
@@ -145,7 +146,7 @@
         community: typeof d.subreddit === "string" ? d.subreddit : (community || ""),
         score: count(d.score), upvote_ratio: typeof d.upvote_ratio === "number" ? d.upvote_ratio : null, num_comments: count(d.num_comments),
         created_utc: typeof d.created_utc === "number" ? Math.round(d.created_utc) : null,
-        url: new URL(typeof d.permalink === "string" && /^\/(r|user)\/[A-Za-z0-9_-]+\/comments\/[a-z0-9]+\//.test(d.permalink) ? d.permalink : `/comments/${d.id}/`, ORIGIN).href,
+        url: new URL(typeof d.permalink === "string" && /^\/(r|user)\/[A-Za-z0-9_-]+\/comments\/[a-z0-9]+\//.test(d.permalink) ? d.permalink : `/comments/${d.id}/`, ORIGIN).href.replace(/[\[\]|]|%(?![0-9a-f]{2})/gi, encodeURIComponent),
         link_url: d.is_self === true ? null : http(d.url), domain: typeof d.domain === "string" ? d.domain : null,
         is_self: d.is_self === true, is_video: d.is_video === true, over_18: d.over_18 === true, spoiler: d.spoiler === true, stickied: d.stickied === true, locked: d.locked === true,
         flair: typeof d.link_flair_text === "string" && d.link_flair_text ? d.link_flair_text : null,

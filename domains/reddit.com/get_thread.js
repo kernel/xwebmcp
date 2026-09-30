@@ -96,8 +96,8 @@
     if (unknown) return fail("invalid_input", `Unknown input field '${unknown}'. Nothing was requested.`);
     const parse = value => {
       if (typeof value !== "string") return null;
+      if (Array.from(value).length > 300) return null;
       const text = value.trim();
-      if (text.length > 300) return null;
       let m = /^(?:t3_)?([a-z0-9]{4,10})$/i.exec(text);
       if (m) return m[1].toLowerCase();
       let u;
@@ -152,7 +152,7 @@
       author: typeof p.author === "string" ? p.author : null, community: typeof p.subreddit === "string" ? p.subreddit : null,
       score: count(p.score), upvote_ratio: typeof p.upvote_ratio === "number" ? p.upvote_ratio : null, num_comments: count(p.num_comments),
       created_utc: typeof p.created_utc === "number" ? Math.round(p.created_utc) : null,
-      url: new URL(typeof p.permalink === "string" && /^\/(r|user)\/[A-Za-z0-9_-]+\/comments\/[a-z0-9]+\//.test(p.permalink) ? p.permalink : `/comments/${p.id}/`, ORIGIN).href,
+      url: new URL(typeof p.permalink === "string" && /^\/(r|user)\/[A-Za-z0-9_-]+\/comments\/[a-z0-9]+\//.test(p.permalink) ? p.permalink : `/comments/${p.id}/`, ORIGIN).href.replace(/[\[\]|]|%(?![0-9a-f]{2})/gi, encodeURIComponent),
       link_url: p.is_self === true ? null : http(p.url), domain: typeof p.domain === "string" ? p.domain : null,
       is_self: p.is_self === true, is_video: p.is_video === true, over_18: p.over_18 === true, spoiler: p.spoiler === true, stickied: p.stickied === true, locked: p.locked === true, archived: p.archived === true,
       flair: typeof p.link_flair_text === "string" && p.link_flair_text ? p.link_flair_text : null,
@@ -179,7 +179,7 @@
           created_utc: typeof d.created_utc === "number" ? Math.round(d.created_utc) : null,
           edited: d.edited !== false && d.edited !== undefined && d.edited !== null, is_submitter: d.is_submitter === true, stickied: d.stickied === true,
           distinguished: typeof d.distinguished === "string" ? d.distinguished : null,
-          url: new URL(typeof d.permalink === "string" && /^\/(r|user)\/[A-Za-z0-9_-]+\/comments\/[a-z0-9]+\//.test(d.permalink) ? d.permalink : `/comments/${postId}/_/${d.id}/`, ORIGIN).href
+          url: new URL(typeof d.permalink === "string" && /^\/(r|user)\/[A-Za-z0-9_-]+\/comments\/[a-z0-9]+\//.test(d.permalink) ? d.permalink : `/comments/${postId}/_/${d.id}/`, ORIGIN).href.replace(/[\[\]|]|%(?![0-9a-f]{2})/gi, encodeURIComponent)
         });
         if (d.replies && typeof d.replies === "object" && d.replies.data && Array.isArray(d.replies.data.children)) walk(d.replies.data.children);
       }

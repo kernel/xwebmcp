@@ -875,12 +875,9 @@
       "url_patterns": [
         "https://www.reddit.com/*"
       ],
-      "status": "verified",
-      "last_verified": "2026-09-29",
-      "notes": "Reads one post and up to 100 comments (site sort, depth 1-8) through the site's own thread JSON; comments the site collapses are reported in more, not expanded. Public content only; viewer-specific fields are not returned.",
-      "provenance": {
-        "qa_agent": "agt_490b99ec7d30a026c695"
-      }
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Reads one post and up to 100 comments; collapsed branches are not expanded. Viewer-specific fields are not returned."
     },
     {
       "domain": "reddit.com",
@@ -891,12 +888,35 @@
       "url_patterns": [
         "https://www.reddit.com/*"
       ],
-      "status": "verified",
-      "last_verified": "2026-09-29",
-      "notes": "Reads one page of a community feed (hot, new, top, rising, controversial) through the site's own feed JSON. Public content only; no front-page or account feeds; viewer-specific fields are not returned.",
-      "provenance": {
-        "qa_agent": "agt_490b99ec7d30a026c695"
-      }
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Reads one page of a community feed; no account feeds or viewer-specific fields."
+    },
+    {
+      "domain": "reddit.com",
+      "tool": "prepare_comment",
+      "file": "domains/reddit.com/prepare_comment.js",
+      "kind": "page",
+      "namespace": "reddit.com",
+      "url_patterns": [
+        "https://www.reddit.com/*"
+      ],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Prepares a top-level comment and thread handoff. Does not persist, fill or submit a comment."
+    },
+    {
+      "domain": "reddit.com",
+      "tool": "prepare_post",
+      "file": "domains/reddit.com/prepare_post.js",
+      "kind": "page",
+      "namespace": "reddit.com",
+      "url_patterns": [
+        "https://www.reddit.com/*"
+      ],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Prepares a text post with community rules and composer handoff. Does not persist, fill or submit a post."
     },
     {
       "domain": "reddit.com",
@@ -907,12 +927,22 @@
       "url_patterns": [
         "https://www.reddit.com/*"
       ],
-      "status": "verified",
-      "last_verified": "2026-09-29",
-      "notes": "Searches posts site-wide or inside one community through the site's own search JSON. Posts only; no comment, community or user search. Public content only; viewer-specific fields are not returned.",
-      "provenance": {
-        "qa_agent": "agt_490b99ec7d30a026c695"
-      }
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Searches posts site-wide or in one community. No account fields or comment/user search."
+    },
+    {
+      "domain": "reddit.com",
+      "tool": "set_saved",
+      "file": "domains/reddit.com/set_saved.js",
+      "kind": "page",
+      "namespace": "reddit.com",
+      "url_patterns": [
+        "https://www.reddit.com/*"
+      ],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Saves or unsaves one visible post under an expected account and saved-state guard. No write retries; uncertain outcomes require manual inspection. Live changing cases were not tested."
     },
     {
       "domain": "southwest.com",

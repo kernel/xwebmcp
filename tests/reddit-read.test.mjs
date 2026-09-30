@@ -25,6 +25,7 @@ function conforms(schema, value) {
   if (schema.oneOf && schema.oneOf.filter(s => conforms(s, value)).length !== 1) return false;
   if (Array.isArray(value)) {
     if (schema.minItems !== undefined && value.length < schema.minItems) return false;
+    if (schema.maxItems !== undefined && value.length > schema.maxItems) return false;
     if (schema.items && !value.every(item => conforms(schema.items, item))) return false;
   }
   if (value !== null && typeof value === "object" && !Array.isArray(value)) {
@@ -35,9 +36,9 @@ function conforms(schema, value) {
     }
   }
   if (typeof value === "string") {
-    if (value.length < (schema.minLength ?? 0) || value.length > (schema.maxLength ?? Infinity)) return false;
+    if (Array.from(value).length < (schema.minLength ?? 0) || Array.from(value).length > (schema.maxLength ?? Infinity)) return false;
     if (schema.pattern && !new RegExp(schema.pattern).test(value)) return false;
-    if (schema.format === "uri" && (!URL.canParse(value) || !/^[\x21-\x7e]+$/.test(value))) return false;
+    if (schema.format === "uri" && (!URL.canParse(value) || !/^[\x21-\x7e]+$/.test(value) || /[\[\]|]|%(?![0-9a-f]{2})/i.test(value))) return false;
   }
   if (typeof value === "number") {
     if (value < (schema.minimum ?? -Infinity) || value > (schema.maximum ?? Infinity)) return false;
@@ -115,7 +116,7 @@ const requested = call => { const u = new URL(call.url); return { origin: u.orig
 
 test("registry entries match the tool files", () => {
   const entries = registry.tools.filter(t => t.domain === "reddit.com");
-  assert.deepEqual(entries.map(t => t.tool), ["get_thread", "list_posts", "search"]);
+  assert.deepEqual(entries.map(t => t.tool), ["get_thread", "list_posts", "prepare_comment", "prepare_post", "search", "set_saved"]);
   for (const name of NAMES) {
     const { definition } = harness(name);
     const entry = entries.find(t => t.tool === name);
@@ -473,6 +474,33 @@ test("URLs in the output are ASCII even when the site's permalinks are not", asy
   const read = await harness("get_thread", { respond: () => ({ status: 200, json: thread(t3("abcde1", { permalink }), [t1("c1", "t3_abcde1", 0, { permalink: permalink + "c1/" })]) }) }).run({ post: "abcde1" });
   assert.equal(read.post.url, expected);
   assert.equal(read.comments[0].url, expected + "c1/");
+});
+
+test("read tools honor output counts and raw input schema lengths before normalization", async () => {
+  for (const name of ["list_posts", "search"]) {
+    const h = harness(name, { respond: () => ({ status: 200, json: listing(Array.from({ length: 30 }, () => t3("abcde1"))) }) });
+    assert.equal((await h.run({ ...VALID[name], limit: 2 })).posts.length, 2);
+    const invalid = harness(name);
+    assert.equal((await invalid.run({ ...VALID[name], community: " ".repeat(30) + "fabcommunity" })).error_kind, "invalid_input");
+    assert.equal(invalid.calls.length, 0);
+  }
+  const query = harness("search");
+  assert.equal((await query.run({ query: " ".repeat(512) + "x" })).error_kind, "invalid_input");
+  assert.equal(query.calls.length, 0);
+  const post = harness("get_thread");
+  assert.equal((await post.run({ post: " ".repeat(301) + "abcde1" })).error_kind, "invalid_input");
+  assert.equal(post.calls.length, 0);
+});
+
+test("canonical URLs encode punctuation and invalid percent escapes without double-encoding valid escapes", async () => {
+  const permalink = "/r/fabcommunity/comments/abcde1/a[b]|%oops_%C3%A9/";
+  const expected = "https://www.reddit.com/r/fabcommunity/comments/abcde1/a%5Bb%5D%7C%25oops_%C3%A9/";
+  for (const name of NAMES) {
+    const json = name === "get_thread" ? thread(t3("abcde1", { permalink }), [t1("c1", "t3_abcde1", 0, { permalink: permalink + "c1/" })]) : listing([t3("abcde1", { permalink })]);
+    const result = await harness(name, { respond: () => ({ status: 200, json }) }).run(VALID[name]);
+    assert.equal(name === "get_thread" ? result.post.url : result.posts[0].url, expected);
+    if (name === "get_thread") assert.equal(result.comments[0].url, expected + "c1/");
+  }
 });
 
 test("an unknown community, which the site redirects to its community search, is not_found", async () => {
