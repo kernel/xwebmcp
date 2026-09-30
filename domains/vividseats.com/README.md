@@ -59,7 +59,7 @@ Patterns are narrowed to `https://www.vividseats.com/*`: the JSON and public pag
 
 ## Known limitations
 
-- Public marketplace only. No login, enrollment, orders, favorites, seller reads/writes, rewards, account settings or payment tools. Prior explicitly approved account access was empty: no order/sales/listing items to validate. Empty schemas do not ground useful account tools; no account is populated for QA.
+- Public marketplace only. No login, enrollment, orders, favorites, seller reads/writes, rewards, account settings or payment tools. Authenticated item schemas and write flows are unverified; no account is populated or changed for QA.
 - All prices are quotes, not guarantees of inventory or final payment. Search index counts/prices may be stale. The page's all-in fee labels vary by event; no checkout fee breakdown or signed checkout URLs are read or returned.
 - A bare place name resolves to the site's first match; prefer `City, ST` or coordinates. Catalog capacity is not configuration-specific availability. Event/venue detail URLs must have the real slug; an id alone is insufficient.
 - Quantity input is 1–8, not the site's `8+` picker. No seat numbers, seller notes or guarantees of seated-together beyond the site's labels. Caller must review restrictions, delivery and applicable terms manually.

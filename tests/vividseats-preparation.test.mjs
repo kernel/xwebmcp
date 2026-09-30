@@ -242,7 +242,7 @@ test("prepare_ticket_selection: default group can be explicitly reviewed as null
   assert.equal(out.status, "prepared");
   assert.equal(out.selection.price_group_id, null);
 });
-for (const event of [{ ...fakeEvent, dateTbd: true }, { ...fakeEvent, timeTbd: true }, { ...fakeEvent, utcDate: "2020-01-01T00:00:00Z" }, { ...fakeEvent, utcDate: null }]) {
+for (const event of [{ ...fakeEvent, dateTbd: true }, { ...fakeEvent, timeTbd: true }, { ...fakeEvent, utcDate: "2020-01-01T00:00:00Z" }, { ...fakeEvent, utcDate: null }, { ...fakeEvent, localDate: null }]) {
   test("prepare_ticket_selection: started or unspecified event cannot be prepared", async () => {
     const h = harness("prepare_ticket_selection", { event });
     assert.equal((await h.run(preparedInput)).error_kind, "event_unavailable");

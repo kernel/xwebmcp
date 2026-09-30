@@ -159,7 +159,7 @@
       return { status: res.status, body: parsed };
     };
     const checked = (response, what) => {
-      if (response.status === 403) return { error: fail("challenge", "Vivid Seats' bot protection refused the request (HTTP 403); wait a few minutes or use a different browser session.") };
+      if (response.status === 403) return { error: fail("challenge", "Vivid Seats' bot protection refused the request (HTTP 403); resolve access normally before trying again.") };
       if (response.status === 429) return { error: fail("rate_limited", "Vivid Seats rate-limited the request (HTTP 429); wait before searching again.") };
       if (response.status >= 400 || !response.body || typeof response.body !== "object") return { error: fail("site_error", what + " returned HTTP " + response.status + (response.body ? "." : " without JSON.")) };
       return { body: response.body };
@@ -179,7 +179,7 @@
 
     try {
       if (window.location.origin !== ORIGIN) return fail("wrong_page", "Open any https://www.vividseats.com page first; this tool calls the site's search from that page.");
-      if (/access denied|pardon (the|our) interruption|verify (that )?you are (a )?human|are you a robot/i.test(document.title || "")) return fail("challenge", "Vivid Seats is showing a bot-protection page to this browser; wait or use a different browser session.");
+      if (/access denied|pardon (the|our) interruption|verify (that )?you are (a )?human|are you a robot/i.test(document.title || "")) return fail("challenge", "Vivid Seats is showing a bot-protection page to this browser; resolve the challenge normally before continuing.");
 
       let place = null, resolved = null;
       if (location) {
@@ -266,7 +266,7 @@
         price_basis: "Prices are per ticket in USD as the site's search index shows them. Included fees and VAT vary by event; use get_ticket_offers for the site's explicit price basis, not a final checkout total. The index refreshes periodically (pricing_refreshed_at) and can differ from the event page; get_ticket_offers reads the live listings.",
         page, page_size: pageSize, total: body.total, number_of_pages: body.numberOfPages, has_more: page < body.numberOfPages, observed_at: observedAt, warnings, events
       };
-    } catch (error) {
+    } catch {
       return fail("site_error", "The request from the page failed; no automatic retry was attempted.");
     }
   }

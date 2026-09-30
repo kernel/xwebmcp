@@ -148,7 +148,7 @@
 
     try {
       if (window.location.origin !== ORIGIN) return fail("wrong_page", "Open any https://www.vividseats.com page first; this tool reads the event's listings from that page.");
-      if (/access denied|pardon (the|our) interruption|verify (that )?you are (a )?human|are you a robot/i.test(document.title || "")) return fail("challenge", "Vivid Seats is showing a bot-protection page to this browser; wait or use a different browser session.");
+      if (/access denied|pardon (the|our) interruption|verify (that )?you are (a )?human|are you a robot/i.test(document.title || "")) return fail("challenge", "Vivid Seats is showing a bot-protection page to this browser; resolve the challenge normally before continuing.");
 
       // The site prices listings per browser session; the page sends its price group with the request, so this does too.
       const priceGroup = (/(?:^|;\s*)pgid=(\d{1,6})(?:;|$)/.exec(document.cookie) || [])[1] ?? null;
@@ -158,7 +158,7 @@
       let body = null;
       try { body = JSON.parse(text); } catch { /* not JSON */ }
       if (res.status === 404) return fail("not_found", "Vivid Seats has no event with production_id " + productionId + ".");
-      if (res.status === 403) return fail("challenge", "Vivid Seats' bot protection refused the request (HTTP 403); wait a few minutes or use a different browser session.");
+      if (res.status === 403) return fail("challenge", "Vivid Seats' bot protection refused the request (HTTP 403); resolve access normally before trying again.");
       if (res.status === 429) return fail("rate_limited", "Vivid Seats rate-limited the request (HTTP 429); wait before asking again.");
       if (res.status >= 400 || !body || typeof body !== "object") return fail("site_error", "Vivid Seats returned HTTP " + res.status + (body ? "." : " without JSON."));
       const head = Array.isArray(body.global) ? body.global[0] : null;
@@ -238,7 +238,7 @@
         quantity, currency: "USD", price_basis: priceBasis, price_group_id: priceGroup, total_listings: listings.length, total_tickets: totalTickets,
         matching_listings: matching.length, matching_tickets: matching.reduce((sum, l) => sum + l.tickets, 0), observed_at: observedAt, warnings, offers, groups
       };
-    } catch (error) {
+    } catch {
       return fail("site_error", "The request from the page failed; no automatic retry was attempted.");
     }
   }

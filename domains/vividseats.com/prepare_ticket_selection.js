@@ -278,7 +278,7 @@
       if (response.data.page !== "/[slug]/production/[id]") return fail("site_changed", "The response is not an event page.");
       const details = event(response.data.props?.pageProps?.initialProductionDetailsData?.data, target);
       if (!details) return fail("site_changed", "The event record does not match the requested event.");
-      if (!details.start_utc || details.date_tbd || details.time_tbd || Date.parse(details.start_utc) <= Date.now()) return fail("event_unavailable", "Preparation requires a future event with a stated date and time; review TBD or started events manually.");
+      if (!details.local_date || !details.local_time || !details.time_zone || !details.start_utc || details.date_tbd || details.time_tbd || Date.parse(details.start_utc) <= Date.now()) return fail("event_unavailable", "Preparation requires a future event with a stated date and time; review TBD or started events manually.");
       const inventory = await read("/hermes/api/v1/listings?productionId=" + target.id + "&currency=USD&localizeCurrency=true" + (priceGroup ? "&priceGroupId=" + priceGroup : ""), true);
       if (inventory.error) return inventory.error;
       const body = inventory.data, head = Array.isArray(body.global) ? body.global[0] : null;
