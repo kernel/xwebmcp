@@ -6,6 +6,7 @@ Tools for Delta Air Lines (https://www.delta.com).
 | --- | --- | --- | --- |
 | get_page_context | [get_page_context.js](get_page_context.js) | draft | Read-only page summary with live tool names and suggested next steps. Unit-tested; exercised live on the homepage and booking form. |
 | search_flights | [search_flights.js](search_flights.js) | draft | Airport entry fixed for macOS Chrome on 2026-09-29 and first successful full live invocation recorded; needs fresh independent QA because the source changed. |
+| list_flight_results | [list_flight_results.js](list_flight_results.js) | draft | Read-only results-page tool: every visible itinerary with all fare columns, sortable; unit-tested and exercised live once. |
 | login | [login.js](login.js) | draft | Homepage-only page tool: opens the top-nav Log in flyout, fills it, and schedules one submit. No output schema; outcome not observed. Live-checked with fabricated credentials and the submit click blocked in-page; no real submission. |
 | navigate_to_page | [navigate_to_page.js](navigate_to_page.js) | draft | Schedules a same-tab navigation to a www.delta.com path; description carries a basic site map. Unit-tested; exercised live. |
 
@@ -80,6 +81,22 @@ clear sequence was run by hand over CDP on Delta's prefilled origin box (caret i
 `selectAll` command selected 0–3 and Backspace left the box empty. One invocation of the updated
 tool (CVG→SFO one way, three weeks out, 1 adult) returned `status: "ok"` with flights. The tool
 stays `draft`; this is not fresh independent QA.
+
+## Find Flights submit fix (2026-09-29)
+
+In one live run in regular Chrome on macOS, the tool filled the form correctly (origin,
+destination, one way, date, passengers) and pressed Find Flights, but no search started; the
+run ended in `TIMEOUT: missing idp-search-results…` after about 40 s. A page-level
+`.click()` on the visible button started the search immediately. A second live run with the
+same input succeeded, so the failure is intermittent, and its cause was not isolated. The page
+also renders a hidden 0x0 duplicate `#findFilghtsCta`; the click helper already skips it.
+
+The tool now waits up to 8 s after the trusted press for the search to start (results URL or
+results/error element). If it has not, it clicks the visible Find Flights button once from the
+page (a search is read-only, so one retry is safe) and waits up to 10 s more. If neither press
+starts a search it returns `SUBMIT_FAILED: … form shows: <field labels>` instead of the generic
+timeout. Unit tests cover all three paths (`tests/delta-search-flights.test.mjs`); the
+fallback path has not yet been observed live.
 
 ## QA summary
 
@@ -180,7 +197,30 @@ Live 2026-09-29: on the signed-out homepage it returned `page_type: "home"`, all
 returned `login_flyout_open: true` and the "never resubmit blindly" step first; on the booking
 form it returned `booking_form` without `login` and suggested going home to sign in.
 
-## URL patterns
+## list_flight_results
+
+`kind: "page"`, registered only on `https://www.delta.com/flightsearch/search-results*`. It
+reads the results already on screen and never searches, clicks, or navigates, so an agent can
+re-sort or filter the same page instead of calling `search_flights` again (which starts a new
+search and risks Delta's rate limit). It reuses `search_flights`' row parser
+(`[id^="flight-results-grid-N"]`, `data-testid` fields with class fallbacks, `.rounded-amount`,
+`.brand-name`) and additionally returns every fare column:
+
+- `result_index` is `N` from `flight-results-grid-N`; `brand_code` is the suffix of
+  `grid-row-N-fare-cell-desktop-{CODE}` (observed: `BMAIN`, `BDCP`, `CDCP`, `CFIRST`, `CD1`).
+  Together they identify the exact fare cell a later selection step would target.
+- Sold-out cells have `amount: null`, `sold_out: true`, and usually no `brand_name`.
+- `search` comes from Delta's `localStorage["postData" + cacheKeySuffix]`, the same record
+  `search_flights` validates against.
+- `sort_by`: `page_order` (default), `departure`, `arrival` (adds a day per `+N` arrival
+  marker), `price` (lowest available fare), `duration`; `max_stops`, `limit`.
+- Waits up to `wait_seconds` (default 15) for loading skeletons to clear; returns
+  `not_ready` rather than a partial list, and `error` with Delta's message (e.g. `SFAF001`)
+  rather than zero flights.
+
+Rows whose card lacks flight numbers, airports, times or duration are skipped rather than
+guessed and counted in `skipped_rows`; `total_rows` counts all visible rows before filtering.
+
 
 `login` is narrowed to the homepage (`https://www.delta.com/`, `/us/en`, `/us/en/`, each also
 with `?*`) because it drives the homepage header flyout and should only be offered where that

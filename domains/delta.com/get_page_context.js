@@ -72,7 +72,8 @@
     if (signed_in === false && page_type !== "home") steps.push("To sign in, use navigate_to_page({ url: \"/\" }), then login on the homepage");
     if (page_type === "flight_results") {
       if (code) steps.push(`Delta returned ${code[0]} (often a rate limit): wait before searching again; do not treat it as zero flights`);
-      steps.push("Review the results on the page; fare selection and checkout must be done by the user");
+      if (has("list_flight_results")) steps.push("Use list_flight_results (sort_by departure, arrival, price or duration) to read these results without searching again");
+      steps.push("Fare selection and checkout must be done by the user");
       if (has("search_flights")) steps.push("Use search_flights to run a different search and get structured first-page results");
     } else if (has("search_flights")) {
       steps.push("Use search_flights with origin, destination, dates, trip type and passengers to get structured flight options");

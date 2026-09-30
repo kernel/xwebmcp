@@ -432,7 +432,55 @@
           }
         }
         await choose("button", (n) => n.endsWith("Done Button"));
+        // Find Flights sometimes does nothing on the first press even though the form is
+        // complete (seen in regular Chrome on 2026-09-29: the form stayed put until a second,
+        // page-level click). The page renders a hidden 0x0 duplicate with the same id, so the
+        // fallback clicks the visible one. A search is read-only, so one retry is safe.
+        const searchStarted = async (seconds) => {
+          const until = Date.now() + seconds * 1000;
+          for (;;) {
+            const started = await js(
+              () =>
+                location.pathname.includes("/search-results") ||
+                !!document.querySelector(
+                  "idp-search-results, idp-adv-search-error-message:not(:empty)",
+                ),
+            );
+            if (started) return true;
+            if (Date.now() >= until) return false;
+            await waitMs(400);
+          }
+        };
         await click("#findFilghtsCta");
+        if (!(await searchStarted(Math.min(8, remaining())))) {
+          const retried = await js(() => {
+            const button = [
+              ...document.querySelectorAll("#findFilghtsCta"),
+            ].find(
+              (b) => b.getClientRects().length > 0 && b.getBoundingClientRect().width > 0,
+            );
+            if (!button || button.disabled) return false;
+            button.click();
+            return true;
+          });
+          if (!retried || !(await searchStarted(Math.min(10, remaining())))) {
+            const form = await js(() =>
+              [
+                ...document.querySelectorAll(
+                  'button[id*="route-picker"], button[id^="date-picker-trigger"], [role="combobox"]',
+                ),
+              ]
+                .filter((e) => e.getClientRects().length > 0)
+                .map((e) => e.getAttribute("aria-label") || "")
+                .filter(Boolean)
+                .join(" | "),
+            );
+            throw Error(
+              "SUBMIT_FAILED: Find Flights did not start a search after two presses; form shows: " +
+                (form || "unknown"),
+            );
+          }
+        }
         await wait(
           "idp-search-results, idp-adv-search-error-message:not(:empty)",
           35,

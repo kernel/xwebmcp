@@ -69,6 +69,19 @@
     },
     {
       "domain": "delta.com",
+      "tool": "list_flight_results",
+      "file": "domains/delta.com/list_flight_results.js",
+      "kind": "page",
+      "namespace": "delta.com",
+      "url_patterns": [
+        "https://www.delta.com/flightsearch/search-results*"
+      ],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Read-only page tool on the results page: lists visible first-page itineraries with every fare column (brand_code, price, seats-left, sold out), sortable and filterable, plus the stored search context. Reuses search_flights' row parser. Unit-tested with fabricated rows; exercised live on two CVG-SFO one-way results pages (16 and 20 rows, none skipped)."
+    },
+    {
+      "domain": "delta.com",
       "tool": "login",
       "file": "domains/delta.com/login.js",
       "kind": "page",
