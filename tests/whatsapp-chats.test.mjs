@@ -248,6 +248,18 @@ test("search_chats times out explicitly and still clears the box", async () => {
   assert.equal(app.box.value, "");
 });
 
+test("search_chats does not interact with the page when already cancelled", async () => {
+  const app = createApp();
+  const before = app.clock.now;
+  const result = await app.tool("search_chats").run({ query: "alice" }, { signal: { aborted: true } });
+  assert.equal(result.error_kind, "cancelled");
+  assert.equal("search_cleared" in result, false, "no cleanup claim when nothing was typed");
+  assert.equal(app.box.value, "");
+  assert.equal(app.clock.now, before);
+  assert.deepEqual(app.log, []);
+  untouched(app);
+});
+
 test("search_chats stops as soon as it is cancelled, says so, and clears the box", async () => {
   const app = createApp({ neverSettles: true });
   const t0 = app.clock.now;

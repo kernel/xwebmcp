@@ -40,6 +40,7 @@ export function conforms(schema, value) {
     if (schema.additionalProperties === false && Object.keys(value).some(key => !(key in (schema.properties || {})))) return false;
   }
   if (typeof value === "string") {
+    if (schema.pattern && !new RegExp(schema.pattern, "u").test(value)) return false;
     const length = [...value].length;
     if (length < (schema.minLength ?? 0) || length > (schema.maxLength ?? Infinity)) return false;
   }

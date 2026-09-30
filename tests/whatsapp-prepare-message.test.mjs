@@ -1,18 +1,18 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { runInNewContext } from "node:vm";
-import { createApp, plain, toolSource } from "./fixtures/whatsapp/app.mjs";
+import { conforms, createApp, plain, toolSource } from "./fixtures/whatsapp/app.mjs";
 
 // Fictional, deliberately unverified recipient. No test opens the resulting link.
 const input = { recipient_phone: "15550100199", message_text: "  Example draft\n世界 😀 & ? # + %  " };
 
-const noInteraction = () => {
+const noInteraction = (name = "prepare_message") => {
   const touched = [];
   const context = {};
   for (const key of ["document", "location", "fetch", "localStorage"]) {
     Object.defineProperty(context, key, { get() { touched.push(key); throw new Error("unexpected interaction: " + key); } });
   }
-  return { touched, tool: runInNewContext(`(${toolSource("prepare_message")})`, context)[0] };
+  return { touched, tool: runInNewContext(`(${toolSource(name)})`, context)[0] };
 };
 
 test("prepare_message preserves exact inputs in a bounded, unopened handoff", async () => {
@@ -57,10 +57,21 @@ test("prepare_message rejects malformed inputs and fake confirmation before site
   assert.deepEqual(touched, []);
 });
 
-test("prepare_message handles cancellation before any page access", async () => {
-  const { tool, touched } = noInteraction();
-  assert.equal((await tool.execute(input, { signal: { aborted: true } })).error_kind, "cancelled");
-  assert.deepEqual(touched, []);
+test("fixture output validation enforces preparation's string patterns", async () => {
+  const tool = createApp().tool("prepare_message");
+  const out = await tool.run(input);
+  const schema = tool.definition.tool.outputSchema;
+  assert.equal(conforms(schema, out), true);
+  assert.equal(conforms(schema, { ...out, recipient_phone: "+15550100199" }), false);
+  assert.equal(conforms(schema, { ...out, handoff_url: "https://example.com/?text=example" }), false);
+});
+
+test("preparation and search handle pre-cancellation before any page access", async () => {
+  for (const [name, args] of [["prepare_message", input], ["search_chats", { query: "example" }]]) {
+    const { tool, touched } = noInteraction(name);
+    assert.equal((await tool.execute(args, { signal: { aborted: true } })).error_kind, "cancelled");
+    assert.deepEqual(touched, []);
+  }
 });
 
 test("prepare_message rejects unrelated, logged-out and unloaded documents", async () => {

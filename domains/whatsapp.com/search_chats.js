@@ -71,6 +71,7 @@
     if (!Number.isInteger(limit) || limit < 1 || limit > 50) return fail("invalid_input", "limit must be an integer from 1 to 50.");
     const timeoutSec = args.timeout_sec === undefined ? 8 : args.timeout_sec;
     if (!Number.isInteger(timeoutSec) || timeoutSec < 1 || timeoutSec > 20) return fail("invalid_input", "timeout_sec must be an integer from 1 to 20.");
+    if (context && context.signal && context.signal.aborted) return fail("cancelled", "The call was cancelled before any page interaction. Nothing was changed.");
     if (location.origin !== ORIGIN) return fail("wrong_page", "Open https://web.whatsapp.com/ in this tab, then call again. Nothing was changed.");
 
     const main = document.querySelector('[data-testid="wa-web-main-screen"]');
