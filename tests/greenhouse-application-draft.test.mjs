@@ -31,9 +31,9 @@ function harness(name, opts = {}) {
     constructor(id, options = {}) { Object.assign(this, { id, text: "", type: "text", disabled: false, readOnly: false, maxLength: 255, isConnected: true, role: null }, options); }
     get value() { return this.text; }
     set value(v) { calls.writes.push([this.id, v]); if (opts.throw_set?.(this.id, v)) throw new Error("fixture setter failure"); this.text = this.type === "text" ? v.replace(/[\r\n]/g, "") : v; }
-    getAttribute(k) { return k === "role" ? this.role : null; }
+    getAttribute(k) { return k === "aria-autocomplete" ? this.autocomplete : null; }
     getClientRects() { return this.hidden ? [] : [{}]; }
-    closest() { return this.inert ? {} : null; }
+    closest(selector) { return selector === '[role="combobox"]' ? this.role === "combobox" || this.combobox_parent ? {} : null : this.inert ? {} : null; }
     matches() { return !!this.fieldset_disabled; }
   }
   class Textarea {
@@ -46,6 +46,7 @@ function harness(name, opts = {}) {
   const post = { title: "Example Role", redirect_to: null, questions: controls.map(e => ({ fields: [{ name: e.id, type: e instanceof Textarea ? "textarea" : "input_text" }] })), fingerprint: "fixture-secret", quickApply: "fixture-secret" };
   const data = { root: { internal: false, preview: false, isJobPost: true, urlToken: "acme" }, job: { jobPost: post, urlToken: "acme", jobPostId: "1001" } };
   const context = { HTMLInputElement: Input, HTMLTextAreaElement: Textarea,
+    getComputedStyle: e => ({ visibility: e.visibility ?? opts.form_visibility ?? "visible" }),
     window: { location: new URL(opts.url ?? ORIGIN + "/acme/jobs/1001"), __remixContext: { state: { loaderData: data } } },
     document: { querySelectorAll: s => { calls.page_access++; assert.equal(s, "form#application-form"); return opts.forms ?? [form]; } },
     fetch: () => { throw new Error("no requests allowed"); }, Event: () => { calls.events++; throw new Error("no events allowed"); }
@@ -113,6 +114,22 @@ for (const name of names) {
       assert.ok(name === names[0] ? r.fields[0].can_stage === false : r.status === "error"); assert.equal(h.calls.writes.length, 0);
     }
   });
+  test(`${name}: CSS-hidden controls and inherited form visibility refuse staging`, () => {
+    for (const visibility of ["hidden", "collapse"]) {
+      for (const opts of [{ setup: ({ controls }) => { controls[0].visibility = visibility; } }, { form_visibility: visibility }]) {
+        const h = harness(name, opts), r = h.run();
+        assert.equal(r.error_kind ?? r.fields[0].reason, "not_editable");
+        assert.equal(h.calls.writes.length, 0);
+      }
+    }
+  });
+  test(`${name}: custom combobox wrappers and autocomplete roles require manual completion`, () => {
+    for (const options of [{ combobox_parent: true }, { autocomplete: "list" }, { autocomplete: "both" }, { autocomplete: "inline" }]) {
+      const h = harness(name, { setup: ({ controls }) => { Object.assign(controls[0], options); } }), r = h.run();
+      assert.equal(r.error_kind ?? r.fields[0].reason, "unsupported_field");
+      assert.equal(h.calls.writes.length, 0);
+    }
+  });
   test(`${name}: value limits and single-line newline refusal`, () => {
     for (const value of ["x".repeat(256), "a\nb"]) {
       const h = harness(name); const r = h.run(input(name, [row("first_name", value)]));
@@ -156,6 +173,19 @@ test("fill rolls back partial local failure; uncertain restoration never claims 
   const u = harness(names[1], { throw_set: (id, value) => id === "last_name" && value === "Fail" || id === "first_name" && value === "" });
   const unknown = u.run(input(names[1], [row(), row("last_name", "Fail")]));
   assert.equal(unknown.error_kind, "outcome_unknown"); assert.equal(unknown.local_changes, "unknown");
+});
+test("fill verifies no-op fields too before reporting complete restoration", () => {
+  const h = harness(names[1], { setup: ({ controls, Input }) => {
+    controls[1].text = "Candidate";
+    const d = Object.getOwnPropertyDescriptor(Input.prototype, "value");
+    Object.defineProperty(Input.prototype, "value", { ...d, set(v) {
+      d.set.call(this, v);
+      if (this.id === "first_name" && v === "Example") controls[1].text = "UNEXPECTED";
+    } });
+  } });
+  const r = h.run(input(names[1], [row(), row("last_name", "Candidate", "Candidate")]));
+  assert.equal(r.error_kind, "outcome_unknown"); assert.equal(r.local_changes, "unknown");
+  assert.deepEqual(h.controls.slice(0, 2).map(c => c.value), ["", "UNEXPECTED"]);
 });
 test("fill detects native sanitization and restores exact initial values", () => {
   const h = harness(names[1], { setup: ({ controls, Input }) => { const d = Object.getOwnPropertyDescriptor(Input.prototype, "value"); Object.defineProperty(Input.prototype, "value", { ...d, set(v) { d.set.call(this, v === "sanitize" ? "" : v); } }); } });

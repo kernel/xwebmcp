@@ -216,7 +216,7 @@
     const forms = document.querySelectorAll("form#application-form");
     if (forms.length !== 1) return fail("wrong_target", "Exactly one rendered application form is required.");
     const form = forms[0];
-    if (!form.isConnected || form.getClientRects().length === 0 || form.closest('[hidden], [inert], [aria-hidden="true"]')) return fail("not_editable", "The application form is not visible or active.");
+    if (!form.isConnected || form.getClientRects().length === 0 || getComputedStyle(form).visibility !== "visible" || form.closest('[hidden], [inert], [aria-hidden="true"]')) return fail("not_editable", "The application form is not visible or active.");
     const elements = Array.from(form.elements);
     if (elements.length > 5000) return fail("site_changed", "The application form has too many controls.");
     const plan = [];
@@ -226,8 +226,8 @@
       let reason = "ready", el = matches[0], descriptor, before = "";
       if (!["input_text", "textarea"].includes(type) || item.field_name === "candidate_location") reason = "unsupported_field";
       else if (matches.length !== 1 || !(el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement) ||
-          (type === "textarea" ? !(el instanceof HTMLTextAreaElement) : !(el instanceof HTMLInputElement) || !["text", "email", "tel", "url"].includes(el.type)) || el.getAttribute("role") === "combobox") reason = "unsupported_field";
-      else if (el.form !== form || !el.isConnected || el.disabled || el.matches(":disabled") || el.readOnly || el.getClientRects().length === 0 || el.closest('[hidden], [inert], [aria-hidden="true"]')) reason = "not_editable";
+          (type === "textarea" ? !(el instanceof HTMLTextAreaElement) : !(el instanceof HTMLInputElement) || !["text", "email", "tel", "url"].includes(el.type)) || el.closest('[role="combobox"]') || ["list", "both", "inline"].includes(el.getAttribute("aria-autocomplete"))) reason = "unsupported_field";
+      else if (el.form !== form || !el.isConnected || el.disabled || el.matches(":disabled") || el.readOnly || el.getClientRects().length === 0 || getComputedStyle(el).visibility !== "visible" || el.closest('[hidden], [inert], [aria-hidden="true"]')) reason = "not_editable";
       else {
         descriptor = Object.getOwnPropertyDescriptor(el instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype, "value");
         if (!descriptor?.get || !descriptor?.set) return fail("site_changed", "Native text value accessors are unavailable.");
@@ -248,7 +248,7 @@
     } catch {
       for (const p of changed) { try { p.descriptor.set.call(p.el, p.before); } catch {} }
       let restored = false;
-      try { restored = changed.every(p => p.el.isConnected && p.descriptor.get.call(p.el) === p.before); } catch {}
+      try { restored = plan.every(p => p.el.isConnected && p.descriptor.get.call(p.el) === p.before); } catch {}
       return fail(restored ? "site_changed" : "outcome_unknown", restored ? "Staging failed; original DOM text was restored." : "Local text outcome could not be verified. Stop and inspect; do not retry automatically.", restored ? "none" : "unknown");
     }
     return { status: "staged_not_submitted", board: input.board, job_id: input.job_id, url,
