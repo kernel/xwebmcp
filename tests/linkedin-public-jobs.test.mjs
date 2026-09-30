@@ -282,6 +282,16 @@ test("get_job: observed fields, URL normalization and script-free description", 
   assert.equal(h.calls[0].path, "/jobs-guest/jobs/api/jobPosting/1234567890");
   assert.equal(r.description_truncated, false);
 });
+test("get_job: inherited and unknown criterion labels cannot add output fields", async () => {
+  for (const label of ["__proto__", "constructor", "toString", "Unknown criterion"]) {
+    const html = detail.replace("Seniority level", label);
+    const r = await harness({ html }).run("get_job", inputs.get_job);
+    assert.equal(r.status, "ok");
+    assert.deepEqual(Object.keys(r.criteria).sort(), ["employment_type", "industries", "job_function", "seniority_level"]);
+    assert.equal(r.criteria.seniority_level, null);
+    assert.equal(r.criteria.employment_type, "Full-time");
+  }
+});
 test("get_job: descriptions and nullable optional fields are bounded", async () => {
   const html = detail.replace("Build &amp; test software.", "x".repeat(22000)).replace('<span class="num-applicants__caption">Over 200 applicants</span>', "");
   const r = await harness({ html }).run("get_job", inputs.get_job);

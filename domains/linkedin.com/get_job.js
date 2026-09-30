@@ -295,8 +295,8 @@
       const criteria = { seniority_level: null, employment_type: null, job_function: null, industries: null };
       const keys = { "seniority level": "seniority_level", "employment type": "employment_type", "job function": "job_function", industries: "industries" };
       for (const item of doc.querySelectorAll(".description__job-criteria-list li")) {
-        const key = keys[text(item.querySelector("h3")).toLowerCase()];
-        if (key) criteria[key] = text(item.querySelector("span"), 1000) || null;
+        const label = text(item.querySelector("h3")).toLowerCase();
+        if (Object.hasOwn(keys, label)) criteria[keys[label]] = text(item.querySelector("span"), 1000) || null;
       }
       return {
         status: "ok", job_id, url: "https://www.linkedin.com/jobs/view/" + job_id,

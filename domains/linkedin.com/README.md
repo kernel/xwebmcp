@@ -144,7 +144,11 @@ text from every extracted field. Explicitly hidden response modals are not treat
 as active gates; visibility based solely on external CSS is not evaluated in inert HTML.
 The added regression fixtures fail against the initial source and pass after the fixes.
 
-Validation and all 1,709 repository tests passed, including 132 LinkedIn fixtures.
+A subsequent independent recheck confirmed those fixes and identified inherited
+criterion labels adding schema-invalid fields. Criterion mapping now requires an
+own-key match against the four-label allowlist; unsupported labels remain null.
+
+Validation and all 1,710 repository tests passed, including 133 LinkedIn fixtures.
 The local extension fixture check also passed again on the revised sources with DNS
 isolation and intercepted responses. Independent recheck is pending; the registry
 remains `draft`.
