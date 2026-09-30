@@ -902,6 +902,32 @@
     },
     {
       "domain": "stubhub.com",
+      "tool": "get_ticket_offers",
+      "file": "domains/stubhub.com/get_ticket_offers.js",
+      "kind": "page",
+      "namespace": "stubhub.com",
+      "url_patterns": [
+        "https://www.stubhub.com/*"
+      ],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Public first ten quantity-eligible listings and event details; fees-inclusive site quote, taxes/final payable total unknown. No navigation, selections, holds or checkout."
+    },
+    {
+      "domain": "stubhub.com",
+      "tool": "prepare_ticket_choice",
+      "file": "domains/stubhub.com/prepare_ticket_choice.js",
+      "kind": "page",
+      "namespace": "stubhub.com",
+      "url_patterns": [
+        "https://www.stubhub.com/*"
+      ],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Read-only exact listing/quantity/price/currency recheck on the first page. Preview/handoff only; no trusted human approval mechanism for purchase or holds exists in this runtime."
+    },
+    {
+      "domain": "stubhub.com",
       "tool": "search_events",
       "file": "domains/stubhub.com/search_events.js",
       "kind": "page",

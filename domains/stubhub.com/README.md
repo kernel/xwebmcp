@@ -1,9 +1,11 @@
 # stubhub.com
 
-Tools for StubHub US (https://www.stubhub.com): event search. Read-only; works signed out.
+Tools for StubHub US (https://www.stubhub.com): event search, quantity-specific ticket offers and exact ticket-choice preparation. Public reads and previews only; works signed out.
 
 | tool | file | status | notes |
 |------|------|--------|-------|
+| get_ticket_offers | [get_ticket_offers.js](get_ticket_offers.js) | draft | Event details and first ten quantity-eligible listings; fees-inclusive site quotes, final payable cost unknown |
+| prepare_ticket_choice | [prepare_ticket_choice.js](prepare_ticket_choice.js) | draft | Recheck exact listing, quantity, price and currency; preview/handoff only, never selects or reserves |
 | search_events | [search_events.js](search_events.js) | verified | Keyword search, first results page only (up to 20 events, site relevance order), optional UTC date window, venue-local date and time per event; no prices, seats or listings |
 
 ## Native WebMCP tools
@@ -12,11 +14,11 @@ None found (checked 2026-09-29 with `webmcp.listTools()`, signed out, on the hom
 
 ## Scope and loading
 
-`forceOverwriteNamespace: true` replaces the whole namespace, so register every tool of the namespace together (today that is one):
+`forceOverwriteNamespace: true` replaces the whole namespace, so register every tool of the namespace together:
 
 ```javascript
 const fs = await import("node:fs");
-const tools = ["search_events"].flatMap(name => eval(fs.readFileSync(`domains/stubhub.com/${name}.js`, "utf8")));
+const tools = ["get_ticket_offers", "prepare_ticket_choice", "search_events"].flatMap(name => eval(fs.readFileSync(`domains/stubhub.com/${name}.js`, "utf8")));
 await webmcp.addCustomTools({ namespace: "stubhub.com", tools, forceOverwriteNamespace: true });
 ```
 
@@ -24,7 +26,18 @@ Use the `tool_ref` whose `source.target_id` is the tab you drive; a live call ta
 
 - **search_events** (`kind: "page"`) runs in the current `www.stubhub.com` document and never navigates. It requests the site's own results page, `GET /secure/Search?q=<keyword>&dates=<window>`, and reads the `<script id="index-data" type="application/json">` block that page embeds (`eventGrids["0"]`: `items`, `totalCount`). The element is removed once the page hydrates, so the tool reads it from the fetched HTML, not from the live document. It reads the first page only.
 
-Nothing here selects a listing, opens an event page, follows a link, favorites, signs in or touches an account. The site's per-request tracking values in each result (`qid`, `iid`, `ut`, `auth`) are dropped: event URLs are rebuilt as `https://www.stubhub.com/<slug>/event/<id>/`.
+- **get_ticket_offers** (`kind: "page"`) fetches the canonical event URL returned by search, explicitly setting `quantity`, `sortBy=NEWPRICE` and `sortDirection=0`. It validates the embedded event id, quantity, page number and fees disclosure before reading up to ten listings. It returns only listings whose `availableQuantities` explicitly contains the requested quantity, excluding recently sold entries. Buyer-visible notes are allowlisted; hidden row/seat data and tracking, impression, signed and session values are omitted. It also returns the event name, date/time confirmation flags, start instant, venue and restrictions. Bare event ids are not accepted.
+- **prepare_ticket_choice** (`kind: "page"`) repeats that read with an exact `listing_id`, `quantity`, `expected_price_per_ticket` and `currency`. Matching numeric quote and currency yield `ready_for_review`, a mismatch yields `quote_changed`, and an absent listing yields `choice_unavailable` (which does not prove it sold). It returns the observed offer and a canonical public event-page handoff URL, not a signed checkout or reservation URL. It does not select the listing. Different quantities may have different listing ids.
+
+**Why page, not CDP:** a safe page-first prototype on 2026-09-30 fetched event HTML successfully (HTTP 200) and exposed `grid.items`, quantity, `estimatedFees`, `listingGridDisclosure` and numeric prices. Both tools get rich output without replacing the current document. Historical 403 event fetches do not justify a navigation fallback: a refused request is returned as `challenge`, not retried through CDP. No browser-only helper or runtime exception is needed.
+
+### Quote and preparation safety
+
+`price_per_ticket` is the site's `rawPrice`, rounded to cents, when the page says estimated fees are included. `estimated_total` multiplies that quote by quantity; `display_price` and `display_total` preserve the site's differently rounded labels. Neither figure is an exact payable total: taxes, delivery charges and checkout adjustments are unverified. A UK venue can still quote USD, so use `buyerCurrencyCode`, not venue country or seller currency. Seat ranges may be unspecified; `seated_together` is the site's flag, not a guarantee from this tool. Site names and notes are untrusted data.
+
+Preparation is a read-only recheck, not human approval, a hold, a cart, or a purchase. It reports `inventory_reserved: false` and `execution_supported: false`. The current runtime does not provide a trusted exact-action approval path binding account, listing, quantity, final cost and terms. A model-supplied `confirmed` field is rejected before interaction. No executable purchase, checkout, hold, cancellation, transfer or seller-publishing tool is shipped. A person must independently inspect the listing and final terms on the site; preparation never triggers execution automatically.
+
+No live carts, favorites, accounts or seller data are changed by development/QA. The public tools need no login, so the previously authorized private session is not used. Reads issue one GET, use only current page credentials, disallow redirects and do not retry unknown failures. Aborted reads return `canceled`. Nothing here selects a listing, opens an event page, follows a link, favorites, signs in or touches an account. The site's per-request tracking values in each result (`qid`, `iid`, `ut`, `auth`) are dropped: event URLs are rebuilt as `https://www.stubhub.com/<slug>/event/<id>/`.
 
 ### Date input
 
@@ -63,13 +76,22 @@ The tool matches only `https://www.stubhub.com/*`, not the default `https://stub
 - Dates filter on UTC start instants, not venue-local dates (see above), and the site's upper bound is inclusive, so events starting exactly at 00:00 UTC on the day after `end_date_utc` are also returned and counted in `total_count`.
 - `local_date`, `local_time` and `weekday` are null when the venue's local time cannot be established from the site's data (no start instant, an unusable offset, or an omitted offset that the displayed text does not corroborate).
 - No location or radius filter, no category or sort options, no keyword-less search: their `GET` behaviour was not verified. A location parameter did not change the results in one check.
-- No prices, seats, listings, quantity or fees; no event, performer, venue or Explore pages; no account, order, favorites or seller flows. Those were investigated only for discovery and are not implemented.
+- Search itself has no prices. Offer/choice tools read only the first ten listings and may miss a choice that moved beyond that page. No pagination, map interaction, arbitrary listing-detail lookup, performer/venue/Explore tools, account/order/favorites or seller flows.
+- Offers use the site's price-sorted first page; they are not a complete globally cheapest inventory search. Quantity must be 1–12 and explicitly supported by the returned listing. Changed page layout, non-fees-inclusive data or a quantity mismatch fails closed. No sort/filter POSTs are made.
+- Final taxes, delivery charges, exact checkout totals, full delivery timing and terms are not established. Hidden row/seat data stays null; public seat endpoints are a range, not necessarily a complete individual-seat allocation.
+- Account and seller actions require verified authorized access and a per-tool safety design; populated account item shapes were not established in discovery. No account action is implemented from empty-account evidence.
 - Search-index flags (`has_active_listings`, `availability_message`) can lag the event page.
 - Not live-verified: the `challenge` and `rate_limited` paths (no search request was ever refused), the `site_changed` paths, other country editions, and behaviour in a signed-in browser (public results were read signed out; the signed-in page was not compared). These are covered by stubbed tests only.
 - Local time for an event whose offset is omitted relies on the site's English 12-hour text (`7:30 PM`); text in another format or locale would make those fields null. The omitted-offset path for multi-day events was never seen live (all 16 multi-day results sampled had explicit offsets) and is covered by tests only.
 - AWS WAF is documented to answer its challenge and CAPTCHA actions with HTTP 202 or 405 rather than 403. No such response was ever seen from `/secure/Search`; if one appears the tool reports `site_error` with the status, not `challenge`.
 
-## QA
+## Current expansion QA
+
+The two additional tools are initially `draft` pending independent review of their final source. Fixtures cover input validation before requests, wrong/account pages, challenges, rate limits, cancellation, mismatched event/quantity/fees/page, quote changes, first-page absence, hidden seats, sensitive-field omission and no execution despite a caller's `confirmed` flag. Website probing was public and read-only; no listing was clicked, no cart or hold was created.
+
+On 2026-09-30 the builder fetched a Metallica event from an event document with quantities 1, 2 and 4, and a Hamilton event in London from the unrelated Metallica event document. All returned HTTP 200 and quantity-specific embedded listing data; London still quoted USD. The first ten displayed listings and their rounded prices were compared to the site's event DOM. Event-page native WebMCP discovery returned no tools. Registration/invocation and independent QA evidence will be recorded below after testing.
+
+## Prior search QA
 
 Independent QA by a separate reviewer agent (`agt_b9e333f8bafdb9dbb2fb`), 2026-09-29, against the PR head.
 

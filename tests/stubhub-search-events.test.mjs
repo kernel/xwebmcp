@@ -130,7 +130,7 @@ test("search_events: single-expression page tool with typed schemas and a regist
 });
 
 test("registry lists every stubhub.com tool exactly once", () => {
-  assert.deepEqual(registry.tools.filter(t => t.domain === "stubhub.com").map(t => t.tool), ["search_events"]);
+  assert.deepEqual(registry.tools.filter(t => t.domain === "stubhub.com").map(t => t.tool), ["get_ticket_offers", "prepare_ticket_choice", "search_events"]);
 });
 
 // --- input validation happens before any request -----------------------------------------------------
