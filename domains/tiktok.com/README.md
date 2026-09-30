@@ -43,7 +43,8 @@ save, post, purchase or solve a challenge.
 caller-controlled navigation. It reads at most 40 existing grid containers and returns
 at most 20 distinct visible video links, bounded card text and displayed likes.
 Hidden/transparent/CSS-invisible cards and aria-hidden containers are skipped; hidden
-links, previews and count labels are not returned. The site's
+links, previews and count labels are not returned. Preview/count extraction rejects
+invisible or aria-hidden descendant subtrees and inspects at most 300 nodes per field. The site's
 `data-e2e="video-views"` means likes on search cards, not plays. It never starts media,
 scrolls, polls, clicks or makes network requests. Navigation/playback consequences of
 opening a search page remain the caller's responsibility; the tool does not automate
@@ -89,8 +90,8 @@ top document has a different origin (including an unrelated page with a TikTok i
   account-identity invariant or non-sending draft surface was established. Final sending,
   posting and purchases have no trusted human-approval path in this tool set and are
   not executable. No user account state was changed for development.
-- Independent final-source search QA is pending after two initial-review findings
-  were fixed (hidden-card extraction and null `max_results` input). Fixture coverage
+- Independent final-source search QA is pending after fixing hidden-card extraction,
+  null `max_results` input, and hidden descendants within visible text containers. Fixture coverage
   is not evidence that every real-world access restriction has been observed live.
 
 ## Native WebMCP
@@ -131,7 +132,10 @@ targets; one anonymous GET, no cookies, media, retries or navigation; 11 Kernel
 outputs independently schema-validated; stale references refused; no tools on
 example.com. Validator, 1627 tool tests, Go tests, 14 extension tests and 12 extra
 fixture/stream probes passed. Search's two findings were fixed with regression tests;
-its final-source recheck is pending.
+its final-source recheck is pending. Round 1 at `b4303bc164ad725692d1613c4fb17b9983bb0d1a`
+confirmed the original fixes and retained lookup signoff, but found invisible/aria-hidden
+text nested inside a visible preview. Bounded filtered text traversal and descendant
+regression tests address that finding; final round 2 is pending.
 
 Local Chromium 153 extension, author check (2026-09-30): all three sources installed,
 registered, discovered and invoked successfully through the actual extension on
@@ -141,4 +145,8 @@ removed on document replacement. This used an isolated local test profile with
 site access granted only there. No live TikTok request/account was used; this is
 fixture-runtime evidence, not live-site extension parity. Independent extension QA
 checked installation and namespace atomicity but did not grant site access, so it
-did not independently verify page registration/invocation.
+did not independently verify page registration/invocation in its initial pass.
+Independent round 1 additionally installed/discovered/invoked all three through the
+real extension on intercepted fabricated HTML, validated outputs, confirmed one GET
+per lookup and zero search requests, and checked document replacement. It found the
+nested hidden-text issue described above; that source was not signed off for search.

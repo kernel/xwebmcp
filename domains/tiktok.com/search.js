@@ -59,6 +59,20 @@
     const cards = document.querySelectorAll('[id^="grid-item-container-"]');
     if (!cards.length) return fail("site_changed", "No rendered result cards were found. Wait for normal loading; no request or retry was made.", entryUrl);
     const visible = element => element.checkVisibility({ checkOpacity: true, checkVisibilityCSS: true }) && !element.closest('[aria-hidden="true"]');
+    const visibleText = (root, maxChars) => {
+      if (!visible(root)) return "";
+      let inspected = 0, text = "", node;
+      const walker = document.createTreeWalker(root, NodeFilter.SHOW_ELEMENT | NodeFilter.SHOW_TEXT, {
+        acceptNode: element => {
+          if (++inspected > 300) return NodeFilter.FILTER_ACCEPT;
+          return element.nodeType === 1 && !visible(element) ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT;
+        }
+      });
+      while (text.length < maxChars && (node = walker.nextNode()) && inspected <= 300) {
+        if (node.nodeType === 3) text += (node.textContent || "").slice(0, maxChars - text.length);
+      }
+      return text.replace(/\s+/g, " ").trim().slice(0, maxChars);
+    };
     const results = [], seen = new Set();
     for (let index = 0; index < Math.min(cards.length, 40); index++) {
       const card = cards[index];
@@ -72,7 +86,7 @@
       seen.add(match[2]);
       const preview = card.querySelector('[data-e2e="search_video-item"]') || card;
       const likes = card.querySelector('[data-e2e="video-views"]');
-      results.push({ video_id: match[2], username: match[1], url: current.origin + "/@" + match[1] + "/video/" + match[2], preview_text: (visible(preview) ? preview.innerText || "" : "").replace(/\s+/g, " ").trim().slice(0, 500), likes_text: likes && visible(likes) ? (likes.innerText || "").trim().slice(0, 30) || null : null });
+      results.push({ video_id: match[2], username: match[1], url: current.origin + "/@" + match[1] + "/video/" + match[2], preview_text: visibleText(preview, 500), likes_text: likes ? visibleText(likes, 30) || null : null });
       if (results.length === max) break;
     }
     if (!results.length) return { status: "no_results", query, entry_url: entryUrl, reason: "No supported video links in the rendered result cards." };

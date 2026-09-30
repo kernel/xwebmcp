@@ -32,7 +32,20 @@ function conforms(s, v) {
 }
 function harness(o = {}) {
   let reads = 0;
-  const ctx = { URL, Date, location: { get href() { reads++; return o.url ?? page; } }, document: {
+  const ctx = { URL, Date, NodeFilter: { SHOW_ELEMENT: 1, SHOW_TEXT: 4, FILTER_ACCEPT: 1, FILTER_REJECT: 2 }, location: { get href() { reads++; return o.url ?? page; } }, document: {
+    createTreeWalker: (root, mask, filter) => {
+      assert.equal(mask, 5);
+      const stack = [...(root.childNodes || [{ nodeType: 3, textContent: root.innerText || "" }])].reverse();
+      return { nextNode: () => {
+        while (stack.length) {
+          const node = stack.pop();
+          if (filter.acceptNode(node) === 2) continue;
+          if (node.childNodes) stack.push(...[...node.childNodes].reverse());
+          return node;
+        }
+        return null;
+      } };
+    },
     title: o.title ?? "TikTok", body: { innerText: o.text ?? "Video results" }, querySelectorAll: selector => {
       assert.equal(selector, '[id^="grid-item-container-"]'); reads++; return o.cards ?? [card()];
     }
@@ -120,6 +133,27 @@ test("search never returns hidden links, previews or likes", async () => {
   const ariaHidden = card();
   ariaHidden.closest = () => ({});
   assert.equal((await harness({ cards: [ariaHidden] }).run()).status, "no_results");
+});
+
+test("search excludes hidden descendants inside visible previews and likes", async () => {
+  const result = card();
+  const select = result.querySelector;
+  const hidden = { nodeType: 1, checkVisibility: () => false, closest: () => null, childNodes: [{ nodeType: 3, textContent: "HIDDEN_TEXT" }] };
+  const aria = { nodeType: 1, checkVisibility: () => true, closest: () => ({}), childNodes: [{ nodeType: 3, textContent: "ARIA_HIDDEN_TEXT" }] };
+  result.querySelector = s => s.startsWith("a[") ? select(s) : { ...select(s), childNodes: [{ nodeType: 3, textContent: s.includes("video-views") ? "3" : "Visible caption" }, hidden, aria] };
+  const out = await harness({ cards: [result] }).run();
+  assert.equal(out.results[0].preview_text, "Visible caption");
+  assert.equal(out.results[0].likes_text, "3");
+  assert.ok(!JSON.stringify(out).includes("HIDDEN_TEXT"));
+});
+
+test("search caps text traversal even when text nodes are empty", async () => {
+  const result = card();
+  const select = result.querySelector;
+  result.querySelector = s => s.startsWith("a[") ? select(s) : { ...select(s), childNodes: [...Array.from({ length: 1000 }, () => ({ nodeType: 3, textContent: "" })), { nodeType: 3, textContent: "OUTSIDE_SCAN_BOUND" }] };
+  const out = await harness({ cards: [result] }).run();
+  assert.equal(out.results[0].preview_text, "");
+  assert.equal(out.results[0].likes_text, null);
 });
 
 test("search schemas define exact discriminated shapes", () => {
