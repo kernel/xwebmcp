@@ -140,10 +140,10 @@
       const { doc, error } = await get("/gp/cart/view.html");
       if (error) return { error };
       const root = doc.querySelector("#sc-active-cart");
-      if (!root) return { error: fail("site_changed", "The retail cart container is missing; no empty cart is assumed.") };
-      const nodes = [...root.querySelectorAll(".sc-list-item[data-itemid]")].filter(n => n.getAttribute("data-removed") !== "true");
-      const saved = [...doc.querySelectorAll("#sc-saved-cart .sc-list-item[data-itemid]")].filter(n => n.getAttribute("data-removed") !== "true");
-      if (nodes.length > 100 || saved.length > 100 || doc.querySelector("#sc-active-cart .sc-pagination")) return { error: fail("site_changed", "This cart is too large or paginated; inspect it manually. Nothing is truncated for an action.") };
+      if (!root || !doc.querySelector("#sc-saved-cart") || !doc.querySelector("#sc-collapsed-carts-container")) return { error: fail("site_changed", "A recognized cart container is missing; no empty or partial cart is assumed.") };
+      const nodes = [...root.querySelectorAll(".sc-list-item")].filter(n => n.getAttribute("data-removed") !== "true");
+      const saved = [...doc.querySelectorAll("#sc-saved-cart .sc-list-item")].filter(n => n.getAttribute("data-removed") !== "true");
+      if (nodes.length > 100 || saved.length > 100 || doc.querySelector("#sc-active-cart .sc-pagination, #sc-saved-cart .sc-pagination")) return { error: fail("site_changed", "This cart is too large or paginated; inspect it manually. Nothing is truncated for an action.") };
       const parse = n => {
         const cart_item_id = n.getAttribute("data-itemid") || "";
         const asin = n.getAttribute("data-asin") || "";
@@ -154,14 +154,17 @@
       };
       const lines = nodes.map(parse);
       const savedLines = saved.map(parse);
-      if (lines.some(l => !l) || savedLines.some(l => !l) || new Set(lines.map(l => l.cart_item_id)).size !== lines.length) return { error: fail("site_changed", "A cart line has an unknown shape or duplicate id; no partial cart is returned.") };
+      if (lines.some(l => !l) || savedLines.some(l => !l) || new Set([...lines, ...savedLines].map(l => l.cart_item_id)).size !== lines.length + savedLines.length) return { error: fail("site_changed", "A cart line has an unknown shape or duplicate id; no partial cart is returned.") };
       if (!lines.length && !doc.querySelector("#sc-empty-cart")) return { error: fail("site_changed", "No retail lines or recognized empty state were found.") };
       const session_context = await sessionContext();
       const other_carts_present = !!doc.querySelector("#sc-collapsed-carts-container")?.children.length;
-      const state = { lines, saved: savedLines, other_carts_present };
+      const safety = [...nodes, ...saved].map(n => ({ cart_item_id: n.getAttribute("data-itemid"), dom_id: n.id, item_type: n.getAttribute("data-itemtype"), related_item_ids: n.getAttribute("data-related-item-ids"), variable_weight: !!n.querySelector("[data-quantity-click-action-vw]"), subscription: !!n.querySelector(".sc-action-sns"), selected: n.getAttribute("data-isselected"), prime_asin: n.getAttribute("data-isprimeasin"), raw_price: n.getAttribute("data-price") }));
+      const state = { lines, saved: savedLines, other_carts_present, safety };
       const cart_version = await hash(JSON.stringify({ session_context, state }));
+      if (signal?.aborted) throw new Error("canceled");
       return { doc, nodes, saved, state, snapshot: { session_context, cart_version, cart_type: "retail", lines, items_quantity: lines.reduce((s, l) => s + l.quantity, 0), subtotal_cents: price(doc.querySelector("#sc-subtotal-amount-activecart, #sc-subtotal-amount-buybox")), other_carts_present } };
     };
+    const supportedCart = cart => cart.nodes.every(n => n.id && n.getAttribute("data-itemtype") === "active") && cart.saved.every(n => n.id && n.getAttribute("data-itemtype") === "saved") && new Set(cart.state.safety.map(n => n.dom_id)).size === cart.state.safety.length && cart.state.safety.every(n => !n.related_item_ids && !n.variable_weight && !n.subscription);
     if (!input || typeof input !== "object" || Array.isArray(input) || Object.keys(input).some(k => !["expected_session_context","expected_cart_version","asin","quantity","expected_unit_price_cents","expected_sold_by"].includes(k))) return fail("invalid_input", "Provide only the documented inputs. Nothing was requested.");
     if (![input.expected_session_context, input.expected_cart_version].every(v => typeof v === "string" && /^[a-f0-9]{64}$/.test(v))) return fail("invalid_input", "Use the exact session_context and cart_version from get_cart.");
     if (typeof input.asin !== "string" || !/^[A-Z0-9]{10}$/.test(input.asin) || !Number.isInteger(input.quantity) || input.quantity < 1 || input.quantity > 10 || !Number.isInteger(input.expected_unit_price_cents) || input.expected_unit_price_cents < 0 || input.expected_unit_price_cents > 100000000 || typeof input.expected_sold_by !== "string" || !input.expected_sold_by.trim() || input.expected_sold_by.length > 150) return fail("invalid_input", "Provide a child ASIN, quantity 1-10, exact visible unit price in cents and seller from get_product.");
@@ -182,7 +185,7 @@
       } catch {
         return fail("site_error", "The tab's duplicate-write guard is unavailable. No write was attempted.");
       }
-      if ([...before.nodes, ...before.saved].some(n => n.getAttribute("data-related-item-ids") || n.querySelector("[data-quantity-click-action-vw], .sc-action-sns"))) return fail("unsupported_item", "This cart contains related, subscription or variable-weight items. Inspect it manually.");
+      if (!supportedCart(before)) return fail("unsupported_item", "This cart contains related, subscription or variable-weight items. Inspect it manually.");
       if (before.snapshot.lines.some(l => l.asin === input.asin)) return fail("already_in_cart", "This ASIN is already in the cart. Use update_cart_item with its exact line instead; no duplicate add is made.");
       const product = await get("/dp/" + input.asin);
       if (product.error) return product.error;
@@ -220,6 +223,7 @@
       if (fresh.error) return fresh.error;
       if (fresh.snapshot.session_context !== before.snapshot.session_context) return fail("wrong_account", "The browser session changed during preparation. No write was attempted.");
       if (fresh.snapshot.cart_version !== before.snapshot.cart_version) return fail("stale_cart", "The cart changed during preparation. No write was attempted.");
+      if (!supportedCart(fresh)) return fail("unsupported_item", "The fresh cart contains unsupported lines. No write was attempted.");
       if (signal?.aborted) return fail("canceled", "Canceled before the write.");
       attempts = JSON.parse(sessionStorage.getItem(key) || "[]");
       if (!Array.isArray(attempts) || attempts.includes(input.expected_cart_version)) return fail("outcome_unknown", "Another write was attempted from this snapshot. Inspect the cart manually; do not repeat it.");
@@ -232,9 +236,9 @@
       const redirected = response.type === "opaqueredirect" || response.status >= 300 && response.status < 400;
       if (!redirected && (response.status < 200 || response.status >= 300)) return fail("outcome_unknown", "Amazon did not acknowledge the write. It may have applied; inspect the cart manually, without retrying.");
       const after = await readCart();
-      if (after.error || after.snapshot.session_context !== before.snapshot.session_context) return fail("outcome_unknown", "The post-write cart/session could not be verified. Inspect it manually; do not retry.");
+      if (after.error || after.snapshot.session_context !== before.snapshot.session_context || !supportedCart(after)) return fail("outcome_unknown", "The post-write cart/session could not be verified. Inspect it manually; do not retry.");
       const added = after.snapshot.lines.filter(l => l.asin === input.asin);
-      if (added.length !== 1 || added[0].quantity !== input.quantity || added[0].unit_price_cents !== input.expected_unit_price_cents || JSON.stringify({ ...after.state, lines: after.state.lines.filter(l => l.asin !== input.asin) }) !== JSON.stringify(before.state)) return fail("outcome_unknown", "The added line/quantity/price or unchanged other lines could not be verified exactly. Inspect the cart manually; do not retry.");
+      if (added.length !== 1 || added[0].quantity !== input.quantity || added[0].unit_price_cents !== input.expected_unit_price_cents || JSON.stringify({ ...after.state, lines: after.state.lines.filter(l => l.asin !== input.asin), safety: after.state.safety.filter(n => n.cart_item_id !== added[0].cart_item_id) }) !== JSON.stringify(before.state)) return fail("outcome_unknown", "The added line/quantity/price or unchanged other lines could not be verified exactly. Inspect the cart manually; do not retry.");
       return { status: "ok", cart_item_id: added[0].cart_item_id, asin: input.asin, quantity: added[0].quantity, ...after.snapshot };
     } catch {
       return fail(attempted ? "outcome_unknown" : signal?.aborted ? "canceled" : "site_error", attempted ? "The write's outcome is unknown. Inspect the cart manually; never retry automatically." : "Preparation failed before a write. Nothing was changed.");

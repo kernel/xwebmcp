@@ -40,7 +40,7 @@ function harness(options = {}) {
   const storage = new Map();
   const requests = [];
   const location = new URL(options.url || "https://www.amazon.com/s?k=test");
-  const ctx = createContext({ document: doc, location, DOMParser, URL, URLSearchParams, crypto: webcrypto, TextEncoder, sessionStorage: { getItem: k => storage.get(k), setItem: (k, v) => storage.set(k, v) }, fetch: async (path, init) => {
+  const ctx = createContext({ document: doc, location, DOMParser, URL, URLSearchParams, crypto: options.crypto || webcrypto, TextEncoder, sessionStorage: { getItem: k => storage.get(k), setItem: (k, v) => storage.set(k, v) }, fetch: async (path, init) => {
     const u = new URL(path, location.origin);
     requests.push({ path: u.pathname, ...init });
     if (options.handler) {
@@ -199,3 +199,95 @@ test("unobserved or additional unrelated postconditions never produce success", 
   const h = harness({ handler: (u, init, { state }) => { if (init.method === "POST") { state.lines.push(item("unexpected", "B0TEST0003")); return { body: "{}" }; } } });
   const r = await prepared(h, "add_to_cart", add); assert.equal(r.error_kind, "outcome_unknown"); assert.equal(r.mutation_attempted, true); assert.equal(h.requests.filter(r => r.method === "POST").length, 1);
 });
+
+test("add: unexpected special-item metadata on the added line is an unknown outcome", async () => {
+  const h = harness({ handler: (u, init, { state }) => {
+    if (init.method === "POST") { state.lines.push(item("new_line", add.asin, add.quantity, 'data-related-item-ids="unexpected_plan"')); return { body: "{}" }; }
+  } });
+  const r = await prepared(h, "add_to_cart", add);
+  assert.equal(r.error_kind, "outcome_unknown"); assert.equal(r.mutation_attempted, true);
+});
+
+const writes = ["add_to_cart", "update_cart_item", "remove_cart_item"];
+const actionInput = name => name === "add_to_cart" ? add : { ...target, ...(name === "update_cart_item" ? { quantity: 2 } : {}) };
+const actionState = name => ({ lines: name === "add_to_cart" ? [item("other", "B0TEST0002")] : [item(), item("other", "B0TEST0002")] });
+const partialPages = [
+  state => fixture({ ...state, lines: [...state.lines, item("missing", "B0TEST0003")] }).replace('data-itemid="missing"', ""),
+  state => fixture(state).replace('<div id="sc-saved-cart">', '<div id="sc-saved-cart"><span class="sc-pagination">Next</span>'),
+  state => fixture({ ...state, saved: [item("duplicate", "B0TEST0003"), item("duplicate", "B0TEST0004")] }),
+  state => fixture(state).replace('id="sc-saved-cart"', 'id="unknown-saved-layout"'),
+  state => fixture(state).replace('id="sc-collapsed-carts-container"', 'id="unknown-other-layout"')
+];
+for (const name of ["get_cart", "prepare_checkout"]) {
+  test(`${name}: every row, saved pagination and saved id uniqueness are validated`, async () => {
+    for (const page of partialPages) {
+      const h = harness({ state: { lines: [item()] }, handler: (u, init, { state }) => ({ body: page(state) }) });
+      assert.equal((await h.run(name)).error_kind, "site_changed");
+    }
+  });
+  test(`${name}: cancellation during asynchronous snapshot hashing is canceled`, async () => {
+    const ctl = new AbortController(); let hashes = 0;
+    const crypto = { subtle: { digest: async (...args) => { const result = await webcrypto.subtle.digest(...args); if (++hashes === 2) ctl.abort(); return result; } } };
+    const h = harness({ crypto }); const r = await h.run(name, {}, ctl.signal);
+    assert.equal(r.error_kind, "canceled"); assert.equal(r.mutation_attempted, false);
+  });
+}
+for (const name of writes) {
+  test(`${name}: partial preflight snapshots never authorize a POST`, async () => {
+    for (const page of partialPages) {
+      const h = harness({ state: actionState(name), handler: (u, init, { state, requests }) => u.pathname === "/gp/cart/view.html" && requests.length > 1 ? { body: page(state) } : undefined });
+      const r = await prepared(h, name, actionInput(name));
+      assert.equal(r.error_kind, "site_changed"); assert.equal(r.mutation_attempted, false); assert.ok(h.requests.every(r => r.method === "GET"));
+    }
+  });
+  test(`${name}: newly introduced safety metadata at second preflight refuses a POST`, async () => {
+    for (const patch of [
+      html => html.replace('data-itemtype="active"', 'data-itemtype="active" data-related-item-ids="fabricated_plan"'),
+      html => html.replace('data-itemtype="active"', 'data-itemtype="unsupported"'),
+      html => html.replace('data-isselected="1"', 'data-isselected="0"')
+    ]) {
+      let cartReads = 0;
+      const h = harness({ state: actionState(name), handler: (u, init, { state }) => {
+        if (u.pathname !== "/gp/cart/view.html") return;
+        if (++cartReads === 3) return { body: patch(fixture(state)) };
+      } });
+      const r = await prepared(h, name, actionInput(name));
+      assert.ok(["stale_cart", "unsupported_item"].includes(r.error_kind), JSON.stringify(r)); assert.equal(r.mutation_attempted, false); assert.ok(h.requests.every(r => r.method === "GET"));
+    }
+  });
+  test(`${name}: cancellation during post-write hashing is unknown, never success`, async () => {
+    const ctl = new AbortController(); let hashes = 0;
+    const crypto = { subtle: { digest: async (...args) => { const result = await webcrypto.subtle.digest(...args); if (++hashes === 8) ctl.abort(); return result; } } };
+    const h = harness({ state: actionState(name), crypto }); const c = await h.run("get_cart");
+    const r = await h.run(name, { ...expect(c), ...actionInput(name) }, ctl.signal);
+    assert.equal(r.error_kind, "outcome_unknown"); assert.equal(r.mutation_attempted, true); assert.equal(h.requests.filter(r => r.method === "POST").length, 1);
+  });
+  test(`${name}: exact route, credentials, method, CSRF and redirect policy`, async () => {
+    const h = harness({ state: actionState(name) }); assert.equal((await prepared(h, name, actionInput(name))).status, "ok");
+    assert.ok(h.requests.every(r => r.credentials === "include"));
+    const [post] = h.requests.filter(r => r.method === "POST"); assert.equal(post.redirect, "manual");
+    const p = new URLSearchParams(post.body);
+    if (name === "add_to_cart") {
+      assert.equal(post.path, "/gp/product/handle-buy-box/ref=dp_start"); assert.equal(p.get("anti-csrftoken-a2z"), "fabricated_product_csrf"); assert.equal(p.get("ASIN"), add.asin);
+    } else {
+      assert.equal(post.path, "/cart"); assert.equal(post.headers["anti-csrftoken-a2z"], "fabricated_csrf"); assert.equal(post.headers["X-AUI-View"], "Desktop");
+      assert.equal(p.get("submit.cart-actions"), "1"); assert.equal(p.get("pageAction"), "cart-actions");
+      const [a] = JSON.parse(p.get("actionPayload")); assert.equal(a.type, name === "update_cart_item" ? "UPDATE_QUANTITY_START" : "DELETE_START"); assert.equal(a.payload.itemId, target.cart_item_id); assert.equal(a.payload.list, "activeItems");
+    }
+  });
+  test(`${name}: missing CSRF, HTTP failure, redirect and unrelated postconditions never claim success`, async () => {
+    for (const mode of ["csrf", "http", "redirect", "unchanged", "other"]) {
+      const h = harness({ state: actionState(name), product: mode === "csrf" ? product().replace('name="anti-csrftoken-a2z"', 'name="missing"') : undefined, handler: (u, init, { state }) => {
+        if (mode === "csrf" && u.pathname === "/gp/cart/view.html") return { body: fixture({ ...state, csrf: false }) };
+        if (init.method !== "POST") return;
+        if (mode === "http") return { status: 403, body: "Denied" };
+        if (mode === "redirect") return { status: 0, type: "opaqueredirect", body: "" };
+        if (mode === "unchanged") return { body: "{}" };
+        if (mode === "other") state.saved.push(item("unexpected_saved", "B0TEST0004"));
+      } });
+      const r = await prepared(h, name, actionInput(name));
+      assert.equal(r.error_kind, mode === "csrf" ? "site_changed" : "outcome_unknown"); assert.equal(r.mutation_attempted, mode !== "csrf");
+      assert.equal(h.requests.filter(r => r.method === "POST").length, mode === "csrf" ? 0 : 1);
+    }
+  });
+}

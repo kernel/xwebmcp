@@ -128,10 +128,10 @@
       const { doc, error } = await get("/gp/cart/view.html");
       if (error) return { error };
       const root = doc.querySelector("#sc-active-cart");
-      if (!root) return { error: fail("site_changed", "The retail cart container is missing; no empty cart is assumed.") };
-      const nodes = [...root.querySelectorAll(".sc-list-item[data-itemid]")].filter(n => n.getAttribute("data-removed") !== "true");
-      const saved = [...doc.querySelectorAll("#sc-saved-cart .sc-list-item[data-itemid]")].filter(n => n.getAttribute("data-removed") !== "true");
-      if (nodes.length > 100 || saved.length > 100 || doc.querySelector("#sc-active-cart .sc-pagination")) return { error: fail("site_changed", "This cart is too large or paginated; inspect it manually. Nothing is truncated for an action.") };
+      if (!root || !doc.querySelector("#sc-saved-cart") || !doc.querySelector("#sc-collapsed-carts-container")) return { error: fail("site_changed", "A recognized cart container is missing; no empty or partial cart is assumed.") };
+      const nodes = [...root.querySelectorAll(".sc-list-item")].filter(n => n.getAttribute("data-removed") !== "true");
+      const saved = [...doc.querySelectorAll("#sc-saved-cart .sc-list-item")].filter(n => n.getAttribute("data-removed") !== "true");
+      if (nodes.length > 100 || saved.length > 100 || doc.querySelector("#sc-active-cart .sc-pagination, #sc-saved-cart .sc-pagination")) return { error: fail("site_changed", "This cart is too large or paginated; inspect it manually. Nothing is truncated for an action.") };
       const parse = n => {
         const cart_item_id = n.getAttribute("data-itemid") || "";
         const asin = n.getAttribute("data-asin") || "";
@@ -142,12 +142,14 @@
       };
       const lines = nodes.map(parse);
       const savedLines = saved.map(parse);
-      if (lines.some(l => !l) || savedLines.some(l => !l) || new Set(lines.map(l => l.cart_item_id)).size !== lines.length) return { error: fail("site_changed", "A cart line has an unknown shape or duplicate id; no partial cart is returned.") };
+      if (lines.some(l => !l) || savedLines.some(l => !l) || new Set([...lines, ...savedLines].map(l => l.cart_item_id)).size !== lines.length + savedLines.length) return { error: fail("site_changed", "A cart line has an unknown shape or duplicate id; no partial cart is returned.") };
       if (!lines.length && !doc.querySelector("#sc-empty-cart")) return { error: fail("site_changed", "No retail lines or recognized empty state were found.") };
       const session_context = await sessionContext();
       const other_carts_present = !!doc.querySelector("#sc-collapsed-carts-container")?.children.length;
-      const state = { lines, saved: savedLines, other_carts_present };
+      const safety = [...nodes, ...saved].map(n => ({ cart_item_id: n.getAttribute("data-itemid"), dom_id: n.id, item_type: n.getAttribute("data-itemtype"), related_item_ids: n.getAttribute("data-related-item-ids"), variable_weight: !!n.querySelector("[data-quantity-click-action-vw]"), subscription: !!n.querySelector(".sc-action-sns"), selected: n.getAttribute("data-isselected"), prime_asin: n.getAttribute("data-isprimeasin"), raw_price: n.getAttribute("data-price") }));
+      const state = { lines, saved: savedLines, other_carts_present, safety };
       const cart_version = await hash(JSON.stringify({ session_context, state }));
+      if (signal?.aborted) throw new Error("canceled");
       return { doc, nodes, saved, state, snapshot: { session_context, cart_version, cart_type: "retail", lines, items_quantity: lines.reduce((s, l) => s + l.quantity, 0), subtotal_cents: price(doc.querySelector("#sc-subtotal-amount-activecart, #sc-subtotal-amount-buybox")), other_carts_present } };
     };
     if (!input || typeof input !== "object" || Array.isArray(input) || Object.keys(input).length > 0) return fail("invalid_input", "Provide only the documented inputs. Nothing was requested.");
