@@ -239,8 +239,11 @@ test("browser DOM: only a visible no-flights notice establishes absence", { skip
     const file = join(dir, "fixture.html");
     writeFileSync(file, html);
     const run = spawnSync(chromium, ["--headless", "--no-sandbox", "--disable-gpu", "--disable-extensions", "--disable-background-networking", "--no-first-run", `--user-data-dir=${join(dir, "profile")}`, "--dump-dom", `file://${file}`], { encoding: "utf8", timeout: 30000 });
-    assert.equal(run.status, 0, run.stderr);
+    const diagnostics = `browser=${chromium}; error=${run.error?.message}; signal=${run.signal}; status=${run.status}\nstdout=${run.stdout}\nstderr=${run.stderr}`;
+    assert.ok(!run.error, diagnostics);
+    assert.equal(run.status, 0, diagnostics);
     const json = run.stdout.match(/<pre id="out">([^<]+)<\/pre>/)?.[1];
+    assert.ok(json, diagnostics);
     assert.deepEqual(JSON.parse(json), ["no_results", "site_changed", "site_changed", "site_changed", "site_changed", "site_changed"]);
   } finally {
     rmSync(dir, { recursive: true, force: true });
