@@ -927,9 +927,12 @@
         "https://target.com/*",
         "https://*.target.com/*"
       ],
-      "status": "draft",
-      "last_verified": null,
-      "notes": "Read-only per-store pickup, Drive Up and in-store status for one orderable item near a ZIP; never selects a store or saves the ZIP. Target substitutes a default location for a ZIP it does not recognize without reporting an error. Not independently QA'd yet."
+      "status": "verified",
+      "last_verified": "2026-09-30",
+      "notes": "Independent final-source QA verified homepage success, safe failures and bounds on Kernel and the local extension. Read-only per-store availability and available-to-promise counts; never changes store/ZIP. Unknown ZIPs can silently return default-location stores. No inventory guarantee; signed-in behavior untested.",
+      "provenance": {
+        "qa_agent": "agt_42e61f3b686a87d4bfb7"
+      }
     },
     {
       "domain": "target.com",
@@ -975,9 +978,12 @@
         "https://target.com/*",
         "https://*.target.com/*"
       ],
-      "status": "draft",
-      "last_verified": null,
-      "notes": "Read-only rating summary plus the up to 8 newest reviews the product service returns, at item-family level; no reviewer names, photos or AI summary. Needs a selected store. Not independently QA'd yet."
+      "status": "verified",
+      "last_verified": "2026-09-30",
+      "notes": "Independent final-source QA verified homepage success and safe failure paths on Kernel and the local extension. Family-level rating summary and up to 8 newest reviews; no reviewer identities, photos or AI summary. Selected store required. No paging; signed-in behavior and live long-text truncation untested.",
+      "provenance": {
+        "qa_agent": "agt_42e61f3b686a87d4bfb7"
+      }
     },
     {
       "domain": "target.com",
@@ -1006,9 +1012,12 @@
         "https://target.com/*",
         "https://*.target.com/*"
       ],
-      "status": "draft",
-      "last_verified": null,
-      "notes": "Read-only item/quantity fulfillment preview with explicit expected store and ZIP guards, item-only price estimate and product handoff. No cart read or write, inventory hold or checkout approval; existing cart quantities and final totals are not checked. Independent QA pending."
+      "status": "verified",
+      "last_verified": "2026-09-30",
+      "notes": "Independent final-source QA verified shipping preview from the homepage on Kernel, shipping/pickup previews in the local extension and safe failure guards. Explicit expected store/ZIP, item-only estimate and product handoff; no cart read/write, inventory hold or checkout approval. Context drift and range-price cases fixture-tested only; existing cart quantities and final totals are not checked.",
+      "provenance": {
+        "qa_agent": "agt_42e61f3b686a87d4bfb7"
+      }
     },
     {
       "domain": "target.com",

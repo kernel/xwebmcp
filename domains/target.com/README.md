@@ -7,9 +7,9 @@ Tools for Target (https://www.target.com): catalog search, item details, per-sto
 | get_store_context | [get_store_context.js](get_store_context.js) | qa_passed | Read-only store, location and session type; never changes the store |
 | search_products | [search_products.js](search_products.js) | qa_passed | One results page with the site's sorts, sponsored flags and optional facet filters |
 | get_product | [get_product.js](get_product.js) | qa_passed | Price, rating, limit, variations and fulfillment for the selected store |
-| check_store_availability | [check_store_availability.js](check_store_availability.js) | draft | Pickup, Drive Up and in-store status at the stores nearest any ZIP; never selects a store or saves the ZIP |
-| get_product_reviews | [get_product_reviews.js](get_product_reviews.js) | draft | Rating summary and up to 8 newest reviews at item-family level; no reviewer names, photos or AI summary |
-| prepare_cart_item | [prepare_cart_item.js](prepare_cart_item.js) | draft | Read-only quantity/fulfillment preview; requires the exact selected store and ZIP; no cart change or checkout approval |
+| check_store_availability | [check_store_availability.js](check_store_availability.js) | verified | Pickup, Drive Up and in-store status at the stores nearest any ZIP; never selects a store or saves the ZIP |
+| get_product_reviews | [get_product_reviews.js](get_product_reviews.js) | verified | Rating summary and up to 8 newest reviews at item-family level; no reviewer names, photos or AI summary |
+| prepare_cart_item | [prepare_cart_item.js](prepare_cart_item.js) | verified | Read-only quantity/fulfillment preview; requires the exact selected store and ZIP; no cart change or checkout approval |
 | get_cart | [get_cart.js](get_cart.js) | qa_passed | Regular cart lines with cart_item_id, fulfillment and totals; guest or signed in |
 | add_to_cart | [add_to_cart.js](add_to_cart.js) | qa_passed | Ship or pickup at the selected store after existence, variation, stock and limit checks |
 | update_cart_item | [update_cart_item.js](update_cart_item.js) | qa_passed | Absolute quantity 1–10 on one line; no write when unchanged |
@@ -302,8 +302,39 @@ Builder Kernel checks, a fresh anonymous GPU browser, whole ten-tool namespace r
 atomically: native discovery, shipping and pickup previews for one item from the homepage
 (a page other than its product entry point), explicit-ZIP store availability and one recent
 review returned success. Selected-store/location cookies and tab URL were unchanged. No
-cart writes were invoked. New source independent review and current local-extension checks
-are pending; all three entries remain `draft` until that evidence is recorded.
+cart writes were invoked. Additional builder failure checks passed for mismatched store/ZIP,
+extra confirmation input (zero requests), excessive quantity (one GET), unknown item, rural
+`no_results`, corporate `wrong_page` and unrelated-site discovery. The empty guest cart read
+still worked; no writer was invoked.
+
+Independent final-source QA by `agt_42e61f3b686a87d4bfb7` passed on 2026-09-30 for source SHA
+`704744779080338119b01bb377f443d672480a65`, after one fix/recheck round. The initial increment
+review found three fixture-only defects (stale-context second GET, Unicode range estimates,
+empty data-array classification); all reproductions passed after the fixes. The 69 independent
+scratch checks, 1769-test full Node suite, 82-tool validator, extension sidepanel and Go suites
+passed. No concrete defect remained. All three additions qualify for `verified`; metadata-only
+status/evidence updates leave the reviewed tool source unchanged.
+
+- **Kernel, fresh anonymous browser:** all ten tools registered atomically. From the homepage,
+  `prepare_cart_item` for `95060636`, shipping quantity 1, returned `prepared` with a 6999-cent
+  item estimate, limit 2 and `cart_changed: false`; `check_store_availability` with limit 2
+  returned `ok`; `get_product_reviews` with limit 1 returned `ok`, family `95289882`. Pickup
+  was `unavailable` at that browser's selected store. Quantity/family/unknown/unrated/unavailable
+  failures, zero-request context/input guards, corporate refusal and unrelated-site discovery
+  passed. Across 26 recorded calls, schema validation passed, URL/context cookies stayed
+  unchanged, new-tool requests were GET-only, and no writer was invoked. Native tools were
+  absent in this session; string-form review output parsed correctly.
+- **Local extension, separately pinned to the same SHA:** scratch Chromium 153, entire
+  ten-tool namespace. Native `search_products` present. Homepage shipping and pickup previews
+  and reviews succeeded. Availability gave `no_results` for its own guest ZIP, then `ok` for
+  explicit ZIP `10001` without changing location. Guards, quantity/family/not-found failures,
+  corporate refusal and unrelated-site discovery passed; outputs validated and URL/context
+  cookies stayed unchanged. Its guest location differed from Kernel, so identical store/date
+  values are not claimed.
+- **Fixture-only:** cancellation, context drift, malformed/denied/challenge responses and
+  range/hidden prices. **Untested live:** signed-in/wrong-account behavior, preorders, checkout
+  guards and long-review truncation. No mutation success is claimed. Both current QA browsers
+  were deleted and their artifacts removed; local scratch Chromium/Xvfb and profiles were cleaned up.
 
 `tests/target-preparation.test.mjs` uses fabricated data for explicit context/missing location
 guards, malformed input before page access, unrelated and checkout pages, family/variation
