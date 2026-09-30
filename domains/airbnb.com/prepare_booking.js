@@ -63,8 +63,23 @@
     entry.searchParams.set("currency", "USD");
     const visible = element => element?.checkVisibility({ opacityProperty: true, visibilityProperty: true });
     const challengeText = value => /^(?:captcha|access denied|robot check|security check|unusual traffic|(?:verify|confirm) (?:you are|you're) human|complete the captcha)[.!?]?$/i.test(value.replace(/[‘’]/g, "'").replace(/\s+/g, " ").trim());
+    const renderedHeadingText = heading => {
+      const walker = document.createTreeWalker(heading, NodeFilter.SHOW_TEXT);
+      let value = "";
+      for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+        if (/^(?:hidden|collapse)$/.test(getComputedStyle(node.parentElement).visibility)) continue;
+        let shown = true;
+        for (let element = node.parentElement; element; element = element.parentElement) {
+          const style = getComputedStyle(element);
+          if (element.matches("script, style, template, noscript") || style.display === "none" || Number(style.opacity) === 0) { shown = false; break; }
+          if (element === heading) break;
+        }
+        if (shown) value += node.textContent;
+      }
+      return value;
+    };
     const headings = [...document.querySelectorAll('h1, h2, h3, h4, h5, h6, [role="heading"]')].filter(visible);
-    if (challengeText(document.title || "") || headings.some(heading => challengeText(heading.innerText || ""))) return fail("challenge", "The page requires access verification; no action was taken.");
+    if (challengeText(document.title || "") || headings.some(heading => challengeText(renderedHeadingText(heading)))) return fail("challenge", "The page requires access verification; no action was taken.");
     if (/log in|sign in/i.test(document.title || "")) return fail("login_required", "A public listing page is required; no sign-in is attempted.");
     const current = new URL(location.href);
     if (current.origin !== entry.origin || current.pathname !== entry.pathname || ["check_in", "check_out", "adults", "currency"].some(key => current.searchParams.getAll(key).length !== 1 || current.searchParams.get(key) !== entry.searchParams.get(key)) || ["children", "infants", "pets"].some(key => current.searchParams.getAll(key).length > 1 || current.searchParams.has(key) && current.searchParams.get(key) !== "0")) return fail("wrong_page", "Open entry_url and let Airbnb render the exact listing, dates and adult guests, then invoke again.", entry.href);

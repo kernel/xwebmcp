@@ -61,18 +61,42 @@ const node = (id = ID) => ({
 const listingState = value => ({ niobeClientData: [["irrelevant", {}], ["listing", { data: { node: value ?? node() } }]] });
 const html = (state, title = "Airbnb", lang = "en-US", heading = "") => `<html lang="${lang}"><title>${title}</title><h1>${heading}</h1><script id="data-deferred-state-0">${JSON.stringify(state).replace(/</g, "\\u003c")}</script></html>`;
 
-const headingNode = ({ text, hidden = false, style = {}, tag = "h1" }) => ({
-  tag, textContent: text, innerText: text, hidden, style, parentElement: null,
-  checkVisibility: () => !hidden && style.display !== "none" && !["hidden", "collapse"].includes(style.visibility) && style.opacity !== "0",
-  cloneNode() { return { textContent: text, querySelectorAll: () => [] }; }
-});
+function headingNode({ text = "", hidden = false, style = {}, tag = "h1", children = [text] }) {
+  const element = {
+    nodeType: 1, tag, hidden, style, parentElement: null,
+    get textContent() { return this.childNodes.map(child => child.textContent).join(""); },
+    get innerText() { return this.childNodes.map(child => child.nodeType === 3 ? child.textContent : child.matches("script, style, template, noscript") || child.hidden || child.style.display === "none" ? "" : child.innerText).join(""); },
+    checkVisibility: () => !hidden && style.display !== "none" && !["hidden", "collapse"].includes(style.visibility) && style.opacity !== "0",
+    matches(selector) { return selector.split(",").some(value => value.trim() === tag || value.trim() === "[hidden]" && hidden || value.trim() === "[style]" && Object.keys(style).length); },
+    querySelectorAll(selector) {
+      return this.childNodes.filter(child => child.nodeType === 1).flatMap(child => [child, ...child.querySelectorAll("*")]).filter(child => selector === "*" || child.matches(selector));
+    },
+    cloneNode() { return headingNode({ hidden, style, tag, children: this.childNodes.map(child => child.nodeType === 3 ? child.textContent : child.cloneNode()) }); },
+    remove() { if (this.parentElement) this.parentElement.childNodes.splice(this.parentElement.childNodes.indexOf(this), 1); }
+  };
+  element.childNodes = children.map(child => typeof child === "string" ? { nodeType: 3, textContent: child } : child.nodeType === 1 ? child : headingNode(child));
+  element.childNodes.forEach(child => { child.parentElement = element; });
+  return element;
+}
+const headingChildren = source => {
+  const children = [];
+  let start = 0;
+  for (const match of source.matchAll(/<(span|script|style)\b([^>]*)>(.*?)<\/\1>/gs)) {
+    children.push(source.slice(start, match.index));
+    const style = Object.fromEntries([...(/style="([^"]*)"/.exec(match[2])?.[1] ?? "").matchAll(/(display|visibility|opacity)\s*:\s*([^;]+)/g)].map(([_, key, value]) => [key, value.trim()]));
+    children.push({ tag: match[1], style, text: match[3] });
+    start = match.index + match[0].length;
+  }
+  children.push(source.slice(start));
+  return children;
+};
 
 // Minimal parser stub only for the observed HTML surfaces; network and navigation are separate spies.
 class DOMParser {
   parseFromString(source) {
     const match = /<script id="data-deferred-state-0">([\s\S]*?)<\/script>/.exec(source);
     const headings = [...source.matchAll(/<(h[1-6]|div)\b([^>]*)>(.*?)<\/\1>/gs)].filter(([_, tag, attrs]) => tag !== "div" || /role="heading"/.test(attrs)).map(([_, tag, attrs, text]) => headingNode({
-      tag, text, hidden: /(?:^|\s)hidden(?:\s|=|$)/.test(attrs), style: Object.fromEntries([...(/style="([^"]*)"/.exec(attrs)?.[1] ?? "").matchAll(/(display|visibility|opacity)\s*:\s*([^;]+)/g)].map(([_, key, value]) => [key, value.trim()]))
+      tag, text, children: headingChildren(text), hidden: /(?:^|\s)hidden(?:\s|=|$)/.test(attrs), style: Object.fromEntries([...(/style="([^"]*)"/.exec(attrs)?.[1] ?? "").matchAll(/(display|visibility|opacity)\s*:\s*([^;]+)/g)].map(([_, key, value]) => [key, value.trim()]))
     }));
     return {
       title: /<title>([\s\S]*?)<\/title>/.exec(source)?.[1] ?? "",
@@ -124,8 +148,16 @@ function harness(name, options = {}) {
     };
   };
   let body = options.body ?? html(name === "search_stays" ? searchState(options.rows) : listingState(options.node));
+  doc.createTreeWalker = root => {
+    const texts = [];
+    const collect = node => node.nodeType === 3 ? texts.push(node) : node.childNodes.forEach(collect);
+    collect(root);
+    let index = 0;
+    return { nextNode: () => texts[index++] ?? null };
+  };
   const context = {
-    URL, Date, atob, DOMParser, AbortController, TextDecoder, TextEncoder, document: doc,
+    URL, Date, atob, DOMParser, AbortController, TextDecoder, TextEncoder, document: doc, NodeFilter: { SHOW_TEXT: 4 },
+    getComputedStyle: element => ({ opacity: "1", display: "block", visibility: "visible", ...element.style }),
     location: new URL(options.url ?? (name === "prepare_booking" ? bookingUrl : "https://www.airbnb.com/help/article/2908")),
     setTimeout(fn, delay) { assert.equal(delay, 20000); const id = setTimeout(fn, options.timeout ? 1 : delay); timers.add(id); return id; },
     clearTimeout(id) { timers.delete(id); clearTimeout(id); },
@@ -319,6 +351,26 @@ for (const name of ["get_listing", "search_stays"]) {
       assert.equal((await h.run()).status, "ok"); assert.equal(h.calls.length, 1);
     });
   }
+}
+
+for (const name of names) {
+  for (const [body, expected] of [
+    ['Verify you’re human<span style="opacity:0">guide text</span>', "challenge"],
+    ['<span style="opacity:0">Verify you’re human</span>', name === "prepare_booking" ? "prepared" : "ok"]
+  ]) test(`${name}: transparent live descendants ${body}`, async () => {
+    const h = harness(name, { currentHtml: html(listingState()).replace("<h1></h1>", headingHtml(body, "h2")) });
+    const out = await h.run(); assert.equal(out.error_kind ?? out.status, expected);
+    assert.equal(h.calls.length, expected === "challenge" || name === "prepare_booking" ? 0 : 1);
+  });
+}
+for (const name of ["get_listing", "search_stays"]) {
+  for (const tag of ['script type="text/plain"', "style"]) for (const [body, expected] of [
+    ["Verify you’re human" + headingHtml("hidden unrelated text", tag), "challenge"],
+    [headingHtml("Verify you’re human", tag), "ok"]
+  ]) test(`${name}: fetched non-rendered descendants ${body}`, async () => {
+    const h = harness(name, { body: html(name === "get_listing" ? listingState() : searchState()).replace("<h1></h1>", headingHtml(body, "h2")) });
+    const out = await h.run(); assert.equal(out.error_kind ?? out.status, expected); assert.equal(h.calls.length, 1);
+  });
 }
 
 test("prepare_booking: exact preview returns human-only handoff without interaction", async () => {

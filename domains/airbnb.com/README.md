@@ -114,9 +114,12 @@ login and booking starting paths are refused even on the matching host.
   Live coverage and fixture-only cases are recorded separately below.
 - Verification markers are English, whole title/heading messages. Straight and
   typographic apostrophes, normalized whitespace and terminal punctuation are
-  supported. Live headings use native visibility. Fetched HTML stays inert: its
-  heading scan excludes explicit hidden attributes, inline hidden styles and
-  hidden descendants, but does not compute visibility from external stylesheets.
+  supported. Live headings use native visibility and project text nodes using
+  computed descendant/ancestor styles, excluding transparent and non-rendered
+  content. Fetched HTML stays inert: its heading scan excludes hidden attributes,
+  inline hidden styles, hidden descendants and script/style/template/noscript
+  content, but does not compute visibility from embedded or external stylesheet
+  rules.
 - Site terms restrict automated access and collection. The tools do not imply site
   permission or change those terms. The published robots.txt also disallows
   `/s/*/*` for all crawlers and restricts listing paths for some named agents.
@@ -127,8 +130,8 @@ login and booking starting paths are refused even on the matching host.
 
 ## QA
 
-Builder checks on 2026-09-30: 339 fabricated fixture tests passed, registry validation
-passed (82 tools), the full 1,916-test suite passed, all 14 extension unit tests
+Builder checks on 2026-09-30: 353 fabricated fixture tests passed, registry validation
+passed (82 tools), the full 1,930-test suite passed, all 14 extension unit tests
 passed, and `go test ./...` passed. The unchanged CI workflow runs these Go, registry,
 tool and extension checks.
 
@@ -140,9 +143,16 @@ prose, current-document refusals before GET and HTTP 200 verification responses
 retaining public data. Existing disabled-control, qualifier, price/currency,
 settings-path and Unicode URL-bound tests still pass.
 
-A separate native-Chromium run passed 31 direct-source cases, including CSS-hidden
-live headings, hidden ancestors/descendants and fetched inline-hidden content.
-These are synthetic fixtures, not extension invocation or live challenge evidence.
+The fresh independent review confirmed all eight original U+2019 regressions fixed,
+but found transparent live descendants and script/style text in fetched headings.
+Fourteen additional fixtures reproduced those findings against the first repair
+(all 14 failed), then passed after the text-projection repair. No assertions were
+weakened.
+
+A separate native-Chromium run passed 51 direct-source cases, including CSS-hidden
+live headings, transparent/hidden ancestors and descendants, visible descendant
+overrides, display-contents wrappers and non-rendered fetched content. These are
+synthetic fixtures, not extension invocation or live challenge evidence.
 
 Kernel live: search and listing reads succeeded from `/help/article/2908` without
 replacing that document. A dated listing preview returned its displayed three-night
@@ -154,9 +164,8 @@ The Kernel page bridge may return non-ASCII output as a JSON string; callers sho
 parse when `typeof output === "string"`. This is runtime behavior, not a changed
 output schema.
 
-The prior independent review exposed the U+2019 verification classification defect;
-new regression tests reproduce it before the repair. Fresh independent final-source
-review is pending, so all three entries remain `draft`.
+The original U+2019 and descendant-text findings are covered by regression tests.
+Independent final-source recheck is pending, so all three entries remain `draft`.
 
 Local Chromium 153 loaded the unmodified extension and stored all three definitions
 together on fully intercepted synthetic pages. A normal Grant access request did

@@ -118,6 +118,21 @@
       try { return /^DemandStayListing:([1-9][0-9]{0,19})$/.exec(atob(value))?.[1] ?? null; } catch { return null; }
     };
     const challengeText = value => /^(?:captcha|access denied|robot check|security check|unusual traffic|(?:verify|confirm) (?:you are|you're) human|complete the captcha)[.!?]?$/i.test(value.replace(/[‘’]/g, "'").replace(/\s+/g, " ").trim());
+    const renderedHeadingText = heading => {
+      const walker = document.createTreeWalker(heading, NodeFilter.SHOW_TEXT);
+      let value = "";
+      for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+        if (/^(?:hidden|collapse)$/.test(getComputedStyle(node.parentElement).visibility)) continue;
+        let shown = true;
+        for (let element = node.parentElement; element; element = element.parentElement) {
+          const style = getComputedStyle(element);
+          if (element.matches("script, style, template, noscript") || style.display === "none" || Number(style.opacity) === 0) { shown = false; break; }
+          if (element === heading) break;
+        }
+        if (shown) value += node.textContent;
+      }
+      return value;
+    };
     const hidden = element => {
       for (let node = element; node; node = node.parentElement) {
         if (node.hidden || node.style.display === "none" || /^(?:hidden|collapse)$/.test(node.style.visibility) || node.style.opacity && Number(node.style.opacity) === 0) return true;
@@ -128,10 +143,10 @@
       if (challengeText(doc.title || "")) return "challenge";
       if (/log in|sign in/i.test(doc.title || "")) return "login_required";
       const blocked = [...doc.querySelectorAll('h1, h2, h3, h4, h5, h6, [role="heading"]')].some(heading => {
-        if (live) return heading.checkVisibility({ opacityProperty: true, visibilityProperty: true }) && challengeText(heading.innerText || "");
+        if (live) return heading.checkVisibility({ opacityProperty: true, visibilityProperty: true }) && challengeText(renderedHeadingText(heading));
         if (hidden(heading)) return false;
         const copy = heading.cloneNode(true);
-        copy.querySelectorAll("[hidden], [style]").forEach(element => { if (hidden(element)) element.remove(); });
+        copy.querySelectorAll("script, style, template, noscript, [hidden], [style]").forEach(element => { if (element.matches("script, style, template, noscript") || hidden(element)) element.remove(); });
         return challengeText(copy.textContent || "");
       });
       return blocked ? "challenge" : null;
