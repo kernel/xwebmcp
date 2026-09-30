@@ -5,7 +5,7 @@
     tool: {
       name: "search_flights",
       description:
-        "Search Delta cash fares for 1–9 adults and return every rendered first-page outbound flight option, not a submission acknowledgment. Round trips return outbound options with displayed round-trip fares, not paired return flights. Prices are the lowest displayed available fare per row, rounded as shown, not multiplied by passengers. Times are airport-local. Never books or selects a fare. Site errors and parsing failures are not zero results.",
+        "Search Delta cash fares for 1–9 adults and return every rendered first-page outbound flight option, not a submission acknowledgment. Round trips return outbound options with displayed round-trip fares, not paired return flights. Prices are the lowest displayed available fare per row, rounded as shown, not multiplied by passengers. Times are airport-local. Never books or selects a fare. Site errors and parsing failures are not zero results. Each flight carries result_index and price.brand_code, which select_fare takes directly; use list_flight_results to re-sort, see every fare column, or load more results (more_results_available says whether Delta offers more).",
       inputSchema: {
         type: "object",
         additionalProperties: false,
@@ -39,6 +39,7 @@
           "results_url",
           "scope",
           "message",
+          "more_results_available",
         ],
         properties: {
           status: { type: "string", enum: ["ok", "no_results", "error"] },
@@ -56,12 +57,18 @@
               "Verified results page URL; null if no results page was reached.",
           },
           message: { type: "string" },
+          more_results_available: {
+            type: ["boolean", "null"],
+            description:
+              "True when Delta shows See More Results below the first page; null when no results page was read.",
+          },
           flights: {
             type: "array",
             items: {
               type: "object",
               additionalProperties: false,
               required: [
+                "result_index",
                 "airline",
                 "flight_numbers",
                 "departure_airport",
@@ -74,6 +81,11 @@
                 "price",
               ],
               properties: {
+                result_index: {
+                  type: "integer",
+                  minimum: 0,
+                  description: "N in Delta's flight-results-grid-N row id; pass to select_fare.",
+                },
                 airline: {
                   type: "string",
                   minLength: 1,
@@ -109,12 +121,18 @@
                   type: "object",
                   additionalProperties: false,
                   required: [
+                    "brand_code",
                     "amount",
                     "currency_display",
                     "basis_display",
                     "fare_brand",
                   ],
                   properties: {
+                    brand_code: {
+                      type: "string",
+                      minLength: 1,
+                      description: "Fare column code (e.g. BMAIN); pass to select_fare.",
+                    },
                     amount: { type: "number", exclusiveMinimum: 0 },
                     currency_display: {
                       type: "string",
@@ -233,6 +251,7 @@
       const started = Date.now(),
         deadline = started + 105000;
       let resultsUrl = null;
+      let moreResults = null;
       const output = (status, flights, message) => ({
         status,
         flights,
@@ -240,6 +259,7 @@
         results_url: resultsUrl,
         scope: "first_page_outbound",
         message,
+        more_results_available: status === "ok" ? moreResults : status === "no_results" ? false : null,
       });
       const remaining = () => {
         const s = (deadline - Date.now()) / 1000;
@@ -701,6 +721,10 @@
                   if (!/^\d[\d,]*(?:\.\d{1,2})?$/.test(amount))
                     throw Error("PARSE_ERROR: ambiguous price");
                   return {
+                    brand_code:
+                      (/-fare-cell-desktop-([A-Za-z0-9]+)$/.exec(
+                        e.querySelector('[id^="grid-row-"]')?.id || "",
+                      ) || [])[1] || "",
                     amount: Number(amount.replace(/,/g, "")),
                     currency_display: text(e.querySelector(".currency-symbol")),
                     basis_display: text(
@@ -730,7 +754,8 @@
                 !fares[0].amount ||
                 !fares[0].currency_display ||
                 !fares[0].basis_display ||
-                !fares[0].fare_brand
+                !fares[0].fare_brand ||
+                !fares[0].brand_code
               )
                 throw Error("PARSE_ERROR: incomplete flight row " + row.id);
               const names = {
@@ -743,6 +768,7 @@
                 LA: "LATAM",
               };
               return {
+                result_index: Number(row.id.replace("flight-results-grid-", "")),
                 airline: [
                   ...new Set(
                     numbers.map((n) => names[n.slice(0, 2)] || n.slice(0, 2)),
@@ -760,7 +786,8 @@
                 price: fares[0],
               };
             });
-            return { flights, url: location.href };
+            const more = [...document.querySelectorAll(".see-more-button")].some(visible);
+            return { flights, url: location.href, more };
           },
           { arg: input },
         );
@@ -785,6 +812,7 @@
         if (!parsed.url.includes("/search-results"))
           throw Error("PARSE_ERROR: not on results page");
         resultsUrl = parsed.url;
+        moreResults = !!parsed.more;
         return output(
           "ok",
           parsed.flights,

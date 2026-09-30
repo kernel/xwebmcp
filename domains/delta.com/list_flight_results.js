@@ -3,14 +3,15 @@
   match: { url_patterns: ["https://www.delta.com/flightsearch/search-results*"] },
   tool: {
     name: "list_flight_results",
-    description: "Read the Delta flight results already shown on this results page, without searching again: every visible first-page itinerary with flight numbers, airports, local times, overnight-arrival marker, duration, stops, and every fare column (brand code, brand name, rounded display price, seats-left hint, sold out). Sort by departure, arrival, price, or duration, and optionally filter by maximum stops. Also returns the search this page belongs to (origin, destination, dates, trip type, passengers) as Delta stored it. result_index and brand_code match Delta's own element ids (flight-results-grid-{result_index}, grid-row-{result_index}-fare-cell-desktop-{brand_code}) so a later selection step can target exactly what was listed. Read-only: never clicks, selects a fare, or navigates. Prices are rounded display fares per adult, not totals; call it after search_flights or after submitting the booking form. If results are still loading it waits up to wait_seconds; a Delta site error (for example SFAF001) is returned as status=\"error\", not as zero flights.",
+    description: "Read the Delta flight results already shown on this results page, without searching again: every visible first-page itinerary with flight numbers, airports, local times, overnight-arrival marker, duration, stops, and every fare column (brand code, brand name, rounded display price, seats-left hint, sold out). Sort by departure, arrival, price, or duration, and optionally filter by maximum stops. Each fare also carries its column's cabin name (Main, Comfort, First, Delta One) even when sold out; brand_name is Delta's label inside the cell, which for mixed-cabin connections reads like \"Delta Comfort, Delta Main\" (one leg in each cabin). more_results_available says whether Delta offers a \"See More Results\" button; pass load_more_results: true to press it first (loads more rows on the same page, no navigation). Also returns the search this page belongs to (origin, destination, dates, trip type, passengers) as Delta stored it. result_index and brand_code match Delta's own element ids (flight-results-grid-{result_index}, grid-row-{result_index}-fare-cell-desktop-{brand_code}) so a later selection step can target exactly what was listed. Never selects a fare or navigates; the only click it can make is See More Results when load_more_results is true. Prices are rounded display fares per adult, not totals; call it after search_flights or after submitting the booking form. If results are still loading it waits up to wait_seconds; a Delta site error (for example SFAF001) is returned as status=\"error\", not as zero flights.",
     inputSchema: {
       type: "object", additionalProperties: false,
       properties: {
         sort_by: { type: "string", enum: ["departure", "arrival", "price", "duration", "page_order"], default: "page_order", description: "departure/arrival sort by local clock time (arrival accounts for the +1 day marker); price by the lowest available fare." },
         max_stops: { type: "integer", minimum: 0, maximum: 3, description: "Only itineraries with at most this many stops." },
         limit: { type: "integer", minimum: 1, maximum: 50, default: 50 },
-        wait_seconds: { type: "integer", minimum: 0, maximum: 30, default: 15, description: "How long to wait for results that are still loading." }
+        wait_seconds: { type: "integer", minimum: 0, maximum: 30, default: 15, description: "How long to wait for results that are still loading." },
+        load_more_results: { type: "boolean", default: false, description: "Press Delta's See More Results first (repeats until no button remains or 5 presses) so later rows are included." }
       }
     },
     outputSchema: {
@@ -18,7 +19,7 @@
       oneOf: [
         {
           type: "object", additionalProperties: false,
-          required: ["status", "results_url", "search", "total_rows", "skipped_rows", "flights"],
+          required: ["status", "results_url", "search", "total_rows", "skipped_rows", "more_results_available", "flights"],
           properties: {
             status: { enum: ["ok", "no_results"] },
             results_url: { type: "string" },
@@ -33,6 +34,7 @@
             },
             total_rows: { type: "integer", minimum: 0, description: "Visible itinerary rows on the page, before filtering and limit." },
             skipped_rows: { type: "integer", minimum: 0, description: "Visible rows that could not be parsed completely and were left out rather than guessed." },
+            more_results_available: { type: "boolean", description: "Delta still shows See More Results: more itineraries exist beyond these rows." },
             flights: {
               type: "array",
               items: {
@@ -51,9 +53,11 @@
                     type: "array",
                     items: {
                       type: "object", additionalProperties: false,
-                      required: ["brand_code", "brand_name", "amount", "currency_display", "basis_display", "seats_left", "sold_out"],
+                      required: ["brand_code", "cabin", "brand_name", "amount", "currency_display", "basis_display", "seats_left", "sold_out"],
                       properties: {
-                        brand_code: { type: "string" }, brand_name: { type: ["string", "null"] },
+                        brand_code: { type: "string" },
+                        cabin: { type: ["string", "null"], description: "Column header, e.g. Main, Comfort, First, Delta One." },
+                        brand_name: { type: ["string", "null"] },
                         amount: { type: ["number", "null"] }, currency_display: { type: ["string", "null"] },
                         basis_display: { type: ["string", "null"] }, seats_left: { type: ["integer", "null"] },
                         sold_out: { type: "boolean" }
@@ -108,7 +112,21 @@
       }
     } catch { search = null; }
 
-    if (!rowsNow().length) return { status: "no_results", results_url: url, search, total_rows: 0, skipped_rows: 0, flights: [] };
+    const moreButton = () => [...document.querySelectorAll(".see-more-button")].find(visible);
+    if (input?.load_more_results) {
+      for (let press = 0; press < 5 && moreButton(); press++) {
+        const before = rowsNow().length;
+        moreButton().click();
+        const until2 = Date.now() + 10000;
+        while (Date.now() < until2 && (rowsNow().length <= before || loading())) await new Promise((r) => setTimeout(r, 300));
+        if (rowsNow().length <= before) break;
+      }
+    }
+    const moreAvailable = !!moreButton();
+    // Column headers render once, in the same left-to-right order as each row's fare cells.
+    const cabins = [...document.querySelectorAll('[id^="mach-cabin-header-desktop-"]')].filter(visible)
+      .map((h) => text(h).replace(/®/g, "").trim() || null);
+    if (!rowsNow().length) return { status: "no_results", results_url: url, search, total_rows: 0, skipped_rows: 0, more_results_available: moreAvailable, flights: [] };
 
     const minutes = (clock) => { const m = /(\d{1,2}):(\d{2})\s*(AM|PM)/i.exec(clock || ""); if (!m) return null; let h = +m[1] % 12; if (/pm/i.test(m[3])) h += 12; return h * 60 + +m[2]; };
     const flights = [];
@@ -133,7 +151,7 @@
       const durationMinutes = Number(duration.match(/(\d+)\s*h/i)?.[1] || 0) * 60 + Number(duration.match(/(\d+)\s*m/i)?.[1] || 0);
       const clock = (id) => { const m = get(id).match(/\b(\d{1,2}):(\d{2})\s*(am|pm)\b/i); return m ? m[1] + ":" + m[2] + " " + m[3].toUpperCase() : null; };
       const stops = path?.querySelectorAll('[data-testid^="flight-card-layover-stop-"],.flight-stop__leg--layover').length || 0;
-      const fares = [...row.querySelectorAll("idp-fare-cell-desktop")].filter(visible).map((cell) => {
+      const fares = [...row.querySelectorAll("idp-fare-cell-desktop")].filter(visible).map((cell, column) => {
         const code = (/-fare-cell-desktop-([A-Za-z0-9]+)$/.exec(cell.querySelector('[id^="grid-row-"]')?.id || "") || [])[1];
         if (!code) return null;
         const amountText = text(cell.querySelector("idp-fare-cell-revenue-template .rounded-amount"));
@@ -141,6 +159,7 @@
         const all = text(cell);
         return {
           brand_code: code,
+          cabin: cabins[column] ?? null,
           brand_name: [...cell.querySelectorAll(".brand-name")].map(text).filter(Boolean).join(" ").replace(/\s*,\s*$/, "").replace(/\s*,\s*/g, ", ") || null,
           amount,
           currency_display: amount === null ? null : (text(cell.querySelector(".currency-symbol")) || null),
@@ -178,6 +197,6 @@
       .filter((f) => input?.max_stops === undefined || f.stops <= input.max_stops)
       .sort((a, b) => keyFor(a) - keyFor(b) || a.result_index - b.result_index)
       .slice(0, limit);
-    return { status: "ok", results_url: url, search, total_rows: rows.length, skipped_rows: skipped, flights: chosen };
+    return { status: "ok", results_url: url, search, total_rows: rows.length, skipped_rows: skipped, more_results_available: moreAvailable, flights: chosen };
   }
 }]

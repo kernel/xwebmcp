@@ -73,7 +73,7 @@
     return {
       status: "navigation_scheduled",
       code, name, price_display: price, restrictions_accepted: accepted,
-      next_step: "Wait for Delta's Trip Summary to load, then call get_page_context and get_trip_summary to confirm the itinerary, fare and amount due with the user. Nothing has been purchased."
+      next_step: "Delta navigates to Trip Summary now (about 3 s). Call get_page_context with wait_for_settled_seconds (e.g. 15) before listing tools, since the next page's tools appear only after it loads; then get_trip_summary to confirm the itinerary, fare and amount due with the user. Nothing has been purchased."
     };
   }
 }]

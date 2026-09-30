@@ -55,6 +55,19 @@
     },
     {
       "domain": "delta.com",
+      "tool": "continue_to_review_and_pay",
+      "file": "domains/delta.com/continue_to_review_and_pay.js",
+      "kind": "page",
+      "namespace": "delta.com",
+      "url_patterns": [
+        "https://www.delta.com/completepurchase/trip-summary*"
+      ],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Schedules the Continue to Review & Pay click on Trip Summary after settling; enters no data, adds no extras, purchases nothing. Unit-tested."
+    },
+    {
+      "domain": "delta.com",
       "tool": "get_page_context",
       "file": "domains/delta.com/get_page_context.js",
       "kind": "page",
@@ -91,7 +104,7 @@
       ],
       "status": "draft",
       "last_verified": null,
-      "notes": "Read-only page tool on the results page: lists visible first-page itineraries with every fare column (brand_code, price, seats-left, sold out), sortable and filterable, plus the stored search context. Reuses search_flights' row parser. Unit-tested with fabricated rows; exercised live on two CVG-SFO one-way results pages (16 and 20 rows, none skipped)."
+      "notes": "Read-only page tool on the results page: lists visible first-page itineraries with every fare column (brand_code, price, seats-left, sold out), sortable and filterable, plus the stored search context. Reuses search_flights' row parser. Unit-tested with fabricated rows; exercised live on two CVG-SFO one-way results pages (16 and 20 rows, none skipped). Adds column cabin names (also for sold-out cells), more_results_available, and opt-in load_more_results."
     },
     {
       "domain": "delta.com",
@@ -137,7 +150,7 @@
       ],
       "status": "draft",
       "last_verified": null,
-      "notes": "Back to draft after a source change on 2026-09-29: airport boxes are now cleared through the page and typed with the inlined lib/input.js cadence, and the typed code is checked before choosing (fixes 'CVCVG' on macOS Chrome, where CDP Meta+A does not select all). First successful full live invocation: CVG-SFO one way, 1 adult, regular Chrome 154 on macOS via the xwebmcp extension, status ok with first-page flights. Needs fresh independent QA; earlier qa_passed sign-off (agt_b189571b6d300a05921c) covered the previous source."
+      "notes": "Back to draft after a source change on 2026-09-29: airport boxes are now cleared through the page and typed with the inlined lib/input.js cadence, and the typed code is checked before choosing (fixes 'CVCVG' on macOS Chrome, where CDP Meta+A does not select all). First successful full live invocation: CVG-SFO one way, 1 adult, regular Chrome 154 on macOS via the xwebmcp extension, status ok with first-page flights. Needs fresh independent QA; earlier qa_passed sign-off (agt_b189571b6d300a05921c) covered the previous source. 2026-09-30: flights carry result_index and price.brand_code for select_fare; more_results_available added."
     },
     {
       "domain": "delta.com",

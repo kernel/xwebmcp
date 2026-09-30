@@ -110,7 +110,7 @@
     if (pageType === "trip_summary" || pageType === "review_and_pay") {
       if (has("get_trip_summary")) steps.push("Use get_trip_summary to confirm the itinerary, fare and amount due with the user");
       steps.push(pageType === "trip_summary"
-        ? "If the user confirms, they continue to Review & Pay on the page; upgrades and extras are optional offers, not required"
+        ? (has("continue_to_review_and_pay") ? "If the user confirms the itinerary and total, use continue_to_review_and_pay; upgrades and extras are optional offers, not required" : "If the user confirms, they continue to Review & Pay on the page; upgrades and extras are optional offers, not required")
         : "Passenger details, trip protection, payment and Complete Purchase must be done by the user; do not enter personal or payment data");
       steps.push("Leaving this page (a new search or the homepage) abandons the current selection; only do so if the user asks");
     } else if (pageType === "flight_results") {

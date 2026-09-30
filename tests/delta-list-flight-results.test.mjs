@@ -31,7 +31,8 @@ const row = (i, { numbers, dep, arr, dayChange = "", duration, stops = 1, fares,
     </idp-mach-core-flight-card>
     ${fares}
   </div>`;
-const page = (rowsHtml, extra = "") => `<html><head><title>Flight Results</title></head><body><idp-search-results>${rowsHtml}</idp-search-results>${extra}</body></html>`;
+const headers = `<idp-flight-cabin-header-wrapper id="mach-cabin-header"><span id="mach-cabin-header-desktop-BMAIN">Main</span><span id="mach-cabin-header-desktop-BDCP">Comfort</span></idp-flight-cabin-header-wrapper>`;
+const page = (rowsHtml, extra = "") => `<html><head><title>Flight Results</title></head><body>${headers}<idp-search-results>${rowsHtml}</idp-search-results>${extra}</body></html>`;
 
 const standard = page(
   row(0, { numbers: ["DL2441", "DL693"], dep: "2:08 pm", arr: "6:09 pm", duration: "7h 1m", fares: fare(0, "BMAIN", { brands: ["Delta Main"], amount: "399", left: 1 }) + fare(0, "BDCP", { soldOut: true }) }) +
@@ -65,8 +66,10 @@ test("lists every visible row with all fare columns and the stored search", asyn
   const [first, second] = out.flights;
   assert.deepEqual(first.flight_numbers, ["DL 2441", "DL 693"]);
   assert.equal(first.departure_time, "2:08 PM");
-  assert.deepEqual(first.fares[1], { brand_code: "BDCP", brand_name: null, amount: null, currency_display: null, basis_display: null, seats_left: null, sold_out: true });
+  assert.deepEqual(first.fares[1], { brand_code: "BDCP", cabin: "Comfort", brand_name: null, amount: null, currency_display: null, basis_display: null, seats_left: null, sold_out: true });
   assert.equal(first.fares[0].seats_left, 1);
+  assert.equal(first.fares[0].cabin, "Main");
+  assert.equal(out.more_results_available, false);
   assert.equal(second.stops, 0);
   assert.equal(second.fares[1].brand_name, "Delta Main, Delta Comfort");
   assert.equal(second.fares[1].amount, 1554);
@@ -100,4 +103,11 @@ test("explicit empty state returns no_results; missing search record gives searc
   assert.equal(out.status, "no_results");
   assert.equal(out.search, null);
   assert.deepEqual(out.flights, []);
+});
+
+test("reports See More Results and loads more rows only when asked", async () => {
+  const more = page(row(0, { numbers: ["DL1"], dep: "9:00 am", arr: "1:00 pm", duration: "7h", fares: fare(0, "BMAIN", { brands: ["Delta Main"], amount: "300" }) }), '<button class="see-more-button">See More Results</button>');
+  const plainRun = await run(more);
+  assert.equal(plainRun.more_results_available, true);
+  assert.equal(plainRun.total_rows, 1);
 });

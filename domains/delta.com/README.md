@@ -4,6 +4,7 @@ Tools for Delta Air Lines (https://www.delta.com).
 
 | tool | file | status | notes |
 | --- | --- | --- | --- |
+| continue_to_review_and_pay | [continue_to_review_and_pay.js](continue_to_review_and_pay.js) | draft | Presses Continue to Review & Pay on Trip Summary; no data, no purchase. Unit-tested. |
 | get_page_context | [get_page_context.js](get_page_context.js) | draft | Read-only page summary: page type, live tools, unsettled/pending_choice, cart id, suggested next steps. Exercised live. |
 | get_trip_summary | [get_trip_summary.js](get_trip_summary.js) | draft | Read-only cart reader on Trip Summary / Review and Pay. Exercised live on Trip Summary. |
 | list_flight_results | [list_flight_results.js](list_flight_results.js) | draft | Read-only results-page tool: every visible itinerary with all fare columns, sortable; unit-tested and exercised live once. |
