@@ -291,6 +291,31 @@ test("search_securities stops after a rate limit or refusal instead of hammering
   assert.equal(rl.error_kind, "rate_limited");
 });
 
+test("search_securities stops on a later refusal even when an earlier list failed differently", async () => {
+  for (const [status, kind] of [[429, "rate_limited"], [401, "blocked"], [403, "blocked"]]) {
+    for (const firstSucceeded of [true, false]) {
+      const env = load("search_securities", { handler: directoryHandler({
+        equities: firstSucceeded ? okReply(DIRECTORY.equities) : { status: 500, body: "unavailable" },
+        bonds: { status: 500, body: "unavailable" },
+        sukuks: { status, body: "refused" }
+      }) });
+      const out = await env.run({ query: "testco" });
+      assert.deepEqual(env.calls.map(c => field(c.body, "securitytype")), ["equities", "bonds", "sukuks"]);
+      if (firstSucceeded) {
+        assert.equal(out.status, "ok");
+        assert.deepEqual(out.failed_types, [
+          { security_type: "bonds", error_kind: "site_error" },
+          ...["sukuk", "funds", "etfs", "reits"].map(security_type => ({ security_type, error_kind: kind }))
+        ]);
+      } else {
+        assert.equal(out.status, "error");
+        assert.equal(out.error_kind, kind, "the later denial takes precedence over an earlier 5xx");
+      }
+      assertConforms(env.definition, out);
+    }
+  }
+});
+
 // --- get_security --------------------------------------------------------------------------------
 
 test("get_security rejects bad input before any request", async () => {

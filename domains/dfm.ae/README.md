@@ -48,7 +48,7 @@ No sign-in, watchlist/preference writes, portfolio access, subscriptions, tradin
 
 ## Known limitations
 
-- Public market data only. No authenticated watchlist or preferences were established, so no account tools are shipped. Login expiry and existing cleanup are not changed by this implementation.
+- Public market data only. Authenticated watchlist/preferences were not investigated, so no account tools are shipped.
 - Currency may be unknown; no currency conversion, generic AED default, intraday timestamp or real-time guarantee. Not suitable for trading decisions.
 - Results are bounded to 50 search matches or 500 history rows. Search names failed lists; absence from a directory is not proof an instrument does not exist.
 - The site's history window is limited. Earlier checks on 2026-09-29 found equity history starting at 2024-12-31; older history requires a logged-in eServices request, not implemented here. `starts_after_from_date` can also reflect weekends, holidays or a later listing.
@@ -61,7 +61,9 @@ Fixture tests in `tests/dfm-market-data.test.mjs` use fabricated data and a stub
 
 Builder live checks on 2026-09-30 (signed-out Kernel browser, market closed): all three tools registered together twice with atomic namespace replacement. From the EMAAR Daily Summary page, search returned matching instruments, details returned the published quote, and history returned three newest rows from 21 sessions with `currency: null`. Unknown symbol and malformed array/date inputs returned explicit errors; all six invocations kept the URL unchanged. The namespace was absent on `example.com`. Profile currency was null and the sampled daily feed and directory had no currency fields.
 
-Earlier independent QA found stale profile-feed quotes, invalid symbol handling and an excessive search request budget. The branch already contains fixes and regression tests for those findings. Historical live/extension checks are not a substitute for a new independent check of the final source. Current-source QA is pending; registry entries remain draft.
+Local-extension builder checks on 2026-09-30 used Chromium 153 headless, a throwaway profile and a pre-granted copy of the extension manifest, with tools installed at source revision `91a043b`. Search, details and history returned live success; an unknown symbol and malformed array input returned explicit errors. The namespace was absent after navigating to `example.com`. Interactive permission grant, headful Chrome and the page-CSP fallback were not exercised.
+
+Earlier independent QA found stale profile-feed quotes, invalid symbol handling and an excessive search request budget. Those findings have regression coverage. Current-source QA also found that a prior 5xx prevented a later denial from stopping the remaining list requests; the fix prioritizes 401/403/429 and tests both partial success and total failure without provoking a real denial. Current-source QA is pending; registry entries remain draft.
 
 ## URL patterns
 

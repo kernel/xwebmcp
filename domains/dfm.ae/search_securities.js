@@ -119,7 +119,11 @@
     for (const type of types) {
       if (firstError && (firstError.kind === "rate_limited" || firstError.kind === "blocked")) { failed.push({ security_type: type, error_kind: firstError.kind }); continue; }
       const loaded = await load(type);
-      if (loaded.kind) { failed.push({ security_type: type, error_kind: loaded.kind }); firstError = firstError || loaded; continue; }
+      if (loaded.kind) {
+        failed.push({ security_type: type, error_kind: loaded.kind });
+        if (!firstError || loaded.kind === "rate_limited" || loaded.kind === "blocked") firstError = loaded;
+        continue;
+      }
       searched.push(type);
       for (const row of loaded.rows) entries.push({ type, row });
     }
