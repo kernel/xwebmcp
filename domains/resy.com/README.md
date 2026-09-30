@@ -6,16 +6,16 @@ Resy restaurant discovery, account reads, reversible favorites and reservation h
 
 | tool | file | status | notes |
 |---|---|---|---|
-| get_account_status | [get_account_status.js](get_account_status.js) | draft | Opaque current-account reference; no profile/payment output |
-| get_availability | [get_availability.js](get_availability.js) | draft | Public slots as full venue-local date-times and raw policy fields |
-| get_availability_calendar | [get_availability_calendar.js](get_availability_calendar.js) | draft | Public per-date booking states |
-| get_reservation | [get_reservation.js](get_reservation.js) | draft | Allowed details for one reservation on one account list page |
-| get_restaurant | [get_restaurant.js](get_restaurant.js) | draft | Public profile by URL or city/venue slug |
-| list_notify_requests | [list_notify_requests.js](list_notify_requests.js) | draft | Read current Notify time-window preferences, maximum 100 |
-| list_reservations | [list_reservations.js](list_reservations.js) | draft | One bounded upcoming/past account page, maximum 20 |
-| prepare_reservation | [prepare_reservation.js](prepare_reservation.js) | draft | Exact public slot match and human handoff, not a quote or hold |
-| search_restaurants | [search_restaurants.js](search_restaurants.js) | draft | Keyword/cuisine/place search; up to 12 sorted slots per venue |
-| set_favorite | [set_favorite.js](set_favorite.js) | draft | Reversible My Hit List favorite only; fixture-tested writes |
+| get_account_status | [get_account_status.js](get_account_status.js) | qa_passed | Opaque current-account reference; no profile/payment output |
+| get_availability | [get_availability.js](get_availability.js) | verified | Public slots as full venue-local date-times and raw policy fields |
+| get_availability_calendar | [get_availability_calendar.js](get_availability_calendar.js) | verified | Public per-date booking states |
+| get_reservation | [get_reservation.js](get_reservation.js) | qa_passed | Allowed details for one reservation on one account list page |
+| get_restaurant | [get_restaurant.js](get_restaurant.js) | verified | Public profile by URL or city/venue slug |
+| list_notify_requests | [list_notify_requests.js](list_notify_requests.js) | qa_passed | Read current Notify time-window preferences, maximum 100 |
+| list_reservations | [list_reservations.js](list_reservations.js) | qa_passed | One bounded upcoming/past account page, maximum 20 |
+| prepare_reservation | [prepare_reservation.js](prepare_reservation.js) | verified | Exact public slot match and human handoff, not a quote or hold |
+| search_restaurants | [search_restaurants.js](search_restaurants.js) | verified | Keyword/cuisine/place search; up to 12 sorted slots per venue |
+| set_favorite | [set_favorite.js](set_favorite.js) | qa_passed | Reversible My Hit List favorite only; fixture-tested writes |
 
 ## Scope and loading
 
@@ -160,7 +160,22 @@ The initial independent review of this revision found two fixture defects: prepa
 inventory date/party echoes, and favorite cancellation during the pre-write identity hash reported wrong_account.
 Both were reproduced independently by the builder; nine added regression cases fail against the pre-fix source
 and pass after requiring exact inventory context and distinguishing pre-write cancellation from uncertain writes.
-The corrected source is pending recheck. All ten entries remain draft until final-source sign-off.
+Independent recheck passed all ten tools at exact source `6395adae0a878d79d39b562d46c8e3ec45aee9e4` on
+2026-09-30: 89 registry tools valid, 1,885 full-suite tests and 308 Resy tests passed, with 188 independent
+checks passing, including the original reproductions. No remaining concrete defects were found.
+
+Kernel live cases from `/global-dining-access` on 2026-09-30: the unchanged four public sources succeeded
+in initial QA; final preparation succeeded for parties of 2 and 4, service date 2026-10-09, next-calendar-day
+start `2026-10-10T00:00`, Dining Room. Six recheck invocations produced four public `/4/find` requests and
+six Ajv-valid outputs; signed-out account/favorite calls made no requests. There was no navigation, account
+header, cookie or widget/details/hold activity. The final-source account-status success described above was
+builder-observed on the authorized document, not an independent authenticated test; its current path was not
+recorded. Account status is conservatively qa_passed rather than claiming the verified non-entry-page criterion.
+
+Five public tools are verified using dated live success plus independent source QA. All five account tools
+remain qa_passed: empty envelopes are not populated-item success, and favorite mutation/restoration is fixture-only. The PR remains draft. Tool source hashes are unchanged after sign-off; subsequent source
+changes require new QA. Initial QA used 13 source invocations and seven API requests, plus two network-free
+size probes and two public bundle reads. Both owned QA browsers were deleted and absence confirmed.
 
 Fixtures use fabricated identities, venues, tokens and policies and cover malformed input before interaction,
 account/venue mismatches, omitted login, cancellation, duplicates, stale state, uncertain write outcomes,

@@ -873,9 +873,10 @@
       "kind": "page",
       "namespace": "resy.com",
       "url_patterns": ["https://resy.com/*"],
-      "status": "draft",
-      "last_verified": null,
-      "notes": "Read an opaque current-account reference without profile or payment data. No login or mutation."
+      "status": "qa_passed",
+      "last_verified": "2026-09-30",
+      "notes": "Read an opaque current-account reference without profile or payment data. No login or mutation.",
+      "provenance": { "qa_agent": "agt_221f5a5f11361477ff09" }
     },
     {
       "domain": "resy.com",
@@ -884,9 +885,10 @@
       "kind": "page",
       "namespace": "resy.com",
       "url_patterns": ["https://resy.com/*"],
-      "status": "draft",
-      "last_verified": null,
-      "notes": "Public slots as full venue-local date-times, sorted and capped at 300. Raw policy fields are not confirmed charges."
+      "status": "verified",
+      "last_verified": "2026-09-30",
+      "notes": "Public slots as full venue-local date-times, sorted and capped at 300. Raw policy fields are not confirmed charges.",
+      "provenance": { "qa_agent": "agt_221f5a5f11361477ff09" }
     },
     {
       "domain": "resy.com",
@@ -895,9 +897,10 @@
       "kind": "page",
       "namespace": "resy.com",
       "url_patterns": ["https://resy.com/*"],
-      "status": "draft",
-      "last_verified": null,
-      "notes": "Public per-date booking states. Tock venues can return not_found or empty no_results."
+      "status": "verified",
+      "last_verified": "2026-09-30",
+      "notes": "Public per-date booking states. Tock venues can return not_found or empty no_results.",
+      "provenance": { "qa_agent": "agt_221f5a5f11361477ff09" }
     },
     {
       "domain": "resy.com",
@@ -906,9 +909,10 @@
       "kind": "page",
       "namespace": "resy.com",
       "url_patterns": ["https://resy.com/*"],
-      "status": "draft",
-      "last_verified": null,
-      "notes": "Account-guarded details of one reservation on a specified list page, not all pages. Populated items are fixture-only. No cancellation tokens."
+      "status": "qa_passed",
+      "last_verified": "2026-09-30",
+      "notes": "Account-guarded details of one reservation on a specified list page, not all pages. Populated items are fixture-only. No cancellation tokens.",
+      "provenance": { "qa_agent": "agt_221f5a5f11361477ff09" }
     },
     {
       "domain": "resy.com",
@@ -917,9 +921,10 @@
       "kind": "page",
       "namespace": "resy.com",
       "url_patterns": ["https://resy.com/*"],
-      "status": "draft",
-      "last_verified": null,
-      "notes": "Public venue profile by URL or city and venue slug."
+      "status": "verified",
+      "last_verified": "2026-09-30",
+      "notes": "Public venue profile by URL or city and venue slug.",
+      "provenance": { "qa_agent": "agt_221f5a5f11361477ff09" }
     },
     {
       "domain": "resy.com",
@@ -928,9 +933,10 @@
       "kind": "page",
       "namespace": "resy.com",
       "url_patterns": ["https://resy.com/*"],
-      "status": "draft",
-      "last_verified": null,
-      "notes": "Account-guarded read of up to 100 Notify time windows. Empty collection observed live; populated items fixture-only. No notification writes."
+      "status": "qa_passed",
+      "last_verified": "2026-09-30",
+      "notes": "Account-guarded read of up to 100 Notify time windows. Empty collection observed live; populated items fixture-only. No notification writes.",
+      "provenance": { "qa_agent": "agt_221f5a5f11361477ff09" }
     },
     {
       "domain": "resy.com",
@@ -939,9 +945,10 @@
       "kind": "page",
       "namespace": "resy.com",
       "url_patterns": ["https://resy.com/*"],
-      "status": "draft",
-      "last_verified": null,
-      "notes": "Account-guarded reservation page, maximum 20 items, no automatic pagination. Empty collection observed live; populated items fixture-only."
+      "status": "qa_passed",
+      "last_verified": "2026-09-30",
+      "notes": "Account-guarded reservation page, maximum 20 items, no automatic pagination. Empty collection observed live; populated items fixture-only.",
+      "provenance": { "qa_agent": "agt_221f5a5f11361477ff09" }
     },
     {
       "domain": "resy.com",
@@ -950,9 +957,10 @@
       "kind": "page",
       "namespace": "resy.com",
       "url_patterns": ["https://resy.com/*"],
-      "status": "draft",
-      "last_verified": null,
-      "notes": "Public exact-slot match and human handoff only. No hold, details request, account binding or booking; exact price and final terms unavailable."
+      "status": "verified",
+      "last_verified": "2026-09-30",
+      "notes": "Public exact-slot match and human handoff only. No hold, details request, account binding or booking; exact price and final terms unavailable.",
+      "provenance": { "qa_agent": "agt_221f5a5f11361477ff09" }
     },
     {
       "domain": "resy.com",
@@ -961,9 +969,10 @@
       "kind": "page",
       "namespace": "resy.com",
       "url_patterns": ["https://resy.com/*"],
-      "status": "draft",
-      "last_verified": null,
-      "notes": "Public restaurant search and up to 12 sorted slots per venue. Tock slots are informational; cross-origin blocks can surface as site_error."
+      "status": "verified",
+      "last_verified": "2026-09-30",
+      "notes": "Public restaurant search and up to 12 sorted slots per venue. Tock slots are informational; cross-origin blocks can surface as site_error.",
+      "provenance": { "qa_agent": "agt_221f5a5f11361477ff09" }
     },
     {
       "domain": "resy.com",
@@ -972,9 +981,10 @@
       "kind": "page",
       "namespace": "resy.com",
       "url_patterns": ["https://resy.com/*"],
-      "status": "draft",
-      "last_verified": null,
-      "notes": "Reversible My Hit List favorite with exact account/venue and expected-state guards, one write and readback. Live mutation not tested. Never retry uncertain writes automatically."
+      "status": "qa_passed",
+      "last_verified": "2026-09-30",
+      "notes": "Reversible My Hit List favorite with exact account/venue and expected-state guards, one write and readback. Live mutation not tested. Never retry uncertain writes automatically.",
+      "provenance": { "qa_agent": "agt_221f5a5f11361477ff09" }
     },
     {
       "domain": "southwest.com",
