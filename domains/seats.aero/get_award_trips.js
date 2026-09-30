@@ -235,7 +235,6 @@
     const trips = [];
     for (const trip of data.trips) {
       if (!trip || !["economy", "premium", "business", "first"].includes(trip.Cabin)) return fail("site_changed", "An itinerary cabin is invalid.");
-      if (cabin !== "any" && trip.Cabin !== cabin) continue;
       const depart = localTime(trip.DepartsAt), arrive = localTime(trip.ArrivesAt);
       const carriers = list(trip.Carriers, /^[A-Z0-9]{2}$/);
       const flights = list(trip.FlightNumbers, /^[A-Z0-9]{2}\s?\d{1,4}[A-Z]?$/);
@@ -250,6 +249,7 @@
         segments.push({ flight_number: segment.FlightNumber, origin: segment.OriginAirport, destination: segment.DestinationAirport, departure_local: sd, arrival_local: sa, duration_minutes: segment.Duration, aircraft: segment.AircraftName, cabin: segment.Cabin });
       }
       if (segments[0].origin !== data.originAirport || segments.at(-1).destination !== data.destinationAirport || segments.some((s,i) => i > 0 && segments[i-1].destination !== s.origin)) return fail("site_changed", "The segment route no longer matches the itinerary.");
+      if (cabin !== "any" && trip.Cabin !== cabin) continue;
       trips.push({ trip_id: trip.ID, cabin: trip.Cabin, departure_local: depart, arrival_local: arrive, duration_minutes: trip.TotalDuration, stops: trip.Stops, carriers, flight_numbers: flights, connections, aircraft, remaining_seats: trip.RemainingSeats, miles: trip.MileageCost, taxes: { amount_hundredths: trip.TotalTaxes, currency: trip.TaxesCurrency }, segments });
     }
     return { status: trips.length ? "ok" : "no_results", attribution: "Seats.aero — https://seats.aero/", observed_at: new Date().toISOString(), availability_id: input.availability_id, program_id: data.source, depart_date: date, origin: data.originAirport, destination: data.destinationAirport, last_updated_minutes: data.lastUpdatedMinutes, time_basis: "airport_local", total_matches: trips.length, has_more: trips.length > limit, trips: trips.slice(0,limit) };

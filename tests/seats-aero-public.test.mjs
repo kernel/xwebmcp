@@ -162,6 +162,13 @@ test("get_award_trips: local times and safe allowlist",async()=>{
   const many=tripData();many.trips=Array.from({length:40},()=>trip());const capped=await harness("get_award_trips",{body:many}).run({...inputs.get_award_trips,limit:2});assert.equal(capped.trips.length,2);assert.equal(capped.has_more,true);
 });
 
+test("get_award_trips: cabin filters cannot hide malformed itinerary identity",async()=>{
+  for(const change of [t=>t.AvailabilityID="C".repeat(27),t=>t.Source="unrelated",t=>t.AvailabilitySegments[0].AvailabilityTripID="C".repeat(27)]){
+    const body=tripData();change(body.trips[0]);
+    for(const cabin of ["any","economy","business"])assert.equal((await harness("get_award_trips",{body}).run({...inputs.get_award_trips,cabin})).status,"site_changed");
+  }
+});
+
 test("get_award_trips: public date, record identity and schema changes",async()=>{
   for(const extra of [{availability_id:"../../private"},{availability_id:"https://seats.aero/s/id"},{depart_date:day(-1)},{depart_date:"2030-02-30"},{limit:21},{limit:null}]){const h=harness("get_award_trips");assert.equal((await h.run({...inputs.get_award_trips,...extra})).status,"invalid_input");assert.equal(h.calls.length,0);}
   const far=harness("get_award_trips");assert.equal((await far.run({...inputs.get_award_trips,depart_date:day(58)})).status,"login_required");assert.equal(far.calls.length,0);
