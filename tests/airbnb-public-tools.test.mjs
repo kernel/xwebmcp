@@ -61,10 +61,19 @@ const node = (id = ID) => ({
 const listingState = value => ({ niobeClientData: [["irrelevant", {}], ["listing", { data: { node: value ?? node() } }]] });
 const html = (state, title = "Airbnb", lang = "en-US", heading = "") => `<html lang="${lang}"><title>${title}</title><h1>${heading}</h1><script id="data-deferred-state-0">${JSON.stringify(state).replace(/</g, "\\u003c")}</script></html>`;
 
+const headingNode = ({ text, hidden = false, style = {}, tag = "h1" }) => ({
+  tag, textContent: text, innerText: text, hidden, style, parentElement: null,
+  checkVisibility: () => !hidden && style.display !== "none" && !["hidden", "collapse"].includes(style.visibility) && style.opacity !== "0",
+  cloneNode() { return { textContent: text, querySelectorAll: () => [] }; }
+});
+
 // Minimal parser stub only for the observed HTML surfaces; network and navigation are separate spies.
 class DOMParser {
   parseFromString(source) {
     const match = /<script id="data-deferred-state-0">([\s\S]*?)<\/script>/.exec(source);
+    const headings = [...source.matchAll(/<(h[1-6]|div)\b([^>]*)>(.*?)<\/\1>/gs)].filter(([_, tag, attrs]) => tag !== "div" || /role="heading"/.test(attrs)).map(([_, tag, attrs, text]) => headingNode({
+      tag, text, hidden: /(?:^|\s)hidden(?:\s|=|$)/.test(attrs), style: Object.fromEntries([...(/style="([^"]*)"/.exec(attrs)?.[1] ?? "").matchAll(/(display|visibility|opacity)\s*:\s*([^;]+)/g)].map(([_, key, value]) => [key, value.trim()]))
+    }));
     return {
       title: /<title>([\s\S]*?)<\/title>/.exec(source)?.[1] ?? "",
       documentElement: { lang: /lang="([^"]*)"/.exec(source)?.[1] ?? "" },
@@ -72,10 +81,10 @@ class DOMParser {
       querySelector(selector) {
         if (selector === "title") return { textContent: /<title>([\s\S]*?)<\/title>/.exec(source)?.[1] ?? "" };
         if (selector === "#data-deferred-state-0") return match ? { textContent: match[1] } : null;
-        if (selector === "h1") return { textContent: /<h1>(.*?)<\/h1>/.exec(source)?.[1] ?? "", innerText: /<h1>(.*?)<\/h1>/.exec(source)?.[1] ?? "" };
+        if (selector === "h1") return headings.find(heading => heading.tag === "h1") ?? null;
         return null;
       },
-      querySelectorAll: () => []
+      querySelectorAll: selector => selector.startsWith("h1,") ? headings : []
     };
   }
 }
@@ -105,7 +114,8 @@ function harness(name, options = {}) {
   const originalQuery = doc.querySelector.bind(doc);
   const panels = options.noPanel ? [] : [bookingPanel(options.panel), ...(options.extraPanels ?? []).map(bookingPanel)];
   doc.querySelector = selector => selector === '[data-testid="book-it-default"]' ? panels[0] ?? null : originalQuery(selector);
-  doc.querySelectorAll = selector => selector === '[data-testid="book-it-default"]' ? panels : selector.startsWith("h1,") ? (options.headings ?? [{ text: originalQuery("h1")?.innerText ?? "" }]).map(heading => ({ innerText: heading.text, checkVisibility: () => !heading.hidden })) : [];
+  const originalQueryAll = doc.querySelectorAll.bind(doc);
+  doc.querySelectorAll = selector => selector === '[data-testid="book-it-default"]' ? panels : selector.startsWith("h1,") && options.headings ? options.headings.map(headingNode) : originalQueryAll(selector);
   doc.documentElement.lang = options.lang ?? "en-US";
   doc.createElement = tag => {
     assert.equal(tag, "template");
@@ -249,6 +259,66 @@ for (const name of ["search_stays", "get_listing"]) {
     const controller = new AbortController(); controller.abort(); const h = harness(name);
     assert.equal((await h.run(undefined, controller.signal)).error_kind, "timeout");
   });
+}
+
+const headingHtml = (text, tag = "h1", attrs = "") => `<${tag} ${attrs}>${text}</${tag.split(" ")[0]}>`;
+for (const name of ["get_listing", "search_stays"]) {
+  test(`${name}: original first-heading U+2019 regression before request`, async () => {
+    const h = harness(name, { currentHtml: html(listingState(), "Airbnb", "en-US", "Verify you’re human") });
+    assert.equal((await h.run()).error_kind, "challenge"); assert.equal(h.calls.length, 0);
+  });
+  test(`${name}: original HTTP 200 U+2019 regression with retained public data`, async () => {
+    const h = harness(name, { body: html(name === "get_listing" ? listingState() : searchState(), "Airbnb", "en-US", "Verify you’re human") });
+    assert.equal((await h.run()).error_kind, "challenge"); assert.equal(h.calls.length, 1);
+  });
+}
+for (const tag of ["h1", "h2", "h3", 'div role="heading"']) {
+  test(`prepare_booking: original visible U+2019 regression ${tag}`, async () => {
+    const h = harness("prepare_booking", { currentHtml: html(listingState()).replace("<h1></h1>", headingHtml("Verify you’re human", tag)) });
+    assert.equal((await h.run()).error_kind, "challenge"); assert.equal(h.calls.length, 0);
+  });
+}
+const verificationTexts = ["Verify you're human", "Verify you’re human", "Verify you‘re human", "Verify you are human", "Confirm you’re human", "VERIFY\u00a0YOU’RE\nHUMAN!"];
+const headingTags = ["h1", "h2", "h3", "h4", "h6", 'div role="heading"'];
+for (const name of names) {
+  for (const phrase of verificationTexts) {
+    for (const tag of headingTags) test(`${name}: visible verification heading ${tag} ${JSON.stringify(phrase)}`, async () => {
+      const h = harness(name, { currentHtml: html(listingState()).replace("<h1></h1>", "<h1>Example property</h1>" + headingHtml(phrase, tag)) });
+      assert.equal((await h.run()).error_kind, "challenge"); assert.equal(h.calls.length, 0);
+    });
+    test(`${name}: verification title ${JSON.stringify(phrase)}`, async () => {
+      const h = harness(name, { currentTitle: phrase });
+      assert.equal((await h.run()).error_kind, "challenge"); assert.equal(h.calls.length, 0);
+    });
+  }
+  for (const attrs of ["hidden", 'style="display:none"', 'style="visibility:hidden"', 'style="opacity:0"']) {
+    test(`${name}: hidden verification heading is not a challenge ${attrs}`, async () => {
+      const h = harness(name, { currentHtml: html(listingState()).replace("<h1></h1>", headingHtml("Verify you're human", "h1", attrs)) });
+      assert.equal((await h.run()).status, name === "prepare_booking" ? "prepared" : "ok");
+      assert.equal(h.calls.length, name === "prepare_booking" ? 0 : 1);
+    });
+  }
+  for (const ordinary of [headingHtml("How to verify you're human"), headingHtml("Guide: Verify you’re human"), "<p>Verify you're human</p>", "<script>Verify you're human</script>"]) {
+    test(`${name}: incidental content is not a challenge ${ordinary}`, async () => {
+      const h = harness(name, { currentHtml: html(listingState()).replace("<h1></h1>", ordinary) });
+      assert.equal((await h.run()).status, name === "prepare_booking" ? "prepared" : "ok");
+    });
+  }
+}
+for (const name of ["get_listing", "search_stays"]) {
+  const state = name === "get_listing" ? listingState() : searchState();
+  for (const phrase of verificationTexts) for (const tag of ["h1", "h2", 'div role="heading"']) {
+    test(`${name}: fetched verification heading ${tag} ${JSON.stringify(phrase)}`, async () => {
+      const h = harness(name, { body: html(state).replace("<h1></h1>", "<h1>Example property</h1>" + headingHtml(phrase, tag)) });
+      assert.equal((await h.run()).error_kind, "challenge"); assert.equal(h.calls.length, 1);
+    });
+  }
+  for (const attrs of ["hidden", 'style="display:none"', 'style="visibility:hidden"', 'style="opacity:0"']) {
+    test(`${name}: fetched hidden verification heading is not a challenge ${attrs}`, async () => {
+      const h = harness(name, { body: html(state).replace("<h1></h1>", headingHtml("Verify you're human", "h1", attrs)) });
+      assert.equal((await h.run()).status, "ok"); assert.equal(h.calls.length, 1);
+    });
+  }
 }
 
 test("prepare_booking: exact preview returns human-only handoff without interaction", async () => {

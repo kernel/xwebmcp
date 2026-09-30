@@ -112,6 +112,11 @@ login and booking starting paths are refused even on the matching host.
 - Unknown destinations, unavailable listings, login/verification pages, throttling,
   and alternate hotel/Luxe layouts may differ from the observed public payload.
   Live coverage and fixture-only cases are recorded separately below.
+- Verification markers are English, whole title/heading messages. Straight and
+  typographic apostrophes, normalized whitespace and terminal punctuation are
+  supported. Live headings use native visibility. Fetched HTML stays inert: its
+  heading scan excludes explicit hidden attributes, inline hidden styles and
+  hidden descendants, but does not compute visibility from external stylesheets.
 - Site terms restrict automated access and collection. The tools do not imply site
   permission or change those terms. The published robots.txt also disallows
   `/s/*/*` for all crawlers and restricts listing paths for some named agents.
@@ -122,13 +127,22 @@ login and booking starting paths are refused even on the matching host.
 
 ## QA
 
-Builder checks on 2026-09-30: 137 fabricated fixture tests passed, as did registry
-validation and the full 1,714-test suite. A separate real-Chromium check passed 22
-preview/starting-page fixtures, with no tool-generated requests or clicks. Fixtures
-cover malformed inputs, denied access, unsupported data, price variants, canonical
-URLs, array/string bounds, public-field allowlists, abort cancellation, request
-counts, non-navigation, mismatched
-listing/date/guest previews and rejection of fake confirmation inputs.
+Builder checks on 2026-09-30: 339 fabricated fixture tests passed, registry validation
+passed (82 tools), the full 1,916-test suite passed, all 14 extension unit tests
+passed, and `go test ./...` passed. The unchanged CI workflow runs these Go, registry,
+tool and extension checks.
+
+Regression reproduction used the audited sources with the new test matrix: 164
+of 339 cases failed, including all eight original U+2019 cases. The repaired sources
+passed all 339 without skips or weakened assertions. Coverage includes first/later
+headings, heading roles, punctuation/whitespace variants, hidden headings, ordinary
+prose, current-document refusals before GET and HTTP 200 verification responses
+retaining public data. Existing disabled-control, qualifier, price/currency,
+settings-path and Unicode URL-bound tests still pass.
+
+A separate native-Chromium run passed 31 direct-source cases, including CSS-hidden
+live headings, hidden ancestors/descendants and fetched inline-hidden content.
+These are synthetic fixtures, not extension invocation or live challenge evidence.
 
 Kernel live: search and listing reads succeeded from `/help/article/2908` without
 replacing that document. A dated listing preview returned its displayed three-night
@@ -140,21 +154,12 @@ The Kernel page bridge may return non-ASCII output as a JSON string; callers sho
 parse when `typeof output === "string"`. This is runtime behavior, not a changed
 output schema.
 
-Independent final-source QA at `dcf626a63bd7d379b203cd9f4c26e314a246577c`
-failed all three tools. The previous disabled-control, qualifier, heading, account
-path and URL-bound issues were resolved, but verification classification still
-misses `Verify you’re human` (U+2019) while recognizing the straight-apostrophe
-wording. Real-Chromium fixtures returned `prepared` for that visible heading, and
-both readers issued one mocked GET and returned `ok`. This is a fixture-only
-classification defect, not evidence of a live challenge or access-control bypass.
+The prior independent review exposed the U+2019 verification classification defect;
+new regression tests reproduce it before the repair. Fresh independent final-source
+review is pending, so all three entries remain `draft`.
 
-The independent suite passed 175 of 183 cases; eight failures share that defect.
-All 183 fixture outputs and eight completed Kernel outputs conformed to their
-schemas. The independent Kernel search/listing/dated-preview successes do not
-resolve this semantic failure. Earlier provisional reader sign-offs were withdrawn;
-no source has final QA sign-off. The initial review and both permitted rechecks are
-complete, so all three entries remain `draft`, not `qa_passed` or `verified`.
-
-Local Chromium 153 loaded the extension and stored all three definitions together.
-Optional host permission remained ungranted; discovery/invocation and parity are
-unverified.
+Local Chromium 153 loaded the unmodified extension and stored all three definitions
+together on fully intercepted synthetic pages. A normal Grant access request did
+not grant the optional host permission; discovery/invocation and parity remain
+unverified. The isolated browser and temporary profile were removed. No real site
+request or permission workaround occurred in that extension check.

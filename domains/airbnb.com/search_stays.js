@@ -142,18 +142,29 @@
       if (typeof value !== "string") return null;
       try { return /^DemandStayListing:([1-9][0-9]{0,19})$/.exec(atob(value))?.[1] ?? null; } catch { return null; }
     };
-    const gate = doc => {
-      const title = doc.title || "";
-      if (/captcha|access denied|robot check|verify (you are|you're) human|security check|unusual traffic/i.test(title)) return "challenge";
-      if (/log in|sign in/i.test(title)) return "login_required";
-      const heading = doc.querySelector("h1")?.textContent || "";
-      if (/confirm you.?re human|verify (you are|you're) human|complete the captcha|security check/i.test(heading)) return "challenge";
-      return null;
+    const challengeText = value => /^(?:captcha|access denied|robot check|security check|unusual traffic|(?:verify|confirm) (?:you are|you're) human|complete the captcha)[.!?]?$/i.test(value.replace(/[‘’]/g, "'").replace(/\s+/g, " ").trim());
+    const hidden = element => {
+      for (let node = element; node; node = node.parentElement) {
+        if (node.hidden || node.style.display === "none" || /^(?:hidden|collapse)$/.test(node.style.visibility) || node.style.opacity && Number(node.style.opacity) === 0) return true;
+      }
+      return false;
+    };
+    const gate = (doc, live = false) => {
+      if (challengeText(doc.title || "")) return "challenge";
+      if (/log in|sign in/i.test(doc.title || "")) return "login_required";
+      const blocked = [...doc.querySelectorAll('h1, h2, h3, h4, h5, h6, [role="heading"]')].some(heading => {
+        if (live) return heading.checkVisibility({ opacityProperty: true, visibilityProperty: true }) && challengeText(heading.innerText || "");
+        if (hidden(heading)) return false;
+        const copy = heading.cloneNode(true);
+        copy.querySelectorAll("[hidden], [style]").forEach(element => { if (hidden(element)) element.remove(); });
+        return challengeText(copy.textContent || "");
+      });
+      return blocked ? "challenge" : null;
     };
     const readPage = async path => {
       if (location.origin !== ORIGIN) return { error: fail("wrong_page", "Open a public https://www.airbnb.com page first.") };
       if (/^\/(?:account(?:-settings)?|guest|hosting|host|trips|wishlists|recently-viewed|book|booking|payments|reserve|login|signup)(?:\/|$)/.test(location.pathname)) return { error: fail("wrong_page", "Use a public Airbnb page, not an account or booking page.") };
-      const currentGate = gate(document);
+      const currentGate = gate(document, true);
       if (currentGate) return { error: fail(currentGate, "The current page requires access verification; no request was sent.") };
       const controller = new AbortController();
       const abort = () => controller.abort();
@@ -183,6 +194,7 @@
         const doc = {
           title: template.content.querySelector("title")?.textContent || "",
           querySelector: selector => template.content.querySelector(selector),
+          querySelectorAll: selector => template.content.querySelectorAll(selector),
           documentElement: { lang: /<html\b[^>]*\blang=["']([^"']*)["']/i.exec(html)?.[1] || "" }
         };
         const blocked = gate(doc);

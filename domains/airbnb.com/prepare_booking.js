@@ -62,9 +62,9 @@
     entry.searchParams.set("adults", String(input.adults));
     entry.searchParams.set("currency", "USD");
     const visible = element => element?.checkVisibility({ opacityProperty: true, visibilityProperty: true });
-    const headings = [...document.querySelectorAll('h1, h2, h3, [role="heading"]')].filter(visible).map(heading => heading.innerText || "");
-    const verificationText = (document.title || "") + " " + headings.join(" ");
-    if (/captcha|access denied|robot check|security check|unusual traffic|verify (you are|you're) human|confirm you.?re human/i.test(verificationText)) return fail("challenge", "The page requires access verification; no action was taken.");
+    const challengeText = value => /^(?:captcha|access denied|robot check|security check|unusual traffic|(?:verify|confirm) (?:you are|you're) human|complete the captcha)[.!?]?$/i.test(value.replace(/[‘’]/g, "'").replace(/\s+/g, " ").trim());
+    const headings = [...document.querySelectorAll('h1, h2, h3, h4, h5, h6, [role="heading"]')].filter(visible);
+    if (challengeText(document.title || "") || headings.some(heading => challengeText(heading.innerText || ""))) return fail("challenge", "The page requires access verification; no action was taken.");
     if (/log in|sign in/i.test(document.title || "")) return fail("login_required", "A public listing page is required; no sign-in is attempted.");
     const current = new URL(location.href);
     if (current.origin !== entry.origin || current.pathname !== entry.pathname || ["check_in", "check_out", "adults", "currency"].some(key => current.searchParams.getAll(key).length !== 1 || current.searchParams.get(key) !== entry.searchParams.get(key)) || ["children", "infants", "pets"].some(key => current.searchParams.getAll(key).length > 1 || current.searchParams.has(key) && current.searchParams.get(key) !== "0")) return fail("wrong_page", "Open entry_url and let Airbnb render the exact listing, dates and adult guests, then invoke again.", entry.href);
