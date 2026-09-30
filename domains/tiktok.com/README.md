@@ -4,9 +4,9 @@ Bounded public video/profile lookups and a rendered video-search reader for TikT
 
 | tool | file | status | notes |
 |------|------|--------|-------|
-| get_profile | [get_profile.js](get_profile.js) | draft | One public profile's identity, bio and counts; no private profiles or video listing. |
-| get_video | [get_video.js](get_video.js) | draft | One public video's caption, author, music, hashtags, timestamp, duration and counts; no media URLs. |
-| search | [search.js](search.js) | draft | Reads up to 20 public video cards on an already-open matching search page; no navigation or playback. |
+| get_profile | [get_profile.js](get_profile.js) | verified | One public profile's identity, bio and counts; no private profiles or video listing. |
+| get_video | [get_video.js](get_video.js) | verified | One public video's caption, author, music, hashtags, timestamp, duration and counts; no media URLs. |
+| search | [search.js](search.js) | qa_passed | Reads up to 20 public video cards on an already-open matching search page; no navigation or playback. |
 
 ## Scope and loading
 
@@ -44,7 +44,8 @@ caller-controlled navigation. It reads at most 40 existing grid containers and r
 at most 20 distinct visible video links, bounded card text and displayed likes.
 Hidden/transparent/CSS-invisible cards and aria-hidden containers are skipped; hidden
 links, previews and count labels are not returned. Preview/count extraction rejects
-invisible or aria-hidden descendant subtrees and inspects at most 300 nodes per field. The site's
+invisible or aria-hidden descendant subtrees and inspects at most 300 nodes per field.
+The site's
 `data-e2e="video-views"` means likes on search cards, not plays. It never starts media,
 scrolls, polls, clicks or makes network requests. Navigation/playback consequences of
 opening a search page remain the caller's responsibility; the tool does not automate
@@ -80,7 +81,7 @@ top document has a different origin (including an unrelated page with a TikTok i
   music author at 100, hashtags at 30 entries of 100 characters each. Counts may drift,
   be absent (null), or exceed safe integer precision (null). No pagination or bulk read.
 - The two lookups support only the observed embedded JSON shape. No fallback endpoint,
-  DOM extraction, hidden-frame navigation or external-service backend is attempted.
+  DOM-content fallback, hidden-frame navigation or external-service backend is attempted.
 - Search requires a normally loaded matching video-search page; signed-out search
   showed "Log in to search for popular content" and returns `login_required`. It does
   not implement a new-query request, signed-in login flow, filters, photo/LIVE cards or
@@ -90,9 +91,10 @@ top document has a different origin (including an unrelated page with a TikTok i
   account-identity invariant or non-sending draft surface was established. Final sending,
   posting and purchases have no trusted human-approval path in this tool set and are
   not executable. No user account state was changed for development.
-- Independent final-source search QA is pending after fixing hidden-card extraction,
-  null `max_results` input, and hidden descendants within visible text containers. Fixture coverage
-  is not evidence that every real-world access restriction has been observed live.
+- Search is `qa_passed`, not `verified`: success is fixture-only. Both lookups are
+  `verified` through live Kernel success and independent QA. Actual-extension execution
+  passed on fabricated intercepted pages, not the live site; live-site extension parity
+  remains unverified. Fixture coverage does not prove every real access restriction.
 
 ## Native WebMCP
 
@@ -120,33 +122,33 @@ missing-target requests returned `not_found`. All three tools are registered tog
 The search reader on a signed-out matching page initially returned `site_changed`
 while the login panel was still loading. Once loaded, the page displayed "Log in to
 search for popular content" and returned `login_required`; an unmatched query returned
-`wrong_page`. No tools were discovered after navigating to example.com. No login was attempted. Independent final-source results
-will be recorded after QA. `tests/tiktok-search.test.mjs` covers fabricated rendered cards,
+`wrong_page`. No tools were discovered after navigating to example.com. No login was
+attempted. `tests/tiktok-search.test.mjs` covers fabricated rendered cards,
 query/page matching, input/target validation, login/challenge/no-results branches,
 output and scan bounds, deduplication and no-request/no-navigation behavior.
 
-Independent initial QA (`agt_00a33cd083c5853d4830`, 2026-09-30) signed off both lookup
-sources at `2a902c0150bb2e82bbc213febe2443dd97e5e133`: native tools absent; atomic
-namespace registration/conflict/replacement; live success from robots.txt; missing
-targets; one anonymous GET, no cookies, media, retries or navigation; 11 Kernel
-outputs independently schema-validated; stale references refused; no tools on
-example.com. Validator, 1627 tool tests, Go tests, 14 extension tests and 12 extra
-fixture/stream probes passed. Search's two findings were fixed with regression tests;
-its final-source recheck is pending. Round 1 at `b4303bc164ad725692d1613c4fb17b9983bb0d1a`
-confirmed the original fixes and retained lookup signoff, but found invisible/aria-hidden
-text nested inside a visible preview. Bounded filtered text traversal and descendant
-regression tests address that finding; final round 2 is pending.
+Independent final QA (`agt_00a33cd083c5853d4830`, 2026-09-30) signed off all three
+sources at `11e52a6ed9c9dec3b57413be99f6bd23d389199b`, after an initial review and two
+fix/rechecks. No unresolved concrete defects remained. Regression tests cover the
+findings: hidden cards, null `max_results`, and invisible/aria-hidden descendants
+inside visible text containers. Final validation: 82 registry tools, 1631 tool tests
+(including 54 TikTok tests), uncached Go tests and 14 extension unit tests passed.
 
-Local Chromium 153 extension, author check (2026-09-30): all three sources installed,
-registered, discovered and invoked successfully through the actual extension on
-intercepted fabricated HTML, using real DOMParser and WebMCP. Lookups made one GET
-each, search made none, wrong query returned `wrong_page`, and registrations were
-removed on document replacement. This used an isolated local test profile with
-site access granted only there. No live TikTok request/account was used; this is
-fixture-runtime evidence, not live-site extension parity. Independent extension QA
-checked installation and namespace atomicity but did not grant site access, so it
-did not independently verify page registration/invocation in its initial pass.
-Independent round 1 additionally installed/discovered/invoked all three through the
-real extension on intercepted fabricated HTML, validated outputs, confirmed one GET
-per lookup and zero search requests, and checked document replacement. It found the
-nested hidden-text issue described above; that source was not signed off for search.
+**Kernel live evidence (2026-09-30):** signed-out public profile and public video
+metadata lookups succeeded from robots.txt, not their target pages. Each made one
+cookie-free GET, without media requests, retries or navigation. Missing targets
+returned `not_found`. Native discovery was empty; namespace registration, conflict
+atomicity and replacement passed; stale references were refused; example.com exposed
+no tools. Actual outputs were independently schema-validated. Search returned
+`login_required`, `wrong_page`, invalid-input and loading-state errors, but its live
+success remains unverified.
+
+**Actual local extension fixture-runtime (2026-09-30):** the author checked an earlier
+revision; the independent reviewer checked the final source. Both installed,
+registered, discovered and invoked all three through Chromium 153 with real
+DOMParser/WebMCP and intercepted fabricated HTML. Final QA confirmed one GET per lookup, zero search requests, schema-valid success
+and failure, document replacement, and all search bounds. Hidden descendants were
+excluded with zero intercepted hidden `textContent` reads; traversal stopped at 300
+nodes plus an unconsumed sentinel. Disposable profiles held no TikTok accounts and
+made no real TikTok requests. This verifies extension execution on fixtures, **not**
+live-site extension parity. Local scratch resources were removed.

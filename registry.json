@@ -1076,9 +1076,12 @@
       "url_patterns": [
         "https://www.tiktok.com/*"
       ],
-      "status": "draft",
-      "last_verified": null,
-      "notes": "One anonymous public-page read; no private data, media URLs, redirects or retries. TikTok automation terms and access restrictions apply."
+      "status": "verified",
+      "last_verified": "2026-09-30",
+      "notes": "One anonymous public-profile read; independent QA and live Kernel success from another consumer page. No private data, media URLs, redirects or retries. TikTok automation terms apply; live-site extension parity is unverified.",
+      "provenance": {
+        "qa_agent": "agt_00a33cd083c5853d4830"
+      }
     },
     {
       "domain": "tiktok.com",
@@ -1089,9 +1092,12 @@
       "url_patterns": [
         "https://www.tiktok.com/*"
       ],
-      "status": "draft",
-      "last_verified": null,
-      "notes": "One anonymous public-page read; no private data, media URLs, redirects or retries. TikTok automation terms and access restrictions apply."
+      "status": "verified",
+      "last_verified": "2026-09-30",
+      "notes": "One anonymous public-video metadata read; independent QA and live Kernel success from another consumer page. No playback, private data, media URLs, redirects or retries. TikTok automation terms apply; live-site extension parity is unverified.",
+      "provenance": {
+        "qa_agent": "agt_00a33cd083c5853d4830"
+      }
     },
     {
       "domain": "tiktok.com",
@@ -1102,9 +1108,12 @@
       "url_patterns": [
         "https://www.tiktok.com/*"
       ],
-      "status": "draft",
-      "last_verified": null,
-      "notes": "Reads bounded public video cards on an already-open matching video-search page. No navigation, playback, pagination or requests; login may be required. TikTok automation terms apply."
+      "status": "qa_passed",
+      "last_verified": "2026-09-30",
+      "notes": "Independent QA passed for bounded rendered video-card reads on an already-open matching search page. Success is fixture-only, including actual extension runtime; Kernel saw login/loading gates. No navigation, playback, pagination or requests. TikTok automation terms apply.",
+      "provenance": {
+        "qa_agent": "agt_00a33cd083c5853d4830"
+      }
     },
     {
       "domain": "ubereats.com",
