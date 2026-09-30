@@ -113,7 +113,10 @@ before registration was empty. No signed-in account was used for these checks.
 Initial independent QA exercised all three Kernel live happy paths and local
 extension fixtures, and identified two fixture-only defects: hidden contact
 consent text and contradictory rental rows in sale results. Both are now rejected
-or excluded by source guards with regression tests. Final-source recheck is pending.
+or excluded by source guards with regression tests. A subsequent recheck found
+hidden descendants inside a visible consent paragraph; rendered `innerText` now
+replaces `textContent`, with an additional regression test. Final-source recheck
+is pending.
 
 Author local Chromium extension checks also registered/discovered all three tools,
 returned live public search/core-facts success from the homepage, returned
