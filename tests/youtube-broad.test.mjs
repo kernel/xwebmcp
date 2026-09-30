@@ -66,7 +66,7 @@ for (const name of ["get_channel", "list_channel_videos", "get_playlist"]) {
       assert.equal((await h.run(invalid)).error_kind, "invalid_input"); assert.equal(h.calls.length, 0);
     }
   });
-  for (const [status, raw, kind] of [[429, "", "rate_limited"], [403, "", "challenge"], [404, "", "not_found"], [400, "{}", "site_error"], [200, "<html>unusual traffic</html>", "challenge"], [200, "not json", "site_changed"], [200, "[]", "site_changed"]]) {
+  for (const [status, raw, kind] of [[429, "", "rate_limited"], [403, "", "challenge"], [404, "", "not_found"], [400, "{}", "site_error"], [400, "<html>unusual traffic /sorry/</html>", "challenge"], [404, "<html>unusual traffic</html>", "challenge"], [500, "<html>/sorry/</html>", "challenge"], [200, "<html>unusual traffic</html>", "challenge"], [200, "not json", "site_changed"], [200, "[]", "site_changed"]]) {
     test(`${name}: HTTP ${status} ${kind}`, async () => assert.equal((await harness(name, { route: () => ({ status, raw }) }).run(input)).error_kind, kind));
   }
   test(`${name}: wrong page, cancel and changed site`, async () => {
@@ -111,6 +111,16 @@ for (const name of ["list_channel_videos", "get_playlist"]) {
     const o = await harness(name, { route: () => ({ data: d }) }).run({ page_token: token }); assert.equal(o.status, "ok"); assert.equal(o[name === "get_playlist" ? "playlist_id" : "channel_id"], null);
     if (name === "get_playlist") assert.equal(o.title, null);
   });
+  test(`${name}: unrecognized continuations cannot claim empty results`, async () => {
+    for (const actions of [[], [{ unrelatedCommand: {} }], [{ appendContinuationItemsAction: {} }], [{ appendContinuationItemsAction: { continuationItems: "invalid" } }]]) {
+      const out = await harness(name, { route: () => ({ data: { onResponseReceivedActions: actions } }) }).run({ page_token: token });
+      assert.equal(out.error_kind, "site_changed");
+    }
+    for (const command of ["appendContinuationItemsAction", "reloadContinuationItemsCommand"]) {
+      const out = await harness(name, { route: () => ({ data: { onResponseReceivedCommands: [{ [command]: { continuationItems: [] } }] } }) }).run({ page_token: token });
+      assert.equal(out.status, "no_results");
+    }
+  });
   test(`${name}: empty and unsupported layouts are different`, async () => {
     assert.equal((await harness(name, { route: () => ({ data: browse([{ messageRenderer: { text: { simpleText: "No videos" } } }]) }) }).run(input)).status, "no_results");
     assert.equal((await harness(name, { route: () => ({ data: browse([{ strangeRenderer: {} }]) }) }).run(input)).error_kind, "site_changed");
@@ -136,18 +146,60 @@ test("transcript: invalid and null pagination rejected before DOM access", async
 
 const actionInput = { channel_id: channel, expected_account_label: "Fabricated Account", expected_account_index: "0" };
 function action(options = {}) {
-  let label = options.subscribed ? "Subscribed" : "Subscribe", clicked = 0, pending = false, now = 0;
+  let label = options.subscribed ? "Subscribed" : "Subscribe", clicked = 0, now = 0, playing = !!options.playing;
   const config = { LOGGED_IN: true, USER_ACCOUNT_NAME: "Fabricated Account", SESSION_INDEX: "0", ...options.config };
-  const button = { get textContent() { return label; }, disabled: !!options.disabled, click() { clicked++; if (options.abort) options.signal.aborted = true; if (!options.unknown) label = "Subscribed"; if (options.switchAccount) config.USER_ACCOUNT_NAME = "Another Fabricated Account"; } };
-  const element = { isConnected: true, data: { channelId: options.wrongTarget ? other : channel, subscribeButtonContent: { onTapCommand: { innertubeCommand: { commandMetadata: { webCommandMetadata: { apiUrl: "/youtubei/v1/subscription/subscribe" } }, subscribeEndpoint: { channelIds: [options.wrongCommand ? other : channel] } } } } }, getClientRects: () => [1], querySelector: () => button, hasAttribute: () => pending, setAttribute() { pending = true; }, removeAttribute() { pending = false; } };
-  const h = harness("subscribe_channel", { config, signal: options.signal, location: { pathname: "/channel/" + channel }, document: { querySelectorAll: s => s === "video,audio" ? [] : [element], querySelector: () => ({ data: { metadata: { channelMetadataRenderer: { externalId: channel } } } }) }, globals: { Date: { now: () => now += 1000 }, setTimeout: f => f() } });
-  return { ...h, clicks: () => clicked, pending: () => pending };
+  const location = { origin: "https://www.youtube.com", pathname: options.path || "/channel/" + channel, href: "https://www.youtube.com" + (options.path || "/channel/" + channel) };
+  const makeElement = () => {
+    const button = { get textContent() { return label; }, disabled: !!options.disabled, click() {
+      clicked++;
+      if (options.abort) options.signal.aborted = true;
+      if (!options.unknown) label = "Subscribed";
+      if (options.switchAccount) config.USER_ACCOUNT_NAME = "Another Fabricated Account";
+      if (options.switchPage) { location.pathname = "/watch"; location.href = "https://www.youtube.com/watch?v=" + video; }
+      if (options.playAfter) playing = true;
+      if (options.replaceControl) element.querySelector = () => ({ textContent: "Subscribed" });
+      if (options.replaceHeader) replaceHeader();
+    } };
+    return { isConnected: true, data: { channelId: options.wrongTarget ? other : channel, subscribeButtonContent: { onTapCommand: { innertubeCommand: { commandMetadata: { webCommandMetadata: { apiUrl: "/youtubei/v1/subscription/subscribe" } }, subscribeEndpoint: { channelIds: [options.wrongCommand ? other : channel] } } } } }, getClientRects: () => [1], querySelector: () => button };
+  };
+  let element = makeElement();
+  const replaceHeader = () => { element.isConnected = false; label = "Subscribe"; element = makeElement(); };
+  const document = { querySelectorAll: s => s === "video,audio" ? [{ paused: !playing }] : [element], querySelector: () => ({ data: { metadata: { channelMetadataRenderer: { externalId: channel, vanityChannelUrl: options.vanity || "https://www.youtube.com/@fabricated" } } } }) };
+  const h = harness("subscribe_channel", { config, signal: options.signal, document, globals: { location, Date: { now: () => now += 1000 }, setTimeout: f => f() } });
+  return { ...h, clicks: () => clicked, pending: () => !!document[Symbol.for("xwebmcp.youtube.pendingSubscriptions")]?.size, replaceHeader, location };
 }
 test("subscribe: mocked UI postcondition, not server persistence", async () => { const h = action(); const o = await h.run(actionInput); assert.equal(o.status, "observed"); assert.equal(o.persistence_confirmed, false); assert.equal(o.action_attempted, true); assert.equal(h.clicks(), 1); assert.equal((await h.run(actionInput)).action_attempted, false); assert.equal(h.clicks(), 1); });
 test("subscribe: already subscribed is no-op", async () => { const h = action({ subscribed: true }); assert.equal((await h.run(actionInput)).action_attempted, false); assert.equal(h.clicks(), 0); });
 for (const [options, kind] of [[{ config: { LOGGED_IN: false } }, "login_required"], [{ config: { USER_ACCOUNT_NAME: "Other Fabricated Account" } }, "wrong_account"], [{ config: { SESSION_INDEX: "1" } }, "wrong_account"], [{ wrongTarget: true }, "wrong_channel"], [{ wrongCommand: true }, "blocked"], [{ disabled: true }, "blocked"], [{ signal: { aborted: true } }, "canceled"]]) test(`subscribe guard: ${kind}`, async () => { const h = action(options); assert.equal((await h.run(actionInput)).error_kind, kind); assert.equal(h.clicks(), 0); });
 test("subscribe: unknown, account switch and post-click cancellation never retry", async () => {
   for (const options of [{ unknown: true }, { switchAccount: true }, { abort: true, signal: { aborted: false } }]) { const h = action(options); assert.equal((await h.run(actionInput)).error_kind, "outcome_unknown"); assert.equal(h.pending(), true); await h.run(actionInput); assert.equal(h.clicks(), 1); }
+});
+test("subscribe: uncertain attempts survive header replacement in the document", async () => {
+  for (const options of [{ replaceHeader: true }, { unknown: true }]) {
+    const h = action(options);
+    assert.equal((await h.run(actionInput)).error_kind, "outcome_unknown");
+    h.replaceHeader();
+    assert.equal((await h.run(actionInput)).error_kind, "outcome_unknown");
+    assert.equal(h.clicks(), 1); assert.equal(h.pending(), true);
+  }
+});
+test("subscribe: page, control and media changes after clicking retain unknown outcomes", async () => {
+  for (const options of [{ switchPage: true }, { replaceControl: true }, { playAfter: true }]) {
+    const h = action(options); assert.equal((await h.run(actionInput)).error_kind, "outcome_unknown");
+    assert.equal(h.clicks(), 1); assert.equal(h.pending(), true);
+  }
+});
+test("subscribe: channel routes and handles must attest the requested identity", async () => {
+  for (const options of [{ path: "/channel/" + other }, { path: "/@different/videos" }, { path: "/@fabricated", vanity: "https://example.invalid/@fabricated" }]) {
+    const h = action(options); assert.equal((await h.run(actionInput)).error_kind, "wrong_channel"); assert.equal(h.clicks(), 0);
+  }
+  assert.equal((await action({ path: "/@fabricated/videos" }).run(actionInput)).status, "observed");
+});
+test("subscribe: playing media and concurrent mocked actions fail closed", async () => {
+  const playing = action({ playing: true }); assert.equal((await playing.run(actionInput)).error_kind, "playing_media"); assert.equal(playing.clicks(), 0);
+  const h = action({ unknown: true });
+  await Promise.all([h.run(actionInput), h.run(actionInput)]);
+  assert.equal(h.clicks(), 1);
 });
 test("subscribe: fake confirmation and invalid identifiers rejected", async () => {
   for (const input of [{ ...actionInput, confirmed: true }, { ...actionInput, channel_id: "bad" }, { ...actionInput, expected_account_label: "" }, { ...actionInput, expected_account_index: 0 }]) { const h = action(); assert.equal((await h.run(input)).error_kind, "invalid_input"); assert.equal(h.clicks(), 0); }

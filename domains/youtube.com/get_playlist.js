@@ -192,10 +192,13 @@
         const raw = await res.text();
         if (res.status === 429) return { error: fail("rate_limited", "YouTube is rate limiting this browser. Do not retry automatically.") };
         if (res.status === 403) return { error: fail("challenge", "YouTube refused access or raised a bot check. Do not retry automatically.") };
+        let data;
+        try { data = JSON.parse(raw); } catch {
+          if (/unusual traffic|\/sorry\//i.test(raw)) return { error: fail("challenge", "YouTube raised a bot check. Do not retry automatically.") };
+          if (res.ok) return { error: fail("site_changed", "YouTube returned non-JSON browse data.") };
+        }
         if (res.status === 404) return { error: fail("not_found", "The requested public resource was not found.") };
         if (!res.ok) return { error: fail("site_error", "YouTube returned HTTP " + res.status + ".") };
-        let data;
-        try { data = JSON.parse(raw); } catch { return { error: /unusual traffic|\/sorry\//i.test(raw) ? fail("challenge", "YouTube raised a bot check. Do not retry automatically.") : fail("site_changed", "YouTube returned non-JSON browse data.") }; }
         if (!data || typeof data !== "object" || Array.isArray(data)) return { error: fail("site_changed", "YouTube returned an unexpected browse response.") };
         if (data.error) return { error: fail("site_error", "YouTube returned an API error.") };
         if (data.alerts?.some(x => x.alertRenderer?.type === "ERROR")) return { error: fail("not_found", "This resource is unavailable to anonymous public reads.") };
@@ -216,8 +219,9 @@
       }
       const selected = tabsOf(data).find(x => x.selected);
       const actions = data.onResponseReceivedActions || data.onResponseReceivedCommands;
-      const roots = paging ? actions?.flatMap(x => x.appendContinuationItemsAction?.continuationItems || x.reloadContinuationItemsCommand?.continuationItems || []) : selected?.content ? [selected.content] : null;
-      if (!Array.isArray(roots) || (!roots.length && paging && !Array.isArray(actions))) return fail("site_changed", "No recognized browse content was returned.");
+      const continuationLists = Array.isArray(actions) ? actions.flatMap(x => [x?.appendContinuationItemsAction?.continuationItems, x?.reloadContinuationItemsCommand?.continuationItems].filter(Array.isArray)) : [];
+      const roots = paging ? continuationLists.flat() : selected?.content ? [selected.content] : null;
+      if (!Array.isArray(roots) || (paging && !continuationLists.length)) return fail("site_changed", "No recognized browse content was returned.");
       const items = [];
       let next = null, truncated = false, unsupported = 0, empty = false, scanned = 0, outputUnits = 0;
       const stack = [...roots].reverse();

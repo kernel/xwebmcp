@@ -321,6 +321,32 @@ test("search returns a full mixed page (videos plus Shorts shelves) and bounds c
   assert.ok(notString.warnings.some(w => /token/.test(w)));
 });
 
+test("search bounds the first item badge list and retains live classification", async () => {
+  for (const count of [3000, 10000]) {
+    const badges = Array.from({ length: count }, () => ({ metadataBadgeRenderer: { label: "界".repeat(40) } }));
+    badges.at(-1).metadataBadgeRenderer.label = "LIVE";
+    const out = await harness("search", { items: [videoBlock(1, { badges })] }).ok({ query: "x" });
+    assert.equal(out.results[0].badges.length, 10); assert.equal(out.results[0].is_live, true);
+    assert.ok(out.warnings.some(w => /badge lists/.test(w)));
+    assert.ok(JSON.stringify(out).length <= 75000); assert.ok(Buffer.byteLength(JSON.stringify(out)) < 240 * 1024);
+  }
+});
+
+test("search bounds the whole response including warning-heavy pages and filter labels", async () => {
+  const corrections = Array.from({ length: 200 }, () => ({ showingResultsForRenderer: { correctedQuery: { simpleText: "界".repeat(200) } } }));
+  const items = Array.from({ length: 150 }, (_, i) => videoBlock(i + 1, { title: { simpleText: "界".repeat(300) }, detailedMetadataSnippets: [{ snippetText: { simpleText: "界".repeat(300) } }] }));
+  const out = await harness("search", { items: [...corrections, ...items] }).ok({ query: "x" });
+  assert.ok(out.warnings.length <= 32); assert.ok(JSON.stringify(out).length <= 75000);
+  assert.ok(Buffer.byteLength(JSON.stringify(out)) < 240 * 1024);
+  assert.ok(out.warnings.some(w => /first \d+ are returned/.test(w)));
+  const data = firstPage({}, [{ messageRenderer: {} }], false);
+  data.header.searchHeaderRenderer.searchFilterButton.buttonRenderer.command.openPopupAction.popup.searchFilterOptionsDialogRenderer.groups[0].searchFilterGroupRenderer.filters = [{ searchFilterRenderer: { label: { simpleText: "界".repeat(100000) }, status: "FILTER_STATUS_SELECTED" } }];
+  const h = harness("search", { route: () => ({ status: 200, text: JSON.stringify(data) }) });
+  const empty = plain(await h.definition.execute({ query: "x" }, {}));
+  assert.equal(empty.status, "no_results"); assert.equal(empty.applied_filters.type.length, 80);
+  assert.ok(Buffer.byteLength(JSON.stringify(empty)) < 240 * 1024);
+});
+
 test("search chains the site's own filter tokens in a fixed order and reports what the site applied", async () => {
   const h = harness("search");
   const out = await h.ok({ query: "topic", sort_by: "popularity", upload_date: "this_year", duration: "3_to_20_min", type: "video" });

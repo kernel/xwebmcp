@@ -26,7 +26,7 @@
             query: { type: ["string", "null"], description: "The normalized query, or null for a page_token call." },
             applied_filters: {
               type: ["object", "null"], additionalProperties: false, required: ["type", "duration", "upload_date", "sort_by"],
-              properties: { type: { type: ["string", "null"] }, duration: { type: ["string", "null"] }, upload_date: { type: ["string", "null"] }, sort_by: { type: ["string", "null"] } },
+              properties: { type: { type: ["string", "null"], maxLength: 80 }, duration: { type: ["string", "null"], maxLength: 80 }, upload_date: { type: ["string", "null"], maxLength: 80 }, sort_by: { type: ["string", "null"], maxLength: 80 } },
               description: "The option labels the site reports as selected (for example 'Videos', '3 - 20 minutes'), read back from the site's response; null when the response does not list its filters."
             },
             estimated_results: { type: ["integer", "null"], description: "The site's rough match count; not exact and not a page count." },
@@ -49,7 +49,7 @@
                       published_text: { type: ["string", "null"], description: "Relative age as the site words it, for example '2 years ago'." },
                       duration_text: { type: ["string", "null"], description: "For example '12:00:00'; null for live streams." },
                       snippet: { type: ["string", "null"], maxLength: 300 },
-                      badges: { type: "array", items: { type: "string" }, description: "Site badge labels such as 'LIVE', 'New' or '4K'." },
+                      badges: { type: "array", maxItems: 10, items: { type: "string", maxLength: 40 }, description: "Up to 10 site badge labels such as 'LIVE', 'New' or '4K'." },
                       is_live: { type: "boolean", description: "True when the result carries the site's LIVE badge." }
                     }
                   },
@@ -94,9 +94,9 @@
               type: "object", additionalProperties: false, required: ["sponsored", "unsupported"],
               properties: { sponsored: { type: "integer", minimum: 0 }, unsupported: { type: "integer", minimum: 0, description: "Result blocks of kinds this tool does not read (movies, shelves, mixes, other layouts)." } }
             },
-            next_page_token: { type: ["string", "null"], description: "Opaque token for the next page; null when the site offers none." },
+            next_page_token: { type: ["string", "null"], maxLength: 2000, description: "Opaque token for the next page; null when the site offers none." },
             observed_at: { type: "string", description: "ISO timestamp of the request; rankings and counts change constantly." },
-            warnings: { type: "array", items: { type: "string" } }
+            warnings: { type: "array", maxItems: 32, items: { type: "string", maxLength: 350 } }
           }
         },
         {
@@ -105,7 +105,7 @@
         },
         {
           type: "object", additionalProperties: false, required: ["status", "error_kind", "error_message"],
-          properties: { status: { const: "error" }, error_kind: { enum: ["invalid_input", "wrong_page", "filter_unavailable", "invalid_page_token", "challenge", "rate_limited", "site_error", "site_changed"] }, error_message: { type: "string", minLength: 1 } }
+          properties: { status: { const: "error" }, error_kind: { enum: ["invalid_input", "wrong_page", "filter_unavailable", "invalid_page_token", "challenge", "rate_limited", "site_error", "site_changed"] }, error_message: { type: "string", minLength: 1, maxLength: 600 } }
         }
       ]
     },
@@ -114,9 +114,9 @@
   execute: async (input, context) => {
     const ORIGIN = "https://www.youtube.com";
     const MAX_RESULTS = 200;
-    // Serialized results stay well under the runtime's 240 KiB output limit even when every character takes three bytes.
+    // Bound the complete serialized response, including tokens and warnings.
     const MAX_UNITS = 75000;
-    const fail = (kind, message) => ({ status: "error", error_kind: kind, error_message: message });
+    const fail = (kind, message) => ({ status: "error", error_kind: kind, error_message: message.replace(/[\u0000-\u001f\u007f-\u009f]+/g, " ").slice(0, 600).replace(/[\ud800-\udbff]$/, "") });
     const allowed = ["query", "type", "duration", "upload_date", "sort_by", "page_token"];
     if (!input || typeof input !== "object" || Array.isArray(input) || Object.keys(input).some(k => !allowed.includes(k))) return fail("invalid_input", "Unknown or missing input; allowed fields are " + allowed.join(", ") + ".");
     const FILTERS = [
@@ -178,7 +178,7 @@
     const selectedIn = (json, title) => {
       const group = (groupsOf(json) || []).find(g => g.title === title);
       const chosen = group && group.options.find(o => o.selected);
-      return chosen ? chosen.label : null;
+      return typeof chosen?.label === "string" ? chosen.label.replace(/[\u0000-\u001f\u007f-\u009f]+/g, " ").slice(0, 80).replace(/[\ud800-\udbff]$/, "") : null;
     };
     const appliedOf = json => (groupsOf(json) ? { type: selectedIn(json, "Type"), duration: selectedIn(json, "Duration"), upload_date: selectedIn(json, "Upload date"), sort_by: selectedIn(json, "Prioritize") } : null);
     // First page: sections under the two-column layout. Later pages: an append-items command.
@@ -253,18 +253,21 @@
       const match = typeof path === "string" ? /^\/(@[A-Za-z0-9._-]{3,30})$/.exec(path) : null;
       return match ? match[1] : null;
     };
+    let badgesTruncated = false;
     const parseVideo = v => {
       const id = VIDEO_ID.test(v.videoId) ? v.videoId : null;
       const title = clean(textOf(v.title), 300);
       if (!id || !title) return null;
       const owner = v.ownerText?.runs?.[0];
       const endpoint = owner?.navigationEndpoint?.browseEndpoint;
-      const badges = (v.badges || []).map(b => clean(b?.metadataBadgeRenderer?.label, 40)).filter(Boolean);
+      const sourceBadges = v.badges || [];
+      const badges = sourceBadges.slice(0, 10).map(b => clean(b?.metadataBadgeRenderer?.label, 40)).filter(Boolean);
+      if (sourceBadges.length > 10) badgesTruncated = true;
       return {
         kind: "video", video_id: id, url: ORIGIN + "/watch?v=" + id, title,
         channel: { name: clean(owner?.text, 200), channel_id: CHANNEL_ID.test(endpoint?.browseId) ? endpoint.browseId : null, handle: handleFrom(endpoint?.canonicalBaseUrl) },
         views_text: clean(textOf(v.viewCountText), 60), published_text: clean(textOf(v.publishedTimeText), 60), duration_text: clean(textOf(v.lengthText), 20),
-        snippet: clean(textOf(v.detailedMetadataSnippets?.[0]?.snippetText), 300), badges, is_live: badges.includes("LIVE")
+        snippet: clean(textOf(v.detailedMetadataSnippets?.[0]?.snippetText), 300), badges, is_live: sourceBadges.some(b => clean(b?.metadataBadgeRenderer?.label, 40) === "LIVE")
       };
     };
     const parseShort = s => {
@@ -332,16 +335,9 @@
       if (emptyState) return noResults(response);
       return fail("site_changed", "The results page contained no video, Short, channel or playlist this tool can read (" + blocks.length + " blocks, " + unsupported + " unsupported, " + sponsored + " sponsored); the results layout may have changed.");
     }
-    let size = 0, keep = 0;
-    for (const item of results) {
-      size += JSON.stringify(item).length + 12;
-      if (keep >= MAX_RESULTS || (size > MAX_UNITS && keep > 0)) break;
-      keep++;
-    }
-    if (keep < results.length) {
-      warnings.push("The page held " + results.length + " results; only the first " + keep + " are returned to keep the response small, and the rest cannot be reached with next_page_token.");
-      results.length = keep;
-    }
+    const resultCount = results.length;
+    results.length = Math.min(resultCount, MAX_RESULTS);
+    if (badgesTruncated) warnings.push("Video badge lists are limited to their first 10 labels; is_live still checks all supplied badges.");
     if (repeated > 0) warnings.push(repeated + " repeated result(s) on this page were dropped.");
     if (unsupported > 0) warnings.push(unsupported + " result block(s) of kinds this tool does not read (movies, shelves, mixes, other layouts) were omitted.");
     if (token !== null && (typeof token !== "string" || !TOKEN.test(token))) {
@@ -349,7 +345,23 @@
       warnings.push("The site's next-page token had an unexpected format and was not returned.");
     }
     const estimated = typeof response.estimatedResults === "string" && /^\d{1,15}$/.test(response.estimatedResults) ? Number(response.estimatedResults) : null;
+    if (warnings.length > 30) {
+      warnings.length = 30;
+      warnings.push("Additional warning messages were omitted to keep the response bounded.");
+    }
     results.forEach((item, index) => { item.rank = index + 1; });
-    return { status: "ok", query, applied_filters: applied, estimated_results: estimated, results, omitted: { sponsored, unsupported }, next_page_token: token, observed_at: observedAt, warnings };
+    const output = { status: "ok", query, applied_filters: applied, estimated_results: estimated, results, omitted: { sponsored, unsupported }, next_page_token: token, observed_at: observedAt, warnings };
+    let truncationWarning;
+    const warnTruncation = () => {
+      if (truncationWarning === undefined) truncationWarning = warnings.length;
+      warnings[truncationWarning] = "The page held " + resultCount + " results; only the first " + results.length + " are returned to keep the response small, and the rest cannot be reached with next_page_token.";
+    };
+    if (results.length < resultCount) warnTruncation();
+    while (JSON.stringify(output).length > MAX_UNITS) {
+      results.pop();
+      if (!results.length) return fail("site_changed", "The results metadata exceeded the safe output bound.");
+      warnTruncation();
+    }
+    return output;
   }
 }]
