@@ -4,10 +4,10 @@ X public posts, profiles, a bounded first-batch search reader and local post/rep
 
 | tool | file | status | notes |
 | --- | --- | --- | --- |
-| `draft_post` | `draft_post.js` | draft | Local text preview and manual handoff; not an X-saved draft. |
-| `get_post` | `get_post.js` | draft | One anonymously readable public post; no replies or viewer state. |
-| `get_profile` | `get_profile.js` | draft | Public profile header; requires an anonymously visible authored post. |
-| `search_posts` | `search_posts.js` | draft | At most three public posts from an already-open matching search page. |
+| `draft_post` | `draft_post.js` | verified | Local text preview and manual handoff; not an X-saved draft. |
+| `get_post` | `get_post.js` | verified | One anonymously readable public post; no replies or viewer state. |
+| `get_profile` | `get_profile.js` | verified | Public profile header; requires an anonymously visible authored post. |
+| `search_posts` | `search_posts.js` | qa_passed | At most three public posts from an already-open matching search page. |
 
 ## Scope and loading
 
@@ -110,27 +110,48 @@ are outside scope, including drafting tools that require opening those pages.
 
 ## QA summary
 
-Initial implementation is draft pending independent final-source review. All 54
-site fixtures and the full 1631-test tool suite pass, as do 14 extension unit tests
+Independent final-source QA passed on 2026-09-30, with provenance recorded in the
+registry. Reviewed tool source: `c07bd3ab6bab61a823c86c2b94e5315d53ccdd53`.
+All 54 site fixtures and the full 1631-test tool suite pass, as do 14 extension unit tests
 and `go test ./...`. Fixtures cover validation, public metadata, restricted/missing
 markup, request/response bounds, errors, cancellation, unrelated pages, bounded
 search, local preparation and rejection of fake publish/confirmation fields.
 
 On 2026-09-30 the Kernel runtime atomically registered all four tools; native product
-tool discovery was empty. From a different public profile page, `get_post` returned
-public text and timestamp. `get_profile` returned the public header and rounded
-counts. `draft_post` returned a fabricated local preview without composer interaction.
-`search_posts` returned a correct wrong-page handoff on the public profile, and a
-bounded two-post success on an already-authorized matching Latest search page.
-No scrolling, account mutation or protected-content inspection was performed.
+tool discovery was empty. Initial signed-out QA from a different public profile page
+returned post/profile success, fabricated draft preparation, a correct search
+wrong-page handoff and typed not-found/malformed-input failures. Namespace conflict,
+complete replacement, document re-registration and stale-reference rejection were
+independently exercised on the initial source.
+
+The author re-registered the exact final tool source and invoked it on a matching
+Latest search page: `get_post` returned public text/timestamp, `get_profile` returned
+the public header/rounded counts, `draft_post` returned a fabricated preview, and
+`search_posts` returned one anonymously readable public post. Post/profile/preparation
+successes started on a different page from their target/manual entry point. Search
+remains `qa_passed`: its successful invocation requires the matching entry page,
+not a different-page start. No scrolling, account mutation or protected-content
+inspection was performed. Final-source live Kernel cases and authenticated search
+were not independently repeated; these final live successes are author evidence.
 
 The initial independent review identified uncanceled early-error downloads,
 quoted-text misattribution and an undersized Unicode handoff URL schema. Fixes abort
 all responses on exit, restrict primary text to the observed shallow hierarchy,
 expand the bounded handoff schema to 2048 characters and add regression fixtures.
-Final-source recheck is pending.
+The same independent reviewer rechecked all four tools and signed off with no
+findings on the final source. Native Chromium streaming-server reproduction now
+closed the early-error connection before scheduled body bytes were sent. Both
+readers rejected quoted-only markup; maximum Unicode handoffs conformed to schema.
+All 39 independent scratch cases passed, including cancellation between candidates,
+request bounds, anonymous public metadata, viewer-text exclusion and preparation
+safety. Canonical targets with trailing line breaks were also rejected before reads.
 
-Local-extension integration against fabricated/intercepted pages was independently
-exercised during initial QA; live X extension parity remains unverified. The author
-also attempted isolated local registration but site permission was unavailable.
-Extension unit tests alone are not evidence of live parity.
+Local Chromium 153 extension integration passed on the exact final source against
+fabricated/intercepted pages: atomic registration of all four definitions and nine
+invocations covered post/profile success, preparation, handoffs, invalid input,
+matching search and quote rejection. Native/custom name coexistence and document
+re-registration were exercised. Live X extension parity remains unverified. The
+author's separate local attempt could not register without granted site access.
+Extension fixture/unit results do not establish live-site parity. No live mutations
+were performed or inferred from mocked cases; live challenges, throttling and
+in-flight document destruction remain untested.
