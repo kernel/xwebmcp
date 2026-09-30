@@ -124,7 +124,7 @@ const pageOf = (events, page, total = events.length) => json(200, { total, total
 // --- structure ----------------------------------------------------------------------------------------
 
 for (const name of NAMES) {
-  test(`${name}: single-expression page tool with typed schemas and a draft registry entry`, () => {
+  test(`${name}: single-expression page tool with typed schemas and a QA-passed registry entry`, () => {
     assert.equal(sources[name].trimEnd().endsWith(";"), false);
     assert.equal(/\b(Buffer|require|process)\b/.test(sources[name]), false, "tool source must not depend on Node globals");
     assert.equal(/checkout|\/cart|api\/reserve|ticketselection|\/api\/user|barcode|favorite|waiting-list|api\/resale|passbook|method:\s*["']?(POST|PUT|PATCH|DELETE)/i.test(sources[name]), false, "tool source must stay on public read endpoints");
@@ -142,7 +142,7 @@ for (const name of NAMES) {
     assert.ok(entry, "registry entry missing");
     assert.equal(entry.file, `domains/ticketmaster.com/${name}.js`);
     assert.equal(entry.kind, "page");
-    assert.equal(entry.status, "draft");
+    assert.equal(entry.status, "qa_passed");
     assert.deepEqual(entry.url_patterns, plain(definition.match.url_patterns));
   });
 }

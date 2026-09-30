@@ -9,10 +9,10 @@ preparation. No tool purchases, transfers or holds inventory. Public reads work 
 | search_events | [search_events.js](search_events.js) | qa_passed | Keyword, city or ZIP, radius and local date/time filters; flags events sold on partner sites |
 | get_event | [get_event.js](get_event.js) | qa_passed | One event record by id or URL: local time, venue, category, on-sale and presale windows, limits, terms notice |
 | get_ticket_offers | [get_ticket_offers.js](get_ticket_offers.js) | qa_passed | Section, row, seats and price per ticket for a quantity, lowest price or Best Seats; never selects, holds or buys |
-| search_attractions | [search_attractions.js](search_attractions.js) | draft | Name typeahead returning numeric ids for artist-type attractions (performers, teams, shows) and venues |
-| get_artist | [get_artist.js](get_artist.js) | draft | One attraction by id or URL: type, category, plain-text synopsis, optional about/FAQ/news/experience excerpts, and its events by offset and limit |
-| get_venue | [get_venue.js](get_venue.js) | draft | One venue by id or URL: address, coordinates, policy text blocks, optional seat-map images, and its events by offset and limit |
-| prepare_ticket_choice | [prepare_ticket_choice.js](prepare_ticket_choice.js) | draft | Public quote-based preparation on the current classic event page; quantity, exact seat/type criteria and USD budget; no selection, queue or hold |
+| search_attractions | [search_attractions.js](search_attractions.js) | qa_passed | Name typeahead returning numeric ids for artist-type attractions (performers, teams, shows) and venues |
+| get_artist | [get_artist.js](get_artist.js) | qa_passed | One attraction by id or URL: type, category, plain-text synopsis, optional about/FAQ/news/experience excerpts, and its events by offset and limit |
+| get_venue | [get_venue.js](get_venue.js) | qa_passed | One venue by id or URL: address, coordinates, policy text blocks, optional seat-map images, and its events by offset and limit |
+| prepare_ticket_choice | [prepare_ticket_choice.js](prepare_ticket_choice.js) | qa_passed | Public quote-based preparation on the current classic event page; quantity, exact seat/type criteria and USD budget; no selection, queue or hold |
 
 ## Native WebMCP tools
 
@@ -473,8 +473,8 @@ builder's browser was deleted after the final run.
 
 ### Attraction tools (`search_attractions`, `get_artist`, `get_venue`)
 
-Historical rounds below predate ticket-choice preparation. The expanded source remains
-`draft` pending a new independent review.
+Historical rounds below predate ticket-choice preparation. The expanded source is
+`qa_passed` after the recheck recorded below; earlier draft dispositions are historical.
 
 Independent QA round 1 (agent `agt_7efe7ebf564202d6ad44`, 2026-09-29) on the first revision
 (commit `20829bf`): **FAIL**, with 1 major and 8 minor findings, fixed in the next commit:
@@ -518,7 +518,7 @@ parse), but the reviewer found that the site's intermittent empty-page response 
 quirks) made both list tools return a wrong `ok` with a shortened list and a zero total.
 The builder fixed it in the next commit (cross-check against page 0, with fixture tests
 and mutation checks) after the two allowed recheck rounds had been used, so that change had no independent sign-off at the previous handoff. The next review cycle
-covers that fix and the expanded preparation tool; statuses remain `draft` until it passes.
+covers that fix and the expanded preparation tool; its result is recorded below.
 
 Round 1 also reported, live: the whole namespace registered atomically with metadata equal
 to the checked-out files; no site-registered tools and no name collisions on six page
@@ -589,7 +589,8 @@ with a positive total could lose that total when its page-0 cross-check reported
 both list tools now retain the largest total including the empty page itself. Fractional-cent
 budgets could round upward; preparation now compares its cent-derived total directly to
 the supplied dollar ceiling. Duplicate assigned seats could form a choice; normalized
-seat labels must now be unique. Regression fixtures cover all three; recheck pending.
+seat labels must now be unique. Regression fixtures cover all three; the recheck below
+confirmed each fix.
 
 The independent review ran the full suite (1,804 passing), actual AJV checks on 90 fixture
 and 12 live outputs, and bounded Kernel reads. All seven tools remained registered;
@@ -597,9 +598,24 @@ artist past-end, venue mid-list and preparation success matched the site. The in
 empty-page response was not provoked; negative cases remain fixture-only. No old tool,
 selection, preference, terms, hold or execution action was invoked.
 
-Current local Chrome extension: **partial**, separate from Kernel. Exact-head installation
+Current local Chrome extension: **partial**, separate from Kernel. Initial reviewed-head installation
 and all seven registrations succeeded in isolated signed-out profiles. The settled page
 showed "Your Browsing Activity Has Been Paused"; builder invocations returned `challenge`
 and `invalid_input`, and the reviewer stopped after registration on that protection page.
 No successful local-extension public-data path or runtime parity is claimed. Temporary
 public browsers and local profiles were removed.
+
+Independent fix/recheck on `932cec9`, 2026-09-30: **PASS** for all four new tools.
+The validator found 83 tools valid, the full suite passed 1,809 tests, the targeted suite
+passed 232 tests, and 97 independently constructed fixture cases passed actual AJV
+validation. Positive current/earlier totals and genuine past-end totals were preserved;
+inconsistent empty pages and normalized duplicate seat labels were rejected. Distinct
+seats and general admission remained supported.
+
+Four final-source Kernel invocations (four GETs) on the matching classic event document
+confirmed the budget fix live: $187.399 and $187.395 ceilings rejected the $187.40
+before-tax choice; $187.40 and $187.400001 accepted it. Location, controls and terms
+were unchanged. No remaining concrete defect was found in this bounded recheck.
+The reviewer removed its public browser and confirmed it absent. Local-extension success
+parity remains untested, so these entries are `qa_passed`, not `verified`. The subsequent
+status/documentation commit does not change the reviewed tool source.
