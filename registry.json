@@ -632,9 +632,10 @@
       "kind": "page",
       "namespace": "opentable.com",
       "url_patterns": ["https://www.opentable.com/*"],
-      "status": "draft",
-      "last_verified": null,
-      "notes": "Authorized account dining points and current-page reservation/invitation counts; expected_account_email is checked against fresh account state. No private item details or writes."
+      "status": "qa_passed",
+      "last_verified": "2026-09-30",
+      "notes": "Authorized dining points and current-page reservation/invitation counts; fresh expected-account check. Independent success/failure QA is Node-fixture-only; final-source live runtime unverified. No private item details or writes.",
+      "provenance": { "qa_agent": "agt_af9a78c90e1647b33555" }
     },
     {
       "domain": "opentable.com",
@@ -643,9 +644,10 @@
       "kind": "page",
       "namespace": "opentable.com",
       "url_patterns": ["https://www.opentable.com/*"],
-      "status": "draft",
-      "last_verified": null,
-      "notes": "Public standard inventory within 120 minutes of restaurant-local time; same-origin read query, no slot selection or inventory hold. Excludes experience-only and privileged inventory."
+      "status": "qa_passed",
+      "last_verified": "2026-09-30",
+      "notes": "Public standard inventory within 120 minutes of restaurant-local time; read query, no slot selection or hold. Independent source QA passed; final-source live runtime unverified. Excludes experience-only and privileged inventory.",
+      "provenance": { "qa_agent": "agt_af9a78c90e1647b33555" }
     },
     {
       "domain": "opentable.com",
@@ -656,9 +658,10 @@
       "url_patterns": [
         "https://www.opentable.com/*"
       ],
-      "status": "draft",
-      "last_verified": null,
-      "notes": "Public restaurant profile by id or allowlisted profile URL. Array fields capped at 50, menus at 100 items, total output at 200 KB. Revised source awaits independent QA."
+      "status": "qa_passed",
+      "last_verified": "2026-09-30",
+      "notes": "Public profile by id or allowlisted URL. Arrays capped at 50, menus at 100 items, total output at 200 KB. Independent source QA passed; final-source live runtime unverified.",
+      "provenance": { "qa_agent": "agt_af9a78c90e1647b33555" }
     },
     {
       "domain": "opentable.com",
@@ -669,9 +672,10 @@
       "url_patterns": [
         "https://www.opentable.com/*"
       ],
-      "status": "draft",
-      "last_verified": null,
-      "notes": "Public reviews, 10 per page in newest dining-date order, no diner identities. Out-of-range pages return no_results. Calendar timestamp validation revised; awaits independent QA."
+      "status": "qa_passed",
+      "last_verified": "2026-09-30",
+      "notes": "Public reviews, 10 per page in newest dining-date order, no diner identities. Out-of-range pages return no_results. Independent source QA passed; final-source live runtime unverified.",
+      "provenance": { "qa_agent": "agt_af9a78c90e1647b33555" }
     },
     {
       "domain": "opentable.com",
@@ -680,9 +684,10 @@
       "kind": "page",
       "namespace": "opentable.com",
       "url_patterns": ["https://www.opentable.com/*"],
-      "status": "draft",
-      "last_verified": null,
-      "notes": "Authorized Favorites restaurant IDs, 50 per page; identity checked before and after read query. Empty live account observed; populated lists require fixture QA. No save/unsave."
+      "status": "qa_passed",
+      "last_verified": "2026-09-30",
+      "notes": "Authorized Favorites IDs, 50 per page; identity checked before and after read. Independent success/populated/wrong-account QA is Node-fixture-only; final-source live runtime unverified. No save/unsave.",
+      "provenance": { "qa_agent": "agt_af9a78c90e1647b33555" }
     },
     {
       "domain": "opentable.com",
@@ -691,9 +696,10 @@
       "kind": "page",
       "namespace": "opentable.com",
       "url_patterns": ["https://www.opentable.com/*"],
-      "status": "draft",
-      "last_verified": null,
-      "notes": "Exact standard date/time/party/seating preparation only. No substitution, slot selection, hold or booking. Fees and account not verified; human site review required. No trusted approval execution path."
+      "status": "qa_passed",
+      "last_verified": "2026-09-30",
+      "notes": "Exact standard date/time/party/seating preparation, no substitution or hold/booking. Account and fees not verified; trusted approval execution unavailable. Independent source QA passed; final-source live runtime unverified.",
+      "provenance": { "qa_agent": "agt_af9a78c90e1647b33555" }
     },
     {
       "domain": "opentable.com",
@@ -704,9 +710,10 @@
       "url_patterns": [
         "https://www.opentable.com/*"
       ],
-      "status": "draft",
-      "last_verified": null,
-      "notes": "Public free-text search, up to 50 per page, optional date/time/party. Does not prove availability. Malformed calendar dates now fail before interaction; awaits independent QA."
+      "status": "qa_passed",
+      "last_verified": "2026-09-30",
+      "notes": "Public free-text search, up to 50 per page, optional date/time/party. Does not prove availability. Independent source QA passed; final-source live runtime unverified.",
+      "provenance": { "qa_agent": "agt_af9a78c90e1647b33555" }
     },
     {
       "domain": "purelymail.com",

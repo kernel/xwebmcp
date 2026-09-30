@@ -4,13 +4,13 @@ OpenTable US diner tools on `https://www.opentable.com`. Public restaurant reads
 
 | tool | file | status | notes |
 |------|------|--------|-------|
-| get_account_summary | [get_account_summary.js](get_account_summary.js) | draft | Authorized dining points, eligibility and reservation/invitation counts on the current dashboard page. No private item details. |
-| get_availability | [get_availability.js](get_availability.js) | draft | Up to 50 standard slots within 120 minutes of a restaurant-local date/time. No slot selection or hold. |
-| get_restaurant | [get_restaurant.js](get_restaurant.js) | draft | Public profile, ratings, hours, features and optional published menus. Arrays capped at 50, menus at 100 items, output at 200 KB. |
-| get_reviews | [get_reviews.js](get_reviews.js) | draft | One page of 10 reviews, newest dining date first, without diner identity. |
-| list_saved_restaurants | [list_saved_restaurants.js](list_saved_restaurants.js) | draft | Favorites restaurant IDs, 50 per page, fresh account validation before and after the read. |
-| prepare_reservation | [prepare_reservation.js](prepare_reservation.js) | draft | Exact date/time/party/seating preparation with public profile handoff; no reservation or inventory hold. |
-| search_restaurants | [search_restaurants.js](search_restaurants.js) | draft | Free-text search with optional date/time/party, up to 50 per page; does not prove availability. |
+| get_account_summary | [get_account_summary.js](get_account_summary.js) | qa_passed | Authorized dining points, eligibility and reservation/invitation counts on the current dashboard page. No private item details. |
+| get_availability | [get_availability.js](get_availability.js) | qa_passed | Up to 50 standard slots within 120 minutes of a restaurant-local date/time. No slot selection or hold. |
+| get_restaurant | [get_restaurant.js](get_restaurant.js) | qa_passed | Public profile, ratings, hours, features and optional published menus. Arrays capped at 50, menus at 100 items, output at 200 KB. |
+| get_reviews | [get_reviews.js](get_reviews.js) | qa_passed | One page of 10 reviews, newest dining date first, without diner identity. |
+| list_saved_restaurants | [list_saved_restaurants.js](list_saved_restaurants.js) | qa_passed | Favorites restaurant IDs, 50 per page, fresh account validation before and after the read. |
+| prepare_reservation | [prepare_reservation.js](prepare_reservation.js) | qa_passed | Exact date/time/party/seating preparation with public profile handoff; no reservation or inventory hold. |
+| search_restaurants | [search_restaurants.js](search_restaurants.js) | qa_passed | Free-text search with optional date/time/party, up to 50 per page; does not prove availability. |
 
 Register **all seven files together** when replacing the `opentable.com` namespace. `forceOverwriteNamespace` replaces the entire namespace atomically, not a single tool.
 
@@ -62,7 +62,7 @@ All tools match only `https://www.opentable.com/*`. Other subdomains are unrelat
 
 ## QA
 
-The original three-tool source passed historical independent public QA on 2026-09-29 at revision `49f3289`. That evidence does **not** approve this revised source. Prior findings reviewed before changes included an unsafe profile URL allowlist (already fixed), uncapped profile arrays (now capped), calendar-impossible timestamps (now rejected), and test-strength gaps. All seven current entries are initially draft pending fresh independent QA.
+The original three-tool source passed historical independent public QA on 2026-09-29 at revision `49f3289`. That evidence does **not** approve this revised source. Prior findings reviewed before changes included an unsafe profile URL allowlist (already fixed), uncapped profile arrays (now capped), calendar-impossible timestamps (now rejected), and test-strength gaps. All seven entries were downgraded to draft for fresh independent revision QA.
 
 Author checks on 2026-09-30, revision `52d625f` (before subsequent review fixes):
 
@@ -74,7 +74,7 @@ Account access used only the already authorized session, without renewing its ex
 
 ### Independent revision review — 2026-09-30
 
-Revision `52d625f`: **FAIL**, 1610 repository tests, 33 site test blocks, 14 extension unit tests and Go tests passed. An independent reviewer completed 153 additional Node-fixture probes and schema-validated 153 fixture, seven Kernel-live and eight extension-live outputs. Findings: exact preparation could miss a slot after the 50-slot display cap; the retained three tools ignored cancellation; malformed seating-specific mandatory data was treated as optional; marker words inside valid state could be misclassified as a challenge. These are fixed in the subsequent source, pending a final-source recheck.
+Revision `52d625f`: **FAIL**, 1610 repository tests, 33 site test blocks, 14 extension unit tests and Go tests passed. An independent reviewer completed 153 additional Node-fixture probes and schema-validated 153 fixture, seven Kernel-live and eight extension-live outputs. Findings: exact preparation could miss a slot after the 50-slot display cap; the retained three tools ignored cancellation; malformed seating-specific mandatory data was treated as optional; marker words inside valid state could be misclassified as a challenge. These were fixed in revision `93dd9c6` and independently confirmed in the final-source recheck below.
 
 - Kernel live: all seven discovered; from `/private-dining`, availability, exact preparation, profile/menu, reviews and search succeeded, plus unknown-ID and out-of-range errors. No navigation or writes. A first browser became renderer-unresponsive and returned `outcome_unknown`; it was not automatically retried. A separate public browser completed these calls. Namespace replacement was accepted; discovery on the unresponsive document was inconclusive.
 - Extension live: all seven discovered together; availability, preparation, party-size no-results, profile/menu, reviews, search and two failure cases succeeded without navigation or writes. Forced namespace replacement end-to-end was not completed in this pass.
@@ -82,4 +82,14 @@ Revision `52d625f`: **FAIL**, 1610 repository tests, 33 site test blocks, 14 ext
 - Inventory reads traversed 173 static modules per invocation, within the bound. The three inventory POSTs in the extension were read queries.
 - Both owned public browsers and the isolated extension profile/processes were cleaned up. No original account browser was used by the reviewer.
 
-Final-source review is pending. Historical approvals and this intermediate live evidence do not approve changed source. All seven registry statuses remain draft until the final recheck.
+### Final-source recheck — 2026-09-30
+
+Revision `93dd9c6`: **PASS for source QA; live runtime verification incomplete.** The same independent reviewer confirmed all four findings fixed, completed 127 independent Node-fixture invocations with 127 schema-valid outputs, and reran the registry validator (86 tools), all 1614 repository tests (37 OpenTable), 14 extension unit tests and Go tests. No concrete open source defect was found. Exact matches beyond the display cap, the 200-slot bound, cancellation before/during fetch/body reads, malformed seating-specific mandatory data, mandatory experience gating and legitimate-state challenge exclusion were independently checked.
+
+- Kernel final-source attempt: no native tools; initial registration returned `Internal_error`. One forced namespace replacement accepted seven definitions, but discovery returned zero and a renderer read timed out. No final-source tool invocation completed; no automatic retry or browser churn followed.
+- Extension final-source attempt: isolated startup reached the permission-grant step, which timed out with outcome unobserved. Final-source registration, replacement, discovery and live invocation remain unverified.
+- Account success, populated Favorites, wrong-account and identity-change coverage is **fabricated Node-only**. Extension account fixtures and independent live signed-in/populated account paths remain unverified. Earlier empty author evidence does not validate populated item schemas or changed account source.
+- Live mandatory experiences, real challenge/429 query responses and cross-host redirects remain unverified. Destructive actions are absent and were not tested live.
+- Owned Kernel browser deleted and confirmed absent; isolated local processes/profile/scratch removed and debugging port closed. The original account browser and its expiry/cleanup were untouched by the reviewer.
+
+All seven entries are **qa_passed**, not `verified`, with the independent-review provenance in the registry. This is source-level independent success/failure QA, not a claim of final-source live parity. Historical live results above do not verify the changed source. Subsequent changes are README/registry metadata only; all seven tool sources and tests are unchanged from the reviewed revision. The PR remains draft.
