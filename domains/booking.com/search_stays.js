@@ -137,7 +137,7 @@
             type: "object", additionalProperties: false, required: ["status", "error_kind", "error_message"],
             properties: {
               status: { const: "error" },
-              error_kind: { enum: ["invalid_input", "wrong_page", "unsupported_language", "challenge", "gated", "rate_limited", "search_not_accepted", "search_not_applied", "currency_mismatch", "site_changed", "site_error"] },
+              error_kind: { enum: ["invalid_input", "wrong_page", "unsupported_language", "challenge", "gated", "rate_limited", "search_not_accepted", "search_not_applied", "currency_mismatch", "site_changed", "site_error", "canceled"] },
               error_message: { type: "string", minLength: 1 }
             }
           }
@@ -145,7 +145,7 @@
       },
       annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true }
     },
-    execute: async (input) => {
+    execute: async (input, context = {}) => {
       const ORIGIN = "https://www.booking.com";
       const fail = (kind, message) => ({ status: "error", error_kind: kind, error_message: message });
       const allowed = ["destination", "check_in", "check_out", "adults", "children_ages", "currency", "sort", "star_ratings", "min_review_score", "free_cancellation_only", "breakfast_included", "limit"];
@@ -153,7 +153,7 @@
 
       const destination = typeof input.destination === "string" ? input.destination.trim().replace(/\s+/g, " ") : "";
       if (destination.length < 2 || destination.length > 100 || /[\u0000-\u001f\u007f]/.test(destination)) return fail("invalid_input", "destination must be 2 to 100 characters of text.");
-      const isDate = v => typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v) && new Date(v + "T00:00:00Z").toISOString().slice(0, 10) === v;
+      const isDate = v => typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v) && Number.isFinite(Date.parse(v + "T00:00:00Z")) && new Date(v + "T00:00:00Z").toISOString().slice(0, 10) === v;
       if (!isDate(input.check_in)) return fail("invalid_input", "check_in must be a real calendar date, YYYY-MM-DD.");
       if (!isDate(input.check_out)) return fail("invalid_input", "check_out must be a real calendar date, YYYY-MM-DD.");
       const dayMs = 86400000;
@@ -188,22 +188,26 @@
       if (query.breakfast_included) filters.push("mealplan=1");
       if (filters.length) params.set("nflt", filters.join(";"));
 
+      if (context.signal?.aborted) return fail("canceled", "The search was canceled before any request.");
       if (window.location.origin !== ORIGIN) return fail("wrong_page", "Open any https://www.booking.com page first; this tool runs the site's search from that page.");
       if (!/^en(-|$)/i.test(document.documentElement.getAttribute("lang") || "")) return fail("unsupported_language", "This tool reads English labels; switch the Booking.com page language to English first.");
 
-      const text = el => el ? (el.textContent || "").replace(/\s+/g, " ").trim() : "";
+      const rawText = el => el ? (el.textContent || "").replace(/\s+/g, " ").trim() : "";
+      const text = el => rawText(el).slice(0, 600);
       const pickTid = (root, id) => root.querySelector("[data-testid=\"" + id + "\"]");
       const amount = s => {
         const token = /[\d][\d,.']*/.exec(s || "");
         if (!token) return null;
-        return /^(\d{1,3}(,\d{3})+|\d+)(\.\d+)?$/.test(token[0]) ? Number(token[0].replace(/,/g, "")) : null;
+        const value = /^(\d{1,3}(,\d{3})+|\d+)(\.\d+)?$/.test(token[0]) ? Number(token[0].replace(/,/g, "")) : NaN;
+        return Number.isFinite(value) ? value : null;
       };
       const cfg = (html, re) => (re.exec(html) || [])[1] ?? null;
       const observedAt = new Date().toISOString();
 
       try {
-        const res = await fetch(ORIGIN + "/searchresults.html?" + params.toString(), { credentials: "include", headers: { accept: "text/html" }, signal: AbortSignal.timeout(25000) });
+        const res = await fetch(ORIGIN + "/searchresults.html?" + params.toString(), { credentials: "include", headers: { accept: "text/html" }, signal: context.signal ? AbortSignal.any([context.signal, AbortSignal.timeout(25000)]) : AbortSignal.timeout(25000) });
         const html = await res.text();
+        if (context.signal?.aborted) return fail("canceled", "The search was canceled.");
         const botPage = /awswaf|AwsWafIntegration/i.test(html.slice(0, 20000));
         if (res.status === 429) return fail("rate_limited", "Booking.com returned HTTP 429; wait a few minutes before searching again.");
         if (res.status !== 200) {
@@ -211,8 +215,8 @@
           return fail("site_error", "Booking.com returned HTTP " + res.status + ".");
         }
         const final = new URL(res.url);
-        if (/\/(sign-?in|login|consent)\b/i.test(final.pathname)) return fail("gated", "Booking.com asked for sign-in or consent (" + final.pathname + ") instead of showing results.");
-        if (res.redirected && !final.pathname.includes("searchresults")) return fail("search_not_accepted", "Booking.com redirected the search to " + final.pathname + ". It does that for a destination it cannot resolve and for dates in the past or beyond its bookable window (observed to end about 16 months ahead), and it may also do it when it treats the request as automated; the tool cannot tell which applied.");
+        if (/\/(sign-?in|login|consent)\b/i.test(final.pathname)) return fail("gated", "Booking.com asked for sign-in or consent instead of showing results.");
+        if (res.redirected && !final.pathname.includes("searchresults")) return fail("search_not_accepted", "Booking.com redirected away from the results page. It does that for a destination it cannot resolve and for dates in the past or beyond its bookable window (observed to end about 16 months ahead), and it may also do it when it treats the request as automated; the tool cannot tell which applied.");
         const doc = new DOMParser().parseFromString(html, "text/html");
         const heading = /^(.*?):\s*([\d,]+)\s+propert(?:y|ies)\s+found/i.exec(text(doc.querySelector("h1")));
         if (!heading) return botPage ? fail("challenge", "Booking.com served a bot-protection page instead of results; complete the check in the browser or wait before retrying.") : fail("site_changed", "The results page has no 'N properties found' heading; Booking.com's markup may have changed.");
@@ -229,13 +233,13 @@
         if (!configCurrency || !occ.adults || !occ.rooms) return fail("site_changed", "The results page does not expose the currency and guests it searched; Booking.com's markup may have changed.");
         if (shownCurrency !== query.currency || configCurrency !== query.currency) return fail("currency_mismatch", "Booking.com is showing " + (/^[A-Z]{3}$/.test(shownCurrency) && shownCurrency === configCurrency ? shownCurrency : "prices in a mix of currencies or one it does not label with a code") + ", not " + query.currency + ". This tool never changes the site's currency: pass the currency the site shows, or change it in the site's currency picker first.");
         if (!checkIn || !checkOut || !interval) return fail("search_not_applied", "Booking.com did not apply the dates " + query.check_in + " to " + query.check_out + " (it ignores dates it cannot book, such as dates in the past) and returned an undated search.");
-        if (checkIn !== query.check_in || checkOut !== query.check_out || occ.adults !== query.adults || occ.children !== ages.length || occ.rooms !== 1) {
+        if (checkIn !== query.check_in || checkOut !== query.check_out || interval !== nights || occ.adults !== query.adults || occ.children !== ages.length || occ.rooms !== 1) {
           return fail("search_not_applied", "Booking.com searched " + checkIn + " to " + checkOut + " for " + occupancy + ", not the " + query.check_in + " to " + query.check_out + ", " + query.adults + " adults, " + ages.length + " children, 1 room requested.");
         }
         const signedIn = pickTid(doc, "header-profile") ? true : pickTid(doc, "header-sign-in-button") ? false : null;
-        const crumbs = [...doc.querySelectorAll("[data-testid=\"breadcrumbs\"] li")].map(text).filter(t => t && t !== "Home" && t !== "Search results");
+        const crumbs = [...doc.querySelectorAll("[data-testid=\"breadcrumbs\"] li")].map(text).filter(t => t && t !== "Home" && t !== "Search results").slice(0, 20);
         const dest = {
-          name: heading[1].trim(), dest_id: cfg(html, /\bb_dest_id\s*:\s*'(-?\d+)'/), dest_type: cfg(html, /\bb_dest_type\s*:\s*'([a-z_]+)'/), country_code: cfg(html, /"b_countrycode"\s*:\s*'([a-z]{2})'/), breadcrumb: crumbs
+          name: heading[1].trim(), dest_id: cfg(html, /\bb_dest_id\s*:\s*'(-?\d{1,20})'/), dest_type: cfg(html, /\bb_dest_type\s*:\s*'([a-z_]{1,30})'/), country_code: cfg(html, /"b_countrycode"\s*:\s*'([a-z]{2})'/), breadcrumb: crumbs
         };
         const effective = { check_in: checkIn, check_out: checkOut, nights: interval, adults: occ.adults, children: occ.children, rooms: occ.rooms, currency: shownCurrency, signed_in: signedIn };
         if (totalFound === 0 && cardEls.length) return fail("site_changed", "The heading reports 0 properties but the page lists property cards; Booking.com's markup may have changed.");
@@ -254,14 +258,14 @@
           let url = null;
           try {
             const u = new URL(link && link.getAttribute("href"), ORIGIN);
-            if (u.origin === ORIGIN && /^\/hotel\/[a-z]{2}\/[A-Za-z0-9._-]+\.html$/.test(u.pathname)) url = ORIGIN + u.pathname;
+            if (u.origin === ORIGIN && (ORIGIN + u.pathname).length <= 300 && /^\/hotel\/[a-z]{2}\/[A-Za-z0-9._-]+\.html$/.test(u.pathname)) url = ORIGIN + u.pathname;
           } catch (e) { url = null; }
           const name = text(pickTid(card, "title"));
           if (!url || !name || seen.has(url)) { skipped++; continue; }
           seen.add(url);
           const scoreLink = pickTid(card, "review-score-link");
           const scoreMatch = /Scored\s+([\d.]+),\s*([^,]+),\s*([\d,]+)\s+reviews?/i.exec(scoreLink ? scoreLink.getAttribute("aria-label") || "" : "") || /Scored\s+([\d.]+)\s+[\d.]+\s+(.+?)\s+([\d,]+)\s+reviews?/i.exec(text(pickTid(card, "review-score")));
-          const review = scoreMatch ? { score: Number(scoreMatch[1]), label: scoreMatch[2].trim() || null, count: Number(scoreMatch[3].replace(/,/g, "")) } : null;
+          const review = scoreMatch ? { score: Number(scoreMatch[1]), label: scoreMatch[2].trim().slice(0, 600) || null, count: Number(scoreMatch[3].replace(/,/g, "")) } : null;
           const starEl = pickTid(card, "rating-stars") || pickTid(card, "rating-squares");
           const starLabel = starEl ? (starEl.closest("[aria-label]") || starEl).getAttribute("aria-label") || "" : "";
           const starMatch = /(\d(?:\.\d)?)\s+out of 5/i.exec(starLabel);
@@ -278,7 +282,7 @@
               if (leftMatch) left = Number(leftMatch[1]);
               else if (configEl && li.contains(configEl) && lines.length) beds = lines[0];
             }
-            const unitText = text(units);
+            const unitText = rawText(units);
             unit = { name: unitName, details: configEl ? text(configEl) : null, beds, free_cancellation: /free cancellation/i.test(unitText), breakfast_included: /breakfast included/i.test(unitText), units_left: left };
           }
 
@@ -286,7 +290,7 @@
           let price = null;
           if (rate) {
             const spans = [...rate.querySelectorAll("[data-testid=\"price-and-discounted-price\"]")].map(text);
-            const rateText = text(rate);
+            const rateText = rawText(rate);
             const struck = /Original price\s+(\S+?)\.?\s+Current price/i.exec(rateText);
             const totalText = spans.length ? spans[spans.length - 1] : "";
             if (totalText) price = { total: amount(totalText), original_total: struck ? amount(struck[1]) : null, per_night_average: spans.length > 1 ? amount(spans[0]) : null, total_text: totalText, additional_charges_may_apply: /additional charges may apply/i.test(rateText), members_only: !!pickTid(rate, "genius-rate-sharing-sign-in-prompt") || /members-only price/i.test(rateText) };
@@ -296,7 +300,7 @@
             rank: properties.length + 1, name, property_url: url,
             area: text(pickTid(card, "address-link")) || null, distance_from_center: text(pickTid(card, "distance")) || null,
             star_rating: starMatch ? Number(starMatch[1]) : null, review, unit, price,
-            deal_labels: [...card.querySelectorAll("[data-testid=\"property-card-deal\"]")].map(text).filter(Boolean),
+            deal_labels: [...card.querySelectorAll("[data-testid=\"property-card-deal\"]")].map(text).filter(Boolean).slice(0, 20),
             preferred_plus: !!pickTid(card, "preferred-badge")
           });
         }
@@ -305,14 +309,15 @@
         if (membersOnly) warnings.push(membersOnly + " returned properties show a members-only price that needs signing in; for those, price.total includes a member discount a signed-out visitor is not given, by an amount the card does not show (see get_property).");
         if (unpriced) warnings.push(unpriced + " returned properties showed no readable price on the results card.");
         if (skipped) warnings.push(skipped + " result cards were skipped because they had no name or a non-property URL, or repeated a property.");
-        return {
+        const output = {
           status: "ok", observed_at: observedAt, query, effective,
           price_basis: { scope: "stay_total", nights: interval, adults: occ.adults, children: occ.children, currency: shownCurrency, taxes_and_fees: "not_itemized_on_results_card" },
           destination: dest, total_found: totalFound, returned: properties.length, has_more: totalFound > properties.length,
           results_url: ORIGIN + "/searchresults.html?" + params.toString(), warnings, properties
         };
-      } catch (error) {
-        return fail("site_error", "The request from the page failed: " + (error && error.message ? error.message : String(error)));
+        return new TextEncoder().encode(JSON.stringify(output)).length > 200000 ? fail("site_changed", "The readable result data exceeds the supported output size; request fewer properties.") : output;
+      } catch {
+        return context.signal?.aborted ? fail("canceled", "The search was canceled.") : fail("site_error", "The search request failed or timed out; no booking or setting was changed.");
       }
     }
   }];

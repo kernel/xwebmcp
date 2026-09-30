@@ -1,11 +1,12 @@
 # booking.com
 
-Tools for Booking.com stays (https://www.booking.com): search a destination and read a property's rates. Both are read-only and work signed out.
+Tools for Booking.com stays (https://www.booking.com): search a destination, compare dated room rates and prepare an exact rate for manual booking. All three are read-only and work signed out.
 
 | tool | file | status | notes |
 |------|------|--------|-------|
 | search_stays | [search_stays.js](search_stays.js) | draft | First results page (up to 25 properties) for a destination, explicit dates, adults, child ages and the currency the site shows, with sort and filters; echoes the dates, guests and currency the site applied |
-| get_property | [get_property.js](get_property.js) | draft | One property's facts, reviews and every listed rate for explicit dates and guests, with taxes and fees excluded from each price, cancellation, prepayment and meal terms; rates limited to fewer guests than the party are left out |
+| get_property | [get_property.js](get_property.js) | draft | Dated room rates, IDs and global comparison ranks; optional lowest-price ordering before the cap, excluded fees and policies; smaller-party rates are left out |
+| prepare_booking | [prepare_booking.js](prepare_booking.js) | draft | Current-page-only exact-rate handoff for one room and adults without children; checks price, dates, party, sign-in state and terms; never selects, reserves or opens checkout |
 
 ## Native WebMCP tools
 
@@ -13,15 +14,15 @@ None found (checked 2026-09-29 with `webmcp.listTools()` and `document.modelCont
 
 ## Execution kind
 
-Both tools are `kind: "page"`. Each makes one same-origin `fetch` of the site's own HTML (`/searchresults.html`, `/hotel/<country>/<slug>.html`) with the document's cookies, parses the returned markup with `DOMParser`, and never navigates the tab, so neither needs to survive a navigation and neither qualifies for `cdp`. The results and the property page are server-rendered, and a same-origin fetch returned the same cards and rate rows the rendered page shows.
+The two read tools are `kind: "page"`. Each makes one same-origin `fetch` of the site's own HTML (`/searchresults.html`, `/hotel/<country>/<slug>.html`) with the document's cookies, parses the returned markup with `DOMParser`, and never navigates the tab, so neither needs to survive a navigation and neither qualifies for `cdp`. `prepare_booking` only reads the current document and makes no request or navigation; it is also `page`. The results and the property page are server-rendered, and a same-origin fetch returned the same cards and rate rows the rendered page shows.
 
 ## Scope and loading
 
-Register both files together under namespace `booking.com`; `forceOverwriteNamespace: true` replaces the whole namespace.
+Register all three files together under namespace `booking.com`; `forceOverwriteNamespace: true` replaces the whole namespace.
 
 ```javascript
 const fs = await import("node:fs");
-const tools = ["search_stays", "get_property"].flatMap(name => eval(fs.readFileSync(`domains/booking.com/${name}.js`, "utf8")));
+const tools = ["search_stays", "get_property", "prepare_booking"].flatMap(name => eval(fs.readFileSync(`domains/booking.com/${name}.js`, "utf8")));
 await webmcp.addCustomTools({ namespace: "booking.com", tools, forceOverwriteNamespace: true });
 const tab = (await currentTab()).targetId;
 const ref = async name => (await webmcp.listTools()).find(t => t.source.custom?.namespace === "booking.com" && t.tool.name === name && t.source.target_id === tab).tool_ref;
@@ -31,11 +32,19 @@ const property = await webmcp.invokeTool(await ref("get_property"), { property_u
 
 Use future dates. Each call took about 1 to 4 seconds live. Do not navigate the tab while a call runs: a page tool stops when its document is replaced, and the result is lost. The Kernel REPL helper returned `output` as an object for most results but as a JSON string for some results containing non-ASCII text (the `no_availability` result did; `ok` results with the same non-ASCII address did not; a schema-less probe tool returning `{"a":"Tomás"}` did too); parse a string `output` before use.
 
-Both tools run on any `https://www.booking.com` page in an English-language session and return `wrong_page` or `unsupported_language` without a request otherwise.
+The read tools run on any `https://www.booking.com` page in an English-language session and return `wrong_page` or `unsupported_language` without a request otherwise. `prepare_booking` requires the exact dated property page already open; an unrelated page returns `wrong_page` without navigation.
 
 **search_stays** takes `destination`, `check_in`, `check_out`, `adults` and `currency` (all required), plus optional `children_ages`, `sort`, `star_ratings`, `min_review_score`, `free_cancellation_only`, `breakfast_included` and `limit` (1 to 25, default 10). It searches one room. It returns the destination the site resolved (name, `dest_id`, type, country code and breadcrumb) so a caller can spot an ambiguous name, the site's `total_found`, `has_more`, and for each property the canonical `property_url`, area, distance, star rating when the card shows one, review score, the recommended unit, price and deal labels. Only the first results page is read; later pages are not.
 
-**get_property** takes `property_url` (as returned by `search_stays`), `check_in`, `check_out`, `adults` and `currency` (required), plus optional `children_ages` and `max_rates` (1 to 40, default 20). It reads one room's worth of pricing. It returns the property facts and `rooms[]` with each room's `rates[]`. `no_availability` means the page itself says the property has nothing for those dates. `no_rate_for_party` means every rate it lists is limited to fewer guests than the party (per-bed dormitory rates, for example): that is not "no availability", because the site may let you select several such units, which the tool does not price.
+**get_property** takes `property_url` (as returned by `search_stays`), `check_in`, `check_out`, `adults` and `currency` (required), plus optional `children_ages`, `max_rates` (1 to 40, default 20) and `sort` (`page_order` or `price_low_to_high`). It scans at most 400 rows, sorts before applying the cap and keeps rooms grouped. Each rate's `comparison_rank` is its global order, and `rate_id` is the row's `data-block-id` (null if missing or malformed). Comparison uses displayed totals only: it neither adds excluded fees nor treats a member preview as an obtainable public price. It reads one room's worth of pricing. It returns the property facts and `rooms[]` with each room's `rates[]`. `no_availability` means the page itself says the property has nothing for those dates. `no_rate_for_party` means every rate it lists is limited to fewer guests than the party (per-bed dormitory rates, for example): that is not "no availability", because the site may let you select several such units, which the tool does not price.
+
+### Exact booking preparation and execution safety
+
+`prepare_booking` takes the canonical `property_url`, numeric `property_id`, `rate_id`, `check_in`, `check_out`, `adults`, `currency`, `expected_total` (the exact displayed total) and `expected_signed_in` from the read. Manually open the dated property page first. It requires the same property ID, dates, night count, adult party, zero children, one room, currency and header sign-in state. The exact rate must occur once, have a numeric room ID, enough stated capacity, a selectable one-unit option, no selected units anywhere in the table, and readable cancellation, prepayment and excluded-fee text. Member-only previews fail with `login_required`; changed prices fail with `price_changed`.
+
+The output is an allowlisted snapshot of those terms and a dated property URL with no selection, checkout, tracking or session parameters. There is no request, click, form fill, selection or persistent draft. `inventory_reserved: false` means this tool reserved nothing; it is not an assertion about prior reservations elsewhere. Repeating preparation merely reads again. Canceling before execution returns `canceled`. `expected_signed_in` is only a sign-in-state check, not proof of the intended account; manual account review is required.
+
+**No execution tool ships.** Room selection/holds, booking, cancellation and payment are consequential. The runtime does not provide a trusted approval path bound to the exact account, rate, guests, dates, final all-in cost and full terms. `confirmed=true`, a confirmation string, annotations and this snapshot cannot establish approval. Such inputs are rejected before page interaction. Preparation does not authorize any subsequent automated Reserve click; completion stays manual. No account mutation is needed to QA these tools.
 
 ### Dates, guests, currency and price basis
 
@@ -56,7 +65,7 @@ Booking.com keeps the chosen currency for the whole browser session: on 2026-09-
 
 ## URL patterns
 
-Both tools use `https://www.booking.com/*` instead of the repository default (`https://booking.com/*`, `https://*.booking.com/*`). They read pages with a same-origin fetch, so they only work when the invoking document is on `www.booking.com`. A fetch from `www.booking.com` to `flights.booking.com` or `secure.booking.com` fails with `Failed to fetch` (observed); the reverse direction was not tried. Narrowing to the `www` host keeps the tools off most other Booking.com pages, but it does not remove every one. An independent reviewer observed that `flights.booking.com` redirected to a `www.booking.com` page (where the tools work) and that the Kernel runtime listed the tools on a `secure.booking.com` help page and on `account.booking.com`, most likely because those pages embed a `www.booking.com` frame (spec/cdp-tools.md §6.1); the author did not open those pages. Invoked from such a top document the tools return `wrong_page` without a request. The bare `booking.com` host and other subdomains are not covered.
+All tools use `https://www.booking.com/*` instead of the repository default (`https://booking.com/*`, `https://*.booking.com/*`). The two read tools fetch pages same-origin and preparation reads the current page, so all only work when the invoking document is on `www.booking.com`. A fetch from `www.booking.com` to `flights.booking.com` or `secure.booking.com` fails with `Failed to fetch` (observed); the reverse direction was not tried. Narrowing to the `www` host keeps the tools off most other Booking.com pages, but it does not remove every one. An independent reviewer observed that `flights.booking.com` redirected to a `www.booking.com` page (where the tools work) and that the Kernel runtime listed the tools on a `secure.booking.com` help page and on `account.booking.com`, most likely because those pages embed a `www.booking.com` frame (spec/cdp-tools.md §6.1); the author did not open those pages. Invoked from such a top document the tools return `wrong_page` without a request. The bare `booking.com` host and other subdomains are not covered.
 
 ## Site quirks
 
@@ -74,10 +83,11 @@ Both tools use `https://www.booking.com/*` instead of the repository default (`h
 
 ## Known limitations
 
-- Not implemented: choosing a room or rate, saving to a list, reserving, checkout, bookings, account pages, review text, photos, maps, flights, cars, taxis and attractions. The tools never click, submit a form, or open `secure.booking.com`.
+- Not implemented: room/rate selection, saving to a list, holds, booking/cancellation/payment execution, checkout, account reads, review text, photos, maps, flights, cars, taxis and attractions. Populated saved-list/reservation structures and account identity guards have not been validated, so those candidates are omitted rather than fabricated. No bookings or saved items were created for testing. The tools never click, submit a form, or open `secure.booking.com`.
+- Preparation supports only one room with adults and no children. It refuses missing capacity, fees, policies, room IDs, changed state or existing selections, including layouts that public reads can partially parse. It does not calculate a final all-in cost or independently establish account identity.
 - One room, up to 30 adults and 10 children. Multi-room searches, flexible dates, map or region drawing, price-range filters and property-type filters are not supported. The site's currency cannot be chosen through the tools (see above).
 - Only the first results page is read (at most 25 properties); no later pages.
-- The `gated` (sign-in or consent path), `rate_limited` and HTTP-error branches are covered by fixture tests and by simulated failures only; no sign-in wall or 429 was seen. The `challenge` shape was observed live only for a request without cookies, which the tools never send. A cross-origin redirect to a sign-in or consent host would surface as `site_error` ("Failed to fetch") because a page fetch cannot read it.
+- The `gated` (sign-in or consent path), `rate_limited` and HTTP-error branches are covered by fixture tests and by simulated failures only; no sign-in wall or 429 was seen. The `challenge` shape was observed live only for a request without cookies, which the tools never send. A cross-origin redirect to a sign-in or consent host would surface as `site_error` with a sanitized request-failure message because a page fetch cannot read it.
 - Only the `#hprt-table` rate-table layouts return rates; a page without that table is reported as `site_changed`.
 - With children in the party, the party check compares only the adults with the page's "Max adults"; whether a rate's price covers the children is not stated on the page, and the tool does not claim it.
 - Star ratings appeared on cards only when a star filter was applied, so `star_rating` is often null.
@@ -115,7 +125,7 @@ Independent QA (agent `agt_dd7f389d3c2826a1698e`, three rounds on 2026-09-29, ea
 | `6f5baae` | 5: members-only preview prices returned as ordinary prices; a per-bed hostel reported as no availability; a slug beginning with `login` reported as a gate; beyond-window dates depending on the session's last party; README inaccuracies | fixed: `members_only` and `member_discount`, `no_rate_for_party`, path check, README |
 | `a7c189c` | 3: the members-only warning and `original_total` description said `original_total` is the price without the member discount, which is false for cards that also carry a deal; a stale field name and a contradicting README bullet; the members-only signals depended on exact markup in two places | fixed afterwards without a further review (no fix round remained): wording, README, and the two signals now also match the visible prompt text |
 
-The reviewed source at `a7c189c` differs from the final source only by those last edits (schema and warning wording, a text-based members-only signal in both tools, README, registry notes and two tests), so statuses stay `draft`; nothing here is `qa_passed`.
+The earlier final source (`0cf42f0`) added those last fixes after review, without sign-off. The current increment adds comparison IDs/order, exact preparation, safe date validation, bounded fields and cancellation. Independent QA of this increment is pending; statuses stay `draft`.
 
 What was and was not verified, by runtime:
 
@@ -127,6 +137,12 @@ Local tests use fabricated pages modeled on the observed markup, stubbed network
 ```sh
 node --test tests/booking-stays.test.mjs
 ```
+
+### Current increment verification (2026-09-30)
+
+- Fixtures: 124 Booking.com tests pass, including exact preparation success, malformed inputs before any page access, changed price/dates/currency/property/sign-in state, missing capacity/policies/fees, existing selections, duplicate/missing rates, member previews, cancellation, and document/selection equality. Real mutation success is not inferred from fixtures.
+- Full suite: 1701 tests pass on the current branch; registry validation reports 82 valid tools. Structured read outputs have a 200,000-byte cap. Warnings may count rates scanned beyond the returned cap.
+- Kernel: all three files registered atomically; no native tools found before registration. Initial `get_property` invocation in the new public browser returned `outcome_unknown`, followed by a page-evaluation timeout. No automatic retry or booking action was made. Final live and local-extension evidence will be recorded after independent QA; historical evidence above does not validate changed source.
 
 ## Sessions
 

@@ -7,7 +7,7 @@ import { Document, DOMParser } from "./etsy-dom.mjs";
 // Harness for the booking.com stay tools. Every page and network interaction is stubbed; nothing here
 // contacts the live site. Properties, prices and identifiers below are fabricated, but the markup mirrors
 // the structure observed on www.booking.com (data-testid hooks, hprt rate table, inline page config).
-const NAMES = ["search_stays", "get_property"];
+const NAMES = ["search_stays", "get_property", "prepare_booking"];
 const sources = Object.fromEntries(NAMES.map(name => [name, readFileSync(new URL(`../domains/booking.com/${name}.js`, import.meta.url), "utf8")]));
 const registry = JSON.parse(readFileSync(new URL("../registry.json", import.meta.url), "utf8"));
 const HOME = "https://www.booking.com/";
@@ -115,7 +115,7 @@ function rateRow({ head = null, blockId = "1001_2001_2_2_0", guests = "Max. peop
   const conditions = `<td class="hprt-table-cell hprt-table-cell-conditions"><div class="hprt-block"><ul class="hprt-conditions-bui bui-f-font-caption">` +
     (meal ? `<li><span role="presentation"></span><div><div>${meal}</div></div></li>` : "") +
     `<li class="e2e-cancellation" data-testid="cancellation-subtitle">${policy("cancellation-policy", cancellation)}</li><li data-testid="prepayment-subtitle">${policy("prepayment-policy", prepay)}</li><li><div aria-label="Genius discount may be available when you sign in."> discount may be available </div></li></ul></div></td>`;
-  return `<tr class="js-rt-block-row e2e-hprt-table-row" data-block-id="${blockId}">${th}${occupancy}${price}${conditions}<td class="hprt-table-cell hprt-table-room-select"><select name="nr_rooms_${blockId}"><option>0</option><option>1 (${total})</option></select></td></tr>`;
+  return `<tr class="js-rt-block-row e2e-hprt-table-row" data-block-id="${blockId}">${th}${occupancy}${price}${conditions}<td class="hprt-table-cell hprt-table-room-select"><select name="nr_rooms_${blockId}"><option value="0">0</option><option value="1">1 (${total})</option></select></td></tr>`;
 }
 
 const ROOM_A = { id: "1001", name: "Studio", beds: "1 queen bed", left: 1 };
@@ -140,9 +140,9 @@ function propertyPage({ rows = null, signedIn = false, currency = "USD", occupan
 
 // --- harness ------------------------------------------------------------------------------------------
 
-function makeEnv({ start = HOME, liveCurrency = "USD", lang = "en-us", routes = [] } = {}) {
+function makeEnv({ start = HOME, liveCurrency = "USD", lang = "en-us", liveHtml, routes = [] } = {}) {
   const calls = [];
-  const live = new Document(`<html lang="${lang}"><body><button data-testid="header-currency-picker-trigger">${liveCurrency}</button></body></html>`);
+  const live = new Document(liveHtml ?? `<html lang="${lang}"><body><button data-testid="header-currency-picker-trigger">${liveCurrency}</button></body></html>`);
   const fetch = async (url, init = {}) => {
     const u = new URL(url, HOME);
     calls.push({ path: u.pathname, search: u.search, params: u.searchParams, credentials: init.credentials });
@@ -154,7 +154,7 @@ function makeEnv({ start = HOME, liveCurrency = "USD", lang = "en-us", routes = 
     return { status, redirected, url: new URL(finalPath + (finalPath === u.pathname ? u.search : ""), HOME).href, text: async () => body };
   };
   const window = { location: new URL(start) };
-  const context = { window, document: live, fetch, DOMParser, URL, URLSearchParams, AbortSignal, Date: FrozenDate, console };
+  const context = { window, document: live, fetch, DOMParser, URL, URLSearchParams, AbortSignal, TextEncoder, Date: FrozenDate, console };
   return { calls, context, live };
 }
 
@@ -167,7 +167,7 @@ const plain = value => JSON.parse(JSON.stringify(value));
 const run = async (name, input, options = {}) => {
   const env = makeEnv(options);
   const definition = register(name, env);
-  const output = plain(await definition.execute(input, {}));
+  const output = plain(await definition.execute(input, { signal: options.signal }));
   assert.ok(conforms(definition.tool.outputSchema, output), "output must conform to outputSchema: " + JSON.stringify(output).slice(0, 400));
   return { output, calls: env.calls, definition, env };
 };
@@ -417,7 +417,7 @@ test("search_stays maps blocking and failure responses to distinct errors", asyn
 test("search_stays reports a network failure as site_error, not an empty result", async () => {
   const { output } = await run("search_stays", SEARCH, { routes: [searchRoute(new TypeError("Failed to fetch"))] });
   assert.equal(output.error_kind, "site_error");
-  assert.match(output.error_message, /Failed to fetch/);
+  assert.match(output.error_message, /failed or timed out/);
 });
 
 test("search_stays flags a changed page instead of returning nothing", async () => {
@@ -541,6 +541,7 @@ test("get_property reads rooms, rates, cancellation, meal, taxes and the page's 
   assert.equal(studio.units_left, 1);
   assert.deepEqual(studio.highlights, ["Entire studio", "441 feet²", "Private bathroom"]);
   assert.deepEqual(studio.rates[0], {
+    rate_id: "1001_2001_2_2_0", comparison_rank: 1,
     max_guests: 2, max_adults: null,
     price: { total: 316, original_total: 352, per_night_average: 158, total_before_taxes: 316.46, taxes_and_fees_excluded: "6 % VAT, € 4 City tax per person per night", total_text: "$316" },
     cancellation: "Non-refundable", free_cancellation: false, non_refundable: true, prepayment: "Pay the property before arrival", meal_plan: "Wonderful breakfast $16", member_discount: null
@@ -776,4 +777,144 @@ test("neither tool submits forms, posts, or touches booking, save or account end
   await register("search_stays", env).execute(SEARCH, {});
   await register("get_property", env).execute(PROPERTY, {});
   assert.deepEqual([...new Set(env.calls.map(c => c.path.replace(/\/hotel\/.*/, "/hotel/*")))].sort(), ["/hotel/*", "/searchresults.html"]);
+});
+
+// Comparison and preparation use fabricated rates, never live selection or reservation.
+const PREPARE = { ...PROPERTY, property_id: "1000001", rate_id: "1001_2001_2_2_0", expected_total: 316, expected_signed_in: false };
+const prepOptions = (liveHtml = propertyPage()) => ({ start: PROPERTY.property_url, liveHtml });
+
+test("get_property selects the cheapest rates before applying max_rates, retaining global ranks", async () => {
+  const rows = [rateRow({ head: ROOM_A, total: "$900" }), rateRow({ head: ROOM_B, blockId: "1002_2001_2_2_0", total: "$100" }), rateRow({ blockId: "1002_2002_2_2_0", total: "$150" })];
+  const { output } = await run("get_property", { ...PROPERTY, sort: "price_low_to_high", max_rates: 2 }, { routes: [propertyRoute({ body: propertyPage({ rows }) })] });
+  assert.equal(output.rates_total, 3);
+  assert.equal(output.truncated, true);
+  assert.deepEqual(output.rooms.map(r => r.room_id), ["1002"]);
+  assert.deepEqual(output.rooms[0].rates.map(r => [r.price.total, r.comparison_rank]), [[100, 1], [150, 2]]);
+});
+
+test("get_property puts unreadable prices last and does not invent an actionable ID", async () => {
+  const rows = [rateRow({ head: ROOM_A, total: "unreadable", blockId: "bad' selector" }), rateRow({ blockId: "1001_2002_2_2_0", total: "$150" })];
+  const { output } = await run("get_property", { ...PROPERTY, sort: "price_low_to_high" }, { routes: [propertyRoute({ body: propertyPage({ rows }) })] });
+  assert.deepEqual(output.rooms[0].rates.map(r => [r.price.total, r.rate_id]), [[150, "1001_2002_2_2_0"], [null, null]]);
+});
+
+for (const name of ["search_stays", "get_property"]) {
+  test(`${name} rejects impossible months and days before site interaction`, async () => {
+    for (const date of ["2026-99-01", "2026-00-10", "2026-11-99"]) {
+      const { output, calls } = await run(name, { ...(name === "search_stays" ? SEARCH : PROPERTY), check_in: date });
+      assert.equal(output.error_kind, "invalid_input");
+      assert.equal(calls.length, 0);
+    }
+  });
+  test(`${name} sanitizes network errors that might contain session URLs`, async () => {
+    const reply = new Error("Failed to fetch https://www.booking.com/?sid=private-token");
+    const route = name === "search_stays" ? searchRoute(reply) : propertyRoute(reply);
+    const { output } = await run(name, name === "search_stays" ? SEARCH : PROPERTY, { routes: [route] });
+    assert.equal(output.error_kind, "site_error");
+    assert.doesNotMatch(JSON.stringify(output), /private-token|sid=/);
+  });
+  test(`${name} handles cancellation before requests`, async () => {
+    const c = new AbortController(); c.abort();
+    const { output, calls } = await run(name, name === "search_stays" ? SEARCH : PROPERTY, { signal: c.signal });
+    assert.equal(output.error_kind, "canceled");
+    assert.equal(calls.length, 0);
+  });
+}
+
+test("get_property rejects unsupported sort before requests and limits scanned rows", async () => {
+  const bad = await run("get_property", { ...PROPERTY, sort: "unknown" });
+  assert.equal(bad.output.error_kind, "invalid_input");
+  assert.equal(bad.calls.length, 0);
+  const rows = Array.from({ length: 401 }, (_, i) => rateRow({ head: ROOM_A, blockId: `1001_${2001 + i}_2_2_0` }));
+  const large = await run("get_property", PROPERTY, { routes: [propertyRoute({ body: propertyPage({ rows }) })] });
+  assert.equal(large.output.error_kind, "site_changed");
+});
+
+test("prepare_booking returns exact terms and a sanitized handoff without modifying the document", async () => {
+  const page = propertyPage();
+  const { output, calls, env } = await run("prepare_booking", { ...PREPARE, property_url: PROPERTY.property_url + "?sid=private#reserve" }, prepOptions(page));
+  assert.equal(output.status, "prepared");
+  assert.equal(output.displayed_total, 316);
+  assert.equal(output.room_id, "1001");
+  assert.equal(output.rate_id, PREPARE.rate_id);
+  assert.equal(output.cancellation, "Non-refundable");
+  assert.equal(output.prepayment, "Pay the property before arrival");
+  assert.equal(output.taxes_and_fees_excluded, "6 % VAT, € 4 City tax per person per night");
+  assert.equal(output.inventory_reserved, false);
+  assert.equal(output.execution_available, false);
+  assert.match(output.execution_blocker, /trusted human approval/);
+  assert.doesNotMatch(output.property_url, /sid=|reserve|nr_rooms|block_id/);
+  assert.equal(calls.length, 0);
+  assert.equal(env.live.documentElement.outerHTML, new Document(page).documentElement.outerHTML);
+  assert.ok([...env.live.querySelectorAll("select")].every(s => s.value === "0"));
+});
+
+for (const [label, patch] of [
+  ["unknown confirmed flag", { confirmed: true }], ["unknown execute flag", { execute: true }],
+  ["selector injection", { rate_id: "1001']" }], ["bad property ID", { property_id: "secret" }],
+  ["invalid calendar date", { check_in: "2026-99-01" }], ["past stay", { check_in: "2026-01-01" }],
+  ["wrong URL", { property_url: "https://other.example/hotel/xx/harbor-view-studios.html" }],
+  ["missing total", { expected_total: undefined }], ["NaN total", { expected_total: NaN }],
+  ["missing state", { expected_signed_in: undefined }], ["children input", { children_ages: [7] }]
+]) {
+  test(`prepare_booking rejects ${label} before reading the page`, async () => {
+    const env = makeEnv();
+    const definition = register("prepare_booking", env);
+    Object.defineProperty(env.context, "document", { get() { throw new Error("must not read the page"); } });
+    Object.defineProperty(env.context, "window", { get() { throw new Error("must not inspect location"); } });
+    const output = plain(await definition.execute({ ...PREPARE, ...patch }));
+    assert.equal(output.error_kind, "invalid_input");
+    assert.equal(env.calls.length, 0);
+  });
+}
+
+for (const [label, page, patch, kind] of [
+  ["price changed", propertyPage(), { expected_total: 317 }, "price_changed"],
+  ["rate disappeared", propertyPage(), { rate_id: "1001_9999_2_2_0" }, "rate_not_found"],
+  ["different account state", propertyPage({ signedIn: true }), {}, "account_state_changed"],
+  ["unknown sign-in state", propertyPage().replace(/<a data-testid="header-sign-in-button">Sign in<\/a>/, ""), {}, "account_state_changed"],
+  ["wrong property ID", propertyPage(), { property_id: "9999" }, "site_changed"],
+  ["currency mismatch", propertyPage({ currency: "EUR" }), {}, "currency_mismatch"],
+  ["different dates", propertyPage({ cfg: config({ hotelId: "1000001", checkIn: "2026-11-11" }) }), {}, "search_not_applied"],
+  ["children party", propertyPage({ occupancy: "2 adults · 1 child · 1 room" }), {}, "search_not_applied"],
+  ["unknown occupancy", propertyPage({ occupancy: "2 adults · 1 room" }), {}, "search_not_applied"],
+  ["small party rate", propertyPage({ rows: [rateRow({ head: ROOM_A, guests: "Max. people: 1" })] }), {}, "party_not_confirmed"],
+  ["missing capacity", propertyPage({ rows: [rateRow({ head: ROOM_A, guests: null })] }), {}, "party_not_confirmed"],
+  ["members-only preview", propertyPage({ rows: [rateRow({ head: ROOM_A, preview: true })] }), {}, "login_required"],
+  ["missing taxes", propertyPage({ rows: [rateRow({ head: ROOM_A, excluded: null })] }), {}, "terms_unavailable"],
+  ["missing cancellation", propertyPage({ rows: [rateRow({ head: ROOM_A, cancellation: "" })] }), {}, "terms_unavailable"],
+  ["missing prepayment", propertyPage({ rows: [rateRow({ head: ROOM_A, prepay: "" })] }), {}, "terms_unavailable"],
+  ["selected unit", propertyPage().replace('<option value="1">', '<option value="1" selected>'), {}, "selection_present"],
+  ["no one-unit option", propertyPage().replace(/<option value="1">.*?<\/option>/g, ""), {}, "rate_not_found"],
+  ["ambiguous rate", propertyPage({ rows: [rateRow({ head: ROOM_A }), rateRow({ head: ROOM_A })] }), {}, "rate_not_found"],
+  ["unsupported language", propertyPage().replace('lang="en-us"', 'lang="de"'), {}, "unsupported_language"]
+]) {
+  test(`prepare_booking fails closed for ${label} without interaction`, async () => {
+    const { output, calls, env } = await run("prepare_booking", { ...PREPARE, ...patch }, prepOptions(page));
+    assert.equal(output.error_kind, kind);
+    assert.equal(calls.length, 0);
+    assert.equal(env.live.documentElement.outerHTML, new Document(page).documentElement.outerHTML);
+  });
+}
+
+test("read tools reject outputs over the byte bound without returning oversized page text", async () => {
+  const long = "界".repeat(600);
+  const cards = Array.from({ length: 25 }, (_, i) => card({ slug: `place-${i}`, deals: Array(20).fill(long) }));
+  const searched = await run("search_stays", { ...SEARCH, limit: 25 }, { routes: [searchRoute({ body: searchPage({ cards }) })] });
+  assert.equal(searched.output.error_kind, "site_changed");
+  const rows = Array.from({ length: 40 }, (_, i) => rateRow({ head: { ...ROOM_A, id: String(1001 + i), name: long, beds: long }, blockId: `${1001 + i}_2001_2_2_0`, cancellation: long, prepay: long, excluded: long, meal: "breakfast " + long }).replace('<span>Entire studio</span>', `<span>${long}</span>`).replace('<span>441 feet²</span>', `<span>${long}</span>`).replace('<span>Private bathroom</span>', Array(12).fill(`<span>${long}</span>`).join("")));
+  const read = await run("get_property", { ...PROPERTY, max_rates: 40 }, { routes: [propertyRoute({ body: propertyPage({ rows }) })] });
+  assert.equal(read.output.error_kind, "site_changed");
+  assert.ok(new TextEncoder().encode(JSON.stringify(read.output)).length < 200000);
+});
+
+test("prepare_booking rejects unrelated pages and canceled calls without navigation", async () => {
+  for (const start of [HOME, "https://example.com/", "https://www.booking.com/hotel/xx/other.html"]) {
+    const { output, calls } = await run("prepare_booking", PREPARE, { start, liveHtml: propertyPage() });
+    assert.equal(output.error_kind, "wrong_page");
+    assert.equal(calls.length, 0);
+  }
+  const c = new AbortController(); c.abort();
+  const { output } = await run("prepare_booking", PREPARE, { ...prepOptions(), signal: c.signal });
+  assert.equal(output.error_kind, "canceled");
 });
