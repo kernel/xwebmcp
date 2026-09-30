@@ -117,6 +117,7 @@ function harness(name, options = {}) {
     document: { title: options.blockedPage ? "Access to this page has been denied" : "Target", cookie: options.cookie ?? COOKIE, querySelector: selector => (options.captcha && selector.includes("px-captcha") ? {} : null) },
     window: { __CONFIG__: options.noKey ? {} : { defaultServicesApiKey: "fabricated-key" }, __NEXT_DATA__: { dehydratedState: { tokens: SECRET } } },
     fetch: async (url, init = {}) => {
+      if (options.fetchError) throw new Error(SECRET);
       assert.equal(init.credentials, "include");
       assert.equal(init.method, "GET", "these tools only read");
       assert.ok(/^https:\/\/redsky\.target\.com\/redsky_aggregations\/v1\/web\//.test(url), "tools may only call the site's product and availability services: " + url);
@@ -129,8 +130,8 @@ function harness(name, options = {}) {
   const execute = runInNewContext(`(${definition.execute.toString()})`, context);
   return {
     definition, calls,
-    run: async input => {
-      const result = plain(await execute(input, { signal: new AbortController().signal }));
+    run: async (input, context = { signal: new AbortController().signal }) => {
+      const result = plain(await execute(input, context));
       assert.ok(conforms(definition.tool.outputSchema, result), `${name} output violates its schema: ${JSON.stringify(result)}`);
       assert.equal(JSON.stringify(result).includes(SECRET), false, "session tokens must never be returned");
       return result;
@@ -228,11 +229,12 @@ for (const name of NAMES) {
     assert.equal((await h.run(valid[name])).error_kind, "site_error");
     assert.deepEqual(h.calls.requests, []);
   });
-  test(`${name}: an HTTP 500 is a site_error that carries the site's message`, async () => {
+  test(`${name}: an HTTP 500 is a site_error without raw site messages`, async () => {
     const h = harness(name, { responses: () => ({ status: 500, json: { errors: [{ message: "upstream unavailable" }] } }) });
     const result = await h.run(valid[name]);
     assert.equal(result.error_kind, "site_error");
-    assert.match(result.error_message, /500.*upstream unavailable/);
+    assert.match(result.error_message, /500/);
+    assert.equal(result.error_message.includes("upstream unavailable"), false);
   });
   test(`${name}: never sends a session token or reads embedded page state`, async () => {
     const h = harness(name);
@@ -446,7 +448,7 @@ test("get_product_reviews: ratings without written reviews still report the summ
 test("get_product_reviews: unknown tcin and unexpected bodies are explicit errors", async () => {
   const notFound = harness("get_product_reviews", { responses: () => ({ status: 404, json: { errors: [{ message: "No product found with tcin 40000001" }] } }) });
   assert.equal((await notFound.run(valid.get_product_reviews)).error_kind, "not_found");
-  assert.equal((await harness("get_product_reviews", { product: { data: {} } }).run(valid.get_product_reviews)).error_kind, "not_found");
+  assert.equal((await harness("get_product_reviews", { product: { data: {} } }).run(valid.get_product_reviews)).error_kind, "site_error");
   assert.equal((await harness("get_product_reviews", { product: { data: { product: { item: {} } } } }).run(valid.get_product_reviews)).error_kind, "site_error");
   const odd = productBody();
   odd.data.product.ratings_and_reviews = "n/a";
@@ -461,4 +463,45 @@ test("get_product_reviews tolerates missing and mistyped numbers", async () => {
   assert.deepEqual(result.distribution, { star_1: null, star_2: null, star_3: null, star_4: null, star_5: null });
   assert.deepEqual(result.secondary_ratings, [{ id: null, label: "fit", average: 4, range: null }]);
   assert.equal(result.reviews.length, 1);
+});
+
+for (const name of NAMES) {
+  test(`${name}: cancellation before interaction makes no request`, async () => {
+    const controller = new AbortController(); controller.abort();
+    const h = harness(name);
+    assert.equal((await h.run(valid[name], { signal: controller.signal })).error_kind, "canceled");
+    assert.equal(h.calls.requests.length, 0);
+  });
+  test(`${name}: fetch exceptions and site errors never echo raw secrets`, async () => {
+    assert.equal((await harness(name, { fetchError: true }).run(valid[name])).error_kind, "site_error");
+    const h = harness(name, { responses: () => ({ status: 500, json: { errors: [{ message: SECRET }] } }) });
+    assert.equal((await h.run(valid[name])).error_kind, "site_error");
+  });
+  for (const status of [401, 403]) test(`${name}: JSON HTTP ${status} is denied access, not no results`, async () => {
+    const h = harness(name, { responses: () => ({ status, json: { message: SECRET } }) });
+    assert.equal((await h.run(valid[name])).error_kind, "login_required");
+    assert.equal(h.calls.requests.length, 1);
+  });
+}
+
+test("check_store_availability: missing or mistyped locations is site_error, not no_results", async () => {
+  for (const locations of [undefined, null, {}, "none"]) {
+    const h = harness("check_store_availability", { fiats: { data: { fulfillment_fiats: { locations } } } });
+    assert.equal((await h.run(valid.check_store_availability)).error_kind, "site_error");
+  }
+});
+
+test("check_store_availability bounds status/date text and nulls invalid distances/timing", async () => {
+  const stores = [location("1", "Store", -1, { order_pickup: { availability_status: "x".repeat(2000), pickup_date: "x".repeat(2000), guest_pick_sla: -2 } })];
+  const result = await harness("check_store_availability", { fiats: fiatsBody(stores) }).run(valid.check_store_availability);
+  assert.equal(result.stores[0].pickup.status.length, 80);
+  assert.equal(result.stores[0].pickup.date.length, 40);
+  assert.equal(result.stores[0].pickup.ready_in_minutes, null);
+  assert.equal(result.stores[0].distance_miles, null);
+});
+
+test("get_product_reviews: malformed product/ratings arrays are site_error", async () => {
+  assert.equal((await harness("get_product_reviews", { product: { data: { product: [] } } }).run(valid.get_product_reviews)).error_kind, "site_error");
+  const body = productBody({ ratings_and_reviews: [] });
+  assert.equal((await harness("get_product_reviews", { product: body }).run(valid.get_product_reviews)).error_kind, "site_error");
 });

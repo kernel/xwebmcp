@@ -998,6 +998,20 @@
     },
     {
       "domain": "target.com",
+      "tool": "prepare_cart_item",
+      "file": "domains/target.com/prepare_cart_item.js",
+      "kind": "page",
+      "namespace": "target.com",
+      "url_patterns": [
+        "https://target.com/*",
+        "https://*.target.com/*"
+      ],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Read-only item/quantity fulfillment preview with explicit expected store and ZIP guards, item-only price estimate and product handoff. No cart read or write, inventory hold or checkout approval; existing cart quantities and final totals are not checked. Independent QA pending."
+    },
+    {
+      "domain": "target.com",
       "tool": "remove_cart_item",
       "file": "domains/target.com/remove_cart_item.js",
       "kind": "page",

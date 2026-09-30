@@ -80,13 +80,13 @@
         },
         {
           type: "object", additionalProperties: false, required: ["status", "error_kind", "error_message"],
-          properties: { status: { const: "error" }, error_kind: { enum: ["invalid_input", "wrong_page", "no_location", "not_found", "no_availability", "challenge", "site_error"] }, error_message: { type: "string", minLength: 1 } }
+          properties: { status: { const: "error" }, error_kind: { enum: ["invalid_input", "wrong_page", "no_location", "not_found", "no_availability", "challenge", "site_error", "login_required", "canceled"] }, error_message: { type: "string", minLength: 1 } }
         }
       ]
     },
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true }
   },
-  execute: async (input) => {
+  execute: async (input, context) => {
     const ORIGIN = "https://www.target.com";
     const REDSKY = "https://redsky.target.com/redsky_aggregations/v1/web/";
     const CHALLENGE = "Target's bot protection (PerimeterX) is blocking automated requests from this browser. A person has to complete the 'Press & hold' verification on target.com in this browser; wait a few minutes and do not retry automatically.";
@@ -119,15 +119,10 @@
       const zipOf = value => /^\d{5}$/.test(value || "") ? value : null;
       return { key, visitorId, selectedStoreId: /^\d+$/.test(fiats.DSI || "") ? fiats.DSI : null, defaultZip: zipOf(place[0]) || zipOf(fiats.DSZ) };
     };
-    const siteMessage = json => {
-      if (!json || typeof json !== "object") return null;
-      const list = [].concat(json.errors || [], json.alerts || []).map(e => e && (e.message || e.alert_message || e.code || e.alert_code)).filter(m => typeof m === "string");
-      return list.length ? list.join("; ").slice(0, 300) : typeof json.message === "string" ? json.message.slice(0, 300) : null;
-    };
     const redsky = async (path, params) => {
       const url = new URL(REDSKY + path);
       for (const [name, value] of Object.entries(params)) url.searchParams.set(name, String(value));
-      const res = await fetch(url.toString(), { method: "GET", credentials: "include", headers: { accept: "application/json" } });
+      const res = await fetch(url.toString(), { method: "GET", credentials: "include", headers: { accept: "application/json" }, signal: context && context.signal });
       const body = await res.text();
       let json = null;
       try { json = body ? JSON.parse(body) : null; } catch { /* block pages are HTML */ }
@@ -136,11 +131,11 @@
       return { status: res.status, json };
     };
     const option = (o, timing) => {
-      const status = o && typeof o.availability_status === "string" ? o.availability_status : null;
+      const status = o && typeof o.availability_status === "string" ? o.availability_status.slice(0, 80) : null;
       const out = { status, available: AVAILABLE.test(status || "") };
       if (timing) {
-        out.date = o && typeof o.pickup_date === "string" ? o.pickup_date : null;
-        out.ready_in_minutes = o && Number.isInteger(o.guest_pick_sla) ? o.guest_pick_sla : null;
+        out.date = o && typeof o.pickup_date === "string" ? o.pickup_date.slice(0, 40) : null;
+        out.ready_in_minutes = o && Number.isInteger(o.guest_pick_sla) && o.guest_pick_sla >= 0 ? o.guest_pick_sla : null;
       }
       return out;
     };
@@ -153,6 +148,7 @@
     if (zip !== null && !/^[0-9]{5}$/.test(zip)) return fail("invalid_input", "postal_code must be a five-digit US ZIP.");
     if (!Number.isInteger(radius) || radius < 1 || radius > 100) return fail("invalid_input", "radius_miles must be an integer from 1 to 100.");
     if (!Number.isInteger(limit) || limit < 1 || limit > 20) return fail("invalid_input", "limit must be an integer from 1 to 20.");
+    if (context && context.signal && context.signal.aborted) return fail("canceled", "Read canceled. Nothing was changed.");
     try {
       const ctx = session();
       if (ctx.error) return ctx.error;
@@ -164,14 +160,16 @@
       });
       if (r.error) return r.error;
       if (r.status === 404) return fail("not_found", "Target has no item with tcin " + tcin + ".");
-      if (r.status >= 300) return fail("site_error", "Target's store availability service answered HTTP " + r.status + (siteMessage(r.json) ? ": " + siteMessage(r.json) : "") + ".");
+      if (r.status === 401 || r.status === 403) return fail("login_required", "Target denied access for this session. Nothing was changed.");
+      if (r.status !== 200) return fail("site_error", "Target's store availability service answered HTTP " + r.status + ".");
       const data = r.json && r.json.data;
       const fulfillment = data && data.fulfillment_fiats;
       if (!fulfillment) {
         if (data && typeof data === "object" && !Object.keys(data).length) return fail("no_availability", "Target returned no store availability for tcin " + tcin + ". It may be an item family with variations: use get_product to list them and pass a variation's tcin.");
-        return fail("site_error", "Target's store availability answer had no fulfillment data; the site may have changed." + (siteMessage(r.json) ? " " + siteMessage(r.json) : ""));
+        return fail("site_error", "Target's store availability answer had no fulfillment data; the site may have changed.");
       }
-      const listed = Array.isArray(fulfillment.locations) ? fulfillment.locations : [];
+      if (!Array.isArray(fulfillment.locations)) return fail("site_error", "Target returned no usable store list; the site may have changed.");
+      const listed = fulfillment.locations;
       const stores = [];
       for (const loc of listed) {
         const store = loc && loc.store;
@@ -180,7 +178,7 @@
         const address = store.mailing_address || {};
         stores.push({
           store_id: storeId, name: text(store.location_name), address_line1: text(address.address_line1), city: text(address.city), state: text(address.state),
-          postal_code: text(address.postal_code), phone: text(store.main_voice_phone_number), distance_miles: typeof loc.distance === "number" ? loc.distance : null,
+          postal_code: text(address.postal_code), phone: text(store.main_voice_phone_number), distance_miles: typeof loc.distance === "number" && Number.isFinite(loc.distance) && loc.distance >= 0 ? loc.distance : null,
           available_to_promise: Number.isInteger(loc.location_available_to_promise_quantity) && loc.location_available_to_promise_quantity >= 0 ? loc.location_available_to_promise_quantity : null,
           is_selected_store: storeId === ctx.selectedStoreId,
           pickup: option(loc.order_pickup, true), curbside: option(loc.curbside, true), in_store: option(loc.in_store_only, false)
@@ -191,8 +189,8 @@
         return { status: "no_results", tcin, postal_code: nearby, radius_miles: radius };
       }
       return { status: "ok", tcin, postal_code: nearby, radius_miles: radius, stores };
-    } catch (error) {
-      return fail("site_error", "Request failed: " + (error && error.message ? error.message : String(error)) + "");
+    } catch {
+      return fail(context && context.signal && context.signal.aborted ? "canceled" : "site_error", "The availability read could not be completed. Nothing was changed.");
     }
   }
 }]

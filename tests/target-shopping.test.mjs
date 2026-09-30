@@ -221,7 +221,7 @@ for (const name of NAMES) {
 }
 
 test("registry lists every target.com tool exactly once", () => {
-  assert.deepEqual(registry.tools.filter(t => t.domain === "target.com").map(t => t.tool).sort(), [...NAMES, "check_store_availability", "get_product_reviews"].sort());
+  assert.deepEqual(registry.tools.filter(t => t.domain === "target.com").map(t => t.tool).sort(), [...NAMES, "check_store_availability", "get_product_reviews", "prepare_cart_item"].sort());
 });
 
 // --- input validation happens before any page access -----------------------------------------------

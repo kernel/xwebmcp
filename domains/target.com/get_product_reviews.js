@@ -64,13 +64,13 @@
         },
         {
           type: "object", additionalProperties: false, required: ["status", "error_kind", "error_message"],
-          properties: { status: { const: "error" }, error_kind: { enum: ["invalid_input", "wrong_page", "no_store", "not_found", "challenge", "site_error"] }, error_message: { type: "string", minLength: 1 } }
+          properties: { status: { const: "error" }, error_kind: { enum: ["invalid_input", "wrong_page", "no_store", "not_found", "challenge", "site_error", "login_required", "canceled"] }, error_message: { type: "string", minLength: 1 } }
         }
       ]
     },
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true }
   },
-  execute: async (input) => {
+  execute: async (input, context) => {
     const ORIGIN = "https://www.target.com";
     const REDSKY = "https://redsky.target.com/redsky_aggregations/v1/web/";
     const CHALLENGE = "Target's bot protection (PerimeterX) is blocking automated requests from this browser. A person has to complete the 'Press & hold' verification on target.com in this browser; wait a few minutes and do not retry automatically.";
@@ -106,15 +106,10 @@
         zip: /^\d{5}$/.test(place[0] || "") ? place[0] : (/^\d{5}$/.test(fiats.DSZ || "") ? fiats.DSZ : ""), state: place[3] || "", latitude: place[1] || "", longitude: place[2] || ""
       };
     };
-    const siteMessage = json => {
-      if (!json || typeof json !== "object") return null;
-      const list = [].concat(json.errors || [], json.alerts || []).map(e => e && (e.message || e.alert_message || e.code || e.alert_code)).filter(m => typeof m === "string");
-      return list.length ? list.join("; ").slice(0, 300) : typeof json.message === "string" ? json.message.slice(0, 300) : null;
-    };
     const redsky = async (path, params) => {
       const url = new URL(REDSKY + path);
       for (const [name, value] of Object.entries(params)) if (value !== "") url.searchParams.set(name, String(value));
-      const res = await fetch(url.toString(), { method: "GET", credentials: "include", headers: { accept: "application/json" } });
+      const res = await fetch(url.toString(), { method: "GET", credentials: "include", headers: { accept: "application/json" }, signal: context && context.signal });
       const body = await res.text();
       let json = null;
       try { json = body ? JSON.parse(body) : null; } catch { /* block pages are HTML */ }
@@ -127,6 +122,7 @@
     const limit = input.limit === undefined ? 5 : input.limit;
     if (!/^[0-9]{5,12}$/.test(tcin)) return fail("invalid_input", "tcin must be 5 to 12 digits.");
     if (!Number.isInteger(limit) || limit < 1 || limit > 8) return fail("invalid_input", "limit must be an integer from 1 to 8.");
+    if (context && context.signal && context.signal.aborted) return fail("canceled", "Read canceled. Nothing was changed.");
     try {
       const ctx = session();
       if (ctx.error) return ctx.error;
@@ -136,13 +132,14 @@
       });
       if (r.error) return r.error;
       const product = r.json && r.json.data && r.json.data.product;
-      if (r.status === 404 || (r.status < 300 && !product)) return fail("not_found", "Target has no item with tcin " + tcin + ".");
-      if (r.status >= 300) return fail("site_error", "Target's product service answered HTTP " + r.status + (siteMessage(r.json) ? ": " + siteMessage(r.json) : "") + ".");
-      if (!/^[0-9]+$/.test(String(product.tcin))) return fail("site_error", "Target's product answer had no item id; the site may have changed.");
+      if (r.status === 404) return fail("not_found", "Target has no item with tcin " + tcin + ".");
+      if (r.status === 401 || r.status === 403) return fail("login_required", "Target denied access for this session. Nothing was changed.");
+      if (r.status !== 200) return fail("site_error", "Target's product service answered HTTP " + r.status + ".");
+      if (!product || typeof product !== "object" || Array.isArray(product) || !/^[0-9]{5,12}$/.test(String(product.tcin))) return fail("site_error", "Target's product answer had no item id; the site may have changed.");
       const reviewedTcin = String(product.tcin);
       const feedback = product.ratings_and_reviews;
       if (feedback === undefined || feedback === null) return { status: "no_reviews", tcin, reviewed_tcin: reviewedTcin };
-      if (typeof feedback !== "object") return fail("site_error", "Target's ratings data had an unexpected shape; the site may have changed.");
+      if (typeof feedback !== "object" || Array.isArray(feedback)) return fail("site_error", "Target's ratings data had an unexpected shape; the site may have changed.");
       const stats = feedback.statistics && typeof feedback.statistics === "object" ? feedback.statistics : {};
       const rating = stats.rating && typeof stats.rating === "object" ? stats.rating : {};
       const recent = Array.isArray(feedback.most_recent) ? feedback.most_recent : [];
@@ -168,8 +165,8 @@
           .map(s => ({ id: clip(s.id, 60), label: s.label.slice(0, 60), average: s.value, range: count(s.range) })),
         order: "most_recent", reviews
       };
-    } catch (error) {
-      return fail("site_error", "Request failed: " + (error && error.message ? error.message : String(error)) + "");
+    } catch {
+      return fail(context && context.signal && context.signal.aborted ? "canceled" : "site_error", "The reviews read could not be completed. Nothing was changed.");
     }
   }
 }]

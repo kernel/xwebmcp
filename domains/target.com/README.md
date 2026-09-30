@@ -9,6 +9,7 @@ Tools for Target (https://www.target.com): catalog search, item details, per-sto
 | get_product | [get_product.js](get_product.js) | qa_passed | Price, rating, limit, variations and fulfillment for the selected store |
 | check_store_availability | [check_store_availability.js](check_store_availability.js) | draft | Pickup, Drive Up and in-store status at the stores nearest any ZIP; never selects a store or saves the ZIP |
 | get_product_reviews | [get_product_reviews.js](get_product_reviews.js) | draft | Rating summary and up to 8 newest reviews at item-family level; no reviewer names, photos or AI summary |
+| prepare_cart_item | [prepare_cart_item.js](prepare_cart_item.js) | draft | Read-only quantity/fulfillment preview; requires the exact selected store and ZIP; no cart change or checkout approval |
 | get_cart | [get_cart.js](get_cart.js) | qa_passed | Regular cart lines with cart_item_id, fulfillment and totals; guest or signed in |
 | add_to_cart | [add_to_cart.js](add_to_cart.js) | qa_passed | Ship or pickup at the selected store after existence, variation, stock and limit checks |
 | update_cart_item | [update_cart_item.js](update_cart_item.js) | qa_passed | Absolute quantity 1–10 on one line; no write when unchanged |
@@ -27,7 +28,8 @@ presence varies by session):
   returning results.
 
 No native product, cart or store tool was listed on the homepage, a results page, a product
-page or `/cart`.
+page or `/cart`. A fresh homepage check on 2026-09-30 again listed only native
+`search_products`; none of the three additions duplicates it.
 
 The custom `search_products` shares its name with the native tool but lives in the
 `target.com` custom namespace, so both are listed; pick the custom one by
@@ -38,17 +40,17 @@ by id.
 
 ## Execution kind
 
-All nine tools are `kind: "page"`. Each one reads cookies and page configuration and calls
-the site's own JSON endpoints with `fetch` from the document it is invoked in; none navigates
+All ten tools are `kind: "page"`. They read cookies and page configuration; service calls use
+`fetch` from the document the tool is invoked in. `get_store_context` needs no request. None navigates
 the tab, so none needs to survive a navigation and none qualifies for `cdp`.
 
 ## Scope and loading
 
-Register all nine files together under namespace `target.com`; they use the default patterns
+Register all ten files together under namespace `target.com`; they use the default patterns
 `https://target.com/*` and `https://*.target.com/*`.
 
 ```javascript
-const names = ["get_store_context", "search_products", "get_product", "check_store_availability", "get_product_reviews", "get_cart", "add_to_cart", "update_cart_item", "remove_cart_item"];
+const names = ["get_store_context", "search_products", "get_product", "check_store_availability", "get_product_reviews", "prepare_cart_item", "get_cart", "add_to_cart", "update_cart_item", "remove_cart_item"];
 const fs = await import("node:fs");
 const tools = names.flatMap(n => (0, eval)("(" + fs.readFileSync(`domains/target.com/${n}.js`, "utf8") + ")"));
 await webmcp.addCustomTools({ namespace: "target.com", tools, forceOverwriteNamespace: true });
@@ -72,6 +74,34 @@ What the tools never do: select or change a store, ZIP or address; sign in or cr
 account; touch saved-for-later items, lists or registries; apply promo codes; open checkout,
 enter payment or place an order. The only writes are `cart_items` create, quantity update and
 delete on the regular cart.
+
+### Fulfillment preparation and action safety
+
+`prepare_cart_item` requires `tcin`, `quantity` (1–10), `fulfillment` (`ship` or `pickup`),
+`expected_store_id` and `expected_postal_code`. Get those last two from `get_store_context`
+(use `location.postal_code`, falling back to `store.postal_code` only when the location has
+no ZIP). The tool checks them before any request and again before returning. A mismatch
+returns `context_mismatch`; it does not silently choose a store or change the shipping ZIP.
+It reads the existing product and fulfillment services, without navigating, and reports
+`prepared`, `cart_changed: false`, an item-only price estimate, limit and current fulfillment
+dates, plus a canonical `product_url` for human review. Two GETs, no cart or account reads.
+A family tcin requires choosing a variation; unavailable fulfillment or an excessive
+per-order quantity is refused. Cancellation stops before interaction or between reads.
+
+This is not a stock reservation, final checkout quote or approval. It does not check the
+quantity already in the cart and cannot establish that multiple units are available. Read
+`get_cart` before a separately requested cart action. The existing cart tools remain
+unchanged; repeated `add_to_cart` calls increment rather than deduplicate. Never retry an
+uncertain write automatically: inspect the cart first. Current store/ZIP must be reviewed
+again before a later action because a preview does not bind the state of another invocation.
+No live cart, wishlist or setting was changed in the current QA; action behavior is not
+claimed from the preview's read-only success. The earlier guest-cart tests below are historical.
+
+Checkout/payment execution remains unshipped: the runtime does not provide trusted human
+approval bound to the exact account, item, quantity, cost and terms. A model-supplied
+confirmation field is not approval. The preview rejects extra fields, including `confirmed`,
+and never invokes an action after preparation. Final purchase review and submission belong
+in the site's human UI.
 
 Conventions:
 
@@ -154,9 +184,16 @@ Conventions:
 - `get_cart` reads the regular cart only; saved-for-later items and gift options are not
   returned. `estimated_total_cents` is the site's estimate for its default location; the real
   total is only known at checkout, which these tools never open.
+- `prepare_cart_item` uses the session's current pricing store and ZIP only. It does not
+  choose other stores, check cart-wide purchase limits, apply coupons, read membership
+  benefits, compute taxes/shipping, or support same-day delivery/time slots. It never
+  guarantees stock or authorizes a subsequent action. Range/missing prices return null.
+- Account orders and populated wishlist items lack authorized populated-response evidence;
+  no order/list mutations, wishlist writes, store/ZIP preference changes, holds or checkout
+  execution are supplied. No new login or account mutation was performed for this increment.
 - `update_cart_item` accepts 1–10, the range of the site's own quantity menu.
-- Signed-in carts: every cart path was exercised on a guest cart only. A signed-in account's
-  cart uses the same endpoints with the account's cookies, but no signed-in session was used.
+- Signed-in cart mutations were not exercised. Historical signed-in discovery confirmed an
+  empty `get_cart` read only; populated account carts and wrong-account cases remain unverified.
 - The tools stop at a PerimeterX challenge; they cannot get past it.
 - `update_cart_item`'s `quantity_limit` refusal (a line whose per-order limit is below 10) is
   covered by fixture tests only.
@@ -246,11 +283,33 @@ invoked (the signed-in and local-extension runs are the last two bullets):
 - Not live-tested: pre-order statuses, the `challenge` outcome, wrong-account behavior, `no_store` and `no_location` (fixtures only), and counts of 4–9 against the "Only N left" text.
 
 Independent QA (agent `agt_42e61f3b686a87d4bfb7`) reviewed three revisions on 2026-09-29 and did not sign off on any. It
-found no defect in the tool code, schemas or safety checks, and its live Kernel and local-extension runs matched the
-builder's; every finding was in the wording. The first revision offered a `quantity` input the site ignores (removed);
+found a real quantity-semantics defect in the first revision and documentation/test gaps later;
+its live Kernel and local-extension runs otherwise matched the builder's. The first revision
+offered a `quantity` input the site ignores (removed);
 the second and third had documentation overclaims about availability counts, item-not-sold behavior and untested cases (all
 corrected). The last correction pass (wording, one error message, the `in_store` description and a test) was made after the
-final review round and has not been re-reviewed, so both new tools stay `draft`.
+final review round and was not re-reviewed in that pass.
+
+### Current increment (2026-09-30)
+
+The availability and reviews additions now support cancellation, sanitize request/site error
+messages rather than echoing raw errors, report JSON 401/403 as denied session access, and
+reject malformed store lists/product objects instead of reporting empty results. Availability
+status/date text is bounded and invalid distances/timing are nulled. `prepare_cart_item` is
+new; the original seven tools are byte-identical to the base.
+
+Builder Kernel checks, a fresh anonymous GPU browser, whole ten-tool namespace registered
+atomically: native discovery, shipping and pickup previews for one item from the homepage
+(a page other than its product entry point), explicit-ZIP store availability and one recent
+review returned success. Selected-store/location cookies and tab URL were unchanged. No
+cart writes were invoked. New source independent review and current local-extension checks
+are pending; all three entries remain `draft` until that evidence is recorded.
+
+`tests/target-preparation.test.mjs` uses fabricated data for explicit context/missing location
+guards, malformed input before page access, unrelated and checkout pages, family/variation
+identity, price bounds, purchase limits, missing/unavailable fulfillment, canceled requests,
+challenge/denied/malformed responses, sanitized errors and GET-only requests. It tests no
+live mutation. Account identity and signed-in mutation success are not claimed.
 
 `tests/target-store-reviews.test.mjs` covers the two new tools with fabricated stores, items and reviews: input validation
 before any request, page routing (never checkout), challenge handling for HTTP 435/429/403 and block pages, the exact
