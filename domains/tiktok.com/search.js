@@ -46,7 +46,7 @@
   execute: async (input, context = {}) => {
     const fail = (kind, message, entryUrl = null) => ({ status: "error", error_kind: kind, error_message: message, entry_url: entryUrl });
     if (!input || typeof input !== "object" || Array.isArray(input) || Object.keys(input).some(k => !["query", "max_results"].includes(k)) || typeof input.query !== "string" || input.query.length > 100 || !input.query.trim() || /[\u0000-\u001f\u007f\ud800-\udfff]/u.test(input.query)) return fail("invalid_input", "Provide query as 1–100 characters without control characters or unpaired surrogates.");
-    const max = input.max_results ?? 10;
+    const max = input.max_results === undefined ? 10 : input.max_results;
     if (!Number.isInteger(max) || max < 1 || max > 20) return fail("invalid_input", "max_results must be an integer from 1 to 20.");
     const query = input.query.trim();
     const entryUrl = "https://www.tiktok.com/search/video?q=" + encodeURIComponent(query);
@@ -58,10 +58,13 @@
     if (/log in to search for popular content/i.test(text)) return fail("login_required", "TikTok requires login for search. This tool does not sign in.", entryUrl);
     const cards = document.querySelectorAll('[id^="grid-item-container-"]');
     if (!cards.length) return fail("site_changed", "No rendered result cards were found. Wait for normal loading; no request or retry was made.", entryUrl);
+    const visible = element => element.checkVisibility({ checkOpacity: true, checkVisibilityCSS: true }) && !element.closest('[aria-hidden="true"]');
     const results = [], seen = new Set();
-    for (const card of Array.from(cards).slice(0, 40)) {
+    for (let index = 0; index < Math.min(cards.length, 40); index++) {
+      const card = cards[index];
+      if (!visible(card)) continue;
       const link = card.querySelector('a[href*="/video/"]');
-      if (!link) continue;
+      if (!link || !visible(link)) continue;
       let target;
       try { target = new URL(link.getAttribute("href"), current.origin); } catch { continue; }
       const match = /^\/@([A-Za-z0-9._]{1,24})\/video\/([0-9]{15,25})\/?$/.exec(target.pathname);
@@ -69,7 +72,7 @@
       seen.add(match[2]);
       const preview = card.querySelector('[data-e2e="search_video-item"]') || card;
       const likes = card.querySelector('[data-e2e="video-views"]');
-      results.push({ video_id: match[2], username: match[1], url: current.origin + "/@" + match[1] + "/video/" + match[2], preview_text: (preview.innerText || "").replace(/\s+/g, " ").trim().slice(0, 500), likes_text: likes ? (likes.innerText || "").trim().slice(0, 30) || null : null });
+      results.push({ video_id: match[2], username: match[1], url: current.origin + "/@" + match[1] + "/video/" + match[2], preview_text: (visible(preview) ? preview.innerText || "" : "").replace(/\s+/g, " ").trim().slice(0, 500), likes_text: likes && visible(likes) ? (likes.innerText || "").trim().slice(0, 30) || null : null });
       if (results.length === max) break;
     }
     if (!results.length) return { status: "no_results", query, entry_url: entryUrl, reason: "No supported video links in the rendered result cards." };

@@ -6,8 +6,9 @@ import { runInNewContext } from "node:vm";
 const source = readFileSync(new URL("../domains/tiktok.com/search.js", import.meta.url), "utf8");
 const page = "https://www.tiktok.com/search/video?q=example";
 const videoId = "7000000000000000001";
-function card(href = `/@example_creator/video/${videoId}`, preview = "Fabricated caption", likes = "1.2K") {
-  return { innerText: preview, querySelector: selector => selector.startsWith("a[") ? { getAttribute: () => href } : selector.includes("video-views") ? { innerText: likes } : { innerText: preview } };
+function card(href = `/@example_creator/video/${videoId}`, preview = "Fabricated caption", likes = "1.2K", shown = true) {
+  const visibility = { checkVisibility: () => shown, closest: () => null };
+  return { ...visibility, innerText: preview, querySelector: selector => selector.startsWith("a[") ? { ...visibility, getAttribute: () => href } : selector.includes("video-views") ? { ...visibility, innerText: likes } : { ...visibility, innerText: preview } };
 }
 function conforms(s, v) {
   if ("const" in s) assert.equal(v, s.const);
@@ -54,7 +55,7 @@ test("search reads bounded rendered cards without network/navigation globals", a
 });
 
 test("search invalid input fails before page reads", async () => {
-  for (const input of [null, [], {}, { query: "" }, { query: "  " }, { query: "a".repeat(101) }, { query: "x\u0000" }, { query: "\ud800" }, { query: 3 }, { query: "example", extra: true }, ...[0, 21, 1.5, "3"].map(max_results => ({ query: "example", max_results }))]) {
+  for (const input of [null, [], {}, { query: "" }, { query: "  " }, { query: "a".repeat(101) }, { query: "x\u0000" }, { query: "\ud800" }, { query: 3 }, { query: "example", extra: true }, ...[null, 0, 21, 1.5, "3"].map(max_results => ({ query: "example", max_results }))]) {
     const h = harness();
     assert.equal((await h.run(input)).error_kind, "invalid_input");
     assert.equal(h.reads, 0);
@@ -95,6 +96,30 @@ test("search output and extraction scan are capped", async () => {
   assert.ok(JSON.stringify(out).length < 16000);
   const skipped = Array.from({ length: 40 }, () => card("/@example_creator/live"));
   assert.equal((await harness({ cards: [...skipped, card()] }).run()).status, "no_results");
+});
+
+test("search skips hidden cards before applying the result limit", async () => {
+  const hidden = card(`/@hidden_creator/video/${videoId}`, "Hidden content", "9", false);
+  const out = await harness({ cards: [hidden, card()] }).run({ query: "example", max_results: 1 });
+  assert.equal(out.status, "ok");
+  assert.equal(out.results[0].username, "example_creator");
+  assert.ok(!JSON.stringify(out).includes("Hidden content"));
+});
+
+test("search never returns hidden links, previews or likes", async () => {
+  const hiddenLink = card();
+  const selector = hiddenLink.querySelector;
+  hiddenLink.querySelector = s => ({ ...selector(s), checkVisibility: () => !s.startsWith("a[") });
+  assert.equal((await harness({ cards: [hiddenLink] }).run()).status, "no_results");
+  const visibleCard = card();
+  const select = visibleCard.querySelector;
+  visibleCard.querySelector = s => ({ ...select(s), checkVisibility: () => s.startsWith("a[") });
+  const out = await harness({ cards: [visibleCard] }).run();
+  assert.equal(out.results[0].preview_text, "");
+  assert.equal(out.results[0].likes_text, null);
+  const ariaHidden = card();
+  ariaHidden.closest = () => ({});
+  assert.equal((await harness({ cards: [ariaHidden] }).run()).status, "no_results");
 });
 
 test("search schemas define exact discriminated shapes", () => {

@@ -41,7 +41,9 @@ save, post, purchase or solve a challenge.
 `search` reads the current document only. Supply `{query, max_results?}` matching
 `/search/video?q=...`; otherwise it returns `wrong_page` and a safe `entry_url` for
 caller-controlled navigation. It reads at most 40 existing grid containers and returns
-at most 20 distinct video links, bounded card text and displayed likes. The site's
+at most 20 distinct visible video links, bounded card text and displayed likes.
+Hidden/transparent/CSS-invisible cards and aria-hidden containers are skipped; hidden
+links, previews and count labels are not returned. The site's
 `data-e2e="video-views"` means likes on search cards, not plays. It never starts media,
 scrolls, polls, clicks or makes network requests. Navigation/playback consequences of
 opening a search page remain the caller's responsibility; the tool does not automate
@@ -87,7 +89,8 @@ top document has a different origin (including an unrelated page with a TikTok i
   account-identity invariant or non-sending draft surface was established. Final sending,
   posting and purchases have no trusted human-approval path in this tool set and are
   not executable. No user account state was changed for development.
-- Independent QA and local Chrome-extension verification are pending. Fixture coverage
+- Independent final-source search QA is pending after two initial-review findings
+  were fixed (hidden-card extraction and null `max_results` input). Fixture coverage
   is not evidence that every real-world access restriction has been observed live.
 
 ## Native WebMCP
@@ -121,4 +124,21 @@ will be recorded after QA. `tests/tiktok-search.test.mjs` covers fabricated rend
 query/page matching, input/target validation, login/challenge/no-results branches,
 output and scan bounds, deduplication and no-request/no-navigation behavior.
 
-Independent review and final runtime results will be recorded here after QA.
+Independent initial QA (`agt_00a33cd083c5853d4830`, 2026-09-30) signed off both lookup
+sources at `2a902c0150bb2e82bbc213febe2443dd97e5e133`: native tools absent; atomic
+namespace registration/conflict/replacement; live success from robots.txt; missing
+targets; one anonymous GET, no cookies, media, retries or navigation; 11 Kernel
+outputs independently schema-validated; stale references refused; no tools on
+example.com. Validator, 1627 tool tests, Go tests, 14 extension tests and 12 extra
+fixture/stream probes passed. Search's two findings were fixed with regression tests;
+its final-source recheck is pending.
+
+Local Chromium 153 extension, author check (2026-09-30): all three sources installed,
+registered, discovered and invoked successfully through the actual extension on
+intercepted fabricated HTML, using real DOMParser and WebMCP. Lookups made one GET
+each, search made none, wrong query returned `wrong_page`, and registrations were
+removed on document replacement. This used an isolated local test profile with
+site access granted only there. No live TikTok request/account was used; this is
+fixture-runtime evidence, not live-site extension parity. Independent extension QA
+checked installation and namespace atomicity but did not grant site access, so it
+did not independently verify page registration/invocation.
