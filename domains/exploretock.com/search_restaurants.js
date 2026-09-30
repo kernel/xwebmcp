@@ -194,9 +194,10 @@
     const readState = (html, path) => {
       const at = html.indexOf(STATE_KEY);
       if (at < 0) return undefined;
-      const raw = cutPath(html, at + STATE_KEY.length, path);
-      if (raw === null) return undefined;
-      try { return JSON.parse(undefinedToNull(raw)); } catch { return undefined; }
+      try {
+        const raw = cutPath(html, at + STATE_KEY.length, path);
+        return raw === null ? undefined : JSON.parse(undefinedToNull(raw));
+      } catch { return undefined; }
     };
 
     const allowed = ["city", "date", "party_size", "time", "type", "query", "page", "per_page"];

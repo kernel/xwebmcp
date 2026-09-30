@@ -264,6 +264,32 @@
     },
     {
       "domain": "exploretock.com",
+      "tool": "prepare_reservation",
+      "file": "domains/exploretock.com/prepare_reservation.js",
+      "kind": "page",
+      "namespace": "exploretock.com",
+      "url_patterns": [
+        "https://www.exploretock.com/*"
+      ],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Read-only exact-slot preparation on the already loaded offering page. Requires matching venue, offering, date and party size, an enabled Book time and unambiguous seating. Returns raw pricing and a public handoff URL; never holds, books, pays or joins Notify. Account, final total and terms must be verified manually. Final execution is unavailable without a trusted human approval path."
+    },
+    {
+      "domain": "exploretock.com",
+      "tool": "search_events",
+      "file": "domains/exploretock.com/search_events.js",
+      "kind": "page",
+      "namespace": "exploretock.com",
+      "url_patterns": [
+        "https://www.exploretock.com/*"
+      ],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Public ticketed-event search in a Tock city over at most 31 days, fetched same-origin without navigation. Venue pagination, event ids, descriptions, currency, raw prices and first ten chronological search times. No ticket purchase or inventory hold; search times do not guarantee remaining quantity."
+    },
+    {
+      "domain": "exploretock.com",
       "tool": "search_restaurants",
       "file": "domains/exploretock.com/search_restaurants.js",
       "kind": "page",

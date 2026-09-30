@@ -171,7 +171,7 @@
         };
       });
       const days = [...document.querySelectorAll('[data-testid="consumer-calendar-day"]')].map(b => ({ label: (b.getAttribute("aria-label") || "").slice(0, 60), cls: String(b.className), disabled: b.disabled === true }));
-      const lines = document.body ? document.body.innerText.split("\n").map(l => l.trim()).filter(Boolean) : [];
+      const messages = [...document.querySelectorAll(".MuiAlert-message")].map(e => e.innerText.trim());
       return {
         origin: performance.timeOrigin,
         path: location.pathname,
@@ -196,7 +196,7 @@
         }) : null,
         slots,
         days,
-        empty_message: lines.find(l => /is not offered on|has not opened reservations for|is sold out/i.test(l) && l.length < 240) || null
+        empty_message: messages.find(l => /is not offered on|has not opened reservations for|is sold out\.$/i.test(l) && l.length < 240) || null
       };
     };
     const navigating = e => /Execution context was destroyed|Inspected target navigated or closed|Cannot find context|Target closed|Detached/i.test(String(e && e.message));
@@ -204,6 +204,7 @@
       try { return await js(snapshot); } catch (e) { if (navigating(e)) return null; throw e; }
     };
 
+    if (signal && signal.aborted) return fail("site_error", "The invocation was cancelled before navigation.");
     let before = null;
     try { before = await js(() => performance.timeOrigin); } catch { before = null; }
     const url = ORIGIN + "/" + encodeURIComponent(input.slug) + "/experience/" + input.offering_id + "/reservation?date=" + input.date + "&size=" + partySize;
@@ -233,8 +234,10 @@
       if (offering.party_sizes.length && !offering.party_sizes.includes(partySize)) return fail("invalid_input", "This offering does not take a party of " + partySize + ". Accepted party sizes: " + describeSizes(offering.party_sizes) + ".");
       const today = localToday(snap.business.time_zone);
       if (today && input.date < today) return fail("invalid_input", "date is before today at the venue (" + today + " there).");
+      const expectedPath = "/" + input.slug.toLowerCase() + "/experience/" + input.offering_id + "/";
+      if (!snap.path.toLowerCase().startsWith(expectedPath)) return fail("site_changed", "The site did not open the requested offering page.");
       if (!snap.slots.length && !snap.empty_message) continue;
-      const signature = snap.slots.length + "|" + snap.empty_message;
+      const signature = JSON.stringify([snap.path, snap.query_date, snap.query_size, snap.slots, snap.days, snap.empty_message]);
       if (signature === seen) { settled = snap; break; }
       seen = signature;
     }

@@ -5,8 +5,8 @@ import { runInNewContext } from "node:vm";
 
 // Harness for the exploretock.com restaurant tools. Pages, fetches and the DOM are stubbed; nothing here contacts the
 // live site. Venues, ids, coordinates and tokens below are fabricated.
-const NAMES = ["search_restaurants", "get_restaurant", "get_availability"];
-const KINDS = { search_restaurants: "page", get_restaurant: "page", get_availability: "cdp" };
+const NAMES = ["search_restaurants", "get_restaurant", "get_availability", "search_events", "prepare_reservation"];
+const KINDS = { search_restaurants: "page", get_restaurant: "page", get_availability: "cdp", search_events: "page", prepare_reservation: "page" };
 const sources = Object.fromEntries(NAMES.map(name => [name, readFileSync(new URL(`../domains/exploretock.com/${name}.js`, import.meta.url), "utf8")]));
 const registry = JSON.parse(readFileSync(new URL("../registry.json", import.meta.url), "utf8"));
 const plain = value => JSON.parse(JSON.stringify(value));
@@ -108,7 +108,8 @@ function pageHarness(name, o = {}) {
   const context = {
     JSON, URL, URLSearchParams, Promise, Math, Date, Number, Object, Array, String, RegExp, encodeURIComponent, AbortController: FakeAbortController, Intl: o.intl ?? Intl,
     setTimeout: () => 0, clearTimeout: () => {},
-    window: { location: new URL(o.url ?? ORIGIN + "/") },
+    window: { location: new URL(o.url ?? ORIGIN + "/"), $REDUX_STATE: o.state },
+    document: o.document,
     fetch: async (path, init) => {
       calls.fetches.push({ path, init });
       assert.equal(init.credentials, "same-origin");
@@ -122,7 +123,7 @@ function pageHarness(name, o = {}) {
   return {
     definition, calls,
     run: async input => {
-      const result = plain(await definition.execute(input));
+      const result = plain(await definition.execute(input, { signal: o.signal }));
       assert.ok(conforms(definition.tool.outputSchema, result), `${name} output violates its schema: ${JSON.stringify(result)}`);
       const text = JSON.stringify(result);
       for (const secret of [FAKE_JWT, FAKE_CSRF, FAKE_STRIPE, "private@example.test"]) assert.ok(!text.includes(secret), "page state secrets must not leave the page: " + secret);
@@ -152,7 +153,7 @@ function cdpHarness(o = {}) {
   const documentFor = p => ({
     title: p.title ?? "Fabricated Bistro - Dinner Reservation | Tock", readyState: p.ready ?? "complete",
     body: { innerText: (p.lines ?? []).join("\n") },
-    querySelectorAll: sel => (sel === '[data-testid="search-result-list-item"]' ? (p.slots ?? []).map(slotElement) : sel === '[data-testid="consumer-calendar-day"]' ? (p.days ?? []).map(d => element({ cls: d.cls, disabled: d.disabled ?? false, attrs: { "aria-label": d.label } })) : [])
+    querySelectorAll: sel => (sel === '[data-testid="search-result-list-item"]' ? (p.slots ?? []).map(slotElement) : sel === '[data-testid="consumer-calendar-day"]' ? (p.days ?? []).map(d => element({ cls: d.cls, disabled: d.disabled ?? false, attrs: { "aria-label": d.label } })) : sel === ".MuiAlert-message" ? (p.alerts ?? p.lines ?? []).map(text => element({ text })) : [])
   });
   const sandbox = () => {
     const p = pageAt();
@@ -892,4 +893,21 @@ test("get_availability: a document that has not finished loading is never read",
   const result = await h.run(availability);
   assert.equal(result.error_kind, "site_error");
   assert.match(result.error_message, /within 45 seconds/);
+});
+
+test("get_availability: only dedicated alert messages are classified as empty states", async () => {
+  const h = cdpHarness({ page: { slots: [], lines: ["Our patio is sold out most weekends."], alerts: ["Dinner Reservation is not offered on Oct 9."] } });
+  assert.equal((await h.run(availability)).reason, "not_offered_on_date");
+  const bodyOnly = await cdpHarness({ page: { slots: [], lines: ["Dinner Reservation is sold out."], alerts: [] } }).run(availability);
+  assert.equal(bodyOnly.error_kind, "site_error");
+});
+
+test("get_availability: same-sized changing lists must settle and wrong offering paths fail", async () => {
+  const h = cdpHarness({ pages: [listPage(), listPage({ slots: [slotRow("6:00 PM", "Room")] }), listPage({ slots: [slotRow("6:15 PM", "Room")] }), listPage({ slots: [slotRow("6:30 PM", "Room")] })] });
+  assert.equal((await h.run(availability)).slots[0].local_time, "18:30");
+  const wrong = await cdpHarness({ page: listPage({ path: "/fabricated-bistro/experience/2/x" }) }).run(availability);
+  assert.equal(wrong.error_kind, "site_changed");
+  const aborted = cdpHarness({ page: listPage() });
+  assert.equal((await aborted.run(availability, { aborted: true })).error_kind, "site_error");
+  assert.deepEqual(aborted.calls.goto, []);
 });
