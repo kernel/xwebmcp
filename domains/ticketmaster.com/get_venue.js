@@ -207,9 +207,9 @@
           if (blocked(first)) return challenge(first);
           if (first.status >= 400 || !first.body || !Array.isArray(first.body.events)) return fail("site_error", "Ticketmaster did not return a JSON events list for the venue (HTTP " + first.status + ").");
           if (!Number.isInteger(first.body.total) || first.body.total < first.body.events.length) return fail("site_error", "Ticketmaster did not return a usable total for the empty-page cross-check.");
-          const knownTotal = Math.max(total ?? 0, first.body.total);
+          const knownTotal = Math.max(total ?? 0, Number.isInteger(r.body.total) ? r.body.total : 0, first.body.total);
           if (knownTotal > page * PAGE_SIZE) return fail("site_error", "Ticketmaster returned an empty events page although it reports " + knownTotal + " events; try again.");
-          total = first.body.total;
+          total = knownTotal;
           break;
         }
         if (Number.isInteger(r.body.total)) total = r.body.total;

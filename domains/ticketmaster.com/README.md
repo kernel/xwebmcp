@@ -584,4 +584,22 @@ Fixture coverage includes malformed input before page access, wrong event/host, 
 protection and rate limits, no-match versus changed schemas, protected/unsupported offers,
 integer-cent price arithmetic, explicit quantity, cancellation and secret omission.
 No mocked test establishes live mutation success. No new account or order tool is shipped.
-Independent review and current local-extension results are recorded after the new QA cycle.
+Independent review on `704366c`: **FAIL**, three minor findings. An empty events page
+with a positive total could lose that total when its page-0 cross-check reported zero;
+both list tools now retain the largest total including the empty page itself. Fractional-cent
+budgets could round upward; preparation now compares its cent-derived total directly to
+the supplied dollar ceiling. Duplicate assigned seats could form a choice; normalized
+seat labels must now be unique. Regression fixtures cover all three; recheck pending.
+
+The independent review ran the full suite (1,804 passing), actual AJV checks on 90 fixture
+and 12 live outputs, and bounded Kernel reads. All seven tools remained registered;
+artist past-end, venue mid-list and preparation success matched the site. The intermittent
+empty-page response was not provoked; negative cases remain fixture-only. No old tool,
+selection, preference, terms, hold or execution action was invoked.
+
+Current local Chrome extension: **partial**, separate from Kernel. Exact-head installation
+and all seven registrations succeeded in isolated signed-out profiles. The settled page
+showed "Your Browsing Activity Has Been Paused"; builder invocations returned `challenge`
+and `invalid_input`, and the reviewer stopped after registration on that protection page.
+No successful local-extension public-data path or runtime parity is claimed. Temporary
+public browsers and local profiles were removed.

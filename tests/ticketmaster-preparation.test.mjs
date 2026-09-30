@@ -81,12 +81,23 @@ test("lowest matching choice within sample, integer-cent tax and budget arithmet
   const b = fixture(); b._embedded.offer.push({ ...b._embedded.offer[0], offerId: "FAKE_O2", totalPrice: 100.8, charges: [{ type: "tax", amount: 7.1 }, { type: "fee", amount: 7.7 }] }); b.picks[0].offerGroups[0].offers.push("FAKE_O2");
   const r = await harness({ body: b }).run({ ...INPUT, max_total_before_tax: 187.4 });
   assert.equal(r.choice.estimated_total_before_tax, 187.4); assert.equal(r.choice.estimated_total_with_reported_taxes, 201.6);
-  assert.equal((await harness({ body: b }).run({ ...INPUT, max_total_before_tax: 187.39 })).error_kind, "no_matching_offer");
+  for (const budget of [187.39, 187.395, 187.399, 187.399999]) assert.equal((await harness({ body: b }).run({ ...INPUT, max_total_before_tax: budget })).error_kind, "no_matching_offer");
+  const above = await harness({ body: b }).run({ ...INPUT, max_total_before_tax: 187.400001 });
+  assert.equal(above.choice.estimated_total_before_tax, 187.4);
+});
+test("budget comparison keeps exact-cent prices despite binary floating-point multiplication", async () => {
+  for (const price of [0.01, 0.29, 1.15, 93.7]) {
+    const b = fixture(); b._embedded.offer[0].totalPrice = price; b._embedded.offer[0].charges = [];
+    const budget = Math.round(price * 100) * 2 / 100;
+    const r = await harness({ body: b }).run({ ...INPUT, max_total_before_tax: budget });
+    assert.equal(r.status, "prepared"); assert.equal(r.choice.estimated_total_before_tax, budget);
+    assert.equal((await harness({ body: b }).run({ ...INPUT, max_total_before_tax: budget - 0.000001 })).error_kind, "no_matching_offer");
+  }
 });
 for (const [key, value] of [["protected", true], ["online", false], ["currency", "EUR"], ["inventoryType", "platinum"], ["sellableQuantities", [1, 4]], ["name", "<b>Ticket</b>"]]) {
   test("ineligible or protected offers never prepare: " + key, async () => { const b = fixture(); b._embedded.offer[0][key] = value; const r = await harness({ body: b }).run(); assert.equal(r.status, "error"); });
 }
-for (const change of [b => { b._embedded.offer[0].charges = [{ type: "tax", amount: -1 }]; }, b => { delete b._embedded.offer[0].charges; }, b => { delete b._embedded.offer[0].sellableQuantities; }, b => { b.picks[0].offerGroups[0].seats = ["1"]; }, b => { b._embedded.offer[0].totalPrice = "100"; }, b => { b.picks[0].offerGroups[0].seats = ["<script>", "2"]; }]) {
+for (const change of [b => { b._embedded.offer[0].charges = [{ type: "tax", amount: -1 }]; }, b => { delete b._embedded.offer[0].charges; }, b => { delete b._embedded.offer[0].sellableQuantities; }, b => { b.picks[0].offerGroups[0].seats = ["1"]; }, b => { b._embedded.offer[0].totalPrice = "100"; }, b => { b.picks[0].offerGroups[0].seats = ["<script>", "2"]; }, b => { b.picks[0].offerGroups[0].seats = ["1", "1"]; }, b => { b.picks[0].offerGroups[0].seats = [1, "1"]; }, b => { b.picks[0].offerGroups[0].seats = ["1", " 1 "]; }]) {
   test("incomplete price/quantity evidence fails explicitly: " + change.toString(), async () => { const b = fixture(); change(b); assert.equal((await harness({ body: b }).run()).error_kind, "site_changed"); });
 }
 test("general admission has no fabricated assigned seats", async () => { const b = fixture(); b.picks[0].type = "general-seating"; b.picks[0].offerGroups[0].seats = []; const r = await harness({ body: b }).run(); assert.equal(r.choice.general_admission, true); assert.deepEqual(r.choice.seats, []); });

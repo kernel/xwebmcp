@@ -931,6 +931,24 @@ test("get_artist and get_venue: an empty first page is a legitimate empty list a
   }
 });
 
+test("get_artist and get_venue: the empty page's own total survives a smaller cross-check total", async () => {
+  for (const [name, key, routesFor] of [["get_artist", "artist", artistRoutes], ["get_venue", "venue", venueRoutes]]) {
+    const id = name === "get_artist" ? "1234567" : "12345";
+    for (const total of [457, 61, 60, 40]) {
+      const events = page => json(200, { total: page === 3 ? total : 0, events: [] });
+      const h = harness(name, { routes: routesFor({ events }) });
+      const result = await h.run({ [key]: id, events_offset: 60, events_limit: 5 });
+      if (total > 60) {
+        assert.equal(result.error_kind, "site_error", name);
+        assert.match(result.error_message, new RegExp("reports " + total + " events"));
+      } else {
+        assert.deepEqual([result.status, result.events.total, result.events.returned], ["ok", total, 0]);
+      }
+      assert.equal(h.calls.requests.filter(r => r.includes("/events/")).length, 2);
+    }
+  }
+});
+
 test("get_artist and get_venue: an empty page is caught even when the real total ends inside that page", async () => {
   for (const [name, key, routesFor] of [["get_artist", "artist", artistRoutes], ["get_venue", "venue", venueRoutes]]) {
     const id = name === "get_artist" ? "1234567" : "12345";

@@ -143,10 +143,10 @@
             const fees = o.charges.filter(c => c.type === "fee").reduce((a, c) => a + cents(c.amount), 0);
             const price = cents(o.totalPrice) - taxes;
             if (price < fees || price < 0) { incomplete = true; continue; }
-            if (price * qty > cents(budget)) continue;
+            if (price * qty / 100 > budget) continue;
             const ga = p.type === "general-seating";
             const seats = Array.isArray(group.seats) ? group.seats.map(s => text(typeof s === "number" ? String(s) : s, 30)) : null;
-            if ((!ga && (!seats || seats.length !== qty || seats.some(s => !s))) || (ga && seats?.length)) { incomplete = true; continue; }
+            if ((!ga && (!seats || seats.length !== qty || seats.some(s => !s) || new Set(seats).size !== qty)) || (ga && seats?.length)) { incomplete = true; continue; }
             choices.push({ section, row, seats: seats || [], general_admission: ga, ticket_type: type, inventory_type: o.inventoryType,
               price_per_ticket_before_tax: price / 100, reported_fees_per_ticket: fees / 100, reported_taxes_per_ticket: taxes / 100,
               estimated_total_before_tax: price * qty / 100, estimated_total_with_reported_taxes: (price + taxes) * qty / 100 });
