@@ -62,8 +62,12 @@ returns `no_results`.
 - `prepare_booking`: `listing_id`, `checkin`, `checkout` and `adults` are required.
   Open the returned `entry_url` separately if necessary, wait for the exact dated
   listing to render, then call again. Only the observed English, adults-only USD
-  preview is supported. Query parameters alone are insufficient: rendered ISO dates
-  and guest count must match. A price/Reserve panel is not proof of bookable inventory.
+  preview is supported. Query parameters alone are insufficient: rendered listing
+  identity, ISO dates and guest count must match. Exactly one visible panel and
+  enabled visible price/Reserve controls are required. The total-stay qualifier
+  must be in the observed price region, not unrelated page text. Only bare-dollar
+  numeric price strings are accepted, not CA$/AU$ prefixes or per-night pricing.
+  A price/Reserve panel is not proof of bookable inventory.
   `status: prepared` is a preliminary read, not a final quote, hold or booking.
   The displayed price is preserved as text; full taxes/fees/payment/cancellation
   conditions remain human-review requirements (`terms_complete: false`). The
@@ -116,8 +120,10 @@ login and booking starting paths are refused even on the matching host.
 
 ## QA
 
-Builder checks on 2026-09-30: 108 fabricated fixture tests passed, as did registry
-validation and the full 1,685-test suite. Fixtures cover malformed inputs, denied
+Builder checks on 2026-09-30: 128 fabricated fixture tests passed, as did registry
+validation and the full 1,705-test suite. A separate real-Chromium check passed 17
+preview/starting-page fixtures, with no tool-generated requests or clicks. Fixtures
+cover malformed inputs, denied
 access, unsupported data, price variants, canonical URLs, array/string bounds,
 public-field allowlists, cancellation, request counts, non-navigation, mismatched
 listing/date/guest previews and rejection of fake confirmation inputs.
@@ -132,6 +138,12 @@ The Kernel page bridge may return non-ASCII output as a JSON string; callers sho
 parse when `typeof output === "string"`. This is runtime behavior, not a changed
 output schema.
 
-Independent final-source review is pending. Local Chromium 153 extension registration
-succeeded, but optional host permission remained ungranted; discovery/invocation
-could not be verified. Kernel evidence alone does not establish parity.
+Independent initial review found six fixture-reproduced issues: hidden/disabled
+preview controls, unrelated total-stay qualifiers, non-USD currency prefixes, a
+missed verification heading, an account-settings starting path, and the encoded
+Unicode search-URL bound. Regression tests now cover these cases; final-source
+recheck is pending. The revised preview and both public reads succeeded live again.
+
+Local Chromium 153 extension registration succeeded, but optional host permission
+remained ungranted; discovery/invocation could not be verified. Kernel evidence
+alone does not establish parity.

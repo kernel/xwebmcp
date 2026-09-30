@@ -61,7 +61,8 @@
     entry.searchParams.set("check_out", input.checkout);
     entry.searchParams.set("adults", String(input.adults));
     entry.searchParams.set("currency", "USD");
-    if (/captcha|access denied|robot check|security check|unusual traffic|verify (you are|you're) human/i.test(document.title || "")) return fail("challenge", "The page requires access verification; no action was taken.");
+    const verificationText = (document.title || "") + " " + (document.querySelector("h1")?.innerText || "");
+    if (/captcha|access denied|robot check|security check|unusual traffic|verify (you are|you're) human|confirm you.?re human/i.test(verificationText)) return fail("challenge", "The page requires access verification; no action was taken.");
     if (/log in|sign in/i.test(document.title || "")) return fail("login_required", "A public listing page is required; no sign-in is attempted.");
     const current = new URL(location.href);
     if (current.origin !== entry.origin || current.pathname !== entry.pathname || ["check_in", "check_out", "adults", "currency"].some(key => current.searchParams.getAll(key).length !== 1 || current.searchParams.get(key) !== entry.searchParams.get(key)) || ["children", "infants", "pets"].some(key => current.searchParams.getAll(key).length > 1 || current.searchParams.has(key) && current.searchParams.get(key) !== "0")) return fail("wrong_page", "Open entry_url and let Airbnb render the exact listing, dates and adult guests, then invoke again.", entry.href);
@@ -74,23 +75,27 @@
       pageId = atob(node?.id || "");
     } catch { return fail("site_changed", "The rendered listing identity is unsupported.", entry.href); }
     if (pageId !== "DemandStayListing:" + input.listing_id) return fail("wrong_page", "The rendered listing identity differs from the requested listing.", entry.href);
-    const panel = document.querySelector('[data-testid="book-it-default"]');
-    if (!panel) return fail("site_changed", "The supported booking preview has not rendered.", entry.href);
+    const visible = element => element?.checkVisibility({ opacityProperty: true, visibilityProperty: true });
+    const panels = [...document.querySelectorAll('[data-testid="book-it-default"]')].filter(visible);
+    if (panels.some(panel => /dates (aren't|are not|not) available|not available|unavailable|choose different dates/i.test(panel.innerText || ""))) return fail("unavailable", "The listing page says these dates are unavailable.", entry.href);
+    if (panels.length !== 1) return fail("site_changed", "One visible supported booking preview is required.", entry.href);
+    const panel = panels[0];
     const panelText = panel.innerText || "";
-    if (/dates (aren't|are not|not) available|not available|unavailable|choose different dates/i.test(panelText)) return fail("unavailable", "The listing page says these dates are unavailable.", entry.href);
-    const buttons = [...panel.querySelectorAll('button, [role="button"]')];
+    const buttons = [...panel.querySelectorAll('button, [role="button"]')].filter(visible);
     const dates = buttons.map(button => button.getAttribute("aria-label") || "").find(label => label.startsWith("Change dates;"));
     if (dates !== "Change dates; Check-in: " + input.checkin + "; Checkout: " + input.checkout) return fail("wrong_page", "The rendered dates do not match the requested dates; no quote is returned.", entry.href);
     const guestTexts = buttons.map(button => (button.innerText || "").replace(/\s+/g, " ").trim().replace(/^GUESTS\s+/i, "")).filter(value => /^[0-9]+ guests?$/.test(value));
     if (guestTexts.length !== 1 || Number(guestTexts[0].split(" ")[0]) !== input.adults) return fail("wrong_page", "The rendered guest count is missing or differs from the requested adult guests.", entry.href);
     const reserve = panel.querySelector('[data-testid="homes-pdp-cta-btn"]');
-    if (!reserve || reserve.disabled || reserve.getAttribute("aria-disabled") === "true" || (reserve.innerText || "").trim() !== "Reserve") return fail("site_changed", "The page does not show the supported enabled Reserve preview; no availability claim is made.", entry.href);
-    const prices = buttons.filter(button => /Show price breakdown/.test(button.innerText || ""));
-    if (prices.length !== 1) return fail("site_changed", "The public preview has no supported display price.", entry.href);
+    if (!visible(reserve) || reserve.disabled || reserve.getAttribute("aria-disabled") === "true" || (reserve.innerText || "").trim() !== "Reserve") return fail("site_changed", "The page does not show the supported enabled Reserve preview; no availability claim is made.", entry.href);
+    const priceBlock = panel.querySelector('[data-xray-jira-component="Guest: Price Display: P3"]');
+    if (!visible(priceBlock)) return fail("site_changed", "The supported visible price region is missing.", entry.href);
+    const prices = [...priceBlock.querySelectorAll("button")].filter(visible).filter(button => /Show price breakdown/.test(button.innerText || ""));
+    if (prices.length !== 1 || prices[0].disabled || prices[0].getAttribute("aria-disabled") === "true") return fail("site_changed", "The public preview has no supported enabled display-price control.", entry.href);
     const price = (prices[0].innerText || "").replace(/\s*Show price breakdown\s*/, "").trim();
-    if (!/\$[0-9]/.test(price) || price.length > 500) return fail("site_changed", "The display-price format is unsupported.", entry.href);
+    if (price.length > 500 || !/^\$(?:[0-9]{1,3}(?:,[0-9]{3})+|[0-9]+)(?:\.[0-9]{2})?(?:\s+\$(?:[0-9]{1,3}(?:,[0-9]{3})+|[0-9]+)(?:\.[0-9]{2})?)?$/.test(price)) return fail("site_changed", "The USD display-price format is unsupported.", entry.href);
     const qualifier = "for " + nights + " " + (nights === 1 ? "night" : "nights");
-    if (!panelText.includes(qualifier)) return fail("site_changed", "The displayed price has no matching stay-length qualifier.", entry.href);
+    if (!new RegExp("\\b" + qualifier + "\\b").test(priceBlock.innerText || "") || /per night/i.test(priceBlock.innerText || "")) return fail("site_changed", "The price region has no matching total-stay qualifier.", entry.href);
     const terms = panelText.split("\n").map(line => line.trim()).filter(line => /today|Free cancellation/.test(line)).join(" · ").slice(0, 600) || null;
     return {
       status: "prepared", listing_id: input.listing_id, handoff_url: entry.href,

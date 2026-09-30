@@ -41,7 +41,7 @@
           ],
           properties: {
             status: { const: "ok" },
-            search_url: { type: "string", maxLength: 700 },
+            search_url: { type: "string", maxLength: 1600 },
             destination_text: { type: ["string", "null"], maxLength: 300 },
             checkin: { type: ["string", "null"], maxLength: 10 },
             checkout: { type: ["string", "null"], maxLength: 10 },
@@ -92,7 +92,7 @@
           required: ["status", "search_url", "result_count", "listings", "observed_at"],
           properties: {
             status: { const: "no_results" },
-            search_url: { type: "string", maxLength: 700 },
+            search_url: { type: "string", maxLength: 1600 },
             result_count: { const: 0 },
             listings: { type: "array", maxItems: 0 },
             observed_at: { type: "string", maxLength: 40 }
@@ -152,7 +152,7 @@
     };
     const readPage = async path => {
       if (location.origin !== ORIGIN) return { error: fail("wrong_page", "Open a public https://www.airbnb.com page first.") };
-      if (/^\/(?:account|guest|hosting|host|trips|wishlists|recently-viewed|book|booking|payments|reserve|login|signup)(?:\/|$)/.test(location.pathname)) return { error: fail("wrong_page", "Use a public Airbnb page, not an account or booking page.") };
+      if (/^\/(?:account(?:-settings)?|guest|hosting|host|trips|wishlists|recently-viewed|book|booking|payments|reserve|login|signup)(?:\/|$)/.test(location.pathname)) return { error: fail("wrong_page", "Use a public Airbnb page, not an account or booking page.") };
       const currentGate = gate(document);
       if (currentGate) return { error: fail(currentGate, "The current page requires access verification; no request was sent.") };
       const controller = new AbortController();

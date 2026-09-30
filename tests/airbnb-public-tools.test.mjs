@@ -72,7 +72,7 @@ class DOMParser {
       querySelector(selector) {
         if (selector === "title") return { textContent: /<title>([\s\S]*?)<\/title>/.exec(source)?.[1] ?? "" };
         if (selector === "#data-deferred-state-0") return match ? { textContent: match[1] } : null;
-        if (selector === "h1") return { textContent: /<h1>(.*?)<\/h1>/.exec(source)?.[1] ?? "" };
+        if (selector === "h1") return { textContent: /<h1>(.*?)<\/h1>/.exec(source)?.[1] ?? "", innerText: /<h1>(.*?)<\/h1>/.exec(source)?.[1] ?? "" };
         return null;
       },
       querySelectorAll: () => []
@@ -82,21 +82,30 @@ class DOMParser {
 
 const bookingInput = { listing_id: ID, checkin: "2026-11-13", checkout: "2026-11-16", adults: 2 };
 const bookingUrl = `https://www.airbnb.com/rooms/${ID}?check_in=2026-11-13&check_out=2026-11-16&adults=2&currency=USD`;
-const button = (innerText, label = null, options = {}) => ({ innerText, getAttribute: key => key === "aria-label" ? label : key === "aria-disabled" ? options.ariaDisabled ?? null : null, disabled: options.disabled ?? false });
+const button = (innerText, label = null, options = {}) => ({ innerText, checkVisibility: () => !options.hidden, getAttribute: key => key === "aria-label" ? label : key === "aria-disabled" ? options.ariaDisabled ?? null : null, disabled: options.disabled ?? false });
 function bookingPanel(options = {}) {
   const reserve = button(options.cta ?? "Reserve", null, options);
-  const buttons = [button(options.price ?? "$420\nShow price breakdown"), button("CHECK-IN CHECKOUT", options.dates ?? "Change dates; Check-in: 2026-11-13; Checkout: 2026-11-16"), button(options.guests ?? "GUESTS\n2 guests"), reserve];
+  const price = button(options.price ?? "$420\nShow price breakdown", null, { disabled: options.priceDisabled, ariaDisabled: options.priceAriaDisabled, hidden: options.priceHidden });
+  const buttons = [price, button("CHECK-IN CHECKOUT", options.dates ?? "Change dates; Check-in: 2026-11-13; Checkout: 2026-11-16"), button(options.guests ?? "GUESTS\n2 guests"), reserve];
+  const region = {
+    checkVisibility: () => !options.priceRegionHidden,
+    innerText: options.priceRegionText ?? price.innerText + "\nfor 3 nights",
+    querySelectorAll: () => [price]
+  };
   return {
+    checkVisibility: () => !options.hidden,
     innerText: options.text ?? "$420\nShow price breakdown\nfor 3 nights\nCHECK-IN\n11/13/2026\nCHECKOUT\n11/16/2026\nGUESTS\n2 guests\n$0 today · Free cancellation before October 1\nReserve",
     querySelectorAll: () => buttons,
-    querySelector: () => options.noReserve ? null : reserve
+    querySelector: selector => selector.includes("data-xray-jira-component") ? options.noPriceRegion ? null : region : options.noReserve ? null : reserve
   };
 }
 function harness(name, options = {}) {
   const calls = [], timers = new Set();
   const doc = new DOMParser().parseFromString(options.currentHtml ?? html(name === "prepare_booking" ? listingState() : {}, options.currentTitle ?? "Airbnb"));
   const originalQuery = doc.querySelector.bind(doc);
-  doc.querySelector = selector => selector === '[data-testid="book-it-default"]' ? options.noPanel ? null : bookingPanel(options.panel) : originalQuery(selector);
+  const panels = options.noPanel ? [] : [bookingPanel(options.panel), ...(options.extraPanels ?? []).map(bookingPanel)];
+  doc.querySelector = selector => selector === '[data-testid="book-it-default"]' ? panels[0] ?? null : originalQuery(selector);
+  doc.querySelectorAll = selector => selector === '[data-testid="book-it-default"]' ? panels : [];
   doc.documentElement.lang = options.lang ?? "en-US";
   doc.createElement = tag => {
     assert.equal(tag, "template");
@@ -170,6 +179,14 @@ for (const price of [
   const output = await harness("search_stays", { rows: [row(ID, price)] }).run();
   assert.equal(output.listings[0].price.display_price, "$380"); assert.equal(output.listings[0].price.original_price, "$420");
 });
+test("search_stays: encoded Unicode destinations fit both URL output branches", async () => {
+  for (const rows of [[row()], []]) {
+    const h = harness("search_stays", { rows });
+    const output = await h.run({ destination: "漢".repeat(150) });
+    assert.ok(output.search_url.length > 700 && output.search_url.length <= 1600);
+    assert.equal(h.calls.length, 1);
+  }
+});
 test("search_stays: explicit no-results only with valid empty results array", async () => {
   assert.equal((await harness("search_stays", { rows: [] }).run()).status, "no_results");
   assert.equal((await harness("search_stays", { body: html({}) }).run()).error_kind, "site_changed");
@@ -223,7 +240,7 @@ for (const name of ["search_stays", "get_listing"]) {
   ]) test(`${name}: one bounded request, no retry for ${kind} ${JSON.stringify(options).slice(0, 65)}`, async () => {
     const h = harness(name, options); const output = await h.run(); assert.equal(output.error_kind, kind); assert.equal(h.calls.length, 1); assert.doesNotMatch(JSON.stringify(output), /secret internal/);
   });
-  for (const options of [{ url: "https://example.invalid/" }, { url: "https://www.airbnb.com/guest/messages" }, { url: "https://www.airbnb.com/trips" }, { currentTitle: "Access denied" }]) {
+  for (const options of [{ url: "https://example.invalid/" }, { url: "https://www.airbnb.com/guest/messages" }, { url: "https://www.airbnb.com/account-settings" }, { url: "https://www.airbnb.com/account-settings/security" }, { url: "https://www.airbnb.com/trips" }, { currentTitle: "Access denied" }]) {
     test(`${name}: refuse unsuitable document before requests ${JSON.stringify(options)}`, async () => {
       const h = harness(name, options); assert.equal((await h.run()).status, "error"); assert.equal(h.calls.length, 0);
     });
@@ -241,6 +258,21 @@ test("prepare_booking: exact preview returns human-only handoff without interact
 });
 for (const [options, kind] of [
   [{ currentHtml: html(listingState(node("900002"))) }, "wrong_page"],
+  [{ currentHtml: html(listingState(), "Airbnb", "en", "Confirm you're human") }, "challenge"],
+  [{ panel: { hidden: true } }, "site_changed"],
+  [{ panel: { hidden: true }, extraPanels: [{ text: "These dates are not available" }] }, "unavailable"],
+  [{ extraPanels: [{}] }, "site_changed"],
+  [{ panel: { priceDisabled: true } }, "site_changed"],
+  [{ panel: { priceAriaDisabled: "true" } }, "site_changed"],
+  [{ panel: { priceHidden: true } }, "site_changed"],
+  [{ panel: { noPriceRegion: true } }, "site_changed"],
+  [{ panel: { priceRegionHidden: true } }, "site_changed"],
+  [{ panel: { price: "$420 per night\nShow price breakdown" } }, "site_changed"],
+  [{ panel: { priceRegionText: "$420 Show price breakdown\nper night", text: "Unrelated: for 3 nights" } }, "site_changed"],
+  [{ panel: { price: "$" + "1".repeat(600) + "\nShow price breakdown" } }, "site_changed"],
+  [{ panel: { price: "CA$420\nShow price breakdown" } }, "site_changed"],
+  [{ panel: { price: "AU$420\nShow price breakdown" } }, "site_changed"],
+  [{ url: bookingUrl + "&children=0&children=1" }, "wrong_page"],
   [{ url: "https://www.airbnb.com/" }, "wrong_page"], [{ url: bookingUrl + "&adults=2" }, "wrong_page"], [{ url: bookingUrl + "&children=1" }, "wrong_page"],
   [{ panel: { dates: "Change dates; Check-in: 2026-11-14; Checkout: 2026-11-16" } }, "wrong_page"], [{ panel: { guests: "3 guests" } }, "wrong_page"],
   [{ panel: { disabled: true } }, "site_changed"], [{ panel: { text: "These dates are not available" } }, "unavailable"], [{ currentTitle: "Access denied" }, "challenge"],

@@ -127,7 +127,7 @@
     };
     const readPage = async path => {
       if (location.origin !== ORIGIN) return { error: fail("wrong_page", "Open a public https://www.airbnb.com page first.") };
-      if (/^\/(?:account|guest|hosting|host|trips|wishlists|recently-viewed|book|booking|payments|reserve|login|signup)(?:\/|$)/.test(location.pathname)) return { error: fail("wrong_page", "Use a public Airbnb page, not an account or booking page.") };
+      if (/^\/(?:account(?:-settings)?|guest|hosting|host|trips|wishlists|recently-viewed|book|booking|payments|reserve|login|signup)(?:\/|$)/.test(location.pathname)) return { error: fail("wrong_page", "Use a public Airbnb page, not an account or booking page.") };
       const currentGate = gate(document);
       if (currentGate) return { error: fail(currentGate, "The current page requires access verification; no request was sent.") };
       const controller = new AbortController();
