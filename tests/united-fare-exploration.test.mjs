@@ -221,6 +221,7 @@ test("browser DOM: only a visible no-flights notice establishes absence", browse
       <section id="parent"><div id="notice" class="NoFlights-styles__noFlightTitle">We couldn't find an exact match</div></section>
       <script>
       (async () => {
+        await fixtureReady;
         await new Promise(resolve => setTimeout(resolve, 500));
         const location = ${JSON.stringify({ origin: "https://www.united.com", pathname: "/en/us/fsr/choose-flights", href })};
         const def = (${sources.get_fare_options})[0];

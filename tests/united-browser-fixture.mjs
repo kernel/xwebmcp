@@ -6,17 +6,22 @@ import { join } from "node:path";
 
 export async function runBrowserFixture(html, { browser, timeoutMs = 30000 }) {
   const dir = mkdtempSync(join(tmpdir(), "united-browser-"));
-  let child, deadline, stderr = "", closed = false;
+  let child, deadline, stderr = "", closed = false, phase = "browser startup";
   let resolve, reject;
   const result = new Promise((yes, no) => { resolve = yes; reject = no; });
   const server = createServer((req, res) => {
     if (req.method === "GET" && req.url === "/") {
+      phase = "fixture HTML served";
       res.setHeader("Content-Type", "text/html");
       res.end(`<!doctype html><script>
         const reportFixture = value => fetch('/result', {method: 'POST', body: JSON.stringify(value)});
+        const fixtureReady = fetch('/ready', {method: 'POST'});
         addEventListener('error', event => reportFixture({error: event.message}));
         addEventListener('unhandledrejection', event => reportFixture({error: String(event.reason)}));
       </script>${html.replace(/^<!doctype html>/i, "")}`);
+    } else if (req.method === "POST" && req.url === "/ready") {
+      phase = "fixture JavaScript ready";
+      res.end();
     } else if (req.method === "POST" && req.url === "/result") {
       let body = "";
       req.setEncoding("utf8");
@@ -50,7 +55,7 @@ export async function runBrowserFixture(html, { browser, timeoutMs = 30000 }) {
       closed = true;
       reject(new Error(`Browser exited before fixture completion: code=${code}, signal=${signal}\n${stderr}`));
     });
-    deadline = setTimeout(() => reject(new Error(`Browser fixture did not complete within ${timeoutMs}ms\n${stderr}`)), timeoutMs);
+    deadline = setTimeout(() => reject(new Error(`Browser fixture did not complete within ${timeoutMs}ms; phase=${phase}; display=${Boolean(process.env.DISPLAY)}; session_bus=${Boolean(process.env.DBUS_SESSION_BUS_ADDRESS)}\n${stderr}`)), timeoutMs);
     return await result;
   } finally {
     clearTimeout(deadline);
