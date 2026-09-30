@@ -96,6 +96,7 @@
         if (signal?.aborted) return fail("canceled", "The read was canceled.");
         return controller.signal.aborted ? fail("timeout", "The public read exceeded eight seconds.") : fail("network_error", "The public read failed. No retry was made.");
       } finally {
+        controller.abort();
         clearTimeout(timer);
         signal?.removeEventListener("abort", cancel);
       }
@@ -106,7 +107,14 @@
       const expected = "https://x.com" + path;
       const article = doc.querySelector("main article");
       if (meta("og:type") !== "article" || meta("og:url").toLowerCase() !== expected.toLowerCase() || meta("article:author").toLowerCase() !== ("https://x.com/" + match[1]).toLowerCase() || !article) return fail("forbidden", "No anonymously readable public post was returned.");
-      const textNode = article.querySelector('div[dir="auto"].whitespace-pre-wrap');
+      const textNode = [...article.querySelectorAll('div[dir="auto"].whitespace-pre-wrap')].find(node => {
+        let parent = node.parentElement, depth = 0;
+        while (parent && parent !== article) {
+          if (parent.localName !== "div" || parent.getAttribute("role") === "link" || ++depth > 2) return false;
+          parent = parent.parentElement;
+        }
+        return parent === article;
+      });
       const nameNode = [...article.querySelectorAll("a[href]")].find(a => a.getAttribute("href")?.toLowerCase() === ("/" + match[1]).toLowerCase() && a.querySelector(".font-bold"));
       const name = nameNode?.querySelector(".font-bold")?.textContent?.trim();
       const published = meta("article:published_time");
@@ -114,7 +122,7 @@
       const text = textNode.textContent || "";
       return { post_id: match[2], url: expected, author_handle: match[1], author_name: name.slice(0, 200), text: text.slice(0, 4000), text_truncated: text.length > 4000, published_at: new Date(published).toISOString() };
     };
-    if (!input || typeof input !== "object" || Array.isArray(input) || Object.keys(input).some(k => k !== "post_url") || typeof input.post_url !== "string" || !/^https:\/\/x\.com\/[A-Za-z0-9_]{1,15}\/status\/[1-9][0-9]{0,24}$/.test(input.post_url)) return fail("invalid_input", "Provide a canonical https://x.com/<handle>/status/<id> post_url without query or fragment.");
+    if (!input || typeof input !== "object" || Array.isArray(input) || Object.keys(input).some(k => k !== "post_url") || typeof input.post_url !== "string" || /\s/.test(input.post_url) || !/^https:\/\/x\.com\/[A-Za-z0-9_]{1,15}\/status\/[1-9][0-9]{0,24}$/.test(input.post_url)) return fail("invalid_input", "Provide a canonical https://x.com/<handle>/status/<id> post_url without query or fragment.");
     const path = input.post_url.slice("https://x.com".length);
     if (!safePage()) return fail("wrong_page", "Open a public x.com profile, post, search page or home first. No navigation was made.");
     const response = await fetchPublic(path);

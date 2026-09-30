@@ -40,6 +40,8 @@ checks at most three unique timestamp permalinks with one anonymous request each
 one second apart, and returns only the anonymous response's public fields. It does
 not read tweet text from the signed-in document. No retries or redirect following.
 Each request has an eight-second deadline and a 1 MiB streamed-response cap.
+The request controller is aborted on every exit, including HTTP/content-type errors,
+so failed reads cannot continue downloading after the tool returns.
 
 Outputs allowlist canonical public URLs, author/display names, post text, ISO UTC
 timestamps, profile bio and displayed follower/following quantities. Rounded counts
@@ -100,13 +102,16 @@ are outside scope, including drafting tools that require opening those pages.
   Unrecognized/localized/loading markup returns `site_changed`, not empty success.
 - Redirects (including changed handles and auth gates) are not followed. A public
   HTML page without expected metadata/markup is rejected. No fallback API is tried.
+- Post extraction supports the observed shallow primary text hierarchy only (at
+  most two ancestor divs between text and article). Quoted/link/nested-article and
+  deeper text is not a fallback. Media-only posts without primary text are unsupported.
 - Fixture checks cannot establish how restricted pages render across every locale.
   Anonymous credentials and fail-closed public metadata checks are the boundary.
 
 ## QA summary
 
-Initial implementation is draft pending independent final-source review. All 48
-site fixtures and the full 1625-test tool suite pass, as do 14 extension unit tests
+Initial implementation is draft pending independent final-source review. All 54
+site fixtures and the full 1631-test tool suite pass, as do 14 extension unit tests
 and `go test ./...`. Fixtures cover validation, public metadata, restricted/missing
 markup, request/response bounds, errors, cancellation, unrelated pages, bounded
 search, local preparation and rejection of fake publish/confirmation fields.
@@ -119,6 +124,13 @@ counts. `draft_post` returned a fabricated local preview without composer intera
 bounded two-post success on an already-authorized matching Latest search page.
 No scrolling, account mutation or protected-content inspection was performed.
 
-Local-extension live integration remains unverified; extension unit tests are not
-evidence of live parity. Independent QA and final statuses will be recorded after
-review of the final tool source.
+The initial independent review identified uncanceled early-error downloads,
+quoted-text misattribution and an undersized Unicode handoff URL schema. Fixes abort
+all responses on exit, restrict primary text to the observed shallow hierarchy,
+expand the bounded handoff schema to 2048 characters and add regression fixtures.
+Final-source recheck is pending.
+
+Local-extension integration against fabricated/intercepted pages was independently
+exercised during initial QA; live X extension parity remains unverified. The author
+also attempted isolated local registration but site permission was unavailable.
+Extension unit tests alone are not evidence of live parity.

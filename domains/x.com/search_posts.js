@@ -74,7 +74,7 @@
           type: "object",
           additionalProperties: false,
           required: ["status", "entry_url"],
-          properties: { status: { const: "wrong_page" }, entry_url: { type: "string", maxLength: 800 } }
+          properties: { status: { const: "wrong_page" }, entry_url: { type: "string", maxLength: 2048 } }
         },
         {
           type: "object",
@@ -124,6 +124,7 @@
         if (signal?.aborted) return fail("canceled", "The read was canceled.");
         return controller.signal.aborted ? fail("timeout", "The public read exceeded eight seconds.") : fail("network_error", "The public read failed. No retry was made.");
       } finally {
+        controller.abort();
         clearTimeout(timer);
         signal?.removeEventListener("abort", cancel);
       }
@@ -134,7 +135,14 @@
       const expected = "https://x.com" + path;
       const article = doc.querySelector("main article");
       if (meta("og:type") !== "article" || meta("og:url").toLowerCase() !== expected.toLowerCase() || meta("article:author").toLowerCase() !== ("https://x.com/" + match[1]).toLowerCase() || !article) return fail("forbidden", "No anonymously readable public post was returned.");
-      const textNode = article.querySelector('div[dir="auto"].whitespace-pre-wrap');
+      const textNode = [...article.querySelectorAll('div[dir="auto"].whitespace-pre-wrap')].find(node => {
+        let parent = node.parentElement, depth = 0;
+        while (parent && parent !== article) {
+          if (parent.localName !== "div" || parent.getAttribute("role") === "link" || ++depth > 2) return false;
+          parent = parent.parentElement;
+        }
+        return parent === article;
+      });
       const nameNode = [...article.querySelectorAll("a[href]")].find(a => a.getAttribute("href")?.toLowerCase() === ("/" + match[1]).toLowerCase() && a.querySelector(".font-bold"));
       const name = nameNode?.querySelector(".font-bold")?.textContent?.trim();
       const published = meta("article:published_time");
@@ -162,7 +170,7 @@
     const paths = [];
     for (const article of primary.querySelectorAll('article[data-testid="tweet"]')) {
       const path = article.querySelector("time")?.closest("a")?.getAttribute("href");
-      if (/^\/[A-Za-z0-9_]{1,15}\/status\/[1-9][0-9]{0,24}$/.test(path || "") && !paths.includes(path)) paths.push(path);
+      if (!/\s/.test(path || "") && /^\/[A-Za-z0-9_]{1,15}\/status\/[1-9][0-9]{0,24}$/.test(path || "") && !paths.includes(path)) paths.push(path);
       if (paths.length === limit) break;
     }
     if (!paths.length) {

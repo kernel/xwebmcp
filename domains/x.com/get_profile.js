@@ -96,11 +96,12 @@
         if (signal?.aborted) return fail("canceled", "The read was canceled.");
         return controller.signal.aborted ? fail("timeout", "The public read exceeded eight seconds.") : fail("network_error", "The public read failed. No retry was made.");
       } finally {
+        controller.abort();
         clearTimeout(timer);
         signal?.removeEventListener("abort", cancel);
       }
     };
-    if (!input || typeof input !== "object" || Array.isArray(input) || Object.keys(input).some(k => k !== "handle") || typeof input.handle !== "string" || !/^@?[A-Za-z0-9_]{1,15}$/.test(input.handle)) return fail("invalid_input", "Provide only handle: an X handle of 1–15 letters, digits or underscores, optionally prefixed with @.");
+    if (!input || typeof input !== "object" || Array.isArray(input) || Object.keys(input).some(k => k !== "handle") || typeof input.handle !== "string" || /\s/.test(input.handle) || !/^@?[A-Za-z0-9_]{1,15}$/.test(input.handle)) return fail("invalid_input", "Provide only handle: an X handle of 1–15 letters, digits or underscores, optionally prefixed with @.");
     const handle = input.handle.replace(/^@/, "");
     if (/^(?:i|home|search|explore|notifications|messages|settings|compose|login|signup|tos|privacy)$/i.test(handle)) return fail("invalid_input", "That path is not a profile handle.");
     if (!safePage()) return fail("wrong_page", "Open a public x.com profile, post, search page or home first. No navigation was made.");

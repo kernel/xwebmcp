@@ -142,6 +142,31 @@ test("get_post: public metadata/author mismatch and missing article fail closed"
 test("get_post: missing text/timestamp markup is site_changed", async () => {
   for (const html of [postHtml({ published: "yesterday" }), postHtml().replace('class="whitespace-pre-wrap"', 'class="changed"')]) assert.equal((await harness("get_post", { responses: [{ html }] }).run({ post_url: postUrl })).error_kind, "site_changed");
 });
+test("post readers: quoted or deeply nested bodies never replace missing primary text", async () => {
+  const own = '<div dir="auto" class="whitespace-pre-wrap">A fabricated public post.</div>';
+  for (const quote of [
+    '<blockquote><div dir="auto" class="whitespace-pre-wrap">QUOTED_BODY_NOT_TARGET</div></blockquote>',
+    '<article><div dir="auto" class="whitespace-pre-wrap">QUOTED_BODY_NOT_TARGET</div></article>',
+    '<div role="link"><div dir="auto" class="whitespace-pre-wrap">QUOTED_BODY_NOT_TARGET</div></div>',
+    '<a href="/quoted_fixture/status/999"><div dir="auto" class="whitespace-pre-wrap">QUOTED_BODY_NOT_TARGET</div></a>',
+    '<div><div><div><div dir="auto" class="whitespace-pre-wrap">QUOTED_BODY_NOT_TARGET</div></div></div></div>'
+  ]) {
+    const html = postHtml().replace(own, quote);
+    for (const name of ["get_post", "search_posts"]) {
+      const h = harness(name, { url: "https://x.com/search?q=example", html: searchHtml(), responses: [{ html }] });
+      const out = await h.run(name === "get_post" ? { post_url: postUrl } : { query: "example" });
+      assert.equal(out.error_kind, "site_changed");
+      assert.ok(!JSON.stringify(out).includes("QUOTED_BODY"));
+    }
+  }
+});
+test("get_post: observed shallow primary text remains supported", async () => {
+  const own = '<div dir="auto" class="whitespace-pre-wrap">A fabricated public post.</div>';
+  const html = postHtml().replace(own, '<div><div>' + own + '</div></div>');
+  const out = await harness("get_post", { responses: [{ html }] }).run({ post_url: postUrl });
+  assert.equal(out.status, "ok");
+  assert.equal(out.post.text, "A fabricated public post.");
+});
 test("get_post: explicit bounded text truncation", async () => {
   const out = await harness("get_post", { responses: [{ html: postHtml({ text: "x".repeat(5000) }) }] }).run({ post_url: postUrl });
   assert.equal(out.post.text.length, 4000);
@@ -185,10 +210,16 @@ for (const [status, kind] of [[401, "login_required"], [403, "forbidden"], [404,
     const h = harness("get_post", { responses: [{ status }] });
     assert.equal((await h.run({ post_url: postUrl })).error_kind, kind);
     assert.equal(h.calls.length, 1);
+    assert.equal(h.calls[0].options.signal.aborted, true);
   });
 }
 test("anonymous reads: redirects and challenge HTML never followed", async () => {
   for (const [fixture, kind] of [[{ status: 0, type: "opaqueredirect" }, "login_required"], [{ html: "<title>Verify you are human</title>" }, "challenge"], [{ html: "<title>Access denied</title>" }, "forbidden"], [{ contentType: "application/json" }, "site_changed"]]) assert.equal((await harness("get_post", { responses: [fixture] }).run({ post_url: postUrl })).error_kind, kind);
+});
+test("anonymous reads: unsupported content type aborts the response immediately", async () => {
+  const h = harness("get_post", { responses: [{ contentType: "application/json" }] });
+  assert.equal((await h.run({ post_url: postUrl })).error_kind, "site_changed");
+  assert.equal(h.calls[0].options.signal.aborted, true);
 });
 test("anonymous reads: byte cap cancels reader", async () => {
   const h = harness("get_post", { bodyBytes: new Uint8Array(1048577) });
@@ -228,6 +259,25 @@ test("search_posts: unrelated page returns canonical URL, no fetch/navigation", 
   assert.equal(entry.searchParams.get("q"), "example & literal");
   assert.equal(entry.searchParams.get("f"), "live");
   assert.equal(h.calls.length, 0);
+});
+test("search_posts: maximum Unicode query has a schema-valid bounded handoff", async () => {
+  const out = await harness("search_posts").run({ query: "日".repeat(200), mode: "latest" });
+  assert.equal(out.status, "wrong_page");
+  assert.ok(out.entry_url.length > 800 && out.entry_url.length <= 2048);
+  assert.equal(new URL(out.entry_url).searchParams.get("q"), "日".repeat(200));
+});
+test("canonical targets: trailing line terminators rejected before interaction", async () => {
+  for (const suffix of ["\n", "\r", "\u2028", "\u2029"]) {
+    for (const [name, input] of [
+      ["get_post", { post_url: postUrl + suffix }],
+      ["get_profile", { handle: "example_public" + suffix }],
+      ["draft_post", { text: "Fabricated preview.", reply_to_url: postUrl + suffix }]
+    ]) {
+      const h = harness(name);
+      assert.equal((await h.run(input)).error_kind, "invalid_input");
+      assert.equal(h.calls.length, 0);
+    }
+  }
 });
 test("search_posts: wrong query or mode needs a separate caller navigation", async () => {
   for (const url of ["https://x.com/search?q=other", "https://x.com/search?q=example&f=user", "https://x.com/search?q=example&f=media"]) {
