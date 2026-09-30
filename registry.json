@@ -1277,6 +1277,45 @@
     },
     {
       "domain": "youtube.com",
+      "tool": "get_channel",
+      "file": "domains/youtube.com/get_channel.js",
+      "kind": "page",
+      "namespace": "youtube.com",
+      "url_patterns": [
+        "https://www.youtube.com/*"
+      ],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Anonymous public channel profile; no navigation or playback."
+    },
+    {
+      "domain": "youtube.com",
+      "tool": "get_playlist",
+      "file": "domains/youtube.com/get_playlist.js",
+      "kind": "page",
+      "namespace": "youtube.com",
+      "url_patterns": [
+        "https://www.youtube.com/*"
+      ],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Anonymous public/unlisted playlist browse pages; no playback or account reads."
+    },
+    {
+      "domain": "youtube.com",
+      "tool": "get_transcript",
+      "file": "domains/youtube.com/get_transcript.js",
+      "kind": "page",
+      "namespace": "youtube.com",
+      "url_patterns": [
+        "https://www.youtube.com/*"
+      ],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Read an already-open transcript on the matching paused watch page; no navigation or playback."
+    },
+    {
+      "domain": "youtube.com",
       "tool": "get_video",
       "file": "domains/youtube.com/get_video.js",
       "kind": "page",
@@ -1290,6 +1329,19 @@
     },
     {
       "domain": "youtube.com",
+      "tool": "list_channel_videos",
+      "file": "domains/youtube.com/list_channel_videos.js",
+      "kind": "page",
+      "namespace": "youtube.com",
+      "url_patterns": [
+        "https://www.youtube.com/*"
+      ],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Anonymous uploads/Shorts browse pages; bounded pagination, no playback."
+    },
+    {
+      "domain": "youtube.com",
       "tool": "search",
       "file": "domains/youtube.com/search.js",
       "kind": "page",
@@ -1300,6 +1352,19 @@
       "status": "draft",
       "last_verified": null,
       "notes": "One page of typed video, Short, channel and playlist results with the site's type, duration, upload-date and sort filters and an opaque page token. Anonymous requests to the site's search endpoint; sponsored results are omitted and counted."
+    },
+    {
+      "domain": "youtube.com",
+      "tool": "subscribe_channel",
+      "file": "domains/youtube.com/subscribe_channel.js",
+      "kind": "page",
+      "namespace": "youtube.com",
+      "url_patterns": [
+        "https://www.youtube.com/*"
+      ],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Reversible subscription on current exact channel/account; UI postcondition only; mocked write QA, no live mutation."
     }
   ]
 }
