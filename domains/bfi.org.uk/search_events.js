@@ -172,7 +172,7 @@
       if (stopped) return stopped;
       const signal = context.signal ? AbortSignal.any([context.signal, AbortSignal.timeout(25000)]) : AbortSignal.timeout(25000);
       // credentials: "omit" keeps the shared session cookie out of the request and out of the response.
-      const res = await fetch(site.prefix + "/default.asp?" + params.toString(), { credentials: "omit", cache: "no-store", signal });
+      const res = await fetch(site.prefix + "/default.asp?" + params.toString(), { credentials: "omit", redirect: "error", cache: "no-store", signal });
       if (res.status === 403) return fail("challenge", "The site refused the request (HTTP 403): its bot protection is challenging a cookieless request from this browser. The tool never sends the site's session cookie, so it can be challenged in browsers the site does not trust; retry in a trusted (for example stealth) browser session.");
       if (res.status === 429) return fail("rate_limited", "The site is rate limiting this browser (HTTP 429); wait a few minutes before trying again.");
       if (!res.ok) return fail("site_error", "The site returned HTTP " + res.status + ".");
@@ -221,6 +221,11 @@
       const stoppedAfterRead = requestGuard();
       if (stoppedAfterRead) return stoppedAfterRead;
       if (rows !== null && !Array.isArray(rows)) return fail("site_changed", "The results data is not an array.");
+      const pg = /pagination\s*:\s*\{\s*current_page\s*:\s*"(\d+)"\s*,\s*page_size\s*:\s*"(\d+)"\s*,\s*total_pages\s*:\s*"(\d+)"/.exec(html);
+      const pagination = pg ? { page: Number(pg[1]), page_size: Number(pg[2]), total_pages: Number(pg[3]), has_more: Number(pg[1]) < Number(pg[3]) } : null;
+      if (rows !== null || /pagination\s*:/.test(html)) {
+        if (!rows || !pagination || !Number.isSafeInteger(pagination.page) || pagination.page !== page || !Number.isSafeInteger(pagination.page_size) || pagination.page_size < 1 || pagination.page_size > 50 || rows.length > pagination.page_size || !Number.isSafeInteger(pagination.total_pages) || pagination.total_pages < pagination.page) return fail("site_changed", "The results pagination is outside the supported bounds.");
+      }
       if (!rows || !rows.length) {
         const message = page > 1 ? "Page " + page + " has no results; the search has fewer pages." : site.name + " has no films or events matching the search. The site lists only upcoming films and events, so a date that has passed returns nothing.";
         return { status: "no_results", programme, query, viewed_as: "signed_out", pagination: null, observed_at: observedAt, message };
@@ -230,10 +235,6 @@
       const needed = ["Id", "Description", "-", "Sales Status", "Availability", "Available Number", "Additional Info", "Venue Short Description", "Minimum Price", "Maximum Price", "On Sale Date", "Keywords"];
       const missing = needed.filter(n => col(n) < 0);
       if (missing.length) return fail("site_changed", "The results table no longer has the columns this tool reads (missing: " + missing.join(", ") + ").");
-      const pg = /pagination\s*:\s*\{\s*current_page\s*:\s*"(\d+)"\s*,\s*page_size\s*:\s*"(\d+)"\s*,\s*total_pages\s*:\s*"(\d+)"/.exec(html);
-      if (!pg) return fail("site_changed", "The results carry no pagination block.");
-      const pagination = { page: Number(pg[1]), page_size: Number(pg[2]), total_pages: Number(pg[3]), has_more: Number(pg[1]) < Number(pg[3]) };
-      if (rows.length > 50 || !Number.isSafeInteger(pagination.page) || pagination.page !== page || !Number.isSafeInteger(pagination.page_size) || pagination.page_size < 1 || pagination.page_size > 50 || !Number.isSafeInteger(pagination.total_pages) || pagination.total_pages < pagination.page) return fail("site_changed", "The results pagination is outside the supported bounds.");
 
       const decode = s => { const t = document.createElement("textarea"); t.innerHTML = String(s); return t.value; };
       const guid = /^[0-9A-Fa-f]{8}(-[0-9A-Fa-f]{4}){3}-[0-9A-Fa-f]{12}$/;
@@ -242,21 +243,30 @@
       const when = s => {
         const m = /^([A-Za-z]+)\s+(\d{1,2})\s+([A-Za-z]+)\s+(\d{4})(?:\s+(\d{1,2}):(\d{2}))?$/.exec(typeof s === "string" ? s.trim() : "");
         const month = m && months[m[3].toLowerCase()];
-        if (!m || !month) return { weekday: null, date: null, time: null };
-        return { weekday: m[1], date: m[4] + "-" + pad(month) + "-" + pad(Number(m[2])), time: m[5] === undefined ? null : pad(Number(m[5])) + ":" + m[6] };
+        if (!m || !Number.isInteger(month)) return { weekday: null, date: null, time: null };
+        const date = m[4] + "-" + pad(month) + "-" + pad(Number(m[2]));
+        const parsed = Date.parse(date + "T00:00:00Z");
+        if (Number.isNaN(parsed) || new Date(parsed).toISOString().slice(0, 10) !== date || (m[5] !== undefined && (Number(m[5]) > 23 || Number(m[6]) > 59))) return { weekday: null, date: null, time: null };
+        return { weekday: m[1], date, time: m[5] === undefined ? null : pad(Number(m[5])) + ":" + m[6] };
       };
       const gbp = s => { const m = /^£(\d+(?:\.\d{1,2})?)$/.exec(typeof s === "string" ? s.trim() : ""); return m ? Number(m[1]) : null; };
       const text = (v, max) => { const s = decode(typeof v === "string" ? v : "").replace(/\s+/g, " ").trim(); return s ? s.slice(0, max) : null; };
       // An event is linked either by article id or, for some festival events, by an /article/<name> URL.
       const eventLink = info => {
         if (typeof info !== "string") return { id: null, url: null };
-        const byId = /article_id=([0-9A-Fa-f]{8}(?:-[0-9A-Fa-f]{4}){3}-[0-9A-Fa-f]{12})/.exec(info);
-        if (byId) return { id: byId[1], url: ORIGIN + site.prefix + "/default.asp?doWork::WScontent::loadArticle=Load&BOparam::WScontent::loadArticle::article_id=" + byId[1] };
+        let link;
+        try { link = new URL(info.trim(), ORIGIN + site.prefix + "/"); } catch { return { id: null, url: null }; }
+        if (link.origin !== ORIGIN || link.username || link.password) return { id: null, url: null };
+        if (link.pathname.toLowerCase() === (site.prefix + "/default.asp").toLowerCase()) {
+          const id = link.searchParams.get("BOparam::WScontent::loadArticle::article_id");
+          if (typeof id === "string" && guid.test(id)) return { id, url: ORIGIN + site.prefix + "/default.asp?doWork::WScontent::loadArticle=Load&BOparam::WScontent::loadArticle::article_id=" + id };
+        }
         const byName = /^(?:https:\/\/whatson\.bfi\.org\.uk)?\/(?:(imax|lff)\/)?Online\/article\/([A-Za-z0-9][A-Za-z0-9._-]{0,120})\/?$/i.exec(info.trim());
         if (byName && (byName[1] || "southbank").toLowerCase() === programme) return { id: null, url: ORIGIN + site.prefix + "/article/" + byName[2] };
         return { id: null, url: null };
       };
       const byTag = (a, b) => { const x = a.toLowerCase(), y = b.toLowerCase(); return x < y ? -1 : x > y ? 1 : a < b ? -1 : a > b ? 1 : 0; };
+      const availabilityBands = new Map([["E", "excellent"], ["G", "good"], ["L", "limited"], ["S", "sold_out"]]);
       const warnings = pagination.has_more ? ["The site may reorder same-time performances between pages; narrow the dates to reduce repeats or omissions."] : [];
       let skipped = 0;
       const events = [];
@@ -269,7 +279,8 @@
         const onSale = when(r[col("On Sale Date")]);
         const link = eventLink(r[col("Additional Info")]);
         const salesCode = r[col("Sales Status")], availCode = r[col("Availability")];
-        const count = Number.parseInt(r[col("Available Number")], 10);
+        const rawCount = r[col("Available Number")];
+        const count = typeof rawCount === "number" ? rawCount : typeof rawCount === "string" && /^\d+$/.test(rawCount.trim()) ? Number(rawCount.trim()) : null;
         events.push({
           position: (pagination.page - 1) * pagination.page_size + i + 1,
           performance_id: performanceId,
@@ -279,8 +290,8 @@
           local_date: start.date, local_time: start.time, weekday: start.weekday,
           venue: text(r[col("Venue Short Description")] || r[col("Venue Description")], 120),
           sales_status: salesCode === "S" ? "on_sale" : salesCode === "C" ? "not_on_sale" : "unknown",
-          availability: { E: "excellent", G: "good", L: "limited", S: "sold_out" }[availCode] || "unknown",
-          availability_count: Number.isInteger(count) && count >= 0 ? count : null,
+          availability: availabilityBands.get(availCode) ?? "unknown",
+          availability_count: Number.isSafeInteger(count) && count >= 0 ? count : null,
           on_sale_local: onSale.date && onSale.time ? onSale.date + "T" + onSale.time : null,
           price_min_gbp: gbp(r[col("Minimum Price")]), price_max_gbp: gbp(r[col("Maximum Price")]),
           categories: typeof r[col("Keywords")] === "string" ? r[col("Keywords")].split(",").map(k => text(k, 60)).filter(Boolean).slice(0, 12).sort(byTag) : []

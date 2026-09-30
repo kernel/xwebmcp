@@ -43,7 +43,7 @@ Login, account, basket, seat selection and checkout pages are excluded. Each exe
 
 Southbank, IMAX and LFF share a session cookie. Historical anonymous discovery on 2026-09-29 showed that crossing programme prefixes replaced it and could discard login/basket state. A programme switch is not a benign read and is not implemented. Do not navigate an authenticated tab across programmes without separate approval.
 
-Every request is built under the tab's own programme and uses `credentials: "omit"`, `cache: "no-store"`. Browser fetch therefore sends no session cookies and discards response cookies. A conflicting input programme or event URL fails with `programme_mismatch` before requests; cancellation or a same-document programme change stops further requests and prevents a stale success. The tools never fall back to authenticated requests, click a booking link, select a seat or hold inventory. No user account is needed or inspected.
+Every request is built under the tab's own programme and uses `credentials: "omit"`, `redirect: "error"`, `cache: "no-store"`. Browser fetch therefore sends no session cookies, discards response cookies and refuses redirects before another endpoint can be requested. Article names use the programme's `default.asp` permalink endpoint rather than following an `/article/` redirect. A conflicting input programme or event URL fails with `programme_mismatch` before requests; cancellation or a same-document programme change stops further requests and prevents a stale success. The tools never fall back to authenticated requests, click a booking link, select a seat or hold inventory. No user account is needed or inspected.
 
 HTML is untrusted. Embedded JavaScript literals are tokenized and parsed as JSON, never evaluated. Article markup is parsed in an inert document; returned fields are allowlisted plain strings. Descriptions are capped at 6,000 characters, details at 30, search results at 50, and event performances at 50. Unexpected data/pagination and HTTP failures are explicit errors, not empty successes. Parser and network exception text and unexpected redirect URLs are not echoed.
 
@@ -51,13 +51,13 @@ Fixtures assert cookieless GETs, absence of credential headers, abort signals, t
 
 ### Event identity
 
-A performance belongs to an event only when its `Additional Info` links to the exact article GUID or exact requested name in this programme (case-insensitive). A booking widget is not evidence of identity: neither its first response nor later pages can adopt rows merely because every row links to one different event.
+A performance belongs to an event only when its `Additional Info` links to the exact article GUID query value on this programme's content endpoint or the exact requested name in this programme (case-insensitive). A requested GUID cannot be replaced by a different response GUID; later pages must preserve the event identity. A booking widget is not evidence of identity: neither its first response nor later pages can adopt rows merely because every row links to one different event.
 
-For a name-linked booking page, pass the `event_url` returned by search. `get_event` returns that validated URL for reuse and `event_id: null` if any matched first-page performance links by name. The raw page GUID would not retrieve those rows safely. A direct GUID lookup of a creditless, name-only booking page returns `not_an_event` with guidance to use the search URL instead. This deliberately replaces the older widget-adoption heuristic.
+For a name-linked booking page, pass the `event_url` returned by search. `get_event` returns that validated URL for reuse and `event_id: null` if any matched performance links by name. The raw page GUID would not retrieve those rows safely. A direct GUID lookup of a creditless, name-only booking page returns `not_an_event` with guidance to use the search URL instead. This deliberately replaces the older widget-adoption heuristic.
 
 ## Output notes
 
-- Dates and times are London local. `venue` is the site's short rendered screen/room label.
+- Dates and times are London local. Invalid calendar dates/times and malformed or unsafe-integer counts become null, not plausible-looking values. `venue` is the site's short rendered screen/room label.
 - Prices are the signed-out range in GBP, not a selected ticket price, member entitlement or checkout total. The low end is usually a concession; 0 occurs for free/non-ticketed sessions and some IMAX listings and is not a bookable quote.
 - Sales codes `S`/`C` map to `on_sale`/`not_on_sale`; availability `E`/`G`/`L`/`S` maps to excellent/good/limited/sold_out. Other values are unknown. The availability count's exact meaning is undocumented: it is not proof that particular seats, adjacent seats or a requested quantity can be booked.
 - `available_only` filters only the fetched page. An emptied page returns `no_results` with pagination so callers can inspect another page.
@@ -86,6 +86,6 @@ The remaining title false positives, empty-widget season classification and fore
 
 ### Current revision
 
-Independent QA is pending on the replacement source. Until that review completes, both registry entries remain `draft`. Current tests and separately labeled Kernel/local-extension results will be recorded after the checks; no historical or fixture-only mutation is a live success claim.
+The initial replacement review on 2026-09-30 found identity, redirect-following, inherited availability-code and empty-pagination defects, plus duplicate/warning/value-validation issues. Fixes and regression fixtures are present; independent recheck of the new source is pending. Both registry entries remain `draft` until that completes.
 
-QA provenance: `agt_a9b0628177efb43e1e72`. Temporary public QA browsers are deleted after each run; no browser credentials or persisted profiles are included in this repository.
+On the superseded initial replacement source, independent Kernel search/event reads were challenged; the local extension read one public Southbank event successfully (20 performances), with a captured cookieless request sequence and unchanged session fingerprint. These are not final-source live success claims. Temporary public QA browsers are deleted after each run; no browser credentials or persisted profiles are included in this repository.

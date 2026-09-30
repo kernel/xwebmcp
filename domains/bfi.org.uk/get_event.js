@@ -126,8 +126,7 @@
       if (/^\s*(?:just a moment|attention required|access denied)(?:\s*[.!|:-]|\s*$)/i.test(document.title || "")) return fail("challenge", "The site is showing a bot-protection page to this browser; use a trusted (for example stealth) browser session.");
 
       const path = lookup.kind === "id" ? site.prefix + "/default.asp?doWork::WScontent::loadArticle=Load&BOparam::WScontent::loadArticle::article_id=" + encodeURIComponent(lookup.value)
-        : lookup.kind === "permalink" ? site.prefix + "/default.asp?BOparam::WScontent::loadArticle::permalink=" + encodeURIComponent(lookup.value)
-        : site.prefix + "/article/" + encodeURIComponent(lookup.value);
+        : site.prefix + "/default.asp?BOparam::WScontent::loadArticle::permalink=" + encodeURIComponent(lookup.value);
       const httpProblem = r => r.status === 403 ? fail("challenge", "The site refused the request (HTTP 403): its bot protection is challenging a cookieless request from this browser. The tool never sends the site's session cookie, so it can be challenged in browsers the site does not trust; retry in a trusted (for example stealth) browser session.")
         : r.status === 429 ? fail("rate_limited", "The site is rate limiting this browser (HTTP 429); wait a few minutes before trying again.")
         : !r.ok ? fail("site_error", "The site returned HTTP " + r.status + ".") : null;
@@ -144,7 +143,7 @@
       // credentials: "omit" keeps the shared session cookie out of every request and out of every response.
       const stopped = requestGuard();
       if (stopped) return stopped;
-      const res = await fetch(path, { credentials: "omit", cache: "no-store", signal: requestSignal() });
+      const res = await fetch(path, { credentials: "omit", redirect: "error", cache: "no-store", signal: requestSignal() });
       if (res.status === 500) return fail("not_found", "The site answered HTTP 500 for that " + (lookup.kind === "id" ? "article id" : "name") + ", which is how it responds to a page that does not exist in " + site.name + "; it can also mean a site error.");
       const problem = httpProblem(res);
       if (problem) return problem;
@@ -220,15 +219,31 @@
       const when = s => {
         const m = /^([A-Za-z]+)\s+(\d{1,2})\s+([A-Za-z]+)\s+(\d{4})(?:\s+(\d{1,2}):(\d{2}))?$/.exec(typeof s === "string" ? s.trim() : "");
         const month = m && months[m[3].toLowerCase()];
-        if (!m || !month) return { weekday: null, date: null, time: null };
-        return { weekday: m[1], date: m[4] + "-" + pad(month) + "-" + pad(Number(m[2])), time: m[5] === undefined ? null : pad(Number(m[5])) + ":" + m[6] };
+        if (!m || !Number.isInteger(month)) return { weekday: null, date: null, time: null };
+        const date = m[4] + "-" + pad(month) + "-" + pad(Number(m[2]));
+        const parsed = Date.parse(date + "T00:00:00Z");
+        if (Number.isNaN(parsed) || new Date(parsed).toISOString().slice(0, 10) !== date || (m[5] !== undefined && (Number(m[5]) > 23 || Number(m[6]) > 59))) return { weekday: null, date: null, time: null };
+        return { weekday: m[1], date, time: m[5] === undefined ? null : pad(Number(m[5])) + ":" + m[6] };
       };
       const gbp = s => { const m = /^£(\d+(?:\.\d{1,2})?)$/.exec(typeof s === "string" ? s.trim() : ""); return m ? Number(m[1]) : null; };
       const byTag = (a, b) => { const x = a.toLowerCase(), y = b.toLowerCase(); return x < y ? -1 : x > y ? 1 : a < b ? -1 : a > b ? 1 : 0; };
+      const availabilityBands = new Map([["E", "excellent"], ["G", "good"], ["L", "limited"], ["S", "sold_out"]]);
       const nameOf = info => { const m = /^(?:https:\/\/whatson\.bfi\.org\.uk)?\/(?:(imax|lff)\/)?Online\/article\/([A-Za-z0-9][A-Za-z0-9._-]{0,120})\/?$/i.exec(typeof info === "string" ? info.trim() : ""); return m && (m[1] || "southbank").toLowerCase() === programme ? m[2].toLowerCase() : null; };
       // A row links to its event by article id or, for some festival events, by an /article/<name> URL; the key is whichever it uses.
-      const keyOf = info => { const byId = typeof info === "string" ? /article_id=([0-9A-Fa-f-]{36})/.exec(info) : null; if (byId) return "id:" + byId[1].toUpperCase(); const name = nameOf(info); return name ? "name:" + name : null; };
+      const keyOf = info => {
+        if (typeof info !== "string") return null;
+        let link;
+        try { link = new URL(info.trim(), ORIGIN + site.prefix + "/"); } catch { return null; }
+        if (link.origin !== ORIGIN || link.username || link.password) return null;
+        if (isDefault(link)) {
+          const id = link.searchParams.get("BOparam::WScontent::loadArticle::article_id");
+          return typeof id === "string" && GUID.test(id) ? "id:" + id.toUpperCase() : null;
+        }
+        const name = nameOf(info);
+        return name ? "name:" + name : null;
+      };
       const pageId = /articleId\s*:\s*"([0-9A-Fa-f]{8}(?:-[0-9A-Fa-f]{4}){3}-[0-9A-Fa-f]{12})"/.exec(html)?.[1] ?? null;
+      if (lookup.kind === "id" && pageId && pageId.toUpperCase() !== lookup.value.toUpperCase()) return fail("site_changed", "The page identifies a different event than the requested article id.");
       const eventId = pageId || (lookup.kind === "id" ? lookup.value : null);
       const ownKeys = new Set();
       if (eventId) ownKeys.add("id:" + eventId.toUpperCase());
@@ -241,8 +256,11 @@
         const pg = /pagination\s*:\s*\{\s*current_page\s*:\s*"(\d+)"\s*,\s*page_size\s*:\s*"(\d+)"\s*,\s*total_pages\s*:\s*"(\d+)"/.exec(text);
         const pagination = pg ? { page: Number(pg[1]), page_size: Number(pg[2]), total_pages: Number(pg[3]) } : null;
         if (rows !== null && !Array.isArray(rows)) return { error: fail("site_changed", "The performances data is not an array.") };
-        if (!rows || !rows.length) return { list: [], skipped: 0, pagination };
-        if (rows.length > 100 || !pagination || !Number.isSafeInteger(pagination.page) || pagination.page !== expectedPage || !Number.isSafeInteger(pagination.page_size) || pagination.page_size < 1 || pagination.page_size > 100 || !Number.isSafeInteger(pagination.total_pages) || pagination.total_pages < pagination.page) return { error: fail("site_changed", "The performances pagination is outside the supported bounds.") };
+        const responseId = /articleId\s*:\s*"([0-9A-Fa-f]{8}(?:-[0-9A-Fa-f]{4}){3}-[0-9A-Fa-f]{12})"/.exec(text)?.[1];
+        if (eventId && responseId && responseId.toUpperCase() !== eventId.toUpperCase()) return { error: fail("site_changed", "A performances page identifies a different event.") };
+        if (rows === null && expectedPage === 1 && !/pagination\s*:/.test(text)) return { list: [], skipped: 0, pagination: null };
+        if (!rows || !pagination || !Number.isSafeInteger(pagination.page) || pagination.page !== expectedPage || !Number.isSafeInteger(pagination.page_size) || pagination.page_size < 1 || pagination.page_size > 100 || rows.length > pagination.page_size || !Number.isSafeInteger(pagination.total_pages) || pagination.total_pages < pagination.page) return { error: fail("site_changed", "The performances pagination is outside the supported bounds.") };
+        if (!rows.length) return { list: [], skipped: 0, pagination };
         if (!Array.isArray(headers)) return { error: fail("site_changed", "The performances table has no header row.") };
         const col = name => headers.indexOf(name);
         const needed = ["Id", "-", "Sales Status", "Availability", "Available Number", "Additional Info", "Venue Short Description", "Minimum Price", "Maximum Price", "On Sale Date", "Keywords"];
@@ -260,14 +278,15 @@
           if (key.startsWith("name:")) nameLinked = true;
           const start = when(r[col("-")]), onSale = when(r[col("On Sale Date")]);
           const salesCode = r[col("Sales Status")], availCode = r[col("Availability")];
-          const count = Number.parseInt(r[col("Available Number")], 10);
+          const rawCount = r[col("Available Number")];
+          const count = typeof rawCount === "number" ? rawCount : typeof rawCount === "string" && /^\d+$/.test(rawCount.trim()) ? Number(rawCount.trim()) : null;
           list.push({
             performance_id: id,
             local_date: start.date, local_time: start.time, weekday: start.weekday,
             venue: clean(decode(typeof r[col("Venue Short Description")] === "string" && r[col("Venue Short Description")] ? r[col("Venue Short Description")] : typeof r[col("Venue Description")] === "string" ? r[col("Venue Description")] : ""), 120),
             sales_status: salesCode === "S" ? "on_sale" : salesCode === "C" ? "not_on_sale" : "unknown",
-            availability: { E: "excellent", G: "good", L: "limited", S: "sold_out" }[availCode] || "unknown",
-            availability_count: Number.isInteger(count) && count >= 0 ? count : null,
+            availability: availabilityBands.get(availCode) ?? "unknown",
+            availability_count: Number.isSafeInteger(count) && count >= 0 ? count : null,
             on_sale_local: onSale.date && onSale.time ? onSale.date + "T" + onSale.time : null,
             price_min_gbp: gbp(r[col("Minimum Price")]), price_max_gbp: gbp(r[col("Maximum Price")]),
             categories: typeof r[col("Keywords")] === "string" ? r[col("Keywords")].split(",").map(k => clean(decode(k), 60)).filter(Boolean).slice(0, 12).sort(byTag) : []
@@ -278,8 +297,13 @@
       const first = readPerformances(html);
       if (first.error) return first.error;
       if (!details.length && !first.list.length) return fail("not_an_event", "This page has no credits or performances linked to the requested event. It may be a season or information page; for a name-linked booking page use the event_url from search_events, not its article id.");
-      const performances = [...first.list];
-      let skipped = first.skipped;
+      const performances = [], performanceIds = new Set();
+      const appendPerformance = p => {
+        const id = p.performance_id.toUpperCase();
+        if (!performanceIds.has(id)) { performanceIds.add(id); performances.push(p); }
+      };
+      for (const p of first.list) appendPerformance(p);
+      let skipped = first.skipped, nameLinked = Boolean(first.name_linked);
       // The site pages an event's performances (5 or 100 per page, depending on the event). Later pages are requested by article id alone, one at a time, until 50 performances or 10 pages.
       const MAX_PAGES = 10, MAX_PERFORMANCES = 50;
       const totalPages = first.pagination ? first.pagination.total_pages : 1;
@@ -288,7 +312,7 @@
         for (let n = 2; n <= Math.min(totalPages, MAX_PAGES) && performances.length < MAX_PERFORMANCES; n++) {
           const stopped = requestGuard();
           if (stopped) return stopped;
-          const next = await fetch(site.prefix + "/default.asp?BOset::WScontent::SearchResultsInfo::current_page=" + n + "&doWork::WScontent::getPage=&BOparam::WScontent::getPage::article_id=" + encodeURIComponent(eventId), { credentials: "omit", cache: "no-store", signal: requestSignal() });
+          const next = await fetch(site.prefix + "/default.asp?BOset::WScontent::SearchResultsInfo::current_page=" + n + "&doWork::WScontent::getPage=&BOparam::WScontent::getPage::article_id=" + encodeURIComponent(eventId), { credentials: "omit", redirect: "error", cache: "no-store", signal: requestSignal() });
           const trouble = httpProblem(next);
           if (trouble) return trouble;
           if (!isDefault(landedOn(next))) return fail("site_error", "The site redirected a performances page to an unexpected location.");
@@ -297,21 +321,21 @@
           const more = readPerformances(nextHtml, n);
           if (more.error) return more.error;
           skipped += more.skipped;
+          nameLinked ||= more.name_linked;
           pagesRead = n;
-          for (const p of more.list) if (!performances.some(q => q.performance_id === p.performance_id)) performances.push(p);
+          for (const p of more.list) appendPerformance(p);
         }
       }
       let moreExist = first.list.length > 0 && totalPages > pagesRead;
       if (performances.length > MAX_PERFORMANCES) { performances.length = MAX_PERFORMANCES; moreExist = true; }
-      if (moreExist) warnings.push("The site lists more performances than the " + MAX_PERFORMANCES + " returned; narrow the dates with search_events to see the rest.");
+      if (moreExist) warnings.push("The site lists more performances than the " + performances.length + " returned; narrow the dates with search_events to see the rest.");
       if (!performances.length) warnings.push("This page lists no performances. Some festival events keep their showings on a separate booking page; search_events returns that page's event_url.");
       if (skipped) warnings.push(skipped + " performance row(s) were skipped because they lacked an id.");
       const stoppedAfterRead = requestGuard();
       if (stoppedAfterRead) return stoppedAfterRead;
-      const nameLinked = lookup.kind !== "id" && first.name_linked;
       return {
         status: "ok", programme, event_id: nameLinked ? null : eventId, title, summary,
-        url: lookup.kind !== "id" ? ORIGIN + path : eventId ? ORIGIN + site.prefix + "/default.asp?doWork::WScontent::loadArticle=Load&BOparam::WScontent::loadArticle::article_id=" + eventId : null,
+        url: lookup.kind === "slug" ? ORIGIN + site.prefix + "/article/" + encodeURIComponent(lookup.value) : lookup.kind === "permalink" ? ORIGIN + path : eventId ? ORIGIN + site.prefix + "/default.asp?doWork::WScontent::loadArticle=Load&BOparam::WScontent::loadArticle::article_id=" + eventId : null,
         details, description_text: description || null, description_truncated: truncated,
         performances, viewed_as: "signed_out", observed_at: observedAt, warnings
       };

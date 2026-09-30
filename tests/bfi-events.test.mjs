@@ -116,7 +116,7 @@ function makeSite({ pageSize = 50, articlePageSize = 5, articles = {}, overrides
   site.fetch = async (target, init = {}) => {
     const u = new URL(target, ORIGIN);
     const sizeOf = a => a.pageSize ?? site.articlePageSize;
-    site.calls.push({ path: u.pathname, keys: [...u.searchParams.keys()], params: Object.fromEntries(u.searchParams), credentials: init.credentials, headers: init.headers ?? {}, signal: init.signal, cache: init.cache, method: (init.method || "GET").toUpperCase() });
+    site.calls.push({ path: u.pathname, keys: [...u.searchParams.keys()], params: Object.fromEntries(u.searchParams), credentials: init.credentials, headers: init.headers ?? {}, signal: init.signal, cache: init.cache, redirect: init.redirect, method: (init.method || "GET").toUpperCase() });
     const forced = site.overrides?.(u, init, site);
     if (forced) return forced;
     const prefix = ["/imax/Online", "/lff/Online", "/Online"].find(p => u.pathname.toLowerCase().startsWith(p.toLowerCase() + "/"));
@@ -184,6 +184,7 @@ function load(name, { path = "/Online/default.asp", origin = ORIGIN, site = make
 const assertSafeRequests = (site, prefix) => {
   for (const call of site.calls) {
     assert.equal(call.credentials, "omit", "every request must be cookieless: " + call.path);
+    assert.equal(call.redirect, "error", "redirects must not leave the programme before response checks");
     assert.ok(!Object.keys(call.headers).some(k => /^(cookie|authorization)$/i.test(k)), "no credential headers");
     assert.ok(call.signal instanceof AbortSignal, "every request must be abortable");
     assert.equal(call.method, "GET");
@@ -493,7 +494,8 @@ test("get_event: URL forms send only the validated article id, permalink or slug
   assert.deepEqual(site.calls[0].keys, ["doWork::WScontent::loadArticle", "BOparam::WScontent::loadArticle::article_id"], "every other query parameter is ignored");
   const viaSlug = await tool.run({ event: `${ORIGIN}/Online/article/fabricated-noir`, programme: "southbank" });
   assert.equal(viaSlug.event_id, ARTICLE);
-  assert.equal(site.calls.at(-1).path, "/Online/article/fabricated-noir");
+  assert.equal(site.calls.at(-1).path, "/Online/default.asp");
+  assert.equal(site.calls.at(-1).params["BOparam::WScontent::loadArticle::permalink"], "fabricated-noir");
   const lff = load("get_event", { path: "/lff/Online/default.asp", site });
   const viaPermalink = await lff.run({ event: `${ORIGIN}/lff/Online/default.asp?BOparam::WScontent::loadArticle::permalink=gala-lff26&junk=1` });
   assert.equal(viaPermalink.programme, "lff");
@@ -519,7 +521,8 @@ test("get_event: a URL or programme from another programme is rejected before an
   const imax = load("get_event", { path: "/imax/Online/default.asp", site });
   const ok = await imax.run({ event: `${ORIGIN}/imax/Online/article/fabricated-blockbuster` });
   assert.equal(ok.programme, "imax");
-  assert.equal(site.calls.at(-1).path, "/imax/Online/article/fabricated-blockbuster");
+  assert.equal(site.calls.at(-1).path, "/imax/Online/default.asp");
+  assert.equal(site.calls.at(-1).params["BOparam::WScontent::loadArticle::permalink"], "fabricated-blockbuster");
   assert.equal((await imax.run({ event: `${ORIGIN}/Online/article/fabricated-noir` })).error_kind, "programme_mismatch");
 });
 
@@ -612,7 +615,7 @@ test("get_event: a booking page whose rows link by name returns its performances
   assert.equal(result.event_id, null, "a name-linked page does not expose an unusable article id");
   assert.equal(result.performances.length, 50);
   assert.match(result.warnings.join(" "), /more performances than the 50 returned/);
-  assert.deepEqual(site.calls.map(c => c.path), ["/Online/article/fabricated-booking"], "the first page already holds 100 rows, so no further page is read");
+  assert.deepEqual(site.calls.map(c => c.path), ["/Online/default.asp"], "the first page already holds 100 rows, so no further page is read");
   const byId = await tool.run({ event: guid(23, "A") });
   assert.equal(byId.error_kind, "not_an_event", "an id lookup cannot adopt a different name from a widget");
   const byUrl = await tool.run({ event: result.url });
@@ -775,6 +778,124 @@ test("both tools: parser and network errors do not echo response snippets or cre
       const result = await load(name, { site }).run(input);
       assert.equal(result.status, "error");
       assert.ok(!JSON.stringify(result).includes(secret));
+    }
+  }
+});
+
+test("get_event: substituted event identities fail before any further request", async () => {
+  for (const later of [false, true]) {
+    const site = articleSite(7);
+    site.overrides = u => {
+      if (later && !u.searchParams.has("BOset::WScontent::SearchResultsInfo::current_page")) return null;
+      return response(200, articlePage({ prefix: "/Online", article: guid(12, "A"), title: "Substituted", summary: "Fixture", details: [["Director", "Ada Example"]], perfs: ownPerfs(1), page: later ? 2 : 1, totalPages: 2 }), u.href);
+    };
+    assert.equal((await load("get_event", { site }).run({ event: ARTICLE })).error_kind, "site_changed");
+    assert.equal(site.calls.length, later ? 2 : 1);
+  }
+});
+
+test("both tools: GUID links must be exact query values on this programme's content endpoint", async () => {
+  const param = "BOparam::WScontent::loadArticle::article_id=";
+  const links = [
+    `default.asp?${param}${ARTICLE}0`, `default.asp?not_${param}${ARTICLE}`,
+    `https://outside.example/Online/default.asp?${param}${ARTICLE}`,
+    `${ORIGIN}/imax/Online/default.asp?${param}${ARTICLE}`,
+    `${ORIGIN}/Online/other.asp?${param}${ARTICLE}`,
+    `default.asp#${param}${ARTICLE}`
+  ];
+  for (const info of links) {
+    const site = articleSite(1, { perfs: ownPerfs(1).map(p => ({ ...p, info })) });
+    site.catalog["/Online"] = site.articles["/Online"][ARTICLE].perfs;
+    const search = await load("search_events", { site }).run({});
+    assert.equal(search.events[0].event_id, null, info);
+    assert.equal(search.events[0].event_url, null, info);
+    const event = await load("get_event", { site }).run({ event: ARTICLE });
+    assert.deepEqual(event.performances, [], info);
+  }
+  const site = articleSite(1, { perfs: ownPerfs(1).map(p => ({ ...p, info: `default.asp?${encodeURIComponent(param.slice(0, -1))}=${ARTICLE.toLowerCase()}` })) });
+  assert.equal((await load("get_event", { site }).run({ event: ARTICLE })).performances.length, 1);
+});
+
+test("both tools: empty rows still require valid pagination and row counts cannot exceed page size", async () => {
+  for (const name of NAMES) {
+    for (const options of [{ perfs: [], page: 2, totalPages: 2 }, { perfs: [], pageSize: 0 }, { perfs: [], pageSize: 101 }, { perfs: ownPerfs(2), pageSize: 1 }, { perfs: [], totalPages: 0 }]) {
+      const site = makeSite({ overrides: u => response(200, name === "search_events" ? searchPage({ prefix: "/Online", rows: options.perfs, ...options }) : articlePage({ prefix: "/Online", article: ARTICLE, title: "Fixture", summary: "Fixture", details: [["Director", "Ada Example"]], ...options }), u.href) });
+      assert.equal((await load(name, { site }).run(name === "search_events" ? {} : { event: ARTICLE })).error_kind, "site_changed", name + JSON.stringify(options));
+    }
+  }
+});
+
+test("get_event: an empty later response cannot bypass the expected page or missing-data checks", async () => {
+  for (const embedResults of [false, true]) {
+    const site = articleSite(7);
+    site.overrides = u => u.searchParams.has("BOset::WScontent::SearchResultsInfo::current_page") ? response(200, articlePage({ prefix: "/Online", article: ARTICLE, title: "Fixture", summary: "Fixture", perfs: [], page: 1, totalPages: 2, embedResults }), u.href) : null;
+    assert.equal((await load("get_event", { site }).run({ event: ARTICLE })).error_kind, "site_changed");
+  }
+});
+
+test("both tools: prototype-named availability codes remain schema-valid unknowns", async () => {
+  for (const avail of ["__proto__", "constructor", "toString", "valueOf"]) {
+    const perfs = ownPerfs(1).map(p => ({ ...p, avail }));
+    const site = articleSite(1, { perfs });
+    site.catalog["/Online"] = perfs;
+    assert.equal((await load("search_events", { site }).run({})).events[0].availability, "unknown");
+    assert.equal((await load("get_event", { site }).run({ event: ARTICLE })).performances[0].availability, "unknown");
+  }
+});
+
+test("both tools: fetch rejects redirects before a foreign endpoint is requested", async () => {
+  for (const name of NAMES) {
+    for (const later of name === "get_event" ? [false, true] : [false]) {
+      const followed = [];
+      const site = articleSite(7);
+      site.overrides = (u, init) => {
+        if (later && !u.searchParams.has("BOset::WScontent::SearchResultsInfo::current_page")) return null;
+        if (init.redirect === "error") throw new TypeError("Failed to fetch");
+        followed.push("/lff/Online/default.asp");
+        return response(200, htmlPage("Redirected", "Fixture"), ORIGIN + followed[0]);
+      };
+      assert.equal((await load(name, { site }).run(name === "search_events" ? {} : { event: ARTICLE })).error_kind, "site_error");
+      assert.deepEqual(followed, []);
+      assertSafeRequests(site, "/Online");
+    }
+  }
+});
+
+test("get_event: a name-linked row on a later page also suppresses an unusable article id", async () => {
+  const site = articleSite(7);
+  site.articles["/Online"][ARTICLE].perfs[5].info = `${ORIGIN}/Online/article/fabricated-noir`;
+  const result = await load("get_event", { site }).run({ event: `${ORIGIN}/Online/article/fabricated-noir` });
+  assert.equal(result.event_id, null);
+  assert.equal(result.performances.length, 7);
+  assert.equal((await load("get_event", { site }).run({ event: result.url })).performances.length, 7);
+});
+
+test("get_event: first-page duplicates do not consume the performance allowance", async () => {
+  const perfs = ownPerfs(2);
+  const site = articleSite(0, { perfs: [perfs[0], { ...perfs[0], id: perfs[0].id.toLowerCase() }, perfs[1]] });
+  const result = await load("get_event", { site }).run({ event: ARTICLE });
+  assert.deepEqual(result.performances.map(p => p.performance_id), perfs.map(p => p.id));
+});
+
+test("get_event: page-limit warnings state the actual returned count", async () => {
+  const site = articleSite(11);
+  site.articlePageSize = 1;
+  const result = await load("get_event", { site }).run({ event: ARTICLE });
+  assert.equal(site.calls.length, 10);
+  assert.equal(result.performances.length, 10);
+  assert.match(result.warnings.join(" "), /10 returned/);
+  assert.doesNotMatch(result.warnings.join(" "), /50 returned/);
+});
+
+test("both tools: malformed calendar dates, times and counts remain unknown", async () => {
+  for (const [start, num] of [["Saturday 32 October 2026 25:61", "40not-a-number"], ["Monday 29 February 2026 12:00", "9007199254740992"], ["Saturday 03 October 2026 24:00", "2.5"], ["Saturday 03 constructor 2026 12:00", ""]]) {
+    const perfs = ownPerfs(1).map(p => ({ ...p, start, num, onSale: start }));
+    const site = articleSite(1, { perfs });
+    site.catalog["/Online"] = perfs;
+    for (const name of NAMES) {
+      const result = await load(name, { site }).run(name === "search_events" ? {} : { event: ARTICLE });
+      const row = (result.events ?? result.performances)[0];
+      assert.deepEqual([row.local_date, row.local_time, row.weekday, row.on_sale_local, row.availability_count], [null, null, null, null, null]);
     }
   }
 });
