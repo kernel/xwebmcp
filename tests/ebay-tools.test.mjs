@@ -848,6 +848,33 @@ test("get_listing: image URLs use exact public image hosts and strip query crede
   assert.doesNotMatch(JSON.stringify(output), /fixture-secret|password|signature|token/);
 });
 
+test("all tools: empty field names never hide unsupported or confirmation fields", async () => {
+  for (const name of NAMES) {
+    for (const input of [{ ...INPUTS[name], "": false }, { ...INPUTS[name], "": false, confirmed: true }, { ...INPUTS[name], "": false, checkout: true }]) {
+      const { output, calls } = await run(name, input, { responses: [ok(PAGES[name])] });
+      assert.equal(output.error_kind, "invalid_input");
+      assert.equal(calls.fetches.length, 0);
+    }
+  }
+});
+
+test("get_listing: malformed variation models fail closed with no partial menus", async () => {
+  const original = itemPage({ withVariations: true });
+  for (const html of [
+    original.replace('"selectMenus":[{', '"selectMenus":[null,{'),
+    original.replace('"displayLabel":"US Shoe Size"', '"displayLabel":7'),
+    original.replace('"menuItemValueIds":[0,1,2]', '"menuItemValueIds":null'),
+    original.replace('"outOfStock":false', '"outOfStock":"false"'),
+    original.replace('"displayName":"7"', '"displayName":{}'),
+    original.replace('"menuItemMap":{', '"menuItemMap":null,"unused":{'),
+    original.replace('"variationsMap":{', '"variationsMap":[],"unused_combos":{'),
+    original.replace('"menuItemValueIds":[0,1,2]', '"menuItemValueIds":[0,99,2]')
+  ]) {
+    const { output } = await run("get_listing", INPUTS.get_listing, { responses: [ok(html)] });
+    assert.equal(output.error_kind, "site_changed");
+  }
+});
+
 test("all tools: malformed field names cannot produce oversized error output", async () => {
   for (const name of NAMES) {
     const { output, calls } = await run(name, { ...INPUTS[name], ["x".repeat(10000)]: true });

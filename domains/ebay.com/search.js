@@ -110,7 +110,7 @@
 
     if (!input || typeof input !== "object" || Array.isArray(input)) return fail("invalid_input", "Input must be an object.");
     const extra = Object.keys(input).find(key => !KEYS.includes(key));
-    if (extra) return fail("invalid_input", `Unrecognized input field "${extra.slice(0, 80)}".`);
+    if (extra !== undefined) return fail("invalid_input", `Unrecognized input field "${extra.slice(0, 80)}".`);
     if (typeof input.query !== "string" || clean(input.query).length < 1 || input.query.length > 200 || /[\u0000-\u001f\u007f]/.test(input.query)) return fail("invalid_input", "query must be a non-empty string of at most 200 characters without control characters.");
     const query = clean(input.query);
     const sort = input.sort === undefined ? "best_match" : input.sort;

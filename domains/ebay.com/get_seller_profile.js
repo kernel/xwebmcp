@@ -61,7 +61,7 @@
     const clean = s => typeof s === "string" ? s.replace(/\s+/g, " ").trim() : "";
     if (!input || typeof input !== "object" || Array.isArray(input)) return fail("invalid_input", "Input must be an object.");
     const extra = Object.keys(input).find(key => key !== "seller_username");
-    if (extra) return fail("invalid_input", `Unrecognized input field "${extra.slice(0, 80)}".`);
+    if (extra !== undefined) return fail("invalid_input", `Unrecognized input field "${extra.slice(0, 80)}".`);
     if (typeof input.seller_username !== "string" || !/^(?=.*[A-Za-z0-9])[A-Za-z0-9._@*-]{2,64}$/.test(input.seller_username)) return fail("invalid_input", "seller_username must be an eBay username of 2 to 64 letters, digits or . _ - @ * characters, with at least one letter or digit.");
     const username = input.seller_username;
     if (signal?.aborted) return fail("canceled", "The read was canceled.");

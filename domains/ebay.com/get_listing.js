@@ -103,7 +103,7 @@
     const clean = s => typeof s === "string" ? s.replace(/\s+/g, " ").trim() : "";
     if (!input || typeof input !== "object" || Array.isArray(input)) return fail("invalid_input", "Input must be an object.");
     const extra = Object.keys(input).find(key => key !== "item_id");
-    if (extra) return fail("invalid_input", `Unrecognized input field "${extra.slice(0, 80)}".`);
+    if (extra !== undefined) return fail("invalid_input", `Unrecognized input field "${extra.slice(0, 80)}".`);
     if (typeof input.item_id !== "string" || !/^[0-9]{9,14}$/.test(input.item_id)) return fail("invalid_input", "item_id must be the numeric eBay item number as a string (9 to 14 digits).");
     const id = input.item_id;
     if (signal?.aborted) return fail("canceled", "The read was canceled.");
@@ -250,16 +250,19 @@
         try { return raw ? JSON.parse(raw) : null; } catch { return null; }
       };
       const menus = read("selectMenus"), items = read("menuItemMap"), combos = read("variationsMap");
-      if (!Array.isArray(menus) || !items || !combos) return fail("site_changed", "The listing shows variation menus but eBay's variation data was not found in the page; it may have changed. Nothing was changed.");
+      const record = value => value !== null && typeof value === "object" && !Array.isArray(value);
+      const validItem = value => record(value) && typeof (value.displayName || value.valueName) === "string" && typeof value.outOfStock === "boolean";
+      const validMenu = menu => record(menu) && typeof menu.displayLabel === "string" && Array.isArray(menu.menuItemValueIds) && menu.menuItemValueIds.every(id => (typeof id === "string" || Number.isInteger(id)) && validItem(items[String(id)]));
+      if (!Array.isArray(menus) || !record(items) || !record(combos) || !menus.every(validMenu) || !Object.values(combos).every(record)) return fail("site_changed", "The listing shows variation menus but eBay's variation data is missing or malformed. Nothing was changed.");
       const prices = Object.values(combos).map(v => v && v.binModel && v.binModel.price && v.binModel.price.value ? Number(v.binModel.price.value.value) : NaN).filter(isFinite);
       variations = {
         menus: menus.slice(0, 6).map(menu => ({
           name: clean(menu.displayLabel).slice(0, 80),
-          options: (Array.isArray(menu.menuItemValueIds) ? menu.menuItemValueIds : []).slice(0, 100).map(valueId => items[String(valueId)]).filter(Boolean).map(item => ({ label: clean(item.displayName || item.valueName).slice(0, 80), out_of_stock: item.outOfStock === true }))
+          options: menu.menuItemValueIds.slice(0, 100).map(valueId => items[String(valueId)]).map(item => ({ label: clean(item.displayName || item.valueName).slice(0, 80), out_of_stock: item.outOfStock === true }))
         })),
         variation_count: Object.keys(combos).length,
-        price_min: prices.length ? Math.min(...prices) : null,
-        price_max: prices.length ? Math.max(...prices) : null
+        price_min: prices.length ? prices.reduce((a, b) => Math.min(a, b)) : null,
+        price_max: prices.length ? prices.reduce((a, b) => Math.max(a, b)) : null
       };
     }
 
