@@ -168,8 +168,8 @@
       const listedCount = Number.parseInt(head.listingCount, 10);
       if (!body.tickets.length) return { status: "no_tickets", production_id: productionId, quantity, total_listings: Number.isInteger(listedCount) ? listedCount : 0, reason: "Vivid Seats lists no tickets for this event; it may be sold out, past, or not yet on sale.", observed_at: observedAt };
 
-      const included = String(head.aipIncludedPrices ?? "").split(",").map(s => s.trim()).filter(s => /^[A-Z][A-Z_]{2,39}$/.test(s));
-      if (head.showAip !== "true" || head.showAipIncludedPrices !== "true" || !included.length) return fail("price_basis_unavailable", "Vivid Seats does not show all-in prices for this event, so the prices cannot be reported on a stated basis.");
+      const included = typeof head.aipIncludedPrices === "string" ? head.aipIncludedPrices.split(",").map(s => s.trim()) : [];
+      if (head.showAip !== "true" || head.showAipIncludedPrices !== "true" || !included.length || included.length > 10 || included.some(s => !/^[A-Z][A-Z_]{2,39}$/.test(s)) || !["true", "false"].includes(head.vatAddedToAip)) return fail("price_basis_unavailable", "Vivid Seats does not state valid all-in price components and VAT metadata for this event, so the price basis cannot be reported.");
       const COMPONENTS = { CUSTOMER_PRICE: "listing_price", SERVICE_FEE: "service_fee", ELECTRONIC_DELIVERY_FEE: "electronic_delivery_fee", HARDSTOCK_DELIVERY_FEE: "hardstock_delivery_fee" };
       const priceBasis = {
         unit: "per ticket", includes: included.map(c => COMPONENTS[c] ?? c.toLowerCase()), vat_included: head.vatAddedToAip === "true",

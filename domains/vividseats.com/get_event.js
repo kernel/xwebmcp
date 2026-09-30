@@ -184,19 +184,39 @@
         capacity: Number.isInteger(v.capacity) && v.capacity > 0 ? v.capacity : null
       };
     };
+    const timestamp = value => {
+      if (typeof value !== "string") return null;
+      const parts = /^(\d{4}-\d{2}-\d{2})T(\d{2}:\d{2}):(\d{2})(?:\.(\d{1,3}))?(Z|[+-]\d{2}:\d{2})$/.exec(value);
+      if (!parts) return null;
+      const wall = parts[1] + "T" + parts[2] + ":" + parts[3] + "." + (parts[4] || "").padEnd(3, "0");
+      const calendar = new Date(wall + "Z");
+      if (!Number.isFinite(calendar.getTime()) || calendar.toISOString() !== wall + "Z") return null;
+      if (parts[5] !== "Z" && (Number(parts[5].slice(1, 3)) > 23 || Number(parts[5].slice(4)) > 59)) return null;
+      const instant = Date.parse(value);
+      return Number.isFinite(instant) ? instant : null;
+    };
     const event = (e, target) => {
       const eventVenue = venue(e?.venue);
       if (!e || e.id !== target.id || !clean(e.name) || !eventVenue || e.webPath !== target.path) return null;
-      const local = /^(\d{4}-\d{2}-\d{2})T(\d{2}:\d{2})(?::\d{2})?(?:Z|[+-]\d{2}:\d{2})(?:\[([A-Za-z0-9_\/+-]{1,64})\])?$/.exec(e.localDate || "");
-      const utc = typeof e.utcDate === "string" ? new Date(e.utcDate) : null;
+      const local = /^(\d{4}-\d{2}-\d{2})T(\d{2}:\d{2})(:\d{2})?(Z|[+-]\d{2}:\d{2})(?:\[([A-Za-z0-9_\/+-]{1,64})\])?$/.exec(e.localDate || "");
+      const localInstant = local ? timestamp(local[1] + "T" + local[2] + (local[3] || ":00") + local[4]) : null;
+      const utc = timestamp(e.utcDate);
+      const zone = local?.[5] || clean(e.venue.timezone, 64);
+      if ((e.localDate != null && localInstant === null) || (e.utcDate != null && utc === null) || (localInstant !== null && utc !== null && localInstant !== utc)) return null;
+      if (local && zone) {
+        try {
+          const fields = Object.fromEntries(new Intl.DateTimeFormat("en-US", { timeZone: zone, year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit", hourCycle: "h23" }).formatToParts(new Date(localInstant)).map(p => [p.type, p.value]));
+          if (fields.year + "-" + fields.month + "-" + fields.day !== local[1] || fields.hour + ":" + fields.minute !== local[2] || fields.second !== (local[3] || ":00").slice(1)) return null;
+        } catch { return null; }
+      }
       const pending = value => typeof value === "string" && /\bTBD\b|to be (announced|determined)/i.test(value);
       const dateTbd = e.dateTbd === true || pending(e.formattedDate?.date), timeTbd = e.timeTbd === true || pending(e.formattedDate?.time);
       const restrictions = clean(e.seatRestrictions, 1000);
       return {
         production_id: e.id, name: clean(e.name), url: ORIGIN + target.path,
         local_date: !dateTbd && local ? local[1] : null, local_time: !dateTbd && !timeTbd && local ? local[2] : null,
-        time_zone: local?.[3] || clean(e.venue.timezone, 64),
-        start_utc: !dateTbd && !timeTbd && utc && !Number.isNaN(utc.getTime()) ? utc.toISOString() : null,
+        time_zone: zone,
+        start_utc: !dateTbd && !timeTbd && local && utc !== null ? new Date(utc).toISOString() : null,
         date_tbd: dateTbd, time_tbd: timeTbd, if_necessary: e.ifNecessary === true,
         delay_type: typeof e.productionDelayType === "string" && /^[A-Z_]{1,30}$/.test(e.productionDelayType) ? e.productionDelayType : null,
         seat_restrictions: restrictions ? clean(new DOMParser().parseFromString(restrictions, "text/html").body.textContent, 1000) : null,
@@ -214,7 +234,7 @@
       const data = response.data;
       if (data.page !== "/[slug]/production/[id]") return fail("site_changed", "The response is not an event page.");
       const details = event(data.props?.pageProps?.initialProductionDetailsData?.data, target);
-      if (!details) return fail("site_changed", "The public event record does not match the requested event or lacks its venue.");
+      if (!details) return fail("site_changed", "The public event record has invalid identity, venue or inconsistent timestamps.");
       if (signal?.aborted) return fail("canceled", "The read was canceled.");
       return { status: "ok", event: details, observed_at: new Date().toISOString() };
     } catch {

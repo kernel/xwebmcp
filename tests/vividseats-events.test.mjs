@@ -519,7 +519,7 @@ test("get_ticket_offers states the price basis the site gives for the event, inc
   const result = await harness("get_ticket_offers", { route: p => (p.startsWith("/hermes/api/v1/listings?") ? { status: 200, body: listings(TICKETS, {}, head) } : null) }).run({ event: "6001" });
   assert.deepEqual(result.price_basis.includes, ["listing_price", "service_fee", "electronic_delivery_fee", "hardstock_delivery_fee", "new_surcharge"]);
   assert.equal(result.price_basis.vat_included, true);
-  for (const head of [{ showAip: "false" }, { showAipIncludedPrices: "false" }, { aipIncludedPrices: "" }, { aipIncludedPrices: "lowercase,bad component!" }]) {
+  for (const head of [{ showAip: "false" }, { showAipIncludedPrices: "false" }, { aipIncludedPrices: "" }, { aipIncludedPrices: "lowercase,bad component!" }, { aipIncludedPrices: "CUSTOMER_PRICE,unknown" }, { aipIncludedPrices: Array(11).fill("CUSTOMER_PRICE").join(",") }, { vatAddedToAip: undefined }, { vatAddedToAip: "unknown" }, { vatAddedToAip: null }, { vatAddedToAip: false }]) {
     const refused = await harness("get_ticket_offers", { route: p => (p.startsWith("/hermes/api/v1/listings?") ? { status: 200, body: listings(TICKETS, {}, head) } : null) }).run({ event: "6001" });
     assert.equal(refused.error_kind, "price_basis_unavailable", JSON.stringify(head));
   }

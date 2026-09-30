@@ -67,10 +67,11 @@ function harness(name, options = {}) {
     }
   }
   const [definition] = runInNewContext(`(${sources[name]})`, {
-    URL, DOMParser, Date, URLSearchParams,
+    URL, DOMParser, Date: options.Date ?? Date, URLSearchParams,
     window: { location: new URL(options.page ?? origin + "/explore") }, document,
     fetch: async (path, init) => {
       calls.push({ path, init });
+      options.onRead?.(calls.length);
       assert.equal(init.method, undefined, "only GET");
       assert.equal(init.redirect, "error", "no redirects to account/checkout hosts");
       assert.equal(init.signal, signal);
@@ -242,7 +243,7 @@ test("prepare_ticket_selection: default group can be explicitly reviewed as null
   assert.equal(out.status, "prepared");
   assert.equal(out.selection.price_group_id, null);
 });
-for (const event of [{ ...fakeEvent, dateTbd: true }, { ...fakeEvent, timeTbd: true }, { ...fakeEvent, utcDate: "2020-01-01T00:00:00Z" }, { ...fakeEvent, utcDate: null }, { ...fakeEvent, localDate: null }]) {
+for (const event of [{ ...fakeEvent, dateTbd: true }, { ...fakeEvent, timeTbd: true }, { ...fakeEvent, localDate: "2019-12-31T18:00:00-06:00[America/Chicago]", utcDate: "2020-01-01T00:00:00Z" }, { ...fakeEvent, utcDate: null }, { ...fakeEvent, localDate: null }]) {
   test("prepare_ticket_selection: started or unspecified event cannot be prepared", async () => {
     const h = harness("prepare_ticket_selection", { event });
     assert.equal((await h.run(preparedInput)).error_kind, "event_unavailable");
@@ -268,6 +269,46 @@ for (const formattedDate of [{ date: "Date TBD", time: "7:30pm" }, { date: "Wed,
     assert.equal(h.calls.length, 1);
   });
 }
+
+for (const changes of [
+  { localDate: "2099-02-30T25:99:00-05:00[America/Chicago]" },
+  { localDate: "2099-02-30T19:30:00-06:00[America/Chicago]" },
+  { localDate: "2020-10-10T19:30:00-05:00[America/Chicago]" },
+  { localDate: "2099-10-10T19:30:00-24:00[America/Chicago]" },
+  { localDate: "2099-10-10T19:30:00-05:60[America/Chicago]" },
+  { localDate: "2099-10-10T19:30:00-05:00[Europe/London]" },
+  { localDate: "2099-10-10T19:30:00-05:00[Invalid/Zone]" },
+  { utcDate: "2099-02-30T00:30:00Z" },
+  { utcDate: "October 11, 2099" },
+  { utcDate: "2099-10-11T00:31:00Z" }
+]) {
+  for (const name of ["get_event", "prepare_ticket_selection"]) {
+    test(`${name}: rejects inconsistent or invalid event timestamps ${JSON.stringify(changes)}`, async () => {
+      const h = harness(name, { event: { ...fakeEvent, ...changes } });
+      assert.equal((await h.run(inputFor(name))).error_kind, "site_changed");
+      assert.equal(h.calls.length, 1);
+    });
+  }
+}
+for (const changes of [
+  { localDate: "2096-02-29T19:30:00-06:00[America/Chicago]", utcDate: "2096-03-01T01:30:00Z" },
+  { localDate: "2099-10-10T19:30-05:00[America/Chicago]", utcDate: "2099-10-11T00:30:00.000Z" },
+  { localDate: "2099-10-10T19:30:00-05:00", utcDate: "2099-10-11T00:30:00Z" }
+]) {
+  test("prepare_ticket_selection: valid leap date and equivalent ISO formats", async () => {
+    assert.equal((await harness("prepare_ticket_selection", { event: { ...fakeEvent, ...changes } }).run(preparedInput)).status, "prepared");
+  });
+}
+test("prepare_ticket_selection: rejects event that starts during the inventory read", async () => {
+  let now = Date.parse(fakeEvent.utcDate) - 1000;
+  class Clock extends Date {
+    constructor(...args) { super(...(args.length ? args : [now])); }
+    static now() { return now; }
+  }
+  const h = harness("prepare_ticket_selection", { Date: Clock, onRead: count => { if (count === 2) now += 2000; } });
+  assert.equal((await h.run(preparedInput)).error_kind, "event_unavailable");
+  assert.equal(h.calls.length, 2);
+});
 
 test("prepare_ticket_selection: no duplicate write or state cache on repeat", async () => {
   const h = harness("prepare_ticket_selection");
