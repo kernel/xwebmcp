@@ -1243,6 +1243,28 @@
     },
     {
       "domain": "united.com",
+      "tool": "get_fare_calendar",
+      "file": "domains/united.com/get_fare_calendar.js",
+      "kind": "page",
+      "namespace": "united.com",
+      "url_patterns": ["https://www.united.com/*"],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Read the already-open one-way cash Flexible dates calendar; historical per-person fares, no date selection or navigation. Roundtrip and award calendars are not supported. Independent QA pending."
+    },
+    {
+      "domain": "united.com",
+      "tool": "get_fare_options",
+      "file": "domains/united.com/get_fare_options.js",
+      "kind": "page",
+      "namespace": "united.com",
+      "url_patterns": ["https://www.united.com/*"],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Read current cash cabin starting fares with bounded pagination; no fare selection, hold or navigation. Primary displayed flight only, not complete connections or confirmed roundtrip pairs. Independent QA pending."
+    },
+    {
+      "domain": "united.com",
       "tool": "get_flight_status",
       "file": "domains/united.com/get_flight_status.js",
       "kind": "page",
@@ -1273,6 +1295,17 @@
       "provenance": {
         "qa_agent": "agt_900288267257b91f1fdc"
       }
+    },
+    {
+      "domain": "united.com",
+      "tool": "prepare_itinerary",
+      "file": "domains/united.com/prepare_itinerary.js",
+      "kind": "page",
+      "namespace": "united.com",
+      "url_patterns": ["https://www.united.com/*"],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Re-read an exact nonstop cash offer for a human handoff; detects changed flight/time/cabin/price. Displayed terms remain incomplete; no booking, checkout, hold, cancellation, check-in or seat changes. Trusted execution approval is unsupported by the runtime. Independent QA pending."
     },
     {
       "domain": "united.com",

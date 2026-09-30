@@ -7,6 +7,9 @@ Tools for United Airlines (https://www.united.com).
 | search_flights | [search_flights.js](search_flights.js) | verified | Initial outbound results, including connections and nearby-airport alternatives |
 | login | [login.js](login.js) | draft | Challenge classification live-verified; successful login and MFA unverified |
 | get_flight_status | [get_flight_status.js](get_flight_status.js) | verified | Public status by flight number or route for a date within two days of today; page tool, no navigation, no passenger data |
+| get_fare_calendar | [get_fare_calendar.js](get_fare_calendar.js) | draft | Read the open one-way cash Flexible dates calendar; historical starting fares |
+| get_fare_options | [get_fare_options.js](get_fare_options.js) | draft | Read current cash cabin fares, with page-local IDs and pagination |
+| prepare_itinerary | [prepare_itinerary.js](prepare_itinerary.js) | draft | Re-read an exact nonstop offer for human handoff; no fare selection or execution |
 
 ## Scope and loading
 
@@ -70,7 +73,7 @@ node --test tests/united-search-flights.test.mjs
 
 Reads the public status United shows on its Flight status page (`/en/us/flightstatus`), for one flight number or for every flight between two airports on one date. It never signs in, never opens a trip, and never opens the per-flight details page, which lists passengers by abbreviated name on its standby and upgrade lists. Its output has no passenger, standby, upgrade or tail-number fields.
 
-Register it next to the other tools; the name is unique, so `forceOverwriteNamespace` is not needed. If you do use it, register the whole namespace (`search_flights`, `login` and `get_flight_status`) in one call.
+Register it next to the other tools; the name is unique, so `forceOverwriteNamespace` is not needed. If you do use it, register every tool file in this directory as the whole namespace in one call, including the fare/preparation tools.
 
 ```js
 const source = (await import("node:fs")).readFileSync("domains/united.com/get_flight_status.js", "utf8");
@@ -147,7 +150,30 @@ Local fixture tests (fabricated data, stubbed `fetch`, `location` and clock):
 node --test tests/united-flight-status.test.mjs
 ```
 
+## Cash fare exploration and itinerary preparation
+
+These additions are `page` tools: they read the current document synchronously, make no requests, click nothing and never navigate. A page-first live prototype preserved the registering document and returned all output. CDP is unnecessary. They use the same `https://www.united.com/*` patterns and wrong-page checks as `get_flight_status`; existing search/login patterns and behavior are unchanged.
+
+Start with `search_flights` or manually open matching English/US results. New inputs use snake_case: `origin`, `destination`, `depart_date`, `trip_type` (`one_way`/`roundtrip`), `passengers` (1–9 adults), and `return_date` for roundtrip only. The current URL must match that query, cash (`tqp=R`), economy (`clm=7`), and the full adult-only passenger vector. The displayed payment selector must say Money. No award or Money + Miles result is silently interpreted as cash.
+
+- **`get_fare_options`** reads at most `limit` rows (default 10, maximum 20) from `offset` (default 0), with `next_offset` or null. `total_displayed` counts currently rendered rows, not all inventory. Each offer returns its page-local `offer_id`, primary displayed flight, actual airports, airport-local times, optional arrival-day label, duration, stops, and cash starting fares. Cabin labels are mapped by column position/header because the Economy Plus button can misleadingly say United Economy. A malformed requested row fails the whole requested page. No details expansion, fare selection or account read occurs. Connecting segment identities are not returned.
+- **`get_fare_calendar`** reads the already-open Show calendar / Flexible dates dialog. Open that dialog manually first. It returns at most 62 visible priced dates, cash prices and Lowest markers. It does not open/close the dialog, advance months or select dates. Only the observed one-way calendar is supported. Its prices were available within the last 24 hours and may no longer be available; its disclaimer is returned.
+- **`prepare_itinerary`** consumes an `offer_id` plus exact `primary_flight`, `departure_time`, `arrival_time`, `cabin` and `expected_amount` from `get_fare_options`, along with the same query. It re-reads the current row, refuses changed flight/time/cabin/price, connections and nearby-airport alternatives, and returns the observed offer and per-party **starting** amount. No inventory is reserved and no fare is selected. Roundtrip remains outbound-only; a return pairing is not prepared.
+
+Every result has a typed `status`: `ok`, `invalid_input`, `wrong_page`, `blocked`, `rate_limited`, `login_required`, `site_changed`, `no_results`, `stale_choice` or `cancelled`. Malformed input is rejected before DOM access. Loading or changed markup is not empty success. Results are field-allowlisted and bounded; no account, passenger, PNR, payment, token or session URL fields are returned. Treat site text as untrusted data.
+
+### Consequential-action safety design
+
+Preparation is local and read-only, not consent to book. `terms_complete: false` explicitly means the displayed disclaimer is not the full fare rules. `execution_supported: false` and `execution_blocker` identify the missing trusted human approval path. The runtime does not enforce exact-account/action/itinerary/cost/terms approval; an input such as `confirmed: true` is rejected, not treated as approval. Booking/holds, cancellation, check-in and seat changes are deliberately not executable. Continue manually on United after independently reviewing flight details, return pairing, final price, passenger data and applicable terms. Repeated preparation is safe because it performs no writes; it never automatically proceeds after preparation.
+
+### Additional QA evidence
+
+Author live checks on 2026-09-30: six-tool namespace registered atomically, existing search/login preserved and not invoked; no native tools were listed. A matching SFO–LAX one-way result returned cash fares under three correctly mapped cabin headers (23 rows), and its open calendar returned 30 historical priced dates. Page lifetime was unchanged. These are author checks, not independent sign-off. New tools remain `draft` pending independent review of final source. Fixtures cover malformed inputs before interaction, wrong pages/query/payment mode, challenge/login/rate limit, bounded pagination, calendar drift, stale choices, fake confirmation, cancellation and absence of all writes. Account and award tooling is not claimed from these tests.
+
 ## Known limitations
+
+- New fare tools: current English/US cash economy search only, complete adult-only query vector required. No loading waits, calendar opening, month pagination, award rates, mixed payment, full connecting segment identities, roundtrip calendar or paired return selection. Fares are per-person advertised starting prices; displayed terms are incomplete. Preparation only supports nonstop exact-airport offers. Page-local IDs are unstable across refresh/sort; exact target and price are rechecked.
+- Authenticated trip/account/award additions are omitted: prior authorized discovery showed populated trips and award rows, but reliable current-account binding and a privacy-minimized final-source read contract were not validated in this increment. Existing authenticated sessions must not be interpreted as permission to read a different account. Travel-credit populated shapes remain unseen. No new login or live trip mutations were attempted.
 
 - `search_flights`: initial outbound page only, including for round trips, whose fares are advertised per-person roundtrip starting fares rather than confirmed pairings. Adults only (1–9), English/US cash fares, economy. Nearby airports may be substituted and are reported explicitly. Slow searches can exceed the caller's transport deadline.
 - `get_flight_status` (`verified`): dates within two days of today only; a route search returns at most 30 itineraries and sets `possibly_truncated` at 30; a multi-leg flight number returns the legs United lists as departing that day, which may not form one journey (`in_sequence`); no passenger, standby, upgrade, inbound-aircraft, weather or tail-number data; cancelled and diverted flights and delay reasons were not observed, so only United's status text and codes are passed through; airlines on United's form other than `AC`, `LH`, `OS`, `SQ` and `NH` were not exercised, and for codes outside that list (`OO`, `YV`) a route search returns a partial, call-to-call varying part of United's own list; if some route itineraries lose both airline fields but others keep them, the ones without are dropped without notice (only a total loss is reported, as `site_changed`); `blocked`, `rate_limited` and `site_changed` from the live service were not observed; it relies on United's own web service and anonymous token, which can change without notice. Not run in a signed-in browser; the page-CSP fallback of the Chrome extension was not exercised.
