@@ -50,11 +50,12 @@ function conforms(schema, value) {
 const definition = name => runInNewContext(sources[name], {})[0];
 
 // Runs one tool. `respond(url, init)` returns { status, body, url?, headers? }; a thrown error is a network failure.
-async function run(name, input, { origin = ORIGIN, respond = () => ({ status: 200, body: "" }), abortImmediately = false } = {}) {
+async function run(name, input, { origin = ORIGIN, respond = () => ({ status: 200, body: "" }), abortImmediately = false, signal, onRequest } = {}) {
   const requests = [];
   const fetch = async (target, init = {}) => {
     const url = new URL(target, origin);
     requests.push({ path: url.pathname + url.search, url, init });
+    onRequest?.(init);
     if (init.signal?.aborted) throw new Error("aborted");
     const answer = respond(url, init);
     const headers = answer.headers || {};
@@ -64,7 +65,7 @@ async function run(name, input, { origin = ORIGIN, respond = () => ({ status: 20
   const setTimeout = (fn, ms) => { timers.push(ms); if (abortImmediately) fn(); return timers.length; };
   const sandbox = { location: { origin }, fetch, DOMParser, URL, URLSearchParams, AbortController, setTimeout, clearTimeout: () => {}, Date };
   const [tool] = runInNewContext(sources[name], sandbox);
-  const output = plain(await tool.execute(input));
+  const output = plain(await tool.execute(input, { signal }));
   return { output, requests, tool, timers };
 }
 
@@ -287,6 +288,39 @@ test("search_apps bounds the number of apps it returns", async () => {
   assert.deepEqual(output.warnings, ["truncated 55 results to 50"]);
 });
 
+test("both tools honor caller cancellation without retrying", async () => {
+  for (const name of NAMES) {
+    const input = name === "search_apps" ? { query: "widgets" } : { handle: "example-loyalty-suite" };
+    const before = new AbortController();
+    before.abort();
+    const canceled = await run(name, input, { signal: before.signal });
+    assert.equal(canceled.output.error_kind, "canceled");
+    assert.equal(canceled.requests.length, 0);
+    assertConforms(name, canceled.output);
+    const during = new AbortController();
+    const interrupted = await run(name, input, { signal: during.signal, onRequest: () => during.abort() });
+    assert.equal(interrupted.output.error_kind, "canceled");
+    assert.equal(interrupted.requests.length, 1);
+    assert.equal(interrupted.requests[0].init.signal.aborted, true);
+    assertConforms(name, interrupted.output);
+    const malformed = await run(name, {}, { signal: before.signal });
+    assert.equal(malformed.output.error_kind, "invalid_input");
+    assert.equal(malformed.requests.length, 0);
+  }
+});
+
+test("search_apps bounds scalar text and warnings from untrusted cards", async () => {
+  const body = fixture("search-results")
+    .replace('data-app-card-name-value="Sponsored Widgets Pro"', `data-app-card-name-value="${"n".repeat(10000)}"`)
+    .replace("Free trial available", "p".repeat(10000))
+    .replace("</section>", `${'<div data-app-card-handle-value="bad:feature"></div>'.repeat(200)}</section>`);
+  const { output } = await run("search_apps", { query: "widgets" }, { respond: () => ({ status: 200, body }) });
+  assert.equal(output.apps[0].name.length, 300);
+  assert.equal(output.apps[0].pricing_text.length, 500);
+  assert.equal(output.warnings.length, 20);
+  assertConforms("search_apps", output);
+});
+
 // --- get_app -------------------------------------------------------------------------------------------
 
 const detailOk = { status: 200, body: fixture("app-detail") };
@@ -448,6 +482,25 @@ test("get_app warns when sections it could not read are missing or the page is n
   assert.equal(output.developer, null);
   assert.deepEqual(output.plans, []);
   assert.deepEqual(output.warnings, ["page language is fr; label-based fields may be empty", "pricing_summary not found", "developer not found", "pricing plans not found"]);
+});
+
+test("get_app bounds scalar fields and excludes URL credentials", async () => {
+  const body = fixture("app-detail")
+    .replace(/<h1>[^<]*<\/h1>/, `<h1>${"n".repeat(10000)}</h1>`)
+    .replace("Reward repeat buyers with points, tiers &amp; referrals.", "h".repeat(10000))
+    .replace("Free plan available", "p".repeat(10000))
+    .replace('aria-label="$16/month"', `aria-label="${"c".repeat(10000)}"`)
+    .replace("or $160/year and save 17%", "y".repeat(10000))
+    .replace("https://www.example-labs.test/loyalty?utm_source=apps.shopify.com", "https://fabricated-user:fake-password@www.example-labs.test/loyalty?utm_source=apps.shopify.com");
+  const { output } = await run("get_app", { handle: "example-loyalty-suite" }, { respond: () => ({ status: 200, body }) });
+  assert.equal(output.name.length, 300);
+  assert.equal(output.pricing_summary.length, 500);
+  assert.equal(output.headline.length, 500);
+  assert.equal(output.plans[1].price_text.length, 500);
+  assert.equal(output.plans[1].yearly_price_text.length, 500);
+  assert.equal(output.developer.website, null);
+  assert.doesNotMatch(JSON.stringify(output), /fake-password|fabricated-user/);
+  assertConforms("get_app", output);
 });
 
 test("get_app bounds the lists it returns", async () => {

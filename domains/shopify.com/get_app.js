@@ -22,18 +22,18 @@
             status: { const: "ok" },
             handle: { type: "string", description: "The handle the site resolved the request to; differs from the input only after a redirect." },
             url: { type: "string", format: "uri", description: "Canonical listing URL without tracking parameters." },
-            name: { type: "string" },
-            page_language: { type: ["string", "null"], description: "The lang attribute of the fetched page." },
+            name: { type: "string", maxLength: 300 },
+            page_language: { type: ["string", "null"], maxLength: 35, description: "The lang attribute of the fetched page." },
             developer: {
               type: ["object", "null"], additionalProperties: false, required: ["name", "profile_url", "website"],
               properties: {
-                name: { type: "string" },
+                name: { type: "string", maxLength: 200 },
                 profile_url: { type: "string", description: "The developer's App Store profile." },
-                website: { type: ["string", "null"], description: "The developer's own site, without query string or fragment." }
+                website: { type: ["string", "null"], maxLength: 2048, description: "The developer's own site, without query string or fragment." }
               }
             },
-            launched_text: { type: ["string", "null"], description: "Launch date as the listing shows it, for example 'March 10, 2014'." },
-            pricing_summary: { type: ["string", "null"], description: "The listing's one-line pricing summary, for example 'Free plan available' or 'From $10/month'." },
+            launched_text: { type: ["string", "null"], maxLength: 100, description: "Launch date as the listing shows it, for example 'March 10, 2014'." },
+            pricing_summary: { type: ["string", "null"], maxLength: 500, description: "The listing's one-line pricing summary, for example 'Free plan available' or 'From $10/month'." },
             rating: { type: ["number", "null"], description: "Average rating out of 5; null when the app has no reviews." },
             review_count: { type: ["integer", "null"] },
             rating_counts: {
@@ -41,7 +41,7 @@
               items: { type: "object", additionalProperties: false, required: ["stars", "count"], properties: { stars: { type: "integer", minimum: 1, maximum: 5 }, count: { type: "integer", minimum: 0 } } },
               description: "Reviews per star rating, highest first; null when the listing shows no breakdown."
             },
-            headline: { type: ["string", "null"], description: "The listing's introductory heading." },
+            headline: { type: ["string", "null"], maxLength: 500, description: "The listing's introductory heading." },
             description: { type: ["string", "null"], description: "Listing description paragraphs, truncated to description_max_chars; null when omitted or absent." },
             highlights: { type: "array", maxItems: 10, items: { type: "string", maxLength: 300 }, description: "The listing's bullet points." },
             plans: {
@@ -49,9 +49,9 @@
               items: {
                 type: "object", additionalProperties: false, required: ["name", "price_text", "yearly_price_text", "additional_charges", "features"],
                 properties: {
-                  name: { type: ["string", "null"] },
-                  price_text: { type: ["string", "null"], description: "Plan price as displayed, for example 'Free' or '$16/month'." },
-                  yearly_price_text: { type: ["string", "null"], description: "Yearly price note, for example 'or $99.60/year and save 17%'." },
+                  name: { type: ["string", "null"], maxLength: 200 },
+                  price_text: { type: ["string", "null"], maxLength: 500, description: "Plan price as displayed, for example 'Free' or '$16/month'." },
+                  yearly_price_text: { type: ["string", "null"], maxLength: 500, description: "Yearly price note, for example 'or $99.60/year and save 17%'." },
                   additional_charges: { type: ["string", "null"], description: "The note under the price, such as an order cap, usage-based pricing or an introductory discount, at most 300 characters." },
                   features: { type: "array", maxItems: 12, items: { type: "string", maxLength: 200 } }
                 }
@@ -61,7 +61,7 @@
             works_with: { type: "array", maxItems: 20, items: { type: "string", maxLength: 100 }, description: "Shopify surfaces and apps the listing says it works with." },
             categories: { type: "array", maxItems: 20, items: { type: "string", maxLength: 100 } },
             observed_at: { type: "string" },
-            warnings: { type: "array", items: { type: "string" }, description: "Sections that could not be read, or a redirect from the requested handle." }
+            warnings: { type: "array", maxItems: 20, items: { type: "string" }, description: "Sections that could not be read, or a redirect from the requested handle." }
           }
         },
         {
@@ -69,7 +69,7 @@
           required: ["status", "error_kind", "error_message"],
           properties: {
             status: { const: "error" },
-            error_kind: { enum: ["invalid_input", "wrong_page", "not_found", "rate_limited", "challenge", "site_error", "site_changed"] },
+            error_kind: { enum: ["invalid_input", "wrong_page", "not_found", "rate_limited", "challenge", "site_error", "site_changed", "canceled"] },
             error_message: { type: "string", minLength: 1 },
             http_status: { type: "integer" },
             retry_after_sec: { type: "integer", minimum: 0 }
@@ -79,7 +79,7 @@
     },
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true }
   },
-  execute: async (input) => {
+  execute: async (input, context = {}) => {
     const ORIGIN = "https://apps.shopify.com";
     const HANDLE = /^[a-z0-9][a-z0-9_-]{0,99}$/;
     const fail = (kind, message, extra = {}) => ({ status: "error", error_kind: kind, error_message: message, ...extra });
@@ -88,19 +88,25 @@
     if (typeof input.handle !== "string" || !HANDLE.test(input.handle)) return fail("invalid_input", "handle must be the app's URL segment: lowercase letters, digits, hyphens or underscores, at most 100 characters.");
     const descriptionMax = input.description_max_chars === undefined ? 1500 : input.description_max_chars;
     if (!Number.isInteger(descriptionMax) || descriptionMax < 0 || descriptionMax > 5000) return fail("invalid_input", "description_max_chars must be an integer from 0 to 5000.");
-    if (location.origin !== ORIGIN) return fail("wrong_page", "This tool runs on https://apps.shopify.com pages; the current page is on " + location.origin + ". Open https://apps.shopify.com/ first.");
+    if (context.signal?.aborted) return fail("canceled", "The invocation was canceled before the request.");
+    if (location.origin !== ORIGIN) return fail("wrong_page", "This tool runs only on https://apps.shopify.com pages. Open https://apps.shopify.com/ first.");
 
     const controller = new AbortController();
+    const cancel = () => controller.abort();
+    context.signal?.addEventListener("abort", cancel, { once: true });
     const timer = setTimeout(() => controller.abort(), 30000);
     let response, html;
     try {
       response = await fetch("/" + input.handle, { credentials: "same-origin", headers: { Accept: "text/html" }, signal: controller.signal });
       html = await response.text();
     } catch {
+      if (context.signal?.aborted) return fail("canceled", "The invocation was canceled during the request.");
       return fail("site_error", controller.signal.aborted ? "The listing request timed out after 30 seconds." : "The listing request failed before the site answered.");
     } finally {
       clearTimeout(timer);
+      context.signal?.removeEventListener("abort", cancel);
     }
+    if (context.signal?.aborted) return fail("canceled", "The invocation was canceled during the request.");
     if (response.status === 429) {
       const wait = Number.parseInt(response.headers.get("retry-after") || "", 10);
       return fail("rate_limited", "apps.shopify.com answered 429 Too Many Requests. Wait before reading another listing.", Number.isFinite(wait) && wait >= 0 ? { http_status: 429, retry_after_sec: wait } : { http_status: 429 });
@@ -133,7 +139,7 @@
     const warnings = [];
     if (resolved !== input.handle) warnings.push("redirected from /" + input.handle);
     const language = doc.documentElement.getAttribute("lang") || null;
-    if (language && !/^en\b/i.test(language)) warnings.push("page language is " + language + "; label-based fields may be empty");
+    if (language && !/^en\b/i.test(language)) warnings.push("page language is " + cut(language, 35) + "; label-based fields may be empty");
     const fieldFor = label => {
       const dt = Array.from(hero.querySelectorAll("dt")).find(el => text(el) === label);
       const dd = dt && dt.parentElement ? dt.parentElement.querySelector("dd") : null;
@@ -157,7 +163,7 @@
     }
 
     const developerSection = doc.getElementById("adp-developer");
-    const partnerLinkIn = root => (root ? Array.from(root.querySelectorAll("a")).find(a => (a.getAttribute("href") || "").startsWith(ORIGIN + "/partners/")) : null);
+    const partnerLinkIn = root => (root ? Array.from(root.querySelectorAll("a")).find(a => /^https:\/\/apps\.shopify\.com\/partners\/[a-z0-9][a-z0-9_-]{0,99}\/?(?:[?#].*)?$/.test(a.getAttribute("href") || "")) : null);
     let developer = null;
     const partnerLink = partnerLinkIn(hero);
     if (partnerLink && text(partnerLink)) {
@@ -165,9 +171,13 @@
       const block = partnerLinkIn(developerSection);
       for (const a of block && block.parentElement ? block.parentElement.querySelectorAll("a") : []) {
         const href = a.getAttribute("href") || "";
-        if (/^https?:\/\//i.test(href) && URL.canParse(href) && new URL(href).origin !== ORIGIN) { const url = new URL(href); website = url.origin + url.pathname; break; }
+        if (/^https?:\/\//i.test(href) && URL.canParse(href)) {
+          const url = new URL(href);
+          const publicUrl = url.origin + url.pathname;
+          if (url.origin !== ORIGIN && !url.username && !url.password && publicUrl.length <= 2048) { website = publicUrl; break; }
+        }
       }
-      developer = { name: text(partnerLink), profile_url: ORIGIN + new URL(partnerLink.getAttribute("href"), ORIGIN).pathname, website };
+      developer = { name: cut(text(partnerLink), 200), profile_url: ORIGIN + new URL(partnerLink.getAttribute("href"), ORIGIN).pathname, website };
     } else {
       warnings.push("developer not found");
     }
@@ -186,9 +196,9 @@
     const plans = (pricing ? Array.from(pricing.querySelectorAll(".app-details-pricing-plan-card")) : []).slice(0, 10).map(card => {
       const heading = card.querySelector("h3");
       return {
-        name: text(card.querySelector("[data-test-id='name']")) || null,
-        price_text: heading ? clean(heading.getAttribute("aria-label") || heading.textContent) || null : null,
-        yearly_price_text: text(card.querySelector("[data-test-id='yearly-price']")) || null,
+        name: cut(text(card.querySelector("[data-test-id='name']")), 200) || null,
+        price_text: heading ? cut(clean(heading.getAttribute("aria-label") || heading.textContent), 500) || null : null,
+        yearly_price_text: cut(text(card.querySelector("[data-test-id='yearly-price']")), 500) || null,
         additional_charges: cut(text(card.querySelector("[data-test-id='additional-charges']")), 300) || null,
         features: Array.from(card.querySelectorAll("[data-test-id='features'] li")).map(text).filter(Boolean).slice(0, 12).map(s => cut(s, 200))
       };
@@ -224,15 +234,15 @@
       status: "ok",
       handle: resolved,
       url: ORIGIN + "/" + resolved,
-      name,
-      page_language: language,
+      name: cut(name, 300),
+      page_language: language ? cut(language, 35) : null,
       developer,
-      launched_text: launchedText || null,
-      pricing_summary: pricingSummary,
+      launched_text: cut(launchedText, 100) || null,
+      pricing_summary: pricingSummary ? cut(pricingSummary, 500) : null,
       rating,
       review_count: reviewCount,
       rating_counts: counts.length ? counts : null,
-      headline,
+      headline: headline ? cut(headline, 500) : null,
       description,
       highlights,
       plans,
@@ -240,7 +250,7 @@
       works_with: worksWithRow ? unique(Array.from(worksWithRow.row.querySelectorAll("li")).map(text)) : [],
       categories: unique(categoryNames),
       observed_at: new Date().toISOString(),
-      warnings
+      warnings: warnings.slice(0, 20)
     };
   }
 }]

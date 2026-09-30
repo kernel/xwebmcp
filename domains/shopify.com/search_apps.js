@@ -31,7 +31,7 @@
               properties: { features: { type: "array", items: { type: "string" } }, categories: { type: "array", items: { type: "string" } } }
             },
             observed_at: { type: "string", description: "ISO timestamp of the search; rankings and ads change constantly." },
-            warnings: { type: "array", items: { type: "string" }, description: "Result cards that were skipped, output truncation, or a non-English page whose rating, review and pricing text could not be read." },
+            warnings: { type: "array", maxItems: 20, items: { type: "string" }, description: "Result cards that were skipped, output truncation, or a non-English page whose rating, review and pricing text could not be read." },
             apps: {
               type: "array", minItems: 1, maxItems: 50,
               items: {
@@ -40,14 +40,14 @@
                 properties: {
                   position: { type: "integer", minimum: 1, description: "1-based position on the results page, ads included." },
                   handle: { type: "string", description: "The app's URL segment; pass it to get_app." },
-                  name: { type: "string" },
+                  name: { type: "string", maxLength: 300 },
                   url: { type: "string", format: "uri", description: "Canonical listing URL without tracking parameters." },
                   is_ad: { type: "boolean", description: "True for a paid search placement (the listing link carries the store's search_ad surface type)." },
                   built_for_shopify: { type: "boolean", description: "True when the result shows the Built for Shopify badge." },
                   rating: { type: ["number", "null"], description: "Average rating out of 5; null when the card shows none." },
                   review_count: { type: ["integer", "null"] },
-                  pricing_text: { type: ["string", "null"], description: "Pricing summary as shown, for example 'Free plan available'." },
-                  tagline: { type: ["string", "null"], description: "Developer-written one-liner, at most 300 characters." }
+                  pricing_text: { type: ["string", "null"], maxLength: 500, description: "Pricing summary as shown, for example 'Free plan available'." },
+                  tagline: { type: ["string", "null"], maxLength: 300, description: "Developer-written one-liner, at most 300 characters." }
                 }
               }
             }
@@ -68,7 +68,7 @@
           type: "object", additionalProperties: false, required: ["status", "error_kind", "error_message"],
           properties: {
             status: { const: "error" },
-            error_kind: { enum: ["invalid_input", "wrong_page", "rate_limited", "challenge", "site_error", "site_changed"] },
+            error_kind: { enum: ["invalid_input", "wrong_page", "rate_limited", "challenge", "site_error", "site_changed", "canceled"] },
             error_message: { type: "string", minLength: 1 },
             http_status: { type: "integer" },
             retry_after_sec: { type: "integer", minimum: 0 }
@@ -78,7 +78,7 @@
     },
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true }
   },
-  execute: async (input) => {
+  execute: async (input, context = {}) => {
     const ORIGIN = "https://apps.shopify.com";
     const fail = (kind, message, extra = {}) => ({ status: "error", error_kind: kind, error_message: message, ...extra });
     const FEATURES = ["checkout", "customer-account", "point-of-sale"];
@@ -98,12 +98,15 @@
     if (!features) return fail("invalid_input", "features must be a list of unique values from: " + FEATURES.join(", ") + ".");
     const categories = list(input.categories, CATEGORIES);
     if (!categories) return fail("invalid_input", "categories must be a list of unique values from: " + CATEGORIES.join(", ") + ".");
-    if (location.origin !== ORIGIN) return fail("wrong_page", "This tool runs on https://apps.shopify.com pages; the current page is on " + location.origin + ". Open https://apps.shopify.com/ first.");
+    if (context.signal?.aborted) return fail("canceled", "The invocation was canceled before the request.");
+    if (location.origin !== ORIGIN) return fail("wrong_page", "This tool runs only on https://apps.shopify.com pages. Open https://apps.shopify.com/ first.");
 
     const params = new URLSearchParams({ q: query, page: String(page) });
     for (const feature of features) params.append("features[]", feature);
     for (const category of categories) params.append("categories[]", category);
     const controller = new AbortController();
+    const cancel = () => controller.abort();
+    context.signal?.addEventListener("abort", cancel, { once: true });
     const timer = setTimeout(() => controller.abort(), 30000);
     let response, html;
     try {
@@ -114,10 +117,13 @@
       });
       html = await response.text();
     } catch {
+      if (context.signal?.aborted) return fail("canceled", "The invocation was canceled during the request.");
       return fail("site_error", controller.signal.aborted ? "The search request timed out after 30 seconds." : "The search request failed before the site answered.");
     } finally {
       clearTimeout(timer);
+      context.signal?.removeEventListener("abort", cancel);
     }
+    if (context.signal?.aborted) return fail("canceled", "The invocation was canceled during the request.");
     if (response.status === 429) {
       const wait = Number.parseInt(response.headers.get("retry-after") || "", 10);
       return fail("rate_limited", "apps.shopify.com answered 429 Too Many Requests. Wait before searching again.", Number.isFinite(wait) && wait >= 0 ? { http_status: 429, retry_after_sec: wait } : { http_status: 429 });
@@ -145,7 +151,7 @@
     }
     const warnings = [];
     const locale = finalUrl.searchParams.get("locale");
-    if (locale && !/^en\b/i.test(locale)) warnings.push("the site answered in language " + locale + "; ratings and review counts are null, pricing may be missing, and returned text is in that language");
+    if (locale && !/^en\b/i.test(locale)) warnings.push("the site answered in language " + cut(locale, 35) + "; ratings and review counts are null, pricing may be missing, and returned text is in that language");
     const apps = [];
     cards.forEach((card, index) => {
       const handle = card.getAttribute("data-app-card-handle-value") || "";
@@ -177,13 +183,13 @@
       apps.push({
         position: index + 1,
         handle,
-        name,
+        name: cut(name, 300),
         url: ORIGIN + "/" + handle,
         is_ad: isAd,
         built_for_shopify: Boolean(card.querySelector("[data-element='built-for-shopify-badge']")),
         rating: ratingMatch ? Number(ratingMatch[1]) : null,
         review_count: countMatch ? Number(countMatch[1].replace(/,/g, "")) : null,
-        pricing_text: pricing,
+        pricing_text: pricing ? cut(pricing, 500) : null,
         tagline
       });
     });
@@ -203,7 +209,7 @@
       has_next: pages.includes(page + 1),
       filters: { features, categories },
       observed_at: observedAt,
-      warnings,
+      warnings: warnings.slice(0, 20),
       apps
     };
   }

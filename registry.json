@@ -875,9 +875,9 @@
       "url_patterns": [
         "https://apps.shopify.com/*"
       ],
-      "status": "verified",
-      "last_verified": "2026-09-29",
-      "notes": "Independent QA passed on the final source (three rounds). Page tool on apps.shopify.com: one public App Store listing (developer, launch date, pricing summary and plans, rating and per-star counts, headline, description, highlights, languages, works-with, categories). Read-only; works signed out. Does not return install state, requested permissions (filled in by script after load) or reviews. English pages only; not_found, rate_limited, challenge and site_changed are explicit outcomes.",
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Public App Store listing only, not store-admin coverage. Read-only; works signed out. Bounded developer, pricing, rating and listing fields; no install state, permissions or reviews. English labels only. Cancellation and safe URL handling updated; independent re-QA pending.",
       "provenance": {
         "qa_agent": "agt_8238a5b300a6f1ac6892"
       }
@@ -891,9 +891,9 @@
       "url_patterns": [
         "https://apps.shopify.com/*"
       ],
-      "status": "verified",
-      "last_verified": "2026-09-29",
-      "notes": "Independent QA passed on the final source (three rounds). Page tool on apps.shopify.com: one App Store results page through the store's own results frame (Turbo-Frame request), with works-with and category filters, ad and Built for Shopify flags, rating, review count, pricing text and tagline; paging via page, total_pages and has_next. English pages only (other languages null the ratings and warn). Shopify built-in feature results are skipped with a warning. Sponsored results were never observed live. apps.shopify.com rate-limits requests by an uncharacterised rule; 429 is reported as rate_limited without a retry.",
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Public App Store search only, not store-admin coverage. One results page via Turbo-Frame with filters and pagination. English labels only; built-in feature cards skipped with a warning; sponsored cards fixture-tested only. Rate limits reported without retries. Cancellation and output bounds updated; independent re-QA pending.",
       "provenance": {
         "qa_agent": "agt_8238a5b300a6f1ac6892"
       }

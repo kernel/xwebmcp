@@ -4,8 +4,8 @@ Tools for the public Shopify App Store (https://apps.shopify.com): search apps a
 
 | tool | file | status | notes |
 |------|------|--------|-------|
-| search_apps | [search_apps.js](search_apps.js) | verified | One results page from the store's own search: handle, name, rating, review count, pricing text, tagline, ad and Built for Shopify flags; `features` (works with) and `categories` filters; paging. |
-| get_app | [get_app.js](get_app.js) | verified | One listing: developer, launch date, pricing summary and every pricing plan, rating with per-star counts, headline, description, highlights, languages, works-with and categories. |
+| search_apps | [search_apps.js](search_apps.js) | draft | One results page from the store's own search: handle, name, rating, review count, pricing text, tagline, ad and Built for Shopify flags; `features` (works with) and `categories` filters; paging. |
+| get_app | [get_app.js](get_app.js) | draft | One listing: developer, launch date, pricing summary and every pricing plan, rating with per-star counts, headline, description, highlights, languages, works-with and categories. |
 
 Register both files together as one array with `forceOverwriteNamespace: true`; registering one file that way removes the other.
 
@@ -31,6 +31,10 @@ The tools are listed only while the tab is on an `apps.shopify.com` page (see UR
 
 Neither tool says whether an app is compatible with, or installed on, a store.
 
+## Store-admin scope and safety
+
+App Store coverage is not store-admin coverage. Product/order reads, product-draft preparation and reversible draft operations require an explicitly authorized store and observed admin mechanisms; none are shipped here. No guessed admin endpoints, placeholder preparation tools, account creation, trial enrollment, app installs or terms acceptance are included. Publishing, refunds, order edits and billing are also omitted. Any future execution tool for those operations needs a supported trusted human approval path for the exact store, target and parameters; a model-supplied confirmation flag is not approval.
+
 ## Why both tools are `page`
 
 Both read a same-origin GET from the registering document and settle without navigating, so neither needs `kind: "cdp"` (`spec/cdp-tools.md` §2.1). Nothing they read is produced by a navigation, and neither uses trusted input, other frames or other tabs (§2.4). Observed 2026-09-29: the tab's URL and tab count are the same before and after an invocation.
@@ -54,6 +58,7 @@ Every tool returns `status: "ok"`, `status: "no_results"` (search only), or `{ s
 - `wrong_page`: the document is not on `https://apps.shopify.com` (only possible if a runtime registers the tool because an embedded frame matched).
 - `rate_limited`: HTTP 429, with `retry_after_sec` when the site sends `Retry-After`. The tools never retry.
 - `challenge`: an access-denied response (HTTP 403 or Cloudflare `cf-mitigated`) or a "Just a moment" page.
+- `canceled`: the caller aborted before or during the fetch. Cancellation before the request makes no site request; cancellation in flight aborts it without retrying. Malformed input is still validated first.
 - `site_error`: any other HTTP error, a network failure or a 30 s timeout.
 - `site_changed`: the response did not have the structure the tool reads (missing `search_page` frame, missing hero section, no readable app cards). It is never reported as an empty result.
 
@@ -61,7 +66,7 @@ Every tool returns `status: "ok"`, `status: "no_results"` (search only), or `{ s
 
 Identifiers: `handle` is the listing's URL segment (`[a-z0-9][a-z0-9_-]*`), and `url` is always the canonical `https://apps.shopify.com/<handle>` without the site's tracking parameters. `position` counts ads. `get_app` reports the resolved handle and a warning when the site redirected the requested one.
 
-`review_count` is `null` for an app on a search card that shows no reviews and `0` in `get_app`, which reads the listing's own count. Bounds: at most 50 apps per search, 10 plans with 12 features each, 10 highlights, 20 items per list, tagline 300 characters, description `description_max_chars` (default 1500, at most 5000). Every result carries `observed_at`; rankings, ads and ratings change constantly.
+`review_count` is `null` for an app on a search card that shows no reviews and `0` in `get_app`, which reads the listing's own count. Bounds: at most 50 apps per search, 10 plans with 12 features each, 10 highlights, 20 items per list, tagline 300 characters, description `description_max_chars` (default 1500, at most 5000). Names are capped at 300 characters; pricing and headlines at 500; developer and plan names at 200; launch text at 100; language markers at 35; warnings at 20. Developer websites omit query/fragment and reject embedded URL credentials or URLs over 2048 characters; developer profile paths must be public partner slugs. Every result carries `observed_at`; rankings, ads and ratings change constantly.
 
 Text from listings and plan features is written by app developers and is untrusted data; callers must not treat it as instructions. The tools never return the demo-store link (it carries a session token), the developer's support address or postal address, screenshots, or individual reviews.
 
@@ -79,7 +84,7 @@ Text from listings and plan features is written by app developers and is untrust
 
 ## Known limitations
 
-- Independently QA'd on the source at `39e08ff` (see QA summary); the store changes often, so treat results as a snapshot and expect `warnings` or `site_changed` after a redesign.
+- The earlier source at `39e08ff` passed independent QA. Cancellation, output bounds and URL handling have since changed; fresh QA is pending. Treat results as a snapshot and expect `warnings` or `site_changed` after a redesign.
 - Public listing data only. No signed-in behaviour was verified: whether the results or listing differ for a signed-in Shopify account, or for a store with the app installed, is untested.
 - `search_apps` reads one results page per call, needs a query (browsing a category without a query is not implemented), and has no sort options because the store shows none.
 - `get_app` does not return permissions, compatibility, install state, reviews, screenshots, a monthly/yearly toggle beyond the yearly price note some plans show, or the "featured in" and "similar apps" sections.
@@ -96,7 +101,7 @@ Author checks (2026-09-29):
 
 - Fixture tests (`tests/shopify-app-store.test.mjs`): fabricated pages for the success, no-results, out-of-range, skeleton, missing-listing and no-review cases; input validation before any request; wrong page; 429, 403, challenge, 5xx, network failure and timeout; redirects; non-English pages; output bounds; schema conformance of every output; and a source check that the tools issue only same-origin GETs and never navigate or click.
 - Live, on a Kernel browser with the namespace registered as one batch through the custom-tools API: tools absent on `www.shopify.com` and listed on `apps.shopify.com` pages; `search_apps` for a common query (24 apps, 57 pages, Built for Shopify flags), with a `point-of-sale` filter and page 2, with category and checkout filters, a query with no matches, page 200 of a 57-page search (`page_out_of_range`) and invalid input; `get_app` for two apps with three plans each, an app with no reviews, and two unknown handles (`not_found`). The tool's list matched the rendered page for the same query in the same order. Invocations did not change the tab's URL.
-- Not exercised live: 429, challenge and site-changed responses, redirects, non-English pages, a signed-in session, and a sponsored result.
+- During these initial author checks, not exercised live: 429, challenge and site-changed responses, redirects, non-English pages, a signed-in session, and a sponsored result. Later observations are recorded separately below.
 
 Independent QA (reviewer `agt_8238a5b300a6f1ac6892`, separate agent from the author):
 
@@ -104,6 +109,8 @@ Independent QA (reviewer `agt_8238a5b300a6f1ac6892`, separate agent from the aut
 - Round 2, source `89b7aba`: FAIL for exactly two README inaccuracies (a stale limitation line and an inaccurate rate-limit paragraph), both corrected in this revision; no code defects. The four round 1 defects were confirmed fixed against rendered pages, including unreviewed cards on five result pages, one- and multi-language listings, and French `Accept-Language`. It also noted that a sponsored unreviewed card with a separate `Ad` block would have read `Ad` as pricing; that case is now guarded and tested.
 - Round 3, source `39e08ff`: PASS, no open defects at or above minor. The reviewer checked the diff, the validator and full suite, both files in full, every README claim it could verify cheaply, the sponsored-card guard on real captured card markup in jsdom and in Chromium 153's `DOMParser`, and a minimal live sanity run on a Kernel browser and through the extension. Five nits were noted: a stale PR description (refreshed), the new test's second card lacked an `Ad` label (fixed, test only), no test scopes the guard to sponsored cards, the guard matches only the English word `Ad`, and the `search_apps` registry note omitted the English-only limit (fixed).
 
-Tool sources are unchanged since the round 3 sign-off: the tool files and fixtures at the head of this branch are byte-identical to the ones reviewed in round 3, and later commits touch only this README, the registry entries (status, date, notes, QA provenance) and tests. The commit ids above were assigned before the branch was rebased onto main.
+The commit ids above predate rebases onto main and describe historical source, not the current sign-off. The 2026-09-30 restart updates cancellation, text bounds and public developer URL handling; both statuses are draft pending a fresh independent review. The tests now cover pre-canceled and in-flight canceled calls, malformed-input precedence, oversized scalar text, warning limits and credential-bearing developer links. No mutation tool was added.
 
-Live cases (2026-09-29, Kernel browsers, namespace registered as one batch): from a listing page, `get_app` for an app with three plans (rating, per-star counts, plans, languages, launch date) and `search_apps` for `abandoned cart` with the `checkout` filter (24 apps over 48 pages, one built-in feature result skipped with a warning); from a category page, `search_apps` and `get_app` (one run before the sponsored-label guard, which changed one line of `search_apps` and nothing else). On the final source the independent reviewer repeated `get_app` from a category page, `search_apps` from the App Store home page, and `search_apps` through the extension. The reviewer also ran both tools from home, category, search and listing pages, compared cards field by field with the rendered pages, and reproduced French `Accept-Language`, an out-of-range page and the 429 outcome.
+Live cases (2026-09-29, Kernel browsers, namespace registered as one batch): from a listing page, `get_app` for an app with three plans (rating, per-star counts, plans, languages, launch date) and `search_apps` for `abandoned cart` with the `checkout` filter (24 apps over 48 pages, one built-in feature result skipped with a warning); from a category page, `search_apps` and `get_app` (one run before the sponsored-label guard, which changed one line of `search_apps` and nothing else). On the historical round-3 source the independent reviewer repeated `get_app` from a category page, `search_apps` from the App Store home page, and `search_apps` through the extension. The reviewer also ran both tools from home, category, search and listing pages, compared cards field by field with the rendered pages, and reproduced French `Accept-Language`, an out-of-range page and the 429 outcome.
+
+Restart author checks (2026-09-30): native tools absent on a public listing page before custom registration. Registered both tools atomically on a separate signed-out Kernel browser. From a different listing page, `get_app` returned a three-plan listing with no warnings; `search_apps` returned `rate_limited`. Tab URL and tab count stayed unchanged. No automatic retry or access bypass was attempted; the temporary browser was deleted. Caller cancellation and oversized/credential-bearing fields are fixture-tested, not live mutation evidence. Fresh independent QA is pending.
