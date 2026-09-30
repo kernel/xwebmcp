@@ -494,8 +494,8 @@
                       const raw = text(b.querySelector(".per-pax-amount"));
                       if (!raw || b.disabled) return null;
                       if (expected.pay_with === "miles") {
-                        const match = raw.match(/^([\d,]+(?:\.\d+)?)\s*(K)?$/i);
-                        const addon = text(b.querySelector('.per-pax-addon')).match(/^\+\s*([^\d]+)([\d,]+(?:\.\d{1,2})?)$/);
+                        const match = raw.match(/^((?:\d+|\d{1,3}(?:,\d{3})+)(?:\.\d{1,3})?)\s*(K)?$/i);
+                        const addon = text(b.querySelector('.per-pax-addon')).match(/^\+\s*([\p{Sc}A-Z]{1,5})((?:\d+|\d{1,3}(?:,\d{3})+)(?:\.\d{1,2})?)$/u);
                         const label = text(b.querySelector('.hidden-product-type'));
                         const detail = text(b.querySelector('.trip-type'));
                         const basis = /Round trip/i.test(detail) ? "roundTrip" : /One way/i.test(detail) ? "oneWay" : null;
@@ -505,7 +505,7 @@
                         return { miles, tax_amount: Number(addon[2].replaceAll(',', '')), currency_symbol: addon[1].trim(), basis, per_person: true, fare_label: label.slice(0, 80) };
                       }
                       const match = raw.match(
-                        /^([^\d]+)([\d,]+(?:\.\d{1,2})?)$/,
+                        /^([\p{Sc}A-Z]{1,5})((?:\d+|\d{1,3}(?:,\d{3})+)(?:\.\d{1,2})?)$/u,
                       );
                       const label = text(
                         b.querySelector(".hidden-product-group"),

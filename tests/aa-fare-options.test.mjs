@@ -191,7 +191,7 @@ function searchHarness(award) {
     fillInput: async () => {}, pressKey: async () => {}
   };
   const def = vm.runInNewContext(`(${sources.search_flights})`, globals)[0];
-  return { def, input, clicks };
+  return { def, input, clicks, row: r };
 }
 for (const award of [false, true]) test(`existing search preserves ${award ? "award miles and taxes" : "cash"} parsing without selecting a fare`, async () => {
   const p = searchHarness(award); const out = plain(await p.def.execute(p.input));
@@ -205,4 +205,36 @@ for (const award of [false, true]) test(`existing search preserves ${award ? "aw
 test("search rejects unknown award modes before any form interaction", async () => {
   const p = searchHarness(false); const out = await p.def.execute({ ...p.input, pay_with: "points" });
   assert.equal(out.status, "error"); assert.equal(p.clicks.length, 0);
+});
+
+for (const [award, raw, addon] of [
+  [false, "$1,,234"], [false, "$1,23"], [false, "$,286"], [false, "$-286"], [false, "$286,"],
+  [true, "10,,500"], [true, "10,50"], [true, "10.5K", "+ $5,,60"], [true, "10.5K", "+ $5,60"], [true, "10.5K", "+ $,560"], [true, "10.5K", "+ $-5.60"]
+]) {
+  test(`malformed ${award ? "award" : "cash"} quote ${raw} ${addon ?? ""} fails closed in readers, preview and search`, async () => {
+    const f = fare({ award, value: raw });
+    if (addon) f.querySelector(".per-pax-addon").textContent = addon;
+    const p = page({ award, rows: [row({ award, fares: [f] })] });
+    assert.equal((await p.run("get_fare_options", {})).status, "site_changed");
+    assert.equal((await p.run("prepare_itinerary", { option_id: "aa_" + "0".repeat(64) })).status, "site_changed");
+    const search = searchHarness(award);
+    const button = search.row.querySelectorAll("button.btn-flight")[0];
+    button.querySelector(".per-pax-amount").textContent = raw;
+    if (addon) button.querySelector(".per-pax-addon").textContent = addon;
+    const out = plain(await search.def.execute(search.input));
+    assert.equal(out.status, "error"); assert.equal(out.flights.length, 0);
+    assert.ok(conforms(search.def.tool.outputSchema, out));
+  });
+}
+
+test("well-grouped cash, miles and tax amounts are parsed without silent regrouping", async () => {
+  for (const [award, raw, expected, addon, expectedTax] of [[false, "$1,234.50", 1234.5, null, null], [false, "CA$1234.50", 1234.5, null, null], [true, "10,500", 10500, "+ $1,005.60", 1005.6], [true, "10.5K", 10500, "+ $5.60", 5.6]]) {
+    const f = fare({ award, value: raw });
+    if (addon) f.querySelector(".per-pax-addon").textContent = addon;
+    const p = page({ award, rows: [row({ award, fares: [f] })] });
+    const out = await p.run("get_fare_options", {});
+    assert.equal(out.status, "ok"); assert.equal(out.options[0].amount, expected); assert.equal(out.options[0].tax_amount, expectedTax);
+    const preview = await p.run("prepare_itinerary", { option_id: out.options[0].option_id });
+    assert.equal(preview.status, "prepared"); assert.equal(preview.option.amount, expected);
+  }
 });

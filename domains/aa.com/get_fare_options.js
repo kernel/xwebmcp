@@ -152,7 +152,7 @@
     const rows = [...document.querySelectorAll(award ? ".flight-row" : ".slice-details")].filter(visible);
     if (!rows.length || rows.length > 100) return fail("site_changed", "Expected 1–100 rendered outbound flight rows; nothing was selected.");
     const amount = (raw, miles) => {
-      const m = miles ? raw.match(/^([\d,]+(?:\.\d+)?)\s*(K)?$/i) : raw.match(/^([^\d]{1,5})([\d,]+(?:\.\d{1,2})?)$/);
+      const m = miles ? raw.match(/^((?:\d+|\d{1,3}(?:,\d{3})+)(?:\.\d{1,3})?)\s*(K)?$/i) : raw.match(/^([\p{Sc}A-Z]{1,5})((?:\d+|\d{1,3}(?:,\d{3})+)(?:\.\d{1,2})?)$/u);
       if (!m) throw Error("Unrecognized fare amount");
       const value = Number((miles ? m[1] : m[2]).replaceAll(",", "")) * (miles && m[2] ? 1000 : 1);
       if (!Number.isFinite(value) || value < 0 || value > 100000000 || (miles && !Number.isInteger(value))) throw Error("Invalid fare amount");
@@ -190,7 +190,7 @@
           const trip_type = /Round trip/i.test(basisText) ? "round_trip" : /One way/i.test(basisText) ? "one_way" : null;
           if (!fare_label || fare_label.length > 80 || !trip_type || (!award && !/per person/i.test(basisText))) throw Error("Unrecognized fare basis");
           const parsed = amount(raw, award);
-          const addon = award ? text(button.querySelector(".per-pax-addon")).match(/^\+\s*([^\d]{1,5})([\d,]+(?:\.\d{1,2})?)$/) : null;
+          const addon = award ? text(button.querySelector(".per-pax-addon")).match(/^\+\s*([\p{Sc}A-Z]{1,5})((?:\d+|\d{1,3}(?:,\d{3})+)(?:\.\d{1,2})?)$/u) : null;
           if (award && !addon) throw Error("Missing award taxes");
           const tax_amount = addon ? Number(addon[2].replaceAll(",", "")) : null;
           if (tax_amount !== null && (!Number.isFinite(tax_amount) || tax_amount > 100000000)) throw Error("Invalid award taxes");
