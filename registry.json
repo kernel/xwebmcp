@@ -278,9 +278,12 @@
         "https://www.google.com/travel/explore?*",
         "https://www.google.com/travel/explore/*"
       ],
-      "status": "draft",
-      "last_verified": null,
-      "notes": "Loaded Explore destination suggestions for the explicitly configured origin and current page settings; no destination selected, tracking or booking."
+      "status": "qa_passed",
+      "last_verified": "2026-09-30",
+      "notes": "Loaded Explore suggestions for an explicit origin after configuring and reloading the page. In-place search changes remain not_ready until reload to avoid stale prices. Separate flight/hotel labels; no destination selection, tracking or booking. Independent public Kernel QA passed; author-only extension invocation passed with pre-granted test site access. Signed-in behavior and permission UI untested.",
+      "provenance": {
+        "qa_agent": "agt_58cec00f988e4fa5f852"
+      }
     },
     {
       "domain": "google.com",
@@ -293,9 +296,12 @@
         "https://www.google.com/travel/flights?*",
         "https://www.google.com/travel/flights/*"
       ],
-      "status": "draft",
-      "last_verified": null,
-      "notes": "Current English round-trip date-grid labels, up to 49 loaded cells. Opens the panel only; never selects or applies dates."
+      "status": "qa_passed",
+      "last_verified": "2026-09-30",
+      "notes": "Loaded English round-trip date-grid labels, up to 49 cells, with two resolved endpoints and no pending prices. Reload after in-place search changes. Opens the panel only; never selects or applies dates. Independent public Kernel QA passed; author-only extension invocation passed from a freshly opened extension tab with pre-granted test site access. Signed-in behavior and permission UI untested.",
+      "provenance": {
+        "qa_agent": "agt_58cec00f988e4fa5f852"
+      }
     },
     {
       "domain": "google.com",
@@ -308,9 +314,12 @@
         "https://www.google.com/maps/*",
         "https://www.google.com/maps?*"
       ],
-      "status": "draft",
-      "last_verified": null,
-      "notes": "Current English Maps route options for two resolved explicit endpoints. Reads up to ten loaded cards without route clicks, geolocation, sending or navigation."
+      "status": "qa_passed",
+      "last_verified": "2026-09-30",
+      "notes": "Current English Maps route options for two resolved explicit endpoints. Reads up to ten loaded cards without route clicks, geolocation, sending or navigation. Independent public Kernel QA and author-only extension invocation passed. Signed-in behavior and extension permission UI untested; test site access was pre-granted.",
+      "provenance": {
+        "qa_agent": "agt_58cec00f988e4fa5f852"
+      }
     },
     {
       "domain": "google.com",
@@ -359,9 +368,12 @@
         "https://www.google.com/maps/*",
         "https://www.google.com/maps?*"
       ],
-      "status": "draft",
-      "last_verified": null,
-      "notes": "Prepare the observed directions-link shape for two explicit endpoints without requesting, navigating, resolving places or changing state."
+      "status": "qa_passed",
+      "last_verified": "2026-09-30",
+      "notes": "Prepare the observed directions-link shape for two explicit endpoints without requesting, navigating, resolving places or changing state. Independent public Kernel QA and author-only extension invocation passed; exact Unicode encoding and unchanged document checked. Extension permission UI untested; test site access was pre-granted.",
+      "provenance": {
+        "qa_agent": "agt_58cec00f988e4fa5f852"
+      }
     },
     {
       "domain": "google.com",
@@ -373,9 +385,12 @@
         "https://google.com/travel/*",
         "https://*.google.com/travel/*"
       ],
-      "status": "draft",
-      "last_verified": null,
-      "notes": "Google Flights via a tfs deep link; outbound itinerary coverage is preserved. Consent now returns CONSENT_REQUIRED without changing preferences; the modified source awaits fresh independent QA."
+      "status": "qa_passed",
+      "last_verified": "2026-09-30",
+      "notes": "Google Flights via a tfs deep link; outbound itinerary coverage is preserved. Consent stops without changing preferences. URLs are guarded after navigation, readiness and parsing; only public search parameters are retained. Fresh independent public Kernel QA passed, including late-redirect fixtures; author-only extension invocation passed. No tracking or booking; signed-in behavior and extension permission UI untested.",
+      "provenance": {
+        "qa_agent": "agt_58cec00f988e4fa5f852"
+      }
     },
     {
       "domain": "google.com",

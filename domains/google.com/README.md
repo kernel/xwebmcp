@@ -1,14 +1,14 @@
 # google.com
 
-Tools for three separate Google products that share the `google.com` namespace: Google Flights (https://www.google.com/travel/flights), Google Finance (https://www.google.com/finance) and Google Maps (https://www.google.com/maps). They are kept apart by URL pattern, not by namespace (see [URL patterns](#url-patterns-finance-and-maps)). Google Search, Gmail, Calendar, Drive, Hotels and the other Google products have no tools here.
+Tools for Google Travel (Flights: https://www.google.com/travel/flights; Explore: https://www.google.com/travel/explore), Google Finance (https://www.google.com/finance) and Google Maps (https://www.google.com/maps), sharing the `google.com` namespace. They are kept apart by URL pattern, not by namespace (see [URL patterns](#url-patterns-finance-and-maps)). Google Search, Gmail, Calendar, Drive, Hotels and the other Google products have no tools here.
 
 | tool | file | status | notes |
 | --- | --- | --- | --- |
-| explore_destinations | [explore_destinations.js](explore_destinations.js) | draft | Loaded Travel Explore suggestions for the page's explicit origin and current settings; no destination selected |
-| get_date_grid | [get_date_grid.js](get_date_grid.js) | draft | Current round-trip Flights date/price labels; opens the panel but never applies dates |
-| get_directions | [get_directions.js](get_directions.js) | draft | Current Maps route options and resolved endpoints; no route clicked or navigation started |
-| prepare_directions | [prepare_directions.js](prepare_directions.js) | draft | Exact endpoint link for human navigation; no request or location permission |
-| search_flights | [search_flights.js](search_flights.js) | draft | Outbound itineraries from a `tfs` deep link; consent now requires human handling |
+| explore_destinations | [explore_destinations.js](explore_destinations.js) | qa_passed | Loaded Travel Explore suggestions after configuring an explicit origin and reloading; no destination selected |
+| get_date_grid | [get_date_grid.js](get_date_grid.js) | qa_passed | Loaded round-trip Flights date/price labels with two resolved endpoints; opens the panel but never applies dates |
+| get_directions | [get_directions.js](get_directions.js) | qa_passed | Current Maps route options and resolved endpoints; no route clicked or navigation started |
+| prepare_directions | [prepare_directions.js](prepare_directions.js) | qa_passed | Exact endpoint link for human navigation; no request or location permission |
+| search_flights | [search_flights.js](search_flights.js) | qa_passed | Outbound itineraries from a `tfs` deep link; consent requires human handling and late redirects are guarded |
 | get_stock_quote | [get_stock_quote.js](get_stock_quote.js) | qa_passed | Finance quote and key statistics for a `TICKER:EXCHANGE` symbol from one same-origin request; page tool, never navigates |
 | search_places | [search_places.js](search_places.js) | qa_passed | Maps place search through the tab's own search box: up to 20 loaded results, no scrolling; page tool |
 | get_place | [get_place.js](get_place.js) | qa_passed | Maps place details for the open place or a place from the results the tab shows; page tool |
@@ -147,13 +147,17 @@ These additions are page tools: `prepare_directions` only builds a link; `get_di
 
 ### Restart verification
 
-Public signed-out Kernel checks on 2026-09-30: native tools absent on Explore and Maps directions; the full eight-tool namespace registered atomically, preserving Finance, Maps and Flights coverage. `prepare_directions` returned the requested Cincinnati–Columbus link without navigating; `get_directions` read three actual routes including driving and transit. CVG–SFO November 10–17 round-trip `search_flights` succeeded, and the date-grid prototype returned alternative-date prices with its window marker and selected date unchanged. Explore with origin CVG returned separate flight/hotel labels; no-origin and pending-origin paths returned explicit failures. These are author observations. Fresh independent QA of the initial restarted source found three should-fix issues: stale Explore cards attributed to a newly selected origin, missing date-grid readiness guards, and unguarded late Flights redirects. The fixes below require a targeted recheck before sign-off.
+Public signed-out Kernel checks on 2026-09-30: native tools absent on Explore and Maps directions; the full eight-tool namespace registered atomically, preserving Finance, Maps and Flights coverage. `prepare_directions` returned the requested Cincinnati–Columbus link without navigating; `get_directions` read three actual routes including driving and transit. CVG–SFO November 10–17 round-trip `search_flights` succeeded, and the date-grid prototype returned alternative-date prices with its window marker and selected date unchanged. Explore with origin CVG returned separate flight/hotel labels; no-origin and pending-origin paths returned explicit failures. These are author observations. Fresh independent QA of the initial restarted source found three should-fix issues: stale Explore cards attributed to a newly selected origin, missing date-grid readiness guards, and unguarded late Flights redirects. A targeted recheck signed off on source head `e2c1605` with no remaining blocking or should-fix findings.
 
 Explore and the date grid conservatively require the current query to match the document's navigation timing entry and endpoint values to match their initial DOM attributes. If an in-place change is observed, that document remains `not_ready` until reload, even if the user changes back. This avoids pairing a changed search with retained prices; it intentionally rejects settled in-place changes too. Active price-loading wrappers also fail closed, including Google's progressbars that keep `aria-hidden="true"` on the child while the wrapper is active. The tools do not reload or choose settings themselves.
 
 Flights URLs are checked after navigation, after the readiness wait and after parsing. Consent and unexpected pages return no URL or itineraries; allowed Flights URLs retain only public `tfs`, `hl`, `gl` and `curr` parameters, without fragments.
 
 Fixture-only cases include consent and late redirects, challenges, rate limits, cancellation, malformed input before interaction, hidden duplicate views, bounds, stale endpoint input, missing or edited Flights endpoints, extra stops, unsupported language/trip, unrelated dialogs, hostile field values and no date/OK clicks. No real account writes or approved execution are claimed from fixtures.
+
+Independent restart QA used `openai-codex/gpt-6.1-sol` with thinking `high`, fast `false`, context `272k` and Codex authentication. Initial head `a9791f8`: 47 public live invocations, 46 returned outputs checked with full Ajv; the three findings above withheld sign-off. Targeted head `e2c1605`: all three fixed, 20/20 live outputs passed full Ajv, 49/49 grid cells matched the page, reverse origin changes remained latched until reload, and reload restored matching Explore prices. No second recheck was needed. Repository tests: 1,669 passed; extension unit tests: 14 passed; registry: 86 valid. The original quote/place sources are unchanged.
+
+Author-only Chromium 153 extension checks of the reviewed source invoked preparation, directions, Explore, date grid and Flights search successfully. The current date grid returned `USD` and matching labels from a freshly opened extension Flights tab; immediate lookup after a CDP-created results tab had returned no listed grid tool. Site access was pre-granted only in the isolated test copy, so the permission prompt is untested. The independent reviewer did not run live extension QA. Registry status is `qa_passed`, not `verified`; the known Finance extension gap and policy questions remain.
 
 ## Known limitations
 
