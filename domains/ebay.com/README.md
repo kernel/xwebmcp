@@ -4,9 +4,9 @@ Tools for eBay (https://www.ebay.com): listing search, listing details and selle
 
 | tool | file | status | notes |
 |------|------|--------|-------|
-| search | [search.js](search.js) | draft | One results page (up to 60 listings) with eBay's sort and filters; `sold_only` searches sold listings and needs a signed-in session. |
-| get_listing | [get_listing.js](get_listing.js) | draft | One listing by item number: price or current bid, availability, condition, shipping, returns, item specifics, seller, sold notice and variation menus. |
-| get_seller_profile | [get_seller_profile.js](get_seller_profile.js) | draft | Public feedback summary for a username; buyer comments are not returned. |
+| search | [search.js](search.js) | qa_passed | One results page (up to 60 listings) with eBay's sort and filters; `sold_only` searches sold listings and needs a signed-in session. |
+| get_listing | [get_listing.js](get_listing.js) | qa_passed | One listing by item number: price or current bid, availability, condition, shipping, returns, item specifics, seller, sold notice and variation menus. |
+| get_seller_profile | [get_seller_profile.js](get_seller_profile.js) | qa_passed | Public feedback summary for a username; buyer comments are not returned. |
 
 All three are read-only. None of them signs in, bids, makes offers, contacts sellers, changes the cart or
 Watchlist, opens checkout, or changes any account setting or preference.
@@ -141,18 +141,23 @@ no zero count is `site_changed`.
   eBay signals the sign-in requirement. Following one in the browser's default mode would send a credentialed
   request to eBay's sign-in host (a QA check saw its `Set-Cookie` processed, adding a `cid` cookie and changing
   `dp1` and `ebay`, although the response is unreadable). When a manual redirect comes back the tool therefore
-  repeats the request once with `mode: "same-origin"`, which follows a redirect within `www.ebay.com` and makes
-  the browser refuse one to another host; a builder check on 2026-09-30 saw no `cid` cookie after the
-  same-origin attempt and one after the default-mode attempt. What that follow shows decides the outcome: a
-  path under `/splashui/` is eBay's verification page (`challenge`), an `/itm/<other number>` path for
-  `get_listing` is a relisted item (named in the message), an HTTP 403 counts as a blocked attempt and is
-  retried, a refused cross-host redirect means sign-in or account completion (`login_required` for `sold_only`),
-  and anything else is `redirected`. For `sold_only`, a header that already shows the sign-in link returns
-  `login_required` without the second request. A redirect therefore costs up to two requests, and up to six
-  across the three attempts while eBay is challenging the browser.
+  repeats the request once with `mode: "same-origin"`, which follows the redirect chain within `www.ebay.com`
+  and makes the browser refuse a redirect to another host without sending it (the tool descriptions say
+  "repeated once": one repeated request, which follows the chain). Independent QA confirmed on fresh browsers
+  that no request or `Set-Cookie` reaches a host other than `www.ebay.com` and that no `cid` cookie appears; a
+  builder check on 2026-09-30 saw a `cid` cookie after a default-mode follow and none after the same-origin one.
+  What that follow shows decides the outcome: a path under `/splashui/` is eBay's verification page
+  (`challenge`), an `/itm/<other number>` path for `get_listing` is a relisted item (named in the message), an
+  HTTP 403 counts as a blocked attempt and is retried, a refused cross-host redirect means sign-in or account
+  completion (`login_required` for `sold_only`), and anything else, including a real page or another HTTP
+  error, is `redirected`. For `sold_only`, a header that already shows the sign-in link returns `login_required`
+  without the second request, so a verification redirect on that path is reported as `login_required` too.
+  A redirect therefore costs two requests, three for a `challenge` (the last is the verification page itself),
+  and up to six across the three attempts while eBay is answering 403 (about 12 s with the backoff); an
+  emulated redirect loop cost 22 requests before the result was `redirected`. All of them are GETs.
 - **Verification pages and blocks vary by browser and by time.** In Kernel browsers, eBay redirected search, item
   and feedback fetches to `/splashui/challenge` after roughly 12 to 60 calls in three of a QA reviewer's four
-  browsers, and the state persisted for over 25 minutes on two of them; the first builder browsers saw only the
+  browsers, and in the second round the state lasted about 10 to 12 minutes on each of two browsers without being seen to clear; the first builder browsers saw only the
   intermittent 403 error page. In a separate, non-stealth local Chromium on a datacenter-style egress (used for
   the extension check), redirects to `/splashui/challenge` or `/splashui/captcha` and HTTP 403 answers appeared
   from the first calls. A caller should expect `challenge` and `blocked` outcomes and stop, not retry in a loop.
@@ -171,9 +176,12 @@ no zero count is `site_changed`.
 
 ## Known limitations
 
-- The ship-to postal code that eBay appends to a delivery estimate is removed for US ZIP codes (seen live) and for
-  a trailing uppercase code such as `SW1A 1AA` or `K1A 0B1` (fixtures only; no non-US session was tested), so a
-  postal code in another format could still appear in `delivery_text`.
+- The ship-to postal code that eBay appends to a delivery estimate is removed for US ZIP codes (seen live, anywhere
+  after " to " in `delivery_text` and `shipping_text`) and for an uppercase code that ends the text, such as
+  `SW1A 1AA` or `K1A 0B1` (fixtures only; no non-US session was tested). A non-US code in the middle of
+  `shipping_text` is not removed, a postal code in another format could still appear, and ordinary text ending in
+  "to <3 to 9 uppercase letters or digits including a digit>" is removed too (for example "up to 100"). The tool
+  descriptions say the code "is removed" without these qualifications.
 - `delivery_text` is null on pages that fold the delivery estimate into the Shipping line. A card's price under a
   price filter can fall outside the range for a listing with several variations (the card shows the lowest price).
 - **Untested surfaces.** The relisted-item redirect that names the new item was seen live once and could not be
@@ -253,23 +261,40 @@ revision:
 - Test gaps (`shipping_text` redaction, digit bounds, `/splashui/` anchoring, follow-up options, equal-length
   labels) are now pinned; 12 of 12 spot mutations of the tool source fail the tests.
 
-Independent QA, round 3 (fix round 2 of 2): requested; all three tools stay `draft` until it signs off.
+Independent QA, round 3 (same agent, head `2149c9b`, the source recorded as `qa_passed`): SIGN OFF for all
+three tools, with these limits stated by the reviewer: `sold_only` success and any signed-in behaviour were not
+tested (no authorized session), and non-US sessions and the `rate_limited`, `site_error` and `request_failed`
+outcomes were never observed (fixtures only). About 30 live calls; 20 collected live outputs validated with no
+failures; 41 malformed inputs made no request; the redirect paths were also emulated with real Chrome fetch
+semantics (verification page, a redirect to the sign-in host refused with no request, a relisted item, repeated
+403 follow-ups giving `blocked` in 6 requests). Remaining minor findings, documented rather than fixed so that the
+signed-off source stays as reviewed: non-US postal-code redaction and its unqualified description wording (see
+Known limitations), the "repeated once" wording and the redirect request counts (see Site quirks), the masking
+of a verification redirect by `login_required` on signed-out `sold_only`, a raw error if a follow-up response
+had no URL (real fetch responses always have one), and mutations the tests did not catch, which now fail them.
+
+The `qa_passed` status applies to the tool sources at `2149c9b`; the commits after it change only the README,
+the tests and `registry.json`.
 
 ## Verification
 
-Kernel runtime: the builder checks and QA round 1 above. `sold_only` success was never QA-tested (no
-authorized signed-in session); the builder verified it once in one signed-in test session.
+Kernel runtime: the builder checks and the QA rounds above, signed out. `sold_only` success was verified once by
+the builder in one signed-in test session and never by QA.
 
-Chrome extension runtime (Chromium 153, this repository's `extension/` built at the reviewed commit, a scratch
+Chrome extension runtime (Chromium 153, this repository's `extension/` at the reviewed commits, a scratch
 profile, tools installed with `xwebmcp dev` and invoked through `xwebmcp mcp` with `open_tab` and `invoke_tool`,
-because the CLI refuses tabs it did not open): the builder got successful `search` and `get_listing` results and
-a successful `get_seller_profile` result, `invalid_input` and signed-out `login_required` outcomes, and, on
-other calls in the same session, `challenge` outcomes where eBay redirected to its verification page (the
-builder had pre-granted `https://www.ebay.com/*` in the scratch copy of the manifest instead of using the popup's
-Grant access prompt; no runtime code was changed). QA's own extension run granted the site through the prompt,
-but eBay served a verification page to its network, so it saw only error paths (`redirected` in that revision)
-and `..` reproduced D1. Parity with the Kernel runtime is therefore shown only for the cases listed here:
-not for every input, not for unrelated starting pages, and not for the navigation-lifetime case.
+because the CLI refuses tabs it did not open). Builder, at `2149c9b`: `search` 2 of 2 and `get_listing` 2 of 2
+returned results, `invalid_input` for `limit: 999` and `..`, `login_required` for a signed-out `sold_only`, and
+`challenge` for `get_seller_profile`, which eBay redirected to its verification page on that call; a successful
+`get_seller_profile` result in the extension was seen only at an earlier revision, before the QA fixes. The builder
+pre-granted `https://www.ebay.com/*` in the scratch copy of the manifest instead of using the popup's Grant access
+prompt (no runtime code changed). QA granted the site through the prompt, but eBay served a verification page to
+that network on every call, so QA saw only `challenge` and `invalid_input` outcomes from real calls, plus
+redirect and 403 paths emulated with page-level interception (verification page, refused cross-host redirect,
+relisted item, repeated 403 follow-ups). No independent success output was produced in the extension. Parity with
+the Kernel runtime is therefore shown only for the cases listed here: not for every input, not for unrelated
+starting pages, and not for the navigation-lifetime case (QA's Kernel check: a call interrupted by navigating
+away returns `outcome_unknown` after the timeout, as the runtime specification says for page tools).
 
 ## Sessions
 

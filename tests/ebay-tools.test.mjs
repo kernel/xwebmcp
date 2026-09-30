@@ -260,6 +260,32 @@ test("search: a redirect whose follow-up is eBay's 403 error page counts as a bl
   assert.equal(stuck.output.error_kind, "blocked");
 });
 
+test("search: a signed-out header changes only the sold_only outcome, not ordinary redirects", async () => {
+  const { output, calls } = await run("search", { query: "k" }, { responses: [REDIRECT, "throw"], signedOut: true });
+  assert.equal(output.error_kind, "redirected");
+  assert.equal(calls.fetches.length, 2, "an ordinary search still reads where the redirect leads");
+});
+
+test("all tools: only a 403 on the follow-up is a blocked attempt; other follow-up outcomes stay redirects", async () => {
+  const at = { search: "/sch/i.html", get_listing: `/itm/${ID}`, get_seller_profile: "/fdbk/feedback_profile/fixture_seller_a" };
+  const inputs = { search: { query: "k" }, get_listing: { item_id: ID }, get_seller_profile: { seller_username: "fixture_seller_a" } };
+  for (const name of NAMES) for (const status of [404, 429, 500, 503]) {
+    const { output, calls } = await run(name, inputs[name], { responses: [REDIRECT, { status, url: `https://www.ebay.com${at[name]}`, html: "<html></html>" }] });
+    assert.equal(output.error_kind, "redirected", `${name} ${status}`);
+    assert.equal(calls.fetches.length, 2, `${name} ${status}: no retry`);
+  }
+  for (const name of NAMES) {
+    const { output } = await run(name, inputs[name], { responses: [REDIRECT, { status: 403, url: "https://www.ebay.com/splashui/challenge", html: "<html></html>" }] });
+    assert.equal(output.error_kind, "challenge", `${name}: the verification page is recognized before the status`);
+    assert.match(output.error_message, /never tries to solve/, name);
+  }
+});
+
+test("search: a signed-in sold_only redirect that stays on www.ebay.com is a plain redirect", async () => {
+  const { output } = await run("search", { query: "k", sold_only: true }, { responses: [REDIRECT, { status: 200, url: "https://www.ebay.com/b/Keyboards/1/bn_1", html: "<html></html>" }] });
+  assert.equal(output.error_kind, "redirected");
+});
+
 test("search: any other redirect is reported, not followed or treated as results", async () => {
   const { output, calls } = await run("search", { query: "k" }, { responses: [REDIRECT, "throw"] });
   assert.equal(output.error_kind, "redirected");
@@ -566,8 +592,15 @@ test("get_listing: postal codes of other countries are removed too, without eati
     ['<span class="ux-textspans"> to </span><span class="ux-textspans">K1A 0B1</span>', "Estimated between Sat, Oct 3 and Fri, Oct 9"],
     ['<span class="ux-textspans"> to </span><span class="ux-textspans">123456</span>', "Estimated between Sat, Oct 3 and Fri, Oct 9"],
     ['<span class="ux-textspans"> in 3 to 5 days</span>', "Estimated between Sat, Oct 3 and Fri, Oct 9 in 3 to 5 days"],
-    ['<span class="ux-textspans"> to 5 days</span>', "Estimated between Sat, Oct 3 and Fri, Oct 9 to 5 days"]
+    ['<span class="ux-textspans"> to 5 days</span>', "Estimated between Sat, Oct 3 and Fri, Oct 9 to 5 days"],
+    ['<span class="ux-textspans"> to NEW YORK</span>', "Estimated between Sat, Oct 3 and Fri, Oct 9 to NEW YORK"],
+    ['<span class="ux-textspans"> to 12</span>', "Estimated between Sat, Oct 3 and Fri, Oct 9 to 12"],
+    ['<span class="ux-textspans"> to 1A2</span>', "Estimated between Sat, Oct 3 and Fri, Oct 9"],
+    ['<span class="ux-textspans"> to A1B2C3D4E</span>', "Estimated between Sat, Oct 3 and Fri, Oct 9"],
+    ['<span class="ux-textspans"> to A1B2C3D4E5</span>', "Estimated between Sat, Oct 3 and Fri, Oct 9 to A1B2C3D4E5"],
+    ['<span class="ux-textspans"> to SW1A 1AA. Fixture note</span>', "Estimated between Sat, Oct 3 and Fri, Oct 9 to SW1A 1AA. Fixture note"]
   ];
+  // A non-US code is removed only when it ends the text (a documented limitation); the last case pins that.
   for (const [tail, expected] of cases) assert.equal((await run("get_listing", { item_id: ID }, { responses: [ok(withDelivery(tail))] })).output.delivery_text, expected, tail);
   const shipping = itemPage().replace("<span class=\"ux-textspans\">Standard Tracked Shipping</span>", "<span class=\"ux-textspans\">Standard Tracked Shipping to 10001</span>");
   assert.equal((await run("get_listing", { item_id: ID }, { responses: [ok(shipping)] })).output.shipping_text, "US $10.43 Standard Tracked Shipping. Located in: Testville, Testland", "shipping_text is redacted too");
@@ -699,6 +732,7 @@ test("get_seller_profile: usernames are validated and encoded, and other origins
     assert.equal(output.error_kind, "invalid_input", JSON.stringify(input));
     assert.equal(calls.fetches.length, 0);
   }
+  for (const value of ["..", ".", "...", "--", "__"]) assert.equal(conforms(definitions.get_seller_profile.tool.inputSchema, { seller_username: value }), false, `the schema rejects ${value} too`);
   for (const valid of ["a.b", "_x_", "9-9", "user.name-1"]) {
     const { output } = await run("get_seller_profile", { seller_username: valid }, { responses: [ok(profilePage({ name: valid }))] });
     assert.equal(output.status, "ok", valid);
@@ -708,6 +742,22 @@ test("get_seller_profile: usernames are validated and encoded, and other origins
   const { output, calls } = await run("get_seller_profile", { seller_username: "fixture_seller_a" }, { origin: "https://signin.ebay.com", responses: [ok(profilePage())] });
   assert.equal(output.error_kind, "wrong_page");
   assert.equal(calls.fetches.length, 0);
+});
+
+test("input schemas and the in-tool validation agree: whatever the schema rejects, the tool rejects without a request", async () => {
+  const table = {
+    search: [{ query: "k" }, { query: 5 }, { query: "" }, { query: "k", sort: "cheapest" }, { query: "k", sort: null }, { query: "k", buying_format: "bin" }, { query: "k", condition: "mint" }, { query: "k", item_location: "moon" },
+      { query: "k", price_min: -1 }, { query: "k", price_max: 1e9 }, { query: "k", free_shipping: "yes" }, { query: "k", sold_only: 1 }, { query: "k", category_id: "abc" }, { query: "k", category_id: "12345678901" },
+      { query: "k", page: 0 }, { query: "k", page: 21 }, { query: "k", page: 1.5 }, { query: "k", limit: 0 }, { query: "k", limit: 61 }, { query: "k", extra: 1 }, { query: "a".repeat(201) }, {}],
+    get_listing: [{ item_id: ID }, { item_id: "12345678" }, { item_id: "123456789" }, { item_id: "12345678901234" }, { item_id: "123456789012345" }, { item_id: "29800000000a" }, { item_id: 298000000001 }, { item_id: ID, extra: 1 }, {}],
+    get_seller_profile: [{ seller_username: "ok_name" }, { seller_username: "a" }, { seller_username: ".." }, { seller_username: "." }, { seller_username: "--" }, { seller_username: "__" }, { seller_username: "a b" }, { seller_username: "a/b" }, { seller_username: "x".repeat(64) }, { seller_username: "x".repeat(65) }, { seller_username: "a.b" }, { seller_username: 5 }, { seller_username: "ok", extra: 1 }, {}]
+  };
+  for (const [name, inputs] of Object.entries(table)) for (const input of inputs) {
+    if (conforms(definitions[name].tool.inputSchema, input)) continue;
+    const { output, calls } = await run(name, input, { responses: [ok("<html></html>")] });
+    assert.equal(output.error_kind, "invalid_input", `${name} ${JSON.stringify(input)} is rejected by the schema, so the tool must reject it too`);
+    assert.equal(calls.fetches.length, 0);
+  }
 });
 
 test("every ebay.com tool is read-only, page-kind, and only issues GET requests to relative paths", async () => {
