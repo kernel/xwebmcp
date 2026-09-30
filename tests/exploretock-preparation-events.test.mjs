@@ -6,7 +6,7 @@ import { runInNewContext } from "node:vm";
 const ORIGIN = "https://www.exploretock.com";
 const day = n => new Date(Date.now() + n * 86400000).toISOString().slice(0, 10);
 const DATE = day(30);
-const sources = Object.fromEntries(["search_events", "prepare_reservation", "get_restaurant"].map(name => [name, readFileSync(new URL(`../domains/exploretock.com/${name}.js`, import.meta.url), "utf8")]));
+const sources = Object.fromEntries(["search_events", "search_restaurants", "prepare_reservation", "get_restaurant"].map(name => [name, readFileSync(new URL(`../domains/exploretock.com/${name}.js`, import.meta.url), "utf8")]));
 const plain = value => JSON.parse(JSON.stringify(value));
 const FAKE_TOKEN = "fabricated-secret-token";
 const METRO = { slug: "exampleton", name: "Exampleton", timezone: "America/Chicago" };
@@ -36,11 +36,24 @@ function schemaMatches(schema, value) {
 
 function harness(name, options = {}) {
   const calls = { fetches: [], dom: 0 };
-  const element = (text = "", query = () => null, attrs = {}) => ({ textContent: text, querySelector: query, disabled: options.disabled ?? false, getAttribute: key => attrs[key] ?? null });
+  const element = (text = "", query = () => null, attrs = {}) => ({
+    textContent: text, querySelector: query, disabled: options.disabled ?? false, getAttribute: key => attrs[key] ?? null,
+    checkVisibility: options.noVisibilityApi ? undefined : args => {
+      assert.deepEqual(plain(args), { opacityProperty: true, visibilityProperty: true, contentVisibilityAuto: true });
+      return options.visible !== false;
+    },
+    getClientRects: () => options.zeroSize ? [{ width: 0, height: 0 }] : [{ width: 100, height: 40 }]
+  });
   const rows = (options.rows ?? [{ label: "5:00 PM", areas: "Bar · Room" }]).map(slot => {
-    const box = element("", sel => sel === ":scope > span" ? element(slot.label) : sel === "p" ? element(slot.areas ?? "") : null);
+    const label = element(slot.label);
+    if (slot.labelVisible === false) label.checkVisibility = () => false;
+    const box = element("", sel => sel === ":scope > span" ? label : sel === "p" ? element(slot.areas ?? "") : null);
     const button = options.noButton ? null : element("", undefined, { "aria-label": slot.control ?? "Book Dinner Reservation at " + slot.label, "aria-disabled": options.ariaDisabled ?? null });
-    return element("", sel => sel === '[data-testid="search-result-time"]' ? box : sel === '[data-testid="booking-card-button"]' ? button : null);
+    if (slot.timeVisible === false) box.checkVisibility = () => false;
+    if (button && slot.buttonVisible === false) button.checkVisibility = () => false;
+    const row = element("", sel => sel === '[data-testid="search-result-time"]' ? box : sel === '[data-testid="booking-card-button"]' ? button : null);
+    if (slot.rowVisible === false) row.checkVisibility = () => false;
+    return row;
   });
   const state = options.state ?? { app: { config: { business: { ...business, ...options.business }, metroArea: [METRO] }, jwtToken: FAKE_TOKEN }, calendar: { offerings: { experience: options.offerings ?? [offering] } }, patron: { email: "private@example.test" } };
   const context = {
@@ -118,7 +131,7 @@ test("search_events wrong origin and changed state fail, with no navigation", as
 });
 
 test("get_restaurant returns bounded published schedules, not event inventory", async () => {
-  const details = { schedule: [{ date: [{ date: DATE }, { date: DATE }, { date: day(31) }], repetition: [{ weekday: "MONDAY" }] }], slots: [{ startTime: "18:00", endTime: "19:30" }], privateToken: FAKE_TOKEN };
+  const details = { schedule: [{ date: [{ date: DATE }, { date: DATE }, { date: day(31) }, { date: "2026-02-30" }, { date: "2026-13-01" }], repetition: [{ weekday: "MONDAY" }] }], slots: [{ startTime: "18:00", endTime: "19:30" }], privateToken: FAKE_TOKEN };
   const h = harness("get_restaurant", { offerings: [{ ...offering, type: "GA_EVENT", eventDetails: details }] });
   const output = await h.run({ slug: "fabricated-bistro" });
   assert.deepEqual(output.offerings[0].event_schedule, { dates: [DATE, day(31)], times: [{ start: "18:00", end: "19:30" }], has_repetition: true, truncated: false });
@@ -157,11 +170,13 @@ for (const input of [null, [], {}, { ...prepInput, date: "2026-02-30" }, { ...pr
 }
 for (const [options, kind] of [
   [{ url: "https://example.com/" }, "wrong_page"], [{ url: ORIGIN + "/" }, "wrong_page"], [{ url: `${ORIGIN}/fabricated-bistro/experience/2/x?date=${DATE}&size=2` }, "wrong_page"], [{ url: `${ORIGIN}/fabricated-bistro/experience/1/x?date=${day(31)}&size=2` }, "wrong_page"],
-  [{ title: "Just a moment..." }, "challenge"], [{ ready: "interactive" }, "site_changed"], [{ state: {} }, "site_changed"], [{ business: { domainName: "another-venue" } }, "site_changed"],
+  [{ title: "Just a moment..." }, "challenge"], [{ ready: "interactive" }, "site_changed"], [{ state: {} }, "site_changed"], [{ business: { domainName: "another-venue" } }, "site_changed"], [{ business: { domainName: 123 } }, "site_changed"],
   [{ business: { bookingsDisabled: true } }, "booking_disabled"], [{ business: { bookingsDisabled: undefined } }, "booking_disabled"], [{ business: { timeZone: "Not/AZone" } }, "site_changed"],
   [{ offerings: [{ ...offering, type: "GA_EVENT" }] }, "unsupported_offering"], [{ offerings: [{ ...offering, partySize: [4] }] }, "invalid_input"],
   [{ rows: [] }, "no_availability"], [{ rows: [{ label: "5:00 PM", control: "Join Notify list for Dinner Reservation at 5:00 PM" }] }, "notify_only"],
   [{ disabled: true }, "no_availability"], [{ ariaDisabled: "true" }, "no_availability"], [{ noButton: true }, "no_availability"],
+  [{ visible: false }, "no_availability"], [{ zeroSize: true }, "no_availability"], [{ noVisibilityApi: true }, "no_availability"],
+  [{ rows: [{ label: "5:00 PM", rowVisible: false }] }, "no_availability"], [{ rows: [{ label: "5:00 PM", timeVisible: false }] }, "no_availability"], [{ rows: [{ label: "5:00 PM", buttonVisible: false }] }, "no_availability"], [{ rows: [{ label: "5:00 PM", labelVisible: false }] }, "no_availability"],
   [{ rows: [{ label: "5:00 PM", control: "Book Another Offering at 5:00 PM" }] }, "no_availability"], [{ rows: [{ label: "5:00 PM" }, { label: "5:00 PM" }] }, "site_changed"],
   [{ signal: { aborted: true } }, "cancelled"]
 ]) {
@@ -171,6 +186,24 @@ for (const [options, kind] of [
     assert.equal(h.calls.fetches.length, 0);
   });
 }
+for (const name of ["search_events", "search_restaurants"]) {
+  test(`${name} skips impossible source dates and times with a warning`, async () => {
+    const rows = eventRows(1);
+    if (name === "search_restaurants") rows[0].offering[0].offering.type = "RESERVATION";
+    rows[0].offering[0].ticketGroup = [`${DATE}T18:00`, `${DATE}T99:99`, `${DATE}T24:00`, `${DATE}T17:60`, `${DATE}T18:00:99`, `${DATE}T18:00garbage`, "2026-02-30T18:00"].map(availableDateTime => ({ availableDateTime }));
+    const h = harness(name, { response: { status: 200, html: stateHtml(searchState(rows)) } });
+    const output = await h.run(name === "search_events" ? eventInput : { city: "exampleton", date: DATE });
+    assert.equal(output.status, "ok");
+    assert.deepEqual(output.venues[0].offerings[0].slots.map(s => s.local_datetime), [`${DATE}T18:00`]);
+    assert.equal(output.venues[0].offerings[0].slot_count, 1);
+    assert.ok(output.warnings.some(w => w.includes("skipped")));
+  });
+}
+test("prepare_reservation ignores a hidden duplicate row", async () => {
+  const output = await harness("prepare_reservation", { rows: [{ label: "5:00 PM", rowVisible: false }, { label: "5:00 PM", areas: "Room" }] }).run(prepInput);
+  assert.equal(output.status, "prepared");
+});
+
 test("prepare_reservation seating is exact and unambiguous", async () => {
   const input = { ...prepInput }; delete input.seating_area;
   assert.equal((await harness("prepare_reservation").run(input)).error_kind, "ambiguous_seating");

@@ -79,7 +79,7 @@
     const business = state && state.app && state.app.config && state.app.config.business;
     const offerings = state && state.calendar && state.calendar.offerings && state.calendar.offerings.experience;
     const offering = Array.isArray(offerings) ? offerings.find(o => o && o.id === input.offering_id) : null;
-    if (!business || business.domainName?.toLowerCase() !== input.slug.toLowerCase() || typeof business.name !== "string" || !offering || typeof offering.name !== "string") return fail("site_changed", "The page does not identify the requested venue and offering.");
+    if (!business || typeof business.domainName !== "string" || business.domainName.toLowerCase() !== input.slug.toLowerCase() || typeof business.name !== "string" || !offering || typeof offering.name !== "string") return fail("site_changed", "The page does not identify the requested venue and offering.");
     if (!["RESERVATION", "PRIX_FIXE", "DEPOSIT"].includes(offering.type)) return fail("unsupported_offering", "Preparation supports table reservations only, not event tickets, pickup or delivery.");
     if (business.bookingsDisabled !== false) return fail("booking_disabled", "The page does not confirm that online booking is enabled.");
     if (!Array.isArray(offering.partySize) || !offering.partySize.includes(input.party_size)) return fail("invalid_input", "This offering does not confirm the requested party size.");
@@ -93,10 +93,12 @@
       if (m && Number(m[1]) >= 1 && Number(m[1]) <= 12 && Number(m[2]) < 60) return String(Number(m[1]) % 12 + (/p/i.test(m[3]) ? 12 : 0)).padStart(2, "0") + ":" + m[2];
       return /^([01]?\d|2[0-3]):[0-5]\d$/.test(label) ? label.padStart(5, "0") : null;
     };
+    const visible = element => element && typeof element.checkVisibility === "function" && element.checkVisibility({ opacityProperty: true, visibilityProperty: true, contentVisibilityAuto: true }) && [...element.getClientRects()].some(r => r.width > 0 && r.height > 0);
     const matches = [...document.querySelectorAll('[data-testid="search-result-list-item"]')].filter(row => {
       const timeBox = row.querySelector('[data-testid="search-result-time"]');
-      const label = timeBox?.querySelector(":scope > span")?.textContent.trim();
-      return label && toTime(label) === input.time;
+      const labelElement = timeBox?.querySelector(":scope > span");
+      const label = labelElement?.textContent.trim();
+      return visible(row) && visible(timeBox) && visible(labelElement) && label && toTime(label) === input.time;
     });
     if (!matches.length) return fail("no_availability", "The page does not currently list the requested time; refresh availability before preparing again.");
     if (matches.length !== 1) return fail("site_changed", "Several rows match this time; preparation cannot identify a unique slot.");
@@ -106,7 +108,7 @@
     const button = row.querySelector('[data-testid="booking-card-button"]');
     const control = button?.getAttribute("aria-label") || "";
     if (control.toLowerCase().includes("notify")) return fail("notify_only", "This time offers Notify, not Book. No notification request was submitted.");
-    if (!button || button.disabled || button.getAttribute("aria-disabled") === "true" || control !== "Book " + offering.name + " at " + label) return fail("no_availability", "The exact slot does not have an enabled, recognized Book control.");
+    if (!visible(button) || button.disabled || button.getAttribute("aria-disabled") === "true" || control !== "Book " + offering.name + " at " + label) return fail("no_availability", "The exact slot does not have an enabled, recognized Book control.");
     const areas = [...new Set((timeBox.querySelector("p")?.textContent || "").split("\u00b7").map(s => s.trim()).filter(Boolean))];
     if (areas.length > 12 || areas.some(s => s.length > 60)) return fail("site_changed", "The seating-area list cannot be represented safely.");
     if (input.seating_area !== undefined && !areas.includes(input.seating_area)) return fail("invalid_input", "The requested seating area is not listed for this slot.");

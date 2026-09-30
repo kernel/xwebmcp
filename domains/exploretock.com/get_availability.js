@@ -207,6 +207,7 @@
     if (signal && signal.aborted) return fail("site_error", "The invocation was cancelled before navigation.");
     let before = null;
     try { before = await js(() => performance.timeOrigin); } catch { before = null; }
+    if (signal && signal.aborted) return fail("site_error", "The invocation was cancelled before navigation.");
     const url = ORIGIN + "/" + encodeURIComponent(input.slug) + "/experience/" + input.offering_id + "/reservation?date=" + input.date + "&size=" + partySize;
     await gotoUrl(url);
 
@@ -247,8 +248,9 @@
     }
     snap = settled;
     const offering = snap.offerings.find(o => o.id === input.offering_id);
-    if (snap.query_size !== null && snap.query_size !== String(partySize)) return fail("invalid_input", "The site changed the party size to " + snap.query_size + " instead of " + partySize + ".");
-    if (snap.query_date !== null && snap.query_date !== input.date) return fail("invalid_input", "The site changed the date to " + snap.query_date + " instead of " + input.date + ".");
+    if (snap.query_size === null || snap.query_date === null) return fail("site_changed", "The loaded page does not confirm the requested date and party size.");
+    if (snap.query_size !== String(partySize)) return fail("invalid_input", "The site changed the party size to " + snap.query_size + " instead of " + partySize + ".");
+    if (snap.query_date !== input.date) return fail("invalid_input", "The site changed the date to " + snap.query_date + " instead of " + input.date + ".");
 
     const sortedRanges = offering.ranges.slice().sort((a, b) => a.min - b.min);
     const range = sortedRanges.filter(r => r.min <= partySize).pop() || sortedRanges[0] || null;

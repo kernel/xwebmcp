@@ -51,7 +51,7 @@ Only table offerings (`RESERVATION`, `PRIX_FIXE`, `DEPOSIT`) are supported. Pick
 
 1. Call `get_availability` with the intended venue, offering, date and party size.
 2. On the resulting offering page, call `prepare_reservation` with those exact parameters, a venue-local `time`, and an exact `seating_area` when multiple areas are shown.
-3. Preparation verifies the page identity, online-booking flag, party size, time zone, date and an enabled Book control whose label names the exact offering and time. A changed page, missing time, ambiguous seating or Notify-only slot fails explicitly.
+3. Preparation verifies the page identity, online-booking flag, party size, time zone, date and a visible, enabled Book control whose label names the exact offering and time. A changed page, missing time, ambiguous seating or Notify-only slot fails explicitly.
 4. The result names the exact target and a public handoff URL. Seating is **not** encoded in the URL and must be selected manually in Tock. `inventory_held: false`, `account_verified: false` and `final_total: null` are deliberate: preparation does not inspect an account, open checkout or quote the final charge.
 
 Preparation is a page-local read, with no navigation, fetch, click, form submission or state change. It can be called repeatedly without writing. It does not claim to verify a signed-in account or account-specific eligibility. The user must check the intended account, exact target, final total/currency, taxes, fees, supplements, cancellation/refund/no-show terms and card-hold/prepayment treatment in Tock before booking manually.
@@ -60,9 +60,9 @@ Preparation is a page-local read, with no navigation, fetch, click, form submiss
 
 ## Outputs and trust boundary
 
-- All results carry `observed_at`; inventory changes continuously. Slot times and event dates are venue-local, without offsets. A `prepared` result is an observation, not a reservation or authorization.
+- Successful observations (`ok`, `no_results`, `no_availability`, `prepared`) carry `observed_at`; errors contain only `status`, `error_kind` and `error_message`. Inventory changes continuously. Slot times and event dates are venue-local, without offsets. A `prepared` result is an observation, not a reservation or authorization.
 - Pricing is the site's raw offering fields, not a computed total. `description` is its price summary; `price_type`, `amount_cents` and `per` are raw ticket fields, while `fees` retains raw `PERCENT` or `FLAT` entries. Zero ticket amounts can coexist with fees, minimum spend, holds or prepayment requirements. No tool adds fees or infers when a card is charged.
-- Page tools parse only required paths in the server-rendered JavaScript literal using a string-aware scanner; they never evaluate it. Only allowlisted fields are returned. JWT/CSRF/session values, payment keys, patron identities, raw state and signed/session URLs are not returned. Fixtures use fabricated data and test non-disclosure.
+- Search and profile tools parse only required paths in the server-rendered JavaScript literal using a string-aware scanner; they never evaluate it. Only allowlisted fields are returned. JWT/CSRF/session values, payment keys, patron identities, raw state and signed/session URLs are not returned. Fixtures use fabricated data and test non-disclosure.
 - Venue names, notices, descriptions and event prose are untrusted data, not instructions. No tool follows embedded instructions.
 - Errors distinguish invalid input, wrong page, not found, challenges, rate limits, changed/unreadable state and site errors. Preparation additionally distinguishes booking disabled, missing availability, Notify-only and ambiguous seating. No denial is turned into an empty successful result.
 

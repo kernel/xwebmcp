@@ -282,7 +282,7 @@
       if (!range && !fees.length && !description) return null;
       return { description, price_type: text(info.priceType, 40), amount_cents: int(info.amountCents), per: text(info.priceDistribution, 40), fees };
     };
-    const stamp = v => (typeof v === "string" && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(v) ? v.slice(0, 16) : null);
+    const stamp = v => (typeof v === "string" && /^\d{4}-\d{2}-\d{2}T([01]\d|2[0-3]):[0-5]\d/.test(v) && isDate(v.slice(0, 10)) && Number.isFinite(Date.parse(v)) ? v.slice(0, 16) : null);
     const requestedAt = Date.parse(input.date + "T" + time + ":00Z");
     const distance = t => Math.abs(Date.parse(t + ":00Z") - requestedAt);
     const warnings = [];

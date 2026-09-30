@@ -175,7 +175,9 @@ function cdpHarness(o = {}) {
       const p = pageAt();
       if (p.navigating && !p.settled) throw new Error("Execution context was destroyed, most likely because of a navigation.");
       const run = runInNewContext("(" + fn.toString() + ")", sandbox());
-      return plain(await run(options?.arg));
+      const result = plain(await run(options?.arg));
+      if (!calls.goto.length) o.onOriginRead?.();
+      return result;
     }
   };
   // Helpers a read-only availability tool has no business calling; they fail loudly and are recorded.
@@ -900,6 +902,22 @@ test("get_availability: only dedicated alert messages are classified as empty st
   assert.equal((await h.run(availability)).reason, "not_offered_on_date");
   const bodyOnly = await cdpHarness({ page: { slots: [], lines: ["Dinner Reservation is sold out."], alerts: [] } }).run(availability);
   assert.equal(bodyOnly.error_kind, "site_error");
+});
+
+test("get_availability: missing destination date or party size fails closed", async () => {
+  for (const search of ["", `?date=${DATE}`, "?size=2"]) {
+    const result = await cdpHarness({ page: listPage({ search }) }).run(availability);
+    assert.equal(result.error_kind, "site_changed");
+  }
+});
+
+test("get_availability: cancellation during the old-document read prevents navigation", async () => {
+  const controller = new AbortController();
+  const h = cdpHarness({ page: listPage(), onOriginRead: () => controller.abort() });
+  const result = await h.run(availability, controller.signal);
+  assert.equal(result.error_kind, "site_error");
+  assert.deepEqual(h.calls.goto, []);
+  assert.equal(h.calls.js, 1);
 });
 
 test("get_availability: same-sized changing lists must settle and wrong offering paths fail", async () => {

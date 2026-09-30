@@ -232,7 +232,7 @@
     const eventSchedule = details => {
       if (!isPlain(details)) return null;
       const schedules = (Array.isArray(details.schedule) ? details.schedule : []).filter(isPlain);
-      const dates = [...new Set(schedules.flatMap(s => Array.isArray(s.date) ? s.date : []).filter(d => isPlain(d) && typeof d.date === "string" && /^\d{4}-\d{2}-\d{2}$/.test(d.date)).map(d => d.date))].sort();
+      const dates = [...new Set(schedules.flatMap(s => Array.isArray(s.date) ? s.date : []).filter(d => isPlain(d) && typeof d.date === "string" && /^\d{4}-\d{2}-\d{2}$/.test(d.date) && Number.isFinite(Date.parse(d.date + "T00:00:00Z")) && new Date(d.date + "T00:00:00Z").toISOString().slice(0, 10) === d.date).map(d => d.date))].sort();
       const slots = (Array.isArray(details.slots) ? details.slots : []).filter(isPlain);
       const time = value => typeof value === "string" && /^([01]\d|2[0-3]):[0-5]\d$/.test(value) ? value : null;
       return { dates: dates.slice(0, 100), times: slots.slice(0, 24).map(s => ({ start: time(s.startTime), end: time(s.endTime) })), has_repetition: schedules.some(s => Array.isArray(s.repetition) && s.repetition.length > 0), truncated: dates.length > 100 || slots.length > 24 };
