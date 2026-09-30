@@ -159,7 +159,7 @@
       const response = await fetch(input.url, {credentials:'include',signal});
       if (!response.ok) return fail(response.status === 404 ? 'not_found' : response.status === 429 ? 'rate_limited' : response.status === 401 ? 'login_required' : response.status === 403 ? 'blocked' : 'site_changed');
       const url = new URL(response.url);
-      if (url.origin !== location.origin || !/^\/(?:building\/[a-z0-9_-]+\/[a-z0-9_-]+|rental\/[1-9][0-9]{0,11}|sale\/[1-9][0-9]{0,11})$/.test(url.pathname) || url.search || url.hash) return fail('blocked');
+      if (url.href.length > 400 || url.origin !== location.origin || !/^\/(?:building\/[a-z0-9_-]+\/[a-z0-9_-]+|rental\/[1-9][0-9]{0,11}|sale\/[1-9][0-9]{0,11})$/.test(url.pathname) || url.search || url.hash) return fail('blocked');
       const html = await response.text();
       if (html.length > 3000000) return fail('site_changed');
       const doc = new DOMParser().parseFromString(html,'text/html');
@@ -167,7 +167,7 @@
       const text = (id, limit = 200) => (doc.querySelector('[data-testid="' + id + '"]')?.textContent ?? '').replace(/\s+/g,' ').trim().slice(0,limit);
       const address = text('homeAddress');
       if (!address || !doc.querySelector('[data-testid="home-info-section"]')) return fail(/captcha|press.*hold|access denied|verify you are human/i.test(doc.body.textContent) ? 'blocked' : 'site_changed');
-      const priceLabel = text('priceInfo');
+      const priceLabel = text('priceInfo') || text('saleInfo');
       const gated = /sign in|log in/i.test(priceLabel);
       const match = /\$([0-9][0-9,]*(?:\.[0-9]+)?)/.exec(priceLabel);
       const features = id => [...(doc.querySelector('[data-testid="' + id + '"]')?.querySelectorAll('li') ?? [])].map(e => e.textContent.replace(/\s+/g,' ').trim().slice(0,120)).filter(Boolean).slice(0,40);

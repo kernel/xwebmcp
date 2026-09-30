@@ -239,7 +239,9 @@
     try {
       const areaResponse = await fetch('https://streeteasy.com/for-rent/' + input.location, {credentials:'include',signal});
       if (!areaResponse.ok) return fail(httpFailure(areaResponse.status));
-      if (new URL(areaResponse.url).origin !== location.origin || !new URL(areaResponse.url).pathname.startsWith('/for-rent/')) return fail('blocked');
+      const areaUrl = new URL(areaResponse.url);
+      if (areaUrl.origin !== location.origin) return fail('blocked');
+      if (areaUrl.pathname !== '/for-rent/' + input.location || areaUrl.search) return fail('site_changed');
       const html = await areaResponse.text();
       if (html.length > 3000000) return fail('site_changed');
       const decoded = html.replace(/\\"/g, '"');
@@ -268,7 +270,7 @@
       const results = [];
       for (const edge of result.edges) {
         const n = edge.node;
-        if (!n || typeof n.id !== 'string' || !/^[1-9][0-9]{0,11}$/.test(n.id) || !/^\/building\/[a-z0-9_-]+\/[a-z0-9_-]+$/.test(n.urlPath) || typeof n.street !== 'string' || n.status !== filters.rentalStatus) return fail('site_changed');
+        if (!n || typeof n.id !== 'string' || !/^[1-9][0-9]{0,11}$/.test(n.id) || typeof n.urlPath !== 'string' || n.urlPath.length > 378 || !/^\/(?:building\/[a-z0-9_-]+\/[a-z0-9_-]+|rental\/[1-9][0-9]{0,11})$/.test(n.urlPath) || (n.urlPath.startsWith('/rental/') && n.urlPath !== '/rental/' + n.id) || typeof n.street !== 'string' || n.status !== filters.rentalStatus) return fail('site_changed');
         const baths = number(n.fullBathroomCount);
         results.push({listing_id:n.id,address:clean(n.street),unit:clean(n.unit,80),neighborhood:clean(n.areaName),building_type:clean(n.buildingType,80),beds:number(n.bedroomCount),baths:baths === null ? null : baths + (number(n.halfBathroomCount) ?? 0) / 2,price:number(n.price),total_monthly_price:number(n.totalMonthlyPrice),price_kind:n.totalMonthlyPrice == null ? 'base_rent' : 'total_monthly',listing_status:clean(n.status,80),url:'https://streeteasy.com' + n.urlPath});
       }

@@ -11,7 +11,11 @@ const html = `<html><body><section data-testid="home-info-section"><h1 data-test
 
 function documentFrom(text) {
   const doc = new Document(text);
-  for (const element of doc.querySelectorAll('*')) element.remove = function() { this.parentNode.childNodes = this.parentNode.childNodes.filter(e => e !== this); };
+  for (const element of doc.querySelectorAll('*')) {
+    element.remove = function() { this.parentNode.childNodes = this.parentNode.childNodes.filter(e => e !== this); };
+    const matches = element.matches.bind(element);
+    element.matches = selector => selector === ':disabled' ? element.disabled || !!element.closest('fieldset[disabled]') : matches(selector);
+  }
   return doc;
 }
 
@@ -41,7 +45,7 @@ function harness(name, options = {}) {
   const context = {
     location:new URL(options.start ?? 'https://streeteasy.com/'), document, URL, Date,
     DOMParser:class { parseFromString(text) { return documentFrom(text); } },
-    crypto:{randomUUID:() => 'fabricated-search-token'},getComputedStyle:() => ({visibility:'visible'}),
+    crypto:{randomUUID:() => 'fabricated-search-token'},getComputedStyle:element => ({visibility:'visible',opacity:/opacity:\s*0(?:\D|$)/.test(element.getAttribute('style') ?? '') ? '0' : '1'}),
     fetch:async (href, init = {}) => {
       requests.push({href,init});
       if (options.throwFetch) throw new Error('DO_NOT_RETURN');
@@ -99,14 +103,14 @@ test('search sends only bounded observed read queries and allowlists output', as
 });
 
 test('search preserves requested pagination and rented/total-monthly semantics', async () => {
-  const h=harness('search_rentals',{criteria:'area:302|status:rented',totalCount:42,edges:[{node:{...node,status:'RENTED',totalMonthlyPrice:3150}}]});
+  const h=harness('search_rentals',{criteria:'area:302|status:rented',totalCount:42,edges:[{node:{...node,status:'RENTED',urlPath:'/rental/7654321',totalMonthlyPrice:3150}}]});
   const r=await h.invoke({location:'williamsburg',status:'rented',page:2,page_size:3});
   assert.equal(r.page,2);assert.equal(r.has_more,true);assert.equal(r.results[0].price_kind,'total_monthly');
   assert.equal(JSON.parse(h.requests[1].init.body).variables.input.page,2);
 });
 
 test('silent filter drops, malformed results and unsafe URLs fail closed', async () => {
-  const options=[{criteria:'area:302|status:open'},{edges:[{node:{...node,urlPath:'/building/example/2a?session=private'}}]},{edges:[{node:{...node,status:'RENTED'}}]},{edges:[{}]},{totalCount:-1},{edges:Array(3).fill({node})}];
+  const options=[{criteria:'area:302|status:open'},{edges:[{node:{...node,urlPath:'/building/example/2a?session=private'}}]},{edges:[{node:{...node,status:'RENTED'}}]},{edges:[{}]},{edges:[{node:{...node,urlPath:'/building/'+'a'.repeat(400)+'/2a'}}]},{edges:[{node:{...node,urlPath:'/rental/7654322'}}]},{totalCount:-1},{edges:Array(3).fill({node})}];
   for (const option of options) {
     const r=await harness('search_rentals',option).invoke(search);
     assert.ok(['filter_not_applied','site_changed'].includes(r.status));
@@ -115,6 +119,11 @@ test('silent filter drops, malformed results and unsafe URLs fail closed', async
   assert.equal((await harness('search_rentals',{apiBody:'not JSON'}).invoke(search)).status,'site_changed');
   assert.equal((await harness('search_rentals',{apiBody:'captcha challenge'}).invoke(search)).status,'blocked');
   assert.equal((await harness('search_rentals',{edges:[{node:{...node,id:7654321}}]}).invoke(search)).status,'site_changed');
+});
+
+test('redirects cannot silently replace the requested area', async () => {
+  const h=harness('search_rentals',{redirect:'https://streeteasy.com/for-rent/manhattan'});
+  assert.equal((await h.invoke(search)).status,'site_changed');assert.equal(h.requests.length,1);
 });
 
 test('HTTP denials, throttles, challenges and unexpected redirects are not empty success', async () => {
@@ -126,6 +135,7 @@ test('HTTP denials, throttles, challenges and unexpected redirects are not empty
     assert.equal((await harness(name,{body:'<html><body>Press and hold captcha</body></html>'}).invoke(input)).status,'blocked');
     assert.equal((await harness(name,{redirect:'https://auth.streeteasy.com/login?token=private'}).invoke(input)).status,'blocked');
     assert.equal((await harness(name,{throwFetch:true}).invoke(input)).status,'network_error');
+    if (name === 'get_listing') assert.equal((await harness(name,{redirect:'https://streeteasy.com/building/'+'a'.repeat(400)+'/2a'}).invoke(input)).status,'blocked');
   }
 });
 
@@ -135,6 +145,8 @@ test('detail reads only allowlisted public fields, strips CSS and respects price
   assert.equal(JSON.stringify(r).includes('DO_NOT_RETURN'),false);assert.equal(h.requests.length,1);
   const gated=html.replace('$3,100 for rent','Sign in to view price');const g=await harness('get_listing',{html:gated}).invoke({url});
   assert.equal(g.listing.price,null);assert.equal(g.listing.price_gated,true);
+  const saleGate=html.replace('<div data-testid="priceInfo">$3,100 for rent</div>','<div data-testid="saleInfo">Reported sale. Sign in to view price</div>');
+  const sale=await harness('get_listing',{html:saleGate}).invoke({url});assert.equal(sale.listing.price,null);assert.equal(sale.listing.price_gated,true);
   const bounded=html.replace('Fabricated public description.','x'.repeat(9000));assert.equal((await harness('get_listing',{html:bounded}).invoke({url})).listing.description.length,6000);
 });
 
@@ -144,7 +156,9 @@ test('contact draft checks exact page/control and never clicks, fills or sends',
     assert.equal(r.execution_blocker,'trusted_human_approval_unavailable');assert.equal(h.requests.length,0);assert.equal(h.clicks,0);
   }
   assert.equal((await harness('prepare_contact').invoke(prep)).status,'wrong_page');
-  for (const changed of [html.replace('<button>Ask a question</button>',''),html.replace('<button>Ask a question</button>','<button disabled>Ask a question</button>'),html+'<button>Ask a question</button>']) {
+  const button='<button>Ask a question</button>';
+  const unavailable=['', '<button disabled>Ask a question</button>', '<fieldset disabled>'+button+'</fieldset>', '<div inert>'+button+'</div>', '<button aria-disabled="true">Ask a question</button>', '<button style="opacity:0">Ask a question</button>', '<div style="opacity:0">'+button+'</div>'];
+  for (const changed of [...unavailable.map(markup => html.replace(button,markup)),html+button]) {
     assert.equal((await harness('prepare_contact',{start:url,html:changed}).invoke(prep)).status,'site_changed');
   }
 });

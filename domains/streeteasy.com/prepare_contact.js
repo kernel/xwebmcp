@@ -130,7 +130,15 @@
     const address = document.querySelector('[data-testid="homeAddress"]')?.textContent.replace(/\s+/g,' ').trim().slice(0,200);
     if (!address || !document.querySelector('[data-testid="home-info-section"]')) return fail('site_changed');
     const label = input.intent === 'tour' ? 'Request a tour' : 'Ask a question';
-    const controls = [...document.querySelectorAll('button')].filter(b => b.textContent.trim() === label && !b.disabled && b.getClientRects().length && getComputedStyle(b).visibility !== 'hidden');
+    const available = button => {
+      if (button.matches(':disabled') || button.closest('[inert], [aria-disabled="true"]') || !button.getClientRects().length) return false;
+      for (let element = button; element; element = element.parentElement) {
+        const style = getComputedStyle(element);
+        if (style.display === 'none' || style.visibility === 'hidden' || style.visibility === 'collapse' || Number(style.opacity) === 0) return false;
+      }
+      return true;
+    };
+    const controls = [...document.querySelectorAll('button')].filter(b => b.textContent.trim() === label && available(b));
     if (controls.length !== 1) return fail('site_changed');
     return {status:'ok',listing_url:input.listing_url,address,intent:input.intent,message:input.message,control_label:label,submitted:false,execution_blocker:'trusted_human_approval_unavailable'};
   }
