@@ -202,6 +202,18 @@ test("malformed input is rejected before any request", async () => {
   }
 });
 
+test("trailing line terminators are rejected in inputs and response addresses", async () => {
+  for (const ip of ["192.0.2.44", "2001:db8::44"]) {
+    for (const suffix of ["\n", "\r", "\r\n", "\u2028", "\u2029"]) {
+      const { result, calls } = await run({ ip: ip + suffix });
+      assert.equal(result.error_kind, "invalid_input");
+      assert.equal(calls.fetch.length, 0);
+      const echoed = await run({}, { fetch: () => reply(200, siteBody({ ip: ip + suffix, type: ip.includes(":") ? "IPv6" : "IPv4" })) });
+      assert.equal(echoed.result.error_kind, "site_changed");
+    }
+  }
+});
+
 test("the site's answers for invalid and reserved addresses become distinct errors", async () => {
   const invalid = await run({ ip: "192.0.2.1" }, { fetch: () => reply(200, { ip: "192.0.2.1", success: false, message: "Invalid IP address" }) });
   assert.equal(invalid.result.error_kind, "invalid_ip");
@@ -508,6 +520,13 @@ test("a body that ends in an incomplete UTF-8 sequence is not accepted", async (
 test("a returned address of the other family, or a body without success, is site_changed", async () => {
   const family = await run({ ip: "192.0.2.9" }, { fetch: () => reply(200, siteBody({ ip: "2001:db8::9", type: "IPv6" })) });
   assert.equal(family.result.error_kind, "site_changed");
+  for (const [ip, type] of [["192.0.2.9", "IPv6"], ["2001:db8::9", "IPv4"]]) {
+    for (const input of [{ ip }, {}]) {
+      const wrongType = await run(input, { fetch: () => reply(200, siteBody({ ip, type })) });
+      assert.equal(wrongType.result.error_kind, "site_changed");
+      assert.ok(conforms(definition.tool.outputSchema, wrongType.result));
+    }
+  }
   const complete = siteBody({ ip: "192.0.2.9" });
   for (const success of [undefined, "true", 1, null]) {
     const body = { ...complete, success };

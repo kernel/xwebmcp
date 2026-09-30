@@ -4,7 +4,7 @@ The free, keyless JSON IP-geolocation endpoint at https://ipwho.is.
 
 | tool | file | status | notes |
 |------|------|--------|-------|
-| lookup_ip | [lookup_ip.js](lookup_ip.js) | verified | One lookup per call for an IPv4/IPv6 address or the browser's own egress address; location, ASN/ISP and timezone; approximate, free tier only |
+| lookup_ip | [lookup_ip.js](lookup_ip.js) | draft | One lookup per call for an IPv4/IPv6 address or the browser's own egress address; location, ASN/ISP and timezone; approximate, free tier only |
 
 ## What the site is
 
@@ -59,7 +59,7 @@ The tool is listed only on `ipwho.is` documents, so a tab has to be on ipwho.is 
 - **Errors** use `status: "error"` with `error_kind`: `invalid_input`, `invalid_ip`, `reserved_range`,
   `rate_limited` (with `retry_after_seconds`), `gated` (HTTP 403), `network_error` (timeout or no
   answer), `site_error` (other HTTP or application errors) and `site_changed` (a 200 answer that is
-  larger than 16 KiB, is not a JSON object, lacks `success: true`, has no valid `ip`/`type`, has no
+  larger than 16 KiB, is not a JSON object, lacks `success: true`, has no valid `ip`/`type` or they describe different address families, has no
   country name or code, or is for a different address than requested). A lookup is `ok` only with a valid address and country
   data, so a bare `{"success":true,"ip":...}` is `site_changed`, never an empty success. A real address
   the database has no country for would also be reported as `site_changed`; that was not observed.
@@ -158,7 +158,20 @@ and length-capped, and unrecognized error text is not echoed.
 
 ## QA
 
-**Independent QA: PASS on the final tool source, 2026-09-29** (QA agent `agt_cc1db635c02b06098b97`,
+**Current revision: awaiting independent QA.** Trailing line terminators are rejected in inputs and
+response addresses, and the response `type` must match its address family. Earlier evidence below
+applies to the previous source only.
+
+Current author checks (2026-09-30): the validator passes; the full suite passes 1612/1612, including
+35 site-specific tests. In a fresh public Kernel browser, the final source registered and replaced
+the entire one-tool namespace atomically. From `/9.9.9.9`, IPv4, IPv6 and browser-egress lookups
+returned `ok`; a private address returned `reserved_range`. Seven malformed inputs, including
+trailing newlines, sent no request. A synthetic 429 enforced cooldown without another request;
+a synthetic response with a mismatched address family returned `site_changed`. Invocation left the
+URL unchanged, navigation invalidated the old reference, and the tool was absent on `about:blank`.
+No real 429 was induced. Local-extension verification of this revision is pending.
+
+**Previous independent QA: PASS, 2026-09-29** (QA agent `agt_cc1db635c02b06098b97`,
 recorded in the registry as `provenance.qa_agent`). The reviewer read the source, tests and this README
 completely, ran the validator and the full suite, mutation-tested the tool, and exercised it live in a
 fresh Kernel browser and in the local extension. Three rounds:
@@ -171,8 +184,7 @@ fresh Kernel browser and in the local extension. Three rounds:
    answers, a missing `success` flag and empty stream chunks. The tool source had no finding. All fixed
    in the README and tests.
 3. Final revision: **PASS** with no blocking or should-fix defect. The tool file the reviewer signed off
-   (git blob `a7b4dc018b24bde73df09be2f79c52e052aa21a3`) is the one in this repository; later commits change only this README and the
-   registry entry to record the sign-off.
+   (git blob `a7b4dc018b24bde73df09be2f79c52e052aa21a3`) predates the current validation fixes.
 
 What the reviewer verified: 85 scripted mutants (78 killed; the 7 that survive are equivalent or not
 observable in the harness); replay of 40 real site responses through the source with no false
@@ -188,7 +200,7 @@ native host or branded Google Chrome.
 document, not only from the `https://ipwho.is/` entry page, and returned `ok` (both the author and the
 independent reviewer did this in the Kernel browser).
 
-Author checks on the same source (2026-09-29):
+Previous author checks (2026-09-29):
 
 - **Stubbed tests** (`tests/ipwho-lookup-ip.test.mjs`, 34 cases): input validation before any request
   (including whitespace and path/query injection strings), request shape, every error kind, single

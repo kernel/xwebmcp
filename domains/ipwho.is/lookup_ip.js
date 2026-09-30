@@ -102,9 +102,9 @@
     const v4 = new RegExp("^" + octet + "(\\." + octet + "){3}$");
     // The address as one canonical string, or null when it is not an IPv4/IPv6 literal.
     const canonical = value => {
-      if (typeof value !== "string") return null;
+      if (typeof value !== "string" || value.length > 45 || /[^0-9A-Fa-f:.]/.test(value)) return null;
       if (v4.test(value)) return value;
-      if (value.length > 45 || !value.includes(":") || !/^[0-9A-Fa-f:.]+$/.test(value) || !URL.canParse("http://[" + value + "]/")) return null;
+      if (!value.includes(":") || !URL.canParse("http://[" + value + "]/")) return null;
       return new URL("http://[" + value + "]/").hostname;
     };
     let ip = null;
@@ -170,7 +170,7 @@
     const bool = v => (typeof v === "boolean" ? v : null);
     const flat = v => (v && typeof v === "object" && !Array.isArray(v) ? v : {});
     const answered = canonical(body.ip);
-    if (body.success !== true || answered === null || (ip !== null && answered !== canonical(ip)) || (body.type !== "IPv4" && body.type !== "IPv6") || (str(body.country_code) === null && str(body.country) === null)) {
+    if (body.success !== true || answered === null || (ip !== null && answered !== canonical(ip)) || body.type !== (answered.startsWith("[") ? "IPv6" : "IPv4") || (str(body.country_code) === null && str(body.country) === null)) {
       return fail("site_changed", "The ipwho.is response lacks the expected fields, carries no country data, or is for a different address than requested.");
     }
 
