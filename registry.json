@@ -62,9 +62,12 @@
       "url_patterns": [
         "https://www.craigslist.org/*"
       ],
-      "status": "draft",
-      "last_verified": null,
-      "notes": "One bounded public SF bay area listing HTML read; sanitized metadata only. No contacts, descriptions or account reads."
+      "status": "verified",
+      "last_verified": "2026-09-30",
+      "notes": "Independent success/failure QA and live one-request listing read from /about/sites; sanitized public metadata only. No contacts, descriptions or account reads.",
+      "provenance": {
+        "qa_agent": "agt_0f4f29ed144263e4c874"
+      }
     },
     {
       "domain": "craigslist.org",
@@ -75,9 +78,12 @@
       "url_patterns": [
         "https://www.craigslist.org/*"
       ],
-      "status": "draft",
-      "last_verified": null,
-      "notes": "Unsent local preview on the exact public listing; no requests, contact reveal, saved draft or send."
+      "status": "qa_passed",
+      "last_verified": "2026-09-30",
+      "notes": "Independent final-source actual-browser fixture success/failure sign-off. Local unsent preview only; no contact reveal, save or send. Final-source live preparation and local-extension invocation unverified.",
+      "provenance": {
+        "qa_agent": "agt_0f4f29ed144263e4c874"
+      }
     },
     {
       "domain": "craigslist.org",
@@ -90,7 +96,10 @@
       ],
       "status": "draft",
       "last_verified": null,
-      "notes": "One version-checked first batch for bounded keyword searches in four SF bay area categories; at most 20 summaries, no pagination."
+      "notes": "Populated live first-batch search and fixtures pass, but independent final-source no-results outcome remains unclassified; sign-off withheld. No pagination/retries. See README.",
+      "provenance": {
+        "qa_agent": "agt_0f4f29ed144263e4c874"
+      }
     },
     {
       "domain": "delta.com",
