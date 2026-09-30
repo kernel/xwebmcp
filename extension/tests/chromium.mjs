@@ -8,6 +8,8 @@ export async function chromium(extension) {
   if (!binary) throw new Error('Chromium is required; set XWEBMCP_CHROME_BIN to a Chromium or Chrome for Testing binary');
   const profile = await mkdtemp(join(tmpdir(), 'xwebmcp-browser-test-'));
   const args = ['--headless=new', '--enable-features=WebMCPTesting', '--no-first-run', '--no-default-browser-check', '--disable-background-networking', '--disable-component-update', '--remote-debugging-port=0', `--user-data-dir=${profile}`];
+  // The CI fixture uses only intercepted synthetic pages in a disposable profile.
+  if (process.env.XWEBMCP_SYNTHETIC_CI === '1') args.push('--no-sandbox');
   if (extension) args.push(`--load-extension=${extension}`, `--disable-extensions-except=${extension}`);
   args.push('about:blank');
   const child = spawn(binary, args, {detached: true, stdio: ['ignore', 'ignore', 'pipe']});
