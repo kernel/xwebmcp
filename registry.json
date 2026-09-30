@@ -238,6 +238,19 @@
     },
     {
       "domain": "fandango.com",
+      "tool": "get_movie",
+      "file": "domains/fandango.com/get_movie.js",
+      "kind": "page",
+      "namespace": "fandango.com",
+      "url_patterns": [
+        "https://www.fandango.com/*"
+      ],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Public movie overview, bounded cast and scores; no media playback or account access."
+    },
+    {
+      "domain": "fandango.com",
       "tool": "get_movie_showtimes",
       "file": "domains/fandango.com/get_movie_showtimes.js",
       "kind": "page",
@@ -267,6 +280,45 @@
       "provenance": {
         "qa_agent": "agt_7481b4b4b98a44369c89"
       }
+    },
+    {
+      "domain": "fandango.com",
+      "tool": "get_ticket_offers",
+      "file": "domains/fandango.com/get_ticket_offers.js",
+      "kind": "page",
+      "namespace": "fandango.com",
+      "url_patterns": [
+        "https://www.fandango.com/*"
+      ],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Exact reserved-screening noninteractive seat preview; USD price and fee estimates, not a final checkout quote or hold."
+    },
+    {
+      "domain": "fandango.com",
+      "tool": "list_movies",
+      "file": "domains/fandango.com/list_movies.js",
+      "kind": "page",
+      "namespace": "fandango.com",
+      "url_patterns": [
+        "https://www.fandango.com/*"
+      ],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Public now-playing/coming-soon pages; next_page is only a candidate, no total count."
+    },
+    {
+      "domain": "fandango.com",
+      "tool": "prepare_checkout",
+      "file": "domains/fandango.com/prepare_checkout.js",
+      "kind": "page",
+      "namespace": "fandango.com",
+      "url_patterns": [
+        "https://www.fandango.com/*"
+      ],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Returned-only ticket plan with exact screening, quantities, optional proposed seats and preview subtotal; no cart, hold, validation or execution."
     },
     {
       "domain": "fandango.com",
@@ -582,7 +634,7 @@
       ],
       "status": "verified",
       "last_verified": "2026-09-24",
-      "notes": "Independent search/parser QA passed; domain migration live-verified from /travel-agents. Returns initial outbound cards only, including round trips; 1\u20137 adults; displayed cash fares are not trip totals. Inventory failures remain explicit errors.",
+      "notes": "Independent search/parser QA passed; domain migration live-verified from /travel-agents. Returns initial outbound cards only, including round trips; 1–7 adults; displayed cash fares are not trip totals. Inventory failures remain explicit errors.",
       "provenance": {
         "qa_agent": "agt_8da83a2e489269a5ff05"
       }

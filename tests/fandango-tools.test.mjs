@@ -189,7 +189,7 @@ for (const name of NAMES) {
 
 test("registry lists every fandango.com tool exactly once, sorted", () => {
   const entries = registry.tools.filter(t => t.domain === "fandango.com");
-  assert.deepEqual(entries.map(t => t.tool).sort(), [...NAMES].sort());
+  assert.deepEqual(entries.map(t => t.tool).sort(), [...NAMES, "get_movie", "list_movies", "get_ticket_offers", "prepare_checkout"].sort());
   const all = registry.tools.map(t => `${t.domain}/${t.tool}`);
   assert.deepEqual(all, [...all].sort());
 });
