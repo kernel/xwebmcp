@@ -108,6 +108,14 @@ MUST be unique within its namespace, and it MUST appear identically in three pla
 2. the `tool` field of the registry entry,
 3. the `tool.name` field of the tool definition inside the file.
 
+Property names in `inputSchema` and `outputSchema`, at every depth, MUST be snake_case
+(`^[a-z][a-z0-9_]*$`, e.g. `depart_date`, `result_count`), matching tool names and the
+WebMCP invocation envelope (`tool_ref`, `invocation_id`). The validator enforces this.
+A few tools that predate the rule still use camelCase fields and are listed in the
+validator's `LEGACY_CAMEL_CASE_FILES`; renaming them changes their output contract and
+requires fresh QA, and a file MUST be removed from that list when it is migrated. New
+tools MUST NOT be added to it.
+
 Tool names SHOULD describe the action from the user's point of view (`search_flights`,
 `login`, `get_booking`) and SHOULD be reused across domains for the same action so that
 an agent can find "the login tool for this site" without a per-site lookup.
@@ -319,7 +327,8 @@ repository root. It has no dependencies beyond Node itself and checks:
    names (§6.3).
 5. The tool file evaluates, as a single expression, to an array of exactly one
    definition whose `kind`, `tool.name`, and `match.url_patterns` equal the entry, and
-   which declares both `inputSchema` and `outputSchema`.
+   which declares `inputSchema` and, unless it is a `page` tool whose result is only an
+   unconfirmed acknowledgment (cdp-tools.md §2.2), `outputSchema`.
 6. `last_verified` and `notes` agree with `status` (§5.3).
 7. Every `.js` file under `domains/` has a registry entry.
 8. Every domain directory has a `README.md` with the status table and the

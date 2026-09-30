@@ -4,8 +4,10 @@ Tools for Delta Air Lines (https://www.delta.com).
 
 | tool | file | status | notes |
 | --- | --- | --- | --- |
-| search_flights | [search_flights.js](search_flights.js) | qa_passed | Independent targeted QA passed; successful full live invocation remains blocked by intermittent HTTP 429 responses. |
-| login | [login.js](login.js) | draft | Unit-tested and exercised live on two egresses. Both live attempts reached the form and submitted once; Delta answered with its own "login is unavailable right now" message, so no successful login has been observed. |
+| get_page_context | [get_page_context.js](get_page_context.js) | draft | Read-only page summary with live tool names and suggested next steps. Unit-tested; exercised live on the homepage and booking form. |
+| search_flights | [search_flights.js](search_flights.js) | draft | Airport entry fixed for macOS Chrome on 2026-09-29 and first successful full live invocation recorded; needs fresh independent QA because the source changed. |
+| login | [login.js](login.js) | draft | Homepage-only page tool: opens the top-nav Log in flyout, fills it, and schedules one submit. No output schema; outcome not observed. Live-checked with fabricated credentials and the submit click blocked in-page; no real submission. |
+| navigate_to_page | [navigate_to_page.js](navigate_to_page.js) | draft | Schedules a same-tab navigation to a www.delta.com path; description carries a basic site map. Unit-tested; exercised live. |
 
 ## Scope
 
@@ -50,9 +52,42 @@ Use future dates within the booking window and obtain a fresh tool reference aft
 - Wait for skeleton removal and populated fares, then 1,500 ms of unchanged result DOM. This is a resettable DOM-quiescence check, not proof of completion if another row arrives after a longer silent interval. The execution uses a 105-second wait budget within a 120-second invocation timeout.
 - Delta intermittently responds with HTTP 429 and redirects to the booking page with `SFAF001_429` or `SFAF001`. Do not interpret that as zero available flights or retry repeatedly. The current parser targets the English desktop layout. Real zero-results behavior remains unverified.
 
+## Airport entry fix (2026-09-29)
+
+In regular Chrome on macOS, the origin box opened prefilled with the geolocated `CVG`, the tool's
+click left the caret inside it, and the extension's `fillInput` clear (Meta+A, Backspace) did
+nothing useful: macOS Chrome does not run editing shortcuts for synthetic CDP key events unless
+the event carries `commands: ["selectAll"]`. Backspace removed one character and typing `CVG`
+produced `CVCVG`, so no airport option matched. Kernel browsers (Linux, Ctrl+A) were unaffected.
+
+The first fix cleared the box through the page and called `typeInto` with `clear: false`. That
+workaround is gone: the inlined `lib/input.js` `typeInto` now clears correctly on every platform
+(Control held around an `a` rawKeyDown carrying `commands: ["selectAll"]`, then Backspace, then a
+read-back of the focused field with a page-side select fallback; it throws rather than typing on
+top of leftover text). The tool pauses briefly, calls `typeInto(n, code)` with its default clear,
+and still checks the box holds exactly the code before choosing an option; otherwise it returns
+`INPUT_MISMATCH` without choosing. Unit tests: `tests/delta-search-flights.test.mjs` and
+`tests/input-helper.test.mjs`. The extension's `fillInput` was also fixed to send
+`commands: ["selectAll"]` on macOS.
+
+Live, 2026-09-29, regular Chrome 154 on macOS, xwebmcp extension, signed out: CVG→SFO one way,
+2026-09-30, 1 adult returned `status: "ok"` with first-page flights (for example DL 393/DL 1715,
+7:00 AM–10:53 AM, 1 stop, $399 Delta Main) in about 11 seconds, with no SFAF error. This is the
+first successful full live invocation of this tool; it is one case, not a QA pass.
+
+Inlined snippet changed (2026-09-29, same day): after the `typeInto` clear change above, the new
+clear sequence was run by hand over CDP on Delta's prefilled origin box (caret inside `CVG`): the
+`selectAll` command selected 0–3 and Backspace left the box empty. One invocation of the updated
+tool (CVG→SFO one way, three weeks out, 1 adult) returned `status: "ok"` with flights. The tool
+stays `draft`; this is not fresh independent QA.
+
 ## QA summary
 
-Independent QA agent: `agt_b189571b6d300a05921c`, three passes on 2026-09-24. No actionable defect reproduced in the final targeted regression cases. This is **qa_passed**, not **verified**: there is still no successful final full-tool live invocation.
+The independent QA below covered the source before the airport entry fix; it no longer signs off
+the current file.
+
+
+Independent QA agent: `agt_b189571b6d300a05921c`, three passes on 2026-09-24. No actionable defect reproduced in the final targeted regression cases of that earlier source.
 
 | Check | Evidence |
 | --- | --- |
@@ -73,132 +108,83 @@ Local checks also evaluate the file as one array expression, compare both schema
 
 ## Known limitations
 
-- `search_flights` is `qa_passed`, not `verified`: a successful full live invocation is still blocked by intermittent Delta HTTP 429 / `SFAF001` responses. The live check reached results and preserved the explicit error shape; it did not return flights.
+- `search_flights` is `draft` again because its source changed after QA. One full live invocation succeeded on 2026-09-29 (CVG→SFO one way); Delta's intermittent HTTP 429 / `SFAF001` responses can still block searches.
 - First results page only; round trips return outbound options, not outbound/return pairs. Prices are rounded display fares, not passenger totals.
 - Adults only (1–9), 330-day booking window, English desktop layout only.
 - Completeness beyond the 1.5-second DOM-quiescence heuristic and real zero-results behaviour remain unverified.
-- `login` is `draft`: not independently QA-tested. Every Kernel browser tried gets Delta's "login is unavailable right now"; a successful login, an MFA step, and a real captcha are unverified. See the login section below.
+- `login` is `draft` and homepage-only. It never reports the outcome (no output schema): a successful login, a wrong-password message, an MFA step, and a captcha are all unobserved by the tool and unverified live. It has not submitted real or fabricated credentials to Delta; the only live run blocked the click in-page.
+- `get_page_context` is `draft`. `signed_in: true` relies on a visible "Log out"/"Sign out" header control and has not been observed on a signed-in page; it may report `null` there. `page_type` is path-based and `page_messages` is a best-effort scan of alert-like elements.
+- `navigate_to_page` is `draft`. It only accepts www.delta.com paths and reports that navigation was scheduled, not that the page loaded. The site map in its description is a starting list, not exhaustive.
+- Newly installed page tools were not registered on an already-open tab until it reloaded (extension behaviour, seen 2026-09-29); tabs opened afterwards registered them immediately.
 
 ## login
 
-`login` signs in with a SkyMiles number or username and password. It performs at most one
-submission per invocation and never retries. Two modes:
+`login` is a `kind: "page"` tool registered **only on the homepage** (`https://www.delta.com/`
+and `/us/en`, with or without a query string). On invoke it:
 
-- `credentials` — enters the site through a DuckDuckGo search result, then fills and submits
-  the Delta login form.
-- `prefilled_password` — submits the login form that is already visible and filled on the
-  current Delta page, without reading the value and without navigating anywhere.
+1. checks it is on the homepage and that the top-nav `#login-trigger` ("Log in") is visible;
+2. clicks it and waits up to 15 s for the `#login-modal-popup` flyout with `#userId-input` and
+   `#password-input`;
+3. sets both values with the native input setter plus `input`/`change`/`blur` events (Delta's
+   Angular form marks both `ng-dirty ng-valid`), then checks they stuck;
+4. returns a plain-text acknowledgment and, 100 ms after settling, clicks the flyout's
+   `Log In` button once (cdp-tools.md §2.2: a successful sign-in may reload the document).
 
-`status: "success"` means this invocation's submission reached authenticated or verification
-UI. `authentication_complete: false` with `mfa_required: true` is a first-step success, not a
-completed session. Failures are explicit: `error_kind` plus `failed_step`, `error_source`
-(`site` or `tool`) and `submitted`, so a caller can always tell whether a password actually
-reached Delta. A captcha or bot challenge is reported as `error_kind: "captcha_or_challenge"`.
+It has **no output schema** and does not observe the result: the caller must check the page
+(for example with `get_page_context`) before doing anything else, and must not call `login`
+again blindly. Failures before submission throw a message prefixed with `invalid_input`,
+`wrong_page`, `login_button_missing`, `login_form_not_ready`, `fill_failed`,
+`submit_button_missing`, or `submit_disabled`; none of them types into a submitted form.
 
-### Status and known limitations
+The previous CDP version entered through a DuckDuckGo search result; that path was removed.
+Its live history (Delta answering "login is unavailable right now" to Kernel browsers) is in
+git history and is no longer evidence about this tool.
 
-**Draft.** Not independently QA-tested; last live check 2026-09-25.
+### QA (login)
 
-- **Live-verified:** search-result entry reaches `https://www.delta.com/skymiles/login` on
-  residential and mobile egress, the form fills, exactly one submission happens, and the
-  failure reports the step and `submitted: true`.
-- **Unverified:** a successful login, an MFA step, and a real captcha. Every Kernel browser
-  tried, including one with no profile attached, gets Delta's "login is unavailable right now"
-  while the same credentials work in an ordinary browser.
-- **Lead for the next person:** profile state is ruled out, so the block keys on egress or the
-  browser fingerprint. Compare what Delta's login page collects from a Kernel browser against an
-  ordinary browser, without submitting, before spending more real attempts; each one counts
-  against the account's lockout budget.
+Draft. Unit tests cover the success path (one scheduled submit, no submit before settling,
+password never in the output), reuse of an already-open flyout, and seven failure paths.
+Live on 2026-09-29 in a regular Chrome 154 profile via the xwebmcp extension, homepage signed
+out: with a capture-phase guard blocking the submit button in-page, the tool opened the flyout,
+filled fabricated `QA000000` / a fake password, returned its acknowledgment, and fired exactly
+one submit click, which the guard blocked. The fields were then cleared and the flyout closed.
+No credentials, real or fabricated, reached Delta.
 
-### Search-result entry path
+## navigate_to_page
 
-In `credentials` mode the entry path is DuckDuckGo only. The tool opens
-`https://start.duckduckgo.com`, searches (default `delta skymiles login`), and clicks the
-first organic, non-ad result whose host is `delta.com` or `www.delta.com`, arriving with
-`document.referrer` set to `https://duckduckgo.com/`. The first organic result is the
-dedicated login page `https://www.delta.com/skymiles/login`, which renders `#userId-input`
-and `#password-input` directly, so no homepage login popup is involved.
+`kind: "page"`, all Delta pages. Accepts a path beginning with a single `/` (optionally with a
+query), resolves it against `https://www.delta.com`, returns
+`{status: "navigation_scheduled", from_url, to_url, next_step}`, and calls `location.assign`
+100 ms after settling. Anything else returns `{status: "error", error_message}` and does not
+navigate. The description lists a basic site map (homepage, booking form, results, My Trips,
+flight status, SkyMiles, baggage, check-in, changes, deals, help) with the tools each page
+exposes. Every listed path returned HTTP 200 on 2026-09-29 (`/mytrips/` redirects to
+`/my-trips/search`).
 
-There is deliberately **no direct-navigation fallback**. Each entry step fails with its own
-`error_kind` — `search_engine_unreachable`, `search_box_missing`, `search_results_missing`,
-`no_delta_result`, `entry_navigation_failed` — and the tool never silently reaches Delta another
-way. Every one of those failures is returned before any credential is typed.
+Live 2026-09-29: `/` → `/flightsearch/book-a-flight` → `/` in an extension-owned tab;
+`login` disappeared on the booking form and reappeared on the homepage. `//evil.example/`
+returned the error branch without navigating.
 
-Because `match.url_patterns` is Delta-only, the tool is listed and invocable **only while the
-browser is already on a delta.com page**. That is a registration precondition, not the login
-entry path: on invoke the tool leaves for DuckDuckGo and re-enters through the search result.
+## get_page_context
 
-### Entry-path comparison
+`kind: "page"`, all Delta pages, read-only. Returns `current_url`, `current_path`, `page_title`,
+`page_type` (`home`, `booking_form`, `flight_results`, `login`, `my_trips`, `flight_status`,
+`skymiles`, `info`, `other`), `available_tools` (tool names from
+`document.modelContext.getTools()`, or `null`), `signed_in` (`false` when the top-nav Log in
+button is visible, `true` when a Log out/Sign out control is, otherwise `null`),
+`login_flyout_open`, `page_messages` (visible alert text and any `SFAF…` error code), and
+`suggested_next_steps` tailored to the page, sign-in state, and available tools.
 
-Same implementation of the form interaction, same profile, same credentials, one submission per
-run. Direct navigation is the earlier baseline; search-result entry is the current tool.
+Live 2026-09-29: on the signed-out homepage it returned `page_type: "home"`, all four tools,
+`signed_in: false`, and a login suggestion; with the flyout open after the guarded login run it
+returned `login_flyout_open: true` and the "never resubmit blindly" step first; on the booking
+form it returned `booking_form` without `login` and suggested going home to sign in.
 
-| entry path | egress | form reached | submitted | outcome |
-| --- | --- | --- | --- | --- |
-| direct navigation | residential | yes | yes | Site answered "login is unavailable right now". |
-| direct navigation | mobile | no | no | Login form not ready within a 15-second budget; the form was present on later inspection. |
-| search result | residential | yes | yes | Site answered "login is unavailable right now". |
-| search result | mobile | yes | yes | Site answered "login is unavailable right now". |
+## URL patterns
 
-The search-result path is what changed the mobile-egress run from "never reached the form" to
-"reached the form and submitted". It did not change Delta's answer on either egress, so it is not
-evidence that the search referrer defeats a site-side block. The readiness budget was also raised
-from 15 seconds to 45 seconds of polling (plus 20 seconds after an in-page login trigger), which
-is the other reason the mobile run no longer reports a false timeout.
-
-### Profile state is not what Delta is keying on
-
-Every attempt above ran in a browser with a saved, reused profile, so the obvious suspicion was
-that Delta had flagged that profile's cookies. A control run says otherwise.
-
-| profile | egress | form reached | submitted | outcome |
-| --- | --- | --- | --- | --- |
-| saved, reused | residential | yes | yes | "login is unavailable right now" |
-| saved, reused | mobile | yes | yes | "login is unavailable right now" |
-| none, clean browser | mobile | yes | yes | "login is unavailable right now" |
-
-The same account and password sign in normally in an ordinary incognito window on a personal
-machine, so neither the credentials nor Delta's login service is the problem. A profile-free
-browser carrying no cookies and no history gets the identical refusal. That rules out cookie or
-profile contamination and points the signal at something every automated run shares regardless of
-stored state: egress reputation or the browser's own fingerprint. Rotating profiles or clearing
-cookies is not a fix here, and the same control is worth running before blaming profile state on
-any other airline.
-
-### Site quirks
-
-- Delta answers some login submissions with `We're sorry, but login is unavailable right now.`
-  This is a site-side condition rather than a credential verdict; it classifies as
-  `error_kind: "unknown"`, `error_source: "site"`, `submitted: true`, with Delta's exact wording
-  preserved in `error_message`. Do not read it as a wrong password and do not retry in a loop.
-  It also does not mean Delta login is down: the same credentials succeed in an ordinary browser
-  at the same time. Read it as Delta declining this particular client.
-- Wrong credentials produce `Login credential is incorrect. Please try again.`, which classifies
-  as `invalid_credentials`. Real accounts lock out, so the tool submits once per invocation.
-- The login page keeps a stale error banner visible after a failed attempt. Reload the entry
-  before another attempt rather than resubmitting over a stale banner.
-- Delta exposes no remember-me control and no automatable OTP step, so neither is implemented.
-  An MFA step is reported back to the caller as a first-step success.
-
-### QA
-
-Not independently QA-tested; this is **draft**. What was exercised:
-
-| Check | Evidence |
-| --- | --- |
-| Input validation | Four rejected shapes return `invalid_input` at `failed_step: "input"` with no navigation. |
-| Entry-step failures | Five synthetic cases (unreachable engine, missing search box, missing results, no delta.com result, navigation that never reaches delta.com) each return their own `error_kind`, `submitted: false`, and only ever navigate to `https://start.duckduckgo.com`. |
-| Site-error classification | `invalid_credentials`, `locked_or_throttled`, `mfa_failed`, the login-unavailable text, and a shown attempt count classify from real Delta wording. |
-| Challenge handling | A challenge before submitting stops with no credential fill; a challenge after submitting reports `submitted: true`. |
-| Success branches | Completed authentication and a verification step map to the two success sub-branches; a pre-existing signed-in page is not reported as this invocation's success. |
-| `prefilled_password` | Never navigates, requires a filled visible form, and submits once. |
-| Live, residential egress `76.46.4.177` | Search entry reached `https://www.delta.com/skymiles/login`, submitted once, site returned the login-unavailable message. |
-| Live, mobile egress `99.74.53.113` | Same, from an independent browser running the identical implementation. |
-| Live, mobile egress `172.56.29.114`, no profile | Same, from a browser with no profile attached; see the profile-state control above. |
-
-Both live runs executed this file's logic; the committed version differs from the one that ran
-only by an indentation change made afterwards. No captcha telemetry was recorded in either live session. A successful login, an MFA step, and a
-real captcha remain unverified.
+`login` is narrowed to the homepage (`https://www.delta.com/`, `/us/en`, `/us/en/`, each also
+with `?*`) because it drives the homepage header flyout and should only be offered where that
+flyout exists. The other Delta tools keep the default domain-wide patterns.
 
 ## Sessions
 

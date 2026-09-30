@@ -4,50 +4,109 @@
     <meta charset="utf-8" />
     <title>xwebmcp tools</title>
     <style>
-      :root { color-scheme: light dark; }
-      body { font: 13px/1.4 system-ui, sans-serif; margin: 0; color: #222; background: #fff; display: flex; flex-direction: column; height: 100vh; }
-      @media (prefers-color-scheme: dark) { body { color: #ddd; background: #1e1e1e; } .badge { background: #333; color: #ccc; } pre, select, input, textarea { background: #2a2a2a; color: #ddd; border-color: #444; } .tool.selected { background: #2f2f2f; } .tool:hover { background: #2a2a2a; } header, .section { border-color: #333; } }
-      header { padding: 8px 12px; border-bottom: 1px solid #e5e5e5; display: flex; align-items: center; justify-content: space-between; gap: 8px; }
-      header h1 { font-size: 13px; margin: 0; }
-      .muted { color: #777; }
-      .badge { font-size: 10px; padding: 1px 6px; border-radius: 8px; background: #eee; color: #444; white-space: nowrap; }
-      .badge.native { background: #e3f2fd; color: #0d47a1; }
-      .badge.custom { background: #e8f5e9; color: #1b5e20; }
-      .section { border-bottom: 1px solid #e5e5e5; }
-      .search { padding: 8px 12px; }
-      .search input { width: 100%; box-sizing: border-box; }
-      #page { font-size: 11px; padding: 0 12px 6px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-      #list { max-height: 34vh; overflow: auto; }
-      .group { padding: 4px 12px 2px; font-size: 10px; color: #777; text-transform: uppercase; letter-spacing: .04em; }
-      .tool { display: flex; align-items: center; gap: 6px; width: 100%; text-align: left; padding: 6px 12px; border: 0; border-left: 2px solid transparent; background: none; font: inherit; color: inherit; cursor: pointer; }
-      .tool:hover { background: #f5f5f5; }
-      .tool.selected { border-left-color: #2e7d32; background: #f0f0f0; }
-      .tool .name { font-family: ui-monospace, monospace; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-      #editor { flex: 1; overflow: auto; padding: 12px; }
-      #editor h2 { font-size: 15px; margin: 0; font-family: ui-monospace, monospace; word-break: break-all; }
-      #editor p { margin: 6px 0; }
+      :root {
+        color-scheme: light dark;
+        --background: #f6f4ed; --foreground: #1c2024; --card: #fcfbf7;
+        --muted: #e0e1e6; --muted-hover: #e1dccf; --muted-foreground: #60646c;
+        --border: #d0d2d9; --input: #d0d2d9; --input-hover: color-mix(in srgb, #d0d2d9 75%, #60646c);
+        --kernel-green: #81b300; --kernel-green-hover: #6f9a00; --on-green: #212225;
+        --gold: #c9a227; --error: color-mix(in srgb, #c9a227 55%, #1c2024);
+        --font-sans: Inter, ui-sans-serif, system-ui, -apple-system, sans-serif;
+        --font-mono: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+      }
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --background: #212225; --foreground: #edeef0;
+          --card: color-mix(in srgb, #212225 96%, #edeef0);
+          --muted: color-mix(in srgb, #212225 93%, #edeef0);
+          --muted-hover: color-mix(in srgb, #212225 90%, #edeef0);
+          --muted-foreground: color-mix(in srgb, #edeef0 55%, #212225);
+          --border: color-mix(in srgb, #edeef0 10%, #212225);
+          --input: color-mix(in srgb, #edeef0 14%, #212225);
+          --input-hover: color-mix(in srgb, #edeef0 18%, #212225);
+          --error: #c9a227;
+        }
+      }
+      * { box-sizing: border-box; border-radius: 0; }
+      body { font: 12px/1.3 var(--font-sans); margin: 0; color: var(--foreground); background: var(--card); -webkit-font-smoothing: antialiased; }
+      .muted { color: var(--muted-foreground); }
+      .error { color: var(--error); white-space: pre-wrap; word-break: break-word; }
       .row { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
-      label { display: flex; justify-content: space-between; gap: 8px; font-size: 12px; margin: 8px 0 3px; }
-      input, select, textarea { font: inherit; font-size: 12px; padding: 4px 6px; border: 1px solid #bbb; border-radius: 4px; box-sizing: border-box; width: 100%; }
-      textarea { font-family: ui-monospace, monospace; min-height: 120px; }
-      button { font: inherit; font-size: 12px; padding: 4px 10px; border-radius: 6px; border: 1px solid #bbb; background: #fafafa; cursor: pointer; color: #222; }
-      button:hover { background: #f0f0f0; }
-      button.primary { background: #2e7d32; color: #fff; border-color: #2e7d32; }
+      /* badges: quiet bordered tags, same shape everywhere */
+      .badge { display: inline-flex; align-items: center; height: 18px; font: 10px/1 var(--font-sans); padding: 0 6px; border: 1px solid var(--border); background: transparent; color: var(--muted-foreground); white-space: nowrap; flex-shrink: 0; }
+      .badge.native, .badge.custom { color: var(--muted-foreground); }
+      .badge.custom::before, .badge.on::before { content: ''; width: 6px; height: 6px; margin-right: 5px; background: var(--kernel-green); }
+      .badge.off::before { content: ''; width: 6px; height: 6px; margin-right: 5px; background: var(--gold); }
+      /* buttons: ghost by default, kernel-green accent for primary */
+      button { display: inline-flex; align-items: center; justify-content: center; gap: 6px; height: 28px; padding: 0 8px; font: 12px/1 var(--font-sans); color: var(--foreground); background: transparent; border: 1px solid transparent; cursor: pointer; white-space: nowrap; text-underline-offset: 2px; text-decoration-thickness: .5px; }
+      button:hover:not(:disabled) { background: var(--muted-hover); text-decoration: underline; }
+      button:focus-visible { outline: 1px solid var(--input-hover); outline-offset: -1px; }
+      button.primary { background: var(--kernel-green); color: var(--on-green); border-color: var(--kernel-green); padding: 0 12px; }
+      button.primary:hover:not(:disabled) { background: var(--kernel-green-hover); border-color: var(--kernel-green-hover); }
       button:disabled { opacity: .5; cursor: default; }
-      pre { margin: 6px 0 0; padding: 8px; background: #f5f5f5; border: 1px solid #e5e5e5; border-radius: 4px; max-height: 260px; overflow: auto; white-space: pre-wrap; word-break: break-word; font-size: 11px; }
-      .error { color: #b71c1c; white-space: pre-wrap; word-break: break-word; }
-      details { margin-top: 10px; font-size: 11px; }
-      details summary { cursor: pointer; color: #777; }
-      .empty { padding: 12px; color: #777; }
+
+      body { display: flex; flex-direction: column; height: 100vh; }
+      header { flex-shrink: 0; padding: 8px 12px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+      header h1 { font-size: 12px; font-weight: 400; margin: 0; display: flex; align-items: center; gap: 8px; }
+      header h1::before { content: '</>'; font: 10px/1 var(--font-mono); color: var(--muted-foreground); }
+      .section { flex-shrink: 0; border-bottom: 1px solid var(--border); }
+      .search { position: relative; margin: 12px; }
+      .search::before { content: ''; position: absolute; left: 9px; top: 9px; width: 8px; height: 8px; border: 1.5px solid var(--muted-foreground); border-radius: 50%; pointer-events: none; }
+      .search::after { content: ''; position: absolute; left: 18px; top: 18px; width: 5px; height: 1.5px; background: var(--muted-foreground); transform: rotate(45deg); transform-origin: left; pointer-events: none; }
+      .search input { height: 32px; padding-left: 30px; }
+      #page { font-size: 10px; padding: 0 12px 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      #list { max-height: 12rem; overflow: auto; padding-bottom: 8px; }
+      .group { padding: 8px 12px; font-size: 10px; color: var(--muted-foreground); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      .tool { display: flex; align-items: center; gap: 8px; width: 100%; height: auto; text-align: left; padding: 8px 12px; border: 0; border-left: 1px solid transparent; background: none; font: 12px/1.2 var(--font-sans); color: var(--foreground); cursor: pointer; }
+      .tool::before { content: '</>'; font: 9px/1 var(--font-mono); color: var(--muted-foreground); flex-shrink: 0; }
+      .tool:hover:not(:disabled) { background: var(--muted); text-decoration: none; }
+      .tool.selected, .tool.selected:hover:not(:disabled) { border-left-color: var(--kernel-green); background: var(--muted); color: var(--foreground); }
+      .tool .name { font-family: var(--font-sans); flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      .tool .badge { height: 16px; }
+      #editor { flex: 1; min-height: 0; overflow: auto; padding: 16px; }
+      #editor h2 { font-size: 16px; font-weight: 400; line-height: 1.2; margin: 0; word-break: break-all; }
+      #editor > p { margin: 8px 0 0; font-size: 12px; line-height: 1.4; word-break: break-word; }
+      #editor > p.muted[title] { font-size: 10px !important; line-height: 1.2; margin-top: 8px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      /* inputs toolbar: label left, button group right (room for more buttons) */
+      #editor > .row:has(> button) { flex-wrap: wrap; justify-content: flex-end; gap: 4px; margin: 16px 0 12px; }
+      #editor > .row:has(> button) > span:first-child { margin-right: auto; font-size: 10px; }
+      label { display: flex; justify-content: space-between; align-items: center; gap: 8px; font-size: 12px; margin: 12px 0 4px; word-break: break-all; }
+      label > span:last-child { flex-shrink: 0; font-size: 10px; }
+      input, select, textarea { display: block; width: 100%; height: 32px; font: 12px/1.3 var(--font-sans); padding: 0 12px; color: var(--foreground); background: var(--background); border: 1px solid var(--input); outline: none; }
+      input:hover, select:hover, textarea:hover { border-color: var(--input-hover); }
+      input:focus, select:focus, textarea:focus { border-color: var(--muted-foreground); }
+      input::placeholder, textarea::placeholder { color: var(--muted-foreground); }
+      textarea { height: auto; min-height: 140px; padding: 8px 12px; font-family: var(--font-mono); resize: vertical; }
+      #editor > p:has(> button.primary) { margin-top: 16px; }
+      /* result pane (inline border from JS is overridden here) */
+      #editor > div[aria-live] { border-top: 1px solid var(--border) !important; margin-top: 16px !important; padding-top: 12px !important; }
+      #editor > div[aria-live] > .row { font-size: 10px; min-height: 24px; }
+      #editor > div[aria-live] > .row button { height: 24px; padding: 0 6px; font-size: 10px; }
+      #editor > div[aria-live] > p { margin: 8px 0 0; font-size: 12px; }
+      pre { margin: 8px 0 0; padding: 12px; background: var(--muted); color: var(--foreground); border: 0; max-height: 12rem; overflow: auto; white-space: pre-wrap; word-break: break-word; font: 12px/1.4 var(--font-mono); }
+      details { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border); font-size: 10px; color: var(--muted-foreground); }
+      details summary { cursor: pointer; }
+      details p { margin: 8px 0 0; }
+      details pre { font-size: 10px; padding: 8px; color: var(--muted-foreground); }
+      .empty { padding: 8px 12px; font-size: 12px; color: var(--muted-foreground); }
+      #editor > .empty { padding: 0; }
+      ::-webkit-scrollbar { width: 8px; height: 8px; }
+      ::-webkit-scrollbar-thumb { background: var(--input); }
+      ::-webkit-scrollbar-track { background: transparent; }
     </style>
   </head>
   <body>
     <header>
       <h1>webmcp tools <span id="count" class="muted"></span></h1>
-      <span id="bridge" class="badge">bridge: …</span>
+      <span><span id="bridge" class="badge">bridge: …</span> <button id="settings-toggle" type="button" title="OpenRouter settings for example inputs">settings</button></span>
     </header>
+    <div id="settings" class="section" style="padding:0 12px 4px" hidden></div>
     <div class="section">
-      <div class="search"><input id="search" type="search" placeholder="find a tool…" aria-label="find a tool" /></div>
+      <div class="row" style="margin:12px;gap:6px">
+        <input id="task" type="text" placeholder="task, e.g. find a nonstop JFK to LAX next Friday" aria-label="task" style="flex:1;height:32px" />
+        <button id="step" type="button" class="primary" style="display:inline-flex;align-items:center;gap:4px;white-space:nowrap;height:32px"><svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.64 3.64-1.28-1.28a1.21 1.21 0 0 0-1.72 0L2.36 18.64a1.21 1.21 0 0 0 0 1.72l1.28 1.28a1.2 1.2 0 0 0 1.72 0L21.64 5.36a1.2 1.2 0 0 0 0-1.72"/><path d="m14 7 3 3"/><path d="M5 6v4"/><path d="M19 14v4"/><path d="M10 2v2"/><path d="M7 8H3"/><path d="M21 16h-4"/><path d="M11 3H9"/></svg><span id="step-label">step</span></button>
+      </div>
+      <p id="step-error" class="error" role="alert" style="margin:0 12px 6px" hidden></p>
       <div id="page" class="muted"></div>
       <div id="list"></div>
       <div id="list-empty" class="empty"></div>
@@ -56,6 +115,7 @@
     <script src="lib/url-pattern.js"></script>
     <script src="lib/client.js"></script>
     <script src="lib/webmcp-inputs.js"></script>
+    <script src="lib/example-inputs.js"></script>
     <script src="sidepanel.js"></script>
   </body>
 </html>

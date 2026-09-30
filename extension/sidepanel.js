@@ -7,6 +7,9 @@
 const {client} = globalThis.xw;
 const {getWebMCPFields, canDisplayWebMCPFields, parseWebMCPInput} = globalThis.xw.inputs;
 
+const examples = globalThis.xw.examples;
+const TASKS_KEY = 'exampleTasks';
+
 const $ = (id) => document.getElementById(id);
 const INVOKE_TIMEOUT_SEC = 120;
 
@@ -19,11 +22,140 @@ const state = {
   tabId: null,
   tab: null,
   tools: [],
-  search: '',
   selectedRef: null,
   drafts: new Map(), // tool_ref -> {input, mode, numbers, error, result, duration, diagnostics, unavailable}
   running: null,
+  // OpenRouter settings from chrome.storage.local; the key is never logged.
+  settings: {apiKey: '', model: ''},
+  settingsOpen: false,
+  // Per-tab task text and invocation history, mirrored to chrome.storage.session.
+  tasks: {}, // tab id -> task text
+  history: {}, // tab id -> [{tool, input, status, output}]
+  generating: null,
+  stepping: false,
+  stepError: '',
+  focusRun: false,
 };
+
+const HISTORY_KEY = 'stepHistory';
+const HISTORY_LIMIT = 10;
+
+function currentTask() {
+  return state.tasks[state.tabId] ?? '';
+}
+
+function recordHistory(tool, input, result) {
+  if (!state.tabId) return;
+  let output = result?.error_text ?? result?.error ?? result?.output;
+  output = typeof output === 'string' ? output : JSON.stringify(output ?? null);
+  if (output.length > 2000) output = `${output.slice(0, 2000)}\u2026`;
+  const entry = {tool: tool.tool.name, input, status: result?.status ?? result?.code ?? (result?.error ? 'error' : 'unknown'), output};
+  const list = [...(state.history[state.tabId] ?? []), entry].slice(-HISTORY_LIMIT);
+  state.history = {...state.history, [state.tabId]: list};
+  void chrome.storage.session.set({[HISTORY_KEY]: state.history}).catch(() => {});
+}
+
+async function loadSettings() {
+  const stored = await chrome.storage.local.get(examples.SETTINGS_KEY).catch(() => ({}));
+  const value = stored?.[examples.SETTINGS_KEY] ?? {};
+  state.settings = {apiKey: typeof value.apiKey === 'string' ? value.apiKey : '', model: typeof value.model === 'string' ? value.model : ''};
+  const session = await chrome.storage.session.get(TASKS_KEY).catch(() => ({}));
+  state.tasks = session?.[TASKS_KEY] ?? {};
+  const history = await chrome.storage.session.get(HISTORY_KEY).catch(() => ({}));
+  state.history = history?.[HISTORY_KEY] ?? {};
+}
+
+async function saveSettings(update) {
+  state.settings = {...state.settings, ...update};
+  await chrome.storage.local.set({[examples.SETTINGS_KEY]: state.settings});
+}
+
+function setTask(text) {
+  if (!state.tabId) return;
+  state.tasks = {...state.tasks, [state.tabId]: text};
+  if (!text) delete state.tasks[state.tabId];
+  void chrome.storage.session.set({[TASKS_KEY]: state.tasks}).catch(() => {});
+}
+
+function renderTaskBar() {
+  const input = $('task');
+  const step = $('step');
+  if (!input || !step) return;
+  if (document.activeElement !== input) input.value = currentTask();
+  input.disabled = !state.tabId;
+  const hasKey = Boolean(state.settings.apiKey);
+  step.disabled = !hasKey || state.stepping || state.running !== null || !state.tools.length;
+  step.title = !hasKey ? 'set an OpenRouter API key in settings to enable' : 'ask the model for the next tool call toward the task (you still click run)';
+  step.setAttribute('aria-busy', String(state.stepping));
+  const label = $('step-label');
+  if (label) label.textContent = state.stepping ? 'thinking\u2026' : 'step';
+  const error = $('step-error');
+  if (error) {
+    error.textContent = state.stepError;
+    error.hidden = !state.stepError;
+  }
+}
+
+async function step() {
+  if (state.stepping || !state.settings.apiKey || !state.tools.length) return;
+  state.stepping = true;
+  state.stepError = '';
+  render();
+  try {
+    const plan = await examples.planNextStep({
+      apiKey: state.settings.apiKey,
+      model: state.settings.model,
+      task: currentTask(),
+      page: {title: state.tab?.title ?? '', url: state.tab?.url ?? ''},
+      tools: state.tools.map((tool) => ({name: tool.tool.name, description: tool.tool.description, inputSchema: tool.tool.inputSchema})),
+      history: state.history[state.tabId] ?? [],
+    });
+    const tool = state.tools.find((candidate) => candidate.tool.name === plan.tool);
+    if (!tool) throw new Error(`the model picked an unknown tool: ${plan.tool}`);
+    state.selectedRef = tool.tool_ref;
+    const fields = getWebMCPFields(tool.tool.inputSchema);
+    updateDraft(tool.tool_ref, {
+      input: JSON.stringify(plan.arguments, null, 2),
+      numbers: undefined,
+      mode: fields && canDisplayWebMCPFields(fields, plan.arguments) ? (state.drafts.get(tool.tool_ref)?.mode ?? 'fields') : 'json',
+      error: undefined,
+    });
+    state.focusRun = true;
+  } catch (error) {
+    state.stepError = `step: ${error instanceof Error ? error.message : 'failed'}`;
+  } finally {
+    state.stepping = false;
+    render();
+  }
+}
+
+function renderSettings() {
+  const node = $('settings');
+  if (!node) return;
+  node.hidden = !state.settingsOpen;
+  node.replaceChildren();
+  if (!state.settingsOpen) return;
+  const keyInput = el('input', {id: 'openrouter-key', type: 'password', autocomplete: 'off', spellcheck: 'false', placeholder: state.settings.apiKey ? 'key saved · paste to replace' : 'sk-or-…'});
+  const modelInput = el('input', {id: 'openrouter-model', type: 'text', spellcheck: 'false', placeholder: examples.DEFAULT_MODEL, value: state.settings.model});
+  const status = el('span', {className: 'muted', style: 'font-size:11px'}, state.settings.apiKey ? 'key saved' : 'no key set');
+  node.append(
+    el('label', {for: 'openrouter-key'}, el('span', {}, 'OpenRouter API key'), el('span', {className: 'muted', style: 'font-size:10px'}, 'stored locally; sent only to openrouter.ai')),
+    keyInput,
+    el('label', {for: 'openrouter-model'}, el('span', {}, 'model'), el('span', {className: 'muted', style: 'font-size:10px'}, `default ${examples.DEFAULT_MODEL}`)),
+    modelInput,
+    el('p', {className: 'row'}, status, el('span', {},
+      el('button', {type: 'button', disabled: state.settings.apiKey ? undefined : '', onclick: async () => {
+        await saveSettings({apiKey: ''});
+        render();
+      }}, 'clear key'), ' ',
+      el('button', {type: 'button', className: 'primary', onclick: async () => {
+        const update = {model: modelInput.value.trim()};
+        if (keyInput.value.trim()) update.apiKey = keyInput.value.trim();
+        await saveSettings(update);
+        render();
+      }}, 'save'))),
+  );
+}
 
 function el(tag, props = {}, ...children) {
   const node = document.createElement(tag);
@@ -88,10 +220,8 @@ function renderList() {
   $('count').textContent = state.tools.length ? String(state.tools.length) : '';
   $('page').textContent = state.tab ? (state.tab.title || state.tab.url || '') : 'no active tab';
   $('page').title = state.tab?.url ?? '';
-  const query = state.search.toLowerCase();
   const groups = new Map();
   for (const tool of state.tools) {
-    if (query && !`${tool.tool.name} ${tool.tool.description ?? ''} ${tool.source.custom?.namespace ?? ''}`.toLowerCase().includes(query)) continue;
     const key = tool.source.frame ? `frame ${tool.source.frame.frame_id} · ${tool.source.frame.url}` : 'page';
     if (!groups.has(key)) groups.set(key, []);
     groups.get(key).push(tool);
@@ -170,7 +300,17 @@ function renderEditor() {
   };
 
   const toolbar = el('div', {className: 'row'}, el('span', {className: 'muted', style: 'font-size:10px'}, 'inputs'));
-  toolbar.append(el('button', {
+  const generating = state.generating === tool.tool_ref;
+  const hasKey = Boolean(state.settings.apiKey);
+  const actions = el('span', {});
+  actions.append(el('button', {
+    type: 'button',
+    disabled: running || generating || !hasKey || !available ? '' : undefined,
+    title: hasKey ? 'fill the inputs with AI-generated example values (does not run the tool)' : 'set an OpenRouter API key in settings to enable',
+    onclick: () => void generateExample(tool),
+  }, generating ? 'generating…' : 'example inputs'), ' ');
+  toolbar.append(actions);
+  actions.append(el('button', {
     type: 'button',
     disabled: running || (!showFields && !canUseFields) ? '' : undefined,
     title: showFields ? 'edit JSON' : canUseFields ? 'edit fields' : 'this input requires JSON',
@@ -185,6 +325,12 @@ function renderEditor() {
     },
   }, showFields ? 'json' : 'fields'));
   editor.append(toolbar);
+  if (!hasKey) {
+    editor.append(el('p', {className: 'muted', style: 'font-size:10px'}, 'example inputs: add an OpenRouter API key in ', el('button', {type: 'button', onclick: () => {
+      state.settingsOpen = true;
+      render();
+    }}, 'settings'), '.'));
+  }
 
   if (showFields) {
     if (!fields.length) editor.append(el('p', {className: 'muted'}, 'no declared inputs.'));
@@ -236,6 +382,7 @@ function renderEditor() {
 
   editor.append(el('p', {}, el('button', {
     type: 'button',
+    id: 'run-button',
     className: 'primary',
     disabled: busy || !available ? '' : undefined,
     title: busy && !running ? 'another tool is running' : undefined,
@@ -282,6 +429,34 @@ function renderEditor() {
     el('pre', {}, JSON.stringify({tool_ref: tool.tool_ref, source: tool.source, tool: tool.tool}, null, 2))));
 }
 
+async function generateExample(tool) {
+  if (state.generating || !state.settings.apiKey) return;
+  state.generating = tool.tool_ref;
+  updateDraft(tool.tool_ref, {error: undefined});
+  render();
+  try {
+    const input = await examples.generateExampleInputs({
+      apiKey: state.settings.apiKey,
+      model: state.settings.model,
+      tool: {name: tool.tool.name, description: tool.tool.description, inputSchema: tool.tool.inputSchema},
+      page: {title: state.tab?.title ?? tool.source.page_title ?? '', url: state.tab?.url ?? tool.source.page_url ?? ''},
+      task: currentTask(),
+    });
+    const fields = getWebMCPFields(tool.tool.inputSchema);
+    updateDraft(tool.tool_ref, {
+      input: JSON.stringify(input, null, 2),
+      numbers: undefined,
+      mode: fields && canDisplayWebMCPFields(fields, input) ? state.drafts.get(tool.tool_ref)?.mode : 'json',
+      error: undefined,
+    });
+  } catch (error) {
+    updateDraft(tool.tool_ref, {error: `example inputs: ${error instanceof Error ? error.message : 'generation failed'}`});
+  } finally {
+    state.generating = null;
+    render();
+  }
+}
+
 async function run(tool) {
   if (state.running) return;
   const draft = draftFor(tool);
@@ -309,6 +484,7 @@ async function run(tool) {
       if (record?.diagnostics) update.diagnostics = record.diagnostics;
     }
     updateDraft(tool.tool_ref, update);
+    recordHistory(tool, input, result);
   } catch (error) {
     const update = {duration: Math.round(performance.now() - started)};
     if (error.code === 'outcome_unknown') {
@@ -320,6 +496,7 @@ async function run(tool) {
       update.result = {error: error.message};
     }
     updateDraft(tool.tool_ref, update);
+    recordHistory(tool, input, update.result);
   } finally {
     state.running = null;
     render();
@@ -328,14 +505,23 @@ async function run(tool) {
 }
 
 function render() {
+  renderSettings();
+  renderTaskBar();
   renderList();
   renderEditor();
+  if (state.focusRun) {
+    state.focusRun = false;
+    const button = $('run-button');
+    button?.focus?.();
+    button?.scrollIntoView?.({block: 'nearest'});
+  }
 }
 
-$('search').addEventListener('input', (event) => {
-  state.search = event.target.value;
-  renderList();
+$('task')?.addEventListener('input', (event) => setTask(event.target.value));
+$('task')?.addEventListener('keydown', (event) => {
+  if (event.key === 'Enter') void step();
 });
+$('step')?.addEventListener('click', () => void step());
 
 client.onToolsChanged(() => void reload());
 chrome.tabs.onActivated.addListener(() => {
@@ -347,5 +533,12 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo) => {
 chrome.storage.session.onChanged.addListener((changes) => {
   if (changes.bridge) void renderBridge();
 });
+$('settings-toggle')?.addEventListener('click', () => {
+  state.settingsOpen = !state.settingsOpen;
+  render();
+});
+chrome.storage.local?.onChanged?.addListener((changes) => {
+  if (changes[examples.SETTINGS_KEY]) void loadSettings().then(render);
+});
 void renderBridge();
-void reload();
+void loadSettings().then(reload);

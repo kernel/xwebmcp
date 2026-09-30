@@ -4,23 +4,56 @@
     <meta charset="utf-8" />
     <title>xwebmcp</title>
     <style>
-      body { font: 13px/1.4 system-ui, sans-serif; margin: 0; width: 360px; color: #222; }
-      section { padding: 10px 12px; border-bottom: 1px solid #e5e5e5; }
-      h1 { font-size: 14px; margin: 0 0 6px; }
-      h2 { font-size: 12px; margin: 0 0 6px; color: #555; text-transform: uppercase; letter-spacing: .04em; }
-      ul { list-style: none; margin: 0; padding: 0; }
-      li { display: flex; align-items: center; gap: 6px; padding: 3px 0; }
-      .name { font-family: ui-monospace, monospace; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; }
-      .badge { font-size: 10px; padding: 1px 6px; border-radius: 8px; background: #eee; color: #444; white-space: nowrap; }
-      .badge.native { background: #e3f2fd; color: #0d47a1; }
-      .badge.custom { background: #e8f5e9; color: #1b5e20; }
-      .badge.on { background: #e8f5e9; color: #1b5e20; }
-      .badge.off { background: #fbe9e7; color: #b71c1c; }
-      .muted { color: #777; }
-      .error { color: #b71c1c; white-space: pre-wrap; }
-      button { font: inherit; padding: 4px 10px; border-radius: 6px; border: 1px solid #bbb; background: #fafafa; cursor: pointer; }
-      button:hover { background: #f0f0f0; }
+      :root {
+        color-scheme: light dark;
+        --background: #f6f4ed; --foreground: #1c2024; --card: #fcfbf7;
+        --muted: #e0e1e6; --muted-hover: #e1dccf; --muted-foreground: #60646c;
+        --border: #d0d2d9; --input: #d0d2d9; --input-hover: color-mix(in srgb, #d0d2d9 75%, #60646c);
+        --kernel-green: #81b300; --kernel-green-hover: #6f9a00; --on-green: #212225;
+        --gold: #c9a227; --error: color-mix(in srgb, #c9a227 55%, #1c2024);
+        --font-sans: Inter, ui-sans-serif, system-ui, -apple-system, sans-serif;
+        --font-mono: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+      }
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --background: #212225; --foreground: #edeef0;
+          --card: color-mix(in srgb, #212225 96%, #edeef0);
+          --muted: color-mix(in srgb, #212225 93%, #edeef0);
+          --muted-hover: color-mix(in srgb, #212225 90%, #edeef0);
+          --muted-foreground: color-mix(in srgb, #edeef0 55%, #212225);
+          --border: color-mix(in srgb, #edeef0 10%, #212225);
+          --input: color-mix(in srgb, #edeef0 14%, #212225);
+          --input-hover: color-mix(in srgb, #edeef0 18%, #212225);
+          --error: #c9a227;
+        }
+      }
+      * { box-sizing: border-box; border-radius: 0; }
+      body { font: 12px/1.3 var(--font-sans); margin: 0; color: var(--foreground); background: var(--card); -webkit-font-smoothing: antialiased; }
+      .muted { color: var(--muted-foreground); }
+      .error { color: var(--error); white-space: pre-wrap; word-break: break-word; }
       .row { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+      /* badges: quiet bordered tags, same shape everywhere */
+      .badge { display: inline-flex; align-items: center; height: 18px; font: 10px/1 var(--font-sans); padding: 0 6px; border: 1px solid var(--border); background: transparent; color: var(--muted-foreground); white-space: nowrap; flex-shrink: 0; }
+      .badge.native, .badge.custom { color: var(--muted-foreground); }
+      .badge.custom::before, .badge.on::before { content: ''; width: 6px; height: 6px; margin-right: 5px; background: var(--kernel-green); }
+      .badge.off::before { content: ''; width: 6px; height: 6px; margin-right: 5px; background: var(--gold); }
+      /* buttons: ghost by default, kernel-green accent for primary */
+      button { display: inline-flex; align-items: center; justify-content: center; gap: 6px; height: 28px; padding: 0 8px; font: 12px/1 var(--font-sans); color: var(--foreground); background: transparent; border: 1px solid transparent; cursor: pointer; white-space: nowrap; text-underline-offset: 2px; text-decoration-thickness: .5px; }
+      button:hover:not(:disabled) { background: var(--muted-hover); text-decoration: underline; }
+      button:focus-visible { outline: 1px solid var(--input-hover); outline-offset: -1px; }
+      button.primary { background: var(--kernel-green); color: var(--on-green); border-color: var(--kernel-green); padding: 0 12px; }
+      button.primary:hover:not(:disabled) { background: var(--kernel-green-hover); border-color: var(--kernel-green-hover); }
+      button:disabled { opacity: .5; cursor: default; }
+
+      body { width: 360px; }
+      section { padding: 12px; border-bottom: 1px solid var(--border); }
+      section:last-child { border-bottom: 0; }
+      h1 { font-size: 16px; font-weight: 400; margin: 0 0 8px; }
+      h2 { font-size: 10px; font-weight: 400; margin: 0 0 8px; color: var(--muted-foreground); }
+      ul { list-style: none; margin: 0; padding: 0; }
+      li { display: flex; align-items: center; gap: 8px; padding: 4px 0; font-size: 12px; }
+      .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; min-width: 0; }
+      button { border-color: var(--input); }
     </style>
   </head>
   <body>
