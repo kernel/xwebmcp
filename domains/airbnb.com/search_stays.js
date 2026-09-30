@@ -144,17 +144,26 @@
     };
     const challengeText = value => /^(?:captcha|access denied|robot check|security check|unusual traffic|(?:verify|confirm) (?:you are|you're) human|complete the captcha)[.!?]?$/i.test(value.replace(/[‘’]/g, "'").replace(/\s+/g, " ").trim());
     const renderedHeadingText = heading => {
-      const walker = document.createTreeWalker(heading, NodeFilter.SHOW_TEXT);
-      let value = "";
+      const walker = document.createTreeWalker(heading, NodeFilter.SHOW_ELEMENT | NodeFilter.SHOW_TEXT);
+      let value = "", previousBlock = heading;
       for (let node = walker.nextNode(); node; node = walker.nextNode()) {
-        if (/^(?:hidden|collapse)$/.test(getComputedStyle(node.parentElement).visibility)) continue;
-        let shown = true;
-        for (let element = node.parentElement; element; element = element.parentElement) {
+        const parent = node.nodeType === 1 ? node : node.parentElement;
+        let shown = true, block = heading;
+        for (let element = parent; element; element = element.parentElement) {
           const style = getComputedStyle(element);
-          if (element.matches("script, style, template, noscript") || style.display === "none" || Number(style.opacity) === 0) { shown = false; break; }
+          if (element.matches("script, style, template, noscript") || style.display === "none" || node.nodeType === 3 && Number(style.opacity) === 0) { shown = false; break; }
+          if (block === heading && element !== heading && /^(?:block|flow-root|list-item|flex|grid|table(?:-.+)?)$/.test(style.display)) block = element;
           if (element === heading) break;
         }
-        if (shown) value += node.textContent;
+        if (!shown) continue;
+        if (node.nodeType === 1) {
+          if (node.matches("br") || block === node) value += "\n";
+          continue;
+        }
+        if (/^(?:hidden|collapse)$/.test(getComputedStyle(parent).visibility)) continue;
+        if (block !== previousBlock) value += "\n";
+        value += node.textContent;
+        previousBlock = block;
       }
       return value;
     };
@@ -169,7 +178,7 @@
       if (/log in|sign in/i.test(doc.title || "")) return "login_required";
       const blocked = [...doc.querySelectorAll('h1, h2, h3, h4, h5, h6, [role="heading"]')].some(heading => {
         if (live) return heading.checkVisibility({ opacityProperty: true, visibilityProperty: true }) && challengeText(renderedHeadingText(heading));
-        if (hidden(heading)) return false;
+        if (heading.matches("script, style, template, noscript") || hidden(heading)) return false;
         const copy = heading.cloneNode(true);
         copy.querySelectorAll("script, style, template, noscript, [hidden], [style]").forEach(element => { if (element.matches("script, style, template, noscript") || hidden(element)) element.remove(); });
         return challengeText(copy.textContent || "");

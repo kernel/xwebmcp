@@ -116,8 +116,9 @@ login and booking starting paths are refused even on the matching host.
   typographic apostrophes, normalized whitespace and terminal punctuation are
   supported. Live headings use native visibility and project text nodes using
   computed descendant/ancestor styles, excluding transparent and non-rendered
-  content. Fetched HTML stays inert: its heading scan excludes hidden attributes,
-  inline hidden styles, hidden descendants and script/style/template/noscript
+  content while preserving block and BR text boundaries. Fetched HTML stays inert:
+  its heading scan excludes hidden attributes, inline hidden styles, hidden
+  descendants and script/style/template/noscript
   content, but does not compute visibility from embedded or external stylesheet
   rules.
 - Site terms restrict automated access and collection. The tools do not imply site
@@ -130,8 +131,8 @@ login and booking starting paths are refused even on the matching host.
 
 ## QA
 
-Builder checks on 2026-09-30: 353 fabricated fixture tests passed, registry validation
-passed (82 tools), the full 1,930-test suite passed, all 14 extension unit tests
+Builder checks on 2026-09-30: 369 fabricated fixture tests passed, registry validation
+passed (82 tools), the full 1,946-test suite passed, all 14 extension unit tests
 passed, and `go test ./...` passed. The unchanged CI workflow runs these Go, registry,
 tool and extension checks.
 
@@ -149,13 +150,20 @@ Fourteen additional fixtures reproduced those findings against the first repair
 (all 14 failed), then passed after the text-projection repair. No assertions were
 weakened.
 
-A separate native-Chromium run passed 51 direct-source cases, including CSS-hidden
-live headings, transparent/hidden ancestors and descendants, visible descendant
-overrides, display-contents wrappers and non-rendered fetched content. These are
-synthetic fixtures, not extension invocation or live challenge evidence.
+The first recheck found that text-node concatenation dropped rendered whitespace.
+The projection now preserves block/BR boundaries without splitting inline words.
+Additional fixtures cover those boundaries, broken-word non-matches and intrinsically
+non-rendered role-heading roots. Against the preceding source, 13 failed and three
+inline-word controls passed; the repaired matrix passes all 369 cases.
 
-Kernel live: search and listing reads succeeded from `/help/article/2908` without
-replacing that document. A dated listing preview returned its displayed three-night
+A separate native-Chromium run passed 67 direct-source cases, including CSS-hidden
+live headings, transparent/hidden ancestors and descendants, visible descendant
+overrides, display-contents wrappers, block/BR boundaries and non-rendered fetched
+content. The same 67-case matrix reproduced all 13 new failures before this repair.
+These are synthetic fixtures, not extension invocation or live challenge evidence.
+
+Earlier-source Kernel live checks: search and listing reads succeeded from
+`/help/article/2908` without replacing that document. A dated listing preview returned its displayed three-night
 price and exact two-adult date selection, then returned `wrong_page` from the help
 page. All three were registered atomically; native discovery was empty before custom
 registration. No Reserve click, booking flow or account mutation occurred.
@@ -165,7 +173,9 @@ parse when `typeof output === "string"`. This is runtime behavior, not a changed
 output schema.
 
 The original U+2019 and descendant-text findings are covered by regression tests.
-Independent final-source recheck is pending, so all three entries remain `draft`.
+The final permitted independent recheck is pending, so all three entries remain
+`draft`. The final repair is being rechecked offline; earlier live results are
+historical evidence, not final-source Kernel or extension invocation sign-off.
 
 Local Chromium 153 loaded the unmodified extension and stored all three definitions
 together on fully intercepted synthetic pages. A normal Grant access request did
