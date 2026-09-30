@@ -7,10 +7,10 @@ Tools for Myntra (https://www.myntra.com), an Indian fashion, beauty and home re
 | search_products | [search_products.js](search_products.js) | verified | One page of organic results with the site's sorts, `Group:Value` filters, a rupee price range and an opaque cursor; reports `query_substituted` when the site searches different words |
 | get_product | [get_product.js](get_product.js) | verified | Price and MRP in rupees, every size with SKU id, availability and stock, seller, colour variants, attributes, description sections, images, return and cash-on-delivery flags; unknown ids return `not_found` |
 | get_product_reviews | [get_product_reviews.js](get_product_reviews.js) | verified | Public reviews, 12 per page, most helpful or most recent, optional exact star filter; page 1 adds the rating summary; reviewer names are not returned |
-| get_cart | [get_cart.js](get_cart.js) | draft | Read at most 100 guest bag lines; signed-in bags refused |
-| add_to_cart | [add_to_cart.js](add_to_cart.js) | draft | Add one ordinary guest SKU with price/stock/duplicate guards; fixture-only mutation success |
-| update_cart_item | [update_cart_item.js](update_cart_item.js) | draft | Set exact guest line quantity 1–10; preserve SKU, seller and checkout selection; fixture-only mutation success |
-| remove_cart_item | [remove_cart_item.js](remove_cart_item.js) | draft | Remove one exact guest line with an expected quantity; fixture-only mutation success |
+| get_cart | [get_cart.js](get_cart.js) | verified | Read at most 100 guest bag lines; signed-in bags refused |
+| add_to_cart | [add_to_cart.js](add_to_cart.js) | qa_passed | Add one ordinary guest SKU with price/stock/duplicate guards; fixture-only mutation success |
+| update_cart_item | [update_cart_item.js](update_cart_item.js) | qa_passed | Set exact guest line quantity 1–10; preserve SKU, seller and checkout selection; fixture-only mutation success |
+| remove_cart_item | [remove_cart_item.js](remove_cart_item.js) | qa_passed | Remove one exact guest line with an expected quantity; fixture-only mutation success |
 
 ## Native WebMCP tools
 
@@ -223,15 +223,43 @@ is omitted because this runtime has no trusted per-action human approval path.
 
 ## QA summary
 
-The guest bag additions are initially `draft`, pending independent final-source QA. Fixtures in
-`tests/myntra-cart-tools.test.mjs` test success and failures without any live mutations. Current
-Kernel registration includes the entire seven-tool namespace; live success/failure coverage and
-local extension coverage are recorded separately below after review.
+### Current seven-tool source, 2026-09-30
 
-Independent QA (agent `agt_14295d5c1a9f9887b0e9`, recorded in `registry.json` provenance) signed
-off all three tools on the final tool source, commit `a46a1e2368bdad8bbec745b7fa0368eae8ab4d0c`,
-after two fix rounds. Later commits change only this README, `registry.json` and the tests. The
-review found no blocking or major defects; the minor ones are recorded above as limitations.
+Independent QA signed off source commit `645a1945ee3d937a87f5e962c837ab4e1f98148d` after one
+focused pass and one defect recheck. The three public reads are `PASS_WITH_NITS` (existing
+limitations); all four guest bag tools are `PASS`. No unresolved blocker remains. The reviewer
+is recorded in registry provenance. The initial review caught nonprimitive identity coercion,
+pre-dispatch cancellation classification and stale guest reads; regression tests cover all three.
+
+Independently run: 96/96 guest bag fixtures, 179/179 focused Myntra tests, 1,756/1,756 full tests,
+and 97/97 retained independent probes with schema-valid outputs. Registry validation passes
+with 86 tools; the builder also ran `go test ./...` successfully.
+
+Builder live checks on this exact source, 2026-09-30, signed out, from
+`https://www.myntra.com/men-running-shoes`, in both a Kernel headed stealth browser (default
+egress) and isolated local Chromium 153 through the extension's native-messaging MCP bridge:
+
+- The entire seven-tool namespace was registered atomically, retaining all public reads.
+- `search_products` returned two socks results; `get_product` returned style `32093863`;
+  `get_product_reviews` returned 12 reviews; `get_cart` returned an empty INR bag.
+- Malformed add input was `invalid_input`; fabricated absent update/remove targets were
+  `not_found`, without a write. Each invocation preserved the tab URL. Navigating the QA tab
+  to `example.com` exposed zero Myntra tools.
+- The extension used a pinned install of `645a194`, the normal host-permission grant and
+  unmodified extension code. These are real public-site read successes, not intercepted fixtures.
+
+The reviewer's earlier live empty-bag/product/search/review and absent-target checks were at
+`db38bb6`, not the fixed source. The final recheck was source/fixture-only; the final-source live
+checks above were run by the builder. No live bag or wishlist mutation was performed by either.
+Action success, populated bags, account switches, stock/concurrency races and uncertain write
+outcomes remain fixture-only. Actions are therefore `qa_passed`, not `verified`; `get_cart` and
+the public reads are `verified`. Later metadata/documentation changes do not change tool source.
+
+### Earlier public-read QA, 2026-09-29
+
+Independent QA signed off the original three public reads at
+`a46a1e2368bdad8bbec745b7fa0368eae8ab4d0c` after two fix rounds. Those three `.js` files remain
+byte-identical. The review found no blocking or major defects; minor ones remain documented above.
 
 Live cases run by the reviewer on `a46a1e2`, 2026-09-29, guest sessions on a Kernel stealth browser
 with default egress, tools registered as one batch with `forceOverwriteNamespace`, each invoked
