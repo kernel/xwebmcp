@@ -35,7 +35,7 @@ function harness(name, o = {}) {
   const requests = [];
   const controller = new AbortController();
   let saved = o.initialSaved ?? false, clicks = 0, interactions = 0, accounts = 0;
-  const attr = (map, extra = {}) => ({ getAttribute: k => map[k] ?? null, hasAttribute: k => k in map, ...extra });
+  const attr = (map, extra = {}) => ({ getAttribute: k => map[k] ?? null, hasAttribute: k => k in map, setAttribute: (k, v) => { map[k] = v; }, removeAttribute: k => { delete map[k]; }, ...extra });
   const control = attr(o.disabled ? { "aria-disabled": "true" } : {}, {
     isConnected: true, get textContent() { return o.label ?? (saved ? "Unsave" : "Save"); },
     click() { clicks++; o.onClick?.(controller); if (!o.noChange) saved = !saved; if (o.clickThrows) throw new Error("uncertain click"); }
@@ -89,6 +89,7 @@ function harness(name, o = {}) {
       for (const { url, init } of requests) {
         assert.equal(new URL(url).origin, "https://www.reddit.com");
         assert.equal(init.credentials, "same-origin");
+        if (name === "set_saved") assert.equal(init.cache, "no-store");
         assert.equal(init.method, undefined);
         assert.equal(init.body, undefined);
       }
@@ -174,7 +175,8 @@ test("prepare_post: exact community, rules caps, eligibility and maximum code-po
   assert.equal((await harness("prepare_post", { about: { subreddit_type: "public", restrict_posting: true, user_is_contributor: false } }).run()).status, "prepared");
   assert.equal(result.handoff_url, "https://www.reddit.com/r/fabcommunity/submit");
   for (const about of [{ display_name: "different" }, { submission_type: "unexpected" }]) assert.equal((await harness("prepare_post", { about }).run()).error_kind, "site_changed");
-  for (const about of [{ submission_type: "link" }, { user_is_banned: true }, { subreddit_type: "restricted", user_is_contributor: false }]) assert.equal((await harness("prepare_post", { about }).run()).error_kind, "forbidden");
+  for (const about of [{ submission_type: "link" }, { user_is_banned: true }, { subreddit_type: "restricted", user_is_contributor: false }, { subreddit_type: "restricted", user_is_contributor: null }, { subreddit_type: "restricted" }]) assert.equal((await harness("prepare_post", { about }).run()).error_kind, "forbidden");
+  assert.equal((await harness("prepare_post", { about: { subreddit_type: "restricted", user_is_contributor: true } }).run()).status, "prepared");
   assert.equal((await harness("prepare_post", { rules: [{}] }).run()).error_kind, "site_changed");
   assert.equal((await harness("prepare_post", { respond: () => ({ redirect: "https://www.reddit.com/subreddits/search.json" }) }).run()).error_kind, "not_found");
 });
@@ -226,10 +228,26 @@ test("set_saved: prerequisites and account mismatch stop before any click", asyn
 });
 
 test("set_saved: removed or replaced control before click stops without acting", async () => {
-  for (const change of [({ post }) => { post.isConnected = false; }, ({ menu }) => { menu.isConnected = false; }, ({ control }) => { control.isConnected = false; }]) {
+  for (const [change, kind] of [
+    [({ post }) => { post.isConnected = false; }, "wrong_page"],
+    [({ menu }) => { menu.isConnected = false; }, "site_changed"],
+    [({ control }) => { control.isConnected = false; }, "state_changed"],
+    [({ menu, control }) => { menu.shadowRoot.querySelectorAll = () => [{ ...control }]; }, "state_changed"],
+    [({ menu }) => { menu.setAttribute("is-ad", ""); }, "site_changed"],
+    [({ menu }) => { menu.removeAttribute("is-logged-in"); }, "state_changed"],
+    [({ control }) => { control.setAttribute("aria-disabled", "true"); }, "site_changed"]
+  ]) {
     const h = harness("set_saved", { onAccount: state => { if (state.accounts === 2) change(state); } });
-    assert.equal((await h.run()).error_kind, "state_changed");
+    const result = await h.run();
+    assert.equal(result.error_kind, kind);
+    assert.equal(result.write_attempted, false);
     assert.equal(h.clicks, 0);
+  }
+  for (const flag of ["invisible", "duplicatePosts", "duplicateMenus", "loggedOut"]) {
+    const o = { onAccount: state => { if (state.accounts === 2) o[flag] = true; } };
+    const h = harness("set_saved", o);
+    assert.equal((await h.run()).write_attempted, false);
+    assert.equal(h.clicks, 0, flag);
   }
 });
 

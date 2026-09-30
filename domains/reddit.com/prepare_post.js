@@ -55,7 +55,7 @@
       const about = await read(`/r/${input.community}/about.json?raw_json=1`);
       const d = about?.data;
       if (about?.kind !== "t5" || typeof d?.display_name !== "string" || d.display_name.toLowerCase() !== input.community.toLowerCase() || !["any", "self", "link"].includes(d.submission_type)) throw "site_changed";
-      if (d.submission_type === "link" || d.user_is_banned === true || (d.subreddit_type === "restricted" && d.user_is_contributor === false)) throw "forbidden";
+      if (d.submission_type === "link" || d.user_is_banned === true || (d.subreddit_type === "restricted" && d.user_is_contributor !== true)) throw "forbidden";
       const data = await read(`/r/${input.community}/about/rules.json?raw_json=1`);
       if (!Array.isArray(data?.rules) || data.rules.some(r => !r || typeof r.short_name !== "string" || typeof r.description !== "string")) throw "site_changed";
       if (signal?.aborted) throw "canceled";

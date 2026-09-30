@@ -40,7 +40,7 @@
     const read = async path => {
       if (signal?.aborted) throw "canceled";
       let res, text;
-      try { res = await fetch(path, { credentials: "same-origin", headers: { accept: "application/json" }, signal }); text = await res.text(); }
+      try { res = await fetch(path, { credentials: "same-origin", cache: "no-store", headers: { accept: "application/json" }, signal }); text = await res.text(); }
       catch { throw signal?.aborted ? "canceled" : "site_error"; }
       if (signal?.aborted) throw "canceled";
       if (res.status === 429) throw "rate_limited";
@@ -65,26 +65,31 @@
       if (head?.kind !== "t3" || head.data?.name !== input.post || typeof head.data.saved !== "boolean") throw "site_changed";
       return head.data.saved;
     };
-    try {
-      if (signal?.aborted) throw "canceled";
+    const target = () => {
       if (document.querySelector("shreddit-app")?.getAttribute("user-logged-in") !== "true") throw "login_required";
       const posts = [...document.querySelectorAll("shreddit-post")].filter(e => e.id === input.post && e.isConnected && e.getClientRects().length > 0);
-      if (posts.length !== 1) return fail("wrong_page", "Exactly one visible target post is required. Open its thread and let the menu load first; nothing was clicked.");
+      if (posts.length !== 1) throw "wrong_page";
       const post = posts[0];
-      const menus = [...post.querySelectorAll("shreddit-post-overflow-menu")].filter(e => e.getAttribute("post-id") === input.post && !e.hasAttribute("is-ad"));
+      const menus = [...post.querySelectorAll("shreddit-post-overflow-menu")].filter(e => e.getAttribute("post-id") === input.post && !e.hasAttribute("is-ad") && e.isConnected);
       if (menus.length !== 1 || !menus[0].shadowRoot) throw "site_changed";
       const menu = menus[0];
+      const controls = [...menu.shadowRoot.querySelectorAll('[role="menuitem"]')].filter(e => e.isConnected && ["Save", "Unsave"].includes(e.textContent.trim()));
+      if (controls.length !== 1 || !menu.hasAttribute("is-logged-in")) throw "state_changed";
+      const control = controls[0];
+      if (control.getAttribute("aria-disabled") === "true" || control.hasAttribute("disabled") || typeof control.click !== "function") throw "site_changed";
+      return { post, menu, control };
+    };
+    try {
+      if (signal?.aborted) throw "canceled";
+      const { post, menu, control } = target();
       const userId = await account();
       const before = await state();
       if (before !== input.expected_saved) throw "state_changed";
-      const controls = [...menu.shadowRoot.querySelectorAll('[role="menuitem"]')].filter(e => ["Save", "Unsave"].includes(e.textContent.trim()));
-      if (controls.length !== 1 || (controls[0].textContent.trim() === "Unsave") !== before || menu.isPostSaved !== before || menu.getAttribute("current-user-id") !== userId || !menu.hasAttribute("is-logged-in")) throw "state_changed";
-      const control = controls[0];
-      if (control.getAttribute("aria-disabled") === "true" || control.hasAttribute("disabled") || typeof control.click !== "function") throw "site_changed";
       if (await account() !== userId) throw "wrong_account";
-      if (before === input.saved) return { status: "ok", post: input.post, saved: before, previous_saved: before, changed: false };
       if (signal?.aborted) throw "canceled";
-      if (!post.isConnected || post.id !== input.post || !menu.isConnected || menu.getAttribute("post-id") !== input.post || menu.getAttribute("current-user-id") !== userId || menu.isPostSaved !== before || !control.isConnected || control.getAttribute("aria-disabled") === "true" || control.hasAttribute("disabled") || control.textContent.trim() !== (before ? "Unsave" : "Save")) throw "state_changed";
+      const current = target();
+      if (current.post !== post || current.menu !== menu || current.control !== control || menu.getAttribute("current-user-id") !== userId || menu.isPostSaved !== before || control.textContent.trim() !== (before ? "Unsave" : "Save")) throw "state_changed";
+      if (before === input.saved) return { status: "ok", post: input.post, saved: before, previous_saved: before, changed: false };
       attempted = true;
       control.click();
       // UI state is optimistic; only the following server read can confirm it.
@@ -98,7 +103,7 @@
       return { status: "ok", post: input.post, saved: after, previous_saved: before, changed: true };
     } catch (kind) {
       if (attempted) return fail("outcome_unknown", "One save/unsave click was attempted, but the account or saved state could not be confirmed. Inspect the post manually; do not retry automatically.");
-      const allowed = ["login_required", "wrong_account", "state_changed", "challenge", "rate_limited", "not_found", "forbidden", "site_changed", "site_error", "canceled"];
+      const allowed = ["wrong_page", "login_required", "wrong_account", "state_changed", "challenge", "rate_limited", "not_found", "forbidden", "site_changed", "site_error", "canceled"];
       return fail(allowed.includes(kind) ? kind : "site_changed", "The account, target, state or response did not satisfy the prerequisites. Nothing was clicked; resolve the reported error before calling again.");
     }
   }
