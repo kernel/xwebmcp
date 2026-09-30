@@ -4,8 +4,8 @@ Public programme listings on BFI's ticketing site, https://whatson.bfi.org.uk. S
 
 | tool | file | status | notes |
 |------|------|--------|-------|
-| search_events | [search_events.js](search_events.js) | draft | Keyword and date search in the tab's programme; one site page of at most 50 performances, with pagination |
-| get_event | [get_event.js](get_event.js) | draft | Event credits, description and up to 50 exactly linked performances, across at most 10 pages |
+| search_events | [search_events.js](search_events.js) | verified | Keyword and date search in the tab's programme; one site page of at most 50 performances, with pagination |
+| get_event | [get_event.js](get_event.js) | verified | Event credits, description and up to 50 exactly linked performances, across at most 10 pages |
 
 ## Scope and loading
 
@@ -86,6 +86,19 @@ The remaining title false positives, empty-widget season classification and fore
 
 ### Current revision
 
-The initial replacement review on 2026-09-30 found identity, redirect-following, inherited availability-code and empty-pagination defects, plus duplicate/warning/value-validation issues. Fixes and regression fixtures are present; independent recheck of the new source is pending. Both registry entries remain `draft` until that completes.
+Independent fix-round QA **passed** source `464cbcdbbb9a8e600220dc9575a8383371816b84` on **2026-09-30**, with no confirmed outstanding defect. All eight initial findings were rechecked: GUID substitution/extraction, redirect-following, inherited availability codes, empty pagination, warning counts, first-page duplicates and malformed row values. Later name-linked rows and reusable slug/permalink URLs also passed. Only README/registry QA metadata changed after that sign-off.
 
-On the superseded initial replacement source, independent Kernel search/event reads were challenged; the local extension read one public Southbank event successfully (20 performances), with a captured cookieless request sequence and unchanged session fingerprint. These are not final-source live success claims. Temporary public QA browsers are deleted after each run; no browser credentials or persisted profiles are included in this repository.
+| check | final-source evidence |
+|-------|-----------------------|
+| Validator and suites | 81 registry tools valid; 46 BFI tests; 1,637 combined repository/extension tests; Go suites passed |
+| Independent success/failure fixtures | 130 checks across all three programmes and GUID/slug/permalink forms |
+| Real browser fixtures | 13 Kernel browser-DOM cases; 29 fully intercepted extension cases, including first/later redirects with zero foreign requests |
+| Output schemas | 195 outputs validated with actual Ajv; zero violations |
+| Live non-entry-page case, 2026-09-30 | From a public Southbank season page, both Kernel and the local extension returned 15 search rows and 20 Fatherland performances |
+| Independent grounding/parity | Search fields matched page data; Fatherland's first five performances and credits matched; Kernel/extension ID sets matched |
+| Registration/lifetime | Whole-namespace replacement preserved both tools; discovery, stale references and tab-ownership checks passed; no native conflict on checked Southbank pages |
+| Safety/privacy | Cookieless same-prefix GETs and unchanged fingerprints; malformed input, fake approval fields and programme mismatches sent zero requests; cancellation/programme guards and safe failures passed |
+
+A subsequent extension GUID read encountered a later-page challenge and returned an explicit error without partial data; live reads stopped there. Earlier author reads were also challenged, so successful reads are not guaranteed. No bypass retries or authenticated fallback were used.
+
+Both tools meet `qa_passed` and the dated non-entry-page live-success requirement for `verified`. This does **not** verify live IMAX/LFF data, signed-in or wrong-account isolation, member pricing, waiting rooms, UK-address behaviour or the live ten-page cap. Those remain unsupported, blocked or fixture-only as specified above. Temporary public QA browsers and local profiles/processes were removed; no browser credentials or persisted profiles are included in this repository.

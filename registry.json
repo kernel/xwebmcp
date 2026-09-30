@@ -67,9 +67,9 @@
         "https://whatson.bfi.org.uk/lff/Online/default.asp*",
         "https://whatson.bfi.org.uk/lff/Online/article/*"
       ],
-      "status": "draft",
-      "last_verified": null,
-      "notes": "Read-only event credits, text and up to 50 exactly linked performances in the tab's programme. Cookieless; cancellation and programme guards before every request. Name-linked booking pages require the search event_url; no widget-based row adoption, booking flow or seat holds. Replacement-source QA pending.",
+      "status": "verified",
+      "last_verified": "2026-09-30",
+      "notes": "Read-only event credits, text and up to 50 exactly linked performances in the tab's programme. Cookieless; redirects refused, cancellation/programme guards. Name-linked pages require the search event_url; no widget adoption, booking flow or holds. Independent QA passed; Southbank live success in Kernel and extension. Live IMAX/LFF and signed-in flows untested.",
       "provenance": {
         "qa_agent": "agt_a9b0628177efb43e1e72"
       }
@@ -88,9 +88,9 @@
         "https://whatson.bfi.org.uk/lff/Online/default.asp*",
         "https://whatson.bfi.org.uk/lff/Online/article/*"
       ],
-      "status": "draft",
-      "last_verified": null,
-      "notes": "Read-only keyword/date search in the tab's programme; one site page of up to 50 performances with public GBP ranges and availability bands/counts. Cookieless; no seat selection or holds. Paging can repeat or omit same-time rows; narrow dates. Replacement-source QA pending.",
+      "status": "verified",
+      "last_verified": "2026-09-30",
+      "notes": "Read-only keyword/date search in the tab's programme; up to 50 performances with public GBP ranges and availability bands/counts. Cookieless; redirects refused; no seat selection or holds. Paging can repeat/omit same-time rows; narrow dates. Independent QA passed; Southbank live success in Kernel and extension. Live IMAX/LFF and signed-in flows untested.",
       "provenance": {
         "qa_agent": "agt_a9b0628177efb43e1e72"
       }
