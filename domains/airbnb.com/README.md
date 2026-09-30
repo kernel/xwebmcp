@@ -172,10 +172,16 @@ The Kernel page bridge may return non-ASCII output as a JSON string; callers sho
 parse when `typeof output === "string"`. This is runtime behavior, not a changed
 output schema.
 
-The original U+2019 and descendant-text findings are covered by regression tests.
-The final permitted independent recheck is pending, so all three entries remain
-`draft`. The final repair is being rechecked offline; earlier live results are
-historical evidence, not final-source Kernel or extension invocation sign-off.
+Independent final recheck passed all three exact source files at
+`925cffe357fea55c490415d452304b21add171d6` within the authorized offline scope:
+602/602 native-DOM cases and schema outputs passed; all six schemas compiled.
+The original eight Unicode, fourteen descendant and six rendered-whitespace
+regressions passed. No remaining finding was reproduced. CI and the Node/Go,
+registry and extension-unit checks passed at that source.
+
+All three entries remain `draft`, without readiness promotion. The final recheck
+was strictly offline; earlier live results are historical evidence, not
+final-source Kernel or extension invocation sign-off.
 
 Local Chromium 153 loaded the unmodified extension and stored all three definitions
 together on fully intercepted synthetic pages. A normal Grant access request did
