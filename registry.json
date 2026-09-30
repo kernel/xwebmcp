@@ -245,9 +245,12 @@
       "url_patterns": [
         "https://www.familysearch.org/*"
       ],
-      "status": "draft",
-      "last_verified": null,
-      "notes": "Read-only collection details, coverage, counts, citation and a research guide navigation handoff. No images or navigation."
+      "status": "verified",
+      "last_verified": "2026-09-30",
+      "notes": "Read-only collection details, coverage, counts, citation and a research guide navigation handoff. No images or navigation. Independently verified on public pages in Kernel and Chromium.",
+      "provenance": {
+        "qa_agent": "agt_3c46f73a3268da8f5354"
+      }
     },
     {
       "domain": "familysearch.org",
@@ -258,9 +261,12 @@
       "url_patterns": [
         "https://www.familysearch.org/*"
       ],
-      "status": "draft",
-      "last_verified": null,
-      "notes": "Read-only. Reads one record entry by 1:1: or 1:2: ark or URL: people, dated events, allowlisted attributes, links and citation. Fixture-tested; live on a signed-out and one signed-in Kernel browser during authoring. Not independently QA'd yet."
+      "status": "verified",
+      "last_verified": "2026-09-30",
+      "notes": "Read-only historical record people, facts, links and citation by 1:1: or 1:2: ark. Independently verified for public persona and whole records in Kernel and Chromium. Restricted access remains unverified.",
+      "provenance": {
+        "qa_agent": "agt_3c46f73a3268da8f5354"
+      }
     },
     {
       "domain": "familysearch.org",
@@ -271,9 +277,12 @@
       "url_patterns": [
         "https://www.familysearch.org/*"
       ],
-      "status": "draft",
-      "last_verified": null,
-      "notes": "Read-only. Filters the site's public list of about 3,500 record collections by title words, place, type, years, size and images. Fixture-tested; live on a signed-out Kernel browser during authoring. Not independently QA'd yet."
+      "status": "verified",
+      "last_verified": "2026-09-30",
+      "notes": "Read-only public collection discovery by title words, place, type, years, size and images. Independently verified on public pages in Kernel and Chromium.",
+      "provenance": {
+        "qa_agent": "agt_3c46f73a3268da8f5354"
+      }
     },
     {
       "domain": "familysearch.org",
@@ -284,9 +293,12 @@
       "url_patterns": [
         "https://www.familysearch.org/*"
       ],
-      "status": "draft",
-      "last_verified": null,
-      "notes": "Unsaved source/note preparation from observed record evidence. No tree target, source creation, attachment or memory write. Requires manual review."
+      "status": "verified",
+      "last_verified": "2026-09-30",
+      "notes": "Unsaved source/note preparation from observed record evidence; independently verified for public persona and whole records in Kernel and Chromium. No tree target, save, attachment or memory write. Requires manual review.",
+      "provenance": {
+        "qa_agent": "agt_3c46f73a3268da8f5354"
+      }
     },
     {
       "domain": "familysearch.org",
@@ -297,9 +309,12 @@
       "url_patterns": [
         "https://www.familysearch.org/*"
       ],
-      "status": "draft",
-      "last_verified": null,
-      "notes": "Read-only. Records search by name, birth place and years, keyword and collection; one page of allowlisted hit fields. Fixture-tested; live on a signed-out and one signed-in Kernel browser during authoring. Not independently QA'd yet."
+      "status": "verified",
+      "last_verified": "2026-09-30",
+      "notes": "Read-only indexed record search by name, birth place/years, keyword and collection. Independently verified for public collection-scoped searches in Kernel and Chromium. Signed-in/restricted behavior remains unverified.",
+      "provenance": {
+        "qa_agent": "agt_3c46f73a3268da8f5354"
+      }
     },
     {
       "domain": "flyfrontier.com",

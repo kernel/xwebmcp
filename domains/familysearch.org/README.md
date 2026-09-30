@@ -4,11 +4,11 @@ Tools for FamilySearch Historical Records: record and collection research plus u
 
 | tool | file | status | notes |
 |------|------|--------|-------|
-| get_collection | [get_collection.js](get_collection.js) | draft | Exact collection details, citation, coverage, counts and Research Wiki guide URL |
-| get_record | [get_record.js](get_record.js) | draft | Record ark details: people, events, attributes, relationships and citation |
-| list_collections | [list_collections.js](list_collections.js) | draft | Public collection discovery by title, place, type, years, size and images |
-| prepare_source | [prepare_source.js](prepare_source.js) | draft | Returns an unsaved source draft and optional caller note; never attaches or saves |
-| search_records | [search_records.js](search_records.js) | draft | One page of indexed hits by name, birth place/years, keyword and collection |
+| get_collection | [get_collection.js](get_collection.js) | verified | Exact collection details, citation, coverage, counts and Research Wiki guide URL |
+| get_record | [get_record.js](get_record.js) | verified | Record ark details: people, events, attributes, relationships and citation |
+| list_collections | [list_collections.js](list_collections.js) | verified | Public collection discovery by title, place, type, years, size and images |
+| prepare_source | [prepare_source.js](prepare_source.js) | verified | Returns an unsaved source draft and optional caller note; never attaches or saves |
+| search_records | [search_records.js](search_records.js) | verified | One page of indexed hits by name, birth place/years, keyword and collection |
 
 ## Native WebMCP tools
 
@@ -37,7 +37,7 @@ Typical research sequence:
 3. `search_records`, optionally filtered by collection, returns hits and canonical `record_url` values.
 4. `get_record` reads indexed facts and relationships. `prepare_source` returns source text for manual review, optionally with a caller-written research note kept separate from site evidence.
 
-`prepare_source` returns `status: "prepared"`, `saved: false`, `review_required: true`. These describe a returned draft, **not** a saved FamilySearch source or approval for any write. It has no tree-person parameter, executable attachment step or automatic continuation. A missing citation is null, not generated. For a persona ark, it requires the requested persona to appear in the response. Whole-record drafts do not infer a subject. Shared-tree edits require separate authorization and a trusted human approval path; this runtime does not provide one, so confirmed execution is not shipped.
+`prepare_source` returns `status: "prepared"`, `saved: false`, `review_required: true`. These describe a returned draft, **not** a saved FamilySearch source or approval for any write. It has no tree-person parameter, executable attachment step or automatic continuation. A missing citation is null, not generated. For a persona ark, it requires exactly one matching persona in the response. Exactly one Record source is required; whole-record drafts must match its URL and do not infer a subject. Shared-tree edits require separate authorization and a trusted human approval path; this runtime does not provide one, so confirmed execution is not shipped.
 
 ## IDs and bounds
 
@@ -79,6 +79,13 @@ All tools match only `https://www.familysearch.org/*`. Other subdomains host sep
 
 ## QA summary
 
-Earlier independent reviews found text-cleaning, input-normalization and documentation defects. The last inherited source fixed them without re-review. This revision retains those fixes, corrects record-id guidance, adds cancellation, bounds hits when the server ignores count, and adds collection details/source preparation. All tools remain draft pending independent QA of this source.
+Independent QA passed the exact source commit `325a148aed99041a8cb8be9bd99e415c05ef9606` on 2026-09-30. The initial review found six malformed-response or evidence/pagination defects; one fix/recheck verified them resolved. Status promotion changes only this README and the five registry entries, not the reviewed source or fixtures.
 
-Fixture tests use fabricated people, collections and session values only. Live and local-extension evidence for this revision will be recorded after independent review; historical checks do not establish final-source sign-off.
+- Registry validation: 84 tools. Full Node suite: 1,791 passing, including 214 FamilySearch fixtures. Extension fixtures: 14 passing. The author also ran `go test ./...` successfully.
+- Independent checks: 104 input/response cases passed and all 21 targeted mutants were killed. Ambiguous sources/personas/collections, unsafe wiki paths, invalid counts and malformed nested arrays fail explicitly; client-capped search results keep correct pagination. All five tools' cancellation and namespace replacement/lifetime checks passed.
+- Kernel, 2026-09-30: fresh signed-out browser starting on the unrelated Wiki main page. `list_collections` and `get_collection` succeeded for collection `1609792`; `search_records` succeeded for Smith in that collection; `get_record` and `prepare_source` succeeded for a currently returned passenger record. The public evidence supplied whole-record ark `1:2:X1F7-JPZ`, which also succeeded for record reading and unsaved preparation. No tool navigated.
+- Local Chromium 153, 2026-09-30: isolated profile and exact-source installation, all five file hashes verified. The same five public paths and both whole-record calls succeeded; 7/7 parsed comparison outputs matched Kernel. Google Chrome was not tested.
+- All 8 Kernel, 7 Chromium and 27 intercepted recheck outputs validated against their schemas. No non-GET requests or credential leakage; bearer headers appeared only on record reads. Preparation retained `saved:false`, `review_required:true`; whole-record drafts inferred no person.
+- Temporary QA browsers and isolated Chromium processes/profiles were removed. No account writes or user-state restoration were needed.
+
+Fixtures use fabricated people, collections and session values only. Signed-in/restricted behavior, confirmation misuse, real throttling/server failures and malformed responses remain fixture/interception-only or untested, not live success claims. Earlier reviews are historical evidence, not this revision's sign-off.
