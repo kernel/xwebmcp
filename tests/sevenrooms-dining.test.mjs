@@ -833,7 +833,8 @@ test("shortening for the output budget keeps as many of the earliest slots as fi
   assert.ok(full.r.slots.every(s => s.policy_id === null || full.r.policies.some(p => p.policy_id === s.policy_id)));
 });
 
-const CHALLENGE_BODIES = ["captcha required", "please solve the challenge", "Access Denied", "protected by Cloudflare", "Incapsula incident", "Imperva security", "PerimeterX block", "DataDome captcha"];
+// Each body contains exactly one recognized word, so removing any one word from the tool's pattern is detected.
+const CHALLENGE_BODIES = ["captcha required", "please solve the challenge", "Access Denied", "protected by Cloudflare", "Incapsula incident", "Imperva security", "PerimeterX block", "blocked by DataDome"];
 for (const name of NAMES) {
   test(`${name} recognizes bot-protection pages by vendor wording and reports anything else non-JSON as site_error`, async () => {
     for (const body of CHALLENGE_BODIES) {
@@ -844,3 +845,39 @@ for (const name of NAMES) {
     assert.equal(r.error_kind, "site_error");
   });
 }
+
+// --- final-round pins ------------------------------------------------------------------------------------
+
+test("get_availability turns each documented block-level tag into a line break and each table cell tag into a space", async () => {
+  const blockTags = ["p", "div", "li", "ul", "ol", "h1", "h2", "h3", "h4", "h5", "h6", "tr", "table", "hr", "br", "blockquote", "section", "article", "header", "footer", "pre"];
+  for (const tag of blockTags) {
+    for (const [open, close] of [[`<${tag}>`, `</${tag}>`], [`<${tag.toUpperCase()} class="x>y">`, `</${tag.toUpperCase()}>`], [`<${tag}/>`, ""]]) {
+      const { r } = await ok("get_availability", { venue_url_key: "fabricatedtrattoria", date: "2026-10-09" }, shiftsOf([shift([time("2026-10-09T17:00", { policy: `a${open}b${close}c`, cancellation_policy: null })])]));
+      assert.match(r.policies[0].booking_policy, /^a\n+b\n+c$|^a\n+bc$/, `${open}b${close}`);
+      assert.ok(r.policies[0].booking_policy.startsWith("a\n"), `${tag} must break the line before its content`);
+    }
+  }
+  for (const tag of ["td", "th"]) {
+    const { r } = await ok("get_availability", { venue_url_key: "fabricatedtrattoria", date: "2026-10-09" }, shiftsOf([shift([time("2026-10-09T17:00", { policy: `<${tag}>a</${tag}><${tag}>b</${tag}>c`, cancellation_policy: null })])]));
+    assert.equal(r.policies[0].booking_policy, "a b c", tag);
+  }
+  const inline = await ok("get_availability", { venue_url_key: "fabricatedtrattoria", date: "2026-10-09" }, shiftsOf([shift([time("2026-10-09T17:00", { policy: "a<b>b</b><i>c</i><span>d</span>e", cancellation_policy: null })])]));
+  assert.equal(inline.r.policies[0].booking_policy, "abcde", "inline tags do not add breaks");
+});
+
+test("get_availability replaces lone surrogates in policy text as well as in short fields", async () => {
+  const { r } = await ok("get_availability", { venue_url_key: "fabricatedtrattoria", date: "2026-10-09" }, shiftsOf([shift([time("2026-10-09T17:00", { policy: "a\ud83db\ude00c", cancellation_policy: "x\ud83d" })])]));
+  assert.equal(r.policies[0].booking_policy, "a\ufffdb\ufffdc");
+  assert.equal(r.policies[0].cancellation_policy, "x\ufffd");
+  assert.doesNotMatch(JSON.stringify(r), lonely);
+});
+
+test("get_availability does not shorten output that fits the budget", async () => {
+  const bytes = r => new TextEncoder().encode(JSON.stringify(r)).length;
+  const times = Array.from({ length: 300 }, (_, i) => time(at(i), { public_time_slot_description: "Area " + "a".repeat(50), public_description_title: "Title " + "b".repeat(50), policy: "policy " + "p".repeat(200) + (i % 5), cancellation_policy: "cancel " + "c".repeat(200) }));
+  const { r } = await ok("get_availability", { venue_url_key: "fabricatedtrattoria", date: "2026-10-09" }, shiftsOf([shift(times)]));
+  assert.ok(bytes(r) > 100000 && bytes(r) <= 150000, `the fixture should sit between the mutated and the real budget, got ${bytes(r)} bytes`);
+  assert.equal(r.slots.length, 300);
+  assert.equal(r.slots_truncated, false);
+  assert.ok(!r.warnings.some(w => /size budget/.test(w)), JSON.stringify(r.warnings));
+});

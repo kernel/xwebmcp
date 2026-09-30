@@ -169,9 +169,12 @@ patterns, and the tools were only exercised on the search step, an experiences p
 - Live `challenge`, `rate_limited`, `login_required` and `site_changed` outcomes were never observed (fixture tests only).
   All live runs came from Kernel stealth browsers; non-stealth browsers and heavy repeated use were not tried.
 - At most 300 times (fewer when the output would exceed 150,000 bytes) and 10 distinct policy texts of 2000 characters are
-  returned per call; longer policy text is cut and flagged, and a venue with more than 60 distinct policy texts has the rest
-  left unread. A venue whose policy text is very long, or has more than 10 distinct versions, therefore returns
-  `policy_id: null` for some times.
+  returned per call. Longer policy text is cut and flagged (its `policy_id` stays set). A venue with more than 10 distinct
+  policy texts returns `policy_id: null` for the times whose text is beyond the tenth, and one with more than 60 distinct raw
+  texts has the rest left unread and also returns `null` for them.
+- The output budget counts the JSON once, and slots are dropped in 10% steps, so slightly fewer than the most that fit may be
+  listed. The API's own 240 KiB limit was not tested, and a consumer that re-encodes text full of quotes or backslashes can
+  exceed it.
 - The HTML conversion is a text filter, not an HTML parser: malformed markup such as `a<b and c>d` reads `b and c` as a tag,
   and text hidden with CSS (not with tags) is not recognized. Invisible characters other than the classes listed under
   Safety are passed through.

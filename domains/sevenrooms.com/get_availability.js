@@ -48,7 +48,7 @@
                   policy_id: { type: "integer", minimum: 1 },
                   booking_policy: { type: ["string", "null"], maxLength: 2000 },
                   cancellation_policy: { type: ["string", "null"], maxLength: 2000 },
-                  truncated: { type: "boolean", description: "A text was cut at 2000 characters; the venue's booking page has the full terms." }
+                  truncated: { type: "boolean", description: "A text was cut at 2000 characters or was too long to read in full (only the first 20,000 raw characters are read); the venue's booking page has the full terms." }
                 }
               }
             },
@@ -69,7 +69,7 @@
                   card_payment_rule: { type: ["string", "null"], description: "The site's raw cc_payment_rule, for example save_for_later (card kept on file) or advanced_payment (payment taken at booking). Confirm the exact terms in the venue's policy text." },
                   charge_type: { type: ["string", "null"], description: "The site's raw charge_type, seen as person or reservation; says what cost is per." },
                   cost: { type: ["number", "null"], description: "The site's raw cost in currency, for example a prepaid experience price; the site's service charge, gratuity and minimum-spend fields are not returned." },
-                  policy_id: { type: ["integer", "null"], minimum: 1, description: "Index into policies; null when the site gave no policy text or more than 10 distinct texts exist." }
+                  policy_id: { type: ["integer", "null"], minimum: 1, description: "Index into policies; null when the site gave no policy text, when more than 10 distinct texts exist, or when more than 60 distinct raw texts exist and the rest were not read." }
                 }
               }
             }
