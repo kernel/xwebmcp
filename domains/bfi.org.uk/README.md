@@ -1,144 +1,91 @@
 # bfi.org.uk
 
-Tools for the BFI's ticketing site (https://whatson.bfi.org.uk): films and events at BFI Southbank, BFI IMAX and the BFI London Film Festival. Both tools are read-only, work signed out, and never enter the booking flow.
+Public programme listings on BFI's ticketing site, https://whatson.bfi.org.uk. Showtimes, signed-out GBP price ranges and the site's availability bands support choosing a performance; neither tool enters a booking flow.
 
 | tool | file | status | notes |
 |------|------|--------|-------|
-| search_events | [search_events.js](search_events.js) | qa_passed | Keyword and date-range search of the tab's own programme; one 50-row site page per call with pagination; availability band, count and signed-out price range per performance |
-| get_event | [get_event.js](get_event.js) | qa_passed | One film or event page of the tab's own programme: credits, description text and the performances the site lists for it (the first 50, read across the site's pages; at most 10 pages) |
+| search_events | [search_events.js](search_events.js) | draft | Keyword and date search in the tab's programme; one site page of at most 50 performances, with pagination |
+| get_event | [get_event.js](get_event.js) | draft | Event credits, description and up to 50 exactly linked performances, across at most 10 pages |
 
-Register both together as one array with `forceOverwriteNamespace: true`; registering one file that way removes the other:
+## Scope and loading
+
+Both tools are `kind: "page"`: their same-origin requests run inside the registering document, do not navigate it, and return structured output before it is destroyed. No CDP exception is needed. Register the entire namespace together, including both tools, when replacing it:
 
 ```javascript
 const fs = await import("node:fs");
-const read = name => fs.readFileSync(`domains/bfi.org.uk/${name}.js`, "utf8");
-const tools = ["search_events", "get_event"].flatMap(name => eval(read(name)));
+const tools = ["search_events", "get_event"].flatMap(name =>
+  eval(fs.readFileSync(`domains/bfi.org.uk/${name}.js`, "utf8")));
 await webmcp.addCustomTools({ namespace: "bfi.org.uk", tools, forceOverwriteNamespace: true });
 ```
 
-Pick the `tool_ref` whose page is the ticketing tab you drive. Both are `kind: "page"` tools: they call the site's own same-origin endpoints from the registered document and never navigate, so they need no CDP.
+Use the live `tool_ref` for the intended tab. A document navigation invalidates old references. An invocation can make at most one search request or ten event requests, with a 25-second request timeout; a caller's cancellation signal is propagated and checked before every request. Use the runtime's bounded invocation timeout (up to 120 seconds for a multi-page event); a runtime deadline or document loss is not a completed read.
 
-## Native WebMCP tools
+`search_events` accepts an optional keyword, real calendar-date range (at most 366 days), `available_only`, page 1–50 and an optional expected `programme`. `get_event` accepts an event URL or article GUID plus the same programme guard. Unknown fields and malformed inputs fail before site interaction. URLs are rebuilt from validated article IDs or names; pasted action, context and session parameters are not forwarded.
 
-None found (checked 2026-09-29 with `webmcp.listTools()` on a Kernel browser, filtering out custom registrations, on `/Online/default.asp`, `/imax/Online/default.asp`, `/lff/Online/default.asp` and `/Online/article/seasons`; earlier the same day on the sign-in page of `whatson.bfi.org.uk` and on `www.bfi.org.uk`, `cinemas.bfi.org.uk`, `player.bfi.org.uk` and `shop.bfi.org.uk`). `document.modelContext` exists with no site tools and `navigator.modelContext` is undefined, so the namespace overlaps nothing the site registers.
+### Native tools and URL patterns
 
-## Scope: one namespace, several products
+No native WebMCP tools were found on the public Southbank home page on 2026-09-30. Earlier checks on 2026-09-29 found none on all three programme home pages and a Southbank season article. New checks are reported separately from this historical evidence.
 
-`bfi.org.uk` hosts unrelated products. Only the ticketing site is covered:
-
-| host | product | covered |
-|------|---------|---------|
-| `whatson.bfi.org.uk` | ticketing for BFI Southbank (`/Online/`), BFI IMAX (`/imax/Online/`), London Film Festival (`/lff/Online/`) | yes |
-| `cinemas.bfi.org.uk` | "BFI Cinemas" beta listing of Southbank and IMAX; self-described as a test site that hands booking to `whatson` | no; it may replace `whatson`, so it is left until it stabilises |
-| `player.bfi.org.uk` | BFI Player streaming | no |
-| `shop.bfi.org.uk` | BFI Shop | no |
-| `www.bfi.org.uk` | editorial and corporate pages | no; no site search form, low value |
-| `collections-search.bfi.org.uk` | archive search | no; the root served the stock IIS page on 2026-09-29 |
-
-## URL patterns
-
-The default `https://bfi.org.uk/*` and `https://*.bfi.org.uk/*` are not used (spec section 6.2). The tools call same-origin endpoints of the ticketing site, so they can only work there, and listing them on the shop, Player or sign-in pages would be wrong. Each pattern names the one host `whatson.bfi.org.uk` and only its content pages:
+The namespace is narrowed under repository spec §6.2 because `bfi.org.uk` also hosts unrelated editorial, streaming, shop and beta-cinema products. Only these ticketing content patterns are matched:
 
 ```
-https://whatson.bfi.org.uk/Online/default.asp*        https://whatson.bfi.org.uk/Online/article/*
-https://whatson.bfi.org.uk/imax/Online/default.asp*   https://whatson.bfi.org.uk/imax/Online/article/*
-https://whatson.bfi.org.uk/lff/Online/default.asp*    https://whatson.bfi.org.uk/lff/Online/article/*
+https://whatson.bfi.org.uk/Online/default.asp*
+https://whatson.bfi.org.uk/Online/article/*
+https://whatson.bfi.org.uk/imax/Online/default.asp*
+https://whatson.bfi.org.uk/imax/Online/article/*
+https://whatson.bfi.org.uk/lff/Online/default.asp*
+https://whatson.bfi.org.uk/lff/Online/article/*
 ```
 
-`default.asp` and `/article/` pages cover the home pages, film and event pages, search results and the London Film Festival permalink pages. The sign-in page (`login.asp`), basket (`shoppingCart.asp`), seat selection, checkout and account pages are deliberately not matched, and each tool also refuses to run when its own tab is not on such a content page (`wrong_page`). Spec section 6.2 asks the tools of a narrowed namespace to share a host; they do (one host). Verified live on 2026-09-29: both tools are listed on six content page types (each programme's home page, a film page, a season article and a search results page) and on none of the sign-in page, basket, `www.bfi.org.uk`, Player or the cinemas beta. The site redirects `/Online/article/<name>` to `default.asp?...permalink=...`, so a tab rarely sits on an `article/` URL; those two patterns per programme are kept so the tools are also listed if the site serves such a page directly. Pattern matching is case-sensitive, so a lower-case `/online/` URL is not matched; the site's own links use `/Online/`.
+Login, account, basket, seat selection and checkout pages are excluded. Each execute body also checks its own top-level location. Lower-case `/online/` paths are not matched; the site's links use `/Online/`.
 
-## Session isolation (why the requests are cookieless)
+## Session isolation and safety
 
-The three programmes share one session cookie, `ASPSESSIONIDAV` (path `/`, HttpOnly). Observed 2026-09-29 in an anonymous session by comparing a hash of the cookie value: repeated requests to the same programme left it unchanged, while the first request to a different programme replaced it, and returning to the first programme replaced it again. A request that reaches another programme therefore discards the login and basket of the programme the user was using.
+Southbank, IMAX and LFF share a session cookie. Historical anonymous discovery on 2026-09-29 showed that crossing programme prefixes replaced it and could discard login/basket state. A programme switch is not a benign read and is not implemented. Do not navigate an authenticated tab across programmes without separate approval.
 
-Two rules follow, and both tools implement them:
+Every request is built under the tab's own programme and uses `credentials: "omit"`, `cache: "no-store"`. Browser fetch therefore sends no session cookies and discards response cookies. A conflicting input programme or event URL fails with `programme_mismatch` before requests; cancellation or a same-document programme change stops further requests and prevents a stale success. The tools never fall back to authenticated requests, click a booking link, select a seat or hold inventory. No user account is needed or inspected.
 
-1. **The programme is the tab's programme.** It is read from the tab's URL (`/Online/` is Southbank, `/imax/Online/` is IMAX, `/lff/Online/` is the festival). An optional `programme` input, or a URL for another programme, is rejected with `programme_mismatch` before any request. To search another programme, open that programme's page in the tab first. Requests are built with the tab's own path prefix only.
-2. **Every request is sent with `credentials: "omit"`.** No cookie is sent and none is stored from the response (the site's `Set-Cookie` is discarded). The user's login, basket and seat holds cannot be read or replaced, even when other BFI tabs are open in the same browser. The results are therefore the signed-out view; `viewed_as` says so.
+HTML is untrusted. Embedded JavaScript literals are tokenized and parsed as JSON, never evaluated. Article markup is parsed in an inert document; returned fields are allowlisted plain strings. Descriptions are capped at 6,000 characters, details at 30, search results at 50, and event performances at 50. Unexpected data/pagination and HTTP failures are explicit errors, not empty successes. Parser and network exception text and unexpected redirect URLs are not echoed.
 
-Verified live on a Kernel stealth browser (2026-09-29): the network log showed a single GET with no `Cookie` header per search, two request shapes for `get_event`, and zero requests for a `programme_mismatch`; the cookie hash was identical before and after a workload of searches, a five-page event read and rejected mismatches. Cases with a signed-in account are untested (fixtures only).
+Fixtures assert cookieless GETs, absence of credential headers, abort signals, the request-parameter allowlist, and the programme prefix. These assertions are not proof of browser cookie behaviour in a signed-in account; live network evidence is listed separately below.
 
-Trade-off, observed: the site sits behind Cloudflare, whose bot protection challenges some browsers, and how often depends on the browser's address and on the time. On stealth Kernel browsers (eu-west) the author's requests mostly succeeded, but some fresh stealth browsers were challenged on their first requests (in one, both cookieless and cookie-bearing fetches returned HTTP 403 `cf-mitigated: challenge` in every attempt over at least 20 seconds), and the independent reviewer saw one stealth browser challenged for about an hour before it recovered. In a plain local Chromium on a datacenter address the tab loaded but cookieless requests returned HTTP 403 "Just a moment..." (eight of eight requests spaced from 0 to 37 seconds apart, after one early success, while cookie-bearing requests passed), and a default (non-stealth) us-east Kernel browser could not load the site at all in one check, while default eu-west browsers loaded the page but had their cookieless fetches challenged (independent review). The tools report a challenge as `challenge`, never as an empty result. They do not fall back to sending cookies, because that could replace another programme's session. If a browser is challenged, create a new stealth browser or wait; nothing the tool can do from inside the page changes the site's decision.
+### Event identity
 
-## How the tools read the site (observed)
+A performance belongs to an event only when its `Additional Info` links to the exact article GUID or exact requested name in this programme (case-insensitive). A booking widget is not evidence of identity: neither its first response nor later pages can adopt rows merely because every row links to one different event.
 
-- **Search.** The site's own search is a GET to `<prefix>/default.asp` with `BOset::WScontent::SearchCriteria::*`, `doWork::WScontent::search=1` and the programme's search-form id (`BOparam::WScontent::search::article_search_id`, a GUID read from the tab's `form#searchItems` and validated). The response HTML carries the results as a JavaScript literal (`searchHeaders`, `searchResults`, `pagination`), not JSON: it uses unquoted keys and `\'` escapes. The tools rewrite the string escapes with a small tokenizer and `JSON.parse` the slice; nothing from the page is evaluated. Columns are read by header name (`Id`, `Description`, `-`, `Sales Status`, `Availability`, `Available Number`, `Minimum Price`, ...) and the tool returns `site_changed` if one disappears. The `Name` column is an internal code; the title is `Description`.
-- **Paging.** The site returns 50 rows per page for search, and 5 (most events) or 100 (some festival booking pages) per page for one event's performances, and reports `total_pages`. Later pages are requested statelessly, with the criteria repeated plus `BOset::WScontent::SearchResultsInfo::current_page=N` and `doWork::WScontent::getPage` (no `doWork::WScontent::search`); for an event, `getPage` with that event's article id alone. A search over October at Southbank returned 194 rows over four pages with no duplicates and contiguous dates; the festival's run (7-18 October 2026) was 20 pages, and 1 October to 31 December was 21, which is why `page` goes up to 50.
-- **Events.** The article page is fetched by article id (`doWork::WScontent::loadArticle=Load` with `BOparam::WScontent::loadArticle::article_id`), by festival permalink, or by `/article/<name>`. `get_event` sends only a validated GUID or name it built itself, so extra parameters in a pasted URL, such as an action parameter, are never forwarded. Credits come from `.Film-info__information__wrapper`, text from `.Rich-text`, and performances from the page's embedded results, keeping only rows that belong to the event: rows link to their event by article id or, for some festival events, by an absolute `/article/<name>` URL, and both forms are matched exactly (the name case-insensitively, and only for a name in this programme); rows for other events are dropped. The booking widget shows exactly the rows a page embeds, so when a page has it and every row points at one event, that event is taken as the page's own: the `event_id` and `url` that `get_event` returns for a booking page read the same performances when passed back. `search_events` returns the same link as `event_url`, and `event_id` is null when the site links only by name. Reading stops at 50 performances or 10 pages; when the site lists more, a warning says so. A page that has credits but no performances (some festival events keep their showings on a separate booking page) returns a warning saying that.
-- **Codes.** Sales status `S` is on sale and `C` is not on sale (not yet open, or closed). Availability `E`, `G`, `L` and `S` are the site's excellent, good, limited and sold-out bands (its own labels, and its rendered CSS classes matched on 12 of 12 rows); `U` occurs with a count of -1 and is returned as `unknown`. Any other code is `unknown`.
+For a name-linked booking page, pass the `event_url` returned by search. `get_event` returns that validated URL for reuse and `event_id: null` if any matched first-page performance links by name. The raw page GUID would not retrieve those rows safely. A direct GUID lookup of a creditless, name-only booking page returns `not_an_event` with guidance to use the search URL instead. This deliberately replaces the older widget-adoption heuristic.
 
 ## Output notes
 
-- Dates and times are London local. `venue` is the short venue label the site renders (for example "BFI IMAX"), not its longer description. Prices are GBP; the anonymous low end is normally the concession price and member discounts are not shown. A price of 0 appears for free or non-ticketed sessions and for IMAX price ranges, and is not a bookable price.
-- `availability_count` is the number the site's search data reports. It was 0 for the sold-out rows sampled, and it drifted downward between repeated reads without a purchase by the tester, but it is not documented as seats remaining and the output does not call it that.
-- Results are in the site's order across pages; a keyword search is not date-ordered. `categories` are sorted alphabetically because the site returns the same tags in a different order from call to call. The site's keyword search matched titles and keyword tags (a director's name in a season's tags), and returned nothing for very common words such as "the".
-- The Kernel runtime returns a tool's `output` as a JSON string, not an object, when the only non-ASCII characters in it are Latin-1 accents (observed by the independent reviewer on a festival title with accented letters); parse a string `output` before use. This is runtime behaviour, not tool code.
-- `no_results` covers a page with no rows, including a page number beyond the last, and `available_only` removing every row of a page (the pagination is returned so a later page can be tried).
-
-## Safety and trust boundary
-
-- No booking flow: nothing here requests `seatSelect.asp`, `mapSelect.asp`, `shoppingCart.asp`, `orderQuestions.asp`, an account page or a sign-in page, and no request carries an action parameter other than the site's own search, paging and article-load ones. The tests fail if any request is sent with `credentials` other than `omit`, carries a parameter outside that list, or goes to a path outside the tab's programme, and the sources are scanned for the purchase and account surfaces.
-- Page content is untrusted data: titles and text are entity-decoded through a detached `textarea` (no markup is parsed or executed), truncated and returned as strings only. Article text is parsed with `DOMParser`, which does not run scripts.
-- The site's search criteria are normally stored in the caller's session. With no cookie sent, the request cannot reach the user's session (inferred from the cookie behaviour above, not separately observed).
-- Prices and availability are quotes at `observed_at`; they change with every sale.
+- Dates and times are London local. `venue` is the site's short rendered screen/room label.
+- Prices are the signed-out range in GBP, not a selected ticket price, member entitlement or checkout total. The low end is usually a concession; 0 occurs for free/non-ticketed sessions and some IMAX listings and is not a bookable quote.
+- Sales codes `S`/`C` map to `on_sale`/`not_on_sale`; availability `E`/`G`/`L`/`S` maps to excellent/good/limited/sold_out. Other values are unknown. The availability count's exact meaning is undocumented: it is not proof that particular seats, adjacent seats or a requested quantity can be booked.
+- `available_only` filters only the fetched page. An emptied page returns `no_results` with pagination so callers can inspect another page.
+- Categories are sorted. Search uses the site's keyword matching; common words can return nothing.
+- Search order among same-time performances is unstable. A multi-page search warns that boundaries can repeat or omit a performance; narrow the date range. Event paging deduplicates performance IDs but cannot recover omissions caused by site ordering.
+- Some Kernel runtime outputs are JSON strings rather than objects; consumers should parse a string output before reading its fields.
 
 ## Known limitations
 
-- Signed-out view only: member prices, member exclusives, early booking windows, 25-and-under and other scheme prices, and anything behind sign-in are not visible. Nothing behind a login was verified.
-- No per-seat prices or seat availability: those exist only in the booking flow, which the tools never open.
-- The site does not keep a stable order among performances that start at the same time. Paging through a large result set (hundreds of rows) can therefore repeat a row or skip one at a page boundary (the independent review saw 5 repeats and some misses over 20 festival pages, but none over Southbank's 4 pages of October). The tool returns one page per call and cannot repair this; narrow the dates rather than paging deep.
-- One programme per call and per tab. There is no tool to switch programmes; opening another programme's page in the tab is a navigation the caller must make.
-- Requires an environment the site's bot protection trusts (see above). A challenge is reported as `challenge`; a plain datacenter browser may be challenged on every request.
-- `search_events` reads one site page (up to 50 rows) per call and `page` is limited to 1-50; `get_event` returns at most the first 50 performances of an event (a booking page holds 100 per site page) and warns when the site lists more.
-- `no_results` is inferred from a well-formed search page that has no results table; the site gives no other marker, so a change that removes the table but keeps the page would look like an empty search.
-- The meaning of `availability_count`, the `U` availability code, the `C` sales status beyond "not on sale", and rows with an access value other than `Public` (all rows seen were `Public`) are not documented by the site.
-- A waiting room or virtual queue (for example on the festival's on-sale days) was not observed and is not handled beyond the redirect check (`site_error`).
-- All live checks used an eu-west Kernel stealth browser; UK-address behaviour was not checked.
-- Not verified: every signed-in and wrong-account case (fixtures only), a real waiting room, UK-address behaviour, and the 10-page cap of `get_event` on a live event (no live event is that long; fixtures only).
-- `get_event` treats any page with credits or a booking widget as an event. A season page that carries an empty booking widget (for example the IMAX season page `/imax/Online/article/cinema-alejandro-g-inarritu`, 1 of 13 live pages with a widget) returns `ok` with no details, no performances and the "separate booking page" warning, not `not_an_event` as the tool description says of season lists.
-- When a page's booking widget lists rows that all point at one other event, `get_event` reads that event's performances as the page's own, and applies the same rule to each later page of an event; this was not seen on 74 live pages but was shown with fixtures. A stray row in a name-linked widget makes the round trip of a booking page's `event_id` return no performances with a misleading warning; the live booking page's rows are all one name.
-- The bot-protection check on the tab is a substring test of its title: a tab whose title contains "Just a moment" or "Access denied" returns `challenge` without sending a request.
-- Lower-case `/online/` URLs are not matched by the URL patterns.
+- Public view only. Member pricing, schemes, early-access entitlement, account bookings and wrong-account flows are not supported or live-tested. No authenticated browser is needed for these tools.
+- No seat-map or per-seat price requests, ticket-type selection, basket/seat holds, purchases, payment or cancellation. Exact booking totals and seat-specific availability require purchase-adjacent surfaces that were not safely authorized for development. There is no supported trusted human approval path in the current runtime for consequential execution; no `confirmed: true` shortcut is provided.
+- Existing showtime/price/availability output supports a human's ticket-choice preparation, but does not reserve it and does not guarantee inventory. No separate speculative preparation wrapper is registered.
+- Name-linked booking pages must be read by their event URL, not a raw page GUID. An information page with credits but no matching showings returns a warning; a season with an empty widget returns `not_an_event`.
+- Cloudflare may challenge cookieless requests even when the tab loads. `challenge` never means no results; no cookie fallback, fingerprint/proxy retry loop or automatic retry is implemented. Complete normal site access checks manually or stop that read.
+- Search pagination is limited to 50 pages; event output to 50 performances / 10 pages, with a warning when more pages exist. Invalid pagination outside observed page sizes (search ≤50, event ≤100) returns `site_changed`.
+- A well-formed search page with no results block is interpreted as no results, as in the observed site's empty search. A redesign removing that block could resemble an empty search.
+- Waiting-room behaviour, UK-address behaviour, signed-in isolation and the live ten-page event cap remain untested. Shop, Player, beta Cinemas and unrelated account products are outside scope.
 
 ## QA
 
-Author checks, 2026-09-29, signed out, on Kernel stealth browsers (eu-west) unless stated:
+### Historical checks (not a sign-off on the current source)
 
-- `search_events`: valid queries on all three programmes from their own tabs; keyword, single day, month range with paging (pages 1-4 contiguous, page 5 and page 9 as `no_results`), `available_only`, an empty keyword result, malformed inputs, `programme_mismatch` from every tab, and starting pages (home, film page, season article, search results page). Fixtures cover statuses, redirects, format changes and skipped rows.
-- `get_event`: article id, URL with hostile extra parameters (only two validated keys sent, confirmed in the network log), `/article/<name>`, festival permalink, an IMAX event with 25 performances over five pages (matched the keyword search's 25), information page as `not_an_event` without paging, unknown id and unknown name as `not_found`, another programme's URL as `programme_mismatch`.
-- Registration of the whole namespace with `forceOverwriteNamespace`; discovery on the six content page types and absence on five other page types.
-- Local Chrome extension (Chromium 153 in an isolated profile, extension built from this repository): registration, discovery, tab ownership, input validation, the programme guard and the `challenge` result were exercised through `xwebmcp mcp`; the session cookie hash was unchanged. Successful data responses could not be obtained there because of the challenge (the independent reviewer later obtained them; see round 3).
+On 2026-09-29, the previous revision's independent QA exercised Kernel and a local Chromium extension: whole-namespace registration/discovery, all three programmes, live searches and event paging, schemas, malformed inputs, cookie/network isolation, challenge failures, tab ownership and document lifetime. It passed source `d986879` with documented minor findings. Source changed in this revision, so that sign-off is invalidated.
 
-Independent QA round 1 (a fresh reviewer, Kernel stealth eu-west browsers plus a local Chromium extension run, about 350 paced requests) on the first revision (head `0316103`): **FAIL**, with these findings, all fixed in the next revision and re-checked by the author live:
+The remaining title false positives, empty-widget season classification and foreign-row adoption are addressed here. Widget adoption was removed entirely rather than retained on first responses. New fixtures cover these cases plus cancellation, per-request programme checks, hostile pagination, credential headers, later HTTP-200 challenges, id case, explicit programme/URL conflicts and safe error messages.
 
-1. Major: a festival booking page (`/lff/Online/article/water-body-booking-lff26`) returned `ok` with no performances, and 45 of 50 search rows for it had `event_id: null` and no `event_url`, because rows for some festival events link by `/article/<name>` instead of `article_id`. Both tools now match the name form; `search_events` returns it as `event_url`, and `get_event` reads the page's performances (capped at 50, with a warning) or warns when a page lists none.
-2. Minor: a calendar-invalid date such as `2026-13-01` threw a `RangeError` instead of returning `invalid_input`. Fixed and covered by tests.
-3. Minor: an unknown `/article/<name>` on the IMAX programme returned `site_error` for names that exist on Southbank (the site answers HTTP 500 there) but `not_found` for random names. A 500 on a name now maps to `not_found` with a message that it can also mean a site error.
-4. Minor observations fixed: `venue` now uses the site's rendered short label; `categories` are sorted for a stable output; `unsupported_host` text is correct for `http:` and `javascript:` URLs; a non-string `programme` returns `invalid_input`; `page` goes up to 50 so the festival's 21-page result sets are reachable; the no-results message notes that only upcoming events are listed. The test scan that stripped `//` comments also swallowed code after a URL and was fixed, and the README no longer claims that tests detect a cookie (they check `credentials: "omit"`).
-5. README claims that the reviewer could not support were corrected: "every request succeeded" (see the challenge paragraph), the signed-in equivalence claim (removed), and the "25 performances" example (kept only as the author's dated check).
+### Current revision
 
-Round 1 also confirmed on the first revision: 194 rows over four pages and 20 festival pages as documented, 0 native tools, no `Cookie` header on any request, programme mismatches sending zero requests (at least 24), an unchanged session cookie fingerprint over mixed workloads (which does change when the browser itself navigates between programmes), 186 live outputs conforming to the output schemas, and the `challenge` path on a default browser.
+Independent QA is pending on the replacement source. Until that review completes, both registry entries remain `draft`. Current tests and separately labeled Kernel/local-extension results will be recorded after the checks; no historical or fixture-only mutation is a live success claim.
 
-Independent QA round 2 (same reviewer, second revision, head `4322f47`): **FAIL**. It confirmed every round-1 defect fixed on Kernel and on the local extension, and found:
-
-1. Minor (introduced by the row-matching change): the `event_id` and `url` that `get_event` returned for a booking page returned no performances when passed back, because rows link by name and a lookup by id could not claim them. Fixed: a page with the booking widget whose rows all point at one event is read as that event's own (see "How the tools read the site"); covered by a round-trip test and by tests that pages listing several other events, rows for another programme, a longer name, a differently cased name, and an id sharing only its first 8 characters behave correctly.
-2. Minor (site behaviour, not a code defect): the site orders same-start-time rows differently between requests, so paging deep can repeat or skip a row. Documented under Known limitations and in the `search_events` description.
-3. README precision about default Kernel browsers: corrected above.
-4. Test gaps: the reviewer's mutants that survived (name matching ignoring the programme, case sensitivity, pages 21-50, the long venue label in `get_event`) now have tests.
-
-Independent QA round 3 (same reviewer, third revision, head `d986879aa05aac9294fe2e6d73b760cf1fff7496`, 2026-09-29): **PASS**, no blocker or major defect. Both tools are `qa_passed`; the tool source files at this commit are byte-identical to the reviewed ones (later commits change only this README and the registry entries). What it checked, signed out, on stealth eu-west Kernel browsers and in a local Chromium 153 with the extension built from this repository, with about 420 paced requests:
-
-- The round-2 fixes: the booking page's slug, `event_id`, `url` and permalink return identical 50-performance sets with the warning; the information permalink still warns. Paging instability: documenting it is adequate (a single festival day of 97 rows over 2 pages was identical across 3 runs; a 3-day range of 238 rows over 5 pages repeated one boundary row in 2 of 3 runs; Southbank's October had 0 repeats).
-- Search on all three programmes matched the site's rendered pages and an independent oracle (IMAX 42 rows; festival pages 1, 2, 20; page 21 and 50 accepted, 51 rejected); about 40 malformed inputs returned `invalid_input` with no request; 200 live outputs had 0 output-schema violations, no session token, and a maximum size of 32 KB.
-- Isolation: about 15 `programme_mismatch` results with no request; a hostile URL set (parent-directory and encoded paths, `//`, backslash, user info, foreign GUIDs, pasted action parameters) reached no other programme; mixed workloads on three tabs sent no `Cookie` header, stayed under the tab's prefix, and left the cookie fingerprint unchanged; nothing was returned or sent that the tool had not built itself.
-- `get_event`: 26 live pages identical to the previous revision except for the round-trip fix; GUID (either case), URL, name, permalink, IMAX names and multi-page events (25 of 25, 20, 40 of 40) matched search; the detached-`textarea` decoding was tested in a real DOM and executed nothing, including a `</textarea>` breakout.
-- Lifetime: URL, basket text, history and cookie fingerprint unchanged; 3 concurrent calls fine; a stale `tool_ref` errors; an invocation racing a navigation completed.
-- `challenge`: a default eu-west browser gave `challenge` from both tools with one request each and no data.
-- Local extension: registration, discovery, tab ownership (a user-opened tab is refused unless `allow_user_tabs`), month-13 dates, the programme guard and a data success identical to Kernel's (search of 15 rows, an event of 20 performances, the 50-performance booking page, in the same order); 2 of its 3 first data calls were challenged, then succeeded; the cookie fingerprint was unchanged.
-- Not testable and untested: every signed-in and wrong-account case (no authorised account).
-
-Remaining minor findings from round 3, left as documented limitations rather than fixed, because a change to a tool file would invalidate the sign-off and no review round remained: the season page with an empty booking widget (Known limitations), adoption of a widget's rows on later paging responses (Known limitations), the substring title check (Known limitations), and test gaps for row-id case handling, a widget whose rows lack a link, an IMAX URL passed with `programme: "southbank"` on a Southbank tab, and the "access denied" title branch (each behaves correctly in the shipped code, confirmed with fixtures by the reviewer).
-
-The live cases that back the status: `search_events` and `get_event` succeeded from a film page, a season article page, a search results page and each programme's home page on 2026-09-29, through the Kernel runtime and through the local extension.
-
-Sessions: the author's and the reviewer's browsers were deleted after the runs; none is retained. QA agent (ephemeral identifier): `agt_a9b0628177efb43e1e72`.
+QA provenance: `agt_a9b0628177efb43e1e72`. Temporary public QA browsers are deleted after each run; no browser credentials or persisted profiles are included in this repository.

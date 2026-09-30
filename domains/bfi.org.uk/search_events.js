@@ -77,9 +77,16 @@
           properties: {
             status: { const: "no_results" },
             programme: { enum: ["southbank", "imax", "lff"] },
-            query: { type: "object" },
+            query: {
+              type: "object", additionalProperties: false,
+              required: ["keyword", "start_date", "end_date", "available_only", "page"],
+              properties: { keyword: { type: ["string", "null"] }, start_date: { type: ["string", "null"] }, end_date: { type: ["string", "null"] }, available_only: { type: "boolean" }, page: { type: "integer" } }
+            },
             viewed_as: { const: "signed_out" },
-            pagination: { type: ["object", "null"], description: "Set when the site returned rows that available_only removed." },
+            pagination: {
+              type: ["object", "null"], additionalProperties: false, required: ["page", "page_size", "total_pages", "has_more"], description: "Set when the site returned rows that available_only removed.",
+              properties: { page: { type: "integer" }, page_size: { type: "integer" }, total_pages: { type: "integer" }, has_more: { type: "boolean" } }
+            },
             observed_at: { type: "string" },
             message: { type: "string" }
           }
@@ -88,7 +95,7 @@
           type: "object", additionalProperties: false, required: ["status", "error_kind", "error_message"],
           properties: {
             status: { const: "error" },
-            error_kind: { enum: ["invalid_input", "wrong_page", "programme_mismatch", "challenge", "rate_limited", "site_changed", "site_error"] },
+            error_kind: { enum: ["invalid_input", "wrong_page", "programme_mismatch", "challenge", "rate_limited", "site_changed", "site_error", "canceled"] },
             error_message: { type: "string", minLength: 1 }
           }
         }
@@ -96,7 +103,7 @@
     },
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true }
   },
-  execute: async (input) => {
+  execute: async (input, context = {}) => {
     const ORIGIN = "https://whatson.bfi.org.uk";
     const SITES = {
       southbank: { prefix: "/Online", name: "BFI Southbank" },
@@ -132,9 +139,9 @@
       const tab = /^\/(?:(imax|lff)\/)?Online\/(?:default\.asp|article\/)/i.exec(window.location.pathname);
       if (!tab) return fail("wrong_page", "This is not a BFI Southbank, IMAX or London Film Festival content page (its default.asp or /article/ pages). Open one of their home pages first; this tool never runs on account, basket or booking pages.");
       const programme = (tab[1] || "southbank").toLowerCase();
-      if (input.programme !== undefined && input.programme !== programme) return fail("programme_mismatch", "This tab is on " + SITES[programme].name + " but " + SITES[input.programme].name + " was requested. The programmes share one login session, so the tool does not cross between them; open " + ORIGIN + SITES[input.programme].prefix + "/default.asp in this tab and call again.");
+      if (input.programme !== undefined && input.programme !== programme) return fail("programme_mismatch", "This tab is on " + SITES[programme].name + " but " + SITES[input.programme].name + " was requested. The programmes share one login session, so the tool does not cross between them; use a separately authorized tab already on the requested programme. Navigating this tab to another programme may replace its login or basket.");
       const site = SITES[programme];
-      if (/just a moment|attention required|access denied/i.test(document.title || "")) return fail("challenge", "The site is showing a bot-protection page to this browser; use a trusted (for example stealth) browser session.");
+      if (/^\s*(?:just a moment|attention required|access denied)(?:\s*[.!|:-]|\s*$)/i.test(document.title || "")) return fail("challenge", "The site is showing a bot-protection page to this browser; use a trusted (for example stealth) browser session.");
       const searchId = document.querySelector('form#searchItems [name="BOparam::WScontent::search::article_search_id"]')?.value;
       if (typeof searchId !== "string" || !/^[0-9A-Fa-f]{8}(-[0-9A-Fa-f]{4}){3}-[0-9A-Fa-f]{12}$/.test(searchId)) return fail("wrong_page", "This page has no BFI search form; open " + ORIGIN + site.prefix + "/default.asp first.");
 
@@ -154,16 +161,26 @@
         params.set("BOparam::WScontent::search::article_search_id", searchId);
       }
 
+      const requestGuard = () => {
+        if (context.signal?.aborted) return fail("canceled", "The search was canceled; no further request was sent.");
+        const current = /^\/(?:(imax|lff)\/)?Online\/(?:default\.asp(?:$)|article\/)/i.exec(window.location.pathname);
+        if (window.location.origin !== ORIGIN || !current) return fail("wrong_page", "The tab is no longer on a BFI content page; no further request was sent.");
+        if ((current[1] || "southbank").toLowerCase() !== programme) return fail("programme_mismatch", "The tab's programme changed; no further request was sent.");
+        return null;
+      };
+      const stopped = requestGuard();
+      if (stopped) return stopped;
+      const signal = context.signal ? AbortSignal.any([context.signal, AbortSignal.timeout(25000)]) : AbortSignal.timeout(25000);
       // credentials: "omit" keeps the shared session cookie out of the request and out of the response.
-      const res = await fetch(site.prefix + "/default.asp?" + params.toString(), { credentials: "omit", cache: "no-store", signal: AbortSignal.timeout(25000) });
+      const res = await fetch(site.prefix + "/default.asp?" + params.toString(), { credentials: "omit", cache: "no-store", signal });
       if (res.status === 403) return fail("challenge", "The site refused the request (HTTP 403): its bot protection is challenging a cookieless request from this browser. The tool never sends the site's session cookie, so it can be challenged in browsers the site does not trust; retry in a trusted (for example stealth) browser session.");
       if (res.status === 429) return fail("rate_limited", "The site is rate limiting this browser (HTTP 429); wait a few minutes before trying again.");
       if (!res.ok) return fail("site_error", "The site returned HTTP " + res.status + ".");
       let landed = null;
       try { landed = new URL(res.url); } catch { /* handled below */ }
-      if (!landed || landed.origin !== ORIGIN || landed.pathname.toLowerCase() !== (site.prefix + "/default.asp").toLowerCase()) return fail("site_error", "The site redirected the search to " + (landed ? landed.origin + landed.pathname : "an unknown location") + " instead of returning results.");
+      if (!landed || landed.origin !== ORIGIN || landed.pathname.toLowerCase() !== (site.prefix + "/default.asp").toLowerCase()) return fail("site_error", "The site redirected the search to an unexpected location instead of returning results.");
       const html = await res.text();
-      if (/<title>\s*(just a moment|attention required)/i.test(html)) return fail("challenge", "The site answered with a bot-protection page; use a trusted (for example stealth) browser session.");
+      if (/<title>\s*(?:just a moment|attention required|access denied)(?:\s*[.!|:-]|\s*<)/i.test(html)) return fail("challenge", "The site answered with a bot-protection page; use a trusted (for example stealth) browser session.");
       if (!html.includes("searchLabels")) return fail("site_changed", "The response is not a BFI search results page (no searchLabels block).");
 
       // The results are a JavaScript literal, not JSON (for example \' escapes); rewrite the escapes and parse without evaluating anything.
@@ -200,7 +217,10 @@
         return JSON.parse(toJson(html.slice(start, end + 1)));
       };
       let headers, rows;
-      try { headers = grab("searchHeaders"); rows = grab("searchResults"); } catch (error) { return fail("site_changed", "The results data could not be read (" + (error && error.message ? error.message : String(error)) + ")."); }
+      try { headers = grab("searchHeaders"); rows = grab("searchResults"); } catch { return fail("site_changed", "The results data could not be parsed."); }
+      const stoppedAfterRead = requestGuard();
+      if (stoppedAfterRead) return stoppedAfterRead;
+      if (rows !== null && !Array.isArray(rows)) return fail("site_changed", "The results data is not an array.");
       if (!rows || !rows.length) {
         const message = page > 1 ? "Page " + page + " has no results; the search has fewer pages." : site.name + " has no films or events matching the search. The site lists only upcoming films and events, so a date that has passed returns nothing.";
         return { status: "no_results", programme, query, viewed_as: "signed_out", pagination: null, observed_at: observedAt, message };
@@ -213,6 +233,7 @@
       const pg = /pagination\s*:\s*\{\s*current_page\s*:\s*"(\d+)"\s*,\s*page_size\s*:\s*"(\d+)"\s*,\s*total_pages\s*:\s*"(\d+)"/.exec(html);
       if (!pg) return fail("site_changed", "The results carry no pagination block.");
       const pagination = { page: Number(pg[1]), page_size: Number(pg[2]), total_pages: Number(pg[3]), has_more: Number(pg[1]) < Number(pg[3]) };
+      if (rows.length > 50 || !Number.isSafeInteger(pagination.page) || pagination.page !== page || !Number.isSafeInteger(pagination.page_size) || pagination.page_size < 1 || pagination.page_size > 50 || !Number.isSafeInteger(pagination.total_pages) || pagination.total_pages < pagination.page) return fail("site_changed", "The results pagination is outside the supported bounds.");
 
       const decode = s => { const t = document.createElement("textarea"); t.innerHTML = String(s); return t.value; };
       const guid = /^[0-9A-Fa-f]{8}(-[0-9A-Fa-f]{4}){3}-[0-9A-Fa-f]{12}$/;
@@ -236,7 +257,7 @@
         return { id: null, url: null };
       };
       const byTag = (a, b) => { const x = a.toLowerCase(), y = b.toLowerCase(); return x < y ? -1 : x > y ? 1 : a < b ? -1 : a > b ? 1 : 0; };
-      const warnings = [];
+      const warnings = pagination.has_more ? ["The site may reorder same-time performances between pages; narrow the dates to reduce repeats or omissions."] : [];
       let skipped = 0;
       const events = [];
       rows.slice(0, pagination.page_size || 50).forEach((r, i) => {
@@ -270,8 +291,8 @@
       const kept = availableOnly ? events.filter(e => e.sales_status === "on_sale" && e.availability !== "sold_out") : events;
       if (!kept.length) return { status: "no_results", programme, query, viewed_as: "signed_out", pagination, observed_at: observedAt, message: "Every performance on this page is sold out or not on sale; " + (pagination.has_more ? "later pages may have some." : "this was the last page.") };
       return { status: "ok", programme, query, viewed_as: "signed_out", pagination, observed_at: observedAt, warnings, events: kept };
-    } catch (error) {
-      return fail("site_error", "The request from the page failed: " + (error && error.message ? error.message : String(error)));
+    } catch {
+      return context.signal?.aborted ? fail("canceled", "The search was canceled; no partial result is returned.") : fail("site_error", "The search request or response could not be read.");
     }
   }
 }]

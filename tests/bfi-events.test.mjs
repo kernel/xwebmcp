@@ -116,7 +116,7 @@ function makeSite({ pageSize = 50, articlePageSize = 5, articles = {}, overrides
   site.fetch = async (target, init = {}) => {
     const u = new URL(target, ORIGIN);
     const sizeOf = a => a.pageSize ?? site.articlePageSize;
-    site.calls.push({ path: u.pathname, keys: [...u.searchParams.keys()], params: Object.fromEntries(u.searchParams), credentials: init.credentials, cache: init.cache, method: (init.method || "GET").toUpperCase() });
+    site.calls.push({ path: u.pathname, keys: [...u.searchParams.keys()], params: Object.fromEntries(u.searchParams), credentials: init.credentials, headers: init.headers ?? {}, signal: init.signal, cache: init.cache, method: (init.method || "GET").toUpperCase() });
     const forced = site.overrides?.(u, init, site);
     if (forced) return forced;
     const prefix = ["/imax/Online", "/lff/Online", "/Online"].find(p => u.pathname.toLowerCase().startsWith(p.toLowerCase() + "/"));
@@ -171,9 +171,9 @@ function load(name, { path = "/Online/default.asp", origin = ORIGIN, site = make
   const [definition] = runInNewContext(`(${sources[name]})`, {});
   const execute = runInContext(`(${definition.execute.toString()})`, pageContext);
   return {
-    definition, site,
-    run: async input => {
-      const result = plain(await execute(input, { signal: new AbortController().signal }));
+    definition, site, location,
+    run: async (input, context = { signal: new AbortController().signal }) => {
+      const result = plain(await execute(input, context));
       assert.ok(conforms(definition.tool.outputSchema, result), `${name} output violates its schema: ${JSON.stringify(result)}`);
       return result;
     }
@@ -184,6 +184,8 @@ function load(name, { path = "/Online/default.asp", origin = ORIGIN, site = make
 const assertSafeRequests = (site, prefix) => {
   for (const call of site.calls) {
     assert.equal(call.credentials, "omit", "every request must be cookieless: " + call.path);
+    assert.ok(!Object.keys(call.headers).some(k => /^(cookie|authorization)$/i.test(k)), "no credential headers");
+    assert.ok(call.signal instanceof AbortSignal, "every request must be abortable");
     assert.equal(call.method, "GET");
     assert.ok(call.path.toLowerCase().startsWith(prefix.toLowerCase() + "/"), `left the tab's programme: ${call.path}`);
     const allowed = /^(BOset::WScontent::SearchCriteria::|BOset::WScontent::SearchResultsInfo::current_page$|BOparam::WScontent::(search::article_search_id|getPage::article_id|loadArticle::(article_id|permalink))$|doWork::WScontent::(search|getPage|loadArticle)$)/;
@@ -376,7 +378,7 @@ test("search_events: HTTP problems, redirects and format changes are reported, n
   const thrown = load("search_events", { site: makeSite({ overrides: () => { throw new Error("network down"); } }) });
   const result = await thrown.run({});
   assert.equal(result.error_kind, "site_error");
-  assert.match(result.error_message, /network down/);
+  assert.doesNotMatch(result.error_message, /network down/);
 });
 
 test("search_events: rows without an id or title are skipped with a warning", async () => {
@@ -607,13 +609,12 @@ test("get_event: a booking page whose rows link by name returns its performances
   const result = await tool.run({ event: `${ORIGIN}/Online/article/fabricated-booking` });
   assert.equal(result.status, "ok");
   assert.equal(result.title, "Book tickets for Fabricated Booking");
-  assert.equal(result.event_id, guid(23, "A"));
+  assert.equal(result.event_id, null, "a name-linked page does not expose an unusable article id");
   assert.equal(result.performances.length, 50);
   assert.match(result.warnings.join(" "), /more performances than the 50 returned/);
   assert.deepEqual(site.calls.map(c => c.path), ["/Online/article/fabricated-booking"], "the first page already holds 100 rows, so no further page is read");
-  const byId = await tool.run({ event: result.event_id });
-  assert.equal(byId.performances.length, 50, "the event_id the tool returned reads the same booking page");
-  assert.doesNotMatch(byId.warnings.join(" "), /lists no performances/);
+  const byId = await tool.run({ event: guid(23, "A") });
+  assert.equal(byId.error_kind, "not_an_event", "an id lookup cannot adopt a different name from a widget");
   const byUrl = await tool.run({ event: result.url });
   assert.equal(byUrl.performances.length, 50, "and so does the url the tool returned");
   assert.deepEqual(byUrl.performances.map(p => p.performance_id), result.performances.map(p => p.performance_id));
@@ -662,4 +663,118 @@ test("a mixed workload sends only cookieless requests inside the tab's programme
   assert.equal((await event.run({ event: `${ORIGIN}/imax/Online/article/fabricated-blockbuster` })).error_kind, "programme_mismatch");
   assert.equal(site.calls.length, 4, "one search, one out-of-range page, an article of two pages; nothing for the rejected calls");
   assertSafeRequests(site, "/Online");
+});
+
+test("both tools: challenge titles are anchored, including Access Denied responses", async () => {
+  for (const name of NAMES) {
+    const input = name === "search_events" ? {} : { event: ARTICLE };
+    for (const title of ["Just a moment...", "Attention Required!", "Access Denied", " Access Denied | BFI"]) {
+      const tool = load(name, { title, site: articleSite(1) });
+      assert.equal((await tool.run(input)).error_kind, "challenge", title);
+      assert.equal(tool.site.calls.length, 0);
+    }
+    for (const title of ["Buy cinema tickets for Just a Moment | BFI", "BFI Access Denied screening", "Just a Moment in Cinema | BFI"]) {
+      const tool = load(name, { title, site: articleSite(1) });
+      assert.equal((await tool.run(input)).status, "ok", title);
+    }
+    const tool = load(name, { site: makeSite({ overrides: u => response(200, htmlPage("Access Denied", "blocked"), u.href) }) });
+    assert.equal((await tool.run(input)).error_kind, "challenge");
+  }
+});
+
+test("get_event: neither an empty widget nor a widget linking one other event establishes identity", async () => {
+  for (const perfs of [[], [perf({ id: 810, article: 12, title: "Other", start: "Saturday 03 October 2026 12:00" })], [perf({ id: 811, article: 12, title: "Other", start: "Saturday 03 October 2026 12:00", info: "https://whatson.bfi.org.uk/Online/article/other-film" })], [perf({ id: 812, article: 12, title: "No link", start: "Saturday 03 October 2026 12:00", info: "" })]]) {
+    const site = articleSite(0, { details: [], booking: true, perfs });
+    const result = await load("get_event", { site }).run({ event: ARTICLE });
+    assert.equal(result.error_kind, "not_an_event");
+    assert.equal(site.calls.length, 1);
+  }
+});
+
+test("get_event: later pages cannot adopt another event's rows, by id or name", async () => {
+  for (const info of [null, "https://whatson.bfi.org.uk/Online/article/other-film"]) {
+    const site = articleSite(7);
+    site.overrides = u => u.searchParams.get("BOset::WScontent::SearchResultsInfo::current_page") === "2" ? response(200, articlePage({ prefix: "/Online", article: ARTICLE, title: "Fabricated Noir", summary: "Later page", page: 2, totalPages: 2, perfs: [perf({ id: 820, article: 12, title: "Other", start: "Saturday 03 October 2026 12:00", info })] }), u.href) : null;
+    const result = await load("get_event", { site }).run({ event: ARTICLE });
+    assert.equal(result.status, "ok");
+    assert.equal(result.performances.length, 5);
+    assert.ok(!result.performances.some(p => p.performance_id === guid(820)));
+    assertSafeRequests(site, "/Online");
+  }
+});
+
+test("get_event: row ids compare case-insensitively and explicit programme cannot mask a URL mismatch", async () => {
+  const site = articleSite(1, { perfs: ownPerfs(1).map(p => ({ ...p, article: p.article.toLowerCase() })) });
+  const tool = load("get_event", { site });
+  assert.equal((await tool.run({ event: ARTICLE.toLowerCase() })).performances.length, 1);
+  const before = site.calls.length;
+  assert.equal((await tool.run({ event: `${ORIGIN}/imax/Online/article/fabricated-blockbuster`, programme: "southbank" })).error_kind, "programme_mismatch");
+  assert.equal(site.calls.length, before);
+});
+
+test("both tools: invalid input precedes cancellation, and cancellation stops requests and partial success", async () => {
+  for (const name of NAMES) {
+    const controller = new AbortController();
+    controller.abort();
+    const tool = load(name, { site: articleSite(7) });
+    const input = name === "search_events" ? {} : { event: ARTICLE };
+    const context = { signal: controller.signal };
+    assert.equal((await tool.run({ unexpected: true }, context)).error_kind, "invalid_input");
+    assert.equal((await tool.run(input, context)).error_kind, "canceled");
+    assert.equal(tool.site.calls.length, 0);
+    const during = new AbortController();
+    tool.site.overrides = () => { during.abort(); return null; };
+    assert.equal((await tool.run(input, { signal: during.signal })).error_kind, "canceled");
+    assert.equal(tool.site.calls.length, 1, "no later request after cancellation");
+    assert.equal(tool.site.calls[0].signal.aborted, true, "the fetch signal receives cancellation");
+  }
+});
+
+test("both tools: same-document programme changes never trigger another request or stale success", async () => {
+  for (const name of NAMES) {
+    const tool = load(name, { site: articleSite(7) });
+    tool.site.overrides = () => { tool.location.pathname = "/imax/Online/default.asp"; return null; };
+    assert.equal((await tool.run(name === "search_events" ? {} : { event: ARTICLE })).error_kind, "programme_mismatch");
+    assert.equal(tool.site.calls.length, 1);
+    assertSafeRequests(tool.site, "/Online");
+  }
+});
+
+test("both tools: oversized or inconsistent pagination fails closed", async () => {
+  for (const name of NAMES) {
+    const input = name === "search_events" ? {} : { event: ARTICLE };
+    for (const pageSize of [0, 101, 99999999999999999]) {
+      const site = makeSite({ overrides: u => response(200, name === "search_events" ? searchPage({ prefix: "/Online", rows: ownPerfs(1), pageSize }) : articlePage({ prefix: "/Online", article: ARTICLE, title: "Fixture", summary: "Fixture", perfs: ownPerfs(1), pageSize }), u.href) });
+      assert.equal((await load(name, { site }).run(input)).error_kind, "site_changed", `${name} page_size ${pageSize}`);
+    }
+    const site = makeSite({ overrides: u => response(200, name === "search_events" ? searchPage({ prefix: "/Online", rows: ownPerfs(1), page: 2, totalPages: 2 }) : articlePage({ prefix: "/Online", article: ARTICLE, title: "Fixture", summary: "Fixture", perfs: ownPerfs(1), page: 2, totalPages: 2 }), u.href) });
+    assert.equal((await load(name, { site }).run(input)).error_kind, "site_changed", "the server must return the requested page");
+  }
+  const site = makeSite({ overrides: u => response(200, searchPage({ prefix: "/Online", rows: ownPerfs(51) }), u.href) });
+  assert.equal((await load("search_events", { site }).run({})).error_kind, "site_changed");
+});
+
+test("get_event: a later HTTP-200 challenge is explicit, never an empty partial success", async () => {
+  const site = articleSite(7);
+  site.overrides = u => u.searchParams.get("BOset::WScontent::SearchResultsInfo::current_page") === "2" ? response(200, htmlPage("Access Denied", "blocked"), u.href) : null;
+  const result = await load("get_event", { site }).run({ event: ARTICLE });
+  assert.equal(result.error_kind, "challenge");
+  assert.equal(site.calls.length, 2);
+});
+
+test("both tools: parser and network errors do not echo response snippets or credentials", async () => {
+  for (const name of NAMES) {
+    const input = name === "search_events" ? {} : { event: ARTICLE };
+    const secret = "fabricated-private-token";
+    for (const thrown of [false, true]) {
+      const site = makeSite({ overrides: u => {
+        if (thrown) throw new Error(secret);
+        const body = name === "search_events" ? searchPage({ prefix: "/Online", rows: ownPerfs(1) }) : articlePage({ prefix: "/Online", article: ARTICLE, title: "Fixture", summary: "Fixture", perfs: ownPerfs(1) });
+        return response(200, body.replace("searchResults : [", `searchResults : [${secret},`), u.href);
+      } });
+      const result = await load(name, { site }).run(input);
+      assert.equal(result.status, "error");
+      assert.ok(!JSON.stringify(result).includes(secret));
+    }
+  }
 });

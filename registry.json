@@ -67,9 +67,9 @@
         "https://whatson.bfi.org.uk/lff/Online/default.asp*",
         "https://whatson.bfi.org.uk/lff/Online/article/*"
       ],
-      "status": "qa_passed",
-      "last_verified": "2026-09-29",
-      "notes": "Read-only page tool for one film or event page on the tab's own BFI ticketing programme (Southbank, IMAX or London Film Festival): credits, description text and the first 50 performances the site lists, each with sales status, availability band and signed-out price range. Cookieless requests; a different programme is rejected before any request. Never opens booking. Independent QA passed on 2026-09-29 (signed out; see the domain README for what was and was not tested, and its known limitations).",
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Read-only event credits, text and up to 50 exactly linked performances in the tab's programme. Cookieless; cancellation and programme guards before every request. Name-linked booking pages require the search event_url; no widget-based row adoption, booking flow or seat holds. Replacement-source QA pending.",
       "provenance": {
         "qa_agent": "agt_a9b0628177efb43e1e72"
       }
@@ -88,9 +88,9 @@
         "https://whatson.bfi.org.uk/lff/Online/default.asp*",
         "https://whatson.bfi.org.uk/lff/Online/article/*"
       ],
-      "status": "qa_passed",
-      "last_verified": "2026-09-29",
-      "notes": "Read-only page tool that searches the tab's own BFI ticketing programme (Southbank, IMAX or London Film Festival) by keyword and date range; one 50-row site page per call with pagination; signed-out prices and availability bands. Cookieless requests; a different programme is rejected before any request. Never opens booking. Independent QA passed on 2026-09-29 (signed out; see the domain README for what was and was not tested, and its known limitations).",
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Read-only keyword/date search in the tab's programme; one site page of up to 50 performances with public GBP ranges and availability bands/counts. Cookieless; no seat selection or holds. Paging can repeat or omit same-time rows; narrow dates. Replacement-source QA pending.",
       "provenance": {
         "qa_agent": "agt_a9b0628177efb43e1e72"
       }
