@@ -40,6 +40,11 @@ function harness(options = {}) {
   const context = {
     URLSearchParams, AbortController, TextDecoder,
     location: new URL(options.url ?? "https://www.facebook.com/ads/library/api/"),
+    document: {
+      title: options.startTitle ?? "Ad Library",
+      querySelector: () => options.startPassword ? {} : null,
+      querySelectorAll: () => options.startDialog ? [{ innerText: options.startDialog }] : []
+    },
     setTimeout: fn => { timer = fn; return 1; }, clearTimeout: () => { cleared = true; },
     fetch: async (url, init) => {
       requests.push({ url, init });
@@ -163,6 +168,16 @@ test("HTTP denials and redirects stay explicit and are never retried", async () 
 test("challenge and login documents cannot become empty successes", async () => {
   for (const body of ["<title>Security Check</title>", '<form action="/checkpoint/">Challenge</form>', '<title>CAPTCHA</title>']) assert.equal((await harness({ html: body }).run()).error_kind, "challenge");
   assert.equal((await harness({ html: '<form action="/login/"><input name="pass"></form>' }).run()).error_kind, "login_required");
+});
+
+test("starting gates stop before a GET and login controls override valid response data", async () => {
+  for (const [options, kind] of [[{ startTitle: "Security Check" }, "challenge"], [{ startTitle: "Log in to Facebook" }, "login_required"], [{ startPassword: true }, "login_required"], [{ startDialog: "Log in to Facebook" }, "login_required"], [{ startTitle: "Access denied" }, "forbidden"], [{ startTitle: "Too many requests" }, "rate_limited"]]) {
+    const h = harness(options);
+    assert.equal((await h.run()).error_kind, kind);
+    assert.equal(h.requests.length, 0);
+  }
+  const gated = '<div role="dialog"><input type="password"></div>' + html(connection());
+  assert.equal((await harness({ html: gated }).run()).error_kind, "login_required");
 });
 
 test("changed data and restricted ads fail rather than bypassing or inventing records", async () => {

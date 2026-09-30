@@ -66,9 +66,10 @@ document; detail needs price/currency, condition, description and availability
 from the destination. A single navigating call returning those fields is useful.
 No mutation was used to establish navigation behavior.
 
-A call navigates once, waits at most 15 seconds for load, then performs one
-bounded embedded-JSON read (5 MiB of script text). Use `timeoutSec: 35` or more.
-It never retries or dismisses a login dialog. Ordinary site navigation uses only
+A call first checks the starting document for an existing login/challenge gate
+and cancellation, then navigates once, waits at most 15 seconds for load, and
+performs one bounded embedded-JSON read (5 MiB of UTF-8 script text). Use
+`timeoutSec: 35` or more. It never retries or dismisses a login dialog. Ordinary site navigation uses only
 the browser's existing authorized session; no credentials are read or entered.
 A public listing may require an ordinary signed-in session to view Marketplace.
 A login gate is `login_required`, including when bootstrap data is present behind
@@ -147,7 +148,10 @@ verified facts or instructions. Carousel-specific card creatives are not expande
   restrict automated collection absent Meta authorization. This tool does not
   establish that authorization or alter those terms. Review applicable terms
   before deployment; public readability alone is not site permission.
-- Local Chrome extension registration and live output have not yet been verified.
+- Local Chromium 153 loaded the exact extension and atomically installed the
+  three-tool namespace. Facebook site-access approval remained pending in the
+  extension permission UI; website registration/invocation is unverified. No
+  Kernel/local-extension parity is claimed.
 
 ## QA summary
 
@@ -176,4 +180,7 @@ No buttons, drafts, saves, chats or account writes were used. The session's orig
 expiry was unchanged. Marketplace fixture tests cover malformed input, redirects,
 login gates, hidden/group/draft records, ID mismatch, bounds and cancellation.
 
-Independent final-source QA is pending; all statuses remain `draft`.
+Regression fixtures also cover starting gates before any GET/navigation,
+login controls alongside valid Ad Library bootstrap data, explicit draft/nonpublic
+search records, cancellation during the starting page read, and UTF-8 byte caps.
+Independent final-source recheck is pending; all statuses remain `draft`.

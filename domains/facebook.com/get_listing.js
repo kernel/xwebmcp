@@ -67,6 +67,16 @@
       const start = await pageInfo();
       const startUrl = new URL(start.url);
       if (startUrl.origin !== "https://www.facebook.com" || !startUrl.pathname.startsWith("/marketplace/")) return fail("wrong_page", "Open a www.facebook.com/marketplace/ page first.");
+      if (context.signal?.aborted) return fail("canceled", "The invocation was canceled before navigation.");
+      const gate = await js(() => {
+        if (/captcha|security check|confirm your identity|temporarily blocked/i.test(document.title)) return "challenge";
+        if (/access denied|forbidden/i.test(document.title)) return "forbidden";
+        if (/too many requests|rate limit/i.test(document.title)) return "rate_limited";
+        if (/log in to facebook|login to facebook/i.test(document.title) || document.querySelector("input[type=password]") || [...document.querySelectorAll("[role=dialog]")].some(d => /log in|sign in|see more on facebook/i.test(d.innerText || ""))) return "login_required";
+        return null;
+      });
+      if (gate) return fail(gate, "The starting page is gated; no navigation was attempted.");
+      if (context.signal?.aborted) return fail("canceled", "The invocation was canceled before navigation.");
       await gotoUrl(target);
       if (!await waitForLoad(15)) return fail("timeout", "Marketplace did not finish loading within 15 seconds; no retry was attempted.");
       if (context.signal?.aborted) return fail("canceled", "The invocation was canceled after navigation.");
@@ -78,13 +88,14 @@
         if (/captcha|security check|confirm your identity|temporarily blocked/i.test(document.title)) return fail("challenge", "Marketplace returned a challenge; no bypass was attempted.");
         if (/access denied|forbidden/i.test(document.title)) return fail("forbidden", "Marketplace denied access.");
         if (/too many requests|rate limit/i.test(document.title)) return fail("rate_limited", "Marketplace rate-limited this page; no retry was attempted.");
-        if (document.querySelector("input[type=password]") || [...document.querySelectorAll("[role=dialog]")].some(d => /log in|sign in|see more on facebook/i.test(d.innerText || ""))) return fail("login_required", "Marketplace is showing a login gate; it was not dismissed.");
+        if (/log in to facebook|login to facebook/i.test(document.title) || document.querySelector("input[type=password]") || [...document.querySelectorAll("[role=dialog]")].some(d => /log in|sign in|see more on facebook/i.test(d.innerText || ""))) return fail("login_required", "Marketplace is showing a login gate; it was not dismissed.");
         if (location.href !== args.target) return fail("gated", "Marketplace redirected away from the requested public page.");
         const matches = [];
         let bytes = 0;
+        const encoder = new TextEncoder();
         for (const script of document.querySelectorAll("script[type='application/json']")) {
           const source = script.textContent || "";
-          bytes += source.length;
+          bytes += encoder.encode(source).byteLength;
           if (bytes > 5 * 1024 * 1024) return fail("site_changed", "Marketplace embedded JSON exceeded the 5 MiB inspection limit.");
           if (!source.includes(args.key)) continue;
           let parsed;

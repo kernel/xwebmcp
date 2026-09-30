@@ -44,18 +44,21 @@ function harness(name, options = {}) {
   const scripts = options.scripts ?? [JSON.stringify({ require: [data] })];
   const tool = runInNewContext(sources[name], {
     URL, encodeURIComponent,
-    pageInfo: async () => { calls.reads++; return { url }; },
+    pageInfo: async () => { calls.reads++; options.cancelDuringInfo?.abort(); return { url }; },
     gotoUrl: async target => { calls.navigations.push(target); url = options.redirect ?? target; options.cancel?.abort(); },
     waitForLoad: async seconds => { assert.equal(seconds, 15); return options.loaded !== false; },
     js: async (fn, args) => {
       calls.js++;
       if (options.throw) throw new Error("private-server-token");
       return runInNewContext("(" + fn.toString() + ")(args)", {
-        args: args.arg, URL, location: { href: url },
+        args: args?.arg, URL, TextEncoder, location: { href: url },
         document: {
-          title: options.title ?? "Marketplace | Facebook",
-          querySelector: () => options.password ? {} : null,
-          querySelectorAll: selector => selector === "[role=dialog]" ? (options.dialog ? [{ innerText: options.dialog }] : []) : scripts.map(textContent => ({ textContent }))
+          title: (calls.navigations.length ? options.title : options.startTitle) ?? "Marketplace | Facebook",
+          querySelector: () => (calls.navigations.length ? options.password : options.startPassword) ? {} : null,
+          querySelectorAll: selector => {
+            const dialog = calls.navigations.length ? options.dialog : options.startDialog;
+            return selector === "[role=dialog]" ? (dialog ? [{ innerText: dialog }] : []) : scripts.map(textContent => ({ textContent }));
+          }
         }
       });
     }
@@ -82,7 +85,7 @@ for (const name of names) {
     const out = await h.run();
     assert.equal(out.status, "ok");
     assert.equal(h.calls.navigations.length, 1);
-    assert.equal(h.calls.js, 1);
+    assert.equal(h.calls.js, 2);
     const item = name === "search_marketplace" ? out.listings[0] : out.listing;
     assert.equal(item.listing_id, "123456789");
     assert.equal(item.price, "40.00");
@@ -114,7 +117,7 @@ for (const name of names) {
   });
 
   test(`${name}: login, challenge, denial, rate limit and redirects fail closed`, async () => {
-    for (const [options, expected] of [[{ password: true }, "login_required"], [{ dialog: "Log in to Facebook" }, "login_required"], [{ title: "Security Check" }, "challenge"], [{ title: "Access Denied" }, "forbidden"], [{ title: "Too many requests" }, "rate_limited"], [{ redirect: "https://www.facebook.com/login/" }, "login_required"], [{ redirect: "https://www.facebook.com/checkpoint/" }, "challenge"], [{ redirect: "https://unrelated.example/" }, "gated"], [{ redirect: "https://www.facebook.com/marketplace/buying/" }, "gated"]]) {
+    for (const [options, expected] of [[{ password: true }, "login_required"], [{ title: "Log in to Facebook" }, "login_required"], [{ dialog: "Log in to Facebook" }, "login_required"], [{ title: "Security Check" }, "challenge"], [{ title: "Access Denied" }, "forbidden"], [{ title: "Too many requests" }, "rate_limited"], [{ redirect: "https://www.facebook.com/login/" }, "login_required"], [{ redirect: "https://www.facebook.com/checkpoint/" }, "challenge"], [{ redirect: "https://unrelated.example/" }, "gated"], [{ redirect: "https://www.facebook.com/marketplace/buying/" }, "gated"]]) {
       const h = harness(name, options);
       assert.equal((await h.run()).error_kind, expected);
       assert.equal(h.calls.navigations.length, 1);
@@ -129,16 +132,30 @@ for (const name of names) {
     const running = new AbortController();
     const after = harness(name, { cancel: running });
     assert.equal((await after.run(inputFor(name), { signal: running.signal })).error_kind, "canceled");
-    assert.equal(after.calls.js, 0);
+    assert.equal(after.calls.js, 1);
     assert.equal((await harness(name, { loaded: false }).run()).error_kind, "timeout");
     const out = await harness(name, { throw: true }).run();
     assert.equal(out.error_kind, "site_error");
     assert.doesNotMatch(JSON.stringify(out), /private-server/);
   });
 
+  test(`${name}: starting gates and cancellation during pageInfo stop navigation`, async () => {
+    for (const [options, kind] of [[{ startTitle: "Security Check" }, "challenge"], [{ startTitle: "Log in to Facebook" }, "login_required"], [{ startPassword: true }, "login_required"], [{ startDialog: "See more on Facebook" }, "login_required"], [{ startTitle: "Too many requests" }, "rate_limited"]]) {
+      const h = harness(name, options);
+      assert.equal((await h.run()).error_kind, kind);
+      assert.equal(h.calls.navigations.length, 0);
+    }
+    const controller = new AbortController();
+    const canceled = harness(name, { cancelDuringInfo: controller });
+    assert.equal((await canceled.run(inputFor(name), { signal: controller.signal })).error_kind, "canceled");
+    assert.equal(canceled.calls.navigations.length, 0);
+    assert.equal(canceled.calls.js, 0);
+  });
+
   test(`${name}: missing and oversized bootstrap JSON cannot become no_results`, async () => {
     assert.equal((await harness(name, { data: {} }).run()).error_kind, "site_changed");
     assert.equal((await harness(name, { scripts: ["x".repeat(5 * 1024 * 1024 + 1)] }).run()).error_kind, "site_changed");
+    assert.equal((await harness(name, { scripts: ["中".repeat(2 * 1024 * 1024)] }).run()).error_kind, "site_changed");
   });
 }
 
@@ -162,7 +179,7 @@ test("search_marketplace: only the observed no-results node is an empty success"
 });
 
 test("both tools refuse hidden, group-scoped and nonpublic records", async () => {
-  for (const extra of [{ is_hidden: true }, { origin_group: { id: "private-group" } }]) {
+  for (const extra of [{ is_hidden: true }, { origin_group: { id: "private-group" } }, { is_draft: true }, { is_on_marketplace: false }]) {
     assert.equal((await harness("search_marketplace", { data: feed([listing("123456789", extra)]) }).run()).error_kind, "gated");
     assert.equal((await harness("get_listing", { data: details(listing("123456789", extra)) }).run()).error_kind, "gated");
   }

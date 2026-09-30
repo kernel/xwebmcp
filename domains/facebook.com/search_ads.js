@@ -85,6 +85,10 @@
     if (!Number.isInteger(limit) || limit < 1 || limit > 30 || !Number.isInteger(bodyLimit) || bodyLimit < 0 || bodyLimit > 2000) return fail("invalid_input", "max_results must be 1 to 30 and body_max_chars must be 0 to 2000.");
     if (location.origin !== "https://www.facebook.com" || !location.pathname.startsWith("/ads/library/")) return fail("wrong_page", "Open https://www.facebook.com/ads/library/ first. The tool does not navigate.");
     if (context.signal?.aborted) return fail("canceled", "The invocation was canceled before the request.");
+    if (/captcha|security check|confirm your identity|temporarily blocked/i.test(document.title)) return fail("challenge", "The current page is showing a security check; no request was sent.");
+    if (/access denied|forbidden/i.test(document.title)) return fail("forbidden", "The current page denies access; no request was sent.");
+    if (/too many requests|rate limit/i.test(document.title)) return fail("rate_limited", "The current page is rate-limited; no request was sent.");
+    if (/log in to facebook|login to facebook/i.test(document.title) || document.querySelector("input[type=password]") || [...document.querySelectorAll("[role=dialog]")].some(d => /log in|sign in|see more on facebook/i.test(d.innerText || ""))) return fail("login_required", "The current page is showing a login gate; no request was sent.");
 
     const params = new URLSearchParams({ active_status: active, ad_type: "all", country, q: input.query.trim(), search_type: "keyword_unordered", media_type: "all" });
     const searchUrl = "https://www.facebook.com/ads/library/?" + params;
@@ -115,7 +119,7 @@
       html += decoder.decode();
       const pageTitle = /<title\b[^>]*>([\s\S]*?)<\/title>/i.exec(html)?.[1] || "";
       if (/captcha|security check|confirm your identity|access denied|temporarily blocked/i.test(pageTitle) || /<form\b[^>]*action=["'][^"']*\/(?:checkpoint|challenge)\//i.test(html)) return fail("challenge", "Ad Library returned a challenge; no bypass or retry was attempted.");
-      if (/<form\b[^>]*action=["'][^"']*\/login\//i.test(html) && /name=["']pass["']/i.test(html)) return fail("login_required", "Ad Library returned a login form; this tool does not sign in.");
+      if (/log in to facebook|login to facebook/i.test(pageTitle) || /<input\b[^>]*(?:type\s*=\s*["']password["']|name\s*=\s*["']pass["'])/i.test(html)) return fail("login_required", "Ad Library returned a login gate; this tool does not sign in.");
 
       let connection = null;
       for (const match of html.matchAll(/<script\b([^>]*)>([\s\S]*?)<\/script\s*>/gi)) {
