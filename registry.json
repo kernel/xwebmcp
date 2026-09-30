@@ -140,9 +140,9 @@
         "https://duckduckgo.com/*",
         "https://*.duckduckgo.com/*"
       ],
-      "status": "draft",
-      "last_verified": null,
-      "notes": "Reads the open full-site web results page without navigating; optional in-place More results, at most five presses and 50 returned rows. Rejects other layouts. Updated source awaiting independent QA; challenges and rate limits are fixture-only.",
+      "status": "qa_passed",
+      "last_verified": "2026-09-30",
+      "notes": "Independent final-source QA passed on Kernel and scratch Chromium extension. Reads current full-site web results without navigation; optional More results, at most five presses/50 rows and 200 KiB UTF-8 output. Wrong-page, cancellation and block errors are explicit. Challenges/rate limits and maximum byte bounds are fixture-only; an independent larger-results Kernel attempt timed out without retry.",
       "provenance": {
         "qa_agent": "agt_ff1c9d855c958c76fed3"
       }
@@ -157,9 +157,9 @@
         "https://duckduckgo.com/*",
         "https://*.duckduckgo.com/*"
       ],
-      "status": "draft",
-      "last_verified": null,
-      "notes": "Navigates to full-site web results with region, safe-search and time filters; up to 50 organic rows via at most five More results presses. Rejects bang and first-result jump forms. No ads or AI contents. Updated source awaiting independent QA; challenges and rate limits are fixture-only.",
+      "status": "verified",
+      "last_verified": "2026-09-30",
+      "notes": "Independent final-source QA passed with same-domain off-entry-page live success on Kernel and scratch Chromium extension checks. Navigates to full-site web results with region, safe-search and time filters; up to 50 rows/five More results presses, 200 KiB UTF-8 budget. Bang/jump guards; no ads or AI contents. Block/cancellation/maximum byte cases are fixture-only; independent larger-results Kernel attempt timed out without retry.",
       "provenance": {
         "qa_agent": "agt_ff1c9d855c958c76fed3"
       }

@@ -4,8 +4,8 @@ Public, signed-out DuckDuckGo web search and extraction of the results already o
 
 | tool | file | status | notes |
 |------|------|--------|-------|
-| search | [search.js](search.js) | draft | Opens full-site web results with optional region, safe-search and time filters; returns up to 50 organic results. |
-| get_search_results | [get_search_results.js](get_search_results.js) | draft | Reads the open full-site web results page; optionally loads more results in place. Returns `wrong_page` on other layouts. |
+| search | [search.js](search.js) | verified | Opens full-site web results with optional region, safe-search and time filters; returns up to 50 organic results. |
+| get_search_results | [get_search_results.js](get_search_results.js) | qa_passed | Reads the open full-site web results page; optionally loads more results in place. Returns `wrong_page` on other layouts. |
 
 ## Native WebMCP tools
 
@@ -64,7 +64,19 @@ The panel description uses displayed `innerText`, includes list items, and exclu
 
 ## QA summary
 
-The previous revision had independent success/failure and local Chromium-extension evidence, but source changes invalidate that sign-off. Current final-source QA is pending; both registry entries are `draft`.
+Independent QA (`agt_ff1c9d855c958c76fed3`) signed off on final tool source `d2cb70e` on 2026-09-30 after an initial review and one fix/recheck. The initial review found post-cancellation navigation, incorrect pagination-block errors and excessive worst-case UTF-8 output; the recheck independently confirmed all three fixed. Metadata-only evidence/status updates do not change this source.
+
+| Evidence | Final-source outcome |
+|----------|----------------------|
+| Registry and full Node suite | 81 tools valid; 1,694 tests passed, including 117 DuckDuckGo tests. Go tests also passed. |
+| Kernel native check and whole-namespace replacement | No native tools on inspected public pages; replacement retained both custom tools. |
+| Kernel Go/Python searches and readers, filters and displayed list-panel text | Passed on 2026-09-30, including search from another web results page of this domain. No-panel, home rejection and stale refs also passed. |
+| Kernel larger-results case in independent recheck | Page-evaluation timeout; not retried and not counted as success. A separate author smoke on the same source returned 30 rows (17,105 bytes). |
+| Local extension, fresh scratch Chromium profile, exact source hashes | Both tools passed replacement, panels, limits 30/50, filters, malformed no-interaction checks, no-results, html rejection and stale refs. |
+| Isolated cancellation, pagination blocks and maximum UTF-8 output | Passed with fabricated fixtures; no live cancellation/block or oversized response was induced. Counts/ranks/has_more stayed consistent under byte truncation. |
+| Ajv and extension checks | 38 differential fixture outputs and 15 runtime outputs validated; 14 extension tests and 24 syntax checks passed. |
+
+`search` is `verified` based on independent success/failure checks and dated same-domain off-entry-page success. The current-document reader is conservatively `qa_passed`; it does not navigate from an unsuitable entry page. No general cross-runtime parity is claimed. Throttled and narrow-viewport cases were not rerun on this final source; the earlier slow-render observations are not final-source guarantees.
 
 Fixture tests in `tests/duckduckgo-search.test.mjs` use fabricated HTML and a fake DOM. They cover malformed input before interaction, filters, rows and bounds, panel hidden/list/delayed text, cancellation across awaited calls, More results limits and blocks, no-results, challenges, rate limits, wrong pages, navigation lifetime, UTF-8 byte bounds, URL leakage and unknown errors. They do not establish real browser or mutation success.
 
@@ -73,4 +85,4 @@ node scripts/validate-registry.mjs
 node --test "tests/*.test.mjs"
 ```
 
-Kernel and local-extension evidence are reported separately after independent QA. No cross-runtime parity is inferred from fixture tests.
+All author/reviewer temporary browsers and scratch profiles were cleaned up. No account or persistent profile was used; no user-state mutation was performed. Cookie/storage names alone were compared during QA, not their values, so exact value equality is not claimed.
