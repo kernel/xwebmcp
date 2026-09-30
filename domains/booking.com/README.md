@@ -4,9 +4,9 @@ Tools for Booking.com stays (https://www.booking.com): search a destination, com
 
 | tool | file | status | notes |
 |------|------|--------|-------|
-| search_stays | [search_stays.js](search_stays.js) | draft | First results page (up to 25 properties) for a destination, explicit dates, adults, child ages and the currency the site shows, with sort and filters; echoes the dates, guests and currency the site applied |
-| get_property | [get_property.js](get_property.js) | draft | Dated room rates, IDs and global comparison ranks; optional lowest-price ordering before the cap, excluded fees and policies; smaller-party rates are left out |
-| prepare_booking | [prepare_booking.js](prepare_booking.js) | draft | Current-page-only exact-rate handoff for one room and adults without children; checks price, dates, party, sign-in state and terms; never selects, reserves or opens checkout |
+| search_stays | [search_stays.js](search_stays.js) | verified | First results page (up to 25 properties) for a destination, explicit dates, adults, child ages and the currency the site shows, with sort and filters; echoes the dates, guests and currency the site applied |
+| get_property | [get_property.js](get_property.js) | verified | Dated room rates, IDs and global comparison ranks; optional lowest-price ordering before the cap, excluded fees and policies; smaller-party rates are left out |
+| prepare_booking | [prepare_booking.js](prepare_booking.js) | qa_passed | Current-page-only exact-rate handoff for one room and adults without children; checks price, dates, party, sign-in state and terms; never selects, reserves or opens checkout |
 
 ## Native WebMCP tools
 
@@ -125,7 +125,7 @@ Independent QA (agent `agt_dd7f389d3c2826a1698e`, three rounds on 2026-09-29, ea
 | `6f5baae` | 5: members-only preview prices returned as ordinary prices; a per-bed hostel reported as no availability; a slug beginning with `login` reported as a gate; beyond-window dates depending on the session's last party; README inaccuracies | fixed: `members_only` and `member_discount`, `no_rate_for_party`, path check, README |
 | `a7c189c` | 3: the members-only warning and `original_total` description said `original_total` is the price without the member discount, which is false for cards that also carry a deal; a stale field name and a contradicting README bullet; the members-only signals depended on exact markup in two places | fixed afterwards without a further review (no fix round remained): wording, README, and the two signals now also match the visible prompt text |
 
-The earlier final source (`0cf42f0`) added those last fixes after review, without sign-off. The current increment adds comparison IDs/order, exact preparation, safe date validation, bounded fields and cancellation. Independent QA of this increment is pending; statuses stay `draft`.
+The earlier final source (`0cf42f0`) added those last fixes after review, without sign-off. The current increment adds comparison IDs/order, exact preparation, safe date validation, bounded fields and cancellation. Independent final-source sign-off for this increment is recorded below; the earlier rounds remain historical evidence.
 
 What was and was not verified, by runtime:
 
@@ -144,7 +144,19 @@ node --test tests/booking-stays.test.mjs
 - Full suite: 1705 tests pass on the current branch; registry validation reports 82 valid tools. Structured read outputs have a 200,000-byte cap. Warnings may count rates scanned beyond the returned cap.
 - Author Kernel check: all three files registered atomically; no native tools found before registration. Initial `get_property` invocation returned `outcome_unknown`, followed by a page-evaluation timeout. No automatic retry or booking action was made; the scratch browser was deleted.
 - Independent round 1 reviewed `7ce8096`: Kernel search and property reads succeeded from the home page; preparation returned `wrong_page` there but `outcome_unknown` on its property page. The local extension returned live property data with matching sorted ranks and a `prepared` handoff with zero requests and unchanged HTML/selections; local search redirected home. These results do not establish cross-runtime parity.
-- Three isolated-fixture defects were found (contradictory row currency, inherited disabled control, conflicting sign-in markers), reproduced in detached Chromium and jsdom without changing live controls. Their original reproductions passed recheck on `6de3e25`. That recheck found two additional fixture-only currency gaps (codes adjacent to digits, and spaced search-card original prices); both are fixed and pending final recheck. No independent sign-off is claimed for changed source.
+- Three isolated-fixture defects were found (contradictory row currency, inherited disabled control, conflicting sign-in markers), reproduced in detached Chromium and jsdom without changing live controls. Their original reproductions passed recheck on `6de3e25`. That recheck found two additional fixture-only currency gaps (codes adjacent to digits, and spaced search-card original prices); both passed the final recheck on `6e0126248f3b44d6981372f95a02a2ee2400c259`.
+
+### Independent final-source sign-off
+
+Agent `agt_dd7f389d3c2826a1698e` independently signed off all three tools on source head `6e0126248f3b44d6981372f95a02a2ee2400c259`, 2026-09-30, after the initial review and two fix rechecks. All five findings passed final recheck. It ran 310 independent fixture probes, 19 detached-Chromium cases and validated 278 recorded outputs against the schemas. Malformed inputs before page access, cancellation, approval-flag rejection, conflicting sign-in state, disabled ancestry (including the first-legend exception), exact rate/party/price/terms guards, currency contradictions, UTF-8 bounds, privacy and sorting passed. Entire three-tool replacement, duplicate conflicts and synthetic native-tool preservation passed. Fixture and detached-document tests did not modify live controls.
+
+| Final-source live case (2026-09-30) | Kernel | Local Chrome extension |
+|---|---|---|
+| `search_stays` from the home page, Lisbon, 2026-11-10 to 2026-11-12, 2 adults, USD | success: three cards; safe failures and document lifetime passed | blocked: redirected home, `search_not_accepted`; no workaround/retry |
+| `get_property` from the home page, Santa Catarina, same dates/party | success: 22 fitting rates with IDs | success: rates and global ordering matched independently parsed markup |
+| `prepare_booking`, signed-out dated property page | `account_state_changed`, not `prepared`; earlier-head timeouts unexplained | success: exact CAD 475 rate with CAD 26 excluded fees, zero requests, unchanged HTML/selections; negative cases passed |
+
+`search_stays` and `get_property` meet `verified`: independent success/failure coverage plus dated live success from a different page of the domain. `prepare_booking` meets `qa_passed`; no successful Kernel preparation or cross-runtime parity is claimed. Signed-in final-source behavior, account identity, real non-English sessions and all consequential actions remain untested. No live selection, booking, hold, payment or account mutation was performed. The PR stays draft. Subsequent status/documentation edits do not change the three reviewed tool sources.
 
 ## Sessions
 
