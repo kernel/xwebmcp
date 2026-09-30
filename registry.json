@@ -901,6 +901,48 @@
       }
     },
     {
+      "domain": "streeteasy.com",
+      "tool": "get_listing",
+      "file": "domains/streeteasy.com/get_listing.js",
+      "kind": "page",
+      "namespace": "streeteasy.com",
+      "url_patterns": [
+        "https://streeteasy.com/*",
+        "https://*.streeteasy.com/*"
+      ],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Public page-context read; challenges and schema drift fail closed."
+    },
+    {
+      "domain": "streeteasy.com",
+      "tool": "prepare_contact",
+      "file": "domains/streeteasy.com/prepare_contact.js",
+      "kind": "page",
+      "namespace": "streeteasy.com",
+      "url_patterns": [
+        "https://streeteasy.com/*",
+        "https://*.streeteasy.com/*"
+      ],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Local draft only; no submission or trusted approval execution."
+    },
+    {
+      "domain": "streeteasy.com",
+      "tool": "search_rentals",
+      "file": "domains/streeteasy.com/search_rentals.js",
+      "kind": "page",
+      "namespace": "streeteasy.com",
+      "url_patterns": [
+        "https://streeteasy.com/*",
+        "https://*.streeteasy.com/*"
+      ],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Public page-context read; challenges and schema drift fail closed."
+    },
+    {
       "domain": "target.com",
       "tool": "add_to_cart",
       "file": "domains/target.com/add_to_cart.js",
