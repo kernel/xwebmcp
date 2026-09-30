@@ -4,10 +4,10 @@ Tools for American Airlines (https://www.aa.com).
 
 | tool | file | status | notes |
 |---|---|---|---|
-| get_fare_options | [get_fare_options.js](get_fare_options.js) | draft | Current-page cabin fares and nearby-date calendar; cash or miles; no interaction. |
-| prepare_itinerary | [prepare_itinerary.js](prepare_itinerary.js) | draft | No-write preview and manual handoff; never selects, books or holds. |
-| get_flight_status | [get_flight_status.js](get_flight_status.js) | draft | Public status for one American-marketed flight number and origin-local date; page tool, `www.aa.com` pages only. |
-| search_flights | [search_flights.js](search_flights.js) | draft | First-page outbound options; round-trip fares do not select a return flight. |
+| get_fare_options | [get_fare_options.js](get_fare_options.js) | qa_passed | Current-page cabin fares and nearby-date calendar; cash or miles; no interaction. |
+| prepare_itinerary | [prepare_itinerary.js](prepare_itinerary.js) | qa_passed | No-write preview and manual handoff; never selects, books or holds. |
+| get_flight_status | [get_flight_status.js](get_flight_status.js) | qa_passed | Public status for one American-marketed flight number and origin-local date; page tool, `www.aa.com` pages only. |
+| search_flights | [search_flights.js](search_flights.js) | qa_passed | First-page outbound options; round-trip fares do not select a return flight. |
 | login | [login.js](login.js) | qa_passed | DDG-only entry; CAPTCHA is a typed failure. Full authentication remains unverified. |
 
 ## Scope and loading
@@ -31,7 +31,7 @@ Outputs include up to 100 rendered first-page options, result counts, the result
 
 `get_fare_options` and `prepare_itinerary` are page tools. They inspect only the current document; no fetch, navigation, click, form write or browser storage. Both require the outbound `/booking/choose-flights/1` page on `www.aa.com`; other pages return `wrong_page`. Default URL patterns are preserved. No native tools were found on the public homepage or booking results on 2026-09-30.
 
-`search_flights` still uses CDP: submitting the search replaces the homepage document and its result contains structured flight rows parsed after arrival. A page prototype of the same public form submission demonstrated that transition. `pay_with` accepts `cash` (default, historical price shape) or `miles` (price contains `miles`, `tax_amount`, `currency_symbol`, `basis`, `per_person`, `fare_label`). Both create a search session but never select a fare, hold inventory, or change account data. Current public award searches succeeded without sign-in; this is not a promise that every search will work anonymously. The award layout does not expose cash-layout transport icons, so `transportTypes` is `unknown` when no mode is published, not an inferred aircraft flight.
+`search_flights` still uses CDP: submitting the search replaces the homepage document and its result contains structured flight rows parsed after arrival. A page prototype of the same public form submission demonstrated that transition. `pay_with` accepts `cash` (default, historical price shape) or `miles` (price contains `miles`, `tax_amount`, `currency_symbol`, `basis`, `per_person`, `fare_label`). Both create a search session but never select a fare, hold inventory, or change account data. Before the final parser fix, public award searches succeeded without sign-in; the final-source live recheck was blocked. This is not a promise that every search will work anonymously. The award layout does not expose cash-layout transport icons, so `transportTypes` is `unknown` when no mode is published, not an inferred aircraft flight.
 
 `get_fare_options({offset: 0, limit: 10})` reads up to 20 per-cabin offers per call, across at most 100 rendered flight rows and six tiers per row. `next_offset` paginates those already-rendered offers; it does not fetch more flights. An offset beyond the list returns an empty page with the positive `total_options`, not `no_results`. The same response includes at most 31 already-loaded calendar dates (13 observed). No date or carousel control is clicked. Calendar amounts omit award taxes because the calendar does not display them. A cash currency symbol is not asserted to be an ISO currency. Flight times are airport-local and row airports may be nearby alternatives; inspect them before preparing.
 
@@ -47,17 +47,29 @@ Outputs include up to 100 rendered first-page options, result counts, the result
 
 ### Broad implementation QA
 
-All changed/new sources are initially `draft` pending the existing independent reviewer's Sol/Codex review. Older QA sections below record historical revisions only.
+Independent QA signed off on final source `de4079eeaeb870c4f6a74919452de640520e2060` on 2026-09-30. The four changed/new tools are `qa_passed`, not `verified`; the PR remains draft. Reviewer provenance: `agt_8e0c8369e539ef0b8159`. Builder and reviewer used `pi / openai-codex/gpt-6.1-sol`, thinking `high`, fast `false`, context `272k`, with Codex auth confirmed present. Older QA sections below record historical revisions only.
 
-Author live checks on 2026-09-30 in one public signed-out Kernel browser: full five-tool namespace replacement; public cash and award DFW–ORD one-way 2026-10-15 returned 40 outbound flight rows; fare exploration returned 117 cash tiers and 79 award tiers, a 13-date carousel, and a 20-option output of about 11 KB. Cash and award preview invocations returned `prepared` with no booking/hold. Unknown option ID returned `stale_selection`; `confirmed: true` returned `error`. Migrated flight status returned `ok` from the flight-status search page for AA 100 on 2026-09-30. Login was registered but not invoked. No account or trip mutation occurred.
+The initial review of `6147534` found malformed comma grouping was silently normalized into cash/miles/tax quotes. The fix rejects malformed grouping and punctuation across search, fare/calendar reads and preparation. All 1,628 repository tests, 14 extension tests, Go tests, 48 independent quote cases, 33 calendar cases, 875 status fixtures and 735 incoming-flight/date variants passed. Reverting any quote parser fails 11 regression tests. Safety mutants and schema checks passed; fabricated fixtures do not establish live availability or mutation success.
 
-Local fixtures cover cash/miles parsing, dates and currency, bounded pagination, no-write preparation, stale fare/date/route/flight/label/disabled guards, malformed input before page reads, pretend confirmation, unrelated pages, challenges/login/rate-limit states, missing layout and cancellation. They are fabricated, not live mutation evidence. Independent Kernel and local Chrome extension verification is recorded at closeout; no runtime parity is implied by fixture tests alone.
+| Final-source runtime check | Kernel | Local Chrome extension |
+|---|---|---|
+| Atomic replacement/discovery, preserving login | All five tools listed; native discovery empty; login not invoked | All five installed sources hash-identical; namespace intact |
+| Flight status | AA 100 succeeded from flight-status search page; one status POST | Successful status query untested |
+| Cash/award search | Cash timed out before submission; one controlled readiness retry submitted once, then returned `blocked`; award not attempted after denial | Homepage showed Access Denied; no search invoked |
+| Fare exploration / preparation | Blocked-page, malformed-input and pretend-confirmation rejection passed; successful final-source flows and live stale-ID rejection untested | Blocked/malformed/confirmation rejection passed; successful flows untested |
+
+Final QA validated 17 runtime outputs against their schemas. There were zero fare-selection clicks; settled readers/rejection checks made no tool requests or clicks. Ambient site analytics still generated traffic/storage activity. No booking, hold, login, account or payment action occurred. Denial ended live search testing without proxy/fingerprint rotation or bypass loops. No successful Kernel/extension parity is claimed. The reviewer's initial and recheck browsers and scratch extension resources were deleted; existing/shared resources were not touched.
+
+Author live checks before the final parser fix on 2026-09-30 in one public signed-out Kernel browser: full five-tool namespace replacement; public cash and award DFW–ORD one-way 2026-10-15 returned 40 outbound flight rows; fare exploration returned 117 cash tiers and 79 award tiers, a 13-date carousel, and a 20-option output of about 11 KB. Cash and award preview invocations returned `prepared` with no booking/hold. Unknown option ID returned `stale_selection`; `confirmed: true` returned `error`. Migrated flight status returned `ok` from the flight-status search page for AA 100 on 2026-09-30. Login was registered but not invoked. No account or trip mutation occurred.
+
+Local fixtures cover cash/miles parsing, dates and currency, bounded pagination, no-write preparation, stale fare/date/route/flight/label/disabled guards, malformed input before page reads, pretend confirmation, unrelated pages, challenges/login/rate-limit states, missing layout and cancellation. They are fabricated, not live mutation evidence. Independent Kernel and local Chrome extension evidence is recorded separately above; neither fixture tests nor installed source equality imply successful runtime parity.
 
 ### Additional known limitations
 
 - Only current rendered outbound results are supported, not return selection, multi-city itineraries, full-month availability or calendar paging.
 - Cash buttons show cabin-group **from** prices, not a fully specified fare product or committed quote. Award values are displayed miles plus taxes, not group totals or a promise of availability.
 - Calendar price availability and search session expiry are site-controlled; missing selected-date or fare signals fail closed. No brute-force date sweeps or access-bypass loops.
+- Three-decimal K-miles values such as `1.001K` and `8.001K` can fail closed due to floating-point conversion. This was found in fabricated fixtures, not observed live; no incorrect quote is returned.
 - No populated trip reads, generic account tools, booking/hold execution, cancellation, check-in, seats, paid bags or account writes.
 - Flight-status input/output fields now use snake_case per current main's repository contract (for example `flight_number`, `flight_count`, `status_page_url`, `http_status`). This replaces the earlier unmerged camelCase contract. Site request/response payload names remain unchanged.
 
@@ -69,7 +81,7 @@ Local fixtures cover cash/miles parsing, dates and currency, bounded pagination,
 - Non-stealth sessions encountered human verification. Stealth enabled successful searches but did not prevent later access denial. Connection failures also occurred on long-haul round-trip searches.
 - A one-way radio reset was observed intermittently. The tool waits for homepage load and reasserts the requested trip type before validating the form. Repeated independent verification of that mitigation was prevented by access denial.
 
-## QA summary
+## Historical cash-search QA summary
 
 Verified on 2026-09-24. Independent QA used separate browsers and reported defects without changing the implementation. Empty-state classification, nearby-airport labeling, and bus classification were corrected and independently retested. Access Denied classification was independently verified on the final pre-migration revision.
 
@@ -109,7 +121,7 @@ node --test tests/aa.com.test.mjs
 
 ## Flight status
 
-`get_flight_status` returns the public flight status American shows on its flight-status page for one American-marketed flight number on one date. It needs no login. Its earlier camelCase source was verified; the current snake_case migration is draft pending fresh independent QA.
+`get_flight_status` returns the public flight status American shows on its flight-status page for one American-marketed flight number on one date. It needs no login. Its earlier camelCase source was verified; the current snake_case migration is `qa_passed` under the broad final-source review above.
 
 ### Native WebMCP
 

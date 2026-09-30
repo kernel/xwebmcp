@@ -12,9 +12,12 @@
         "https://aa.com/*",
         "https://*.aa.com/*"
       ],
-      "status": "draft",
-      "last_verified": null,
-      "notes": "Read per-cabin cash or award fares and loaded nearby-date calendar on current outbound results; offset pagination; no selection."
+      "status": "qa_passed",
+      "last_verified": "2026-09-30",
+      "notes": "Current-page cash/award cabin fares and loaded nearby-date calendar; bounded pagination, no selection. Independent final-source QA passed; live success after parser fix and successful extension flow remain untested due to access denial.",
+      "provenance": {
+        "qa_agent": "agt_8e0c8369e539ef0b8159"
+      }
     },
     {
       "domain": "aa.com",
@@ -26,9 +29,12 @@
         "https://aa.com/*",
         "https://*.aa.com/*"
       ],
-      "status": "draft",
-      "last_verified": null,
-      "notes": "Public flight status with snake_case schema; one same-origin request. Re-QA pending after schema migration."
+      "status": "qa_passed",
+      "last_verified": "2026-09-30",
+      "notes": "Public snake_case flight status; one same-origin request. Independent final-source QA and live AA100 success passed; successful current-schema extension flow remains untested.",
+      "provenance": {
+        "qa_agent": "agt_8e0c8369e539ef0b8159"
+      }
     },
     {
       "domain": "aa.com",
@@ -57,9 +63,12 @@
         "https://aa.com/*",
         "https://*.aa.com/*"
       ],
-      "status": "draft",
-      "last_verified": null,
-      "notes": "Read-only preview of an exact current fare option; no booking or hold; no executable confirmation mechanism."
+      "status": "qa_passed",
+      "last_verified": "2026-09-30",
+      "notes": "Read-only exact-option preview; no booking, hold or executable confirmation. Independent final-source QA passed; live success after parser fix and successful extension flow remain untested due to access denial.",
+      "provenance": {
+        "qa_agent": "agt_8e0c8369e539ef0b8159"
+      }
     },
     {
       "domain": "aa.com",
@@ -71,9 +80,12 @@
         "https://aa.com/*",
         "https://*.aa.com/*"
       ],
-      "status": "draft",
-      "last_verified": null,
-      "notes": "Cash fares or opt-in award miles and taxes; up to 100 first-page outbound rows. Re-QA pending after award extension; results URLs omit session queries."
+      "status": "qa_passed",
+      "last_verified": "2026-09-30",
+      "notes": "Cash or opt-in award miles/taxes; up to 100 outbound rows, no fare selection, session-query-free URLs. Independent final-source QA passed; final live search returned blocked and successful extension flow remains untested.",
+      "provenance": {
+        "qa_agent": "agt_8e0c8369e539ef0b8159"
+      }
     },
     {
       "domain": "alaskaair.com",
