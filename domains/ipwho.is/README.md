@@ -178,7 +178,7 @@ unchanged. Browser/profile cleanup completed.
 `https://ipwho.is/9.9.9.9` returned `ok` for IPv4, IPv6 and browser-egress lookups in a fresh Kernel
 browser; the same final source also returned live successes through the local extension.
 
-Historical evidence below applies to the previous source only.
+The previous QA and author sections below retain historical evidence.
 
 Current author checks (2026-09-30): the validator passes; the full suite passes 1612/1612, including
 35 site-specific tests. In a fresh public Kernel browser, the final source registered and replaced
