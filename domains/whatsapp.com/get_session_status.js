@@ -32,8 +32,8 @@
   execute: async (input, context) => {
     const ORIGIN = "https://web.whatsapp.com";
     const fail = (kind, message) => ({ status: "error", error_kind: kind, error_message: message });
-    const args = input === undefined || input === null ? {} : input;
-    if (typeof args !== "object" || Array.isArray(args) || Object.keys(args).some(key => key !== "wait_sec")) return fail("invalid_input", "Only wait_sec is accepted.");
+    const args = input === undefined ? {} : input;
+    if (!args || typeof args !== "object" || Array.isArray(args) || Object.keys(args).some(key => key !== "wait_sec")) return fail("invalid_input", "Only wait_sec is accepted.");
     const waitSec = args.wait_sec === undefined ? 0 : args.wait_sec;
     if (!Number.isInteger(waitSec) || waitSec < 0 || waitSec > 20) return fail("invalid_input", "wait_sec must be an integer from 0 to 20.");
     if (location.origin !== ORIGIN) return fail("wrong_page", "Open https://web.whatsapp.com/ in this tab, then call again.");

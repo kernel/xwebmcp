@@ -20,7 +20,7 @@
           properties: {
             status: { const: "ok" },
             query: { type: "string", minLength: 1, maxLength: 100 },
-            total: { type: "integer", minimum: 1, description: "Chats the sidebar listed for the query." },
+            total: { type: "integer", minimum: 1, description: "Chats in the rendered frame the tool settled on, not the account's total match count." },
             returned: { type: "integer", minimum: 1 },
             truncated: { type: "boolean" },
             results: {
@@ -57,7 +57,7 @@
         }
       ]
     },
-    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, untrustedContentHint: true }
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, untrustedContentHint: true }
   },
   execute: async (input, context) => {
     const ORIGIN = "https://web.whatsapp.com";

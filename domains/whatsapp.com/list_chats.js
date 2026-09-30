@@ -48,8 +48,8 @@
   execute: async (input) => {
     const ORIGIN = "https://web.whatsapp.com";
     const fail = (kind, message) => ({ status: "error", error_kind: kind, error_message: message });
-    const args = input === undefined || input === null ? {} : input;
-    if (typeof args !== "object" || Array.isArray(args) || Object.keys(args).some(key => key !== "limit")) return fail("invalid_input", "Only limit is accepted.");
+    const args = input === undefined ? {} : input;
+    if (!args || typeof args !== "object" || Array.isArray(args) || Object.keys(args).some(key => key !== "limit")) return fail("invalid_input", "Only limit is accepted.");
     const limit = args.limit === undefined ? 50 : args.limit;
     if (!Number.isInteger(limit) || limit < 1 || limit > 100) return fail("invalid_input", "limit must be an integer from 1 to 100.");
     if (location.origin !== ORIGIN) return fail("wrong_page", "Open https://web.whatsapp.com/ in this tab, then call again. Nothing was changed.");

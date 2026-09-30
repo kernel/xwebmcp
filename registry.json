@@ -1286,7 +1286,7 @@
       ],
       "status": "draft",
       "last_verified": null,
-      "notes": "WhatsApp Web only. Reports logged_in, logged_out (QR / linking screen) or unknown from the page's own markup; never links a device or reads the QR code. Read-only. Independent review covered the logged-out surface and fixtures only; nothing on an authenticated account was independently checked.",
+      "notes": "WhatsApp Web only. Reports logged_in, logged_out (QR / linking screen) or unknown from the page's own markup; never links a device or reads the QR code. Read-only. Prior independent review covered the logged-out surface and fixtures only; final-source QA pending after input-validation changes.",
       "provenance": {
         "qa_agent": "agt_739c76521225a0c3ead9"
       }
@@ -1302,7 +1302,23 @@
       ],
       "status": "draft",
       "last_verified": null,
-      "notes": "WhatsApp Web only. Chat titles and the sidebar's time text for the rendered rows, in sidebar order. Never opens a chat and does not read previews, message text, unread counts or read state. The selected sidebar filter chip is not detectable. Independent review covered the logged-out surface and fixtures only; nothing on an authenticated account was independently checked.",
+      "notes": "WhatsApp Web only. Chat titles and the sidebar's time text for the rendered rows, in sidebar order. Never opens a chat and does not read previews, message text, unread counts or read state. The selected sidebar filter chip is not detectable. Prior independent review covered the logged-out surface and fixtures only; final-source QA pending after input-validation changes.",
+      "provenance": {
+        "qa_agent": "agt_739c76521225a0c3ead9"
+      }
+    },
+    {
+      "domain": "whatsapp.com",
+      "tool": "prepare_message",
+      "file": "domains/whatsapp.com/prepare_message.js",
+      "kind": "page",
+      "namespace": "whatsapp.com",
+      "url_patterns": [
+        "https://web.whatsapp.com/*"
+      ],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "WhatsApp Web only. Prepares one exact recipient and message as an unopened click-to-chat handoff; never opens, fills, saves or sends. Sender identity and recipient existence are unverified. The private URL contains the supplied phone and text. Owner approval is required before opening a chat (read receipts possible); sending is manual. Final-source independent QA pending.",
       "provenance": {
         "qa_agent": "agt_739c76521225a0c3ead9"
       }
@@ -1318,7 +1334,7 @@
       ],
       "status": "draft",
       "last_verified": null,
-      "notes": "WhatsApp Web only. Types a query into the sidebar search box (synthetic input, never Enter), reads chat titles that match, and empties the box again. Address-book contacts and message hits are skipped without being read. Never opens a chat. Independent review covered the logged-out surface and fixtures only; nothing on an authenticated account was independently checked.",
+      "notes": "WhatsApp Web only. Types a query into the sidebar search box (synthetic input, never Enter), reads chat titles that match, and empties the box again. Address-book contacts and message hits are skipped without being read. Never opens a chat. readOnlyHint is false because the search UI is edited. Can return a partial rendered frame; total is not an account-wide count. Prior independent review covered the logged-out surface and fixtures only; final-source QA pending.",
       "provenance": {
         "qa_agent": "agt_739c76521225a0c3ead9"
       }

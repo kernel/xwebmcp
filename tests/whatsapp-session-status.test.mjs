@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { createApp, ORIGIN, plain, toolSource } from "./fixtures/whatsapp/app.mjs";
 
-const NAMES = ["get_session_status", "list_chats", "search_chats"];
+const NAMES = ["get_session_status", "list_chats", "prepare_message", "search_chats"];
 
 test("every whatsapp.com tool is a page tool scoped to WhatsApp Web only", () => {
   for (const name of NAMES) {
@@ -10,7 +10,7 @@ test("every whatsapp.com tool is a page tool scoped to WhatsApp Web only", () =>
     assert.equal(definition.kind, "page", name);
     assert.deepEqual(definition.match.url_patterns, ["https://web.whatsapp.com/*"], name);
     assert.equal(definition.tool.name, name);
-    assert.equal(definition.tool.annotations.readOnlyHint, true, name);
+    assert.equal(definition.tool.annotations.readOnlyHint, name !== "search_chats", name);
     assert.ok(definition.tool.outputSchema && definition.tool.inputSchema, name);
     assert.equal(definition.tool.inputSchema.additionalProperties, false, name);
   }
@@ -82,6 +82,6 @@ test("get_session_status rejects other pages and malformed input before reading 
     assert.equal((await tool.run(bad)).error_kind, "invalid_input", JSON.stringify(bad));
   }
   assert.equal((await tool.run(undefined)).state, "logged_in");
-  assert.equal(plain(await tool.run(null)).status, "ok");
+  assert.equal(plain(await tool.run(null)).error_kind, "invalid_input");
   assert.equal(ORIGIN, "https://web.whatsapp.com");
 });
