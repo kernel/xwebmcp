@@ -245,9 +245,10 @@
       "url_patterns": [
         "https://www.fandango.com/*"
       ],
-      "status": "draft",
-      "last_verified": null,
-      "notes": "Public movie overview, bounded cast and scores; no media playback or account access."
+      "status": "verified",
+      "last_verified": "2026-09-30",
+      "notes": "Final-source independent QA passed; live Kernel and extension invocations from public HOME succeeded on 2026-09-30. Public movie overview, bounded cast and scores; no media playback or account access.",
+      "provenance": { "qa_agent": "agt_7481b4b4b98a44369c89" }
     },
     {
       "domain": "fandango.com",
@@ -290,9 +291,10 @@
       "url_patterns": [
         "https://www.fandango.com/*"
       ],
-      "status": "draft",
-      "last_verified": null,
-      "notes": "Exact reserved-screening noninteractive seat preview; USD price and fee estimates, not a final checkout quote or hold."
+      "status": "verified",
+      "last_verified": "2026-09-30",
+      "notes": "Final-source independent QA passed; live Kernel and extension invocations from public HOME succeeded on 2026-09-30. Exact reserved-screening noninteractive seat preview; USD price and fee estimates, not a final checkout quote or hold. Numeric site showtime id required; unsupported identifier shapes fail closed.",
+      "provenance": { "qa_agent": "agt_7481b4b4b98a44369c89" }
     },
     {
       "domain": "fandango.com",
@@ -303,9 +305,10 @@
       "url_patterns": [
         "https://www.fandango.com/*"
       ],
-      "status": "draft",
-      "last_verified": null,
-      "notes": "Public now-playing/coming-soon pages; next_page is only a candidate, no total count."
+      "status": "verified",
+      "last_verified": "2026-09-30",
+      "notes": "Final-source independent QA passed; live Kernel and extension invocations from public HOME succeeded on 2026-09-30. Public now-playing/coming-soon pages; next_page is only a candidate, no total count.",
+      "provenance": { "qa_agent": "agt_7481b4b4b98a44369c89" }
     },
     {
       "domain": "fandango.com",
@@ -316,9 +319,10 @@
       "url_patterns": [
         "https://www.fandango.com/*"
       ],
-      "status": "draft",
-      "last_verified": null,
-      "notes": "Returned-only ticket plan with exact screening, quantities, optional proposed seats and preview subtotal; no cart, hold, validation or execution."
+      "status": "verified",
+      "last_verified": "2026-09-30",
+      "notes": "Final-source independent QA passed; live Kernel and extension invocations from public HOME succeeded on 2026-09-30. Returned-only exact-screening ticket plan with quantities, optional proposed independent standard seats and preview subtotal; no cart, hold, validation or execution. Seat-block members, unsupported ids and nonempty surcharges fail closed.",
+      "provenance": { "qa_agent": "agt_7481b4b4b98a44369c89" }
     },
     {
       "domain": "fandango.com",

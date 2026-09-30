@@ -4,12 +4,12 @@ Fandango US public movie, theater and showtime discovery, reserved-seat previews
 
 | tool | file | status | notes |
 |------|------|--------|-------|
-| get_movie | [get_movie.js](get_movie.js) | draft | Movie synopsis, runtime, rating, directors, cast and scores |
+| get_movie | [get_movie.js](get_movie.js) | verified | Movie synopsis, runtime, rating, directors, cast and scores |
 | get_movie_showtimes | [get_movie_showtimes.js](get_movie_showtimes.js) | verified | One movie's showtimes at theaters near a required ZIP |
 | get_theater_showtimes | [get_theater_showtimes.js](get_theater_showtimes.js) | verified | Movies and showtimes at one theater on one date |
-| get_ticket_offers | [get_ticket_offers.js](get_ticket_offers.js) | draft | Exact reserved-screening seat preview and ticket price/fee estimates |
-| list_movies | [list_movies.js](list_movies.js) | draft | Paged now-playing or coming-soon catalog |
-| prepare_checkout | [prepare_checkout.js](prepare_checkout.js) | draft | Revalidated ticket quantities, optional proposed seats and preview subtotal; no cart or hold |
+| get_ticket_offers | [get_ticket_offers.js](get_ticket_offers.js) | verified | Exact reserved-screening seat preview and ticket price/fee estimates |
+| list_movies | [list_movies.js](list_movies.js) | verified | Paged now-playing or coming-soon catalog |
+| prepare_checkout | [prepare_checkout.js](prepare_checkout.js) | verified | Revalidated ticket quantities, optional proposed seats and preview subtotal; no cart or hold |
 | search | [search.js](search.js) | verified | Header suggestions as movie/theater ids and canonical URLs |
 | search_theaters | [search_theaters.js](search_theaters.js) | verified | Theaters near a ZIP or city and state |
 
@@ -79,4 +79,10 @@ A signed-out reserved-screening probe made two identical preview GETs: both succ
 
 Prior discovery tools passed independent QA on 2026-09-29. The initial review found city spelling, unexpected-shape handling, old-date fallback, status mapping and noncanonical links; those were fixed and rechecked. Final source blobs: `search` `7569261`, `search_theaters` `53f15c0`, movie showtimes `37ac694`, theater showtimes `ced08a2`. Dated live success came from movie, theater, home and 404 pages with URL unchanged, on Kernel and local Chromium 153. Historical review used a different model and is not the independent sign-off for this broadening run.
 
-Broadening QA uses `agt_7481b4b4b98a44369c89`, reconfigured to `openai-codex/gpt-6.1-sol`, high reasoning, fast disabled, 272k context. Initial source `fc0e532` had five fixture-proven should-fix findings: block-member standard seats, shortened response identifiers, malformed flags/missing identity, after-midnight lookup dates and normalized preview paths/redirects. The fixes reject unsupported identities and seat blocks, preserve identifiers, separate `showing_date` from screening `date`, and reject redirects. Current independent recheck is pending; additions remain draft. Fixtures are fabricated and run no real site interaction.
+Broadening QA used the same reviewer, `agt_7481b4b4b98a44369c89`, with active `pi` / `openai-codex/gpt-6.1-sol`, high reasoning, fast disabled and 272k context, with ready Codex authentication verified. Initial `fc0e532` failed five fixture-proven findings: block-member standard seats, shortened/malformed identifiers, malformed flags/missing identity, after-midnight dates and preview paths/redirects. Recheck `50b6c93` closed all except URL-shaped identifiers. Final source `2de90754d451a42025914e158aefff83f91d4d02` passed all eight tools on 2026-09-30, with no remaining blockers, should-fix items or actionable minors. Final offers/preparation blobs are `6edef90` / `a9cfd75`; movie/catalog blobs are `2c9c53a` / `efe3802`. Metadata/documentation updates do not change these signed-off tool blobs.
+
+Final independent verification: registry 87 valid tools; full suite 1,644 passed (67 Fandango tests); 36 isolated identifier cases, 36 registered-Kernel overrides and 15 focused extension overrides passed. All eight schema pairs compiled under full Ajv 2020 plus formats; 111 new outputs were valid (36 fixtures, 12 real Kernel, 36 Kernel overrides, 27 extension including 12 real and 15 fabricated). Malformed URLs were never fetched. Earlier block/identity/date/redirect proofs carry over explicitly because that logic is unchanged and its repository regressions passed again.
+
+Both fresh signed-out headful Kernel and isolated Chromium 153 extension registered all eight final-source tools atomically and invoked them successfully from **public HOME**, with the HOME URL unchanged after every call. The sampled screening returned 84 seats/53 available and a nonfinal one-ticket subtotal of 2,285 USD cents on both runtimes. Observed tool requests were GETs without bodies; no quantities or proposed seats were sent. Fake confirmation and malformed proposal made zero reads. No live writes or checkout were performed. Scratch browsers/artifacts/local profiles/processes were deleted.
+
+Storage evidence is limited: the builder's early preview comparison was unchanged, but independent recheck-1's first preview changed two accessible cookie values; local/session storage and a second preview were unchanged. Attribution to site responses versus background activity was not established; no blanket storage-stability or hidden cart/hold guarantee is claimed. No fresh final-round storage comparison was run. A separate builder headless attempt on `50b6c93` hit `outcome_unknown`; it was not counted as success or automatically retried. The successful final-source Kernel evidence above is the independent headful run.
