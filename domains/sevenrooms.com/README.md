@@ -1,13 +1,16 @@
 # sevenrooms.com
 
 Tools for SevenRooms (https://www.sevenrooms.com), the reservation widget many restaurants embed or link to: a
-venue's public booking details and the table times its widget lists for a date and party size. Both are read-only,
-work signed out, and do not sign in, hold a table, book, cancel, or use Alert Me.
+venue's public booking details, dining availability, experience directory, event schedules and exact dining reservation
+preparation. All tools are read-only, work signed out, and do not sign in, hold a table, book, cancel, or use Alert Me.
 
 | tool | file | status | notes |
 |------|------|--------|-------|
 | get_restaurant | [get_restaurant.js](get_restaurant.js) | draft | One venue's public widget details by `venue_url_key`: address, website, party sizes, booking window, currency, languages |
 | get_availability | [get_availability.js](get_availability.js) | draft | Bookable times for one venue, date and party size as venue-local and UTC starts with the widget's label, shift, card and payment fields and deduplicated plain-text venue policies; lists only the site's `book` entries |
+| list_experiences | [list_experiences.js](list_experiences.js) | draft | Public active offer directory, plain descriptions, displayed price text and landing-page links; not availability or a quote |
+| prepare_reservation | [prepare_reservation.js](prepare_reservation.js) | draft | Re-read one exact dining target and current terms, fail on duplicates or missing times, then return a manual search-page handoff; never creates a hold |
+| search_events | [search_events.js](search_events.js) | draft | Public event occurrence dates and venue-local clock times in an inclusive window of at most 31 days; not ticket inventory |
 
 ## Native WebMCP tools
 
@@ -19,31 +22,31 @@ booking page and an `eu.sevenrooms.com` booking page). No site-native tool was l
 
 ## Scope and loading
 
-There is no search across venues on SevenRooms (`https://www.sevenrooms.com/explore` alone is a 404 page), so both tools
+There is no search across venues on SevenRooms (`https://www.sevenrooms.com/explore` alone is a 404 page), so the tools
 take a venue's `venue_url_key`: the path segment in its booking links, `https://www.sevenrooms.com/reservations/<venue_url_key>`
 or `/explore/<venue_url_key>/reservations/create/search`. The key is case-sensitive (the same key in different letter
-case returned `not_found`). This namespace covers standard dining reservations only: not experiences or ticketed
-events (`/experiences/...`, `/events/...`), private dining and large-group times, gift cards, the guest profile or the
-operator app.
+case returned `not_found`). Dining availability and preparation cover standard reservations only. Experience and event discovery are separate
+reads; neither selects an offer or ticket. Private dining availability, gift cards, the guest profile and the operator app
+are not covered.
 
-Register both together, because `forceOverwriteNamespace: true` replaces the whole namespace:
+Register all five together, because `forceOverwriteNamespace: true` replaces the whole namespace:
 
 ```javascript
 const fs = await import("node:fs");
 const read = name => fs.readFileSync(`domains/sevenrooms.com/${name}.js`, "utf8");
-const tools = ["get_restaurant", "get_availability"].flatMap(name => eval(read(name)));
+const tools = ["get_restaurant", "get_availability", "list_experiences", "prepare_reservation", "search_events"].flatMap(name => eval(read(name)));
 await webmcp.addCustomTools({ namespace: "sevenrooms.com", tools, forceOverwriteNamespace: true });
 ```
 
-Pick the `tool_ref` whose `source.target_id` is the tab you drive. Runs took about 0.1 to 2 s (median under 1 s, including
-the REPL round trip); `timeoutSec: 60` is plenty. Typical flow: `get_restaurant` (party-size limits, booking window, the key as
-the site reports it) then `get_availability`. Outputs that contain non-ASCII text (accented names or policy text) have been
-observed to arrive from the Kernel runtime's page bridge as a JSON string rather than an object, and the extension always
-returns a string; parse the string when `typeof output === "string"`. This is runtime behavior, not tool code.
+Pick the `tool_ref` whose `source.target_id` is the tab you drive. Prior dining reads took about 0.1 to 2 s (median under
+1 s, including the REPL round trip); allow `timeoutSec: 60` for preparation's two requests. Typical flow: `get_restaurant`
+(party-size limits, booking window, the key as the site reports it), `get_availability`, then `prepare_reservation` for one
+exact target. Page-bridge outputs have sometimes arrived as a JSON string rather than an object; parse the string when
+`typeof output === "string"`. This is runtime behavior, not tool code.
 
-Both are `kind: "page"`. Each runs inside the current SevenRooms document and issues same-origin `GET` requests to the
-site's own widget API with cookies omitted, so results are the same signed in or out. Neither navigates, so no CDP
-exception applies.
+All are `kind: "page"`. Each runs inside the current SevenRooms document and issues same-origin `GET` requests with
+cookies omitted. None navigates, so no CDP exception applies. Signed-in account behavior is not tested; the tools do not
+request account data.
 
 - **get_restaurant** reads `GET /api-yoa/dining/widget_info?venue_url_key=<key>` and returns a fixed allowlist of
   fields from `data.base_venue` and `data.widget_settings`. The payload also carries payment keys and account ids, a map
@@ -64,11 +67,53 @@ exception applies.
   `slot_count`, and fewer if the output would exceed a 150,000-byte budget (`slots_truncated` and a warning say so).
   `request_only_count` counts the entries the widget does not offer as times (see Site quirks).
 
-Every result carries `observed_at`. Times are snapshots, not holds.
+Successful reads and preparations carry `observed_at`. Times are snapshots, not holds.
+
+### Directory and event discovery
+
+- **list_experiences** reads `GET /experiences/<venue_url_key>` without navigating. It decodes the server's
+  `PRELOADED = JSON.parse(...)` string with two `JSON.parse` calls, never executing the script or inserting fetched HTML.
+  Only the exact venue's active, public, non-hidden, non-draft offers are returned. `landing_url_key` is the public
+  landing-page key; `public_description_text` supplies plain text. Descriptions are capped at 2000 characters with
+  `description_truncated`; names and displayed price text at 200. `price_description` is text, not a parsed price, total,
+  currency or guarantee. Hidden price text is suppressed. No raw state, account identifiers, payment keys or signed images
+  are returned. Offsets paginate by landing key, not the site's display order.
+- **search_events** reads `GET /api-yoa/events/widget?venue=<key>&from_days=<n>&to_days=<n>`, the endpoint the event page
+  uses. Defaults are 0 through 30, inclusive; each request spans at most 31 days within offsets 0 through 366 relative to
+  the site's current day. It joins `event_dates` to public, non-hidden, non-deleted `events_lookup` entries, without
+  deriving recurrence or reading inventory. `event_id` identifies a public series; `date` its occurrence. `start_time`
+  and nullable `end_time` are the series' venue-local clock times, not UTC timestamps; earlier end times may cross midnight.
+  The inventory payload was observed to carry inconsistent dates, so it is deliberately not used. An event on the schedule
+  need not have tickets available. Prices, fees, quantities, descriptions and ticket terms are not returned.
+- Both return at most 20 items, a full `total_count`, and `next_offset` (null on the last page). `offset` defaults to zero;
+  limit is 1 to 20. `no_results` is an explicit empty page, not proof of no availability. Pagination is a fresh snapshot
+  and may change between reads. Reads fail if the response is oversized or unrecognizable; the offer directory also
+  checks the exact venue key. Redirects
+  are refused rather than followed to another host. Cancellation aborts the request, and deadlines never retry it.
+
+### Reservation preparation safety design
+
+**prepare_reservation** takes `venue_url_key`, service `date`, explicit `party_size`, and the exact `local_start`,
+`label` and `description_title` returned by `get_availability` (null for either text when absent). It reads widget info,
+requires the response to identify that exact venue, checks online party-size limits and re-reads dining availability.
+Exactly one `book` entry must match all three selection fields. No match returns `slot_unavailable`; repeated matching
+entries return `ambiguous_slot`, even if their other fields appear identical. It does not choose an arbitrary duplicate.
+
+A `prepared` result names the current exact slot, card requirement, raw payment/base-cost fields, currency and bounded
+booking/cancellation terms. The `handoff_url` is the public search route for the service date and party size, **not** a
+checkout link or a preselected/held slot. The user must choose the exact time/seating manually, inspect full terms and
+fees, and verify their account. Terms are capped at 2000 characters with `policies_truncated`; fees and gratuity are not
+included in `cost`. Null or truncated terms do not imply an exemption.
+
+`execution_supported` is always false. This runtime has no promised trusted human approval mechanism for an exact account,
+reservation, hold, cost and terms, so no execution tool is shipped. `confirmed: true`, a confirmation string or other extra
+fields are rejected before requests; preparation never authorizes execution. There is no hold endpoint, checkout request,
+notification enrollment, automatic retry or live mutation in the implementation or tests. Cancellation is handled during
+the reads. Account reads and reversible notification preferences remain omitted because authenticated access is deferred.
 
 ## URL patterns
 
-Both tools match only the guest booking routes on the three hosts where they were observed, twelve patterns:
+All five tools match only the guest booking routes on the three hosts where they were observed, twelve patterns:
 `https://www.sevenrooms.com/`, `https://fp.sevenrooms.com/` and `https://eu.sevenrooms.com/`, each with the paths
 `/reservations/*`, `/explore/*`, `/experiences/*` and `/events/*`. The default `https://*.sevenrooms.com/*` was not used:
 the registrable domain also hosts the marketing site (`sevenrooms.com`, which redirects `/reservations/<venue>` to
@@ -83,9 +128,10 @@ patterns, and the tools were only exercised on the search step, an experiences p
 ## Safety and trust boundary
 
 - Nothing here selects a time, opens the details or checkout step, holds a table, books, cancels, uses Alert Me or a
-  request flow, signs in, or reads account data. The tests fail if a source references an endpoint other than the two above,
-  uses any method but `GET`, sends cookies, touches storage, clicks, submits or navigates.
-- The tools add no cookies, headers or body of their own and only call the current origin's `/api-yoa/` paths. The site's
+  request flow, signs in, or reads account data. Dining tools use only the two dining endpoints; event discovery adds
+  `/api-yoa/events/widget` and experience discovery adds the public directory HTML. Tests assert read-only requests,
+  omitted cookies, no storage, clicks, submissions or navigation, and no booking-handle or secret output.
+- The tools add no cookies, headers or body of their own and only call the current origin's documented public paths. The site's
   own `fetch` wrapper, if any, is outside their control; on the pages checked it added none. Each request has a 25 second
   deadline that is raced against the request, so a page whose `fetch` ignores the abort signal still ends in `site_error`.
 - The booking handle each entry carries (`access_persistent_id`), capacity fields (pacing), and the site's payment,
@@ -150,9 +196,9 @@ patterns, and the tools were only exercised on the search step, an experiences p
 
 ## Known limitations
 
-- Standard dining reservations for one venue and one date per call. No search across venues, no experiences or events
-  availability, no private dining or large-group times (`exclude_pdr=true`; the widget can show such times for some
-  large parties), gift cards, guest profile, reservation lookup or cancellation.
+- Standard dining availability/preparation for one venue and one date per call. No search across venues, no experiences
+  or events availability (directory/schedule discovery only), no private dining or large-group times (`exclude_pdr=true`;
+  the widget can show such times for some large parties), gift cards, guest profile, reservation lookup or cancellation.
 - `venue_url_key` is case-sensitive. A lookup with different letter case returned `not_found`.
 - Hosts other than `www`, `fp` and `eu` were not seen and are not registered. A `not_found` can mean the venue lives on
   another host; the tool cannot tell.
@@ -184,7 +230,9 @@ patterns, and the tools were only exercised on the search step, an experiences p
 
 ## QA
 
-Both tools are `draft`: the current source has not been signed off by an independent reviewer.
+All five tools are `draft`: the expanded namespace is awaiting independent review. The prior three reviews of the dining
+reads failed, the last two on minor test/documentation gaps only. The previous head fixed those gaps without another review;
+that is not a sign-off. The new scope requires a fresh review of the full namespace.
 
 Author checks (not independent, 2026-09-29, signed out, Kernel stealth browsers, read-only): both tools were registered
 through `webmcp.addCustomTools` and invoked through `webmcp.invokeTool` from booking, experiences and events pages on `www`,
@@ -196,7 +244,9 @@ and never contact the site. Independent QA round 1 (head `f9d4006`) failed on tw
 label field was not returned, and text sanitization was narrower than documented) plus minor ones. Round 2 (head `6a70637`)
 found both fixed and no major defect, and failed on minor items only: surviving test mutants, a stale README number, half
 surrogate pairs from length cuts, block boundaries and quoted attributes in the HTML conversion, and a slow worst case on
-hostile policy text. Those are fixed in the current revision, which is not yet independently re-reviewed.
+hostile policy text. The last prior review (`8414b81`) still failed on individual test pins, two schema descriptions and one README sentence.
+Head `a32fea6` corrected those with only schema-description changes to tool source. The new independent review must verify
+those corrections alongside the added discovery and preparation tools.
 
 ## Sessions
 

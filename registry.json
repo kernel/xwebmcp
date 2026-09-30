@@ -915,6 +915,78 @@
       "notes": "Not independently QA'd. Page tool on the SevenRooms guest booking hosts (www, fp, eu): one venue's public widget details by venue_url_key (address, party sizes, booking window, currency, languages); a venue is found only on the hosts that serve it. Read-only, signed out, no navigation; returns none of the site's payment, map or analytics keys."
     },
     {
+      "domain": "sevenrooms.com",
+      "tool": "list_experiences",
+      "file": "domains/sevenrooms.com/list_experiences.js",
+      "kind": "page",
+      "namespace": "sevenrooms.com",
+      "url_patterns": [
+        "https://www.sevenrooms.com/reservations/*",
+        "https://www.sevenrooms.com/explore/*",
+        "https://www.sevenrooms.com/experiences/*",
+        "https://www.sevenrooms.com/events/*",
+        "https://fp.sevenrooms.com/reservations/*",
+        "https://fp.sevenrooms.com/explore/*",
+        "https://fp.sevenrooms.com/experiences/*",
+        "https://fp.sevenrooms.com/events/*",
+        "https://eu.sevenrooms.com/reservations/*",
+        "https://eu.sevenrooms.com/explore/*",
+        "https://eu.sevenrooms.com/experiences/*",
+        "https://eu.sevenrooms.com/events/*"
+      ],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Public active offer directory only; displayed price text is not a quote or availability."
+    },
+    {
+      "domain": "sevenrooms.com",
+      "tool": "prepare_reservation",
+      "file": "domains/sevenrooms.com/prepare_reservation.js",
+      "kind": "page",
+      "namespace": "sevenrooms.com",
+      "url_patterns": [
+        "https://www.sevenrooms.com/reservations/*",
+        "https://www.sevenrooms.com/explore/*",
+        "https://www.sevenrooms.com/experiences/*",
+        "https://www.sevenrooms.com/events/*",
+        "https://fp.sevenrooms.com/reservations/*",
+        "https://fp.sevenrooms.com/explore/*",
+        "https://fp.sevenrooms.com/experiences/*",
+        "https://fp.sevenrooms.com/events/*",
+        "https://eu.sevenrooms.com/reservations/*",
+        "https://eu.sevenrooms.com/explore/*",
+        "https://eu.sevenrooms.com/experiences/*",
+        "https://eu.sevenrooms.com/events/*"
+      ],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Read-only exact dining target preparation and manual handoff; no holds or execution approval path."
+    },
+    {
+      "domain": "sevenrooms.com",
+      "tool": "search_events",
+      "file": "domains/sevenrooms.com/search_events.js",
+      "kind": "page",
+      "namespace": "sevenrooms.com",
+      "url_patterns": [
+        "https://www.sevenrooms.com/reservations/*",
+        "https://www.sevenrooms.com/explore/*",
+        "https://www.sevenrooms.com/experiences/*",
+        "https://www.sevenrooms.com/events/*",
+        "https://fp.sevenrooms.com/reservations/*",
+        "https://fp.sevenrooms.com/explore/*",
+        "https://fp.sevenrooms.com/experiences/*",
+        "https://fp.sevenrooms.com/events/*",
+        "https://eu.sevenrooms.com/reservations/*",
+        "https://eu.sevenrooms.com/explore/*",
+        "https://eu.sevenrooms.com/experiences/*",
+        "https://eu.sevenrooms.com/events/*"
+      ],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Public event schedules only; not ticket availability or prices. Pagination covers a bounded relative-day window."
+    },
+    {
       "domain": "southwest.com",
       "tool": "login",
       "file": "domains/southwest.com/login.js",
