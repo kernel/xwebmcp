@@ -502,9 +502,12 @@
         "https://instinct.com/*",
         "https://*.instinct.com/*"
       ],
-      "status": "draft",
-      "last_verified": null,
-      "notes": "Read-only settings summary, no identity or channel values. Link flags are false or null; linked layouts remain unobserved. Explicit cancellation and supported-value schemas; current source awaiting independent QA."
+      "status": "qa_passed",
+      "last_verified": "2026-09-30",
+      "notes": "Read-only settings summary, no identity or channel values. Link flags are false or null; linked layouts remain unobserved. Fresh independent QA passed signed-out Kernel/extension paths and synthetic success/failure cases on 2026-09-30. Signed-in success is author-only evidence. Explicit cancellation; no task or account writes.",
+      "provenance": {
+        "qa_agent": "agt_8de63a81502a3f33ffe8"
+      }
     },
     {
       "domain": "instinct.com",
@@ -516,9 +519,12 @@
         "https://instinct.com/*",
         "https://*.instinct.com/*"
       ],
-      "status": "draft",
-      "last_verified": null,
-      "notes": "Read-only public connector catalog summary on workspace. Eight allow-listed service ids/names; exact catalog badge/description only for Connect rows. Unknown, duplicate or renamed services fail closed; connected states remain null. No account or arbitrary page text. Current source awaiting independent QA."
+      "status": "qa_passed",
+      "last_verified": "2026-09-30",
+      "notes": "Read-only public connector catalog summary on workspace. Eight allow-listed service ids/names; exact catalog metadata only for Connect rows. Unknown, duplicate or renamed services fail closed; connected states remain null. No arbitrary account text. Fresh independent QA passed signed-out Kernel/extension paths and synthetic success/failure cases on 2026-09-30; signed-in success is author-only evidence.",
+      "provenance": {
+        "qa_agent": "agt_8de63a81502a3f33ffe8"
+      }
     },
     {
       "domain": "jetblue.com",

@@ -4,8 +4,8 @@ Tools for Instinct, a personal assistant with a marketing site at `https://insti
 
 | tool | file | status | notes |
 |---|---|---|---|
-| get_settings | [get_settings.js](get_settings.js) | draft | Read privacy preference and disconnected channel flags on `/settings`; no identifiers, no writes. Current source awaiting independent QA. |
-| list_connected_services | [list_connected_services.js](list_connected_services.js) | draft | Read known public connector labels on `/workspace`; disconnected is false, every unobserved state is null. Current source awaiting independent QA. |
+| get_settings | [get_settings.js](get_settings.js) | qa_passed | Read privacy preference and disconnected channel flags on `/settings`; no identifiers, no writes. Fresh independent QA passed 2026-09-30; signed-in success is author-only evidence. |
+| list_connected_services | [list_connected_services.js](list_connected_services.js) | qa_passed | Read known public connector labels on `/workspace`; disconnected is false, every unobserved state is null. Fresh independent QA passed 2026-09-30; signed-in success is author-only evidence. |
 
 ## Scope and loading
 
@@ -58,4 +58,11 @@ The earlier source received independent sign-off on 2026-09-29, after fixes for 
 
 The current revision removes arbitrary connector text rather than trying to detect private names with a regex, adds explicit output bounds and supported-value enums, and checks cancellation. `tests/instinct-read-tools.test.mjs` covers catalog output, arbitrary and instruction-like text, unknown/prototype/duplicate ids, connected-layout withholding, exact labels, row scoping, partial render/timeout, switch polarity, missing/changed structure, schema limits, malformed input before DOM reads, unrelated pages, route changes and cancellation. All private-looking fixture values are fabricated.
 
-Current independent review and final live verification are pending. Kernel and local extension evidence will be recorded separately; no mocked success will be described as a live mutation.
+Author live Kernel check, 2026-09-30, using the existing authorized session: native scan, whole-namespace atomic registration, signed-in success on both routes, `wrong_page` on the other route, and `invalid_input` for confirmation-like input. Workspace returned eight disconnected services, including Shop Pay's Beta badge; settings returned the observed opt-out and disconnected-channel states. No account data was changed, no requests were added by either tool, and temporary registrations were removed.
+
+Fresh independent QA by `agt_8de63a81502a3f33ffe8` signed off 2026-09-30 with no defects on these SHA-256 sources: `get_settings.js` `82c827928d7dbcc324682a37dc27a7a1dd47198e65d16558894cb2e8b5966205`; `list_connected_services.js` `e65758c1b439080c9eeec82d503f859027498f0169f570ba2d2be921ba81fdcd`. Source changes invalidate this sign-off.
+
+- Kernel: six signed-out surfaces checked before native registration; both tools retained across atomic namespace replacement; public wrong-page/login paths; malformed input before DOM interaction; 37 independent real-DOM synthetic fixtures; privacy/unknown/prototype/duplicate-id failures; bounded waits, cancellation, route changes, stale references and hard-navigation lifetime; no requests or state changes from the tools; repeated outputs identical.
+- Local extension: fresh disposable profile with exact source hashes; the same six signed-out surfaces and seven synthetic success/privacy cases passed. Extension cancellation/lifetime coverage was limited to unit tests, not live probes.
+- Ajv validated 152 outputs with zero violations and rejected seven negative controls. Validator: 81 tools valid; tool suite: 1,600 passing; domain suite: 23 passing; Go tests passed; extension suite: 14 passing.
+- Live signed-in success, real catalog fidelity, connected/linked layouts, switch-on behavior and account-specific rendering were not independently exercised. Fixtures are synthetic evidence, not live account or mutation success. The reviewer's one temporary browser was deleted and verified absent; local scratch processes and profile were removed.
