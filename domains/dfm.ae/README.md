@@ -4,9 +4,9 @@ Public market information from Dubai Financial Market (https://www.dfm.ae). Read
 
 | tool | file | status | notes |
 |------|------|--------|-------|
-| search_securities | [search_securities.js](search_securities.js) | draft | Ranked symbol/name search across six directory lists; bounded results and explicit failed lists |
-| get_security | [get_security.js](get_security.js) | draft | Instrument identity plus the Trading-tab quote, retrieval time and last-trade date |
-| get_price_history | [get_price_history.js](get_price_history.js) | draft | Daily summaries, newest first, with coverage dates, retrieval time and explicitly unknown currency |
+| search_securities | [search_securities.js](search_securities.js) | qa_passed | Ranked symbol/name search across six directory lists; bounded results and explicit failed lists |
+| get_security | [get_security.js](get_security.js) | qa_passed | Instrument identity plus the Trading-tab quote, retrieval time and last-trade date |
+| get_price_history | [get_price_history.js](get_price_history.js) | qa_passed | Daily summaries, newest first, with coverage dates, retrieval time and explicitly unknown currency |
 
 ## Native tools and execution kind
 
@@ -63,7 +63,14 @@ Builder live checks on 2026-09-30 (signed-out Kernel browser, market closed): al
 
 Local-extension builder checks on 2026-09-30 used Chromium 153 headless, a throwaway profile and a pre-granted copy of the extension manifest, with tools installed at source revision `91a043b`. Search, details and history returned live success; an unknown symbol and malformed array input returned explicit errors. The namespace was absent after navigating to `example.com`. Interactive permission grant, headful Chrome and the page-CSP fallback were not exercised.
 
-Earlier independent QA found stale profile-feed quotes, invalid symbol handling and an excessive search request budget. Those findings have regression coverage. Current-source QA also found that a prior 5xx prevented a later denial from stopping the remaining list requests; the fix prioritizes 401/403/429 and tests both partial success and total failure without provoking a real denial. Current-source QA is pending; registry entries remain draft.
+Earlier independent QA found stale profile-feed quotes, invalid symbol handling and an excessive search request budget. Those findings have regression coverage. The initial review of `91a043b` also found that a prior 5xx prevented a later denial from stopping remaining list requests. The fix prioritizes 401/403/429 and tests both partial success and total failure without provoking a real denial.
+
+Independent QA on 2026-09-30 signed off source `65537c961aad555c5700094fb57ee2ac25724731` for all three tools. The registry records its provenance. Validator: 82 valid tools; full suite: 1611 passed, including 34 DFM fixtures. Eighteen additional independently mocked sequences covered 429/401/403 after 5xx, changed-shape and network errors, with and without prior success; every sequence stopped further requests and preserved the denial cause on total failure.
+
+- **Kernel:** eight fresh final-source invocations completed and passed schema validation without URL changes. Search success/truncation, no-results and malformed-input errors passed; ALEC details, an unknown symbol, and EMAAR/BARKA history covered success and failure. Whole-namespace replacement preserved all three tools and an unrelated sentinel namespace. No native conflicts were observed on the public home/company/marketwatch pages in the initial review.
+- **Local extension:** eight final-source invocations completed and passed schema validation on EMAAR Daily Summary. Chromium 153 was headless with pre-granted throwaway manifest permissions. In the initial review of the otherwise identical details/history sources, rendered EMAAR/ALEC quotes matched 18 numeric fields plus last-trade date, and three EMAAR daily rows matched ten numeric columns. Captured command-specific requests carried no cookies; this is not a claim about every site request.
+- **Fixture-only:** permission/rate-limit/changed-shape/network failures, request-budget assertions and preservation of non-null profile currency. No live denial was induced and no account mutation occurred.
+- **Untested:** authenticated features, trading hours, interactive permission grant, headful Chrome and CSP fallback. No full cross-runtime parity claim. Entries are `qa_passed`, not promoted to `verified`; the GitHub PR remains draft.
 
 ## URL patterns
 
