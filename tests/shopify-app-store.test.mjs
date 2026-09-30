@@ -405,6 +405,47 @@ test("get_app falls back to the hero's rating when the structured data has none"
   assert.equal(output.review_count, 3183);
 });
 
+test("get_app rejects invalid aggregate numbers and falls back to visible ratings", async () => {
+  const cases = [
+    { ratingValue: 4.7, ratingCount: 1.5 },
+    { ratingValue: null, ratingCount: null },
+    { ratingValue: "", ratingCount: "" },
+    { ratingValue: true, ratingCount: true },
+    { ratingValue: [], ratingCount: [] },
+    { ratingValue: 6, ratingCount: 10 },
+    { ratingValue: -1, ratingCount: 10 },
+    { ratingValue: 4.7, ratingCount: -1 },
+    { ratingValue: 4.7, ratingCount: 1e100 }
+  ];
+  for (const aggregate of cases) {
+    const body = fixture("app-detail").replace(/"aggregateRating":\{[^}]*\}/, `"aggregateRating":${JSON.stringify(aggregate)}`);
+    const { output } = await run("get_app", { handle: "example-loyalty-suite" }, { respond: () => ({ status: 200, body }) });
+    assert.equal(output.rating, 4.7, JSON.stringify(aggregate));
+    assert.equal(output.review_count, 3183, JSON.stringify(aggregate));
+    assertConforms("get_app", output);
+  }
+  for (const aggregate of [{ ratingValue: "4.7", ratingCount: "3183" }, { ratingValue: 0, ratingCount: 0 }]) {
+    const body = fixture("app-detail").replace(/"aggregateRating":\{[^}]*\}/, `"aggregateRating":${JSON.stringify(aggregate)}`);
+    const { output } = await run("get_app", { handle: "example-loyalty-suite" }, { respond: () => ({ status: 200, body }) });
+    assert.equal(output.review_count, Number(aggregate.ratingCount));
+    assert.equal(output.rating, Number(aggregate.ratingCount) > 0 ? 4.7 : null);
+    assertConforms("get_app", output);
+  }
+});
+
+test("get_app omits unreadable rating numbers rather than returning invalid schema values", async () => {
+  const body = fixture("app-detail")
+    .replace(/"aggregateRating":\{[^}]*\}/, '"aggregateRating":{"ratingValue":null,"ratingCount":null}')
+    .replace("<span>4.7</span>", "<span>7.5</span>")
+    .replace("(3,183)", `(${"9".repeat(400)})`)
+    .replace('aria-label="2843 total reviews"', `aria-label="${"9".repeat(400)} total reviews"`);
+  const { output } = await run("get_app", { handle: "example-loyalty-suite" }, { respond: () => ({ status: 200, body }) });
+  assert.equal(output.rating, null);
+  assert.equal(output.review_count, null);
+  assert.equal(output.rating_counts.some(c => c.stars === 5), false);
+  assertConforms("get_app", output);
+});
+
 test("get_app rejects malformed input before any request", async () => {
   const bad = [
     undefined, null, "example", [], {},

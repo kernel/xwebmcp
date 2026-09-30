@@ -34,11 +34,11 @@
             },
             launched_text: { type: ["string", "null"], maxLength: 100, description: "Launch date as the listing shows it, for example 'March 10, 2014'." },
             pricing_summary: { type: ["string", "null"], maxLength: 500, description: "The listing's one-line pricing summary, for example 'Free plan available' or 'From $10/month'." },
-            rating: { type: ["number", "null"], description: "Average rating out of 5; null when the app has no reviews." },
-            review_count: { type: ["integer", "null"] },
+            rating: { type: ["number", "null"], minimum: 0, maximum: 5, description: "Average rating out of 5; null when the app has no reviews." },
+            review_count: { type: ["integer", "null"], minimum: 0, maximum: 9007199254740991 },
             rating_counts: {
               type: ["array", "null"], maxItems: 5,
-              items: { type: "object", additionalProperties: false, required: ["stars", "count"], properties: { stars: { type: "integer", minimum: 1, maximum: 5 }, count: { type: "integer", minimum: 0 } } },
+              items: { type: "object", additionalProperties: false, required: ["stars", "count"], properties: { stars: { type: "integer", minimum: 1, maximum: 5 }, count: { type: "integer", minimum: 0, maximum: 9007199254740991 } } },
               description: "Reviews per star rating, highest first; null when the listing shows no breakdown."
             },
             headline: { type: ["string", "null"], maxLength: 500, description: "The listing's introductory heading." },
@@ -151,15 +151,20 @@
     let rating = null;
     let reviewCount = null;
     const aggregate = ld && ld.aggregateRating;
-    if (aggregate && Number.isFinite(Number(aggregate.ratingValue)) && Number.isFinite(Number(aggregate.ratingCount))) {
-      rating = Number(aggregate.ratingValue);
-      reviewCount = Number(aggregate.ratingCount);
+    const numeric = value => typeof value === "number" || typeof value === "string" && /^\d+(?:\.\d+)?$/.test(value.trim()) ? Number(value) : NaN;
+    const aggregateRating = numeric(aggregate?.ratingValue);
+    const aggregateCount = numeric(aggregate?.ratingCount);
+    if (Number.isFinite(aggregateRating) && aggregateRating >= 0 && aggregateRating <= 5 && Number.isSafeInteger(aggregateCount) && aggregateCount >= 0) {
+      rating = aggregateCount > 0 ? aggregateRating : null;
+      reviewCount = aggregateCount;
     } else {
       const shown = fieldFor("Rating") || "";
       const count = /\(([\d,]+)/.exec(shown);
       const average = /^(\d+(?:\.\d+)?)/.exec(shown);
-      if (count) reviewCount = Number(count[1].replace(/,/g, ""));
-      if (average && reviewCount > 0) rating = Number(average[1]);
+      const displayedCount = count ? Number(count[1].replace(/,/g, "")) : NaN;
+      const displayedRating = average ? Number(average[1]) : NaN;
+      if (Number.isSafeInteger(displayedCount) && displayedCount >= 0) reviewCount = displayedCount;
+      if (Number.isFinite(displayedRating) && displayedRating >= 0 && displayedRating <= 5 && reviewCount > 0) rating = displayedRating;
     }
 
     const developerSection = doc.getElementById("adp-developer");
@@ -213,7 +218,8 @@
       const fromLink = linked ? /(\d[\d,]*)/.exec(linked.getAttribute("aria-label")) : null;
       const last = text(Array.from(li.children).pop());
       const value = fromLink ? fromLink[1] : /^\d+$/.test(last) ? last : null;
-      if (value !== null) counts.push({ stars: Number(star[1]), count: Number(value.replace(/,/g, "")) });
+      const parsedCount = value !== null ? Number(value.replace(/,/g, "")) : NaN;
+      if (Number.isSafeInteger(parsedCount) && parsedCount >= 0) counts.push({ stars: Number(star[1]), count: parsedCount });
     }
     counts.sort((a, b) => b.stars - a.stars);
     if (!counts.length) warnings.push("rating breakdown not found");
