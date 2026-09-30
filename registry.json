@@ -1068,6 +1068,45 @@
       }
     },
     {
+      "domain": "tiktok.com",
+      "tool": "get_profile",
+      "file": "domains/tiktok.com/get_profile.js",
+      "kind": "page",
+      "namespace": "tiktok.com",
+      "url_patterns": [
+        "https://www.tiktok.com/*"
+      ],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "One anonymous public-page read; no private data, media URLs, redirects or retries. TikTok automation terms and access restrictions apply."
+    },
+    {
+      "domain": "tiktok.com",
+      "tool": "get_video",
+      "file": "domains/tiktok.com/get_video.js",
+      "kind": "page",
+      "namespace": "tiktok.com",
+      "url_patterns": [
+        "https://www.tiktok.com/*"
+      ],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "One anonymous public-page read; no private data, media URLs, redirects or retries. TikTok automation terms and access restrictions apply."
+    },
+    {
+      "domain": "tiktok.com",
+      "tool": "search",
+      "file": "domains/tiktok.com/search.js",
+      "kind": "page",
+      "namespace": "tiktok.com",
+      "url_patterns": [
+        "https://www.tiktok.com/*"
+      ],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Reads bounded public video cards on an already-open matching video-search page. No navigation, playback, pagination or requests; login may be required. TikTok automation terms apply."
+    },
+    {
       "domain": "ubereats.com",
       "tool": "add_to_cart",
       "file": "domains/ubereats.com/add_to_cart.js",
