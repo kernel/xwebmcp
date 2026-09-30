@@ -166,7 +166,12 @@ test("sold-out fulfillment cannot produce a preview", async () => {
   const f = fulfillment(); f.fulfillment.sold_out = true;
   assert.equal((await harness({ fulfillment: f }).run()).error_kind, "unavailable");
 });
-for (const price of [{}, { current_retail: -1 }, { current_retail: "12.34" }, { current_retail: 12, formatted_current_price: "$12-$20" }]) test(`price ${JSON.stringify(price)} is not fabricated from text`, async () => {
+for (const price of [{}, { current_retail: -1 }, { current_retail: "12.34" },
+  { current_retail: 12, formatted_current_price: "$12-$20" },
+  { current_retail: 12, formatted_current_price: "$12.00–$20.00" },
+  { current_retail: 12, formatted_current_price: "$12.00—$20.00" },
+  { current_retail: 12, current_retail_min: 12, current_retail_max: 20 },
+  { current_retail: 12, formatted_current_price: "See price in cart" }]) test(`price ${JSON.stringify(price)} is not fabricated from text`, async () => {
   const result = await harness({ product: { ...product(), price } }).run();
   assert.equal(result.unit_price_cents, null);
   assert.equal(result.item_subtotal_cents, null);
@@ -180,8 +185,12 @@ test("bounds and canonical URL prevent response URL or extra-state leakage", asy
   assert.equal(result.product_url, "https://www.target.com/p/-/A-60000001");
   assert.ok(JSON.stringify(result).length < 1500);
 });
-test("context changes during requests invalidate a preview", async () => {
-  assert.equal((await harness({ changeCookie: cookie.replace("DSI_1234", "DSI_5678") }).run()).error_kind, "context_mismatch");
+test("store or ZIP changes during the first read stop before the second request", async () => {
+  for (const changed of [cookie.replace("DSI_1234", "DSI_5678"), cookie.replace("GuestLocation=45001", "GuestLocation=45002")]) {
+    const h = harness({ changeCookie: changed });
+    assert.equal((await h.run()).error_kind, "context_mismatch");
+    assert.equal(h.requests.length, 1);
+  }
 });
 test("cancellation stops before interaction and between the two reads", async () => {
   const canceled = new AbortController(); canceled.abort();

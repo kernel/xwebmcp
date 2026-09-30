@@ -340,6 +340,8 @@ test("check_store_availability: unknown tcin, unusable stores and unexpected bod
   assert.equal((await noIds.run(valid.check_store_availability)).error_kind, "site_error");
   const shape = harness("check_store_availability", { fiats: { data: { something_else: {} } } });
   assert.equal((await shape.run(valid.check_store_availability)).error_kind, "site_error");
+  const array = harness("check_store_availability", { fiats: { data: [] } });
+  assert.equal((await array.run(valid.check_store_availability)).error_kind, "site_error");
   const html = harness("check_store_availability", { responses: () => ({ status: 200, json: null }) });
   assert.equal((await html.run(valid.check_store_availability)).error_kind, "site_error");
 });

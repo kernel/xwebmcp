@@ -87,6 +87,8 @@
       if (typeof key !== "string" || !key || !ctx.visitor) return fail("site_error", "The page has not loaded its API configuration or visitor context. Nothing was changed.");
       const read = async (path, params) => {
         if (signal && signal.aborted) return { error: fail("canceled", "Preview canceled. Nothing was changed.") };
+        const mismatch = checkContext(readContext());
+        if (mismatch) return { error: mismatch };
         const url = new URL("https://redsky.target.com/redsky_aggregations/v1/web/" + path);
         for (const [name, value] of Object.entries({ key, channel: "WEB", tcin: input.tcin, visitor_id: ctx.visitor, ...params })) if (value !== "") url.searchParams.set(name, String(value));
         const response = await fetch(url.toString(), { method: "GET", credentials: "include", headers: { accept: "application/json" }, signal });
@@ -130,7 +132,10 @@
       const currentMismatch = checkContext(readContext());
       if (currentMismatch) return currentMismatch;
       const price = selected.price || {};
-      const unit = !price.formatted_current_price?.includes("-") && typeof price.current_retail === "number" && Number.isFinite(price.current_retail) && price.current_retail >= 0 && Number.isSafeInteger(Math.round(price.current_retail * 100)) ? Math.round(price.current_retail * 100) : null;
+      const isRange = /[-–—]/.test(typeof price.formatted_current_price === "string" ? price.formatted_current_price : "") ||
+        (typeof price.current_retail_min === "number" && typeof price.current_retail_max === "number" && price.current_retail_min !== price.current_retail_max);
+      const hiddenPrice = /see price in cart/i.test(typeof price.formatted_current_price === "string" ? price.formatted_current_price : "");
+      const unit = !isRange && !hiddenPrice && typeof price.current_retail === "number" && Number.isFinite(price.current_retail) && price.current_retail >= 0 && Number.isSafeInteger(Math.round(price.current_retail * 100)) ? Math.round(price.current_retail * 100) : null;
       const services = Array.isArray(option.services) ? option.services : [];
       const base = services.find(s => s && s.is_base_shipping_method) || services[0] || {};
       return {

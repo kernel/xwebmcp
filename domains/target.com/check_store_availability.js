@@ -165,7 +165,7 @@
       const data = r.json && r.json.data;
       const fulfillment = data && data.fulfillment_fiats;
       if (!fulfillment) {
-        if (data && typeof data === "object" && !Object.keys(data).length) return fail("no_availability", "Target returned no store availability for tcin " + tcin + ". It may be an item family with variations: use get_product to list them and pass a variation's tcin.");
+        if (data && typeof data === "object" && !Array.isArray(data) && !Object.keys(data).length) return fail("no_availability", "Target returned no store availability for tcin " + tcin + ". It may be an item family with variations: use get_product to list them and pass a variation's tcin.");
         return fail("site_error", "Target's store availability answer had no fulfillment data; the site may have changed.");
       }
       if (!Array.isArray(fulfillment.locations)) return fail("site_error", "Target returned no usable store list; the site may have changed.");
