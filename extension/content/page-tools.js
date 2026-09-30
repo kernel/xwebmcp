@@ -31,6 +31,19 @@
   window.addEventListener('message', async (event) => {
     if (event.source !== window || event.data?.source !== 'xwebmcp') return;
     const {type} = event.data;
+    if (type === 'retain-page-tools') {
+      // Sent by the ISOLATED agent on every sync. After the extension reloads,
+      // a fresh agent does not know what an earlier agent registered in this
+      // (surviving) MAIN world, so anything it does not want is dropped here.
+      const keep = new Set(event.data.ids ?? []);
+      for (const [id, controller] of controllers) {
+        if (!keep.has(id)) {
+          controller.abort();
+          controllers.delete(id);
+        }
+      }
+      return;
+    }
     if (type === 'unregister-page-tools') {
       for (const id of event.data.ids ?? []) {
         controllers.get(id)?.abort();

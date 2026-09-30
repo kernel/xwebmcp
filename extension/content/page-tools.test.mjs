@@ -46,3 +46,18 @@ test('a CSP eval refusal requests privileged registration without losing page-ki
   assert.equal(p.tools.length, 1);
   assert.equal((await p.tools[0].execute()).ok, true);
 });
+
+test('retain-page-tools drops registrations an earlier agent made that are no longer wanted', async () => {
+  const signals = [];
+  const p = page(false);
+  p.context.document.modelContext.registerTool = async (tool, {signal}) => { p.tools.push(tool); signals.push(signal); };
+  const other = {...p.definition, id: 'ct_old', name: 'custom.ct_old.test'};
+  await p.deliver({type: 'register-page-tools', definitions: [p.definition, other]});
+  assert.equal(p.tools.length, 2);
+  await p.deliver({type: 'retain-page-tools', ids: ['ct_test']});
+  assert.equal(signals[0].aborted, false, 'wanted tool stays');
+  assert.equal(signals[1].aborted, true, 'stale tool is unregistered');
+  // A fresh agent re-registering the kept tool does not duplicate it.
+  await p.deliver({type: 'register-page-tools', definitions: [p.definition]});
+  assert.equal(p.tools.length, 2);
+});

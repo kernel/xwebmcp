@@ -6,10 +6,12 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/urfave/cli/v3"
 
+	"github.com/kernel/xwebmcp/internal/bridge"
 	"github.com/kernel/xwebmcp/internal/devwatch"
 	"github.com/kernel/xwebmcp/internal/mcpserver"
 )
@@ -126,7 +128,7 @@ func absolutePaths(paths []string) ([]string, error) {
 // watchDev reinstalls edited tool files until ctx ends.
 func (a *App) watchDev(ctx context.Context, root string, server *mcpserver.Server, logf func(string, ...any)) {
 	logf("watching %s", root)
-	err := devwatch.Watch(ctx, root, devPollInterval, func(changes []devwatch.Change) {
+	err := devwatch.Watch(ctx, root, devPollInterval, func(changes []devwatch.Change) (retry []string) {
 		for _, change := range changes {
 			if change.Removed {
 				logf("%s removed; its tool stays installed until removed explicitly", change.File.Rel)
@@ -138,7 +140,12 @@ func (a *App) watchDev(ctx context.Context, root string, server *mcpserver.Serve
 			}
 			added, pending, err := server.InstallSource(ctx, change.File.Namespace, change.File.Source, change.File.Rel)
 			if err != nil {
-				logf("reinstall %s: %v", change.File.Rel, err)
+				if transientBridgeError(err) {
+					logf("reinstall %s: %v (will retry)", change.File.Rel, err)
+					retry = append(retry, change.File.Rel)
+				} else {
+					logf("reinstall %s: %v", change.File.Rel, err)
+				}
 				continue
 			}
 			for _, tool := range added {
@@ -148,8 +155,20 @@ func (a *App) watchDev(ctx context.Context, root string, server *mcpserver.Serve
 				logf("%d site(s) need access: open the xwebmcp popup and click \"Grant access\"", len(pending))
 			}
 		}
+		return retry
 	})
 	if err != nil {
 		logf("watch %s: %v", root, err)
 	}
+}
+
+// transientBridgeError reports whether err means the extension could not be
+// reached (it was reloading or Chrome restarted) rather than that the tool
+// source was rejected.
+func transientBridgeError(err error) bool {
+	if errors.Is(err, bridge.ErrNotRunning) {
+		return true
+	}
+	message := err.Error()
+	return strings.Contains(message, "write to bridge") || strings.Contains(message, "bridge connection closed") || strings.Contains(message, "extension disconnected")
 }

@@ -191,7 +191,12 @@ a coding agent driving it.
    directory, or a single tool file, and can be repeated. Every tool file under it is
    installed when the server starts and reinstalled whenever its content changes; tools
    installed with `xwebmcp add` keep working next to them. `xwebmcp dev <path>` runs the
-   same watcher without an MCP server.
+   same watcher without an MCP server. Open tabs pick up reinstalled tools without a
+   reload, and the watcher and `xwebmcp mcp` reconnect on their own when the extension is
+   reloaded or Chrome restarts its native host; a reinstall that fails while the extension
+   is away is retried on the next scan. One leftover after an extension reload: a cdp
+   tool's stub registered by the previous extension instance stays in already-open tabs
+   (hidden from `list_tools`, fails if called) until the tab reloads.
 3. Grant the site once in the extension popup (**Grant access**) when the server reports
    pending origins.
 4. Loop: the agent calls `invoke_tool` (`namespace` + `name`), reads the failure's

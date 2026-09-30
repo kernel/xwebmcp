@@ -114,6 +114,7 @@
     return {
       register: (definitions) => window.postMessage({source: 'xwebmcp', type: 'register-page-tools', definitions}, '*'),
       unregister: (ids) => window.postMessage({source: 'xwebmcp', type: 'unregister-page-tools', ids}, '*'),
+      retain: (ids) => window.postMessage({source: 'xwebmcp', type: 'retain-page-tools', ids}, '*'),
     };
   }
 
@@ -135,6 +136,7 @@
       }
     }
     if (removedPage.length) pageToolsPort().unregister(removedPage);
+    pageToolsPort().retain([...desired.values()].filter((definition) => definition.kind === 'page').map((definition) => definition.id));
     const pageDefinitions = [];
     for (const definition of desired.values()) {
       if (registrations.has(definition.id)) continue;
