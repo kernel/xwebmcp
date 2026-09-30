@@ -269,6 +269,51 @@
     },
     {
       "domain": "google.com",
+      "tool": "explore_destinations",
+      "file": "domains/google.com/explore_destinations.js",
+      "kind": "page",
+      "namespace": "google.com",
+      "url_patterns": [
+        "https://www.google.com/travel/explore",
+        "https://www.google.com/travel/explore?*",
+        "https://www.google.com/travel/explore/*"
+      ],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Loaded Explore destination suggestions for the explicitly configured origin and current page settings; no destination selected, tracking or booking."
+    },
+    {
+      "domain": "google.com",
+      "tool": "get_date_grid",
+      "file": "domains/google.com/get_date_grid.js",
+      "kind": "page",
+      "namespace": "google.com",
+      "url_patterns": [
+        "https://www.google.com/travel/flights",
+        "https://www.google.com/travel/flights?*",
+        "https://www.google.com/travel/flights/*"
+      ],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Current English round-trip date-grid labels, up to 49 loaded cells. Opens the panel only; never selects or applies dates."
+    },
+    {
+      "domain": "google.com",
+      "tool": "get_directions",
+      "file": "domains/google.com/get_directions.js",
+      "kind": "page",
+      "namespace": "google.com",
+      "url_patterns": [
+        "https://www.google.com/maps",
+        "https://www.google.com/maps/*",
+        "https://www.google.com/maps?*"
+      ],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Current English Maps route options for two resolved explicit endpoints. Reads up to ten loaded cards without route clicks, geolocation, sending or navigation."
+    },
+    {
+      "domain": "google.com",
       "tool": "get_place",
       "file": "domains/google.com/get_place.js",
       "kind": "page",
@@ -305,6 +350,21 @@
     },
     {
       "domain": "google.com",
+      "tool": "prepare_directions",
+      "file": "domains/google.com/prepare_directions.js",
+      "kind": "page",
+      "namespace": "google.com",
+      "url_patterns": [
+        "https://www.google.com/maps",
+        "https://www.google.com/maps/*",
+        "https://www.google.com/maps?*"
+      ],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Prepare the observed directions-link shape for two explicit endpoints without requesting, navigating, resolving places or changing state."
+    },
+    {
+      "domain": "google.com",
       "tool": "search_flights",
       "file": "domains/google.com/search_flights.js",
       "kind": "cdp",
@@ -313,12 +373,9 @@
         "https://google.com/travel/*",
         "https://*.google.com/travel/*"
       ],
-      "status": "qa_passed",
-      "last_verified": "2026-09-25",
-      "notes": "Google Flights via a tfs deep link (hl=en, gl=US, curr); returns outbound itineraries from the best and other sections with flight numbers, segments, layovers and total prices for the requested passengers. Three independent QA rounds passed the full matrix plus date-line, airport-change, non-USD and unsupported-currency probes; a first-round intermittent loss of expanded detail panels was fixed and did not recur in 10 runs. url_patterns are deliberately narrowed to /travel/* (see the domain README). Consent interstitial, /sorry blocks and 'Price unavailable' cards are covered by local tests only.",
-      "provenance": {
-        "qa_agent": "agt_7ffe2dcdda2935caea70"
-      }
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Google Flights via a tfs deep link; outbound itinerary coverage is preserved. Consent now returns CONSENT_REQUIRED without changing preferences; the modified source awaits fresh independent QA."
     },
     {
       "domain": "google.com",
@@ -333,7 +390,7 @@
       ],
       "status": "qa_passed",
       "last_verified": "2026-09-29",
-      "notes": "Google Maps place search through the tab's own Maps search box: up to 20 loaded results with category, address, rating, price range, status text, sponsored flag, coordinates and a canonical place_url; single-place, bare-map-point and no-results outcomes are explicit. Page tool on Maps only; does not scroll or page. Independent QA (three rounds, signed off on the final tool source) covered success, staleness under network latency, malformed input and unsuitable pages on the Kernel runtime, signed out. Bounded on purpose (see the README's terms note, which a maintainer should confirm). Signed-in behavior and the Chrome extension for the final source are untested.",
+      "notes": "Google Maps place search through the tab's own Maps search box: up to 20 loaded results with category, address, rating, price range, status text, sponsored flag, coordinates and a canonical place_url; single-place, bare-map-point and no-results outcomes are explicit. Page tool on Maps only; does not scroll or page. Independent QA (three rounds, signed off on the final tool source) covered success, staleness under network latency, malformed input and unsuitable pages on the Kernel runtime, signed out. Bounded on purpose; no challenge, permission or rate-limit bypass. Signed-in behavior and the Chrome extension for the final source are untested.",
       "provenance": {
         "qa_agent": "agt_58cec00f988e4fa5f852"
       }
@@ -572,7 +629,7 @@
       ],
       "status": "verified",
       "last_verified": "2026-09-24",
-      "notes": "Independent search/parser QA passed; domain migration live-verified from /travel-agents. Returns initial outbound cards only, including round trips; 1–7 adults; displayed cash fares are not trip totals. Inventory failures remain explicit errors.",
+      "notes": "Independent search/parser QA passed; domain migration live-verified from /travel-agents. Returns initial outbound cards only, including round trips; 1\u20137 adults; displayed cash fares are not trip totals. Inventory failures remain explicit errors.",
       "provenance": {
         "qa_agent": "agt_8da83a2e489269a5ff05"
       }

@@ -397,24 +397,26 @@ test("explicit no-results announcements are reported, never as an error", async 
   assert.match(result.resultsUrl, /^https:\/\/www\.google\.com\/travel\/flights\/search\?tfs=/);
 });
 
-test("the consent interstitial is dismissed before reading results", async () => {
+test("consent requires human handling without clicking any preference or returning its URL", async () => {
   const doc = resultsPage();
   doc.body.append(new El("button", { text: "Accept all" }));
   doc.body.append(new El("button", { text: "Reject all" }));
   const h = harness({ consent: true, document: doc });
   const result = await h.execute(oneWay);
-  assert.equal(result.status, "ok");
-  assert.equal(doc.body.children.at(-1).clicks, 1);
+  assert.equal(result.status, "error");
+  assert.match(result.message, /^CONSENT_REQUIRED/);
+  assert.equal(result.resultsUrl, "");
+  assert.equal(doc.body.children.at(-1).clicks, 0);
   assert.equal(doc.body.children.at(-2).clicks, 0);
-  assert.equal(doc.documentElement.getAttribute("data-xwebmcp-stale"), "1");
-  assert.equal(h.calls.filter(c => c === "wait:html:not([data-xwebmcp-stale]):attached").length, 2);
+  assert.equal(h.calls.filter(c => c === "wait:html:not([data-xwebmcp-stale]):attached").length, 1);
 });
 
 test("a consent page without a recognizable button is an explicit error", async () => {
   const h = harness({ consent: true });
   const result = await h.execute(oneWay);
   assert.equal(result.status, "error");
-  assert.match(result.message, /^CONSENT_BLOCKED/);
+  assert.match(result.message, /^CONSENT_REQUIRED/);
+  assert.equal(result.resultsUrl, "");
 });
 
 test("Google's automated-traffic challenge is reported as blocked", async () => {

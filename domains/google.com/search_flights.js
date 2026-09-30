@@ -149,20 +149,14 @@
         if (!await waitForElement("html:not([data-xwebmcp-stale])", { state: "attached", timeoutSec: remaining(30) })) return fail("NAVIGATION_TIMEOUT: Google Flights did not load a new document.");
         result.resultsUrl = (await pageInfo()).url;
         if (/^consent\.google\./.test(new URL(result.resultsUrl).hostname)) {
-          const consented = await js(() => {
-            const visible = e => e.getClientRects().length > 0;
-            const buttons = [...document.querySelectorAll("button")].filter(visible);
-            const button = buttons.find(b => /^Reject all$/i.test(b.textContent.trim())) || buttons.find(b => /^(Accept all|I agree)$/i.test(b.textContent.trim()));
-            if (!button) return false;
-            document.documentElement.setAttribute("data-xwebmcp-stale", "1");
-            button.click();
-            return true;
-          });
-          if (!consented) return fail("CONSENT_BLOCKED: Google consent page has no recognizable Reject all / Accept all button.");
-          if (!await waitForElement("html:not([data-xwebmcp-stale])", { state: "attached", timeoutSec: remaining(30) })) return fail("CONSENT_TIMEOUT: the consent page did not return to Google Flights.");
-          result.resultsUrl = (await pageInfo()).url;
+          result.resultsUrl = "";
+          return fail("CONSENT_REQUIRED: handle Google's consent yourself; the tool does not accept terms or change consent preferences.");
         }
-        if (!isFlightsPage(result.resultsUrl)) return fail(new URL(result.resultsUrl).pathname.startsWith("/sorry") ? "BLOCKED: Google served an automated-traffic challenge." : "UNEXPECTED_PAGE: navigation ended at " + result.resultsUrl);
+        if (!isFlightsPage(result.resultsUrl)) {
+          const blocked = new URL(result.resultsUrl).pathname.startsWith("/sorry");
+          result.resultsUrl = "";
+          return fail(blocked ? "BLOCKED: Google served an automated-traffic challenge." : "UNEXPECTED_PAGE: navigation did not reach Google Flights.");
+        }
 
         const readiness = await js(timeoutMs => new Promise(resolve => {
           const visible = e => e.getClientRects().length > 0;
