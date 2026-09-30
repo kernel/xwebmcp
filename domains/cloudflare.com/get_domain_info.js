@@ -179,10 +179,11 @@
         if (r.unavailable) return r;
         const b = r.body;
         if (!isObject(b)) return shape("WHOIS");
-        if (!str(b.registrar) && !str(b.created_date) && !(Array.isArray(b.nameservers) && b.nameservers.length)) return bad("no_data", "Radar has no WHOIS data for this domain.");
+        const nameservers = strings(b.nameservers);
+        if (!str(b.registrar) && !str(b.created_date) && !nameservers.length) return bad("no_data", "Radar has no WHOIS data for this domain.");
         return { value: {
           registered_domain: str(b.punycode), registrar: str(b.registrar), created_utc: str(b.created_date), updated_utc: str(b.updated_date), expires_utc: str(b.expiration_date),
-          nameservers: strings(b.nameservers),
+          nameservers,
           status: strings(b.status), dnssec: bool(b.dnssec)
         } };
       }

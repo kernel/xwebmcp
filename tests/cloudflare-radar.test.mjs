@@ -388,6 +388,17 @@ test("get_domain_info: a valid but falsy JSON body is a shape change, not an emp
   }
 });
 
+test("get_domain_info: malformed nameserver entries cannot produce an empty WHOIS success", async () => {
+  for (const nameservers of [[null], [false], [{}], [""], [null, false, {}, ""]]) {
+    const h = harness("get_domain_info", { routes: { WhoisPanel: () => ({ status: 200, body: { nameservers } }) } });
+    const result = await h.run({ domain: "host.example.net", sections: ["whois"] });
+    assert.equal(result.status, "no_data");
+    assert.equal(result.unavailable[0].kind, "no_data");
+  }
+  const h = harness("get_domain_info", { routes: { WhoisPanel: () => ({ status: 200, body: { nameservers: [null, "ns1.host.example.net"] } }) } });
+  assert.deepEqual((await h.run({ domain: "host.example.net", sections: ["whois"] })).whois.nameservers, ["ns1.host.example.net"]);
+});
+
 test("get_domain_info: WHOIS is opt-in, allowlisted, and a rate limit is reported per section", async () => {
   const h = harness("get_domain_info");
   const withWhois = await h.run({ domain: "host.example.net", sections: ["whois"] });
