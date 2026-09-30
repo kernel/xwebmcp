@@ -1274,6 +1274,50 @@
       "provenance": {
         "qa_agent": "agt_a87837884a432de575e8"
       }
+    },
+    {
+      "domain": "yahoo.com",
+      "tool": "get_price_history",
+      "file": "domains/yahoo.com/get_price_history.js",
+      "kind": "page",
+      "namespace": "yahoo.com",
+      "url_patterns": ["https://finance.yahoo.com/*"],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Public daily OHLCV; one request, range at most one year, at most 300 returned candles. Gates and throttling stop without retries."
+    },
+    {
+      "domain": "yahoo.com",
+      "tool": "get_quote",
+      "file": "domains/yahoo.com/get_quote.js",
+      "kind": "page",
+      "namespace": "yahoo.com",
+      "url_patterns": ["https://finance.yahoo.com/*"],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Public regular-session price with currency and source market time; no cookies, account APIs or retries. Prices may be delayed."
+    },
+    {
+      "domain": "yahoo.com",
+      "tool": "get_watchlist",
+      "file": "domains/yahoo.com/get_watchlist.js",
+      "kind": "page",
+      "namespace": "yahoo.com",
+      "url_patterns": ["https://finance.yahoo.com/*"],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Reads only the rendered My Watchlist p_0 view in an authorized session, up to 50 rows; no account identity assertion, holdings or mutations."
+    },
+    {
+      "domain": "yahoo.com",
+      "tool": "search_symbols",
+      "file": "domains/yahoo.com/search_symbols.js",
+      "kind": "page",
+      "namespace": "yahoo.com",
+      "url_patterns": ["https://finance.yahoo.com/*"],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Public symbol directory, one request and at most ten results; no news/private data, no cookies or retries."
     }
   ]
 }
