@@ -8,7 +8,7 @@
     },
     "tool": {
       "name": "set_favorite",
-      "description": "Set one exact restaurant's reversible My Hit List favorite state in the current Resy account. Requires manual login, expected_account_ref from get_account_status, venue_id plus city_slug/url_slug from public tools, desired favorite and expected_favorite state. Reads current account and venue first, checks venue id and favorite flag, does nothing if already at desired state, refuses stale state, rechecks account immediately before its single form-encoded POST /3/user/favorites, then rereads the venue and account to verify. Never changes custom lists or marketing preferences. A timeout, cancellation after dispatch, session switch, failed readback or uncertain response returns outcome_unknown: never retry automatically; read state first. No human approval flag is accepted. Live mutation is not verified; success is fixture-tested only.",
+      "description": "Set one exact restaurant's reversible My Hit List favorite state in the current Resy account. Requires manual login, expected_account_ref from get_account_status, venue_id plus city_slug/url_slug from public tools, desired favorite and expected_favorite state. Reads current account and venue first, checks venue id and favorite flag, does nothing if already at desired state, refuses stale state, rechecks account immediately before its single form-encoded POST /3/user/favorites, then rereads the venue and account to verify. Never changes custom lists or marketing preferences. A timeout, cancellation after dispatch, session switch, failed readback or uncertain response returns outcome_unknown: never retry automatically; read state first. No human approval flag is accepted. HTTP 200 or 201 from the favorites endpoint still requires account and saved-state readback before success.",
       "inputSchema": {
         "type": "object",
         "additionalProperties": false,
@@ -176,7 +176,7 @@
         if (raw.length > 2000000) return { error: fail(mutationStarted ? "outcome_unknown" : "site_changed", "The response exceeded this tool's read limit.") };
         let json;
         try { json = JSON.parse(raw); } catch { return { error: fail(mutationStarted ? "outcome_unknown" : "site_changed", "Resy did not return readable JSON.") }; }
-        if (res.status !== 200) return { error: fail(mutationStarted ? "outcome_unknown" : res.status === 404 ? "not_found" : "site_error", "Resy returned HTTP " + res.status + ". No automatic retry.") };
+        if (res.status !== 200 && !(method === "POST" && path === "/3/user/favorites" && res.status === 201)) return { error: fail(mutationStarted ? "outcome_unknown" : res.status === 404 ? "not_found" : "site_error", "Resy returned HTTP " + res.status + ". No automatic retry.") };
         return { json };
       } catch {
         return { error: fail(mutationStarted ? "outcome_unknown" : signal?.aborted ? "canceled" : "site_error", "The request did not complete visibly. Bot protection can hide responses. Do not automatically retry a dispatched write; read current state first.") };

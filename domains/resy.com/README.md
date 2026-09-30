@@ -15,7 +15,7 @@ Resy restaurant discovery, account reads, reversible favorites and reservation h
 | list_reservations | [list_reservations.js](list_reservations.js) | qa_passed | One bounded upcoming/past account page, maximum 20 |
 | prepare_reservation | [prepare_reservation.js](prepare_reservation.js) | verified | Exact public slot match and human handoff, not a quote or hold |
 | search_restaurants | [search_restaurants.js](search_restaurants.js) | verified | Keyword/cuisine/place search; up to 12 sorted slots per venue |
-| set_favorite | [set_favorite.js](set_favorite.js) | qa_passed | Reversible My Hit List favorite only; fixture-tested writes |
+| set_favorite | [set_favorite.js](set_favorite.js) | draft | Reversible My Hit List favorite; HTTP 201 fix awaits independent QA |
 
 ## Scope and loading
 
@@ -62,9 +62,9 @@ are returned. Populated schemas are grounded in the site's current public bundle
   between the reads and write. Do not run concurrent favorite changes.
 - Cancellation after dispatch, timeout, blocked response, session switch or failed postcondition produces
   `outcome_unknown`; no automatic retries, rollback or compensating write. Read the state before deciding.
-- Development and QA never mutate the authorized user's live favorites. Fixture flows record initial state,
-  set/unset their fabricated venue and verify exact restoration. No dedicated mutation test account was approved.
-  Live update success must not be inferred from mocks, a no-op or a missing-login test.
+- Live favorite QA requires explicit permission to change one venue, record its initial state, restore it and
+  verify exact equality. Fixture flows do the same with fabricated venues. Live update success must not be
+  inferred from mocks, a no-op or a missing-login test.
 
 ## Consequential-action safety: reservation preparation and execution blockers
 
@@ -126,7 +126,7 @@ configuration/CORS contract. `api.resy.com` is a request destination, not a matc
   (up to about 1.2 MB) and returned through Kernel; local extension handling of those sizes is unverified.
 - No custom-list, payment/profile/marketing settings, concierge/on-behalf bookings, membership-only inventory
   verification or automatic login tools. No new account or purchases/bookings requested to populate fixtures.
-- Live challenge/rate-limit/gated outcomes have not been deliberately triggered. No paid quota or live mutation QA.
+- Live challenge/rate-limit/gated outcomes have not been deliberately triggered. No paid quota QA.
 - Local extension testing is separate from Kernel; headed mode, native bridge and popup grants remain untested.
 
 ## QA
@@ -172,10 +172,29 @@ header, cookie or widget/details/hold activity. The final-source account-status 
 builder-observed on the authorized document, not an independent authenticated test; its current path was not
 recorded. Account status is conservatively qa_passed rather than claiming the verified non-entry-page criterion.
 
-Five public tools are verified using dated live success plus independent source QA. All five account tools
-remain qa_passed: empty envelopes are not populated-item success, and favorite mutation/restoration is fixture-only. The PR remains draft. Tool source hashes are unchanged after sign-off; subsequent source
-changes require new QA. Initial QA used 13 source invocations and seven API requests, plus two network-free
+Five public tools are verified using dated live success plus independent source QA. The four account reads
+remain qa_passed: empty envelopes are not populated-item success. The HTTP 201 fix below changes only
+`set_favorite`, which is draft pending independent QA of the new source; the other nine tool sources are unchanged. Initial QA used 13 source invocations and seven API requests, plus two network-free
 size probes and two public bundle reads. Both owned QA browsers were deleted and absence confirmed.
+
+### Favorite HTTP 201 follow-up (2026-09-30)
+
+A live favorite add and removal returned HTTP 201 Created. The original implementation rejected both as
+`outcome_unknown`, despite the rendered My Hit List changing. The fix accepts 201 only for POST
+`/3/user/favorites`; reads still require 200, and every successful write still rereads the exact venue and
+account before returning `updated`. Other statuses, failed verification and cancellation remain uncertain,
+with no automatic retry.
+
+The new 201 add/restore regression fails against the original source and passes with the fix. Tests also
+cover 200 compatibility, duplicate no-ops, rejecting 202/204 as completed writes, rejecting 201 on a venue
+read, and post-dispatch failures for both 200 and 201. All 318 Resy tests pass.
+
+Live retest at tool SHA-256 `9efb6d11fa98fd861ade000cab0ad0f6ecf3342fe1c1c843c6d08820d3305110`:
+from an account-list page, add and restore both returned `updated` with one POST and subsequent venue/account
+readback. The restoration response was independently observed as HTTP 201. Reloaded My Hit List showed one
+venue after add and exactly the original empty list after restoration. Initial, duplicate and final no-ops
+returned `unchanged` without POSTs. No booking, cancellation, Notify or other account action was performed.
+This is live implementation testing, not independent QA of the changed source; `set_favorite` remains draft.
 
 Fixtures use fabricated identities, venues, tokens and policies and cover malformed input before interaction,
 account/venue mismatches, omitted login, cancellation, duplicates, stale state, uncertain write outcomes,

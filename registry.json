@@ -981,10 +981,10 @@
       "kind": "page",
       "namespace": "resy.com",
       "url_patterns": ["https://resy.com/*"],
-      "status": "qa_passed",
-      "last_verified": "2026-09-30",
-      "notes": "Reversible My Hit List favorite with exact account/venue and expected-state guards, one write and readback. Live mutation not tested. Never retry uncertain writes automatically.",
-      "provenance": { "qa_agent": "agt_221f5a5f11361477ff09" }
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Reversible My Hit List favorite with exact account/venue and expected-state guards, one write and readback. HTTP 201 success handling awaits independent QA. Never retry uncertain writes automatically.",
+      "provenance": { "qa_agent": null }
     },
     {
       "domain": "southwest.com",

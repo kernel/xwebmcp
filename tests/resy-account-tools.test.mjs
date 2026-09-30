@@ -65,7 +65,7 @@ function harness(name, options = {}) {
       body = {};
     }
     if (path === "/4/find") body = options.find ?? find;
-    return { status: 200, text: async () => JSON.stringify(body) };
+    return { status: path === "/3/user/favorites" ? options.favoriteStatus ?? 200 : 200, text: async () => JSON.stringify(body) };
   } };
   const [definition] = runInNewContext(`(${sources[name]})`, ctx);
   return { requests, window, definition, state: () => saved, run: async (input, context) => {
@@ -145,15 +145,26 @@ test("notify: empty/populated and bounded 100 results", async () => {
   const out = await h.run(expected);
   assert.equal(out.total, 101); assert.equal(out.requests.length, 100); assert.equal(out.truncated, true);
 });
-test("favorite: one write then observed verification, duplicate no-op, reversible fixture restore", async () => {
-  const h = harness("set_favorite");
+for (const status of [200, 201]) test(`favorite: HTTP ${status} add and restore verify state, duplicate is a no-op`, async () => {
+  const h = harness("set_favorite", { favoriteStatus: status });
   const initial = h.state();
   assert.equal((await h.run(favoriteInput)).status, "updated");
   assert.equal(h.state(), true);
+  assert.deepEqual(h.requests.map(r => r.path), ["/2/user", "/3/venue", "/2/user", "/3/user/favorites", "/3/venue", "/2/user"]);
   assert.equal((await h.run(favoriteInput)).status, "unchanged");
   assert.equal((await h.run({ ...favoriteInput, favorite: false, expected_favorite: true })).status, "updated");
   assert.equal(h.state(), initial);
   assert.equal(h.requests.filter(r => r.init.method === "POST").length, 2);
+});
+for (const status of [202, 204]) test(`favorite: HTTP ${status} does not establish a completed write`, async () => {
+  const h = harness("set_favorite", { favoriteStatus: status });
+  assert.equal((await h.run(favoriteInput)).error_kind, "outcome_unknown");
+  assert.equal(h.requests.filter(r => r.init.method === "POST").length, 1);
+});
+test("favorite: HTTP 201 on a venue read is not accepted", async () => {
+  const h = harness("set_favorite", { route: ({ path }) => path === "/3/venue" ? { status: 201, body: { id: { resy: 1001 }, name: "Fabricated Trattoria", favorite: false } } : null });
+  assert.equal((await h.run(favoriteInput)).error_kind, "site_error");
+  assert.equal(h.requests.some(r => r.init.method === "POST"), false);
 });
 test("favorite: wrong target and stale initial state never write", async () => {
   const h = harness("set_favorite", { venueId: 2002 });
@@ -168,9 +179,10 @@ test("favorite: account switch on preflight prevents write", async () => {
   assert.equal((await h.run(favoriteInput)).error_kind, "wrong_account");
   assert.equal(h.requests.some(r => r.init.method === "POST"), false);
 });
-for (const mode of ["session", "account", "cancel", "network", "verification", "http"]) test(`favorite: ${mode} after dispatch is unknown and never retried`, async () => {
+for (const status of [200, 201]) for (const mode of ["session", "account", "cancel", "network", "verification", "http"]) test(`favorite: ${mode} after HTTP ${status} dispatch is unknown and never retried`, async () => {
   const abort = new AbortController();
   const h = harness("set_favorite", {
+    favoriteStatus: status,
     changeIdentity: mode === "account" ? 2 : undefined,
     afterWrite: ({ window }) => { if (mode === "session") window.apiAuthToken = "changed"; if (mode === "cancel") abort.abort(); },
     route: ({ path, init, requests }) => {
