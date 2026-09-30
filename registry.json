@@ -1274,6 +1274,58 @@
       "provenance": {
         "qa_agent": "agt_a87837884a432de575e8"
       }
+    },
+    {
+      "domain": "x.com",
+      "tool": "draft_post",
+      "file": "domains/x.com/draft_post.js",
+      "kind": "page",
+      "namespace": "x.com",
+      "url_patterns": [
+        "https://x.com/*"
+      ],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Local post/reply preview and manual handoff only; no composer interaction, saved draft or publishing."
+    },
+    {
+      "domain": "x.com",
+      "tool": "get_post",
+      "file": "domains/x.com/get_post.js",
+      "kind": "page",
+      "namespace": "x.com",
+      "url_patterns": [
+        "https://x.com/*"
+      ],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Bounded public-only reads; anonymous requests, no navigation or scrolling. X terms restrict scraping without written consent. See domain README for access and QA limitations."
+    },
+    {
+      "domain": "x.com",
+      "tool": "get_profile",
+      "file": "domains/x.com/get_profile.js",
+      "kind": "page",
+      "namespace": "x.com",
+      "url_patterns": [
+        "https://x.com/*"
+      ],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Bounded public-only reads; anonymous requests, no navigation or scrolling. X terms restrict scraping without written consent. See domain README for access and QA limitations."
+    },
+    {
+      "domain": "x.com",
+      "tool": "search_posts",
+      "file": "domains/x.com/search_posts.js",
+      "kind": "page",
+      "namespace": "x.com",
+      "url_patterns": [
+        "https://x.com/*"
+      ],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Bounded public-only reads; anonymous requests, no navigation or scrolling. X terms restrict scraping without written consent. See domain README for access and QA limitations."
     }
   ]
 }
