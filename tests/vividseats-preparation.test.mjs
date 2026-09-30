@@ -271,6 +271,23 @@ for (const formattedDate of [{ date: "Date TBD", time: "7:30pm" }, { date: "Wed,
 }
 
 for (const changes of [
+  { localDate: "2099-10-10T23:59:00-05:00[US/Central]", utcDate: "2099-10-10T23:59:00Z", formattedDate: { time: "Time TBD" }, timeTbd: undefined },
+  { localDate: "2099-10-10T25:99:00-05:00[America/Chicago]", timeTbd: true },
+  { localDate: "2099-02-30T25:99:00-05:00[America/Chicago]", utcDate: "invalid", dateTbd: true }
+]) {
+  test("TBD placeholders are masked before instant validation", async () => {
+    const event = { ...fakeEvent, ...changes };
+    const out = await harness("get_event", { event }).run({ event: eventUrl });
+    assert.equal(out.status, "ok");
+    assert.equal(out.event.local_time, null);
+    assert.equal(out.event.start_utc, null);
+    assert.equal(out.event.local_date, event.dateTbd ? null : "2099-10-10");
+    const h = harness("prepare_ticket_selection", { event });
+    assert.equal((await h.run(preparedInput)).error_kind, "event_unavailable");
+    assert.equal(h.calls.length, 1);
+  });
+}
+for (const changes of [
   { localDate: "2099-02-30T25:99:00-05:00[America/Chicago]" },
   { localDate: "2099-02-30T19:30:00-06:00[America/Chicago]" },
   { localDate: "2020-10-10T19:30:00-05:00[America/Chicago]" },
