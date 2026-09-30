@@ -60,7 +60,7 @@ const moreCards = (from, count) => Array.from({ length: count }, (_, i) => `<li 
   <div><div data-result="snippet"><div><span><span>Snippet ${from + i}.</span></span></div></div></div></article></li>`).join("");
 
 function harness(name, options = {}) {
-  const calls = { navigations: [], js: 0, clicked: [], waits: 0, loads: 0 };
+  const calls = { navigations: [], js: 0, clicked: [], waits: 0, loads: 0, document_reads: 0 };
   let clock = 0;
   class FakeDate extends Date { static now() { return clock; } }
   const window = {};
@@ -99,7 +99,7 @@ function harness(name, options = {}) {
   setUrl(url);
   const pageContext = createContext({
     window, location, URL, URLSearchParams,
-    get document() { return doc; },
+    get document() { calls.document_reads++; return doc; },
     Date: FakeDate,
     setTimeout: (fn, ms = 0) => { clock += ms; ticks++; if (options.onTick) options.onTick(ticks, install); setImmediate(fn); }
   });
@@ -127,7 +127,7 @@ function harness(name, options = {}) {
   return {
     definition, calls, doc: () => doc, url: () => url, pages: () => pages, clock: () => clock,
     run: async input => {
-      const result = plain(await execute(input, { signal: new AbortController().signal }));
+      const result = plain(await execute(input, { signal: options.signal ?? new AbortController().signal }));
       assert.ok(conforms(definition.tool.outputSchema, result), `${name} output violates its schema: ${JSON.stringify(result)}`);
       return result;
     }
@@ -180,9 +180,9 @@ const invalidSearch = [
   undefined, null, [], "rust", {}, { query: "" }, { query: "   " }, { query: 7 }, { query: "x".repeat(501) },
   { query: "rust !w" }, { query: "!g rust" }, { query: "!ш rust" }, { query: "rust\t!yt" }, { query: "rust!w" }, { query: "rust1!w" }, { query: "what is !important in css" },
   { query: "\\rust" }, { query: "  \\ rust" }, { query: "! rust" }, { query: "rust !" }, { query: "  rust  !  " },
-  { query: "rust", limit: 0 }, { query: "rust", limit: 51 }, { query: "rust", limit: 1.5 }, { query: "rust", limit: "5" },
+  { query: "rust", limit: null }, { query: "rust", limit: 0 }, { query: "rust", limit: 51 }, { query: "rust", limit: 1.5 }, { query: "rust", limit: "5" },
   { query: "rust", region: "US" }, { query: "rust", region: "us_en" }, { query: "rust", region: "us-e" }, { query: "rust", region: "us-engl" }, { query: "rust", region: "USA-en" }, { query: "rust", region: 5 },
-  { query: "rust", safe_search: "on" }, { query: "rust", safe_search: 1 },
+  { query: "rust", safe_search: "on" }, { query: "rust", safe_search: 1 }, { query: "rust", safe_search: ["off"] },
   { query: "rust", time: "hour" }, { query: "rust", time: "2026-09-01" }, { query: "rust", time: "2026-13-01..2026-13-20" },
   { query: "rust", time: "2026-02-30..2026-03-01" }, { query: "rust", time: "2026-09-20..2026-09-01" }, { query: "rust", time: 7 },
   { query: "rust", extra: true }, { query: "rust", assist: true }
@@ -208,7 +208,7 @@ test("search: the input schema alone rejects the malformed shapes it can express
   }
 });
 
-const invalidRead = [null, [], "x", { limit: 0 }, { limit: 51 }, { limit: 2.5 }, { limit: "3" }, { load_more: "yes" }, { load_more: 1 }, { extra: 1 }, { query: "x" }];
+const invalidRead = [null, [], "x", { limit: null }, { limit: 0 }, { limit: 51 }, { limit: 2.5 }, { limit: "3" }, { load_more: "yes" }, { load_more: 1 }, { extra: 1 }, { query: "x" }];
 for (const input of invalidRead) {
   test(`get_search_results: rejects ${JSON.stringify(input)} before reading the page`, async () => {
     const h = harness("get_search_results");
@@ -216,6 +216,7 @@ for (const input of invalidRead) {
     assert.equal(result.status, "error");
     assert.equal(result.error_kind, "invalid_input");
     assert.equal(h.calls.js, 0);
+    assert.equal(h.calls.document_reads, 0);
     assert.deepEqual(h.calls.clicked, []);
   });
 }
@@ -579,8 +580,83 @@ test("get_search_results: no_results, challenge and timeouts are typed", async (
 
 test("get_search_results: an unreadable helper failure is reported as unknown, not as success", async () => {
   const h = harness("get_search_results");
-  h.doc().querySelectorAll = () => { throw new Error("boom"); };
+  h.doc().querySelectorAll = () => { throw new Error("https://example.org/?session=private-fixture"); };
   const result = await h.run({});
   assert.equal(result.status, "error");
   assert.equal(result.error_kind, "unknown");
+  assert.equal(JSON.stringify(result).includes("private-fixture"), false);
+});
+
+for (const name of NAMES) {
+  const input = name === "search" ? { query: "fabricated query", limit: 4 } : {};
+  test(`${name}: waits for an initially empty knowledge-panel description to appear`, async () => {
+    const emptyPanel = fixture("results").replace(/<div><span><span>Fabricated Thing is[\s\S]*?<\/span><\/span> <a href/, '<div><span style="display:none">Not displayed yet.</span> <a href');
+    const h = harness(name, { pageFor: () => emptyPanel, onTick: (tick, install) => { if (tick === 4) install(fixture("results")); } });
+    const result = await h.run(input);
+    assert.equal(result.status, "ok");
+    assert.match(result.knowledge_panel.description, /^Fabricated Thing is/);
+    assert.ok(h.clock() >= 1000);
+  });
+
+  test(`${name}: an empty panel cannot stall indefinitely`, async () => {
+    const emptyPanel = fixture("results").replace(/<div><span><span>Fabricated Thing is[\s\S]*?<\/span><\/span> <a href/, '<div><span style="display:none">Not displayed yet.</span> <a href');
+    const h = harness(name, { pageFor: () => emptyPanel });
+    const result = await h.run(input);
+    assert.equal(result.status, "ok");
+    assert.equal(result.knowledge_panel.description, null);
+    assert.ok(h.clock() >= 2500 && h.clock() <= 3000);
+  });
+
+  test(`${name}: cancellation before interaction changes nothing`, async () => {
+    const controller = new AbortController();
+    controller.abort();
+    const h = harness(name, { signal: controller.signal });
+    assert.equal((await h.run(input)).error_kind, "canceled");
+    assert.equal(h.calls.document_reads, 0);
+    assert.equal(h.calls.js, 0);
+    assert.deepEqual(h.calls.navigations, []);
+    assert.deepEqual(h.calls.clicked, []);
+  });
+
+  test(`${name}: cancellation while waiting prevents More results`, async () => {
+    const controller = new AbortController();
+    const h = harness(name, { signal: controller.signal, onTick: () => controller.abort() });
+    const result = await h.run(name === "search" ? { query: "fabricated query", limit: 50 } : { limit: 50, load_more: true });
+    assert.equal(result.error_kind, "canceled");
+    assert.deepEqual(h.calls.clicked, []);
+  });
+
+  test(`${name}: rate limiting is explicit, without retries or clicks`, async () => {
+    const h = harness(name, { pageFor: () => '<html><body>Too many requests. Rate limit exceeded.</body></html>' });
+    assert.equal((await h.run(input)).error_kind, "rate_limited");
+    assert.equal(h.clock(), 0);
+    assert.deepEqual(h.calls.clicked, []);
+  });
+
+  test(`${name}: secret-bearing and oversized URLs are omitted`, async () => {
+    for (const unsafe of ["https://user:password@docs.example.org/", "https://docs.example.org/?access_token=fixture-only", "https://docs.example.org/?X-Amz-Signature=fixture-only", "https://docs.example.org/?session_id=fixture-only", `https://docs.example.org/${"x".repeat(2048)}`]) {
+      const page = fixture("results").replaceAll("https://docs.example.org/", unsafe).replaceAll("https://www.fabricated-thing.example.net/", unsafe).replaceAll("https://en.example.org/wiki/Fabricated_Thing", unsafe);
+      const h = harness(name, { pageFor: () => page });
+      const result = await h.run(input);
+      assert.equal(result.status, "ok");
+      assert.ok(result.results.every(r => r.url !== unsafe));
+      assert.equal(result.knowledge_panel.official_site_url, null);
+      assert.equal(result.knowledge_panel.source_url, null);
+      assert.equal(JSON.stringify(result).includes("fixture-only"), false);
+    }
+  });
+
+  test(`${name}: filter labels and reported module names are bounded`, async () => {
+    const page = fixture("results").replace("All regions", "r".repeat(2000)).replace('<li data-layout="currency">', '<li data-layout="untrusted_module"><span>Never returned</span></li><li data-layout="chat"><span>Never returned</span></li><li data-layout="currency">');
+    const result = await harness(name, { pageFor: () => page }).run(input);
+    assert.equal(result.filters.region_label.length, 120);
+    assert.deepEqual(result.modules, ["currency"]);
+    assert.ok(JSON.stringify(result).length < 240 * 1024);
+  });
+}
+
+test("get_search_results: malformed filter URL parameters are not copied into output", async () => {
+  const h = harness("get_search_results", { url: `${ORIGIN}/?q=fabricated&kl=private-fixture&kp=private-fixture&df=private-fixture` });
+  const result = await h.run({});
+  assert.equal(result.results_url, `${ORIGIN}/?q=fabricated`);
 });

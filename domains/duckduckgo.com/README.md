@@ -1,122 +1,76 @@
 # duckduckgo.com
 
-Tools for DuckDuckGo web search (https://duckduckgo.com): run a query with region, safe-search and time filters, or read the web results page that is already open. Both tools are read-only and work signed out.
+Public, signed-out DuckDuckGo web search and extraction of the results already open in a tab.
 
 | tool | file | status | notes |
 |------|------|--------|-------|
-| search | [search.js](search.js) | verified | Navigates the tab to the full-site web results and returns organic results (title, destination URL, display URL, site name, snippet, date), knowledge panel, related searches, module names and the filter labels the page shows. Never returns ads, Search Assist or Duck.ai content. |
-| get_search_results | [get_search_results.js](get_search_results.js) | qa_passed | Reads the open full-site web results page the same way, without navigating; optional in-place More results. `wrong_page` on html/lite hosts, other tabs and non-results pages. |
-
-Register both files together as one array with `forceOverwriteNamespace: true`; registering one file that way removes the other.
+| search | [search.js](search.js) | draft | Opens full-site web results with optional region, safe-search and time filters; returns up to 50 organic results. |
+| get_search_results | [get_search_results.js](get_search_results.js) | draft | Reads the open full-site web results page; optionally loads more results in place. Returns `wrong_page` on other layouts. |
 
 ## Native WebMCP tools
 
-None found (checked 2026-09-29 with `webmcp.listTools()` and `document.modelContext` signed out on the home page, a web results page, the Images tab, `duck.ai`, `/email` and `/bangs`). `document.modelContext` exists with no registered tools and `navigator.modelContext` is undefined, so the custom namespace `duckduckgo.com` does not overlap with anything the site registers.
+No native tools were listed on the public home page on 2026-09-30. Earlier inspection on 2026-09-29 also found none on web results, Images, `/bangs`, `/email` or the separate `duck.ai` domain. Register the **entire namespace** together when using `forceOverwriteNamespace`; registering just one file removes the other.
 
 ## Scope and loading
 
-The tools read search results. They never sign in, open Email Protection, the subscription pages or settings, press an ad, open Search Assist or Duck.ai, or change the browser's search preferences. Region, safe search and time are per-search URL parameters: loading a results page with them does not persist them (observed: a later search without them showed the defaults). The one control pressed on a results page is the page's own **More results** button.
+Both tools work without an account. They never open results, ads, AI answers, chat, Email Protection, subscriptions or settings. The only control pressed is **More results**. Search queries are sent to DuckDuckGo; navigation changes the tab and can affect browser history. Filters are URL parameters for that search, not persisted preferences (observed on 2026-09-29). No account actions or consequential execution tools are included.
 
-```javascript
-const fs = await import("node:fs");
-const tools = ["search", "get_search_results"].flatMap(name => eval(fs.readFileSync(`domains/duckduckgo.com/${name}.js`, "utf8")));
-await webmcp.addCustomTools({ namespace: "duckduckgo.com", tools, forceOverwriteNamespace: true });
-const tab = (await currentTab()).targetId;
-const ref = async name => (await webmcp.listTools()).find(t => t.source.custom?.namespace === "duckduckgo.com" && t.tool.name === name && t.source.target_id === tab).tool_ref;
-await webmcp.invokeTool(await ref("search"), { query: "open source vector database", limit: 10, region: "us-en", time: "year" }, { timeoutSec: 90 });
-await webmcp.invokeTool(await ref("get_search_results"), { limit: 25, load_more: true }, { timeoutSec: 60 });
-```
-
-Timing seen live: `search` 1 to 3.5 s for up to 30 results (each More results press adds about 1 s), `get_search_results` under 2 s. Use `timeoutSec` 90 for `search` and 60 for `get_search_results`.
-
-| tool | kind | method |
+| tool | kind | reason |
 |------|------|--------|
-| search | cdp | navigates the tab to `https://duckduckgo.com/?q=…&ia=web` (plus `kl`, `kp`, `df` when asked) and returns the destination's rendered results. The page renders its results client-side: a same-origin `fetch` of the results URL returned an HTML shell with no result entries, and the results feed the page itself loads carries per-query tokens, so reading the rendered destination is the source. Submitting a query replaces the document, so the tool needs the post-navigation output in the same call. |
-| get_search_results | page | reads the current document and, with `load_more`, presses the page's More results button; neither replaces the document. |
+| search | cdp | Submitting a search replaces the document; organic rows, snippets, dates, panel and applied filter labels only exist in the rendered destination. The page-first prototype could read a current document and load more in place, but could not continue after search navigation. A same-origin fetch of the results URL returned an HTML shell with no result articles. |
+| get_search_results | page | Reads the current document and optionally presses More results without replacing it. No browser-only helpers or outer closure dependencies. |
 
-## URL patterns
+Use `timeoutSec: 90` for `search` and `60` for `get_search_results`. Input is validated before page access. Cancellation stops subsequent navigation or More results requests; already-started navigation or requests cannot be undone. An uncertain runtime timeout must not be retried automatically.
 
-Both tools use the default patterns `["https://duckduckgo.com/*", "https://*.duckduckgo.com/*"]`. The html and lite variants (`html.duckduckgo.com`, `lite.duckduckgo.com`) are the same search product with a different, script-free layout, so they are not split into a narrowed pattern; the tools handle them by host instead:
+### Inputs
 
-- `search` is listed on those hosts too and always opens `https://duckduckgo.com/`, so it works from any DuckDuckGo tab. If the tab ends on another host it returns `navigation_failed`.
-- `get_search_results` reads only the full site (`duckduckgo.com`, `start.duckduckgo.com`). On the html or lite variants, other subdomains, the home page, or the Images, Videos, News, Shopping, Maps and Duck.ai tabs it returns `wrong_page` and touches nothing. Those layouts were not inspected, so no parser exists for them.
+- `search`: `query` (1–500 characters), `limit` (1–50, default 10), optional `region` (`kl`, such as `us-en`, `tw-tzh`, `wt-wt`), `safe_search` (`off`, `moderate`, `strict`), `time` (`day`, `week`, `month`, `year`, or a real inclusive `YYYY-MM-DD..YYYY-MM-DD` range).
+- `get_search_results`: `limit` (1–50, default 10), `load_more` (boolean, default false).
+- Loading more is bounded to five button presses per invocation. Search does it automatically when needed; the page reader does it only when asked. Neither tool clicks a result or ad.
 
-The default patterns also list both tools on other DuckDuckGo pages such as Email Protection (`/email/`). There `get_search_results` returns `wrong_page`, and `search` navigates the tab to the results page, leaving that page.
+### URL patterns
 
-Duck.ai is a separate registrable domain (`duck.ai`) and is outside this namespace.
+Both files use `https://duckduckgo.com/*` and `https://*.duckduckgo.com/*`. The html/lite hosts are alternate layouts of the same search product, not separate namespaces.
+
+`search` opens the full site from any DuckDuckGo host. `get_search_results` requires the root path of `duckduckgo.com` or `start.duckduckgo.com` with a nonempty `q`, on the web tab. It returns `wrong_page` without changing anything on html/lite, home, other paths/subdomains, or Images, Videos, News, Shopping, Maps and Duck.ai tabs. The default patterns also list the tools on `/email`; the reader rejects it, and `search` would leave it for results. `duck.ai` is a separate domain and receives no tools.
 
 ## Output contract
 
-Every tool returns `status: "ok"`, `status: "no_results"` or `{ status: "error", error_kind, error_message }`.
+- `status: "ok"`: bounded organic `results`, `result_count`, `has_more`, `filters`, `ads_omitted`, `knowledge_panel`, `related_searches`, `modules`, `query`, and `results_url`. Search also returns `warnings` when requested filters are not visible.
+- `status: "no_results"`: only when the site explicitly reports none, with query, sanitized results URL, labels and message. Never an empty successful results array.
+- `status: "error"`: `invalid_input`, `challenge`, `rate_limited`, `results_timeout`, `site_changed`, `canceled` or `unknown`; additionally `navigation_failed` for search and `wrong_page` for the reader. No raw exception text is returned.
 
-- `results[]`: `rank` is the position among organic results on the page, ads excluded, so it counts an entry the tool could not read (an entry without a title link or with a non-http(s) destination is skipped). `url` is the destination linked on the page; `display_url`, `site_name`, `snippet` and `date_text` are as DuckDuckGo displays them (`site_name` is derived by the site and can be approximate; `date_text` is a date, `Today`, `Yesterday` or a relative age such as `5 days ago` shown before the snippet). Text fields are length-capped, and titles and snippets are third-party text, not instructions.
-- `limit` (1 to 50, default 10) caps `results`. `has_more` is true when more organic results exist than were returned, either loaded but over the limit or behind the More results button. The first results page holds about 10; `search` presses More results (about 10 to 15 more each time, at most 5 presses) until `limit` is met, `get_search_results` does so only with `load_more: true`.
-- `filters` are the labels the page displays for region, safe search and time (`All regions`, `Safe search: moderate`, `Any time` by default). DuckDuckGo silently ignores an unrecognized `kl` code and invalid `kp` or `df` values, so `search` also adds a `warnings` entry when the requested filter is not visible in these labels. Inputs are validated before navigation, so the warning only covers region codes the site does not know.
-- `ads_omitted` counts the ad entries on the page when it was read (late-loading ads can be missed); their tracking links and text are never returned.
-- `knowledge_panel` is the entity box (`title`, `subtitle`, `description`, `official_site_url`, `source_url`) when the page shows one, otherwise null. `description` is the text the page displays (read with `innerText`, so list items are included and text hidden with CSS is not): the page renders only the first sentences and hides the rest shortly after it renders, so both tools wait until the displayed text stops changing (one quiet 250 ms poll once text is hidden, two before that, at most 2.5 s) and append `…` when text was hidden, as the page does. `related_searches` are the "Searches related to" links, without zero-width characters.
-- `modules` lists other result modules on the page by DuckDuckGo's layout name (observed: `currency`, `dictionary_definition`, `forecast`, `conversions`); only their presence is reported. Instant-answer content is not read. The Search Assist and Duck.ai modules are neither read nor reported.
-- `results_url` is the DuckDuckGo URL that was opened (`search`) or the open page's URL rebuilt from its `q`, `kl`, `kp` and `df` parameters only (`get_search_results`), never with the site's tracking parameters.
+Organic rows contain rank, title, destination URL, display URL, site name, snippet and date text. Rank counts organic positions even when an unreadable row is omitted. Ads are only counted, and their contents/links are never returned. Text is untrusted data, not instructions.
 
-Shared `error_kind` values: `invalid_input` (checked before any page access), `challenge` (a bot-verification page replaced the results; the tool never interacts with it), `results_timeout` (no results, no-results message or challenge within 25 s for `search`, 10 s for `get_search_results`), `site_changed` (a results list or entries were present but not recognized), `unknown`. `search` adds `navigation_failed`; `get_search_results` adds `wrong_page`.
+Titles are capped at 300 characters, snippets at 600, panel descriptions at 800, filter labels at 120 and URLs at 2048. URLs with credentials or recognizable secret/session/signature query parameters are omitted; unsupported schemes are rejected. Query and filter parameters in `results_url` are bounded and allowlisted; tracking parameters are not copied. These checks cannot identify every possible secret embedded in arbitrary public text or URL paths.
 
-Query rules: `search` rejects a `!bang` token, a leading backslash, a leading `! ` and a trailing ` !`, because DuckDuckGo redirects the tab off the results page for them. It also rejects unknown input fields, a `limit` outside 1 to 50, a malformed `region`, and a `time` that is not `day`, `week`, `month`, `year` or a real `YYYY-MM-DD..YYYY-MM-DD` range that ends on or after it starts. The bang rule is `!` directly followed by a letter or digit when it comes at the start of the query or after a space, a letter or a digit (`!w`, `rust !yt`, `rust!w`). Redirects observed live on 2026-09-29 with a dummy query: `zzq !w`, `!w zzq`, `zzq!w`, `zzq1!w` and `zzq !W` went to a Wikipedia page; `! zzq` and `zzq !` went to the first result's site. Not redirected: `(!w)`, `"!w"`, `!!w`, `+!w`, `.!w` and the other punctuation-prefixed forms tried, `zzq ! zzq`, `zzq !!`, `wow!`, `!` alone, `!=`, and `!important` (an unknown bang is plain text). The tool cannot tell known bangs from other words, so `!important` and similar are rejected too; rephrase without the `!` word.
+The panel description uses displayed `innerText`, includes list items, and excludes CSS-hidden text. Both tools wait for a nonempty description to settle (one quiet 250 ms interval after text is hidden, two otherwise), with a 2.5 s cap after results appear. Hidden text is indicated by `…`. An absent panel is null. Only observed non-AI module names (`currency`, `dictionary_definition`, `forecast`, `conversions`) are reported, never module contents. Up to 16 related searches are returned. `has_more` reports extra loaded organic rows or a More results control; it does not promise the next request will produce results.
 
 ## Site quirks
 
-- The results list is `ol.react-results--main` inside `section[data-area=mainline]`. Entries are `li[data-layout]` (`organic`, `about`, `wikinlp`, `related_searches` and instant-answer layouts); organic entries are `article[data-testid=result]` and ads are `article[data-testid=ad]` in an `li` without a layout. Generated class names are not used.
-- The section exists before results arrive, so the tool treats the "No results found for" text, not the section, as the no-results signal. A results list appears about 1 s after navigation.
-- A snippet holds a date span and a text span when the result is dated; the tool splits them by leaf span. Sitelinks inside an entry are separate links and are not part of the snippet.
-- The redirect rules above were probed with a handful of dummy queries, not exhaustively: other bang spellings, other characters before `!`, or a change on DuckDuckGo's side are not covered. The backslash jump itself was not exercised.
-- Result counts per More results press vary (11 to 15 observed); the button stays on the page after the last observed press, so `has_more` can stay true.
+- Uses `ol.react-results--main`, organic `article[data-testid=result]`, title `a[data-testid=result-title-a]`, and the page's `#more-results`. Generated CSS classes are not required.
+- A results container can exist before entries render. A no-results page echoes the query, so challenge/rate-limit text detection is not applied to an explicit no-results response.
+- Unknown region codes can be silently ignored; region validation checks shape, and the tool reports the displayed label and a warning rather than claiming the region was applied.
+- Query redirects are guarded before navigation: known bangs and first-result jumps leave DuckDuckGo. The guard rejects `!` followed by a letter/digit at the start or after whitespace/letters/digits, a leading backslash, leading `! ` or trailing ` !`. It also rejects ordinary `css !important`, `Sheet1!A1` and `Yahoo!Mail` because known bangs cannot be distinguished from other words. `!=`, `wow!` and punctuation-prefixed forms such as `(!w)` remain accepted based on limited public probes on 2026-09-29. Bang syntax is not exhaustively covered.
 
 ## Known limitations
 
-- Web results only. Images, Videos, News, Shopping and Maps tabs, instant-answer contents, sitelinks, Search Assist, Duck.ai, Email Protection and the subscription are not covered.
-- The bot-challenge detection is written from the challenge page's publicly known wording and a fabricated fixture; no challenge appeared in live use, so it has never run against the real page. It is never applied to the no-results page, which echoes the query text.
-- Rate limiting has no dedicated outcome: a throttled browser would show a challenge or no results and end as `challenge` or `results_timeout`.
-- The knowledge-panel text depends on when the page trims it; the tool waits for it to settle but cannot see the page's own signal for "done", so a much slower browser could still be read before the trim (one miss in twelve CPU-throttled reads was seen in an earlier revision with a shorter wait).
-- The page carries layout experiments, so markup can differ between sessions; a layout the parser does not recognize is reported as `site_changed`, not as empty results.
-- Region codes are only checked for shape (two letters, a dash, two or three letters, for example `us-en`, `tw-tzh`). English UI labels were assumed for the filter labels and the no-results message; other interface languages were not tried.
-- On a browser roughly 10x slower than normal, the panel can still show no text for a moment after the results render; both tools can then stop waiting and return `knowledge_panel.description: null` (one of eleven 10x reads). At about 15x, `get_search_results` returned an error in two of three reads (once `site_changed` with a layout-changed message because the list existed but no entries had rendered yet); it never returned wrong data.
-- Results come from the egress IP's default location unless `region` is given, and DuckDuckGo may reorder results between calls.
+- Web results only. Images, News, Videos, Shopping, Maps, sitelinks, instant-answer contents, AI/chat, Email Protection, subscriptions and account/preferences tools are omitted. They are not implemented by switching a web parser to another tab.
+- Challenge and rate-limit outcomes have only fixture evidence; no live block was induced or bypassed. No challenge interaction or automatic retry exists.
+- English labels and no-results wording are assumed. Other interface languages and layout experiments can produce `site_changed` or timeouts.
+- A panel that remains empty or changes beyond the bounded wait can still have a null or unsettled description. Extreme slow rendering can exceed the reader's 10 s results wait. The prior 10x-throttling null-description race is covered by a new delayed-render fixture, but this is not proof of all slow-render cases.
+- Results vary with egress location, time and site experiments. Ads can arrive after the count is read. Results per More results press vary, and a remaining button does not prove more data exists.
+- No account is used or required. Search verticals remain deferred until their separate final-source behavior is grounded and independently tested.
 
 ## QA summary
 
-Fixture tests (`tests/duckduckgo-search.test.mjs`, 90 cases) cover the file and registry contract, identical page-side helpers in both tools, malformed input for every field, URL building, parsing of organic entries, ads, knowledge panel, related searches and modules, filter warnings, More results growth and its limits, no-results, challenge, timeout and layout-change outcomes, a slow navigation over a stale results page, the panel's late trimming, and every `wrong_page` case, against fabricated pages modeled on the observed markup. The fake DOM models `innerText` (hidden elements and block line breaks). They do not replace live QA.
+The previous revision had independent success/failure and local Chromium-extension evidence, but source changes invalidate that sign-off. Current final-source QA is pending; both registry entries are `draft`.
 
-Independent QA (agent `agt_ff1c9d855c958c76fed3`, three rounds on 2026-09-29, each on a fresh stealth Kernel browser, signed out, plus a local Chromium extension run) ended with **SIGN_OFF on the final source, commit `289ee9d`**. Round one found four defects, all fixed: region codes with a three-letter language part were rejected; the knowledge-panel description included CSS-hidden text; a no-results page that echoed challenge wording was reported as a challenge; and the bang guard rejected ordinary `!=` queries. The second round found the panel description dropping list items and a race with the page's own trimming; both were fixed and the bang and jump guards were re-derived from live probes. The final round reported one minor defect, left documented: see Known limitations.
-
-| Case (Kernel runtime) | Result |
-| --- | --- |
-| Register both files in one call; list on `duckduckgo.com`, `start.`, `html.`, `lite.`; not listed on `example.com` | ok, bare names, `source.custom.namespace` `duckduckgo.com` |
-| Native WebMCP tools on DuckDuckGo hosts, `duck.ai`, `/email` | none |
-| `search` from the home page, the html variant and the Images tab | ok; title, URL, snippet, date, site name and related searches matched the page |
-| `search` limit 30 and 50 | 30 and 50 unique ranks, two and three More results presses, 17 and 28 KB |
-| Filters: `uk-en`/off/day, strict/week, `wt-wt`/month, `de-de`/year, `tw-tzh`/`2026-09-01..2026-09-20`, `zz-zz` | labels matched the page; `zz-zz` gave a warning and a null label |
-| Query with no results; no-results query echoing challenge wording | `no_results` both times |
-| Knowledge panel for rust, python, go, javascript, ruby, haskell, right after navigation and on a settled page, at 420 and 800 px | description equal to the page's displayed text (with `…` when text is hidden) in every case except the throttled null below |
-| CPU throttling 1x to 6x (26 reads), 10x (11 reads) | all matched at 1x to 6x; 10 of 11 at 10x |
-| Malformed inputs (35 for `search`, 15 for `get_search_results`) | rejected with no navigation, marker change or click |
-| Guard checks with dummy words | `rust!w`, `rust1!w`, `! rust`, `rust !`, `css !important`, backslash and separator variants rejected; `zzq_!w`, `zzq-!w`, `zzq (!w)`, `zzq !!w`, `!=`, `wow!` accepted and stayed on the results page |
-| `get_search_results` on the home page, Images, Videos, News, Maps, html and lite | `wrong_page`, document unchanged |
-| Stale page and cdp `tool_ref` after navigation | refused ("tool no longer available") |
-| Output scan of every captured output | no tracking tokens, ad links, Search Assist or Duck.ai text |
-| Cookies and localStorage after filter searches | no preference persisted (only the site's own keys) |
-
-Every round re-ran the cases it could; the final round re-ran a subset where the diff did not touch the code (for example `wrong_page` on Images, Videos, News and Maps was checked on the first commit, and on the final commit only for the home page and the html variant).
-
-Local extension (Chromium 153 with a scratch profile on a private virtual display, `xwebmcp` built at the commit under review, tool file hashes equal to the checkout, permission dialog accepted): on the final commit, `search` for rust with `tw-tzh`, go with strict and year filters and python, `get_search_results` on a settled page and right after a navigation, and the guard cases behaved as on Kernel, with panel descriptions equal to the page. Earlier commits also covered `load_more` to 25, `wrong_page` on the home page and filter labels in the extension. This was Chromium, not Google Chrome, with a scratch profile instead of the default one, so `xwebmcp status` reported the native host as not installed while the bridge was connected. Only the listed cases were observed; nothing beyond them is claimed for the extension runtime.
-
-Not run live: bot-challenge and rate-limit paths, known-bang redirects (`zzq !w` and the jump forms were only probed by the author with dummy queries), CPU throttling and narrow viewports in the extension, `start.duckduckgo.com` for `get_search_results`, and the Shopping, Videos and Duck.ai tabs.
-
-Run the local tests from the repository root:
+Fixture tests in `tests/duckduckgo-search.test.mjs` use fabricated HTML and a fake DOM. They cover malformed input before interaction, filters, rows and bounds, panel hidden/list/delayed text, cancellation, More results limits, no-results, challenges, rate limits, wrong pages, navigation lifetime, URL leakage and unknown errors. They do not establish real browser or mutation success.
 
 ```sh
-node --test tests/duckduckgo-search.test.mjs
+node scripts/validate-registry.mjs
+node --test "tests/*.test.mjs"
 ```
 
-`search` is `verified`: independent QA and the live success cases above, including invocations from pages other than the home page. `get_search_results` is `qa_passed`: its success cases ran on the results page it is designed for, and its off-page starts return `wrong_page`.
-
-## Sessions
-
-Browser sessions used for discovery, authoring and QA were temporary and are deleted (ephemeral; QA Kernel browsers `ogcuxgi322n7tep0ys20vbi4`, `jyoul5xqvy6l55x28yii7n3z`, `jyhaw1mrc0m71pddp0paguey`). QA agent: `agt_ff1c9d855c958c76fed3`. No login or profile was used.
+Kernel and local-extension evidence are reported separately after independent QA. No cross-runtime parity is inferred from fixture tests.
