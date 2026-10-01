@@ -8,7 +8,7 @@
       type: "object", additionalProperties: false, required: ["result_index", "brand_code"],
       properties: {
         result_index: { type: "integer", minimum: 0, maximum: 199, description: "result_index from list_flight_results." },
-        brand_code: { type: "string", pattern: "^[A-Za-z0-9]{1,12}$", description: "brand_code of the fare column from list_flight_results, e.g. \"BMAIN\"." },
+        brand_code: { type: "string", pattern: "^[A-Za-z0-9]{1,12}$", description: "brand_code of the fare cell from list_flight_results (pick the cell by its cabin, e.g. the Main column's code, which Delta names CMAIN or BMAIN depending on the search)." },
         expected_flight_numbers: { type: "array", minItems: 1, maxItems: 6, items: { type: "string", pattern: "^[A-Z0-9]{2} ?\\d{1,4}$" }, description: "Flight numbers the row must show, e.g. [\"DL 2441\", \"DL 693\"]." }
       }
     },
@@ -26,11 +26,13 @@
               type: "array", minItems: 1,
               items: {
                 type: "object", additionalProperties: false,
-                required: ["code", "name", "tagline", "price_display", "amount", "details", "seats_left", "requires_accepting_restrictions"],
+                required: ["code", "name", "tagline", "price_display", "basis_display", "amount", "details", "badges", "seats_left", "requires_accepting_restrictions"],
                 properties: {
                   code: { type: "string" }, name: { type: "string" }, tagline: { type: ["string", "null"] },
                   price_display: { type: ["string", "null"] }, amount: { type: ["number", "null"] },
                   details: { type: "array", items: { type: "string" }, description: "Feature or restriction lines as Delta shows them (footnote markers removed)." },
+                  basis_display: { type: ["string", "null"], description: "Delta's price basis label, e.g. \"One-Way\" or \"Round Trip From\"." },
+                  badges: { type: "array", items: { type: "string" }, description: "Card badges such as \"Most Popular\"." },
                   seats_left: { type: ["integer", "null"] },
                   requires_accepting_restrictions: { type: "boolean" }
                 }
@@ -92,7 +94,7 @@
       return {
         status: "navigation_scheduled", result_index: index, brand_code: code, flight_numbers: numbers,
         fare_label: cellLabel, price_display: (text(cell).match(/\$\s?[\d,]+(?:\.\d{2})?/) || [null])[0],
-        next_step: "Delta goes straight to Trip Summary for this fare (about 3 s). Call get_page_context with wait_for_settled_seconds (retry once if it reports the outcome could not be observed), then get_trip_summary."
+        next_step: "Delta goes straight to Trip Summary for this fare (about 3 s). Call get_page_context with wait_for_settled_seconds (if it reports the page navigated, list tools again and call it on the new page), then get_trip_summary."
       };
     }
     const drawer = () => document.getElementById("idp-upsell-drawer-id");
@@ -140,7 +142,10 @@
     const experiences = buttons.map((b) => {
       let card = b;
       while (card.parentElement && card.parentElement !== d && card.parentElement.querySelectorAll('button[id^="drawer-select-cta-"]').length === 1) card = card.parentElement;
-      const lines = leafLines(card).filter((l) => !/^(Most Popular|Select|One-Way|Round[- ]Trip( From)?|From|View All (Restrictions|Features|Conditions)|Accept (Restrictions|Conditions))$/i.test(l));
+      const all = leafLines(card);
+      const basis = all.find((l) => /^(One-Way|Round[- ]Trip( From)?|Multi-City)$/i.test(l)) || null;
+      const badges = all.filter((l) => /^(Most Popular|Fully Refundable|Best Value|Recommended)$/i.test(l));
+      const lines = all.filter((l) => !/^(Most Popular|Fully Refundable|Best Value|Recommended|Select|One-Way|Round[- ]Trip( From)?|Multi-City|From|View All (Restrictions|Features|Conditions)|Accept (Restrictions|Conditions))$/i.test(l));
       const nameIdx = lines.findIndex((l) => /^(Main|Comfort|First|Premium Select|Delta One|Delta Premium Select)\b.*\b(Basic|Classic|Extra)$/i.test(l));
       const label = (b.getAttribute("aria-label") || "").replace(/<[^>]+>/g, "").replace(/^Select\s+/i, "").replace(/\s+/g, " ").trim();
       const name = nameIdx >= 0 ? lines[nameIdx] : label || b.id.replace("drawer-select-cta-", "");
@@ -152,6 +157,8 @@
         name,
         tagline: nameIdx >= 0 ? lines[nameIdx + 1] || null : null,
         price_display: priceLine,
+        basis_display: basis,
+        badges,
         amount: priceLine ? Number(priceLine.replace(/[^\d.]/g, "")) : null,
         details: details.slice(0, 12),
         seats_left: seatsLine ? Number(seatsLine.match(/\d+/)[0]) : null,

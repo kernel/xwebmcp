@@ -111,3 +111,12 @@ test("reports See More Results and loads more rows only when asked", async () =>
   assert.equal(plainRun.more_results_available, true);
   assert.equal(plainRun.total_rows, 1);
 });
+
+test("departure ties break by earliest arrival, then page order", async () => {
+  const html = page(
+    row(0, { numbers: ["DL1"], dep: "6:00 am", arr: "12:00 pm", duration: "9h", fares: fare(0, "BMAIN", { brands: ["Delta Main"], amount: "399" }) }) +
+    row(1, { numbers: ["DL2"], dep: "6:00 am", arr: "10:21 am", duration: "7h 21m", fares: fare(1, "BMAIN", { brands: ["Delta Main"], amount: "399" }) }) +
+    row(2, { numbers: ["DL3"], dep: "6:00 am", arr: "10:52 am", duration: "7h 52m", fares: fare(2, "BMAIN", { brands: ["Delta Main"], amount: "399" }) })
+  );
+  assert.deepEqual((await run(html, { sort_by: "departure" })).flights.map(f => f.result_index), [1, 2, 0]);
+});

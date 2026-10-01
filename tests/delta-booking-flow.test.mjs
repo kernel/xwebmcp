@@ -289,3 +289,18 @@ test("continue_to_review_and_pay: on Review and Pay says it is already there", a
   const { out } = await run("continue_to_review_and_pay", "<html><body></body></html>", {}, { url: "https://www.delta.com/completepurchase/review-pay?cartId=c" });
   assert.match(out.error_message, /Already on Review and Pay/);
 });
+
+test("select_fare_experience: a code the drawer does not offer is experience_not_offered with offered_codes", async () => {
+  const { out, scheduled } = await run("select_fare_experience", results(true), { code: "EFIRST" }, { url: resultsUrl });
+  assert.equal(out.status, "experience_not_offered");
+  assert.deepEqual(out.offered_codes, ["BMAIN", "CMAIN"]);
+  assert.equal(scheduled.length, 0);
+});
+
+test("select_fare: experiences carry basis_display and badges", async () => {
+  const { out } = await run("select_fare", results(), { result_index: 5, brand_code: "BMAIN" }, { url: resultsUrl, onClick: (el, doc) => openDrawer(el, doc) });
+  const [basic, classic] = out.experiences;
+  assert.equal(basic.basis_display, "One-Way");
+  assert.deepEqual(classic.badges, ["Most Popular"]);
+  assert.ok(!classic.details.includes("Most Popular"));
+});

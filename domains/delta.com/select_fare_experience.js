@@ -7,7 +7,7 @@
     inputSchema: {
       type: "object", additionalProperties: false, required: ["code"],
       properties: {
-        code: { type: "string", pattern: "^[A-Za-z0-9]{1,12}$", description: "Experience code from select_fare, e.g. \"CMAIN\"." },
+        code: { type: "string", pattern: "^[A-Za-z0-9]{1,12}$", description: "An experience code returned by select_fare (not the column brand_code, even when they look alike)." },
         accept_restrictions: { type: "boolean", default: false, description: "Only true if the user explicitly agreed to this experience's restrictions." }
       }
     },
@@ -28,8 +28,9 @@
         {
           type: "object", additionalProperties: false, required: ["status", "error_message"],
           properties: {
-            status: { enum: ["error", "consent_required", "no_drawer"] },
-            error_message: { type: "string" }
+            status: { enum: ["error", "consent_required", "no_drawer", "experience_not_offered"] },
+            error_message: { type: "string" },
+            offered_codes: { type: "array", items: { type: "string" }, description: "With experience_not_offered: the codes the open drawer offers." }
           }
         }
       ]
@@ -47,7 +48,7 @@
     const button = document.getElementById("drawer-select-cta-" + code);
     if (!visible(button) || !drawer.contains(button)) {
       const offered = [...drawer.querySelectorAll('button[id^="drawer-select-cta-"]')].filter(visible).map((b) => b.id.replace("drawer-select-cta-", ""));
-      return { status: "error", error_message: "The open drawer does not offer " + code + "; it offers " + (offered.join(", ") || "nothing") + "." };
+      return { status: "experience_not_offered", offered_codes: offered, error_message: "The open drawer does not offer " + code + "; it offers " + (offered.join(", ") || "nothing") + ". Nothing was selected." };
     }
     let card = button;
     while (card.parentElement && card.parentElement !== drawer && card.parentElement.querySelectorAll('button[id^="drawer-select-cta-"]').length === 1) card = card.parentElement;
@@ -82,8 +83,8 @@
       next_page: roundTripOutbound ? "return_results" : "trip_summary",
       code, name, price_display: price, restrictions_accepted: accepted,
       next_step: (roundTripOutbound
-        ? "Delta now shows the return flights (about 3 s). Call get_page_context with wait_for_settled_seconds (e.g. 15; retry once if it reports the outcome could not be observed), then list_flight_results and select_fare to choose the return, which goes straight to Trip Summary."
-        : "Delta navigates to Trip Summary now (about 3 s). Call get_page_context with wait_for_settled_seconds (e.g. 15; retry once if it reports the outcome could not be observed, since it may start before the old page is gone), then get_trip_summary to confirm the itinerary, fare and amount due with the user.") + " Nothing has been purchased."
+        ? "Delta now shows the return flights (about 3 s). Call get_page_context with wait_for_settled_seconds (e.g. 15; if it reports the page navigated, list tools again and call it on the new page), then list_flight_results and select_fare to choose the return, which goes straight to Trip Summary."
+        : "Delta navigates to Trip Summary now (about 3 s). Call get_page_context with wait_for_settled_seconds (e.g. 15; if it reports the page navigated, list tools again and call it on the new page), then get_trip_summary to confirm the itinerary, fare and amount due with the user.") + " Nothing has been purchased."
     };
   }
 }]
