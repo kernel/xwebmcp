@@ -53,9 +53,12 @@
       if (mc?.getTools) tools = [...new Set((await mc.getTools()).map((t) => String(t?.name ?? t).split(".").pop()))].sort();
     } catch { tools = null; }
     const has = (name) => tools === null || tools.includes(name);
-    const chosen = [...document.querySelectorAll('[aria-label*="flight with"]')]
-      .filter((e) => visible(e) && !e.closest("li") && /Leaves/.test(e.getAttribute("aria-label")))
-      .map((e) => e.getAttribute("aria-label").replace(/\s+/g, " ").slice(0, 240)).filter((s, i, a) => a.indexOf(s) === i).slice(0, 4);
+    // Chosen flights: the booking page's "Departing/Return flight on …" summaries, or on the
+    // returning list the selected departing flight shown above the results.
+    const chosen = [...document.querySelectorAll('[aria-label*="Leaves "]')]
+      .filter((e) => visible(e) && !(e.closest("li") && /Select flight\s*$/.test(e.getAttribute("aria-label"))))
+      .map((e) => e.getAttribute("aria-label").replace(/\s+/g, " ").replace(/^Flight details\.\s*/i, "").replace(/\s*(Select flight|Change flight)\s*$/i, "").slice(0, 240))
+      .filter((s, i, a) => a.indexOf(s) === i).slice(0, 4);
     const steps = [];
     if (unsettled.length) steps.push("The page is still loading (" + unsettled.join(", ") + "): call get_page_context with wait_for_settled_seconds before acting");
     if (pageType === "flights_home" || pageType === "other") { if (has("search_flights")) steps.push("Use search_flights with origin, destination, dates and trip type to open Google Flights results"); }
