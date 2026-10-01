@@ -179,7 +179,7 @@ for (const name of NAMES) {
 }
 
 test("registry lists every resy.com tool exactly once", () => {
-  assert.deepEqual(registry.tools.filter(t => t.domain === "resy.com").map(t => t.tool).sort(), [...NAMES, "get_account_status", "get_reservation", "list_notify_requests", "list_reservations", "prepare_reservation", "set_favorite"].sort());
+  assert.deepEqual(registry.tools.filter(t => t.domain === "resy.com").map(t => t.tool).sort(), [...NAMES, "get_account_status", "get_reservation", "list_notify_requests", "list_reservations", "prepare_reservation", "set_favorite", "list_lists", "get_list", "set_list_membership", "create_list", "delete_list", "create_notify", "remove_notify"].sort());
 });
 
 // --- input validation happens before any request ----------------------------------------------------------
@@ -616,6 +616,15 @@ test("get_availability: identical policies are listed once, and only for listed 
   assert.equal(result.slots.length, 300);
   assert.deepEqual(Object.keys(result.policies), ["p1"], "templates 12 and 14 have the same fields; the truncated slot's policy is omitted");
   assert.ok(result.slots.every(s => s.policy_id === "p1"));
+});
+
+test("get_availability: notify_options carry the window create_notify accepts; malformed options are dropped", async () => {
+  const body = findBody([]);
+  body.results.venues[0].venue.notify_options = [{ service_type_id: 2, min_request_datetime: "2026-10-09 22:00:00", max_request_datetime: "2026-10-10 01:00:00", step_minutes: 30 }, { service_type_id: 3 }];
+  const h = harness("get_availability", { route: (m, path) => (path === "/4/find" ? { status: 200, body } : null) });
+  const result = await h.run(ok);
+  assert.equal(result.status, "no_availability");
+  assert.deepEqual(result.notify_options, [{ service_type_id: 2, earliest: "2026-10-09T22:00", latest: "2026-10-10T01:00", step_minutes: 30 }]);
 });
 
 test("get_availability: party_size defaults to 2", async () => {

@@ -17,7 +17,7 @@
       oneOf: [
         {
           type: "object", additionalProperties: false,
-          required: ["status", "observed_at", "venue_id", "name", "url", "date", "party_size", "time_zone", "currency", "notify_offered", "slot_count", "slots_truncated", "warnings", "policies", "slots"],
+          required: ["status", "observed_at", "venue_id", "name", "url", "date", "party_size", "time_zone", "currency", "notify_offered", "notify_options", "slot_count", "slots_truncated", "warnings", "policies", "slots"],
           properties: {
             status: { const: "ok" },
             observed_at: { type: "string" },
@@ -29,6 +29,13 @@
             time_zone: { type: ["string", "null"], description: "The site's time zone label for the venue; slot times are in this zone." },
             currency: { type: ["string", "null"], description: "Currency code for the fee amounts in policies." },
             notify_offered: { type: "boolean", description: "Resy offers Notify for this venue and date." },
+            notify_options: {
+              type: "array", maxItems: 10, description: "Services Resy offers Notify for on this date and party size, with the window create_notify accepts.",
+              items: {
+                type: "object", additionalProperties: false, required: ["service_type_id", "earliest", "latest", "step_minutes"],
+                properties: { service_type_id: { type: "integer" }, earliest: { type: "string", description: "Venue-local YYYY-MM-DDTHH:MM." }, latest: { type: "string" }, step_minutes: { type: "integer", minimum: 1 } }
+              }
+            },
             slot_count: { type: "integer", minimum: 1, description: "Readable slots the site listed; slots holds at most the first 300, earliest first." },
             slots_truncated: { type: "boolean" },
             warnings: { type: "array", maxItems: 10, items: { type: "string" } },
@@ -65,10 +72,18 @@
           }
         },
         {
-          type: "object", additionalProperties: false, required: ["status", "observed_at", "venue_id", "name", "url", "date", "party_size", "notify_offered", "message"],
+          type: "object", additionalProperties: false, required: ["status", "observed_at", "venue_id", "name", "url", "date", "party_size", "notify_offered", "notify_options", "message"],
           properties: {
             status: { const: "no_availability" }, observed_at: { type: "string" }, venue_id: { type: "integer" }, name: { type: ["string", "null"] }, url: { type: ["string", "null"] },
-            date: { type: "string" }, party_size: { type: "integer" }, notify_offered: { type: "boolean" }, message: { type: "string" }
+            date: { type: "string" }, party_size: { type: "integer" }, notify_offered: { type: "boolean" },
+            notify_options: {
+              type: "array", maxItems: 10, description: "Services Resy offers Notify for on this date and party size, with the window create_notify accepts.",
+              items: {
+                type: "object", additionalProperties: false, required: ["service_type_id", "earliest", "latest", "step_minutes"],
+                properties: { service_type_id: { type: "integer" }, earliest: { type: "string", description: "Venue-local YYYY-MM-DDTHH:MM." }, latest: { type: "string" }, step_minutes: { type: "integer", minimum: 1 } }
+              }
+            },
+            message: { type: "string" }
           }
         },
         {
@@ -169,6 +184,8 @@
     const citySlug = isPlain(venue.location) ? slug(venue.location.url_slug) : null;
     const url = urlSlug && citySlug ? ORIGIN + "/cities/" + citySlug + "/venues/" + urlSlug : null;
     const notifyOffered = Array.isArray(venue.notify_options) && venue.notify_options.length > 0;
+    const notifyStamp = v => { const m = typeof v === "string" ? /^(\d{4}-\d{2}-\d{2}) (\d{2}:\d{2})/.exec(v) : null; return m ? m[1] + "T" + m[2] : null; };
+    const notifyOptions = (notifyOffered ? venue.notify_options : []).filter(o => isPlain(o) && Number.isSafeInteger(o.service_type_id) && notifyStamp(o.min_request_datetime) && notifyStamp(o.max_request_datetime) && Number.isInteger(o.step_minutes) && o.step_minutes > 0).slice(0, 10).map(o => ({ service_type_id: o.service_type_id, earliest: notifyStamp(o.min_request_datetime), latest: notifyStamp(o.max_request_datetime), step_minutes: o.step_minutes }));
     const gating = isPlain(entry.gating_errors) ? Object.keys(entry.gating_errors) : [];
     if (gating.length) return { status: "gated", observed_at: observedAt, venue_id: input.venue_id, name, date: input.date, party_size: partySize, gating_keys: gating.slice(0, 10).map(k => k.slice(0, 80)), message: "Resy reports a booking restriction for this venue, date or party size (gating_errors); availability is not reported." };
     const templates = isPlain(entry.templates) ? entry.templates : {};
@@ -185,7 +202,7 @@
       });
     }
     slots.sort(byStart);
-    if (!slots.length) return { status: "no_availability", observed_at: observedAt, venue_id: input.venue_id, name, url, date: input.date, party_size: partySize, notify_offered: notifyOffered, message: entry.slots.length ? "Resy listed slots but none had a readable time." : "Resy lists no open slots for this venue, date and party size. This does not say why: it can be fully booked, a party size or date the venue does not take online, or reservations closed." };
+    if (!slots.length) return { status: "no_availability", observed_at: observedAt, venue_id: input.venue_id, name, url, date: input.date, party_size: partySize, notify_offered: notifyOffered, notify_options: notifyOptions, message: entry.slots.length ? "Resy listed slots but none had a readable time." : "Resy lists no open slots for this venue, date and party size. This does not say why: it can be fully booked, a party size or date the venue does not take online, or reservations closed." };
     const policies = {};
     const policyIds = new Map();
     const listed = slots.slice(0, 300).map(({ policy, ...rest }) => {
@@ -198,7 +215,7 @@
       status: "ok", observed_at: observedAt, venue_id: input.venue_id, name, url, date: input.date, party_size: partySize,
       time_zone: isPlain(venue.location) ? text(venue.location.time_zone, 60) : null,
       currency: isPlain(venue.currency) ? text(venue.currency.code, 10) : null,
-      notify_offered: notifyOffered, slot_count: slots.length, slots_truncated: slots.length > 300, warnings, policies, slots: listed
+      notify_offered: notifyOffered, notify_options: notifyOptions, slot_count: slots.length, slots_truncated: slots.length > 300, warnings, policies, slots: listed
     };
   }
 }]

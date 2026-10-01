@@ -15,7 +15,8 @@ const expected = { expected_account_ref: account };
 const favoriteInput = { ...expected, venue_id: 1001, city_slug: "exampleton-xa", url_slug: "fabricated-trattoria", favorite: true, expected_favorite: false };
 const preparation = { venue_id: 1001, date: "2026-10-09", local_start: "2026-10-10T00:30", party_size: 2, seating_type: "Bar" };
 const reservation = { reservation_id: 2001, venue: { id: 1001, currency: "USD" }, day: "2026-10-09", time_slot: "19:30:00", num_seats: 2, config: { type: "Dining Room" }, price: 25, cancellation_policy: ["<b>Cancel by the stated deadline.</b>"], resy_token: "rgs://private/fabricated", special_request: "private-request", attendee: { name: "private-name" }, payment_method: { token: "private-payment" } };
-const notify = { venue_id: 1001, day: "2026-10-09", num_seats: 2, service_type_id: 2, time_preferred_start: "18:00:00", time_preferred_end: "20:00:00" };
+// Shaped like a live /3/notify item: the request in specs, next to a find-style block for its venue.
+const notify = { specs: { venue_id: 1001, day: "2026-10-09", party_size: 2, service_type_id: 2, time_preferred_start: "18:00:00", time_preferred_end: "20:00:00", notify_request_id: 42 }, results: { venues: [{ venue: { id: { resy: 1001 }, name: "Fabricated Trattoria" }, slots: [], templates: {} }] }, modal_dismissed: false };
 const slot = { date: { start: "2026-10-10 00:30:00", end: "2026-10-10 02:00:00" }, config: { type: "Bar", token: "rgs://private/fabricated" }, template: { id: 11 } };
 const find = { query: { day: "2026-10-09", party_size: 2 }, results: { venues: [{ venue: { id: { resy: 1001 }, name: "Fabricated Trattoria", url_slug: "fabricated-trattoria", location: { url_slug: "exampleton-xa", time_zone: "EST5EDT" }, currency: { code: "USD" } }, slots: [slot], templates: { 11: { is_paid: true, cancellation_fee: 25, deposit_fee: 10 } }, gating_errors: {} }] } };
 
@@ -159,7 +160,9 @@ for (const patch of [{ reservation_id: "rgs://secret" }, { day: "2026-02-30" }, 
 });
 test("notify: empty/populated and bounded 100 results", async () => {
   assert.equal((await harness("list_notify_requests", { empty: true }).run(expected)).status, "no_results");
-  assert.equal((await harness("list_notify_requests").run(expected)).requests[0].local_start_time, "18:00:00");
+  assert.deepEqual((await harness("list_notify_requests").run(expected)).requests[0], { venue_id: 1001, venue_name: "Fabricated Trattoria", date: "2026-10-09", party_size: 2, service_type_id: 2, local_start_time: "18:00", local_end_time: "20:00" });
+  const flat = harness("list_notify_requests", { route: ({ path }) => path === "/3/notify" ? { body: { notify: [notify.specs] } } : null });
+  assert.equal((await flat.run(expected)).error_kind, "site_changed", "an item without specs is not guessed at");
   const h = harness("list_notify_requests", { route: ({ path }) => path === "/3/notify" ? { body: { notify: Array(101).fill(notify) } } : null });
   const out = await h.run(expected);
   assert.equal(out.total, 101); assert.equal(out.requests.length, 100); assert.equal(out.truncated, true);

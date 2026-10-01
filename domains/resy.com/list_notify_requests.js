@@ -3,7 +3,7 @@
   match: { url_patterns: ["https://resy.com/*"] },
   tool: {
     name: "list_notify_requests",
-    description: "List up to 100 current Resy Notify time-window preferences for the signed-in account identified by expected_account_ref from get_account_status. Reads only; never creates, edits or cancels notifications and never sends messages. The empty response envelope was live-observed; populated fields come from the site bundle and fixtures, not a live populated account. Dates/times are venue-local service-date values. No automatic pagination.",
+    description: "List up to 100 current Resy Notify time-window preferences for the signed-in account identified by expected_account_ref from get_account_status. Each request has the venue_id, date, party_size and service_type_id that remove_notify takes, the venue name and the venue-local HH:MM window. Reads only; use create_notify and remove_notify to change them. No automatic pagination.",
     inputSchema: {
       type: "object",
       additionalProperties: false,
@@ -38,14 +38,15 @@
               items: {
                 type: "object",
                 additionalProperties: false,
-                required: ["venue_id", "date", "party_size", "service_type_id", "local_start_time", "local_end_time"],
+                required: ["venue_id", "venue_name", "date", "party_size", "service_type_id", "local_start_time", "local_end_time"],
                 properties: {
                   venue_id: { type: "integer", minimum: 1, maximum: 2147483647 },
+                  venue_name: { type: ["string", "null"], maxLength: 200 },
                   date: { type: "string", maxLength: 10 },
                   party_size: { type: "integer", minimum: 1, maximum: 100 },
                   service_type_id: { type: "integer", minimum: 0 },
-                  local_start_time: { type: "string", maxLength: 8 },
-                  local_end_time: { type: "string", maxLength: 8 }
+                  local_start_time: { type: "string", pattern: "^\\d{2}:\\d{2}$" },
+                  local_end_time: { type: "string", pattern: "^\\d{2}:\\d{2}$" }
                 }
               }
             }
@@ -83,6 +84,7 @@
     const API = "https://api.resy.com";
     const fail = (kind, message) => ({ status: "error", error_kind: kind, error_message: message });
     const plain = v => v !== null && typeof v === "object" && !Array.isArray(v);
+    const text = (v, max) => typeof v === "string" && v.trim() ? v.trim().slice(0, max) : null;
     const positiveId = v => (Number.isSafeInteger(v) && v > 0) || (typeof v === "string" && /^[1-9]\d{0,29}$/.test(v));
     const isDate = v => typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v) && !Number.isNaN(Date.parse(v + "T00:00:00Z")) && new Date(v + "T00:00:00Z").toISOString().slice(0, 10) === v;
     const validInput = keys => plain(input) && Object.keys(input).every(k => keys.includes(k));
@@ -144,9 +146,13 @@
     if (!plain(res.json) || !Array.isArray(res.json.notify)) return fail("site_changed", "Unsupported Notify response.");
     const requests = [];
     const clock = v => typeof v === "string" && /^([01]\d|2[0-3]):[0-5]\d(?::[0-5]\d)?$/.test(v);
-    for (const n of res.json.notify.slice(0, 100)) {
-      if (!plain(n) || !Number.isInteger(n.venue_id) || n.venue_id < 1 || n.venue_id > 2147483647 || !isDate(n.day) || !Number.isInteger(n.num_seats) || n.num_seats < 1 || n.num_seats > 100 || !Number.isSafeInteger(n.service_type_id) || n.service_type_id < 0 || !clock(n.time_preferred_start) || !clock(n.time_preferred_end)) return fail("site_changed", "Unsupported Notify item; no raw account data returned.");
-      requests.push({ venue_id: n.venue_id, date: n.day, party_size: n.num_seats, service_type_id: n.service_type_id, local_start_time: n.time_preferred_start, local_end_time: n.time_preferred_end });
+    for (const item of res.json.notify.slice(0, 100)) {
+      // Each item carries the request in specs next to a find-style results block for its venue.
+      const n = plain(item) ? item.specs : null;
+      if (!plain(n) || !Number.isInteger(n.venue_id) || n.venue_id < 1 || n.venue_id > 2147483647 || !isDate(n.day) || !Number.isInteger(n.party_size) || n.party_size < 1 || n.party_size > 100 || !Number.isSafeInteger(n.service_type_id) || n.service_type_id < 0 || !clock(n.time_preferred_start) || !clock(n.time_preferred_end)) return fail("site_changed", "Unsupported Notify item; no raw account data returned.");
+      const entry = plain(item.results) && Array.isArray(item.results.venues) && plain(item.results.venues[0]) ? item.results.venues[0] : null;
+      const venue = entry && plain(entry.venue) && plain(entry.venue.id) && entry.venue.id.resy === n.venue_id ? entry.venue : null;
+      requests.push({ venue_id: n.venue_id, venue_name: venue ? text(venue.name, 200) : null, date: n.day, party_size: n.party_size, service_type_id: n.service_type_id, local_start_time: n.time_preferred_start.slice(0, 5), local_end_time: n.time_preferred_end.slice(0, 5) });
     }
     return { status: requests.length ? "ok" : "no_results", account_ref: input.expected_account_ref, total: res.json.notify.length, truncated: res.json.notify.length > 100, requests };
   }

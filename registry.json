@@ -868,6 +868,39 @@
     },
     {
       "domain": "resy.com",
+      "tool": "create_list",
+      "file": "domains/resy.com/create_list.js",
+      "kind": "page",
+      "namespace": "resy.com",
+      "url_patterns": ["https://resy.com/*"],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Creates one private custom list after a case-insensitive duplicate-name check (duplicate_suspected unless allow_duplicate); one request, readback returns the new list_id. Builder live run 2026-10-01: created, duplicate refused, list later deleted."
+    },
+    {
+      "domain": "resy.com",
+      "tool": "create_notify",
+      "file": "domains/resy.com/create_notify.js",
+      "kind": "page",
+      "namespace": "resy.com",
+      "url_patterns": ["https://resy.com/*"],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Turns on Resy Notify for one venue/date/party/service within the venue's notify_options window and step; identical request is unchanged, a different window for the same request is conflict. Form-encoded struct_data like the site; readback decides created vs rejected vs outcome_unknown. Never holds or books. Builder live run 2026-10-01: created, unchanged, conflict and invalid windows; removed afterwards."
+    },
+    {
+      "domain": "resy.com",
+      "tool": "delete_list",
+      "file": "domains/resy.com/delete_list.js",
+      "kind": "page",
+      "namespace": "resy.com",
+      "url_patterns": ["https://resy.com/*"],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Deletes one custom list; confirm: true and matching expected_name required, My Hit List refused, readback verifies removal. Builder live run 2026-10-01 on a list the run created."
+    },
+    {
+      "domain": "resy.com",
       "tool": "get_account_status",
       "file": "domains/resy.com/get_account_status.js",
       "kind": "page",
@@ -904,6 +937,17 @@
     },
     {
       "domain": "resy.com",
+      "tool": "get_list",
+      "file": "domains/resy.com/get_list.js",
+      "kind": "page",
+      "namespace": "resy.com",
+      "url_patterns": ["https://resy.com/*"],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Account-guarded page (max 20) of one list's venues, including My Hit List (favorites). No automatic paging; no owner details. Builder live run 2026-10-01: offset/limit honored."
+    },
+    {
+      "domain": "resy.com",
       "tool": "get_reservation",
       "file": "domains/resy.com/get_reservation.js",
       "kind": "page",
@@ -928,6 +972,17 @@
     },
     {
       "domain": "resy.com",
+      "tool": "list_lists",
+      "file": "domains/resy.com/list_lists.js",
+      "kind": "page",
+      "namespace": "resy.com",
+      "url_patterns": ["https://resy.com/*"],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Account-guarded read of My Hit List and custom lists with ids, counts and optional per-venue membership. Builder live run 2026-10-01."
+    },
+    {
+      "domain": "resy.com",
       "tool": "list_notify_requests",
       "file": "domains/resy.com/list_notify_requests.js",
       "kind": "page",
@@ -935,7 +990,7 @@
       "url_patterns": ["https://resy.com/*"],
       "status": "draft",
       "last_verified": null,
-      "notes": "Account-guarded read of up to 100 Notify time windows. Empty collection observed live; populated items fixture-only. No notification writes. Back to draft after a source change on 2026-10-01: one /2/user identity read per call (the session token is compared before and after every request) and the API-configuration wait. Builder live run passed on 2026-10-01; needs fresh independent QA; earlier sign-off (agt_221f5a5f11361477ff09) covered the previous source.",
+      "notes": "Account-guarded read of up to 100 Notify requests (venue, date, party, service, HH:MM window) from each item's specs; populated items live-verified 2026-10-01. Writes are create_notify and remove_notify. Back to draft after a source change on 2026-10-01: one /2/user identity read per call (the session token is compared before and after every request) and the API-configuration wait. Builder live run passed on 2026-10-01; needs fresh independent QA; earlier sign-off (agt_221f5a5f11361477ff09) covered the previous source.",
       "provenance": { "qa_agent": "agt_221f5a5f11361477ff09" }
     },
     {
@@ -964,6 +1019,17 @@
     },
     {
       "domain": "resy.com",
+      "tool": "remove_notify",
+      "file": "domains/resy.com/remove_notify.js",
+      "kind": "page",
+      "namespace": "resy.com",
+      "url_patterns": ["https://resy.com/*"],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Turns off one Notify by venue/date/party/service; confirm: true required, absent sends nothing, readback verifies removal. Builder live run 2026-10-01."
+    },
+    {
+      "domain": "resy.com",
       "tool": "search_restaurants",
       "file": "domains/resy.com/search_restaurants.js",
       "kind": "page",
@@ -985,6 +1051,17 @@
       "last_verified": null,
       "notes": "Reversible My Hit List favorite with exact account/venue and expected-state guards, one write and readback. HTTP 201 success handling awaits independent QA. Never retry uncertain writes automatically. Back to draft after a source change on 2026-10-01: four requests per write (/2/user, /3/venue, POST, /3/venue) instead of six; the session token is compared before and after every request. Builder live run passed on 2026-10-01; needs fresh independent QA.",
       "provenance": { "qa_agent": null }
+    },
+    {
+      "domain": "resy.com",
+      "tool": "set_list_membership",
+      "file": "domains/resy.com/set_list_membership.js",
+      "kind": "page",
+      "namespace": "resy.com",
+      "url_patterns": ["https://resy.com/*"],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Adds or removes one venue on one custom list with expected-state guard; My Hit List refused (use set_favorite). Readback also checks the venue's other lists are unchanged. Builder live run 2026-10-01: add, no-op, remove; a wrong DELETE encoding was correctly reported as rejected before the fix."
     },
     {
       "domain": "southwest.com",

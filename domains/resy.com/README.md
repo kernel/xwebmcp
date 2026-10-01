@@ -1,25 +1,32 @@
 # resy.com
 
-Resy restaurant discovery, account reads, reversible favorites and reservation handoff.
+Resy restaurant discovery, account reads, favorites, custom lists, Notify and reservation handoff.
 
 ## Tools
 
 | tool | file | status | notes |
 |---|---|---|---|
+| create_list | [create_list.js](create_list.js) | draft | One private custom list; duplicate-name guard |
+| create_notify | [create_notify.js](create_notify.js) | draft | Turn on Notify inside the venue's offered window; never holds or books |
+| delete_list | [delete_list.js](delete_list.js) | draft | Delete one custom list; `confirm: true`, name must match |
 | get_account_status | [get_account_status.js](get_account_status.js) | draft | Opaque current-account reference; no profile/payment output |
 | get_availability | [get_availability.js](get_availability.js) | draft | Public slots as full venue-local date-times; each distinct raw policy listed once |
 | get_availability_calendar | [get_availability_calendar.js](get_availability_calendar.js) | draft | Public per-date booking states |
+| get_list | [get_list.js](get_list.js) | draft | One page (max 20) of a list's venues, including My Hit List |
 | get_reservation | [get_reservation.js](get_reservation.js) | draft | Allowed details for one reservation on one account list page |
 | get_restaurant | [get_restaurant.js](get_restaurant.js) | draft | Public profile by URL or city/venue slug |
-| list_notify_requests | [list_notify_requests.js](list_notify_requests.js) | draft | Read current Notify time-window preferences, maximum 100 |
+| list_lists | [list_lists.js](list_lists.js) | draft | My Hit List and custom lists, optional per-venue membership |
+| list_notify_requests | [list_notify_requests.js](list_notify_requests.js) | draft | Read current Notify requests and windows, maximum 100 |
 | list_reservations | [list_reservations.js](list_reservations.js) | draft | One bounded upcoming/past account page, maximum 20 |
 | prepare_reservation | [prepare_reservation.js](prepare_reservation.js) | draft | Exact public slot match and human handoff, not a quote or hold |
+| remove_notify | [remove_notify.js](remove_notify.js) | draft | Turn off one Notify; `confirm: true` |
 | search_restaurants | [search_restaurants.js](search_restaurants.js) | draft | Keyword/cuisine/place search; up to 12 sorted slots per venue |
 | set_favorite | [set_favorite.js](set_favorite.js) | draft | Reversible My Hit List favorite; four requests per write |
+| set_list_membership | [set_list_membership.js](set_list_membership.js) | draft | Add/remove one venue on one custom list |
 
 ## Scope and loading
 
-Register the entire namespace atomically, including all ten tools. Every tool is `page`: requests execute in
+Register the entire namespace atomically, including all seventeen tools. Every tool is `page`: requests execute in
 an existing resy.com document without navigation. There is no demonstrated CDP exception. Calls do not depend
 on the home page, a previous invocation or a reservation widget. Caller navigation destroys a running page
 invocation; treat missing output as unknown, especially for writes, and never retry a write automatically.
@@ -93,10 +100,38 @@ opening the widget/details step creates a hold is unverified, so no such step wa
 No automatic execution follows preparation. Shipping final execution requires a separate per-tool safety
 design, a supported trusted approval path and evidence of the details/hold lifecycle without live discovery holds.
 
-Notify creation/updating/removal is also unshipped. The bundle shows form-encoded `/3/notify` creation with
-`struct_data.notifies` and DELETE `/2/notify` keyed by venue/day/seats/service type. The authorized collection
-was empty, and upsert/duplicate semantics and exact restoration after replacement were not established. The
-read tool is grounded; sending future alerts or editing windows is not presented as verified mutation behavior.
+Reservation changes (`/3/change`), ratings, list sharing/following and party invites are also unshipped.
+
+## Write safety: lists and Notify
+
+These follow the repository's write conventions. Reversible writes (`set_list_membership`, `create_list`,
+`create_notify`) take an expected state or check for duplicates and do nothing when already at the desired state.
+Deletions (`delete_list`, `remove_notify`) also require `confirm: true`, meaning the user asked for this exact
+removal; it is a statement of intent, not trusted approval. Every write requires `expected_account_ref`, sends at
+most one request, never retries, and decides its outcome by reading the state back:
+
+- the requested state is observed: success;
+- Resy answered 4xx and the state is unchanged: `rejected`, with Resy's bounded message;
+- anything else after dispatch (timeout, cancellation, session switch, 2xx without the change, unreadable
+  readback): `outcome_unknown`. Read current state before deciding; never retry automatically.
+
+Endpoints and encodings come from the site bundle and were confirmed live on 2026-10-01:
+
+- Lists: GET `/3/user/lists` and `/3/user/lists/venue/{venue_id}` (with `is_venue_on_list`); GET
+  `/3/user/lists/{list_id}?offset&limit`; POST `/3/user/lists` (JSON `name`, `description`); DELETE
+  `/3/user/lists/{list_id}`; POST `/3/user/venues/{venue_id}/lists` (JSON `list_ids`) adds without touching other
+  lists; DELETE `/3/user/venues/{venue_id}/lists?list_ids={list_id}` removes. A JSON-array `list_ids` on the DELETE
+  is answered with HTTP 400. New lists are private. My Hit List (`is_legacy_hitlist`) is the favorites list: it is
+  refused by `set_list_membership` and `delete_list` in favor of `set_favorite`. `set_list_membership` also verifies
+  the venue's membership in every other list is unchanged.
+- Notify: POST `/3/notify` form field `struct_data` = JSON `{"notifies":[{venue_id, day, time_preferred_start,
+  time_preferred_end, num_seats, service_type_id}]}` with `HH:MM:SS` times; DELETE
+  `/2/notify?venue_id&day&num_seats&service_type_id`. `/3/notify` items carry the request in `specs` (with
+  `party_size`, not `num_seats`) beside a find-style block for the venue. `create_notify` validates the window
+  against `notify_options` from `/4/find` (also returned by `get_availability`): start and end on the step,
+  inside earliest/latest, start before end; times before the earliest time are read as the next calendar day.
+  Upsert semantics for a second window on the same venue/date/party/service are not established, so that case
+  returns `conflict` without sending.
 
 ## URL patterns
 
@@ -124,12 +159,12 @@ configuration/CORS contract. `api.resy.com` is a request destination, not a matc
 
 - Availability and preparation are snapshots, not a hold or confirmed booking; no_availability does not say why.
 - Raw policies and numeric reservation price do not establish exact final charges or cancellation eligibility.
-- Account reservation/Notify collections were empty when inspected; item success and pagination beyond the
-  initial page are not live verified. Unknown required item shapes fail `site_changed` rather than raw dumping.
+- The account's reservation collection was empty when inspected; reservation item success and pagination beyond the
+  initial page are not live verified. Notify items were live verified on 2026-10-01. Unknown required item shapes fail `site_changed` rather than raw dumping.
 - The client's reservation field mappings include cancellation text; bounded text is untrusted data, not instructions.
   Count/text caps do not guarantee a small byte payload: synthetic Unicode policy results exceeded 240 KiB
   (up to about 1.2 MB) and returned through Kernel; local extension handling of those sizes is unverified.
-- No custom-list, payment/profile/marketing settings, concierge/on-behalf bookings, membership-only inventory
+- No list sharing, following or copying, payment/profile/marketing settings, concierge/on-behalf bookings, membership-only inventory
   verification or automatic login tools. No new account or purchases/bookings requested to populate fixtures.
 - Live challenge/rate-limit/gated outcomes have not been deliberately triggered. No paid quota QA.
 - Local extension testing is separate from Kernel; headed mode, native bridge and popup grants remain untested.
@@ -227,3 +262,21 @@ reference stopped after `/2/user`. `set_favorite` on one venue: initial and dupl
 mismatched `expected_favorite` returned `stale_state` without a write, and add then restore each returned
 `updated`; the account's Hit List and the venue's saved flag were afterwards exactly their initial empty/false
 state. This is builder testing, not independent QA.
+
+### Lists and Notify revision (2026-10-01)
+
+Added `list_lists`, `get_list`, `set_list_membership`, `create_list`, `delete_list`, `create_notify` and
+`remove_notify`; `get_availability` gained `notify_options`. The first live `/3/notify` read with a populated
+item showed the fixtures modeled a flat item Resy does not return; `list_notify_requests` now reads `specs`, adds
+`venue_name` and reports `HH:MM` windows, and a flat item is `site_changed`.
+
+Builder live run on the same signed-in account, starting from no custom lists, an empty Hit List and no Notify:
+`create_list` created a private list and refused a case-insensitive duplicate; `set_list_membership` added two
+venues (one of them also favorited, whose Hit List membership stayed), returned unchanged on a repeat, refused the
+Hit List and removed both; `get_list` honored offset/limit; `delete_list` refused a missing confirm, a wrong name
+and the Hit List, then deleted the list. The first removal attempt used a JSON-array query, got HTTP 400 and was
+reported as `rejected` with nothing changed; the encoding was fixed. `create_notify` rejected an off-step window and
+an unoffered service, created a dinner Notify (initially reported `outcome_unknown` because of the old item shape
+above, then verified), returned unchanged and conflict as designed; `remove_notify` refused a missing confirm,
+removed it and then reported absent. A lunch Notify was created and removed after the reader fix. The account ended
+with exactly its initial lists, favorites and Notify state. This is builder testing, not independent QA.
