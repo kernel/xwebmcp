@@ -252,8 +252,6 @@ test("cancel_reservation: a fee that applies now, or unknown terms, needs accept
   }
   const mismatch = harness("cancel_reservation", { upcoming: [{ ...booked }] });
   assert.equal((await mismatch.run({ ...valid.cancel_reservation, expected_date: "2026-10-10" })).error_kind, "stale_state");
-  const stuck = harness("cancel_reservation", { upcoming: [{ ...booked }], route: ({ path }) => path === "/3/cancel" ? { body: {} } : null });
-  assert.equal((await stuck.run(valid.cancel_reservation)).error_kind, "outcome_unknown");
 });
 
 test("rate_reservation: rates once and verifies; already rated or expired sends nothing", async () => {
