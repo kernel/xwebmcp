@@ -4,7 +4,12 @@ Tools for Google Flights (https://www.google.com/travel/flights).
 
 | tool | file | status | notes |
 | --- | --- | --- | --- |
+| continue_to_airline | [continue_to_airline.js](continue_to_airline.js) | draft | See registry notes. |
+| get_booking_options | [get_booking_options.js](get_booking_options.js) | draft | See registry notes. |
+| get_page_context | [get_page_context.js](get_page_context.js) | draft | See registry notes. |
+| list_flights | [list_flights.js](list_flights.js) | draft | See registry notes. |
 | search_flights | [search_flights.js](search_flights.js) | qa_passed | Outbound itineraries across all airlines from a `tfs` deep link; expands details for flight numbers and segments |
+| select_flight | [select_flight.js](select_flight.js) | draft | See registry notes. |
 
 ## Scope and loading
 

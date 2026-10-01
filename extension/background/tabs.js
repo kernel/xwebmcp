@@ -85,6 +85,17 @@ export async function close({tabId, allowUserTabs}) {
   await save();
 }
 
+// A tab that an owned tab opens (window.open, target=_blank: e.g. Google
+// Flights' "Continue to book with <airline>") belongs to the same task, so it
+// is owned too and joins the group.
+chrome.tabs.onCreated.addListener(async (tab) => {
+  await load();
+  if (tab.openerTabId === undefined || !owned.has(tab.openerTabId) || owned.has(tab.id)) return;
+  owned.add(tab.id);
+  await save();
+  await groupTab(tab);
+});
+
 chrome.tabs.onRemoved.addListener((tabId) => {
   if (owned.delete(tabId)) void save();
 });

@@ -334,6 +334,58 @@
     },
     {
       "domain": "google.com",
+      "tool": "continue_to_airline",
+      "file": "domains/google.com/continue_to_airline.js",
+      "kind": "cdp",
+      "namespace": "google.com",
+      "url_patterns": [
+        "https://www.google.com/travel/flights/booking*"
+      ],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Presses Continue for one seller's fare on Google Flights' booking page (trusted click; Google ignores synthetic clicks) and reports the seller tab it opens. Draft."
+    },
+    {
+      "domain": "google.com",
+      "tool": "get_booking_options",
+      "file": "domains/google.com/get_booking_options.js",
+      "kind": "page",
+      "namespace": "google.com",
+      "url_patterns": [
+        "https://www.google.com/travel/flights/booking*"
+      ],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Reads Google Flights' booking options: each seller's fares with price, carry-on and checked-bag allowance, and features. Draft."
+    },
+    {
+      "domain": "google.com",
+      "tool": "get_page_context",
+      "file": "domains/google.com/get_page_context.js",
+      "kind": "page",
+      "namespace": "google.com",
+      "url_patterns": [
+        "https://www.google.com/travel/*"
+      ],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Page type (home, departing/returning results, booking options), live tools, unsettled reasons, chosen flights, suggestions. Draft."
+    },
+    {
+      "domain": "google.com",
+      "tool": "list_flights",
+      "file": "domains/google.com/list_flights.js",
+      "kind": "page",
+      "namespace": "google.com",
+      "url_patterns": [
+        "https://www.google.com/travel/flights/search*"
+      ],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Reads the departing or returning flights on the current results page with bags included, sortable and filterable. Draft."
+    },
+    {
+      "domain": "google.com",
       "tool": "search_flights",
       "file": "domains/google.com/search_flights.js",
       "kind": "cdp",
@@ -348,6 +400,19 @@
       "provenance": {
         "qa_agent": "agt_7ffe2dcdda2935caea70"
       }
+    },
+    {
+      "domain": "google.com",
+      "tool": "select_flight",
+      "file": "domains/google.com/select_flight.js",
+      "kind": "page",
+      "namespace": "google.com",
+      "url_patterns": [
+        "https://www.google.com/travel/flights/search*"
+      ],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Chooses a departing or returning flight by result_index and reports the next step (returning flights or booking options). Draft."
     },
     {
       "domain": "instacart.com",

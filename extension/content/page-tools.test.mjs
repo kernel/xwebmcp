@@ -20,6 +20,7 @@ function page(blockEval) {
     crypto,
     Error,
     EvalError,
+    TypeError,
     Function: blockEval ? function BlockedFunction() { throw new EvalError('Refused to evaluate a string because of Content Security Policy: unsafe-eval'); } : Function,
   });
   vm.runInContext(source, context);
@@ -78,4 +79,33 @@ test('cdp tools get a stub that runs through the agent and survives a new agent'
   const second = p.messages.filter((message) => message.type === 'cdp-invoke')[1];
   await p.deliver({type: 'cdp-result', callId: second.callId, ok: false, error: 'boom'});
   await assert.rejects(failing, /boom/);
+});
+
+test('a Trusted Types refusal also requests privileged registration', async () => {
+  const listeners = new Map();
+  const messages = [];
+  const window = {addEventListener(type, listener) { listeners.set(type, listener); }, postMessage(data) { messages.push(data); }};
+  const context = vm.createContext({
+    window, crypto, AbortController, Error, EvalError, TypeError,
+    document: {modelContext: {async registerTool() {}}},
+    Function: function TrustedTypesBlocked() { throw new TypeError("Failed to execute 'Function' : This document requires 'TrustedScript' assignment."); },
+  });
+  vm.runInContext(source, context);
+  await listeners.get('message')({source: window, data: {source: 'xwebmcp', type: 'register-page-tools', definitions: [{id: 'ct_tt', kind: 'page', name: 'custom.ct_tt.t', tool: {}, pageExecuteSource: 'async () => 1'}]}});
+  assert.deepEqual([...messages.find((m) => m.type === 'page-tools-csp').ids], ['ct_tt']);
+  assert.equal(messages.some((m) => m.type === 'page-tools-error'), false);
+});
+
+test('the EvalError wording of a Trusted Types refusal also requests privileged registration', async () => {
+  const listeners = new Map();
+  const messages = [];
+  const window = {addEventListener(type, listener) { listeners.set(type, listener); }, postMessage(data) { messages.push(data); }};
+  const context = vm.createContext({
+    window, crypto, AbortController, Error, EvalError, TypeError,
+    document: {modelContext: {async registerTool() {}}},
+    Function: function Blocked() { throw new EvalError("Evaluating a string as JavaScript violates this document's Trusted Type assignment requirements."); },
+  });
+  vm.runInContext(source, context);
+  await listeners.get('message')({source: window, data: {source: 'xwebmcp', type: 'register-page-tools', definitions: [{id: 'ct_tt2', kind: 'page', name: 'custom.ct_tt2.t', tool: {}, pageExecuteSource: 'async () => 1'}]}});
+  assert.deepEqual([...messages.find((m) => m.type === 'page-tools-csp').ids], ['ct_tt2']);
 });

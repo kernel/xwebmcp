@@ -76,25 +76,39 @@
       return;
     }
     if (type !== 'register-page-tools') return;
+    // Materialize everything first and report CSP-blocked tools at once, then
+    // register concurrently: one registration that is slow to settle (e.g.
+    // while a cdp tool holds the debugger on this tab) must not hold up the rest.
     const errors = [];
-    const registered = [];
     const cspBlocked = [];
+    const pending = [];
     for (const definition of event.data.definitions ?? []) {
       try {
         const execute = definition.kind === 'cdp' ? cdpStub(definition.id) : materialize(definition.pageExecuteSource);
         if (typeof execute !== 'function') throw new Error('execute is not a function');
-        await globalThis.__xwebmcpPageTools.register(definition, execute);
-        registered.push(definition.id);
+        pending.push([definition, execute]);
       } catch (error) {
-        if (error instanceof EvalError && /unsafe-eval|Content Security Policy/i.test(error.message)) {
+        // Blocked dynamic compilation: CSP without 'unsafe-eval' throws EvalError;
+        // require-trusted-types-for 'script' (e.g. Google Flights) throws a
+        // TypeError about TrustedScript. Both fall back to CDP registration.
+        // Chrome words the Trusted Types refusal two ways (TypeError about
+        // 'TrustedScript', or EvalError about "Trusted Type assignment").
+        if ((error instanceof EvalError || error instanceof TypeError) &&
+            /unsafe-eval|Content Security Policy|Trusted ?Script|Trusted Type/i.test(error.message)) {
           cspBlocked.push(definition.id);
         } else {
           errors.push(`${definition.name}: ${error instanceof Error ? error.message : String(error)}`);
         }
       }
     }
-    if (registered.length) window.postMessage({source: 'xwebmcp-page', type: 'page-tools-registered', ids: registered}, '*');
     if (cspBlocked.length) window.postMessage({source: 'xwebmcp-page', type: 'page-tools-csp', ids: cspBlocked}, '*');
+    const results = await Promise.allSettled(pending.map(([definition, execute]) => globalThis.__xwebmcpPageTools.register(definition, execute).then(() => definition.id)));
+    const registered = [];
+    results.forEach((result, index) => {
+      if (result.status === 'fulfilled') registered.push(result.value);
+      else errors.push(`${pending[index][0].name}: ${result.reason instanceof Error ? result.reason.message : String(result.reason)}`);
+    });
+    if (registered.length) window.postMessage({source: 'xwebmcp-page', type: 'page-tools-registered', ids: registered}, '*');
     if (errors.length) window.postMessage({source: 'xwebmcp-page', type: 'page-tools-error', errors}, '*');
   });
 

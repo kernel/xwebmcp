@@ -136,7 +136,7 @@ export async function registerPageTool(tabId, url, definition) {
   await attachTarget(targetId, registrationId);
   try {
     const script = `async () => {
-      if (location.href !== ${JSON.stringify(url)} || !globalThis.__xwebmcpPageTools) {
+      if (location.href.split('#')[0] !== ${JSON.stringify(url)} || !globalThis.__xwebmcpPageTools) {
         throw new Error('page tool document changed before registration');
       }
       const execute = (${definition.pageExecuteSource});
