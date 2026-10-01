@@ -336,6 +336,8 @@ test("get_cart reads the purchase step but never a paid order's confirmation pag
   const s = site({ start: `${cart}/confirmation` });
   s.page.document.querySelectorAll = () => { throw new Error("The confirmation page must not be read"); };
   failed(await tool("get_cart", s).run({}), "no_cart");
+  failed(await tool("get_cart", site({ start: `${cart}/purchase/extra` })).run({}), "no_cart");
+  failed(await tool("get_cart", site({ start: "https://amctheatres.com/orders/00000000-0000-4000-8000-000000000000/food-and-drink" })).run({}), "no_cart");
 });
 
 test("add_tickets_to_cart refuses a seat React shows as checked, and stops if the seat page changes while it is read", async () => {

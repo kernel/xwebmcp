@@ -95,8 +95,8 @@
       "url_patterns_reason": "Narrowed to www.amctheatres.com: it serves the movie, theatre, showtime, account and ticket pages; other amctheatres.com hosts are investor relations (investor.), the site API that pages call (graph.) and analytics (gtm.).",
       "status": "qa_passed",
       "last_verified": "2026-10-01",
-      "notes": "Reads the AMC cart open in the tab before payment (the food-and-drink or purchase step): lines, seats, total, checkout step and seconds left on the hold. Presses nothing. Live on 2026-10-01. Independent QA (live and source review) passed on 2026-10-01. Source changed after that QA: other order pages, including a paid order's confirmation page, are now refused as no_cart without being read; this change has fixture tests but no independent review yet.",
-      "provenance": { "qa_agent": "agt_ae065baef3fb7ce71153" }
+      "notes": "Reads the AMC cart open in the tab before payment (the food-and-drink or purchase step): lines, seats, total, checkout step and seconds left on the hold. Presses nothing; other order pages, including a paid order's confirmation page, are refused as no_cart without being read. Independent QA (live and source review) passed on 2026-10-01: a live cart read matched add_tickets_to_cart exactly, and the home page, a seat page and a cancelled order's 404 page returned no_cart; the purchase and confirmation steps are fixture-tested only.",
+      "provenance": { "qa_agent": "agt_64f5b26da69fd3bb8670" }
     },
     {
       "domain": "amctheatres.com",

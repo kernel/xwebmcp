@@ -98,14 +98,6 @@ function harness(name, { url = `${ORIGIN}/`, html = "<html><head><title>AMC</tit
     const made = new Document(source);
     made.readyState = readyState;
     Object.defineProperty(made.body, "innerText", { get: () => visibleText(made.body) });
-    for (const link of made.querySelectorAll("a")) {
-      link.checkVisibility = () => {
-        for (let node = link; node; node = node.parentElement) {
-          if (node.hidden() || /visibility:\s*(hidden|collapse)|opacity:\s*0(?:[;\s]|$)/.test(node.getAttribute("style") || "")) return false;
-        }
-        return true;
-      };
-    }
     return hydrated ? hydrate(made) : made;
   };
   let doc = build(html);
