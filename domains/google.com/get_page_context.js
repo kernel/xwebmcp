@@ -59,6 +59,13 @@
       .filter((e) => visible(e) && !e.closest("li"))
       .map((e) => e.getAttribute("aria-label").replace(/\s+/g, " ").replace(/^Flight details\.\s*/i, "").replace(/\s*(Select flight|Change flight)\s*$/i, "").slice(0, 240))
       .filter((s, i, a) => a.indexOf(s) === i).slice(0, 4);
+    if (!chosen.length) {
+      // Returning results show the chosen departing flight in a "Change departing flight" control.
+      for (const e of document.querySelectorAll('[aria-label*="Change departing flight"], [aria-label*="Change returning flight"]')) {
+        const t = (e.getAttribute("aria-label") + " " + text(e)).replace(/\s+/g, " ").trim();
+        if (visible(e) && !chosen.includes(t)) chosen.push(t.slice(0, 240));
+      }
+    }
     const steps = [];
     if (unsettled.length) steps.push("The page is still loading (" + unsettled.join(", ") + "): call get_page_context with wait_for_settled_seconds before acting");
     if (pageType === "flights_home" || pageType === "other") { if (has("search_flights")) steps.push("Use search_flights with origin, destination, dates and trip type to open Google Flights results"); }

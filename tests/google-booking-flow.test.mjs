@@ -77,3 +77,10 @@ test("google get_page_context: page types and booking suggestions", async () => 
   const r = await run("get_page_context", departing.replace("Top departing", "Top returning"), {}, { url: resultsUrl, tools: ["list_flights"] });
   assert.equal(r.out.page_type, "returning_results");
 });
+
+test("google select_flight accepts search_flights' 24-hour times", async () => {
+  const { out } = await run("select_flight", departing, { result_index: 1, expected_departure_time: "05:30" }, { url: resultsUrl, onClick: () => {} });
+  assert.equal(out.status, "selected");
+  const wrong = await run("select_flight", departing, { result_index: 1, expected_departure_time: "07:00" }, { url: resultsUrl });
+  assert.equal(wrong.out.status, "row_changed");
+});

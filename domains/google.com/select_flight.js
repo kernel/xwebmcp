@@ -8,7 +8,7 @@
       type: "object", additionalProperties: false, required: ["result_index"],
       properties: {
         result_index: { type: "integer", minimum: 0, maximum: 199 },
-        expected_departure_time: { type: "string", pattern: "^\\d{1,2}:\\d{2} ?[AP]M$", description: "e.g. \"5:30 AM\" from list_flights." },
+        expected_departure_time: { type: "string", pattern: "^(\\d{1,2}:\\d{2} ?[AP]M|\\d{2}:\\d{2})$", description: "e.g. \"5:30 AM\" from list_flights, or \"05:30\" from search_flights." },
         expected_airline: { type: "string", minLength: 2, maxLength: 60 }
       }
     },
@@ -43,6 +43,10 @@
     const link = row.querySelector('[role="link"][aria-label]');
     const aria = link.getAttribute("aria-label").replace(/\s+/g, " ");
     const norm = (s) => s.replace(/\s+/g, "").toUpperCase();
+    if (input.expected_departure_time && /^\d{2}:\d{2}$/.test(input.expected_departure_time)) {
+      const [h, m] = input.expected_departure_time.split(":").map(Number);
+      input = { ...input, expected_departure_time: ((h % 12) || 12) + ":" + String(m).padStart(2, "0") + " " + (h < 12 ? "AM" : "PM") };
+    }
     if (input.expected_departure_time && !norm(aria).includes("AT" + norm(input.expected_departure_time) + "ON")) {
       return { status: "row_changed", error_message: "Row " + input.result_index + " no longer departs at " + input.expected_departure_time + ". Call list_flights again." };
     }

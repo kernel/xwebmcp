@@ -8,6 +8,7 @@
       type: "object", additionalProperties: false, required: ["fare_name"],
       properties: {
         fare_name: { type: "string", minLength: 1, maxLength: 80 },
+        result_index: { type: "integer", minimum: 0, maximum: 199, description: "Row whose fare panel to choose from (from select_fare); required when more than one panel is open." },
         accept_restrictions: { type: "boolean", default: false }
       }
     },
@@ -42,10 +43,25 @@
     const text = (e) => (e?.innerText || e?.textContent || "").replace(/\s+/g, " ").trim();
     const wanted = String(input?.fare_name || "").trim().toLowerCase();
     if (!wanted) return { status: "error", error_message: "fare_name is required." };
-    const buttons = [...document.querySelectorAll("button[aria-label^='Select ']")].filter((b) => visible(b) && /^Select$/i.test(text(b)));
+    // Fare panels open under their row and earlier panels can stay open: keep only the Select
+    // buttons whose nearest preceding flight row (in document order) is the chosen one.
+    const allRows = [...document.querySelectorAll("[class*='flightContainer']")];
+    const rowOfSelect = (b) => {
+      if (typeof b.compareDocumentPosition !== "function") return null;
+      let owner = null;
+      for (const r of allRows) if (r.compareDocumentPosition(b) & 4) owner = r;
+      return owner;
+    };
+    const rows = [...document.querySelectorAll("[class*='flightContainer']")].filter(visible);
+    const wantedRow = Number.isInteger(input?.result_index) ? rows[input.result_index] : null;
+    if (Number.isInteger(input?.result_index) && !wantedRow) return { status: "error", error_message: "No result row " + input.result_index + "; call list_flight_results again." };
+    let buttons = [...document.querySelectorAll("button[aria-label^='Select ']")].filter((b) => visible(b) && /^Select$/i.test(text(b)));
+    if (wantedRow) buttons = buttons.filter((b) => [null, wantedRow].includes(rowOfSelect(b)));
     if (!buttons.length) return { status: "no_fare_options", error_message: "No fare options are open. Call select_fare first." };
     const labels = buttons.map((b) => (b.getAttribute("aria-label") || "").replace(/^Select\s+/, ""));
-    const index = labels.findIndex((l) => l.toLowerCase().includes(wanted));
+    const matches = labels.map((l, i) => [l, i]).filter(([l]) => l.toLowerCase().includes(wanted));
+    if (matches.length > 1 && !wantedRow) return { status: "error", error_message: "More than one open fare matches \"" + input.fare_name + "\" (" + matches.map(([l]) => l).join("; ") + "). Pass result_index. Nothing was selected." };
+    const index = matches.length ? matches[0][1] : -1;
     if (index === -1) return { status: "fare_not_offered", error_message: "No open fare matches \"" + input.fare_name + "\". Nothing was selected.", offered: labels };
     const button = buttons[index];
     let card = button;
@@ -82,7 +98,7 @@
     } else {
       // Settle first: the final selection navigates to checkout. Mark the pending navigation so
       // get_page_context / get_trip_summary on this document report it instead of stale state.
-      globalThis.__xwebmcpPendingNavigation = { at: Date.now(), to: "checkout" };
+      globalThis.__xwebmcpPendingNavigation = { at: Date.now(), to: "checkout", from: location.href };
       setTimeout(() => button.click(), 100);
     }
     return {

@@ -3,7 +3,7 @@
   match: { url_patterns: ["https://www.united.com/*/fsr/*"] },
   tool: {
     name: "list_flight_results",
-    description: "Read the flights United is showing on this results page right now, without searching again: departing flights, or, after a departing fare is selected on a round trip, the return flights (leg says which). For each row: result_index (pass to select_fare), flight numbers and aircraft, airports, airport-local times, arrival day offset, duration, stops, and each cabin column's lowest \"From\" price (column names such as \"United Economy (Main cabin)\", \"Economy Plus (Extra legroom)\", \"United First (Extra-spacious seat)\"); United Economy's lowest price is usually Basic Economy, which excludes a full-size carry-on and needs the user's agreement to its restrictions. Prices are per person; round-trip searches show round-trip totals. Sort by departure, arrival, price or duration; filter nonstop. Rows can omit a column (e.g. no Economy Plus); each cabin entry carries the cabin_index of its column. Read-only.",
+    description: "Read the flights United is showing on this results page right now, without searching again: departing flights, or, after a departing fare is selected on a round trip, the return flights (leg says which). For each row: result_index (pass to select_fare), flight numbers and aircraft, airports, airport-local times, arrival day offset, duration, stops, and each cabin column's lowest \"From\" price (column names such as \"United Economy (Main cabin)\", \"Economy Plus (Extra legroom)\", \"United First (Extra-spacious seat)\"); United Economy's lowest price is usually Basic Economy, which excludes a full-size carry-on and needs the user's agreement to its restrictions. Prices are per person; round-trip searches show round-trip totals. Sort by departure, arrival, price or duration; filter nonstop. Rows can omit a column (e.g. no Economy Plus, shown as Not available); omitted columns are left out of cabins, and each listed cabin carries the cabin_index of its column. Read-only.",
     inputSchema: {
       type: "object", additionalProperties: false,
       properties: {
@@ -100,7 +100,7 @@
       const codes = [...t.matchAll(/\(([A-Z]{3})\)/g)].map((m) => m[1]);
       const duration = /Duration (\d+) hours?(?: and (\d+) minutes?)?/i.exec(t) || /(\d+)H,?\s*(\d+)M/i.exec(t);
       const stopsMatch = /\b(NONSTOP|(\d+) STOPS?)\b/i.exec(t);
-      const numbers = [...new Set([...t.matchAll(/\b(UA|[A-Z0-9]{2}) (\d{1,4}) \(([^)]+)\)/g)].map((m) => m[1] + " " + m[2]))];
+      const numbers = [...new Set([...t.matchAll(/\b(UA|[A-Z0-9]{2}) (\d{1,4})\b(?= \(|,|\s+Flight Number|\s+UA)/g)].map((m) => m[1] + " " + m[2]))];
       const aircraft = [...new Map([...t.matchAll(/\b((?:UA|[A-Z0-9]{2}) \d{1,4}) \(([^)]+)\)/g)].map((m) => [m[1], m[2]])).values()];
       const offset = Number((/Arriving at \d{1,2}:\d{2} [AP]M[^+]{0,40}\+(\d)/.exec(t) || [])[1] || 0);
       const cabins = priceButtons(row).map((b, position) => {

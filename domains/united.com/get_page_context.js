@@ -37,7 +37,8 @@
       if ([...document.querySelectorAll(".atm-c-skeleton-bar")].some(visible)) out.push("results_loading");
       if ([...document.querySelectorAll(".atm-c-loading-indicator, [class*='InterstialLoader']")].some(visible)) out.push("page_spinner");
       const pending = globalThis.__xwebmcpPendingNavigation;
-      if (pending && Date.now() - pending.at < 30000) out.push("navigating");
+      // United moves to checkout by in-app routing (same document): the mark expires as soon as the URL changes.
+      if (pending && pending.from === location.href && Date.now() - pending.at < 30000) out.push("navigating");
       return out;
     };
     const wait = Math.max(0, Math.min(30, Number(input?.wait_for_settled_seconds) || 0));
@@ -59,7 +60,8 @@
     const status = (/(Premier (?:Silver|Gold|Platinum|1K)|Global Services|MileagePlus member)/.exec(header) || [])[1] || null;
     const label = (e) => e.getAttribute("aria-label") || e.labels?.[0]?.innerText || "";
     const verification = [...document.querySelectorAll("input")].some((e) => visible(e) && (/digit \d+ of \d+/i.test(label(e)) || e.getAttribute("autocomplete") === "one-time-code"));
-    const fareOptionsOpen = [...document.querySelectorAll("button[aria-label^='Select ']")].some((b) => visible(b) && /^Select$/i.test(text(b)));
+    const navigating = unsettled.includes("navigating");
+    const fareOptionsOpen = !navigating && [...document.querySelectorAll("button[aria-label^='Select ']")].some((b) => visible(b) && /^Select$/i.test(text(b)));
     let tools = null;
     try {
       const mc = document.modelContext || navigator.modelContext;
@@ -67,6 +69,10 @@
     } catch { tools = null; }
     const has = (n) => tools === null || tools.includes(n);
     const steps = [];
+    if (navigating) {
+      steps.push("A fare was just chosen and United is moving to " + (globalThis.__xwebmcpPendingNavigation?.to || "the next page") + ": wait, then call get_page_context again (list tools again if it reports the page navigated); do not choose another fare");
+      return { current_path: path, page_type: pageType, results_leg: null, available_tools: null, unsettled: true, unsettled_reasons: unsettled, pending_choice: null, signed_in: null, member_status: null, verification_code_requested: false, suggested_next_steps: steps };
+    }
     if (unsettled.length) steps.push("The page is still loading (" + unsettled.join(", ") + "): call get_page_context with wait_for_settled_seconds before acting");
     if (verification) steps.push("United is asking for a verification code: ask the user for the code they received, then use login with mode \"otp\"; never guess or resend codes");
     if (signedIn === false && !verification && has("login")) steps.push("Sign in with login (credentials the user provided) before searching, so the cart and prices are for the user's MileagePlus account");

@@ -61,7 +61,7 @@
       return box ? { heading, box } : null;
     };
     const pending = globalThis.__xwebmcpPendingNavigation;
-    if (pending && Date.now() - pending.at < 30000) return { status: "not_ready", error_message: "This page is navigating to " + pending.to + "; call get_page_context with wait_for_settled_seconds and list tools again on the new page.", url };
+    if (pending && pending.from === location.href && Date.now() - pending.at < 30000) return { status: "not_ready", error_message: "This page is navigating to " + pending.to + "; call get_page_context with wait_for_settled_seconds and list tools again on the new page.", url };
     const until = Date.now() + 15000;
     while (!panel() && Date.now() < until) await sleep(300);
     const found = panel();

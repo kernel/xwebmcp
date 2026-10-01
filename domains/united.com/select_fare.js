@@ -55,7 +55,7 @@
     const containers = [...document.querySelectorAll("[class*='flightContainer']")].filter(visible);
     const container = containers[input?.result_index];
     if (!container) return { status: "row_changed", error_message: "No result row " + input?.result_index + "; call list_flight_results again." };
-    const numbers = [...new Set([...text(container).matchAll(/\b([A-Z0-9]{2}) (\d{1,4}) \(/g)].map((m) => m[1] + " " + m[2]))];
+    const numbers = [...new Set([...text(container).matchAll(/\b(UA|[A-Z0-9]{2}) (\d{1,4})\b(?= \(|,|\s+Flight Number|\s+UA)/g)].map((m) => m[1] + " " + m[2]))];
     if (Array.isArray(input.expected_flight_numbers)) {
       const norm = (a) => a.map((x) => x.replace(/\s+/g, "").toUpperCase()).sort().join(",");
       if (norm(input.expected_flight_numbers) !== norm(numbers)) return { status: "row_changed", error_message: "Row " + input.result_index + " shows " + (numbers.join(", ") || "no flight numbers") + "; call list_flight_results again." };
@@ -78,7 +78,16 @@
     const button = priceButtons(row).find((b, position) => columnOf(b, position) === input.cabin_index);
     if (!button) return { status: "not_available", error_message: "Row " + input.result_index + " has no cabin column " + input.cabin_index + "." };
     if (!/\$\d/.test(text(button))) return { status: "not_available", error_message: "That cabin is not available on this flight." };
-    const selectButtons = () => [...document.querySelectorAll("button[aria-label^='Select United'], button[aria-label^='Select ']")].filter((b) => visible(b) && /^Select$/i.test(text(b)));
+    // Fare panels open under their row and earlier panels can stay open: keep only the Select
+    // buttons whose nearest preceding flight row (in document order) is the chosen one.
+    const allRows = [...document.querySelectorAll("[class*='flightContainer']")];
+    const rowOfSelect = (b) => {
+      if (typeof b.compareDocumentPosition !== "function") return null;
+      let owner = null;
+      for (const r of allRows) if (r.compareDocumentPosition(b) & 4) owner = r;
+      return owner;
+    };
+    const selectButtons = () => [...document.querySelectorAll("button[aria-label^='Select United'], button[aria-label^='Select ']")].filter((b) => visible(b) && /^Select$/i.test(text(b)) && [null, container].includes(rowOfSelect(b)));
     if (!button.getAttribute("aria-expanded") || button.getAttribute("aria-expanded") === "false" || !selectButtons().length) button.click();
     const until = Date.now() + 8000;
     while (!selectButtons().length && Date.now() < until) await sleep(250);

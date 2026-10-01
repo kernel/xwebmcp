@@ -23,7 +23,7 @@
     let target;
     try { target = new URL(raw, "https://www.united.com"); } catch (error) { return { status: "error", error_message: "url is not a valid path: " + error.message }; }
     if (target.origin !== "https://www.united.com") return { status: "error", error_message: "url must stay on https://www.united.com." };
-    globalThis.__xwebmcpPendingNavigation = { at: Date.now(), to: target.pathname };
+    globalThis.__xwebmcpPendingNavigation = { at: Date.now(), to: target.pathname, from: location.href };
     setTimeout(() => location.assign(target.href), 100);
     return { status: "navigation_scheduled", to_url: target.href, next_step: "Wait for the page to load, then call get_page_context with wait_for_settled_seconds and list tools again." };
   }
