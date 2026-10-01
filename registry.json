@@ -867,6 +867,102 @@
       }
     },
     {
+      "domain": "reddit.com",
+      "tool": "get_thread",
+      "file": "domains/reddit.com/get_thread.js",
+      "kind": "page",
+      "namespace": "reddit.com",
+      "url_patterns": [
+        "https://www.reddit.com/*"
+      ],
+      "status": "qa_passed",
+      "last_verified": "2026-09-30",
+      "notes": "Reads one post and up to 100 comments; collapsed branches are not expanded. Viewer-specific fields are not returned. Independent final-source runtime fixtures passed; public QA was challenge-blocked.",
+      "provenance": {
+        "qa_agent": "agt_490b99ec7d30a026c695"
+      }
+    },
+    {
+      "domain": "reddit.com",
+      "tool": "list_posts",
+      "file": "domains/reddit.com/list_posts.js",
+      "kind": "page",
+      "namespace": "reddit.com",
+      "url_patterns": [
+        "https://www.reddit.com/*"
+      ],
+      "status": "qa_passed",
+      "last_verified": "2026-09-30",
+      "notes": "Reads one page of a community feed; no account feeds or viewer-specific fields. Independent final-source runtime fixtures passed; public QA was challenge-blocked.",
+      "provenance": {
+        "qa_agent": "agt_490b99ec7d30a026c695"
+      }
+    },
+    {
+      "domain": "reddit.com",
+      "tool": "prepare_comment",
+      "file": "domains/reddit.com/prepare_comment.js",
+      "kind": "page",
+      "namespace": "reddit.com",
+      "url_patterns": [
+        "https://www.reddit.com/*"
+      ],
+      "status": "qa_passed",
+      "last_verified": "2026-09-30",
+      "notes": "Prepares a top-level comment and thread handoff. Does not persist, fill or submit a comment. Independent runtime fixtures passed; real-site QA was challenge-blocked.",
+      "provenance": {
+        "qa_agent": "agt_490b99ec7d30a026c695"
+      }
+    },
+    {
+      "domain": "reddit.com",
+      "tool": "prepare_post",
+      "file": "domains/reddit.com/prepare_post.js",
+      "kind": "page",
+      "namespace": "reddit.com",
+      "url_patterns": [
+        "https://www.reddit.com/*"
+      ],
+      "status": "qa_passed",
+      "last_verified": "2026-09-30",
+      "notes": "Prepares a text post with community rules and composer handoff. Does not persist, fill or submit a post. Independent runtime fixtures passed; final-source real-site success remains unverified.",
+      "provenance": {
+        "qa_agent": "agt_490b99ec7d30a026c695"
+      }
+    },
+    {
+      "domain": "reddit.com",
+      "tool": "search",
+      "file": "domains/reddit.com/search.js",
+      "kind": "page",
+      "namespace": "reddit.com",
+      "url_patterns": [
+        "https://www.reddit.com/*"
+      ],
+      "status": "qa_passed",
+      "last_verified": "2026-09-30",
+      "notes": "Searches posts site-wide or in one community. No account fields or comment/user search. Independent final-source runtime fixtures passed; public QA was challenge-blocked.",
+      "provenance": {
+        "qa_agent": "agt_490b99ec7d30a026c695"
+      }
+    },
+    {
+      "domain": "reddit.com",
+      "tool": "set_saved",
+      "file": "domains/reddit.com/set_saved.js",
+      "kind": "page",
+      "namespace": "reddit.com",
+      "url_patterns": [
+        "https://www.reddit.com/*"
+      ],
+      "status": "qa_passed",
+      "last_verified": "2026-09-30",
+      "notes": "Saves or unsaves one visible post under expected-account, exact-control and saved-state guards. No write retries; uncertain outcomes require manual inspection. Independent isolated save/unsave passed on both runtimes; real changing success and final-source authenticated handler compatibility were not tested.",
+      "provenance": {
+        "qa_agent": "agt_490b99ec7d30a026c695"
+      }
+    },
+    {
       "domain": "southwest.com",
       "tool": "login",
       "file": "domains/southwest.com/login.js",
