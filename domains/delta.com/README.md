@@ -331,6 +331,25 @@ answers "Already on Review and Pay".
   After the fixes a round trip reached Trip Summary with both slices, "DL 5280" without the
   footnote, and amount due 777.40 USD with no warnings.
 
+### Re-QA on xwebmcp with tool_ref-only invocation (2026-10-01)
+
+After xwebmcp #95 (every tool, including cdp `search_flights`, listed and invoked by
+`tool_ref`; clean extension reloads), five agents ran one at a time with the same rules:
+
+| Test | Result |
+| --- | --- |
+| WebMCP-only end-to-end "earliest CVG→SFO tomorrow" | Reached Trip Summary: DL 2441/DL 693 Fri Oct 02 6:00am–10:21am, Main Classic, 398.20 USD; no missing tools |
+| Main Basic consent (Oct 8; Delta offered no Main Basic on Oct 2) | Pass: refused without consent; with consent Trip Summary showed Main Basic, 291.16 + 47.04 = 338.20 USD |
+| Comfort and First | Pass, no mismatches (Comfort Classic / Extra; First Classic / Extra) |
+| Round trip | Pass: return results, `next_page`, `results_leg`, direct return selection, both slices on Trip Summary |
+| Review and Pay | Pass: same slices and amount due (398.20 USD) on Trip Summary and Review and Pay |
+
+Follow-ups applied: `experience_not_offered` with `offered_codes`; `basis_display` and
+`badges` on experiences; deterministic sort tie-breaks; round-trip price note; B-prefixed
+codes documented as Basic; next-step text aligned with xwebmcp #98's message for read-only
+tools cut off by navigation and its re-matching on same-document route changes (which removes
+`continue_to_review_and_pay` from Review and Pay).
+
 ## URL patterns
 
 `login` is narrowed to the homepage (`https://www.delta.com/`, `/us/en`, `/us/en/`, each also

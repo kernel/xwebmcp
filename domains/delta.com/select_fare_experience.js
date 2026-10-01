@@ -83,8 +83,8 @@
       next_page: roundTripOutbound ? "return_results" : "trip_summary",
       code, name, price_display: price, restrictions_accepted: accepted,
       next_step: (roundTripOutbound
-        ? "Delta now shows the return flights (about 3 s). Call get_page_context with wait_for_settled_seconds (e.g. 15; if it reports the page navigated, list tools again and call it on the new page), then list_flight_results and select_fare to choose the return, which goes straight to Trip Summary."
-        : "Delta navigates to Trip Summary now (about 3 s). Call get_page_context with wait_for_settled_seconds (e.g. 15; if it reports the page navigated, list tools again and call it on the new page), then get_trip_summary to confirm the itinerary, fare and amount due with the user.") + " Nothing has been purchased."
+        ? "Delta now shows the return flights (about 3 s). Call get_page_context with wait_for_settled_seconds (e.g. 15; if it reports the page navigated, list tools again and call it on the new page; the tab lists no tools for 1-3 s while the next page loads), then list_flight_results and select_fare to choose the return, which goes straight to Trip Summary."
+        : "Delta navigates to Trip Summary now (about 3 s). Call get_page_context with wait_for_settled_seconds (e.g. 15; if it reports the page navigated, list tools again and call it on the new page; the tab lists no tools for 1-3 s while the next page loads), then get_trip_summary to confirm the itinerary, fare and amount due with the user.") + " Nothing has been purchased."
     };
   }
 }]
