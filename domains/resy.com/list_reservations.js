@@ -99,13 +99,11 @@
                 "login_required",
                 "wrong_account",
                 "not_found",
-                "stale_state",
                 "challenge",
                 "rate_limited",
                 "site_changed",
                 "site_error",
-                "canceled",
-                "outcome_unknown"
+                "canceled"
               ]
             },
             error_message: { type: "string", minLength: 1, maxLength: 1000 }
@@ -133,8 +131,11 @@
     if (!["upcoming", "past"].includes(type) || !Number.isInteger(offset) || offset < 1 || offset > 10000 || !Number.isInteger(limit) || limit < 1 || limit > 20) return fail("invalid_input", "type must be upcoming or past, offset 1..10000, and limit 1..20.");
     if (signal?.aborted) return fail("canceled", "Canceled before any site request.");
     if (window.location.origin !== ORIGIN) return fail("wrong_page", "Open a page on https://resy.com; this tool never navigates.");
-    const key = window.apiConfig?.Config?.apiKey;
-    if (typeof key !== "string" || !/^[^\s"\\]{8,128}$/.test(key)) return fail("site_changed", "The page's Resy API configuration is unavailable.");
+    const readKey = () => { const k = window.apiConfig?.Config?.apiKey; return typeof k === "string" && /^[^\s"\\]{8,128}$/.test(k) ? k : null; };
+    let key = readKey();
+    for (let i = 0; !key && !signal?.aborted && i < 20; i++) { await new Promise(resolve => setTimeout(resolve, 250)); key = readKey(); }
+    if (signal?.aborted) return fail("canceled", "Canceled before any site request.");
+    if (!key) return fail("site_changed", "The page's Resy API configuration is unavailable.");
     const token = window.apiAuthToken;
     if (typeof token !== "string" || !token || token.length > 4096 || /[\r\n]/.test(token)) return fail("login_required", "Sign in manually on resy.com before using account tools.");
     const request = async path => {
@@ -191,8 +192,6 @@
       const policy = Array.isArray(r.cancellation_policy) ? r.cancellation_policy.filter(x => typeof x === "string").slice(0, 10).map(x => x.replace(/<[^>]*>/g, "").replace(/(?:https?:\/\/|rgs:\/\/)\S+/gi, "[link omitted]").slice(0, 1000)) : [];
       records.push({ reservation_id: String(r.reservation_id), venue_id: Number(id), venue_name: text(v.name, 200), date: r.day, local_time: time, party_size: r.num_seats, seating_type: plain(r.config) ? text(r.config.type, 60) : null, currency: text(r.venue.currency, 10), price: typeof r.price === "number" && Number.isFinite(r.price) && r.price >= 0 ? r.price : null, cancellation_policy: policy });
     }
-    const recheck = await ensureAccount();
-    if (recheck) return recheck;
     return { status: records.length ? "ok" : "no_results", account_ref: input.expected_account_ref, type, offset, limit, total: j.metadata.total, reservations: records };
   }
 }]

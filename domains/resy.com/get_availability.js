@@ -3,7 +3,7 @@
   match: { url_patterns: ["https://resy.com/*"] },
   tool: {
     name: "get_availability",
-    description: "List the open reservation slots Resy (resy.com) shows for one restaurant on one date for a party size: venue-local start and end date-times (a slot after midnight belongs to the requested date but carries the next calendar date), seating type, and each slot's cancellation and payment terms as the site's raw policy fields. Get venue_id from search_restaurants or get_restaurant. It never selects a slot, holds a table, books or joins a wait list, and it does not return the booking handles the site needs to book. A slot is a snapshot; it does not prove the table is still free, and no_availability does not say why (fully booked, party size outside what the venue takes, date outside its booking window, or reservations closed). Slots are sorted earliest first and at most the first 300 are listed (a venue with five-minute slots all day has about 288). Use get_availability_calendar to find open dates. Venues booked through Tock, closed or unknown venue ids return not_found. Runs inside the current resy.com page without navigating; read-only, works signed out.",
+    description: "List the open reservation slots Resy (resy.com) shows for one restaurant on one date for a party size: venue-local start and end date-times (a slot after midnight belongs to the requested date but carries the next calendar date), seating type, and each slot's cancellation and payment terms as a policy_id into policies, which lists each distinct set of the site's raw policy fields once. Get venue_id from search_restaurants or get_restaurant. It never selects a slot, holds a table, books or joins a wait list, and it does not return the booking handles the site needs to book. A slot is a snapshot; it does not prove the table is still free, and no_availability does not say why (fully booked, party size outside what the venue takes, date outside its booking window, or reservations closed). Slots are sorted earliest first and at most the first 300 are listed (a venue with five-minute slots all day has about 288). Use get_availability_calendar to find open dates. Venues booked through Tock, closed or unknown venue ids return not_found. Runs inside the current resy.com page without navigating; read-only, works signed out.",
     inputSchema: {
       type: "object", additionalProperties: false, required: ["venue_id", "date"],
       properties: {
@@ -17,7 +17,7 @@
       oneOf: [
         {
           type: "object", additionalProperties: false,
-          required: ["status", "observed_at", "venue_id", "name", "url", "date", "party_size", "time_zone", "currency", "notify_offered", "slot_count", "slots_truncated", "warnings", "slots"],
+          required: ["status", "observed_at", "venue_id", "name", "url", "date", "party_size", "time_zone", "currency", "notify_offered", "slot_count", "slots_truncated", "warnings", "policies", "slots"],
           properties: {
             status: { const: "ok" },
             observed_at: { type: "string" },
@@ -27,33 +27,38 @@
             date: { type: "string" },
             party_size: { type: "integer" },
             time_zone: { type: ["string", "null"], description: "The site's time zone label for the venue; slot times are in this zone." },
-            currency: { type: ["string", "null"], description: "Currency code for the fee amounts in each slot's policy." },
+            currency: { type: ["string", "null"], description: "Currency code for the fee amounts in policies." },
             notify_offered: { type: "boolean", description: "Resy offers Notify for this venue and date." },
             slot_count: { type: "integer", minimum: 1, description: "Readable slots the site listed; slots holds at most the first 300, earliest first." },
             slots_truncated: { type: "boolean" },
             warnings: { type: "array", maxItems: 10, items: { type: "string" } },
+            policies: {
+              type: "object", maxProperties: 300,
+              description: "Each distinct slot policy once, keyed by the policy_id that slots reference.",
+              additionalProperties: {
+                type: "object", additionalProperties: false,
+                required: ["requires_payment", "cancellation_fee", "cancel_cutoff_secs", "cancel_cutoff_time", "deposit_fee", "service_charge"],
+                description: "The site's raw policy fields. Amounts are in the venue currency; the API does not say whether a fee is per guest or per reservation, and how the two cutoff fields apply is stated by the site when booking, so confirm before relying on them.",
+                properties: {
+                  requires_payment: { type: "boolean", description: "The site marks the slot as needing a card or payment to book." },
+                  cancellation_fee: { type: ["number", "null"] },
+                  cancel_cutoff_secs: { type: ["integer", "null"], description: "The site's secs_cancel_cut_off value." },
+                  cancel_cutoff_time: { type: ["string", "null"], description: "The site's time_cancel_cut_off value (a clock time such as 12:00:00)." },
+                  deposit_fee: { type: ["number", "null"] },
+                  service_charge: { type: ["string", "null"], description: "The site's service_charge value, for example 0%." }
+                }
+              }
+            },
             slots: {
               type: "array", minItems: 1, maxItems: 300,
               items: {
-                type: "object", additionalProperties: false, required: ["local_start", "local_end", "seating_type", "global_dining_access", "policy"],
+                type: "object", additionalProperties: false, required: ["local_start", "local_end", "seating_type", "global_dining_access", "policy_id"],
                 properties: {
                   local_start: { type: "string", pattern: "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}$", description: "Venue-local start, YYYY-MM-DDTHH:MM with no offset. Late-night slots belong to the requested service date but carry the next calendar date." },
                   local_end: { type: ["string", "null"], pattern: "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}$", description: "Venue-local end, same format; null when the site gives none." },
                   seating_type: { type: ["string", "null"], description: "For example Dining Room or Chef Counter; null when the site gives none." },
                   global_dining_access: { type: "boolean", description: "The site marks this slot as a Global Dining Access slot." },
-                  policy: {
-                    type: ["object", "null"], additionalProperties: false,
-                    required: ["requires_payment", "cancellation_fee", "cancel_cutoff_secs", "cancel_cutoff_time", "deposit_fee", "service_charge"],
-                    description: "The site's raw policy fields for this slot. Amounts are in the venue currency; the API does not say whether a fee is per guest or per reservation, and how the two cutoff fields apply is stated by the site when booking, so confirm before relying on them. null when the site sent no policy for the slot.",
-                    properties: {
-                      requires_payment: { type: "boolean", description: "The site marks the slot as needing a card or payment to book." },
-                      cancellation_fee: { type: ["number", "null"] },
-                      cancel_cutoff_secs: { type: ["integer", "null"], description: "The site's secs_cancel_cut_off value." },
-                      cancel_cutoff_time: { type: ["string", "null"], description: "The site's time_cancel_cut_off value (a clock time such as 12:00:00)." },
-                      deposit_fee: { type: ["number", "null"] },
-                      service_charge: { type: ["string", "null"], description: "The site's service_charge value, for example 0%." }
-                    }
-                  }
+                  policy_id: { type: ["string", "null"], pattern: "^p[1-9]\\d{0,2}$", description: "Key into policies; null when the site sent no policy for the slot." }
                 }
               }
             }
@@ -123,7 +128,7 @@
           });
           raw = await res.text();
         } catch {
-          return { error: fail(signal?.aborted ? "canceled" : "site_error", controller.signal.aborted ? "Resy's API did not answer within 25 seconds." : "The request to Resy's API failed before a response arrived. This can be a network fault or Resy's bot protection blocking the request; its block pages carry no cross-origin headers, so the status is not visible to the page. A block can repeat for the same input.") };
+          return { error: signal?.aborted ? fail("canceled", "Canceled while waiting for Resy's API.") : fail("site_error", controller.signal.aborted ? "Resy's API did not answer within 25 seconds." : "The request to Resy's API failed before a response arrived. This can be a network fault or Resy's bot protection blocking the request; its block pages carry no cross-origin headers, so the status is not visible to the page. A block can repeat for the same input.") };
         } finally { clearTimeout(timer); signal?.removeEventListener("abort", abort); }
         let json = null;
         try { json = JSON.parse(raw); } catch { json = null; }
@@ -181,11 +186,19 @@
     }
     slots.sort(byStart);
     if (!slots.length) return { status: "no_availability", observed_at: observedAt, venue_id: input.venue_id, name, url, date: input.date, party_size: partySize, notify_offered: notifyOffered, message: entry.slots.length ? "Resy listed slots but none had a readable time." : "Resy lists no open slots for this venue, date and party size. This does not say why: it can be fully booked, a party size or date the venue does not take online, or reservations closed." };
+    const policies = {};
+    const policyIds = new Map();
+    const listed = slots.slice(0, 300).map(({ policy, ...rest }) => {
+      if (!policy) return { ...rest, policy_id: null };
+      const key = JSON.stringify(policy);
+      if (!policyIds.has(key)) { policyIds.set(key, "p" + (policyIds.size + 1)); policies[policyIds.get(key)] = policy; }
+      return { ...rest, policy_id: policyIds.get(key) };
+    });
     return {
       status: "ok", observed_at: observedAt, venue_id: input.venue_id, name, url, date: input.date, party_size: partySize,
       time_zone: isPlain(venue.location) ? text(venue.location.time_zone, 60) : null,
       currency: isPlain(venue.currency) ? text(venue.currency.code, 10) : null,
-      notify_offered: notifyOffered, slot_count: slots.length, slots_truncated: slots.length > 300, warnings, slots: slots.slice(0, 300)
+      notify_offered: notifyOffered, slot_count: slots.length, slots_truncated: slots.length > 300, warnings, policies, slots: listed
     };
   }
 }]

@@ -35,13 +35,11 @@
                 "login_required",
                 "wrong_account",
                 "not_found",
-                "stale_state",
                 "challenge",
                 "rate_limited",
                 "site_changed",
                 "site_error",
-                "canceled",
-                "outcome_unknown"
+                "canceled"
               ]
             },
             error_message: { type: "string", minLength: 1, maxLength: 1000 }
@@ -61,8 +59,11 @@
     if (!validInput([])) return fail("invalid_input", "Input must be an empty object.");
     if (signal?.aborted) return fail("canceled", "Canceled before any site request.");
     if (window.location.origin !== ORIGIN) return fail("wrong_page", "Open a page on https://resy.com; this tool never navigates.");
-    const key = window.apiConfig?.Config?.apiKey;
-    if (typeof key !== "string" || !/^[^\s"\\]{8,128}$/.test(key)) return fail("site_changed", "The page's Resy API configuration is unavailable.");
+    const readKey = () => { const k = window.apiConfig?.Config?.apiKey; return typeof k === "string" && /^[^\s"\\]{8,128}$/.test(k) ? k : null; };
+    let key = readKey();
+    for (let i = 0; !key && !signal?.aborted && i < 20; i++) { await new Promise(resolve => setTimeout(resolve, 250)); key = readKey(); }
+    if (signal?.aborted) return fail("canceled", "Canceled before any site request.");
+    if (!key) return fail("site_changed", "The page's Resy API configuration is unavailable.");
     const token = window.apiAuthToken;
     if (typeof token !== "string" || !token || token.length > 4096 || /[\r\n]/.test(token)) return fail("login_required", "Sign in manually on resy.com before using account tools.");
     const request = async path => {

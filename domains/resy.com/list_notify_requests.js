@@ -64,13 +64,11 @@
                 "login_required",
                 "wrong_account",
                 "not_found",
-                "stale_state",
                 "challenge",
                 "rate_limited",
                 "site_changed",
                 "site_error",
-                "canceled",
-                "outcome_unknown"
+                "canceled"
               ]
             },
             error_message: { type: "string", minLength: 1, maxLength: 1000 }
@@ -93,8 +91,11 @@
     if (!accountRefValid(input.expected_account_ref)) return fail("invalid_input", "expected_account_ref must come from get_account_status.");
     if (signal?.aborted) return fail("canceled", "Canceled before any site request.");
     if (window.location.origin !== ORIGIN) return fail("wrong_page", "Open a page on https://resy.com; this tool never navigates.");
-    const key = window.apiConfig?.Config?.apiKey;
-    if (typeof key !== "string" || !/^[^\s"\\]{8,128}$/.test(key)) return fail("site_changed", "The page's Resy API configuration is unavailable.");
+    const readKey = () => { const k = window.apiConfig?.Config?.apiKey; return typeof k === "string" && /^[^\s"\\]{8,128}$/.test(k) ? k : null; };
+    let key = readKey();
+    for (let i = 0; !key && !signal?.aborted && i < 20; i++) { await new Promise(resolve => setTimeout(resolve, 250)); key = readKey(); }
+    if (signal?.aborted) return fail("canceled", "Canceled before any site request.");
+    if (!key) return fail("site_changed", "The page's Resy API configuration is unavailable.");
     const token = window.apiAuthToken;
     if (typeof token !== "string" || !token || token.length > 4096 || /[\r\n]/.test(token)) return fail("login_required", "Sign in manually on resy.com before using account tools.");
     const request = async path => {
@@ -147,8 +148,6 @@
       if (!plain(n) || !Number.isInteger(n.venue_id) || n.venue_id < 1 || n.venue_id > 2147483647 || !isDate(n.day) || !Number.isInteger(n.num_seats) || n.num_seats < 1 || n.num_seats > 100 || !Number.isSafeInteger(n.service_type_id) || n.service_type_id < 0 || !clock(n.time_preferred_start) || !clock(n.time_preferred_end)) return fail("site_changed", "Unsupported Notify item; no raw account data returned.");
       requests.push({ venue_id: n.venue_id, date: n.day, party_size: n.num_seats, service_type_id: n.service_type_id, local_start_time: n.time_preferred_start, local_end_time: n.time_preferred_end });
     }
-    const recheck = await ensureAccount();
-    if (recheck) return recheck;
     return { status: requests.length ? "ok" : "no_results", account_ref: input.expected_account_ref, total: res.json.notify.length, truncated: res.json.notify.length > 100, requests };
   }
 }]

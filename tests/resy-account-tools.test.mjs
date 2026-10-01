@@ -37,7 +37,6 @@ function conforms(s, v) {
 function harness(name, options = {}) {
   const requests = [];
   let saved = options.saved ?? false;
-  let identities = 0;
   const window = { location: { origin: options.origin ?? "https://resy.com" }, apiConfig: { Config: { apiKey: key } }, apiAuthToken: options.loggedOut ? undefined : token };
   class FixedDate extends Date { constructor(...args) { super(...(args.length ? args : ["2026-09-30T01:00:00Z"])); } static now() { return Date.parse("2026-09-30T01:00:00Z"); } }
   const ctx = { window, URL, URLSearchParams, Date: FixedDate, crypto: options.crypto ?? webcrypto, TextEncoder, Uint8Array, AbortController, setTimeout, clearTimeout, fetch: async (url, init) => {
@@ -52,7 +51,7 @@ function harness(name, options = {}) {
     const forced = await options.route?.({ path, init, url, window, requests });
     if (forced) return { status: forced.status ?? 200, text: async () => forced.raw ?? JSON.stringify(forced.body) };
     let body;
-    if (path === "/2/user") body = { id: options.changeIdentity && ++identities > options.changeIdentity ? accountId + 1 : accountId, em_address: "private@example.invalid", sous_auth_token: "private-token" };
+    if (path === "/2/user") body = { id: accountId, em_address: "private@example.invalid", sous_auth_token: "private-token" };
     if (path === "/3/user/reservations") body = { reservations: options.empty ? [] : [reservation], venues: { 1001: { id: 1001, name: "Fabricated Trattoria" } }, metadata: { total: options.empty ? 0 : 1, limit: 10, offset: 1 } };
     if (path === "/3/notify") body = { notify: options.empty ? [] : [notify] };
     if (path === "/3/venue") body = { id: { resy: options.venueId ?? 1001 }, name: "Fabricated Trattoria", favorite: saved };
@@ -118,8 +117,28 @@ for (const name of ["list_reservations", "get_reservation", "list_notify_request
   assert.deepEqual(h.requests.map(r => r.path), ["/2/user"]);
 });
 for (const name of ["list_reservations", "get_reservation", "list_notify_requests"]) test(`${name}: account switch during response withholds data`, async () => {
-  const h = harness(name, { changeIdentity: 1 });
+  const data = { list_reservations: "/3/user/reservations", get_reservation: "/3/user/reservations", list_notify_requests: "/3/notify" }[name];
+  const h = harness(name, { route: ({ path, window }) => { if (path === data) window.apiAuthToken = "changed"; } });
   assert.equal((await h.run(valid(name))).error_kind, "wrong_account");
+  assert.deepEqual(h.requests.map(r => r.path), ["/2/user", data]);
+});
+for (const name of ["list_reservations", "get_reservation", "list_notify_requests"]) test(`${name}: one identity read per call`, async () => {
+  const h = harness(name);
+  await h.run(valid(name));
+  assert.deepEqual(h.requests.map(r => r.path), ["/2/user", name === "list_notify_requests" ? "/3/notify" : "/3/user/reservations"]);
+});
+test("account tools wait for the page's API configuration", async () => {
+  const h = harness("get_account_status");
+  const config = h.window.apiConfig;
+  delete h.window.apiConfig;
+  setTimeout(() => { h.window.apiConfig = config; }, 300);
+  assert.equal((await h.run({})).status, "ok");
+  const abort = new AbortController();
+  const waiting = harness("get_account_status");
+  delete waiting.window.apiConfig;
+  setTimeout(() => abort.abort(), 100);
+  assert.equal((await waiting.run({}, { signal: abort.signal })).error_kind, "canceled");
+  assert.equal(waiting.requests.length, 0);
 });
 test("reservations: empty and populated pages, detail, raw policy and no automatic paging", async () => {
   const empty = await harness("list_reservations", { empty: true }).run(expected);
@@ -150,7 +169,7 @@ for (const status of [200, 201]) test(`favorite: HTTP ${status} add and restore 
   const initial = h.state();
   assert.equal((await h.run(favoriteInput)).status, "updated");
   assert.equal(h.state(), true);
-  assert.deepEqual(h.requests.map(r => r.path), ["/2/user", "/3/venue", "/2/user", "/3/user/favorites", "/3/venue", "/2/user"]);
+  assert.deepEqual(h.requests.map(r => r.path), ["/2/user", "/3/venue", "/3/user/favorites", "/3/venue"]);
   assert.equal((await h.run(favoriteInput)).status, "unchanged");
   assert.equal((await h.run({ ...favoriteInput, favorite: false, expected_favorite: true })).status, "updated");
   assert.equal(h.state(), initial);
@@ -174,8 +193,8 @@ test("favorite: wrong target and stale initial state never write", async () => {
   assert.equal((await stale.run({ ...favoriteInput, expected_favorite: true })).error_kind, "stale_state");
   assert.equal(stale.requests.some(r => r.init.method === "POST"), false);
 });
-test("favorite: account switch on preflight prevents write", async () => {
-  const h = harness("set_favorite", { changeIdentity: 1 });
+test("favorite: session switch on preflight prevents write", async () => {
+  const h = harness("set_favorite", { route: ({ path, window }) => { if (path === "/3/venue") window.apiAuthToken = "changed"; } });
   assert.equal((await h.run(favoriteInput)).error_kind, "wrong_account");
   assert.equal(h.requests.some(r => r.init.method === "POST"), false);
 });
@@ -183,12 +202,12 @@ for (const status of [200, 201]) for (const mode of ["session", "account", "canc
   const abort = new AbortController();
   const h = harness("set_favorite", {
     favoriteStatus: status,
-    changeIdentity: mode === "account" ? 2 : undefined,
     afterWrite: ({ window }) => { if (mode === "session") window.apiAuthToken = "changed"; if (mode === "cancel") abort.abort(); },
-    route: ({ path, init, requests }) => {
+    route: ({ path, init, requests, window }) => {
       if (path === "/3/user/favorites" && mode === "network") throw new Error("private error that must not leak");
       if (path === "/3/user/favorites" && mode === "http") return { status: 500, body: {} };
       if (path === "/3/venue" && mode === "verification" && requests.some(r => r.init.method === "POST")) return { status: 500, body: {} };
+      if (path === "/3/venue" && mode === "account" && requests.some(r => r.init.method === "POST")) window.apiAuthToken = "changed";
     }
   });
   assert.equal((await h.run(favoriteInput, { signal: abort.signal })).error_kind, "outcome_unknown");
@@ -233,12 +252,12 @@ test("prepare: nondefault party requires and accepts that exact echoed party", a
   four.query.party_size = 4;
   assert.equal((await harness("prepare_reservation", { find: four }).run({ ...preparation, party_size: 4 })).status, "handoff_required");
 });
-test("favorite: cancellation during the second identity hash is canceled without a write", async () => {
+test("favorite: cancellation during the identity hash is canceled without a write", async () => {
   const abort = new AbortController();
   let hashes = 0;
   const h = harness("set_favorite", { crypto: { subtle: { digest: async (...args) => {
     const result = await webcrypto.subtle.digest(...args);
-    if (++hashes === 2) abort.abort();
+    if (++hashes === 1) abort.abort();
     return result;
   } } } });
   assert.equal((await h.run(favoriteInput, { signal: abort.signal })).error_kind, "canceled");

@@ -199,7 +199,7 @@
           });
           raw = await res.text();
         } catch {
-          return { error: fail(signal?.aborted ? "canceled" : "site_error", controller.signal.aborted ? "Resy's API did not answer within 25 seconds." : "The request to Resy's API failed before a response arrived. This can be a network fault or Resy's bot protection blocking the request; its block pages carry no cross-origin headers, so the status is not visible to the page. A block can repeat for the same input.") };
+          return { error: signal?.aborted ? fail("canceled", "Canceled while waiting for Resy's API.") : fail("site_error", controller.signal.aborted ? "Resy's API did not answer within 25 seconds." : "The request to Resy's API failed before a response arrived. This can be a network fault or Resy's bot protection blocking the request; its block pages carry no cross-origin headers, so the status is not visible to the page. A block can repeat for the same input.") };
         } finally { clearTimeout(timer); signal?.removeEventListener("abort", abort); }
         let json = null;
         try { json = JSON.parse(raw); } catch { json = null; }

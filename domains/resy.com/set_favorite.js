@@ -3,7 +3,7 @@
   match: { url_patterns: ["https://resy.com/*"] },
   tool: {
     name: "set_favorite",
-    description: "Set one exact restaurant's reversible My Hit List favorite state in the current Resy account. Requires manual login, expected_account_ref from get_account_status, venue_id plus city_slug/url_slug from public tools, desired favorite and expected_favorite state. Reads current account and venue first, checks venue id and favorite flag, does nothing if already at desired state, refuses stale state, rechecks account immediately before its single form-encoded POST /3/user/favorites, then rereads the venue and account to verify. Never changes custom lists or marketing preferences. A timeout, cancellation after dispatch, session switch, failed readback or uncertain response returns outcome_unknown: never retry automatically; read state first. No human approval flag is accepted. HTTP 200 or 201 from the favorites endpoint still requires account and saved-state readback before success.",
+    description: "Set one exact restaurant's reversible My Hit List favorite state in the current Resy account. Requires manual login, expected_account_ref from get_account_status, venue_id plus city_slug/url_slug from public tools, desired favorite and expected_favorite state. Reads current account and venue first, checks venue id and favorite flag, does nothing if already at desired state, refuses stale state, sends one form-encoded POST /3/user/favorites with the same session token (any token change fails closed), then rereads the venue to verify. Never changes custom lists or marketing preferences. A timeout, cancellation after dispatch, session switch, failed readback or uncertain response returns outcome_unknown: never retry automatically; read state first. No human approval flag is accepted. HTTP 200 or 201 from the favorites endpoint still requires saved-state readback before success.",
     inputSchema: {
       type: "object",
       additionalProperties: false,
@@ -84,8 +84,11 @@
     if (!Number.isInteger(input.venue_id) || input.venue_id < 1 || input.venue_id > 2147483647 || typeof input.city_slug !== "string" || !/^[a-z0-9][a-z0-9-]{1,99}$/.test(input.city_slug) || typeof input.url_slug !== "string" || !/^[A-Za-z0-9][A-Za-z0-9-]{0,119}$/.test(input.url_slug) || typeof input.favorite !== "boolean" || typeof input.expected_favorite !== "boolean") return fail("invalid_input", "Provide exact venue id/slugs and boolean desired/expected favorite states.");
     if (signal?.aborted) return fail("canceled", "Canceled before any site request.");
     if (window.location.origin !== ORIGIN) return fail("wrong_page", "Open a page on https://resy.com; this tool never navigates.");
-    const key = window.apiConfig?.Config?.apiKey;
-    if (typeof key !== "string" || !/^[^\s"\\]{8,128}$/.test(key)) return fail("site_changed", "The page's Resy API configuration is unavailable.");
+    const readKey = () => { const k = window.apiConfig?.Config?.apiKey; return typeof k === "string" && /^[^\s"\\]{8,128}$/.test(k) ? k : null; };
+    let key = readKey();
+    for (let i = 0; !key && !signal?.aborted && i < 20; i++) { await new Promise(resolve => setTimeout(resolve, 250)); key = readKey(); }
+    if (signal?.aborted) return fail("canceled", "Canceled before any site request.");
+    if (!key) return fail("site_changed", "The page's Resy API configuration is unavailable.");
     const token = window.apiAuthToken;
     if (typeof token !== "string" || !token || token.length > 4096 || /[\r\n]/.test(token)) return fail("login_required", "Sign in manually on resy.com before using account tools.");
     let mutationStarted = false;
@@ -142,8 +145,6 @@
     };
     const before = await readVenue();
     if (before.error) return before.error;
-    const recheck = await ensureAccount();
-    if (recheck) return recheck;
     if (before.favorite === input.favorite) return { status: "unchanged", account_ref: input.expected_account_ref, venue_id: input.venue_id, venue_name: before.name, favorite: before.favorite, previous_favorite: before.favorite };
     if (before.favorite !== input.expected_favorite) return fail("stale_state", "The venue favorite changed since the caller's observation; no write made.");
     const body = new URLSearchParams({ venue_id: String(input.venue_id), favorite: input.favorite ? "1" : "0" }).toString();
@@ -151,8 +152,7 @@
     if (written.error) return written.error;
     const after = await readVenue();
     if (after.error) return fail("outcome_unknown", "Favorite write was dispatched but its postcondition could not be read. Do not retry automatically.");
-    const accountAfter = await ensureAccount();
-    if (accountAfter || after.favorite !== input.favorite) return fail("outcome_unknown", "Favorite write was dispatched but the requested account/state was not verified. Read current state before deciding what to do.");
+    if (after.favorite !== input.favorite) return fail("outcome_unknown", "Favorite write was dispatched but the requested state was not verified. Read current state before deciding what to do.");
     return { status: "updated", account_ref: input.expected_account_ref, venue_id: input.venue_id, venue_name: after.name, favorite: after.favorite, previous_favorite: before.favorite };
   }
 }]

@@ -111,6 +111,7 @@ function harness(name, o = {}) {
     if (o.hang) {
       return new Promise((_, reject) => {
         init.signal.addEventListener("abort", () => reject(new Error("aborted")));
+        o.onFetch?.();
         queueMicrotask(() => calls.timers.find(t => t.ms === 25000)?.fn());
       });
     }
@@ -132,7 +133,7 @@ function harness(name, o = {}) {
   };
   const [definition] = runInNewContext(`(${sources[name]})`, context);
   return {
-    definition, calls,
+    definition, calls, window: context.window,
     run: async (input, context) => {
       const result = plain(await definition.execute(input, context));
       assert.ok(conforms(definition.tool.outputSchema, result), `${name} output violates its schema: ${JSON.stringify(result)}`);
@@ -292,6 +293,13 @@ for (const name of NAMES) {
     assert.equal(result.error_kind, "site_error");
     assert.match(result.error_message, /25 seconds/);
   });
+  test(`${name}: canceling an in-flight request is canceled, not a timeout`, async () => {
+    const controller = new AbortController();
+    const h = harness(name, { hang: true, onFetch: () => controller.abort() });
+    const result = await h.run(name === "search_restaurants" ? { latitude: 40, longitude: -74 } : good, { signal: controller.signal });
+    assert.equal(result.error_kind, "canceled");
+    assert.doesNotMatch(result.error_message, /25 seconds/);
+  });
 }
 
 // --- search_restaurants -----------------------------------------------------------------------------------
@@ -399,6 +407,28 @@ for (const location of ["atlantis", "hidden-test", "hid", "no-center"]) {
     assert.deepEqual(h.calls.requests.map(r => r.path), ["/3/location/config"]);
   });
 }
+
+test("search_restaurants: the location list is fetched once per document and reused for an hour", async () => {
+  const h = harness("search_restaurants");
+  assert.equal((await h.run({ location: "exampleton-xa" })).resolved_location.slug, "exampleton-xa");
+  assert.equal((await h.run({ location: "xb" })).resolved_location.slug, "sampleville-xb");
+  assert.equal((await h.run({ location: "hidden-test" })).error_kind, "not_found", "the cache keeps show_on_web");
+  assert.equal(h.calls.requests.filter(r => r.path === "/3/location/config").length, 1);
+  const cache = Object.getOwnPropertySymbols(h.window).map(k => h.window[k])[0];
+  assert.deepEqual(Object.keys(cache.locations[0]), ["url_slug", "code", "name", "show_on_web", "map_center"]);
+  cache.at -= 3600001;
+  await h.run({ location: "xa" });
+  assert.equal(h.calls.requests.filter(r => r.path === "/3/location/config").length, 2);
+});
+
+test("search_restaurants: a failed location list is not cached", async () => {
+  let fail = true;
+  const h = harness("search_restaurants", { route: (m, path) => (path === "/3/location/config" && fail ? { status: 200, body: { locations: [] } } : null) });
+  assert.equal((await h.run({ location: "xa" })).error_kind, "site_changed");
+  fail = false;
+  assert.equal((await h.run({ location: "xa" })).status, "ok");
+  assert.equal(h.calls.requests.filter(r => r.path === "/3/location/config").length, 2);
+});
 
 test("search_restaurants: a location list without the expected shape is site_changed", async () => {
   const h = harness("search_restaurants", { route: (m, path) => (path === "/3/location/config" ? { status: 200, body: { locations: [] } } : null) });
@@ -568,9 +598,24 @@ test("get_availability: posts the site's find request and maps slots with their 
   assert.equal(result.notify_offered, true);
   assert.equal(result.slot_count, 3);
   assert.deepEqual(result.slots.map(s => [s.local_start, s.local_end, s.seating_type, s.global_dining_access]), [["2026-10-09T18:30", "2026-10-09T20:00", "Dining Room", false], ["2026-10-09T19:00", "2026-10-09T20:30", "Bar", false], ["2026-10-09T21:00", null, "Chef Counter", true]]);
-  assert.deepEqual(result.slots[0].policy, { requires_payment: false, cancellation_fee: null, cancel_cutoff_secs: null, cancel_cutoff_time: null, deposit_fee: null, service_charge: null });
-  assert.deepEqual(result.slots[1].policy, { requires_payment: true, cancellation_fee: 25, cancel_cutoff_secs: 86400, cancel_cutoff_time: null, deposit_fee: null, service_charge: null });
-  assert.deepEqual(result.slots[2].policy, { requires_payment: true, cancellation_fee: null, cancel_cutoff_secs: 0, cancel_cutoff_time: "12:00:00", deposit_fee: 50, service_charge: "0%" });
+  assert.deepEqual(result.slots.map(s => s.policy_id), ["p1", "p2", "p3"]);
+  assert.deepEqual(result.policies, {
+    p1: { requires_payment: false, cancellation_fee: null, cancel_cutoff_secs: null, cancel_cutoff_time: null, deposit_fee: null, service_charge: null },
+    p2: { requires_payment: true, cancellation_fee: 25, cancel_cutoff_secs: 86400, cancel_cutoff_time: null, deposit_fee: null, service_charge: null },
+    p3: { requires_payment: true, cancellation_fee: null, cancel_cutoff_secs: 0, cancel_cutoff_time: "12:00:00", deposit_fee: 50, service_charge: "0%" }
+  });
+});
+
+test("get_availability: identical policies are listed once, and only for listed slots", async () => {
+  const same = { ...TEMPLATES, 14: { ...TEMPLATES[12], id: 14 } };
+  const at = i => `2026-10-09 ${String(Math.floor(i / 60)).padStart(2, "0")}:${String(i % 60).padStart(2, "0")}`;
+  const body = findBody([...Array.from({ length: 300 }, (_, i) => slot(at(i), null, "Dining Room", i % 2 ? 12 : 14)), slot("23:59", null, "Bar", 13)]);
+  body.results.venues[0].templates = same;
+  const h = harness("get_availability", { route: (m, path) => (path === "/4/find" ? { status: 200, body } : null) });
+  const result = await h.run(ok);
+  assert.equal(result.slots.length, 300);
+  assert.deepEqual(Object.keys(result.policies), ["p1"], "templates 12 and 14 have the same fields; the truncated slot's policy is omitted");
+  assert.ok(result.slots.every(s => s.policy_id === "p1"));
 });
 
 test("get_availability: party_size defaults to 2", async () => {
@@ -583,7 +628,8 @@ test("get_availability: party_size defaults to 2", async () => {
 test("get_availability: a slot whose template is missing has a null policy", async () => {
   const h = harness("get_availability", { route: (m, path) => (path === "/4/find" ? { status: 200, body: findBody([slot("18:30", "20:00", "Dining Room", 999)]) } : null) });
   const result = await h.run(ok);
-  assert.equal(result.slots[0].policy, null);
+  assert.equal(result.slots[0].policy_id, null);
+  assert.deepEqual(result.policies, {});
 });
 
 test("get_availability: no slots is no_availability and says it does not explain why", async () => {
@@ -651,7 +697,7 @@ test("get_availability: slots after midnight keep their calendar date, and the l
     ["2026-10-09T22:00", "2026-10-09T23:30"], ["2026-10-09T23:45", "2026-10-10T00:45"], ["2026-10-10T00:00", null], ["2026-10-10T01:45", "2026-10-10T03:15"]
   ]);
   assert.equal(result.slots[1].seating_type, "Bar");
-  assert.equal(result.slots[1].policy.requires_payment, true, "sorting keeps each slot with its own policy");
+  assert.equal(result.policies[result.slots[1].policy_id].requires_payment, true, "sorting keeps each slot with its own policy");
 });
 
 test("get_availability: with more than 300 slots the earliest 300 are kept whatever order the site sends, and equal starts keep the site's order", async () => {

@@ -6,16 +6,16 @@ Resy restaurant discovery, account reads, reversible favorites and reservation h
 
 | tool | file | status | notes |
 |---|---|---|---|
-| get_account_status | [get_account_status.js](get_account_status.js) | qa_passed | Opaque current-account reference; no profile/payment output |
-| get_availability | [get_availability.js](get_availability.js) | verified | Public slots as full venue-local date-times and raw policy fields |
-| get_availability_calendar | [get_availability_calendar.js](get_availability_calendar.js) | verified | Public per-date booking states |
-| get_reservation | [get_reservation.js](get_reservation.js) | qa_passed | Allowed details for one reservation on one account list page |
-| get_restaurant | [get_restaurant.js](get_restaurant.js) | verified | Public profile by URL or city/venue slug |
-| list_notify_requests | [list_notify_requests.js](list_notify_requests.js) | qa_passed | Read current Notify time-window preferences, maximum 100 |
-| list_reservations | [list_reservations.js](list_reservations.js) | qa_passed | One bounded upcoming/past account page, maximum 20 |
-| prepare_reservation | [prepare_reservation.js](prepare_reservation.js) | verified | Exact public slot match and human handoff, not a quote or hold |
-| search_restaurants | [search_restaurants.js](search_restaurants.js) | verified | Keyword/cuisine/place search; up to 12 sorted slots per venue |
-| set_favorite | [set_favorite.js](set_favorite.js) | draft | Reversible My Hit List favorite; HTTP 201 fix awaits independent QA |
+| get_account_status | [get_account_status.js](get_account_status.js) | draft | Opaque current-account reference; no profile/payment output |
+| get_availability | [get_availability.js](get_availability.js) | draft | Public slots as full venue-local date-times; each distinct raw policy listed once |
+| get_availability_calendar | [get_availability_calendar.js](get_availability_calendar.js) | draft | Public per-date booking states |
+| get_reservation | [get_reservation.js](get_reservation.js) | draft | Allowed details for one reservation on one account list page |
+| get_restaurant | [get_restaurant.js](get_restaurant.js) | draft | Public profile by URL or city/venue slug |
+| list_notify_requests | [list_notify_requests.js](list_notify_requests.js) | draft | Read current Notify time-window preferences, maximum 100 |
+| list_reservations | [list_reservations.js](list_reservations.js) | draft | One bounded upcoming/past account page, maximum 20 |
+| prepare_reservation | [prepare_reservation.js](prepare_reservation.js) | draft | Exact public slot match and human handoff, not a quote or hold |
+| search_restaurants | [search_restaurants.js](search_restaurants.js) | draft | Keyword/cuisine/place search; up to 12 sorted slots per venue |
+| set_favorite | [set_favorite.js](set_favorite.js) | draft | Reversible My Hit List favorite; four requests per write |
 
 ## Scope and loading
 
@@ -28,8 +28,10 @@ Use a 60-second invocation timeout; individual requests time out after 20 second
 change, cancellation, payment or marketing endpoint.
 
 Public tools read the client key at runtime from `window.apiConfig.Config.apiKey`, use `credentials: omit`
-and never send account headers. Resolving a search city slug/code downloads about 2 MB of location data; pass
-coordinates to skip that. Date inputs accept yesterday UTC through 366 days ahead to cover venue time zones.
+and never send account headers. Resolving a search city slug/code downloads about 2 MB of location data once per
+document per hour (each city's slug, code, name, visibility and map center are kept on `window` under a registered
+symbol); pass coordinates to skip it. `get_availability` lists each distinct slot policy once in `policies` and
+gives each slot a `policy_id`; live slots commonly share one policy. Date inputs accept yesterday UTC through 366 days ahead to cover venue time zones.
 Slots use venue-local `YYYY-MM-DDTHH:MM` values without offsets, including their own calendar date after midnight.
 Party sizes are bounded at 1–20. Slugs are exact; venue slugs can contain capital letters.
 
@@ -37,9 +39,12 @@ Account tools use only the current document's `window.apiAuthToken` in Resy's ow
 `https://api.resy.com`, with redirect rejection and no cookie credentials. `get_account_status` hashes the
 current `/2/user` id into `account_ref`; it returns no raw id, name, phone, email or payment data. This
 pseudonymous reference detects an unintended account switch; it is not a credential, anonymous identity,
-permission to switch accounts or proof of human approval. Reads and favorites require `expected_account_ref`
-and recheck the current identity before releasing account results. Tokens stay in the invocation, are never
-persisted, and a token switch during a call fails closed. Account tools do not refresh/login automatically.
+permission to switch accounts or proof of human approval. Reads and favorites require `expected_account_ref`,
+read `/2/user` once and compare the page's session token before and after every request. Resy binds a token to one
+account, so a second `/2/user` read with the same token would add a request without adding a check. Tokens stay
+in the invocation, are never persisted, and a token switch during a call fails closed. Like the public tools,
+account tools wait up to 5 seconds for the page's API configuration, which a freshly loaded page sets together
+with its session token about 350 ms after load. Account tools do not refresh/login automatically.
 
 `list_reservations` passes the specified type/offset/limit through and performs no automatic paging. The site
 uses offset 1 initially; whether it denotes a page or row is unverified. `get_reservation` only searches that
@@ -54,11 +59,11 @@ are returned. Populated schemas are grounded in the site's current public bundle
 - Required: manual login, matching account reference, venue id plus city/venue slugs, desired `favorite` and
   observed `expected_favorite`. No confirmation flag is accepted or treated as approval.
 - GET `/2/user` and GET `/3/venue?url_slug=...&location=...` establish account, venue id and boolean saved state.
-  Identity is checked again immediately before writing. A venue mismatch, unknown saved-state shape, wrong
-  account or stale expected state makes no write. Already-at-desired-state returns `unchanged` without a POST.
+  The session token is compared before and after every request, including the write. A venue mismatch, unknown
+  saved-state shape, wrong account, session switch or stale expected state makes no write. Already-at-desired-state returns `unchanged` without a POST.
 - The site's public bundle uses form-encoded POST `/3/user/favorites` with `venue_id` and `favorite: 1|0`.
-  The tool sends at most one such request. It then rereads venue and account and reports `updated` only when
-  both postconditions match. This is not an atomic server compare-and-set: another browser can change state
+  The tool sends at most one such request. It then rereads the venue under the same token and reports `updated`
+  only when the saved state matches: four requests in total (`/2/user`, `/3/venue`, POST, `/3/venue`). This is not an atomic server compare-and-set: another browser can change state
   between the reads and write. Do not run concurrent favorite changes.
 - Cancellation after dispatch, timeout, blocked response, session switch or failed postcondition produces
   `outcome_unknown`; no automatic retries, rollback or compensating write. Read the state before deciding.
@@ -200,3 +205,25 @@ Fixtures use fabricated identities, venues, tokens and policies and cover malfor
 account/venue mismatches, omitted login, cancellation, duplicates, stale state, uncertain write outcomes,
 restoration and read-only handoff. Live-account empty envelopes and bundle field mappings are evidence, not
 live populated-item or write success.
+
+### Optimization revision (2026-10-01)
+
+Every tool source changed, so all ten tools are draft until an independent QA pass signs off on the new source.
+
+- `get_availability` returns `policies` (each distinct raw policy once) and a `policy_id` per slot instead of a
+  repeated `policy` object. Live, 21 slots shared one policy and the output fell from 6,144 to 3,490 bytes.
+- Account reads make two requests (`/2/user`, then the data) instead of three, and `set_favorite` four instead of
+  six. The removed calls reread `/2/user` with an unchanged token; token comparison around every request remains.
+- `search_restaurants` keeps the slim location list per document for an hour; a failed list is not cached.
+- Account tools wait for `window.apiConfig` like the public tools. Public tools report a caller cancellation
+  during a request as `canceled` with a cancellation message rather than the 25-second timeout message.
+- The account and preparation tool files were reformatted from JSON-style keys to the JS-literal style of the
+  other files; metadata and `execute` bodies were checked identical apart from whitespace before behavior changed.
+
+Builder live run on a stealth Kernel browser from venue pages, signed in: public search, profile, calendar,
+availability and exact-slot preparation succeeded; account status, upcoming/past reservations and Notify returned
+empty collections with the request counts above; `get_reservation` returned not_found and a wrong account
+reference stopped after `/2/user`. `set_favorite` on one venue: initial and duplicate no-ops made no POST, a
+mismatched `expected_favorite` returned `stale_state` without a write, and add then restore each returned
+`updated`; the account's Hit List and the venue's saved flag were afterwards exactly their initial empty/false
+state. This is builder testing, not independent QA.
