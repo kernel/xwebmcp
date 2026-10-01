@@ -919,6 +919,23 @@
     },
     {
       "domain": "target.com",
+      "tool": "check_store_availability",
+      "file": "domains/target.com/check_store_availability.js",
+      "kind": "page",
+      "namespace": "target.com",
+      "url_patterns": [
+        "https://target.com/*",
+        "https://*.target.com/*"
+      ],
+      "status": "verified",
+      "last_verified": "2026-09-30",
+      "notes": "Independent final-source QA verified homepage success, safe failures and bounds on Kernel and the local extension. Read-only per-store availability and available-to-promise counts; never changes store/ZIP. Unknown ZIPs can silently return default-location stores. No inventory guarantee; signed-in behavior untested.",
+      "provenance": {
+        "qa_agent": "agt_42e61f3b686a87d4bfb7"
+      }
+    },
+    {
+      "domain": "target.com",
       "tool": "get_cart",
       "file": "domains/target.com/get_cart.js",
       "kind": "page",
@@ -953,6 +970,23 @@
     },
     {
       "domain": "target.com",
+      "tool": "get_product_reviews",
+      "file": "domains/target.com/get_product_reviews.js",
+      "kind": "page",
+      "namespace": "target.com",
+      "url_patterns": [
+        "https://target.com/*",
+        "https://*.target.com/*"
+      ],
+      "status": "verified",
+      "last_verified": "2026-09-30",
+      "notes": "Independent final-source QA verified homepage success and safe failure paths on Kernel and the local extension. Family-level rating summary and up to 8 newest reviews; no reviewer identities, photos or AI summary. Selected store required. No paging; signed-in behavior and live long-text truncation untested.",
+      "provenance": {
+        "qa_agent": "agt_42e61f3b686a87d4bfb7"
+      }
+    },
+    {
+      "domain": "target.com",
       "tool": "get_store_context",
       "file": "domains/target.com/get_store_context.js",
       "kind": "page",
@@ -966,6 +1000,23 @@
       "notes": "Independent QA verified store, location, nearby stores and guest session type with no site request, and wrong_page on another target.com host. Read-only; never changes the store.",
       "provenance": {
         "qa_agent": "agt_9cc0b28ff9abe2ef70d3"
+      }
+    },
+    {
+      "domain": "target.com",
+      "tool": "prepare_cart_item",
+      "file": "domains/target.com/prepare_cart_item.js",
+      "kind": "page",
+      "namespace": "target.com",
+      "url_patterns": [
+        "https://target.com/*",
+        "https://*.target.com/*"
+      ],
+      "status": "verified",
+      "last_verified": "2026-09-30",
+      "notes": "Independent final-source QA verified shipping preview from the homepage on Kernel, shipping/pickup previews in the local extension and safe failure guards. Explicit expected store/ZIP, item-only estimate and product handoff; no cart read/write, inventory hold or checkout approval. Context drift and range-price cases fixture-tested only; existing cart quantities and final totals are not checked.",
+      "provenance": {
+        "qa_agent": "agt_42e61f3b686a87d4bfb7"
       }
     },
     {
