@@ -33,10 +33,7 @@ func (t *ExtensionTarget) Close() error { return t.client.Close() }
 func (t *ExtensionTarget) Name() string { return "Chrome extension" }
 
 func (t *ExtensionTarget) ListTools(ctx context.Context, params ListToolsParams) (json.RawMessage, error) {
-	args := map[string]any{"owned_only": params.OwnedOnly}
-	if params.TabID != 0 {
-		args["tab_id"] = params.TabID
-	}
+	args := map[string]any{"owned_only": params.OwnedOnly, "exclude_custom": params.ExcludeCustom}
 	var raw json.RawMessage
 	if err := t.client.Call(ctx, "listTools", args, &raw); err != nil {
 		return nil, err
@@ -52,18 +49,8 @@ func (t *ExtensionTarget) Invoke(ctx context.Context, params InvokeParams) (*Inv
 	if timeout <= 0 {
 		timeout = 120
 	}
-	args := map[string]any{"input": params.Input, "timeout_sec": timeout, "allow_user_tabs": params.AllowUserTabs}
+	args := map[string]any{"tool_ref": params.ToolRef, "input": params.Input, "timeout_sec": timeout, "allow_user_tabs": params.AllowUserTabs}
 	method := "invoke"
-	if params.ToolRef != "" {
-		args["tool_ref"] = params.ToolRef
-	} else {
-		method = "invokeCustomTool"
-		args["namespace"] = params.Namespace
-		args["name"] = params.Name
-		if params.TabID != 0 {
-			args["tab_id"] = params.TabID
-		}
-	}
 	callCtx, cancel := context.WithTimeout(ctx, time.Duration(timeout+15)*time.Second)
 	defer cancel()
 	var result Invocation

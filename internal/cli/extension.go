@@ -228,19 +228,19 @@ func (a *App) invokeCommand() *cli.Command {
 	return &cli.Command{
 		Name:      "invoke",
 		Usage:     "invoke a tool and print its result",
-		ArgsUsage: "<namespace/tool | tool_ref>",
-		Description: `Given namespace/tool, runs that installed cdp tool in the extension, opening a
-tab on the site when none is open. Given a tool_ref from ` + "`xwebmcp tools`" + `, invokes
-that exact live registration (native or custom). Input is read from --input or,
-when --input is "-", from stdin, so credentials never appear in shell history.`,
+		ArgsUsage: "<tool_ref>",
+		Description: `Invokes the exact live registration a tool_ref from ` + "`xwebmcp tools`" + ` identifies,
+site-native or custom (page or cdp), like the Kernel API's POST /webmcp/invoke. Open
+a tab on the site first so its tools register. Input is read from --input or, when
+--input is "-", from stdin, so credentials never appear in shell history.`,
 		Flags: []cli.Flag{
 			&cli.StringFlag{Name: "input", Usage: "JSON input object, or - to read it from stdin", Value: "{}"},
 			&cli.IntFlag{Name: "timeout", Usage: "seconds to wait for the tool", Value: 120},
-			&cli.StringFlag{Name: "kernel", Usage: "Kernel browser session ID or name instead of the extension (tool_ref only)"},
+			&cli.StringFlag{Name: "kernel", Usage: "Kernel browser session ID or name instead of the extension"},
 		},
 		Action: func(ctx context.Context, cmd *cli.Command) error {
 			if cmd.NArg() != 1 {
-				return errors.New("usage: xwebmcp invoke <namespace/tool | tool_ref> [--input JSON]")
+				return errors.New("usage: xwebmcp invoke <tool_ref> [--input JSON]; get tool_refs from `xwebmcp tools`")
 			}
 			inputText := cmd.String("input")
 			if inputText == "-" {
@@ -255,6 +255,9 @@ when --input is "-", from stdin, so credentials never appear in shell history.`,
 				return fmt.Errorf("--input must be a JSON object: %w", err)
 			}
 			target := cmd.Args().First()
+			if !strings.Contains(target, ":") {
+				return fmt.Errorf("%q is not a tool_ref; tools are invoked by the tool_ref `xwebmcp tools` lists for an open tab (open the site first)", target)
+			}
 			timeout := cmd.Int("timeout")
 
 			var result invocationResult
@@ -276,15 +279,8 @@ when --input is "-", from stdin, so credentials never appear in shell history.`,
 				defer client.Close()
 				callCtx, cancel := context.WithTimeout(ctx, time.Duration(timeout+10)*time.Second)
 				defer cancel()
-				var params map[string]any
-				method := "invoke"
-				if namespace, name, ok := strings.Cut(target, "/"); ok && !strings.Contains(target, ":") {
-					method = "invokeCustomTool"
-					params = map[string]any{"namespace": namespace, "name": name, "input": input, "timeout_sec": timeout}
-				} else {
-					params = map[string]any{"tool_ref": target, "input": input, "timeout_sec": timeout}
-				}
-				if err := client.Call(callCtx, method, params, &result); err != nil {
+				params := map[string]any{"tool_ref": target, "input": input, "timeout_sec": timeout, "allow_user_tabs": true}
+				if err := client.Call(callCtx, "invoke", params, &result); err != nil {
 					return err
 				}
 			}

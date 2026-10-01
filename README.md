@@ -112,8 +112,8 @@ Then:
 ```sh
 xwebmcp attach              # push the installed tools into the extension
 xwebmcp status              # flag, native host, bridge, and per-site access state
-xwebmcp tools               # every WebMCP tool open tabs expose (site-native and custom)
-xwebmcp invoke southwest.com/search_flights \
+xwebmcp tools               # every WebMCP tool open tabs expose (site-native and custom), with tool_refs
+xwebmcp invoke <tool_ref> \
   --input '{"origin":"DAL","destination":"HOU","departureDate":"2026-10-20","tripType":"oneway"}'
 ```
 
@@ -124,12 +124,12 @@ same popup can grant a site so that its own WebMCP tools are discovered.
 
 How invocation works and what to expect:
 
-- `xwebmcp invoke namespace/tool` runs a cdp tool in a tab the extension opened itself,
-  grouped under **xwebmcp**; it opens the site's apex when no such tab exists. Tabs you
-  opened yourself are never used unless `allow_user_tabs` is passed through the API.
-- `xwebmcp invoke <tool_ref>` (refs come from `xwebmcp tools`) invokes that exact live
-  registration, native or custom, in the same shape as the Kernel API's
-  `POST /browsers/{id}/webmcp/invoke`.
+- Every tool, site-native or custom (page or cdp), is a live registration in the tab whose
+  URL it matches, identified by an opaque `tool_ref`, exactly as in the Kernel API's
+  `GET /browsers/{id}/webmcp/tools`. `xwebmcp invoke <tool_ref>` (refs come from
+  `xwebmcp tools`) invokes that registration, like `POST /browsers/{id}/webmcp/invoke`.
+  A `tool_ref` becomes invalid when its document navigates; list again afterwards. To use
+  a site's tools, open a tab there first.
 - `chrome.debugger` attaches while a cdp tool runs, or briefly when registering a
   page tool on a site whose CSP blocks dynamic compilation. Chrome may show its
   debugging banner during either operation.
@@ -153,25 +153,22 @@ codex mcp add xwebmcp -- xwebmcp mcp             # Codex
 
 or in an `mcpServers` JSON config: `{"command": "xwebmcp", "args": ["mcp"]}`.
 
-The server offers generic tools and one MCP tool per installed custom tool:
+The server's tools mirror the Kernel API (`list_tools` / `invoke_tool` are
+`GET /webmcp/tools` / `POST /webmcp/invoke`), plus tab and install management:
 
 | tool | does |
 |---|---|
-| `list_tools` | WebMCP tools exposed by open tabs, site-native and custom, in the Kernel API's `WebMCPTool` shape |
-| `invoke_tool` | run a tool by `tool_ref`, or an installed cdp tool by `namespace` + `name` (opens the site when no tab has it); returns `WebMCPInvocationResult` plus `diagnostics` on failure (error with stack mapped to the tool file, console output, timing) |
-| `get_invocation` | diagnostics for a past invocation |
+| `list_tools` | `{exclude_custom?}` → WebMCP tools live in open tabs, site-native and custom (page and cdp), in the Kernel API's `WebMCPTool` shape (`tool_ref`, `tool`, `source`) |
+| `invoke_tool` | `{tool_ref, input, timeout_sec?}` → runs that exact registration; returns `WebMCPInvocationResult` plus `diagnostics` on failure (error with stack mapped to the tool file, console output, timing) |
+| `get_invocation` | `{invocation_id}` → the same diagnostics again for a past invocation, for debugging |
 | `list_custom_tools`, `install_tool`, `remove_tool` | installed tools; `install_tool` takes a local file path |
 | `open_tab`, `navigate_tab`, `close_tab`, `list_tabs` | extension-owned tabs; with `--kernel`, only `list_tabs` is available and lists tabs that expose tools |
-| `southwest_2ecom__search_5fflights`, … | each installed tool, with its own input schema |
 
-By default the server only sees and acts on tabs it opened itself (an **xwebmcp** tab
-group); pass `allow_user_tabs` / `all_tabs` per call, or start with `--all-tabs` to list
-the user's tabs too. Tool inputs are never logged or stored by the server or the
+By default the server only lists and invokes tools in tabs it opened itself (an
+**xwebmcp** tab group); start it with `--all-tabs` to include the user's tabs. Tool inputs are never logged or stored by the server or the
 extension. `--kernel <browser>` points the same server at a Kernel browser, but it
 cannot map a numeric `tab_id` to a REPL target for `open_tab`, `navigate_tab`, or
 `close_tab`, so those operations return an error rather than acting on the wrong tab.
-For a custom tool invoked by namespace without a matching registration, the Kernel
-target opens a new tab; pass `tab_id` to require an existing matching registration.
 
 ### Develop tools locally
 
@@ -191,20 +188,27 @@ a coding agent driving it.
    directory, or a single tool file, and can be repeated. Every tool file under it is
    installed when the server starts and reinstalled whenever its content changes; tools
    installed with `xwebmcp add` keep working next to them. `xwebmcp dev <path>` runs the
-   same watcher without an MCP server.
+   same watcher without an MCP server. Open tabs pick up reinstalled tools without a
+   reload, and the watcher and `xwebmcp mcp` reconnect on their own when the extension is
+   reloaded or Chrome restarts its native host; a reinstall that fails while the extension
+   is away is retried on the next scan. Reloading the extension clears and re-registers
+   the custom tools in already-open tabs, leaving the sites' own tools alone. (Tabs that
+   were open before upgrading from an older xwebmcp need one reload.)
 3. Grant the site once in the extension popup (**Grant access**) when the server reports
    pending origins.
-4. Loop: the agent calls `invoke_tool` (`namespace` + `name`), reads the failure's
+4. Loop: the agent opens a tab on the site (`open_tab`), calls `list_tools` and then
+   `invoke_tool` with the tool's `tool_ref`, reads the failure's
    `diagnostics.error.stack` (lines map to the tool file), edits the file, waits for the
-   reinstall (`xwebmcp mcp` logs `installed <namespace>/<tool>` on stderr), and invokes
-   again. `open_tab` / `navigate_tab` put a tab on the right page first when needed.
+   reinstall (`xwebmcp mcp` logs `installed <namespace>/<tool>` on stderr), lists again
+   (the reinstalled tool has a new `tool_ref`), and invokes again.
 
 A prompt that works with Claude Code:
 
 ```
 The tool file domains/probe.test/page_title.js is watched by the xwebmcp MCP server.
-Invoke probe.test/page_title with input {} via invoke_tool. If it fails, use the
-diagnostics to fix the file, then invoke again until it completes.
+Open https://probe.test/ with open_tab, find page_title in list_tools, and invoke it with
+input {} via invoke_tool. If it fails, use the diagnostics to fix the file, list tools
+again, and invoke the new tool_ref until it completes.
 ```
 
 **Page inspection.** `xwebmcp mcp` deliberately has no screenshot, DOM-snapshot, or
