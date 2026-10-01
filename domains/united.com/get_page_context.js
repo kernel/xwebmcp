@@ -17,7 +17,7 @@
         results_leg: { type: ["string", "null"], enum: ["departing", "returning", null] },
         available_tools: { type: ["array", "null"], items: { type: "string" } },
         unsettled: { type: "boolean" },
-        unsettled_reasons: { type: "array", items: { enum: ["document_loading", "results_loading", "page_spinner"] } },
+        unsettled_reasons: { type: "array", items: { enum: ["document_loading", "results_loading", "page_spinner", "navigating"] } },
         pending_choice: { type: ["string", "null"], enum: ["fare_option", null] },
         signed_in: { type: ["boolean", "null"] },
         member_status: { type: ["string", "null"], description: "MileagePlus status level shown in the header, e.g. \"Premier Silver\"." },
@@ -36,6 +36,8 @@
       if (document.readyState !== "complete") out.push("document_loading");
       if ([...document.querySelectorAll(".atm-c-skeleton-bar")].some(visible)) out.push("results_loading");
       if ([...document.querySelectorAll(".atm-c-loading-indicator, [class*='InterstialLoader']")].some(visible)) out.push("page_spinner");
+      const pending = globalThis.__xwebmcpPendingNavigation;
+      if (pending && Date.now() - pending.at < 30000) out.push("navigating");
       return out;
     };
     const wait = Math.max(0, Math.min(30, Number(input?.wait_for_settled_seconds) || 0));

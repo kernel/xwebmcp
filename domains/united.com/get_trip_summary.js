@@ -3,7 +3,7 @@
   match: { url_patterns: ["https://united.com/*", "https://*.united.com/*"] },
   tool: {
     name: "get_trip_summary",
-    description: "Read United's trip cart panel on its checkout pages (for example Traveler Info, reached from search or from Google Flights' \"Book with United\"): trip type, each flight (route, date, airport-local times, stops, duration, flight numbers, aircraft), the price breakdown (fare per person, taxes and fees) and the total due, plus United's cart id. It expands the panel's \"Show details\" sections on the page to read flight numbers; it never reads or returns traveler details (names, dates of birth, MileagePlus numbers, contact data) and never enters anything. Use it to confirm the exact itinerary and total with the user before they continue to payment. United's checkout panel does not show the fare type (Basic, Standard, Flexible) or bag allowance; confirm those from the fare chosen in select_fare_option or Google's get_booking_options, cross-checked by the total. cart_id is the Cart ID United displays, not the URL's cartId.",
+    description: "Read United's trip cart panel on its checkout pages (for example Traveler Info, reached from search or from Google Flights' \"Book with United\"): trip type, each flight (route, date, airport-local times, stops, duration, flight numbers, aircraft), the price breakdown (fare per person, taxes and fees) and the total due, plus United's cart id. It expands the panel's \"Show details\" sections on the page to read flight numbers; it never reads or returns traveler details (names, dates of birth, MileagePlus numbers, contact data) and never enters anything. Use it to confirm the exact itinerary and total with the user before they continue to payment. United's checkout panel shows a fare label only for some fares (\"Basic Economy\" under each flight; Standard fares show none) and never the bag allowance; confirm those from the fare chosen in select_fare_option or Google's get_booking_options, cross-checked by the total. cart_id is the Cart ID United displays, not the URL's cartId.",
     inputSchema: { type: "object", additionalProperties: false, properties: {} },
     outputSchema: {
       type: "object",
@@ -19,7 +19,7 @@
               type: "array",
               items: {
                 type: "object", additionalProperties: false,
-                required: ["sequence", "origin", "destination", "date_display", "departure_time", "arrival_time", "stops", "duration_display", "flight_numbers", "aircraft"],
+                required: ["sequence", "origin", "destination", "date_display", "departure_time", "arrival_time", "stops", "duration_display", "flight_numbers", "aircraft", "fare_label"],
                 properties: {
                   sequence: { type: "string", description: "e.g. \"Flight 1 of 2\"" },
                   origin: { type: ["string", "null"] }, destination: { type: ["string", "null"] },
@@ -27,7 +27,8 @@
                   departure_time: { type: ["string", "null"] }, arrival_time: { type: ["string", "null"] },
                   stops: { type: ["integer", "null"] }, duration_display: { type: ["string", "null"] },
                   flight_numbers: { type: "array", items: { type: "string" } },
-                  aircraft: { type: "array", items: { type: "string" } }
+                  aircraft: { type: "array", items: { type: "string" } },
+                  fare_label: { type: ["string", "null"], description: "Fare label United shows under the flight, e.g. \"Basic Economy\"; Standard fares usually show none." }
                 }
               }
             },
@@ -59,6 +60,8 @@
       while (box && !/Total due/i.test(text(box))) box = box.parentElement;
       return box ? { heading, box } : null;
     };
+    const pending = globalThis.__xwebmcpPendingNavigation;
+    if (pending && Date.now() - pending.at < 30000) return { status: "not_ready", error_message: "This page is navigating to " + pending.to + "; call get_page_context with wait_for_settled_seconds and list tools again on the new page.", url };
     const until = Date.now() + 15000;
     while (!panel() && Date.now() < until) await sleep(300);
     const found = panel();
@@ -86,14 +89,16 @@
       const duration = (chunk.map((l) => /^Duration: (.+)$/i.exec(l)).find(Boolean) || [])[1] || null;
       const numbers = chunk.flatMap((l) => [...l.matchAll(/Flight Number:\s*([A-Z0-9]{2})\s?(\d{1,4})/gi)].map((m) => m[1] + " " + m[2]));
       const aircraft = chunk.map((l) => (/^Aircraft type:\s*(.+)$/i.exec(l) || [])[1]).filter(Boolean);
+      const fareLabel = chunk.find((l) => /^(Basic Economy|United Economy|Economy Plus|United First|United Business|United Polaris|Premium Plus|Economy)(\s*\(.*\))?$/i.test(l)) || null;
+      const clock = (v) => v ? v.replace(/\s*([ap])m$/i, (m, x) => " " + x.toUpperCase() + "M") : null;
       flights.push({
         sequence: line,
         origin: route ? route[1] : null, destination: route ? route[2] : null,
         date_display: date,
-        departure_time: times ? times[1] : null, arrival_time: times ? times[2] : null,
+        departure_time: times ? clock(times[1]) : null, arrival_time: times ? clock(times[2]) : null,
         stops: times && times[3] ? (/nonstop/i.test(times[3]) ? 0 : Number(times[3].match(/\d+/)[0])) : null,
         duration_display: duration,
-        flight_numbers: numbers, aircraft
+        flight_numbers: numbers, aircraft, fare_label: fareLabel
       });
     });
     const money = (label) => {

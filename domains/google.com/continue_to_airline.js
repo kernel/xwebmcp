@@ -3,7 +3,7 @@
   match: { url_patterns: ["https://www.google.com/travel/flights/booking*"] },
   tool: {
     name: "continue_to_airline",
-    description: "On Google Flights' booking page, press \"Continue\" for one seller's fare (seller and fare_name exactly as get_booking_options returned them). Google opens the seller's site in a NEW TAB with the chosen flights and fare already in the seller's cart (for United: its Traveler Info checkout page). The new tab belongs to the same xwebmcp session. This tool books and pays nothing; the purchase happens on the seller's site and is the user's decision. Then call list_tabs to find the new tab (new_tab_url is reported only when the tool can observe it, which is not always). Needs a trusted click, so it runs as a cdp tool.",
+    description: "On Google Flights' booking page, press \"Continue\" for one seller's fare (seller and fare_name exactly as get_booking_options returned them). Google opens the seller's site in a NEW TAB with the chosen flights and fare already in the seller's cart (for United: its Traveler Info checkout page). The new tab belongs to the same xwebmcp session. This tool books and pays nothing; the purchase happens on the seller's site and is the user's decision. If the new tab stays on google.com/travel/clk for more than about 20 s, close it with close_tab and call this tool again. Then call list_tabs to find the new tab (new_tab_url is reported only when the tool can observe it, which is not always). Needs a trusted click, so it runs as a cdp tool.",
     inputSchema: {
       type: "object", additionalProperties: false, required: ["seller", "fare_name"],
       properties: {

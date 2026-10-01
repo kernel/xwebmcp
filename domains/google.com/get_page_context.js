@@ -56,7 +56,7 @@
     // Chosen flights: the booking page's "Departing/Return flight on …" summaries, or on the
     // returning list the selected departing flight shown above the results.
     const chosen = [...document.querySelectorAll('[aria-label*="Leaves "]')]
-      .filter((e) => visible(e) && !(e.closest("li") && /Select flight\s*$/.test(e.getAttribute("aria-label"))))
+      .filter((e) => visible(e) && !e.closest("li"))
       .map((e) => e.getAttribute("aria-label").replace(/\s+/g, " ").replace(/^Flight details\.\s*/i, "").replace(/\s*(Select flight|Change flight)\s*$/i, "").slice(0, 240))
       .filter((s, i, a) => a.indexOf(s) === i).slice(0, 4);
     const steps = [];

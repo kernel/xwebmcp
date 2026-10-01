@@ -80,7 +80,9 @@
       }
       if (!switched()) return { status: "error", error_message: "United did not show the return flights after selecting " + labels[index] + "; check get_page_context before retrying." };
     } else {
-      // Settle first: the final selection navigates to checkout.
+      // Settle first: the final selection navigates to checkout. Mark the pending navigation so
+      // get_page_context / get_trip_summary on this document report it instead of stale state.
+      globalThis.__xwebmcpPendingNavigation = { at: Date.now(), to: "checkout" };
       setTimeout(() => button.click(), 100);
     }
     return {

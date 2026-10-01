@@ -8,7 +8,7 @@
       type: "object", additionalProperties: false, required: ["result_index", "cabin_index"],
       properties: {
         result_index: { type: "integer", minimum: 0, maximum: 199 },
-        cabin_index: { type: "integer", minimum: 0, maximum: 5, description: "Position of the cabin column in list_flight_results' cabins array." },
+        cabin_index: { type: "integer", minimum: 0, maximum: 5, description: "cabin_index of the cabin from list_flight_results (the column index; rows may skip columns)." },
         expected_flight_numbers: { type: "array", minItems: 1, maxItems: 6, items: { type: "string", pattern: "^[A-Z0-9]{2} ?\\d{1,4}$" } }
       }
     },
@@ -63,7 +63,19 @@
     const priceButtons = (scope) => [...scope.querySelectorAll("button")].filter((b) => visible(b) && /select to view fare options/i.test(text(b)));
     let row = container;
     while (row.parentElement && !priceButtons(row).length && row.parentElement.querySelectorAll("[class*='flightContainer']").length === 1) row = row.parentElement;
-    const button = priceButtons(row)[input.cabin_index];
+    // Each price card sits under its column header; rows may omit a column (e.g. no
+    // Economy Plus), so match cards to headers by horizontal position, not by order.
+    const headerEls = [...document.querySelectorAll("button[aria-label^='Link. Select to sort results by']")].filter(visible);
+    const columnOf = (button, fallback) => {
+      const r = button.getBoundingClientRect ? button.getBoundingClientRect() : null;
+      const centers = headerEls.map((h) => { const q = h.getBoundingClientRect ? h.getBoundingClientRect() : null; return q && q.width ? (q.left + q.right) / 2 : null; });
+      if (!r || !r.width || centers.some((c) => c === null)) return fallback;
+      const x = (r.left + r.right) / 2;
+      let best = 0;
+      centers.forEach((c, i) => { if (Math.abs(c - x) < Math.abs(centers[best] - x)) best = i; });
+      return best;
+    };
+    const button = priceButtons(row).find((b, position) => columnOf(b, position) === input.cabin_index);
     if (!button) return { status: "not_available", error_message: "Row " + input.result_index + " has no cabin column " + input.cabin_index + "." };
     if (!/\$\d/.test(text(button))) return { status: "not_available", error_message: "That cabin is not available on this flight." };
     const selectButtons = () => [...document.querySelectorAll("button[aria-label^='Select United'], button[aria-label^='Select ']")].filter((b) => visible(b) && /^Select$/i.test(text(b)));
@@ -93,7 +105,13 @@
       const carry = lines.find((l) => /carry-on/i.test(l)) || null;
       const start = lines.findIndex((l) => /^Fare includes$/i.test(l));
       const end = lines.findIndex((l) => /MileagePlus miles|PQF|PQP/i.test(l));
-      const rules = lines.slice(start === -1 ? 0 : start + 1, end === -1 ? undefined : end).filter((l) => !/^(for a fee|From|Select|View terms)$/i.test(l));
+      const rules = [];
+      for (const l of lines.slice(start === -1 ? 0 : start + 1, end === -1 ? undefined : end)) {
+        if (/^(From|Select|View terms)$/i.test(l)) continue;
+        // Qualifiers render on their own line ("Upgrades available" / "for a fee").
+        if (/^(for a fee|included|free)$/i.test(l) && rules.length) rules[rules.length - 1] += " " + l;
+        else rules.push(l);
+      }
       return {
         fare_name: fareName,
         cabin,

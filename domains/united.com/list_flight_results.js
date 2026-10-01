@@ -3,7 +3,7 @@
   match: { url_patterns: ["https://www.united.com/*/fsr/*"] },
   tool: {
     name: "list_flight_results",
-    description: "Read the flights United is showing on this results page right now, without searching again: departing flights, or, after a departing fare is selected on a round trip, the return flights (leg says which). For each row: result_index (pass to select_fare), flight numbers and aircraft, airports, airport-local times, arrival day offset, duration, stops, and each cabin column's lowest \"From\" price (column names such as \"United Economy (Main cabin)\", \"Economy Plus (Extra legroom)\", \"United First (Extra-spacious seat)\"); United Economy's lowest price is usually Basic Economy, which excludes a full-size carry-on and needs the user's agreement to its restrictions. Prices are per person; round-trip searches show round-trip totals. Sort by departure, arrival, price or duration; filter nonstop. Read-only.",
+    description: "Read the flights United is showing on this results page right now, without searching again: departing flights, or, after a departing fare is selected on a round trip, the return flights (leg says which). For each row: result_index (pass to select_fare), flight numbers and aircraft, airports, airport-local times, arrival day offset, duration, stops, and each cabin column's lowest \"From\" price (column names such as \"United Economy (Main cabin)\", \"Economy Plus (Extra legroom)\", \"United First (Extra-spacious seat)\"); United Economy's lowest price is usually Basic Economy, which excludes a full-size carry-on and needs the user's agreement to its restrictions. Prices are per person; round-trip searches show round-trip totals. Sort by departure, arrival, price or duration; filter nonstop. Rows can omit a column (e.g. no Economy Plus); each cabin entry carries the cabin_index of its column. Read-only.",
     inputSchema: {
       type: "object", additionalProperties: false,
       properties: {
@@ -39,8 +39,8 @@
                   cabins: {
                     type: "array",
                     items: {
-                      type: "object", additionalProperties: false, required: ["cabin", "from_price", "available"],
-                      properties: { cabin: { type: "string" }, from_price: { type: ["number", "null"] }, available: { type: "boolean" } }
+                      type: "object", additionalProperties: false, required: ["cabin_index", "cabin", "from_price", "available"],
+                      properties: { cabin_index: { type: "integer", minimum: 0, description: "Column index; pass to select_fare." }, cabin: { type: "string" }, from_price: { type: ["number", "null"] }, available: { type: "boolean" } }
                     }
                   }
                 }
@@ -74,6 +74,18 @@
     // distinguish Economy from Economy Plus.
     const columns = [...document.querySelectorAll("button[aria-label^='Link. Select to sort results by']")].filter(visible)
       .map((b) => text(b).replace(/®/g, "").replace(/\s+/g, " ").trim());
+    // Each price card sits under its column header; rows may omit a column (e.g. no
+    // Economy Plus), so match cards to headers by horizontal position, not by order.
+    const headerEls = [...document.querySelectorAll("button[aria-label^='Link. Select to sort results by']")].filter(visible);
+    const columnOf = (button, fallback) => {
+      const r = button.getBoundingClientRect ? button.getBoundingClientRect() : null;
+      const centers = headerEls.map((h) => { const q = h.getBoundingClientRect ? h.getBoundingClientRect() : null; return q && q.width ? (q.left + q.right) / 2 : null; });
+      if (!r || !r.width || centers.some((c) => c === null)) return fallback;
+      const x = (r.left + r.right) / 2;
+      let best = 0;
+      centers.forEach((c, i) => { if (Math.abs(c - x) < Math.abs(centers[best] - x)) best = i; });
+      return best;
+    };
     const priceButtons = (scope) => [...scope.querySelectorAll("button")].filter((b) => visible(b) && /select to view fare options/i.test(text(b)));
     const flights = [];
     let skipped = 0;
@@ -89,13 +101,14 @@
       const duration = /Duration (\d+) hours?(?: and (\d+) minutes?)?/i.exec(t) || /(\d+)H,?\s*(\d+)M/i.exec(t);
       const stopsMatch = /\b(NONSTOP|(\d+) STOPS?)\b/i.exec(t);
       const numbers = [...new Set([...t.matchAll(/\b(UA|[A-Z0-9]{2}) (\d{1,4}) \(([^)]+)\)/g)].map((m) => m[1] + " " + m[2]))];
-      const aircraft = [...t.matchAll(/\b(?:UA|[A-Z0-9]{2}) \d{1,4} \(([^)]+)\)/g)].map((m) => m[1]);
+      const aircraft = [...new Map([...t.matchAll(/\b((?:UA|[A-Z0-9]{2}) \d{1,4}) \(([^)]+)\)/g)].map((m) => [m[1], m[2]])).values()];
       const offset = Number((/Arriving at \d{1,2}:\d{2} [AP]M[^+]{0,40}\+(\d)/.exec(t) || [])[1] || 0);
-      const cabins = priceButtons(row).map((b, column) => {
+      const cabins = priceButtons(row).map((b, position) => {
+        const column = columnOf(b, position);
         const bt = text(b);
         const price = /\$([\d,]+(?:\.\d{2})?)/.exec(bt);
         const cabin = (/(United [A-Za-z®+ ]+?) cabin/.exec(bt) || [])[1] || (/Select a fare cabin/i.test(bt) ? "selected" : bt.slice(0, 40));
-        return { cabin: columns[column] || cabin.replace(/®/g, "").trim(), from_price: price ? Number(price[1].replace(/,/g, "")) : null, available: !!price };
+        return { cabin_index: column, cabin: columns[column] || cabin.replace(/®/g, "").trim(), from_price: price ? Number(price[1].replace(/,/g, "")) : null, available: !!price };
       });
       flights.push({
         result_index: index,

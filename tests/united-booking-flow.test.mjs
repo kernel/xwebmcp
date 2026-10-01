@@ -17,6 +17,7 @@ function run(name, html, input = {}, { url = "https://www.united.com/en/us/fsr/c
   const scheduled = [];
   const context = { document, navigator: {}, URL, JSON, Number, Math, Date, Infinity, location: { href: u.href, pathname: u.pathname, search: u.search },
     setTimeout: (fn, ms) => { if (ms === 100) { scheduled.push(fn); return 0; } setImmediate(fn); return 0; } };
+  context.globalThis = context;
   const [tool] = runInNewContext(`(${load(name)})`, context);
   return tool.execute(input).then(out => ({ out: plain(out), document, scheduled }));
 }
@@ -82,7 +83,7 @@ test("united get_trip_summary: flights, totals and cart id; never traveler detai
   assert.equal(out.status, "ok");
   assert.equal(out.trip_type, "ROUNDTRIP");
   assert.equal(out.travelers, 1);
-  assert.deepEqual(out.flights.map(f => [f.origin, f.destination, f.departure_time, f.stops, f.flight_numbers[0]]), [["CVG", "ORD", "5:30 am", 0, "UA 1379"], ["ORD", "CVG", "6:55 am", 0, "UA 1970"]]);
+  assert.deepEqual(out.flights.map(f => [f.origin, f.destination, f.departure_time, f.stops, f.flight_numbers[0]]), [["CVG", "ORD", "5:30 AM", 0, "UA 1379"], ["ORD", "CVG", "6:55 AM", 0, "UA 1970"]]);
   assert.equal(out.fare_per_person, 476.28);
   assert.equal(out.taxes_and_fees, 66.52);
   assert.equal(out.total_due, 542.8);
@@ -103,4 +104,22 @@ test("united get_page_context: signed-in status, results leg, verification step"
   assert.equal(m.out.page_type, "sign_in");
   assert.equal(m.out.verification_code_requested, true);
   assert.ok(m.out.suggested_next_steps[0].includes("verification code"));
+});
+
+test("united: a scheduled checkout navigation is reported as navigating, not stale results", async () => {
+  const html = results("RETURN ON: October 8", drawer);
+  const document = new Document(html);
+  const proto = Object.getPrototypeOf(document.body);
+  proto.click = function () {};
+  const context = { document, navigator: {}, URL, JSON, Number, Math, Date, Infinity,
+    location: { href: "https://www.united.com/en/us/fsr/choose-flights?tqp=R&r=2026-10-08", pathname: "/en/us/fsr/choose-flights", search: "?tqp=R&r=2026-10-08" },
+    setTimeout: (fn, ms) => 0 };
+  context.globalThis = context;
+  const runTool = async (name, input) => { const [tool] = runInNewContext(`(${load(name)})`, context); return JSON.parse(JSON.stringify(await tool.execute(input))); };
+  const chosen = await runTool("select_fare_option", { fare_name: "Standard" });
+  assert.equal(chosen.next_page, "checkout");
+  const ctx = await runTool("get_page_context", {});
+  assert.ok(ctx.unsettled_reasons.includes("navigating"));
+  const summary = await runTool("get_trip_summary", {});
+  assert.equal(summary.status, "not_ready");
 });
