@@ -41,7 +41,7 @@ function harness(name, o = {}) {
     methods: o.methods ?? [{ id: 77, is_default: true, display: "private-card" }],
     lists: [{ list_id: "LIST-1", name: "Weekend", url_slug: "SHARE-1", is_public: false, is_legacy_hitlist: false, count: 2 }], next: 5000
   };
-  const resRow = r => ({ reservation_id: r.id, venue: { id: r.venue_id, currency: "USD" }, day: r.day, time_slot: r.time + ":00", num_seats: r.seats, config: { type: "Dining Room" }, resy_token: "rr://private/" + r.id, cancellation: r.cancellation, rating: r.rating ?? null, special_request: "private-request" });
+  const resRow = r => ({ reservation_id: r.id, venue: { id: r.venue_id, currency: "USD" }, day: r.day, time_slot: r.time + ":00", num_seats: r.seats, config: { type: "Dining Room" }, resy_token: "rr://private/" + r.id, cancellation: r.cancellation, change: r.change ?? { allowed: true }, rating: r.rating ?? null, special_request: "private-request" });
   const page = list => ({ reservations: list.map(resRow), venues: Object.fromEntries(list.map(r => [r.venue_id, { name: "Fabricated " + r.venue_id }])), metadata: { total: o.totalOverride ?? list.length } });
   const window = { location: { origin: "https://resy.com" }, apiConfig: { Config: { apiKey: key } }, apiAuthToken: o.loggedOut ? undefined : token };
   class FixedDate extends Date { constructor(...args) { super(...(args.length ? args : [NOW])); } static now() { return Date.parse(NOW); } }
@@ -55,7 +55,7 @@ function harness(name, o = {}) {
     if (path === "/3/details") {
       const out = { payment: { amounts: { total: state.total, reservation_charge: state.total, tax: 0 }, config: { type: state.paymentType } }, cancellation: { fee: { amount: state.fee, date_cut_off: "2026-10-09T17:00:00Z" }, refund: { date_cut_off: "2026-10-09T17:00:00Z" }, display: { policy: ["<b>Fabricated policy</b>"] } }, change: { date_cut_off: "2026-10-09T17:00:00Z" }, locale: { currency: "USD" } };
       if (body.commit === 1) { out.book_token = { value: "bt://private/" + body.config_id, date_expires: "soon" }; out.user = { payment_methods: state.methods }; }
-      return { body: out };
+      return { status: body.commit === 1 ? o.commitStatus ?? 201 : 200, body: out };
     }
     if (path === "/3/book") {
       const f = parseForm(body);
@@ -306,4 +306,29 @@ test("list_collections and get_collection: Hit List is not a city collection; sl
   assert.equal(out.venues.length, 1);
   assert.equal(out.venues[0].slot_count, 9);
   assert.deepEqual(out.venues[0].slots.map(s => s.local_start.slice(11)), ["10:00", "11:00", "12:00", "13:00", "14:00", "15:00"]);
+});
+
+// Live shape of a reservation's cancellation block, observed 2026-10-01.
+const liveCancellation = applies => ({ allowed: true, date_credit_cut_off: null, date_refund_cut_off: "2026-10-09T22:00:00Z", fee: { amount: applies ? 50 : null, applies, date_cut_off: "2026-10-09T22:00:00Z", display: { amount: null } } });
+
+test("cancel_reservation: Resy's fee.applies decides; cancellation.allowed false is refused", async () => {
+  const free = harness("cancel_reservation", { upcoming: [{ ...booked, cancellation: liveCancellation(false) }] });
+  assert.equal((await free.run(valid.cancel_reservation)).status, "canceled");
+  const charged = harness("cancel_reservation", { upcoming: [{ ...booked, cancellation: liveCancellation(true) }] });
+  const out = await charged.run(valid.cancel_reservation);
+  assert.equal(out.error_kind, "fee_applies");
+  assert.match(out.error_message, /of 50/);
+  const locked = harness("cancel_reservation", { upcoming: [{ ...booked, cancellation: { ...liveCancellation(false), allowed: false } }] });
+  assert.equal((await locked.run({ ...valid.cancel_reservation, accept_cancellation_fee: true })).error_kind, "rejected");
+  assert.equal(charged.requests.some(r => r.path === "/3/cancel") || locked.requests.some(r => r.path === "/3/cancel"), false);
+});
+
+test("change_reservation: change.allowed false is refused before any details request", async () => {
+  const h = harness("change_reservation", { upcoming: [{ ...booked, change: { allowed: false } }] });
+  assert.equal((await h.run(valid.change_reservation)).error_kind, "rejected");
+  assert.equal(h.requests.some(r => r.path === "/3/details" || r.path === "/3/change"), false);
+});
+
+test("book_reservation: Resy answers the committing details request with 201 or 200", async () => {
+  for (const commitStatus of [200, 201]) assert.equal((await harness("book_reservation", { commitStatus }).run(valid.book_reservation)).status, "booked");
 });

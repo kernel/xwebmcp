@@ -107,16 +107,17 @@ approval, so the user-visible quote and the guards below carry the safety.
   reports `booked` only when exactly one new upcoming reservation matches venue, date, time and party.
 - `change_reservation` follows the bundle's Modify flow: details with the reservation's `resy_token`, then POST
   `/3/change` with `book_token`, `resy_token` and `replace=1`; same venue only.
-- `cancel_reservation` looks the `resy_token` up from the reservation id and sends POST `/3/cancel`. When the
-  reservation's cancellation fee applies now (after its cutoff) or its terms are unreadable it returns
-  `fee_applies` until the caller passes `accept_cancellation_fee`.
+- `cancel_reservation` looks the `resy_token` up from the reservation id and sends POST `/3/cancel`. The
+  reservation's live `cancellation` block is `{allowed, date_refund_cut_off, fee: {amount, applies, date_cut_off}}`:
+  `allowed: false` is `rejected`, and when `fee.applies` is true (or the block is missing) it returns `fee_applies`
+  until the caller passes `accept_cancellation_fee`. `change_reservation` likewise refuses `change.allowed: false`.
 - `rate_reservation` posts `rating`, optional `comments` and `resy_token` to `/3/rate/reservation`, as the site's
   rating page does. Already rated is `conflict`; `rating.expired` is `rejected`.
 - Tokens (`resy_token`, `book_token`, slot config tokens) and payment method details are never returned.
 
-Evidence limits: the test account had no reservations and the builder did not make a real booking, so `/3/book`,
-`/3/change`, `/3/cancel` and `/3/rate/reservation` success paths are fixture-tested from the bundle's request shapes
-only. Live checks covered quotes and every guard that stops before a write. Whether `commit: 1` itself holds
+Evidence: on 2026-10-01 the builder booked, changed and cancelled one real reservation with the user's approval:
+a free slot with no card, deposit or fee, eight days out, cancelled within minutes. `/3/details` with `commit: 1`
+answers HTTP 201. `/3/change` keeps the reservation_id. `rate_reservation` remains fixture-only (no past reservation). Whether `commit: 1` itself holds
 inventory is not established; the tool only calls it immediately before booking. Captcha-gated venues
 (`feature_recaptcha`) are not handled and should surface as `rejected`.
 
@@ -320,3 +321,13 @@ commit or booking) and an unlisted slot; cancel and rate returned not_found on t
 venue events, collections and a collection page succeeded; a test list was created, given a share link, copied
 (duplicate refused first, then allowed) and both lists deleted. The account ended with its initial lists,
 favorites, Notify and reservations. Booking, change, cancel and rating success paths remain fixture-only.
+
+### Live booking run (2026-10-01)
+
+With the user's approval, on a free slot (total 0, `card_required` false, no cancellation fee) eight days out:
+`book_reservation` first stopped with `site_error` because the commit-1 `/3/details` request returns HTTP 201 and
+account reads accepted only 200; nothing was booked. After accepting any 2xx for reads, it booked one reservation
+(seven requests, one `/3/book`, 2.1 s) and verified it by readback; a second booking at the venue that day returned
+`duplicate_suspected` with no write. `change_reservation` moved it from 18:00 to 19:00 through `/3/change` (2.7 s; same
+reservation_id). `cancel_reservation` refused a missing confirm and a wrong date, then cancelled it (1.4 s) and
+verified removal. The account ended with no reservations. No card was attached and nothing was charged.

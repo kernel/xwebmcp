@@ -875,7 +875,7 @@
       "url_patterns": ["https://resy.com/*"],
       "status": "draft",
       "last_verified": null,
-      "notes": "Books one exact slot: confirm true, expected_total must equal a fresh commit-0 quote, duplicate guard on venue/date, then commit 1 (as clicking a slot does) and one form POST /3/book with the default card when required; success only when a new upcoming reservation matches. Guards live-tested 2026-10-01 (stale total stops before commit 1); a real booking has not been made."
+      "notes": "Books one exact slot: confirm true, expected_total must equal a fresh commit-0 quote, duplicate guard on venue/date, then commit 1 (as clicking a slot does) and one form POST /3/book with the default card when required; success only when a new upcoming reservation matches. Builder live run 2026-10-01: booked a free no-card slot (commit-1 details answers HTTP 201), refused a second booking at the venue that day as duplicate_suspected, and a stale total stopped before commit 1."
     },
     {
       "domain": "resy.com",
@@ -886,7 +886,7 @@
       "url_patterns": ["https://resy.com/*"],
       "status": "draft",
       "last_verified": null,
-      "notes": "Cancels one upcoming reservation by reservation_id (resy_token looked up internally, never returned); confirm true; fee_applies unless accept_cancellation_fee when a fee applies now or the terms cannot be read. Fixture-tested; live run only confirmed not_found on an empty account."
+      "notes": "Cancels one upcoming reservation by reservation_id (resy_token looked up internally, never returned); confirm true; fee_applies unless accept_cancellation_fee when a fee applies now or the terms cannot be read. Builder live run 2026-10-01: cancelled the test reservation after refusing a missing confirm and a wrong date. Uses Resy's fee.applies flag; refuses cancellation.allowed false."
     },
     {
       "domain": "resy.com",
@@ -897,7 +897,7 @@
       "url_patterns": ["https://resy.com/*"],
       "status": "draft",
       "last_verified": null,
-      "notes": "Moves an upcoming reservation at the same venue: details with resy_token, then POST /3/change with book_token, resy_token and replace=1, following the site bundle. Fixture-tested only; not live-tested (no reservation on the test account)."
+      "notes": "Moves an upcoming reservation at the same venue: details with resy_token, then POST /3/change with book_token, resy_token and replace=1, following the site bundle. Builder live run 2026-10-01: moved a free reservation from 18:00 to 19:00; Resy kept the reservation_id. Refuses change.allowed false."
     },
     {
       "domain": "resy.com",

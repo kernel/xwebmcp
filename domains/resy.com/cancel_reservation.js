@@ -79,7 +79,7 @@
         if (raw.trim() || read) { try { json = JSON.parse(raw); } catch { return { error: fail(mutationStarted ? "outcome_unknown" : "site_changed", "Resy did not return readable JSON.") }; } }
         if (!read && res.status >= 200 && res.status < 300) return { json };
         if (!read && res.status >= 400 && res.status < 500) return { rejected: true, http: res.status, message: plain(json) ? text(json.message, 300) : null };
-        if (res.status !== 200) return { error: fail(mutationStarted ? "outcome_unknown" : res.status === 404 ? "not_found" : "site_error", "Resy returned HTTP " + res.status + ". No automatic retry.") };
+        if (res.status < 200 || res.status > 299) return { error: fail(mutationStarted ? "outcome_unknown" : res.status === 404 ? "not_found" : "site_error", "Resy returned HTTP " + res.status + ". No automatic retry.") };
         return { json };
       } catch {
         return { error: fail(mutationStarted ? "outcome_unknown" : signal?.aborted ? "canceled" : "site_error", "The request did not complete visibly. Bot protection can hide responses. Do not automatically retry a dispatched write; read current state first.") };
@@ -120,7 +120,7 @@
         const id = plain(r) && plain(r.venue) ? r.venue.id : null;
         const v = positiveId(id) && Object.hasOwn(j.venues, String(id)) ? j.venues[String(id)] : null;
         if (!plain(r) || !positiveId(r.reservation_id) || !positiveId(id) || typeof r.day !== "string" || !Number.isInteger(r.num_seats) || typeof r.resy_token !== "string") return { error: fail(mutationStarted ? "outcome_unknown" : "site_changed", "A reservation item is unsupported; nothing was sent.") };
-        items.push({ reservation_id: String(r.reservation_id), venue_id: Number(id), venue_name: plain(v) ? text(v.name, 200) : null, date: r.day, local_time: typeof r.time_slot === "string" ? r.time_slot.slice(0, 5) : null, party_size: r.num_seats, seating_type: plain(r.config) ? text(r.config.type, 60) : null, token: r.resy_token, cancellation: plain(r.cancellation) ? r.cancellation : null, rating: plain(r.rating) ? r.rating : null });
+        items.push({ reservation_id: String(r.reservation_id), venue_id: Number(id), venue_name: plain(v) ? text(v.name, 200) : null, date: r.day, local_time: typeof r.time_slot === "string" ? r.time_slot.slice(0, 5) : null, party_size: r.num_seats, seating_type: plain(r.config) ? text(r.config.type, 60) : null, token: r.resy_token, cancellation: plain(r.cancellation) ? r.cancellation : null, change: plain(r.change) ? r.change : null, rating: plain(r.rating) ? r.rating : null });
       }
       return { items, complete: j.metadata.total <= items.length };
     };
@@ -131,11 +131,13 @@
     if (!current) return fail(before.complete ? "not_found" : "site_changed", "That reservation is not on the account's upcoming list; nothing was sent.");
     if (current.venue_id !== input.expected_venue_id || current.date !== input.expected_date) return fail("stale_state", "The reservation's venue or date does not match; nothing was sent.");
     const c = current.cancellation;
+    if (c && c.allowed === false) return fail("rejected", "Resy does not allow cancelling this reservation online; contact the venue. Nothing was sent.");
     const feeInfo = c && plain(c.fee) ? c.fee : null;
     const fee = feeInfo && typeof feeInfo.amount === "number" && Number.isFinite(feeInfo.amount) ? feeInfo.amount : null;
     const cutoff = feeInfo ? Date.parse(feeInfo.date_cut_off) : NaN;
-    const feeNow = fee === null ? c === null : fee > 0 && !(cutoff > Date.now());
-    if (feeNow && input.accept_cancellation_fee !== true) return fail("fee_applies", fee === null ? "Resy did not report this reservation's cancellation terms; confirm with the user that a fee may apply, then pass accept_cancellation_fee. Nothing was cancelled." : "Cancelling now incurs Resy's cancellation fee of " + fee + " (see the policy in list_reservations). Pass accept_cancellation_fee only if the user accepts it. Nothing was cancelled.");
+    // Resy states whether the fee applies right now; without that flag, fall back to the amount and cutoff.
+    const feeNow = feeInfo && typeof feeInfo.applies === "boolean" ? feeInfo.applies : fee === null ? c === null : fee > 0 && !(cutoff > Date.now());
+    if (feeNow && input.accept_cancellation_fee !== true) return fail("fee_applies", c === null ? "Resy did not report this reservation's cancellation terms; confirm with the user that a fee may apply, then pass accept_cancellation_fee. Nothing was cancelled." : "Cancelling now incurs Resy's cancellation fee" + (fee === null ? "" : " of " + fee) + " (see the policy in list_reservations). Pass accept_cancellation_fee only if the user accepts it. Nothing was cancelled.");
     const written = await request("POST", "/3/cancel", { form: { resy_token: current.token } });
     const settled = await settle(written, async () => {
       const after = await readReservations("upcoming");
