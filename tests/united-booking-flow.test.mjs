@@ -123,3 +123,10 @@ test("united: a scheduled checkout navigation is reported as navigating, not sta
   const summary = await runTool("get_trip_summary", {});
   assert.equal(summary.status, "not_ready");
 });
+
+test("united navigate_to_page: same-origin paths only, scheduled after settling", async () => {
+  const ok = await run("navigate_to_page", "<html><body></body></html>", { url: "/en/us/manageres/mytrips" }, { url: "https://www.united.com/en/us" });
+  assert.equal(ok.out.status, "navigation_scheduled");
+  assert.equal(ok.out.to_url, "https://www.united.com/en/us/manageres/mytrips");
+  for (const url of ["//evil.example/", "https://evil.example/", "en/us"]) assert.equal((await run("navigate_to_page", "<html><body></body></html>", { url }, { url: "https://www.united.com/en/us" })).out.status, "error");
+});

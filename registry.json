@@ -1431,6 +1431,20 @@
     },
     {
       "domain": "united.com",
+      "tool": "navigate_to_page",
+      "file": "domains/united.com/navigate_to_page.js",
+      "kind": "page",
+      "namespace": "united.com",
+      "url_patterns": [
+        "https://united.com/*",
+        "https://*.united.com/*"
+      ],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Schedules a same-tab navigation to a www.united.com path; description carries a basic site map (paths checked HTTP 200 on 2026-10-01). Draft."
+    },
+    {
+      "domain": "united.com",
       "tool": "search_flights",
       "file": "domains/united.com/search_flights.js",
       "kind": "cdp",
