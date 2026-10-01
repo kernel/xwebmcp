@@ -62,6 +62,7 @@
       "url_patterns": [
         "https://www.delta.com/completepurchase/trip-summary*"
       ],
+      "url_patterns_reason": "Narrowed to www.delta.com/completepurchase/trip-summary*: it presses a button that exists only on Trip Summary.",
       "status": "draft",
       "last_verified": null,
       "notes": "Schedules the Continue to Review & Pay click on Trip Summary after settling; enters no data, adds no extras, purchases nothing. Unit-tested."
@@ -89,6 +90,7 @@
       "url_patterns": [
         "https://www.delta.com/completepurchase/*"
       ],
+      "url_patterns_reason": "Narrowed to www.delta.com/completepurchase/*: it reads the Trip Summary and Review and Pay pages and works nowhere else.",
       "status": "draft",
       "last_verified": null,
       "notes": "Read-only cart reader on Trip Summary / Review and Pay: slices, passengers, price lines, amount due with currency, refundability, cart id. Unit-tested; exercised live on Trip Summary (CVG-SFO one way, Main Classic, $463.20 USD). Review and Pay reading not yet observed live."
@@ -102,6 +104,7 @@
       "url_patterns": [
         "https://www.delta.com/flightsearch/search-results*"
       ],
+      "url_patterns_reason": "Narrowed to www.delta.com/flightsearch/search-results*: it reads the results page and works nowhere else.",
       "status": "draft",
       "last_verified": null,
       "notes": "Read-only page tool on the results page: lists visible first-page itineraries with every fare column (brand_code, price, seats-left, sold out), sortable and filterable, plus the stored search context. Reuses search_flights' row parser. Unit-tested with fabricated rows; exercised live on two CVG-SFO one-way results pages (16 and 20 rows, none skipped). Adds column cabin names (also for sold-out cells), more_results_available, and opt-in load_more_results."
@@ -120,6 +123,7 @@
         "https://www.delta.com/us/en/",
         "https://www.delta.com/us/en/?*"
       ],
+      "url_patterns_reason": "Narrowed to the Delta homepage (/, /us/en, /us/en/, each also with ?*): the tool drives the homepage header Log in flyout, which exists only there.",
       "status": "draft",
       "last_verified": null,
       "notes": "Homepage-only page tool: opens the top-nav Log in flyout, fills identifier and password, and schedules one submit click after returning; no output schema and the outcome is not observed. Live-checked with fabricated credentials and the submit click intercepted; no real submission or successful login observed."
@@ -161,6 +165,7 @@
       "url_patterns": [
         "https://www.delta.com/flightsearch/search-results*"
       ],
+      "url_patterns_reason": "Narrowed to www.delta.com/flightsearch/search-results*: it clicks fare columns on the results page and works nowhere else.",
       "status": "draft",
       "last_verified": null,
       "notes": "Clicks one fare column on a results row (result_index + brand_code from list_flight_results, optional expected_flight_numbers check) and returns the experiences in Delta's drawer with details and the restrictions-consent flag. Does not navigate. Unit-tested; exercised live for Main (Basic/Classic/Extra); Comfort and First drawers observed (Classic/Extra)."
@@ -174,6 +179,7 @@
       "url_patterns": [
         "https://www.delta.com/flightsearch/search-results*"
       ],
+      "url_patterns_reason": "Narrowed to www.delta.com/flightsearch/search-results*: it acts on the experience drawer of the results page and works nowhere else.",
       "status": "draft",
       "last_verified": null,
       "notes": "Picks an experience in the open drawer and schedules the Select click after settling (navigates to Trip Summary). Experiences with an Accept Restrictions box (Main Basic) require accept_restrictions: true. Unit-tested; live: Main Basic without consent refused, Main Classic reached Trip Summary. Ticking restrictions not exercised live."
@@ -204,6 +210,7 @@
       "url_patterns": [
         "https://www.etsy.com/*"
       ],
+      "url_patterns_reason": "Narrowed to www.etsy.com: the marketplace (search, listings, cart, favorites) lives entirely there and etsy.com redirects to it; other subdomains (help center, forums) are unrelated products where the page tools' relative requests would fail.",
       "status": "qa_passed",
       "last_verified": "2026-09-26",
       "notes": "Adds one listing only with exact variation options and required personalization (text within Etsy's limit, dropdown option) or returns a typed error before submitting; presses Etsy's own button once and confirms via the cart. Handles the classic form post and the newer carts/add path. Upload-type and legacy personalization unsupported. Live-verified on guest carts only. Paid add-on personalization fields are not supported (fails safely before submitting).",
@@ -220,6 +227,7 @@
       "url_patterns": [
         "https://www.etsy.com/*"
       ],
+      "url_patterns_reason": "Narrowed to www.etsy.com: the marketplace (search, listings, cart, favorites) lives entirely there and etsy.com redirects to it; other subdomains (help center, forums) are unrelated products where the page tools' relative requests would fail.",
       "status": "qa_passed",
       "last_verified": "2026-09-26",
       "notes": "Signed-in or guest cart lines with line_id (cart|listing|inventory|customization), quantity, limit, prices, chosen options and personalization, and total texts. Live-verified on guest carts only; saved-for-later lines are skipped. subtotal_text is usually null on guest carts (Etsy shows no Subtotal row).",
@@ -236,6 +244,7 @@
       "url_patterns": [
         "https://www.etsy.com/*"
       ],
+      "url_patterns_reason": "Narrowed to www.etsy.com: the marketplace (search, listings, cart, favorites) lives entirely there and etsy.com redirects to it; other subdomains (help center, forums) are unrelated products where the page tools' relative requests would fail.",
       "status": "draft",
       "last_verified": null,
       "notes": "Signed-in only: whether listings are in Favorites via Etsy's favorites map lookup. Never run signed in (no Etsy account available); signed out returns not_logged_in without a request."
@@ -249,6 +258,7 @@
       "url_patterns": [
         "https://www.etsy.com/*"
       ],
+      "url_patterns_reason": "Narrowed to www.etsy.com: the marketplace (search, listings, cart, favorites) lives entirely there and etsy.com redirects to it; other subdomains (help center, forums) are unrelated products where the page tools' relative requests would fail.",
       "status": "qa_passed",
       "last_verified": "2026-09-26",
       "notes": "Listing price, availability, description, images, quantity limit, every variation menu (option ids, labels, sold-out, including waitlisted options) and personalization field (type, required, Etsy limit, seller instructions) read from the listing HTML. Seller instructions can be stricter than Etsy's limit and are returned, not enforced.",
@@ -265,6 +275,7 @@
       "url_patterns": [
         "https://www.etsy.com/*"
       ],
+      "url_patterns_reason": "Narrowed to www.etsy.com: the marketplace (search, listings, cart, favorites) lives entirely there and etsy.com redirects to it; other subdomains (help center, forums) are unrelated products where the page tools' relative requests would fail.",
       "status": "qa_passed",
       "last_verified": "2026-09-26",
       "notes": "One Etsy results page (rendered grid) with price, original price, discount, shop, shop rating, badges and ad flag; min/max price, sort, free-shipping and page filters; ads excluded unless requested. Independent QA passed signed out; DataDome verification pages are reported as blocked.",
@@ -281,6 +292,7 @@
       "url_patterns": [
         "https://www.etsy.com/*"
       ],
+      "url_patterns_reason": "Narrowed to www.etsy.com: the marketplace (search, listings, cart, favorites) lives entirely there and etsy.com redirects to it; other subdomains (help center, forums) are unrelated products where the page tools' relative requests would fail.",
       "status": "draft",
       "last_verified": null,
       "notes": "Signed-in only: records the initial favorite state, no-op if it already matches, otherwise presses the listing's favorite button on the current page once (listing page or a search page showing it) and confirms. Never run signed in (no Etsy account available); signed out returns not_logged_in and presses nothing."
@@ -294,6 +306,7 @@
       "url_patterns": [
         "https://www.etsy.com/*"
       ],
+      "url_patterns_reason": "Narrowed to www.etsy.com: the marketplace (search, listings, cart, favorites) lives entirely there and etsy.com redirects to it; other subdomains (help center, forums) are unrelated products where the page tools' relative requests would fail.",
       "status": "qa_passed",
       "last_verified": "2026-09-26",
       "notes": "Sets one cart line's quantity or removes it with 0 through Etsy's cart API with the page CSRF token; no-op when unchanged; confirms by reading the cart. Live-verified on guest carts only.",
@@ -342,6 +355,7 @@
         "https://google.com/travel/*",
         "https://*.google.com/travel/*"
       ],
+      "url_patterns_reason": "Narrowed to /travel/* on google.com and its subdomains: google.com also serves Search, Gmail, Maps, Docs and other unrelated products, where a flight search tool must not be listed. /travel/* covers Google Flights and the other Google Travel pages.",
       "status": "qa_passed",
       "last_verified": "2026-09-25",
       "notes": "Google Flights via a tfs deep link (hl=en, gl=US, curr); returns outbound itineraries from the best and other sections with flight numbers, segments, layovers and total prices for the requested passengers. Three independent QA rounds passed the full matrix plus date-line, airport-change, non-USD and unsupported-currency probes; a first-round intermittent loss of expanded detail panels was fixed and did not recur in 10 runs. url_patterns are deliberately narrowed to /travel/* (see the domain README). Consent interstitial, /sorry blocks and 'Price unavailable' cards are covered by local tests only.",
@@ -583,7 +597,7 @@
       ],
       "status": "verified",
       "last_verified": "2026-09-24",
-      "notes": "Independent search/parser QA passed; domain migration live-verified from /travel-agents. Returns initial outbound cards only, including round trips; 1\u20137 adults; displayed cash fares are not trip totals. Inventory failures remain explicit errors.",
+      "notes": "Independent search/parser QA passed; domain migration live-verified from /travel-agents. Returns initial outbound cards only, including round trips; 1–7 adults; displayed cash fares are not trip totals. Inventory failures remain explicit errors.",
       "provenance": {
         "qa_agent": "agt_8da83a2e489269a5ff05"
       }
@@ -699,6 +713,7 @@
       "url_patterns": [
         "https://inbox.purelymail.com/*"
       ],
+      "url_patterns_reason": "Narrowed to inbox.purelymail.com (the webmail): purelymail.com also serves the marketing site, account administration and the login page, and this page tool's same-origin webmail requests only work from inbox.purelymail.com.",
       "status": "qa_passed",
       "last_verified": "2026-09-26",
       "notes": "Creates one incoming-mail filter through the Settings > Filters editor: subject/from/to/body/header tests; move, copy, flag, keep and stop actions. Idempotent by name. No forwarding, reject, discard or auto-reply actions. Independent QA passed on 2026-09-26 against the live test mailbox.",
@@ -715,6 +730,7 @@
       "url_patterns": [
         "https://inbox.purelymail.com/*"
       ],
+      "url_patterns_reason": "Narrowed to inbox.purelymail.com (the webmail): purelymail.com also serves the marketing site, account administration and the login page, and this page tool's same-origin webmail requests only work from inbox.purelymail.com.",
       "status": "qa_passed",
       "last_verified": "2026-09-26",
       "notes": "Creates one folder (optionally nested) through Settings > Folders; idempotent when it already exists. Never renames or deletes. Independent QA passed on 2026-09-26 against the live test mailbox.",
@@ -731,6 +747,7 @@
       "url_patterns": [
         "https://inbox.purelymail.com/*"
       ],
+      "url_patterns_reason": "Narrowed to inbox.purelymail.com (the webmail): purelymail.com also serves the marketing site, account administration and the login page, and this page tool's same-origin webmail requests only work from inbox.purelymail.com.",
       "status": "qa_passed",
       "last_verified": "2026-09-26",
       "notes": "Deletes exactly one filter by name through the Filters Delete action; a missing name changes nothing. No bulk delete. Independent QA passed on 2026-09-26 against the live test mailbox.",
@@ -747,6 +764,7 @@
       "url_patterns": [
         "https://inbox.purelymail.com/*"
       ],
+      "url_patterns_reason": "Narrowed to inbox.purelymail.com (the webmail): purelymail.com also serves the marketing site, account administration and the login page, and this page tool's same-origin webmail requests only work from inbox.purelymail.com.",
       "status": "qa_passed",
       "last_verified": "2026-09-26",
       "notes": "Reads one filter by name from the filter editor. Read-only. Independent QA passed on 2026-09-26 against the live test mailbox.",
@@ -763,6 +781,7 @@
       "url_patterns": [
         "https://inbox.purelymail.com/*"
       ],
+      "url_patterns_reason": "Narrowed to inbox.purelymail.com (the webmail): purelymail.com also serves the marketing site, account administration and the login page, and this page tool's same-origin webmail requests only work from inbox.purelymail.com.",
       "status": "qa_passed",
       "last_verified": "2026-09-26",
       "notes": "Reads vacation auto-reply filters (vacation action) with message, subject, interval and enabled state. Read-only. Independent QA passed on 2026-09-26 against the live test mailbox.",
@@ -779,6 +798,7 @@
       "url_patterns": [
         "https://inbox.purelymail.com/*"
       ],
+      "url_patterns_reason": "Narrowed to inbox.purelymail.com (the webmail): purelymail.com also serves the marketing site, account administration and the login page, and this page tool's same-origin webmail requests only work from inbox.purelymail.com.",
       "status": "qa_passed",
       "last_verified": "2026-09-26",
       "notes": "Returns a one-time code only from a fresh message received after since: email must pass DMARC for the expected sender domain; SMS must be a DMARC-passing Google Voice forward mentioning expected_text. Stale, forged, excluded and ambiguous codes are not returned. Independent QA passed on 2026-09-26 against the live test mailbox.",
@@ -795,6 +815,7 @@
       "url_patterns": [
         "https://inbox.purelymail.com/*"
       ],
+      "url_patterns_reason": "Narrowed to inbox.purelymail.com (the webmail): purelymail.com also serves the marketing site, account administration and the login page, and this page tool's same-origin webmail requests only work from inbox.purelymail.com.",
       "status": "qa_passed",
       "last_verified": "2026-09-26",
       "notes": "Lists incoming-mail filters in run order with conditions and actions; flags filters the tools cannot rewrite. Read-only. Independent QA passed on 2026-09-26 against the live test mailbox.",
@@ -811,6 +832,7 @@
       "url_patterns": [
         "https://inbox.purelymail.com/*"
       ],
+      "url_patterns_reason": "Narrowed to inbox.purelymail.com (the webmail): purelymail.com also serves the marketing site, account administration and the login page, and this page tool's same-origin webmail requests only work from inbox.purelymail.com.",
       "status": "qa_passed",
       "last_verified": "2026-09-26",
       "notes": "Lists subscribed folders with roles and total/unread counts. Read-only. Independent QA passed on 2026-09-26 against the live test mailbox.",
@@ -827,6 +849,7 @@
       "url_patterns": [
         "https://inbox.purelymail.com/*"
       ],
+      "url_patterns_reason": "Narrowed to inbox.purelymail.com (the webmail): purelymail.com also serves the marketing site, account administration and the login page, and this page tool's same-origin webmail requests only work from inbox.purelymail.com.",
       "status": "qa_passed",
       "last_verified": "2026-09-26",
       "notes": "Lists or searches one folder page (up to 50) with the webmail's own list and search; does not mark mail read. Search results may lag messages that arrived seconds ago. Independent QA passed on 2026-09-26 against the live test mailbox.",
@@ -860,6 +883,7 @@
       "url_patterns": [
         "https://inbox.purelymail.com/*"
       ],
+      "url_patterns_reason": "Narrowed to inbox.purelymail.com (the webmail): purelymail.com also serves the marketing site, account administration and the login page, and this page tool's same-origin webmail requests only work from inbox.purelymail.com.",
       "status": "qa_passed",
       "last_verified": "2026-09-26",
       "notes": "Reads one message via the Show source view (stays unread): safe headers, sender_authentication, attachment names, links and a bounded plain-text body marked untrusted. Independent QA passed on 2026-09-26 against the live test mailbox.",
@@ -876,6 +900,7 @@
       "url_patterns": [
         "https://inbox.purelymail.com/*"
       ],
+      "url_patterns_reason": "Narrowed to inbox.purelymail.com (the webmail): purelymail.com also serves the marketing site, account administration and the login page, and this page tool's same-origin webmail requests only work from inbox.purelymail.com.",
       "status": "qa_passed",
       "last_verified": "2026-09-26",
       "notes": "Sends one plain-text email through a compose session with confirm_send; saves to Sent; refuses a same-subject, same-recipient repeat within 15 minutes unless allow_duplicate. Never retries. Independent QA passed on 2026-09-26 against the live test mailbox.",
@@ -892,6 +917,7 @@
       "url_patterns": [
         "https://inbox.purelymail.com/*"
       ],
+      "url_patterns_reason": "Narrowed to inbox.purelymail.com (the webmail): purelymail.com also serves the marketing site, account administration and the login page, and this page tool's same-origin webmail requests only work from inbox.purelymail.com.",
       "status": "qa_passed",
       "last_verified": "2026-09-26",
       "notes": "Creates or edits the vacation auto-reply filter; can create it switched off. Enabling makes the server auto-reply; live QA never enabled it. Independent QA passed on 2026-09-26 against the live test mailbox.",
@@ -908,6 +934,7 @@
       "url_patterns": [
         "https://inbox.purelymail.com/*"
       ],
+      "url_patterns_reason": "Narrowed to inbox.purelymail.com (the webmail): purelymail.com also serves the marketing site, account administration and the login page, and this page tool's same-origin webmail requests only work from inbox.purelymail.com.",
       "status": "qa_passed",
       "last_verified": "2026-09-26",
       "notes": "Replaces given fields of one filter found by name, keeping its position; refuses filters with parts it cannot rewrite, including vacation replies. Independent QA passed on 2026-09-26 against the live test mailbox.",
@@ -924,6 +951,7 @@
       "url_patterns": [
         "https://inbox.purelymail.com/*"
       ],
+      "url_patterns_reason": "Narrowed to inbox.purelymail.com (the webmail): purelymail.com also serves the marketing site, account administration and the login page, and this page tool's same-origin webmail requests only work from inbox.purelymail.com.",
       "status": "qa_passed",
       "last_verified": "2026-09-26",
       "notes": "Waits up to 110 s for mail received after since matching sender/subject text, using the newest folder list page; returns metadata only. Independent QA passed on 2026-09-26 against the live test mailbox.",
@@ -1093,6 +1121,7 @@
       "url_patterns": [
         "https://www.ticketmaster.com/*"
       ],
+      "url_patterns_reason": "Narrowed to www.ticketmaster.com, where the event and search pages and the site APIs this tool uses live.",
       "status": "qa_passed",
       "last_verified": "2026-09-26",
       "notes": "Independent QA passed on the final source. Page tool on www.ticketmaster.com: one event record (local times, venue, category, on-sale and presale windows, limits, change status). terms_notice is null when the record has no dialog title even if the page shows one.",
@@ -1109,6 +1138,7 @@
       "url_patterns": [
         "https://www.ticketmaster.com/*"
       ],
+      "url_patterns_reason": "Narrowed to www.ticketmaster.com, where the event and search pages and the site APIs this tool uses live.",
       "status": "qa_passed",
       "last_verified": "2026-09-26",
       "notes": "Independent QA passed on the final source. Opens the event page and returns offers for a quantity with All In prices (fees, before taxes); classic layout via the page's own offer query with featured listings first, newer layout via the listing panel (no Best Seats order there). Never selects, holds, accepts terms or opens checkout. Equal-price ties can be ordered differently from the page.",
@@ -1125,6 +1155,7 @@
       "url_patterns": [
         "https://www.ticketmaster.com/*"
       ],
+      "url_patterns_reason": "Narrowed to www.ticketmaster.com, where the event and search pages and the site APIs this tool uses live.",
       "status": "qa_passed",
       "last_verified": "2026-09-26",
       "notes": "Independent QA passed on the final source. Page tool on www.ticketmaster.com: keyword, US city or ZIP, radius and venue-local date/time filters via the site's own search API; merges the nearby block with up to 40 date-filtered pages and warns at the cap. Flags partner-site results (on_ticketmaster false). US only.",
@@ -1159,6 +1190,10 @@
         "https://ubereats.com/*",
         "https://*.ubereats.com/*",
         "https://auth.uber.com/*"
+      ],
+      "url_patterns_reason": "Adds https://auth.uber.com/*: Uber Eats signs in and signs up on Uber's shared auth service (uber.com registrable domain), where the email-code, password, SMS-code, phone, name and terms screens render, so the tool must stay listed there for follow-up calls mid-flow.",
+      "external_hosts": [
+        "auth.uber.com"
       ],
       "status": "draft",
       "last_verified": null,
@@ -1229,6 +1264,10 @@
         "https://*.ubereats.com/*",
         "https://auth.uber.com/*"
       ],
+      "url_patterns_reason": "Adds https://auth.uber.com/*: Uber Eats signs in and signs up on Uber's shared auth service (uber.com registrable domain), where the email-code, password, SMS-code, phone, name and terms screens render, so the tool must stay listed there for follow-up calls mid-flow.",
+      "external_hosts": [
+        "auth.uber.com"
+      ],
       "status": "qa_passed",
       "last_verified": "2026-09-25",
       "notes": "Independent failure-path QA passed on the current source (three passes; the last found no defects: two search-engine entries reached the email code step with one submission each). Live on the owner's account through the tool: method chooser, vault-filled password step, and the already-authenticated path, which now confirms the account by comparing a SHA-256 of the requested email with the site's hashed account email (match and mismatch live-verified 2026-09-25); wrong-email-code path verified on fabricated accounts. The SMS code step after the password was entered by hand once, so otp on the SMS step is fixture-tested only; wrong password, lockout, and CAPTCHA classification are fixture-only.",
@@ -1247,6 +1286,10 @@
         "https://*.ubereats.com/*",
         "https://auth.uber.com/*"
       ],
+      "url_patterns_reason": "Adds https://auth.uber.com/*: Uber Eats signs in and signs up on Uber's shared auth service (uber.com registrable domain), where the email-code, password, SMS-code, phone, name and terms screens render, so the tool must stay listed there for follow-up calls mid-flow.",
+      "external_hosts": [
+        "auth.uber.com"
+      ],
       "status": "draft",
       "last_verified": null,
       "notes": "Starts a new-account sign-up: follows the site's Sign up link from a signed-out session, submits the email once, and returns the email-code challenge; stops on signed-in sessions and on existing accounts. Built from Uber's sign-up client and read-only inspection; no live registration has been submitted yet.",
@@ -1264,6 +1307,10 @@
         "https://ubereats.com/*",
         "https://*.ubereats.com/*",
         "https://auth.uber.com/*"
+      ],
+      "url_patterns_reason": "Adds https://auth.uber.com/*: Uber Eats signs in and signs up on Uber's shared auth service (uber.com registrable domain), where the email-code, password, SMS-code, phone, name and terms screens render, so the tool must stay listed there for follow-up calls mid-flow.",
+      "external_hosts": [
+        "auth.uber.com"
       ],
       "status": "draft",
       "last_verified": null,

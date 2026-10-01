@@ -12,7 +12,7 @@ their own Kernel browser session.
 ```
 domains/
   <registrable-domain>/          # one directory per site, e.g. delta.com, aa.com
-    README.md                    # status table, site quirks, known limitations
+    README.md                    # "# <domain>" plus a | tool | description | table
     <tool-name>.js               # one file per tool, named after the tool
 tests/                           # node --test "tests/*.test.mjs"
 registry.json                    # machine-readable index of every tool
@@ -253,16 +253,16 @@ const result = await webmcp.invokeTool(live.tool_ref, { /* input */ }, { timeout
 ```
 
 Never invoke a tool whose metadata you don't trust: check its `status`, `notes`, and
-`url_patterns` in `registry.json` and the per-domain README first.
+`url_patterns` in `registry.json` first.
 
 ## Contributing
 
 Before opening a pull request:
 
 ```sh
-node scripts/validate-registry.mjs   # registry.json, domains/, and READMEs against the spec
+node scripts/validate-registry.mjs   # registry.json, domains/, and README tables against the spec
 node --test "tests/*.test.mjs"        # tool tests
 ```
 
 CI runs both on every pull request. Adding a tool means adding the tool file, a test, a
-`registry.json` entry, and the per-domain README sections the spec requires.
+`registry.json` entry, and a row in the per-domain README table.
