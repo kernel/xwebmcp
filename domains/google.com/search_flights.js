@@ -59,7 +59,7 @@
   });
   const outputSchema = object({
     status: { type: "string", enum: ["ok", "no_results", "error"] },
-    resultsUrl: { type: "string", description: "Results page URL actually reached; empty when validation fails before navigation." },
+    resultsUrl: { type: "string", description: "Observed Flights results URL with only public search parameters and no fragment; empty for invalid input, consent or unexpected pages." },
     resultCount: { type: "integer", minimum: 0, description: "Returned itineraries, not total inventory." },
     totalResults: { type: ["integer", "null"], minimum: 0, description: "Itineraries present on the page after any 'View more flights' expansion; null on failures." },
     hasMore: { type: "boolean", description: "True when the page holds more itineraries than were returned." },
@@ -139,7 +139,17 @@
       const url = "https://www.google.com/travel/flights/search?" + new URLSearchParams({ tfs, hl: "en", gl: "US", curr: currency });
       const deadline = Date.now() + 110000;
       const remaining = cap => Math.max(1, Math.min(cap, Math.floor((deadline - Date.now()) / 1000)));
-      const isFlightsPage = href => { const u = new URL(href); return /(^|\.)google\.com$/.test(u.hostname) && u.pathname.startsWith("/travel/flights"); };
+      const checkPageUrl = href => {
+        result.resultsUrl = "";
+        let u;
+        try { u = new URL(href); } catch { return "UNEXPECTED_PAGE: navigation did not reach Google Flights."; }
+        if (/^consent\.google\./.test(u.hostname)) return "CONSENT_REQUIRED: handle Google's consent yourself; the tool does not accept terms or change consent preferences.";
+        if (u.protocol !== "https:" || u.username || u.password || !/(^|\.)google\.com$/.test(u.hostname) || !(u.pathname === "/travel/flights" || u.pathname.startsWith("/travel/flights/"))) return u.hostname === "www.google.com" && u.pathname.startsWith("/sorry") ? "BLOCKED: Google served an automated-traffic challenge." : "UNEXPECTED_PAGE: navigation did not reach Google Flights.";
+        u.hash = "";
+        for (const key of [...u.searchParams.keys()]) if (!["tfs", "hl", "gl", "curr"].includes(key)) u.searchParams.delete(key);
+        result.resultsUrl = u.href;
+        return null;
+      };
       try {
         const target = context.matches?.[0]?.top_target_id;
         if (target && (await currentTab()).targetId !== target) await switchTab(target);
@@ -147,22 +157,8 @@
         const navigation = await gotoUrl(url);
         if (navigation?.errorText) return fail("NAVIGATION_FAILED: " + navigation.errorText);
         if (!await waitForElement("html:not([data-xwebmcp-stale])", { state: "attached", timeoutSec: remaining(30) })) return fail("NAVIGATION_TIMEOUT: Google Flights did not load a new document.");
-        result.resultsUrl = (await pageInfo()).url;
-        if (/^consent\.google\./.test(new URL(result.resultsUrl).hostname)) {
-          const consented = await js(() => {
-            const visible = e => e.getClientRects().length > 0;
-            const buttons = [...document.querySelectorAll("button")].filter(visible);
-            const button = buttons.find(b => /^Reject all$/i.test(b.textContent.trim())) || buttons.find(b => /^(Accept all|I agree)$/i.test(b.textContent.trim()));
-            if (!button) return false;
-            document.documentElement.setAttribute("data-xwebmcp-stale", "1");
-            button.click();
-            return true;
-          });
-          if (!consented) return fail("CONSENT_BLOCKED: Google consent page has no recognizable Reject all / Accept all button.");
-          if (!await waitForElement("html:not([data-xwebmcp-stale])", { state: "attached", timeoutSec: remaining(30) })) return fail("CONSENT_TIMEOUT: the consent page did not return to Google Flights.");
-          result.resultsUrl = (await pageInfo()).url;
-        }
-        if (!isFlightsPage(result.resultsUrl)) return fail(new URL(result.resultsUrl).pathname.startsWith("/sorry") ? "BLOCKED: Google served an automated-traffic challenge." : "UNEXPECTED_PAGE: navigation ended at " + result.resultsUrl);
+        let pageError = checkPageUrl((await pageInfo()).url);
+        if (pageError) return fail(pageError);
 
         const readiness = await js(timeoutMs => new Promise(resolve => {
           const visible = e => e.getClientRects().length > 0;
@@ -184,7 +180,8 @@
           const tick = () => { const value = check(); if (value) resolve(value); else setTimeout(tick, 250); };
           tick();
         }), { arg: remaining(60) * 1000 });
-        result.resultsUrl = (await pageInfo()).url;
+        pageError = checkPageUrl((await pageInfo()).url);
+        if (pageError) return fail(pageError);
         if (readiness.state === "no_results") return { ...result, status: "no_results", totalResults: 0, message: readiness.text };
         if (readiness.state === "blocked") return fail("BLOCKED: Google served an automated-traffic challenge.");
         if (readiness.state === "site_error") return fail("SITE_ERROR: " + readiness.text.slice(0, 300));
@@ -291,7 +288,8 @@
           const priceInsight = document.body.innerText.match(/Prices are currently [a-z]+/i)?.[0] || null;
           return { url: location.href, flights, problems, pricingNote, priceInsight, totalVisible: allCards().length, moreLeft: [...document.querySelectorAll('button[aria-label="View more flights"]')].some(visible) };
         }, { arg: { departDate: input.departDate, tripType: input.tripType, passengers, maxResults, deadlineMs: Date.now() + remaining(30) * 1000 } });
-        result.resultsUrl = page.url;
+        pageError = checkPageUrl(page.url);
+        if (pageError) return fail(pageError);
         result.pricingNote = page.pricingNote;
         result.priceInsight = page.priceInsight;
         if (!page.flights.length) return fail(`PARSE_ERROR: Google announced results but no itinerary card was readable${page.problems.length ? ": " + page.problems.join("; ").slice(0, 300) : ""}.`);

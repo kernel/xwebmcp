@@ -269,6 +269,114 @@
     },
     {
       "domain": "google.com",
+      "tool": "explore_destinations",
+      "file": "domains/google.com/explore_destinations.js",
+      "kind": "page",
+      "namespace": "google.com",
+      "url_patterns": [
+        "https://www.google.com/travel/explore",
+        "https://www.google.com/travel/explore?*",
+        "https://www.google.com/travel/explore/*"
+      ],
+      "status": "qa_passed",
+      "last_verified": "2026-09-30",
+      "notes": "Loaded Explore suggestions for an explicit origin after configuring and reloading the page. In-place search changes remain not_ready until reload to avoid stale prices. Separate flight/hotel labels; no destination selection, tracking or booking. Independent public Kernel QA passed; author-only extension invocation passed with pre-granted test site access. Signed-in behavior and permission UI untested.",
+      "provenance": {
+        "qa_agent": "agt_58cec00f988e4fa5f852"
+      }
+    },
+    {
+      "domain": "google.com",
+      "tool": "get_date_grid",
+      "file": "domains/google.com/get_date_grid.js",
+      "kind": "page",
+      "namespace": "google.com",
+      "url_patterns": [
+        "https://www.google.com/travel/flights",
+        "https://www.google.com/travel/flights?*",
+        "https://www.google.com/travel/flights/*"
+      ],
+      "status": "qa_passed",
+      "last_verified": "2026-09-30",
+      "notes": "Loaded English round-trip date-grid labels, up to 49 cells, with two resolved endpoints and no pending prices. Reload after in-place search changes. Opens the panel only; never selects or applies dates. Independent public Kernel QA passed; author-only extension invocation passed from a freshly opened extension tab with pre-granted test site access. Signed-in behavior and permission UI untested.",
+      "provenance": {
+        "qa_agent": "agt_58cec00f988e4fa5f852"
+      }
+    },
+    {
+      "domain": "google.com",
+      "tool": "get_directions",
+      "file": "domains/google.com/get_directions.js",
+      "kind": "page",
+      "namespace": "google.com",
+      "url_patterns": [
+        "https://www.google.com/maps",
+        "https://www.google.com/maps/*",
+        "https://www.google.com/maps?*"
+      ],
+      "status": "qa_passed",
+      "last_verified": "2026-09-30",
+      "notes": "Current English Maps route options for two resolved explicit endpoints. Reads up to ten loaded cards without route clicks, geolocation, sending or navigation. Independent public Kernel QA and author-only extension invocation passed. Signed-in behavior and extension permission UI untested; test site access was pre-granted.",
+      "provenance": {
+        "qa_agent": "agt_58cec00f988e4fa5f852"
+      }
+    },
+    {
+      "domain": "google.com",
+      "tool": "get_place",
+      "file": "domains/google.com/get_place.js",
+      "kind": "page",
+      "namespace": "google.com",
+      "url_patterns": [
+        "https://www.google.com/maps",
+        "https://www.google.com/maps/*",
+        "https://www.google.com/maps?*"
+      ],
+      "status": "qa_passed",
+      "last_verified": "2026-09-29",
+      "notes": "Google Maps place details (name, category, rating, address, phone, website, Plus Code, coordinates, open-status line, weekly hours when the pane lists them) for the open place or for a place_url from search_places results the tab is showing. Same-document page tool on Maps only; never navigates. Independent QA (three rounds, signed off on the final tool source) covered header ratings, hours, address-style panes, same-name places and switching places on the Kernel runtime, signed out. A call by place_url can return the Kernel runtime's empty output for places whose pane loads a child frame; call again with no input. Signed-in behavior and the Chrome extension for the final source are untested.",
+      "provenance": {
+        "qa_agent": "agt_58cec00f988e4fa5f852"
+      }
+    },
+    {
+      "domain": "google.com",
+      "tool": "get_stock_quote",
+      "file": "domains/google.com/get_stock_quote.js",
+      "kind": "page",
+      "namespace": "google.com",
+      "url_patterns": [
+        "https://www.google.com/finance",
+        "https://www.google.com/finance/*",
+        "https://www.google.com/finance?*"
+      ],
+      "status": "qa_passed",
+      "last_verified": "2026-09-29",
+      "notes": "Google Finance quote for a TICKER:EXCHANGE symbol (price, change against previous close, quote time, key statistics as displayed) from one same-origin request; page tool on Finance only. Independent QA (three rounds, signed off on the final tool source) covered success from several Finance pages, not_found, malformed and look-alike input, and schema conformance on the Kernel runtime, signed out. Stocks, ETFs and indices only. Does not register in the Chrome extension on Finance while the extension's page-tool compile is rejected by Finance's Trusted Types policy (an extension gap).",
+      "provenance": {
+        "qa_agent": "agt_58cec00f988e4fa5f852"
+      }
+    },
+    {
+      "domain": "google.com",
+      "tool": "prepare_directions",
+      "file": "domains/google.com/prepare_directions.js",
+      "kind": "page",
+      "namespace": "google.com",
+      "url_patterns": [
+        "https://www.google.com/maps",
+        "https://www.google.com/maps/*",
+        "https://www.google.com/maps?*"
+      ],
+      "status": "qa_passed",
+      "last_verified": "2026-09-30",
+      "notes": "Prepare the observed directions-link shape for two explicit endpoints without requesting, navigating, resolving places or changing state. Independent public Kernel QA and author-only extension invocation passed; exact Unicode encoding and unchanged document checked. Extension permission UI untested; test site access was pre-granted.",
+      "provenance": {
+        "qa_agent": "agt_58cec00f988e4fa5f852"
+      }
+    },
+    {
+      "domain": "google.com",
       "tool": "search_flights",
       "file": "domains/google.com/search_flights.js",
       "kind": "cdp",
@@ -278,10 +386,28 @@
         "https://*.google.com/travel/*"
       ],
       "status": "qa_passed",
-      "last_verified": "2026-09-25",
-      "notes": "Google Flights via a tfs deep link (hl=en, gl=US, curr); returns outbound itineraries from the best and other sections with flight numbers, segments, layovers and total prices for the requested passengers. Three independent QA rounds passed the full matrix plus date-line, airport-change, non-USD and unsupported-currency probes; a first-round intermittent loss of expanded detail panels was fixed and did not recur in 10 runs. url_patterns are deliberately narrowed to /travel/* (see the domain README). Consent interstitial, /sorry blocks and 'Price unavailable' cards are covered by local tests only.",
+      "last_verified": "2026-09-30",
+      "notes": "Google Flights via a tfs deep link; outbound itinerary coverage is preserved. Consent stops without changing preferences. URLs are guarded after navigation, readiness and parsing; only public search parameters are retained. Fresh independent public Kernel QA passed, including late-redirect fixtures; author-only extension invocation passed. No tracking or booking; signed-in behavior and extension permission UI untested.",
       "provenance": {
-        "qa_agent": "agt_7ffe2dcdda2935caea70"
+        "qa_agent": "agt_58cec00f988e4fa5f852"
+      }
+    },
+    {
+      "domain": "google.com",
+      "tool": "search_places",
+      "file": "domains/google.com/search_places.js",
+      "kind": "page",
+      "namespace": "google.com",
+      "url_patterns": [
+        "https://www.google.com/maps",
+        "https://www.google.com/maps/*",
+        "https://www.google.com/maps?*"
+      ],
+      "status": "qa_passed",
+      "last_verified": "2026-09-29",
+      "notes": "Google Maps place search through the tab's own Maps search box: up to 20 loaded results with category, address, rating, price range, status text, sponsored flag, coordinates and a canonical place_url; single-place, bare-map-point and no-results outcomes are explicit. Page tool on Maps only; does not scroll or page. Independent QA (three rounds, signed off on the final tool source) covered success, staleness under network latency, malformed input and unsuitable pages on the Kernel runtime, signed out. Bounded on purpose; no challenge, permission or rate-limit bypass. Signed-in behavior and the Chrome extension for the final source are untested.",
+      "provenance": {
+        "qa_agent": "agt_58cec00f988e4fa5f852"
       }
     },
     {

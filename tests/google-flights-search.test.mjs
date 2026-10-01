@@ -156,7 +156,7 @@ function resultsPage({ live = "2 results returned.", roundTripCards = false, ext
   return { documentElement, body, querySelector: s => documentElement.querySelector(s), querySelectorAll: s => documentElement.querySelectorAll(s), cards: { a: cardA, b: cardB }, moreButton };
 }
 
-function harness({ startUrl = "https://www.google.com/travel/flights?hl=en", document = resultsPage(), consent = false, sorry = false, matches, timeoutClock = false } = {}) {
+function harness({ startUrl = "https://www.google.com/travel/flights?hl=en", document = resultsPage(), consent = false, sorry = false, matches, timeoutClock = false, redirectAfterReadiness, redirectDuringParse } = {}) {
   const calls = [];
   let url = startUrl;
   let tabId = "target-a";
@@ -181,7 +181,9 @@ function harness({ startUrl = "https://www.google.com/travel/flights?hl=en", doc
     waitForNetworkIdle: async () => { calls.push("idle"); return true; },
     js: async (fn, options) => {
       calls.push("js");
+      if (redirectDuringParse && options?.arg?.maxResults) url = redirectDuringParse;
       const value = await vm.runInNewContext(`(${fn.toString()})`, pageGlobals())(options?.arg);
+      if (redirectAfterReadiness && typeof options?.arg === "number") url = redirectAfterReadiness;
       if (consent && /consent\.google\.com/.test(url) && value === true) url = new URL(url).searchParams.get("continue");
       return value;
     },
@@ -215,6 +217,24 @@ function validate(schema, value, path = "$") {
     }
   }
 }
+
+for (const stage of ["redirectAfterReadiness", "redirectDuringParse"]) {
+  for (const [url, message] of [["https://consent.google.com/m?session=FABRICATED_TOKEN", "CONSENT_REQUIRED"], ["https://example.com/?session=FABRICATED_TOKEN", "UNEXPECTED_PAGE"], ["https://www.google.com/sorry/index?session=FABRICATED_TOKEN", "BLOCKED"]]) {
+    test(`late redirect ${stage} returns ${message} without exposing its URL`, async () => {
+      const h = harness({ [stage]: url });
+      const result = await h.execute(oneWay);
+      assert.equal(result.status, "error"); assert.match(result.message, new RegExp(`^${message}:`));
+      assert.equal(result.resultsUrl, ""); assert.equal(JSON.stringify(result).includes("FABRICATED_TOKEN"), false);
+      assert.deepEqual(result.flights, []); validate(h.tools[0].tool.outputSchema, result);
+    });
+  }
+}
+test("late Flights URLs retain only public search parameters and discard fragments", async () => {
+  const h = harness({ redirectDuringParse: "https://www.google.com/travel/flights/search?hl=en&session=FABRICATED_TOKEN#FABRICATED_FRAGMENT" });
+  const result = await h.execute(oneWay);
+  assert.equal(result.status, "ok"); assert.equal(result.resultsUrl, "https://www.google.com/travel/flights/search?hl=en");
+  assert.equal(JSON.stringify(result).includes("FABRICATED"), false);
+});
 
 test("source is a self-contained expression with narrow Google Travel matching and typed schemas", () => {
   const { tools } = harness();
@@ -397,24 +417,26 @@ test("explicit no-results announcements are reported, never as an error", async 
   assert.match(result.resultsUrl, /^https:\/\/www\.google\.com\/travel\/flights\/search\?tfs=/);
 });
 
-test("the consent interstitial is dismissed before reading results", async () => {
+test("consent requires human handling without clicking any preference or returning its URL", async () => {
   const doc = resultsPage();
   doc.body.append(new El("button", { text: "Accept all" }));
   doc.body.append(new El("button", { text: "Reject all" }));
   const h = harness({ consent: true, document: doc });
   const result = await h.execute(oneWay);
-  assert.equal(result.status, "ok");
-  assert.equal(doc.body.children.at(-1).clicks, 1);
+  assert.equal(result.status, "error");
+  assert.match(result.message, /^CONSENT_REQUIRED/);
+  assert.equal(result.resultsUrl, "");
+  assert.equal(doc.body.children.at(-1).clicks, 0);
   assert.equal(doc.body.children.at(-2).clicks, 0);
-  assert.equal(doc.documentElement.getAttribute("data-xwebmcp-stale"), "1");
-  assert.equal(h.calls.filter(c => c === "wait:html:not([data-xwebmcp-stale]):attached").length, 2);
+  assert.equal(h.calls.filter(c => c === "wait:html:not([data-xwebmcp-stale]):attached").length, 1);
 });
 
 test("a consent page without a recognizable button is an explicit error", async () => {
   const h = harness({ consent: true });
   const result = await h.execute(oneWay);
   assert.equal(result.status, "error");
-  assert.match(result.message, /^CONSENT_BLOCKED/);
+  assert.match(result.message, /^CONSENT_REQUIRED/);
+  assert.equal(result.resultsUrl, "");
 });
 
 test("Google's automated-traffic challenge is reported as blocked", async () => {
