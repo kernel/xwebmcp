@@ -194,6 +194,10 @@ export async function invoke({toolRef: ref, input, timeoutSec, allowUserTabs}) {
   if (!allowUserTabs && !tabsOwned.isOwned(parsed.tabId)) {
     throw Object.assign(new Error(`tab ${parsed.tabId} was not opened by xwebmcp; pass allow_user_tabs to act on the user's own tabs`), {code: 'tab_not_allowed'});
   }
+  const readOnly = frame.tools.find((tool) => tool.name === parsed.name)?.annotations?.readOnlyHint === true;
+  const unobserved = readOnly
+    ? 'the page navigated or reloaded before this read-only tool answered; it changed nothing, so wait for the new page, list tools again, and call it there'
+    : 'the invocation started, but its final outcome could not be observed; do not retry automatically';
   const custom = CUSTOM_NAME.exec(parsed.name);
   if (custom) {
     const {definitions} = await readDefinitions();
@@ -207,7 +211,7 @@ export async function invoke({toolRef: ref, input, timeoutSec, allowUserTabs}) {
   const seconds = Math.min(invoker.MAX_TIMEOUT_SEC, Math.max(1, timeoutSec ?? EXECUTE_TIMEOUT_SEC));
   let timer;
   const timeout = new Promise((_, reject) => {
-    timer = setTimeout(() => reject(Object.assign(new Error('the invocation started, but its final outcome could not be observed; do not retry automatically'), {code: 'outcome_unknown', invocationId: id})), seconds * 1000);
+    timer = setTimeout(() => reject(Object.assign(new Error(unobserved), {code: 'outcome_unknown', invocationId: id})), seconds * 1000);
   });
   try {
     const response = await Promise.race([
@@ -225,7 +229,7 @@ export async function invoke({toolRef: ref, input, timeoutSec, allowUserTabs}) {
     if (/Receiving end does not exist|No frame with id|No tab with id/i.test(String(error?.message ?? error))) {
       throw new ToolNotFoundError('WebMCP tool is no longer available; discover tools again');
     }
-    throw Object.assign(new Error('the invocation started, but its final outcome could not be observed; do not retry automatically'), {code: 'outcome_unknown', invocationId: id, cause: error});
+    throw Object.assign(new Error(unobserved), {code: 'outcome_unknown', invocationId: id, cause: error});
   } finally {
     clearTimeout(timer);
   }
