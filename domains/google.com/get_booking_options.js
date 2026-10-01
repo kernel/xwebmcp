@@ -61,16 +61,17 @@
         card = parent;
       }
       const lines = (card.innerText || "").split("\n").map((s) => s.trim()).filter(Boolean);
-      const carry = lines.find((l) => /carry-on/i.test(l)) || null;
+      const cardText = (card.innerText || card.textContent || "").replace(/\s+/g, " ");
+      const carry = (/(No carry-on bags?|\d+ (?:free )?carry-on(?: bags?)?(?: included)?)/i.exec(cardText) || [])[1] || null;
       const checked = lines.find((l) => /checked bag/i.test(l) && !/^1st checked bag:/i.test(l)) || null;
-      const features = lines.filter((l) => l !== m[2] && !/^\$/.test(l) && l !== carry && l !== checked && !/^Continue$|^1st checked bag:/i.test(l));
+      const features = lines.filter((l) => l !== m[2] && !/^\$/.test(l) && !/carry-on/i.test(l) && l !== checked && !/^Continue$|^1st checked bag:/i.test(l));
       return {
         seller: m[1] || null,
         fare_name: m[2] || lines[0] || "",
         price: m[3] ? Number(m[3].replace(/,/g, "")) : null,
         currency_label: m[4] || null,
         carry_on: carry,
-        carry_on_included: carry ? !/^no carry-on/i.test(carry) : null,
+        carry_on_included: carry ? !/^no /i.test(carry) : null,
         checked_bag: checked,
         features
       };

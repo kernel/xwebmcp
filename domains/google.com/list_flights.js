@@ -74,7 +74,7 @@
     const headings = [...document.querySelectorAll("h2, h3")].filter(visible);
     const sectionFor = (li) => {
       let best = null;
-      for (const h of headings) if (h.compareDocumentPosition(li) & Node.DOCUMENT_POSITION_FOLLOWING) best = h;
+      for (const h of headings) if (typeof h.compareDocumentPosition === "function" && (h.compareDocumentPosition(li) & 4)) best = h;
       const name = best ? text(best) : null;
       return name && /flights/i.test(name) ? name : null;
     };
@@ -114,7 +114,7 @@
       const duration = /Total duration (?:(\d+) hr)?\s*(?:(\d+) min)?/.exec(aria);
       const bags = /(\d+) carry-on bags? included\. (\d+) checked bags? included/.exec(aria) || /(\d+) carry-on bags? included\. (\d+) checked bags? included/.exec([...li.querySelectorAll("[aria-label*='carry-on']")].map((b) => b.getAttribute("aria-label")).join(" "));
       // Rows print the route as "ORD–CVG" (en dash); some also print "(CVG)" after names.
-      const pair = /\b([A-Z]{3})\s*[–-]\s*([A-Z]{3})\b/.exec(text(li));
+      const pair = /(?:^|[^A-Z])([A-Z]{3})\s*[–-]\s*([A-Z]{3})(?=[^A-Z]|$)/.exec(text(li));
       const codes = pair ? [pair[1], pair[2]] : [...text(li).matchAll(/\(([A-Z]{3})\)/g)].map((m) => m[1]);
       const layovers = [...aria.matchAll(/Layover \(\d+ of \d+\) is a ([^.]+)\./g)].map((m) => m[1]);
       flights.push({

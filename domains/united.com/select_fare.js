@@ -76,10 +76,16 @@
     const settledUntil = Date.now() + 5000;
     while (Date.now() < settledUntil && !selectButtons().every((b) => /Fare includes/i.test(cardOf(b).innerText || "") && /carry-on/i.test(cardOf(b).innerText || ""))) await sleep(200);
     await sleep(200);
+    // Chrome's innerText puts each block on its own line; fall back to leaf elements otherwise.
+    const linesOf = (el) => {
+      const raw = el.innerText || "";
+      if (raw.includes("\n") && raw !== el.textContent) return raw.split("\n").map((s) => s.trim()).filter(Boolean);
+      return [...el.querySelectorAll("*")].filter((e) => !e.children.length).map((e) => (e.textContent || "").replace(/\s+/g, " ").trim()).filter(Boolean);
+    };
     const options = selectButtons().map((b) => {
       let card = b;
       while (card.parentElement && card.parentElement.querySelectorAll("button[aria-label^='Select ']").length === 1) card = card.parentElement;
-      const lines = (card.innerText || "").split("\n").map((s) => s.trim().replace(/(\D)\d$/, "$1")).filter(Boolean);
+      const lines = linesOf(card).map((s) => s.replace(/(\D)\d$/, "$1"));
       const label = (b.getAttribute("aria-label") || "").replace(/^Select\s+/, "");
       const cabin = lines[0] ? lines[0].replace(/®/g, "") : null;
       const fareName = (cabin && label.startsWith(cabin) ? label.slice(cabin.length) : label.replace(/^United (Economy|First|Business|Premium Plus|Polaris)®?\s*/i, "")).trim() || label;

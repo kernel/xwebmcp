@@ -67,7 +67,13 @@
     const toggles = [...box.querySelectorAll("button, a")].filter((b) => visible(b) && /^Show details$/i.test(text(b)));
     toggles.forEach((b) => b.click());
     if (toggles.length) await sleep(800);
-    const lines = (box.innerText || "").split("\n").map((s) => s.trim()).filter(Boolean);
+    // Chrome's innerText puts each block on its own line; fall back to leaf elements otherwise.
+    const linesOf = (el) => {
+      const raw = el.innerText || "";
+      if (raw.includes("\n") && raw !== el.textContent) return raw.split("\n").map((s) => s.trim()).filter(Boolean);
+      return [...el.querySelectorAll("*")].filter((e) => !e.children.length).map((e) => (e.textContent || "").replace(/\s+/g, " ").trim()).filter(Boolean);
+    };
+    const lines = linesOf(box);
     const trip = /^(ROUNDTRIP|ONE ?WAY|MULTI.?CITY)\s*\((\d+) TRAVELERS?\)/i.exec(text(heading));
     const flights = [];
     lines.forEach((line, i) => {
