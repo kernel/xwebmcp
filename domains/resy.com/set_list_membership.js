@@ -3,15 +3,15 @@
   match: { url_patterns: ["https://resy.com/*"] },
   tool: {
     name: "set_list_membership",
-    description: "Add one restaurant to, or remove it from, one custom list in the signed-in Resy account. Requires manual login, expected_account_ref, list_id from list_lists, venue_id, the desired on_list and the observed expected_on_list (from list_lists with venue_id). My Hit List is refused: use set_favorite for it. Reads the venue's list memberships first, does nothing if already at the desired state, refuses stale state, sends one request, then rereads to verify the list changed and the venue's other lists did not. Never creates, renames, shares or deletes a list. A timeout, cancellation after dispatch, session switch or failed readback returns outcome_unknown: never retry automatically; read state first.",
+    description: "Add or remove one venue on one custom list (not My Hit List: use set_favorite). Needs the observed expected_on_list; mismatch is stale_state. Verifies the venue's other lists are unchanged. One request; never retry outcome_unknown.",
     inputSchema: {
       type: "object", additionalProperties: false, required: ["expected_account_ref", "list_id", "venue_id", "on_list", "expected_on_list"],
       properties: {
-        expected_account_ref: { type: "string", pattern: "^account_[a-f0-9]{64}$", description: "Opaque reference from get_account_status for the current signed-in account. Not a credential or proof of human approval." },
+        expected_account_ref: { type: "string", pattern: "^account_[a-f0-9]{64}$", description: "From get_account_status." },
         list_id: { type: "string", pattern: "^[A-Za-z0-9-]{1,64}$", description: "list_id from list_lists." },
         venue_id: { type: "integer", minimum: 1, maximum: 2147483647, description: "Resy venue id." },
         on_list: { type: "boolean", description: "Desired membership." },
-        expected_on_list: { type: "boolean", description: "Observed current membership. Mismatch fails closed unless already at the desired state." }
+        expected_on_list: { type: "boolean", description: "Observed current membership." }
       }
     },
     outputSchema: {
@@ -20,7 +20,7 @@
         {
           type: "object", additionalProperties: false, required: ["status", "account_ref", "list_id", "list_name", "venue_id", "on_list", "previous_on_list"],
           properties: {
-            status: { enum: ["updated", "unchanged"] }, account_ref: { type: "string", pattern: "^account_[a-f0-9]{64}$", description: "Opaque reference from get_account_status for the current signed-in account. Not a credential or proof of human approval." },
+            status: { enum: ["updated", "unchanged"] }, account_ref: { type: "string", pattern: "^account_[a-f0-9]{64}$", description: "From get_account_status." },
             list_id: { type: "string" }, list_name: { type: "string", maxLength: 200 }, venue_id: { type: "integer", minimum: 1, maximum: 2147483647 },
             on_list: { type: "boolean" }, previous_on_list: { type: "boolean" }
           }

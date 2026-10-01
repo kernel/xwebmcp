@@ -3,7 +3,7 @@
   match: { url_patterns: ["https://resy.com/*"] },
   tool: {
     name: "set_favorite",
-    description: "Set one exact restaurant's reversible My Hit List favorite state in the current Resy account. Requires manual login, expected_account_ref from get_account_status, venue_id plus city_slug/url_slug from public tools, desired favorite and expected_favorite state. Reads current account and venue first, checks venue id and favorite flag, does nothing if already at desired state, refuses stale state, sends one form-encoded POST /3/user/favorites with the same session token (any token change fails closed), then rereads the venue to verify. Never changes custom lists or marketing preferences. A timeout, cancellation after dispatch, session switch, failed readback or uncertain response returns outcome_unknown: never retry automatically; read state first. No human approval flag is accepted. HTTP 200 or 201 from the favorites endpoint still requires saved-state readback before success.",
+    description: "Add or remove one venue on My Hit List (favorites). Needs venue_id, city_slug, url_slug, favorite and the observed expected_favorite; already at the desired state is unchanged, a mismatch is stale_state. One request, verified by reading back; never retry outcome_unknown.",
     inputSchema: {
       type: "object",
       additionalProperties: false,
@@ -12,13 +12,13 @@
         expected_account_ref: {
           type: "string",
           pattern: "^account_[a-f0-9]{64}$",
-          description: "Opaque reference from get_account_status for the current signed-in account. Not a credential or proof of human approval."
+          description: "From get_account_status."
         },
         venue_id: { type: "integer", minimum: 1, maximum: 2147483647 },
         city_slug: { type: "string", pattern: "^[a-z0-9][a-z0-9-]{1,99}$" },
         url_slug: { type: "string", pattern: "^[A-Za-z0-9][A-Za-z0-9-]{0,119}$" },
-        favorite: { type: "boolean", description: "Desired saved state for My Hit List only." },
-        expected_favorite: { type: "boolean", description: "Expected initial favorite state. Mismatch fails closed unless already at the desired state." }
+        favorite: { type: "boolean", description: "Desired state." },
+        expected_favorite: { type: "boolean", description: "Observed current state." }
       }
     },
     outputSchema: {
@@ -33,7 +33,7 @@
             account_ref: {
               type: "string",
               pattern: "^account_[a-f0-9]{64}$",
-              description: "Opaque reference from get_account_status for the current signed-in account. Not a credential or proof of human approval."
+              description: "From get_account_status."
             },
             venue_id: { type: "integer", minimum: 1, maximum: 2147483647 },
             venue_name: { type: "string", maxLength: 200 },

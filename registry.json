@@ -868,6 +868,50 @@
     },
     {
       "domain": "resy.com",
+      "tool": "book_reservation",
+      "file": "domains/resy.com/book_reservation.js",
+      "kind": "page",
+      "namespace": "resy.com",
+      "url_patterns": ["https://resy.com/*"],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Books one exact slot: confirm true, expected_total must equal a fresh commit-0 quote, duplicate guard on venue/date, then commit 1 (as clicking a slot does) and one form POST /3/book with the default card when required; success only when a new upcoming reservation matches. Guards live-tested 2026-10-01 (stale total stops before commit 1); a real booking has not been made."
+    },
+    {
+      "domain": "resy.com",
+      "tool": "cancel_reservation",
+      "file": "domains/resy.com/cancel_reservation.js",
+      "kind": "page",
+      "namespace": "resy.com",
+      "url_patterns": ["https://resy.com/*"],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Cancels one upcoming reservation by reservation_id (resy_token looked up internally, never returned); confirm true; fee_applies unless accept_cancellation_fee when a fee applies now or the terms cannot be read. Fixture-tested; live run only confirmed not_found on an empty account."
+    },
+    {
+      "domain": "resy.com",
+      "tool": "change_reservation",
+      "file": "domains/resy.com/change_reservation.js",
+      "kind": "page",
+      "namespace": "resy.com",
+      "url_patterns": ["https://resy.com/*"],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Moves an upcoming reservation at the same venue: details with resy_token, then POST /3/change with book_token, resy_token and replace=1, following the site bundle. Fixture-tested only; not live-tested (no reservation on the test account)."
+    },
+    {
+      "domain": "resy.com",
+      "tool": "copy_list",
+      "file": "domains/resy.com/copy_list.js",
+      "kind": "page",
+      "namespace": "resy.com",
+      "url_patterns": ["https://resy.com/*"],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Copies a list by share slug into a new private list (POST /3/user/lists/{slug}/copy) with a duplicate-name guard; readback returns the new list_id. Builder live run 2026-10-01 on a test list, deleted afterwards."
+    },
+    {
+      "domain": "resy.com",
       "tool": "create_list",
       "file": "domains/resy.com/create_list.js",
       "kind": "page",
@@ -937,6 +981,28 @@
     },
     {
       "domain": "resy.com",
+      "tool": "get_booking_quote",
+      "file": "domains/resy.com/get_booking_quote.js",
+      "kind": "page",
+      "namespace": "resy.com",
+      "url_patterns": ["https://resy.com/*"],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Exact-slot quote from /3/details with commit 0 (preview, no book_token, no hold): total, fees, payment type, card requirement, cancellation fee/cutoffs and policy text. Replaces prepare_reservation. Builder live run 2026-10-01."
+    },
+    {
+      "domain": "resy.com",
+      "tool": "get_collection",
+      "file": "domains/resy.com/get_collection.js",
+      "kind": "page",
+      "namespace": "resy.com",
+      "url_patterns": ["https://resy.com/*"],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Public page of a collection's venues with up to 6 open slots each; Resy's offset is a 1-based page. Trims a roughly 100 KB response to about 2 KB. Builder live run 2026-10-01."
+    },
+    {
+      "domain": "resy.com",
       "tool": "get_list",
       "file": "domains/resy.com/get_list.js",
       "kind": "page",
@@ -969,6 +1035,50 @@
       "last_verified": null,
       "notes": "Public venue profile by URL or city and venue slug. Back to draft after a source change on 2026-10-01: caller cancellation during a request is reported as canceled, not a timeout. Builder live run passed on 2026-10-01; needs fresh independent QA; earlier sign-off (agt_221f5a5f11361477ff09) covered the previous source.",
       "provenance": { "qa_agent": "agt_221f5a5f11361477ff09" }
+    },
+    {
+      "domain": "resy.com",
+      "tool": "get_share_link",
+      "file": "domains/resy.com/get_share_link.js",
+      "kind": "page",
+      "namespace": "resy.com",
+      "url_patterns": ["https://resy.com/*"],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Returns https://resy.com/shared/lists/{slug} from POST /3/user/lists/{id}/share. Live 2026-10-01: the slug is stable, is_public stays false, and any list (even My Hit List) is readable anonymously by slug, so sharing changes nothing on the account."
+    },
+    {
+      "domain": "resy.com",
+      "tool": "get_venues",
+      "file": "domains/resy.com/get_venues.js",
+      "kind": "page",
+      "namespace": "resy.com",
+      "url_patterns": ["https://resy.com/*"],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Public batch lookup of up to 20 venues by id via /3/venues. Builder live run 2026-10-01."
+    },
+    {
+      "domain": "resy.com",
+      "tool": "list_collections",
+      "file": "domains/resy.com/list_collections.js",
+      "kind": "page",
+      "namespace": "resy.com",
+      "url_patterns": ["https://resy.com/*"],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Public curated collections for a city code (Climbing 889, New on Resy 890, Top Rated 891 in New York, plus editorial picks); My Hit List entry excluded. Builder live run 2026-10-01."
+    },
+    {
+      "domain": "resy.com",
+      "tool": "list_events",
+      "file": "domains/resy.com/list_events.js",
+      "kind": "page",
+      "namespace": "resy.com",
+      "url_patterns": ["https://resy.com/*"],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Public ticketed events for a venue or city; Resy's offset is a 1-based page, exposed as page. Builder live run 2026-10-01. Booking events is not supported."
     },
     {
       "domain": "resy.com",
@@ -1007,15 +1117,14 @@
     },
     {
       "domain": "resy.com",
-      "tool": "prepare_reservation",
-      "file": "domains/resy.com/prepare_reservation.js",
+      "tool": "rate_reservation",
+      "file": "domains/resy.com/rate_reservation.js",
       "kind": "page",
       "namespace": "resy.com",
       "url_patterns": ["https://resy.com/*"],
       "status": "draft",
       "last_verified": null,
-      "notes": "Public exact-slot match and human handoff only. No hold, details request, account binding or booking; exact price and final terms unavailable. Back to draft after a source change on 2026-10-01: caller cancellation during a request is reported as canceled, not a timeout. Builder live run passed on 2026-10-01; needs fresh independent QA; earlier sign-off (agt_221f5a5f11361477ff09) covered the previous source.",
-      "provenance": { "qa_agent": "agt_221f5a5f11361477ff09" }
+      "notes": "Submits a 1-5 rating (and optional comments) for a past reservation with POST /3/rate/reservation as the site's rating page does; conflict if already rated, rejected if expired. Fixture-tested only."
     },
     {
       "domain": "resy.com",

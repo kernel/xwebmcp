@@ -3,15 +3,15 @@
   match: { url_patterns: ["https://resy.com/*"] },
   tool: {
     name: "remove_notify",
-    description: "Turn off one Resy Notify in the signed-in account, identified by venue_id, date, party_size and service_type_id from list_notify_requests. Only call it when the user asked to stop this notification. Requires manual login, expected_account_ref and confirm: true. If no such Notify exists nothing is sent and status is absent. Sends one request, never retries, then rereads to verify it is gone. Does not cancel reservations. A timeout, cancellation after dispatch or failed readback returns outcome_unknown: read list_notify_requests before anything else.",
+    description: "Turn off one Notify by venue_id, date, party_size and service_type_id from list_notify_requests. Only when the user asked; confirm: true. None existing returns absent.",
     inputSchema: {
       type: "object", additionalProperties: false, required: ["expected_account_ref", "venue_id", "date", "party_size", "service_type_id", "confirm"],
       properties: {
-        expected_account_ref: { type: "string", pattern: "^account_[a-f0-9]{64}$", description: "Opaque reference from get_account_status for the current signed-in account. Not a credential or proof of human approval." },
+        expected_account_ref: { type: "string", pattern: "^account_[a-f0-9]{64}$", description: "From get_account_status." },
         venue_id: { type: "integer", minimum: 1, maximum: 2147483647, description: "Resy venue id." },
         date: { type: "string", pattern: "^\\d{4}-\\d{2}-\\d{2}$", description: "Service date at the venue, YYYY-MM-DD." },
         party_size: { type: "integer", minimum: 1, maximum: 20 },
-        service_type_id: { type: "integer", minimum: 0, description: "Service (for example dinner) from notify_options in get_availability or from list_notify_requests." },
+        service_type_id: { type: "integer", minimum: 0, description: "From notify_options or list_notify_requests." },
         confirm: { const: true, description: "Must be true: the user asked for this Notify to be removed." }
       }
     },
@@ -21,7 +21,7 @@
         {
           type: "object", additionalProperties: false, required: ["status", "account_ref", "venue_id", "date", "party_size", "service_type_id", "local_start_time", "local_end_time"],
           properties: {
-            status: { enum: ["removed", "absent"] }, account_ref: { type: "string", pattern: "^account_[a-f0-9]{64}$", description: "Opaque reference from get_account_status for the current signed-in account. Not a credential or proof of human approval." }, venue_id: { type: "integer", minimum: 1, maximum: 2147483647 },
+            status: { enum: ["removed", "absent"] }, account_ref: { type: "string", pattern: "^account_[a-f0-9]{64}$", description: "From get_account_status." }, venue_id: { type: "integer", minimum: 1, maximum: 2147483647 },
             date: { type: "string" }, party_size: { type: "integer" }, service_type_id: { type: "integer" },
             local_start_time: { type: ["string", "null"], description: "Window of the removed Notify; null when absent." }, local_end_time: { type: ["string", "null"] }
           }

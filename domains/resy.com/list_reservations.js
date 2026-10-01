@@ -3,7 +3,7 @@
   match: { url_patterns: ["https://resy.com/*"] },
   tool: {
     name: "list_reservations",
-    description: "List one bounded page of the current account's upcoming or past Resy reservations. Requires manual login and expected_account_ref from get_account_status. Offset is passed through (first observed value 1; paging semantics unverified). Returns reservation ids for get_reservation, venue/date/time/party size and raw policy text; never attendee, private requests, payment methods, auth or cancellation tokens. Collection envelopes were live-observed empty; populated fields are grounded in the site bundle and fixture-tested, not live verified. Read-only; never opens a reservation widget, holds or cancels.",
+    description: "One page (max 20) of the account's upcoming or past reservations: reservation_id, venue, date, time, party, seating, price and cancellation policy text. No automatic paging.",
     inputSchema: {
       type: "object",
       additionalProperties: false,
@@ -12,7 +12,7 @@
         expected_account_ref: {
           type: "string",
           pattern: "^account_[a-f0-9]{64}$",
-          description: "Opaque reference from get_account_status for the current signed-in account. Not a credential or proof of human approval."
+          description: "From get_account_status."
         },
         type: { type: "string", enum: ["upcoming", "past"], default: "upcoming" },
         offset: {
@@ -20,7 +20,7 @@
           minimum: 1,
           maximum: 10000,
           default: 1,
-          description: "Resy offset parameter. First observed request uses 1. Increment semantics have not been verified; no automatic pagination."
+          description: "Resy's offset; starts at 1."
         },
         limit: { type: "integer", minimum: 1, maximum: 20, default: 10 }
       }
@@ -37,7 +37,7 @@
             account_ref: {
               type: "string",
               pattern: "^account_[a-f0-9]{64}$",
-              description: "Opaque reference from get_account_status for the current signed-in account. Not a credential or proof of human approval."
+              description: "From get_account_status."
             },
             type: { type: "string", maxLength: 10 },
             offset: { type: "integer" },

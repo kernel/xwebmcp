@@ -3,12 +3,12 @@
   match: { url_patterns: ["https://resy.com/*"] },
   tool: {
     name: "get_availability",
-    description: "List the open reservation slots Resy (resy.com) shows for one restaurant on one date for a party size: venue-local start and end date-times (a slot after midnight belongs to the requested date but carries the next calendar date), seating type, and each slot's cancellation and payment terms as a policy_id into policies, which lists each distinct set of the site's raw policy fields once. Get venue_id from search_restaurants or get_restaurant. It never selects a slot, holds a table, books or joins a wait list, and it does not return the booking handles the site needs to book. A slot is a snapshot; it does not prove the table is still free, and no_availability does not say why (fully booked, party size outside what the venue takes, date outside its booking window, or reservations closed). Slots are sorted earliest first and at most the first 300 are listed (a venue with five-minute slots all day has about 288). Use get_availability_calendar to find open dates. Venues booked through Tock, closed or unknown venue ids return not_found. Runs inside the current resy.com page without navigating; read-only, works signed out.",
+    description: "List open slots for one venue, date and party size: venue-local local_start/local_end, seating_type and a policy_id into policies (raw fee and cutoff fields), plus notify_options for create_notify. No slots does not say why. A snapshot, not a hold. Read-only.",
     inputSchema: {
       type: "object", additionalProperties: false, required: ["venue_id", "date"],
       properties: {
-        venue_id: { type: "integer", minimum: 1, maximum: 2147483647, description: "Resy venue id from search_restaurants or get_restaurant." },
-        date: { type: "string", pattern: "^\\d{4}-\\d{2}-\\d{2}$", description: "Local date at the restaurant, YYYY-MM-DD, from yesterday (UTC) to one year ahead." },
+        venue_id: { type: "integer", minimum: 1, maximum: 2147483647, description: "From search_restaurants." },
+        date: { type: "string", pattern: "^\\d{4}-\\d{2}-\\d{2}$", description: "Venue-local date." },
         party_size: { type: "integer", minimum: 1, maximum: 20, default: 2, description: "Number of guests." }
       }
     },

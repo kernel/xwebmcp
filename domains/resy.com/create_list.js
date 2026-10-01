@@ -3,11 +3,11 @@
   match: { url_patterns: ["https://resy.com/*"] },
   tool: {
     name: "create_list",
-    description: "Create one new private custom restaurant list in the signed-in Resy account. Requires manual login, expected_account_ref and a name. Before creating it reads the account's lists: if one already has the same name (ignoring case) it returns duplicate_suspected with that list's list_id and creates nothing, unless allow_duplicate is true. Sends one request, never retries, then rereads the lists and returns the new list_id. Does not add venues (use set_list_membership), share or publish the list. A timeout, cancellation after dispatch or failed readback returns outcome_unknown: read list_lists before trying again.",
+    description: "Create one private custom list. A list with the same name (any case) returns duplicate_suspected unless allow_duplicate. Returns the new list_id.",
     inputSchema: {
       type: "object", additionalProperties: false, required: ["expected_account_ref", "name"],
       properties: {
-        expected_account_ref: { type: "string", pattern: "^account_[a-f0-9]{64}$", description: "Opaque reference from get_account_status for the current signed-in account. Not a credential or proof of human approval." },
+        expected_account_ref: { type: "string", pattern: "^account_[a-f0-9]{64}$", description: "From get_account_status." },
         name: { type: "string", minLength: 1, maxLength: 100 },
         description: { type: "string", minLength: 1, maxLength: 500 },
         allow_duplicate: { type: "boolean", default: false, description: "Create even if a list with the same name exists." }
@@ -20,7 +20,7 @@
           type: "object", additionalProperties: false, required: ["status", "account_ref", "list_id", "name", "is_public"],
           properties: {
             status: { enum: ["created", "duplicate_suspected"], description: "duplicate_suspected: a list with this name already exists (list_id is that list) and nothing was created." },
-            account_ref: { type: "string", pattern: "^account_[a-f0-9]{64}$", description: "Opaque reference from get_account_status for the current signed-in account. Not a credential or proof of human approval." }, list_id: { type: "string" }, name: { type: "string", maxLength: 200 }, is_public: { type: "boolean" }
+            account_ref: { type: "string", pattern: "^account_[a-f0-9]{64}$", description: "From get_account_status." }, list_id: { type: "string" }, name: { type: "string", maxLength: 200 }, is_public: { type: "boolean" }
           }
         },
         { type: "object", additionalProperties: false, required: ["status", "error_kind", "error_message"], properties: { status: { const: "error" }, error_kind: { enum: ["invalid_input",  "wrong_page",  "login_required",  "wrong_account",  "not_found",  "stale_state",  "conflict",  "rejected",  "challenge",  "rate_limited",  "site_changed",  "site_error",  "canceled",  "outcome_unknown"] }, error_message: { type: "string", minLength: 1, maxLength: 1000 } } }

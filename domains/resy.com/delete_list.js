@@ -3,11 +3,11 @@
   match: { url_patterns: ["https://resy.com/*"] },
   tool: {
     name: "delete_list",
-    description: "Delete one custom restaurant list, and its venue memberships, from the signed-in Resy account. Only call it when the user asked to delete this list. Requires manual login, expected_account_ref, list_id and expected_name from list_lists, and confirm: true. My Hit List cannot be deleted. Refuses a name mismatch, sends one request, never retries, then rereads the lists to verify it is gone. The venues themselves and other lists are not affected. There is no undo: recreating a list gives it a new list_id and no venues. A timeout, cancellation after dispatch or failed readback returns outcome_unknown: read list_lists before anything else.",
+    description: "Delete one custom list and its memberships. Only when the user asked; needs expected_name and confirm: true. My Hit List cannot be deleted. No undo.",
     inputSchema: {
       type: "object", additionalProperties: false, required: ["expected_account_ref", "list_id", "expected_name", "confirm"],
       properties: {
-        expected_account_ref: { type: "string", pattern: "^account_[a-f0-9]{64}$", description: "Opaque reference from get_account_status for the current signed-in account. Not a credential or proof of human approval." },
+        expected_account_ref: { type: "string", pattern: "^account_[a-f0-9]{64}$", description: "From get_account_status." },
         list_id: { type: "string", pattern: "^[A-Za-z0-9-]{1,64}$", description: "list_id from list_lists." },
         expected_name: { type: "string", minLength: 1, maxLength: 200, description: "The list's name from list_lists; a mismatch deletes nothing." },
         confirm: { const: true, description: "Must be true: the user asked for this list to be deleted." }
@@ -18,7 +18,7 @@
       oneOf: [
         {
           type: "object", additionalProperties: false, required: ["status", "account_ref", "list_id", "name", "venue_count"],
-          properties: { status: { const: "deleted" }, account_ref: { type: "string", pattern: "^account_[a-f0-9]{64}$", description: "Opaque reference from get_account_status for the current signed-in account. Not a credential or proof of human approval." }, list_id: { type: "string" }, name: { type: "string", maxLength: 200 }, venue_count: { type: "integer", minimum: 0, description: "Venues the list held before deletion." } }
+          properties: { status: { const: "deleted" }, account_ref: { type: "string", pattern: "^account_[a-f0-9]{64}$", description: "From get_account_status." }, list_id: { type: "string" }, name: { type: "string", maxLength: 200 }, venue_count: { type: "integer", minimum: 0, description: "Venues the list held before deletion." } }
         },
         { type: "object", additionalProperties: false, required: ["status", "error_kind", "error_message"], properties: { status: { const: "error" }, error_kind: { enum: ["invalid_input",  "wrong_page",  "login_required",  "wrong_account",  "not_found",  "stale_state",  "conflict",  "rejected",  "challenge",  "rate_limited",  "site_changed",  "site_error",  "canceled",  "outcome_unknown"] }, error_message: { type: "string", minLength: 1, maxLength: 1000 } } }
       ]

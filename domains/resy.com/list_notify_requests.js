@@ -3,7 +3,7 @@
   match: { url_patterns: ["https://resy.com/*"] },
   tool: {
     name: "list_notify_requests",
-    description: "List up to 100 current Resy Notify time-window preferences for the signed-in account identified by expected_account_ref from get_account_status. Each request has the venue_id, date, party_size and service_type_id that remove_notify takes, the venue name and the venue-local HH:MM window. Reads only; use create_notify and remove_notify to change them. No automatic pagination.",
+    description: "The account's Notify requests (max 100): venue, date, party size, service_type_id and HH:MM window, as remove_notify takes them.",
     inputSchema: {
       type: "object",
       additionalProperties: false,
@@ -12,7 +12,7 @@
         expected_account_ref: {
           type: "string",
           pattern: "^account_[a-f0-9]{64}$",
-          description: "Opaque reference from get_account_status for the current signed-in account. Not a credential or proof of human approval."
+          description: "From get_account_status."
         }
       }
     },
@@ -28,7 +28,7 @@
             account_ref: {
               type: "string",
               pattern: "^account_[a-f0-9]{64}$",
-              description: "Opaque reference from get_account_status for the current signed-in account. Not a credential or proof of human approval."
+              description: "From get_account_status."
             },
             total: { type: "integer", minimum: 0 },
             truncated: { type: "boolean" },

@@ -3,11 +3,11 @@
   match: { url_patterns: ["https://resy.com/*"] },
   tool: {
     name: "get_list",
-    description: "Read the venues on one of the signed-in Resy account's lists, one page at a time: venue_id, name, city_slug and url_slug (for get_restaurant, set_favorite and set_list_membership), cuisine, neighborhood, price range and rating. Pass the My Hit List list_id from list_lists to read favorites. Requires manual login and expected_account_ref. Returns at most 20 venues per call and never pages automatically; total says how many the list holds. Reads only.",
+    description: "One page (max 20) of a list's venues, including My Hit List (favorites). Uses a 0-based offset.",
     inputSchema: {
       type: "object", additionalProperties: false, required: ["expected_account_ref", "list_id"],
       properties: {
-        expected_account_ref: { type: "string", pattern: "^account_[a-f0-9]{64}$", description: "Opaque reference from get_account_status for the current signed-in account. Not a credential or proof of human approval." },
+        expected_account_ref: { type: "string", pattern: "^account_[a-f0-9]{64}$", description: "From get_account_status." },
         list_id: { type: "string", pattern: "^[A-Za-z0-9-]{1,64}$", description: "list_id from list_lists." },
         offset: { type: "integer", minimum: 0, maximum: 10000, default: 0, description: "Venues to skip." },
         limit: { type: "integer", minimum: 1, maximum: 20, default: 20 }
@@ -19,7 +19,7 @@
         {
           type: "object", additionalProperties: false, required: ["status", "account_ref", "list", "offset", "limit", "total", "venues"],
           properties: {
-            status: { enum: ["ok", "no_results"] }, account_ref: { type: "string", pattern: "^account_[a-f0-9]{64}$", description: "Opaque reference from get_account_status for the current signed-in account. Not a credential or proof of human approval." },
+            status: { enum: ["ok", "no_results"] }, account_ref: { type: "string", pattern: "^account_[a-f0-9]{64}$", description: "From get_account_status." },
             list: {
               type: "object", additionalProperties: false, required: ["list_id", "name", "is_hit_list", "venue_count"],
               properties: { list_id: { type: "string" }, name: { type: "string", maxLength: 200 }, is_hit_list: { type: "boolean" }, venue_count: { type: "integer", minimum: 0 } }

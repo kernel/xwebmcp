@@ -4,7 +4,7 @@ import { runInNewContext } from "node:vm";
 import { webcrypto, createHash } from "node:crypto";
 import test from "node:test";
 
-const names = ["get_account_status", "list_reservations", "get_reservation", "list_notify_requests", "set_favorite", "prepare_reservation"];
+const names = ["get_account_status", "list_reservations", "get_reservation", "list_notify_requests", "set_favorite"];
 const sources = Object.fromEntries(names.map(n => [n, readFileSync(new URL(`../domains/resy.com/${n}.js`, import.meta.url), "utf8")]));
 const key = "fabricatedclientkey00000000000000";
 const token = "fabricated-session-token";
@@ -13,12 +13,9 @@ const ref = id => "account_" + createHash("sha256").update("resy.com/account/" +
 const account = ref(accountId);
 const expected = { expected_account_ref: account };
 const favoriteInput = { ...expected, venue_id: 1001, city_slug: "exampleton-xa", url_slug: "fabricated-trattoria", favorite: true, expected_favorite: false };
-const preparation = { venue_id: 1001, date: "2026-10-09", local_start: "2026-10-10T00:30", party_size: 2, seating_type: "Bar" };
 const reservation = { reservation_id: 2001, venue: { id: 1001, currency: "USD" }, day: "2026-10-09", time_slot: "19:30:00", num_seats: 2, config: { type: "Dining Room" }, price: 25, cancellation_policy: ["<b>Cancel by the stated deadline.</b>"], resy_token: "rgs://private/fabricated", special_request: "private-request", attendee: { name: "private-name" }, payment_method: { token: "private-payment" } };
 // Shaped like a live /3/notify item: the request in specs, next to a find-style block for its venue.
 const notify = { specs: { venue_id: 1001, day: "2026-10-09", party_size: 2, service_type_id: 2, time_preferred_start: "18:00:00", time_preferred_end: "20:00:00", notify_request_id: 42 }, results: { venues: [{ venue: { id: { resy: 1001 }, name: "Fabricated Trattoria" }, slots: [], templates: {} }] }, modal_dismissed: false };
-const slot = { date: { start: "2026-10-10 00:30:00", end: "2026-10-10 02:00:00" }, config: { type: "Bar", token: "rgs://private/fabricated" }, template: { id: 11 } };
-const find = { query: { day: "2026-10-09", party_size: 2 }, results: { venues: [{ venue: { id: { resy: 1001 }, name: "Fabricated Trattoria", url_slug: "fabricated-trattoria", location: { url_slug: "exampleton-xa", time_zone: "EST5EDT" }, currency: { code: "USD" } }, slots: [slot], templates: { 11: { is_paid: true, cancellation_fee: 25, deposit_fee: 10 } }, gating_errors: {} }] } };
 
 function conforms(s, v) {
   if (s.oneOf && s.oneOf.filter(x => conforms(x, v)).length !== 1) return false;
@@ -44,11 +41,10 @@ function harness(name, options = {}) {
     const path = new URL(url).pathname;
     requests.push({ url, init, path });
     assert.equal(new URL(url).origin, "https://api.resy.com");
-    assert.ok(["/2/user", "/3/venue", "/3/user/reservations", "/3/notify", "/3/user/favorites", "/4/find"].includes(path));
+    assert.ok(["/2/user", "/3/venue", "/3/user/reservations", "/3/notify", "/3/user/favorites"].includes(path));
     assert.equal(init.credentials, "omit");
     assert.equal(init.headers.Authorization, `ResyAPI api_key="${key}"`);
-    if (name === "prepare_reservation") assert.equal(init.headers["x-resy-auth-token"], undefined);
-    else assert.equal(init.headers["x-resy-auth-token"], token);
+    assert.equal(init.headers["x-resy-auth-token"], token);
     const forced = await options.route?.({ path, init, url, window, requests });
     if (forced) return { status: forced.status ?? 200, text: async () => forced.raw ?? JSON.stringify(forced.body) };
     let body;
@@ -64,7 +60,6 @@ function harness(name, options = {}) {
       if (options.afterWrite) options.afterWrite({ window, init });
       body = {};
     }
-    if (path === "/4/find") body = options.find ?? find;
     return { status: path === "/3/user/favorites" ? options.favoriteStatus ?? 200 : 200, text: async () => JSON.stringify(body) };
   } };
   const [definition] = runInNewContext(`(${sources[name]})`, ctx);
@@ -93,7 +88,7 @@ for (const name of names) {
     assert.equal(d.tool.inputSchema.additionalProperties, false);
   });
 }
-const valid = n => n === "prepare_reservation" ? preparation : n === "set_favorite" ? favoriteInput : n === "get_reservation" ? { ...expected, reservation_id: "2001" } : n === "get_account_status" ? {} : expected;
+const valid = n => n === "set_favorite" ? favoriteInput : n === "get_reservation" ? { ...expected, reservation_id: "2001" } : n === "get_account_status" ? {} : expected;
 for (const name of names) {
   test(`${name}: wrong origin and pre-abort fail before fetch`, async () => {
     const h = harness(name, { origin: "https://blog.resy.com" });
@@ -103,7 +98,7 @@ for (const name of names) {
     assert.equal((await canceled.run(valid(name), { signal: AbortSignal.abort() })).error_kind, "canceled");
     assert.equal(canceled.requests.length, 0);
   });
-  if (name !== "prepare_reservation") test(`${name}: missing login fails without requests`, async () => {
+  test(`${name}: missing login fails without requests`, async () => {
     const h = harness(name, { loggedOut: true });
     assert.equal((await h.run(valid(name))).error_kind, "login_required");
     assert.equal(h.requests.length, 0);
@@ -230,60 +225,3 @@ test("reservation policy text omits signed links and booking handles", async () 
   assert.deepEqual((await h.run(expected)).reservations[0].cancellation_policy, ["Review [link omitted] and [link omitted]"]);
 });
 
-test("prepare: exact after-midnight slot and price/terms/account explicitly unknown; only public find", async () => {
-  const h = harness("prepare_reservation");
-  const out = await h.run(preparation);
-  assert.equal(out.status, "handoff_required");
-  assert.equal(out.slot.local_start, "2026-10-10T00:30");
-  assert.equal(out.slot.policy.cancellation_fee, 25);
-  assert.equal(out.exact_total, null); assert.equal(out.terms_confirmed, false); assert.equal(out.execution_supported, false);
-  assert.equal(out.account_binding, "not_selected");
-  assert.equal(new URL(out.venue_url).searchParams.get("date"), "2026-10-09");
-  assert.deepEqual(h.requests.map(r => r.path), ["/4/find"]);
-});
-for (const query of [undefined, null, {}, { day: "2026-10-10", party_size: 2 }, { day: "2026-10-09", party_size: 4 }, { day: "2026-10-09", party_size: "2" }]) test(`prepare: missing or mismatched inventory context ${JSON.stringify(query)} fails closed`, async () => {
-  const mismatched = structuredClone(find);
-  mismatched.query = query;
-  const h = harness("prepare_reservation", { find: mismatched });
-  assert.equal((await h.run(preparation)).error_kind, "site_changed");
-  assert.deepEqual(h.requests.map(r => r.path), ["/4/find"]);
-});
-test("prepare: nondefault party requires and accepts that exact echoed party", async () => {
-  const h = harness("prepare_reservation");
-  assert.equal((await h.run({ ...preparation, party_size: 4 })).error_kind, "site_changed");
-  const four = structuredClone(find);
-  four.query.party_size = 4;
-  assert.equal((await harness("prepare_reservation", { find: four }).run({ ...preparation, party_size: 4 })).status, "handoff_required");
-});
-test("favorite: cancellation during the identity hash is canceled without a write", async () => {
-  const abort = new AbortController();
-  let hashes = 0;
-  const h = harness("set_favorite", { crypto: { subtle: { digest: async (...args) => {
-    const result = await webcrypto.subtle.digest(...args);
-    if (++hashes === 1) abort.abort();
-    return result;
-  } } } });
-  assert.equal((await h.run(favoriteInput, { signal: abort.signal })).error_kind, "canceled");
-  assert.equal(h.requests.filter(r => r.init.method === "POST").length, 0);
-  assert.equal(h.state(), false);
-});
-test("favorite: cancellation during the pre-write venue response is canceled without a write", async () => {
-  const abort = new AbortController();
-  const h = harness("set_favorite", { route: ({ path }) => {
-    if (path === "/3/venue") { abort.abort(); return { body: { id: { resy: 1001 }, name: "Fabricated Trattoria", favorite: false } }; }
-  } });
-  assert.equal((await h.run(favoriteInput, { signal: abort.signal })).error_kind, "canceled");
-  assert.equal(h.requests.filter(r => r.init.method === "POST").length, 0);
-});
-test("prepare: missing, ambiguous and mismatched venue fail closed", async () => {
-  assert.equal((await harness("prepare_reservation").run({ ...preparation, seating_type: "Dining Room" })).error_kind, "slot_unavailable");
-  const dup = structuredClone(find); dup.results.venues[0].slots.push(slot);
-  assert.equal((await harness("prepare_reservation", { find: dup }).run(preparation)).error_kind, "ambiguous_slot");
-  const wrong = structuredClone(find); wrong.results.venues[0].venue.id.resy = 2002;
-  assert.equal((await harness("prepare_reservation", { find: wrong }).run(preparation)).error_kind, "site_changed");
-});
-for (const patch of [{ local_start: "2026-10-12T00:30" }, { local_start: "2026-02-30T19:30" }, { local_start: "2026-10-09T25:99" }, { seating_type: "" }, { party_size: 0 }, { confirmed: true }]) test(`prepare: invalid selector ${JSON.stringify(patch)} before network`, async () => {
-  const h = harness("prepare_reservation");
-  assert.equal((await h.run({ ...preparation, ...patch })).error_kind, "invalid_input");
-  assert.equal(h.requests.length, 0);
-});

@@ -3,7 +3,7 @@
   match: { url_patterns: ["https://resy.com/*"] },
   tool: {
     name: "get_account_status",
-    description: "Read the current Resy session and return an opaque account_ref without name, email, phone, user id or payment data. Account tools require this reference to detect a wrong account. It is not a credential or human approval. Reads only GET /2/user on the current resy.com page; never signs in or navigates.",
+    description: "Return an opaque account_ref for the signed-in Resy account; every account tool requires it to detect an account switch. No personal data. Never signs in.",
     inputSchema: { type: "object", additionalProperties: false, required: [], properties: {} },
     outputSchema: {
       type: "object",
@@ -17,7 +17,7 @@
             account_ref: {
               type: "string",
               pattern: "^account_[a-f0-9]{64}$",
-              description: "Opaque reference from get_account_status for the current signed-in account. Not a credential or proof of human approval."
+              description: "From get_account_status."
             },
             authenticated: { const: true }
           }

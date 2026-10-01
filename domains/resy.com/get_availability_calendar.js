@@ -3,13 +3,13 @@
   match: { url_patterns: ["https://resy.com/*"] },
   tool: {
     name: "get_availability_calendar",
-    description: "For one Resy (resy.com) restaurant and party size, list per-date booking state across a date range, to find which days have reservations open. Each day carries the site's reservation, event and walk-in states (observed values: available, sold-out, closed, not available). The site only reports days inside the venue's booking window and returns nothing past last_bookable_date. A day marked available means some slot exists for that party size; call get_availability for the times. Get venue_id from search_restaurants or get_restaurant. Unknown venue ids return not_found. Venues booked through Tock either return not_found or, for some, no_results with last_bookable_date null (the site sent no days and no last calendar day). Runs inside the current resy.com page without navigating; read-only, works signed out, never books or joins a wait list. States are a snapshot; they do not prove a table can still be booked.",
+    description: "Per-date reservation state (available, sold-out, closed) for one venue and party size over up to 366 days, with the last bookable date. Read-only.",
     inputSchema: {
       type: "object", additionalProperties: false, required: ["venue_id", "start_date"],
       properties: {
-        venue_id: { type: "integer", minimum: 1, maximum: 2147483647, description: "Resy venue id from search_restaurants or get_restaurant." },
-        start_date: { type: "string", pattern: "^\\d{4}-\\d{2}-\\d{2}$", description: "First date, YYYY-MM-DD, from yesterday (UTC) to one year ahead." },
-        end_date: { type: "string", pattern: "^\\d{4}-\\d{2}-\\d{2}$", description: "Last date, YYYY-MM-DD, at most 366 days after start_date. Defaults to 30 days after start_date." },
+        venue_id: { type: "integer", minimum: 1, maximum: 2147483647, description: "From search_restaurants." },
+        start_date: { type: "string", pattern: "^\\d{4}-\\d{2}-\\d{2}$", description: "First date." },
+        end_date: { type: "string", pattern: "^\\d{4}-\\d{2}-\\d{2}$", description: "Defaults to start_date + 30 days; max 366." },
         party_size: { type: "integer", minimum: 1, maximum: 20, default: 2, description: "Number of guests." }
       }
     },

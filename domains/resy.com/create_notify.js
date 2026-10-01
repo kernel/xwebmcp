@@ -3,17 +3,17 @@
   match: { url_patterns: ["https://resy.com/*"] },
   tool: {
     name: "create_notify",
-    description: "Turn on Resy Notify for one restaurant, service date, party size and service: Resy emails or pushes the signed-in account when a table in the given time window opens up. It does not hold, book or pay for anything, and a notification is not a reservation. Requires manual login, expected_account_ref, venue_id, date, party_size, service_type_id and the window's local_start_time and local_end_time (HH:MM, venue-local) inside one of the venue's notify_options from get_availability for the same date and party size, on its step. If an identical Notify exists it returns unchanged; if one exists for the same venue, date, party size and service with a different window it returns conflict and sends nothing (use remove_notify first). Sends one request, never retries, then rereads the account's Notify requests to verify. A timeout, cancellation after dispatch or failed readback returns outcome_unknown: read list_notify_requests before trying again.",
+    description: "Turn on Resy Notify (alert when a table opens) for one venue, date, party size and service, with an HH:MM window inside that service's notify_options from get_availability. Same window is unchanged; another window for the same request is conflict. Never holds or books.",
     inputSchema: {
       type: "object", additionalProperties: false, required: ["expected_account_ref", "venue_id", "date", "party_size", "service_type_id", "local_start_time", "local_end_time"],
       properties: {
-        expected_account_ref: { type: "string", pattern: "^account_[a-f0-9]{64}$", description: "Opaque reference from get_account_status for the current signed-in account. Not a credential or proof of human approval." },
+        expected_account_ref: { type: "string", pattern: "^account_[a-f0-9]{64}$", description: "From get_account_status." },
         venue_id: { type: "integer", minimum: 1, maximum: 2147483647, description: "Resy venue id." },
         date: { type: "string", pattern: "^\\d{4}-\\d{2}-\\d{2}$", description: "Service date at the venue, YYYY-MM-DD." },
         party_size: { type: "integer", minimum: 1, maximum: 20 },
-        service_type_id: { type: "integer", minimum: 0, description: "Service (for example dinner) from notify_options in get_availability or from list_notify_requests." },
-        local_start_time: { type: "string", pattern: "^([01]\\d|2[0-3]):[0-5]\\d$", description: "Earliest acceptable table time, venue-local HH:MM." },
-        local_end_time: { type: "string", pattern: "^([01]\\d|2[0-3]):[0-5]\\d$", description: "Latest acceptable table time, venue-local HH:MM; after local_start_time (or after midnight when the service runs past it)." }
+        service_type_id: { type: "integer", minimum: 0, description: "From notify_options or list_notify_requests." },
+        local_start_time: { type: "string", pattern: "^([01]\\d|2[0-3]):[0-5]\\d$", description: "Earliest table time, venue-local HH:MM." },
+        local_end_time: { type: "string", pattern: "^([01]\\d|2[0-3]):[0-5]\\d$", description: "Latest table time, venue-local HH:MM." }
       }
     },
     outputSchema: {
@@ -22,7 +22,7 @@
         {
           type: "object", additionalProperties: false, required: ["status", "account_ref", "venue_id", "venue_name", "date", "party_size", "service_type_id", "local_start_time", "local_end_time"],
           properties: {
-            status: { enum: ["created", "unchanged"] }, account_ref: { type: "string", pattern: "^account_[a-f0-9]{64}$", description: "Opaque reference from get_account_status for the current signed-in account. Not a credential or proof of human approval." }, venue_id: { type: "integer", minimum: 1, maximum: 2147483647 }, venue_name: { type: ["string", "null"], maxLength: 200 },
+            status: { enum: ["created", "unchanged"] }, account_ref: { type: "string", pattern: "^account_[a-f0-9]{64}$", description: "From get_account_status." }, venue_id: { type: "integer", minimum: 1, maximum: 2147483647 }, venue_name: { type: ["string", "null"], maxLength: 200 },
             date: { type: "string" }, party_size: { type: "integer" }, service_type_id: { type: "integer" }, local_start_time: { type: "string" }, local_end_time: { type: "string" }
           }
         },

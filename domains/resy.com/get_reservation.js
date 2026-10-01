@@ -3,7 +3,7 @@
   match: { url_patterns: ["https://resy.com/*"] },
   tool: {
     name: "get_reservation",
-    description: "Read the allowed details of one reservation already listed by list_reservations, on the same type/offset/limit page and account. It does not search all pages or accept resy_token. Returns raw price and cancellation text without confirming exact fees or total semantics. No cancellation, change, widget navigation, holds or private attendee/payment data. Populated item success is bundle-grounded and fixture-only; the authorized live account was empty. Requires expected_account_ref from get_account_status.",
+    description: "One reservation by reservation_id from the same type/offset/limit page list_reservations used. not_found only means not on that page.",
     inputSchema: {
       type: "object",
       additionalProperties: false,
@@ -12,7 +12,7 @@
         expected_account_ref: {
           type: "string",
           pattern: "^account_[a-f0-9]{64}$",
-          description: "Opaque reference from get_account_status for the current signed-in account. Not a credential or proof of human approval."
+          description: "From get_account_status."
         },
         type: { type: "string", enum: ["upcoming", "past"], default: "upcoming" },
         offset: {
@@ -20,13 +20,13 @@
           minimum: 1,
           maximum: 10000,
           default: 1,
-          description: "Resy offset parameter. First observed request uses 1. Increment semantics have not been verified; no automatic pagination."
+          description: "Resy's offset; starts at 1."
         },
         limit: { type: "integer", minimum: 1, maximum: 20, default: 10 },
         reservation_id: {
           type: "string",
           pattern: "^[1-9]\\d{0,29}$",
-          description: "Reservation id returned by list_reservations. Not a resy_token; never supply booking tokens."
+          description: "From list_reservations."
         }
       }
     },
@@ -42,7 +42,7 @@
             account_ref: {
               type: "string",
               pattern: "^account_[a-f0-9]{64}$",
-              description: "Opaque reference from get_account_status for the current signed-in account. Not a credential or proof of human approval."
+              description: "From get_account_status."
             },
             reservation: {
               type: "object",

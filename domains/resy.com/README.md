@@ -1,24 +1,34 @@
 # resy.com
 
-Resy restaurant discovery, account reads, favorites, custom lists, Notify and reservation handoff.
+Resy restaurant discovery, curated collections and events, account reads, favorites, custom lists, Notify, and booking, changing, cancelling and rating reservations.
 
 ## Tools
 
 | tool | file | status | notes |
 |---|---|---|---|
+| book_reservation | [book_reservation.js](book_reservation.js) | draft | Book one quoted slot; `confirm: true`, `expected_total`, duplicate guard |
+| cancel_reservation | [cancel_reservation.js](cancel_reservation.js) | draft | Cancel one reservation; `confirm: true`, fee guard |
+| change_reservation | [change_reservation.js](change_reservation.js) | draft | Move one reservation to another slot at the same venue; `confirm: true` |
+| copy_list | [copy_list.js](copy_list.js) | draft | Copy a shared list into the account as a private list |
 | create_list | [create_list.js](create_list.js) | draft | One private custom list; duplicate-name guard |
 | create_notify | [create_notify.js](create_notify.js) | draft | Turn on Notify inside the venue's offered window; never holds or books |
 | delete_list | [delete_list.js](delete_list.js) | draft | Delete one custom list; `confirm: true`, name must match |
 | get_account_status | [get_account_status.js](get_account_status.js) | draft | Opaque current-account reference; no profile/payment output |
 | get_availability | [get_availability.js](get_availability.js) | draft | Public slots as full venue-local date-times; each distinct raw policy listed once |
 | get_availability_calendar | [get_availability_calendar.js](get_availability_calendar.js) | draft | Public per-date booking states |
+| get_booking_quote | [get_booking_quote.js](get_booking_quote.js) | draft | Exact-slot total, fees, card requirement and cancellation terms; holds nothing |
+| get_collection | [get_collection.js](get_collection.js) | draft | One page of a collection's venues with up to 6 slots each |
 | get_list | [get_list.js](get_list.js) | draft | One page (max 20) of a list's venues, including My Hit List |
 | get_reservation | [get_reservation.js](get_reservation.js) | draft | Allowed details for one reservation on one account list page |
 | get_restaurant | [get_restaurant.js](get_restaurant.js) | draft | Public profile by URL or city/venue slug |
+| get_share_link | [get_share_link.js](get_share_link.js) | draft | Share URL for a list; changes nothing |
+| get_venues | [get_venues.js](get_venues.js) | draft | Up to 20 venue cards by id |
+| list_collections | [list_collections.js](list_collections.js) | draft | A city's curated collections (Climbing, Top Rated, New on Resy, editorial) |
+| list_events | [list_events.js](list_events.js) | draft | Ticketed events for a venue or city; handoff URL, no event booking |
 | list_lists | [list_lists.js](list_lists.js) | draft | My Hit List and custom lists, optional per-venue membership |
 | list_notify_requests | [list_notify_requests.js](list_notify_requests.js) | draft | Read current Notify requests and windows, maximum 100 |
 | list_reservations | [list_reservations.js](list_reservations.js) | draft | One bounded upcoming/past account page, maximum 20 |
-| prepare_reservation | [prepare_reservation.js](prepare_reservation.js) | draft | Exact public slot match and human handoff, not a quote or hold |
+| rate_reservation | [rate_reservation.js](rate_reservation.js) | draft | 1-5 rating for a past reservation; `confirm: true` |
 | remove_notify | [remove_notify.js](remove_notify.js) | draft | Turn off one Notify; `confirm: true` |
 | search_restaurants | [search_restaurants.js](search_restaurants.js) | draft | Keyword/cuisine/place search; up to 12 sorted slots per venue |
 | set_favorite | [set_favorite.js](set_favorite.js) | draft | Reversible My Hit List favorite; four requests per write |
@@ -26,7 +36,7 @@ Resy restaurant discovery, account reads, favorites, custom lists, Notify and re
 
 ## Scope and loading
 
-Register the entire namespace atomically, including all seventeen tools. Every tool is `page`: requests execute in
+Register the entire namespace atomically, including all twenty-seven tools. Every tool is `page`: requests execute in
 an existing resy.com document without navigation. There is no demonstrated CDP exception. Calls do not depend
 on the home page, a previous invocation or a reservation widget. Caller navigation destroys a running page
 invocation; treat missing output as unknown, especially for writes, and never retry a write automatically.
@@ -78,29 +88,40 @@ are returned. Populated schemas are grounded in the site's current public bundle
   verify exact equality. Fixture flows do the same with fabricated venues. Live update success must not be
   inferred from mocks, a no-op or a missing-login test.
 
-## Consequential-action safety: reservation preparation and execution blockers
+## Consequential-action safety: booking, changes, cancellation and ratings
 
-`prepare_reservation` re-fetches public `/4/find` inventory and matches exactly `venue_id`, service `date`,
-`party_size`, full `local_start` and `seating_type` from availability. Venue identity and the response's echoed
-service date/party size must match; missing or contradictory inventory context and absent or ambiguous slots
-fail closed. A match returns `handoff_required`, the exact observed slot, venue URL with
-service date/party size, currency and raw policy fields. It never sends a slot token, selects a widget slot,
-requests `/3/details`, binds an account, navigates, holds or books. It accepts no `confirmed` argument.
+These follow the repository's pattern for outward-facing writes (`send_message` in purelymail.com): the tool
+description says to act only when the user asked, `confirm: true` is required, there is one attempt and no retry,
+and the outcome is decided by reading the account back. `confirm` states intent; the runtime offers no trusted human
+approval, so the user-visible quote and the guards below carry the safety.
 
-**Not booking-ready:** `exact_total: null`, `terms_confirmed: false`, `account_binding: not_selected` and
-`execution_supported: false` are explicit. Null total is unknown, never zero. Cancellation/deposit fields do
-not establish per-guest vs per-reservation charges or the final cutoff. The human must review the exact venue,
-time, party, account, payable amount and cancellation terms on Resy. A venue-level URL is a handoff, not a
-preselected reservation, approval or promise of availability.
+- `get_booking_quote` re-reads `/4/find`, matches exactly one slot by `local_start` and `seating_type` (venue id and
+  echoed date/party must match), then calls `/3/details` with `commit: 0`. Live on 2026-10-01 that preview returned
+  totals, fees, payment type, cancellation fee/cutoffs and policy text and no `book_token`, so it holds nothing. The
+  slot's config token never leaves the invocation.
+- `book_reservation` refuses unless `expected_total` equals a fresh preview total, and returns
+  `duplicate_suspected` when an upcoming reservation exists at the venue that day (unless `allow_duplicate`). Then it
+  calls `/3/details` with `commit: 1`, which is what clicking a slot on resy.com sends and which returns a short-lived
+  `book_token`, and sends one form POST `/3/book` with `book_token`, `venue_marketing_opt_in=0` and, when the quote
+  requires a card, `struct_payment_method={"id":<default card>}`. No card on file is `rejected` before booking. It
+  reports `booked` only when exactly one new upcoming reservation matches venue, date, time and party.
+- `change_reservation` follows the bundle's Modify flow: details with the reservation's `resy_token`, then POST
+  `/3/change` with `book_token`, `resy_token` and `replace=1`; same venue only.
+- `cancel_reservation` looks the `resy_token` up from the reservation id and sends POST `/3/cancel`. When the
+  reservation's cancellation fee applies now (after its cutoff) or its terms are unreadable it returns
+  `fee_applies` until the caller passes `accept_cancellation_fee`.
+- `rate_reservation` posts `rating`, optional `comments` and `resy_token` to `/3/rate/reservation`, as the site's
+  rating page does. Already rated is `conflict`; `rating.expired` is `rejected`.
+- Tokens (`resy_token`, `book_token`, slot config tokens) and payment method details are never returned.
 
-Booking, inventory hold and cancellation execution tools are deliberately unshipped. The current runtime
-specification provides no trusted human approval bound to the exact account, action, slot/quantity, cost and
-terms. A model-supplied boolean/string, description or annotation cannot enforce that approval. Also, whether
-opening the widget/details step creates a hold is unverified, so no such step was opened just to learn prices.
-No automatic execution follows preparation. Shipping final execution requires a separate per-tool safety
-design, a supported trusted approval path and evidence of the details/hold lifecycle without live discovery holds.
+Evidence limits: the test account had no reservations and the builder did not make a real booking, so `/3/book`,
+`/3/change`, `/3/cancel` and `/3/rate/reservation` success paths are fixture-tested from the bundle's request shapes
+only. Live checks covered quotes and every guard that stops before a write. Whether `commit: 1` itself holds
+inventory is not established; the tool only calls it immediately before booking. Captcha-gated venues
+(`feature_recaptcha`) are not handled and should surface as `rejected`.
 
-Reservation changes (`/3/change`), ratings, list sharing/following and party invites are also unshipped.
+Not shipped: event ticket purchases, concierge bookings, party invites (they need another guest's invite token),
+following lists (Resy's bundle has no unfollow) and payment or profile changes.
 
 ## Write safety: lists and Notify
 
@@ -157,7 +178,7 @@ configuration/CORS contract. `api.resy.com` is a request destination, not a matc
 
 ## Known limitations
 
-- Availability and preparation are snapshots, not a hold or confirmed booking; no_availability does not say why.
+- Availability and quotes are snapshots, not a hold; no_availability does not say why.
 - Raw policies and numeric reservation price do not establish exact final charges or cancellation eligibility.
 - The account's reservation collection was empty when inspected; reservation item success and pagination beyond the
   initial page are not live verified. Notify items were live verified on 2026-10-01. Unknown required item shapes fail `site_changed` rather than raw dumping.
@@ -280,3 +301,22 @@ an unoffered service, created a dinner Notify (initially reported `outcome_unkno
 above, then verified), returned unchanged and conflict as designed; `remove_notify` refused a missing confirm,
 removed it and then reported absent. A lunch Notify was created and removed after the reader fix. The account ended
 with exactly its initial lists, favorites and Notify state. This is builder testing, not independent QA.
+
+### Booking, discovery and concise-metadata revision (2026-10-01)
+
+Added `get_booking_quote` (replacing `prepare_reservation`), `book_reservation`, `change_reservation`,
+`cancel_reservation`, `rate_reservation`, `get_share_link`, `copy_list`, `get_venues`, `list_events`,
+`list_collections` and `get_collection`. Tool and input-property descriptions were rewritten to be short: the 27
+tools now send about 20,100 characters of description and input schema, against about 24,400 for the earlier 17.
+
+Live discoveries: `/3/details` with `commit: 0` returns a full quote with no `book_token`; `/3/user/lists/{id}/share`
+returns the existing slug and leaves `is_public` false, and any list is readable anonymously by slug, so the share
+tool is a link lookup, not publication; `/3/events/location` and `/3/collection/venues` treat `offset` as a 1-based
+page (`offset=0` returns nothing for events), while list venues use a 0-based row offset.
+
+Builder live run (signed in, venue pages, 2026-10-01): quote returned total 0 with a $50-per-guest late-cancel fee
+and `card_required`; `book_reservation` refused a missing confirm, a stale `expected_total` (one preview request, no
+commit or booking) and an unlisted slot; cancel and rate returned not_found on the empty account; venues, city and
+venue events, collections and a collection page succeeded; a test list was created, given a share link, copied
+(duplicate refused first, then allowed) and both lists deleted. The account ended with its initial lists,
+favorites, Notify and reservations. Booking, change, cancel and rating success paths remain fixture-only.
