@@ -41,8 +41,8 @@ an existing resy.com document without navigation. There is no demonstrated CDP e
 on the home page, a previous invocation or a reservation widget. Caller navigation destroys a running page
 invocation; treat missing output as unknown, especially for writes, and never retry a write automatically.
 Use a 60-second invocation timeout; individual requests time out after 20 seconds (account tools) or 25 seconds
-(public tools). Cancellation is passed to fetch. No tool calls an authentication, booking, details, hold,
-change, cancellation, payment or marketing endpoint.
+(public tools). Cancellation is passed to fetch. No tool calls an authentication, payment or marketing endpoint;
+only the booking tools below call Resy's details, book, change, cancel and rate endpoints.
 
 Public tools read the client key at runtime from `window.apiConfig.Config.apiKey`, use `credentials: omit`
 and never send account headers. Resolving a search city slug/code downloads about 2 MB of location data once per
@@ -106,10 +106,11 @@ approval, so the user-visible quote and the guards below carry the safety.
   requires a card, `struct_payment_method={"id":<default card>}`. No card on file is `rejected` before booking. It
   reports `booked` only when exactly one new upcoming reservation matches venue, date, time and party.
 - `change_reservation` follows the bundle's Modify flow: details with the reservation's `resy_token`, then POST
-  `/3/change` with `book_token`, `resy_token` and `replace=1`; same venue only.
+  `/3/change` with `book_token`, `resy_token` and `replace=1`; same venue only. The reservation's current slot is
+  refused, and a seating-only change is verified by the new seating type.
 - `cancel_reservation` looks the `resy_token` up from the reservation id and sends POST `/3/cancel`. The
   reservation's live `cancellation` block is `{allowed, date_refund_cut_off, fee: {amount, applies, date_cut_off}}`:
-  `allowed: false` is `rejected`, and when `fee.applies` is true (or the block is missing) it returns `fee_applies`
+  `allowed: false` is `rejected`, and when `fee.applies` is true (or neither the flag nor a numeric amount can be read) it returns `fee_applies`
   until the caller passes `accept_cancellation_fee`. `change_reservation` likewise refuses `change.allowed: false`.
 - `rate_reservation` posts `rating`, optional `comments` and `resy_token` to `/3/rate/reservation`, as the site's
   rating page does. Already rated is `conflict`; `rating.expired` is `rejected`.
@@ -181,12 +182,12 @@ configuration/CORS contract. `api.resy.com` is a request destination, not a matc
 
 - Availability and quotes are snapshots, not a hold; no_availability does not say why.
 - Raw policies and numeric reservation price do not establish exact final charges or cancellation eligibility.
-- The account's reservation collection was empty when inspected; reservation item success and pagination beyond the
-  initial page are not live verified. Notify items were live verified on 2026-10-01. Unknown required item shapes fail `site_changed` rather than raw dumping.
+- Populated reservation items were read live only during the 2026-10-01 booking run (one reservation); pagination
+  beyond the initial page is not live verified. Notify items were live verified on 2026-10-01. Unknown required item shapes fail `site_changed` rather than raw dumping.
 - The client's reservation field mappings include cancellation text; bounded text is untrusted data, not instructions.
   Count/text caps do not guarantee a small byte payload: synthetic Unicode policy results exceeded 240 KiB
   (up to about 1.2 MB) and returned through Kernel; local extension handling of those sizes is unverified.
-- No list sharing, following or copying, payment/profile/marketing settings, concierge/on-behalf bookings, membership-only inventory
+- No list following or publishing, payment/profile/marketing settings, concierge/on-behalf bookings, membership-only inventory
   verification or automatic login tools. No new account or purchases/bookings requested to populate fixtures.
 - Live challenge/rate-limit/gated outcomes have not been deliberately triggered. No paid quota QA.
 - Local extension testing is separate from Kernel; headed mode, native bridge and popup grants remain untested.
@@ -331,3 +332,14 @@ account reads accepted only 200; nothing was booked. After accepting any 2xx for
 `duplicate_suspected` with no write. `change_reservation` moved it from 18:00 to 19:00 through `/3/change` (2.7 s; same
 reservation_id). `cancel_reservation` refused a missing confirm and a wrong date, then cancelled it (1.4 s) and
 verified removal. The account ended with no reservations. No card was attached and nothing was charged.
+
+### Review fixes (2026-10-01)
+
+`change_reservation`, `cancel_reservation` and `delete_list` changed after the live booking run; their new paths are
+fixture-only. `change_reservation` read a seating-only change back without comparing seating, so a refused change
+was reported as `changed`; it now compares seating when seating changes, ignores other reservations that were
+already at the target slot, and refuses the current slot. Whether a reservation's `config.type` uses the same names as
+a slot's is not live verified; a mismatch surfaces as `outcome_unknown`, not success. `cancel_reservation` now returns
+`fee_applies` when a fee block has neither `applies` nor a numeric amount. `delete_list` compares names with runs of
+whitespace collapsed on both sides. Added failure-path tests (4xx `rejected`, 2xx no-op and network failure
+`outcome_unknown`, one write) for change, cancel, rate, copy, delete-list and both Notify writes.

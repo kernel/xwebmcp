@@ -135,9 +135,10 @@
     const feeInfo = c && plain(c.fee) ? c.fee : null;
     const fee = feeInfo && typeof feeInfo.amount === "number" && Number.isFinite(feeInfo.amount) ? feeInfo.amount : null;
     const cutoff = feeInfo ? Date.parse(feeInfo.date_cut_off) : NaN;
-    // Resy states whether the fee applies right now; without that flag, fall back to the amount and cutoff.
-    const feeNow = feeInfo && typeof feeInfo.applies === "boolean" ? feeInfo.applies : fee === null ? c === null : fee > 0 && !(cutoff > Date.now());
-    if (feeNow && input.accept_cancellation_fee !== true) return fail("fee_applies", c === null ? "Resy did not report this reservation's cancellation terms; confirm with the user that a fee may apply, then pass accept_cancellation_fee. Nothing was cancelled." : "Cancelling now incurs Resy's cancellation fee" + (fee === null ? "" : " of " + fee) + " (see the policy in list_reservations). Pass accept_cancellation_fee only if the user accepts it. Nothing was cancelled.");
+    // Resy states whether the fee applies right now; without that flag, fall back to the amount and cutoff, and treat an unreadable amount as a fee.
+    const flagged = feeInfo && typeof feeInfo.applies === "boolean";
+    const feeNow = flagged ? feeInfo.applies : fee === null || (fee > 0 && !(cutoff > Date.now()));
+    if (feeNow && input.accept_cancellation_fee !== true) return fail("fee_applies", !flagged && fee === null ? "Resy did not report readable cancellation terms for this reservation; confirm with the user that a fee may apply, then pass accept_cancellation_fee. Nothing was cancelled." : "Cancelling now incurs Resy's cancellation fee" + (fee === null ? "" : " of " + fee) + " (see the policy in list_reservations). Pass accept_cancellation_fee only if the user accepts it. Nothing was cancelled.");
     const written = await request("POST", "/3/cancel", { form: { resy_token: current.token } });
     const settled = await settle(written, async () => {
       const after = await readReservations("upcoming");

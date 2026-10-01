@@ -187,6 +187,9 @@
     if (!current) return fail(before.complete ? "not_found" : "site_changed", "That reservation is not on the account's upcoming list; nothing was sent.");
     if (current.venue_id !== input.venue_id || current.date !== input.expected_date) return fail("stale_state", "The reservation's venue or date does not match; changes stay at the same venue. Nothing was sent.");
     if (current.change && current.change.allowed === false) return fail("rejected", "Resy does not allow changing this reservation online; nothing was sent.");
+    const seatingChange = current.seating_type !== input.seating_type;
+    const atTarget = r => r.venue_id === input.venue_id && r.date === input.date && r.local_time === input.local_start.slice(11) && r.party_size === input.party_size && (!seatingChange || r.seating_type === input.seating_type);
+    if (atTarget(current) && !seatingChange) return fail("invalid_input", "The reservation is already at that slot; nothing was sent.");
     const found = await findSlot();
     if (found.error) return found.error;
     const q = await quote(found.token, { resy_token: current.token });
@@ -199,8 +202,8 @@
     const settled = await settle(written, async () => {
       const after = await readReservations("upcoming");
       if (after.error) return { error: true };
-      const moved = after.items.filter(r => r.venue_id === input.venue_id && r.date === input.date && r.local_time === input.local_start.slice(11) && r.party_size === input.party_size);
-      const oldStill = after.items.some(r => r.reservation_id === current.reservation_id && (r.date !== input.date || r.local_time !== input.local_start.slice(11) || r.party_size !== input.party_size));
+      const moved = after.items.filter(r => atTarget(r) && (r.reservation_id === current.reservation_id || !before.items.some(b => b.reservation_id === r.reservation_id)));
+      const oldStill = after.items.some(r => r.reservation_id === current.reservation_id && !atTarget(r));
       return moved.length === 1 && !oldStill ? { done: true, value: moved[0] } : moved.length > 1 ? { error: true } : { done: false };
     });
     if (settled.error) return settled.error;

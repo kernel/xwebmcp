@@ -121,7 +121,7 @@
     const target = before.lists.find(l => l.list_id === input.list_id);
     if (!target) return fail(before.total > before.lists.length ? "site_changed" : "not_found", "No list with that list_id on this account; nothing was sent.");
     if (target.is_hit_list) return fail("invalid_input", "My Hit List cannot be deleted. Nothing was sent.");
-    if (target.name.toLowerCase() !== input.expected_name.trim().replace(/\s+/g, " ").toLowerCase()) return fail("stale_state", "The list's name does not match expected_name; nothing was sent.");
+    if (target.name.replace(/\s+/g, " ").toLowerCase() !== input.expected_name.trim().replace(/\s+/g, " ").toLowerCase()) return fail("stale_state", "The list's name does not match expected_name; nothing was sent.");
     const written = await request("DELETE", "/3/user/lists/" + encodeURIComponent(input.list_id));
     const settled = await settle(written, async () => {
       const after = await readLists("/3/user/lists");

@@ -41,7 +41,7 @@ function harness(name, o = {}) {
     methods: o.methods ?? [{ id: 77, is_default: true, display: "private-card" }],
     lists: [{ list_id: "LIST-1", name: "Weekend", url_slug: "SHARE-1", is_public: false, is_legacy_hitlist: false, count: 2 }], next: 5000
   };
-  const resRow = r => ({ reservation_id: r.id, venue: { id: r.venue_id, currency: "USD" }, day: r.day, time_slot: r.time + ":00", num_seats: r.seats, config: { type: "Dining Room" }, resy_token: "rr://private/" + r.id, cancellation: r.cancellation, change: r.change ?? { allowed: true }, rating: r.rating ?? null, special_request: "private-request" });
+  const resRow = r => ({ reservation_id: r.id, venue: { id: r.venue_id, currency: "USD" }, day: r.day, time_slot: r.time + ":00", num_seats: r.seats, config: { type: r.seating ?? "Dining Room" }, resy_token: "rr://private/" + r.id, cancellation: r.cancellation, change: r.change ?? { allowed: true }, rating: r.rating ?? null, special_request: "private-request" });
   const page = list => ({ reservations: list.map(resRow), venues: Object.fromEntries(list.map(r => [r.venue_id, { name: "Fabricated " + r.venue_id }])), metadata: { total: o.totalOverride ?? list.length } });
   const window = { location: { origin: "https://resy.com" }, apiConfig: { Config: { apiKey: key } }, apiAuthToken: o.loggedOut ? undefined : token };
   class FixedDate extends Date { constructor(...args) { super(...(args.length ? args : [NOW])); } static now() { return Date.parse(NOW); } }
@@ -66,7 +66,9 @@ function harness(name, o = {}) {
     if (path === "/3/change") {
       const f = parseForm(body);
       const r = state.upcoming.find(x => "rr://private/" + x.id === f.resy_token);
+      const slot = state.slots.find(x => f.book_token === "bt://private/" + x.config.token);
       r.time = f.book_token.split("/").pop();
+      r.seating = slot.config.type;
       return { body: {} };
     }
     if (path === "/3/cancel") { const f = parseForm(body); state.upcoming = state.upcoming.filter(x => "rr://private/" + x.id !== f.resy_token); return { body: {} }; }
@@ -331,4 +333,72 @@ test("change_reservation: change.allowed false is refused before any details req
 
 test("book_reservation: Resy answers the committing details request with 201 or 200", async () => {
   for (const commitStatus of [200, 201]) assert.equal((await harness("book_reservation", { commitStatus }).run(valid.book_reservation)).status, "booked");
+});
+
+const reject = message => ({ status: 400, body: { message } });
+for (const [name, path, opts] of [
+  ["change_reservation", "/3/change", { upcoming: [{ ...booked }] }],
+  ["cancel_reservation", "/3/cancel", { upcoming: [{ ...booked }] }],
+  ["rate_reservation", "/3/rate/reservation", { past: [{ ...booked, id: 3001 }] }],
+  ["copy_list", "/3/user/lists/SHARE-1/copy", {}]
+]) for (const [label, response, kind] of [
+  ["4xx with nothing changed is rejected", () => reject("Refused"), "rejected"],
+  ["2xx with nothing changed is unknown", () => ({ body: {} }), "outcome_unknown"],
+  ["network failure after dispatch is unknown", () => new Error("private"), "outcome_unknown"]
+]) test(`${name}: ${label} and never retried`, async () => {
+  const h = harness(name, { ...opts, route: r => r.path === path ? response() : null });
+  assert.equal((await h.run(valid[name])).error_kind, kind);
+  assert.equal(h.requests.filter(r => r.path === path).length, 1);
+});
+
+test("change_reservation: a seating-only change is verified by the new seating type", async () => {
+  const input = { ...valid.change_reservation, local_start: "2026-10-09T19:00", seating_type: "Bar" };
+  const h = harness("change_reservation", { upcoming: [{ ...booked }], slots: [slotAt("19:00", "Bar")] });
+  const out = await h.run(input);
+  assert.deepEqual([out.status, out.previous.seating_type, out.reservation.seating_type], ["changed", "Dining Room", "Bar"]);
+  for (const response of [reject("Refused"), { body: {} }]) {
+    const x = harness("change_reservation", { upcoming: [{ ...booked }], slots: [slotAt("19:00", "Bar")], route: ({ path }) => path === "/3/change" ? response : null });
+    assert.equal((await x.run(input)).error_kind, response.status ? "rejected" : "outcome_unknown");
+  }
+});
+
+test("change_reservation: the reservation's current slot sends nothing", async () => {
+  const h = harness("change_reservation", { upcoming: [{ ...booked }] });
+  assert.equal((await h.run({ ...valid.change_reservation, local_start: "2026-10-09T19:00" })).error_kind, "invalid_input");
+  assert.equal(h.requests.some(r => r.path === "/3/details" || r.path === "/3/change"), false);
+});
+
+test("change_reservation: another reservation already at the target slot is not the moved one", async () => {
+  const other = { ...booked, id: 4002, time: "19:30" };
+  const noop = harness("change_reservation", { upcoming: [{ ...booked }, other], route: ({ path }) => path === "/3/change" ? { body: {} } : null });
+  assert.equal((await noop.run(valid.change_reservation)).error_kind, "outcome_unknown");
+  const moved = await harness("change_reservation", { upcoming: [{ ...booked }, { ...other }] }).run(valid.change_reservation);
+  assert.deepEqual([moved.status, moved.reservation.reservation_id], ["changed", "4001"]);
+});
+
+test("book_reservation: an existing reservation at the booked slot does not count as the new one", async () => {
+  const h = harness("book_reservation", { upcoming: [{ ...booked }], route: ({ path }) => path === "/3/book" ? reject("Refused") : null });
+  assert.equal((await h.run({ ...valid.book_reservation, allow_duplicate: true })).error_kind, "rejected");
+});
+
+test("cancel_reservation: fee terms without Resy's flag or a readable amount need accept_cancellation_fee", async () => {
+  for (const cancellation of [{ allowed: true }, { allowed: true, fee: { amount: "50.00", date_cut_off: "2026-09-29T00:00:00Z" } }]) {
+    const h = harness("cancel_reservation", { upcoming: [{ ...booked, cancellation }] });
+    assert.equal((await h.run(valid.cancel_reservation)).error_kind, "fee_applies");
+    assert.equal(h.requests.some(r => r.path === "/3/cancel"), false);
+  }
+});
+
+test("change_reservation: a new reservation beside the unchanged original is not a change", async () => {
+  const h = harness("change_reservation", { upcoming: [{ ...booked }], route: ({ path, state }) => {
+    if (path !== "/3/change") return null;
+    state.upcoming.push({ ...booked, id: 4999, time: "19:30" });
+    return { body: {} };
+  } });
+  assert.equal((await h.run(valid.change_reservation)).error_kind, "outcome_unknown");
+});
+
+test("rate_reservation: an unrated item that stays unrated after the write is unknown", async () => {
+  const h = harness("rate_reservation", { past: [{ ...booked, id: 3001, rating: { value: null, expired: false } }], route: ({ path }) => path === "/3/rate/reservation" ? { body: {} } : null });
+  assert.equal((await h.run(valid.rate_reservation)).error_kind, "outcome_unknown");
 });

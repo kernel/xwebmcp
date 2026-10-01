@@ -310,3 +310,23 @@ test("remove_notify: requires confirm, absent sends nothing, removal is verified
   const stuck = harness("remove_notify", { notifies: [storedNotify], route: ({ method }) => method === "DELETE" ? { body: {} } : null });
   assert.equal((await stuck.run(valid.remove_notify)).error_kind, "outcome_unknown");
 });
+
+for (const [name, method, path, opts] of [
+  ["delete_list", "DELETE", "/3/user/lists/LIST-1", {}],
+  ["create_notify", "POST", "/3/notify", {}],
+  ["remove_notify", "DELETE", "/2/notify", { notifies: [{ ...storedNotify }] }]
+]) for (const [label, response, kind] of [
+  ["4xx with nothing changed is rejected", () => ({ status: 400, body: { message: "Refused" } }), "rejected"],
+  ["network failure after dispatch is unknown", () => new Error("private"), "outcome_unknown"]
+]) test(`${name}: ${label} and never retried`, async () => {
+  const h = harness(name, { ...opts, route: r => r.method === method && r.path === path ? response() : null });
+  assert.equal((await h.run(valid[name])).error_kind, kind);
+  assert.equal(h.writes().length, 1);
+});
+
+test("delete_list: a stored name with repeated spaces matches the name list_lists shows", async () => {
+  const lists = [{ list_id: "LIST-2", name: "Date  Night", is_legacy_hitlist: false, is_public: false, description: null }];
+  const shown = (await harness("list_lists", { lists }).run(valid.list_lists)).lists[0].name;
+  const out = await harness("delete_list", { lists }).run({ ...valid.delete_list, list_id: "LIST-2", expected_name: shown });
+  assert.equal(out.status, "deleted");
+});
