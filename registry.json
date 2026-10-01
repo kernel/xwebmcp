@@ -867,6 +867,54 @@
       }
     },
     {
+      "domain": "seats.aero",
+      "tool": "get_award_trips",
+      "file": "domains/seats.aero/get_award_trips.js",
+      "kind": "page",
+      "namespace": "seats.aero",
+      "url_patterns": [
+        "https://seats.aero/*"
+      ],
+      "status": "qa_passed",
+      "last_verified": "2026-09-30",
+      "notes": "Signed-out cached reads only; no login, PRO, live search or booking links. Independent success/failure fixtures passed; genuine trip success is unverified because public search was challenged.",
+      "provenance": {
+        "qa_agent": "agt_4742bece3a8f2263e5cf"
+      }
+    },
+    {
+      "domain": "seats.aero",
+      "tool": "list_award_programs",
+      "file": "domains/seats.aero/list_award_programs.js",
+      "kind": "page",
+      "namespace": "seats.aero",
+      "url_patterns": [
+        "https://seats.aero/*"
+      ],
+      "status": "verified",
+      "last_verified": "2026-09-30",
+      "notes": "Signed-out program reference only; no account or paid access. Independent live listing returned 33 matches on the homepage and /terms without navigation; local extension success is fixture-backed.",
+      "provenance": {
+        "qa_agent": "agt_4742bece3a8f2263e5cf"
+      }
+    },
+    {
+      "domain": "seats.aero",
+      "tool": "search_award_availability",
+      "file": "domains/seats.aero/search_award_availability.js",
+      "kind": "page",
+      "namespace": "seats.aero",
+      "url_patterns": [
+        "https://seats.aero/*"
+      ],
+      "status": "qa_passed",
+      "last_verified": "2026-09-30",
+      "notes": "Signed-out cached reads through 57 UTC days; no PRO, live search or booking navigation. Independent success/failure fixtures passed; genuine search returned challenge and was not retried.",
+      "provenance": {
+        "qa_agent": "agt_4742bece3a8f2263e5cf"
+      }
+    },
+    {
       "domain": "southwest.com",
       "tool": "login",
       "file": "domains/southwest.com/login.js",
