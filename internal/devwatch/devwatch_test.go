@@ -69,7 +69,7 @@ func TestWatchReportsEdits(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	changes := make(chan []Change, 10)
-	go Watch(ctx, root, 20*time.Millisecond, func(c []Change) { changes <- c })
+	go Watch(ctx, root, 20*time.Millisecond, func(c []Change) []string { changes <- c; return nil })
 
 	first := <-changes
 	if len(first) != 1 || first[0].File.Source != "[1]" || first[0].Removed {
@@ -92,5 +92,38 @@ func TestWatchReportsEdits(t *testing.T) {
 		}
 	case <-time.After(5 * time.Second):
 		t.Fatal("removal not reported")
+	}
+}
+
+func TestWatchRetriesTransientFailures(t *testing.T) {
+	root := t.TempDir()
+	os.MkdirAll(filepath.Join(root, "c.test"), 0o755)
+	os.WriteFile(filepath.Join(root, "c.test", "tool.js"), []byte("[1]"), 0o644)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	calls := make(chan []Change, 10)
+	failures := 2
+	go Watch(ctx, root, 20*time.Millisecond, func(c []Change) []string {
+		calls <- c
+		if failures > 0 {
+			failures--
+			return []string{c[0].File.Rel}
+		}
+		return nil
+	})
+	for i := 0; i < 3; i++ {
+		select {
+		case c := <-calls:
+			if len(c) != 1 || c[0].File.Source != "[1]" {
+				t.Fatalf("attempt %d = %+v", i, c)
+			}
+		case <-time.After(5 * time.Second):
+			t.Fatalf("attempt %d not reported", i)
+		}
+	}
+	select {
+	case c := <-calls:
+		t.Fatalf("unchanged file reported again after success: %+v", c)
+	case <-time.After(200 * time.Millisecond):
 	}
 }

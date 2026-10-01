@@ -19,7 +19,6 @@
     listTools: (params) => call('listTools', params),
     /** @returns {Promise<WebMCPInvocationResult>} */
     invoke: (params) => call('invoke', params),
-    invokeCustomTool: (params) => call('invokeCustomTool', params),
     addCustomTools: (params) => call('addCustomTools', params),
     listCustomTools: () => call('listCustomTools'),
     removeCustomTool: (params) => call('removeCustomTool', params),

@@ -9,14 +9,30 @@ const owned = new Set();
 let loaded = null;
 
 async function load() {
-  loaded ??= chrome.storage.session.get(STORAGE_KEY).then(({[STORAGE_KEY]: ids = []}) => {
+  loaded ??= chrome.storage.session.get(STORAGE_KEY).then(async ({[STORAGE_KEY]: ids = []}) => {
     for (const id of ids) owned.add(id);
+    // Session storage is cleared when the extension reloads, but the "xwebmcp"
+    // tab group survives, so tabs in it are still ours.
+    try {
+      const groups = await chrome.tabGroups.query({title: GROUP_TITLE});
+      for (const group of groups) {
+        for (const tab of await chrome.tabs.query({groupId: group.id})) owned.add(tab.id);
+      }
+    } catch {
+      // Tab groups unavailable; fall back to the stored list.
+    }
   });
   return loaded;
 }
 
 async function save() {
   await chrome.storage.session.set({[STORAGE_KEY]: [...owned]});
+}
+
+// ready resolves once ownership has been restored (after a service-worker
+// start or an extension reload).
+export function ready() {
+  return load();
 }
 
 export function isOwned(tabId) {
