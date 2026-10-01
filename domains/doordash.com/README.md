@@ -5,18 +5,28 @@ Tools for DoorDash (https://www.doordash.com).
 | tool | file | status | notes |
 |------|------|--------|-------|
 | login | [login.js](login.js) | qa_passed | Email + password sign-in with a two-step guided flow; existing sessions verified against the profile page; `otp` mode for the 2-Step Verification modal |
+| get_cart | [get_cart.js](get_cart.js) | qa_passed | Account-checked open-cart read with line ids, options, provisional totals and revision |
+| get_checkout_summary | [get_checkout_summary.js](get_checkout_summary.js) | qa_passed | Read-only preparation and manual checkout handoff; never opens checkout or orders |
+| remove_cart_item | [remove_cart_item.js](remove_cart_item.js) | qa_passed | Exact non-last personal cart-line removal with account/revision/duplicate guards; fixture-only mutation evidence |
+| get_store | [get_store.js](get_store.js) | qa_passed | Page tool: store hours, service modes, delivery and pickup availability with estimates and fee strings, and menu ids, with the delivery basis (selected address, none selected, unknown) stated explicitly and delivery figures returned only for a selected address; never changes the address |
 
 ## Native WebMCP tools
 
 Checked on 2026-09-25 in a stealth browser with a signed-in profile. DoorDash ships its own
 tools through a `[WebMCP Polyfill]` that it installs on `navigator.modelContext`
 (`registerTool`, `unregisterTool`, `callTool`, `listTools`, plus a `_registeredTools` map).
-The polyfill is page JavaScript, not the browser's `document.modelContext` API, so
-`webmcp.listTools()` in the Kernel REPL returns **no native tools** on any page; read them with
-`await navigator.modelContext.listTools()` from page context instead. The polyfill can take a few
-seconds to load after `load`; poll for `navigator.modelContext` before reading. Tool names are
-therefore not visible to Kernel's WebMCP client, but the custom `login` name still does not
-collide with any of them.
+On that date the polyfill was page JavaScript that `webmcp.listTools()` in the Kernel REPL did not
+list, so the tools had to be read with `await navigator.modelContext.listTools()` from page context.
+**That has changed (rechecked 2026-09-29, see below).** The polyfill can take a few seconds to load
+after `load`. The custom tool names in this namespace do not collide with any native name.
+
+Rechecked 2026-09-29 on the Kernel runtime, signed out, on `/store/29417/`: `kernel browsers webmcp
+list` and the REPL's `webmcp.listTools()` list the page's native tools (`add_to_cart`,
+`get_item_details`, `get_page_context`, `get_restaurant_menu`, `navigate_to_page`) from about 3 to
+5 seconds after the page loads (none at 3 s in the first poll, five at 5 s), and `document.modelContext`
+exposes `registerTool`, `getTools` and `executeTool`. Rechecked the same day through
+`navigator.modelContext.listTools()`, the lists per page type in the table were unchanged. The earlier "not visible" reading was either a timing artifact or a runtime difference; it
+is not the case now.
 
 | page | URL checked | native tools |
 |------|-------------|--------------|
@@ -43,10 +53,11 @@ Schemas as read from the polyfill (inputs only; the polyfill exposes no output s
 - `add_to_cart({ storeId, menuId, itemId, itemName, quantity, unitPrice, specialInstructions?, cartId?, options?, purchaseTypeOptions? })`
   with nested option selections; `unitPrice` is in cents.
 
-None of the native tools sign in, so `login` is custom. Search and cart are already covered
-natively; the next phase should evaluate those tools before writing custom ones, and it must
-call them through `navigator.modelContext.callTool` (or register the site-provided definitions)
-because Kernel's WebMCP client does not see the polyfill.
+None of the native tools sign in, so `login` is custom. Search, item options and adding to the cart
+are covered natively. The native tools give no store details (hours, address, availability, fees,
+estimates) and no cart read or edit, address, or order tools. `get_store` covers the store-details gap;
+the bounded cart tools below cover reads, limited line removal and preparation, not address selection or
+order execution.
 
 ## Entry path and flow
 
@@ -94,16 +105,17 @@ challenge appeared in any run.
 ## Loading
 
 ```javascript
-const source = (await import("node:fs")).readFileSync("domains/doordash.com/login.js", "utf8");
-await webmcp.addCustomTools({ namespace: "doordash.com", tools: eval(source), forceOverwriteNamespace: true });
+const fs = await import("node:fs");
+const tools = ["login", "get_store", "get_cart", "get_checkout_summary", "remove_cart_item"].map(name => eval(fs.readFileSync(`domains/doordash.com/${name}.js`, "utf8"))[0]);
+await webmcp.addCustomTools({ namespace: "doordash.com", tools, forceOverwriteNamespace: true });
 const tool = (await webmcp.listTools()).find(t => t.source.custom?.namespace === "doordash.com" && t.tool.name === "login");
 const result = await webmcp.invokeTool(tool.tool_ref, { email: "qa@example.invalid", password: "fabricated" }, { timeoutSec: 120 });
 // Second step, once the code arrives:
 // await webmcp.invokeTool(tool.tool_ref, { email: "qa@example.invalid", otp: "123456" }, { timeoutSec: 120 });
 ```
 
-`forceOverwriteNamespace: true` replaces every tool in `doordash.com`; register search or cart tools
-together with `login` as one array. Take a fresh `tool_ref` after navigation. Use `timeoutSec: 120`
+`forceOverwriteNamespace: true` replaces every tool in `doordash.com`, so register all five tools
+together as one array. Take a fresh `tool_ref` after navigation. Use `timeoutSec: 120`
 (the WebMCP maximum); the post-submit observation window is 45 seconds and a full search-entry run
 took about 15 seconds. The runtime only lists a CDP tool on pages matching its `url_patterns`, so
 `login` is invocable from any `doordash.com` page (including `help.` and `identity.`) but not from
@@ -256,8 +268,355 @@ the branch touch only this README and the registry.
   mailbox; the tool does not click it, so a caller that cannot receive SMS should click it in the
   browser before invoking `otp` mode.
 
+## get_store
+
+`get_store({ store_id })` reads one DoorDash store (`store_id`: digits without a leading zero) and reports the things the native tools do not:
+open status and hours, the services the store offers, whether delivery and pickup can be ordered
+**right now**, an estimate range only when the site marks the mode available, the site's own
+delivery-fee strings, and the store's menus, together with the delivery basis those figures rest on. It never returns menu items
+(use the native `get_restaurant_menu` on the store page), reviews, or a fee quote. `store_id` is the
+digits from `search_restaurants` or from a `doordash.com/store/<name>-<id>/` URL. The result also
+carries `menu.menu_id`, the `menuId` the native `add_to_cart` requires.
+
+Name: `get_store` follows `ubereats.com/get_store`, and a DoorDash store can be a restaurant or a
+convenience store, so the restaurant-only names were not used. Convenience and grocery stores return
+their header details with `store_type: "convenience"` and `menu: null`; their catalog is a different
+surface (native `get_convenience_store`, `search_retail_products`).
+
+### Delivery context
+
+DoorDash computes delivery availability and estimate for the delivery address selected in the
+session, not for the store alone. With no address selected it does **not** use the egress IP: on
+2026-09-29 two guest browsers, one whose `getGeoByIP` answered with a point in the middle of the
+United States and one behind a New York residential proxy whose `getGeoByIP` answered with the Bronx,
+got the identical distance to the same New York store (5385 mi) and "Too far away" for it, and an
+independent review saw the same identical values from two other egress locations. Those figures
+describe a placeholder location, not the customer, and read "Too far away" for every store. The output
+therefore carries `delivery_context.basis` and returns the delivery figures **only** when an address is
+positively recognised:
+
+- `selected_address`: the header address control (`data-testid="addressTextButton"`) shows text that
+  is not a known placeholder and contains a digit (a street number or ZIP). Delivery `available`,
+  `unavailable_reason`, `unavailable_message`, `estimate_minutes` and `too_far_from_consumer` are
+  DoorDash's answer for that address.
+- `no_address_selected`: the header shows a known placeholder ("Your Address", "Tu dirección") or, when
+  the page has no header control, the signed-out landing page's address form
+  (`data-testid="LandingPageAddressSearch"`) is present.
+- `unknown`: anything else, such as a header text in a locale whose placeholder is not recognised and
+  that has no digit, or a page with neither signal.
+
+For `no_address_selected` and `unknown` the five delivery fields above are `null` (withheld): reporting
+`available: false` would say a store does not deliver when nothing is known. Store details, hours,
+pickup and the fee strings are still returned. The placeholder text is localised, so it is matched
+narrowly and everything unrecognised falls to `unknown` rather than to `selected_address`.
+
+Other fields:
+
+- `delivery_context.address_selected` is the boolean behind `basis` (`true`, `false`, `null`). The tool
+  never returns the address text and never opens, changes or selects an address.
+- No distance is returned. DoorDash's distance from the customer, together with the store coordinates
+  in `address`, could be combined across stores to estimate where the customer is.
+- `delivery_context.signed_in` is from the `dd_cx_logged_in=true` cookie, a hint only (the cookie can be
+  stale); fees and promotions can differ by account (first-order and DashPass messages).
+- `delivery.estimate_minutes` and `pickup.estimate_minutes` are `null` unless that mode is available,
+  because the site sends a range even for a mode it reports unavailable.
+- `delivery.fee_display` returns the site's `title`, `subtitle` and `text` unparsed; the strings differ
+  by store type ("$0 delivery fee over $12" on a restaurant, "$0.00" plus "delivery fee on $12+" on a
+  convenience store) and are not a quote. They are returned in every basis.
+- `rating.average` is `null` for a store with no ratings (the site sends 0).
+
+### Why a page tool
+
+The tool makes one same-origin `fetch` from the registering document and returns; it does not
+navigate, so it is `kind: "page"` per the authoring skill and `spec/cdp-tools.md` §2.1. It is invocable
+from any `www.doordash.com` page (verified from a search page, the home page, a store page, a DashPass
+page and a grocery tab) without leaving it. Registered by the Kernel API, a page tool's input is **not**
+checked against `inputSchema` (observed 2026-09-29: malformed input reached `execute`), so `execute`
+validates `store_id` itself and returns `invalid_input` before any request.
+
+### Mechanism (observed 2026-09-29)
+
+The store page calls `POST /graphql/storepageFeed?operation=storepageFeed` from its own JavaScript, with
+headers `x-csrftoken` (the `csrf_token` cookie when signed in, an empty string signed out),
+`x-channel-id: marketplace` and `x-experience-id: doordash`, and a 22 KB query. The tool sends a
+trimmed query for the same operation that selects only the fields listed in the output. The trimmed
+query was checked live from `/home` and from other store, search, DashPass and grocery pages,
+returning HTTP 200 and about 3.4 KB per store, in about 0.6 to 0.9 s. Unknown ids return HTTP 200 with a
+GraphQL `NOT_FOUND` error and a null feed; id 1 returns a header with an empty name, which the tool also
+reports as `not_found`. `store_id` must not start with a zero: DoorDash normalises `029417` to `29417`, and id `0`
+returns an internal-looking record, so both are rejected as `invalid_input`. The server-rendered store HTML carries the same
+header, but inside a Next.js payload in which a leading `$` in a string is escaped as `$$` (for example
+`"$$0 delivery fee"`); it was compared field by field with the GraphQL response and rejected as the
+source because of that encoding and its 2.5 to 3 MB size.
+
+### Errors
+
+Every failure is `{ status: "error", error_kind, error_message }`: `invalid_input`, `wrong_page`
+(not on `www.doordash.com`; nothing was requested), `not_found`, `login_required` (HTTP 401 or an
+unauthenticated GraphQL error), `challenge` (a non-JSON bot-check page), `rate_limited` (HTTP 429),
+`site_changed` (the query was rejected as invalid, the header is missing, or another store came back)
+and `site_error` (anything else, including timeout after 25 s). A permission, challenge or rate-limit
+response is never turned into an empty success, and nothing is retried.
+
+### Live evidence for get_store
+
+Kernel runtime (`kernel` CLI 0.41.0), 2026-09-29, profile-less stealth browsers signed out, registering
+the whole `doordash.com` namespace (`login` and `get_store`) in one `force_overwrite_namespace` batch.
+Results are for the final source of this PR; the findings of the independent review that led to the
+current `basis` rules are listed under "Independent QA".
+
+| case | result |
+|---|---|
+| stores 29417, 46989, 1227820 from `/`, `/home`, a search page, a store page, a DashPass page | `ok`, 0.6 to 0.9 s, no navigation (a marker on `window` survived), output valid under Ajv against the schema the runtime lists; `basis: no_address_selected` everywhere (landing address form on `/` and `/home`, placeholder text elsewhere); delivery figures `null`, pickup and store data returned |
+| `/es-US/`, `/en-CA/` and `/fr-CA/` store pages | header "Tu dirección" and "Your Address" give `no_address_selected`; fr-CA's "Votre adresse" (no digit, not a known placeholder) gives `unknown`; delivery figures `null` in all three |
+| store 36030759 (convenience) from a grocery tab | `store_type: convenience`, `menu: null`, `pickup.available: false` with `estimate_minutes: null` |
+| unrated store 37757465 | `rating.average: null`, `count: 0` |
+| unknown id 99999999999 and empty-header id 1 | `not_found` |
+| malformed inputs (`abc`, `{}`, 13 digits, a number, an extra field, a space, `-1`, `""`, `029417`, `0`, padded and newline-terminated ids) | `invalid_input`; CDP network events showed no `storepageFeed` request, while one valid call showed exactly one |
+| help., merchants., identity.doordash.com | `get_store` is not listed (only `login`); the apex redirects to `www` where it is listed |
+| two guest egress locations (central US and New York residential) | identical results; before the delivery figures were withheld both showed the same distance (5385 mi) to a New York store |
+
+The same calls in the approved signed-in browser (read only; the custom tools were registered for the
+check and removed afterwards, and no address text or account data was recorded): a store in range of
+the account's address returned `basis: selected_address`, `signed_in: true`, and delivery and pickup
+available with estimate ranges; a store outside that range returned `too_far_from_consumer: true` with
+pickup still available; a convenience store in range returned delivery available and pickup
+unavailable. Store ids and distances from this account are deliberately not recorded.
+
+Local Chrome extension runtime (Chromium 153.0.8010.52 under Xvfb, throwaway profile and state directory),
+2026-09-29, author check of `get_store.js` at commit `ab34f98`: installed with `xwebmcp add` pinned to that
+commit, attached with `xwebmcp attach` (both tools in one batch), site access granted in the popup. Both
+tools were listed on a store page; `get_store` calls made from the page (`document.modelContext.executeTool`)
+and through `xwebmcp mcp` (`open_tab` then `invoke_tool`) returned the same outputs as on Kernel, including
+`no_address_selected` on `/es-US/`, `not_found`, and `invalid_input` for `abc`, an extra field and `029417`,
+with no navigation. `xwebmcp invoke <tool_ref>` refused a tab it had not opened (`tab_not_allowed`), as the
+README describes. DoorDash's native tools were not listed by `getTools()` in this Chromium, unlike on
+Kernel; the cause was not investigated. Not run locally: a signed-in profile and real address.
+
+### Independent QA
+
+Round 1, 2026-09-29, agent `agt_e3cd254315c78d609b12` against commit `3488ced` in two profile-less
+stealth browsers (one default egress, one New York proxy; both deleted) and in a throwaway local
+Chromium 153 with the extension runtime. Static review, the full test suite, live matrix, 57-store
+sweep, 71-cookie leakage check, 44 source mutants against the tests. Verdict: defects found, none a
+blocker. Findings and what changed:
+
+| finding | severity | resolution |
+|---|---|---|
+| `addressText !== "Your Address"` read any non-English placeholder ("Tu dirección" on `/es-US/`) as `selected_address`, so placeholder figures were labelled as a real address's | major | An address is now recognised positively only (text with a digit that is not a known placeholder); known placeholders are `no_address_selected`; everything else is `unknown`. Tests cover es-US, an unrecognised locale, a digit-less address and an empty header. |
+| `basis: unknown` on `/` and `/home` passed DoorDash's placeholder figures through as definite values | major (design) | Delivery figures are now withheld for `unknown` as well; only `selected_address` returns them. The signed-out landing address form is recognised as `no_address_selected`. |
+| a leading-zero id (`029417`) was accepted and then reported as `site_changed` | minor | The id pattern rejects leading zeros (`invalid_input`); id `0` is rejected too. |
+| `rating.average: 0` for unrated stores | minor | `null` when the site reports zero ratings. |
+| README and description inaccuracies (single-digit ids, only `OPEN` observed, `signed_in` wording) | minor | Corrected below and in the tool description. |
+| seven surviving source mutants (padded ids, `signed_in: true`, the convenience guard, the timeout, the error-text bound) | minor | Tests added; a local re-run of 15 mutants of the new logic and of those gaps found all caught. |
+| distance plus the store coordinates could be combined across stores to estimate the customer's location | privacy judgement | The numeric distance is no longer returned or requested. |
+
+Round 2, 2026-09-29, same agent `agt_e3cd254315c78d609b12` against commit `27aedc3` (`get_store.js` sha256
+`f5223a9ef3fa82d5552605c5d57fb1d979cab05f115ebdfabf28e7679bd30a1d`, unchanged in the later commits) in two
+new profile-less stealth browsers (deleted) and the same throwaway local Chromium method. Verdict: **no
+defects; signed off on that source as ready for `qa_passed`**. It re-verified all seven round 1 findings;
+probed the header on en-US, es-US, en-CA, fr-CA, en-AU, en-NZ and en-GB (every other locale path it tried
+returned 404 or redirected to en-US) and on `/`, `/home`, search, store, DashPass and grocery pages plus an
+emulated mobile viewport, with no signed-out case reading `selected_address` and none reading
+`no_address_selected` while an address was showing; sent 21 malformed inputs (0 requests) and 11 valid calls
+(exactly 11 requests); swept 57 stores (0 schema failures, every delivery field `null`); checked 73 cookie
+values for leakage (none; one false positive from a cookie whose value is `doordash.com`); and ran 77
+source mutants, of which 68 were killed. Of the 9 survivors, four were equivalent, two were the unanchored
+placeholder regex and three were test gaps; the tests now cover the gaps (request omits
+`distanceFromConsumer`, `execute` agrees with the schema pattern, exact `dd_cx_logged_in=true` cookie
+boundary, a placeholder is matched only as the whole text) and a re-run of those mutants finds all caught.
+Its minor nits: the description's "not recognised" does not mention that `unknown` also covers a page with
+neither a header control nor the landing form (seen live on a mobile `/home`; the schema text says "or
+absent"), and one Known limitations line still said two egress locations (fixed). Not checked by the
+reviewer: any signed-in state, a real selected address, the NY-proxy egress in the extension, and real
+401, 429 or challenge responses (stub-driven only). It also noted that `"Your Address 2"`-style text reads
+as `selected_address` because any digit counts, which is unreachable with real placeholders.
+
+Status: `qa_passed`, not `verified`. The `selected_address` branch and the delivery figures it releases have
+only the author's live evidence, from one signed-in session, and no independent live check, so the
+"live end-to-end success" bar of `spec/repository.md` §5.4 for the tool's central claim is not met even
+though independent live successes exist from several pages.
+
+The review also confirmed live that `menu_id` equals the id the native `get_restaurant_menu` reports for
+five stores, that six concurrent invocations in one tab succeed, that a document replaced mid-call is
+reported by the runtime as `outcome_unknown` (the extension reports an unobservable outcome after 5 s),
+and that the delivery placeholder values were identical across the two egress locations. Its synthetic
+checks (a selected address, `delivery.available: true`, and the 401, 429, challenge, non-JSON,
+site-changed and timeout branches, driven with stubs in throwaway browsers) are not live evidence of real
+site responses.
+
+### Known limitations of get_store
+
+- `qa_passed` on `get_store.js` sha256 `f5223a9e…` (commit `ab34f98`; later commits touch only this README, the
+  tests and the registry). Not `verified`: see "Independent QA".
+- Not verified live: `login_required`, `challenge`, `rate_limited` and `site_changed` responses (fixture
+  coverage only, with response shapes assumed from GraphQL conventions and the observed `NOT_FOUND` shape).
+  The `challenge` detection looks only at non-JSON bodies.
+- `basis` rests on the header address control, the landing address form and two localised placeholders
+  ("Your Address", "Tu dirección"). Other locales fall to `unknown` (fr-CA was seen live), so delivery figures
+  are missing there even for a guest who has an address without a digit in it. A guest-entered address (never
+  exercised: the tool and its testing never set one) is assumed to show as text containing a digit, and that a
+  guest address changes DoorDash's figures is unobserved. Signed in without any saved address is unobserved. That
+  the placeholder location is the same for every guest was seen from four egress locations in total (two by the
+  author, two by the reviewer).
+- `unknown` also covers a page with neither a header control nor the landing form (seen live on a mobile
+  `/home`), which the tool description does not spell out.
+- `selected_address` is the only basis with delivery figures, and it was live-verified only in the one signed-in
+  session described above; `delivery.available: true` for a guest-selected address is not verified.
+- The delivery estimate and availability are for one moment and one context. `fulfillmentType` is fixed to
+  Delivery in the request; the same response carries the pickup status. Scheduled orders are not modelled.
+- `operation_status` is a pass-through string: `OPEN` was seen by the author, and `OPEN_CLOSING_SOON` and
+  `UNAVAILABLE` in the reviewer's 57-store sweep. There is deliberately no `open_now` boolean.
+- The trimmed query names fields and types taken from the site's own query on 2026-09-29. If DoorDash
+  renames them the tool returns `site_changed`; the query is not a public API.
+- Loading a store page or this query may register a store view in DoorDash's own analytics, as any visit does.
+- Only stores DoorDash reports under `/store/<id>` were sampled, plus one convenience store; other store
+  types (for example shipping-only) are unobserved.
+- Delivery figures depend on the session's address; the egress location did not change them in the four
+  locations tried. Coordinates and street in `address` are the store's own.
+
+### URL patterns
+
+`get_store` is narrowed to `https://www.doordash.com/*`; `login` keeps the default pair. The tool calls
+`www.doordash.com`'s own GraphQL endpoint with a relative URL, and the other `*.doordash.com` hosts are
+unrelated products (`merchants.`, `dasher.`, `business.`, `help.`, `developer.`, `about.`, `identity.`)
+that do not serve it; they were observed on 2026-09-29 to have no native tools and a different purpose.
+`login` cannot be narrowed the same way because sign-in runs on `identity.doordash.com`. The namespace
+therefore mixes both forms, against the `SHOULD` in `spec/repository.md` §6.2 that one host be used per
+namespace; this is flagged for review.
+
 ## Sessions
 
 - Long-lived signed-in browser (profile `personal-stuff`, residential proxy): `wjdkr9p7ugcc9ui4ssf7e4mm` (24-hour inactivity timeout; left alive for the search and cart phase).
 - Exploration browser (no profile): `f8hxya0e603z86s1nsamz01b` (deleted after this work).
 - Source: this repository is canonical; sessions expire but files do not. No credentials or codes are stored here.
+
+
+## Cart reads, reversible removal and order preparation
+
+Rechecked native coverage on 2026-09-30 in the explicitly authorized session: home exposes search/context/navigation;
+restaurant store exposes `get_restaurant_menu`, `get_item_details`, `add_to_cart`, context/navigation. These
+menu/item/add capabilities are not duplicated. The native page polyfill still lists them after custom
+namespace registration, although the current Kernel discovery API did not surface them in this recheck.
+
+All three new tools are `page`: same-origin requests from the current session, no navigation. They require
+`expected_account_email`, supplied by the user for the intended account, and compare it against the site's
+`consumerBucketing` query before and after reading private cart data; an observable account switch discards
+all results. No email, account id, payment data, address street,
+entry codes, instructions, raw errors, cookies or signed URLs are returned. Do not infer the intended account
+from whatever session happens to be present. This account comparison is not human approval.
+
+- `get_cart`: reads `listDetailedCarts`, at most 20 open carts, 100 lines/cart, 50 options/line and 30 fee lines;
+  returns truncation flags, currency and integer minor-unit amounts (null when the site omits them). Every cart
+  has a SHA-256 `revision` of the queried cart shape for a fresh-state check. A whole output over 180 KB is refused.
+- `get_checkout_summary`: reads the same list and selects the exact `cart_id`, with an allowlisted cart summary,
+  explicit delivery context and a generated manual checkout URL. It does not load checkout or create checkout
+  state. Totals and fee lines are provisional and can be incomplete. `ready_for_order` is always false.
+- `remove_cart_item`: requires exact `cart_id`, `line_id` (cart line id, not menu item id), `expected_store_id`
+  and `expected_revision` from `get_cart`. It removes only an ordinary personal non-bundle, non-catering,
+  non-shipping, non-prescription cart line, with one non-finalized order and at least two lines. All lines
+  must have explicit non-prescription status, matching item/store ids, complete option ids and a positive
+  finite quantity. It refuses last-line removal, incomplete/truncated carts, a missing/duplicate line,
+  wrong store/account and stale revision before writing.
+
+### Safety design
+
+Removal uses the site's `removeCartItemV2` mutation, one attempt, with `returnCartFromOrderService: false`,
+`monitoringContext.isGroup: false` and `cartContext.deleteBundleCarts: false`. It never calls checkout,
+quantity/option updates, address/default changes, payment selection, scheduling, or order placement. The
+query and mutation were extracted from the site's public client bundle; the trimmed cart query and account
+query were accepted live. No mutation was sent to a live cart. The intended account is checked again before
+and after the write. A per-cart sessionStorage guard is installed synchronously before the write; an uncertain
+outcome retains it with no automatic expiry or retry. A fresh read must prove the line absent and every other
+queried cart identity and line field unchanged before reporting `removed: true` and clearing the guard.
+Fee/subtotal/total changes are expected and excluded from the unchanged-line check.
+
+The guard is per tab and is not a server-side lock. There is no observed atomic compare-and-swap API: a
+cross-tab change or account switch between the final read and write remains a race. Run serially and do
+not edit the cart elsewhere during a call. The site UI's Apollo cache is not updated by this request; refresh
+or read with `get_cart` rather than treating the old drawer as current. A cancelled/failed/partial write
+returns `outcome_unknown`, `write_attempted: true`; inspect manually and do not retry. No automatic guard
+clearance is exposed as a tool.
+
+`place_order` and payment execution are deliberately unshipped: the runtime provides no supported trusted
+human approval path bound to exact account, cart/items/quantities, address, final price, tip, delivery time
+and terms. A model-supplied `confirmed=true` is not authorization and is rejected as an extra field. The
+summary produces only preparation/handoff; it never triggers execution automatically.
+
+### Delivery context and limitations
+
+Header `basis` uses the same conservative rule as `get_store`. `default_address_region` is the account's
+saved default city/state/postal/country, not the actual cart address. The description and note explicitly
+state that distinction; neither address is changed. The cart query has no observed per-cart delivery-address
+field, so do not claim the default is selected for checkout. No real street, coordinates or address id is
+returned. Preview totals are not a final payable quote; tax/tip/promos/benefits can change at checkout.
+
+Quantity updates are omitted: the site's `updateCartItemV2` input includes fulfillment and customization
+context, and a complete preserve-options contract has not been observed. Removal is grounded separately
+and does not rebuild item options. New menu/item/add tools are omitted because the site provides them natively.
+
+### New-tool QA evidence and known limitations
+
+Author, 2026-09-30: authorized session still alive with its original 12-hour expiration unchanged. `consumerBucketing`
+confirmed a non-guest account and a default region (only field names recorded); trimmed `listDetailedCarts`
+returned HTTP 200 with an empty list. Whole five-tool namespace registered atomically, `get_cart` returned
+`ok`, empty list and `account_matched: true` from a different store page; wrong intended account returned
+`wrong_account` before the private cart query. No user cart/address/payment changed. Populated cart, actual
+fee/total semantics, and removal success remain fixture-only; no live mutation consent was supplied.
+
+Independent QA round 1, 2026-09-30, same reviewer `agt_e3cd254315c78d609b12` using
+`openai-codex/gpt-6.1-sol` (high reasoning; Codex auth runtime-checked), at `dd01703`: defects found.
+Two major findings were reproduced with isolated fixtures: account switches after the private cart read
+could release mismatched results, and line-level prescription/incomplete identity data did not block removal.
+Both are now guarded with regressions. A minor late-cancellation case could clear the guard after the final
+hash completed; cancellation is now checked before guard clearance and returns `outcome_unknown`.
+
+That review passed 1637 tests and 89 independent scratch cases, compiled all new schemas with Ajv, and
+exercised the full namespace on Kernel and the local extension (23 extension invocations). All populated
+cart, preview and removal successes were fixture-only, with zero tool-fetch escapes; live guest calls failed
+as `login_required`. Existing `get_store` locale/distance safeguards remained unchanged. Native menu/item/add
+were seen alongside all customs on a fully loaded Kernel store page; native home tools remained available
+in navigator but not API discovery. The subsequent final-source recheck below supersedes the pending state.
+
+Author local-extension check at `dd01703`: exact-SHA install in a throwaway Chromium 153 profile, atomic
+five-tool attach and site grant; page-originated mocked cart→preview→remove success made one mocked write,
+zero network escapes and preserved the document marker. Extension-owned-tab calls covered live guest and
+malformed-input failures plus signed-out `get_store` success. These are not claims of live cart mutation.
+The original authorized login session reached its unchanged expiration and was deleted after the deadline.
+No signed-in/populated extension profile was used.
+
+### final-source independent sign-off — 2026-09-30
+
+Same reviewer, same runtime/auth settings; initial review plus one fix/recheck round, no third reviewer or
+unbounded review loop. At `bd42a0d5322213cbc507804e3e656eb00cbaa582`, verdict **NO DEFECTS**, explicitly
+signed off on all three new tools as `qa_passed`, not `verified`. Hashes matched checked-out and installed
+extension sources:
+
+```text
+get_cart 987beebde9fb872deb4b6c7d0cdcce20418b896457c8219986dbc665a648c91b
+get_checkout_summary 2a1de8f774db4b2d29d3475e434eef803e08aa6f4ea224cd72b61da5a7ec2372
+remove_cart_item dc74c41f35745c7d1e650ff2531604f2229fa8904d993e6d70e379e53c0d091e
+```
+
+Recheck: 83 tools valid, full suite 1648/1648, cart tests 49/49, get_store tests 22/22; six schemas compiled
+with Ajv, 140 independent scratch cases reviewed (132 assertion checks passed, eight exploratory probes),
+four regression mutants killed. All original findings closed; observable account switches/uncertain account
+responses discard reads, unsupported target/other lines fail before guard/write, and late cancellation retains
+the uncertain-outcome guard. Actual page-originated aborts surfaced caller `AbortError` with that guard retained.
+
+Kernel: fresh public browser, atomic five-tool registration, real guest failures, all three fixture-only success
+paths, regression failures, zero fixture fetch escapes and unchanged location/history/marker. Store native
+menu/item/add/context/navigation coexisted with customs; help.doordash.com exposed only login, unrelated
+example.com none. get_store es-US/fr-CA safeguards passed unchanged.
+
+Local extension: exact-SHA install, five-tool attach/grant, 25 schema-valid result-bearing invocations and
+separate late-cancellation check. Owned-tab and page-originated fixture success/failure paths passed, with
+zero fixture fetch escapes/no navigation. Home navigator natives remained intact while extension discovery
+listed customs only; no blanket discovery parity is claimed.
+
+Author independently repeated final-hash Kernel and local-extension registration/discovery, live guest and
+malformed-input failures, signed-out get_store success, and isolated read→preview→remove success (one mocked
+write, zero escapes). Local page marker survived; Kernel marker/path survived real public checks. No final-source
+signed-in/populated read, real removal, checkout/payment/address change or order was tested. Both sides deleted
+only their own scratch browsers and stopped local Chromium/Xvfb. Existing login/get_store hashes remain unchanged;
+metadata/docs-only closeout preserves the signed-off sources.
