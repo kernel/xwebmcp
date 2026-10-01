@@ -1373,6 +1373,47 @@
     },
     {
       "domain": "united.com",
+      "tool": "get_page_context",
+      "file": "domains/united.com/get_page_context.js",
+      "kind": "page",
+      "namespace": "united.com",
+      "url_patterns": [
+        "https://united.com/*",
+        "https://*.united.com/*"
+      ],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Page type (home, sign-in, results leg, checkout), live tools, unsettled reasons, open fare options, signed-in state and status level (no PII), verification-code step, suggestions. Draft."
+    },
+    {
+      "domain": "united.com",
+      "tool": "get_trip_summary",
+      "file": "domains/united.com/get_trip_summary.js",
+      "kind": "page",
+      "namespace": "united.com",
+      "url_patterns": [
+        "https://united.com/*",
+        "https://*.united.com/*"
+      ],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Reads United's checkout cart panel: flights with numbers and aircraft, fare per person, taxes, total due, cart id; never returns traveler details. Draft."
+    },
+    {
+      "domain": "united.com",
+      "tool": "list_flight_results",
+      "file": "domains/united.com/list_flight_results.js",
+      "kind": "page",
+      "namespace": "united.com",
+      "url_patterns": [
+        "https://www.united.com/*/fsr/*"
+      ],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Reads departing or returning rows on the results page with every cabin column's From price, sortable. Draft."
+    },
+    {
+      "domain": "united.com",
       "tool": "login",
       "file": "domains/united.com/login.js",
       "kind": "cdp",
@@ -1398,12 +1439,35 @@
         "https://united.com/*",
         "https://*.united.com/*"
       ],
-      "status": "verified",
-      "last_verified": "2026-09-24",
-      "notes": "Independent QA passed; domain-namespace migration verified live from a non-homepage results page: 26 SFO-LAX itineraries in 29.309s. Adults, English/US cash fares, initial outbound page only; roundtrip starting fares are per person. Nearby airports are returned explicitly. Slow-search transport timeouts remain a risk.",
-      "provenance": {
-        "qa_agent": "agt_a87837884a432de575e8"
-      }
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Migrated to snake_case input/output (depart_date, return_date, trip_type one_way/round_trip, ...) and added result_index for select_fare; back to draft for re-QA. Earlier verified evidence covered the camelCase contract."
+    },
+    {
+      "domain": "united.com",
+      "tool": "select_fare",
+      "file": "domains/united.com/select_fare.js",
+      "kind": "page",
+      "namespace": "united.com",
+      "url_patterns": [
+        "https://www.united.com/*/fsr/*"
+      ],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Opens a row's fare options for one cabin column and returns each fare's price, carry-on, rules and whether Basic consent is needed. Draft."
+    },
+    {
+      "domain": "united.com",
+      "tool": "select_fare_option",
+      "file": "domains/united.com/select_fare_option.js",
+      "kind": "page",
+      "namespace": "united.com",
+      "url_patterns": [
+        "https://www.united.com/*/fsr/*"
+      ],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Chooses a fare (Basic requires accept_restrictions); reports return results or checkout as the next page. Draft."
     }
   ]
 }

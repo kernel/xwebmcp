@@ -4,8 +4,13 @@ Tools for United Airlines (https://www.united.com).
 
 | tool | file | status | notes |
 | --- | --- | --- | --- |
-| search_flights | [search_flights.js](search_flights.js) | verified | Initial outbound results, including connections and nearby-airport alternatives |
+| get_page_context | [get_page_context.js](get_page_context.js) | draft | See registry notes. |
+| get_trip_summary | [get_trip_summary.js](get_trip_summary.js) | draft | See registry notes. |
+| list_flight_results | [list_flight_results.js](list_flight_results.js) | draft | See registry notes. |
 | login | [login.js](login.js) | draft | Challenge classification live-verified; successful login and MFA unverified |
+| search_flights | [search_flights.js](search_flights.js) | draft | Initial outbound results, including connections and nearby-airport alternatives |
+| select_fare | [select_fare.js](select_fare.js) | draft | See registry notes. |
+| select_fare_option | [select_fare_option.js](select_fare_option.js) | draft | See registry notes. |
 
 ## Scope and loading
 

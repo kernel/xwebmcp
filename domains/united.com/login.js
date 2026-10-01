@@ -71,7 +71,11 @@
       const visible = e => !!e && e.getClientRects().length > 0 && getComputedStyle(e).visibility !== "hidden";
       const id = document.querySelector("#MPIDEmailField");
       const pw = document.querySelector("#password");
-      const code = [...document.querySelectorAll('input[autocomplete="one-time-code"]')].filter(visible);
+      // One field (autocomplete=one-time-code) or one box per digit ("Enter digit 1 of 6").
+      const label = e => (e.getAttribute('aria-label') || e.labels?.[0]?.innerText || '').replace(/\s+/g, ' ');
+      const single = [...document.querySelectorAll('input[autocomplete="one-time-code"]')].filter(visible);
+      const digits = [...document.querySelectorAll('input')].filter(e => visible(e) && /digit \d+ of \d+/i.test(label(e)));
+      const code = single.length ? single : digits;
       const field = [pw, id, ...code].find(visible);
       const scope = field?.closest('[role="dialog"]') || field?.closest('form')?.parentElement || [...document.querySelectorAll('[role="dialog"]')].find(visible);
       const content = scope?.innerText || "";
@@ -83,8 +87,8 @@
       const challengeFrame = [...document.querySelectorAll('iframe')].find(e => visible(e) && /(?:captcha|challenge)/i.test(e.title) && e.getBoundingClientRect().height > 70);
       const errors = uniqueAlerts.filter(t => /wrong|invalid|incorrect|unable|try again|locked|too many|expired|attempts? (?:left|remaining)|does not match|not recognized|not match/i.test(t));
       const signout = controls.find(t => /^(?:sign out|log out)$/i.test(t));
-      const mfaText = [...headings, ...content.split('\n')].find(t => /we(?:'ve| have)? sent (?:you )?(?:a |an |the )?(?:verification |security |one.time )?code|enter (?:the |your )?(?:six.digit|6.digit|verification|one.time|security) (?:code|passcode)|choose (?:how|where) .*code|verify your identity/i.test(t));
-      return { url: location.href, origin: location.origin, idVisible: visible(id), pwVisible: visible(pw), pwFilled: visible(pw) && pw.value.length > 0, account: document.querySelector('input#username')?.value || null, codeCount: code.length, errors: [...new Set(errors)], challenge: challenge || (challengeFrame ? challengeFrame.title : null), signout, mfaText };
+      const mfaText = [...headings, ...alerts, ...content.split('\n')].find(t => /we(?:'ve| have)? sent (?:you )?(?:a |an |the )?(?:verification |security |one.time )?code|enter (?:the |your )?(?:six.digit|6.digit|verification|one.time|security) (?:code|passcode)|enter code|choose (?:how|where) .*code|verify your identity/i.test(t));
+      return { url: location.href, origin: location.origin, idVisible: visible(id), pwVisible: visible(pw), pwFilled: visible(pw) && pw.value.length > 0, account: document.querySelector('input#username')?.value || null, codeCount: code.length, digitBoxes: single.length ? 0 : digits.length, errors: [...new Set(errors)], challenge: challenge || (challengeFrame ? challengeFrame.title : null), signout, mfaText };
     });
     const outcome = s => {
       if (s.origin !== "https://www.united.com") return fail("unknown", "Navigation left the approved United origin; stopped.");
@@ -96,7 +100,7 @@
       }
       if ((s.signout || s.mfaText) && !s.pwVisible && !s.idVisible && !submittedPassword && !submittedOtp) return fail("unknown", "An existing authentication state is visible, but it is not bound to the requested account. No submission was made.");
       if (s.signout && !s.pwVisible && !s.idVisible && !s.codeCount && !s.mfaText) return { logged_in: true, authentication_complete: true, landing_url: s.url, account_name_or_hint: null, mfa_required: false, next_step: "done", evidence: s.signout };
-      if (s.mfaText && !s.pwVisible && !s.idVisible) return { logged_in: true, authentication_complete: false, landing_url: s.url, account_name_or_hint: null, mfa_required: true, next_step: s.codeCount === 1 ? "enter_otp" : /choose/i.test(s.mfaText) ? "choose_mfa_method" : "complete_additional_verification", evidence: s.mfaText };
+      if (s.mfaText && !s.pwVisible && !s.idVisible) return { logged_in: true, authentication_complete: false, landing_url: s.url, account_name_or_hint: null, mfa_required: true, next_step: s.codeCount === 1 || s.digitBoxes === 6 ? "enter_otp" : /choose/i.test(s.mfaText) ? "choose_mfa_method" : "complete_additional_verification", evidence: s.mfaText };
       return null;
     };
     const poll = async predicate => {
@@ -179,9 +183,23 @@
       } else if (mode === "otp") {
         s = await read();
         if (s.challenge) return outcome(s);
-        if (s.origin !== "https://www.united.com" || s.codeCount !== 1 || !s.mfaText || s.pwVisible || s.idVisible) return fail("unknown", "A supported single-field verification step is not visible; no code was submitted.");
-        await fillInput('input[autocomplete="one-time-code"]', otp);
-        if (!await submit('input[autocomplete="one-time-code"]')) return fail("unknown", "Could not identify one enabled verification button; no code was submitted.");
+        const singleField = s.codeCount === 1 && !s.digitBoxes;
+        if (s.origin !== "https://www.united.com" || !(singleField || s.digitBoxes === 6) || !s.mfaText || s.pwVisible || s.idVisible) return fail("unknown", "A supported verification step (one code field or six digit boxes) is not visible; no code was submitted.");
+        let codeSelector = 'input[autocomplete="one-time-code"]';
+        if (singleField) {
+          await fillInput(codeSelector, otp);
+        } else {
+          // Mark the six digit boxes in order, then type one digit into each.
+          const marked = await js(() => {
+            const boxes = [...document.querySelectorAll('input')].filter(e => e.getClientRects().length && /digit \d+ of 6/i.test(e.getAttribute('aria-label') || e.labels?.[0]?.innerText || ''));
+            boxes.forEach((b, i) => b.setAttribute('data-airline-otp-digit', String(i)));
+            return boxes.length;
+          });
+          if (marked !== 6) return fail("unknown", "The six verification digit boxes changed; no code was submitted.");
+          for (let i = 0; i < 6; i++) await fillInput('[data-airline-otp-digit="' + i + '"]', otp[i]);
+          codeSelector = '[data-airline-otp-digit="0"]';
+        }
+        if (!await submit(codeSelector)) return fail("unknown", "Could not identify one enabled verification button; no code was submitted.");
         if (networkFailure) return networkFailure;
         submittedOtp = true;
         s = await poll(x => !!outcome(x) && (!x.codeCount || x.errors.length > 0 || !!x.challenge));
