@@ -17,6 +17,7 @@ function page(blockEval) {
     window,
     document: {modelContext: {async registerTool(tool) { tools.push(tool); }}},
     AbortController,
+    crypto,
     Error,
     EvalError,
     Function: blockEval ? function BlockedFunction() { throw new EvalError('Refused to evaluate a string because of Content Security Policy: unsafe-eval'); } : Function,
@@ -60,4 +61,21 @@ test('retain-page-tools drops registrations an earlier agent made that are no lo
   // A fresh agent re-registering the kept tool does not duplicate it.
   await p.deliver({type: 'register-page-tools', definitions: [p.definition]});
   assert.equal(p.tools.length, 2);
+});
+
+test('cdp tools get a stub that runs through the agent and survives a new agent', async () => {
+  const p = page(true); // even with eval blocked, cdp stubs need no eval
+  const stub = {id: 'ct_cdp', kind: 'cdp', name: 'custom.ct_cdp.search', tool: {description: 'cdp'}};
+  await p.deliver({type: 'register-page-tools', definitions: [stub]});
+  assert.equal(p.tools.length, 1);
+  const pending = p.tools[0].execute({q: 1});
+  const request = p.messages.find((message) => message.type === 'cdp-invoke');
+  assert.equal(request.id, 'ct_cdp');
+  assert.deepEqual({...request.input}, {q: 1});
+  await p.deliver({type: 'cdp-result', callId: request.callId, ok: true, output: {flights: 3}});
+  assert.deepEqual({...(await pending)}, {flights: 3});
+  const failing = p.tools[0].execute({});
+  const second = p.messages.filter((message) => message.type === 'cdp-invoke')[1];
+  await p.deliver({type: 'cdp-result', callId: second.callId, ok: false, error: 'boom'});
+  await assert.rejects(failing, /boom/);
 });

@@ -235,6 +235,8 @@ export async function invoke({toolRef: ref, input, timeoutSec, allowUserTabs}) {
 // or when a tab was open before the extension loaded).
 export async function refresh(tabId) {
   try {
+    // MAIN-world registrar first (top frame), so the agent's sync reaches it.
+    await chrome.scripting.executeScript({target: {tabId}, files: ['content/page-tools.js'], world: 'MAIN'}).catch(() => undefined);
     await chrome.scripting.executeScript({target: {tabId, allFrames: true}, files: ['lib/url-pattern.js', 'content/agent.js']});
   } catch {
     // No access to this tab; nothing to discover.

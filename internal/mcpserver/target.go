@@ -38,22 +38,20 @@ type Invocation struct {
 	Diagnostics  json.RawMessage `json:"diagnostics,omitempty"`
 }
 
-// InvokeParams selects a live registration by tool_ref or an installed cdp
-// tool by namespace and name.
+// InvokeParams mirrors the Kernel API's WebMCPInvokeRequest: a tool_ref from
+// ListTools identifies one live registration (site-native, custom page, or
+// custom cdp) in one tab. AllowUserTabs is the server's tab policy.
 type InvokeParams struct {
 	ToolRef       string
-	Namespace     string
-	Name          string
 	Input         json.RawMessage
 	TimeoutSec    int
-	TabID         int
 	AllowUserTabs bool
 }
 
-// ListToolsParams narrows the discovery snapshot.
+// ListToolsParams mirrors GET /webmcp/tools; OwnedOnly is the server's tab policy.
 type ListToolsParams struct {
-	TabID     int
-	OwnedOnly bool
+	ExcludeCustom bool
+	OwnedOnly     bool
 }
 
 // Tab mirrors the extension's tab summary.

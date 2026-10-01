@@ -48,7 +48,6 @@ as they change, so an agent can edit, invoke, read the failure, and fix.`,
 				return err
 			}
 			server := mcpserver.New(mcpserver.Options{Target: target, AllTabs: cmd.Bool("all-tabs"), DevRoots: roots, Version: Version, Logf: logf})
-			server.RefreshToolRegistrations(ctx)
 			ctx, cancel := context.WithCancel(ctx)
 			defer cancel()
 			for _, root := range roots {

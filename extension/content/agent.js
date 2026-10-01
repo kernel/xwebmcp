@@ -110,6 +110,16 @@
     send({type: 'registration', url: location.href, registered: [...registrations].filter(([, registration]) => registration.ready).map(([id]) => id), errors});
   }
 
+  function pageToolDescriptor(definition) {
+    return {
+      id: definition.id,
+      kind: definition.kind,
+      name: `${CUSTOM_PREFIX}${definition.id}.${definition.tool.name}`,
+      tool: definition.tool,
+      pageExecuteSource: definition.kind === 'page' ? definition.pageExecuteSource : undefined,
+    };
+  }
+
   function pageToolsPort() {
     return {
       register: (definitions) => window.postMessage({source: 'xwebmcp', type: 'register-page-tools', definitions}, '*'),
@@ -136,24 +146,14 @@
       }
     }
     if (removedPage.length) pageToolsPort().unregister(removedPage);
-    pageToolsPort().retain([...desired.values()].filter((definition) => definition.kind === 'page').map((definition) => definition.id));
+    pageToolsPort().retain([...desired.keys()]);
     const pageDefinitions = [];
     for (const definition of desired.values()) {
       if (registrations.has(definition.id)) continue;
       const controller = new AbortController();
-      registrations.set(definition.id, {controller, revision: definition.revision, kind: definition.kind, ready: definition.kind !== 'page'});
-      if (definition.kind === 'page') {
-        pageDefinitions.push({id: definition.id, name: `${CUSTOM_PREFIX}${definition.id}.${definition.tool.name}`, tool: definition.tool, pageExecuteSource: definition.pageExecuteSource});
-        continue;
-      }
-      const execute = (input, {signal} = {}) => forward(definition, input, signal);
-      try {
-        await modelContext.registerTool({...definition.tool, name: `${CUSTOM_PREFIX}${definition.id}.${definition.tool.name}`, execute}, {signal: controller.signal});
-      } catch (error) {
-        controller.abort();
-        registrations.delete(definition.id);
-        errors.push(`${definition.namespace}/${definition.tool.name}: ${error instanceof Error ? error.message : String(error)}`);
-      }
+      // Every custom tool, page or cdp, is registered by the MAIN-world script.
+      registrations.set(definition.id, {controller, revision: definition.revision, kind: definition.kind, ready: false, definition});
+      pageDefinitions.push(pageToolDescriptor(definition));
     }
     if (pageDefinitions.length) pageToolsPort().register(pageDefinitions);
     reportRegistration(errors);
@@ -162,17 +162,15 @@
   window.addEventListener('message', (event) => {
     if (event.source !== window || event.data?.source !== 'xwebmcp-page') return;
     if (event.data.type === 'page-tools-ready') {
-      const pending = [...registrations.entries()].filter(([, registration]) => registration.kind === 'page');
+      const pending = [...registrations.values()].map((registration) => registration.definition).filter(Boolean);
       if (pending.length) {
-        chrome.storage.local.get('definitions').then(({definitions = []}) => {
-          const wanted = definitions.filter((definition) => registrations.has(definition.id) && definition.kind === 'page');
-          pageToolsPort().register(wanted.map((definition) => ({id: definition.id, name: `${CUSTOM_PREFIX}${definition.id}.${definition.tool.name}`, tool: definition.tool, pageExecuteSource: definition.pageExecuteSource})));
-        });
+        pageToolsPort().retain(pending.map((definition) => definition.id));
+        pageToolsPort().register(pending.map(pageToolDescriptor));
       }
     } else if (event.data.type === 'page-tools-registered') {
       for (const id of event.data.ids ?? []) {
         const registration = registrations.get(id);
-        if (registration?.kind === 'page') registration.ready = true;
+        if (registration) registration.ready = true;
       }
       reportRegistration();
     } else if (event.data.type === 'page-tools-csp') {
@@ -188,6 +186,18 @@
         registration.ready = true;
         return null;
       })).then((errors) => reportRegistration(errors.filter(Boolean)));
+    } else if (event.data.type === 'cdp-invoke') {
+      const {callId, id, input} = event.data;
+      const registration = registrations.get(id);
+      const reply = (message) => window.postMessage({source: 'xwebmcp', type: 'cdp-result', callId, ...message}, '*');
+      if (registration?.kind !== 'cdp' || !registration.definition) {
+        reply({ok: false, error: 'custom tool is no longer available; discover tools again'});
+        return;
+      }
+      forward(registration.definition, input).then(
+        (output) => reply({ok: true, output}),
+        (error) => reply({ok: false, error: error instanceof Error ? error.message : String(error)}),
+      );
     } else if (event.data.type === 'page-tools-error') {
       reportRegistration(event.data.errors ?? []);
     }
