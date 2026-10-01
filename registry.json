@@ -1021,6 +1021,22 @@
     },
     {
       "domain": "ticketmaster.com",
+      "tool": "get_artist",
+      "file": "domains/ticketmaster.com/get_artist.js",
+      "kind": "page",
+      "namespace": "ticketmaster.com",
+      "url_patterns": [
+        "https://www.ticketmaster.com/*"
+      ],
+      "status": "qa_passed",
+      "last_verified": "2026-09-30",
+      "notes": "Independent QA passed. Page tool on www.ticketmaster.com: artist/attraction record by id or URL with type, category, plain-text synopsis, optional about/FAQ/news/experience excerpts, and the attraction's events in the site's order (offset/limit, on_ticketmaster flag for listings sold elsewhere). Read-only; no seats or prices. Local-extension success parity untested.",
+      "provenance": {
+        "qa_agent": "agt_7efe7ebf564202d6ad44"
+      }
+    },
+    {
+      "domain": "ticketmaster.com",
       "tool": "get_event",
       "file": "domains/ticketmaster.com/get_event.js",
       "kind": "page",
@@ -1049,6 +1065,54 @@
       "notes": "Independent QA passed on the final source. Opens the event page and returns offers for a quantity with All In prices (fees, before taxes); classic layout via the page's own offer query with featured listings first, newer layout via the listing panel (no Best Seats order there). Never selects, holds, accepts terms or opens checkout. Equal-price ties can be ordered differently from the page.",
       "provenance": {
         "qa_agent": "agt_cb155ebc4a11ce54cc4c"
+      }
+    },
+    {
+      "domain": "ticketmaster.com",
+      "tool": "get_venue",
+      "file": "domains/ticketmaster.com/get_venue.js",
+      "kind": "page",
+      "namespace": "ticketmaster.com",
+      "url_patterns": [
+        "https://www.ticketmaster.com/*"
+      ],
+      "status": "qa_passed",
+      "last_verified": "2026-09-30",
+      "notes": "Independent QA passed. Page tool on www.ticketmaster.com: venue record by id or URL with address, coordinates, policy text blocks, optional seat-map image list, and the venue's events in the site's order (offset/limit). Read-only; no seats or prices. Local-extension success parity untested.",
+      "provenance": {
+        "qa_agent": "agt_7efe7ebf564202d6ad44"
+      }
+    },
+    {
+      "domain": "ticketmaster.com",
+      "tool": "prepare_ticket_choice",
+      "file": "domains/ticketmaster.com/prepare_ticket_choice.js",
+      "kind": "page",
+      "namespace": "ticketmaster.com",
+      "url_patterns": [
+        "https://www.ticketmaster.com/*"
+      ],
+      "status": "qa_passed",
+      "last_verified": "2026-09-30",
+      "notes": "Independent QA passed. Page-local preparation on the matching classic event page. One observed public quick-picks GET; bounded 40-listing sample, explicit quantity and USD budget, reported fees/taxes. No selection, queue, hold, checkout or execution; newer preference-changing layout is unsupported. Local-extension success parity untested.",
+      "provenance": {
+        "qa_agent": "agt_7efe7ebf564202d6ad44"
+      }
+    },
+    {
+      "domain": "ticketmaster.com",
+      "tool": "search_attractions",
+      "file": "domains/ticketmaster.com/search_attractions.js",
+      "kind": "page",
+      "namespace": "ticketmaster.com",
+      "url_patterns": [
+        "https://www.ticketmaster.com/*"
+      ],
+      "status": "qa_passed",
+      "last_verified": "2026-09-30",
+      "notes": "Independent QA passed. Page tool on www.ticketmaster.com: name typeahead over the site's own search suggestions; returns numeric ids for artist-type attractions (performers, teams, shows) and venues. At most 10 suggestions per query. Read-only, US site. Local-extension success parity untested.",
+      "provenance": {
+        "qa_agent": "agt_7efe7ebf564202d6ad44"
       }
     },
     {

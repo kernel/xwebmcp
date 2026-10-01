@@ -222,8 +222,8 @@ for (const name of NAMES) {
   });
 }
 
-test("registry lists every ticketmaster.com tool exactly once", () => {
-  assert.deepEqual(registry.tools.filter(t => t.domain === "ticketmaster.com").map(t => t.tool).sort(), [...NAMES].sort());
+test("registry lists each event tool exactly once", () => {
+  for (const name of NAMES) assert.equal(registry.tools.filter(t => t.domain === "ticketmaster.com" && t.tool === name).length, 1, name);
 });
 
 // --- input validation happens before any page access -----------------------------------------------
