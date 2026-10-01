@@ -55,6 +55,22 @@
     },
     {
       "domain": "delta.com",
+      "tool": "get_flight_status",
+      "file": "domains/delta.com/get_flight_status.js",
+      "kind": "page",
+      "namespace": "delta.com",
+      "url_patterns": [
+        "https://www.delta.com/*"
+      ],
+      "status": "verified",
+      "last_verified": "2026-09-29",
+      "notes": "Public, read-only lookup of one Delta flight number and date from any www.delta.com page, using the same single request Delta's Flight Status page sends; returns every leg with status, local times, gates and aircraft, and checks optional origin/destination against the returned legs. Independent QA passed and live success was observed from several www.delta.com pages in Kernel browsers on 2026-09-29. Delta's bot protection denies the lookup (error_kind blocked) on cold sessions and after six to ten lookups, so it is unreliable without a warm session. In the xwebmcp Chrome extension, registration and the blocked path were observed but the success path was not.",
+      "provenance": {
+        "qa_agent": "agt_18586dcff5a8cb64565a"
+      }
+    },
+    {
+      "domain": "delta.com",
       "tool": "get_page_context",
       "file": "domains/delta.com/get_page_context.js",
       "kind": "page",
@@ -66,6 +82,22 @@
       "status": "draft",
       "last_verified": null,
       "notes": "Read-only page summary: page type, live tool names from document.modelContext, best-effort signed-in state, visible alerts, suggested next steps. Unit-tested with fabricated DOM; exercised live on the homepage and booking form. signed_in=true detection is unverified."
+    },
+    {
+      "domain": "delta.com",
+      "tool": "list_flight_deals",
+      "file": "domains/delta.com/list_flight_deals.js",
+      "kind": "page",
+      "namespace": "delta.com",
+      "url_patterns": [
+        "https://www.delta.com/*"
+      ],
+      "status": "qa_passed",
+      "last_verified": "2026-09-30",
+      "notes": "Independent final-source QA passed with Kernel cash/miles listing, pagination and negative cases. Read-only current visible advertised offers, not inventory availability or guaranteed quotes. Requires a supported deals page; up to 250 rows, eight fare cells per row and 1000 total deals. Extension listing success and success from another eligible page remain unverified.",
+      "provenance": {
+        "qa_agent": "agt_18586dcff5a8cb64565a"
+      }
     },
     {
       "domain": "delta.com",
@@ -101,17 +133,48 @@
     },
     {
       "domain": "delta.com",
+      "tool": "prepare_itinerary",
+      "file": "domains/delta.com/prepare_itinerary.js",
+      "kind": "page",
+      "namespace": "delta.com",
+      "url_patterns": [
+        "https://www.delta.com/*"
+      ],
+      "status": "qa_passed",
+      "last_verified": "2026-09-30",
+      "notes": "Independent final-source QA passed: cash/miles preparation, repeated identical handoffs, stale-price and confirmation-flag rejection, with no requests or writes. Revalidates one visible advertised deal and returns a constructed search-form handoff only. Does not open it, select fares, hold inventory, redeem miles, book or pay. Execution lacks a trusted approval path. Extension success remains untested.",
+      "provenance": {
+        "qa_agent": "agt_18586dcff5a8cb64565a"
+      }
+    },
+    {
+      "domain": "delta.com",
+      "tool": "search_flight_status",
+      "file": "domains/delta.com/search_flight_status.js",
+      "kind": "page",
+      "namespace": "delta.com",
+      "url_patterns": [
+        "https://www.delta.com/*"
+      ],
+      "status": "verified",
+      "last_verified": "2026-09-30",
+      "notes": "Independent Kernel and local extension successes from the baggage page returned 15 ATL-LGA schedules on 2026-09-30, one fetch and unchanged document/URL. Public first-30 Delta-marketed schedules/statuses with route/date/leg-continuity checks, not seat/fare availability. Connections, empty results and HTTP failures are fixture-only. No navigation or retries.",
+      "provenance": {
+        "qa_agent": "agt_18586dcff5a8cb64565a"
+      }
+    },
+    {
+      "domain": "delta.com",
       "tool": "search_flights",
       "file": "domains/delta.com/search_flights.js",
       "kind": "cdp",
       "namespace": "delta.com",
       "url_patterns": [
-        "https://delta.com/*",
-        "https://*.delta.com/*"
+        "https://www.delta.com/*"
       ],
       "status": "draft",
       "last_verified": null,
-      "notes": "Back to draft after a source change on 2026-09-29: airport boxes are now cleared through the page and typed with the inlined lib/input.js cadence, and the typed code is checked before choosing (fixes 'CVCVG' on macOS Chrome, where CDP Meta+A does not select all). First successful full live invocation: CVG-SFO one way, 1 adult, regular Chrome 154 on macOS via the xwebmcp extension, status ok with first-page flights. Needs fresh independent QA; earlier qa_passed sign-off (agt_b189571b6d300a05921c) covered the previous source."
+      "notes": "Cash-fare shopping only. Independently reviewed airport-render wait, output/session-URL bounds and cancellation guards; retains draft because current-source rendered success and real no-results coverage remain incomplete. Prior review attempt reached Access Denied and an explicit timeout, not no_results; no retry. Delta may deny searches with SFAF/444/429."
     },
     {
       "domain": "doordash.com",
