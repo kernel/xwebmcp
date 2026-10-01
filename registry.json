@@ -1243,6 +1243,46 @@
     },
     {
       "domain": "united.com",
+      "tool": "get_fare_calendar",
+      "file": "domains/united.com/get_fare_calendar.js",
+      "kind": "page",
+      "namespace": "united.com",
+      "url_patterns": ["https://www.united.com/*"],
+      "status": "qa_passed",
+      "last_verified": "2026-09-30",
+      "notes": "Independent success/failure QA passed on Kernel and in extension fixtures; live extension results remain unverified. Read the already-open one-way cash calendar: historical per-person fares, no date selection or navigation. Roundtrip and award calendars are unsupported.",
+      "provenance": { "qa_agent": "agt_11fb3fa488a39a5807eb" }
+    },
+    {
+      "domain": "united.com",
+      "tool": "get_fare_options",
+      "file": "domains/united.com/get_fare_options.js",
+      "kind": "page",
+      "namespace": "united.com",
+      "url_patterns": ["https://www.united.com/*"],
+      "status": "qa_passed",
+      "last_verified": "2026-09-30",
+      "notes": "Independent success/failure QA passed on Kernel and in extension fixtures; live extension results remain unverified. Bounded current cash cabin starting fares; collapsed connections may have null primary identifiers. No complete connections, paired returns, fare selection, hold or navigation.",
+      "provenance": { "qa_agent": "agt_11fb3fa488a39a5807eb" }
+    },
+    {
+      "domain": "united.com",
+      "tool": "get_flight_status",
+      "file": "domains/united.com/get_flight_status.js",
+      "kind": "page",
+      "namespace": "united.com",
+      "url_patterns": [
+        "https://www.united.com/*"
+      ],
+      "status": "verified",
+      "last_verified": "2026-09-29",
+      "notes": "Independent QA passed; live successes from www.united.com pages other than the entry page on Kernel and in the Chrome extension. Public status for one flight number or one route on one date within two days of today. Page tool: an anonymous-token GET then one status GET; never navigates and never opens the details pages that list passengers. Multi-leg results carry in_sequence; a route search returns at most 30 itineraries (possibly_truncated). Cancelled and diverted flights and blocked/rate_limited responses were not observed live.",
+      "provenance": {
+        "qa_agent": "agt_11fb3fa488a39a5807eb"
+      }
+    },
+    {
+      "domain": "united.com",
       "tool": "login",
       "file": "domains/united.com/login.js",
       "kind": "cdp",
@@ -1257,6 +1297,18 @@
       "provenance": {
         "qa_agent": "agt_900288267257b91f1fdc"
       }
+    },
+    {
+      "domain": "united.com",
+      "tool": "prepare_itinerary",
+      "file": "domains/united.com/prepare_itinerary.js",
+      "kind": "page",
+      "namespace": "united.com",
+      "url_patterns": ["https://www.united.com/*"],
+      "status": "qa_passed",
+      "last_verified": "2026-09-30",
+      "notes": "Independent success/failure QA passed on Kernel and in extension fixtures; live extension results remain unverified. Exact nonstop handoff with stale-choice checks and incomplete terms. No booking, checkout, hold, cancellation, check-in or seat changes; trusted execution approval is unsupported.",
+      "provenance": { "qa_agent": "agt_11fb3fa488a39a5807eb" }
     },
     {
       "domain": "united.com",
