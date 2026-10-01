@@ -205,6 +205,18 @@
 
   if (isTop) {
     chrome.storage.local.get('definitions').then(({definitions = []}) => reconcile(definitions));
+    // Same-document navigations (pushState routers) change which custom tools
+    // match without reloading this script: re-match on every URL change.
+    let lastUrl = location.href;
+    const onRoute = () => {
+      if (location.href === lastUrl) return;
+      lastUrl = location.href;
+      chrome.storage.local.get('definitions').then(({definitions = []}) => reconcile(definitions));
+      scheduleReport();
+    };
+    if (globalThis.navigation?.addEventListener) globalThis.navigation.addEventListener('navigatesuccess', onRoute);
+    window.addEventListener('popstate', onRoute);
+    setInterval(onRoute, 1000);
     chrome.storage.onChanged.addListener((changes, area) => {
       if (area === 'local' && changes.definitions) reconcile(changes.definitions.newValue ?? []);
     });
