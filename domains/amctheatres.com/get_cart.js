@@ -4,7 +4,7 @@
   tool: {
     name: "get_cart",
     title: "Read the open AMC cart",
-    description: "Read the AMC cart open in this tab (the order page add_tickets_to_cart or the user opened): ticket lines, food and drink lines, fees and taxes with amounts, seats, total, which step of AMC's checkout the page is on, and how many seconds remain on AMC's hold of the seats. Read-only: it presses nothing, so it neither extends nor releases the hold. Amounts are as AMC shows them before checkout; payment can still change the total. Returns no_cart when the tab is not on an AMC order page.",
+    description: "Read the AMC cart open in this tab (the order page add_tickets_to_cart or the user opened): ticket lines, food and drink lines, fees and taxes with amounts, seats, total, which step of AMC's checkout the page is on, and how many seconds remain on AMC's hold of the seats. Read-only: it presses nothing, so it neither extends nor releases the hold. Amounts are as AMC shows them before checkout; payment can still change the total. Returns no_cart when the tab is not on an AMC cart before payment, including the confirmation page of a paid order, which it never reads.",
     inputSchema: { type: "object", additionalProperties: false, properties: {} },
     outputSchema: {
       type: "object",
@@ -13,7 +13,7 @@
           type: "object", additionalProperties: false, required: ["status", "step", "lines", "seats", "total", "expires_in_seconds", "observed_at"],
           properties: {
             status: { const: "ok" },
-            step: { type: "string", description: "The order page's step, for example food-and-drink or purchase." },
+            step: { type: "string", enum: ["food-and-drink", "purchase"], description: "The order page's step." },
             lines: {
               type: "array", maxItems: 30,
               items: { type: "object", additionalProperties: false, required: ["section", "name", "amount"], properties: { section: { type: "string" }, name: { type: "string" }, amount: { type: ["number", "null"] } } }
@@ -40,8 +40,8 @@
     const fail = (kind, message) => ({ status: "error", error_kind: kind, error_message: message });
     if (input !== undefined && (!input || typeof input !== "object" || Array.isArray(input) || Object.keys(input).length)) return fail("invalid_input", "This tool takes no inputs.");
     if (/just a moment|attention required|access denied/i.test(document.title || "")) return fail("challenge", "AMC is blocking access. This tool does not bypass the challenge.");
-    const path = window.location.origin === "https://www.amctheatres.com" ? /^\/orders\/[^/]+\/([a-z0-9-]+)\/?$/.exec(window.location.pathname) : null;
-    if (!path) return fail("no_cart", "The tab is not on an AMC cart. add_tickets_to_cart opens one.");
+    const path = window.location.origin === "https://www.amctheatres.com" ? /^\/orders\/[^/]+\/(food-and-drink|purchase)\/?$/.exec(window.location.pathname) : null;
+    if (!path) return fail("no_cart", "The tab is not on an AMC cart before payment. add_tickets_to_cart opens one; a paid order's pages are not read.");
     const text = el => (el && el.textContent ? el.textContent : "").replace(/\s+/g, " ").trim();
     const usd = t => { const m = /^(-?)\$(\d{1,6}(?:,\d{3})*\.\d{2})$/.exec(t); return m ? Number(m[2].replace(/,/g, "")) * (m[1] ? -1 : 1) : null; };
     const panels = [...document.querySelectorAll('aside[role="region"][aria-label="Order Details"]')];

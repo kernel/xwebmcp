@@ -330,6 +330,14 @@ test("get_cart reports a missing order as no_cart and has no way to press anythi
   assert.doesNotMatch(sources.get_cart, /\.click\(|click\(`|gotoUrl|dispatchEvent/);
 });
 
+test("get_cart reads the purchase step but never a paid order's confirmation page", async () => {
+  const cart = `${ORIGIN}/orders/00000000-0000-4000-8000-000000000000`;
+  assert.equal((await tool("get_cart", site({ start: `${cart}/purchase` })).run({})).step, "purchase");
+  const s = site({ start: `${cart}/confirmation` });
+  s.page.document.querySelectorAll = () => { throw new Error("The confirmation page must not be read"); };
+  failed(await tool("get_cart", s).run({}), "no_cart");
+});
+
 test("add_tickets_to_cart refuses a seat React shows as checked, and stops if the seat page changes while it is read", async () => {
   let s = site({ checkedOnly: ["F7"] });
   failed(await tool("add_tickets_to_cart", s).run(ORDER), "not_ready");

@@ -95,7 +95,7 @@
       "url_patterns_reason": "Narrowed to www.amctheatres.com: it serves the movie, theatre, showtime, account and ticket pages; other amctheatres.com hosts are investor relations (investor.), the site API that pages call (graph.) and analytics (gtm.).",
       "status": "qa_passed",
       "last_verified": "2026-10-01",
-      "notes": "Reads the AMC cart open in the tab: lines, seats, total, checkout step and seconds left on the hold. Presses nothing. Live on 2026-10-01. Independent QA (live and source review) passed on 2026-10-01.",
+      "notes": "Reads the AMC cart open in the tab before payment (the food-and-drink or purchase step): lines, seats, total, checkout step and seconds left on the hold. Presses nothing. Live on 2026-10-01. Independent QA (live and source review) passed on 2026-10-01. Source changed after that QA: other order pages, including a paid order's confirmation page, are now refused as no_cart without being read; this change has fixture tests but no independent review yet.",
       "provenance": { "qa_agent": "agt_ae065baef3fb7ce71153" }
     },
     {
@@ -217,21 +217,6 @@
       "last_verified": "2026-10-01",
       "notes": "Source changed 2026-10-01: reads AMC's published market/theatre sitemaps instead of the market pages, which render at most 10 theatres; adds addresses, city/ZIP-prefix filtering, and not_found for unknown markets. One same-origin GET, bounded filtered-snapshot pagination; no distance search, geolocation or remembered-theatre selection. Live success in a Kernel stealth browser on 2026-10-01. Independent QA (live and source review) passed on 2026-10-01.",
       "provenance": { "qa_agent": "agt_ab76807bfaaa8d2aa4ea" }
-    },
-    {
-      "domain": "amctheatres.com",
-      "tool": "prepare_ticket_choice",
-      "file": "domains/amctheatres.com/prepare_ticket_choice.js",
-      "kind": "page",
-      "namespace": "amctheatres.com",
-      "url_patterns": [
-        "https://www.amctheatres.com/*"
-      ],
-      "url_patterns_reason": "Narrowed to www.amctheatres.com: it serves the movie, theatre, showtime, account and ticket pages; other amctheatres.com hosts are investor relations (investor.), the site API that pages call (graph.) and analytics (gtm.).",
-      "status": "qa_passed",
-      "last_verified": "2026-09-30",
-      "notes": "Non-binding exact-screening/intended-quantity handoff from an already open dated theatre showtimes page. No requests, ticket/seat selection, inventory holds, price validation or payment. Execution unsupported. Independent fixture/local-extension QA passed; live preparation succeeded in a Kernel stealth browser on 2026-10-01 without opening the handoff; no live ticket or inventory verification claimed.",
-      "provenance": { "qa_agent": "agt_2c203a0486b6f85c9295" }
     },
     {
       "domain": "amctheatres.com",
