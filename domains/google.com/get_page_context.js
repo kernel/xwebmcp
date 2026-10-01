@@ -62,8 +62,12 @@
     if (!chosen.length) {
       // Returning results show the chosen departing flight in a "Change departing flight" control.
       for (const e of document.querySelectorAll('[aria-label*="Change departing flight"], [aria-label*="Change returning flight"]')) {
-        const t = (e.getAttribute("aria-label") + " " + text(e)).replace(/\s+/g, " ").trim();
-        if (visible(e) && !chosen.includes(t)) chosen.push(t.slice(0, 240));
+        if (!visible(e)) continue;
+        // The control itself only says "Change departing flight"; its container holds the flight summary.
+        let box = e;
+        for (let i = 0; i < 6 && box && !/\d{1,2}:\d{2}\s*[AP]M/.test(text(box)); i++) box = box.parentElement;
+        const t = text(box || e).replace(/\bChange( departing| returning)? flight\b/gi, "").replace(/\s+/g, " ").trim();
+        if (t && !chosen.includes(t)) chosen.push(t.slice(0, 240));
       }
     }
     const steps = [];
