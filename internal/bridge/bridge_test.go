@@ -188,7 +188,11 @@ func TestClientReconnectsAfterHostRestart(t *testing.T) {
 	}
 
 	// The extension reloads: Chrome closes the old host and starts a new one.
+	// A request already written to the old host when it stops is reported as
+	// possibly-run (never resent); wait until the client has seen the close,
+	// then the next call must reach the new host.
 	stop()
+	waitDisconnected(t, client)
 	restarted := make(chan func(), 1)
 	go func() {
 		time.Sleep(300 * time.Millisecond)
@@ -215,5 +219,22 @@ func TestClientReportsNotRunningWhenNoHostReturns(t *testing.T) {
 	defer cancel()
 	if _, err := client.Ping(short); err == nil {
 		t.Fatal("ping with no host should fail")
+	}
+}
+
+func waitDisconnected(t *testing.T, client *Client) {
+	t.Helper()
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		client.mu.Lock()
+		current := client.current
+		client.mu.Unlock()
+		if current == nil || !current.alive() {
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("client never noticed the host stopped")
+		}
+		time.Sleep(5 * time.Millisecond)
 	}
 }
