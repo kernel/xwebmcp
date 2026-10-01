@@ -86,7 +86,9 @@
       const challenge = [...headings, ...alerts].find(t => /verify (?:that )?you(?:'re| are) human|access denied|unusual traffic|security check|complete (?:the|this) captcha/i.test(t));
       const challengeFrame = [...document.querySelectorAll('iframe')].find(e => visible(e) && /(?:captcha|challenge)/i.test(e.title) && e.getBoundingClientRect().height > 70);
       const errors = uniqueAlerts.filter(t => /wrong|invalid|incorrect|unable|try again|locked|too many|expired|attempts? (?:left|remaining)|does not match|not recognized|not match/i.test(t));
-      const signout = controls.find(t => /^(?:sign out|log out)$/i.test(t));
+      // United shows "Hi, <name>" in the header when signed in; Sign out sits in a closed menu.
+      const greeting = /\bHi,\s/.test(document.querySelector('header')?.innerText || '') ? 'header greeting (signed in)' : null;
+      const signout = controls.find(t => /^(?:sign out|log out)$/i.test(t)) || greeting;
       const mfaText = [...headings, ...alerts, ...content.split('\n')].find(t => /we(?:'ve| have)? sent (?:you )?(?:a |an |the )?(?:verification |security |one.time )?code|enter (?:the |your )?(?:six.digit|6.digit|verification|one.time|security) (?:code|passcode)|enter code|choose (?:how|where) .*code|verify your identity/i.test(t));
       return { url: location.href, origin: location.origin, idVisible: visible(id), pwVisible: visible(pw), pwFilled: visible(pw) && pw.value.length > 0, account: document.querySelector('input#username')?.value || null, codeCount: code.length, digitBoxes: single.length ? 0 : digits.length, errors: [...new Set(errors)], challenge: challenge || (challengeFrame ? challengeFrame.title : null), signout, mfaText };
     });
@@ -196,7 +198,16 @@
             return boxes.length;
           });
           if (marked !== 6) return fail("unknown", "The six verification digit boxes changed; no code was submitted.");
-          for (let i = 0; i < 6; i++) await fillInput('[data-airline-otp-digit="' + i + '"]', otp[i]);
+          // United auto-advances focus box to box, so type the code like a person: clear the
+          // boxes, click the first one, press each digit, then check all six hold a digit.
+          await js(() => document.querySelectorAll('[data-airline-otp-digit]').forEach((b) => {
+            Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(b, '');
+            b.dispatchEvent(new Event('input', { bubbles: true }));
+          }));
+          await click('[data-airline-otp-digit="0"]');
+          for (const digit of otp) { await pressKey(digit); await waitMs(120); }
+          const filled = await js(() => [...document.querySelectorAll('[data-airline-otp-digit]')].map((b) => b.value).join(''));
+          if (filled.length !== 6) return fail("unknown", "Only " + filled.length + " of 6 verification digits were accepted; no code was submitted.");
           codeSelector = '[data-airline-otp-digit="0"]';
         }
         if (!await submit(codeSelector)) return fail("unknown", "Could not identify one enabled verification button; no code was submitted.");
