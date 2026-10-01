@@ -1,385 +1,164 @@
-[
-  {
-    "kind": "page",
-    "match": {
-      "url_patterns": [
-        "https://resy.com/*"
-      ]
-    },
-    "tool": {
-      "name": "prepare_reservation",
-      "description": "Match one exact public Resy slot by venue_id, service date, party size, full venue-local local_start and seating_type from get_availability, then return a read-only human handoff. It never selects a widget slot, requests /3/details, creates a hold, binds an account or books. Price and final cancellation terms are UNVERIFIED: null price never means free; raw policy values are not exact fees. No model-supplied confirmed flag is accepted and no execution tool is shipped: runtime provides no trusted approval for the exact account, slot, costs and terms. Re-read and confirm those details manually on Resy. Duplicate matching slots fail closed. Runs from the current resy.com page without navigation or auth headers.",
-      "inputSchema": {
-        "type": "object",
-        "additionalProperties": false,
-        "required": [
-          "venue_id",
-          "date",
-          "local_start",
-          "seating_type"
-        ],
-        "properties": {
-          "venue_id": {
-            "type": "integer",
-            "minimum": 1,
-            "maximum": 2147483647,
-            "description": "Resy venue id from search_restaurants or get_restaurant."
-          },
-          "date": {
-            "type": "string",
-            "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
-            "description": "Local date at the restaurant, YYYY-MM-DD, from yesterday (UTC) to one year ahead."
-          },
-          "party_size": {
-            "type": "integer",
-            "minimum": 1,
-            "maximum": 20,
-            "default": 2,
-            "description": "Number of guests."
-          },
-          "local_start": {
-            "type": "string",
-            "pattern": "^\\d{4}-\\d{2}-\\d{2}T([01]\\d|2[0-3]):[0-5]\\d$",
-            "description": "Exact venue-local start from get_availability; may be the following calendar day for a late-night service date."
-          },
-          "seating_type": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "maxLength": 60,
-            "description": "Exact seating_type from get_availability; null only if the slot has no type."
-          }
-        }
-      },
-      "outputSchema": {
-        "type": "object",
-        "oneOf": [
-          {
-            "type": "object",
-            "additionalProperties": false,
-            "required": [
-              "status",
-              "observed_at",
-              "venue_id",
-              "name",
-              "venue_url",
-              "service_date",
-              "party_size",
-              "time_zone",
-              "slot",
-              "currency",
-              "exact_total",
-              "terms_confirmed",
-              "account_binding",
-              "execution_supported",
-              "execution_blockers",
-              "message"
-            ],
-            "properties": {
-              "status": {
-                "const": "handoff_required"
-              },
-              "observed_at": {
-                "type": "string"
-              },
-              "venue_id": {
-                "type": "integer",
-                "minimum": 1
-              },
-              "name": {
-                "type": [
-                  "string",
-                  "null"
-                ]
-              },
-              "venue_url": {
-                "type": [
-                  "string",
-                  "null"
-                ]
-              },
-              "service_date": {
-                "type": "string"
-              },
-              "party_size": {
-                "type": "integer"
-              },
-              "time_zone": {
-                "type": [
-                  "string",
-                  "null"
-                ],
-                "description": "The site's time zone label for the venue; slot times are in this zone."
-              },
-              "slot": {
-                "type": "object",
-                "additionalProperties": false,
-                "required": [
-                  "local_start",
-                  "local_end",
-                  "seating_type",
-                  "global_dining_access",
-                  "policy"
-                ],
-                "properties": {
-                  "local_start": {
-                    "type": "string",
-                    "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}$",
-                    "description": "Venue-local start, YYYY-MM-DDTHH:MM with no offset. Late-night slots belong to the requested service date but carry the next calendar date."
-                  },
-                  "local_end": {
-                    "type": [
-                      "string",
-                      "null"
-                    ],
-                    "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}$",
-                    "description": "Venue-local end, same format; null when the site gives none."
-                  },
-                  "seating_type": {
-                    "type": [
-                      "string",
-                      "null"
-                    ],
-                    "description": "For example Dining Room or Chef Counter; null when the site gives none."
-                  },
-                  "global_dining_access": {
-                    "type": "boolean",
-                    "description": "The site marks this slot as a Global Dining Access slot."
-                  },
-                  "policy": {
-                    "type": [
-                      "object",
-                      "null"
-                    ],
-                    "additionalProperties": false,
-                    "required": [
-                      "requires_payment",
-                      "cancellation_fee",
-                      "cancel_cutoff_secs",
-                      "cancel_cutoff_time",
-                      "deposit_fee",
-                      "service_charge"
-                    ],
-                    "description": "The site's raw policy fields for this slot. Amounts are in the venue currency; the API does not say whether a fee is per guest or per reservation, and how the two cutoff fields apply is stated by the site when booking, so confirm before relying on them. null when the site sent no policy for the slot.",
-                    "properties": {
-                      "requires_payment": {
-                        "type": "boolean",
-                        "description": "The site marks the slot as needing a card or payment to book."
-                      },
-                      "cancellation_fee": {
-                        "type": [
-                          "number",
-                          "null"
-                        ]
-                      },
-                      "cancel_cutoff_secs": {
-                        "type": [
-                          "integer",
-                          "null"
-                        ],
-                        "description": "The site's secs_cancel_cut_off value."
-                      },
-                      "cancel_cutoff_time": {
-                        "type": [
-                          "string",
-                          "null"
-                        ],
-                        "description": "The site's time_cancel_cut_off value (a clock time such as 12:00:00)."
-                      },
-                      "deposit_fee": {
-                        "type": [
-                          "number",
-                          "null"
-                        ]
-                      },
-                      "service_charge": {
-                        "type": [
-                          "string",
-                          "null"
-                        ],
-                        "description": "The site's service_charge value, for example 0%."
-                      }
-                    }
-                  }
-                }
-              },
-              "currency": {
-                "type": [
-                  "string",
-                  "null"
-                ],
-                "description": "Currency code for the fee amounts in each slot's policy."
-              },
-              "exact_total": {
-                "type": "null",
-                "description": "Not obtained; never infer a zero cost."
-              },
-              "terms_confirmed": {
-                "const": false
-              },
-              "account_binding": {
-                "const": "not_selected"
-              },
-              "execution_supported": {
-                "const": false
-              },
-              "execution_blockers": {
-                "type": "array",
-                "items": {
-                  "enum": [
-                    "trusted_approval_unavailable",
-                    "exact_price_and_terms_unverified",
-                    "account_not_bound"
-                  ]
-                }
-              },
-              "message": {
-                "type": "string"
-              }
-            }
-          },
-          {
-            "type": "object",
-            "additionalProperties": false,
-            "required": [
-              "status",
-              "observed_at",
-              "venue_id",
-              "name",
-              "url",
-              "date",
-              "party_size",
-              "notify_offered",
-              "message"
-            ],
-            "properties": {
-              "status": {
-                "const": "no_availability"
-              },
-              "observed_at": {
-                "type": "string"
-              },
-              "venue_id": {
-                "type": "integer"
-              },
-              "name": {
-                "type": [
-                  "string",
-                  "null"
-                ]
-              },
-              "url": {
-                "type": [
-                  "string",
-                  "null"
-                ]
-              },
-              "date": {
-                "type": "string"
-              },
-              "party_size": {
-                "type": "integer"
-              },
-              "notify_offered": {
-                "type": "boolean"
-              },
-              "message": {
-                "type": "string"
-              }
-            }
-          },
-          {
-            "type": "object",
-            "additionalProperties": false,
-            "required": [
-              "status",
-              "observed_at",
-              "venue_id",
-              "name",
-              "date",
-              "party_size",
-              "gating_keys",
-              "message"
-            ],
-            "properties": {
-              "status": {
-                "const": "gated"
-              },
-              "observed_at": {
-                "type": "string"
-              },
-              "venue_id": {
-                "type": "integer"
-              },
-              "name": {
-                "type": [
-                  "string",
-                  "null"
-                ]
-              },
-              "date": {
-                "type": "string"
-              },
-              "party_size": {
-                "type": "integer"
-              },
-              "gating_keys": {
-                "type": "array",
-                "maxItems": 10,
-                "items": {
-                  "type": "string"
-                },
-                "description": "Keys of the site's gating_errors object."
-              },
-              "message": {
-                "type": "string"
-              }
-            }
-          },
-          {
-            "type": "object",
-            "additionalProperties": false,
-            "required": [
-              "status",
-              "error_kind",
-              "error_message"
-            ],
-            "properties": {
-              "status": {
-                "const": "error"
-              },
-              "error_kind": {
-                "enum": [
-                  "invalid_input",
-                  "not_found",
-                  "wrong_page",
-                  "login_required",
-                  "challenge",
-                  "rate_limited",
-                  "site_changed",
-                  "site_error",
-                  "ambiguous_slot",
-                  "slot_unavailable",
-                  "canceled"
-                ]
-              },
-              "error_message": {
-                "type": "string",
-                "minLength": 1
-              }
-            }
-          }
-        ]
-      },
-      "annotations": {
-        "readOnlyHint": true,
-        "destructiveHint": false,
-        "idempotentHint": true,
-        "openWorldHint": true
+[{
+  kind: "page",
+  match: { url_patterns: ["https://resy.com/*"] },
+  tool: {
+    name: "prepare_reservation",
+    description: "Match one exact public Resy slot by venue_id, service date, party size, full venue-local local_start and seating_type from get_availability, then return a read-only human handoff. It never selects a widget slot, requests /3/details, creates a hold, binds an account or books. Price and final cancellation terms are UNVERIFIED: null price never means free; raw policy values are not exact fees. No model-supplied confirmed flag is accepted and no execution tool is shipped: runtime provides no trusted approval for the exact account, slot, costs and terms. Re-read and confirm those details manually on Resy. Duplicate matching slots fail closed. Runs from the current resy.com page without navigation or auth headers.",
+    inputSchema: {
+      type: "object",
+      additionalProperties: false,
+      required: ["venue_id", "date", "local_start", "seating_type"],
+      properties: {
+        venue_id: { type: "integer", minimum: 1, maximum: 2147483647, description: "Resy venue id from search_restaurants or get_restaurant." },
+        date: {
+          type: "string",
+          pattern: "^\\d{4}-\\d{2}-\\d{2}$",
+          description: "Local date at the restaurant, YYYY-MM-DD, from yesterday (UTC) to one year ahead."
+        },
+        party_size: { type: "integer", minimum: 1, maximum: 20, default: 2, description: "Number of guests." },
+        local_start: {
+          type: "string",
+          pattern: "^\\d{4}-\\d{2}-\\d{2}T([01]\\d|2[0-3]):[0-5]\\d$",
+          description: "Exact venue-local start from get_availability; may be the following calendar day for a late-night service date."
+        },
+        seating_type: { type: ["string", "null"], maxLength: 60, description: "Exact seating_type from get_availability; null only if the slot has no type." }
       }
     },
-    "execute": async (input, { signal } = {}) => {
+    outputSchema: {
+      type: "object",
+      oneOf: [
+        {
+          type: "object",
+          additionalProperties: false,
+          required: [
+            "status",
+            "observed_at",
+            "venue_id",
+            "name",
+            "venue_url",
+            "service_date",
+            "party_size",
+            "time_zone",
+            "slot",
+            "currency",
+            "exact_total",
+            "terms_confirmed",
+            "account_binding",
+            "execution_supported",
+            "execution_blockers",
+            "message"
+          ],
+          properties: {
+            status: { const: "handoff_required" },
+            observed_at: { type: "string" },
+            venue_id: { type: "integer", minimum: 1 },
+            name: { type: ["string", "null"] },
+            venue_url: { type: ["string", "null"] },
+            service_date: { type: "string" },
+            party_size: { type: "integer" },
+            time_zone: { type: ["string", "null"], description: "The site's time zone label for the venue; slot times are in this zone." },
+            slot: {
+              type: "object",
+              additionalProperties: false,
+              required: ["local_start", "local_end", "seating_type", "global_dining_access", "policy"],
+              properties: {
+                local_start: {
+                  type: "string",
+                  pattern: "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}$",
+                  description: "Venue-local start, YYYY-MM-DDTHH:MM with no offset. Late-night slots belong to the requested service date but carry the next calendar date."
+                },
+                local_end: {
+                  type: ["string", "null"],
+                  pattern: "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}$",
+                  description: "Venue-local end, same format; null when the site gives none."
+                },
+                seating_type: { type: ["string", "null"], description: "For example Dining Room or Chef Counter; null when the site gives none." },
+                global_dining_access: { type: "boolean", description: "The site marks this slot as a Global Dining Access slot." },
+                policy: {
+                  type: ["object", "null"],
+                  additionalProperties: false,
+                  required: ["requires_payment", "cancellation_fee", "cancel_cutoff_secs", "cancel_cutoff_time", "deposit_fee", "service_charge"],
+                  description: "The site's raw policy fields for this slot. Amounts are in the venue currency; the API does not say whether a fee is per guest or per reservation, and how the two cutoff fields apply is stated by the site when booking, so confirm before relying on them. null when the site sent no policy for the slot.",
+                  properties: {
+                    requires_payment: { type: "boolean", description: "The site marks the slot as needing a card or payment to book." },
+                    cancellation_fee: { type: ["number", "null"] },
+                    cancel_cutoff_secs: { type: ["integer", "null"], description: "The site's secs_cancel_cut_off value." },
+                    cancel_cutoff_time: { type: ["string", "null"], description: "The site's time_cancel_cut_off value (a clock time such as 12:00:00)." },
+                    deposit_fee: { type: ["number", "null"] },
+                    service_charge: { type: ["string", "null"], description: "The site's service_charge value, for example 0%." }
+                  }
+                }
+              }
+            },
+            currency: { type: ["string", "null"], description: "Currency code for the fee amounts in each slot's policy." },
+            exact_total: { type: "null", description: "Not obtained; never infer a zero cost." },
+            terms_confirmed: { const: false },
+            account_binding: { const: "not_selected" },
+            execution_supported: { const: false },
+            execution_blockers: { type: "array", items: { enum: ["trusted_approval_unavailable", "exact_price_and_terms_unverified", "account_not_bound"] } },
+            message: { type: "string" }
+          }
+        },
+        {
+          type: "object",
+          additionalProperties: false,
+          required: ["status", "observed_at", "venue_id", "name", "url", "date", "party_size", "notify_offered", "message"],
+          properties: {
+            status: { const: "no_availability" },
+            observed_at: { type: "string" },
+            venue_id: { type: "integer" },
+            name: { type: ["string", "null"] },
+            url: { type: ["string", "null"] },
+            date: { type: "string" },
+            party_size: { type: "integer" },
+            notify_offered: { type: "boolean" },
+            message: { type: "string" }
+          }
+        },
+        {
+          type: "object",
+          additionalProperties: false,
+          required: ["status", "observed_at", "venue_id", "name", "date", "party_size", "gating_keys", "message"],
+          properties: {
+            status: { const: "gated" },
+            observed_at: { type: "string" },
+            venue_id: { type: "integer" },
+            name: { type: ["string", "null"] },
+            date: { type: "string" },
+            party_size: { type: "integer" },
+            gating_keys: { type: "array", maxItems: 10, items: { type: "string" }, description: "Keys of the site's gating_errors object." },
+            message: { type: "string" }
+          }
+        },
+        {
+          type: "object",
+          additionalProperties: false,
+          required: ["status", "error_kind", "error_message"],
+          properties: {
+            status: { const: "error" },
+            error_kind: {
+              enum: [
+                "invalid_input",
+                "not_found",
+                "wrong_page",
+                "login_required",
+                "challenge",
+                "rate_limited",
+                "site_changed",
+                "site_error",
+                "ambiguous_slot",
+                "slot_unavailable",
+                "canceled"
+              ]
+            },
+            error_message: { type: "string", minLength: 1 }
+          }
+        }
+      ]
+    },
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true }
+  },
+  execute: async (input, { signal } = {}) => {
     const ORIGIN = "https://resy.com";
     const API = "https://api.resy.com";
     const fail = (kind, message) => ({ status: "error", error_kind: kind, error_message: message });

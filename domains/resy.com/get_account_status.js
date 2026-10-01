@@ -1,90 +1,57 @@
-[
-  {
-    "kind": "page",
-    "match": {
-      "url_patterns": [
-        "https://resy.com/*"
+[{
+  kind: "page",
+  match: { url_patterns: ["https://resy.com/*"] },
+  tool: {
+    name: "get_account_status",
+    description: "Read the current Resy session and return an opaque account_ref without name, email, phone, user id or payment data. Account tools require this reference to detect a wrong account. It is not a credential or human approval. Reads only GET /2/user on the current resy.com page; never signs in or navigates.",
+    inputSchema: { type: "object", additionalProperties: false, required: [], properties: {} },
+    outputSchema: {
+      type: "object",
+      oneOf: [
+        {
+          type: "object",
+          additionalProperties: false,
+          required: ["status", "account_ref", "authenticated"],
+          properties: {
+            status: { const: "ok" },
+            account_ref: {
+              type: "string",
+              pattern: "^account_[a-f0-9]{64}$",
+              description: "Opaque reference from get_account_status for the current signed-in account. Not a credential or proof of human approval."
+            },
+            authenticated: { const: true }
+          }
+        },
+        {
+          type: "object",
+          additionalProperties: false,
+          required: ["status", "error_kind", "error_message"],
+          properties: {
+            status: { const: "error" },
+            error_kind: {
+              enum: [
+                "invalid_input",
+                "wrong_page",
+                "login_required",
+                "wrong_account",
+                "not_found",
+                "stale_state",
+                "challenge",
+                "rate_limited",
+                "site_changed",
+                "site_error",
+                "canceled",
+                "outcome_unknown"
+              ]
+            },
+            error_message: { type: "string", minLength: 1, maxLength: 1000 }
+          }
+        }
       ]
     },
-    "tool": {
-      "name": "get_account_status",
-      "description": "Read the current Resy session and return an opaque account_ref without name, email, phone, user id or payment data. Account tools require this reference to detect a wrong account. It is not a credential or human approval. Reads only GET /2/user on the current resy.com page; never signs in or navigates.",
-      "inputSchema": {
-        "type": "object",
-        "additionalProperties": false,
-        "required": [],
-        "properties": {}
-      },
-      "outputSchema": {
-        "type": "object",
-        "oneOf": [
-          {
-            "type": "object",
-            "additionalProperties": false,
-            "required": [
-              "status",
-              "account_ref",
-              "authenticated"
-            ],
-            "properties": {
-              "status": {
-                "const": "ok"
-              },
-              "account_ref": {
-                "type": "string",
-                "pattern": "^account_[a-f0-9]{64}$",
-                "description": "Opaque reference from get_account_status for the current signed-in account. Not a credential or proof of human approval."
-              },
-              "authenticated": {
-                "const": true
-              }
-            }
-          },
-          {
-            "type": "object",
-            "additionalProperties": false,
-            "required": [
-              "status",
-              "error_kind",
-              "error_message"
-            ],
-            "properties": {
-              "status": {
-                "const": "error"
-              },
-              "error_kind": {
-                "enum": [
-                  "invalid_input",
-                  "wrong_page",
-                  "login_required",
-                  "wrong_account",
-                  "not_found",
-                  "stale_state",
-                  "challenge",
-                  "rate_limited",
-                  "site_changed",
-                  "site_error",
-                  "canceled",
-                  "outcome_unknown"
-                ]
-              },
-              "error_message": {
-                "type": "string",
-                "minLength": 1,
-                "maxLength": 1000
-              }
-            }
-          }
-        ]
-      },
-      "annotations": {
-        "readOnlyHint": true,
-        "destructiveHint": false,
-        "idempotentHint": true,
-        "openWorldHint": true
-      }
-    },
-    "execute": async (input, { signal } = {}) => {
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true }
+  },
+  execute: async (input, { signal } = {}) => {
     const ORIGIN = "https://resy.com";
     const API = "https://api.resy.com";
     const fail = (kind, message) => ({ status: "error", error_kind: kind, error_message: message });
@@ -135,5 +102,5 @@
     const account = await identity();
     if (account.error) return account.error;
     return { status: "ok", account_ref: account.ref, authenticated: true };
-    }
+  }
 }]

@@ -1,151 +1,86 @@
-[
-  {
-    "kind": "page",
-    "match": {
-      "url_patterns": [
-        "https://resy.com/*"
-      ]
-    },
-    "tool": {
-      "name": "list_notify_requests",
-      "description": "List up to 100 current Resy Notify time-window preferences for the signed-in account identified by expected_account_ref from get_account_status. Reads only; never creates, edits or cancels notifications and never sends messages. The empty response envelope was live-observed; populated fields come from the site bundle and fixtures, not a live populated account. Dates/times are venue-local service-date values. No automatic pagination.",
-      "inputSchema": {
-        "type": "object",
-        "additionalProperties": false,
-        "required": [
-          "expected_account_ref"
-        ],
-        "properties": {
-          "expected_account_ref": {
-            "type": "string",
-            "pattern": "^account_[a-f0-9]{64}$",
-            "description": "Opaque reference from get_account_status for the current signed-in account. Not a credential or proof of human approval."
-          }
+[{
+  kind: "page",
+  match: { url_patterns: ["https://resy.com/*"] },
+  tool: {
+    name: "list_notify_requests",
+    description: "List up to 100 current Resy Notify time-window preferences for the signed-in account identified by expected_account_ref from get_account_status. Reads only; never creates, edits or cancels notifications and never sends messages. The empty response envelope was live-observed; populated fields come from the site bundle and fixtures, not a live populated account. Dates/times are venue-local service-date values. No automatic pagination.",
+    inputSchema: {
+      type: "object",
+      additionalProperties: false,
+      required: ["expected_account_ref"],
+      properties: {
+        expected_account_ref: {
+          type: "string",
+          pattern: "^account_[a-f0-9]{64}$",
+          description: "Opaque reference from get_account_status for the current signed-in account. Not a credential or proof of human approval."
         }
-      },
-      "outputSchema": {
-        "type": "object",
-        "oneOf": [
-          {
-            "type": "object",
-            "additionalProperties": false,
-            "required": [
-              "status",
-              "account_ref",
-              "total",
-              "truncated",
-              "requests"
-            ],
-            "properties": {
-              "status": {
-                "enum": [
-                  "ok",
-                  "no_results"
-                ]
-              },
-              "account_ref": {
-                "type": "string",
-                "pattern": "^account_[a-f0-9]{64}$",
-                "description": "Opaque reference from get_account_status for the current signed-in account. Not a credential or proof of human approval."
-              },
-              "total": {
-                "type": "integer",
-                "minimum": 0
-              },
-              "truncated": {
-                "type": "boolean"
-              },
-              "requests": {
-                "type": "array",
-                "maxItems": 100,
-                "items": {
-                  "type": "object",
-                  "additionalProperties": false,
-                  "required": [
-                    "venue_id",
-                    "date",
-                    "party_size",
-                    "service_type_id",
-                    "local_start_time",
-                    "local_end_time"
-                  ],
-                  "properties": {
-                    "venue_id": {
-                      "type": "integer",
-                      "minimum": 1,
-                      "maximum": 2147483647
-                    },
-                    "date": {
-                      "type": "string",
-                      "maxLength": 10
-                    },
-                    "party_size": {
-                      "type": "integer",
-                      "minimum": 1,
-                      "maximum": 100
-                    },
-                    "service_type_id": {
-                      "type": "integer",
-                      "minimum": 0
-                    },
-                    "local_start_time": {
-                      "type": "string",
-                      "maxLength": 8
-                    },
-                    "local_end_time": {
-                      "type": "string",
-                      "maxLength": 8
-                    }
-                  }
+      }
+    },
+    outputSchema: {
+      type: "object",
+      oneOf: [
+        {
+          type: "object",
+          additionalProperties: false,
+          required: ["status", "account_ref", "total", "truncated", "requests"],
+          properties: {
+            status: { enum: ["ok", "no_results"] },
+            account_ref: {
+              type: "string",
+              pattern: "^account_[a-f0-9]{64}$",
+              description: "Opaque reference from get_account_status for the current signed-in account. Not a credential or proof of human approval."
+            },
+            total: { type: "integer", minimum: 0 },
+            truncated: { type: "boolean" },
+            requests: {
+              type: "array",
+              maxItems: 100,
+              items: {
+                type: "object",
+                additionalProperties: false,
+                required: ["venue_id", "date", "party_size", "service_type_id", "local_start_time", "local_end_time"],
+                properties: {
+                  venue_id: { type: "integer", minimum: 1, maximum: 2147483647 },
+                  date: { type: "string", maxLength: 10 },
+                  party_size: { type: "integer", minimum: 1, maximum: 100 },
+                  service_type_id: { type: "integer", minimum: 0 },
+                  local_start_time: { type: "string", maxLength: 8 },
+                  local_end_time: { type: "string", maxLength: 8 }
                 }
               }
             }
-          },
-          {
-            "type": "object",
-            "additionalProperties": false,
-            "required": [
-              "status",
-              "error_kind",
-              "error_message"
-            ],
-            "properties": {
-              "status": {
-                "const": "error"
-              },
-              "error_kind": {
-                "enum": [
-                  "invalid_input",
-                  "wrong_page",
-                  "login_required",
-                  "wrong_account",
-                  "not_found",
-                  "stale_state",
-                  "challenge",
-                  "rate_limited",
-                  "site_changed",
-                  "site_error",
-                  "canceled",
-                  "outcome_unknown"
-                ]
-              },
-              "error_message": {
-                "type": "string",
-                "minLength": 1,
-                "maxLength": 1000
-              }
-            }
           }
-        ]
-      },
-      "annotations": {
-        "readOnlyHint": true,
-        "destructiveHint": false,
-        "idempotentHint": true,
-        "openWorldHint": true
-      }
+        },
+        {
+          type: "object",
+          additionalProperties: false,
+          required: ["status", "error_kind", "error_message"],
+          properties: {
+            status: { const: "error" },
+            error_kind: {
+              enum: [
+                "invalid_input",
+                "wrong_page",
+                "login_required",
+                "wrong_account",
+                "not_found",
+                "stale_state",
+                "challenge",
+                "rate_limited",
+                "site_changed",
+                "site_error",
+                "canceled",
+                "outcome_unknown"
+              ]
+            },
+            error_message: { type: "string", minLength: 1, maxLength: 1000 }
+          }
+        }
+      ]
     },
-    "execute": async (input, { signal } = {}) => {
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true }
+  },
+  execute: async (input, { signal } = {}) => {
     const ORIGIN = "https://resy.com";
     const API = "https://api.resy.com";
     const fail = (kind, message) => ({ status: "error", error_kind: kind, error_message: message });
@@ -215,5 +150,5 @@
     const recheck = await ensureAccount();
     if (recheck) return recheck;
     return { status: requests.length ? "ok" : "no_results", account_ref: input.expected_account_ref, total: res.json.notify.length, truncated: res.json.notify.length > 100, requests };
-    }
+  }
 }]

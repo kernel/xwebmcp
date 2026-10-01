@@ -1,142 +1,76 @@
-[
-  {
-    "kind": "page",
-    "match": {
-      "url_patterns": [
-        "https://resy.com/*"
-      ]
-    },
-    "tool": {
-      "name": "set_favorite",
-      "description": "Set one exact restaurant's reversible My Hit List favorite state in the current Resy account. Requires manual login, expected_account_ref from get_account_status, venue_id plus city_slug/url_slug from public tools, desired favorite and expected_favorite state. Reads current account and venue first, checks venue id and favorite flag, does nothing if already at desired state, refuses stale state, rechecks account immediately before its single form-encoded POST /3/user/favorites, then rereads the venue and account to verify. Never changes custom lists or marketing preferences. A timeout, cancellation after dispatch, session switch, failed readback or uncertain response returns outcome_unknown: never retry automatically; read state first. No human approval flag is accepted. HTTP 200 or 201 from the favorites endpoint still requires account and saved-state readback before success.",
-      "inputSchema": {
-        "type": "object",
-        "additionalProperties": false,
-        "required": [
-          "expected_account_ref",
-          "venue_id",
-          "city_slug",
-          "url_slug",
-          "favorite",
-          "expected_favorite"
-        ],
-        "properties": {
-          "expected_account_ref": {
-            "type": "string",
-            "pattern": "^account_[a-f0-9]{64}$",
-            "description": "Opaque reference from get_account_status for the current signed-in account. Not a credential or proof of human approval."
-          },
-          "venue_id": {
-            "type": "integer",
-            "minimum": 1,
-            "maximum": 2147483647
-          },
-          "city_slug": {
-            "type": "string",
-            "pattern": "^[a-z0-9][a-z0-9-]{1,99}$"
-          },
-          "url_slug": {
-            "type": "string",
-            "pattern": "^[A-Za-z0-9][A-Za-z0-9-]{0,119}$"
-          },
-          "favorite": {
-            "type": "boolean",
-            "description": "Desired saved state for My Hit List only."
-          },
-          "expected_favorite": {
-            "type": "boolean",
-            "description": "Expected initial favorite state. Mismatch fails closed unless already at the desired state."
-          }
-        }
-      },
-      "outputSchema": {
-        "type": "object",
-        "oneOf": [
-          {
-            "type": "object",
-            "additionalProperties": false,
-            "required": [
-              "status",
-              "account_ref",
-              "venue_id",
-              "venue_name",
-              "favorite",
-              "previous_favorite"
-            ],
-            "properties": {
-              "status": {
-                "enum": [
-                  "updated",
-                  "unchanged"
-                ]
-              },
-              "account_ref": {
-                "type": "string",
-                "pattern": "^account_[a-f0-9]{64}$",
-                "description": "Opaque reference from get_account_status for the current signed-in account. Not a credential or proof of human approval."
-              },
-              "venue_id": {
-                "type": "integer",
-                "minimum": 1,
-                "maximum": 2147483647
-              },
-              "venue_name": {
-                "type": "string",
-                "maxLength": 200
-              },
-              "favorite": {
-                "type": "boolean"
-              },
-              "previous_favorite": {
-                "type": "boolean"
-              }
-            }
-          },
-          {
-            "type": "object",
-            "additionalProperties": false,
-            "required": [
-              "status",
-              "error_kind",
-              "error_message"
-            ],
-            "properties": {
-              "status": {
-                "const": "error"
-              },
-              "error_kind": {
-                "enum": [
-                  "invalid_input",
-                  "wrong_page",
-                  "login_required",
-                  "wrong_account",
-                  "not_found",
-                  "stale_state",
-                  "challenge",
-                  "rate_limited",
-                  "site_changed",
-                  "site_error",
-                  "canceled",
-                  "outcome_unknown"
-                ]
-              },
-              "error_message": {
-                "type": "string",
-                "minLength": 1,
-                "maxLength": 1000
-              }
-            }
-          }
-        ]
-      },
-      "annotations": {
-        "readOnlyHint": false,
-        "destructiveHint": false,
-        "idempotentHint": false,
-        "openWorldHint": true
+[{
+  kind: "page",
+  match: { url_patterns: ["https://resy.com/*"] },
+  tool: {
+    name: "set_favorite",
+    description: "Set one exact restaurant's reversible My Hit List favorite state in the current Resy account. Requires manual login, expected_account_ref from get_account_status, venue_id plus city_slug/url_slug from public tools, desired favorite and expected_favorite state. Reads current account and venue first, checks venue id and favorite flag, does nothing if already at desired state, refuses stale state, rechecks account immediately before its single form-encoded POST /3/user/favorites, then rereads the venue and account to verify. Never changes custom lists or marketing preferences. A timeout, cancellation after dispatch, session switch, failed readback or uncertain response returns outcome_unknown: never retry automatically; read state first. No human approval flag is accepted. HTTP 200 or 201 from the favorites endpoint still requires account and saved-state readback before success.",
+    inputSchema: {
+      type: "object",
+      additionalProperties: false,
+      required: ["expected_account_ref", "venue_id", "city_slug", "url_slug", "favorite", "expected_favorite"],
+      properties: {
+        expected_account_ref: {
+          type: "string",
+          pattern: "^account_[a-f0-9]{64}$",
+          description: "Opaque reference from get_account_status for the current signed-in account. Not a credential or proof of human approval."
+        },
+        venue_id: { type: "integer", minimum: 1, maximum: 2147483647 },
+        city_slug: { type: "string", pattern: "^[a-z0-9][a-z0-9-]{1,99}$" },
+        url_slug: { type: "string", pattern: "^[A-Za-z0-9][A-Za-z0-9-]{0,119}$" },
+        favorite: { type: "boolean", description: "Desired saved state for My Hit List only." },
+        expected_favorite: { type: "boolean", description: "Expected initial favorite state. Mismatch fails closed unless already at the desired state." }
       }
     },
-    "execute": async (input, { signal } = {}) => {
+    outputSchema: {
+      type: "object",
+      oneOf: [
+        {
+          type: "object",
+          additionalProperties: false,
+          required: ["status", "account_ref", "venue_id", "venue_name", "favorite", "previous_favorite"],
+          properties: {
+            status: { enum: ["updated", "unchanged"] },
+            account_ref: {
+              type: "string",
+              pattern: "^account_[a-f0-9]{64}$",
+              description: "Opaque reference from get_account_status for the current signed-in account. Not a credential or proof of human approval."
+            },
+            venue_id: { type: "integer", minimum: 1, maximum: 2147483647 },
+            venue_name: { type: "string", maxLength: 200 },
+            favorite: { type: "boolean" },
+            previous_favorite: { type: "boolean" }
+          }
+        },
+        {
+          type: "object",
+          additionalProperties: false,
+          required: ["status", "error_kind", "error_message"],
+          properties: {
+            status: { const: "error" },
+            error_kind: {
+              enum: [
+                "invalid_input",
+                "wrong_page",
+                "login_required",
+                "wrong_account",
+                "not_found",
+                "stale_state",
+                "challenge",
+                "rate_limited",
+                "site_changed",
+                "site_error",
+                "canceled",
+                "outcome_unknown"
+              ]
+            },
+            error_message: { type: "string", minLength: 1, maxLength: 1000 }
+          }
+        }
+      ]
+    },
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true }
+  },
+  execute: async (input, { signal } = {}) => {
     const ORIGIN = "https://resy.com";
     const API = "https://api.resy.com";
     const fail = (kind, message) => ({ status: "error", error_kind: kind, error_message: message });
@@ -220,5 +154,5 @@
     const accountAfter = await ensureAccount();
     if (accountAfter || after.favorite !== input.favorite) return fail("outcome_unknown", "Favorite write was dispatched but the requested account/state was not verified. Read current state before deciding what to do.");
     return { status: "updated", account_ref: input.expected_account_ref, venue_id: input.venue_id, venue_name: after.name, favorite: after.favorite, previous_favorite: before.favorite };
-    }
+  }
 }]
