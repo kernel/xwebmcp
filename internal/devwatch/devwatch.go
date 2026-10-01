@@ -127,8 +127,10 @@ type Change struct {
 
 // Watch polls root every interval and calls onChange with the files whose
 // content changed since the previous scan. The initial scan is reported as
-// changes too, so callers install everything on start.
-func Watch(ctx context.Context, root string, interval time.Duration, onChange func([]Change)) error {
+// changes too, so callers install everything on start. onChange returns the
+// Rel paths it could not apply for a transient reason (for example the
+// extension was restarting); those are reported again on the next scan.
+func Watch(ctx context.Context, root string, interval time.Duration, onChange func([]Change) (retry []string)) error {
 	known := map[string]File{}
 	report := func() error {
 		files, err := Scan(root)
@@ -151,7 +153,9 @@ func Watch(ctx context.Context, root string, interval time.Duration, onChange fu
 			}
 		}
 		if len(changes) > 0 {
-			onChange(changes)
+			for _, rel := range onChange(changes) {
+				delete(known, rel)
+			}
 		}
 		return nil
 	}
