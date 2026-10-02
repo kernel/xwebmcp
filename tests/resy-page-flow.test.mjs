@@ -63,7 +63,7 @@ test("get_page_context: signed out, log-in window, lists, account pages, not fou
   const list = await pageContext(`<html><body></body></html>`, { url: "https://resy.com/cities/exampleton-xa/list/climbing?date=2026-10-10&seats=2", tools: ["get_collection"] });
   assert.equal(list.page_type, "algorithmic_list");
   assert.equal(list.list_name, "climbing");
-  assert.ok(list.suggested_next_steps.some(s => s.includes('get_collection({ list: "climbing", city_slug: "exampleton-xa"')));
+  assert.ok(list.suggested_next_steps.some(s => s.includes('get_collection({ list: "climbing", city_slug: "exampleton-xa"') && s.includes("as the page shows it")));
   assert.equal((await pageContext(`<html><body></body></html>`, { url: "https://resy.com/account/reservations-and-notify" })).page_type, "account_reservations");
   assert.equal((await pageContext(`<html><body><main>Sorry, but we can’t find that page.</main></body></html>`, { url: "https://resy.com/cities/exampleton-xa/venues/wrong" })).page_type, "not_found");
   const href = "https://resy.com/cities/exampleton-xa";

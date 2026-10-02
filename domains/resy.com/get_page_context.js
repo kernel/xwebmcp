@@ -125,7 +125,7 @@
       if (venueSlug && citySlug && has("get_restaurant")) steps.push("Use get_restaurant({ city_slug: \"" + citySlug + "\", url_slug: \"" + venueSlug + "\" }) for the venue_id, then get_availability or get_availability_calendar");
       if (has("open_booking_dialog") && signedIn) steps.push("To show the user Resy's own booking window for one slot, use open_booking_dialog on this page (it stops before Reserve Now)");
     } else if (pageType === "algorithmic_list" && listName && has("get_collection")) {
-      steps.push("This page shows Resy's " + listName + " collection with open tables first: use list_collections (algorithmic_lists) for its collection_id, then get_collection({ collection_id, location, date, party_size }) to read it as shown; get_collection({ list: \"" + listName + "\", city_slug: \"" + (citySlug || "new-york-ny") + "\" }) gives the ranked leaderboard from the city home page instead");
+      steps.push("Use get_collection({ list: \"" + listName + "\", city_slug: \"" + (citySlug || "new-york-ny") + "\", date, party_size }) to read this list as the page shows it (add only_available: true for open tables only)");
     } else if (pageType === "account_reservations" && has("list_reservations")) {
       steps.push("Use get_account_status, then list_reservations (upcoming or past, optionally with start_date/end_date) to read reservations");
     } else if (pageType !== "not_found") {
