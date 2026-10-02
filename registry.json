@@ -277,6 +277,40 @@
       }
     },
     {
+      "domain": "duckduckgo.com",
+      "tool": "get_search_results",
+      "file": "domains/duckduckgo.com/get_search_results.js",
+      "kind": "page",
+      "namespace": "duckduckgo.com",
+      "url_patterns": [
+        "https://duckduckgo.com/*",
+        "https://*.duckduckgo.com/*"
+      ],
+      "status": "qa_passed",
+      "last_verified": "2026-09-30",
+      "notes": "Independent final-source QA passed on Kernel and scratch Chromium extension. Reads current full-site web results without navigation; optional More results, at most five presses/50 rows and 200 KiB UTF-8 output. Wrong-page, cancellation and block errors are explicit. Challenges/rate limits and maximum byte bounds are fixture-only; an independent larger-results Kernel attempt timed out without retry.",
+      "provenance": {
+        "qa_agent": "agt_ff1c9d855c958c76fed3"
+      }
+    },
+    {
+      "domain": "duckduckgo.com",
+      "tool": "search",
+      "file": "domains/duckduckgo.com/search.js",
+      "kind": "cdp",
+      "namespace": "duckduckgo.com",
+      "url_patterns": [
+        "https://duckduckgo.com/*",
+        "https://*.duckduckgo.com/*"
+      ],
+      "status": "verified",
+      "last_verified": "2026-09-30",
+      "notes": "Independent final-source QA passed with same-domain off-entry-page live success on Kernel and scratch Chromium extension checks. Navigates to full-site web results with region, safe-search and time filters; up to 50 rows/five More results presses, 200 KiB UTF-8 budget. Bang/jump guards; no ads or AI contents. Block/cancellation/maximum byte cases are fixture-only; independent larger-results Kernel attempt timed out without retry.",
+      "provenance": {
+        "qa_agent": "agt_ff1c9d855c958c76fed3"
+      }
+    },
+    {
       "domain": "etsy.com",
       "tool": "add_to_cart",
       "file": "domains/etsy.com/add_to_cart.js",
