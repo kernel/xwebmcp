@@ -54,6 +54,48 @@
       }
     },
     {
+      "domain": "bfi.org.uk",
+      "tool": "get_event",
+      "file": "domains/bfi.org.uk/get_event.js",
+      "kind": "page",
+      "namespace": "bfi.org.uk",
+      "url_patterns": [
+        "https://whatson.bfi.org.uk/Online/default.asp*",
+        "https://whatson.bfi.org.uk/Online/article/*",
+        "https://whatson.bfi.org.uk/imax/Online/default.asp*",
+        "https://whatson.bfi.org.uk/imax/Online/article/*",
+        "https://whatson.bfi.org.uk/lff/Online/default.asp*",
+        "https://whatson.bfi.org.uk/lff/Online/article/*"
+      ],
+      "status": "verified",
+      "last_verified": "2026-09-30",
+      "notes": "Read-only event credits, text and up to 50 exactly linked performances in the tab's programme. Cookieless; redirects refused, cancellation/programme guards. Name-linked pages require the search event_url; no widget adoption, booking flow or holds. Independent QA passed; Southbank live success in Kernel and extension. Live IMAX/LFF and signed-in flows untested.",
+      "provenance": {
+        "qa_agent": "agt_a9b0628177efb43e1e72"
+      }
+    },
+    {
+      "domain": "bfi.org.uk",
+      "tool": "search_events",
+      "file": "domains/bfi.org.uk/search_events.js",
+      "kind": "page",
+      "namespace": "bfi.org.uk",
+      "url_patterns": [
+        "https://whatson.bfi.org.uk/Online/default.asp*",
+        "https://whatson.bfi.org.uk/Online/article/*",
+        "https://whatson.bfi.org.uk/imax/Online/default.asp*",
+        "https://whatson.bfi.org.uk/imax/Online/article/*",
+        "https://whatson.bfi.org.uk/lff/Online/default.asp*",
+        "https://whatson.bfi.org.uk/lff/Online/article/*"
+      ],
+      "status": "verified",
+      "last_verified": "2026-09-30",
+      "notes": "Read-only keyword/date search in the tab's programme; up to 50 performances with public GBP ranges and availability bands/counts. Cookieless; redirects refused; no seat selection or holds. Paging can repeat/omit same-time rows; narrow dates. Independent QA passed; Southbank live success in Kernel and extension. Live IMAX/LFF and signed-in flows untested.",
+      "provenance": {
+        "qa_agent": "agt_a9b0628177efb43e1e72"
+      }
+    },
+    {
       "domain": "delta.com",
       "tool": "continue_to_review_and_pay",
       "file": "domains/delta.com/continue_to_review_and_pay.js",
