@@ -57,9 +57,10 @@
     };
     const waitForPage = async expected => {
       const expectedPath = storefrontPath(expected);
-      for (let attempt = 0; attempt < 30; attempt++) {
+      const deadline = Date.now() + 15000;
+      for (let attempt = 0; attempt < 150 && Date.now() < deadline; attempt++) {
         if (storefrontPath((await pageInfo()).url) === expectedPath) return true;
-        await waitMs(500);
+        await waitMs(100);
       }
       return false;
     };
@@ -69,8 +70,6 @@
     const shopUrl = `https://bluebottlecoffee.com/${locale ? locale[1] : "us"}/${locale ? locale[2] : "eng"}/shop/coffee`;
     if (storefrontPath(here.url) !== storefrontPath(shopUrl)) {
       await gotoUrl(shopUrl);
-      await waitMs(500);
-      await waitForLoad(20);
     }
     if (!(await waitForPage(shopUrl))) return notReady("The browser did not reach the Blue Bottle coffee shop.");
     if (!(await waitForElement('main a[href*="/product/"]', { state: "attached", timeoutSec: 15 }))) return notReady("The Blue Bottle shop did not list any products.");
@@ -103,8 +102,6 @@
     const unambiguous = ranked.length === 1 || best.score > ranked[1].score;
     if (!open || !unambiguous) return { status: "ok", opened: null, matches, next_step: "No product page was opened. Choose a match or refine the query, then list WebMCP tools again before invoking another tool; searching may have navigated to the shop and invalidated earlier tool_ref values." };
     await gotoUrl(best.url);
-    await waitMs(500);
-    await waitForLoad(20);
     if (!(await waitForPage(best.url))) return notReady("The browser did not reach the selected product page.");
     if (!(await waitForElement('[data-test-id="add-to-cart-button"]', { state: "attached", timeoutSec: 15 }))) return notReady("The selected product's Add to Cart control did not become ready.");
     const destination = await pageInfo();

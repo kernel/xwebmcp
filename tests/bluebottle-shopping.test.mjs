@@ -226,6 +226,8 @@ function shop(options = {}) {
   const visited = [];
   let pendingUrl;
   let pageReads = 0;
+  let loadWaits = 0;
+  const sleeps = [];
   const links = () => url.includes("/shop/coffee") ? cards.map(([path, text]) => ({ href: new URL(path, "https://bluebottlecoffee.com").href, innerText: text, getAttribute: () => null })) : [];
   const context = {
     URL,
@@ -241,8 +243,8 @@ function shop(options = {}) {
       if (options.delayedNavigation) pendingUrl = destination;
       else url = destination;
     },
-    waitMs: async () => { if (pendingUrl) { url = pendingUrl; pendingUrl = null; } },
-    waitForLoad: async () => true,
+    waitMs: async ms => { sleeps.push(ms); if (pendingUrl) { url = pendingUrl; pendingUrl = null; } },
+    waitForLoad: async () => { loadWaits++; return options.loadComplete !== false; },
     waitForElement: async selector => {
       if (selector.includes("/product/")) return links().length > 0;
       if (options.redirectDuringProductWait) url = options.redirectDuringProductWait;
@@ -252,7 +254,7 @@ function shop(options = {}) {
   };
   const [definition] = runInNewContext(`(${sources.find_product})`, helpers);
   return {
-    definition, visited, get pageReads() { return pageReads; },
+    definition, visited, sleeps, get pageReads() { return pageReads; }, get loadWaits() { return loadWaits; },
     run: async input => {
       const result = plain(await definition.execute(input));
       assert.ok(conforms(definition.tool.outputSchema, result), `find_product output violates its schema: ${JSON.stringify(result)}`);
@@ -356,4 +358,16 @@ test("find_product listing-only and ambiguous results explain their navigation h
     assert.match(result.next_step, /list WebMCP tools again/);
     assert.match(result.next_step, /invalidated earlier tool_ref/);
   }
+});
+
+test("find_product confirms readiness from the destination URL and elements, not the load event", async () => {
+  const s = shop({ loadComplete: false });
+  const result = await s.run({ query: "hayes valley" });
+  assert.equal(result.status, "ok");
+  assert.equal(result.opened, "https://bluebottlecoffee.com/us/eng/product/hayes-valley-espresso");
+  assert.equal(s.loadWaits, 0);
+  assert.deepEqual(s.sleeps, []);
+  const delayed = shop({ delayedNavigation: true });
+  assert.equal((await delayed.run({ query: "hayes valley" })).status, "ok");
+  assert.ok(delayed.sleeps.length > 0 && delayed.sleeps.every(ms => ms <= 100), JSON.stringify(delayed.sleeps));
 });
