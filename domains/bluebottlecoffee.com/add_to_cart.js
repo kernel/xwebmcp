@@ -83,7 +83,8 @@
     let count = beforeCount;
     while (Date.now() < deadline) {
       line = document.querySelector(`[data-test-id="${CSS.escape(sku)}-garbageCan"]`)?.closest('[data-test-id^="cart-line-item-"]') || null;
-      count = Number(/items in cart:\s*(\d+)/i.exec(trigger.getAttribute("aria-label") || "")?.[1]);
+      const currentTrigger = document.querySelector('[data-test-id="minicart-slide-over-dialog-trigger"]');
+      count = Number(/items in cart:\s*(\d+)/i.exec(currentTrigger?.getAttribute("aria-label") || "")?.[1]);
       if (line && count === beforeCount + quantity) break;
       await new Promise(resolve => setTimeout(resolve, 100));
     }
