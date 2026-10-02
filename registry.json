@@ -1245,7 +1245,7 @@
       "url_patterns_reason": "Narrowed to resy.com: www.resy.com redirects there, and the other subdomains (blog, helpdesk, widgets, os) are separate products that do not expose the consumer page's API configuration these tools call api.resy.com with.",
       "status": "draft",
       "last_verified": null,
-      "notes": "Public slots as full venue-local date-times, sorted and capped at 300. Raw policy fields are not confirmed charges. Back to draft after a source change on 2026-10-01: each distinct slot policy is listed once in policies and slots carry policy_id (live: 21 slots, 1 policy, 6,144 to 3,490 bytes); caller cancellation is reported as canceled, not a timeout. Builder live run passed on 2026-10-01; needs fresh independent QA; earlier sign-off (agt_221f5a5f11361477ff09) covered the previous source. 2026-10-01: policy fields documented (deposit_fee is per guest).",
+      "notes": "Public slots as full venue-local date-times, sorted and capped at 300. Raw policy fields are not confirmed charges. Back to draft after a source change on 2026-10-01: each distinct slot policy is listed once in policies and slots carry policy_id (live: 21 slots, 1 policy, 6,144 to 3,490 bytes); caller cancellation is reported as canceled, not a timeout. Builder live run passed on 2026-10-01; needs fresh independent QA; earlier sign-off (agt_221f5a5f11361477ff09) covered the previous source. 2026-10-01: policy fields documented (deposit_fee is per guest). r6: policies carry deposit_total (deposit_fee x party_size); live Chef's Table $200/guest -> 400.",
       "provenance": {
         "qa_agent": "agt_221f5a5f11361477ff09"
       }
@@ -1487,7 +1487,7 @@
       "url_patterns_reason": "Narrowed to resy.com: www.resy.com redirects there, and the other subdomains (blog, helpdesk, widgets, os) are separate products that do not expose the consumer page's API configuration these tools call api.resy.com with.",
       "status": "draft",
       "last_verified": null,
-      "notes": "Schedules a same-origin navigation after returning (100 ms) and marks the page as navigating for get_page_context; rejects other origins, protocol-relative and backslash paths. Description carries a short Resy site map. Unit-tested; live 2026-10-01."
+      "notes": "Schedules a same-origin navigation after returning (100 ms) and marks the page as navigating for get_page_context; rejects other origins, protocol-relative and backslash paths. Description carries a short Resy site map. Unit-tested; live 2026-10-01. r6: unknown input keys are named in the error."
     },
     {
       "domain": "resy.com",
@@ -1501,7 +1501,7 @@
       "url_patterns_reason": "Only venue pages show slot buttons that open Resy's booking window; www.resy.com redirects to resy.com and other subdomains are separate products.",
       "status": "draft",
       "last_verified": null,
-      "notes": "Clicks one exact slot button on the venue page (time and seating type must match; never another slot), then reads Resy's Complete Your Reservation window: venue, time, guests/seating, card on file (no card details), price lines, cancellation policy, final button label and enabled state; never presses the final button. CDP because the window is a cross-origin widgets.resy.com frame only readable through the frame tree. Checks the page date/seats match the slot and that the user is signed in. Live 2026-10-01: Aria West Village 7:30 PM for 2, read Reserve Now and the $25 per guest policy, then closed."
+      "notes": "Clicks one exact slot button on the venue page (time and seating type must match; never another slot), then reads Resy's Complete Your Reservation window: venue, time, guests/seating, card on file (no card details), price lines, cancellation policy, final button label and enabled state; never presses the final button. CDP because the window is a cross-origin widgets.resy.com frame only readable through the frame tree. Checks the page date/seats match the slot and that the user is signed in. Live 2026-10-01: Aria West Village 7:30 PM for 2, read Reserve Now and the $25 per guest policy, then closed. r6: payment_card_on_file is null when the dialog shows no payment section (not 'no card'); order-summary rows read as label: amount."
     },
     {
       "domain": "resy.com",

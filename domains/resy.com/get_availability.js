@@ -44,7 +44,7 @@
               description: "Each distinct slot policy once, keyed by the policy_id that slots reference.",
               additionalProperties: {
                 type: "object", additionalProperties: false,
-                required: ["requires_payment", "cancellation_fee", "cancel_cutoff_secs", "cancel_cutoff_time", "deposit_fee", "service_charge"],
+                required: ["requires_payment", "cancellation_fee", "cancel_cutoff_secs", "cancel_cutoff_time", "deposit_fee", "deposit_total", "service_charge"],
                 description: "The site's raw policy fields. Amounts are in the venue currency; the API does not say whether a fee is per guest or per reservation, and how the two cutoff fields apply is stated by the site when booking, so confirm before relying on them.",
                 properties: {
                   requires_payment: { type: "boolean", description: "The site marks the slot as needing a card or payment to book." },
@@ -52,6 +52,7 @@
                   cancel_cutoff_secs: { type: ["integer", "null"], description: "The site's secs_cancel_cut_off value." },
                   cancel_cutoff_time: { type: ["string", "null"], description: "The site's time_cancel_cut_off value (a clock time such as 12:00:00)." },
                   deposit_fee: { type: ["number", "null"], description: "Prepayment per guest (total = deposit_fee x party_size); confirm the exact total with get_booking_quote." },
+                  deposit_total: { type: ["number", "null"], description: "deposit_fee x party_size: the prepayment or deposit charged when booking (get_booking_quote has the exact total)." },
                   service_charge: { type: ["string", "null"], description: "The site's service_charge value, for example 0%." }
                 }
               }
@@ -198,7 +199,7 @@
       slots.push({
         local_start: start, local_end: localStamp(s.date.end), seating_type: isPlain(s.config) ? text(s.config.type, 60) : null,
         global_dining_access: s.is_global_dining_access === true,
-        policy: t ? { requires_payment: t.is_paid === true, cancellation_fee: num(t.cancellation_fee), cancel_cutoff_secs: int(t.secs_cancel_cut_off), cancel_cutoff_time: text(t.time_cancel_cut_off, 20), deposit_fee: num(t.deposit_fee), service_charge: text(t.service_charge, 20) } : null
+        policy: t ? { requires_payment: t.is_paid === true, cancellation_fee: num(t.cancellation_fee), cancel_cutoff_secs: int(t.secs_cancel_cut_off), cancel_cutoff_time: text(t.time_cancel_cut_off, 20), deposit_fee: num(t.deposit_fee), deposit_total: num(t.deposit_fee) === null ? null : Math.round(t.deposit_fee * partySize * 100) / 100, service_charge: text(t.service_charge, 20) } : null
       });
     }
     slots.sort(byStart);

@@ -26,6 +26,8 @@
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true }
   },
   execute: async (input) => {
+    const extra = input && typeof input === "object" ? Object.keys(input).filter((k) => k !== "url") : [];
+    if (extra.length) return { status: "error", error_message: "Unknown input " + extra.join(", ") + ": pass the path as url, e.g. { url: \"/cities/new-york-ny\" }." };
     const raw = typeof input?.url === "string" ? input.url.trim() : "";
     if (!raw.startsWith("/") || raw.startsWith("//") || raw.includes("\\")) {
       return { status: "error", error_message: "url must be a path on resy.com starting with a single \"/\", e.g. \"/cities/new-york-ny\"." };

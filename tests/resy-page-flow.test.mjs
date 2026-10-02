@@ -91,6 +91,12 @@ test("navigate_to_page: schedules a same-origin navigation after returning and m
   for (const path of ["/account/reservations-and-notify", "/list/climbing", "/venues/{url_slug}"]) assert.ok(n.tool.tool.description.includes(path));
 });
 
+test("navigate_to_page: unknown keys are named", async () => {
+  const out = await navigate().run({ path: "/cities/exampleton-xa" });
+  assert.equal(out.status, "error");
+  assert.match(out.error_message, /Unknown input path: pass the path as url/);
+});
+
 for (const url of ["https://evil.example/", "//evil.example/x", "cities", "/\\evil.example", ""]) {
   test(`navigate_to_page: rejects ${JSON.stringify(url)} without navigating`, async () => {
     const n = navigate();
@@ -150,9 +156,9 @@ function bookingHarness({ url = "https://resy.com/cities/exampleton-xa/venues/fa
     venue: /^\/cities\/[^/]+\/venues\/[^/]+$/.test(u.pathname), path: u.pathname,
     date: u.searchParams.get("date"), seats: u.searchParams.get("seats"), signedIn, open: state.open
   });
-  const frameValue = () => frame === "ready" ? {
+  const frameValue = () => frame === "noPayment" ? { ready: true, partial: true, error: null, venue: "V", when: "W", guests: "G", cardOnFile: false, paymentShown: false, addCard: false, cancellation: null, other: [], prices: [], button: "Reserve Now", enabled: true } : frame === "ready" ? {
     ready: true, partial: true, error: null, venue: "Fabricated Trattoria", when: "Fri, Oct 9, 2026 7:30 PM", guests: "2 Guests, Dining Room",
-    cardOnFile: true, addCard: false, cancellation: "Fee of $25.00 + tax per guest after Thu, Oct. 8.", other: [{ title: "About", text: "Fabricated" }],
+    cardOnFile: true, paymentShown: true, addCard: false, cancellation: "Fee of $25.00 + tax per guest after Thu, Oct. 8.", other: [{ title: "About", text: "Fabricated" }],
     prices: ["Deposit $50.00"], button: "Reserve Now", enabled: true
   } : frame === "gone" ? { ready: false, partial: false, error: "Sorry, this reservation is no longer available.", venue: null } : null;
   const ctx = {
@@ -199,6 +205,7 @@ test("open_booking_dialog: clicks only the exact slot and reads the dialog; neve
   assert.match(out.cancellation_policy, /per guest/);
   assert.ok(!JSON.stringify(out).match(/ending in \d/), "no card digits");
   assert.equal((await h.run("close_booking_dialog", {})).status, "closed");
+  assert.equal((await bookingHarness({ frame: "noPayment" }).run("open_booking_dialog", { local_start: "2026-10-09T19:30", seating_type: "Dining Room", party_size: 2 })).payment_card_on_file, null, "no payment section is not 'no card'");
   assert.equal(h.state.closed, true);
   assert.equal((await h.run("close_booking_dialog", {})).status, "not_open");
 });
