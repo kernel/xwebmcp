@@ -227,6 +227,7 @@ function shop(options = {}) {
   let pendingUrl;
   let pageReads = 0;
   let loadWaits = 0;
+  let navigationReadFailures = 0;
   const sleeps = [];
   const links = () => url.includes("/shop/coffee") ? cards.map(([path, text]) => ({ href: new URL(path, "https://bluebottlecoffee.com").href, innerText: text, getAttribute: () => null })) : [];
   const context = {
@@ -236,9 +237,14 @@ function shop(options = {}) {
   };
   const helpers = {
     URL,
-    pageInfo: async () => { pageReads++; return { url }; },
+    pageInfo: async () => {
+      pageReads++;
+      if (navigationReadFailures > 0) { navigationReadFailures--; throw new Error("Execution context was destroyed, most likely because of a navigation"); }
+      return { url };
+    },
     gotoUrl: async next => {
       visited.push(next);
+      navigationReadFailures = options.navigationReadFailures ?? 0;
       const destination = next.includes("/product/") ? (options.productRedirect ?? next) : (options.shopRedirect ?? next);
       if (options.delayedNavigation) pendingUrl = destination;
       else url = destination;
@@ -370,4 +376,11 @@ test("find_product confirms readiness from the destination URL and elements, not
   const delayed = shop({ delayedNavigation: true });
   assert.equal((await delayed.run({ query: "hayes valley" })).status, "ok");
   assert.ok(delayed.sleeps.length > 0 && delayed.sleeps.every(ms => ms <= 100), JSON.stringify(delayed.sleeps));
+});
+
+test("find_product keeps polling when a page read is interrupted by navigation", async () => {
+  const s = shop({ navigationReadFailures: 2 });
+  const result = await s.run({ query: "hayes valley" });
+  assert.equal(result.status, "ok");
+  assert.equal(result.opened, "https://bluebottlecoffee.com/us/eng/product/hayes-valley-espresso");
 });

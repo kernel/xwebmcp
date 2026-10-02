@@ -59,7 +59,7 @@
       const expectedPath = storefrontPath(expected);
       const deadline = Date.now() + 15000;
       for (let attempt = 0; attempt < 150 && Date.now() < deadline; attempt++) {
-        if (storefrontPath((await pageInfo()).url) === expectedPath) return true;
+        try { if (storefrontPath((await pageInfo()).url) === expectedPath) return true; } catch { /* navigating */ }
         await waitMs(100);
       }
       return false;
