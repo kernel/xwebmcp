@@ -311,6 +311,23 @@
       }
     },
     {
+      "domain": "doordash.com",
+      "tool": "save_address",
+      "file": "domains/doordash.com/save_address.js",
+      "kind": "cdp",
+      "namespace": "doordash.com",
+      "url_patterns": [
+        "https://doordash.com/*",
+        "https://*.doordash.com/*"
+      ],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "kind cdp: DoorDash address autocomplete only responds to trusted key events in the search field (lib/input.js), and the suggestion, label and Save controls are clicked with trusted input. Draft, no independent QA. Live on 2026-10-02 with one office address: the first source closed the dialog by clicking during its opening animation (address_not_found with no suggestions), and the second misread a details field mid-re-render. Both stopped before Save. The final source then added the address (office type, business name, Work label) with one Save and confirmed it in the header and the saved-address list. A repeat run took the selected_existing path without Save, but that address was already current, so switching between several saved addresses is unverified. Also unverified: suite and instructions fields, Save errors, challenges, and other address types.",
+      "provenance": {
+        "qa_agent": null
+      }
+    },
+    {
       "domain": "etsy.com",
       "tool": "add_to_cart",
       "file": "domains/etsy.com/add_to_cart.js",
