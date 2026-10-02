@@ -7,7 +7,7 @@ import { conforms } from "./amctheatres-schema.mjs";
 
 // Harness for the amctheatres.com cart tools. A fabricated AMC ticket flow (seat page, ticket page, cart page and
 // its cancel prompt) mirrors the markup observed live; every theatre, movie, seat and price is invented.
-const NAMES = ["add_tickets_to_cart", "cancel_cart", "get_cart"];
+const NAMES = ["add_tickets_to_cart", "cancel_cart", "get_cart", "preview_tickets"];
 const sources = Object.fromEntries(NAMES.map(n => [n, readFileSync(new URL(`../domains/amctheatres.com/${n}.js`, import.meta.url), "utf8")]));
 const registry = JSON.parse(readFileSync(new URL("../registry.json", import.meta.url), "utf8"));
 const ORIGIN = "https://www.amctheatres.com";
@@ -18,8 +18,10 @@ const info = `<div><h2>Showtime Information</h2><div><h3>Example Feature</h3><ul
 const seatPage = (seats, chosen) => `<html><head><title>Select Seats</title></head><body><header><button>Example Member</button></header><main>${info}
   <div role="grid" aria-label="Seat Selection Map">${seats.map(s => `<label><input type="checkbox" name="${s.name}" aria-label="${chosen.includes(s.name) ? "Selected " : ""}${s.label} ${s.name}"${s.taken ? " disabled" : ""}${chosen.includes(s.name) ? " checked" : ""}></label>`).join("")}</div>
   <a href="/showtimes/${ID}/tickets?seats=${chosen.join(",")}">Continue</a></main></body></html>`;
-const ticketPage = (counts, error) => `<html><head><title>Select Tickets</title></head><body><header><button>Example Member</button></header><main>
-  ${Object.entries(counts).map(([t, n]) => `<div role="row"><div role="rowheader"><p>${t}</p></div><div role="gridcell">$12.00</div><div role="gridcell"><button aria-label="Remove ${t} Ticket"></button><span>${n} <span>${t} selected</span></span><button aria-label="Add ${t} Ticket"></button></div></div>`).join("")}
+const PRICES = { Adult: [10, 2], Child: [7.5, 2], Senior: [8.25, 2] };
+const usd = n => `$${n.toFixed(2)}`;
+const ticketPage = (counts, error, prices = PRICES) => `<html><head><title>Select Tickets</title></head><body><header><button>Example Member</button></header><main>
+  <div><p>Example matinee notice.</p><form><p>Sign In or Join</p><div role="grid" aria-label="Ticket Selection">${Object.entries(counts).map(([t, n]) => { const [base, fee] = prices[t] || [10, 2]; return `<div role="row"><div role="rowheader"><p>${t}</p></div><div role="gridcell">${usd(base + fee)}<span aria-label="Price Breakdown">${usd(base)} + ${usd(fee)} Fee*</span></div><div role="gridcell"><button aria-label="Remove ${t} Ticket"></button><span>${n} <span>${t} selected</span></span><button aria-label="Add ${t} Ticket"></button></div></div>`; }).join("")}</div></form></div>
   <button>Continue</button></main>${error ? `<dialog open=""><div><header data-modal-header="true">Error<button type="button" aria-label="Close"></button></header><div data-modal-body="true"><p role="alert">${error}</p></div></div></dialog>` : ""}</body></html>`;
 const panel = seats => `<aside role="region" aria-label="Order Details"><h1>Order Details</h1><div><section><header><h2>Tickets</h2><a aria-label="Edit Tickets" href="/showtimes/${ID}?order-token=x">Edit</a></header>
   <ul><li><div><div><h4>Adult Ticket</h4></div><div>$12.00</div></div></li><li>Seats ${seats.join(", ")}</li></ul>
@@ -34,7 +36,7 @@ const SEATS = [
   { name: "F10", label: "Wheelchair Space" }, { name: "F11", label: "Wheelchair Companion Example Recliner" }
 ];
 
-function site({ start = `${ORIGIN}/`, types = ["Adult", "Child", "Senior"], preselected = {}, hydrated = true, onOrder = "cart", flow = "seats", ignoreSeat = null, cancelPrompt = true, cancelLeaves = true, closeNavigates = false, seatTitle = "Select Seats", extraContinue = false, nextSeats = null, onAdd = null, onClose = null, preChosen = [], checkedOnly = [], failPick = false, probe = { status: 200, mitigated: null }, timerAfter = 0, promptText, cartMissing = false } = {}) {
+function site({ start = `${ORIGIN}/`, types = ["Adult", "Child", "Senior"], preselected = {}, hydrated = true, onOrder = "cart", flow = "seats", ignoreSeat = null, cancelPrompt = true, cancelLeaves = true, closeNavigates = false, seatTitle = "Select Seats", extraContinue = false, nextSeats = null, onAdd = null, onClose = null, preChosen = [], checkedOnly = [], failPick = false, probe = { status: 200, mitigated: null }, timerAfter = 0, promptText, cartMissing = false, prices = PRICES } = {}) {
   const calls = { navigations: [], clicks: [], orders: 0, cancels: 0, probes: [] };
   let url = new URL(start), doc, chosen = [], counts = {}, error = null, prompt = false, cartIn = null, timerIn = null;
   const location = {};
@@ -42,7 +44,7 @@ function site({ start = `${ORIGIN}/`, types = ["Adult", "Child", "Senior"], pres
     const p = url.pathname;
     let html = "<html><head><title>AMC</title></head><body><header><button>Example Member</button></header></body></html>";
     if (p === `/showtimes/${ID}/seats`) html = seatPage(SEATS, chosen).replace("<title>Select Seats</title>", `<title>${seatTitle}</title>`);
-    else if (p === `/showtimes/${ID}/tickets`) html = ticketPage(counts, error).replace("<button>Continue</button>", extraContinue === "disabled" ? "<button disabled>Continue</button><button>Continue</button>" : extraContinue ? "<button>Continue</button><button>Continue</button>" : "<button>Continue</button>");
+    else if (p === `/showtimes/${ID}/tickets`) html = ticketPage(counts, error, prices).replace("<button>Continue</button>", extraContinue === "disabled" ? "<button disabled>Continue</button><button>Continue</button>" : extraContinue ? "<button>Continue</button><button>Continue</button>" : "<button>Continue</button>");
     else if (p === `/showtimes/${ID}/missing`) html = NOT_FOUND;
     else if (/^\/orders\/[^/]+\/(food-and-drink|purchase|confirmation)$/.test(p)) html = cartMissing ? NOT_FOUND : cartPage(chosen.length ? chosen : ["F7"], prompt, timerIn === null || timerIn <= 0, promptText);
     doc = new Document(html);
@@ -367,4 +369,73 @@ test("add_tickets_to_cart tells AMC's rate limit apart from other refusals with 
   s = site();
   assert.equal((await tool("add_tickets_to_cart", s).run(ORDER)).status, "added");
   assert.equal(s.calls.probes.length, 0);
+});
+
+test("preview_tickets makes the same choices, reads the prices and never presses the ticket page's Continue", async () => {
+  const s = site();
+  const r = await tool("preview_tickets", s).run(ORDER);
+  assert.equal(r.status, "ok", JSON.stringify(r));
+  assert.equal(s.calls.orders, 0);
+  assert.ok(!s.calls.clicks.includes('button[data-xwebmcp-next="tickets"]'));
+  assert.deepEqual(s.calls.navigations, [`${ORIGIN}/showtimes/${ID}`]);
+  assert.match(s.url(), new RegExp(`/showtimes/${ID}/tickets\\?seats=F7,F8$`));
+  assert.deepEqual(r.showtime, { movie: "Example Feature", theatre: "Example Cinema 12", date: "Saturday, October 3, 2026", time: "7:00 pm" });
+  assert.deepEqual(r.lines, [
+    { ticket_type: "Adult", quantity: 1, price_with_fees: 12, price: 10, convenience_fee: 2, line_total: 12 },
+    { ticket_type: "Senior", quantity: 1, price_with_fees: 10.25, price: 8.25, convenience_fee: 2, line_total: 10.25 }
+  ]);
+  assert.equal(r.expected_subtotal, 22.25);
+  assert.equal(r.notice, "Example matinee notice.");
+  assert.equal(r.continue_pressed, false);
+  assert.match(r.next_step, /expected_subtotal: 22\.25/);
+});
+
+test("preview_tickets sums repeated ticket types to the cent", async () => {
+  const s = site({ prices: { Adult: [24.39, 2.99], Child: [21.99, 2.99], Senior: [23.19, 2.99] } });
+  const r = await tool("preview_tickets", s).run({ showtime_id: ID, seats: ["F7", "F8", "F10"], tickets: [{ type: "Adult", quantity: 2 }, { type: "Child", quantity: 1 }], accessible_seating: true });
+  assert.equal(r.status, "ok", JSON.stringify(r));
+  assert.deepEqual(r.lines.map(l => l.line_total), [54.76, 24.98]);
+  assert.equal(r.expected_subtotal, 79.74);
+});
+
+test("preview_tickets validates input, refuses an open cart and refuses like add_tickets_to_cart without pressing Continue", async () => {
+  for (const bad of [{ ...ORDER, seats: [] }, { ...ORDER, tickets: [{ type: "Adult", quantity: 1 }] }, { ...ORDER, expected_subtotal: 1 }, { ...ORDER, showtime_id: 0 }]) {
+    const s = site();
+    failed(await tool("preview_tickets", s).run(bad), "invalid_input");
+    assert.equal(s.calls.navigations.length + s.calls.clicks.length, 0, JSON.stringify(bad));
+  }
+  let s = site({ start: `${ORIGIN}/orders/00000000-0000-4000-8000-000000000000/food-and-drink` });
+  failed(await tool("preview_tickets", s).run(ORDER), "cart_in_progress");
+  assert.equal(s.calls.navigations.length, 0);
+  s = site({ start: `${ORIGIN}/showtimes/${ID}/tickets?order-token=x` });
+  failed(await tool("preview_tickets", s).run(ORDER), "cart_in_progress");
+  for (const [options, input, kind] of [
+    [{}, { ...ORDER, seats: ["F7", "F9"] }, "seat_unavailable"],
+    [{}, { ...ORDER, seats: ["F7", "F10"] }, "seat_unavailable"],
+    [{ types: ["Adult", "Child"] }, ORDER, "invalid_ticket_type"],
+    [{ preselected: { Adult: 1 } }, ORDER, "not_ready"],
+    [{ flow: "tickets" }, ORDER, "invalid_input"]
+  ]) {
+    s = site(options);
+    failed(await tool("preview_tickets", s).run(input), kind);
+    assert.equal(s.calls.orders, 0);
+  }
+});
+
+test("add_tickets_to_cart presses Continue only when expected_subtotal matches the ticket page", async () => {
+  let s = site();
+  const preview = await tool("preview_tickets", s).run(ORDER);
+  s = site();
+  const added = await tool("add_tickets_to_cart", s).run({ ...ORDER, expected_subtotal: preview.expected_subtotal });
+  assert.equal(added.status, "added", JSON.stringify(added));
+  assert.equal(s.calls.orders, 1);
+  s = site({ prices: { ...PRICES, Senior: [9.25, 2] } });
+  const changed = failed(await tool("add_tickets_to_cart", s).run({ ...ORDER, expected_subtotal: preview.expected_subtotal }), "price_changed");
+  assert.equal(changed.subtotal, 23.25);
+  assert.equal(s.calls.orders, 0);
+  for (const bad of [-1, "22.25", Infinity, null]) {
+    s = site();
+    failed(await tool("add_tickets_to_cart", s).run({ ...ORDER, expected_subtotal: bad }), "invalid_input");
+    assert.equal(s.calls.navigations.length, 0);
+  }
 });

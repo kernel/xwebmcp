@@ -4,7 +4,7 @@
   tool: {
     name: "add_tickets_to_cart",
     title: "Put AMC tickets in a cart",
-    description: "Put tickets for one AMC showtime in a cart, the way a person does on AMC's site: open the showtime's seat page, pick the given seats, choose ticket types and counts, and press Continue, which makes AMC create the order and open its cart page. Returns the cart's ticket lines, seats, fees, taxes, total and how long AMC holds it, as the cart page shows them, plus the movie, theatre, date and time from the seat page. The cart HOLDS the seats against other buyers until AMC's timer runs out (about 7 minutes) or cancel_cart releases them; only create one when the user wants these seats. It never adds food, applies rewards or promo codes, opens checkout or pays: the user finishes the purchase in the same tab, or the cart expires. Use showtime_id from get_showtimes and seat names from get_seat_map (for example F7); the ticket counts must add up to the number of seats. Wheelchair spaces and companion seats are refused unless accessible_seating is true, because AMC reserves them for guests who need them. Refuses while this tab shows a cart or one of its edit pages; it cannot see carts open in other tabs. AMC's security service (Cloudflare) rate-limits the ticket flow after several carts in a few minutes, so create one cart at a time. A refusal comes back after one press, with no retry, as rate_limited or challenge, or as site_error while the seat page still loads; the limit can last an hour or more, so do not retry until the user has completed AMC's security check in the browser or chosen to wait. If AMC shows an error instead of the cart, it presses nothing more and reports it; AMC releases any order it may have started when the timer runs out.",
+    description: "Put tickets for one AMC showtime in a cart, the way a person does on AMC's site: open the showtime's seat page, pick the given seats, choose ticket types and counts, and press Continue, which makes AMC create the order and open its cart page. Returns the cart's ticket lines, seats, fees, taxes, total and how long AMC holds it, as the cart page shows them, plus the movie, theatre, date and time from the seat page. The cart HOLDS the seats against other buyers until AMC's timer runs out (about 7 minutes) or cancel_cart releases them; only create one when the user wants these seats. It never adds food, applies rewards or promo codes, opens checkout or pays: the user finishes the purchase in the same tab, or the cart expires. Use showtime_id from get_showtimes and seat names from get_seat_map (for example F7); the ticket counts must add up to the number of seats. Call preview_tickets first and show the user its price: it makes the same choices without creating an order, and its expected_subtotal passed here makes this tool refuse, before Continue, if the ticket page now prices the tickets differently. Wheelchair spaces and companion seats are refused unless accessible_seating is true, because AMC reserves them for guests who need them. Refuses while this tab shows a cart or one of its edit pages; it cannot see carts open in other tabs. AMC's security service (Cloudflare) rate-limits the ticket flow after several carts in a few minutes, so create one cart at a time. A refusal comes back after one press, with no retry, as rate_limited or challenge, or as site_error while the seat page still loads; the limit can last an hour or more, so do not retry until the user has completed AMC's security check in the browser or chosen to wait. If AMC shows an error instead of the cart, it presses nothing more and reports it; AMC releases any order it may have started when the timer runs out.",
     inputSchema: {
       type: "object", additionalProperties: false, required: ["showtime_id", "seats", "tickets"],
       properties: {
@@ -17,7 +17,8 @@
             properties: { type: { type: "string", minLength: 1, maxLength: 40, description: "Ticket type as AMC lists it for the showtime, for example Adult, Child or Senior (see get_ticket_prices)." }, quantity: { type: "integer", minimum: 1, maximum: 10 } }
           }
         },
-        accessible_seating: { type: "boolean", default: false, description: "Allow wheelchair spaces and companion seats, for a guest who needs them." }
+        accessible_seating: { type: "boolean", default: false, description: "Allow wheelchair spaces and companion seats, for a guest who needs them." },
+        expected_subtotal: { type: "number", minimum: 0, maximum: 100000, description: "preview_tickets' expected_subtotal (USD with fees, before taxes) for the same seats and tickets." }
       }
     },
     outputSchema: {
@@ -48,9 +49,10 @@
           type: "object", additionalProperties: false, required: ["status", "error_kind", "error_message"],
           properties: {
             status: { const: "error" },
-            error_kind: { type: "string", enum: ["invalid_input", "wrong_page", "cart_in_progress", "not_found", "seat_unavailable", "invalid_ticket_type", "not_ready", "challenge", "rate_limited", "site_error", "canceled", "outcome_unknown"] },
+            error_kind: { type: "string", enum: ["invalid_input", "wrong_page", "cart_in_progress", "not_found", "seat_unavailable", "invalid_ticket_type", "price_changed", "not_ready", "challenge", "rate_limited", "site_error", "canceled", "outcome_unknown"] },
             error_message: { type: "string" },
-            available: { type: "array", maxItems: 20, items: { type: "string" }, description: "For invalid_ticket_type, the ticket types AMC offers." }
+            available: { type: "array", maxItems: 20, items: { type: "string" }, description: "For invalid_ticket_type, the ticket types AMC offers." },
+            subtotal: { type: ["number", "null"], description: "For price_changed, the subtotal the ticket page shows now." }
           }
         }
       ]
@@ -60,7 +62,7 @@
   execute: async (input, context) => {
     const ORIGIN = "https://www.amctheatres.com";
     const fail = (kind, message, extra = {}) => ({ status: "error", error_kind: kind, error_message: message, ...extra });
-    if (!input || typeof input !== "object" || Array.isArray(input) || Object.keys(input).some(k => !["showtime_id", "seats", "tickets", "accessible_seating"].includes(k))) return fail("invalid_input", "Provide showtime_id, seats and tickets, and optionally accessible_seating.");
+    if (!input || typeof input !== "object" || Array.isArray(input) || Object.keys(input).some(k => !["showtime_id", "seats", "tickets", "accessible_seating", "expected_subtotal"].includes(k))) return fail("invalid_input", "Provide showtime_id, seats and tickets, and optionally accessible_seating and expected_subtotal.");
     const id = typeof input.showtime_id === "string" && /^[1-9][0-9]{0,9}$/.test(input.showtime_id) ? Number(input.showtime_id) : input.showtime_id;
     if (!Number.isInteger(id) || id < 1 || id > 2147483647) return fail("invalid_input", "showtime_id must be a positive integer from get_showtimes.");
     const seats = input.seats;
@@ -71,6 +73,8 @@
     if (new Set(types).size !== types.length) return fail("invalid_input", "List each ticket type once.");
     if (tickets.reduce((n, t) => n + t.quantity, 0) !== seats.length) return fail("invalid_input", "The ticket quantities must add up to the number of seats.");
     if (input.accessible_seating !== undefined && typeof input.accessible_seating !== "boolean") return fail("invalid_input", "accessible_seating must be true or false.");
+    const expected = input.expected_subtotal;
+    if (expected !== undefined && (typeof expected !== "number" || !Number.isFinite(expected) || expected < 0 || expected > 100000)) return fail("invalid_input", "expected_subtotal must be preview_tickets' expected_subtotal in USD.");
     const canceled = () => context?.signal?.aborted ? fail("canceled", "The call was canceled before Continue was pressed; nothing was held.") : null;
     if (canceled()) return canceled();
 
@@ -189,6 +193,24 @@
     const seatsNow = await js(() => (new URLSearchParams(location.search).get("seats") || "").split(",").filter(Boolean).sort().join());
     if (Object.keys(wanted).some(k => final[k] !== wanted[k])) return fail("site_error", "AMC's ticket counts differ from the request; Continue was not pressed and nothing was held.");
     if (seatsNow !== [...seats].sort().join()) return fail("site_error", "AMC's ticket page lists different seats than requested; Continue was not pressed and nothing was held.");
+    if (expected !== undefined) {
+      // Same reading as preview_tickets: each chosen type's price with fees, times its count.
+      const priced = await js(() => {
+        const text = el => (el && el.textContent ? el.textContent : "").replace(/\s+/g, " ").trim();
+        const usd = t => { const m = /^\$(\d{1,4}(?:,\d{3})*\.\d{2})$/.exec(t || ""); return m ? Number(m[1].replace(/,/g, "")) : null; };
+        const out = {};
+        for (const add of document.querySelectorAll("button[data-xwebmcp-add]")) {
+          const cell = add.closest('[role="row"]')?.querySelector('[role="gridcell"]');
+          const breakdown = cell && cell.querySelector('[aria-label="Price Breakdown"]');
+          out[add.getAttribute("data-xwebmcp-add")] = cell ? usd(text(cell).replace(text(breakdown), "").trim()) : null;
+        }
+        return out;
+      }).catch(() => null);
+      const lines = tickets.map(t => priced && priced[t.type.trim().toLowerCase()]);
+      if (lines.some(p => typeof p !== "number")) return fail("not_ready", "AMC's ticket page shows no price for a chosen ticket type; Continue was not pressed and nothing was held.");
+      const subtotal = Math.round(tickets.reduce((sum, t, i) => sum + Math.round(lines[i] * t.quantity * 100) / 100, 0) * 100) / 100;
+      if (Math.abs(subtotal - expected) > 0.005) return fail("price_changed", `AMC's ticket page now prices these tickets at $${subtotal.toFixed(2)} before taxes, not $${expected.toFixed(2)}. Continue was not pressed and nothing was held; show the user the new price (preview_tickets) before trying again.`, { subtotal });
+    }
 
     // 3. Continue makes AMC create the order (its CartCreateOrder request) and open the cart. Pressed once.
     const armed = await js(() => { const b = [...document.querySelectorAll("button")].filter(b => b.textContent.trim() === "Continue" && !b.disabled); if (b.length !== 1) return false; b[0].setAttribute("data-xwebmcp-next", "tickets"); return true; });

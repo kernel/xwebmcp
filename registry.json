@@ -63,9 +63,9 @@
         "https://www.amctheatres.com/*"
       ],
       "url_patterns_reason": "Narrowed to www.amctheatres.com: it serves the movie, theatre, showtime, account and ticket pages; other amctheatres.com hosts are investor relations (investor.), the site API that pages call (graph.) and analytics (gtm.).",
-      "status": "qa_passed",
-      "last_verified": "2026-10-01",
-      "notes": "Creates an AMC cart (order) for one showtime through AMC's own seat and ticket pages: picks the seats, sets ticket types, re-checks seats and counts, presses Continue once and returns the cart AMC opens, which holds the seats for about 7 minutes. Refuses taken, wheelchair and companion seats (unless asked), unknown ticket types, preselected tickets, general admission, and a tab showing a cart or its edit page; it cannot see carts in other tabs. Never adds food, applies rewards, opens checkout or pays; the order token is not returned. cdp because the flow crosses three pages and the result is read on the last. AMC intermittently answers Continue with a \"Failed to fetch\" dialog (its order request is refused); that is returned as site_error without a retry. Live on 2026-10-01: carts created and canceled, and the refusal path observed. AMC's security service (Cloudflare) rate-limits the ticket flow: after about five carts in a few minutes the order request fails (\"Failed to fetch\") and the seat page shows a Cloudflare check that the browser's solver could not pass, for an hour or more and across browser sessions on the same account. The tool reports that as rate_limited or challenge (site_error when the seat page still loads) with no retry. Independent QA on 2026-10-01: live run (agt_f3092f58d5a84047b69e) confirmed the detection (HTTP 429 with cf-mitigated: challenge) and the cart, refusal and cancel paths; a source review of the corrected refusal messages passed.",
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Creates an AMC cart (order) for one showtime through AMC's own seat and ticket pages: picks the seats, sets ticket types, re-checks seats and counts, presses Continue once and returns the cart AMC opens, which holds the seats for about 7 minutes. Refuses taken, wheelchair and companion seats (unless asked), unknown ticket types, preselected tickets, general admission, and a tab showing a cart or its edit page; it cannot see carts in other tabs. Never adds food, applies rewards, opens checkout or pays; the order token is not returned. cdp because the flow crosses three pages and the result is read on the last. AMC intermittently answers Continue with a \"Failed to fetch\" dialog (its order request is refused); that is returned as site_error without a retry. Live on 2026-10-01: carts created and canceled, and the refusal path observed. AMC's security service (Cloudflare) rate-limits the ticket flow: after about five carts in a few minutes the order request fails (\"Failed to fetch\") and the seat page shows a Cloudflare check that the browser's solver could not pass, for an hour or more and across browser sessions on the same account. The tool reports that as rate_limited or challenge (site_error when the seat page still loads) with no retry. Independent QA on 2026-10-01: live run (agt_f3092f58d5a84047b69e) confirmed the detection (HTTP 429 with cf-mitigated: challenge) and the cart, refusal and cancel paths; a source review of the corrected refusal messages passed. Back to draft after a source change on 2026-10-02: optional expected_subtotal (from preview_tickets) is compared, to the cent, with the ticket page's prices with fees for the chosen types immediately before Continue, and a difference returns price_changed with the current subtotal without pressing it. Builder live run 2026-10-02, signed out: a wrong expected_subtotal returned price_changed with the subtotal preview_tickets had read, and no cart was created; the matching path, which presses Continue, was not run live to avoid holding seats and adding to AMC's cart rate limit, and is fixture-tested. Needs fresh independent QA; earlier sign-off covered the previous source.",
       "provenance": { "qa_agent": "agt_43154fca4357e6e6b165" }
     },
     {
@@ -127,6 +127,20 @@
       "last_verified": "2026-10-01",
       "notes": "One movie's catalogue record. Reads the open /movies/<slug> page without a request when its address, canonical link and Movie structured data all name the movie; otherwise one same-origin GET to /movies/<slug>. Never selects a theatre. Independent QA (live and source review) passed on 2026-10-01.",
       "provenance": { "qa_agent": "agt_ab76807bfaaa8d2aa4ea" }
+    },
+    {
+      "domain": "amctheatres.com",
+      "tool": "get_page_context",
+      "file": "domains/amctheatres.com/get_page_context.js",
+      "kind": "page",
+      "namespace": "amctheatres.com",
+      "url_patterns": [
+        "https://www.amctheatres.com/*"
+      ],
+      "url_patterns_reason": "Narrowed to www.amctheatres.com: it serves the movie, theatre, showtime, account and ticket pages; other amctheatres.com hosts are investor relations (investor.), the site API that pages call (graph.) and analytics (gtm.).",
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Read-only summary of the open AMC page: page type from the address (home, movie lists, movie, search, Find a Theatre, market, theatre, theatre showtimes, seat and ticket pages, cart, other order pages, profile, rewards, not found), market/theatre/movie slugs, showtime id, date and q from the address, the header's current theatre, signed_in, an open cart's step and seconds left on its hold, AMC's Cloudflare check or rate-limit page (blocked), the page's live tool names, unsettled reasons (document loading, a navigate_to_page mark, unhydrated buttons, the page's main content missing, aria-busy) with optional wait_for_settled_seconds, alerts, and suggested next steps that put preview_tickets before add_tickets_to_cart and never suggest pressing Continue. An order's id and order-token are never returned. Builder live run 2026-10-02, signed out: home (reported still loading while AMC's document stayed in readyState loading), Find a Theatre, theatre showtimes, seat page, ticket page after preview_tickets (cart null) and a not-found movie; the page listed all 19 namespace tools, cdp tools included. The header names the current theatre on Find a Theatre results but not on showtimes or seat pages, where current_theatre is null. Signed-in, cart and blocked pages are fixture-tested only. Needs independent QA."
     },
     {
       "domain": "amctheatres.com",
@@ -217,6 +231,34 @@
       "last_verified": "2026-10-01",
       "notes": "Source changed 2026-10-01: reads AMC's published market/theatre sitemaps instead of the market pages, which render at most 10 theatres; adds addresses, city/ZIP-prefix filtering, and not_found for unknown markets. One same-origin GET, bounded filtered-snapshot pagination; no distance search, geolocation or remembered-theatre selection. Live success in a Kernel stealth browser on 2026-10-01. Independent QA (live and source review) passed on 2026-10-01.",
       "provenance": { "qa_agent": "agt_ab76807bfaaa8d2aa4ea" }
+    },
+    {
+      "domain": "amctheatres.com",
+      "tool": "navigate_to_page",
+      "file": "domains/amctheatres.com/navigate_to_page.js",
+      "kind": "page",
+      "namespace": "amctheatres.com",
+      "url_patterns": [
+        "https://www.amctheatres.com/*"
+      ],
+      "url_patterns_reason": "Narrowed to www.amctheatres.com: it serves the movie, theatre, showtime, account and ticket pages; other amctheatres.com hosts are investor relations (investor.), the site API that pages call (graph.) and analytics (gtm.).",
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Schedules a same-origin navigation 100 ms after returning and marks it for get_page_context; the description carries AMC's site map with the tool that reads each page. Rejects other origins, protocol-relative and backslash paths, unknown input and /orders paths, and refuses to leave a cart page (or a cart's Edit Tickets page) unless leave_cart is true, because leaving keeps the seats held. Not read-only: opening a theatre's showtimes page changes AMC's current theatre, as the description says. Builder live run 2026-10-02, signed out: navigated from the home page to Find a Theatre, a theatre's showtimes, a showtime (AMC opened its seat page) and a not-found movie, each confirmed with get_page_context; /orders refused. The cart refusal is fixture-tested only. Needs independent QA."
+    },
+    {
+      "domain": "amctheatres.com",
+      "tool": "preview_tickets",
+      "file": "domains/amctheatres.com/preview_tickets.js",
+      "kind": "cdp",
+      "namespace": "amctheatres.com",
+      "url_patterns": [
+        "https://www.amctheatres.com/*"
+      ],
+      "url_patterns_reason": "Narrowed to www.amctheatres.com: it serves the movie, theatre, showtime, account and ticket pages; other amctheatres.com hosts are investor relations (investor.), the site API that pages call (graph.) and analytics (gtm.).",
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Makes add_tickets_to_cart's choices on AMC's seat and ticket pages (same validation and refusals, same seat-page and ticket-page reading) and reads each chosen type's price with fees, base price and fee, then stops: the ticket page's Continue, which creates the order, is never pressed. Returns lines, expected_subtotal (before taxes) and a next_step naming the add_tickets_to_cart call. cdp because it navigates to the seat page and then the ticket page, and its prices are read on the second. Builder live run 2026-10-02, signed out: two seats, Adult + Senior at $31.48 and $29.98 matched get_ticket_prices, subtotal $61.46; get_page_context then showed the ticket page with no cart, and the seat map showed both seats still open. Needs independent QA."
     },
     {
       "domain": "amctheatres.com",
