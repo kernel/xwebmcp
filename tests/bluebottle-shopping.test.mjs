@@ -3,7 +3,8 @@ import { readFileSync } from "node:fs";
 import test from "node:test";
 import { runInNewContext } from "node:vm";
 
-const names = ["add_to_cart", "continue_to_checkout", "get_cart", "get_product"];
+const names = ["add_to_cart", "continue_to_checkout", "find_product", "get_cart", "get_product"];
+const cdpTools = new Set(["add_to_cart", "find_product"]);
 const sources = Object.fromEntries(names.map(name => [name, readFileSync(new URL(`../domains/bluebottlecoffee.com/${name}.js`, import.meta.url), "utf8")]));
 const plain = value => JSON.parse(JSON.stringify(value));
 
@@ -87,6 +88,7 @@ function harness(name, options = {}) {
   };
   const context = {
     JSON, Date, CSS: { escape: value => String(value) }, document,
+    js: async (fn, options) => fn(options?.arg),
     location: { hostname: url.hostname, pathname: url.pathname },
     setTimeout: (fn, delay) => {
       if (delay === 100) scheduled.push(fn);
@@ -129,14 +131,14 @@ function harness(name, options = {}) {
 const registry = JSON.parse(readFileSync(new URL("../registry.json", import.meta.url), "utf8"));
 
 for (const name of names) {
-  test(`${name}: page tool has typed schemas and a registry entry`, () => {
+  test(`${name}: tool has typed schemas and a registry entry`, () => {
     assert.equal(sources[name].trimEnd().endsWith(";"), false);
-    const { definition } = harness(name);
-    assert.equal(definition.kind, "page");
+    const { definition } = name === "find_product" ? shop() : harness(name);
+    assert.equal(definition.kind, cdpTools.has(name) ? "cdp" : "page");
     assert.equal(definition.tool.name, name);
     assert.deepEqual(plain(definition.match.url_patterns), ["https://bluebottlecoffee.com/*", "https://www.bluebottlecoffee.com/*"]);
     assert.ok(definition.tool.outputSchema);
-    assert.ok(registry.tools.find(entry => entry.domain === "bluebottlecoffee.com" && entry.tool === name));
+    assert.equal(registry.tools.find(entry => entry.domain === "bluebottlecoffee.com" && entry.tool === name)?.kind, definition.kind);
   });
 }
 
@@ -186,4 +188,62 @@ test("continue_to_checkout settles before scheduling navigation", async () => {
 
 test("continue_to_checkout refuses an empty cart", async () => {
   assert.equal((await harness("continue_to_checkout", { empty: true, lineQuantity: 0 }).run({})).status, "empty_cart");
+});
+
+function shop(options = {}) {
+  const cards = options.cards ?? [
+    ["/us/eng/product/hayes-valley-espresso", "Best Seller HAYES VALLEY ESPRESSO $22 Baking Chocolate, Orange Zest, Brown Sugar Dark Roast"],
+    ["/us/eng/product/giant-steps", "GIANT STEPS $22 Cocoa, Toasted Marshmallow, Graham Cracker Dark Roast"],
+    ["/us/eng/product/17ft-ceiling", "Online Exclusive 17FT CEILING ESPRESSO $22 Caramel, Almond, Dried Cherry Dark Roast"]
+  ];
+  let url = options.url ?? "https://bluebottlecoffee.com/us/eng";
+  const visited = [];
+  const links = () => url.includes("/shop/coffee") ? cards.map(([path, text]) => ({ href: `https://bluebottlecoffee.com${path}`, innerText: text, getAttribute: () => null })) : [];
+  const context = {
+    URL,
+    document: { querySelectorAll: selector => selector === 'main a[href*="/product/"]' ? links() : [] },
+    location: { get href() { return url; } }
+  };
+  const helpers = {
+    pageInfo: async () => ({ url }),
+    gotoUrl: async next => { url = next; visited.push(next); },
+    waitMs: async () => {},
+    waitForLoad: async () => true,
+    waitForElement: async selector => selector.includes("/product/") ? links().length > 0 : true,
+    js: async fn => runInNewContext(`(${fn.toString()})()`, context)
+  };
+  const [definition] = runInNewContext(`(${sources.find_product})`, helpers);
+  return {
+    definition, visited,
+    run: async input => {
+      const result = plain(await definition.execute(input));
+      assert.ok(conforms(definition.tool.outputSchema, result), `find_product output violates its schema: ${JSON.stringify(result)}`);
+      return result;
+    }
+  };
+}
+
+test("find_product opens the single best match from the locale's shop", async () => {
+  const s = shop();
+  const result = await s.run({ query: "Hayes Valley" });
+  assert.equal(result.opened, "https://bluebottlecoffee.com/us/eng/product/hayes-valley-espresso");
+  assert.deepEqual(result.matches.map(match => match.name), ["Hayes Valley Espresso"]);
+  assert.deepEqual(s.visited, ["https://bluebottlecoffee.com/us/eng/shop/coffee", result.opened]);
+});
+
+test("find_product lists ambiguous matches without navigating to one", async () => {
+  const s = shop();
+  const result = await s.run({ query: "dark roast" });
+  assert.equal(result.opened, null);
+  assert.equal(result.matches.length, 3);
+  assert.deepEqual(s.visited, ["https://bluebottlecoffee.com/us/eng/shop/coffee"]);
+});
+
+test("find_product honors open: false and rejects bad or unmatched queries", async () => {
+  const s = shop();
+  assert.equal((await s.run({ query: "hayes valley", open: false })).opened, null);
+  assert.equal(s.visited.length, 1);
+  assert.equal((await shop().run({ query: "x" })).status, "invalid_input");
+  assert.equal((await shop().run({ query: "oolong" })).status, "no_results");
+  assert.equal((await shop({ cards: [] }).run({ query: "hayes" })).status, "not_ready");
 });

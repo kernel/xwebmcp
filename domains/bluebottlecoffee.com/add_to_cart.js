@@ -1,5 +1,5 @@
 [{
-  kind: "page",
+  kind: "cdp",
   match: { url_patterns: ["https://bluebottlecoffee.com/*", "https://www.bluebottlecoffee.com/*"] },
   tool: {
     name: "add_to_cart",
@@ -34,7 +34,7 @@
     },
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false }
   },
-  execute: async (input) => {
+  execute: async (input) => js(async (input) => {
     const fail = (kind, message) => ({ status: "error", error_kind: kind, error_message: message });
     if (!input || typeof input !== "object" || Array.isArray(input) || Object.keys(input).some(key => !["sku", "quantity"].includes(key))) return fail("invalid_input", "Provide sku and optionally quantity.");
     const sku = typeof input.sku === "string" ? input.sku.trim() : "";
@@ -92,5 +92,5 @@
     const name = line.querySelector('a[href*="/product/"]')?.textContent?.trim() || product.name?.eng || "Blue Bottle product";
     if (!Number.isInteger(lineQuantity) || lineQuantity < 1 || !Number.isInteger(count) || count < 1) return fail("site_error", "The item appeared in the cart, but Blue Bottle did not expose a confirmed quantity. Check the cart before retrying.");
     return { status: "ok", sku, name, added_quantity: quantity, line_quantity: lineQuantity, items_quantity: count };
-  }
+  }, { arg: input })
 }]
