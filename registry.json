@@ -96,7 +96,7 @@
       "url_patterns_reason": "Limited to the Blue Bottle storefront on bluebottlecoffee.com and www.bluebottlecoffee.com; checkout.bluebottlecoffee.com is a separate Stripe surface with its own native tools.",
       "status": "draft",
       "last_verified": null,
-      "notes": "Searches the coffee shop listing by name or keywords and opens the product page when one match ranks highest. CDP because it navigates to the shop listing, reads the ranked matches there, and then navigates to the chosen product; neither page is the invoking document. Builder live-tested \"hayes valley\" opening Hayes Valley Espresso from the storefront home page. Independent QA pending."
+      "notes": "Searches the coffee shop listing by name or keywords and opens the product page when one match ranks highest. CDP because it navigates to the shop listing, reads the ranked matches there, and then navigates to the chosen product; neither page is the invoking document. Validates inputs and storefront links, confirms the actual destination and product readiness, and returns guidance to rediscover tools after navigation. Independent source review, the full 2,069-test suite, and additional delayed-navigation, redirect and missing-element simulations passed. Builder live-tested 17ft Ceiling Espresso from the storefront homepage, fresh-reference get_product, listing-only search and repeat search from the shop on 2026-10-01. No cart changes were made. Retains draft status; broader live locale and failure-path QA remains unverified."
     },
     {
       "domain": "bluebottlecoffee.com",
@@ -742,7 +742,7 @@
       ],
       "status": "verified",
       "last_verified": "2026-09-24",
-      "notes": "Independent search/parser QA passed; domain migration live-verified from /travel-agents. Returns initial outbound cards only, including round trips; 1–7 adults; displayed cash fares are not trip totals. Inventory failures remain explicit errors.",
+      "notes": "Independent search/parser QA passed; domain migration live-verified from /travel-agents. Returns initial outbound cards only, including round trips; 1\u20137 adults; displayed cash fares are not trip totals. Inventory failures remain explicit errors.",
       "provenance": {
         "qa_agent": "agt_8da83a2e489269a5ff05"
       }
