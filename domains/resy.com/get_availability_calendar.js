@@ -3,7 +3,7 @@
   match: { url_patterns: ["https://resy.com/*"] },
   tool: {
     name: "get_availability_calendar",
-    description: "Per-date reservation state (available, sold-out, closed) for one venue and party size over up to 366 days, with the last bookable date. Read-only.",
+    description: "Per-date reservation state for one venue and party size over up to 366 days, with the last bookable date. reservation is available (at least one slot for this party size), sold-out (Resy offers no slot for this party size that day; it does not say whether a service is closed or fully booked, and Notify may still be possible — check get_availability) or closed (the venue takes no reservations that day). event says whether a ticketed event is bookable that day (see list_events); walk_in is the venue's walk-in setting, not a guarantee. Dates after last_bookable_date are not released yet. Read-only; signed out works.",
     inputSchema: {
       type: "object", additionalProperties: false, required: ["venue_id", "start_date"],
       properties: {

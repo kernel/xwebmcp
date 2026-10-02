@@ -179,7 +179,7 @@ for (const name of NAMES) {
 }
 
 test("registry lists every resy.com tool exactly once", () => {
-  assert.deepEqual(registry.tools.filter(t => t.domain === "resy.com").map(t => t.tool).sort(), [...NAMES, "get_account_status", "get_reservation", "list_notify_requests", "list_reservations", "set_favorite", "list_lists", "get_list", "set_list_membership", "create_list", "delete_list", "create_notify", "remove_notify", "get_booking_quote", "book_reservation", "change_reservation", "cancel_reservation", "rate_reservation", "get_share_link", "copy_list", "get_venues", "list_events", "list_collections", "get_collection"].sort());
+  assert.deepEqual(registry.tools.filter(t => t.domain === "resy.com").map(t => t.tool).sort(), [...NAMES, "get_account_status", "get_reservation", "list_notify_requests", "list_reservations", "set_favorite", "list_lists", "get_list", "set_list_membership", "create_list", "delete_list", "create_notify", "remove_notify", "get_booking_quote", "book_reservation", "change_reservation", "cancel_reservation", "rate_reservation", "get_share_link", "copy_list", "get_venues", "list_events", "list_collections", "get_collection", "login", "get_page_context", "navigate_to_page", "open_booking_dialog", "close_booking_dialog"].sort());
 });
 
 // --- input validation happens before any request ----------------------------------------------------------

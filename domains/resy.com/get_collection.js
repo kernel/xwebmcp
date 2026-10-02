@@ -3,12 +3,15 @@
   match: { url_patterns: ["https://resy.com/*"] },
   tool: {
     name: "get_collection",
-    description: "One page of a collection's venues with up to 6 open slots each for a date and party size. Read-only.",
+    description: "One page of a collection's venues with up to 6 open slots each for a date and party size: an editorial collection (collection_id + location from list_collections) or an algorithmic list (list: climbing, top-rated, new-on-resy + city_slug). near_time keeps slots within 2 hours. slot_count 0: no open slot (see get_availability for Notify). Read-only; signed out works.",
     inputSchema: {
-      type: "object", additionalProperties: false, required: ["collection_id",  "location",  "date"],
+      type: "object", additionalProperties: false, required: ["date"],
       properties: {
-        collection_id: { type: "integer", minimum: 1 },
-        location: { type: "string", pattern: "^[a-z]{2,10}$", description: "Resy city code, for example ny." },
+        collection_id: { type: "integer", minimum: 1, description: "Editorial collection id from list_collections (with location). Omit when using list." },
+        list: { type: "string", enum: ["climbing", "top-rated", "new-on-resy"], description: "Algorithmic city list (with city_slug). Omit when using collection_id." },
+        city_slug: { type: "string", pattern: "^[a-z0-9][a-z0-9-]{1,99}$", description: "City slug for list, e.g. new-york-ny." },
+        near_time: { type: "string", pattern: "^\\d{2}:\\d{2}$", description: "Keep only slots within two hours of this venue-local time, e.g. 19:30." },
+        location: { type: "string", pattern: "^[a-z]{2,10}$", description: "Resy city code for collection_id, for example ny." },
         date: { type: "string", pattern: "^\\d{4}-\\d{2}-\\d{2}$" },
         party_size: { type: "integer", minimum: 1, maximum: 20, default: 2 },
         page: { type: "integer", minimum: 1, maximum: 500, default: 1 },
@@ -21,7 +24,7 @@
         {
           type: "object", additionalProperties: false, required: ["status",  "page",  "venues"],
           properties: {
-            status: { enum: ["ok", "no_results"] }, page: { type: "integer" },
+            status: { enum: ["ok", "no_results"] }, page: { type: "integer" }, total: { type: ["integer", "null"] }, has_more: { type: "boolean" },
             venues: {
               type: "array", maxItems: 10,
               items: {
@@ -29,7 +32,7 @@
                 properties: { venue: {
                   type: "object", additionalProperties: false, required: ["venue_id", "name", "city_slug", "url_slug", "url", "cuisine", "neighborhood", "price_range", "rating"],
                   properties: { venue_id: { type: "integer" }, name: { type: "string" }, city_slug: { type: ["string", "null"] }, url_slug: { type: ["string", "null"] }, url: { type: ["string", "null"] }, cuisine: { type: ["string", "null"] }, neighborhood: { type: ["string", "null"] }, price_range: { type: ["integer", "null"] }, rating: { type: ["object", "null"] } }
-              }, slot_count: { type: "integer" }, slots: { type: "array", maxItems: 6, items: { type: "object", additionalProperties: false, required: ["local_start", "seating_type"], properties: { local_start: { type: "string" }, seating_type: { type: ["string", "null"] } } } } }
+              }, slot_count: { type: ["integer", "null"], description: "Open slots that day (after near_time); null when the availability check for this venue failed." }, slots: { type: "array", maxItems: 6, items: { type: "object", additionalProperties: false, required: ["local_start", "seating_type"], properties: { local_start: { type: "string" }, seating_type: { type: ["string", "null"] } } } } }
               }
             }
           }
@@ -94,8 +97,13 @@
       };
       return { request };
     };
-    if (!isPlain(input) || Object.keys(input).some(k => !["collection_id", "location", "date", "party_size", "page", "limit"].includes(k))) return fail("invalid_input", "Unexpected input fields.");
-    if (!Number.isInteger(input.collection_id) || input.collection_id < 1 || typeof input.location !== "string" || !/^[a-z]{2,10}$/.test(input.location)) return fail("invalid_input", "collection_id must come from list_collections and location be a city code such as ny.");
+    if (!isPlain(input) || Object.keys(input).some(k => !["collection_id", "location", "list", "city_slug", "near_time", "date", "party_size", "page", "limit"].includes(k))) return fail("invalid_input", "Unexpected input fields.");
+    const algo = input.list !== undefined;
+    if (algo) {
+      if (input.collection_id !== undefined || input.location !== undefined) return fail("invalid_input", "Give either list with city_slug, or collection_id with location, not both.");
+      if (!["climbing", "top-rated", "new-on-resy"].includes(input.list) || typeof input.city_slug !== "string" || !/^[a-z0-9][a-z0-9-]{1,99}$/.test(input.city_slug)) return fail("invalid_input", "list must be climbing, top-rated or new-on-resy, with city_slug such as new-york-ny.");
+    } else if (!Number.isInteger(input.collection_id) || input.collection_id < 1 || typeof input.location !== "string" || !/^[a-z]{2,10}$/.test(input.location)) return fail("invalid_input", "Give collection_id (from list_collections) with location (a city code such as ny), or list (climbing, top-rated, new-on-resy) with city_slug.");
+    if (input.near_time !== undefined && (typeof input.near_time !== "string" || !/^([01]\d|2[0-3]):[0-5]\d$/.test(input.near_time))) return fail("invalid_input", "near_time must be HH:MM.");
     const problem = dateProblem(input.date, "date");
     if (problem) return fail("invalid_input", problem);
     const party = input.party_size ?? 2, page = input.page ?? 1, limit = input.limit ?? 5;
@@ -112,18 +120,41 @@
       const price = int(v.price_range_id);
       return { venue_id: id, name: text(v.name, 200), city_slug: citySlug, url_slug: urlSlug, url: urlSlug && citySlug ? ORIGIN + "/cities/" + citySlug + "/venues/" + urlSlug : null, cuisine: text(v.type, 100), neighborhood: text(loc.neighborhood, 100), price_range: price !== null && price >= 1 && price <= 4 ? price : null, rating: rater ? { average: num(rater.score), count: int(rater.total) } : null };
     };
-    const res = await connection.request("GET", "/3/collection/venues?collection_id=" + input.collection_id + "&location_id=" + input.location + "&day=" + input.date + "&party_size=" + party + "&offset=" + page + "&limit=" + limit);
-    if (res.error) return res.error;
-    if (res.status === 400) return fail("invalid_input", "Resy rejected the collection parameters (HTTP 400).");
-    const list = res.status === 200 && isPlain(res.json) && isPlain(res.json.results) && Array.isArray(res.json.results.venues) ? res.json.results.venues : null;
-    if (!list) return fail("site_changed", "Resy's collection response did not have the expected shape (HTTP " + res.status + ").");
+    const minutes = v => { const m = /T(\d{2}):(\d{2})$/.exec(v); return m ? Number(m[1]) * 60 + Number(m[2]) : null; };
+    const near = input.near_time ? Number(input.near_time.slice(0, 2)) * 60 + Number(input.near_time.slice(3)) : null;
+    const keep = s => near === null || (s.local_start.slice(0, 10) === input.date && Math.abs(minutes(s.local_start) - near) <= 120);
+    const slotsOf = raw => (Array.isArray(raw) ? raw : []).map(s => ({ local_start: isPlain(s) && isPlain(s.date) ? localStamp(s.date.start) : null, seating_type: isPlain(s) && isPlain(s.config) ? text(s.config.type, 60) : null })).filter(s => s.local_start && keep(s)).sort(byStart);
     const venues = [];
-    for (const entry of list.slice(0, limit)) {
-      const card = isPlain(entry) ? venueCard(entry.venue) : null;
-      if (!card) continue;
-      const slots = (Array.isArray(entry.slots) ? entry.slots : []).map(s => ({ local_start: isPlain(s) && isPlain(s.date) ? localStamp(s.date.start) : null, seating_type: isPlain(s) && isPlain(s.config) ? text(s.config.type, 60) : null })).filter(s => s.local_start).sort(byStart);
-      venues.push({ venue: card, slot_count: slots.length, slots: slots.slice(0, 6) });
+    let total = null;
+    if (algo) {
+      const res = await connection.request("GET", "/3/cities/" + input.city_slug + "/list/" + input.list + "?day=" + input.date + "&party_size=" + party + "&limit=" + limit + "&offset=" + (page - 1) * limit);
+      if (res.error) return res.error;
+      if (res.status === 404) return fail("invalid_input", "Resy has no " + input.list + " list for city '" + input.city_slug + "'.");
+      const list = res.status === 200 && isPlain(res.json) && isPlain(res.json.results) && Array.isArray(res.json.results.venues) ? res.json.results.venues : null;
+      if (!list) return fail("site_changed", "Resy's list response did not have the expected shape (HTTP " + res.status + ").");
+      total = isPlain(res.json.metadata) ? int(res.json.metadata.total) : null;
+      const cards = list.slice(0, limit).map(venueCard).filter(Boolean);
+      const found = await Promise.all(cards.map(card => connection.request("POST", "/4/find", { lat: 0, long: 0, day: input.date, party_size: party, venue_id: card.venue_id })));
+      cards.forEach((card, i) => {
+        const r = found[i];
+        const entry = !r.error && r.status === 200 && isPlain(r.json) && isPlain(r.json.results) && Array.isArray(r.json.results.venues) ? r.json.results.venues[0] : null;
+        const slots = isPlain(entry) ? slotsOf(entry.slots) : [];
+        venues.push({ venue: card, slot_count: entry ? slots.length : null, slots: slots.slice(0, 6) });
+      });
+    } else {
+      const res = await connection.request("GET", "/3/collection/venues?collection_id=" + input.collection_id + "&location_id=" + input.location + "&day=" + input.date + "&party_size=" + party + "&offset=" + page + "&limit=" + limit);
+      if (res.error) return res.error;
+      if (res.status === 400) return fail("invalid_input", "Resy rejected the collection parameters (HTTP 400).");
+      const list = res.status === 200 && isPlain(res.json) && isPlain(res.json.results) && Array.isArray(res.json.results.venues) ? res.json.results.venues : null;
+      if (!list) return fail("site_changed", "Resy's collection response did not have the expected shape (HTTP " + res.status + ").");
+      total = isPlain(res.json.metadata) ? int(res.json.metadata.total) : null;
+      for (const entry of list.slice(0, limit)) {
+        const card = isPlain(entry) ? venueCard(entry.venue) : null;
+        if (!card) continue;
+        const slots = slotsOf(entry.slots);
+        venues.push({ venue: card, slot_count: slots.length, slots: slots.slice(0, 6) });
+      }
     }
-    return { status: venues.length ? "ok" : "no_results", page, venues };
+    return { status: venues.length ? "ok" : "no_results", page, total, has_more: total !== null ? page * limit < total : venues.length === limit, venues };
   }
 }]

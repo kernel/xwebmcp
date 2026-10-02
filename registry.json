@@ -1148,6 +1148,20 @@
     },
     {
       "domain": "resy.com",
+      "tool": "close_booking_dialog",
+      "file": "domains/resy.com/close_booking_dialog.js",
+      "kind": "cdp",
+      "namespace": "resy.com",
+      "url_patterns": [
+        "https://resy.com/*"
+      ],
+      "url_patterns_reason": "Narrowed to resy.com: www.resy.com redirects there, and the other subdomains (blog, helpdesk, widgets, os) are separate products that do not expose the consumer page's API configuration these tools call api.resy.com with.",
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Closes Resy's booking window with its own X button inside the widgets.resy.com frame; never presses Reserve Now. CDP because the window is a cross-origin frame the page cannot script (reads it via Page.getFrameTree + an isolated world). Live 2026-10-01: closed a dialog opened by open_booking_dialog."
+    },
+    {
+      "domain": "resy.com",
       "tool": "copy_list",
       "file": "domains/resy.com/copy_list.js",
       "kind": "page",
@@ -1297,6 +1311,20 @@
     },
     {
       "domain": "resy.com",
+      "tool": "get_page_context",
+      "file": "domains/resy.com/get_page_context.js",
+      "kind": "page",
+      "namespace": "resy.com",
+      "url_patterns": [
+        "https://resy.com/*"
+      ],
+      "url_patterns_reason": "Narrowed to resy.com: www.resy.com redirects there, and the other subdomains (blog, helpdesk, widgets, os) are separate products that do not expose the consumer page's API configuration these tools call api.resy.com with.",
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Read-only page summary: page type from the URL (city, search, venue, event, algorithmic list, account pages, not found), city/venue slugs, date and seats from the URL, live tool names, unsettled + reasons (document loading, navigation mark from navigate_to_page, spinners, venue still rendering, aria-busy) with optional wait_for_settled_seconds, pending_choice for the booking dialog (widgets.resy.com frame) or log-in window, signed_in from the page's Resy session, alerts, and suggestions that never press Reserve Now. Unit-tested; exercised live on venue pages signed in."
+    },
+    {
+      "domain": "resy.com",
       "tool": "get_reservation",
       "file": "domains/resy.com/get_reservation.js",
       "kind": "page",
@@ -1432,6 +1460,48 @@
       "provenance": {
         "qa_agent": "agt_221f5a5f11361477ff09"
       }
+    },
+    {
+      "domain": "resy.com",
+      "tool": "login",
+      "file": "domains/resy.com/login.js",
+      "kind": "page",
+      "namespace": "resy.com",
+      "url_patterns": [
+        "https://resy.com/*"
+      ],
+      "url_patterns_reason": "Narrowed to resy.com: www.resy.com redirects there, and the other subdomains (blog, helpdesk, widgets, os) are separate products that do not expose the consumer page's API configuration these tools call api.resy.com with.",
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Signs in with email and password through Resy's 4/auth/password endpoint (the endpoint its email-and-password form used; the current UI offers phone or email one-time code), credentials sent once and never returned, then reloads so Resy restores the session from its refresh cookie. Never retries; reports invalid_credentials, verification_required and challenge. Live 2026-10-01: signed in the owner's test account (no verification step requested); get_account_status then returned an account_ref."
+    },
+    {
+      "domain": "resy.com",
+      "tool": "navigate_to_page",
+      "file": "domains/resy.com/navigate_to_page.js",
+      "kind": "page",
+      "namespace": "resy.com",
+      "url_patterns": [
+        "https://resy.com/*"
+      ],
+      "url_patterns_reason": "Narrowed to resy.com: www.resy.com redirects there, and the other subdomains (blog, helpdesk, widgets, os) are separate products that do not expose the consumer page's API configuration these tools call api.resy.com with.",
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Schedules a same-origin navigation after returning (100 ms) and marks the page as navigating for get_page_context; rejects other origins, protocol-relative and backslash paths. Description carries a short Resy site map. Unit-tested; live 2026-10-01."
+    },
+    {
+      "domain": "resy.com",
+      "tool": "open_booking_dialog",
+      "file": "domains/resy.com/open_booking_dialog.js",
+      "kind": "cdp",
+      "namespace": "resy.com",
+      "url_patterns": [
+        "https://resy.com/cities/*/venues/*"
+      ],
+      "url_patterns_reason": "Only venue pages show slot buttons that open Resy's booking window; www.resy.com redirects to resy.com and other subdomains are separate products.",
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Clicks one exact slot button on the venue page (time and seating type must match; never another slot), then reads Resy's Complete Your Reservation window: venue, time, guests/seating, card on file (no card details), price lines, cancellation policy, final button label and enabled state; never presses the final button. CDP because the window is a cross-origin widgets.resy.com frame only readable through the frame tree. Checks the page date/seats match the slot and that the user is signed in. Live 2026-10-01: Aria West Village 7:30 PM for 2, read Reserve Now and the $25 per guest policy, then closed."
     },
     {
       "domain": "resy.com",
