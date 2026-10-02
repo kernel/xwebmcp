@@ -57,7 +57,7 @@
       "domain": "bluebottlecoffee.com",
       "tool": "add_to_cart",
       "file": "domains/bluebottlecoffee.com/add_to_cart.js",
-      "kind": "page",
+      "kind": "cdp",
       "namespace": "bluebottlecoffee.com",
       "url_patterns": [
         "https://bluebottlecoffee.com/*",
@@ -66,7 +66,7 @@
       "url_patterns_reason": "Limited to the Blue Bottle storefront on bluebottlecoffee.com and www.bluebottlecoffee.com; checkout.bluebottlecoffee.com is a separate Stripe surface with its own native tools.",
       "status": "draft",
       "last_verified": null,
-      "notes": "Adds a one-time purchase from the current product page through the site's own form and confirms the cart line. Builder live-tested an existing Hayes Valley Espresso cart line increasing from one to two, then restored the original cart exactly. Multi-variant products fail closed until a variant-selection contract is added. Independent QA pending."
+      "notes": "Adds a one-time purchase from the current product page through the site's own form and confirms the cart line. CDP exception: the body runs in the page through js(), but pressing Add to Cart makes the site's analytics navigate a cross-origin child iframe, and the page runtime then drops the result with \"Cannot return tool results after a cross-origin navigation\" even though the item was added; as a cdp tool the same body returns its confirmed cart line. Builder live-tested adding Hayes Valley Espresso to an empty cart in a fresh browser. Multi-variant products fail closed until a variant-selection contract is added. Independent QA pending."
     },
     {
       "domain": "bluebottlecoffee.com",
@@ -82,6 +82,21 @@
       "status": "draft",
       "last_verified": null,
       "notes": "Opens a non-empty cart and schedules the site's Continue to Checkout click after returning. Builder live-tested navigation from the storefront cart to Stripe checkout without entering details or submitting an order. Independent QA pending."
+    },
+    {
+      "domain": "bluebottlecoffee.com",
+      "tool": "find_product",
+      "file": "domains/bluebottlecoffee.com/find_product.js",
+      "kind": "cdp",
+      "namespace": "bluebottlecoffee.com",
+      "url_patterns": [
+        "https://bluebottlecoffee.com/*",
+        "https://www.bluebottlecoffee.com/*"
+      ],
+      "url_patterns_reason": "Limited to the Blue Bottle storefront on bluebottlecoffee.com and www.bluebottlecoffee.com; checkout.bluebottlecoffee.com is a separate Stripe surface with its own native tools.",
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Searches the coffee shop listing by name or keywords and opens the product page when one match ranks highest. CDP because it navigates to the shop listing, reads the ranked matches there, and then navigates to the chosen product; neither page is the invoking document. Builder live-tested \"hayes valley\" opening Hayes Valley Espresso from the storefront home page. Independent QA pending."
     },
     {
       "domain": "bluebottlecoffee.com",
@@ -727,7 +742,7 @@
       ],
       "status": "verified",
       "last_verified": "2026-09-24",
-      "notes": "Independent search/parser QA passed; domain migration live-verified from /travel-agents. Returns initial outbound cards only, including round trips; 1\u20137 adults; displayed cash fares are not trip totals. Inventory failures remain explicit errors.",
+      "notes": "Independent search/parser QA passed; domain migration live-verified from /travel-agents. Returns initial outbound cards only, including round trips; 1–7 adults; displayed cash fares are not trip totals. Inventory failures remain explicit errors.",
       "provenance": {
         "qa_agent": "agt_8da83a2e489269a5ff05"
       }
