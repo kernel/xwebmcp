@@ -3,9 +3,9 @@
   match: { url_patterns: ["https://resy.com/*"] },
   tool: {
     name: "change_reservation",
-    description: "Move one upcoming reservation to another exact slot at the same venue (Resy's Modify). Only when the user asked; needs reservation_id, expected_date, the new slot, expected_total from get_booking_quote and confirm: true. One attempt; outcome_unknown means check list_reservations.",
+    description: "Move one upcoming reservation to another exact slot at the same venue (Resy's Modify). preview: true (instead of confirm; expected_total optional) quotes the move and sends nothing. To change (only when the user asked): reservation_id, expected_date, the new slot, expected_total from the quote and confirm: true. One attempt; outcome_unknown: check list_reservations.",
     inputSchema: {
-      type: "object", additionalProperties: false, required: ["expected_account_ref", "reservation_id", "expected_date", "venue_id", "date", "party_size", "local_start", "seating_type", "expected_total", "confirm"],
+      type: "object", additionalProperties: false, required: ["expected_account_ref", "reservation_id", "expected_date", "venue_id", "date", "party_size", "local_start", "seating_type"],
       properties: {
         expected_account_ref: { type: "string", pattern: "^account_[a-f0-9]{64}$", description: "From get_account_status." },
         reservation_id: { type: "string", pattern: "^[1-9]\\d{0,29}$" },
@@ -16,12 +16,17 @@
         local_start: { type: "string", pattern: "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}$", description: "Slot local_start from get_availability." },
         seating_type: { type: ["string", "null"], maxLength: 60, description: "Slot seating_type from get_availability." },
         expected_total: { type: "number", minimum: 0 },
-        confirm: { const: true, description: "The user asked to change this reservation." }
+        confirm: { const: true, description: "The user asked to change this reservation. Omit with preview." },
+        preview: { const: true, description: "Read-only: check the reservation and quote the new slot; nothing is changed." }
       }
     },
     outputSchema: {
       type: "object",
       oneOf: [
+        {
+          type: "object", additionalProperties: false, required: ["status", "account_ref", "previous", "new_slot", "quote", "next_step"],
+          properties: { status: { const: "preview" }, account_ref: { type: "string" }, previous: { type: "object" }, new_slot: { type: "object" }, quote: { type: "object", description: "Same fields as get_booking_quote's quote, for the move." }, next_step: { type: "string" } }
+        },
         {
           type: "object", additionalProperties: false, required: ["status", "account_ref", "previous", "reservation", "quote"],
           properties: { status: { const: "changed" }, account_ref: { type: "string", pattern: "^account_[a-f0-9]{64}$", description: "From get_account_status." }, previous: {
@@ -48,11 +53,14 @@
     const accountRefValid = v => typeof v === "string" && /^account_[a-f0-9]{64}$/.test(v);
     const isDate = v => typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v) && !Number.isNaN(Date.parse(v + "T00:00:00Z")) && new Date(v + "T00:00:00Z").toISOString().slice(0, 10) === v;
     const dayOf = ms => new Date(ms).toISOString().slice(0, 10);
-    if (!validInput(["expected_account_ref", "reservation_id", "expected_date", "venue_id", "date", "party_size", "local_start", "seating_type", "expected_total", "confirm"])) return fail("invalid_input", "Unexpected input fields.");
+    if (!validInput(["expected_account_ref", "reservation_id", "expected_date", "venue_id", "date", "party_size", "local_start", "seating_type", "expected_total", "confirm", "preview"])) return fail("invalid_input", "Unexpected input fields.");
     if (!accountRefValid(input.expected_account_ref)) return fail("invalid_input", "expected_account_ref must come from get_account_status.");
-    if (input.confirm !== true) return fail("invalid_input", "confirm must be true, meaning the user asked to change this reservation. Nothing was sent.");
+    const preview = input.preview === true;
+    if (input.preview !== undefined && !preview) return fail("invalid_input", "preview must be true when given.");
+    if (preview && input.confirm !== undefined) return fail("invalid_input", "Give preview or confirm, not both. Nothing was sent.");
+    if (!preview && input.confirm !== true) return fail("invalid_input", "confirm must be true, meaning the user asked to change this reservation. To show the user the move and its terms first, call with preview: true instead (sends nothing). list_reservations lists the upcoming reservations and their ids. Nothing was sent.");
     if (typeof input.reservation_id !== "string" || !/^[1-9]\d{0,29}$/.test(input.reservation_id) || !isDate(input.expected_date)) return fail("invalid_input", "reservation_id and expected_date must come from list_reservations.");
-    if (typeof input.expected_total !== "number" || !Number.isFinite(input.expected_total) || input.expected_total < 0) return fail("invalid_input", "expected_total must be quote.total from get_booking_quote for the new slot.");
+    if (!(preview && input.expected_total === undefined) && (typeof input.expected_total !== "number" || !Number.isFinite(input.expected_total) || input.expected_total < 0)) return fail("invalid_input", "expected_total must be quote.total from get_booking_quote for the new slot.");
     if (!Number.isInteger(input.venue_id) || input.venue_id < 1 || input.venue_id > 2147483647) return fail("invalid_input", "venue_id must be a positive integer Resy venue id.");
     if (!isDate(input.date) || input.date < dayOf(Date.now() - 86400000) || input.date > dayOf(Date.now() + 366 * 86400000)) return fail("invalid_input", "date must be a real YYYY-MM-DD service date from yesterday (UTC) to one year ahead.");
     if (!Number.isInteger(input.party_size) || input.party_size < 1 || input.party_size > 20) return fail("invalid_input", "party_size must be an integer from 1 to 20.");
@@ -184,7 +192,7 @@
     const before = await readReservations("upcoming");
     if (before.error) return before.error;
     const current = before.items.find(r => r.reservation_id === input.reservation_id);
-    if (!current) return fail(before.complete ? "not_found" : "site_changed", "That reservation is not on the account's upcoming list; nothing was sent.");
+    if (!current) return fail(before.complete ? "not_found" : "site_changed", "No upcoming reservation with that reservation_id on this account (it has " + before.items.length + (before.complete ? "" : "+") + " upcoming; list_reservations lists them). Nothing was sent.");
     if (current.venue_id !== input.venue_id || current.date !== input.expected_date) return fail("stale_state", "The reservation's venue or date does not match; changes stay at the same venue. Nothing was sent.");
     if (current.change && current.change.allowed === false) return fail("rejected", "Resy does not allow changing this reservation online; nothing was sent.");
     const atTarget = r => r.date === input.date && r.local_time === input.local_start.slice(11) && r.party_size === input.party_size && r.seating_type === input.seating_type;
@@ -193,6 +201,7 @@
     if (found.error) return found.error;
     const q = await quote(found.token, { resy_token: current.token });
     if (q.error) return q.error;
+    if (preview) return { status: "preview", account_ref: input.expected_account_ref, previous: publicReservation(current), new_slot: { date: input.date, local_start: input.local_start, party_size: input.party_size, seating_type: input.seating_type }, quote: q, next_step: "Tell the user the new slot and these terms. Only if they ask to move the reservation, call again with confirm: true and expected_total " + q.total + " instead of preview. Nothing was changed." };
     if (q.total !== input.expected_total) return fail("stale_state", "The total for the new slot is now " + q.total + "; get a new quote. Nothing was changed.");
     const committed = await commitSlot(found.token, q.card_required, { resy_token: current.token });
     if (committed.error) return committed.error;

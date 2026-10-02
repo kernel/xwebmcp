@@ -48,10 +48,10 @@
                 description: "The site's raw policy fields. Amounts are in the venue currency; the API does not say whether a fee is per guest or per reservation, and how the two cutoff fields apply is stated by the site when booking, so confirm before relying on them.",
                 properties: {
                   requires_payment: { type: "boolean", description: "The site marks the slot as needing a card or payment to book." },
-                  cancellation_fee: { type: ["number", "null"] },
+                  cancellation_fee: { type: ["number", "null"], description: "Fee if cancelled late; usually per guest (get_booking_quote says)." },
                   cancel_cutoff_secs: { type: ["integer", "null"], description: "The site's secs_cancel_cut_off value." },
                   cancel_cutoff_time: { type: ["string", "null"], description: "The site's time_cancel_cut_off value (a clock time such as 12:00:00)." },
-                  deposit_fee: { type: ["number", "null"] },
+                  deposit_fee: { type: ["number", "null"], description: "Prepayment per guest (total = deposit_fee x party_size); confirm the exact total with get_booking_quote." },
                   service_charge: { type: ["string", "null"], description: "The site's service_charge value, for example 0%." }
                 }
               }

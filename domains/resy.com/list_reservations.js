@@ -45,7 +45,7 @@
             offset: { type: "integer" },
             limit: { type: "integer" },
             total: { type: "integer", minimum: 0 },
-            date_filter: { type: ["object", "null"], additionalProperties: false, required: ["start_date", "end_date", "scanned_count", "scan_complete"], properties: { start_date: { type: ["string", "null"] }, end_date: { type: ["string", "null"] }, scanned_count: { type: "integer" }, scan_complete: { type: "boolean" } } },
+            date_filter: { type: ["object", "null"], additionalProperties: false, required: ["start_date", "end_date", "scanned_count", "scan_complete"], properties: { start_date: { type: ["string", "null"] }, end_date: { type: ["string", "null"] }, scanned_count: { type: "integer" }, scan_complete: { type: "boolean", description: "Every reservation in the range was checked. The scan stops at the first page past the range, so scanned_count can be below total." } } },
             reservations: {
               type: "array",
               maxItems: 20,

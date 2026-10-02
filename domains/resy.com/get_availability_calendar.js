@@ -109,7 +109,7 @@
     const allowed = ["venue_id", "start_date", "end_date", "party_size"];
     if (!isPlain(input) || Object.keys(input).some(k => !allowed.includes(k))) return fail("invalid_input", "Input must be an object with venue_id, start_date and optionally end_date and party_size.");
     if (!Number.isInteger(input.venue_id) || input.venue_id < 1 || input.venue_id > 2147483647) return fail("invalid_input", "venue_id must be a positive integer Resy venue id.");
-    const startProblem = dateProblem(input.start_date, "start_date");
+    const startProblem = input.start_date === undefined ? "start_date is required (YYYY-MM-DD, e.g. today's date)." : dateProblem(input.start_date, "start_date");
     if (startProblem) return fail("invalid_input", startProblem);
     const endDate = input.end_date === undefined ? dayOf(Date.parse(input.start_date + "T00:00:00Z") + 30 * 86400000) : input.end_date;
     if (!isDate(endDate)) return fail("invalid_input", "end_date must be a real calendar date, YYYY-MM-DD.");

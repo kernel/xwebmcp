@@ -427,3 +427,29 @@ test("get_collection: editorial near_time keeps the slots closest to it; price a
   assert.deepEqual(out.venues[0].slots.map(s => s.local_start.slice(11)), ["14:00", "15:00", "16:00", "17:00"]);
   assert.equal(out.venues[0].venue.price_range, 2, "price_range_id only; editorial price_range is a different scale");
 });
+
+test("cancel_reservation and change_reservation: preview reads terms and sends no write; missing reservations are explained", async () => {
+  const fee = { ...booked, cancellation: liveCancellation(true) };
+  const c = harness("cancel_reservation", { upcoming: [fee] });
+  const { confirm, ...cancelBase } = valid.cancel_reservation;
+  const out = await c.run({ ...cancelBase, preview: true });
+  assert.equal(out.status, "preview");
+  assert.equal(out.fee_applies_now, true);
+  assert.equal(out.cancellation_fee, 50);
+  assert.deepEqual(c.writes(), []);
+  const none = await harness("cancel_reservation").run({ ...cancelBase, preview: true });
+  assert.equal(none.error_kind, "not_found");
+  assert.match(none.error_message, /has 0 upcoming; list_reservations/);
+  const noConfirm = await harness("cancel_reservation").run(cancelBase);
+  assert.match(noConfirm.error_message, /preview: true/);
+  assert.equal((await harness("cancel_reservation").run({ ...cancelBase, preview: true, confirm: true })).error_kind, "invalid_input");
+
+  const ch = harness("change_reservation", { upcoming: [{ ...booked }] });
+  const { confirm: _c, expected_total, ...changeBase } = valid.change_reservation;
+  const moved = await ch.run({ ...changeBase, preview: true });
+  assert.equal(moved.status, "preview");
+  assert.equal(moved.quote.total, 0);
+  assert.equal(moved.new_slot.local_start, "2026-10-09T19:30");
+  assert.deepEqual(ch.paths().filter(p => p === "/3/details:1" || p === "/3/change"), [], "preview never commits or changes");
+  assert.match((await harness("change_reservation").run({ ...changeBase, preview: true })).error_message, /has 0 upcoming/);
+});
