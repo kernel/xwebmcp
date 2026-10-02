@@ -46,7 +46,7 @@
     const accountRefValid = v => typeof v === "string" && /^account_[a-f0-9]{64}$/.test(v);
     const isDate = v => typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v) && !Number.isNaN(Date.parse(v + "T00:00:00Z")) && new Date(v + "T00:00:00Z").toISOString().slice(0, 10) === v;
     if (!validInput(["expected_account_ref", "reservation_id", "expected_venue_id", "expected_date", "accept_cancellation_fee", "confirm", "preview"])) return fail("invalid_input", "Unexpected input fields.");
-    if (!accountRefValid(input.expected_account_ref)) return fail("invalid_input", "expected_account_ref must come from get_account_status.");
+    if (!accountRefValid(input.expected_account_ref)) return typeof window.apiAuthToken === "string" && window.apiAuthToken && window.apiAuthToken !== "undefined" ? fail("invalid_input", "expected_account_ref must come from get_account_status.") : fail("login_required", "Not signed in to Resy: ask the user to sign in on resy.com; account tools, quotes and booking need a session. Nothing was sent.");
     const preview = input.preview === true;
     if (input.preview !== undefined && !preview) return fail("invalid_input", "preview must be true when given.");
     if (preview && input.confirm !== undefined) return fail("invalid_input", "Give preview or confirm, not both. Nothing was sent.");

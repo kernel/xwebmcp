@@ -48,7 +48,7 @@
     const validInput = keys => plain(input) && Object.keys(input).every(k => keys.includes(k));
     const accountRefValid = v => typeof v === "string" && /^account_[a-f0-9]{64}$/.test(v);
     if (!validInput(["expected_account_ref", "venue_id"])) return fail("invalid_input", "Unexpected input fields.");
-    if (!accountRefValid(input.expected_account_ref)) return fail("invalid_input", "expected_account_ref must come from get_account_status.");
+    if (!accountRefValid(input.expected_account_ref)) return typeof window.apiAuthToken === "string" && window.apiAuthToken && window.apiAuthToken !== "undefined" ? fail("invalid_input", "expected_account_ref must come from get_account_status.") : fail("login_required", "Not signed in to Resy: ask the user to sign in on resy.com; account tools, quotes and booking need a session. Nothing was sent.");
     if (input.venue_id !== undefined && (!Number.isInteger(input.venue_id) || input.venue_id < 1 || input.venue_id > 2147483647)) return fail("invalid_input", "venue_id must be a positive integer Resy venue id.");
     if (signal?.aborted) return fail("canceled", "Canceled before any site request.");
     if (window.location.origin !== ORIGIN) return fail("wrong_page", "Open a page on https://resy.com; this tool never navigates.");

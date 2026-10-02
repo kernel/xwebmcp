@@ -131,7 +131,7 @@
     if (input.start_date && input.end_date && input.start_date > input.end_date) return fail("invalid_input", "start_date must not be after end_date.");
     const filtering = input.start_date !== undefined || input.end_date !== undefined;
     if (filtering && input.offset !== undefined) return fail("invalid_input", "offset cannot be combined with start_date/end_date; the tool scans pages itself.");
-    if (!accountRefValid(input.expected_account_ref)) return fail("invalid_input", "expected_account_ref must come from get_account_status.");
+    if (!accountRefValid(input.expected_account_ref)) return typeof window.apiAuthToken === "string" && window.apiAuthToken && window.apiAuthToken !== "undefined" ? fail("invalid_input", "expected_account_ref must come from get_account_status.") : fail("login_required", "Not signed in to Resy: ask the user to sign in on resy.com; account tools, quotes and booking need a session. Nothing was sent.");
     const type = input.type === undefined ? "upcoming" : input.type;
     const offset = input.offset === undefined ? 1 : input.offset;
     const limit = input.limit === undefined ? 10 : input.limit;

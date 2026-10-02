@@ -301,7 +301,9 @@ test("list_events: 1-based pages sent as Resy's offset; venue events page locall
 });
 
 test("list_collections and get_collection: Hit List is not a city collection; slots are sorted and capped at 6", async () => {
-  assert.deepEqual((await harness("list_collections").run(valid.list_collections)).collections, [{ collection_id: 889, name: "Climbing", description: "Fabricated" }]);
+  const lc = await harness("list_collections").run(valid.list_collections);
+  assert.deepEqual(lc.collections, [], "Hit List and algorithmic lists are not editorial collections");
+  assert.equal(lc.algorithmic_lists.find(l => l.list === "climbing").collection_id, 889);
   const h = harness("get_collection");
   const out = await h.run({ ...valid.get_collection, page: 3 });
   assert.equal(h.requests[0].url.searchParams.get("offset"), "3");
@@ -407,7 +409,8 @@ test("get_collection: algorithmic lists read per-venue availability; near_time k
 
 test("list_collections: algorithmic lists carry the city slug for get_collection", async () => {
   const out = await harness("list_collections").run(valid.list_collections);
-  assert.deepEqual(out.algorithmic_lists.map(l => [l.list, l.city_slug]), [["climbing", "exampleton-xa"], ["top-rated", "exampleton-xa"], ["new-on-resy", "exampleton-xa"]]);
+  assert.deepEqual(out.algorithmic_lists.map(l => [l.list, l.city_slug, l.collection_id]), [["climbing", "exampleton-xa", 889], ["top-rated", "exampleton-xa", null], ["new-on-resy", "exampleton-xa", null]]);
+  assert.equal(harness("list_collections").definition.tool.outputSchema.oneOf[0].properties.algorithmic_lists.maxItems, 4);
 });
 
 test("get_booking_quote: per-guest fee estimate, cutoff already passed, plain summary", async () => {
@@ -452,4 +455,15 @@ test("cancel_reservation and change_reservation: preview reads terms and sends n
   assert.equal(moved.new_slot.local_start, "2026-10-09T19:30");
   assert.deepEqual(ch.paths().filter(p => p === "/3/details:1" || p === "/3/change"), [], "preview never commits or changes");
   assert.match((await harness("change_reservation").run({ ...changeBase, preview: true })).error_message, /has 0 upcoming/);
+});
+
+test("account tools: signed out with no account ref says login_required, not invalid_input", async () => {
+  for (const name of accountTools) {
+    const { expected_account_ref, ...rest } = valid[name];
+    const out = harness(name, { loggedOut: true });
+    const r = await out.run(rest);
+    assert.equal(r.error_kind, "login_required", name);
+    assert.equal(out.requests.length, 0);
+    assert.equal((await harness(name).run(rest)).error_kind, "invalid_input", name + " signed in");
+  }
 });

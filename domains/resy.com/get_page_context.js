@@ -120,12 +120,12 @@
       if (has("close_booking_dialog")) steps.push("Use close_booking_dialog to close it without booking");
     }
     if (pendingChoice === "login_dialog") steps.push("The log-in window is open: the user can sign in there, or use login with credentials the user supplied for this purpose; never guess codes");
-    if (signedIn === false && pendingChoice !== "login_dialog") steps.push("Not signed in: discovery tools (search_restaurants, get_availability, collections, events) work; account tools, quotes and booking dialogs need a session. Ask the user to sign in, or use login only with credentials they supplied");
+    if (signedIn === false && pendingChoice !== "login_dialog") steps.push("Not signed in: discovery tools (search_restaurants, get_availability, get_availability_calendar, collections, events) work; account tools, quotes, Notify and the booking window need a session. Ask the user to sign in on resy.com themselves; never ask for their password (login is only for credentials the user chose to give you)");
     if (pageType === "venue") {
       if (venueSlug && citySlug && has("get_restaurant")) steps.push("Use get_restaurant({ city_slug: \"" + citySlug + "\", url_slug: \"" + venueSlug + "\" }) for the venue_id, then get_availability or get_availability_calendar");
       if (has("open_booking_dialog") && signedIn) steps.push("To show the user Resy's own booking window for one slot, use open_booking_dialog on this page (it stops before Reserve Now)");
     } else if (pageType === "algorithmic_list" && listName && has("get_collection")) {
-      steps.push("Use get_collection({ list: \"" + listName + "\", city_slug: \"" + (citySlug || "new-york-ny") + "\", date, party_size }) to read this list with open slots");
+      steps.push("This page shows Resy's " + listName + " collection with open tables first: use list_collections (algorithmic_lists) for its collection_id, then get_collection({ collection_id, location, date, party_size }) to read it as shown; get_collection({ list: \"" + listName + "\", city_slug: \"" + (citySlug || "new-york-ny") + "\" }) gives the ranked leaderboard from the city home page instead");
     } else if (pageType === "account_reservations" && has("list_reservations")) {
       steps.push("Use get_account_status, then list_reservations (upcoming or past, optionally with start_date/end_date) to read reservations");
     } else if (pageType !== "not_found") {

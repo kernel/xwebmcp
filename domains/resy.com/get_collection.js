@@ -3,7 +3,7 @@
   match: { url_patterns: ["https://resy.com/*"] },
   tool: {
     name: "get_collection",
-    description: "One page (limit max 10) of a collection's venues with up to 6 open slots each for a date and party size: an editorial collection (collection_id + location from list_collections) or an algorithmic list (list: climbing, top-rated, new-on-resy + city_slug). near_time picks the 6 slots closest to it (within 2 h), else the earliest. slot_count 0: no open slot. Read-only.",
+    description: "One page (limit max 10) of a collection's venues with up to 6 open slots each for a date and party size: collection_id + location from list_collections (editorial, or an algorithmic list as its list page shows it), or list (climbing, top-rated, new-on-resy) + city_slug for the home-page ranking. near_time picks the 6 slots closest to it (within 2 h). Read-only.",
     inputSchema: {
       type: "object", additionalProperties: false, required: ["date"],
       properties: {
