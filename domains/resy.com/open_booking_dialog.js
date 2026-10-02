@@ -107,8 +107,9 @@
       await waitMs(250);
     }
     if (pick.ambiguous) return fail("invalid_input", "Several slots at " + label + " match; pass seating_type exactly as get_availability gave it. Visible: " + pick.listed.slice(0, 20).join("; "));
-    if (!pick.clicked) return { status: "slot_unavailable", message: "The venue page does not show a " + label + (seating ? " " + seating : "") + " slot now; it may have been taken. Nothing was opened or booked. Re-check get_availability and ask the user before choosing another slot.", visible_slots: pick.listed.slice(0, 40) };
+    if (!pick.clicked) return { status: "slot_unavailable", message: "The venue page does not show a " + label + (seating ? " " + seating : "") + " slot for this date and party size" + (pick.listed.some((t) => t.startsWith(label)) ? " (that time is shown with a different seating type)" : "") + ": either Resy never offered it or it was just taken. Nothing was opened or booked. Re-check get_availability and ask the user before choosing another slot.", visible_slots: pick.listed.slice(0, 40) };
 
+    const pageVenue = await js(() => { const h = document.querySelector("h1"); const t = h ? (h.textContent || "").replace(/\s+/g, " ").trim() : ""; return t ? t.slice(0, 200) : null; });
     // Read the cross-origin widgets.resy.com booking frame (only reachable through CDP).
     const readFrame = async () => {
       const tree = await cdp("Page.getFrameTree", {});
@@ -129,11 +130,18 @@
           const rows = summary ? [...summary.querySelectorAll(".ReservationSummary__row")].map((r) => norm(r.textContent)) : [];
           const sections = [...root.querySelectorAll("section.SummarySection")].map((s) => ({ title: norm(s.querySelector(".SummarySectionHeader") && s.querySelector(".SummarySectionHeader").textContent), body: s.querySelector(".SummarySectionBody") }));
           const book = [...document.querySelectorAll(".SummaryPage__book button, button[data-test-id='order_summary_page-button-book']")].find(vis);
-          const prices = [];
-          for (const el of root.querySelectorAll("li, div, span, p")) {
-            if (el.children.length > 3) continue;
-            const t = norm(el.textContent);
-            if (/\\$\\s?\\d/.test(t) && t.length <= 300 && !/cancel/i.test(t) && !prices.includes(t) && !prices.some((p) => p.includes(t))) prices.push(t);
+          const prices = rows.slice(2).filter((t) => /\\$\\s?\\d/.test(t));
+          for (const row of root.querySelectorAll(".OrderSummary__item, .OrderSummary__section--body__row")) {
+            const cells = [...row.children];
+            if (cells.length < 2) continue;
+            const qty = row.querySelector(".OrderSummary__item--quantity");
+            const q = qty ? norm(qty.textContent) : "";
+            let label = norm(cells[0].textContent);
+            if (q && label.endsWith(q)) label = norm(label.slice(0, -q.length)); else if (q && label.startsWith(q)) label = norm(label.slice(q.length));
+            label = label.replace(/^:\\s*/, "").replace(/:$/, "");
+            const amount = norm(cells[cells.length - 1].textContent);
+            const line = label + (q ? " x" + q : "") + ": " + amount;
+            if (/\\$\\s?\\d/.test(amount) && line.length <= 300 && !prices.includes(line)) prices.push(line);
           }
           return {
             ready: !!summary && !!book && sections.length > 0 && !!book && !book.disabled,
@@ -144,7 +152,7 @@
             cardOnFile: sections.some((s) => /payment/i.test(s.title) && /card ending/i.test(norm(s.body && s.body.textContent))),
             addCard: sections.some((s) => /payment/i.test(s.title) && !/card ending/i.test(norm(s.body && s.body.textContent))),
             cancellation: (sections.find((s) => /cancel/i.test(s.title)) || {}).body ? norm(sections.find((s) => /cancel/i.test(s.title)).body.textContent).slice(0, 2000) : null,
-            other: sections.filter((s) => s.title && !/payment|cancel/i.test(s.title)).map((s) => ({ title: s.title.slice(0, 120), text: norm(s.body && s.body.textContent).slice(0, 600) })).slice(0, 10),
+            other: sections.filter((s) => s.title && !/payment|cancel|order summary/i.test(s.title)).map((s) => ({ title: s.title.slice(0, 120), text: norm(s.body && s.body.textContent).slice(0, 600) })).slice(0, 10),
             prices: prices.slice(0, 20),
             button: book ? norm(book.textContent) : null,
             enabled: !!book && !book.disabled && book.getAttribute("aria-disabled") !== "true"
@@ -161,11 +169,16 @@
       if (seen && (seen.ready || seen.error)) break;
       if (seen && seen.partial && i >= 40) break;
     }
+    if (seen && seen.ready) {
+      // Let the window finish painting, then read the final state once more.
+      await waitMs(800);
+      try { const again = await readFrame(); if (again && again.ready) seen = again; } catch { /* keep the first complete read */ }
+    }
     if (seen && seen.error) return { status: "slot_unavailable", message: "Resy's booking window says: " + seen.error + ". Nothing was booked. Call close_booking_dialog, re-check get_availability and ask the user before choosing another slot.", visible_slots: pick.listed.slice(0, 40) };
     if (!seen || !(seen.ready || seen.partial)) return fail("dialog_not_ready", "Clicked the " + label + " slot but Resy's booking window did not finish loading within 15 s" + (lastError ? " (" + lastError + ")" : "") + ". Call get_page_context; if pending_choice is booking_dialog, call close_booking_dialog before retrying.");
     return {
       status: "dialog_open",
-      venue_name: seen.venue || null,
+      venue_name: seen.venue || pageVenue || null,
       when: seen.when || null,
       guests_and_seating: seen.guests || null,
       payment_card_on_file: !!seen.cardOnFile,

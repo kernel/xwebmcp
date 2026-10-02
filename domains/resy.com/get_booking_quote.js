@@ -148,7 +148,7 @@
       const tax = /tax/i.test(policy.join(" ")) ? " + tax" : "";
       const summary = (amounts.total > 0 ? "Charged when booking: " + cur + amounts.total + ". " : "Nothing is charged when booking. ") +
         (cardRequired ? "A card on file is required. " : "No card is required. ") +
-        (fee !== null && fee > 0 ? "Cancellation fee " + cur + fee + (perGuest ? " per guest (up to " + cur + estimate + tax + " for " + input.party_size + ")" : tax) + (appliesNow ? ", and the free-cancellation cutoff has already passed, so it applies as soon as you book." : " if cancelled after " + cutoff + " (UTC).") : "No cancellation fee is listed.");
+        (fee !== null && fee > 0 ? "Cancellation fee " + cur + fee + (perGuest ? " per guest (up to " + cur + estimate + tax + " for " + input.party_size + ")" : tax) + (appliesNow ? ", and the free-cancellation cutoff has already passed, so it applies as soon as you book." : " if cancelled after " + cutoff + " (UTC).") : (/non-?refundable/i.test(policy.join(" ")) ? "The policy says this prepaid reservation is non-refundable." : "No cancellation fee is listed."));
       return {
         currency: plain(j.locale) ? text(j.locale.currency, 10) : null, total: amounts.total,
         breakdown: { reservation_charge: money(amounts.reservation_charge), service_fee: money(amounts.service_fee), resy_fee: money(amounts.resy_fee), tax: money(amounts.tax), service_charge: plain(amounts.service_charge) ? money(amounts.service_charge.amount) : null },

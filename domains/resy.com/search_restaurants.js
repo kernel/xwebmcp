@@ -3,7 +3,7 @@
   match: { url_patterns: ["https://resy.com/*"] },
   tool: {
     name: "search_restaurants",
-    description: "Search Resy venues by query, cuisine (exact site spelling), neighborhood and location (city slug or code) or latitude/longitude, optionally capped by max_price_range. With date, each venue lists up to 12 open slots near time. Returns venue_id, city_slug and url_slug for the other tools. Tock venues (is_tock_inventory) cannot be booked here. Slots are a snapshot. Read-only; signed out works.",
+    description: "Search Resy venues by query, cuisine (exact site spelling), neighborhood and location (city slug or code) or latitude/longitude, optionally capped by max_price_range. With date, each venue lists up to 12 open slots (with time, Resy keeps only slots within about 45 minutes of it; use get_availability for the whole day). Returns venue_id, city_slug and url_slug for the other tools. Tock venues (is_tock_inventory) cannot be booked here. Slots are a snapshot. Read-only; signed out works.",
     inputSchema: {
       type: "object", additionalProperties: false,
       properties: {
@@ -249,6 +249,10 @@
     };
     const slug = v => (typeof v === "string" && /^[A-Za-z0-9._~-]{1,120}$/.test(v) ? v : null);
     const warnings = [];
+    if (date) {
+      const at = new Date(date + "T" + (input.time || "23:59") + ":00");
+      if (!Number.isNaN(at.getTime()) && at.getTime() < Date.now()) warnings.push("The requested " + (input.time ? "time" : "date") + " has already passed in this browser's time zone, so few or no slots are expected; suggest a later date or Notify.");
+    }
     const venues = [];
     for (const hit of hits) {
       const id = isPlain(hit) && isPlain(hit.id) ? int(hit.id.resy) : null;

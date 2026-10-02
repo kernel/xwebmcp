@@ -48,6 +48,7 @@ test("get_page_context: open booking dialog is a pending choice that must not be
   const out = await pageContext(`<html><body><h1>Fabricated</h1><div><iframe src="https://widgets.resy.com/#/reservation-details" title="Resy - Book Now" data-height="600"></iframe></div></body></html>`,
     { url: "https://resy.com/cities/exampleton-xa/venues/fab?date=2026-10-09&seats=2", tools: ["close_booking_dialog"] });
   assert.equal(out.pending_choice, "booking_dialog");
+  assert.equal(out.booking_dialog_open, true);
   assert.match(out.suggested_next_steps[0], /never press it/);
   assert.ok(out.suggested_next_steps.some(s => s.includes("close_booking_dialog")));
 });
@@ -165,6 +166,7 @@ function bookingHarness({ url = "https://resy.com/cities/exampleton-xa/venues/fa
         return { clicked: false, ambiguous: hits.length > 1, loading: false, listed: buttons };
       }
       if (src.includes("apiAuthToken")) return pageArg();
+      if (src.includes("h1")) return "Fabricated Trattoria Page";
       if (src.includes("widgets")) return state.open;
       throw new Error("unexpected js: " + src.slice(0, 80));
     },

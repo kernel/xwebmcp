@@ -390,7 +390,7 @@ test("get_collection: algorithmic lists read per-venue availability; near_time k
   const h = harness("get_collection", { slots: [slotAt("12:00"), slotAt("18:00"), slotAt("19:30"), slotAt("21:45"), slotAt("22:00")] });
   const out = await h.run({ list: "climbing", city_slug: "exampleton-xa", date: "2026-10-09", party_size: 2, limit: 2, page: 2, near_time: "19:30" });
   assert.equal(out.status, "ok");
-  assert.equal(out.total, 30);
+  assert.equal(out.total, null, "Resy's list total is city-wide, so it is not reported");
   assert.equal(out.has_more, true);
   assert.equal(h.requests[0].path, "/3/cities/exampleton-xa/list/climbing");
   assert.equal(h.requests[0].url.searchParams.get("offset"), "2");
@@ -420,4 +420,10 @@ test("get_booking_quote: per-guest fee estimate, cutoff already passed, plain su
   const later = await harness("get_booking_quote", { fee: 25 }).run(valid.get_booking_quote);
   assert.equal(later.quote.cancellation.fee_applies_now, false);
   assert.equal(later.quote.cancellation.fee_per_guest, false);
+});
+
+test("get_collection: editorial near_time keeps the slots closest to it; price and rating come from the venue", async () => {
+  const out = await harness("get_collection").run({ ...valid.get_collection, near_time: "15:30" });
+  assert.deepEqual(out.venues[0].slots.map(s => s.local_start.slice(11)), ["14:00", "15:00", "16:00", "17:00"]);
+  assert.equal(out.venues[0].venue.price_range, 2, "price_range_id only; editorial price_range is a different scale");
 });

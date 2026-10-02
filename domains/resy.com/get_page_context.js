@@ -12,7 +12,7 @@
     },
     outputSchema: {
       type: "object", additionalProperties: false,
-      required: ["current_url", "current_path", "page_title", "page_type", "city_slug", "venue_slug", "venue_name", "list_name", "date", "party_size", "available_tools", "unsettled", "unsettled_reasons", "pending_choice", "signed_in", "page_messages", "suggested_next_steps"],
+      required: ["current_url", "current_path", "page_title", "page_type", "city_slug", "venue_slug", "venue_name", "list_name", "date", "party_size", "available_tools", "unsettled", "unsettled_reasons", "booking_dialog_open", "pending_choice", "signed_in", "page_messages", "suggested_next_steps"],
       properties: {
         current_url: { type: "string" },
         current_path: { type: "string" },
@@ -27,6 +27,7 @@
         available_tools: { type: ["array", "null"], items: { type: "string" }, description: "Tool names this page exposes now, or null when the page does not expose document.modelContext." },
         unsettled: { type: "boolean", description: "True while a known loading state is visible; tools may be missing or results partial." },
         unsettled_reasons: { type: "array", items: { type: "string", enum: ["document_loading", "navigating", "spinner", "venue_loading", "busy_region"] } },
+        booking_dialog_open: { type: "boolean", description: "Resy's Complete Your Reservation window is open (same as pending_choice booking_dialog)." },
         pending_choice: { type: ["string", "null"], enum: ["booking_dialog", "login_dialog", null], description: "booking_dialog: Resy's Complete Your Reservation window is open (its Reserve Now button is the final booking step; never press it for the user). login_dialog: the log-in window is open." },
         signed_in: { type: ["boolean", "null"], description: "Whether a Resy session is active on this page (null while the page is loading)." },
         page_messages: { type: "array", maxItems: 10, items: { type: "string", maxLength: 300 }, description: "Visible alert and error text." },
@@ -147,6 +148,7 @@
       available_tools: tools,
       unsettled: unsettled.length > 0,
       unsettled_reasons: unsettled,
+      booking_dialog_open: !!bookingFrame,
       pending_choice: pendingChoice,
       signed_in: signedIn,
       page_messages: messages,

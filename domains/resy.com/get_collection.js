@@ -3,7 +3,7 @@
   match: { url_patterns: ["https://resy.com/*"] },
   tool: {
     name: "get_collection",
-    description: "One page of a collection's venues with up to 6 open slots each for a date and party size: an editorial collection (collection_id + location from list_collections) or an algorithmic list (list: climbing, top-rated, new-on-resy + city_slug). near_time keeps slots within 2 hours. slot_count 0: no open slot (see get_availability for Notify). Read-only; signed out works.",
+    description: "One page (limit max 10) of a collection's venues with up to 6 open slots each for a date and party size: an editorial collection (collection_id + location from list_collections) or an algorithmic list (list: climbing, top-rated, new-on-resy + city_slug). near_time picks the 6 slots closest to it (within 2 h), else the earliest. slot_count 0: no open slot. Read-only.",
     inputSchema: {
       type: "object", additionalProperties: false, required: ["date"],
       properties: {
@@ -24,7 +24,7 @@
         {
           type: "object", additionalProperties: false, required: ["status",  "page",  "venues"],
           properties: {
-            status: { enum: ["ok", "no_results"] }, page: { type: "integer" }, total: { type: ["integer", "null"] }, has_more: { type: "boolean" },
+            status: { enum: ["ok", "no_results"] }, page: { type: "integer" }, total: { type: ["integer", "null"], description: "Venues in an editorial collection; null for algorithmic lists (Resy reports no list size)." }, has_more: { type: "boolean" },
             venues: {
               type: "array", maxItems: 10,
               items: {
@@ -118,12 +118,13 @@
       const urlSlug = slugOf(v.url_slug), citySlug = slugOf(loc.url_slug);
       const rater = Array.isArray(v.rater) && isPlain(v.rater[0]) ? v.rater[0] : null;
       const price = int(v.price_range_id);
-      return { venue_id: id, name: text(v.name, 200), city_slug: citySlug, url_slug: urlSlug, url: urlSlug && citySlug ? ORIGIN + "/cities/" + citySlug + "/venues/" + urlSlug : null, cuisine: text(v.type, 100), neighborhood: text(loc.neighborhood, 100), price_range: price !== null && price >= 1 && price <= 4 ? price : null, rating: rater ? { average: num(rater.score), count: int(rater.total) } : null };
+      return { venue_id: id, name: text(v.name, 200), city_slug: citySlug, url_slug: urlSlug, url: urlSlug && citySlug ? ORIGIN + "/cities/" + citySlug + "/venues/" + urlSlug : null, cuisine: text(v.type, 100), neighborhood: text(loc.neighborhood, 100), price_range: price !== null && price >= 1 && price <= 4 ? price : null, rating: rater ? { average: num(rater.score), count: int(rater.total) } : num(v.rating) !== null ? { average: num(v.rating), count: int(v.total_ratings) } : null };
     };
     const minutes = v => { const m = /T(\d{2}):(\d{2})$/.exec(v); return m ? Number(m[1]) * 60 + Number(m[2]) : null; };
     const near = input.near_time ? Number(input.near_time.slice(0, 2)) * 60 + Number(input.near_time.slice(3)) : null;
     const keep = s => near === null || (s.local_start.slice(0, 10) === input.date && Math.abs(minutes(s.local_start) - near) <= 120);
     const slotsOf = raw => (Array.isArray(raw) ? raw : []).map(s => ({ local_start: isPlain(s) && isPlain(s.date) ? localStamp(s.date.start) : null, seating_type: isPlain(s) && isPlain(s.config) ? text(s.config.type, 60) : null })).filter(s => s.local_start && keep(s)).sort(byStart);
+    const pick = slots => (near === null ? slots.slice(0, 6) : [...slots].sort((a, b) => Math.abs(minutes(a.local_start) - near) - Math.abs(minutes(b.local_start) - near) || byStart(a, b)).slice(0, 6).sort(byStart));
     const venues = [];
     let total = null;
     if (algo) {
@@ -132,14 +133,15 @@
       if (res.status === 404) return fail("invalid_input", "Resy has no " + input.list + " list for city '" + input.city_slug + "'.");
       const list = res.status === 200 && isPlain(res.json) && isPlain(res.json.results) && Array.isArray(res.json.results.venues) ? res.json.results.venues : null;
       if (!list) return fail("site_changed", "Resy's list response did not have the expected shape (HTTP " + res.status + ").");
-      total = isPlain(res.json.metadata) ? int(res.json.metadata.total) : null;
+      // Resy reports a city-wide total for these lists, not the list's length.
+      total = null;
       const cards = list.slice(0, limit).map(venueCard).filter(Boolean);
       const found = await Promise.all(cards.map(card => connection.request("POST", "/4/find", { lat: 0, long: 0, day: input.date, party_size: party, venue_id: card.venue_id })));
       cards.forEach((card, i) => {
         const r = found[i];
         const entry = !r.error && r.status === 200 && isPlain(r.json) && isPlain(r.json.results) && Array.isArray(r.json.results.venues) ? r.json.results.venues[0] : null;
         const slots = isPlain(entry) ? slotsOf(entry.slots) : [];
-        venues.push({ venue: card, slot_count: entry ? slots.length : null, slots: slots.slice(0, 6) });
+        venues.push({ venue: card, slot_count: entry ? slots.length : null, slots: pick(slots) });
       });
     } else {
       const res = await connection.request("GET", "/3/collection/venues?collection_id=" + input.collection_id + "&location_id=" + input.location + "&day=" + input.date + "&party_size=" + party + "&offset=" + page + "&limit=" + limit);
@@ -152,7 +154,7 @@
         const card = isPlain(entry) ? venueCard(entry.venue) : null;
         if (!card) continue;
         const slots = slotsOf(entry.slots);
-        venues.push({ venue: card, slot_count: slots.length, slots: slots.slice(0, 6) });
+        venues.push({ venue: card, slot_count: slots.length, slots: pick(slots) });
       }
     }
     return { status: venues.length ? "ok" : "no_results", page, total, has_more: total !== null ? page * limit < total : venues.length === limit, venues };
