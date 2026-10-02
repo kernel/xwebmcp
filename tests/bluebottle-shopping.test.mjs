@@ -44,6 +44,9 @@ function element({ text = "", attributes = {}, value, query = {}, all = {}, clic
 function harness(name, options = {}) {
   const url = new URL(options.url ?? "https://bluebottlecoffee.com/us/eng/product/hayes-valley-espresso");
   let selectedQuantity = 1;
+  let addClicks = 0;
+  let elapsed = 0;
+  let missingTriggerPolls = options.missingTriggerPolls ?? 0;
   let lineQuantity = options.lineQuantity ?? 1;
   let lines = options.empty ? [] : [makeLine()];
   const scheduled = [];
@@ -52,9 +55,11 @@ function harness(name, options = {}) {
   const decrease = element({ click: () => { selectedQuantity -= 1; quantityInput.value = String(selectedQuantity); } });
   const oneTime = element({ click: () => {} });
   const addButton = element({ click: () => {
+    addClicks++;
     lineQuantity = (lines.length ? lineQuantity : 0) + selectedQuantity;
     lines = [makeLine()];
-    trigger.attributes["aria-label"] = `Open cart panel, items in cart: ${lineQuantity}`;
+    if (options.replaceTrigger) trigger = element({ attributes: { "aria-label": `Open cart panel, items in cart: ${lineQuantity}` } });
+    else trigger.attributes["aria-label"] = `Open cart panel, items in cart: ${lineQuantity}`;
     dialogs = [dialog];
   } });
   const form = element({
@@ -72,9 +77,7 @@ function harness(name, options = {}) {
   Object.defineProperty(dialog, "innerText", { get: () => lines.length ? `YOUR CART\nESTIMATED TOTAL ( ${lineQuantity} ${lineQuantity === 1 ? "ITEM" : "ITEMS"} )\n$${22 * lineQuantity}\nContinue to Checkout` : "YOUR CART\nYour cart is empty" });
   Object.defineProperty(dialog, "textContent", { get: () => dialog.innerText });
   dialog.querySelectorAll = selector => selector === '[data-test-id^="cart-line-item-"]' ? lines : selector === "button" ? (lines.length ? [continueButton] : []) : [];
-  const trigger = element({ attributes: { "aria-label": `Open cart panel, items in cart: ${lineQuantity}` }, click: () => { dialogs = [dialog]; } });
-  trigger.attributes = { "aria-label": `Open cart panel, items in cart: ${lineQuantity}` };
-  trigger.getAttribute = name => trigger.attributes[name] ?? null;
+  let trigger = element({ attributes: { "aria-label": `Open cart panel, items in cart: ${lineQuantity}` }, click: () => { dialogs = [dialog]; } });
   let dialogs = options.dialogClosed ? [] : [dialog];
   const product = {
     name: { eng: "Hayes Valley Espresso" }, slug: { current: "hayes-valley-espresso" }, flavorProfile: { eng: "Chocolate" },
@@ -83,22 +86,29 @@ function harness(name, options = {}) {
   };
   const document = {
     getElementById: id => id === "__NEXT_DATA__" && !options.noData ? element({ text: JSON.stringify({ props: { pageProps: { conversion: product } } }) }) : null,
-    querySelector: selector => selector === '[data-test-id="minicart-slide-over-dialog-trigger"]' ? trigger : selector === "main h1" ? element({ text: "Hayes Valley Espresso" }) : selector.includes("garbageCan") ? (lines[0]?.remove ?? null) : null,
+    querySelector: selector => {
+      if (selector === '[data-test-id="minicart-slide-over-dialog-trigger"]') {
+        if (addClicks && (options.removeTrigger || missingTriggerPolls-- > 0)) return null;
+        return trigger;
+      }
+      return selector === "main h1" ? element({ text: "Hayes Valley Espresso" }) : selector.includes("garbageCan") ? (lines[0]?.remove ?? null) : null;
+    },
     querySelectorAll: selector => selector === "main form" ? [form] : selector === '[role="dialog"]' ? dialogs : []
   };
   const context = {
-    JSON, Date, CSS: { escape: value => String(value) }, document,
+    JSON, Date: options.fastTime ? { now: () => elapsed } : Date, CSS: { escape: value => String(value) }, document,
     js: async (fn, options) => fn(options?.arg),
     location: { hostname: url.hostname, pathname: url.pathname },
     setTimeout: (fn, delay) => {
-      if (delay === 100) scheduled.push(fn);
+      if (options.fastTime) elapsed += delay;
+      if (delay === 100 && !options.fastTime) scheduled.push(fn);
       else fn();
       return 0;
     }
   };
   const [definition] = runInNewContext(`(${sources[name]})`, context);
   return {
-    definition, scheduled,
+    definition, scheduled, get addClicks() { return addClicks; },
     run: async input => {
       const result = plain(await definition.execute(input));
       assert.ok(conforms(definition.tool.outputSchema, result), `${name} output violates its schema: ${JSON.stringify(result)}`);
@@ -161,6 +171,22 @@ test("add_to_cart selects a one-time quantity and confirms the cart", async () =
 test("add_to_cart waits for an existing cart line to increase", async () => {
   const result = await harness("add_to_cart", { lineQuantity: 1 }).run({ sku: "01FZYZPYGQEJ8X6G35E0CNWKGQ" });
   assert.deepEqual([result.line_quantity, result.items_quantity], [2, 2]);
+});
+
+test("add_to_cart confirms a replacement cart trigger after a temporary absence", async () => {
+  const h = harness("add_to_cart", { empty: true, lineQuantity: 0, replaceTrigger: true, missingTriggerPolls: 1, fastTime: true });
+  const result = await h.run({ sku: "01FZYZPYGQEJ8X6G35E0CNWKGQ" });
+  assert.deepEqual([result.status, result.added_quantity, result.line_quantity, result.items_quantity], ["ok", 1, 1, 1]);
+  assert.equal(h.addClicks, 1);
+});
+
+test("add_to_cart leaves an unconfirmed add unresolved when the cart trigger disappears", async () => {
+  const h = harness("add_to_cart", { empty: true, lineQuantity: 0, removeTrigger: true, fastTime: true });
+  const result = await h.run({ sku: "01FZYZPYGQEJ8X6G35E0CNWKGQ" });
+  assert.equal(result.status, "error");
+  assert.equal(result.error_kind, "site_error");
+  assert.match(result.error_message, /add may have completed/);
+  assert.equal(h.addClicks, 1);
 });
 
 test("add_to_cart rejects stale SKUs, unsupported input and multi-variant pages before writing", async () => {
