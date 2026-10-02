@@ -54,6 +54,54 @@
       }
     },
     {
+      "domain": "craigslist.org",
+      "tool": "get_listing",
+      "file": "domains/craigslist.org/get_listing.js",
+      "kind": "page",
+      "namespace": "craigslist.org",
+      "url_patterns": [
+        "https://www.craigslist.org/*"
+      ],
+      "status": "verified",
+      "last_verified": "2026-09-30",
+      "notes": "Independent success/failure QA and live one-request listing read from /about/sites; sanitized public metadata only. No contacts, descriptions or account reads.",
+      "provenance": {
+        "qa_agent": "agt_0f4f29ed144263e4c874"
+      }
+    },
+    {
+      "domain": "craigslist.org",
+      "tool": "prepare_reply",
+      "file": "domains/craigslist.org/prepare_reply.js",
+      "kind": "page",
+      "namespace": "craigslist.org",
+      "url_patterns": [
+        "https://www.craigslist.org/*"
+      ],
+      "status": "qa_passed",
+      "last_verified": "2026-09-30",
+      "notes": "Independent final-source actual-browser fixture success/failure sign-off. Local unsent preview only; no contact reveal, save or send. Final-source live preparation and local-extension invocation unverified.",
+      "provenance": {
+        "qa_agent": "agt_0f4f29ed144263e4c874"
+      }
+    },
+    {
+      "domain": "craigslist.org",
+      "tool": "search_listings",
+      "file": "domains/craigslist.org/search_listings.js",
+      "kind": "page",
+      "namespace": "craigslist.org",
+      "url_patterns": [
+        "https://www.craigslist.org/*"
+      ],
+      "status": "qa_passed",
+      "last_verified": "2026-09-30",
+      "notes": "Independent repaired-source synthetic success/failure QA, including zero-result decoding. Captured-response replay passes; fresh final-source live success and local-extension parity unverified. No pagination/retries.",
+      "provenance": {
+        "qa_agent": "agt_0f4f29ed144263e4c874"
+      }
+    },
+    {
       "domain": "delta.com",
       "tool": "continue_to_review_and_pay",
       "file": "domains/delta.com/continue_to_review_and_pay.js",
