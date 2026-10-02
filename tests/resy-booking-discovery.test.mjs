@@ -390,7 +390,7 @@ test("change_reservation: a new booking that leaves the original in place is not
 
 test("get_collection: algorithmic lists read per-venue availability; near_time keeps slots within two hours", async () => {
   const h = harness("get_collection", { slots: [slotAt("12:00"), slotAt("18:00"), slotAt("19:30"), slotAt("21:45"), slotAt("22:00")] });
-  const out = await h.run({ list: "climbing", city_slug: "exampleton-xa", date: "2026-10-09", party_size: 2, limit: 2, page: 2, near_time: "19:30" });
+  const out = await h.run({ list: "climbing", ranking: "leaderboard", city_slug: "exampleton-xa", date: "2026-10-09", party_size: 2, limit: 2, page: 2, near_time: "19:30" });
   assert.equal(out.status, "ok");
   assert.equal(out.total, null, "Resy's list total is city-wide, so it is not reported");
   assert.equal(out.has_more, true);
@@ -405,6 +405,19 @@ test("get_collection: algorithmic lists read per-venue availability; near_time k
     assert.equal((await bad.run(input)).error_kind, "invalid_input");
     assert.equal(bad.requests.length, 0);
   }
+});
+
+test("get_collection: list defaults to the list page view (the algorithmic collection); only_available drops full venues", async () => {
+  const h = harness("get_collection");
+  const out = await h.run({ list: "climbing", city_slug: "exampleton-xa", date: "2026-10-09" });
+  assert.deepEqual(h.paths(), ["/3/location/config", "/3/collections", "/3/collection/venues"]);
+  assert.equal(h.requests[2].url.searchParams.get("collection_id"), "889");
+  assert.equal(h.requests[2].url.searchParams.get("location_id"), "xa");
+  assert.equal(out.venues.length, 1);
+  const full = harness("get_collection", { route: ({ path }) => path === "/3/collection/venues" ? { body: { results: { venues: [{ venue: venueRow(1001), slots: [] }, { venue: venueRow(1002), slots: [slotAt("19:00")] }] } } } : undefined });
+  const avail = await full.run({ ...valid.get_collection, only_available: true });
+  assert.deepEqual(avail.venues.map(v => v.venue.venue_id), [1002]);
+  assert.equal((await harness("get_collection").run({ ...valid.get_collection, ranking: "leaderboard" })).error_kind, "invalid_input");
 });
 
 test("list_collections: algorithmic lists carry the city slug for get_collection", async () => {

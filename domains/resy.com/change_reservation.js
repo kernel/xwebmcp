@@ -192,7 +192,7 @@
     const before = await readReservations("upcoming");
     if (before.error) return before.error;
     const current = before.items.find(r => r.reservation_id === input.reservation_id);
-    if (!current) return fail(before.complete ? "not_found" : "site_changed", "No upcoming reservation with that reservation_id on this account (it has " + before.items.length + (before.complete ? "" : "+") + " upcoming; list_reservations lists them). Nothing was sent.");
+    if (!current) return fail(before.complete ? "not_found" : "site_changed", "No upcoming reservation with that reservation_id on this account (it has " + before.items.length + (before.complete ? "" : "+") + " upcoming; list_reservations lists them; past or cancelled reservations cannot be changed). Nothing was sent.");
     if (current.venue_id !== input.venue_id || current.date !== input.expected_date) return fail("stale_state", "The reservation's venue or date does not match; changes stay at the same venue. Nothing was sent.");
     if (current.change && current.change.allowed === false) return fail("rejected", "Resy does not allow changing this reservation online; nothing was sent.");
     const atTarget = r => r.date === input.date && r.local_time === input.local_start.slice(11) && r.party_size === input.party_size && r.seating_type === input.seating_type;

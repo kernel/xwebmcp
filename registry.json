@@ -1293,7 +1293,7 @@
       "url_patterns_reason": "Narrowed to resy.com: www.resy.com redirects there, and the other subdomains (blog, helpdesk, widgets, os) are separate products that do not expose the consumer page's API configuration these tools call api.resy.com with.",
       "status": "draft",
       "last_verified": null,
-      "notes": "Public page of a collection's venues with up to 6 open slots each; Resy's offset is a 1-based page. Trims a roughly 100 KB response to about 2 KB. Builder live run 2026-10-01. 2026-10-01: algorithmic lists via list + city_slug (/3/cities/{city}/list/{list}, home-page ranking, slots from one /4/find per venue, total null because Resy's is city-wide) or as collections 889/891/890/888 (list page view); near_time keeps the 6 slots closest to it; editorial venues fall back to rating/total_ratings. Live-checked Climbing, Top Rated (matches the list page), Date Night."
+      "notes": "Public page of a collection's venues with up to 6 open slots each; Resy's offset is a 1-based page. Trims a roughly 100 KB response to about 2 KB. Builder live run 2026-10-01. 2026-10-01: algorithmic lists via list + city_slug (/3/cities/{city}/list/{list}, home-page ranking, slots from one /4/find per venue, total null because Resy's is city-wide) or as collections 889/891/890/888 (list page view); near_time keeps the 6 slots closest to it; editorial venues fall back to rating/total_ratings. Live-checked Climbing, Top Rated (matches the list page), Date Night. r4: list now defaults to the list page view (resolves the algorithmic collection id per city) with ranking: leaderboard for the home-page ranking; only_available filter."
     },
     {
       "domain": "resy.com",
