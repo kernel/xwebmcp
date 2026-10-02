@@ -54,6 +54,38 @@
       }
     },
     {
+      "domain": "cloudflare.com",
+      "tool": "get_domain_info",
+      "file": "domains/cloudflare.com/get_domain_info.js",
+      "kind": "page",
+      "namespace": "cloudflare.com",
+      "url_patterns": [
+        "https://radar.cloudflare.com/*"
+      ],
+      "status": "verified",
+      "last_verified": "2026-09-30",
+      "notes": "Independent final-source QA and public Kernel/local Chromium live reads passed. Radar page tool: bounded category, ASN, DNSSEC, exact-name Top 100 position, DNS and TLS data; cancellation and redaction. WHOIS opt-in, rate-limited; normalization guards fixture-tested. Unassigned TLDs with default sections may give site_error. No dashboard actions.",
+      "provenance": {
+        "qa_agent": "agt_37ff3f484ac4461bb423"
+      }
+    },
+    {
+      "domain": "cloudflare.com",
+      "tool": "list_internet_outages",
+      "file": "domains/cloudflare.com/list_internet_outages.js",
+      "kind": "page",
+      "namespace": "cloudflare.com",
+      "url_patterns": [
+        "https://radar.cloudflare.com/*"
+      ],
+      "status": "verified",
+      "last_verified": "2026-09-30",
+      "notes": "Independent final-source QA and public Kernel/local Chromium live reads passed. Radar page tool: bounded outages and anomalies, worldwide or for one country or 32-bit ASN; applied filter checks, cancellation and redaction. Continents rejected; country/ASN coverage imperfect. Induced failures fixture-tested; no dashboard actions.",
+      "provenance": {
+        "qa_agent": "agt_37ff3f484ac4461bb423"
+      }
+    },
+    {
       "domain": "delta.com",
       "tool": "continue_to_review_and_pay",
       "file": "domains/delta.com/continue_to_review_and_pay.js",
