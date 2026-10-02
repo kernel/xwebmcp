@@ -24,7 +24,6 @@ const LEGACY_CAMEL_CASE_FILES = new Set([
   "domains/google.com/search_flights.js",
   "domains/jetblue.com/search_flights.js",
   "domains/southwest.com/search_flights.js",
-  "domains/united.com/search_flights.js",
 ]);
 
 function schemaPropertyNames(schema, out = []) {

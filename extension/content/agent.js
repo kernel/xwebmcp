@@ -110,6 +110,17 @@
     send({type: 'registration', url: location.href, registered: [...registrations].filter(([, registration]) => registration.ready).map(([id]) => id), errors});
   }
 
+  let retries = 0;
+  let retryTimer;
+  function scheduleRetry() {
+    if (retries >= 3 || retryTimer) return;
+    retries++;
+    retryTimer = setTimeout(() => {
+      retryTimer = undefined;
+      chrome.storage.local.get('definitions').then(({definitions = []}) => reconcile(definitions));
+    }, 1000);
+  }
+
   function pageToolDescriptor(definition) {
     return {
       id: definition.id,
@@ -177,8 +188,16 @@
       Promise.all((event.data.ids ?? []).map(async (id) => {
         const registration = registrations.get(id);
         if (registration?.kind !== 'page') return null;
-        const response = await chrome.runtime.sendMessage({type: 'register-page-tool', definitionId: id}).catch((error) => ({error: String(error)}));
-        if (!response?.ok) return `${id}: ${response?.error ?? 'page tool registration failed'}`;
+        const response = await chrome.runtime.sendMessage({type: 'register-page-tool', definitionId: id, url: location.href}).catch((error) => ({error: String(error)}));
+        if (!response?.ok) {
+          // Usually a race with a redirect or in-app navigation right after the
+          // document loaded: forget the attempt and sync again shortly.
+          if (registrations.get(id) === registration) {
+            registrations.delete(id);
+            scheduleRetry();
+          }
+          return `${id}: ${response?.error ?? 'page tool registration failed'}`;
+        }
         if (registrations.get(id) !== registration) {
           pageToolsPort().unregister([id]);
           return null;

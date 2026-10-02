@@ -77,7 +77,7 @@ test("validator rejects a non-conforming domain README and undocumented url patt
     for (const path of ["registry.json", "domains", "spec", "scripts", "lib"]) cpSync(path, join(dir, path), { recursive: true });
     writeFileSync(join(dir, "domains/aa.com/README.md"), "# aa.com\n\nAmerican Airlines.\n");
     const registry = JSON.parse(readFileSync(join(dir, "registry.json"), "utf8"));
-    const google = registry.tools.find((e) => e.domain === "google.com");
+    const google = registry.tools.find((e) => e.domain === "google.com" && e.tool === "search_flights");
     delete google.url_patterns_reason;
     const uber = registry.tools.find((e) => e.domain === "ubereats.com" && e.external_hosts);
     delete uber.external_hosts;

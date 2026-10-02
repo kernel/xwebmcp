@@ -14,7 +14,7 @@ globalThis.chrome = {
     async sendCommand() { return {result: {value: true}}; },
   },
   runtime: {onConnect: noopEvent},
-  tabs: {onRemoved: noopEvent},
+  tabs: {onRemoved: noopEvent, onCreated: noopEvent},
   storage: {
     session: {async get() { return {}; }, async set() {}},
     local: {async get() { return {definitions: []}; }},

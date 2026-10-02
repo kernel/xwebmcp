@@ -207,6 +207,15 @@ export async function invoke({toolRef: ref, input, timeoutSec, allowUserTabs}) {
       return invoker.invoke({definitionId: definition.id, input, tabId: parsed.tabId, timeoutSec, origin: 'bridge', allowUserTabs});
     }
   }
+  // Sites such as Google Flights do not render in hidden tabs, so a page tool
+  // would read an empty page: make the tab active in its window first.
+  const current = await chrome.tabs.get(parsed.tabId).catch(() => null);
+  if (current && current.active === false) {
+    try {
+      await chrome.tabs.update(parsed.tabId, {active: true});
+      await new Promise((resolve) => setTimeout(resolve, 300));
+    } catch {}
+  }
   const id = invocationId();
   const seconds = Math.min(invoker.MAX_TIMEOUT_SEC, Math.max(1, timeoutSec ?? EXECUTE_TIMEOUT_SEC));
   let timer;

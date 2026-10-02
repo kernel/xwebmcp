@@ -347,6 +347,62 @@
     },
     {
       "domain": "google.com",
+      "tool": "continue_to_airline",
+      "file": "domains/google.com/continue_to_airline.js",
+      "kind": "cdp",
+      "namespace": "google.com",
+      "url_patterns": [
+        "https://www.google.com/travel/flights/booking*"
+      ],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Presses Continue for one seller's fare on Google Flights' booking page (trusted click; Google ignores synthetic clicks) and reports the seller tab it opens. Draft.",
+      "url_patterns_reason": "Narrowed to Google Flights' booking page (www.google.com/travel/flights/booking*), the only page with per-fare Continue buttons; google.com also serves unrelated products."
+    },
+    {
+      "domain": "google.com",
+      "tool": "get_booking_options",
+      "file": "domains/google.com/get_booking_options.js",
+      "kind": "page",
+      "namespace": "google.com",
+      "url_patterns": [
+        "https://www.google.com/travel/flights/booking*"
+      ],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Reads Google Flights' booking options: each seller's fares with price, carry-on and checked-bag allowance, and features. Draft.",
+      "url_patterns_reason": "Narrowed to Google Flights' booking page (www.google.com/travel/flights/booking*), the only page that lists booking options; google.com also serves unrelated products."
+    },
+    {
+      "domain": "google.com",
+      "tool": "get_page_context",
+      "file": "domains/google.com/get_page_context.js",
+      "kind": "page",
+      "namespace": "google.com",
+      "url_patterns": [
+        "https://www.google.com/travel/*"
+      ],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Page type (home, departing/returning results, booking options), live tools, unsettled reasons, chosen flights, suggestions. Draft.",
+      "url_patterns_reason": "Narrowed to Google Travel (www.google.com/travel/*): google.com also serves Search, Gmail, Maps and other unrelated products where this tool must not be listed."
+    },
+    {
+      "domain": "google.com",
+      "tool": "list_flights",
+      "file": "domains/google.com/list_flights.js",
+      "kind": "page",
+      "namespace": "google.com",
+      "url_patterns": [
+        "https://www.google.com/travel/flights/search*"
+      ],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Reads the departing or returning flights on the current results page with bags included, sortable and filterable. Draft.",
+      "url_patterns_reason": "Narrowed to Google Flights results (www.google.com/travel/flights/search*), the only page with flight rows; google.com also serves unrelated products."
+    },
+    {
+      "domain": "google.com",
       "tool": "search_flights",
       "file": "domains/google.com/search_flights.js",
       "kind": "cdp",
@@ -362,6 +418,20 @@
       "provenance": {
         "qa_agent": "agt_7ffe2dcdda2935caea70"
       }
+    },
+    {
+      "domain": "google.com",
+      "tool": "select_flight",
+      "file": "domains/google.com/select_flight.js",
+      "kind": "page",
+      "namespace": "google.com",
+      "url_patterns": [
+        "https://www.google.com/travel/flights/search*"
+      ],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Chooses a departing or returning flight by result_index and reports the next step (returning flights or booking options). Draft.",
+      "url_patterns_reason": "Narrowed to Google Flights results (www.google.com/travel/flights/search*), the only page with selectable flight rows; google.com also serves unrelated products."
     },
     {
       "domain": "instacart.com",
@@ -597,7 +667,7 @@
       ],
       "status": "verified",
       "last_verified": "2026-09-24",
-      "notes": "Independent search/parser QA passed; domain migration live-verified from /travel-agents. Returns initial outbound cards only, including round trips; 1–7 adults; displayed cash fares are not trip totals. Inventory failures remain explicit errors.",
+      "notes": "Independent search/parser QA passed; domain migration live-verified from /travel-agents. Returns initial outbound cards only, including round trips; 1\u20137 adults; displayed cash fares are not trip totals. Inventory failures remain explicit errors.",
       "provenance": {
         "qa_agent": "agt_8da83a2e489269a5ff05"
       }
@@ -965,7 +1035,9 @@
       "file": "domains/resy.com/book_reservation.js",
       "kind": "page",
       "namespace": "resy.com",
-      "url_patterns": ["https://resy.com/*"],
+      "url_patterns": [
+        "https://resy.com/*"
+      ],
       "url_patterns_reason": "Narrowed to resy.com: www.resy.com redirects there, and the other subdomains (blog, helpdesk, widgets, os) are separate products that do not expose the consumer page's API configuration these tools call api.resy.com with.",
       "status": "draft",
       "last_verified": null,
@@ -977,7 +1049,9 @@
       "file": "domains/resy.com/cancel_reservation.js",
       "kind": "page",
       "namespace": "resy.com",
-      "url_patterns": ["https://resy.com/*"],
+      "url_patterns": [
+        "https://resy.com/*"
+      ],
       "url_patterns_reason": "Narrowed to resy.com: www.resy.com redirects there, and the other subdomains (blog, helpdesk, widgets, os) are separate products that do not expose the consumer page's API configuration these tools call api.resy.com with.",
       "status": "draft",
       "last_verified": null,
@@ -989,7 +1063,9 @@
       "file": "domains/resy.com/change_reservation.js",
       "kind": "page",
       "namespace": "resy.com",
-      "url_patterns": ["https://resy.com/*"],
+      "url_patterns": [
+        "https://resy.com/*"
+      ],
       "url_patterns_reason": "Narrowed to resy.com: www.resy.com redirects there, and the other subdomains (blog, helpdesk, widgets, os) are separate products that do not expose the consumer page's API configuration these tools call api.resy.com with.",
       "status": "draft",
       "last_verified": null,
@@ -1001,7 +1077,9 @@
       "file": "domains/resy.com/copy_list.js",
       "kind": "page",
       "namespace": "resy.com",
-      "url_patterns": ["https://resy.com/*"],
+      "url_patterns": [
+        "https://resy.com/*"
+      ],
       "url_patterns_reason": "Narrowed to resy.com: www.resy.com redirects there, and the other subdomains (blog, helpdesk, widgets, os) are separate products that do not expose the consumer page's API configuration these tools call api.resy.com with.",
       "status": "draft",
       "last_verified": null,
@@ -1013,7 +1091,9 @@
       "file": "domains/resy.com/create_list.js",
       "kind": "page",
       "namespace": "resy.com",
-      "url_patterns": ["https://resy.com/*"],
+      "url_patterns": [
+        "https://resy.com/*"
+      ],
       "url_patterns_reason": "Narrowed to resy.com: www.resy.com redirects there, and the other subdomains (blog, helpdesk, widgets, os) are separate products that do not expose the consumer page's API configuration these tools call api.resy.com with.",
       "status": "draft",
       "last_verified": null,
@@ -1025,7 +1105,9 @@
       "file": "domains/resy.com/create_notify.js",
       "kind": "page",
       "namespace": "resy.com",
-      "url_patterns": ["https://resy.com/*"],
+      "url_patterns": [
+        "https://resy.com/*"
+      ],
       "url_patterns_reason": "Narrowed to resy.com: www.resy.com redirects there, and the other subdomains (blog, helpdesk, widgets, os) are separate products that do not expose the consumer page's API configuration these tools call api.resy.com with.",
       "status": "draft",
       "last_verified": null,
@@ -1037,7 +1119,9 @@
       "file": "domains/resy.com/delete_list.js",
       "kind": "page",
       "namespace": "resy.com",
-      "url_patterns": ["https://resy.com/*"],
+      "url_patterns": [
+        "https://resy.com/*"
+      ],
       "url_patterns_reason": "Narrowed to resy.com: www.resy.com redirects there, and the other subdomains (blog, helpdesk, widgets, os) are separate products that do not expose the consumer page's API configuration these tools call api.resy.com with.",
       "status": "draft",
       "last_verified": null,
@@ -1049,12 +1133,16 @@
       "file": "domains/resy.com/get_account_status.js",
       "kind": "page",
       "namespace": "resy.com",
-      "url_patterns": ["https://resy.com/*"],
+      "url_patterns": [
+        "https://resy.com/*"
+      ],
       "url_patterns_reason": "Narrowed to resy.com: www.resy.com redirects there, and the other subdomains (blog, helpdesk, widgets, os) are separate products that do not expose the consumer page's API configuration these tools call api.resy.com with.",
       "status": "draft",
       "last_verified": null,
       "notes": "Read an opaque current-account reference without profile or payment data. No login or mutation. Back to draft after a source change on 2026-10-01: waits up to 5 s for the page's API configuration like the public tools. Builder live run passed on 2026-10-01; needs fresh independent QA; earlier sign-off (agt_221f5a5f11361477ff09) covered the previous source.",
-      "provenance": { "qa_agent": "agt_221f5a5f11361477ff09" }
+      "provenance": {
+        "qa_agent": "agt_221f5a5f11361477ff09"
+      }
     },
     {
       "domain": "resy.com",
@@ -1062,12 +1150,16 @@
       "file": "domains/resy.com/get_availability.js",
       "kind": "page",
       "namespace": "resy.com",
-      "url_patterns": ["https://resy.com/*"],
+      "url_patterns": [
+        "https://resy.com/*"
+      ],
       "url_patterns_reason": "Narrowed to resy.com: www.resy.com redirects there, and the other subdomains (blog, helpdesk, widgets, os) are separate products that do not expose the consumer page's API configuration these tools call api.resy.com with.",
       "status": "draft",
       "last_verified": null,
       "notes": "Public slots as full venue-local date-times, sorted and capped at 300. Raw policy fields are not confirmed charges. Back to draft after a source change on 2026-10-01: each distinct slot policy is listed once in policies and slots carry policy_id (live: 21 slots, 1 policy, 6,144 to 3,490 bytes); caller cancellation is reported as canceled, not a timeout. Builder live run passed on 2026-10-01; needs fresh independent QA; earlier sign-off (agt_221f5a5f11361477ff09) covered the previous source.",
-      "provenance": { "qa_agent": "agt_221f5a5f11361477ff09" }
+      "provenance": {
+        "qa_agent": "agt_221f5a5f11361477ff09"
+      }
     },
     {
       "domain": "resy.com",
@@ -1075,12 +1167,16 @@
       "file": "domains/resy.com/get_availability_calendar.js",
       "kind": "page",
       "namespace": "resy.com",
-      "url_patterns": ["https://resy.com/*"],
+      "url_patterns": [
+        "https://resy.com/*"
+      ],
       "url_patterns_reason": "Narrowed to resy.com: www.resy.com redirects there, and the other subdomains (blog, helpdesk, widgets, os) are separate products that do not expose the consumer page's API configuration these tools call api.resy.com with.",
       "status": "draft",
       "last_verified": null,
       "notes": "Public per-date booking states. Tock venues can return not_found or empty no_results. Back to draft after a source change on 2026-10-01: caller cancellation during a request is reported as canceled, not a timeout. Builder live run passed on 2026-10-01; needs fresh independent QA; earlier sign-off (agt_221f5a5f11361477ff09) covered the previous source.",
-      "provenance": { "qa_agent": "agt_221f5a5f11361477ff09" }
+      "provenance": {
+        "qa_agent": "agt_221f5a5f11361477ff09"
+      }
     },
     {
       "domain": "resy.com",
@@ -1088,7 +1184,9 @@
       "file": "domains/resy.com/get_booking_quote.js",
       "kind": "page",
       "namespace": "resy.com",
-      "url_patterns": ["https://resy.com/*"],
+      "url_patterns": [
+        "https://resy.com/*"
+      ],
       "url_patterns_reason": "Narrowed to resy.com: www.resy.com redirects there, and the other subdomains (blog, helpdesk, widgets, os) are separate products that do not expose the consumer page's API configuration these tools call api.resy.com with.",
       "status": "draft",
       "last_verified": null,
@@ -1100,7 +1198,9 @@
       "file": "domains/resy.com/get_collection.js",
       "kind": "page",
       "namespace": "resy.com",
-      "url_patterns": ["https://resy.com/*"],
+      "url_patterns": [
+        "https://resy.com/*"
+      ],
       "url_patterns_reason": "Narrowed to resy.com: www.resy.com redirects there, and the other subdomains (blog, helpdesk, widgets, os) are separate products that do not expose the consumer page's API configuration these tools call api.resy.com with.",
       "status": "draft",
       "last_verified": null,
@@ -1112,7 +1212,9 @@
       "file": "domains/resy.com/get_list.js",
       "kind": "page",
       "namespace": "resy.com",
-      "url_patterns": ["https://resy.com/*"],
+      "url_patterns": [
+        "https://resy.com/*"
+      ],
       "url_patterns_reason": "Narrowed to resy.com: www.resy.com redirects there, and the other subdomains (blog, helpdesk, widgets, os) are separate products that do not expose the consumer page's API configuration these tools call api.resy.com with.",
       "status": "draft",
       "last_verified": null,
@@ -1124,12 +1226,16 @@
       "file": "domains/resy.com/get_reservation.js",
       "kind": "page",
       "namespace": "resy.com",
-      "url_patterns": ["https://resy.com/*"],
+      "url_patterns": [
+        "https://resy.com/*"
+      ],
       "url_patterns_reason": "Narrowed to resy.com: www.resy.com redirects there, and the other subdomains (blog, helpdesk, widgets, os) are separate products that do not expose the consumer page's API configuration these tools call api.resy.com with.",
       "status": "draft",
       "last_verified": null,
       "notes": "Account-guarded details of one reservation on a specified list page, not all pages. A populated item was read live during the 2026-10-01 booking run; unknown item shapes fail site_changed. No cancellation tokens. Back to draft after a source change on 2026-10-01: one /2/user identity read per call (the session token is compared before and after every request) and the API-configuration wait. Builder live run passed on 2026-10-01; needs fresh independent QA; earlier sign-off (agt_221f5a5f11361477ff09) covered the previous source.",
-      "provenance": { "qa_agent": "agt_221f5a5f11361477ff09" }
+      "provenance": {
+        "qa_agent": "agt_221f5a5f11361477ff09"
+      }
     },
     {
       "domain": "resy.com",
@@ -1137,12 +1243,16 @@
       "file": "domains/resy.com/get_restaurant.js",
       "kind": "page",
       "namespace": "resy.com",
-      "url_patterns": ["https://resy.com/*"],
+      "url_patterns": [
+        "https://resy.com/*"
+      ],
       "url_patterns_reason": "Narrowed to resy.com: www.resy.com redirects there, and the other subdomains (blog, helpdesk, widgets, os) are separate products that do not expose the consumer page's API configuration these tools call api.resy.com with.",
       "status": "draft",
       "last_verified": null,
       "notes": "Public venue profile by URL or city and venue slug. Back to draft after a source change on 2026-10-01: caller cancellation during a request is reported as canceled, not a timeout. Builder live run passed on 2026-10-01; needs fresh independent QA; earlier sign-off (agt_221f5a5f11361477ff09) covered the previous source.",
-      "provenance": { "qa_agent": "agt_221f5a5f11361477ff09" }
+      "provenance": {
+        "qa_agent": "agt_221f5a5f11361477ff09"
+      }
     },
     {
       "domain": "resy.com",
@@ -1150,7 +1260,9 @@
       "file": "domains/resy.com/get_share_link.js",
       "kind": "page",
       "namespace": "resy.com",
-      "url_patterns": ["https://resy.com/*"],
+      "url_patterns": [
+        "https://resy.com/*"
+      ],
       "url_patterns_reason": "Narrowed to resy.com: www.resy.com redirects there, and the other subdomains (blog, helpdesk, widgets, os) are separate products that do not expose the consumer page's API configuration these tools call api.resy.com with.",
       "status": "draft",
       "last_verified": null,
@@ -1162,7 +1274,9 @@
       "file": "domains/resy.com/get_venues.js",
       "kind": "page",
       "namespace": "resy.com",
-      "url_patterns": ["https://resy.com/*"],
+      "url_patterns": [
+        "https://resy.com/*"
+      ],
       "url_patterns_reason": "Narrowed to resy.com: www.resy.com redirects there, and the other subdomains (blog, helpdesk, widgets, os) are separate products that do not expose the consumer page's API configuration these tools call api.resy.com with.",
       "status": "draft",
       "last_verified": null,
@@ -1174,7 +1288,9 @@
       "file": "domains/resy.com/list_collections.js",
       "kind": "page",
       "namespace": "resy.com",
-      "url_patterns": ["https://resy.com/*"],
+      "url_patterns": [
+        "https://resy.com/*"
+      ],
       "url_patterns_reason": "Narrowed to resy.com: www.resy.com redirects there, and the other subdomains (blog, helpdesk, widgets, os) are separate products that do not expose the consumer page's API configuration these tools call api.resy.com with.",
       "status": "draft",
       "last_verified": null,
@@ -1186,7 +1302,9 @@
       "file": "domains/resy.com/list_events.js",
       "kind": "page",
       "namespace": "resy.com",
-      "url_patterns": ["https://resy.com/*"],
+      "url_patterns": [
+        "https://resy.com/*"
+      ],
       "url_patterns_reason": "Narrowed to resy.com: www.resy.com redirects there, and the other subdomains (blog, helpdesk, widgets, os) are separate products that do not expose the consumer page's API configuration these tools call api.resy.com with.",
       "status": "draft",
       "last_verified": null,
@@ -1198,7 +1316,9 @@
       "file": "domains/resy.com/list_lists.js",
       "kind": "page",
       "namespace": "resy.com",
-      "url_patterns": ["https://resy.com/*"],
+      "url_patterns": [
+        "https://resy.com/*"
+      ],
       "url_patterns_reason": "Narrowed to resy.com: www.resy.com redirects there, and the other subdomains (blog, helpdesk, widgets, os) are separate products that do not expose the consumer page's API configuration these tools call api.resy.com with.",
       "status": "draft",
       "last_verified": null,
@@ -1210,12 +1330,16 @@
       "file": "domains/resy.com/list_notify_requests.js",
       "kind": "page",
       "namespace": "resy.com",
-      "url_patterns": ["https://resy.com/*"],
+      "url_patterns": [
+        "https://resy.com/*"
+      ],
       "url_patterns_reason": "Narrowed to resy.com: www.resy.com redirects there, and the other subdomains (blog, helpdesk, widgets, os) are separate products that do not expose the consumer page's API configuration these tools call api.resy.com with.",
       "status": "draft",
       "last_verified": null,
       "notes": "Account-guarded read of up to 100 Notify requests (venue, date, party, service, HH:MM window) from each item's specs; populated items live-verified 2026-10-01. Writes are create_notify and remove_notify. Back to draft after a source change on 2026-10-01: one /2/user identity read per call (the session token is compared before and after every request) and the API-configuration wait. Builder live run passed on 2026-10-01; needs fresh independent QA; earlier sign-off (agt_221f5a5f11361477ff09) covered the previous source.",
-      "provenance": { "qa_agent": "agt_221f5a5f11361477ff09" }
+      "provenance": {
+        "qa_agent": "agt_221f5a5f11361477ff09"
+      }
     },
     {
       "domain": "resy.com",
@@ -1223,12 +1347,16 @@
       "file": "domains/resy.com/list_reservations.js",
       "kind": "page",
       "namespace": "resy.com",
-      "url_patterns": ["https://resy.com/*"],
+      "url_patterns": [
+        "https://resy.com/*"
+      ],
       "url_patterns_reason": "Narrowed to resy.com: www.resy.com redirects there, and the other subdomains (blog, helpdesk, widgets, os) are separate products that do not expose the consumer page's API configuration these tools call api.resy.com with.",
       "status": "draft",
       "last_verified": null,
       "notes": "Account-guarded reservation page, maximum 20 items, no automatic pagination. Empty and populated pages read live on 2026-10-01; paging beyond the first page is not live verified. Back to draft after a source change on 2026-10-01: one /2/user identity read per call (the session token is compared before and after every request) and the API-configuration wait. Builder live run passed on 2026-10-01; needs fresh independent QA; earlier sign-off (agt_221f5a5f11361477ff09) covered the previous source.",
-      "provenance": { "qa_agent": "agt_221f5a5f11361477ff09" }
+      "provenance": {
+        "qa_agent": "agt_221f5a5f11361477ff09"
+      }
     },
     {
       "domain": "resy.com",
@@ -1236,7 +1364,9 @@
       "file": "domains/resy.com/rate_reservation.js",
       "kind": "page",
       "namespace": "resy.com",
-      "url_patterns": ["https://resy.com/*"],
+      "url_patterns": [
+        "https://resy.com/*"
+      ],
       "url_patterns_reason": "Narrowed to resy.com: www.resy.com redirects there, and the other subdomains (blog, helpdesk, widgets, os) are separate products that do not expose the consumer page's API configuration these tools call api.resy.com with.",
       "status": "draft",
       "last_verified": null,
@@ -1248,7 +1378,9 @@
       "file": "domains/resy.com/remove_notify.js",
       "kind": "page",
       "namespace": "resy.com",
-      "url_patterns": ["https://resy.com/*"],
+      "url_patterns": [
+        "https://resy.com/*"
+      ],
       "url_patterns_reason": "Narrowed to resy.com: www.resy.com redirects there, and the other subdomains (blog, helpdesk, widgets, os) are separate products that do not expose the consumer page's API configuration these tools call api.resy.com with.",
       "status": "draft",
       "last_verified": null,
@@ -1260,12 +1392,16 @@
       "file": "domains/resy.com/search_restaurants.js",
       "kind": "page",
       "namespace": "resy.com",
-      "url_patterns": ["https://resy.com/*"],
+      "url_patterns": [
+        "https://resy.com/*"
+      ],
       "url_patterns_reason": "Narrowed to resy.com: www.resy.com redirects there, and the other subdomains (blog, helpdesk, widgets, os) are separate products that do not expose the consumer page's API configuration these tools call api.resy.com with.",
       "status": "draft",
       "last_verified": null,
       "notes": "Public restaurant search and up to 12 sorted slots per venue. Tock slots are informational; cross-origin blocks can surface as site_error. Back to draft after a source change on 2026-10-01: the 2 MB location list is cached per document for an hour; caller cancellation is reported as canceled, not a timeout. Builder live run passed on 2026-10-01; needs fresh independent QA; earlier sign-off (agt_221f5a5f11361477ff09) covered the previous source.",
-      "provenance": { "qa_agent": "agt_221f5a5f11361477ff09" }
+      "provenance": {
+        "qa_agent": "agt_221f5a5f11361477ff09"
+      }
     },
     {
       "domain": "resy.com",
@@ -1273,12 +1409,16 @@
       "file": "domains/resy.com/set_favorite.js",
       "kind": "page",
       "namespace": "resy.com",
-      "url_patterns": ["https://resy.com/*"],
+      "url_patterns": [
+        "https://resy.com/*"
+      ],
       "url_patterns_reason": "Narrowed to resy.com: www.resy.com redirects there, and the other subdomains (blog, helpdesk, widgets, os) are separate products that do not expose the consumer page's API configuration these tools call api.resy.com with.",
       "status": "draft",
       "last_verified": null,
       "notes": "Reversible My Hit List favorite with exact account/venue and expected-state guards, one write and readback. HTTP 201 success handling awaits independent QA. Never retry uncertain writes automatically. Back to draft after a source change on 2026-10-01: four requests per write (/2/user, /3/venue, POST, /3/venue) instead of six; the session token is compared before and after every request. Builder live run passed on 2026-10-01; needs fresh independent QA.",
-      "provenance": { "qa_agent": null }
+      "provenance": {
+        "qa_agent": null
+      }
     },
     {
       "domain": "resy.com",
@@ -1286,7 +1426,9 @@
       "file": "domains/resy.com/set_list_membership.js",
       "kind": "page",
       "namespace": "resy.com",
-      "url_patterns": ["https://resy.com/*"],
+      "url_patterns": [
+        "https://resy.com/*"
+      ],
       "url_patterns_reason": "Narrowed to resy.com: www.resy.com redirects there, and the other subdomains (blog, helpdesk, widgets, os) are separate products that do not expose the consumer page's API configuration these tools call api.resy.com with.",
       "status": "draft",
       "last_verified": null,
@@ -1688,6 +1830,48 @@
     },
     {
       "domain": "united.com",
+      "tool": "get_page_context",
+      "file": "domains/united.com/get_page_context.js",
+      "kind": "page",
+      "namespace": "united.com",
+      "url_patterns": [
+        "https://united.com/*",
+        "https://*.united.com/*"
+      ],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Page type (home, sign-in, results leg, checkout), live tools, unsettled reasons, open fare options, signed-in state and status level (no PII), verification-code step, suggestions. Draft."
+    },
+    {
+      "domain": "united.com",
+      "tool": "get_trip_summary",
+      "file": "domains/united.com/get_trip_summary.js",
+      "kind": "page",
+      "namespace": "united.com",
+      "url_patterns": [
+        "https://united.com/*",
+        "https://*.united.com/*"
+      ],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Reads United's checkout cart panel: flights with numbers and aircraft, fare per person, taxes, total due, cart id; never returns traveler details. Draft."
+    },
+    {
+      "domain": "united.com",
+      "tool": "list_flight_results",
+      "file": "domains/united.com/list_flight_results.js",
+      "kind": "page",
+      "namespace": "united.com",
+      "url_patterns": [
+        "https://www.united.com/*/fsr/*"
+      ],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Reads departing or returning rows on the results page with every cabin column's From price, sortable. Draft.",
+      "url_patterns_reason": "Narrowed to United's flight results (www.united.com/*/fsr/*), the only pages with flight rows."
+    },
+    {
+      "domain": "united.com",
       "tool": "login",
       "file": "domains/united.com/login.js",
       "kind": "cdp",
@@ -1705,6 +1889,20 @@
     },
     {
       "domain": "united.com",
+      "tool": "navigate_to_page",
+      "file": "domains/united.com/navigate_to_page.js",
+      "kind": "page",
+      "namespace": "united.com",
+      "url_patterns": [
+        "https://united.com/*",
+        "https://*.united.com/*"
+      ],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Schedules a same-tab navigation to a www.united.com path; description carries a basic site map (paths checked HTTP 200 on 2026-10-01). Draft."
+    },
+    {
+      "domain": "united.com",
       "tool": "search_flights",
       "file": "domains/united.com/search_flights.js",
       "kind": "cdp",
@@ -1713,12 +1911,37 @@
         "https://united.com/*",
         "https://*.united.com/*"
       ],
-      "status": "verified",
-      "last_verified": "2026-09-24",
-      "notes": "Independent QA passed; domain-namespace migration verified live from a non-homepage results page: 26 SFO-LAX itineraries in 29.309s. Adults, English/US cash fares, initial outbound page only; roundtrip starting fares are per person. Nearby airports are returned explicitly. Slow-search transport timeouts remain a risk.",
-      "provenance": {
-        "qa_agent": "agt_a87837884a432de575e8"
-      }
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Migrated to snake_case input/output (depart_date, return_date, trip_type one_way/round_trip, ...) and added result_index for select_fare; back to draft for re-QA. Earlier verified evidence covered the camelCase contract."
+    },
+    {
+      "domain": "united.com",
+      "tool": "select_fare",
+      "file": "domains/united.com/select_fare.js",
+      "kind": "page",
+      "namespace": "united.com",
+      "url_patterns": [
+        "https://www.united.com/*/fsr/*"
+      ],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Opens a row's fare options for one cabin column and returns each fare's price, carry-on, rules and whether Basic consent is needed. Draft.",
+      "url_patterns_reason": "Narrowed to United's flight results (www.united.com/*/fsr/*), the only pages with fare columns."
+    },
+    {
+      "domain": "united.com",
+      "tool": "select_fare_option",
+      "file": "domains/united.com/select_fare_option.js",
+      "kind": "page",
+      "namespace": "united.com",
+      "url_patterns": [
+        "https://www.united.com/*/fsr/*"
+      ],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Chooses a fare (Basic requires accept_restrictions); reports return results or checkout as the next page. Draft.",
+      "url_patterns_reason": "Narrowed to United's flight results (www.united.com/*/fsr/*), where fare options open."
     }
   ]
 }
