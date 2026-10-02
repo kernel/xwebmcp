@@ -88,6 +88,9 @@ function harness(name, options = {}) {
   const context = {
     JSON, Date, CSS: { escape: value => String(value) }, document,
     location: { hostname: url.hostname, pathname: url.pathname },
+    // cdp helpers for add_to_cart: js() runs the page function in this fake document.
+    js: async (fn, options = {}) => fn(options.arg),
+    waitMs: async () => {},
     setTimeout: (fn, delay) => {
       if (delay === 100) scheduled.push(fn);
       else fn();
@@ -129,10 +132,12 @@ function harness(name, options = {}) {
 const registry = JSON.parse(readFileSync(new URL("../registry.json", import.meta.url), "utf8"));
 
 for (const name of names) {
-  test(`${name}: page tool has typed schemas and a registry entry`, () => {
+  test(`${name}: tool has typed schemas and a registry entry`, () => {
     assert.equal(sources[name].trimEnd().endsWith(";"), false);
     const { definition } = harness(name);
-    assert.equal(definition.kind, "page");
+    // add_to_cart is cdp: tracker iframes navigate on add-to-cart and the runtime drops page-tool results.
+    assert.equal(definition.kind, name === "add_to_cart" ? "cdp" : "page");
+    assert.equal(registry.tools.find(entry => entry.domain === "bluebottlecoffee.com" && entry.tool === name)?.kind, definition.kind);
     assert.equal(definition.tool.name, name);
     assert.deepEqual(plain(definition.match.url_patterns), ["https://bluebottlecoffee.com/*", "https://www.bluebottlecoffee.com/*"]);
     assert.ok(definition.tool.outputSchema);

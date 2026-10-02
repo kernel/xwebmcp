@@ -57,7 +57,7 @@
       "domain": "bluebottlecoffee.com",
       "tool": "add_to_cart",
       "file": "domains/bluebottlecoffee.com/add_to_cart.js",
-      "kind": "page",
+      "kind": "cdp",
       "namespace": "bluebottlecoffee.com",
       "url_patterns": [
         "https://bluebottlecoffee.com/*",
@@ -66,7 +66,7 @@
       "url_patterns_reason": "Limited to the Blue Bottle storefront on bluebottlecoffee.com and www.bluebottlecoffee.com; checkout.bluebottlecoffee.com is a separate Stripe surface with its own native tools.",
       "status": "draft",
       "last_verified": null,
-      "notes": "Adds a one-time purchase from the current product page through the site's own form and confirms the cart line. Builder live-tested an existing Hayes Valley Espresso cart line increasing from one to two, then restored the original cart exactly. Multi-variant products fail closed until a variant-selection contract is added. Independent QA pending."
+      "notes": "Adds a one-time purchase from the current product page through the site's own form and confirms the cart line and cart count. CDP exception (runtime constraint, not navigation): pressing Add to Cart makes third-party tracker iframes navigate cross-origin, and the WebMCP runtime then discards the result of any page tool still running with \"Cannot return tool results after a cross-origin navigation\", although the storefront document never navigates. As a page tool it added the item but always returned that error; a page tool that clicks and returns immediately completes, one that waits to confirm does not. The cdp version presses the button in one short js() evaluation and confirms the cart from the runtime. Builder live-tested on Hayes Valley Espresso from the default Subscribe & Save state: add 1 (cart 0 to 1) and add 2 (1 to 3) returned ok, a stale SKU returned not_found, and a collection page returned wrong_page. Multi-variant products fail closed until a variant-selection contract is added. Independent QA pending."
     },
     {
       "domain": "bluebottlecoffee.com",
@@ -727,7 +727,7 @@
       ],
       "status": "verified",
       "last_verified": "2026-09-24",
-      "notes": "Independent search/parser QA passed; domain migration live-verified from /travel-agents. Returns initial outbound cards only, including round trips; 1\u20137 adults; displayed cash fares are not trip totals. Inventory failures remain explicit errors.",
+      "notes": "Independent search/parser QA passed; domain migration live-verified from /travel-agents. Returns initial outbound cards only, including round trips; 1–7 adults; displayed cash fares are not trip totals. Inventory failures remain explicit errors.",
       "provenance": {
         "qa_agent": "agt_8da83a2e489269a5ff05"
       }
