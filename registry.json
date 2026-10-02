@@ -54,6 +54,66 @@
       }
     },
     {
+      "domain": "bluebottlecoffee.com",
+      "tool": "add_to_cart",
+      "file": "domains/bluebottlecoffee.com/add_to_cart.js",
+      "kind": "page",
+      "namespace": "bluebottlecoffee.com",
+      "url_patterns": [
+        "https://bluebottlecoffee.com/*",
+        "https://www.bluebottlecoffee.com/*"
+      ],
+      "url_patterns_reason": "Limited to the Blue Bottle storefront on bluebottlecoffee.com and www.bluebottlecoffee.com; checkout.bluebottlecoffee.com is a separate Stripe surface with its own native tools.",
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Adds a one-time purchase from the current product page through the site's own form and confirms the cart line. Builder live-tested an existing Hayes Valley Espresso cart line increasing from one to two, then restored the original cart exactly. Multi-variant products fail closed until a variant-selection contract is added. Independent QA pending."
+    },
+    {
+      "domain": "bluebottlecoffee.com",
+      "tool": "continue_to_checkout",
+      "file": "domains/bluebottlecoffee.com/continue_to_checkout.js",
+      "kind": "page",
+      "namespace": "bluebottlecoffee.com",
+      "url_patterns": [
+        "https://bluebottlecoffee.com/*",
+        "https://www.bluebottlecoffee.com/*"
+      ],
+      "url_patterns_reason": "Limited to the Blue Bottle storefront on bluebottlecoffee.com and www.bluebottlecoffee.com; checkout.bluebottlecoffee.com is a separate Stripe surface with its own native tools.",
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Opens a non-empty cart and schedules the site's Continue to Checkout click after returning. Builder live-tested navigation from the storefront cart to Stripe checkout without entering details or submitting an order. Independent QA pending."
+    },
+    {
+      "domain": "bluebottlecoffee.com",
+      "tool": "get_cart",
+      "file": "domains/bluebottlecoffee.com/get_cart.js",
+      "kind": "page",
+      "namespace": "bluebottlecoffee.com",
+      "url_patterns": [
+        "https://bluebottlecoffee.com/*",
+        "https://www.bluebottlecoffee.com/*"
+      ],
+      "url_patterns_reason": "Limited to the Blue Bottle storefront on bluebottlecoffee.com and www.bluebottlecoffee.com; checkout.bluebottlecoffee.com is a separate Stripe surface with its own native tools.",
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Read-only cart parser for Blue Bottle storefront pages. Builder live-tested a two-item Hayes Valley Espresso cart and confirmed the returned quantity and $44 estimated total against the page. Independent QA pending."
+    },
+    {
+      "domain": "bluebottlecoffee.com",
+      "tool": "get_product",
+      "file": "domains/bluebottlecoffee.com/get_product.js",
+      "kind": "page",
+      "namespace": "bluebottlecoffee.com",
+      "url_patterns": [
+        "https://bluebottlecoffee.com/*",
+        "https://www.bluebottlecoffee.com/*"
+      ],
+      "url_patterns_reason": "Limited to the Blue Bottle storefront on bluebottlecoffee.com and www.bluebottlecoffee.com; checkout.bluebottlecoffee.com is a separate Stripe surface with its own native tools.",
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Read-only parser for the product currently open, sourced from Blue Bottle's page data. Builder live-tested Hayes Valley Espresso and confirmed its SKU, price, options, and supported quantities against the page. Independent QA pending."
+    },
+    {
       "domain": "delta.com",
       "tool": "continue_to_review_and_pay",
       "file": "domains/delta.com/continue_to_review_and_pay.js",
