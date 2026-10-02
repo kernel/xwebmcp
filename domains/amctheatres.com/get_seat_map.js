@@ -74,7 +74,7 @@
     if (party !== null && (!Number.isInteger(party) || party < 1 || party > 20)) return fail("invalid_input", "party_size must be an integer from 1 to 20.");
     if (window.location.origin !== ORIGIN) return fail("wrong_page", `Open ${ORIGIN}/showtimes/${showtimeId} first.`);
     if (/just a moment|attention required|access denied/i.test(document.title || "")) return fail("challenge", "AMC is blocking access. This tool does not bypass the challenge.");
-    if (window.location.pathname.replace(/\/$/, "") !== `/showtimes/${showtimeId}/seats`) return fail("wrong_page", `Open ${ORIGIN}/showtimes/${showtimeId} first; AMC shows its seat page there for reserved seating. This tool reads that page.`);
+    if (window.location.pathname.replace(/\/$/, "") !== `/showtimes/${showtimeId}/seats`) return fail("wrong_page", `Use navigate_to_page({ url: "/showtimes/${showtimeId}" }), then call this again; AMC shows its seat page there for reserved seating. This tool reads that page.`);
 
     const text = el => (el && el.textContent ? el.textContent : "").replace(/\s+/g, " ").trim();
     const grid = document.querySelector('[role="grid"][aria-label="Seat Selection Map"]');

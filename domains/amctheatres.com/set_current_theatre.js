@@ -73,7 +73,7 @@
     const start = await read();
     if (!start) return fail("not_ready", "The page could not be read; nothing was pressed.");
     if (start.page === "challenge") return fail("challenge", "AMC is blocking access. This tool does not bypass the challenge.");
-    if (start.page !== "search") return fail("wrong_page", `Open ${ORIGIN}/movie-theatres?q=<place> first; this tool presses Make Current on those results.`);
+    if (start.page !== "search") return fail("wrong_page", "Use navigate_to_page({ url: \"/movie-theatres?q=PLACE\" }) with a place near the theatre, then call this again; this tool presses Make Current on those results.");
     await gotoUrl(start.url || (await js(() => location.href)));
     let before = await settle(p => p.page !== "search" || p.ready);
     // AMC re-renders the results shortly after they first appear; let that settle so the press reaches the live button.

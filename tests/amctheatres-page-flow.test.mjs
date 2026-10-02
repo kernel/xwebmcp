@@ -193,3 +193,33 @@ test("navigate_to_page will not leave an open cart unless asked, because leaving
     assert.equal((await leave.run("navigate_to_page", { url: "/movies", leave_cart: true })).status, "navigation_scheduled");
   }
 });
+
+test("page-bound tools answer wrong_page with the navigate_to_page or preview_tickets call that opens their page", async () => {
+  const cases = [
+    ["get_favorite_theatres", {}, 'navigate_to_page({ url: "/my-amc/profile" })'],
+    ["get_rewards", {}, 'navigate_to_page({ url: "/my-amc/rewards" })'],
+    ["get_seat_map", { showtime_id: 9001 }, 'navigate_to_page({ url: "/showtimes/9001" })'],
+    ["get_showtimes", {}, 'navigate_to_page({ url: "/movie-theatres/MARKET/THEATRE/showtimes?date=YYYY-MM-DD" })'],
+    ["get_theatre", { theatre: "amc-example-12" }, 'navigate_to_page({ url: "/movie-theatres/MARKET/amc-example-12" })'],
+    ["get_ticket_prices", { showtime_id: 9001 }, "preview_tickets for showtime 9001"],
+    ["search_catalog", { query: "Example Feature" }, 'navigate_to_page({ url: "/search?filter=nowplaying%2Ccomingsoon&q=Example%20Feature" })'],
+    ["search_catalog", {}, 'navigate_to_page({ url: "/search?filter=nowplaying%2Ccomingsoon&q=TITLE" })'],
+    ["search_theatres", { query: "Example City" }, 'navigate_to_page({ url: "/movie-theatres?q=Example%20City" })'],
+    ["set_current_theatre", { theatre: "amc-example-12" }, 'navigate_to_page({ url: "/movie-theatres?q=PLACE" })'],
+    ["set_favorite_theatre", { theatre: "amc-example-12", favorite: true }, 'navigate_to_page({ url: "/movie-theatres/MARKET/amc-example-12" })']
+  ];
+  for (const [name, input, call] of cases) {
+    const document = new Document(`<html><head><title>AMC</title></head><body>${HEADER_IN}<main></main></body></html>`);
+    document.body = document.querySelector("body");
+    const location = { href: `${ORIGIN}/gift-cards`, origin: ORIGIN, pathname: "/gift-cards", search: "" };
+    const pageContext = { document, location, window: { location }, URLSearchParams, Date, getComputedStyle: () => ({ visibility: "visible" }), setTimeout };
+    pageContext.globalThis = pageContext;
+    const helpers = { js: async (fn, opts = {}) => plain(await runInNewContext(`(${fn.toString()})`, pageContext)(opts.arg)), waitMs: async () => {}, gotoUrl: async () => assert.fail(`${name} navigated`), click: async () => assert.fail(`${name} clicked`) };
+    const source = readFileSync(new URL(`../domains/amctheatres.com/${name}.js`, import.meta.url), "utf8");
+    const [definition] = runInNewContext(`(${source})`, helpers);
+    const execute = definition.kind === "page" ? runInNewContext(`(${definition.execute.toString()})`, pageContext) : definition.execute;
+    const result = plain(await execute(input, { signal: new AbortController().signal }));
+    assert.ok(conforms(definition.tool.outputSchema, result), `${name} output violates its schema: ${JSON.stringify(result)}`);
+    assert.ok(failed(result, "wrong_page").error_message.includes(call), `${name}: ${result.error_message}`);
+  }
+});

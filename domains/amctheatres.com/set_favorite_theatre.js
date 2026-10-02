@@ -81,7 +81,7 @@
     if (!start) return fail("not_ready", "The page could not be read; nothing was pressed.");
     if (start.page === "challenge") return fail("challenge", "AMC is blocking access. This tool does not bypass the challenge.");
     if (start.page === "signed_out") return fail("not_signed_in", "This tab is not signed in to AMC Stubs. Ask the user to sign in, then retry.");
-    if (start.page !== "theatre") return fail("wrong_page", `Open ${ORIGIN}/movie-theatres/<market>/${input.theatre} first; this tool presses that page's favorite button.`);
+    if (start.page !== "theatre") return fail("wrong_page", `Use navigate_to_page({ url: "/movie-theatres/MARKET/${input.theatre}" }) with the market slug from search_theatres, then call this again; this tool presses that page's favorite button.`);
 
     // The label can lag the account after a press, so start from a fresh copy of the page.
     await gotoUrl(start.url);

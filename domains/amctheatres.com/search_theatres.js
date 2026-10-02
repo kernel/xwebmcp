@@ -66,8 +66,8 @@
     if (window.location.origin !== ORIGIN) return fail("wrong_page", "Open https://www.amctheatres.com/movie-theatres?q=<place> first.");
     if (/just a moment|attention required|access denied/i.test(document.title || "")) return fail("challenge", "AMC is blocking access. This tool does not bypass the challenge.");
     const query = window.location.pathname.replace(/\/$/, "") === "/movie-theatres" ? new URLSearchParams(window.location.search).get("q") : null;
-    if (!query || !query.trim()) return fail("wrong_page", "Open https://www.amctheatres.com/movie-theatres?q=<place> first; this tool reads that search's results.");
-    if (opts.query !== undefined && norm(opts.query) !== norm(query)) return fail("wrong_page", `The open search is for "${query.slice(0, 100)}", not "${opts.query}". Open the search you want first.`);
+    if (!query || !query.trim()) return fail("wrong_page", `Use navigate_to_page({ url: "/movie-theatres?q=${opts.query !== undefined ? encodeURIComponent(opts.query.trim()) : "PLACE"}" }), then call this again; this tool reads that search's results.`);
+    if (opts.query !== undefined && norm(opts.query) !== norm(query)) return fail("wrong_page", `The open search is for "${query.slice(0, 100)}", not "${opts.query}". Use navigate_to_page({ url: "/movie-theatres?q=${encodeURIComponent(opts.query.trim())}" }), then call this again.`);
 
     const text = el => (el && el.textContent ? el.textContent : "").replace(/\s+/g, " ").trim();
     const SLUG = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;

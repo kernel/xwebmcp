@@ -120,7 +120,7 @@
     if (context?.signal?.aborted) return fail("canceled", "Reading was canceled; no site changes were made.");
     const text = el => (el && el.textContent ? el.textContent : "").replace(/\s+/g, " ").trim();
     const parts = /^\/movie-theatres\/([a-z0-9-]+)\/([a-z0-9-]+)\/showtimes\/?$/.exec(window.location.pathname);
-    if (window.location.origin !== ORIGIN || !parts) return fail("wrong_page", "Open a theatre's showtimes page first, for example https://www.amctheatres.com/movie-theatres/<market>/<theatre>/showtimes?date=YYYY-MM-DD. This tool reads only the page that is already open.");
+    if (window.location.origin !== ORIGIN || !parts) return fail("wrong_page", "Open a theatre's showtimes page first: navigate_to_page({ url: \"/movie-theatres/MARKET/THEATRE/showtimes?date=YYYY-MM-DD\" }) with slugs from search_theatres. This tool reads only the page that is already open.");
     const [, marketSlug, theatreSlug] = parts;
     try {
       const sectionsOf = () => [...document.querySelectorAll('section[aria-label^="Showtimes for "]')];

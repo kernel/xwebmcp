@@ -55,7 +55,7 @@
     if (!Number.isInteger(showtimeId) || showtimeId < 1 || showtimeId > 2147483647) return fail("invalid_input", "showtime_id must be a positive integer from get_showtimes.");
     if (window.location.origin !== ORIGIN) return fail("wrong_page", `Open the showtime's ticket page on ${ORIGIN} first.`);
     if (/just a moment|attention required|access denied/i.test(document.title || "")) return fail("challenge", "AMC is blocking access. This tool does not bypass the challenge.");
-    if (window.location.pathname.replace(/\/$/, "") !== `/showtimes/${showtimeId}/tickets`) return fail("wrong_page", `Open ${ORIGIN}/showtimes/${showtimeId}, pick seats and press Continue on the seat page; this tool reads the ticket page AMC opens next.`);
+    if (window.location.pathname.replace(/\/$/, "") !== `/showtimes/${showtimeId}/tickets`) return fail("wrong_page", `This tool reads the ticket page AMC opens after seats are picked. preview_tickets for showtime ${showtimeId} picks the seats, opens it and returns the prices without creating an order; an unknown ticket type returns the types AMC offers.`);
 
     const text = el => (el && el.textContent ? el.textContent : "").replace(/\s+/g, " ").trim();
     const usd = t => { const m = /^\$(\d{1,4}(?:,\d{3})*\.\d{2})$/.exec(t || ""); return m ? Number(m[1].replace(/,/g, "")) : null; };

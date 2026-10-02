@@ -67,8 +67,8 @@
     const params = new URLSearchParams(window.location.search);
     const query = window.location.pathname.replace(/\/$/, "") === "/search" ? params.get("q") : null;
     const filter = params.get("filter");
-    if (!query || !query.trim() || (filter !== null && filter !== "nowplaying,comingsoon")) return fail("wrong_page", "Open https://www.amctheatres.com/search?filter=nowplaying%2Ccomingsoon&q=<title> first; this tool reads that search's movie results.");
-    if (opts.query !== undefined && norm(opts.query) !== norm(query)) return fail("wrong_page", `The open search is for "${query.slice(0, 100)}", not "${opts.query}". Open the search you want first.`);
+    if (!query || !query.trim() || (filter !== null && filter !== "nowplaying,comingsoon")) return fail("wrong_page", `Use navigate_to_page({ url: "/search?filter=nowplaying%2Ccomingsoon&q=${opts.query !== undefined ? encodeURIComponent(opts.query.trim()) : "TITLE"}" }), then call this again; this tool reads that search's movie results.`);
+    if (opts.query !== undefined && norm(opts.query) !== norm(query)) return fail("wrong_page", `The open search is for "${query.slice(0, 100)}", not "${opts.query}". Use navigate_to_page({ url: "/search?filter=nowplaying%2Ccomingsoon&q=${encodeURIComponent(opts.query.trim())}" }), then call this again.`);
     const full = filter === "nowplaying,comingsoon";
 
     const text = el => (el && el.textContent ? el.textContent : "").replace(/\s+/g, " ").trim();

@@ -40,7 +40,7 @@
     if (/just a moment|attention required|access denied/i.test(document.title || "")) return fail("challenge", "AMC is blocking access. This tool does not bypass the challenge.");
     const text = el => (el && el.textContent ? el.textContent : "").replace(/\s+/g, " ").trim();
     if ([...document.querySelectorAll("header a, header button")].some(el => /^sign in$/i.test(text(el)))) return fail("not_signed_in", "This tab is not signed in to AMC Stubs. Ask the user to sign in, then open the profile page.");
-    if (window.location.pathname.replace(/\/$/, "") !== "/my-amc/profile") return fail("wrong_page", `Open ${ORIGIN}/my-amc/profile first; this tool reads its Favorite Theatres list.`);
+    if (window.location.pathname.replace(/\/$/, "") !== "/my-amc/profile") return fail("wrong_page", "Use navigate_to_page({ url: \"/my-amc/profile\" }), then call this again; this tool reads its Favorite Theatres list.");
     const heading = [...document.querySelectorAll("main h2")].find(h => text(h) === "Favorite Theatres");
     const section = heading && heading.closest("header") ? heading.closest("header").parentElement : null;
     if (!section) return fail("not_ready", "The profile page has not shown its Favorite Theatres section yet; retry once it has loaded.");

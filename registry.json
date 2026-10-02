@@ -108,9 +108,9 @@
         "https://www.amctheatres.com/*"
       ],
       "url_patterns_reason": "Narrowed to www.amctheatres.com: it serves the movie, theatre, showtime, account and ticket pages; other amctheatres.com hosts are investor relations (investor.), the site API that pages call (graph.) and analytics (gtm.).",
-      "status": "qa_passed",
-      "last_verified": "2026-10-01",
-      "notes": "Reads only the Favorite Theatres list on the signed-in member's open profile page (/my-amc/profile), names in preference order; the page shows no slugs. Live on 2026-10-01. Independent QA (live and source review) passed on 2026-10-01.",
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Reads only the Favorite Theatres list on the signed-in member's open profile page (/my-amc/profile), names in preference order; the page shows no slugs. Live on 2026-10-01. Independent QA (live and source review) passed on 2026-10-01. Back to draft after a source change on 2026-10-02: wrong_page on another AMC page now names the navigate_to_page call that opens the page this tool needs; nothing else changed (fixture-tested). Needs fresh independent QA; earlier sign-off covered the previous source.",
       "provenance": { "qa_agent": "agt_ab76807bfaaa8d2aa4ea" }
     },
     {
@@ -152,9 +152,9 @@
         "https://www.amctheatres.com/*"
       ],
       "url_patterns_reason": "Narrowed to www.amctheatres.com: it serves the movie, theatre, showtime, account and ticket pages; other amctheatres.com hosts are investor relations (investor.), the site API that pages call (graph.) and analytics (gtm.).",
-      "status": "qa_passed",
-      "last_verified": "2026-10-01",
-      "notes": "Reads the signed-in member's open Points & Rewards page (/my-amc/rewards): points, reward dollars, next-reward progress, listed rewards, spending benefits and visits toward the year's goal; no name or card number. Live on 2026-10-01 on an account with no rewards, so populated reward entries are fixture-only. Independent QA (live and source review) passed on 2026-10-01.",
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Reads the signed-in member's open Points & Rewards page (/my-amc/rewards): points, reward dollars, next-reward progress, listed rewards, spending benefits and visits toward the year's goal; no name or card number. Live on 2026-10-01 on an account with no rewards, so populated reward entries are fixture-only. Independent QA (live and source review) passed on 2026-10-01. Back to draft after a source change on 2026-10-02: wrong_page on another AMC page now names the navigate_to_page call that opens the page this tool needs; nothing else changed (fixture-tested). Needs fresh independent QA; earlier sign-off covered the previous source.",
       "provenance": { "qa_agent": "agt_ab76807bfaaa8d2aa4ea" }
     },
     {
@@ -167,9 +167,9 @@
         "https://www.amctheatres.com/*"
       ],
       "url_patterns_reason": "Narrowed to www.amctheatres.com: it serves the movie, theatre, showtime, account and ticket pages; other amctheatres.com hosts are investor relations (investor.), the site API that pages call (graph.) and analytics (gtm.).",
-      "status": "qa_passed",
-      "last_verified": "2026-10-01",
-      "notes": "Reads the open seat page (/showtimes/<id>/seats): per-row runs of side-by-side open standard seats (broken by taken seats, accessible spaces and wide gaps), open wheelchair/companion spaces, seats picked on the page, optional party_size filter. Presses nothing; nothing is held before Continue on the ticket page. Opening the seat page did not change AMC's remembered theatre. Live on 2026-10-01: 480 seats, 337 open on a Lincoln Square showing. Independent QA (live and source review) passed on 2026-10-01.",
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Reads the open seat page (/showtimes/<id>/seats): per-row runs of side-by-side open standard seats (broken by taken seats, accessible spaces and wide gaps), open wheelchair/companion spaces, seats picked on the page, optional party_size filter. Presses nothing; nothing is held before Continue on the ticket page. Opening the seat page did not change AMC's remembered theatre. Live on 2026-10-01: 480 seats, 337 open on a Lincoln Square showing. Independent QA (live and source review) passed on 2026-10-01. Back to draft after a source change on 2026-10-02: wrong_page on another AMC page now names the navigate_to_page call that opens the page this tool needs; nothing else changed (fixture-tested). Needs fresh independent QA; earlier sign-off covered the previous source.",
       "provenance": { "qa_agent": "agt_ae065baef3fb7ce71153" }
     },
     {
@@ -182,9 +182,9 @@
         "https://www.amctheatres.com/*"
       ],
       "url_patterns_reason": "Narrowed to www.amctheatres.com: it serves the movie, theatre, showtime, account and ticket pages; other amctheatres.com hosts are investor relations (investor.), the site API that pages call (graph.) and analytics (gtm.).",
-      "status": "qa_passed",
-      "last_verified": "2026-09-30",
-      "notes": "Reads the theatre showtimes page already open, without requests or navigation. The caller's separate page opening can change AMC's remembered theatre. Waits for hydration/date consistency and returns screening IDs, never ticket pages. Independent fixture/local-extension QA passed; live success in a Kernel stealth browser on 2026-10-01.",
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Reads the theatre showtimes page already open, without requests or navigation. The caller's separate page opening can change AMC's remembered theatre. Waits for hydration/date consistency and returns screening IDs, never ticket pages. Independent fixture/local-extension QA passed; live success in a Kernel stealth browser on 2026-10-01. Back to draft after a source change on 2026-10-02: wrong_page on another AMC page now names the navigate_to_page call that opens the page this tool needs; nothing else changed (fixture-tested). Needs fresh independent QA; earlier sign-off covered the previous source.",
       "provenance": { "qa_agent": "agt_2c203a0486b6f85c9295" }
     },
     {
@@ -197,9 +197,9 @@
         "https://www.amctheatres.com/*"
       ],
       "url_patterns_reason": "Narrowed to www.amctheatres.com: it serves the movie, theatre, showtime, account and ticket pages; other amctheatres.com hosts are investor relations (investor.), the site API that pages call (graph.) and analytics (gtm.).",
-      "status": "qa_passed",
-      "last_verified": "2026-10-01",
-      "notes": "Reads the open theatre page: name, address, top highlights and the 'At this theatre' feature groups (null if that section never renders). AMC's 404 page for an unknown theatre is not_found, after about 5 s. Takes the market from the address, which AMC also serves under a wrong market slug. Presses nothing; opening a theatre page did not change AMC's remembered theatre. No phone or time zone: the page does not show them. Independent QA (live and source review) passed on 2026-10-01.",
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Reads the open theatre page: name, address, top highlights and the 'At this theatre' feature groups (null if that section never renders). AMC's 404 page for an unknown theatre is not_found, after about 5 s. Takes the market from the address, which AMC also serves under a wrong market slug. Presses nothing; opening a theatre page did not change AMC's remembered theatre. No phone or time zone: the page does not show them. Independent QA (live and source review) passed on 2026-10-01. Back to draft after a source change on 2026-10-02: wrong_page on another AMC page now names the navigate_to_page call that opens the page this tool needs; nothing else changed (fixture-tested). Needs fresh independent QA; earlier sign-off covered the previous source.",
       "provenance": { "qa_agent": "agt_d0e794dd68b3494524d3" }
     },
     {
@@ -212,9 +212,9 @@
         "https://www.amctheatres.com/*"
       ],
       "url_patterns_reason": "Narrowed to www.amctheatres.com: it serves the movie, theatre, showtime, account and ticket pages; other amctheatres.com hosts are investor relations (investor.), the site API that pages call (graph.) and analytics (gtm.).",
-      "status": "qa_passed",
-      "last_verified": "2026-10-01",
-      "notes": "Reads the open ticket page (/showtimes/<id>/tickets) that AMC shows after seats are picked: per ticket type the price with fees, base price, convenience fee, age rule, and AMC's pricing notice. Accepts the digit-string showtime_id get_showtimes returns. Presses nothing; no order exists until Continue. Independent QA (live and source review) passed on 2026-10-01.",
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Reads the open ticket page (/showtimes/<id>/tickets) that AMC shows after seats are picked: per ticket type the price with fees, base price, convenience fee, age rule, and AMC's pricing notice. Accepts the digit-string showtime_id get_showtimes returns. Presses nothing; no order exists until Continue. Independent QA (live and source review) passed on 2026-10-01. Back to draft after a source change on 2026-10-02: wrong_page now names the preview_tickets call that opens the ticket page without creating an order; nothing else changed (fixture-tested). Needs fresh independent QA; earlier sign-off covered the previous source.",
       "provenance": { "qa_agent": "agt_d0e794dd68b3494524d3" }
     },
     {
@@ -270,9 +270,9 @@
         "https://www.amctheatres.com/*"
       ],
       "url_patterns_reason": "Narrowed to www.amctheatres.com: it serves the movie, theatre, showtime, account and ticket pages; other amctheatres.com hosts are investor relations (investor.), the site API that pages call (graph.) and analytics (gtm.).",
-      "status": "qa_passed",
-      "last_verified": "2026-10-01",
-      "notes": "Reads the movies on the open site search: AMC's full movie results (/search?filter=nowplaying%2Ccomingsoon&q=), 12 per page with the next page's address, or the plain search's 3-movie preview with the address of the full list. AMC shows Next on the last page too, so the tool gives no next page when a page has fewer than 12 movies or when AMC's Next cursor (base64 pc:1:<page>:<index>) shows the page reaches the stated total; AMC's Error 500 page past the end is site_error. Slug, title and AMC's ticket link per movie, plus AMC's movie count; private rentals hidden by default. Independent QA (live and source review) passed on 2026-10-01, walking totals from 5 to 46 to their last page.",
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Reads the movies on the open site search: AMC's full movie results (/search?filter=nowplaying%2Ccomingsoon&q=), 12 per page with the next page's address, or the plain search's 3-movie preview with the address of the full list. AMC shows Next on the last page too, so the tool gives no next page when a page has fewer than 12 movies or when AMC's Next cursor (base64 pc:1:<page>:<index>) shows the page reaches the stated total; AMC's Error 500 page past the end is site_error. Slug, title and AMC's ticket link per movie, plus AMC's movie count; private rentals hidden by default. Independent QA (live and source review) passed on 2026-10-01, walking totals from 5 to 46 to their last page. Back to draft after a source change on 2026-10-02: wrong_page on another AMC page now names the navigate_to_page call that opens the page this tool needs; nothing else changed (fixture-tested). Needs fresh independent QA; earlier sign-off covered the previous source.",
       "provenance": { "qa_agent": "agt_f3092f58d5a84047b69e" }
     },
     {
@@ -300,9 +300,9 @@
         "https://www.amctheatres.com/*"
       ],
       "url_patterns_reason": "Narrowed to www.amctheatres.com: it serves the movie, theatre, showtime, account and ticket pages; other amctheatres.com hosts are investor relations (investor.), the site API that pages call (graph.) and analytics (gtm.).",
-      "status": "qa_passed",
-      "last_verified": "2026-10-01",
-      "notes": "Reads the open Find a Theatre search (/movie-theatres?q=) after AMC renders it: theatres nearest first with slug, address, distance and listed formats, AMC's 'Did You Mean?' choices, or its no-results message. Never presses Make Current or favorite. No coordinate search: AMC's location button needs browser geolocation. Live on 2026-10-01 (ZIP, ambiguous city, no match). Independent QA (live and source review) passed on 2026-10-01.",
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Reads the open Find a Theatre search (/movie-theatres?q=) after AMC renders it: theatres nearest first with slug, address, distance and listed formats, AMC's 'Did You Mean?' choices, or its no-results message. Never presses Make Current or favorite. No coordinate search: AMC's location button needs browser geolocation. Live on 2026-10-01 (ZIP, ambiguous city, no match). Independent QA (live and source review) passed on 2026-10-01. Back to draft after a source change on 2026-10-02: wrong_page on another AMC page now names the navigate_to_page call that opens the page this tool needs; nothing else changed (fixture-tested). Needs fresh independent QA; earlier sign-off covered the previous source.",
       "provenance": { "qa_agent": "agt_ab76807bfaaa8d2aa4ea" }
     },
     {
@@ -315,9 +315,9 @@
         "https://www.amctheatres.com/*"
       ],
       "url_patterns_reason": "Narrowed to www.amctheatres.com: it serves the movie, theatre, showtime, account and ticket pages; other amctheatres.com hosts are investor relations (investor.), the site API that pages call (graph.) and analytics (gtm.).",
-      "status": "qa_passed",
-      "last_verified": "2026-10-01",
-      "notes": "Makes a theatre AMC's current theatre by pressing its Make Current button on the open Find a Theatre results, at most once, after reloading the search (AMC omits the button on the theatre that was current when the page loaded); confirmed when the site header names the theatre, and previous_theatre allows undoing it. Narrow cdp exception: the press fires the same tracking subframe navigation as the favorite button, which discarded a page-kind version's result live. Live on 2026-10-01: six switches between four theatres, ending on the original. Independent QA (live and source review) passed on 2026-10-01.",
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Makes a theatre AMC's current theatre by pressing its Make Current button on the open Find a Theatre results, at most once, after reloading the search (AMC omits the button on the theatre that was current when the page loaded); confirmed when the site header names the theatre, and previous_theatre allows undoing it. Narrow cdp exception: the press fires the same tracking subframe navigation as the favorite button, which discarded a page-kind version's result live. Live on 2026-10-01: six switches between four theatres, ending on the original. Independent QA (live and source review) passed on 2026-10-01. Back to draft after a source change on 2026-10-02: wrong_page on another AMC page now names the navigate_to_page call that opens the page this tool needs; nothing else changed (fixture-tested). Needs fresh independent QA; earlier sign-off covered the previous source.",
       "provenance": { "qa_agent": "agt_ab76807bfaaa8d2aa4ea" }
     },
     {
@@ -330,9 +330,9 @@
         "https://www.amctheatres.com/*"
       ],
       "url_patterns_reason": "Narrowed to www.amctheatres.com: it serves the movie, theatre, showtime, account and ticket pages; other amctheatres.com hosts are investor relations (investor.), the site API that pages call (graph.) and analytics (gtm.).",
-      "status": "qa_passed",
-      "last_verified": "2026-10-01",
-      "notes": "Adds or removes the open theatre page's theatre from the signed-in member's favorites with the page's own button, pressed at most once. Reloads the theatre page first because the label can lag the account after a press, then confirms on the Favorite Theatres list of the member's profile page (by name) and returns to the theatre page. Narrow cdp exception: pressing fires AMC's tracking, whose cross-origin subframe form post made the runtime discard a page tool's result in four of five live presses; the confirmation also navigates. Live add/no-op/remove on 2026-10-01 restored the favorites exactly. Independent QA (live and source review) passed on 2026-10-01.",
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Adds or removes the open theatre page's theatre from the signed-in member's favorites with the page's own button, pressed at most once. Reloads the theatre page first because the label can lag the account after a press, then confirms on the Favorite Theatres list of the member's profile page (by name) and returns to the theatre page. Narrow cdp exception: pressing fires AMC's tracking, whose cross-origin subframe form post made the runtime discard a page tool's result in four of five live presses; the confirmation also navigates. Live add/no-op/remove on 2026-10-01 restored the favorites exactly. Independent QA (live and source review) passed on 2026-10-01. Back to draft after a source change on 2026-10-02: wrong_page on another AMC page now names the navigate_to_page call that opens the page this tool needs; nothing else changed (fixture-tested). Needs fresh independent QA; earlier sign-off covered the previous source.",
       "provenance": { "qa_agent": "agt_ab76807bfaaa8d2aa4ea" }
     },
     {

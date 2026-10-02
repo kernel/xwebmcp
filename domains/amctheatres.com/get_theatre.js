@@ -50,7 +50,7 @@
     if (window.location.origin !== ORIGIN) return fail("wrong_page", `Open ${ORIGIN}/movie-theatres/<market>/${input.theatre} first.`);
     if (/just a moment|attention required|access denied/i.test(document.title || "")) return fail("challenge", "AMC is blocking access. This tool does not bypass the challenge.");
     const path = /^\/movie-theatres\/([a-z0-9]+(?:-[a-z0-9]+)*)\/([a-z0-9]+(?:-[a-z0-9]+)*)\/?$/.exec(window.location.pathname);
-    if (!path || path[2] !== input.theatre) return fail("wrong_page", `Open ${ORIGIN}/movie-theatres/<market>/${input.theatre} first; this tool reads that theatre's page.`);
+    if (!path || path[2] !== input.theatre) return fail("wrong_page", `Use navigate_to_page({ url: "/movie-theatres/MARKET/${input.theatre}" }) with the market slug from search_theatres, then call this again; this tool reads that theatre's page.`);
 
     const text = el => (el && el.textContent ? el.textContent : "").replace(/\s+/g, " ").trim();
     // The "At this theatre" section streams in after the page's top; wait briefly for it.
