@@ -261,6 +261,23 @@
     },
     {
       "domain": "doordash.com",
+      "tool": "create_business_profile",
+      "file": "domains/doordash.com/create_business_profile.js",
+      "kind": "cdp",
+      "namespace": "doordash.com",
+      "url_patterns": [
+        "https://doordash.com/*",
+        "https://*.doordash.com/*"
+      ],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "kind cdp: the card number, CVC, expiration and ZIP fields are cross-origin Very Good Security iframes that page scripts cannot fill, so trusted typing (lib/input.js) is required. Draft, no independent QA. One live run on 2026-10-02 with a single-use virtual card: the work email was typed, the card fields were filled in the VGS iframes and Add Card saved the card, but the first source stopped because Create profile stays disabled until the card radio is selected. Resume mode (added after that run) selected the card and clicked Create profile; the profile was created (page shows the work email and card last four), but the tool timed out because DoorDash then opens an Edit your business profile dialog. Success detection now reads the page section and is fixture-only. Also live: profile_exists refusal without clicks. Unverified: declined-card and invalid-field wording, challenges, and an end-to-end run on the final source.",
+      "provenance": {
+        "qa_agent": null
+      }
+    },
+    {
+      "domain": "doordash.com",
       "tool": "login",
       "file": "domains/doordash.com/login.js",
       "kind": "cdp",
@@ -274,6 +291,23 @@
       "notes": "Independent QA passed on the current source (three rounds; the last signed off with four minor fail-closed findings documented in the README). Live-verified 2026-09-25: existing-session success through a profile-page account match, a mismatched account refused without submission, one real password submission per proxy (residential: open password step; mobile: packaged search entry end to end) reached the SMS 2-Step Verification modal as mfa_required, and otp mode completed authentication with an emailed code. Unverified: wrong-password wording, lockout and CAPTCHA responses, and a real password submission on the post-QA source.",
       "provenance": {
         "qa_agent": "agt_5b1753eb7444ed26b1d6"
+      }
+    },
+    {
+      "domain": "doordash.com",
+      "tool": "register",
+      "file": "domains/doordash.com/register.js",
+      "kind": "cdp",
+      "namespace": "doordash.com",
+      "url_patterns": [
+        "https://doordash.com/*",
+        "https://*.doordash.com/*"
+      ],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "kind cdp: the sign-up form on identity.doordash.com needs trusted typing (lib/input.js) and Sign Up navigates across documents (identity.doordash.com to www.doordash.com/post-login), after which the tool must confirm the signed-in header control and dd_cx_logged_in cookie. Draft, no independent QA. One live registration on 2026-10-02: signup mode filled and submitted the form once and the site opened SMS phone verification (the first source misclassified that as unknown; fixed to return verification_required), then otp mode submitted the texted code and the account was created, but the tool timed out instead of confirming success (the coordinator confirmed the signed-in profile email by hand). The cookie-plus-profile-email success check added afterwards is fixture-only. Also live: already_signed_in refusal without submission. Unverified: email_already_registered wording, wrong-code and challenge responses, and an end-to-end run on the final source.",
+      "provenance": {
+        "qa_agent": null
       }
     },
     {
