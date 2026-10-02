@@ -1,6 +1,7 @@
 package extension
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"testing"
@@ -48,4 +49,25 @@ func TestWrite(t *testing.T) {
 	if err := Write(dir); err != nil {
 		t.Errorf("second Write: %v", err)
 	}
+}
+
+// Installed tools are kept in chrome.storage.local; without unlimitedStorage its
+// default quota fails installs with "Resource::kQuotaBytes quota exceeded".
+func TestManifestUnlimitedStorage(t *testing.T) {
+	data, err := os.ReadFile("manifest.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var m struct {
+		Permissions []string `json:"permissions"`
+	}
+	if err := json.Unmarshal(data, &m); err != nil {
+		t.Fatal(err)
+	}
+	for _, p := range m.Permissions {
+		if p == "unlimitedStorage" {
+			return
+		}
+	}
+	t.Error("manifest.json must request unlimitedStorage")
 }

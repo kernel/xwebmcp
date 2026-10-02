@@ -79,6 +79,8 @@ function harness(name, o = {}) {
     if (path === "/3/events/location") { const all = Array.from({ length: 7 }, (_, i) => ({ name: "Event " + i, date: "2026-10-09", time: "18:00:00", end_time: "21:00:00", url_slug: "event-" + i, max_party_size: 8, price_summary: { min: 40, max: 80, currency: "USD" }, preview: "Fabricated", venue: { id: 1001, name: "Fabricated 1001", url_slug: "fabricated-1001", location: { url_slug: "exampleton-xa" } } })); const p = Number(url.searchParams.get("offset")), l = Number(url.searchParams.get("limit")); return { body: { results: { events: p < 1 ? [] : all.slice((p - 1) * l, p * l) }, metadata: { total: 7 } } }; }
     if (path === "/3/events/upcoming") return { body: { events: [{ name: "Venue night", date: "2026-10-09", time: "19:00:00", url_slug: "night", venue: { id: 1001, name: "Fabricated 1001", url_slug: "fabricated-1001", location: { url_slug: "exampleton-xa" } } }] } };
     if (path === "/3/collections") return { body: [{ id: 954, info: { name: "My Hit List", type_id: 8 } }, { id: 889, info: { name: "Climbing", description: "Fabricated", type_id: 3 } }] };
+    if (path === "/3/location/config") return { body: [{ code: "xa", url_slug: "exampleton-xa", name: "Exampleton" }] };
+    if ((m = /^\/3\/cities\/([a-z0-9-]+)\/list\/(climbing|top-rated|new-on-resy)$/.exec(path))) return { body: { metadata: { total: 30, limit: Number(url.searchParams.get("limit")), offset: Number(url.searchParams.get("offset")) }, results: { venues: [venueRow(1001), venueRow(1002), { name: "no id" }] } } };
     if (path === "/3/collection/venues") return { body: { query: {}, results: { venues: [{ venue: venueRow(1001), slots: Array.from({ length: 9 }, (_, i) => slotAt("1" + i + ":00")).reverse() }, { venue: { name: "no id" } }] } } };
     return { status: 404, body: {} };
   };
@@ -299,7 +301,9 @@ test("list_events: 1-based pages sent as Resy's offset; venue events page locall
 });
 
 test("list_collections and get_collection: Hit List is not a city collection; slots are sorted and capped at 6", async () => {
-  assert.deepEqual((await harness("list_collections").run(valid.list_collections)).collections, [{ collection_id: 889, name: "Climbing", description: "Fabricated" }]);
+  const lc = await harness("list_collections").run(valid.list_collections);
+  assert.deepEqual(lc.collections, [], "Hit List and algorithmic lists are not editorial collections");
+  assert.equal(lc.algorithmic_lists.find(l => l.list === "climbing").collection_id, 889);
   const h = harness("get_collection");
   const out = await h.run({ ...valid.get_collection, page: 3 });
   assert.equal(h.requests[0].url.searchParams.get("offset"), "3");
@@ -382,4 +386,98 @@ test("change_reservation: a new booking that leaves the original in place is not
     return { body: {} };
   } });
   assert.equal((await h.run(valid.change_reservation)).error_kind, "outcome_unknown");
+});
+
+test("get_collection: algorithmic lists read per-venue availability; near_time keeps slots within two hours", async () => {
+  const h = harness("get_collection", { slots: [slotAt("12:00"), slotAt("18:00"), slotAt("19:30"), slotAt("21:45"), slotAt("22:00")] });
+  const out = await h.run({ list: "climbing", ranking: "leaderboard", city_slug: "exampleton-xa", date: "2026-10-09", party_size: 2, limit: 2, page: 2, near_time: "19:30" });
+  assert.equal(out.status, "ok");
+  assert.equal(out.total, null, "Resy's list total is city-wide, so it is not reported");
+  assert.equal(out.has_more, true);
+  assert.equal(h.requests[0].path, "/3/cities/exampleton-xa/list/climbing");
+  assert.equal(h.requests[0].url.searchParams.get("offset"), "2");
+  assert.deepEqual(h.paths().slice(1), ["/4/find", "/4/find"]);
+  assert.deepEqual(out.venues.map(v => v.venue.venue_id), [1001, 1002]);
+  assert.deepEqual(out.venues[0].slots.map(s => s.local_start.slice(11)), ["18:00", "19:30"]);
+  assert.equal(out.venues[0].slot_count, 2);
+  for (const input of [{ list: "climbing", date: "2026-10-09" }, { list: "hot", city_slug: "exampleton-xa", date: "2026-10-09" }, { list: "climbing", city_slug: "exampleton-xa", collection_id: 1, location: "xa", date: "2026-10-09" }, { list: "climbing", city_slug: "exampleton-xa", date: "2026-10-09", near_time: "7pm" }]) {
+    const bad = harness("get_collection");
+    assert.equal((await bad.run(input)).error_kind, "invalid_input");
+    assert.equal(bad.requests.length, 0);
+  }
+});
+
+test("get_collection: list defaults to the list page view (the algorithmic collection); only_available drops full venues", async () => {
+  const h = harness("get_collection");
+  const out = await h.run({ list: "climbing", city_slug: "exampleton-xa", date: "2026-10-09" });
+  assert.deepEqual(h.paths(), ["/3/location/config", "/3/collections", "/3/collection/venues"]);
+  assert.equal(h.requests[2].url.searchParams.get("collection_id"), "889");
+  assert.equal(h.requests[2].url.searchParams.get("location_id"), "xa");
+  assert.equal(out.venues.length, 1);
+  const full = harness("get_collection", { route: ({ path }) => path === "/3/collection/venues" ? { body: { results: { venues: [{ venue: venueRow(1001), slots: [] }, { venue: venueRow(1002), slots: [slotAt("19:00")] }] } } } : undefined });
+  const avail = await full.run({ ...valid.get_collection, only_available: true });
+  assert.deepEqual(avail.venues.map(v => v.venue.venue_id), [1002]);
+  assert.equal(avail.next_page, null);
+  assert.equal((await harness("get_collection").run({ ...valid.get_collection, ranking: "leaderboard" })).error_kind, "invalid_input");
+});
+
+test("list_collections: algorithmic lists carry the city slug for get_collection", async () => {
+  const out = await harness("list_collections").run(valid.list_collections);
+  assert.deepEqual(out.algorithmic_lists.map(l => [l.list, l.city_slug, l.collection_id]), [["climbing", "exampleton-xa", 889], ["top-rated", "exampleton-xa", null], ["new-on-resy", "exampleton-xa", null]]);
+  assert.equal(harness("list_collections").definition.tool.outputSchema.oneOf[0].properties.algorithmic_lists.maxItems, 4);
+});
+
+test("get_booking_quote: per-guest fee estimate, cutoff already passed, plain summary", async () => {
+  const route = ({ path }) => path === "/3/details" ? { body: { payment: { amounts: { total: 0, tax: 0 }, config: { type: "free" } }, cancellation: { fee: { amount: 25, date_cut_off: "2026-09-29T17:00:00Z" }, refund: { date_cut_off: "2026-09-29T17:00:00Z" }, display: { policy: ["You agree to be charged a fee of $25.00 + tax per guest."] } }, locale: { currency: "USD" } } } : undefined;
+  const out = await harness("get_booking_quote", { route }).run(valid.get_booking_quote);
+  assert.equal(out.quote.cancellation.fee_per_guest, true);
+  assert.equal(out.quote.cancellation.estimated_max_fee, 50);
+  assert.equal(out.quote.cancellation.fee_applies_now, true);
+  assert.match(out.quote.summary, /Nothing is charged when booking\. A card on file is required\. Cancellation fee \$25 per guest \(up to \$50 \+ tax for 2\), and the free-cancellation cutoff has already passed/);
+  const later = await harness("get_booking_quote", { fee: 25 }).run(valid.get_booking_quote);
+  assert.equal(later.quote.cancellation.fee_applies_now, false);
+  assert.equal(later.quote.cancellation.fee_per_guest, false);
+});
+
+test("get_collection: editorial near_time keeps the slots closest to it; price and rating come from the venue", async () => {
+  const out = await harness("get_collection").run({ ...valid.get_collection, near_time: "15:30" });
+  assert.deepEqual(out.venues[0].slots.map(s => s.local_start.slice(11)), ["14:00", "15:00", "16:00", "17:00"]);
+  assert.equal(out.venues[0].venue.price_range, 2, "price_range_id only; editorial price_range is a different scale");
+});
+
+test("cancel_reservation and change_reservation: preview reads terms and sends no write; missing reservations are explained", async () => {
+  const fee = { ...booked, cancellation: liveCancellation(true) };
+  const c = harness("cancel_reservation", { upcoming: [fee] });
+  const { confirm, ...cancelBase } = valid.cancel_reservation;
+  const out = await c.run({ ...cancelBase, preview: true });
+  assert.equal(out.status, "preview");
+  assert.equal(out.fee_applies_now, true);
+  assert.equal(out.cancellation_fee, 50);
+  assert.deepEqual(c.writes(), []);
+  const none = await harness("cancel_reservation").run({ ...cancelBase, preview: true });
+  assert.equal(none.error_kind, "not_found");
+  assert.match(none.error_message, /has 0 upcoming; list_reservations/);
+  const noConfirm = await harness("cancel_reservation").run(cancelBase);
+  assert.match(noConfirm.error_message, /preview: true/);
+  assert.equal((await harness("cancel_reservation").run({ ...cancelBase, preview: true, confirm: true })).error_kind, "invalid_input");
+
+  const ch = harness("change_reservation", { upcoming: [{ ...booked }] });
+  const { confirm: _c, expected_total, ...changeBase } = valid.change_reservation;
+  const moved = await ch.run({ ...changeBase, preview: true });
+  assert.equal(moved.status, "preview");
+  assert.equal(moved.quote.total, 0);
+  assert.equal(moved.new_slot.local_start, "2026-10-09T19:30");
+  assert.deepEqual(ch.paths().filter(p => p === "/3/details:1" || p === "/3/change"), [], "preview never commits or changes");
+  assert.match((await harness("change_reservation").run({ ...changeBase, preview: true })).error_message, /has 0 upcoming/);
+});
+
+test("account tools: signed out with no account ref says login_required, not invalid_input", async () => {
+  for (const name of accountTools) {
+    const { expected_account_ref, ...rest } = valid[name];
+    const out = harness(name, { loggedOut: true });
+    const r = await out.run(rest);
+    assert.equal(r.error_kind, "login_required", name);
+    assert.equal(out.requests.length, 0);
+    assert.equal((await harness(name).run(rest)).error_kind, "invalid_input", name + " signed in");
+  }
 });

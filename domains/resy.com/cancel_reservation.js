@@ -3,16 +3,17 @@
   match: { url_patterns: ["https://resy.com/*"] },
   tool: {
     name: "cancel_reservation",
-    description: "Cancel one upcoming reservation. Only when the user asked; needs reservation_id, expected_venue_id, expected_date and confirm: true. If a cancellation fee applies now, or cannot be read, returns fee_applies unless accept_cancellation_fee. One attempt; outcome_unknown means check list_reservations.",
+    description: "Cancel one upcoming reservation. preview: true (instead of confirm) only reads the reservation and whether a fee applies now; nothing is sent. To cancel (only when the user asked): reservation_id, expected_venue_id, expected_date and confirm: true; a fee that applies now (or unreadable terms) returns fee_applies unless accept_cancellation_fee. One attempt; outcome_unknown: check list_reservations.",
     inputSchema: {
-      type: "object", additionalProperties: false, required: ["expected_account_ref", "reservation_id", "expected_venue_id", "expected_date", "confirm"],
+      type: "object", additionalProperties: false, required: ["expected_account_ref", "reservation_id", "expected_venue_id", "expected_date"],
       properties: {
         expected_account_ref: { type: "string", pattern: "^account_[a-f0-9]{64}$", description: "From get_account_status." },
         reservation_id: { type: "string", pattern: "^[1-9]\\d{0,29}$" },
         expected_venue_id: { type: "integer", minimum: 1 },
         expected_date: { type: "string", pattern: "^\\d{4}-\\d{2}-\\d{2}$" },
         accept_cancellation_fee: { type: "boolean", default: false, description: "The user accepted the fee reported by fee_applies." },
-        confirm: { const: true, description: "The user asked to cancel this reservation." }
+        confirm: { const: true, description: "The user asked to cancel this reservation. Omit with preview." },
+        preview: { const: true, description: "Read-only check: the reservation and its cancellation fee terms; nothing is cancelled." }
       }
     },
     outputSchema: {
@@ -24,6 +25,10 @@
               type: "object", additionalProperties: false, required: ["reservation_id", "venue_id", "venue_name", "date", "local_time", "party_size", "seating_type"],
               properties: { reservation_id: { type: "string" }, venue_id: { type: "integer" }, venue_name: { type: ["string", "null"] }, date: { type: "string" }, local_time: { type: ["string", "null"] }, party_size: { type: "integer" }, seating_type: { type: ["string", "null"] } }
             }, cancellation_fee: { type: ["number", "null"], description: "Fee Resy reported as applying when cancelled; null if none or unknown." } }
+        },
+        {
+          type: "object", additionalProperties: false, required: ["status", "account_ref", "reservation", "cancellation_fee", "fee_applies_now", "next_step"],
+          properties: { status: { const: "preview" }, account_ref: { type: "string" }, reservation: { type: "object", additionalProperties: false, required: ["reservation_id", "venue_id", "venue_name", "date", "local_time", "party_size", "seating_type"], properties: { reservation_id: { type: "string" }, venue_id: { type: "integer" }, venue_name: { type: ["string", "null"] }, date: { type: "string" }, local_time: { type: ["string", "null"] }, party_size: { type: "integer" }, seating_type: { type: ["string", "null"] } } }, cancellation_fee: { type: ["number", "null"] }, fee_applies_now: { type: ["boolean", "null"], description: "null when Resy's fee terms cannot be read (treat as possibly applying)." }, next_step: { type: "string" } }
         },
         { type: "object", additionalProperties: false, required: ["status", "error_kind", "error_message"], properties: { status: { const: "error" }, error_kind: { enum: ["invalid_input",  "wrong_page",  "login_required",  "wrong_account",  "not_found",  "stale_state",  "rejected",  "challenge",  "rate_limited",  "site_changed",  "site_error",  "canceled",  "outcome_unknown",  "fee_applies"] }, error_message: { type: "string", minLength: 1, maxLength: 1000 } } }
       ]
@@ -40,9 +45,12 @@
     const validInput = keys => plain(input) && Object.keys(input).every(k => keys.includes(k));
     const accountRefValid = v => typeof v === "string" && /^account_[a-f0-9]{64}$/.test(v);
     const isDate = v => typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v) && !Number.isNaN(Date.parse(v + "T00:00:00Z")) && new Date(v + "T00:00:00Z").toISOString().slice(0, 10) === v;
-    if (!validInput(["expected_account_ref", "reservation_id", "expected_venue_id", "expected_date", "accept_cancellation_fee", "confirm"])) return fail("invalid_input", "Unexpected input fields.");
-    if (!accountRefValid(input.expected_account_ref)) return fail("invalid_input", "expected_account_ref must come from get_account_status.");
-    if (input.confirm !== true) return fail("invalid_input", "confirm must be true, meaning the user asked to cancel this reservation. Nothing was sent.");
+    if (!validInput(["expected_account_ref", "reservation_id", "expected_venue_id", "expected_date", "accept_cancellation_fee", "confirm", "preview"])) return fail("invalid_input", "Unexpected input fields.");
+    if (!accountRefValid(input.expected_account_ref)) return typeof window.apiAuthToken === "string" && window.apiAuthToken && window.apiAuthToken !== "undefined" ? fail("invalid_input", "expected_account_ref must come from get_account_status.") : fail("login_required", "Not signed in to Resy: ask the user to sign in on resy.com; account tools, quotes and booking need a session. Nothing was sent.");
+    const preview = input.preview === true;
+    if (input.preview !== undefined && !preview) return fail("invalid_input", "preview must be true when given.");
+    if (preview && input.confirm !== undefined) return fail("invalid_input", "Give preview or confirm, not both. Nothing was sent.");
+    if (!preview && input.confirm !== true) return fail("invalid_input", "confirm must be true, meaning the user asked to cancel this reservation. To show the user the reservation and fee terms first, call with preview: true instead (sends nothing). list_reservations lists the upcoming reservations and their ids. Nothing was sent.");
     if (typeof input.reservation_id !== "string" || !/^[1-9]\d{0,29}$/.test(input.reservation_id) || !Number.isInteger(input.expected_venue_id) || !isDate(input.expected_date)) return fail("invalid_input", "reservation_id, expected_venue_id and expected_date must come from list_reservations.");
     if (input.accept_cancellation_fee !== undefined && typeof input.accept_cancellation_fee !== "boolean") return fail("invalid_input", "accept_cancellation_fee must be a boolean.");
     if (signal?.aborted) return fail("canceled", "Canceled before any site request.");
@@ -127,7 +135,7 @@
     const before = await readReservations("upcoming");
     if (before.error) return before.error;
     const current = before.items.find(r => r.reservation_id === input.reservation_id);
-    if (!current) return fail(before.complete ? "not_found" : "site_changed", "That reservation is not on the account's upcoming list; nothing was sent.");
+    if (!current) return fail(before.complete ? "not_found" : "site_changed", "No upcoming reservation with that reservation_id on this account (it has " + before.items.length + (before.complete ? "" : "+") + " upcoming; list_reservations lists them; past or cancelled reservations cannot be changed). Nothing was sent.");
     if (current.venue_id !== input.expected_venue_id || current.date !== input.expected_date) return fail("stale_state", "The reservation's venue or date does not match; nothing was sent.");
     const c = current.cancellation;
     if (c && c.allowed === false) return fail("rejected", "Resy does not allow cancelling this reservation online; contact the venue. Nothing was sent.");
@@ -138,6 +146,7 @@
     // terms that cannot be read as a fee that may apply.
     const known = !!feeInfo && (typeof feeInfo.applies === "boolean" || fee !== null);
     const feeNow = !known || (typeof feeInfo.applies === "boolean" ? feeInfo.applies : fee > 0 && !(cutoff > Date.now()));
+    if (preview) return { status: "preview", account_ref: input.expected_account_ref, reservation: publicReservation(current), cancellation_fee: fee, fee_applies_now: known ? feeNow : null, next_step: (known ? (feeNow ? "Cancelling now incurs the fee" + (fee === null ? "" : " of " + fee) + "; the user must accept it (accept_cancellation_fee). " : "No fee applies if cancelled now. ") : "Resy did not report readable fee terms; tell the user a fee may apply. ") + "Only if the user asks to cancel, call again with confirm: true instead of preview. Nothing was cancelled." };
     if (feeNow && input.accept_cancellation_fee !== true) return fail("fee_applies", !known ? "Resy did not report readable cancellation fee terms for this reservation; confirm with the user that a fee may apply, then pass accept_cancellation_fee. Nothing was cancelled." : "Cancelling now incurs Resy's cancellation fee" + (fee === null ? "" : " of " + fee) + " (see the policy in list_reservations). Pass accept_cancellation_fee only if the user accepts it. Nothing was cancelled.");
     const written = await request("POST", "/3/cancel", { form: { resy_token: current.token } });
     const settled = await settle(written, async () => {

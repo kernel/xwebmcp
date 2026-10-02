@@ -16,7 +16,7 @@
         },
         venue_id: { type: "integer", minimum: 1, maximum: 2147483647 },
         city_slug: { type: "string", pattern: "^[a-z0-9][a-z0-9-]{1,99}$" },
-        url_slug: { type: "string", pattern: "^[A-Za-z0-9][A-Za-z0-9-]{0,119}$" },
+        url_slug: { type: "string", pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,119}$" },
         favorite: { type: "boolean", description: "Desired state." },
         expected_favorite: { type: "boolean", description: "Observed current state." }
       }
@@ -80,8 +80,8 @@
     const validInput = keys => plain(input) && Object.keys(input).every(k => keys.includes(k));
     const accountRefValid = v => typeof v === "string" && /^account_[a-f0-9]{64}$/.test(v);
     if (!validInput(["expected_account_ref", "venue_id", "city_slug", "url_slug", "favorite", "expected_favorite"])) return fail("invalid_input", "Unexpected input fields; this is not a booking tool.");
-    if (!accountRefValid(input.expected_account_ref)) return fail("invalid_input", "expected_account_ref must come from get_account_status.");
-    if (!Number.isInteger(input.venue_id) || input.venue_id < 1 || input.venue_id > 2147483647 || typeof input.city_slug !== "string" || !/^[a-z0-9][a-z0-9-]{1,99}$/.test(input.city_slug) || typeof input.url_slug !== "string" || !/^[A-Za-z0-9][A-Za-z0-9-]{0,119}$/.test(input.url_slug) || typeof input.favorite !== "boolean" || typeof input.expected_favorite !== "boolean") return fail("invalid_input", "Provide exact venue id/slugs and boolean desired/expected favorite states.");
+    if (!accountRefValid(input.expected_account_ref)) return typeof window.apiAuthToken === "string" && window.apiAuthToken && window.apiAuthToken !== "undefined" ? fail("invalid_input", "expected_account_ref must come from get_account_status.") : fail("login_required", "Not signed in to Resy: ask the user to sign in on resy.com; account tools, quotes and booking need a session. Nothing was sent.");
+    if (!Number.isInteger(input.venue_id) || input.venue_id < 1 || input.venue_id > 2147483647 || typeof input.city_slug !== "string" || !/^[a-z0-9][a-z0-9-]{1,99}$/.test(input.city_slug) || typeof input.url_slug !== "string" || !/^[A-Za-z0-9][A-Za-z0-9_-]{0,119}$/.test(input.url_slug) || typeof input.favorite !== "boolean" || typeof input.expected_favorite !== "boolean") return fail("invalid_input", "Provide exact venue id/slugs and boolean desired/expected favorite states.");
     if (signal?.aborted) return fail("canceled", "Canceled before any site request.");
     if (window.location.origin !== ORIGIN) return fail("wrong_page", "Open a page on https://resy.com; this tool never navigates.");
     const readKey = () => { const k = window.apiConfig?.Config?.apiKey; return typeof k === "string" && /^[^\s"\\]{8,128}$/.test(k) ? k : null; };

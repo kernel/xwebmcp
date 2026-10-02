@@ -1116,7 +1116,7 @@
       "url_patterns_reason": "Narrowed to resy.com: www.resy.com redirects there, and the other subdomains (blog, helpdesk, widgets, os) are separate products that do not expose the consumer page's API configuration these tools call api.resy.com with.",
       "status": "draft",
       "last_verified": null,
-      "notes": "Books one exact slot: confirm true, expected_total must equal a fresh commit-0 quote, duplicate guard on venue/date, then commit 1 (as clicking a slot does) and one form POST /3/book with the default card when required; success only when a new upcoming reservation matches. Builder live run 2026-10-01: booked a free no-card slot (commit-1 details answers HTTP 201), refused a second booking at the venue that day as duplicate_suspected, and a stale total stopped before commit 1."
+      "notes": "Books one exact slot: confirm true, expected_total must equal a fresh commit-0 quote, duplicate guard on venue/date, then commit 1 (as clicking a slot does) and one form POST /3/book with the default card when required; success only when a new upcoming reservation matches. Builder live run 2026-10-01: booked a free no-card slot (commit-1 details answers HTTP 201), refused a second booking at the venue that day as duplicate_suspected, and a stale total stopped before commit 1. 2026-10-01: signed out with no account ref now returns login_required before input checks."
     },
     {
       "domain": "resy.com",
@@ -1130,7 +1130,7 @@
       "url_patterns_reason": "Narrowed to resy.com: www.resy.com redirects there, and the other subdomains (blog, helpdesk, widgets, os) are separate products that do not expose the consumer page's API configuration these tools call api.resy.com with.",
       "status": "draft",
       "last_verified": null,
-      "notes": "Cancels one upcoming reservation by reservation_id (resy_token looked up internally, never returned); confirm true; fee_applies unless accept_cancellation_fee when a fee applies now or the terms cannot be read. Builder live run 2026-10-01: cancelled the test reservation after refusing a missing confirm and a wrong date. Uses Resy's fee.applies flag; refuses cancellation.allowed false."
+      "notes": "Cancels one upcoming reservation by reservation_id (resy_token looked up internally, never returned); confirm true; fee_applies unless accept_cancellation_fee when a fee applies now or the terms cannot be read. Builder live run 2026-10-01: cancelled the test reservation after refusing a missing confirm and a wrong date. Uses Resy's fee.applies flag; refuses cancellation.allowed false. 2026-10-01: preview: true reads the reservation and whether a fee applies now without sending anything; not_found says how many upcoming reservations exist; signed out returns login_required first. Final step never invoked live; preview live-checked with no reservation."
     },
     {
       "domain": "resy.com",
@@ -1144,7 +1144,21 @@
       "url_patterns_reason": "Narrowed to resy.com: www.resy.com redirects there, and the other subdomains (blog, helpdesk, widgets, os) are separate products that do not expose the consumer page's API configuration these tools call api.resy.com with.",
       "status": "draft",
       "last_verified": null,
-      "notes": "Moves an upcoming reservation at the same venue: details with resy_token, then POST /3/change with book_token, resy_token and replace=1, following the site bundle. Builder live run 2026-10-01: moved a free reservation from 18:00 to 19:00; Resy kept the reservation_id. Refuses change.allowed false."
+      "notes": "Moves an upcoming reservation at the same venue: details with resy_token, then POST /3/change with book_token, resy_token and replace=1, following the site bundle. Builder live run 2026-10-01: moved a free reservation from 18:00 to 19:00; Resy kept the reservation_id. Refuses change.allowed false. 2026-10-01: preview: true checks the reservation and quotes the new slot (commit 0 only) without changing; not_found explains; signed out returns login_required first. Final step never invoked live."
+    },
+    {
+      "domain": "resy.com",
+      "tool": "close_booking_dialog",
+      "file": "domains/resy.com/close_booking_dialog.js",
+      "kind": "cdp",
+      "namespace": "resy.com",
+      "url_patterns": [
+        "https://resy.com/*"
+      ],
+      "url_patterns_reason": "Narrowed to resy.com: www.resy.com redirects there, and the other subdomains (blog, helpdesk, widgets, os) are separate products that do not expose the consumer page's API configuration these tools call api.resy.com with.",
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Closes Resy's booking window with its own X button inside the widgets.resy.com frame; never presses Reserve Now. CDP because the window is a cross-origin frame the page cannot script (reads it via Page.getFrameTree + an isolated world). Live 2026-10-01: closed a dialog opened by open_booking_dialog."
     },
     {
       "domain": "resy.com",
@@ -1158,7 +1172,7 @@
       "url_patterns_reason": "Narrowed to resy.com: www.resy.com redirects there, and the other subdomains (blog, helpdesk, widgets, os) are separate products that do not expose the consumer page's API configuration these tools call api.resy.com with.",
       "status": "draft",
       "last_verified": null,
-      "notes": "Copies a list by share slug into a new private list (POST /3/user/lists/{slug}/copy) with a duplicate-name guard; readback returns the new list_id. Builder live run 2026-10-01 on a test list, deleted afterwards."
+      "notes": "Copies a list by share slug into a new private list (POST /3/user/lists/{slug}/copy) with a duplicate-name guard; readback returns the new list_id. Builder live run 2026-10-01 on a test list, deleted afterwards. 2026-10-01: signed out with no account ref now returns login_required before input checks."
     },
     {
       "domain": "resy.com",
@@ -1172,7 +1186,7 @@
       "url_patterns_reason": "Narrowed to resy.com: www.resy.com redirects there, and the other subdomains (blog, helpdesk, widgets, os) are separate products that do not expose the consumer page's API configuration these tools call api.resy.com with.",
       "status": "draft",
       "last_verified": null,
-      "notes": "Creates one private custom list after a case-insensitive duplicate-name check (duplicate_suspected unless allow_duplicate); one request, readback returns the new list_id. Builder live run 2026-10-01: created, duplicate refused, list later deleted."
+      "notes": "Creates one private custom list after a case-insensitive duplicate-name check (duplicate_suspected unless allow_duplicate); one request, readback returns the new list_id. Builder live run 2026-10-01: created, duplicate refused, list later deleted. 2026-10-01: signed out with no account ref now returns login_required before input checks."
     },
     {
       "domain": "resy.com",
@@ -1186,7 +1200,7 @@
       "url_patterns_reason": "Narrowed to resy.com: www.resy.com redirects there, and the other subdomains (blog, helpdesk, widgets, os) are separate products that do not expose the consumer page's API configuration these tools call api.resy.com with.",
       "status": "draft",
       "last_verified": null,
-      "notes": "Turns on Resy Notify for one venue/date/party/service within the venue's notify_options window and step; identical request is unchanged, a different window for the same request is conflict. Form-encoded struct_data like the site; readback decides created vs rejected vs outcome_unknown. Never holds or books. Builder live run 2026-10-01: created, unchanged, conflict and invalid windows; removed afterwards."
+      "notes": "Turns on Resy Notify for one venue/date/party/service within the venue's notify_options window and step; identical request is unchanged, a different window for the same request is conflict. Form-encoded struct_data like the site; readback decides created vs rejected vs outcome_unknown. Never holds or books. Builder live run 2026-10-01: created, unchanged, conflict and invalid windows; removed afterwards. 2026-10-01: signed out with no account ref now returns login_required before input checks."
     },
     {
       "domain": "resy.com",
@@ -1200,7 +1214,7 @@
       "url_patterns_reason": "Narrowed to resy.com: www.resy.com redirects there, and the other subdomains (blog, helpdesk, widgets, os) are separate products that do not expose the consumer page's API configuration these tools call api.resy.com with.",
       "status": "draft",
       "last_verified": null,
-      "notes": "Deletes one custom list; confirm: true and matching expected_name required, My Hit List refused, readback verifies removal. Builder live run 2026-10-01 on a list the run created."
+      "notes": "Deletes one custom list; confirm: true and matching expected_name required, My Hit List refused, readback verifies removal. Builder live run 2026-10-01 on a list the run created. 2026-10-01: signed out with no account ref now returns login_required before input checks."
     },
     {
       "domain": "resy.com",
@@ -1231,7 +1245,7 @@
       "url_patterns_reason": "Narrowed to resy.com: www.resy.com redirects there, and the other subdomains (blog, helpdesk, widgets, os) are separate products that do not expose the consumer page's API configuration these tools call api.resy.com with.",
       "status": "draft",
       "last_verified": null,
-      "notes": "Public slots as full venue-local date-times, sorted and capped at 300. Raw policy fields are not confirmed charges. Back to draft after a source change on 2026-10-01: each distinct slot policy is listed once in policies and slots carry policy_id (live: 21 slots, 1 policy, 6,144 to 3,490 bytes); caller cancellation is reported as canceled, not a timeout. Builder live run passed on 2026-10-01; needs fresh independent QA; earlier sign-off (agt_221f5a5f11361477ff09) covered the previous source.",
+      "notes": "Public slots as full venue-local date-times, sorted and capped at 300. Raw policy fields are not confirmed charges. Back to draft after a source change on 2026-10-01: each distinct slot policy is listed once in policies and slots carry policy_id (live: 21 slots, 1 policy, 6,144 to 3,490 bytes); caller cancellation is reported as canceled, not a timeout. Builder live run passed on 2026-10-01; needs fresh independent QA; earlier sign-off (agt_221f5a5f11361477ff09) covered the previous source. 2026-10-01: policy fields documented (deposit_fee is per guest). r6: policies carry deposit_total (deposit_fee x party_size); live Chef's Table $200/guest -> 400.",
       "provenance": {
         "qa_agent": "agt_221f5a5f11361477ff09"
       }
@@ -1248,7 +1262,7 @@
       "url_patterns_reason": "Narrowed to resy.com: www.resy.com redirects there, and the other subdomains (blog, helpdesk, widgets, os) are separate products that do not expose the consumer page's API configuration these tools call api.resy.com with.",
       "status": "draft",
       "last_verified": null,
-      "notes": "Public per-date booking states. Tock venues can return not_found or empty no_results. Back to draft after a source change on 2026-10-01: caller cancellation during a request is reported as canceled, not a timeout. Builder live run passed on 2026-10-01; needs fresh independent QA; earlier sign-off (agt_221f5a5f11361477ff09) covered the previous source.",
+      "notes": "Public per-date booking states. Tock venues can return not_found or empty no_results. Back to draft after a source change on 2026-10-01: caller cancellation during a request is reported as canceled, not a timeout. Builder live run passed on 2026-10-01; needs fresh independent QA; earlier sign-off (agt_221f5a5f11361477ff09) covered the previous source. 2026-10-01: description documents available / sold-out / closed, event and walk_in; missing start_date says it is required.",
       "provenance": {
         "qa_agent": "agt_221f5a5f11361477ff09"
       }
@@ -1265,7 +1279,7 @@
       "url_patterns_reason": "Narrowed to resy.com: www.resy.com redirects there, and the other subdomains (blog, helpdesk, widgets, os) are separate products that do not expose the consumer page's API configuration these tools call api.resy.com with.",
       "status": "draft",
       "last_verified": null,
-      "notes": "Exact-slot quote from /3/details with commit 0 (preview, no book_token, no hold): total, fees, payment type, card requirement, cancellation fee/cutoffs and policy text. Replaces prepare_reservation. Builder live run 2026-10-01."
+      "notes": "Exact-slot quote from /3/details with commit 0 (preview, no book_token, no hold): total, fees, payment type, card requirement, cancellation fee/cutoffs and policy text. Replaces prepare_reservation. Builder live run 2026-10-01. 2026-10-01: cancellation.fee_per_guest, estimated_max_fee, fee_applies_now and a plain summary (non-refundable prepaid noted); live-checked Aria (card hold, $25/guest) and Chef's Table at Brooklyn Fare (prepaid $400)."
     },
     {
       "domain": "resy.com",
@@ -1279,7 +1293,7 @@
       "url_patterns_reason": "Narrowed to resy.com: www.resy.com redirects there, and the other subdomains (blog, helpdesk, widgets, os) are separate products that do not expose the consumer page's API configuration these tools call api.resy.com with.",
       "status": "draft",
       "last_verified": null,
-      "notes": "Public page of a collection's venues with up to 6 open slots each; Resy's offset is a 1-based page. Trims a roughly 100 KB response to about 2 KB. Builder live run 2026-10-01."
+      "notes": "Public page of a collection's venues with up to 6 open slots each; Resy's offset is a 1-based page. Trims a roughly 100 KB response to about 2 KB. Builder live run 2026-10-01. 2026-10-01: algorithmic lists via list + city_slug (/3/cities/{city}/list/{list}, home-page ranking, slots from one /4/find per venue, total null because Resy's is city-wide) or as collections 889/891/890/888 (list page view); near_time keeps the 6 slots closest to it; editorial venues fall back to rating/total_ratings. Live-checked Climbing, Top Rated (matches the list page), Date Night. r4: list now defaults to the list page view (resolves the algorithmic collection id per city) with ranking: leaderboard for the home-page ranking; only_available filter. r5: only_available reads up to 4 Resy pages to fill limit and returns next_page; price_range filled from /3/venues for collection venues."
     },
     {
       "domain": "resy.com",
@@ -1293,7 +1307,21 @@
       "url_patterns_reason": "Narrowed to resy.com: www.resy.com redirects there, and the other subdomains (blog, helpdesk, widgets, os) are separate products that do not expose the consumer page's API configuration these tools call api.resy.com with.",
       "status": "draft",
       "last_verified": null,
-      "notes": "Account-guarded page (max 20) of one list's venues, including My Hit List (favorites). No automatic paging; no owner details. Builder live run 2026-10-01: offset/limit honored."
+      "notes": "Account-guarded page (max 20) of one list's venues, including My Hit List (favorites). No automatic paging; no owner details. Builder live run 2026-10-01: offset/limit honored. 2026-10-01: signed out with no account ref now returns login_required before input checks."
+    },
+    {
+      "domain": "resy.com",
+      "tool": "get_page_context",
+      "file": "domains/resy.com/get_page_context.js",
+      "kind": "page",
+      "namespace": "resy.com",
+      "url_patterns": [
+        "https://resy.com/*"
+      ],
+      "url_patterns_reason": "Narrowed to resy.com: www.resy.com redirects there, and the other subdomains (blog, helpdesk, widgets, os) are separate products that do not expose the consumer page's API configuration these tools call api.resy.com with.",
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Read-only page summary: page type from the URL (city, search, venue, event, algorithmic list, account pages, not found), city/venue slugs, date and seats from the URL, live tool names, unsettled + reasons (document loading, navigation mark from navigate_to_page, spinners, venue still rendering, aria-busy) with optional wait_for_settled_seconds, pending_choice for the booking dialog (widgets.resy.com frame) or log-in window, signed_in from the page's Resy session, alerts, and suggestions that never press Reserve Now. Unit-tested; exercised live on venue pages signed in."
     },
     {
       "domain": "resy.com",
@@ -1307,7 +1335,7 @@
       "url_patterns_reason": "Narrowed to resy.com: www.resy.com redirects there, and the other subdomains (blog, helpdesk, widgets, os) are separate products that do not expose the consumer page's API configuration these tools call api.resy.com with.",
       "status": "draft",
       "last_verified": null,
-      "notes": "Account-guarded details of one reservation on a specified list page, not all pages. A populated item was read live during the 2026-10-01 booking run; unknown item shapes fail site_changed. No cancellation tokens. Back to draft after a source change on 2026-10-01: one /2/user identity read per call (the session token is compared before and after every request) and the API-configuration wait. Builder live run passed on 2026-10-01; needs fresh independent QA; earlier sign-off (agt_221f5a5f11361477ff09) covered the previous source.",
+      "notes": "Account-guarded details of one reservation on a specified list page, not all pages. A populated item was read live during the 2026-10-01 booking run; unknown item shapes fail site_changed. No cancellation tokens. Back to draft after a source change on 2026-10-01: one /2/user identity read per call (the session token is compared before and after every request) and the API-configuration wait. Builder live run passed on 2026-10-01; needs fresh independent QA; earlier sign-off (agt_221f5a5f11361477ff09) covered the previous source. 2026-10-01: signed out with no account ref now returns login_required before input checks.",
       "provenance": {
         "qa_agent": "agt_221f5a5f11361477ff09"
       }
@@ -1324,7 +1352,7 @@
       "url_patterns_reason": "Narrowed to resy.com: www.resy.com redirects there, and the other subdomains (blog, helpdesk, widgets, os) are separate products that do not expose the consumer page's API configuration these tools call api.resy.com with.",
       "status": "draft",
       "last_verified": null,
-      "notes": "Public venue profile by URL or city and venue slug. Back to draft after a source change on 2026-10-01: caller cancellation during a request is reported as canceled, not a timeout. Builder live run passed on 2026-10-01; needs fresh independent QA; earlier sign-off (agt_221f5a5f11361477ff09) covered the previous source.",
+      "notes": "Public venue profile by URL or city and venue slug. Back to draft after a source change on 2026-10-01: caller cancellation during a request is reported as canceled, not a timeout. Builder live run passed on 2026-10-01; needs fresh independent QA; earlier sign-off (agt_221f5a5f11361477ff09) covered the previous source. 2026-10-01: url_slug accepts underscores (e.g. aria_west_village_nyc).",
       "provenance": {
         "qa_agent": "agt_221f5a5f11361477ff09"
       }
@@ -1341,7 +1369,7 @@
       "url_patterns_reason": "Narrowed to resy.com: www.resy.com redirects there, and the other subdomains (blog, helpdesk, widgets, os) are separate products that do not expose the consumer page's API configuration these tools call api.resy.com with.",
       "status": "draft",
       "last_verified": null,
-      "notes": "Returns https://resy.com/shared/lists/{slug} from POST /3/user/lists/{id}/share. Live 2026-10-01: the slug is stable, is_public stays false, and any list (even My Hit List) is readable anonymously by slug, so sharing changes nothing on the account."
+      "notes": "Returns https://resy.com/shared/lists/{slug} from POST /3/user/lists/{id}/share. Live 2026-10-01: the slug is stable, is_public stays false, and any list (even My Hit List) is readable anonymously by slug, so sharing changes nothing on the account. 2026-10-01: signed out with no account ref now returns login_required before input checks."
     },
     {
       "domain": "resy.com",
@@ -1369,7 +1397,7 @@
       "url_patterns_reason": "Narrowed to resy.com: www.resy.com redirects there, and the other subdomains (blog, helpdesk, widgets, os) are separate products that do not expose the consumer page's API configuration these tools call api.resy.com with.",
       "status": "draft",
       "last_verified": null,
-      "notes": "Public curated collections for a city code (Climbing 889, New on Resy 890, Top Rated 891 in New York, plus editorial picks); My Hit List entry excluded. Builder live run 2026-10-01."
+      "notes": "Public curated collections for a city code (Climbing 889, New on Resy 890, Top Rated 891 in New York, plus editorial picks); My Hit List entry excluded. Builder live run 2026-10-01. 2026-10-01: include_algo=1; algorithmic_lists carry list + city_slug and the collection_id; algorithmic, GDA and events collections are no longer mixed into editorial collections."
     },
     {
       "domain": "resy.com",
@@ -1397,7 +1425,7 @@
       "url_patterns_reason": "Narrowed to resy.com: www.resy.com redirects there, and the other subdomains (blog, helpdesk, widgets, os) are separate products that do not expose the consumer page's API configuration these tools call api.resy.com with.",
       "status": "draft",
       "last_verified": null,
-      "notes": "Account-guarded read of My Hit List and custom lists with ids, counts and optional per-venue membership. Builder live run 2026-10-01."
+      "notes": "Account-guarded read of My Hit List and custom lists with ids, counts and optional per-venue membership. Builder live run 2026-10-01. 2026-10-01: signed out with no account ref now returns login_required before input checks."
     },
     {
       "domain": "resy.com",
@@ -1411,7 +1439,7 @@
       "url_patterns_reason": "Narrowed to resy.com: www.resy.com redirects there, and the other subdomains (blog, helpdesk, widgets, os) are separate products that do not expose the consumer page's API configuration these tools call api.resy.com with.",
       "status": "draft",
       "last_verified": null,
-      "notes": "Account-guarded read of up to 100 Notify requests (venue, date, party, service, HH:MM window) from each item's specs; populated items live-verified 2026-10-01. Writes are create_notify and remove_notify. Back to draft after a source change on 2026-10-01: one /2/user identity read per call (the session token is compared before and after every request) and the API-configuration wait. Builder live run passed on 2026-10-01; needs fresh independent QA; earlier sign-off (agt_221f5a5f11361477ff09) covered the previous source.",
+      "notes": "Account-guarded read of up to 100 Notify requests (venue, date, party, service, HH:MM window) from each item's specs; populated items live-verified 2026-10-01. Writes are create_notify and remove_notify. Back to draft after a source change on 2026-10-01: one /2/user identity read per call (the session token is compared before and after every request) and the API-configuration wait. Builder live run passed on 2026-10-01; needs fresh independent QA; earlier sign-off (agt_221f5a5f11361477ff09) covered the previous source. 2026-10-01: signed out with no account ref now returns login_required before input checks.",
       "provenance": {
         "qa_agent": "agt_221f5a5f11361477ff09"
       }
@@ -1428,10 +1456,52 @@
       "url_patterns_reason": "Narrowed to resy.com: www.resy.com redirects there, and the other subdomains (blog, helpdesk, widgets, os) are separate products that do not expose the consumer page's API configuration these tools call api.resy.com with.",
       "status": "draft",
       "last_verified": null,
-      "notes": "Account-guarded reservation page, maximum 20 items, no automatic pagination. Empty and populated pages read live on 2026-10-01; paging beyond the first page is not live verified. Back to draft after a source change on 2026-10-01: one /2/user identity read per call (the session token is compared before and after every request) and the API-configuration wait. Builder live run passed on 2026-10-01; needs fresh independent QA; earlier sign-off (agt_221f5a5f11361477ff09) covered the previous source.",
+      "notes": "Account-guarded reservation page, maximum 20 items, no automatic pagination. Empty and populated pages read live on 2026-10-01; paging beyond the first page is not live verified. Back to draft after a source change on 2026-10-01: one /2/user identity read per call (the session token is compared before and after every request) and the API-configuration wait. Builder live run passed on 2026-10-01; needs fresh independent QA; earlier sign-off (agt_221f5a5f11361477ff09) covered the previous source. 2026-10-01: start_date/end_date scan up to 10 pages (offset is Resy's page number) and stop past the range; date_filter reports scanned_count and scan_complete. Live: last month's reservation found.",
       "provenance": {
         "qa_agent": "agt_221f5a5f11361477ff09"
       }
+    },
+    {
+      "domain": "resy.com",
+      "tool": "login",
+      "file": "domains/resy.com/login.js",
+      "kind": "page",
+      "namespace": "resy.com",
+      "url_patterns": [
+        "https://resy.com/*"
+      ],
+      "url_patterns_reason": "Narrowed to resy.com: www.resy.com redirects there, and the other subdomains (blog, helpdesk, widgets, os) are separate products that do not expose the consumer page's API configuration these tools call api.resy.com with.",
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Signs in with email and password through Resy's 4/auth/password endpoint (the endpoint its email-and-password form used; the current UI offers phone or email one-time code), credentials sent once and never returned, then reloads so Resy restores the session from its refresh cookie. Never retries; reports invalid_credentials, verification_required and challenge. Live 2026-10-01: signed in the owner's test account (no verification step requested); get_account_status then returned an account_ref."
+    },
+    {
+      "domain": "resy.com",
+      "tool": "navigate_to_page",
+      "file": "domains/resy.com/navigate_to_page.js",
+      "kind": "page",
+      "namespace": "resy.com",
+      "url_patterns": [
+        "https://resy.com/*"
+      ],
+      "url_patterns_reason": "Narrowed to resy.com: www.resy.com redirects there, and the other subdomains (blog, helpdesk, widgets, os) are separate products that do not expose the consumer page's API configuration these tools call api.resy.com with.",
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Schedules a same-origin navigation after returning (100 ms) and marks the page as navigating for get_page_context; rejects other origins, protocol-relative and backslash paths. Description carries a short Resy site map. Unit-tested; live 2026-10-01. r6: unknown input keys are named in the error."
+    },
+    {
+      "domain": "resy.com",
+      "tool": "open_booking_dialog",
+      "file": "domains/resy.com/open_booking_dialog.js",
+      "kind": "cdp",
+      "namespace": "resy.com",
+      "url_patterns": [
+        "https://resy.com/cities/*/venues/*"
+      ],
+      "url_patterns_reason": "Only venue pages show slot buttons that open Resy's booking window; www.resy.com redirects to resy.com and other subdomains are separate products.",
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Clicks one exact slot button on the venue page (time and seating type must match; never another slot), then reads Resy's Complete Your Reservation window: venue, time, guests/seating, card on file (no card details), price lines, cancellation policy, final button label and enabled state; never presses the final button. CDP because the window is a cross-origin widgets.resy.com frame only readable through the frame tree. Checks the page date/seats match the slot and that the user is signed in. Live 2026-10-01: Aria West Village 7:30 PM for 2, read Reserve Now and the $25 per guest policy, then closed. r6: payment_card_on_file is null when the dialog shows no payment section (not 'no card'); order-summary rows read as label: amount."
     },
     {
       "domain": "resy.com",
@@ -1445,7 +1515,7 @@
       "url_patterns_reason": "Narrowed to resy.com: www.resy.com redirects there, and the other subdomains (blog, helpdesk, widgets, os) are separate products that do not expose the consumer page's API configuration these tools call api.resy.com with.",
       "status": "draft",
       "last_verified": null,
-      "notes": "Submits a 1-5 rating (and optional comments) for a past reservation with POST /3/rate/reservation as the site's rating page does; conflict if already rated, rejected if expired. Fixture-tested only."
+      "notes": "Submits a 1-5 rating (and optional comments) for a past reservation with POST /3/rate/reservation as the site's rating page does; conflict if already rated, rejected if expired. Fixture-tested only. 2026-10-01: signed out with no account ref now returns login_required before input checks."
     },
     {
       "domain": "resy.com",
@@ -1459,7 +1529,7 @@
       "url_patterns_reason": "Narrowed to resy.com: www.resy.com redirects there, and the other subdomains (blog, helpdesk, widgets, os) are separate products that do not expose the consumer page's API configuration these tools call api.resy.com with.",
       "status": "draft",
       "last_verified": null,
-      "notes": "Turns off one Notify by venue/date/party/service; confirm: true required, absent sends nothing, readback verifies removal. Builder live run 2026-10-01."
+      "notes": "Turns off one Notify by venue/date/party/service; confirm: true required, absent sends nothing, readback verifies removal. Builder live run 2026-10-01. 2026-10-01: signed out with no account ref now returns login_required before input checks."
     },
     {
       "domain": "resy.com",
@@ -1473,7 +1543,7 @@
       "url_patterns_reason": "Narrowed to resy.com: www.resy.com redirects there, and the other subdomains (blog, helpdesk, widgets, os) are separate products that do not expose the consumer page's API configuration these tools call api.resy.com with.",
       "status": "draft",
       "last_verified": null,
-      "notes": "Public restaurant search and up to 12 sorted slots per venue. Tock slots are informational; cross-origin blocks can surface as site_error. Back to draft after a source change on 2026-10-01: the 2 MB location list is cached per document for an hour; caller cancellation is reported as canceled, not a timeout. Builder live run passed on 2026-10-01; needs fresh independent QA; earlier sign-off (agt_221f5a5f11361477ff09) covered the previous source.",
+      "notes": "Public restaurant search and up to 12 sorted slots per venue. Tock slots are informational; cross-origin blocks can surface as site_error. Back to draft after a source change on 2026-10-01: the 2 MB location list is cached per document for an hour; caller cancellation is reported as canceled, not a timeout. Builder live run passed on 2026-10-01; needs fresh independent QA; earlier sign-off (agt_221f5a5f11361477ff09) covered the previous source. 2026-10-01 (resy-booking-flow): neighborhood filter (Resy venue_filter.neighborhood, case-sensitive; one title-cased retry), max_price_range page filter with a warning, past date/time warning, clearer location/latitude error; live-checked West Village Italian.",
       "provenance": {
         "qa_agent": "agt_221f5a5f11361477ff09"
       }
@@ -1490,7 +1560,7 @@
       "url_patterns_reason": "Narrowed to resy.com: www.resy.com redirects there, and the other subdomains (blog, helpdesk, widgets, os) are separate products that do not expose the consumer page's API configuration these tools call api.resy.com with.",
       "status": "draft",
       "last_verified": null,
-      "notes": "Reversible My Hit List favorite with exact account/venue and expected-state guards, one write and readback. HTTP 201 success handling awaits independent QA. Never retry uncertain writes automatically. Back to draft after a source change on 2026-10-01: four requests per write (/2/user, /3/venue, POST, /3/venue) instead of six; the session token is compared before and after every request. Builder live run passed on 2026-10-01; needs fresh independent QA.",
+      "notes": "Reversible My Hit List favorite with exact account/venue and expected-state guards, one write and readback. HTTP 201 success handling awaits independent QA. Never retry uncertain writes automatically. Back to draft after a source change on 2026-10-01: four requests per write (/2/user, /3/venue, POST, /3/venue) instead of six; the session token is compared before and after every request. Builder live run passed on 2026-10-01; needs fresh independent QA. 2026-10-01: url_slug accepts underscores. Live QA r2b added and removed a venue with exact restore.",
       "provenance": {
         "qa_agent": null
       }
@@ -1507,7 +1577,7 @@
       "url_patterns_reason": "Narrowed to resy.com: www.resy.com redirects there, and the other subdomains (blog, helpdesk, widgets, os) are separate products that do not expose the consumer page's API configuration these tools call api.resy.com with.",
       "status": "draft",
       "last_verified": null,
-      "notes": "Adds or removes one venue on one custom list with expected-state guard; My Hit List refused (use set_favorite). Readback also checks the venue's other lists are unchanged. Builder live run 2026-10-01: add, no-op, remove; a wrong DELETE encoding was correctly reported as rejected before the fix."
+      "notes": "Adds or removes one venue on one custom list with expected-state guard; My Hit List refused (use set_favorite). Readback also checks the venue's other lists are unchanged. Builder live run 2026-10-01: add, no-op, remove; a wrong DELETE encoding was correctly reported as rejected before the fix. 2026-10-01: signed out with no account ref now returns login_required before input checks."
     },
     {
       "domain": "southwest.com",

@@ -3,7 +3,7 @@
   match: { url_patterns: ["https://resy.com/*"] },
   tool: {
     name: "get_availability_calendar",
-    description: "Per-date reservation state (available, sold-out, closed) for one venue and party size over up to 366 days, with the last bookable date. Read-only.",
+    description: "Per-date reservation state for one venue and party size over up to 366 days, with the last bookable date. reservation is available (at least one slot for this party size), sold-out (Resy offers no slot for this party size that day; it does not say whether a service is closed or fully booked, and Notify may still be possible — check get_availability) or closed (the venue takes no reservations that day). event says whether a ticketed event is bookable that day (see list_events); walk_in is the venue's walk-in setting, not a guarantee. Dates after last_bookable_date are not released yet. Read-only; signed out works.",
     inputSchema: {
       type: "object", additionalProperties: false, required: ["venue_id", "start_date"],
       properties: {
@@ -109,7 +109,7 @@
     const allowed = ["venue_id", "start_date", "end_date", "party_size"];
     if (!isPlain(input) || Object.keys(input).some(k => !allowed.includes(k))) return fail("invalid_input", "Input must be an object with venue_id, start_date and optionally end_date and party_size.");
     if (!Number.isInteger(input.venue_id) || input.venue_id < 1 || input.venue_id > 2147483647) return fail("invalid_input", "venue_id must be a positive integer Resy venue id.");
-    const startProblem = dateProblem(input.start_date, "start_date");
+    const startProblem = input.start_date === undefined ? "start_date is required (YYYY-MM-DD, e.g. today's date)." : dateProblem(input.start_date, "start_date");
     if (startProblem) return fail("invalid_input", startProblem);
     const endDate = input.end_date === undefined ? dayOf(Date.parse(input.start_date + "T00:00:00Z") + 30 * 86400000) : input.end_date;
     if (!isDate(endDate)) return fail("invalid_input", "end_date must be a real calendar date, YYYY-MM-DD.");

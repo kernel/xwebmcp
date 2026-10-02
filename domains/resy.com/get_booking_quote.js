@@ -23,15 +23,15 @@
           properties: {
             status: { const: "quote" }, account_ref: { type: "string", pattern: "^account_[a-f0-9]{64}$", description: "From get_account_status." }, venue_id: { type: "integer" }, venue_name: { type: ["string", "null"] }, date: { type: "string" }, party_size: { type: "integer" },
             slot: { type: "object" }, quote: {
-              type: "object", additionalProperties: false, required: ["currency", "total", "breakdown", "payment_type", "cancellation", "change_cutoff_utc", "card_required"],
+              type: "object", additionalProperties: false, required: ["currency", "total", "breakdown", "payment_type", "cancellation", "change_cutoff_utc", "card_required", "summary"],
               properties: {
                 currency: { type: ["string", "null"] }, total: { type: "number", description: "Amount charged at booking." },
-                breakdown: { type: "object" }, payment_type: { type: ["string", "null"], description: "Resy's payment config type, for example free." },
+                breakdown: { type: "object" }, payment_type: { type: ["string", "null"], description: "Resy's payment config type. free means nothing is charged when booking; a card can still be required to guarantee a cancellation or no-show fee (see card_required and cancellation)." },
                 cancellation: {
-                  type: "object", additionalProperties: false, required: ["fee", "fee_cutoff_utc", "refund_cutoff_utc", "policy"],
-                  properties: { fee: { type: ["number", "null"], description: "Fee if cancelled after fee_cutoff_utc; policy says whether it is per guest." }, fee_cutoff_utc: { type: ["string", "null"] }, refund_cutoff_utc: { type: ["string", "null"] }, policy: { type: "array", items: { type: "string" } } }
+                  type: "object", additionalProperties: false, required: ["fee", "fee_per_guest", "estimated_max_fee", "fee_applies_now", "fee_cutoff_utc", "refund_cutoff_utc", "policy"],
+                  properties: { fee: { type: ["number", "null"], description: "Fee if cancelled after fee_cutoff_utc (per guest when fee_per_guest)." }, fee_per_guest: { type: "boolean", description: "The policy text says the fee is charged per guest." }, estimated_max_fee: { type: ["number", "null"], description: "fee times party_size when per guest, before any tax the policy mentions." }, fee_applies_now: { type: "boolean", description: "The fee cutoff has already passed: cancelling right after booking would incur the fee." }, fee_cutoff_utc: { type: ["string", "null"] }, refund_cutoff_utc: { type: ["string", "null"] }, policy: { type: "array", items: { type: "string" } } }
                 },
-                change_cutoff_utc: { type: ["string", "null"] }, card_required: { type: "boolean", description: "A saved card is needed to book." }
+                change_cutoff_utc: { type: ["string", "null"] }, card_required: { type: "boolean", description: "A saved card is needed to book." }, summary: { type: "string", description: "One plain-language sentence to tell the user." }
               }
             }
           }
@@ -53,7 +53,7 @@
     const isDate = v => typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v) && !Number.isNaN(Date.parse(v + "T00:00:00Z")) && new Date(v + "T00:00:00Z").toISOString().slice(0, 10) === v;
     const dayOf = ms => new Date(ms).toISOString().slice(0, 10);
     if (!validInput(["expected_account_ref", "venue_id", "date", "party_size", "local_start", "seating_type"])) return fail("invalid_input", "Unexpected input fields.");
-    if (!accountRefValid(input.expected_account_ref)) return fail("invalid_input", "expected_account_ref must come from get_account_status.");
+    if (!accountRefValid(input.expected_account_ref)) return typeof window.apiAuthToken === "string" && window.apiAuthToken && window.apiAuthToken !== "undefined" ? fail("invalid_input", "expected_account_ref must come from get_account_status.") : fail("login_required", "Not signed in to Resy: ask the user to sign in on resy.com; account tools, quotes and booking need a session. Nothing was sent.");
     if (!Number.isInteger(input.venue_id) || input.venue_id < 1 || input.venue_id > 2147483647) return fail("invalid_input", "venue_id must be a positive integer Resy venue id.");
     if (!isDate(input.date) || input.date < dayOf(Date.now() - 86400000) || input.date > dayOf(Date.now() + 366 * 86400000)) return fail("invalid_input", "date must be a real YYYY-MM-DD service date from yesterday (UTC) to one year ahead.");
     if (!Number.isInteger(input.party_size) || input.party_size < 1 || input.party_size > 20) return fail("invalid_input", "party_size must be an integer from 1 to 20.");
@@ -137,13 +137,26 @@
       if (!amounts || money(amounts.total) === null) return { error: fail("site_changed", "Resy's booking details did not include a total; nothing was sent.") };
       const fee = plain(c.fee) ? money(c.fee.amount) : null;
       const type = plain(j.payment.config) ? text(j.payment.config.type, 40) : null;
+      const policy = plain(c.display) && Array.isArray(c.display.policy) ? c.display.policy.filter(x => typeof x === "string").slice(0, 5).map(x => x.replace(/<[^>]*>/g, "").slice(0, 600)) : [];
+      const perGuest = /per (guest|person|cover)/i.test(policy.join(" "));
+      const cutoff = plain(c.fee) ? text(c.fee.date_cut_off, 40) : null;
+      const cutoffMs = cutoff ? Date.parse(cutoff) : NaN;
+      const appliesNow = fee !== null && fee > 0 && (cutoff === null || (!Number.isNaN(cutoffMs) && cutoffMs <= Date.now()));
+      const estimate = fee !== null ? Math.round(fee * (perGuest ? input.party_size : 1) * 100) / 100 : null;
+      const cardRequired = type !== "free" || (fee !== null && fee > 0);
+      const cur = plain(j.locale) && text(j.locale.currency, 10) === "USD" ? "$" : "";
+      const tax = /tax/i.test(policy.join(" ")) ? " + tax" : "";
+      const summary = (amounts.total > 0 ? "Charged when booking: " + cur + amounts.total + ". " : "Nothing is charged when booking. ") +
+        (cardRequired ? "A card on file is required. " : "No card is required. ") +
+        (fee !== null && fee > 0 ? "Cancellation fee " + cur + fee + (perGuest ? " per guest (up to " + cur + estimate + tax + " for " + input.party_size + ")" : tax) + (appliesNow ? ", and the free-cancellation cutoff has already passed, so it applies as soon as you book." : " if cancelled after " + cutoff + " (UTC).") : (/non-?refundable/i.test(policy.join(" ")) ? "The policy says this prepaid reservation is non-refundable." : "No cancellation fee is listed."));
       return {
         currency: plain(j.locale) ? text(j.locale.currency, 10) : null, total: amounts.total,
         breakdown: { reservation_charge: money(amounts.reservation_charge), service_fee: money(amounts.service_fee), resy_fee: money(amounts.resy_fee), tax: money(amounts.tax), service_charge: plain(amounts.service_charge) ? money(amounts.service_charge.amount) : null },
         payment_type: type,
-        cancellation: { fee: fee, fee_cutoff_utc: plain(c.fee) ? text(c.fee.date_cut_off, 40) : null, refund_cutoff_utc: plain(c.refund) ? text(c.refund.date_cut_off, 40) : null, policy: plain(c.display) && Array.isArray(c.display.policy) ? c.display.policy.filter(x => typeof x === "string").slice(0, 5).map(x => x.replace(/<[^>]*>/g, "").slice(0, 600)) : [] },
+        cancellation: { fee: fee, fee_per_guest: perGuest, estimated_max_fee: estimate, fee_applies_now: appliesNow, fee_cutoff_utc: cutoff, refund_cutoff_utc: plain(c.refund) ? text(c.refund.date_cut_off, 40) : null, policy },
         change_cutoff_utc: plain(j.change) ? text(j.change.date_cut_off, 40) : null,
-        card_required: type !== "free" || (fee !== null && fee > 0)
+        card_required: cardRequired,
+        summary
       };
     };
     const found = await findSlot();

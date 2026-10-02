@@ -3,7 +3,7 @@
   match: { url_patterns: ["https://resy.com/*"] },
   tool: {
     name: "list_collections",
-    description: "Resy's curated collections for a city code (Climbing, Top Rated, New on Resy, Book Tonight and editorial picks) with collection_id. Read-only.",
+    description: "Resy's collections for a city code: editorial collections (Date Night, Brunch, Michelin, …) with collection_id, plus algorithmic_lists (Climbing, Top Rated, New on Resy, Book Tonight) with both a list name for the city home-page ranking and a collection_id for the list page's view. Read either with get_collection. Read-only; signed out works.",
     inputSchema: {
       type: "object", additionalProperties: false, required: ["location"],
       properties: {
@@ -14,9 +14,13 @@
       type: "object",
       oneOf: [
         {
-          type: "object", additionalProperties: false, required: ["status",  "collections"],
+          type: "object", additionalProperties: false, required: ["status",  "collections", "algorithmic_lists"],
           properties: {
             status: { const: "ok" },
+            algorithmic_lists: {
+              type: "array", maxItems: 4, description: "Pass list + city_slug (home-page ranking) or collection_id + location (the list page view) to get_collection.",
+              items: { type: "object", additionalProperties: false, required: ["list", "name", "city_slug", "collection_id"], properties: { list: { enum: ["climbing", "top-rated", "new-on-resy", null], description: "With city_slug: the ranked leaderboard shown on the city home page." }, name: { type: "string" }, city_slug: { type: ["string", "null"] }, collection_id: { type: ["integer", "null"], description: "With location: the list as resy.com/cities/{city}/list/{list} shows it (open tables first)." } } }
+            },
             collections: {
               type: "array", maxItems: 100,
               items: { type: "object", additionalProperties: false, required: ["collection_id", "name", "description"], properties: { collection_id: { type: "integer" }, name: { type: "string" }, description: { type: ["string", "null"], maxLength: 300 } } }
@@ -75,11 +79,20 @@
     if (!isPlain(input) || Object.keys(input).some(k => k !== "location") || typeof input.location !== "string" || !/^[a-z]{2,10}$/.test(input.location)) return fail("invalid_input", "Input must be { location } with a city code such as ny.");
     const connection = await connect();
     if (connection.error) return connection.error;
-    const res = await connection.request("GET", "/3/collections?location_id=" + input.location);
+    const res = await connection.request("GET", "/3/collections?location_id=" + input.location + "&include_algo=1");
     if (res.error) return res.error;
     if (res.status !== 200 || !Array.isArray(res.json)) return fail(res.status === 404 ? "not_found" : "site_changed", "Resy's collections response did not have the expected shape (HTTP " + res.status + ").");
-    const collections = res.json.filter(c => isPlain(c) && int(c.id) !== null && isPlain(c.info) && text(c.info.name, 200) && c.info.type_id !== 8).slice(0, 100).map(c => ({ collection_id: c.id, name: text(c.info.name, 200), description: text(c.info.description, 300) }));
-    if (!collections.length) return fail("not_found", "Resy lists no collections for '" + input.location + "'.");
-    return { status: "ok", collections };
+    const collections = res.json.filter(c => isPlain(c) && int(c.id) !== null && isPlain(c.info) && text(c.info.name, 200) && ![2, 3, 4, 5, 8, 10, 11].includes(c.info.type_id)).slice(0, 100).map(c => ({ collection_id: c.id, name: text(c.info.name, 200), description: text(c.info.description, 300) }));
+    let citySlug = null;
+    const config = await connection.request("GET", "/3/location/config");
+    if (!config.error && config.status === 200 && Array.isArray(config.json)) {
+      const match = config.json.find(l => isPlain(l) && l.code === input.location);
+      if (match && typeof match.url_slug === "string" && /^[a-z0-9][a-z0-9-]{1,99}$/.test(match.url_slug)) citySlug = match.url_slug;
+    }
+    if (!collections.length && !citySlug) return fail("not_found", "Resy lists no collections for '" + input.location + "'.");
+    // Resy's algorithmic lists are also collections (type 3 Climbing, 5 Top Rated, 4 New on Resy, 2 Book Tonight).
+    const algoId = type => { const c = res.json.find(x => isPlain(x) && isPlain(x.info) && x.info.type_id === type && int(x.id) !== null); return c ? c.id : null; };
+    const algorithmic = [["climbing", "Climbing", 3], ["top-rated", "Top Rated", 5], ["new-on-resy", "New on Resy", 4], [null, "Book Tonight", 2]].map(([list, name, type]) => ({ list, name, city_slug: citySlug, collection_id: algoId(type) })).filter(l => l.list || l.collection_id !== null);
+    return { status: "ok", algorithmic_lists: algorithmic, collections };
   }
 }]

@@ -62,7 +62,7 @@ const slot = (start, end, type = "Dining Room", template = 11, extra = {}) => ({
 const TEMPLATES = {
   11: { id: 11, is_paid: false, cancellation_fee: null, secs_cancel_cut_off: null, time_cancel_cut_off: null, deposit_fee: null, service_charge: null },
   12: { id: 12, is_paid: true, cancellation_fee: 25, secs_cancel_cut_off: 86400, time_cancel_cut_off: null, deposit_fee: null, service_charge: null },
-  13: { id: 13, is_paid: true, cancellation_fee: null, secs_cancel_cut_off: 0, time_cancel_cut_off: "12:00:00", deposit_fee: 50, service_charge: "0%" }
+  13: { id: 13, is_paid: true, cancellation_fee: null, secs_cancel_cut_off: 0, time_cancel_cut_off: "12:00:00", deposit_fee: 50, deposit_total: 100, service_charge: "0%" }
 };
 const hit = (id, name, extra = {}) => ({
   id: { resy: id }, name, url_slug: name.toLowerCase().replace(/[^a-z]+/g, "-"), location: { id: 1, code: "xa", name: "Exampleton", url_slug: "exampleton-xa" },
@@ -179,7 +179,7 @@ for (const name of NAMES) {
 }
 
 test("registry lists every resy.com tool exactly once", () => {
-  assert.deepEqual(registry.tools.filter(t => t.domain === "resy.com").map(t => t.tool).sort(), [...NAMES, "get_account_status", "get_reservation", "list_notify_requests", "list_reservations", "set_favorite", "list_lists", "get_list", "set_list_membership", "create_list", "delete_list", "create_notify", "remove_notify", "get_booking_quote", "book_reservation", "change_reservation", "cancel_reservation", "rate_reservation", "get_share_link", "copy_list", "get_venues", "list_events", "list_collections", "get_collection"].sort());
+  assert.deepEqual(registry.tools.filter(t => t.domain === "resy.com").map(t => t.tool).sort(), [...NAMES, "get_account_status", "get_reservation", "list_notify_requests", "list_reservations", "set_favorite", "list_lists", "get_list", "set_list_membership", "create_list", "delete_list", "create_notify", "remove_notify", "get_booking_quote", "book_reservation", "change_reservation", "cancel_reservation", "rate_reservation", "get_share_link", "copy_list", "get_venues", "list_events", "list_collections", "get_collection", "login", "get_page_context", "navigate_to_page", "open_booking_dialog", "close_booking_dialog"].sort());
 });
 
 // --- input validation happens before any request ----------------------------------------------------------
@@ -595,9 +595,9 @@ test("get_availability: posts the site's find request and maps slots with their 
   assert.deepEqual(result.slots.map(s => [s.local_start, s.local_end, s.seating_type, s.global_dining_access]), [["2026-10-09T18:30", "2026-10-09T20:00", "Dining Room", false], ["2026-10-09T19:00", "2026-10-09T20:30", "Bar", false], ["2026-10-09T21:00", null, "Chef Counter", true]]);
   assert.deepEqual(result.slots.map(s => s.policy_id), ["p1", "p2", "p3"]);
   assert.deepEqual(result.policies, {
-    p1: { requires_payment: false, cancellation_fee: null, cancel_cutoff_secs: null, cancel_cutoff_time: null, deposit_fee: null, service_charge: null },
-    p2: { requires_payment: true, cancellation_fee: 25, cancel_cutoff_secs: 86400, cancel_cutoff_time: null, deposit_fee: null, service_charge: null },
-    p3: { requires_payment: true, cancellation_fee: null, cancel_cutoff_secs: 0, cancel_cutoff_time: "12:00:00", deposit_fee: 50, service_charge: "0%" }
+    p1: { requires_payment: false, cancellation_fee: null, cancel_cutoff_secs: null, cancel_cutoff_time: null, deposit_fee: null, deposit_total: null, service_charge: null },
+    p2: { requires_payment: true, cancellation_fee: 25, cancel_cutoff_secs: 86400, cancel_cutoff_time: null, deposit_fee: null, deposit_total: null, service_charge: null },
+    p3: { requires_payment: true, cancellation_fee: null, cancel_cutoff_secs: 0, cancel_cutoff_time: "12:00:00", deposit_fee: 50, deposit_total: 150, service_charge: "0%" }
   });
 });
 

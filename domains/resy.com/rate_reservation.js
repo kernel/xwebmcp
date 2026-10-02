@@ -39,7 +39,7 @@
     const validInput = keys => plain(input) && Object.keys(input).every(k => keys.includes(k));
     const accountRefValid = v => typeof v === "string" && /^account_[a-f0-9]{64}$/.test(v);
     if (!validInput(["expected_account_ref", "reservation_id", "rating", "comments", "confirm"])) return fail("invalid_input", "Unexpected input fields.");
-    if (!accountRefValid(input.expected_account_ref)) return fail("invalid_input", "expected_account_ref must come from get_account_status.");
+    if (!accountRefValid(input.expected_account_ref)) return typeof window.apiAuthToken === "string" && window.apiAuthToken && window.apiAuthToken !== "undefined" ? fail("invalid_input", "expected_account_ref must come from get_account_status.") : fail("login_required", "Not signed in to Resy: ask the user to sign in on resy.com; account tools, quotes and booking need a session. Nothing was sent.");
     if (input.confirm !== true) return fail("invalid_input", "confirm must be true, meaning the user gave this rating. Nothing was sent.");
     if (typeof input.reservation_id !== "string" || !/^[1-9]\d{0,29}$/.test(input.reservation_id) || !Number.isInteger(input.rating) || input.rating < 1 || input.rating > 5) return fail("invalid_input", "Provide reservation_id and an integer rating from 1 to 5.");
     if (input.comments !== undefined && (typeof input.comments !== "string" || !input.comments.trim() || input.comments.length > 1000)) return fail("invalid_input", "comments must be 1 to 1000 characters.");

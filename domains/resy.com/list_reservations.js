@@ -3,7 +3,7 @@
   match: { url_patterns: ["https://resy.com/*"] },
   tool: {
     name: "list_reservations",
-    description: "One page (max 20) of the account's upcoming or past reservations: reservation_id, venue, date, time, party, seating, price and cancellation policy text. No automatic paging.",
+    description: "The account's upcoming or past reservations: reservation_id, venue, date, time, party, seating, price and cancellation policy text. Without dates it returns one page (offset is a 1-based page number of limit items; past is newest first). With start_date and/or end_date (inclusive, e.g. last month) it scans up to 200 reservations and returns up to 20 matches, with scan_complete telling whether every reservation in range was checked. Read-only.",
     inputSchema: {
       type: "object",
       additionalProperties: false,
@@ -22,7 +22,9 @@
           default: 1,
           description: "Resy's offset; starts at 1."
         },
-        limit: { type: "integer", minimum: 1, maximum: 20, default: 10 }
+        limit: { type: "integer", minimum: 1, maximum: 20, default: 10 },
+        start_date: { type: "string", pattern: "^\\d{4}-\\d{2}-\\d{2}$", description: "Only reservations on or after this date." },
+        end_date: { type: "string", pattern: "^\\d{4}-\\d{2}-\\d{2}$", description: "Only reservations on or before this date." }
       }
     },
     outputSchema: {
@@ -43,6 +45,7 @@
             offset: { type: "integer" },
             limit: { type: "integer" },
             total: { type: "integer", minimum: 0 },
+            date_filter: { type: ["object", "null"], additionalProperties: false, required: ["start_date", "end_date", "scanned_count", "scan_complete"], properties: { start_date: { type: ["string", "null"] }, end_date: { type: ["string", "null"] }, scanned_count: { type: "integer" }, scan_complete: { type: "boolean", description: "Every reservation in the range was checked. The scan stops at the first page past the range, so scanned_count can be below total." } } },
             reservations: {
               type: "array",
               maxItems: 20,
@@ -123,8 +126,12 @@
     const isDate = v => typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v) && !Number.isNaN(Date.parse(v + "T00:00:00Z")) && new Date(v + "T00:00:00Z").toISOString().slice(0, 10) === v;
     const validInput = keys => plain(input) && Object.keys(input).every(k => keys.includes(k));
     const accountRefValid = v => typeof v === "string" && /^account_[a-f0-9]{64}$/.test(v);
-    if (!validInput(["expected_account_ref", "type", "offset", "limit"])) return fail("invalid_input", "Unexpected input fields.");
-    if (!accountRefValid(input.expected_account_ref)) return fail("invalid_input", "expected_account_ref must come from get_account_status.");
+    if (!validInput(["expected_account_ref", "type", "offset", "limit", "start_date", "end_date"])) return fail("invalid_input", "Unexpected input fields.");
+    for (const k of ["start_date", "end_date"]) if (input[k] !== undefined && !isDate(input[k])) return fail("invalid_input", k + " must be a real date, YYYY-MM-DD.");
+    if (input.start_date && input.end_date && input.start_date > input.end_date) return fail("invalid_input", "start_date must not be after end_date.");
+    const filtering = input.start_date !== undefined || input.end_date !== undefined;
+    if (filtering && input.offset !== undefined) return fail("invalid_input", "offset cannot be combined with start_date/end_date; the tool scans pages itself.");
+    if (!accountRefValid(input.expected_account_ref)) return typeof window.apiAuthToken === "string" && window.apiAuthToken && window.apiAuthToken !== "undefined" ? fail("invalid_input", "expected_account_ref must come from get_account_status.") : fail("login_required", "Not signed in to Resy: ask the user to sign in on resy.com; account tools, quotes and booking need a session. Nothing was sent.");
     const type = input.type === undefined ? "upcoming" : input.type;
     const offset = input.offset === undefined ? 1 : input.offset;
     const limit = input.limit === undefined ? 10 : input.limit;
@@ -179,19 +186,42 @@
     };
     const problem = await ensureAccount();
     if (problem) return problem;
-    const response = await request("/3/user/reservations?limit=" + limit + "&offset=" + offset + "&type=" + type + "&book_on_behalf_of=false");
-    if (response.error) return response.error;
+    const readPage = async (off, lim) => {
+    const response = await request("/3/user/reservations?limit=" + lim + "&offset=" + off + "&type=" + type + "&book_on_behalf_of=false");
+    if (response.error) return { error: response.error };
     const j = response.json;
-    if (!plain(j) || !Array.isArray(j.reservations) || !plain(j.venues) || !plain(j.metadata) || !Number.isSafeInteger(j.metadata.total) || j.metadata.total < 0 || j.reservations.length > limit) return fail("site_changed", "Resy returned an unsupported reservation page.");
+    if (!plain(j) || !Array.isArray(j.reservations) || !plain(j.venues) || !plain(j.metadata) || !Number.isSafeInteger(j.metadata.total) || j.metadata.total < 0 || j.reservations.length > lim) return { error: fail("site_changed", "Resy returned an unsupported reservation page.") };
     const records = [];
     for (const r of j.reservations) {
       const id = plain(r) && plain(r.venue) ? r.venue.id : null;
       const v = positiveId(id) && Object.hasOwn(j.venues, String(id)) ? j.venues[String(id)] : null;
-      if (!plain(r) || !positiveId(r.reservation_id) || !positiveId(id) || Number(id) > 2147483647 || !plain(v) || !text(v.name, 200) || !isDate(r.day) || !Number.isInteger(r.num_seats) || r.num_seats < 1 || r.num_seats > 100 || r.book_on_behalf === true || r.book_on_behalf === 1) return fail("site_changed", "A reservation item is unsupported; no account details were returned.");
+      if (!plain(r) || !positiveId(r.reservation_id) || !positiveId(id) || Number(id) > 2147483647 || !plain(v) || !text(v.name, 200) || !isDate(r.day) || !Number.isInteger(r.num_seats) || r.num_seats < 1 || r.num_seats > 100 || r.book_on_behalf === true || r.book_on_behalf === 1) return { error: fail("site_changed", "A reservation item is unsupported; no account details were returned.") };
       const time = typeof r.time_slot === "string" && /^([01]\d|2[0-3]):[0-5]\d(?::[0-5]\d)?$/.test(r.time_slot) ? r.time_slot : null;
       const policy = Array.isArray(r.cancellation_policy) ? r.cancellation_policy.filter(x => typeof x === "string").slice(0, 10).map(x => x.replace(/<[^>]*>/g, "").replace(/(?:https?:\/\/|rgs:\/\/)\S+/gi, "[link omitted]").slice(0, 1000)) : [];
       records.push({ reservation_id: String(r.reservation_id), venue_id: Number(id), venue_name: text(v.name, 200), date: r.day, local_time: time, party_size: r.num_seats, seating_type: plain(r.config) ? text(r.config.type, 60) : null, currency: text(r.venue.currency, 10), price: typeof r.price === "number" && Number.isFinite(r.price) && r.price >= 0 ? r.price : null, cancellation_policy: policy });
     }
-    return { status: records.length ? "ok" : "no_results", account_ref: input.expected_account_ref, type, offset, limit, total: j.metadata.total, reservations: records };
+    return { records, total: j.metadata.total };
+    };
+    if (filtering) {
+      const lo = input.start_date || "0000-01-01", hi = input.end_date || "9999-12-31";
+      const matches = [];
+      let scanned = 0, total = 0, complete = false;
+      for (let off = 1; off <= 10; off++) {
+        const pageRead = await readPage(off, 20);
+        if (pageRead.error) return pageRead.error;
+        total = pageRead.total;
+        scanned += pageRead.records.length;
+        for (const r of pageRead.records) if (r.date >= lo && r.date <= hi && matches.length < 20) matches.push(r);
+        const days = pageRead.records.map(r => r.date);
+        const beyond = type === "past" ? days.some(d => d < lo) : days.some(d => d > hi);
+        if (beyond || scanned >= total || pageRead.records.length < 20) { complete = true; break; }
+      }
+      return { status: matches.length ? "ok" : "no_results", account_ref: input.expected_account_ref, type, offset: 1, limit: 20, total, date_filter: { start_date: input.start_date ?? null, end_date: input.end_date ?? null, scanned_count: scanned, scan_complete: complete && matches.length < 20 }, reservations: matches };
+    }
+    const one = await readPage(offset, limit);
+    if (one.error) return one.error;
+    const records = one.records;
+    const j = { metadata: { total: one.total } };
+    return { status: records.length ? "ok" : "no_results", account_ref: input.expected_account_ref, type, offset, limit, total: j.metadata.total, date_filter: null, reservations: records };
   }
 }]

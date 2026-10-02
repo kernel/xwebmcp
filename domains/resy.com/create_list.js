@@ -38,7 +38,7 @@
     const validInput = keys => plain(input) && Object.keys(input).every(k => keys.includes(k));
     const accountRefValid = v => typeof v === "string" && /^account_[a-f0-9]{64}$/.test(v);
     if (!validInput(["expected_account_ref", "name", "description", "allow_duplicate"])) return fail("invalid_input", "Unexpected input fields.");
-    if (!accountRefValid(input.expected_account_ref)) return fail("invalid_input", "expected_account_ref must come from get_account_status.");
+    if (!accountRefValid(input.expected_account_ref)) return typeof window.apiAuthToken === "string" && window.apiAuthToken && window.apiAuthToken !== "undefined" ? fail("invalid_input", "expected_account_ref must come from get_account_status.") : fail("login_required", "Not signed in to Resy: ask the user to sign in on resy.com; account tools, quotes and booking need a session. Nothing was sent.");
     const name = typeof input.name === "string" ? input.name.trim().replace(/\s+/g, " ") : "";
     if (!name || name.length > 100 || /[\u0000-\u001f]/.test(name)) return fail("invalid_input", "name must be 1 to 100 printable characters.");
     if (input.description !== undefined && (typeof input.description !== "string" || !input.description.trim() || input.description.length > 500)) return fail("invalid_input", "description must be 1 to 500 characters.");

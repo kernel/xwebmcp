@@ -9,7 +9,7 @@
       properties: {
         url: { type: "string", minLength: 20, maxLength: 300, description: "resy.com venue URL; or give city_slug and url_slug." },
         city_slug: { type: "string", minLength: 2, maxLength: 100, pattern: "^[a-z0-9][a-z0-9-]*$", description: "From search_restaurants." },
-        url_slug: { type: "string", minLength: 1, maxLength: 120, pattern: "^[A-Za-z0-9][A-Za-z0-9-]*$", description: "Exact venue slug from search_restaurants." }
+        url_slug: { type: "string", minLength: 1, maxLength: 120, pattern: "^[A-Za-z0-9][A-Za-z0-9_-]*$", description: "Exact venue slug from search_restaurants." }
       }
     },
     outputSchema: {
@@ -113,13 +113,13 @@
       if (input.city_slug !== undefined || input.url_slug !== undefined) return fail("invalid_input", "Give url, or city_slug with url_slug, not both.");
       let parsed = null;
       try { parsed = typeof input.url === "string" && input.url.length <= 300 ? new URL(input.url) : null; } catch { parsed = null; }
-      const m = parsed && parsed.protocol === "https:" && (parsed.hostname === "resy.com" || parsed.hostname === "www.resy.com") ? /^\/cities\/([a-z0-9][a-z0-9-]*)\/venues\/([A-Za-z0-9][A-Za-z0-9-]*)(?:\/|$)/.exec(parsed.pathname) : null;
+      const m = parsed && parsed.protocol === "https:" && (parsed.hostname === "resy.com" || parsed.hostname === "www.resy.com") ? /^\/cities\/([a-z0-9][a-z0-9-]*)\/venues\/([A-Za-z0-9][A-Za-z0-9_-]*)(?:\/|$)/.exec(parsed.pathname) : null;
       if (!m) return fail("invalid_input", "url must be a https://resy.com/cities/<city_slug>/venues/<url_slug> venue page.");
       citySlug = m[1];
       urlSlug = m[2];
     } else {
       if (typeof input.city_slug !== "string" || typeof input.url_slug !== "string") return fail("invalid_input", "Give url, or both city_slug and url_slug.");
-      if (!/^[a-z0-9][a-z0-9-]{1,99}$/.test(input.city_slug) || !/^[A-Za-z0-9][A-Za-z0-9-]{0,119}$/.test(input.url_slug)) return fail("invalid_input", "city_slug must be a lowercase Resy city slug such as new-york-ny and url_slug a venue slug such as example-restaurant.");
+      if (!/^[a-z0-9][a-z0-9-]{1,99}$/.test(input.city_slug) || !/^[A-Za-z0-9][A-Za-z0-9_-]{0,119}$/.test(input.url_slug)) return fail("invalid_input", "city_slug must be a lowercase Resy city slug such as new-york-ny and url_slug a venue slug such as example-restaurant.");
       citySlug = input.city_slug;
       urlSlug = input.url_slug;
     }

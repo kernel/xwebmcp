@@ -3,7 +3,7 @@
   match: { url_patterns: ["https://resy.com/*"] },
   tool: {
     name: "search_restaurants",
-    description: "Search Resy venues by query, cuisine (exact site spelling) and location (city slug or code) or latitude/longitude. With date, each venue lists up to 12 open slots near time. Returns venue_id, city_slug and url_slug for the other tools. Tock venues (is_tock_inventory) cannot be booked here. Slots are a snapshot. Read-only; signed out works.",
+    description: "Search Resy venues by query, cuisine (exact site spelling), neighborhood and location (city slug or code) or latitude/longitude, optionally capped by max_price_range. With date, each venue lists up to 12 open slots (with time, Resy keeps only slots within about 45 minutes of it; use get_availability for the whole day). Returns venue_id, city_slug and url_slug for the other tools. Tock venues (is_tock_inventory) cannot be booked here. Slots are a snapshot. Read-only; signed out works.",
     inputSchema: {
       type: "object", additionalProperties: false,
       properties: {
@@ -13,6 +13,8 @@
         longitude: { type: "number", minimum: -180, maximum: 180, description: "Requires latitude." },
         radius_meters: { type: "integer", minimum: 100, maximum: 100000, default: 16100, description: "Meters around the location." },
         cuisine: { type: "string", minLength: 1, maxLength: 60, description: "Exact, case-sensitive, e.g. Italian." },
+        neighborhood: { type: "string", minLength: 2, maxLength: 80, description: "Neighborhood as Resy spells it (e.g. West Village, Williamsburg), used with location; filters server-side. A title-cased retry is made if the exact spelling finds nothing." },
+        max_price_range: { type: "integer", minimum: 1, maximum: 4, description: "Drop venues above this price level ($ = 1 … $$$$ = 4) from the page; dropped counts appear in warnings." },
         date: { type: "string", pattern: "^\\d{4}-\\d{2}-\\d{2}$", description: "List slots for this local date." },
         party_size: { type: "integer", minimum: 1, maximum: 20, default: 2, description: "Guests, used with date." },
         time: { type: "string", pattern: "^([01]\\d|2[0-3]):[0-5]\\d$", description: "HH:MM; slots near it." },
@@ -150,7 +152,7 @@
       };
       return { request };
     };
-    const allowed = ["query", "location", "latitude", "longitude", "radius_meters", "cuisine", "date", "party_size", "time", "page", "per_page"];
+    const allowed = ["query", "location", "latitude", "longitude", "radius_meters", "cuisine", "neighborhood", "max_price_range", "date", "party_size", "time", "page", "per_page"];
     if (!isPlain(input) || Object.keys(input).some(k => !allowed.includes(k))) return fail("invalid_input", "Input must be an object with only these fields: " + allowed.join(", ") + ".");
     const words = (v, name, max) => {
       if (v === undefined) return { value: null };
@@ -159,7 +161,9 @@
     };
     const query = words(input.query, "query", 100);
     const cuisine = words(input.cuisine, "cuisine", 60);
-    for (const f of [query, cuisine]) if (f.error) return fail("invalid_input", f.error);
+    const neighborhood = words(input.neighborhood, "neighborhood", 80);
+    for (const f of [query, cuisine, neighborhood]) if (f.error) return fail("invalid_input", f.error);
+    if (input.max_price_range !== undefined && (!Number.isInteger(input.max_price_range) || input.max_price_range < 1 || input.max_price_range > 4)) return fail("invalid_input", "max_price_range must be an integer from 1 to 4.");
     let locationSlug = null;
     if (input.location !== undefined) {
       if (typeof input.location !== "string" || !/^[A-Za-z0-9-]{2,80}$/.test(input.location.trim())) return fail("invalid_input", "location must be a Resy city slug such as new-york-ny or a code such as ny.");
@@ -169,9 +173,10 @@
     const hasLon = input.longitude !== undefined;
     if (hasLat !== hasLon) return fail("invalid_input", "latitude and longitude must be given together.");
     if (hasLat && (typeof input.latitude !== "number" || !(input.latitude >= -90 && input.latitude <= 90) || typeof input.longitude !== "number" || !(input.longitude >= -180 && input.longitude <= 180))) return fail("invalid_input", "latitude must be between -90 and 90 and longitude between -180 and 180.");
-    if (hasLat && locationSlug) return fail("invalid_input", "Give location or latitude/longitude, not both.");
+    if (hasLat && locationSlug) return fail("invalid_input", "Give location or latitude/longitude, not both: drop location to search around a point (with radius_meters), or drop latitude/longitude and use neighborhood to narrow a city search.");
     const hasGeo = hasLat || locationSlug !== null;
     if (!query.value && !hasGeo) return fail("invalid_input", "Give at least one of query, location, or latitude with longitude.");
+    if (neighborhood.value && !hasGeo) return fail("invalid_input", "neighborhood needs location (a city slug such as new-york-ny) or latitude/longitude.");
     if (input.radius_meters !== undefined && (!Number.isInteger(input.radius_meters) || input.radius_meters < 100 || input.radius_meters > 100000)) return fail("invalid_input", "radius_meters must be an integer from 100 to 100000.");
     if (input.radius_meters !== undefined && !hasGeo) return fail("invalid_input", "radius_meters needs location or latitude/longitude.");
     const date = input.date === undefined ? null : input.date;
@@ -211,23 +216,31 @@
       resolved = { slug: text(match.url_slug, 100) || locationSlug, name: text(match.name, 100), latitude: at.latitude, longitude: at.longitude };
     }
 
-    const normalized = { query: query.value, location: locationSlug, latitude: hasLat ? input.latitude : null, longitude: hasLat ? input.longitude : null, radius_meters: hasGeo ? radius : null, cuisine: cuisine.value, date, party_size: date ? partySize : null, time: date ? (input.time ?? null) : null, page, per_page: perPage };
+    const normalized = { query: query.value, neighborhood: neighborhood.value, max_price_range: input.max_price_range ?? null, location: locationSlug, latitude: hasLat ? input.latitude : null, longitude: hasLat ? input.longitude : null, radius_meters: hasGeo ? radius : null, cuisine: cuisine.value, date, party_size: date ? partySize : null, time: date ? (input.time ?? null) : null, page, per_page: perPage };
     const body = { types: ["venue"], include_tock_inventory: true, page, per_page: perPage };
     if (query.value) body.query = query.value;
     if (center) body.geo = { latitude: center.latitude, longitude: center.longitude, radius };
-    if (cuisine.value) body.venue_filter = { cuisine: cuisine.value };
+    if (cuisine.value || neighborhood.value) body.venue_filter = { ...(cuisine.value ? { cuisine: cuisine.value } : {}), ...(neighborhood.value ? { neighborhood: neighborhood.value } : {}) };
     if (date) {
       body.availability = true;
       body.order_by = "availability";
       body.slot_filter = { day: date, party_size: partySize, ...(input.time ? { time_filter: input.time } : {}) };
     }
     const observedAt = new Date().toISOString();
-    const found = await request("POST", "/3/venuesearch/search", body);
+    let found = await request("POST", "/3/venuesearch/search", body);
     if (found.error) return found.error;
+    const titled = neighborhood.value ? neighborhood.value.toLowerCase().replace(/(^|[\s-])([a-z])/g, (m, a, b) => a + b.toUpperCase()) : null;
+    if (neighborhood.value && titled !== neighborhood.value && found.status === 200 && isPlain(found.json) && isPlain(found.json.search) && Array.isArray(found.json.search.hits) && !found.json.search.hits.length) {
+      body.venue_filter = { ...body.venue_filter, neighborhood: titled };
+      const retry = await request("POST", "/3/venuesearch/search", body);
+      if (retry.error) return retry.error;
+      found = retry;
+      normalized.neighborhood = titled;
+    }
     if (found.status === 400) return fail("invalid_input", "Resy rejected the search parameters (HTTP 400).");
     if (found.status !== 200 || !isPlain(found.json) || !isPlain(found.json.search) || !Array.isArray(found.json.search.hits)) return fail("site_changed", "Resy's search response did not have the expected shape (HTTP " + found.status + ").");
     const hits = found.json.search.hits.slice(0, perPage);
-    if (!hits.length) return { status: "no_results", observed_at: observedAt, query: normalized, resolved_location: resolved, message: page > 1 ? "No venues on this page; the search has fewer pages." : "Resy found no venues for this search." + (cuisine.value ? " The cuisine filter is case-sensitive and must match the site's spelling, for example Italian." : "") };
+    if (!hits.length) return { status: "no_results", observed_at: observedAt, query: normalized, resolved_location: resolved, message: page > 1 ? "No venues on this page; the search has fewer pages." : "Resy found no venues for this search." + (cuisine.value ? " The cuisine filter is case-sensitive and must match the site's spelling, for example Italian." : "") + (neighborhood.value ? " The neighborhood must match Resy's spelling (see the neighborhood field of results from a search without it)." : "") };
 
     const miles = (a, b) => {
       const rad = d => d * Math.PI / 180;
@@ -236,6 +249,10 @@
     };
     const slug = v => (typeof v === "string" && /^[A-Za-z0-9._~-]{1,120}$/.test(v) ? v : null);
     const warnings = [];
+    if (date) {
+      const at = new Date(date + "T" + (input.time || "23:59") + ":00");
+      if (!Number.isNaN(at.getTime()) && at.getTime() < Date.now()) warnings.push("The requested " + (input.time ? "time" : "date") + " has already passed in this browser's time zone, so few or no slots are expected; suggest a later date or Notify.");
+    }
     const venues = [];
     for (const hit of hits) {
       const id = isPlain(hit) && isPlain(hit.id) ? int(hit.id.resy) : null;
@@ -273,7 +290,12 @@
       });
     }
     if (!venues.length) return fail("site_changed", "Resy returned results in an unexpected shape; none had a venue id and name.");
+    let shown = venues;
+    if (input.max_price_range !== undefined) {
+      shown = venues.filter(v => v.price_range === null || v.price_range <= input.max_price_range);
+      if (shown.length < venues.length) warnings.push((venues.length - shown.length) + " venue(s) on this page were above max_price_range and were left out; total and has_more count them. Request the next page for more.");
+    }
     const total = int(found.json.meta && found.json.meta.total);
-    return { status: "ok", observed_at: observedAt, query: normalized, resolved_location: resolved, page, per_page: perPage, total, has_more: hits.length === perPage && (total === null || page * perPage < total), warnings, venues };
+    return { status: "ok", observed_at: observedAt, query: normalized, resolved_location: resolved, page, per_page: perPage, total, has_more: hits.length === perPage && (total === null || page * perPage < total), warnings, venues: shown };
   }
 }]
