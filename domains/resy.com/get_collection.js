@@ -26,7 +26,7 @@
         {
           type: "object", additionalProperties: false, required: ["status",  "page",  "venues"],
           properties: {
-            status: { enum: ["ok", "no_results"] }, page: { type: "integer" }, total: { type: ["integer", "null"], description: "Venues in an editorial collection; null for algorithmic lists (Resy reports no list size)." }, has_more: { type: "boolean" },
+            status: { enum: ["ok", "no_results"] }, page: { type: "integer" }, next_page: { type: ["integer", "null"], description: "Pass as page to continue (only_available may read several Resy pages); null at the end." }, total: { type: ["integer", "null"], description: "Venues in an editorial collection; null for algorithmic lists (Resy reports no list size)." }, has_more: { type: "boolean" },
             venues: {
               type: "array", maxItems: 10,
               items: {
@@ -131,6 +131,7 @@
     const pick = slots => (near === null ? slots.slice(0, 6) : [...slots].sort((a, b) => Math.abs(minutes(a.local_start) - near) - Math.abs(minutes(b.local_start) - near) || byStart(a, b)).slice(0, 6).sort(byStart));
     const venues = [];
     let total = null;
+    let nextPage = null;
     let collectionId = input.collection_id, locationCode = input.location;
     const leaderboard = algo && input.ranking === "leaderboard";
     if (algo && !leaderboard) {
@@ -161,21 +162,43 @@
         const slots = isPlain(entry) ? slotsOf(entry.slots) : [];
         venues.push({ venue: card, slot_count: entry ? slots.length : null, slots: pick(slots) });
       });
+      nextPage = list.length >= limit ? page + 1 : null;
     } else {
-      const res = await connection.request("GET", "/3/collection/venues?collection_id=" + collectionId + "&location_id=" + locationCode + "&day=" + input.date + "&party_size=" + party + "&offset=" + page + "&limit=" + limit);
-      if (res.error) return res.error;
-      if (res.status === 400) return fail("invalid_input", "Resy rejected the collection parameters (HTTP 400).");
-      const list = res.status === 200 && isPlain(res.json) && isPlain(res.json.results) && Array.isArray(res.json.results.venues) ? res.json.results.venues : null;
-      if (!list) return fail("site_changed", "Resy's collection response did not have the expected shape (HTTP " + res.status + ").");
-      total = isPlain(res.json.metadata) ? int(res.json.metadata.total) : null;
-      for (const entry of list.slice(0, limit)) {
-        const card = isPlain(entry) ? venueCard(entry.venue) : null;
-        if (!card) continue;
-        const slots = slotsOf(entry.slots);
-        venues.push({ venue: card, slot_count: slots.length, slots: pick(slots) });
+      // only_available keeps reading Resy's pages (up to 4) until limit venues with open slots are found.
+      const onlyOpen = input.only_available === true;
+      let current = page, lastFull = false;
+      for (let round = 0; round < (onlyOpen ? 4 : 1); round++, current++) {
+        const res = await connection.request("GET", "/3/collection/venues?collection_id=" + collectionId + "&location_id=" + locationCode + "&day=" + input.date + "&party_size=" + party + "&offset=" + current + "&limit=" + limit);
+        if (res.error) return res.error;
+        if (res.status === 400) return fail("invalid_input", "Resy rejected the collection parameters (HTTP 400).");
+        const list = res.status === 200 && isPlain(res.json) && isPlain(res.json.results) && Array.isArray(res.json.results.venues) ? res.json.results.venues : null;
+        if (!list) return fail("site_changed", "Resy's collection response did not have the expected shape (HTTP " + res.status + ").");
+        total = isPlain(res.json.metadata) ? int(res.json.metadata.total) : null;
+        for (const entry of list.slice(0, limit)) {
+          const card = isPlain(entry) ? venueCard(entry.venue) : null;
+          if (!card) continue;
+          const slots = slotsOf(entry.slots);
+          if (onlyOpen && !slots.length) continue;
+          if (venues.length < limit) venues.push({ venue: card, slot_count: slots.length, slots: pick(slots) });
+        }
+        lastFull = list.length >= limit;
+        if (!lastFull || venues.length >= limit) break;
+      }
+      nextPage = lastFull ? current + 1 : null;
+    }
+    // Collection payloads carry no 1-4 price level; read it for the listed venues in one request.
+    const unpriced = venues.filter(v => v.venue.price_range === null).map(v => v.venue.venue_id);
+    if (unpriced.length) {
+      const priced = await connection.request("GET", "/3/venues?venue_ids=" + unpriced.join(","));
+      const rows = !priced.error && priced.status === 200 && isPlain(priced.json) && isPlain(priced.json.results) && Array.isArray(priced.json.results.venues) ? priced.json.results.venues : [];
+      for (const row of rows) {
+        const id = isPlain(row) && isPlain(row.id) ? int(row.id.resy) : null;
+        const price = isPlain(row) ? int(row.price_range_id) : null;
+        const v = venues.find(x => x.venue.venue_id === id);
+        if (v && price !== null && price >= 1 && price <= 4) v.venue.price_range = price;
       }
     }
     const shown = input.only_available === true ? venues.filter(v => v.slot_count !== 0) : venues;
-    return { status: shown.length ? "ok" : "no_results", page, total, has_more: total !== null ? page * limit < total : venues.length === limit, venues: shown };
+    return { status: shown.length ? "ok" : "no_results", page, next_page: nextPage, total, has_more: nextPage !== null, venues: shown };
   }
 }]

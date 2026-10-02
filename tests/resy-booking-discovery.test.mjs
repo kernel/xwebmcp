@@ -417,6 +417,7 @@ test("get_collection: list defaults to the list page view (the algorithmic colle
   const full = harness("get_collection", { route: ({ path }) => path === "/3/collection/venues" ? { body: { results: { venues: [{ venue: venueRow(1001), slots: [] }, { venue: venueRow(1002), slots: [slotAt("19:00")] }] } } } : undefined });
   const avail = await full.run({ ...valid.get_collection, only_available: true });
   assert.deepEqual(avail.venues.map(v => v.venue.venue_id), [1002]);
+  assert.equal(avail.next_page, null);
   assert.equal((await harness("get_collection").run({ ...valid.get_collection, ranking: "leaderboard" })).error_kind, "invalid_input");
 });
 
