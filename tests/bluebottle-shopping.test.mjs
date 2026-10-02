@@ -198,23 +198,35 @@ function shop(options = {}) {
   ];
   let url = options.url ?? "https://bluebottlecoffee.com/us/eng";
   const visited = [];
-  const links = () => url.includes("/shop/coffee") ? cards.map(([path, text]) => ({ href: `https://bluebottlecoffee.com${path}`, innerText: text, getAttribute: () => null })) : [];
+  let pendingUrl;
+  let pageReads = 0;
+  const links = () => url.includes("/shop/coffee") ? cards.map(([path, text]) => ({ href: new URL(path, "https://bluebottlecoffee.com").href, innerText: text, getAttribute: () => null })) : [];
   const context = {
     URL,
     document: { querySelectorAll: selector => selector === 'main a[href*="/product/"]' ? links() : [] },
     location: { get href() { return url; } }
   };
   const helpers = {
-    pageInfo: async () => ({ url }),
-    gotoUrl: async next => { url = next; visited.push(next); },
-    waitMs: async () => {},
+    URL,
+    pageInfo: async () => { pageReads++; return { url }; },
+    gotoUrl: async next => {
+      visited.push(next);
+      const destination = next.includes("/product/") ? (options.productRedirect ?? next) : (options.shopRedirect ?? next);
+      if (options.delayedNavigation) pendingUrl = destination;
+      else url = destination;
+    },
+    waitMs: async () => { if (pendingUrl) { url = pendingUrl; pendingUrl = null; } },
     waitForLoad: async () => true,
-    waitForElement: async selector => selector.includes("/product/") ? links().length > 0 : true,
+    waitForElement: async selector => {
+      if (selector.includes("/product/")) return links().length > 0;
+      if (options.redirectDuringProductWait) url = options.redirectDuringProductWait;
+      return options.productReady !== false;
+    },
     js: async fn => runInNewContext(`(${fn.toString()})()`, context)
   };
   const [definition] = runInNewContext(`(${sources.find_product})`, helpers);
   return {
-    definition, visited,
+    definition, visited, get pageReads() { return pageReads; },
     run: async input => {
       const result = plain(await definition.execute(input));
       assert.ok(conforms(definition.tool.outputSchema, result), `find_product output violates its schema: ${JSON.stringify(result)}`);
@@ -246,4 +258,76 @@ test("find_product honors open: false and rejects bad or unmatched queries", asy
   assert.equal((await shop().run({ query: "x" })).status, "invalid_input");
   assert.equal((await shop().run({ query: "oolong" })).status, "no_results");
   assert.equal((await shop({ cards: [] }).run({ query: "hayes" })).status, "not_ready");
+});
+
+test("find_product reports a fresh-tool handoff after asynchronous navigation", async () => {
+  const s = shop({ delayedNavigation: true });
+  const result = await s.run({ query: "hayes valley" });
+  assert.equal(result.status, "ok");
+  assert.match(result.opened, /\/product\/hayes-valley-espresso$/);
+  assert.match(result.next_step, /List WebMCP tools again/);
+  assert.match(result.next_step, /get_product.*newly returned tool_ref/);
+});
+
+test("find_product refuses to claim success when the destination is not ready", async () => {
+  for (const options of [
+    { productReady: false },
+    { productRedirect: "https://bluebottlecoffee.com/us/eng/shop/coffee" },
+    { productRedirect: "https://example.com/us/eng/product/hayes-valley-espresso" },
+    { redirectDuringProductWait: "https://bluebottlecoffee.com/us/eng/product/giant-steps" },
+    { shopRedirect: "https://example.com/us/eng/shop/coffee" }
+  ]) {
+    const result = await shop(options).run({ query: "hayes valley" });
+    assert.equal(result.status, "not_ready", JSON.stringify(options));
+    assert.equal("opened" in result, false);
+    assert.match(result.next_step, /List WebMCP tools again/);
+  }
+});
+
+test("find_product accepts equivalent storefront hosts without reloading the shop", async () => {
+  const s = shop({ url: "https://www.bluebottlecoffee.com/us/eng/shop/coffee/?sort=popular" });
+  const result = await s.run({ query: "hayes valley", open: false });
+  assert.equal(result.status, "ok");
+  assert.deepEqual(s.visited, []);
+  const redirect = await shop({ productRedirect: "https://www.bluebottlecoffee.com/us/eng/product/hayes-valley-espresso" }).run({ query: "hayes valley" });
+  assert.equal(redirect.status, "ok");
+  assert.equal(redirect.opened, "https://www.bluebottlecoffee.com/us/eng/product/hayes-valley-espresso");
+});
+
+test("find_product retains the current locale when navigating from its homepage", async () => {
+  const s = shop({ url: "https://www.bluebottlecoffee.com/jp/jpn" });
+  await s.run({ query: "hayes valley", open: false });
+  assert.equal(s.visited[0], "https://bluebottlecoffee.com/jp/jpn/shop/coffee");
+});
+
+test("find_product discards external, insecure and non-product candidate links", async () => {
+  const s = shop({ cards: [
+    ["https://example.com/us/eng/product/hayes-valley-espresso", "Hayes Valley Espresso"],
+    ["http://bluebottlecoffee.com/us/eng/product/hayes-valley-espresso", "Hayes Valley Espresso"],
+    ["https://checkout.bluebottlecoffee.com/us/eng/product/hayes-valley-espresso", "Hayes Valley Espresso"],
+    ["https://bluebottlecoffee.com/other/product/hayes-valley-espresso", "Hayes Valley Espresso"],
+    ["/us/eng/product/giant-steps", "Giant Steps"]
+  ] });
+  const result = await s.run({ query: "hayes valley" });
+  assert.equal(result.status, "no_results");
+  assert.deepEqual(s.visited, ["https://bluebottlecoffee.com/us/eng/shop/coffee"]);
+});
+
+test("find_product rejects malformed input before reading or changing the page", async () => {
+  for (const input of [null, [], "hayes valley", {}, { query: 123 }, { query: "x" }, { query: "x".repeat(81) }, { query: "!!!" }, { query: "hayes", open: "false" }, { query: "hayes", open: null }, { query: "hayes", extra: true }]) {
+    const s = shop();
+    assert.equal((await s.run(input)).status, "invalid_input", JSON.stringify(input));
+    assert.equal(s.pageReads, 0);
+    assert.deepEqual(s.visited, []);
+  }
+});
+
+test("find_product listing-only and ambiguous results explain their navigation handoff", async () => {
+  for (const input of [{ query: "hayes valley", open: false }, { query: "dark roast" }]) {
+    const result = await shop().run(input);
+    assert.equal(result.opened, null);
+    assert.match(result.next_step, /No product page was opened/);
+    assert.match(result.next_step, /list WebMCP tools again/);
+    assert.match(result.next_step, /invalidated earlier tool_ref/);
+  }
 });
