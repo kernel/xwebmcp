@@ -539,9 +539,12 @@
         "https://www.amazon.com/*"
       ],
       "url_patterns_reason": "Narrowed to www.amazon.com, the US retail shopping host; other amazon.com hosts serve unrelated products such as AWS (aws.), Seller Central (sellercentral.), developer and music applications.",
-      "status": "draft",
-      "last_verified": null,
-      "notes": "Adds one absent child ASIN by sending the product page's Add to Cart form to the button's /cart/add-to-cart target, minus the Buy Now pipeline fields; checks get_product's price and seller first and refuses ASINs already in the cart or saved for later. Succeeds only when the re-read cart shows exactly that line at the requested quantity with everything else unchanged; otherwise outcome_unknown, with no retry. A fetch with only the ASIN, offer, merchant, token and quantity fields was rejected live (HTTP 400/404) on 2026-10-05; the full-form request added the item to a signed-out cart. Source changed on 2026-10-05; awaiting independent QA."
+      "status": "verified",
+      "last_verified": "2026-10-05",
+      "notes": "Adds one absent child ASIN by sending the product page's Add to Cart form to the button's /cart/add-to-cart target, minus the Buy Now pipeline fields; checks get_product's price and seller first (offer_changed otherwise) and refuses ASINs already in the cart or saved for later. Succeeds only when the re-read cart shows exactly that line at the requested quantity with everything else unchanged; otherwise outcome_unknown, with no retry. Refuses other cart types, subscriptions, add-ons, customization and gift wrap. Independent live QA on 2026-10-05 in a signed-out guest cart, invoked from the homepage: two adds (B0B9T4KCV7 at $16.07 and B0F2SJJDQQ, both sold by Amazon.com) returned ok and matched an independent cart read; stale cart_version, wrong price, wrong seller, duplicate ASIN, a variation parent and an undeclared input were refused with no write. Not observed live: a signed-in cart, outcome_unknown, and challenge or access-notice pages during a write.",
+      "provenance": {
+        "qa_agent": "agt_29fcf1ec28f84d314df4"
+      }
     },
     {
       "domain": "amazon.com",
@@ -570,9 +573,12 @@
         "https://www.amazon.com/*"
       ],
       "url_patterns_reason": "Narrowed to www.amazon.com, the US retail shopping host; other amazon.com hosts serve unrelated products such as AWS (aws.), Seller Central (sellercentral.), developer and music applications.",
-      "status": "draft",
-      "last_verified": null,
-      "notes": "Reads the retail cart from /gp/cart/view.html with a same-origin GET: up to 100 active lines (title and unit price from the line's data-producttitle and data-price), subtotal, and an opaque session_context (digest of the session-id and ubid-main cookies) and cart_version (digest of active and saved-for-later state) for cart writes. Fresh, Whole Foods and other carts are flagged, not parsed; unfamiliar, partial or paginated carts fail as site_changed. Source changed on 2026-10-05; awaiting independent QA."
+      "status": "verified",
+      "last_verified": "2026-10-05",
+      "notes": "Reads the retail cart from /gp/cart/view.html with a same-origin GET: up to 100 active lines (title and unit price from the line's data-producttitle and data-price), subtotal, and an opaque session_context (digest of the session-id and ubid-main cookies) and cart_version (digest of active and saved-for-later state) for cart writes. Fresh, Whole Foods and other carts are flagged, not parsed; unfamiliar, partial or paginated carts fail as site_changed. Read-only, so it reads from any www.amazon.com page, including sign-in. Independent live QA on 2026-10-05 in a signed-out guest cart: from the homepage, a search page and /ap/signin it returned the empty cart with identical session_context and cart_version; populated reads were confirmed during the add_to_cart and update_cart_item QA the same day. Not observed live: a signed-in cart, other cart types, and challenge or access-notice pages.",
+      "provenance": {
+        "qa_agent": "agt_7ba29341fc1439a3eb55"
+      }
     },
     {
       "domain": "amazon.com",
@@ -601,9 +607,12 @@
         "https://www.amazon.com/*"
       ],
       "url_patterns_reason": "Narrowed to www.amazon.com, the US retail shopping host; other amazon.com hosts serve unrelated products such as AWS (aws.), Seller Central (sellercentral.), developer and music applications.",
-      "status": "draft",
-      "last_verified": null,
-      "notes": "One results page with the site sorts, price bounds and filters by id (include_facets lists them); products carry ASIN, price, list price, rating, sponsored flag and delivery wording. Independent QA verified sorts, filters, facets, paging and outputs live on the Kernel runtime. The price filter can still return items priced outside the bounds; an ignored filter id is reported, not returned unfiltered; results come from the server-rendered page so ad placements can differ from the tab; Amazon's AI-agent Conditions of Use notice is reported as access_gated and never dismissed. Source changed on 2026-10-05 (cards that cannot be read now fail as site_changed instead of no_results); awaiting independent QA."
+      "status": "verified",
+      "last_verified": "2026-10-05",
+      "notes": "One results page with the site sorts, price bounds and filters by id (include_facets lists them); products carry ASIN, price, list price, rating, sponsored flag and delivery wording. Independent QA verified sorts, filters, facets, paging and outputs live on the Kernel runtime. The price filter can still return items priced outside the bounds; an ignored filter id is reported, not returned unfiltered; results come from the server-rendered page so ad placements can differ from the tab; Amazon's AI-agent Conditions of Use notice is reported as access_gated and never dismissed. Product cards that exist but cannot be read fail as site_changed instead of no_results. Independent live QA on 2026-10-05 of this source, from the homepage and Best Sellers: all six sorts, a $10-$30 price range (no prices outside it), exclude_sponsored, include_facets and an applied brand filter, page 2, a nonsense query (no_matches) and invalid inputs.",
+      "provenance": {
+        "qa_agent": "agt_7ba29341fc1439a3eb55"
+      }
     },
     {
       "domain": "amazon.com",
@@ -615,9 +624,12 @@
         "https://www.amazon.com/*"
       ],
       "url_patterns_reason": "Narrowed to www.amazon.com, the US retail shopping host; other amazon.com hosts serve unrelated products such as AWS (aws.), Seller Central (sellercentral.), developer and music applications.",
-      "status": "draft",
-      "last_verified": null,
-      "notes": "Sets one ordinary retail cart line to an absolute quantity (0 removes it) with one POST to /cart that mirrors Amazon's own cart script, then requires the re-read cart to show exactly that change. Refuses other carts, related or protection-plan lines, subscriptions, variable-weight items and delivery-grouped carts. Update and removal requests were accepted live on a signed-out cart on 2026-10-05 during development. Source changed on 2026-10-05; awaiting independent QA."
+      "status": "verified",
+      "last_verified": "2026-10-05",
+      "notes": "Sets one ordinary retail cart line to an absolute quantity (0 removes it) with one POST to /cart that mirrors Amazon's own cart script, then requires the re-read cart to show exactly that change. Refuses other carts, related or protection-plan lines, subscriptions, variable-weight items, delivery-grouped carts and sign-in or checkout pages. Independent live QA on 2026-10-05 in a signed-out guest cart, invoked from the homepage: 1 to 2 and back to 1, then removal of both lines with 0, each confirmed by an independent cart read ending empty; stale expected_quantity and a wrong cart_item_id were refused with no write, and a call from /ap/signin returned wrong_page without requests. Not observed live: a signed-in cart and outcome_unknown.",
+      "provenance": {
+        "qa_agent": "agt_29fcf1ec28f84d314df4"
+      }
     },
     {
       "domain": "amctheatres.com",
