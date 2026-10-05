@@ -174,6 +174,9 @@
             const empty = live.find(t => /^No results returned/i.test(t));
             if (empty) return { state: "no_results", text: empty };
             if (location.pathname.startsWith("/sorry")) return { state: "blocked" };
+            // Google drops an airport code it does not know and leaves that search box empty, with no results.
+            const blank = [...document.querySelectorAll('input[aria-label^="Where from?"], input[aria-label^="Where to?"]')].find(i => visible(i) && !i.value.trim());
+            if (blank && Date.now() - started > 3000 && ![...document.querySelectorAll("li.pIav2d")].some(visible)) return { state: "unknown_airport", field: /^Where from/.test(blank.getAttribute("aria-label")) ? "origin" : "destination" };
             const body = document.body?.innerText || "";
             if (/Something went wrong|An error occurred|Try again later/i.test(body) && !document.querySelector("li.pIav2d")) return { state: "site_error", text: body.match(/[^\n]*(?:Something went wrong|An error occurred|Try again later)[^\n]*/i)[0] };
             const cards = [...document.querySelectorAll("li.pIav2d")].filter(visible).length;
@@ -183,9 +186,10 @@
           };
           const tick = () => { const value = check(); if (value) resolve(value); else setTimeout(tick, 250); };
           tick();
-        }), { arg: remaining(60) * 1000 });
+        }), { arg: remaining(25) * 1000 }); // one js() call is cut off by CDP after 30 s
         result.resultsUrl = (await pageInfo()).url;
         if (readiness.state === "no_results") return { ...result, status: "no_results", totalResults: 0, message: readiness.text };
+        if (readiness.state === "unknown_airport") return fail(`UNKNOWN_AIRPORT: Google Flights did not recognize the ${readiness.field} code ${readiness.field === "origin" ? input.origin : input.destination}.`);
         if (readiness.state === "blocked") return fail("BLOCKED: Google served an automated-traffic challenge.");
         if (readiness.state === "site_error") return fail("SITE_ERROR: " + readiness.text.slice(0, 300));
         if (readiness.state !== "results") return fail("RESULTS_TIMEOUT: Google Flights neither announced results nor an explicit no-results state.");

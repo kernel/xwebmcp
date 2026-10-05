@@ -26,7 +26,7 @@
                   sold_by_airline: { type: "boolean", description: "True when the seller is an airline: Google labels it \"airline\" or it lists per-fare cards." },
                   separate_tickets: { type: "boolean" },
                   price: { type: ["number", "null"] }, currency_label: { type: ["string", "null"] },
-                  note: { type: ["string", "null"], description: "Extra text Google attaches to the option, e.g. that tickets must be booked individually." },
+                  note: { type: ["string", "null"], description: "Extra text Google attaches to the option, e.g. that tickets must be booked individually, or a price equivalent in the seller's currency." },
                   collapsed: { type: "boolean", description: "Hidden behind Google's \"N more booking options\" button; continue_to_airline expands it." },
                   carry_on: { type: ["string", "null"], description: "Google's carry-on text, e.g. \"1 free carry-on\", \"1 carry-on bag available for a fee\" or \"No carry-on bags\"." },
                   carry_on_included: { type: ["boolean", "null"], description: "True only when a carry-on is included in the price; null when this option lists no carry-on text." },
@@ -49,7 +49,8 @@
     const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     const visible = (e) => !!e && e.getClientRects().length > 0;
     const url = location.href;
-    const all = () => [...document.querySelectorAll('button[aria-label^="Continue to book with"]')];
+    // Buttons inside a dialog are per-ticket parts of a separate-ticket option (continue_to_airline reports them), not options.
+    const all = () => [...document.querySelectorAll('button[aria-label^="Continue to book with"]')].filter((b) => !b.closest('[role="dialog"]'));
     const until = Date.now() + 15000;
     while (!all().some(visible) && Date.now() < until) await sleep(300);
     if (!all().some(visible)) {
@@ -57,9 +58,10 @@
     }
     // Labels: "<seller>, <fare> for 512 US dollars", "<airline(s)> airline for 422 US dollars[. note]", "<agency> for 409 US dollars".
     const parse = (aria) => {
-      const m = /^Continue to book with (.+?) for ([\d,]+(?:\.\d+)?) ([^.]+?)(?:\.\s*(.*))?$/.exec(aria.replace(/\s+/g, " ").trim());
+      const m = /^Continue to book with (.+?) for ([\d,]+(?:\.\d+)?) ([^.(]+?)(?: \(([^)]*)\))?(?:\.\s*(.*))?$/.exec(aria.replace(/\s+/g, " ").trim());
       if (!m) return null;
-      const [, head, amount, currency, note] = m;
+      const [, head, amount, currency, equivalent, rest] = m;
+      const note = [equivalent, rest].filter(Boolean).join(". ");
       const direct = / airline$/.exec(head);
       const comma = head.indexOf(", ");
       const seller = direct ? head.slice(0, direct.index) : comma > 0 ? head.slice(0, comma) : head;
@@ -86,8 +88,11 @@
       const carry = lines.find((l) => /carry-on/i.test(l)) || null;
       const checked = lines.find((l) => /checked bag/i.test(l)) || null;
       const features = [...new Set(lines.filter((l) => l !== parsed.fare_name && l !== carry && l !== checked && !/^\$|^Continue$|^View options$|^Book with |^[\d,.]+ [A-Z]{3}$/.test(l)))];
+      const separately = lines.find((l) => /separate tickets/i.test(l));
       return {
         ...parsed,
+        separate_tickets: parsed.separate_tickets || !!separately,
+        note: parsed.note || separately || null,
         collapsed,
         carry_on: carry,
         carry_on_included: carry ? !/^no\b|fee|costs|not included|\$/i.test(carry) : null,

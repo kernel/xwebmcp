@@ -446,6 +446,18 @@ test("an arrival the day before departure (eastbound date-line crossing) is kept
   assert.equal(result.flights[0].arrivalDate, plusDays(departDate, -1));
 });
 
+test("an airport code Google drops from the search box is reported as unknown, not as a timeout", async () => {
+  const page = resultsPage({ live: "" });
+  for (const list of page.querySelectorAll("ul")) list.hidden = true;
+  const from = page.body.append(new El("input", { attrs: { "aria-label": "Where from? " } }));
+  from.value = "";
+  page.body.append(new El("input", { attrs: { "aria-label": "Where to? Los Angeles LAX" } })).value = "Los Angeles";
+  const h = harness({ document: page, timeoutClock: true });
+  const result = await h.execute({ ...oneWay, origin: "QQQ" });
+  assert.equal(result.status, "error");
+  assert.equal(result.message, "UNKNOWN_AIRPORT: Google Flights did not recognize the origin code QQQ.");
+});
+
 test("a connection departing after midnight does not move a same-day final arrival to the next day", async () => {
   // SIN 8:35 AM -> HKG 12:35 AM+1 (Google prints "+1" in the expanded segment), HKG 1:30 AM -> LAX 9:05 PM, back on the departure date.
   const crossing = card({ dep: "8:35 AM", arr: "9:05 PM", airline: "Cathay Pacific", duration: "29 hr 30 min", from: "SIN Singapore Changi Airport", to: "LAX Los Angeles International Airport",

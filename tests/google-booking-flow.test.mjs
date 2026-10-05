@@ -118,9 +118,12 @@ const sellers = `<html><body>
   ${option("Continue to book with Frontier, Economy Bundle for 141 US dollars", ["Economy Bundle", "$141", "Free seat selection", "1st checked bag available for a fee"]).replace("</span><button", "</span><ul><li><span></span>1 free carry-on</li></ul><button")}
   ${option("Continue to book with British Airways airline for 422 US dollars", ["Book with British Airways", "Airline", "$422", "View options"])}
   ${option("Continue to book with Booking.com for 409 US dollars", ["Book with Booking.com", "$409"])}
+  ${option("Continue to book with Kiwi.com for 390 US dollars", ["Book with Kiwi.com", "Separate tickets booked together", "$390"])}
   ${option("Continue to book with Southwest, United airline for 381 US dollars. The 2 tickets in your itinerary must be booked individually", ["Book with Southwest, United", "$381"])}
   <div hidden>${option("Continue to book with ly.com for 400 US dollars", ["Book with ly.com", "$400"])}${option("Continue to book with Expedia for 422 US dollars", ["Book with Expedia", "$422"])}</div>
   <button aria-label="2 more booking options">more</button>
+  <div role="dialog" hidden><div><div>Departing flight</div>${option("Continue to book with Southwest airline for 181 US dollars", ["$181"])}</div>
+    <div><div>Returning flight</div>${option("Continue to book with United airline for 200 US dollars (Equivalent to 180 euros on United)", ["$200"])}</div></div>
 </body></html>`;
 
 test("google get_booking_options: airline, agency, separate-ticket and collapsed sellers; paid carry-ons are not included", async () => {
@@ -131,12 +134,14 @@ test("google get_booking_options: airline, agency, separate-ticket and collapsed
     ["Frontier", "Economy Bundle", 141, true, false, false],
     ["British Airways", null, 422, true, false, false],
     ["Booking.com", null, 409, false, false, false],
+    ["Kiwi.com", null, 390, false, true, false],
     ["Southwest, United", null, 381, true, true, false],
     ["ly.com", null, 400, false, false, true],
     ["Expedia", null, 422, false, false, true],
   ]);
-  assert.deepEqual(out.options.map(o => o.currency_label), Array(7).fill("US dollars"));
-  assert.equal(out.options[4].note, "The 2 tickets in your itinerary must be booked individually");
+  assert.deepEqual(out.options.map(o => o.currency_label), Array(8).fill("US dollars"));
+  assert.equal(out.options[4].note, "Separate tickets booked together");
+  assert.equal(out.options[5].note, "The 2 tickets in your itinerary must be booked individually");
   assert.deepEqual(out.options.slice(0, 2).map(o => [o.carry_on, o.carry_on_included]), [["1 carry-on bag available for a fee", false], ["1 free carry-on", true]]);
   assert.deepEqual(out.options[0].features, ["Seat selection for a fee"]);
   assert.deepEqual(out.options[2].features, []);
@@ -153,20 +158,21 @@ function continueTool(html) {
   };
   const clicks = [];
   const [tool] = runInNewContext(`(${load("continue_to_airline")})`, {
-    js: async (fn, options) => runInNewContext(`(${fn.toString()})`, { document, location })(options.arg),
+    js: async (fn, options) => runInNewContext(`(${fn.toString()})`, { document, location })(options?.arg),
     waitForElement: async selector => find(selector).some(b => b.getClientRects().length > 0),
     click: async selector => {
       const [button] = find(selector);
       clicks.push(button.getAttribute("aria-label"));
-      if (/more booking options$/.test(button.getAttribute("aria-label"))) for (const e of document.querySelectorAll("[hidden]")) e.removeAttribute("hidden");
+      if (/more booking options$/.test(button.getAttribute("aria-label"))) for (const e of document.querySelectorAll("div[hidden]")) if (!e.closest("[role=dialog]")) e.removeAttribute("hidden");
+      if (/booked individually$/.test(button.getAttribute("aria-label"))) document.querySelector("[role=dialog]").removeAttribute("hidden");
     },
     currentTab: async () => ({ targetId: "booking" }),
     switchTab: async () => {},
-    cdp: async method => method === "Page.bringToFront" ? {} : ({ targetInfos: clicks.some(c => c.startsWith("Continue")) ? [{ targetId: "new", type: "page", url: "https://www.example-airline.test/cart" }] : [] }),
+    cdp: async method => method === "Page.bringToFront" ? {} : ({ targetInfos: clicks.some(c => c.startsWith("Continue") && !/individually$/.test(c)) ? [{ targetId: "new", type: "page", url: "https://www.example-airline.test/cart" }] : [] }),
     waitMs: async () => {},
     URL
   });
-  return { execute: async input => plain(await tool.execute(input)), clicks };
+  return { execute: async input => plain(await tool.execute(input)), clicks, document };
 }
 
 test("google continue_to_airline: sellers without fares, collapsed options, and fare ambiguity", async () => {
@@ -188,3 +194,19 @@ test("google continue_to_airline: sellers without fares, collapsed options, and 
   assert.equal((await frontier.execute({ seller: "Frontier", fare_name: "Economy Bundle", expected_price: 141 })).status, "opened");
   assert.deepEqual(frontier.clicks, ["Continue to book with Frontier, Economy Bundle for 141 US dollars"]);
 });
+
+test("google continue_to_airline: a separate-ticket option reports its tickets, and each ticket opens by seller", async () => {
+  const trip = continueTool(sellers);
+  const out = await trip.execute({ seller: "Southwest, United", expected_price: 381 });
+  assert.equal(out.status, "separate_tickets");
+  assert.deepEqual(out.tickets, [
+    { leg: "Departing flight", seller: "Southwest", price: 181, currency_label: "US dollars" },
+    { leg: "Returning flight", seller: "United", price: 200, currency_label: "US dollars" },
+  ]);
+  const first = await trip.execute({ seller: "Southwest" });
+  assert.equal(first.status, "opened");
+  assert.equal(trip.clicks.at(-1), "Continue to book with Southwest airline for 181 US dollars");
+  const options = await run("get_booking_options", trip.document.body.outerHTML, {}, { url: "https://www.google.com/travel/flights/booking?tfs=x" });
+  assert.ok(!options.out.options.some(o => o.seller === "United" && o.price === 200));
+});
+
