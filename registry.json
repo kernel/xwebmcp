@@ -538,12 +538,10 @@
       "url_patterns": [
         "https://www.amazon.com/*"
       ],
-      "status": "qa_passed",
-      "last_verified": "2026-09-30",
-      "notes": "Independently QA-passed add-only retail cart POST with price/seller and fresh session/cart expectations. Mocked writes only; no live mutation success claimed. Readback does not establish seller/offer identity. Never checks out or buys.",
-      "provenance": {
-        "qa_agent": "agt_ad94863d92ee1a4357a1"
-      }
+      "url_patterns_reason": "Narrowed to www.amazon.com, the US retail shopping host; other amazon.com hosts serve unrelated products such as AWS (aws.), Seller Central (sellercentral.), developer and music applications.",
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Adds one absent child ASIN by sending the product page's Add to Cart form to the button's /cart/add-to-cart target, minus the Buy Now pipeline fields; checks get_product's price and seller first and refuses ASINs already in the cart or saved for later. Succeeds only when the re-read cart shows exactly that line at the requested quantity with everything else unchanged; otherwise outcome_unknown, with no retry. A fetch with only the ASIN, offer, merchant, token and quantity fields was rejected live (HTTP 400/404) on 2026-10-05; the full-form request added the item to a signed-out cart. Source changed on 2026-10-05; awaiting independent QA."
     },
     {
       "domain": "amazon.com",
@@ -554,6 +552,7 @@
       "url_patterns": [
         "https://www.amazon.com/*"
       ],
+      "url_patterns_reason": "Narrowed to www.amazon.com, the US retail shopping host; other amazon.com hosts serve unrelated products such as AWS (aws.), Seller Central (sellercentral.), developer and music applications.",
       "status": "verified",
       "last_verified": "2026-09-29",
       "notes": "One page of a department or category Best Sellers ranking plus navigable categories; without a category it lists departments. Independent QA verified the department list, categories, page 2 and unknown-category handling live on the Kernel runtime. Only ranks 1-30 (page 1) and 51-80 (page 2) are server-rendered, so ranks are not contiguous; the access_gated notice is reported and never dismissed.",
@@ -570,12 +569,10 @@
       "url_patterns": [
         "https://www.amazon.com/*"
       ],
-      "status": "verified",
-      "last_verified": "2026-09-30",
-      "notes": "Independent final-source QA and live empty retail-cart read from a product page on the Kernel runtime. Opaque session/cart expectations include internal safety metadata. Other carts flagged, not parsed; partial or paginated carts fail. Populated state is fixture-only; extension endpoints were access-gated.",
-      "provenance": {
-        "qa_agent": "agt_ad94863d92ee1a4357a1"
-      }
+      "url_patterns_reason": "Narrowed to www.amazon.com, the US retail shopping host; other amazon.com hosts serve unrelated products such as AWS (aws.), Seller Central (sellercentral.), developer and music applications.",
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Reads the retail cart from /gp/cart/view.html with a same-origin GET: up to 100 active lines (title and unit price from the line's data-producttitle and data-price), subtotal, and an opaque session_context (digest of the session-id and ubid-main cookies) and cart_version (digest of active and saved-for-later state) for cart writes. Fresh, Whole Foods and other carts are flagged, not parsed; unfamiliar, partial or paginated carts fail as site_changed. Source changed on 2026-10-05; awaiting independent QA."
     },
     {
       "domain": "amazon.com",
@@ -586,41 +583,10 @@
       "url_patterns": [
         "https://www.amazon.com/*"
       ],
+      "url_patterns_reason": "Narrowed to www.amazon.com, the US retail shopping host; other amazon.com hosts serve unrelated products such as AWS (aws.), Seller Central (sellercentral.), developer and music applications.",
       "status": "verified",
       "last_verified": "2026-09-29",
       "notes": "Product page fields for one ASIN: title, brand, current and list price, availability, rating and histogram, bullets, shipper and seller, delivery wording, add-to-cart availability, and variations with the ASIN of each combination (variant_filter narrows large families). Independent QA compared price, availability, rating, seller and delivery with the live tab on two products. Prices and delivery follow the session delivery location; a variation parent has no price; the access_gated notice is reported and never dismissed.",
-      "provenance": {
-        "qa_agent": "agt_ad94863d92ee1a4357a1"
-      }
-    },
-    {
-      "domain": "amazon.com",
-      "tool": "prepare_checkout",
-      "file": "domains/amazon.com/prepare_checkout.js",
-      "kind": "page",
-      "namespace": "amazon.com",
-      "url_patterns": [
-        "https://www.amazon.com/*"
-      ],
-      "status": "verified",
-      "last_verified": "2026-09-30",
-      "notes": "Independent final-source QA and live empty-cart handoff from a product page on the Kernel runtime. Read-only retail cart summary and manual handoff; execution unavailable. No checkout, purchase, reservation, shipping/payment choice or account mutation. Populated state is fixture-only; extension endpoints were access-gated.",
-      "provenance": {
-        "qa_agent": "agt_ad94863d92ee1a4357a1"
-      }
-    },
-    {
-      "domain": "amazon.com",
-      "tool": "remove_cart_item",
-      "file": "domains/amazon.com/remove_cart_item.js",
-      "kind": "page",
-      "namespace": "amazon.com",
-      "url_patterns": [
-        "https://www.amazon.com/*"
-      ],
-      "status": "qa_passed",
-      "last_verified": "2026-09-30",
-      "notes": "Independently QA-passed removal of one exact ordinary retail line with fresh session/cart/quantity and safety-metadata guards, a fresh-state request and exact readback. Mocked writes only; no live mutation success claimed.",
       "provenance": {
         "qa_agent": "agt_ad94863d92ee1a4357a1"
       }
@@ -634,12 +600,10 @@
       "url_patterns": [
         "https://www.amazon.com/*"
       ],
-      "status": "verified",
-      "last_verified": "2026-09-29",
-      "notes": "One results page with the site sorts, price bounds and filters by id (include_facets lists them); products carry ASIN, price, list price, rating, sponsored flag and delivery wording. Independent QA verified sorts, filters, facets, paging and outputs live on the Kernel runtime. The price filter can still return items priced outside the bounds; an ignored filter id is reported, not returned unfiltered; results come from the server-rendered page so ad placements can differ from the tab; Amazon's AI-agent Conditions of Use notice is reported as access_gated and never dismissed.",
-      "provenance": {
-        "qa_agent": "agt_ad94863d92ee1a4357a1"
-      }
+      "url_patterns_reason": "Narrowed to www.amazon.com, the US retail shopping host; other amazon.com hosts serve unrelated products such as AWS (aws.), Seller Central (sellercentral.), developer and music applications.",
+      "status": "draft",
+      "last_verified": null,
+      "notes": "One results page with the site sorts, price bounds and filters by id (include_facets lists them); products carry ASIN, price, list price, rating, sponsored flag and delivery wording. Independent QA verified sorts, filters, facets, paging and outputs live on the Kernel runtime. The price filter can still return items priced outside the bounds; an ignored filter id is reported, not returned unfiltered; results come from the server-rendered page so ad placements can differ from the tab; Amazon's AI-agent Conditions of Use notice is reported as access_gated and never dismissed. Source changed on 2026-10-05 (cards that cannot be read now fail as site_changed instead of no_results); awaiting independent QA."
     },
     {
       "domain": "amazon.com",
@@ -650,12 +614,10 @@
       "url_patterns": [
         "https://www.amazon.com/*"
       ],
-      "status": "qa_passed",
-      "last_verified": "2026-09-30",
-      "notes": "Independently QA-passed absolute-quantity update of one exact ordinary retail line with fresh session/cart/quantity and safety-metadata guards, a fresh-state request and exact readback. Mocked writes only; no live mutation success claimed.",
-      "provenance": {
-        "qa_agent": "agt_ad94863d92ee1a4357a1"
-      }
+      "url_patterns_reason": "Narrowed to www.amazon.com, the US retail shopping host; other amazon.com hosts serve unrelated products such as AWS (aws.), Seller Central (sellercentral.), developer and music applications.",
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Sets one ordinary retail cart line to an absolute quantity (0 removes it) with one POST to /cart that mirrors Amazon's own cart script, then requires the re-read cart to show exactly that change. Refuses other carts, related or protection-plan lines, subscriptions, variable-weight items and delivery-grouped carts. Update and removal requests were accepted live on a signed-out cart on 2026-10-05 during development. Source changed on 2026-10-05; awaiting independent QA."
     },
     {
       "domain": "amctheatres.com",
@@ -1068,7 +1030,7 @@
       "url_patterns_reason": "Delta checkout product: page-local UI on the purchase/flights or seats app; unavailable on unrelated Delta pages.",
       "status": "qa_passed",
       "last_verified": "2026-10-05",
-      "notes": "Independent Herdr pi delta-qa PASS round 3 on final source, 2026-10-05. LIVE own signed-in cart: ATL–MCO Dec 3 DL1213 Main Classic $123.41 USD, search → express-checkout → saved passenger details → skip optional Seats & Upgrades → tool declines insurance → Delta accepts section and opens Payment → 4 payment choices and 3 saved cards → alternate saved card selected, CVV required → original method/card lists restored exactly → cart abandoned via homepage and tab closed. No account-record changes, PII output, personal/card/CVV typing, payment save or purchase. CVV guard independently returned missing_required_fields before any click. Prior failures fixed: insurance variant attributes and label prefix, unstable insurer controls/outer-label click, transient not-offered, CVV-required detection, express route and member-header detection, wallet single-asterisk mask vs expiry. Independent fixtures/schema/negative tests and 70 authored Delta tests pass; complete repo suite 2247 passed, 159 tools valid. Live accepting insurance, changed-total repricing, expired-card layout, round trips, payment submission and final review remain untested; payment save/purchase prohibited. Amount Due may briefly be null while repricing; continuation fails closed without a fresh readable total. Page navigation returns only navigation_scheduled; rediscover document-bound references.",
+      "notes": "Independent Herdr pi delta-qa PASS round 3 on final source, 2026-10-05. LIVE own signed-in cart: ATL\u2013MCO Dec 3 DL1213 Main Classic $123.41 USD, search \u2192 express-checkout \u2192 saved passenger details \u2192 skip optional Seats & Upgrades \u2192 tool declines insurance \u2192 Delta accepts section and opens Payment \u2192 4 payment choices and 3 saved cards \u2192 alternate saved card selected, CVV required \u2192 original method/card lists restored exactly \u2192 cart abandoned via homepage and tab closed. No account-record changes, PII output, personal/card/CVV typing, payment save or purchase. CVV guard independently returned missing_required_fields before any click. Prior failures fixed: insurance variant attributes and label prefix, unstable insurer controls/outer-label click, transient not-offered, CVV-required detection, express route and member-header detection, wallet single-asterisk mask vs expiry. Independent fixtures/schema/negative tests and 70 authored Delta tests pass; complete repo suite 2247 passed, 159 tools valid. Live accepting insurance, changed-total repricing, expired-card layout, round trips, payment submission and final review remain untested; payment save/purchase prohibited. Amount Due may briefly be null while repricing; continuation fails closed without a fresh readable total. Page navigation returns only navigation_scheduled; rediscover document-bound references.",
       "provenance": {
         "qa_agent": "herdr:delta-qa:01a10b62-6913-77c8-a408-9b019e08265d",
         "source_sha256_prefix": "4fc54fbbcb9e"
@@ -1086,7 +1048,7 @@
       "url_patterns_reason": "Narrowed to www.delta.com/completepurchase/trip-summary*: it presses a button that exists only on Trip Summary.",
       "status": "qa_passed",
       "last_verified": "2026-10-04",
-      "notes": "Independent Herdr pi delta-qa PASS round 3 (2026-10-04), final source; prior FAIL rounds fixed insurance polarity, saved-card expiry/last4 identification, unreadable/unapproved fees, validation-before-mutation and empty readiness. 65 Delta tests pass. Independent fixtures covered success/failure, malformed input, stale totals/fees, signed-out payment, purchase safety and output schemas (12 tools × 5 paths × 7 malformed inputs); live unrelated-page discovery and document-reference expiry checked. Builder live: ATL–MCO Dec 3 2026 Main Classic $123.41 USD, free/paid seat choice, skip/save, trip totals and passenger gate. Independent tester could not complete a live search because its tab was backgrounded. Round-trip attempts failed with ROF4004_400 / SFAF039_444; one-way used for mapping. No personal/card data, sign-in or purchase. Insurance and signed-in payment/card formats, payment continuation and final review success remain fixture-only; passenger data gate prevents deeper approved live QA. Paid seats fail closed on unrecognized formats. Page navigation returns navigation_scheduled only; rediscover references. Seat mutation is unsaved until Save & Exit; unexpected fees require canceling.",
+      "notes": "Independent Herdr pi delta-qa PASS round 3 (2026-10-04), final source; prior FAIL rounds fixed insurance polarity, saved-card expiry/last4 identification, unreadable/unapproved fees, validation-before-mutation and empty readiness. 65 Delta tests pass. Independent fixtures covered success/failure, malformed input, stale totals/fees, signed-out payment, purchase safety and output schemas (12 tools \u00d7 5 paths \u00d7 7 malformed inputs); live unrelated-page discovery and document-reference expiry checked. Builder live: ATL\u2013MCO Dec 3 2026 Main Classic $123.41 USD, free/paid seat choice, skip/save, trip totals and passenger gate. Independent tester could not complete a live search because its tab was backgrounded. Round-trip attempts failed with ROF4004_400 / SFAF039_444; one-way used for mapping. No personal/card data, sign-in or purchase. Insurance and signed-in payment/card formats, payment continuation and final review success remain fixture-only; passenger data gate prevents deeper approved live QA. Paid seats fail closed on unrecognized formats. Page navigation returns navigation_scheduled only; rediscover references. Seat mutation is unsaved until Save & Exit; unexpected fees require canceling.",
       "provenance": {
         "qa_agent": "herdr:delta-qa:01a108d7-c82c-717c-a5d6-6bbad9dbb85b"
       }
@@ -1105,7 +1067,7 @@
       "url_patterns_reason": "Delta checkout product: page-local UI on the purchase/flights or seats app; unavailable on unrelated Delta pages.",
       "status": "qa_passed",
       "last_verified": "2026-10-05",
-      "notes": "Independent Herdr pi delta-qa PASS round 3 on final source, 2026-10-05. LIVE own signed-in cart: ATL–MCO Dec 3 DL1213 Main Classic $123.41 USD, search → express-checkout → saved passenger details → skip optional Seats & Upgrades → tool declines insurance → Delta accepts section and opens Payment → 4 payment choices and 3 saved cards → alternate saved card selected, CVV required → original method/card lists restored exactly → cart abandoned via homepage and tab closed. No account-record changes, PII output, personal/card/CVV typing, payment save or purchase. CVV guard independently returned missing_required_fields before any click. Prior failures fixed: insurance variant attributes and label prefix, unstable insurer controls/outer-label click, transient not-offered, CVV-required detection, express route and member-header detection, wallet single-asterisk mask vs expiry. Independent fixtures/schema/negative tests and 70 authored Delta tests pass; complete repo suite 2247 passed, 159 tools valid. Live accepting insurance, changed-total repricing, expired-card layout, round trips, payment submission and final review remain untested; payment save/purchase prohibited. Amount Due may briefly be null while repricing; continuation fails closed without a fresh readable total. Page navigation returns only navigation_scheduled; rediscover document-bound references.",
+      "notes": "Independent Herdr pi delta-qa PASS round 3 on final source, 2026-10-05. LIVE own signed-in cart: ATL\u2013MCO Dec 3 DL1213 Main Classic $123.41 USD, search \u2192 express-checkout \u2192 saved passenger details \u2192 skip optional Seats & Upgrades \u2192 tool declines insurance \u2192 Delta accepts section and opens Payment \u2192 4 payment choices and 3 saved cards \u2192 alternate saved card selected, CVV required \u2192 original method/card lists restored exactly \u2192 cart abandoned via homepage and tab closed. No account-record changes, PII output, personal/card/CVV typing, payment save or purchase. CVV guard independently returned missing_required_fields before any click. Prior failures fixed: insurance variant attributes and label prefix, unstable insurer controls/outer-label click, transient not-offered, CVV-required detection, express route and member-header detection, wallet single-asterisk mask vs expiry. Independent fixtures/schema/negative tests and 70 authored Delta tests pass; complete repo suite 2247 passed, 159 tools valid. Live accepting insurance, changed-total repricing, expired-card layout, round trips, payment submission and final review remain untested; payment save/purchase prohibited. Amount Due may briefly be null while repricing; continuation fails closed without a fresh readable total. Page navigation returns only navigation_scheduled; rediscover document-bound references.",
       "provenance": {
         "qa_agent": "herdr:delta-qa:01a10b62-6913-77c8-a408-9b019e08265d",
         "source_sha256_prefix": "5cd2c3a8e9a6"
@@ -1123,7 +1085,7 @@
       ],
       "status": "qa_passed",
       "last_verified": "2026-10-05",
-      "notes": "Independent Herdr pi delta-qa PASS round 3 on final source, 2026-10-05. LIVE own signed-in cart: ATL–MCO Dec 3 DL1213 Main Classic $123.41 USD, search → express-checkout → saved passenger details → skip optional Seats & Upgrades → tool declines insurance → Delta accepts section and opens Payment → 4 payment choices and 3 saved cards → alternate saved card selected, CVV required → original method/card lists restored exactly → cart abandoned via homepage and tab closed. No account-record changes, PII output, personal/card/CVV typing, payment save or purchase. CVV guard independently returned missing_required_fields before any click. Prior failures fixed: insurance variant attributes and label prefix, unstable insurer controls/outer-label click, transient not-offered, CVV-required detection, express route and member-header detection, wallet single-asterisk mask vs expiry. Independent fixtures/schema/negative tests and 70 authored Delta tests pass; complete repo suite 2247 passed, 159 tools valid. Live accepting insurance, changed-total repricing, expired-card layout, round trips, payment submission and final review remain untested; payment save/purchase prohibited. Amount Due may briefly be null while repricing; continuation fails closed without a fresh readable total. Page navigation returns only navigation_scheduled; rediscover document-bound references.",
+      "notes": "Independent Herdr pi delta-qa PASS round 3 on final source, 2026-10-05. LIVE own signed-in cart: ATL\u2013MCO Dec 3 DL1213 Main Classic $123.41 USD, search \u2192 express-checkout \u2192 saved passenger details \u2192 skip optional Seats & Upgrades \u2192 tool declines insurance \u2192 Delta accepts section and opens Payment \u2192 4 payment choices and 3 saved cards \u2192 alternate saved card selected, CVV required \u2192 original method/card lists restored exactly \u2192 cart abandoned via homepage and tab closed. No account-record changes, PII output, personal/card/CVV typing, payment save or purchase. CVV guard independently returned missing_required_fields before any click. Prior failures fixed: insurance variant attributes and label prefix, unstable insurer controls/outer-label click, transient not-offered, CVV-required detection, express route and member-header detection, wallet single-asterisk mask vs expiry. Independent fixtures/schema/negative tests and 70 authored Delta tests pass; complete repo suite 2247 passed, 159 tools valid. Live accepting insurance, changed-total repricing, expired-card layout, round trips, payment submission and final review remain untested; payment save/purchase prohibited. Amount Due may briefly be null while repricing; continuation fails closed without a fresh readable total. Page navigation returns only navigation_scheduled; rediscover document-bound references.",
       "provenance": {
         "qa_agent": "herdr:delta-qa:01a10b62-6913-77c8-a408-9b019e08265d",
         "source_sha256_prefix": "a6892f0199e2"
@@ -1142,7 +1104,7 @@
       "url_patterns_reason": "Reads both legacy completepurchase and redesigned purchase/flights checkout.",
       "status": "qa_passed",
       "last_verified": "2026-10-05",
-      "notes": "Independent Herdr pi delta-qa PASS round 3 on final source, 2026-10-05. LIVE own signed-in cart: ATL–MCO Dec 3 DL1213 Main Classic $123.41 USD, search → express-checkout → saved passenger details → skip optional Seats & Upgrades → tool declines insurance → Delta accepts section and opens Payment → 4 payment choices and 3 saved cards → alternate saved card selected, CVV required → original method/card lists restored exactly → cart abandoned via homepage and tab closed. No account-record changes, PII output, personal/card/CVV typing, payment save or purchase. CVV guard independently returned missing_required_fields before any click. Prior failures fixed: insurance variant attributes and label prefix, unstable insurer controls/outer-label click, transient not-offered, CVV-required detection, express route and member-header detection, wallet single-asterisk mask vs expiry. Independent fixtures/schema/negative tests and 70 authored Delta tests pass; complete repo suite 2247 passed, 159 tools valid. Live accepting insurance, changed-total repricing, expired-card layout, round trips, payment submission and final review remain untested; payment save/purchase prohibited. Amount Due may briefly be null while repricing; continuation fails closed without a fresh readable total. Page navigation returns only navigation_scheduled; rediscover document-bound references.",
+      "notes": "Independent Herdr pi delta-qa PASS round 3 on final source, 2026-10-05. LIVE own signed-in cart: ATL\u2013MCO Dec 3 DL1213 Main Classic $123.41 USD, search \u2192 express-checkout \u2192 saved passenger details \u2192 skip optional Seats & Upgrades \u2192 tool declines insurance \u2192 Delta accepts section and opens Payment \u2192 4 payment choices and 3 saved cards \u2192 alternate saved card selected, CVV required \u2192 original method/card lists restored exactly \u2192 cart abandoned via homepage and tab closed. No account-record changes, PII output, personal/card/CVV typing, payment save or purchase. CVV guard independently returned missing_required_fields before any click. Prior failures fixed: insurance variant attributes and label prefix, unstable insurer controls/outer-label click, transient not-offered, CVV-required detection, express route and member-header detection, wallet single-asterisk mask vs expiry. Independent fixtures/schema/negative tests and 70 authored Delta tests pass; complete repo suite 2247 passed, 159 tools valid. Live accepting insurance, changed-total repricing, expired-card layout, round trips, payment submission and final review remain untested; payment save/purchase prohibited. Amount Due may briefly be null while repricing; continuation fails closed without a fresh readable total. Page navigation returns only navigation_scheduled; rediscover document-bound references.",
       "provenance": {
         "qa_agent": "herdr:delta-qa:01a10b62-6913-77c8-a408-9b019e08265d",
         "source_sha256_prefix": "f5d739c7c13f"
@@ -1175,7 +1137,7 @@
       "url_patterns_reason": "Delta checkout product: page-local UI on the purchase/flights or seats app; unavailable on unrelated Delta pages.",
       "status": "qa_passed",
       "last_verified": "2026-10-05",
-      "notes": "Independent Herdr pi delta-qa PASS round 3 on final source, 2026-10-05. LIVE own signed-in cart: ATL–MCO Dec 3 DL1213 Main Classic $123.41 USD, search → express-checkout → saved passenger details → skip optional Seats & Upgrades → tool declines insurance → Delta accepts section and opens Payment → 4 payment choices and 3 saved cards → alternate saved card selected, CVV required → original method/card lists restored exactly → cart abandoned via homepage and tab closed. No account-record changes, PII output, personal/card/CVV typing, payment save or purchase. CVV guard independently returned missing_required_fields before any click. Prior failures fixed: insurance variant attributes and label prefix, unstable insurer controls/outer-label click, transient not-offered, CVV-required detection, express route and member-header detection, wallet single-asterisk mask vs expiry. Independent fixtures/schema/negative tests and 70 authored Delta tests pass; complete repo suite 2247 passed, 159 tools valid. Live accepting insurance, changed-total repricing, expired-card layout, round trips, payment submission and final review remain untested; payment save/purchase prohibited. Amount Due may briefly be null while repricing; continuation fails closed without a fresh readable total. Page navigation returns only navigation_scheduled; rediscover document-bound references.",
+      "notes": "Independent Herdr pi delta-qa PASS round 3 on final source, 2026-10-05. LIVE own signed-in cart: ATL\u2013MCO Dec 3 DL1213 Main Classic $123.41 USD, search \u2192 express-checkout \u2192 saved passenger details \u2192 skip optional Seats & Upgrades \u2192 tool declines insurance \u2192 Delta accepts section and opens Payment \u2192 4 payment choices and 3 saved cards \u2192 alternate saved card selected, CVV required \u2192 original method/card lists restored exactly \u2192 cart abandoned via homepage and tab closed. No account-record changes, PII output, personal/card/CVV typing, payment save or purchase. CVV guard independently returned missing_required_fields before any click. Prior failures fixed: insurance variant attributes and label prefix, unstable insurer controls/outer-label click, transient not-offered, CVV-required detection, express route and member-header detection, wallet single-asterisk mask vs expiry. Independent fixtures/schema/negative tests and 70 authored Delta tests pass; complete repo suite 2247 passed, 159 tools valid. Live accepting insurance, changed-total repricing, expired-card layout, round trips, payment submission and final review remain untested; payment save/purchase prohibited. Amount Due may briefly be null while repricing; continuation fails closed without a fresh readable total. Page navigation returns only navigation_scheduled; rediscover document-bound references.",
       "provenance": {
         "qa_agent": "herdr:delta-qa:01a10b62-6913-77c8-a408-9b019e08265d",
         "source_sha256_prefix": "45458f2259af"
@@ -1193,7 +1155,7 @@
       "url_patterns_reason": "Delta checkout product: page-local UI on the purchase/flights or seats app; unavailable on unrelated Delta pages.",
       "status": "qa_passed",
       "last_verified": "2026-10-04",
-      "notes": "Independent Herdr pi delta-qa PASS round 3 (2026-10-04), final source; prior FAIL rounds fixed insurance polarity, saved-card expiry/last4 identification, unreadable/unapproved fees, validation-before-mutation and empty readiness. 65 Delta tests pass. Independent fixtures covered success/failure, malformed input, stale totals/fees, signed-out payment, purchase safety and output schemas (12 tools × 5 paths × 7 malformed inputs); live unrelated-page discovery and document-reference expiry checked. Builder live: ATL–MCO Dec 3 2026 Main Classic $123.41 USD, free/paid seat choice, skip/save, trip totals and passenger gate. Independent tester could not complete a live search because its tab was backgrounded. Round-trip attempts failed with ROF4004_400 / SFAF039_444; one-way used for mapping. No personal/card data, sign-in or purchase. Insurance and signed-in payment/card formats, payment continuation and final review success remain fixture-only; passenger data gate prevents deeper approved live QA. Paid seats fail closed on unrecognized formats. Page navigation returns navigation_scheduled only; rediscover references. Seat mutation is unsaved until Save & Exit; unexpected fees require canceling.",
+      "notes": "Independent Herdr pi delta-qa PASS round 3 (2026-10-04), final source; prior FAIL rounds fixed insurance polarity, saved-card expiry/last4 identification, unreadable/unapproved fees, validation-before-mutation and empty readiness. 65 Delta tests pass. Independent fixtures covered success/failure, malformed input, stale totals/fees, signed-out payment, purchase safety and output schemas (12 tools \u00d7 5 paths \u00d7 7 malformed inputs); live unrelated-page discovery and document-reference expiry checked. Builder live: ATL\u2013MCO Dec 3 2026 Main Classic $123.41 USD, free/paid seat choice, skip/save, trip totals and passenger gate. Independent tester could not complete a live search because its tab was backgrounded. Round-trip attempts failed with ROF4004_400 / SFAF039_444; one-way used for mapping. No personal/card data, sign-in or purchase. Insurance and signed-in payment/card formats, payment continuation and final review success remain fixture-only; passenger data gate prevents deeper approved live QA. Paid seats fail closed on unrecognized formats. Page navigation returns navigation_scheduled only; rediscover references. Seat mutation is unsaved until Save & Exit; unexpected fees require canceling.",
       "provenance": {
         "qa_agent": "herdr:delta-qa:01a108d7-c82c-717c-a5d6-6bbad9dbb85b"
       }
@@ -1243,7 +1205,7 @@
       "url_patterns_reason": "Delta checkout product: page-local UI on the purchase/flights or seats app; unavailable on unrelated Delta pages.",
       "status": "qa_passed",
       "last_verified": "2026-10-04",
-      "notes": "Independent Herdr pi delta-qa PASS round 3 (2026-10-04), final source; prior FAIL rounds fixed insurance polarity, saved-card expiry/last4 identification, unreadable/unapproved fees, validation-before-mutation and empty readiness. 65 Delta tests pass. Independent fixtures covered success/failure, malformed input, stale totals/fees, signed-out payment, purchase safety and output schemas (12 tools × 5 paths × 7 malformed inputs); live unrelated-page discovery and document-reference expiry checked. Builder live: ATL–MCO Dec 3 2026 Main Classic $123.41 USD, free/paid seat choice, skip/save, trip totals and passenger gate. Independent tester could not complete a live search because its tab was backgrounded. Round-trip attempts failed with ROF4004_400 / SFAF039_444; one-way used for mapping. No personal/card data, sign-in or purchase. Insurance and signed-in payment/card formats, payment continuation and final review success remain fixture-only; passenger data gate prevents deeper approved live QA. Paid seats fail closed on unrecognized formats. Page navigation returns navigation_scheduled only; rediscover references. Seat mutation is unsaved until Save & Exit; unexpected fees require canceling.",
+      "notes": "Independent Herdr pi delta-qa PASS round 3 (2026-10-04), final source; prior FAIL rounds fixed insurance polarity, saved-card expiry/last4 identification, unreadable/unapproved fees, validation-before-mutation and empty readiness. 65 Delta tests pass. Independent fixtures covered success/failure, malformed input, stale totals/fees, signed-out payment, purchase safety and output schemas (12 tools \u00d7 5 paths \u00d7 7 malformed inputs); live unrelated-page discovery and document-reference expiry checked. Builder live: ATL\u2013MCO Dec 3 2026 Main Classic $123.41 USD, free/paid seat choice, skip/save, trip totals and passenger gate. Independent tester could not complete a live search because its tab was backgrounded. Round-trip attempts failed with ROF4004_400 / SFAF039_444; one-way used for mapping. No personal/card data, sign-in or purchase. Insurance and signed-in payment/card formats, payment continuation and final review success remain fixture-only; passenger data gate prevents deeper approved live QA. Paid seats fail closed on unrecognized formats. Page navigation returns navigation_scheduled only; rediscover references. Seat mutation is unsaved until Save & Exit; unexpected fees require canceling.",
       "provenance": {
         "qa_agent": "herdr:delta-qa:01a108d7-c82c-717c-a5d6-6bbad9dbb85b"
       }
@@ -1303,7 +1265,7 @@
       "url_patterns_reason": "Delta checkout product: page-local UI on the purchase/flights or seats app; unavailable on unrelated Delta pages.",
       "status": "qa_passed",
       "last_verified": "2026-10-05",
-      "notes": "Independent Herdr pi delta-qa PASS round 3 on final source, 2026-10-05. LIVE own signed-in cart: ATL–MCO Dec 3 DL1213 Main Classic $123.41 USD, search → express-checkout → saved passenger details → skip optional Seats & Upgrades → tool declines insurance → Delta accepts section and opens Payment → 4 payment choices and 3 saved cards → alternate saved card selected, CVV required → original method/card lists restored exactly → cart abandoned via homepage and tab closed. No account-record changes, PII output, personal/card/CVV typing, payment save or purchase. CVV guard independently returned missing_required_fields before any click. Prior failures fixed: insurance variant attributes and label prefix, unstable insurer controls/outer-label click, transient not-offered, CVV-required detection, express route and member-header detection, wallet single-asterisk mask vs expiry. Independent fixtures/schema/negative tests and 70 authored Delta tests pass; complete repo suite 2247 passed, 159 tools valid. Live accepting insurance, changed-total repricing, expired-card layout, round trips, payment submission and final review remain untested; payment save/purchase prohibited. Amount Due may briefly be null while repricing; continuation fails closed without a fresh readable total. Page navigation returns only navigation_scheduled; rediscover document-bound references.",
+      "notes": "Independent Herdr pi delta-qa PASS round 3 on final source, 2026-10-05. LIVE own signed-in cart: ATL\u2013MCO Dec 3 DL1213 Main Classic $123.41 USD, search \u2192 express-checkout \u2192 saved passenger details \u2192 skip optional Seats & Upgrades \u2192 tool declines insurance \u2192 Delta accepts section and opens Payment \u2192 4 payment choices and 3 saved cards \u2192 alternate saved card selected, CVV required \u2192 original method/card lists restored exactly \u2192 cart abandoned via homepage and tab closed. No account-record changes, PII output, personal/card/CVV typing, payment save or purchase. CVV guard independently returned missing_required_fields before any click. Prior failures fixed: insurance variant attributes and label prefix, unstable insurer controls/outer-label click, transient not-offered, CVV-required detection, express route and member-header detection, wallet single-asterisk mask vs expiry. Independent fixtures/schema/negative tests and 70 authored Delta tests pass; complete repo suite 2247 passed, 159 tools valid. Live accepting insurance, changed-total repricing, expired-card layout, round trips, payment submission and final review remain untested; payment save/purchase prohibited. Amount Due may briefly be null while repricing; continuation fails closed without a fresh readable total. Page navigation returns only navigation_scheduled; rediscover document-bound references.",
       "provenance": {
         "qa_agent": "herdr:delta-qa:01a10b62-6913-77c8-a408-9b019e08265d",
         "source_sha256_prefix": "cb42463e441a"
@@ -1321,7 +1283,7 @@
       "url_patterns_reason": "Delta checkout product: page-local UI on the purchase/flights or seats app; unavailable on unrelated Delta pages.",
       "status": "qa_passed",
       "last_verified": "2026-10-04",
-      "notes": "Independent Herdr pi delta-qa PASS round 3 (2026-10-04), final source; prior FAIL rounds fixed insurance polarity, saved-card expiry/last4 identification, unreadable/unapproved fees, validation-before-mutation and empty readiness. 65 Delta tests pass. Independent fixtures covered success/failure, malformed input, stale totals/fees, signed-out payment, purchase safety and output schemas (12 tools × 5 paths × 7 malformed inputs); live unrelated-page discovery and document-reference expiry checked. Builder live: ATL–MCO Dec 3 2026 Main Classic $123.41 USD, free/paid seat choice, skip/save, trip totals and passenger gate. Independent tester could not complete a live search because its tab was backgrounded. Round-trip attempts failed with ROF4004_400 / SFAF039_444; one-way used for mapping. No personal/card data, sign-in or purchase. Insurance and signed-in payment/card formats, payment continuation and final review success remain fixture-only; passenger data gate prevents deeper approved live QA. Paid seats fail closed on unrecognized formats. Page navigation returns navigation_scheduled only; rediscover references. Seat mutation is unsaved until Save & Exit; unexpected fees require canceling.",
+      "notes": "Independent Herdr pi delta-qa PASS round 3 (2026-10-04), final source; prior FAIL rounds fixed insurance polarity, saved-card expiry/last4 identification, unreadable/unapproved fees, validation-before-mutation and empty readiness. 65 Delta tests pass. Independent fixtures covered success/failure, malformed input, stale totals/fees, signed-out payment, purchase safety and output schemas (12 tools \u00d7 5 paths \u00d7 7 malformed inputs); live unrelated-page discovery and document-reference expiry checked. Builder live: ATL\u2013MCO Dec 3 2026 Main Classic $123.41 USD, free/paid seat choice, skip/save, trip totals and passenger gate. Independent tester could not complete a live search because its tab was backgrounded. Round-trip attempts failed with ROF4004_400 / SFAF039_444; one-way used for mapping. No personal/card data, sign-in or purchase. Insurance and signed-in payment/card formats, payment continuation and final review success remain fixture-only; passenger data gate prevents deeper approved live QA. Paid seats fail closed on unrecognized formats. Page navigation returns navigation_scheduled only; rediscover references. Seat mutation is unsaved until Save & Exit; unexpected fees require canceling.",
       "provenance": {
         "qa_agent": "herdr:delta-qa:01a108d7-c82c-717c-a5d6-6bbad9dbb85b"
       }
@@ -1339,7 +1301,7 @@
       "url_patterns_reason": "Delta checkout product: page-local UI on the purchase/flights or seats app; unavailable on unrelated Delta pages.",
       "status": "qa_passed",
       "last_verified": "2026-10-05",
-      "notes": "Independent Herdr pi delta-qa PASS round 3 on final source, 2026-10-05. LIVE own signed-in cart: ATL–MCO Dec 3 DL1213 Main Classic $123.41 USD, search → express-checkout → saved passenger details → skip optional Seats & Upgrades → tool declines insurance → Delta accepts section and opens Payment → 4 payment choices and 3 saved cards → alternate saved card selected, CVV required → original method/card lists restored exactly → cart abandoned via homepage and tab closed. No account-record changes, PII output, personal/card/CVV typing, payment save or purchase. CVV guard independently returned missing_required_fields before any click. Prior failures fixed: insurance variant attributes and label prefix, unstable insurer controls/outer-label click, transient not-offered, CVV-required detection, express route and member-header detection, wallet single-asterisk mask vs expiry. Independent fixtures/schema/negative tests and 70 authored Delta tests pass; complete repo suite 2247 passed, 159 tools valid. Live accepting insurance, changed-total repricing, expired-card layout, round trips, payment submission and final review remain untested; payment save/purchase prohibited. Amount Due may briefly be null while repricing; continuation fails closed without a fresh readable total. Page navigation returns only navigation_scheduled; rediscover document-bound references.",
+      "notes": "Independent Herdr pi delta-qa PASS round 3 on final source, 2026-10-05. LIVE own signed-in cart: ATL\u2013MCO Dec 3 DL1213 Main Classic $123.41 USD, search \u2192 express-checkout \u2192 saved passenger details \u2192 skip optional Seats & Upgrades \u2192 tool declines insurance \u2192 Delta accepts section and opens Payment \u2192 4 payment choices and 3 saved cards \u2192 alternate saved card selected, CVV required \u2192 original method/card lists restored exactly \u2192 cart abandoned via homepage and tab closed. No account-record changes, PII output, personal/card/CVV typing, payment save or purchase. CVV guard independently returned missing_required_fields before any click. Prior failures fixed: insurance variant attributes and label prefix, unstable insurer controls/outer-label click, transient not-offered, CVV-required detection, express route and member-header detection, wallet single-asterisk mask vs expiry. Independent fixtures/schema/negative tests and 70 authored Delta tests pass; complete repo suite 2247 passed, 159 tools valid. Live accepting insurance, changed-total repricing, expired-card layout, round trips, payment submission and final review remain untested; payment save/purchase prohibited. Amount Due may briefly be null while repricing; continuation fails closed without a fresh readable total. Page navigation returns only navigation_scheduled; rediscover document-bound references.",
       "provenance": {
         "qa_agent": "herdr:delta-qa:01a10b62-6913-77c8-a408-9b019e08265d",
         "source_sha256_prefix": "3c5695b5228f"
@@ -1357,7 +1319,7 @@
       "url_patterns_reason": "Delta checkout product: page-local UI on the purchase/flights or seats app; unavailable on unrelated Delta pages.",
       "status": "qa_passed",
       "last_verified": "2026-10-04",
-      "notes": "Independent Herdr pi delta-qa PASS round 3 (2026-10-04), final source; prior FAIL rounds fixed insurance polarity, saved-card expiry/last4 identification, unreadable/unapproved fees, validation-before-mutation and empty readiness. 65 Delta tests pass. Independent fixtures covered success/failure, malformed input, stale totals/fees, signed-out payment, purchase safety and output schemas (12 tools × 5 paths × 7 malformed inputs); live unrelated-page discovery and document-reference expiry checked. Builder live: ATL–MCO Dec 3 2026 Main Classic $123.41 USD, free/paid seat choice, skip/save, trip totals and passenger gate. Independent tester could not complete a live search because its tab was backgrounded. Round-trip attempts failed with ROF4004_400 / SFAF039_444; one-way used for mapping. No personal/card data, sign-in or purchase. Insurance and signed-in payment/card formats, payment continuation and final review success remain fixture-only; passenger data gate prevents deeper approved live QA. Paid seats fail closed on unrecognized formats. Page navigation returns navigation_scheduled only; rediscover references. Seat mutation is unsaved until Save & Exit; unexpected fees require canceling.",
+      "notes": "Independent Herdr pi delta-qa PASS round 3 (2026-10-04), final source; prior FAIL rounds fixed insurance polarity, saved-card expiry/last4 identification, unreadable/unapproved fees, validation-before-mutation and empty readiness. 65 Delta tests pass. Independent fixtures covered success/failure, malformed input, stale totals/fees, signed-out payment, purchase safety and output schemas (12 tools \u00d7 5 paths \u00d7 7 malformed inputs); live unrelated-page discovery and document-reference expiry checked. Builder live: ATL\u2013MCO Dec 3 2026 Main Classic $123.41 USD, free/paid seat choice, skip/save, trip totals and passenger gate. Independent tester could not complete a live search because its tab was backgrounded. Round-trip attempts failed with ROF4004_400 / SFAF039_444; one-way used for mapping. No personal/card data, sign-in or purchase. Insurance and signed-in payment/card formats, payment continuation and final review success remain fixture-only; passenger data gate prevents deeper approved live QA. Paid seats fail closed on unrecognized formats. Page navigation returns navigation_scheduled only; rediscover references. Seat mutation is unsaved until Save & Exit; unexpected fees require canceling.",
       "provenance": {
         "qa_agent": "herdr:delta-qa:01a108d7-c82c-717c-a5d6-6bbad9dbb85b"
       }
@@ -1911,7 +1873,7 @@
       ],
       "status": "verified",
       "last_verified": "2026-09-24",
-      "notes": "Independent search/parser QA passed; domain migration live-verified from /travel-agents. Returns initial outbound cards only, including round trips; 1–7 adults; displayed cash fares are not trip totals. Inventory failures remain explicit errors.",
+      "notes": "Independent search/parser QA passed; domain migration live-verified from /travel-agents. Returns initial outbound cards only, including round trips; 1\u20137 adults; displayed cash fares are not trip totals. Inventory failures remain explicit errors.",
       "provenance": {
         "qa_agent": "agt_8da83a2e489269a5ff05"
       }

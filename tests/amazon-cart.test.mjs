@@ -5,18 +5,38 @@ import { createContext, runInContext, runInNewContext } from "node:vm";
 import test from "node:test";
 import { DOMParser, Document } from "./etsy-dom.mjs";
 
-const names = ["get_cart", "add_to_cart", "update_cart_item", "remove_cart_item", "prepare_checkout"];
+const names = ["get_cart", "add_to_cart", "update_cart_item", "get_product"];
 const sources = Object.fromEntries(names.map(n => [n, readFileSync(new URL(`../domains/amazon.com/${n}.js`, import.meta.url), "utf8")]));
+const cartTools = ["get_cart", "add_to_cart", "update_cart_item"];
+const writes = ["add_to_cart", "update_cart_item"];
 const plain = x => JSON.parse(JSON.stringify(x));
-const item = (id = "test_line_1", asin = "B0TEST0001", quantity = 1, extra = "") => ({ id, asin, quantity, extra });
-const fixture = ({ lines = [], saved = [], other = false, empty = true, csrf = true } = {}) => `<html><head><title>Amazon.com Shopping Cart</title>${csrf ? '<meta id="cart-sp-csrf" content="fabricated_csrf">' : ""}</head><body>
-<div id="sc-collapsed-carts-container">${other ? "<div>Other cart</div>" : ""}</div>
-<div id="sc-active-cart">${!lines.length && empty ? '<div id="sc-empty-cart">Empty cart</div>' : ""}${lines.map(l => row(l)).join("")}<span id="sc-subtotal-amount-activecart">$29.99</span></div>
+
+// Cart rows follow the live markup: the line's data attributes carry title and price, and the
+// visible title is an a-truncate with both the full and the cut text.
+const item = (id = "test-line-1", asin = "B0TEST0001", quantity = 1, extra = "") => ({ id, asin, quantity, extra });
+const row = (l, type = "active") => `<div class="a-row sc-list-item" id="sc-${type}-${l.id}" data-itemid="${l.id}" data-itemtype="${type}" data-itemcategory="normal" data-asin="${l.asin}" ${type === "active" ? `data-quantity="${l.quantity}"` : ""} data-price="29.99" data-producttitle="Fabricated bottle" data-isselected="1" data-isprimeasin="0" ${l.extra || ""}><a class="sc-product-title"><span class="sc-product-title"><span class="a-truncate"><span class="a-truncate-full">Fabricated bottle</span><span class="a-truncate-cut">Fabricated…</span></span></span></a><span class="a-price"><span class="a-offscreen"> </span><span class="a-price-symbol">$</span><span class="a-price-whole">29<span class="a-price-decimal">.</span></span><span class="a-price-fraction">99</span></span><script>secret</script></div>`;
+const fixture = ({ lines = [], saved = [], other = false, empty = true, csrf = true } = {}) => `<html><head><title>Amazon.com Shopping Cart</title>${csrf ? '<meta name="anti-csrftoken-a2z" id="cart-sp-csrf" content="fabricated_csrf">' : ""}</head><body>
+<div id="sc-collapsed-carts-container">
+${other ? "<div>Other cart</div>" : ""}
+</div>
+<div id="sc-active-cart">${!lines.length && empty ? '<div id="sc-empty-cart">Empty cart</div>' : ""}${lines.map(l => row(l)).join("")}</div>
+<span id="sc-subtotal-amount-buybox"><span class="a-price-symbol">$</span><span class="a-price-whole">29<span class="a-price-decimal">.</span></span><span class="a-price-fraction">99</span></span>
 <div id="sc-saved-cart">${saved.map(l => row(l, "saved")).join("")}</div><div id="glow-ingress-line2">Private location not returned</div></body></html>`;
-const row = (l, type = "active") => `<div class="sc-list-item" id="sc-${type}-${l.id}" data-itemid="${l.id}" data-itemtype="${type}" data-asin="${l.asin}" data-quantity="${l.quantity}" data-price="29.99" data-isselected="1" ${l.extra || ""}><span class="sc-product-title"><span class="a-truncate-full">Fabricated bottle</span><script>secret</script></span><span class="sc-product-price">$29.99</span></div>`;
-const product = ({ asin = "B0TEST0001", endpoint = "/gp/product/handle-buy-box/ref=dp_start", price = "$29.99", seller = "Testseller", extra = "", qty = "1", disabled = false } = {}) => `<html><head><title>Test product</title></head><body><div id="corePriceDisplay_desktop_feature_div"><span class="priceToPay"><span class="a-offscreen">${price}</span></span></div><div id="merchantInfoFeature_feature_div"><span class="offer-display-feature-text-message">${seller}</span></div><form id="addToCart" method="post" action="${endpoint}">
-<input name="ASIN" value="${asin}"><input name="offerListingID" value="fabricated_offer"><input name="merchantID" value="fabricated_merchant"><input name="anti-csrftoken-a2z" value="fabricated_product_csrf"><select name="quantity">${qty.split(",").map(v => `<option value="${v}">${v}</option>`).join("")}</select><input name="submit.add-to-cart" type="submit" ${disabled ? "disabled" : ""}>
-<input name="isBuyNow" value="1"><input name="submit.buy-now" value="Buy Now"><input name="pipelineType" value="Chewbacca"><input name="session-id" value="private_session"><input name="gift-wrap" type="checkbox" value="on">${extra}</form></body></html>`;
+
+// The product form follows the live buy box: the Add to Cart button carries its own formaction,
+// and the Buy Now pipeline fields sit inside the same form.
+const product = ({ asin = "B0TEST0001", target = "/cart/add-to-cart/ref=dp_start-bbf_1_glance", price = '<span class="a-offscreen"> </span><span class="a-price-symbol">$</span><span class="a-price-whole">29<span class="a-price-decimal">.</span></span><span class="a-price-fraction">99</span>', seller = '<div class="offer-display-feature-text-message">Testseller</div>', extra = "", qty = "1", disabled = false } = {}) => `<html><head><title>Test product</title></head><body>
+<span id="productTitle">Fabricated bottle</span>
+<div id="corePriceDisplay_desktop_feature_div"><span class="a-price priceToPay">${price}</span></div>
+<div id="merchantInfoFeature_feature_div">${seller}</div>
+<form id="addToCart" method="post" action="/gp/product/handle-buy-box/ref=dp_start-bbf_1_glance">
+<input type="hidden" name="anti-csrftoken-a2z" value="fabricated_product_csrf"><input type="hidden" name="items[0.base][asin]" value="${asin}"><input type="hidden" name="items[0.base][quantity]" value="1">
+<input type="hidden" name="ASIN" value="${asin}"><input type="hidden" name="offerListingID" value="fabricated_offer"><input type="hidden" name="merchantID" value="fabricated_merchant"><input type="hidden" name="session-id" value="fabricated-session">
+${qty === null ? "" : `<select name="quantity">${qty.split(",").map(v => `<option value="${v}">${v}</option>`).join("")}</select>`}
+<input id="add-to-cart-button" name="submit.add-to-cart" type="submit" value="Add to cart" formaction="${target}" ${disabled ? "disabled" : ""}>
+<input name="submit.buy-now" type="submit" value="Buy Now" formaction="/checkout/entry/buynow">
+<input type="hidden" name="pipelineType" value="Chewbacca"><input type="hidden" name="referrer" value="detail"><input type="hidden" name="isBuyNow" value="1"><input type="hidden" name="isEligibilityLogicDisabled" value="1"><input type="hidden" name="ref_" value="dp_start-bbf_1_glance_chw">
+<input name="gift-wrap" type="checkbox" value="on">${extra}</form></body></html>`;
 
 function conforms(s, v) {
   if (s.oneOf && s.oneOf.filter(x => conforms(x, v)).length !== 1) return false;
@@ -28,29 +48,29 @@ function conforms(s, v) {
     if (s.additionalProperties === false && Object.keys(v).some(k => !(k in s.properties))) return false;
     if (Object.entries(s.properties || {}).some(([k, x]) => k in v && !conforms(x, v[k]))) return false;
   }
-  if (typeof v === "string" && (v.length > (s.maxLength ?? Infinity) || s.pattern && !new RegExp(s.pattern).test(v))) return false;
+  if (typeof v === "string" && (v.length < (s.minLength ?? 0) || v.length > (s.maxLength ?? Infinity) || s.pattern && !new RegExp(s.pattern).test(v))) return false;
   if (typeof v === "number" && (v < (s.minimum ?? -Infinity) || v > (s.maximum ?? Infinity))) return false;
   return true;
 }
 
 function harness(options = {}) {
   let state = { lines: [], saved: [], ...options.state };
+  let added = 0;
   const doc = new Document("<html><body></body></html>");
-  doc.cookie = "session-id=fabricated-session; session-token=fabricated-context";
-  const storage = new Map();
+  doc.cookie = "session-id=fabricated-session; session-token=rotating-token; ubid-main=fabricated-ubid";
   const requests = [];
   const location = new URL(options.url || "https://www.amazon.com/s?k=test");
-  const ctx = createContext({ document: doc, location, DOMParser, URL, URLSearchParams, crypto: options.crypto || webcrypto, TextEncoder, sessionStorage: { getItem: k => storage.get(k), setItem: (k, v) => storage.set(k, v) }, fetch: async (path, init) => {
+  const ctx = createContext({ document: doc, location, DOMParser, URL, URLSearchParams, crypto: options.crypto || webcrypto, TextEncoder, fetch: async (path, init) => {
     const u = new URL(path, location.origin);
     requests.push({ path: u.pathname, ...init });
     if (options.handler) {
       const r = await options.handler(u, init, { requests, state, doc });
-      if (r) return { status: 200, url: u.href, text: async () => r.body || "", ...r };
+      if (r) return { status: 200, ok: (r.status ?? 200) < 300, url: u.href, text: async () => r.body || "", ...r };
     }
     let body;
     if (init.method === "POST") {
       const p = new URLSearchParams(init.body);
-      if (u.pathname.startsWith("/gp/product/handle-buy-box")) state.lines.push(item("new_line", p.get("ASIN"), Number(p.get("quantity"))));
+      if (u.pathname.startsWith("/cart/add-to-cart")) state.lines.unshift(item(`new-line-${++added}`, p.get("ASIN"), Number(p.get("quantity"))));
       else {
         const [action] = JSON.parse(p.get("actionPayload"));
         if (action.type === "DELETE_START") state.lines = state.lines.filter(l => l.id !== action.payload.itemId);
@@ -58,7 +78,7 @@ function harness(options = {}) {
       }
       body = "{}";
     } else body = u.pathname.startsWith("/dp/") ? options.product || product() : fixture(state);
-    return { status: 200, url: u.href, text: async () => body };
+    return { status: 200, ok: true, url: u.href, text: async () => body };
   } });
   const tools = Object.fromEntries(names.map(n => {
     const [definition] = runInNewContext(`(${sources[n]})`);
@@ -70,224 +90,226 @@ function harness(options = {}) {
     assert.ok(conforms(tools[name].definition.tool.outputSchema, result), JSON.stringify(result));
     return result;
   };
-  return { run, requests, doc, storage, state: () => state };
+  return { run, requests, doc, posts: () => requests.filter(r => r.method === "POST"), state: () => state };
 }
 const expect = c => ({ expected_session_context: c.session_context, expected_cart_version: c.cart_version });
-const target = { cart_item_id: "test_line_1", asin: "B0TEST0001", expected_quantity: 1 };
+const target = { cart_item_id: "test-line-1", asin: "B0TEST0001", expected_quantity: 1 };
 const add = { asin: "B0TEST0001", quantity: 1, expected_unit_price_cents: 2999, expected_sold_by: "Testseller" };
 const prepared = async (h, name, input) => h.run(name, { ...expect(await h.run("get_cart")), ...input });
+const actionInput = name => name === "add_to_cart" ? add : { ...target, quantity: 2 };
+const actionState = name => ({ lines: name === "add_to_cart" ? [item("other", "B0TEST0002")] : [item(), item("other", "B0TEST0002")] });
 
-for (const name of names) {
+test("cart tools share one byte-identical cart reader", () => {
+  const block = s => s.slice(s.indexOf("// @amazon-cart-reader"), s.indexOf("// @amazon-cart-reader-end"));
+  const [first, ...rest] = cartTools.map(n => block(sources[n]));
+  assert.ok(first.length > 1000);
+  for (const other of rest) assert.equal(other, first);
+});
+
+for (const name of cartTools) {
   test(`${name}: single self-contained page definition and annotations`, () => {
     const [d] = runInNewContext(`(${sources[name]})`);
     assert.equal(d.kind, "page"); assert.equal(d.tool.name, name);
     assert.deepEqual(plain(d.match.url_patterns), ["https://www.amazon.com/*"]);
-    assert.equal(d.tool.annotations.readOnlyHint, ["get_cart", "prepare_checkout"].includes(name));
+    assert.equal(d.tool.annotations.readOnlyHint, name === "get_cart");
+    assert.equal(d.tool.annotations.destructiveHint, name === "update_cart_item");
   });
-  test(`${name}: malformed inputs before any request`, async () => {
+  test(`${name}: malformed inputs fail before any request`, async () => {
     for (const input of [null, [], { confirmed: true }, { unexpected: "x" }, "x"]) {
       const h = harness(); assert.equal((await h.run(name, input)).error_kind, "invalid_input"); assert.equal(h.requests.length, 0);
     }
   });
-  test(`${name}: unrelated host and checkout fail without interaction`, async () => {
-    for (const url of ["https://aws.amazon.com/", "https://www.amazon.com/checkout/entry", "https://www.amazon.com/ap/signin"]) {
-      const h = harness({ url });
-      const input = name === "add_to_cart" ? { ...add, expected_cart_version: "a".repeat(64), expected_session_context: "b".repeat(64) } : name.endsWith("cart_item") ? { ...target, quantity: 2, expected_cart_version: "a".repeat(64), expected_session_context: "b".repeat(64) } : {};
-      if (name === "remove_cart_item") delete input.quantity;
-      assert.equal((await h.run(name, input)).error_kind, "wrong_page"); assert.equal(h.requests.length, 0);
+  test(`${name}: challenge, access notice, rate limit, login redirect and failed reads`, async () => {
+    for (const [body, status, url, kind] of [["<title>Robot Check</title>", 200, undefined, "challenge"], ["<body>Continued access violates Amazon’s Conditions of Use</body>", 200, undefined, "access_gated"], ["", 429, undefined, "rate_limited"], ["", 200, "https://www.amazon.com/ap/signin", "login_required"], ["", 200, "https://www.amazon.com/ax/claim/sign-in", "login_required"], ["", 200, "https://evil.example/", "site_changed"], ["", 403, undefined, "site_error"]]) {
+      const h = harness({ handler: u => u.pathname === "/gp/cart/view.html" ? { status, url, body } : undefined });
+      const input = name === "get_cart" ? {} : { expected_session_context: "a".repeat(64), expected_cart_version: "b".repeat(64), ...actionInput(name) };
+      assert.equal((await h.run(name, input)).error_kind, kind); assert.equal(h.posts().length, 0);
     }
   });
 }
-test("get_cart: empty state, stable session digest, bounded allowlisted fields", async () => {
-  const h = harness(); const a = await h.run("get_cart"), b = await h.run("get_cart");
-  assert.equal(a.status, "ok"); assert.equal(a.cart_version, b.cart_version); assert.equal(a.items_quantity, 0);
-  assert.doesNotMatch(JSON.stringify(a), /fabricated-session|fabricated-context|private|csrf|cookie/);
+for (const name of writes) {
+  test(`${name}: unrelated host, sign-in and checkout pages fail without requests`, async () => {
+    for (const url of ["https://aws.amazon.com/", "https://www.amazon.com/checkout/entry", "https://www.amazon.com/gp/buy/spc/handlers/display.html", "https://www.amazon.com/ap/signin", "https://www.amazon.com/ax/claim"]) {
+      const h = harness({ url });
+      assert.equal((await h.run(name, { expected_cart_version: "a".repeat(64), expected_session_context: "b".repeat(64), ...actionInput(name) })).error_kind, "wrong_page"); assert.equal(h.requests.length, 0);
+    }
+  });
+}
+test("get_cart: refuses other hosts only", async () => {
+  assert.equal((await harness({ url: "https://aws.amazon.com/" }).run("get_cart")).error_kind, "wrong_page");
+  assert.equal((await harness({ url: "https://www.amazon.com/gp/buy/spc/handlers/display.html" }).run("get_cart")).status, "ok");
 });
-test("get_cart: populated retail shape, saved items not exposed, other carts flagged", async () => {
-  const h = harness({ state: { lines: [item()], saved: [item("saved_1", "B0TEST0002")], other: true } });
-  const r = await h.run("get_cart"); assert.equal(r.lines[0].quantity, 1); assert.equal(r.lines[0].unit_price_cents, 2999); assert.equal(r.lines[0].title, "Fabricated bottle"); assert.equal(r.other_carts_present, true); assert.doesNotMatch(JSON.stringify(r), /saved_1|secret/);
+
+test("get_cart: empty state, stable digests, no private fields", async () => {
+  const h = harness(); const a = await h.run("get_cart"), b = await h.run("get_cart");
+  assert.equal(a.status, "ok"); assert.equal(a.cart_version, b.cart_version); assert.equal(a.items_quantity, 0); assert.deepEqual(a.lines, []);
+  assert.doesNotMatch(JSON.stringify(a), /fabricated-session|rotating-token|private|csrf|cookie/);
+});
+test("get_cart: session_context ignores session-token rotation", async () => {
+  const h = harness(); const a = await h.run("get_cart");
+  h.doc.cookie = "session-id=fabricated-session; session-token=rotated; ubid-main=fabricated-ubid";
+  assert.equal((await h.run("get_cart")).session_context, a.session_context);
+  h.doc.cookie = "session-id=other-session; ubid-main=fabricated-ubid";
+  assert.notEqual((await h.run("get_cart")).session_context, a.session_context);
+  h.doc.cookie = "";
+  assert.equal((await h.run("get_cart")).error_kind, "site_error");
+});
+test("get_cart: live-shaped lines read title and price once from data attributes", async () => {
+  const h = harness({ state: { lines: [item()], saved: [item("saved-1", "B0TEST0002")], other: true } });
+  const r = await h.run("get_cart");
+  assert.deepEqual(r.lines, [{ cart_item_id: "test-line-1", asin: "B0TEST0001", title: "Fabricated bottle", quantity: 1, unit_price_cents: 2999 }]);
+  assert.equal(r.subtotal_cents, 2999); assert.equal(r.other_carts_present, true);
+  assert.doesNotMatch(JSON.stringify(r), /saved-1|secret|Fabricated…/);
+});
+test("get_cart: whitespace-only collapsed-cart container is not another cart", async () => {
+  assert.equal((await harness({ state: { lines: [item()] } }).run("get_cart")).other_carts_present, false);
 });
 test("get_cart: unknown empty state, malformed line, duplicates, oversized and pagination fail closed", async () => {
   for (const state of [{ empty: false }, { lines: [item("bad id")] }, { lines: [item(), item()] }, { lines: Array.from({ length: 101 }, (_, i) => item(`line_${i}`)) }, { lines: [item("line", "B0TEST0001", 0)] }]) assert.equal((await harness({ state }).run("get_cart")).error_kind, "site_changed");
-  const h = harness({ handler: () => ({ body: fixture().replace("Empty cart", '<span class="sc-pagination">Next</span>') }) }); assert.equal((await h.run("get_cart")).error_kind, "site_changed");
+  for (const page of [
+    s => fixture(s).replace("Empty cart", '<span class="sc-pagination">Next</span>'),
+    s => fixture({ ...s, lines: [item(), item("missing", "B0TEST0003")] }).replace('data-itemid="missing"', ""),
+    s => fixture(s).replace('<div id="sc-saved-cart">', '<div id="sc-saved-cart"><span class="sc-pagination">Next</span>'),
+    s => fixture({ ...s, saved: [item("duplicate", "B0TEST0003"), item("duplicate", "B0TEST0004")] }),
+    s => fixture(s).replace('id="sc-saved-cart"', 'id="unknown-saved-layout"'),
+    s => fixture(s).replace('id="sc-collapsed-carts-container"', 'id="unknown-other-layout"')
+  ]) assert.equal((await harness({ handler: (u, init, { state }) => ({ body: page(state) }) }).run("get_cart")).error_kind, "site_changed");
 });
-test("get_cart: challenge, access notice, rate limit, login redirect and failed reads", async () => {
-  for (const [body, status, url, kind] of [["<title>Robot Check</title>", 200, undefined, "challenge"], ["<body>Continued access violates Amazon’s Conditions of Use</body>", 200, undefined, "access_gated"], ["", 429, undefined, "rate_limited"], ["", 200, "https://www.amazon.com/ap/signin", "login_required"], ["", 200, "https://evil.example/", "site_changed"], ["", 403, undefined, "site_error"]]) {
-    const h = harness({ handler: () => ({ status, url, body }) }); assert.equal((await h.run("get_cart")).error_kind, kind);
+test("get_cart: cancellation during hashing is canceled", async () => {
+  const ctl = new AbortController(); let hashes = 0;
+  const crypto = { subtle: { digest: async (...args) => { const result = await webcrypto.subtle.digest(...args); if (++hashes === 2) ctl.abort(); return result; } } };
+  assert.equal((await harness({ crypto }).run("get_cart", {}, ctl.signal)).error_kind, "canceled");
+});
+
+test("add_to_cart: accepts get_product's own price and seller outputs", async () => {
+  for (const p of [product(), product({ price: '<span class="a-offscreen">$1,299.00</span>' }), product({ seller: "" }).replace("</body>", '<a id="sellerProfileTriggerId"><span>Foo</span><span>.com</span></a></body>')]) {
+    const h = harness({ product: p });
+    const view = await h.run("get_product", { asin: add.asin });
+    assert.equal(view.status, "ok", JSON.stringify(view));
+    const r = await prepared(h, "add_to_cart", { ...add, expected_unit_price_cents: view.price_cents, expected_sold_by: view.sold_by });
+    assert.equal(r.status, "ok", JSON.stringify(r));
   }
 });
-test("prepare_checkout: always handoff-only with no purchase approval input or request", async () => {
-  const h = harness({ state: { lines: [item()] } }); const r = await h.run("prepare_checkout"); assert.equal(r.status, "handoff_only"); assert.equal(r.execution_available, false); assert.equal(h.requests.length, 1); assert.equal(h.requests[0].method, "GET");
-});
-for (const name of ["add_to_cart", "update_cart_item", "remove_cart_item"]) {
-  const input = name === "add_to_cart" ? add : { ...target, ...(name === "update_cart_item" ? { quantity: 2 } : {}) };
-  test(`${name}: wrong session and stale cart refuse POST`, async () => {
-    const h = harness({ state: { lines: name === "add_to_cart" ? [] : [item()] } });
-    const c = await h.run("get_cart"); h.doc.cookie = "session-id=different-session";
-    assert.equal((await h.run(name, { ...expect(c), ...input })).error_kind, "wrong_account");
-    assert.equal((await h.run(name, { ...expect(await h.run("get_cart")), expected_cart_version: "a".repeat(64), ...input })).error_kind, "stale_cart");
-    assert.ok(h.requests.every(r => r.method === "GET"));
-  });
-  test(`${name}: canceled before requests and unknown after dispatch; no duplicate retry`, async () => {
-    const h = harness({ state: { lines: name === "add_to_cart" ? [] : [item()] }, handler: (u, init) => { if (init.method === "POST") throw new Error("private URL/token must not leak"); } });
-    const c = await h.run("get_cart"), args = { ...expect(c), ...input };
-    const ctl = new AbortController(); ctl.abort(); const count = h.requests.length;
-    assert.equal((await h.run(name, args, ctl.signal)).error_kind, "canceled"); assert.equal(h.requests.length, count);
-    const r = await h.run(name, args); assert.equal(r.error_kind, "outcome_unknown"); assert.equal(r.mutation_attempted, true); assert.doesNotMatch(JSON.stringify(r), /private URL/);
-    assert.equal((await h.run(name, args)).error_kind, "outcome_unknown"); assert.equal(h.requests.filter(r => r.method === "POST").length, 1);
-  });
-  test(`${name}: other cart types refuse writes`, async () => {
-    const h = harness({ state: { lines: name === "add_to_cart" ? [] : [item()], other: true } }); assert.equal((await prepared(h, name, input)).error_kind, "unsupported_item"); assert.ok(h.requests.every(r => r.method === "GET"));
-  });
-}
-test("add_to_cart: exact mocked postcondition and only allowlisted add fields, never Buy Now", async () => {
+test("add_to_cart: posts the form to the button target without Buy Now fields and verifies the line", async () => {
   const h = harness({ product: product({ qty: "1,2" }), state: { lines: [item("other", "B0TEST0002")], saved: [item("saved", "B0TEST0003")] } });
-  const r = await prepared(h, "add_to_cart", { ...add, quantity: 2 }); assert.equal(r.status, "ok"); assert.equal(r.quantity, 2); assert.equal(r.lines.length, 2);
-  const posts = h.requests.filter(r => r.method === "POST"); assert.equal(posts.length, 1); assert.equal(posts[0].redirect, "manual");
-  const p = new URLSearchParams(posts[0].body); assert.equal(p.get("isBuyNow"), "0"); assert.equal(p.get("quantity"), "2"); assert.deepEqual([...p.keys()].sort(), ["ASIN", "anti-csrftoken-a2z", "isBuyNow", "merchantID", "offerListingID", "quantity", "submit.add-to-cart"].sort());
+  const r = await prepared(h, "add_to_cart", { ...add, quantity: 2 });
+  assert.equal(r.status, "ok"); assert.equal(r.quantity, 2); assert.equal(r.unit_price_cents, 2999); assert.equal(r.lines.length, 2); assert.equal(r.cart_item_id, "new-line-1");
+  const [post] = h.posts(); assert.equal(h.posts().length, 1);
+  assert.equal(post.path, "/cart/add-to-cart/ref=dp_start-bbf_1_glance"); assert.equal(post.redirect, "manual"); assert.equal(post.credentials, "include");
+  const p = new URLSearchParams(post.body);
+  assert.equal(p.get("quantity"), "2"); assert.equal(p.get("items[0.base][quantity]"), "2"); assert.equal(p.get("submit.add-to-cart"), "Add to cart"); assert.equal(p.get("anti-csrftoken-a2z"), "fabricated_product_csrf");
+  for (const key of ["submit.buy-now", "pipelineType", "referrer", "isBuyNow", "isEligibilityLogicDisabled", "ref_", "gift-wrap"]) assert.equal(p.has(key), false, key);
 });
-test("add_to_cart: existing ASIN, changed offer, custom/sns, unsafe endpoint, unavailable quantity fail before writes", async () => {
-  assert.equal((await prepared(harness({ state: { lines: [item()] } }), "add_to_cart", add)).error_kind, "already_in_cart");
-  for (const [p, kind] of [[product({ price: "$30.00" }), "stale_cart"], [product({ seller: "Otherseller" }), "stale_cart"], [product({ asin: "B0TEST0002" }), "unavailable"], [product({ endpoint: "https://evil.example/submit" }), "site_changed"], [product({ extra: '<input name="snsOrderType" value="1">' }), "unsupported_item"], [product({ extra: '<input name="custom-name.1" value="x">' }), "unsupported_item"], [product({ qty: "2" }), "unavailable"], [product({ disabled: true }), "unavailable"]]) {
-    const h = harness({ product: p }); assert.equal((await prepared(h, "add_to_cart", add)).error_kind, kind); assert.ok(h.requests.every(r => r.method === "GET"));
+test("add_to_cart: items without a quantity selector can add one", async () => {
+  assert.equal((await prepared(harness({ product: product({ qty: null }) }), "add_to_cart", add)).status, "ok");
+  const h = harness({ product: product({ qty: null }) }); assert.equal((await prepared(h, "add_to_cart", { ...add, quantity: 2 })).error_kind, "unavailable"); assert.equal(h.posts().length, 0);
+});
+test("add_to_cart: refusals before any write", async () => {
+  for (const [state, kind] of [[{ lines: [item()] }, "already_in_cart"], [{ saved: [item("saved", add.asin)] }, "already_in_cart"], [{ other: true }, "unsupported_item"], [{ lines: [item("plan", "B0TEST0002", 1, 'data-related-item-ids="warranty_1"')] }, "unsupported_item"]]) {
+    const h = harness({ state }); assert.equal((await prepared(h, "add_to_cart", add)).error_kind, kind); assert.equal(h.posts().length, 0);
   }
+  for (const [p, kind] of [
+    [product({ price: '<span class="a-offscreen">$30.00</span>' }), "offer_changed"],
+    [product({ seller: '<div class="offer-display-feature-text-message">Otherseller</div>' }), "offer_changed"],
+    [product({ asin: "B0TEST0002" }), "unavailable"],
+    [product({ disabled: true }), "unavailable"],
+    [product({ qty: "1" }).replace('formaction="/cart', 'data-x="/cart'), "site_changed"],
+    [product({ target: "/checkout/entry/buynow" }), "site_changed"],
+    [product({ target: "https://evil.example/cart/add-to-cart" }), "site_changed"],
+    [product({ extra: '<input name="snsOrderType" value="1">' }), "unsupported_item"],
+    [product({ extra: '<input name="custom-name.1" value="x">' }), "unsupported_item"],
+    [product().replace('type="checkbox" value="on"', 'type="checkbox" value="on" checked'), "unsupported_item"],
+    [product().replace('name="offerListingID" value="fabricated_offer"', 'name="offerListingID" value=""'), "site_changed"]
+  ]) {
+    const h = harness({ product: p }); assert.equal((await prepared(h, "add_to_cart", add)).error_kind, kind); assert.equal(h.posts().length, 0);
+  }
+  const missing = harness({ handler: u => u.pathname.startsWith("/dp/") ? { status: 404, body: "" } : undefined });
+  assert.equal((await prepared(missing, "add_to_cart", add)).error_kind, "not_found");
 });
-test("update/remove: exact mocked cart changes, absolute quantity and restore equality", async () => {
+test("add_to_cart: the cart line may show a different price than the product page", async () => {
+  const h = harness({ handler: (u, init, { state }) => { if (init.method === "GET" && u.pathname === "/gp/cart/view.html" && state.lines.length) return { body: fixture(state).replace('data-price="29.99"', 'data-price="27.99"') }; } });
+  const r = await prepared(h, "add_to_cart", add); assert.equal(r.status, "ok"); assert.equal(r.unit_price_cents, 2799);
+});
+
+test("update_cart_item: request mirrors Amazon's cart script", async () => {
   const h = harness({ state: { lines: [item(), item("other", "B0TEST0002")], saved: [item("saved", "B0TEST0003")] } });
-  const initial = await h.run("get_cart"); const updated = await h.run("update_cart_item", { ...expect(initial), ...target, quantity: 2 }); assert.equal(updated.status, "ok"); assert.equal(updated.changed, true);
-  const post = h.requests.find(r => r.method === "POST"), payload = JSON.parse(new URLSearchParams(post.body).get("actionPayload")); assert.equal(payload.length, 1); assert.equal(payload[0].type, "UPDATE_QUANTITY_START"); assert.equal(payload[0].payload.quantity, 2);
-  const restored = await h.run("update_cart_item", { ...expect(updated), ...target, expected_quantity: 2, quantity: 1 }); assert.equal(restored.status, "ok"); assert.deepEqual(restored.lines, initial.lines); assert.equal(restored.cart_version, initial.cart_version);
-  const removal = harness({ state: { lines: initial.lines.map(l => item(l.cart_item_id, l.asin, l.quantity)), saved: [item("saved", "B0TEST0003")] } });
-  const removed = await prepared(removal, "remove_cart_item", { cart_item_id: "other", asin: "B0TEST0002", expected_quantity: 1 }); assert.equal(removed.status, "ok"); assert.equal(removed.quantity, 0); assert.equal(removed.lines.length, 1);
-  assert.equal((await h.run("update_cart_item", { ...expect(restored), ...target, quantity: 2 })).error_kind, "outcome_unknown", "an attempted version cannot be reused even after exact restoration");
+  assert.equal((await prepared(h, "update_cart_item", { ...target, quantity: 2 })).status, "ok");
+  const [post] = h.posts(); assert.equal(post.path, "/cart/ref=ox_sc_cart_actions_1"); assert.equal(post.redirect, "manual");
+  assert.equal(post.headers["anti-csrftoken-a2z"], "fabricated_csrf"); assert.equal(post.headers["X-AUI-View"], "Desktop");
+  const p = new URLSearchParams(post.body);
+  assert.equal(p.get("submit.cart-actions"), "1"); assert.equal(p.get("pageAction"), "cart-actions"); assert.equal(p.get("displayedSavedItemNum"), "1");
+  assert.deepEqual(JSON.parse(p.get("actionPayload")), [{ type: "UPDATE_QUANTITY_START", payload: { itemId: "test-line-1", list: "activeItems", relatedItemIds: [], isPrimeAsin: false, quantity: 2 } }]);
+  assert.deepEqual(JSON.parse(p.get("activeItems")).map(i => i.itemId), ["sc-active-test-line-1", "sc-active-other"]);
+  assert.deepEqual(JSON.parse(p.get("savedItems")), [{ itemId: "sc-saved-saved", price: "29.99" }]);
 });
-test("update: already desired quantity is a no-op", async () => {
-  const h = harness({ state: { lines: [item()] } }); const r = await prepared(h, "update_cart_item", { ...target, quantity: 1 }); assert.equal(r.changed, false); assert.ok(h.requests.every(r => r.method === "GET"));
+test("update_cart_item: update, restore and remove with exact readback", async () => {
+  const h = harness({ state: { lines: [item(), item("other", "B0TEST0002")], saved: [item("saved", "B0TEST0003")] } });
+  const initial = await h.run("get_cart");
+  const updated = await h.run("update_cart_item", { ...expect(initial), ...target, quantity: 2 });
+  assert.equal(updated.changed, true); assert.equal(updated.quantity, 2); assert.equal(updated.previous_quantity, 1);
+  const restored = await h.run("update_cart_item", { ...expect(updated), ...target, expected_quantity: 2, quantity: 1 });
+  assert.equal(restored.cart_version, initial.cart_version, "a restored cart has its original version and may be changed again");
+  const removed = await h.run("update_cart_item", { ...expect(restored), ...target, quantity: 0 });
+  assert.equal(removed.quantity, 0); assert.deepEqual(removed.lines.map(l => l.cart_item_id), ["other"]);
+  assert.equal(JSON.parse(new URLSearchParams(h.posts()[2].body).get("actionPayload"))[0].type, "DELETE_START");
+  assert.equal("quantity" in JSON.parse(new URLSearchParams(h.posts()[2].body).get("actionPayload"))[0].payload, false);
 });
-test("update/remove: missing/wrong target, quantity and special line guards", async () => {
-  for (const n of ["update_cart_item", "remove_cart_item"]) for (const [extra, patch, kind] of [["", { asin: "B0TEST0002" }, "not_found"], ["", { expected_quantity: 2 }, "stale_cart"], ['data-related-item-ids="warranty_1"', {}, "unsupported_item"]]) {
-    const h = harness({ state: { lines: [item("test_line_1", "B0TEST0001", 1, extra)] } }); const r = await prepared(h, n, { ...target, ...(n === "update_cart_item" ? { quantity: 2 } : {}), ...patch }); assert.equal(r.error_kind, kind); assert.ok(h.requests.every(r => r.method === "GET"));
+test("update_cart_item: already at the requested quantity is a no-op", async () => {
+  const h = harness({ state: { lines: [item()] } }); const r = await prepared(h, "update_cart_item", { ...target, quantity: 1 });
+  assert.equal(r.changed, false); assert.equal(h.posts().length, 0);
+});
+test("update_cart_item: wrong target, quantity and special lines refuse writes", async () => {
+  for (const [extra, patch, kind] of [["", { asin: "B0TEST0002" }, "not_found"], ["", { cart_item_id: "missing" }, "not_found"], ["", { expected_quantity: 2 }, "stale_cart"], ['data-related-item-ids="warranty_1"', {}, "unsupported_item"], ['data-subscription="1"><span class="sc-action-sns"></span', {}, "unsupported_item"]]) {
+    const h = harness({ state: { lines: [item("test-line-1", "B0TEST0001", 1, extra)] } }); assert.equal((await prepared(h, "update_cart_item", { ...target, quantity: 2, ...patch })).error_kind, kind); assert.equal(h.posts().length, 0);
+  }
+  for (const page of [s => fixture(s).replace('data-itemcategory="normal"', 'data-itemcategory="fresh"'), s => fixture(s).replace('<div id="sc-active-cart">', '<div id="sc-active-cart"><div class="sc-delivery-group"></div>'), s => fixture({ ...s, csrf: false })]) {
+    const h = harness({ state: { lines: [item()] }, handler: (u, init, { state }) => init.method === "GET" ? { body: page(state) } : undefined });
+    assert.ok(["unsupported_item", "site_changed"].includes((await prepared(h, "update_cart_item", { ...target, quantity: 2 })).error_kind)); assert.equal(h.posts().length, 0);
   }
 });
-test("actions: quantity/type errors and model approval flags fail before interaction", async () => {
-  for (const name of ["add_to_cart", "update_cart_item", "remove_cart_item"]) {
-    const args = { expected_session_context: "a".repeat(64), expected_cart_version: "b".repeat(64), ...(name === "add_to_cart" ? add : { ...target, ...(name === "update_cart_item" ? { quantity: 2 } : {}) }) };
-    for (const patch of [{ confirmed: true }, { expected_session_context: "invalid" }, { asin: "BAD" }, ...(name === "remove_cart_item" ? [{ expected_quantity: 0 }] : [{ quantity: 0 }, { quantity: 11 }, { quantity: "1" }])]) {
+test("cart writes: quantity, type and approval-flag errors fail before any request", async () => {
+  for (const name of writes) {
+    const args = { expected_session_context: "a".repeat(64), expected_cart_version: "b".repeat(64), ...actionInput(name) };
+    for (const patch of [{ confirmed: true }, { expected_session_context: "invalid" }, { asin: "BAD" }, { quantity: 11 }, { quantity: "1" }, { quantity: -1 }, ...(name === "add_to_cart" ? [{ quantity: 0 }] : [{ expected_quantity: 0 }])]) {
       const h = harness(); assert.equal((await h.run(name, { ...args, ...patch })).error_kind, "invalid_input"); assert.equal(h.requests.length, 0);
     }
   }
 });
-test("add: fresh-state race refuses write and missing guard storage fails closed", async () => {
-  const h = harness({ handler: (u, init, { requests, state }) => { if (u.pathname.startsWith("/dp/")) state.lines.push(item("other", "B0TEST0002")); } });
-  assert.equal((await prepared(h, "add_to_cart", add)).error_kind, "stale_cart"); assert.ok(h.requests.every(r => r.method === "GET"));
-  const broken = harness(); broken.storage.set("xwebmcp.amazon.cart_attempts", "not-json");
-  assert.equal((await prepared(broken, "add_to_cart", add)).error_kind, "site_error"); assert.ok(broken.requests.every(r => r.method === "GET"));
-});
-test("add: selected gift wrap refuses write, unselected controls are not serialized", async () => {
-  const h = harness({ product: product().replace('type="checkbox" value="on"', 'type="checkbox" value="on" checked') });
-  assert.equal((await prepared(h, "add_to_cart", add)).error_kind, "unsupported_item"); assert.ok(h.requests.every(r => r.method === "GET"));
-});
-test("cart writes: post-dispatch HTTP failure and cancellation stay unknown", async () => {
-  for (const cancel of [false, true]) {
-    const ctl = new AbortController();
-    const h = harness({ handler: (u, init) => { if (init.method === "POST") { if (cancel) { ctl.abort(); throw new Error("aborted"); } return { status: 403, body: "Denied" }; } } });
-    const c = await h.run("get_cart"); const r = await h.run("add_to_cart", { ...expect(c), ...add }, ctl.signal);
-    assert.equal(r.error_kind, "outcome_unknown"); assert.equal(r.mutation_attempted, true); assert.equal(h.requests.filter(r => r.method === "POST").length, 1);
-  }
-});
-test("unobserved or additional unrelated postconditions never produce success", async () => {
-  const h = harness({ handler: (u, init, { state }) => { if (init.method === "POST") { state.lines.push(item("unexpected", "B0TEST0003")); return { body: "{}" }; } } });
-  const r = await prepared(h, "add_to_cart", add); assert.equal(r.error_kind, "outcome_unknown"); assert.equal(r.mutation_attempted, true); assert.equal(h.requests.filter(r => r.method === "POST").length, 1);
-});
 
-test("add: unexpected special-item metadata on the added line is an unknown outcome", async () => {
-  const h = harness({ handler: (u, init, { state }) => {
-    if (init.method === "POST") { state.lines.push(item("new_line", add.asin, add.quantity, 'data-related-item-ids="unexpected_plan"')); return { body: "{}" }; }
-  } });
-  const r = await prepared(h, "add_to_cart", add);
-  assert.equal(r.error_kind, "outcome_unknown"); assert.equal(r.mutation_attempted, true);
-});
-
-const writes = ["add_to_cart", "update_cart_item", "remove_cart_item"];
-const actionInput = name => name === "add_to_cart" ? add : { ...target, ...(name === "update_cart_item" ? { quantity: 2 } : {}) };
-const actionState = name => ({ lines: name === "add_to_cart" ? [item("other", "B0TEST0002")] : [item(), item("other", "B0TEST0002")] });
-const partialPages = [
-  state => fixture({ ...state, lines: [...state.lines, item("missing", "B0TEST0003")] }).replace('data-itemid="missing"', ""),
-  state => fixture(state).replace('<div id="sc-saved-cart">', '<div id="sc-saved-cart"><span class="sc-pagination">Next</span>'),
-  state => fixture({ ...state, saved: [item("duplicate", "B0TEST0003"), item("duplicate", "B0TEST0004")] }),
-  state => fixture(state).replace('id="sc-saved-cart"', 'id="unknown-saved-layout"'),
-  state => fixture(state).replace('id="sc-collapsed-carts-container"', 'id="unknown-other-layout"')
-];
-for (const name of ["get_cart", "prepare_checkout"]) {
-  test(`${name}: every row, saved pagination and saved id uniqueness are validated`, async () => {
-    for (const page of partialPages) {
-      const h = harness({ state: { lines: [item()] }, handler: (u, init, { state }) => ({ body: page(state) }) });
-      assert.equal((await h.run(name)).error_kind, "site_changed");
-    }
-  });
-  test(`${name}: cancellation during asynchronous snapshot hashing is canceled`, async () => {
-    const ctl = new AbortController(); let hashes = 0;
-    const crypto = { subtle: { digest: async (...args) => { const result = await webcrypto.subtle.digest(...args); if (++hashes === 2) ctl.abort(); return result; } } };
-    const h = harness({ crypto }); const r = await h.run(name, {}, ctl.signal);
-    assert.equal(r.error_kind, "canceled"); assert.equal(r.mutation_attempted, false);
-  });
-}
 for (const name of writes) {
-  test(`${name}: partial preflight snapshots never authorize a POST`, async () => {
-    for (const page of partialPages) {
-      const h = harness({ state: actionState(name), handler: (u, init, { state, requests }) => u.pathname === "/gp/cart/view.html" && requests.length > 1 ? { body: page(state) } : undefined });
-      const r = await prepared(h, name, actionInput(name));
-      assert.equal(r.error_kind, "site_changed"); assert.equal(r.mutation_attempted, false); assert.ok(h.requests.every(r => r.method === "GET"));
-    }
+  test(`${name}: wrong session and stale cart refuse POST`, async () => {
+    const h = harness({ state: actionState(name) });
+    const c = await h.run("get_cart"); h.doc.cookie = "session-id=different-session; ubid-main=fabricated-ubid";
+    assert.equal((await h.run(name, { ...expect(c), ...actionInput(name) })).error_kind, "wrong_account");
+    assert.equal((await h.run(name, { ...expect(await h.run("get_cart")), expected_cart_version: "a".repeat(64), ...actionInput(name) })).error_kind, "stale_cart");
+    assert.equal(h.posts().length, 0);
   });
-  test(`${name}: newly introduced safety metadata at second preflight refuses a POST`, async () => {
-    for (const patch of [
-      html => html.replace('data-itemtype="active"', 'data-itemtype="active" data-related-item-ids="fabricated_plan"'),
-      html => html.replace('data-itemtype="active"', 'data-itemtype="unsupported"'),
-      html => html.replace('data-isselected="1"', 'data-isselected="0"')
-    ]) {
-      let cartReads = 0;
+  test(`${name}: canceled before requests; network failure after dispatch is unknown`, async () => {
+    const h = harness({ state: actionState(name), handler: (u, init) => { if (init.method === "POST") throw new Error("private URL/token must not leak"); } });
+    const c = await h.run("get_cart"), args = { ...expect(c), ...actionInput(name) };
+    const ctl = new AbortController(); ctl.abort(); const count = h.requests.length;
+    assert.equal((await h.run(name, args, ctl.signal)).error_kind, "canceled"); assert.equal(h.requests.length, count);
+    const r = await h.run(name, args); assert.equal(r.error_kind, "outcome_unknown"); assert.equal(r.mutation_attempted, true); assert.doesNotMatch(JSON.stringify(r), /private URL/);
+    assert.equal(h.posts().length, 1);
+  });
+  test(`${name}: HTTP failure, unchanged cart and unrelated changes never claim success`, async () => {
+    for (const mode of ["http", "redirect", "unchanged", "other", "special"]) {
       const h = harness({ state: actionState(name), handler: (u, init, { state }) => {
-        if (u.pathname !== "/gp/cart/view.html") return;
-        if (++cartReads === 3) return { body: patch(fixture(state)) };
-      } });
-      const r = await prepared(h, name, actionInput(name));
-      assert.ok(["stale_cart", "unsupported_item"].includes(r.error_kind), JSON.stringify(r)); assert.equal(r.mutation_attempted, false); assert.ok(h.requests.every(r => r.method === "GET"));
-    }
-  });
-  test(`${name}: cancellation during post-write hashing is unknown, never success`, async () => {
-    const ctl = new AbortController(); let hashes = 0;
-    const crypto = { subtle: { digest: async (...args) => { const result = await webcrypto.subtle.digest(...args); if (++hashes === 8) ctl.abort(); return result; } } };
-    const h = harness({ state: actionState(name), crypto }); const c = await h.run("get_cart");
-    const r = await h.run(name, { ...expect(c), ...actionInput(name) }, ctl.signal);
-    assert.equal(r.error_kind, "outcome_unknown"); assert.equal(r.mutation_attempted, true); assert.equal(h.requests.filter(r => r.method === "POST").length, 1);
-  });
-  test(`${name}: exact route, credentials, method, CSRF and redirect policy`, async () => {
-    const h = harness({ state: actionState(name) }); assert.equal((await prepared(h, name, actionInput(name))).status, "ok");
-    assert.ok(h.requests.every(r => r.credentials === "include"));
-    const [post] = h.requests.filter(r => r.method === "POST"); assert.equal(post.redirect, "manual");
-    const p = new URLSearchParams(post.body);
-    if (name === "add_to_cart") {
-      assert.equal(post.path, "/gp/product/handle-buy-box/ref=dp_start"); assert.equal(p.get("anti-csrftoken-a2z"), "fabricated_product_csrf"); assert.equal(p.get("ASIN"), add.asin);
-    } else {
-      assert.equal(post.path, "/cart"); assert.equal(post.headers["anti-csrftoken-a2z"], "fabricated_csrf"); assert.equal(post.headers["X-AUI-View"], "Desktop");
-      assert.equal(p.get("submit.cart-actions"), "1"); assert.equal(p.get("pageAction"), "cart-actions");
-      const [a] = JSON.parse(p.get("actionPayload")); assert.equal(a.type, name === "update_cart_item" ? "UPDATE_QUANTITY_START" : "DELETE_START"); assert.equal(a.payload.itemId, target.cart_item_id); assert.equal(a.payload.list, "activeItems");
-    }
-  });
-  test(`${name}: missing CSRF, HTTP failure, redirect and unrelated postconditions never claim success`, async () => {
-    for (const mode of ["csrf", "http", "redirect", "unchanged", "other"]) {
-      const h = harness({ state: actionState(name), product: mode === "csrf" ? product().replace('name="anti-csrftoken-a2z"', 'name="missing"') : undefined, handler: (u, init, { state }) => {
-        if (mode === "csrf" && u.pathname === "/gp/cart/view.html") return { body: fixture({ ...state, csrf: false }) };
         if (init.method !== "POST") return;
         if (mode === "http") return { status: 403, body: "Denied" };
         if (mode === "redirect") return { status: 0, type: "opaqueredirect", body: "" };
         if (mode === "unchanged") return { body: "{}" };
-        if (mode === "other") state.saved.push(item("unexpected_saved", "B0TEST0004"));
+        if (mode === "other") state.saved.push(item("unexpected-saved", "B0TEST0004"));
+        if (mode === "special") { state.lines = state.lines.map(l => ({ ...l, extra: 'data-related-item-ids="plan"' })); state.lines.unshift(item("new", add.asin)); return { body: "{}" }; }
       } });
       const r = await prepared(h, name, actionInput(name));
-      assert.equal(r.error_kind, mode === "csrf" ? "site_changed" : "outcome_unknown"); assert.equal(r.mutation_attempted, mode !== "csrf");
-      assert.equal(h.requests.filter(r => r.method === "POST").length, mode === "csrf" ? 0 : 1);
+      assert.equal(r.error_kind, "outcome_unknown", mode); assert.equal(r.mutation_attempted, true); assert.equal(h.posts().length, 1);
     }
+  });
+  test(`${name}: cancellation after dispatch is unknown, never success`, async () => {
+    const ctl = new AbortController();
+    const h = harness({ state: actionState(name), handler: (u, init) => { if (init.method === "POST") { ctl.abort(); throw new Error("aborted"); } } });
+    const r = await h.run(name, { ...expect(await h.run("get_cart")), ...actionInput(name) }, ctl.signal);
+    assert.equal(r.error_kind, "outcome_unknown"); assert.equal(r.mutation_attempted, true);
   });
 }

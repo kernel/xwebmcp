@@ -210,7 +210,7 @@ test("Amazon's AI-agent Conditions of Use notice is access_gated, never a layout
 });
 
 test("registry has the shopping reads and guarded retail-cart tools, sorted with the rest of the registry", () => {
-  assert.deepEqual(registry.map(t => t.tool).sort(), [...NAMES, "get_cart", "add_to_cart", "update_cart_item", "remove_cart_item", "prepare_checkout"].sort());
+  assert.deepEqual(registry.map(t => t.tool).sort(), [...NAMES, "get_cart", "add_to_cart", "update_cart_item"].sort());
   const all = JSON.parse(readFileSync(new URL("../registry.json", import.meta.url), "utf8")).tools.map(t => `${t.domain}/${t.tool}`);
   assert.deepEqual(all, [...all].sort());
 });
@@ -298,6 +298,13 @@ test("search_products: every card sponsored and excluded is reported, not return
   const result = await run({ query: "x", exclude_sponsored: true });
   assert.equal(result.status, "no_results");
   assert.equal(result.reason, "all_sponsored_excluded");
+});
+
+test("search_products: cards that cannot be read are a layout change, not no_results", async () => {
+  const { run } = harness("search_products", { handler: searchHandler(searchPage({ cards: CARDS.map(c => c.replace(/<h2[\s\S]*?<\/h2>/g, "")) })) });
+  const result = await run({ query: "x" });
+  assert.equal(result.status, "error");
+  assert.equal(result.error_kind, "site_changed");
 });
 
 test("search_products: sorts, price bounds, page and facets become the site's own query parameters", async () => {
