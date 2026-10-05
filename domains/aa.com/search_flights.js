@@ -339,6 +339,15 @@
             { backendNodeId: dismiss.backendNodeId },
             { timeoutSec: seconds(5) },
           );
+        // Signed-in members can get an expired-miles dialog ("Get your miles back") that covers
+        // the form; "Remind me later" closes it without reactivating or buying anything.
+        await js(() => {
+          const later = [...document.querySelectorAll(".ui-dialog button")].find(
+            (b) => b.getClientRects().length && b.textContent.trim() === "Remind me later",
+          );
+          if (later) later.click();
+          return !!later;
+        });
         await click(
           `label[for="flightSearchForm.tripType.${input.tripType}"]`,
           { timeoutSec: seconds(10) },

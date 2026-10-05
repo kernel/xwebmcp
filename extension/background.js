@@ -79,7 +79,14 @@ chrome.runtime.onMessage.addListener((message, sender, reply) => {
       registry.getDefinition(message.definitionId)
         .then((definition) => {
           if (!definition) throw new Error('page tool is no longer registered');
-          return invoker.registerPageTool(sender.tab.id, sender.url, definition);
+          // sender.url is the content script's original document URL; in-app
+          // (pushState) navigations change the address without a new document,
+          // so the agent reports its current URL. Accept it only on the same origin.
+          let url = sender.url;
+          try {
+            if (typeof message.url === 'string' && new URL(message.url).origin === new URL(sender.url).origin) url = message.url;
+          } catch {}
+          return invoker.registerPageTool(sender.tab.id, url.split('#')[0], definition);
         })
         .then(() => reply({ok: true}))
         .catch((error) => reply({error: error instanceof Error ? error.message : String(error)}));
