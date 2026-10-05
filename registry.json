@@ -4,6 +4,142 @@
   "tools": [
     {
       "domain": "aa.com",
+      "tool": "continue_checkout",
+      "file": "domains/aa.com/continue_checkout.js",
+      "kind": "page",
+      "namespace": "aa.com",
+      "url_patterns": [
+        "https://aa.com/*",
+        "https://*.aa.com/*"
+      ],
+      "status": "qa_passed",
+      "last_verified": "2026-10-05",
+      "notes": "Independent live QA by american-qa (herdr, 2026-10-05; final source fingerprint dc124178; signed-in AAdvantage member; CVG-DFW round trip and DFW-LAX one-way, 1 adult, Main; user-authorized KTN issuing country set per trip only; every reversible change restored; nothing purchased, Pay now/Hold never pressed). PASS: total_changed guard; trip summary->passengers; missing_required_fields while KTN error shown, then continue; Mileage Multiplier and bags declined via Continue without extras; seats Next flight verified to switch flights; choice_required before insurance; payment_information; at_payment. login_required when American signs out mid-cart (author live). Unverified: the 'Seat map unavailable' path (not reproducible).",
+      "provenance": {
+        "qa_agent": "herdr:american-qa:01a10c3b-a1b0-7010-9d86-eeac85b08610"
+      }
+    },
+    {
+      "domain": "aa.com",
+      "tool": "get_checkout_step",
+      "file": "domains/aa.com/get_checkout_step.js",
+      "kind": "page",
+      "namespace": "aa.com",
+      "url_patterns": [
+        "https://aa.com/*",
+        "https://*.aa.com/*"
+      ],
+      "status": "qa_passed",
+      "last_verified": "2026-10-05",
+      "notes": "Independent live QA by american-qa (herdr, 2026-10-05; final source fingerprint dc124178; signed-in AAdvantage member; CVG-DFW round trip and DFW-LAX one-way, 1 adult, Main; user-authorized KTN issuing country set per trip only; every reversible change restored; nothing purchased, Pay now/Hold never pressed). PASS on every step: totals, KTN validation message labels, insurance unanswered/accepted/declined, payment method code, cvv_required, purchase_button_visible. Never returns field values.",
+      "provenance": {
+        "qa_agent": "herdr:american-qa:01a10c3b-a1b0-7010-9d86-eeac85b08610"
+      }
+    },
+    {
+      "domain": "aa.com",
+      "tool": "get_page_context",
+      "file": "domains/aa.com/get_page_context.js",
+      "kind": "page",
+      "namespace": "aa.com",
+      "url_patterns": [
+        "https://aa.com/*",
+        "https://*.aa.com/*"
+      ],
+      "status": "qa_passed",
+      "last_verified": "2026-10-05",
+      "notes": "Independent live QA by american-qa (herdr, 2026-10-05; final source fingerprint dc124178; signed-in AAdvantage member; CVG-DFW round trip and DFW-LAX one-way, 1 adult, Main; user-authorized KTN issuing country set per trip only; every reversible change restored; nothing purchased, Pay now/Hold never pressed). PASS: page types for home through review_and_pay, signed-in state, navigation_pending right after scheduled navigations (returns immediately rather than waiting on a dying document), no false site_error on seat pages. Unverified: session_timeout extend path in QA (observed by author).",
+      "provenance": {
+        "qa_agent": "herdr:american-qa:01a10c3b-a1b0-7010-9d86-eeac85b08610"
+      }
+    },
+    {
+      "domain": "aa.com",
+      "tool": "get_trip_summary",
+      "file": "domains/aa.com/get_trip_summary.js",
+      "kind": "page",
+      "namespace": "aa.com",
+      "url_patterns": [
+        "https://aa.com/*",
+        "https://*.aa.com/*"
+      ],
+      "status": "qa_passed",
+      "last_verified": "2026-10-05",
+      "notes": "Independent live QA by american-qa (herdr, 2026-10-05; final source fingerprint dc124178; signed-in AAdvantage member; CVG-DFW round trip and DFW-LAX one-way, 1 adult, Main; user-authorized KTN issuing country set per trip only; every reversible change restored; nothing purchased, Pay now/Hold never pressed). PASS: trip summary flights, 4 tax lines and refundable price; passengers tax dialog opened and closed; review and pay flights, fare, base, taxes, total. Limitations: passengers page lacks times/flight numbers; review has no per-line taxes; no-cost seats are not shown.",
+      "provenance": {
+        "qa_agent": "herdr:american-qa:01a10c3b-a1b0-7010-9d86-eeac85b08610"
+      }
+    },
+    {
+      "domain": "aa.com",
+      "tool": "list_flight_results",
+      "file": "domains/aa.com/list_flight_results.js",
+      "kind": "page",
+      "namespace": "aa.com",
+      "url_patterns": [
+        "https://aa.com/*",
+        "https://*.aa.com/*"
+      ],
+      "status": "qa_passed",
+      "last_verified": "2026-10-05",
+      "notes": "Independent live QA by american-qa (herdr, 2026-10-05; final source fingerprint dc124178; signed-in AAdvantage member; CVG-DFW round trip and DFW-LAX one-way, 1 adult, Main; user-authorized KTN issuing country set per trip only; every reversible change restored; nothing purchased, Pay now/Hold never pressed). PASS on departing and returning legs (40 rows, flight numbers, aircraft, fare-group from-prices).",
+      "provenance": {
+        "qa_agent": "herdr:american-qa:01a10c3b-a1b0-7010-9d86-eeac85b08610"
+      }
+    },
+    {
+      "domain": "aa.com",
+      "tool": "list_payment_methods",
+      "file": "domains/aa.com/list_payment_methods.js",
+      "kind": "page",
+      "namespace": "aa.com",
+      "url_patterns": [
+        "https://aa.com/*",
+        "https://*.aa.com/*"
+      ],
+      "status": "qa_passed",
+      "last_verified": "2026-10-05",
+      "notes": "Independent live QA by american-qa (herdr, 2026-10-05; final source fingerprint dc124178; signed-in AAdvantage member; CVG-DFW round trip and DFW-LAX one-way, 1 adult, Main; user-authorized KTN issuing country set per trip only; every reversible change restored; nothing purchased, Pay now/Hold never pressed). PASS: one saved card (brand, last four, expiry, primary; no nickname), seven method codes, selected method, cvv_required.",
+      "provenance": {
+        "qa_agent": "herdr:american-qa:01a10c3b-a1b0-7010-9d86-eeac85b08610"
+      }
+    },
+    {
+      "domain": "aa.com",
+      "tool": "list_seat_map",
+      "file": "domains/aa.com/list_seat_map.js",
+      "kind": "page",
+      "namespace": "aa.com",
+      "url_patterns": [
+        "https://aa.com/*",
+        "https://*.aa.com/*"
+      ],
+      "status": "qa_passed",
+      "last_verified": "2026-10-05",
+      "notes": "Independent live QA by american-qa (herdr, 2026-10-05; final source fingerprint dc124178; signed-in AAdvantage member; CVG-DFW round trip and DFW-LAX one-way, 1 adult, Main; user-authorized KTN issuing country set per trip only; every reversible change restored; nothing purchased, Pay now/Hold never pressed). PASS: seats with type, price, features; passenger_index only, no names; flight tabs; not_loaded when map absent. Cosmetic: comma-containing features split.",
+      "provenance": {
+        "qa_agent": "herdr:american-qa:01a10c3b-a1b0-7010-9d86-eeac85b08610"
+      }
+    },
+    {
+      "domain": "aa.com",
+      "tool": "list_trip_extras",
+      "file": "domains/aa.com/list_trip_extras.js",
+      "kind": "page",
+      "namespace": "aa.com",
+      "url_patterns": [
+        "https://aa.com/*",
+        "https://*.aa.com/*"
+      ],
+      "status": "qa_passed",
+      "last_verified": "2026-10-05",
+      "notes": "Independent live QA by american-qa (herdr, 2026-10-05; final source fingerprint dc124178; signed-in AAdvantage member; CVG-DFW round trip and DFW-LAX one-way, 1 adult, Main; user-authorized KTN issuing country set per trip only; every reversible change restored; nothing purchased, Pay now/Hold never pressed). PASS: Mileage Multiplier options with No thanks selected; bags prices, count, can_add/can_remove, extras total.",
+      "provenance": {
+        "qa_agent": "herdr:american-qa:01a10c3b-a1b0-7010-9d86-eeac85b08610"
+      }
+    },
+    {
+      "domain": "aa.com",
       "tool": "login",
       "file": "domains/aa.com/login.js",
       "kind": "cdp",
@@ -13,10 +149,10 @@
         "https://*.aa.com/*"
       ],
       "status": "qa_passed",
-      "last_verified": "2026-09-25",
-      "notes": "Live DDG entry reached the login form, and an earlier referred submission reached MFA; restored behavior passed independent local QA. Full authentication and live solver completion remain unverified; historical direct entry encountered CAPTCHA.",
+      "last_verified": "2026-10-05",
+      "notes": "Changed 2026-10-05 to recognize the post-login homepage (Log out and miles balance only in the collapsed account menu). Author live: DDG entry, one submission, authenticated with no MFA. Independent QA (american-qa, final fingerprint dc124178) passed the unit suite including the new homepage case; it did not run a live sign-in because the browser was already signed in. A per-tab sessionStorage guard blocks a second submission; use a fresh tab after sign-out.",
       "provenance": {
-        "qa_agent": "agt_64d5890885db30858fc8"
+        "qa_agent": "herdr:american-qa:01a10c3b-a1b0-7010-9d86-eeac85b08610"
       }
     },
     {
@@ -30,10 +166,282 @@
         "https://*.aa.com/*"
       ],
       "status": "verified",
-      "last_verified": "2026-09-24",
-      "notes": "Independent QA of the search implementation plus a live migration check from an expired booking page: 40 exact options. First-page outbound options, per-person from-fares; nearby airports and ground transport are labeled. Challenges and connection failures remain possible. Independent repeated-transition coverage of the radio mitigation and long-haul round-trip coverage remain incomplete; see the domain README.",
+      "last_verified": "2026-10-05",
+      "notes": "Changed 2026-10-05: dismisses American's 'Get your miles back' expired-miles dialog ('Remind me later') that intercepted the trip-type click for signed-in members. Independent live QA by american-qa (fingerprint dc124178): DFW-LAX and CVG-DFW returned ok with 40 rows, including a call started from a Review and pay page. First-page outbound options, per-person from-fares; legacy camelCase contract. Needs a foreground tab (trusted input); one unexplained run ended on the home page and a repeat worked.",
       "provenance": {
-        "qa_agent": "agt_dbdb039786be4bed1121"
+        "qa_agent": "herdr:american-qa:01a10c3b-a1b0-7010-9d86-eeac85b08610"
+      }
+    },
+    {
+      "domain": "aa.com",
+      "tool": "select_fare",
+      "file": "domains/aa.com/select_fare.js",
+      "kind": "page",
+      "namespace": "aa.com",
+      "url_patterns": [
+        "https://aa.com/*",
+        "https://*.aa.com/*"
+      ],
+      "status": "qa_passed",
+      "last_verified": "2026-10-05",
+      "notes": "Independent live QA by american-qa (herdr, 2026-10-05; final source fingerprint dc124178; signed-in AAdvantage member; CVG-DFW round trip and DFW-LAX one-way, 1 adult, Main; user-authorized KTN issuing country set per trip only; every reversible change restored; nothing purchased, Pay now/Hold never pressed). PASS: fares with disclosures, refund options, Basic Economy consent flag; row_changed and group_not_offered.",
+      "provenance": {
+        "qa_agent": "herdr:american-qa:01a10c3b-a1b0-7010-9d86-eeac85b08610"
+      }
+    },
+    {
+      "domain": "aa.com",
+      "tool": "select_fare_option",
+      "file": "domains/aa.com/select_fare_option.js",
+      "kind": "page",
+      "namespace": "aa.com",
+      "url_patterns": [
+        "https://aa.com/*",
+        "https://*.aa.com/*"
+      ],
+      "status": "qa_passed",
+      "last_verified": "2026-10-05",
+      "notes": "Independent live QA by american-qa (herdr, 2026-10-05; final source fingerprint dc124178; signed-in AAdvantage member; CVG-DFW round trip and DFW-LAX one-way, 1 adult, Main; user-authorized KTN issuing country set per trip only; every reversible change restored; nothing purchased, Pay now/Hold never pressed). PASS: Basic Economy consent_required without accept_restrictions (nothing selected); Main scheduled to return results then trip summary. Basic acceptance path is unit-tested only.",
+      "provenance": {
+        "qa_agent": "herdr:american-qa:01a10c3b-a1b0-7010-9d86-eeac85b08610"
+      }
+    },
+    {
+      "domain": "aa.com",
+      "tool": "select_payment_method",
+      "file": "domains/aa.com/select_payment_method.js",
+      "kind": "page",
+      "namespace": "aa.com",
+      "url_patterns": [
+        "https://aa.com/*",
+        "https://*.aa.com/*"
+      ],
+      "status": "qa_passed",
+      "last_verified": "2026-10-05",
+      "notes": "Independent live QA by american-qa (herdr, 2026-10-05; final source fingerprint dc124178; signed-in AAdvantage member; CVG-DFW round trip and DFW-LAX one-way, 1 adult, Main; user-authorized KTN issuing country set per trip only; every reversible change restored; nothing purchased, Pay now/Hold never pressed). PASS: saved card -> PayPal -> saved card restored; wrong total and unknown last four refused; Hold not selectable; never types CVV.",
+      "provenance": {
+        "qa_agent": "herdr:american-qa:01a10c3b-a1b0-7010-9d86-eeac85b08610"
+      }
+    },
+    {
+      "domain": "aa.com",
+      "tool": "select_seat",
+      "file": "domains/aa.com/select_seat.js",
+      "kind": "page",
+      "namespace": "aa.com",
+      "url_patterns": [
+        "https://aa.com/*",
+        "https://*.aa.com/*"
+      ],
+      "status": "qa_passed",
+      "last_verified": "2026-10-05",
+      "notes": "Independent live QA by american-qa (herdr, 2026-10-05; final source fingerprint dc124178; signed-in AAdvantage member; CVG-DFW round trip and DFW-LAX one-way, 1 adult, Main; user-authorized KTN issuing country set per trip only; every reversible change restored; nothing purchased, Pay now/Hold never pressed). PASS: price_above_limit leaves nothing selected; free seats selected on both flights. American offers no on-page deselect.",
+      "provenance": {
+        "qa_agent": "herdr:american-qa:01a10c3b-a1b0-7010-9d86-eeac85b08610"
+      }
+    },
+    {
+      "domain": "aa.com",
+      "tool": "set_checked_bags",
+      "file": "domains/aa.com/set_checked_bags.js",
+      "kind": "page",
+      "namespace": "aa.com",
+      "url_patterns": [
+        "https://aa.com/*",
+        "https://*.aa.com/*"
+      ],
+      "status": "qa_passed",
+      "last_verified": "2026-10-05",
+      "notes": "Independent live QA by american-qa (herdr, 2026-10-05; final source fingerprint dc124178; signed-in AAdvantage member; CVG-DFW round trip and DFW-LAX one-way, 1 adult, Main; user-authorized KTN issuing country set per trip only; every reversible change restored; nothing purchased, Pay now/Hold never pressed). PASS: 0->1 at $45, mismatch auto-restore to 0/$0.00, 1->0 restored exactly.",
+      "provenance": {
+        "qa_agent": "herdr:american-qa:01a10c3b-a1b0-7010-9d86-eeac85b08610"
+      }
+    },
+    {
+      "domain": "aa.com",
+      "tool": "set_trip_protection",
+      "file": "domains/aa.com/set_trip_protection.js",
+      "kind": "page",
+      "namespace": "aa.com",
+      "url_patterns": [
+        "https://aa.com/*",
+        "https://*.aa.com/*"
+      ],
+      "status": "qa_passed",
+      "last_verified": "2026-10-05",
+      "notes": "Independent live QA by american-qa (herdr, 2026-10-05; final source fingerprint dc124178; signed-in AAdvantage member; CVG-DFW round trip and DFW-LAX one-way, 1 adult, Main; user-authorized KTN issuing country set per trip only; every reversible change restored; nothing purchased, Pay now/Hold never pressed). PASS: premium_changed on wrong premium, accept with quoted premium, decline; ended declined. Nit: previous_choice uses accept/decline while get_checkout_step uses accepted/declined.",
+      "provenance": {
+        "qa_agent": "herdr:american-qa:01a10c3b-a1b0-7010-9d86-eeac85b08610"
+      }
+    },
+    {
+      "domain": "aa.com",
+      "tool": "skip_seat_selection",
+      "file": "domains/aa.com/skip_seat_selection.js",
+      "kind": "page",
+      "namespace": "aa.com",
+      "url_patterns": [
+        "https://aa.com/*",
+        "https://*.aa.com/*"
+      ],
+      "status": "qa_passed",
+      "last_verified": "2026-10-05",
+      "notes": "Independent live QA by american-qa (herdr, 2026-10-05; final source fingerprint dc124178; signed-in AAdvantage member; CVG-DFW round trip and DFW-LAX one-way, 1 adult, Main; user-authorized KTN issuing country set per trip only; every reversible change restored; nothing purchased, Pay now/Hold never pressed). PASS: skip scheduled, landed on bags extras. Lists seats of the current flight only; seat retention not observable.",
+      "provenance": {
+        "qa_agent": "herdr:american-qa:01a10c3b-a1b0-7010-9d86-eeac85b08610"
+      }
+    },
+    {
+      "domain": "alaskaair.com",
+      "tool": "continue_checkout",
+      "file": "domains/alaskaair.com/continue_checkout.js",
+      "kind": "page",
+      "namespace": "alaskaair.com",
+      "url_patterns": [
+        "https://alaskaair.com/*",
+        "https://*.alaskaair.com/*"
+      ],
+      "status": "qa_passed",
+      "last_verified": "2026-10-05",
+      "notes": "Verified live: Add to cart, Continue to checkout, Travelers Continue, Seats next_flight and skip_seats, total_mismatch; Review & pay returns not_allowed (never Book now). The click is scheduled after the tool returns. After Travelers, poll get_checkout_step. Not verified: seats save_and_continue. Independent QA (alaska-qa, five runs, final source) on live alaskaair.com while signed in: SEA-SFO and SEA-LAX Saver and Main round trips through to Review & pay, with exact restores. Nothing was purchased and no traveler or card data was typed.",
+      "provenance": {
+        "qa_agent": "herdr:alaska-qa:01a10c4e-c21a-77bf-a02c-f83229d7c102"
+      }
+    },
+    {
+      "domain": "alaskaair.com",
+      "tool": "get_checkout_step",
+      "file": "domains/alaskaair.com/get_checkout_step.js",
+      "kind": "page",
+      "namespace": "alaskaair.com",
+      "url_patterns": [
+        "https://alaskaair.com/*",
+        "https://*.alaskaair.com/*"
+      ],
+      "status": "qa_passed",
+      "last_verified": "2026-10-05",
+      "notes": "Verified on cart, Travelers, Seats and Review & pay (trip protection, payment method); returns not_ready while loading. Not verified: missing required fields live, more than one passenger. Independent QA (alaska-qa, five runs, final source) on live alaskaair.com while signed in: SEA-SFO and SEA-LAX Saver and Main round trips through to Review & pay, with exact restores. Nothing was purchased and no traveler or card data was typed.",
+      "provenance": {
+        "qa_agent": "herdr:alaska-qa:01a10c4e-c21a-77bf-a02c-f83229d7c102"
+      }
+    },
+    {
+      "domain": "alaskaair.com",
+      "tool": "get_page_context",
+      "file": "domains/alaskaair.com/get_page_context.js",
+      "kind": "page",
+      "namespace": "alaskaair.com",
+      "url_patterns": [
+        "https://alaskaair.com/*",
+        "https://*.alaskaair.com/*"
+      ],
+      "status": "qa_passed",
+      "last_verified": "2026-10-05",
+      "notes": "Classifies results legs, trip summary, cart and checkout steps; reports the Saver, refundable and other dialogs, the session timer and signed-in state. Limitation: right after Travelers Continue it can look settled for a few seconds (documented in continue_checkout). Independent QA (alaska-qa, five runs, final source) on live alaskaair.com while signed in: SEA-SFO and SEA-LAX Saver and Main round trips through to Review & pay, with exact restores. Nothing was purchased and no traveler or card data was typed.",
+      "provenance": {
+        "qa_agent": "herdr:alaska-qa:01a10c4e-c21a-77bf-a02c-f83229d7c102"
+      }
+    },
+    {
+      "domain": "alaskaair.com",
+      "tool": "get_trip_summary",
+      "file": "domains/alaskaair.com/get_trip_summary.js",
+      "kind": "page",
+      "namespace": "alaskaair.com",
+      "url_patterns": [
+        "https://alaskaair.com/*",
+        "https://*.alaskaair.com/*"
+      ],
+      "status": "qa_passed",
+      "last_verified": "2026-10-05",
+      "notes": "Verified on the results summary (per person), the cart (segments, booking class, taxes, fare notes, hold timer) and checkout. Returns no names. Independent QA (alaska-qa, five runs, final source) on live alaskaair.com while signed in: SEA-SFO and SEA-LAX Saver and Main round trips through to Review & pay, with exact restores. Nothing was purchased and no traveler or card data was typed.",
+      "provenance": {
+        "qa_agent": "herdr:alaska-qa:01a10c4e-c21a-77bf-a02c-f83229d7c102"
+      }
+    },
+    {
+      "domain": "alaskaair.com",
+      "tool": "list_flight_results",
+      "file": "domains/alaskaair.com/list_flight_results.js",
+      "kind": "page",
+      "namespace": "alaskaair.com",
+      "url_patterns": [
+        "https://alaskaair.com/*",
+        "https://*.alaskaair.com/*"
+      ],
+      "status": "qa_passed",
+      "last_verified": "2026-10-05",
+      "notes": "Reads departing and returning legs and the Saver/Main/Premium/First columns. Only rows already loaded on the page; connecting-itinerary formatting was not exercised live. Independent QA (alaska-qa, five runs, final source) on live alaskaair.com while signed in: SEA-SFO and SEA-LAX Saver and Main round trips through to Review & pay, with exact restores. Nothing was purchased and no traveler or card data was typed.",
+      "provenance": {
+        "qa_agent": "herdr:alaska-qa:01a10c4e-c21a-77bf-a02c-f83229d7c102"
+      }
+    },
+    {
+      "domain": "alaskaair.com",
+      "tool": "list_payment_methods",
+      "file": "domains/alaskaair.com/list_payment_methods.js",
+      "kind": "page",
+      "namespace": "alaskaair.com",
+      "url_patterns": [
+        "https://alaskaair.com/*",
+        "https://*.alaskaair.com/*"
+      ],
+      "status": "qa_passed",
+      "last_verified": "2026-10-05",
+      "notes": "Verified live: credit/debit card, Apple Pay, commercial account, gift card, accepted brands; the test account has no saved cards, so saved-card parsing is not verified live. Independent QA (alaska-qa, five runs, final source) on live alaskaair.com while signed in: SEA-SFO and SEA-LAX Saver and Main round trips through to Review & pay, with exact restores. Nothing was purchased and no traveler or card data was typed.",
+      "provenance": {
+        "qa_agent": "herdr:alaska-qa:01a10c4e-c21a-77bf-a02c-f83229d7c102"
+      }
+    },
+    {
+      "domain": "alaskaair.com",
+      "tool": "list_seat_map",
+      "file": "domains/alaskaair.com/list_seat_map.js",
+      "kind": "page",
+      "namespace": "alaskaair.com",
+      "url_patterns": [
+        "https://alaskaair.com/*",
+        "https://*.alaskaair.com/*"
+      ],
+      "status": "qa_passed",
+      "last_verified": "2026-10-05",
+      "notes": "Verified live: seat types and positions, type price ranges, travelers by index, totals. Independent QA (alaska-qa, five runs, final source) on live alaskaair.com while signed in: SEA-SFO and SEA-LAX Saver and Main round trips through to Review & pay, with exact restores. Nothing was purchased and no traveler or card data was typed.",
+      "provenance": {
+        "qa_agent": "herdr:alaska-qa:01a10c4e-c21a-77bf-a02c-f83229d7c102"
+      }
+    },
+    {
+      "domain": "alaskaair.com",
+      "tool": "login",
+      "file": "domains/alaskaair.com/login.js",
+      "kind": "cdp",
+      "namespace": "alaskaair.com",
+      "url_patterns": [
+        "https://alaskaair.com/*",
+        "https://*.alaskaair.com/*"
+      ],
+      "status": "qa_passed",
+      "last_verified": "2026-10-05",
+      "notes": "Sign-in through the alaskaair.com 'Sign in' link (auth0.alaskaair.com), with at most one submission per call. Kind cdp: the sign-in navigates to auth0 and back, and the result (signed in, code step, CAPTCHA, error) is read on the destination page. Live: one credentials submission was met by a reCAPTCHA, reported as challenge; a human solved it and the session signed in. already_signed_in and the no-header page (it goes home first) were verified by QA. Not verified live: successful credentials submission without a CAPTCHA, OTP, lockout. Alaska does not show the user ID, so an existing session cannot be matched to an identifier. Independent QA (alaska-qa, five runs, final source) on live alaskaair.com while signed in: SEA-SFO and SEA-LAX Saver and Main round trips through to Review & pay, with exact restores. Nothing was purchased and no traveler or card data was typed.",
+      "provenance": {
+        "qa_agent": "herdr:alaska-qa:01a10c4e-c21a-77bf-a02c-f83229d7c102"
+      }
+    },
+    {
+      "domain": "alaskaair.com",
+      "tool": "respond_fare_offer",
+      "file": "domains/alaskaair.com/respond_fare_offer.js",
+      "kind": "page",
+      "namespace": "alaskaair.com",
+      "url_patterns": [
+        "https://alaskaair.com/*",
+        "https://*.alaskaair.com/*"
+      ],
+      "status": "qa_passed",
+      "last_verified": "2026-10-05",
+      "notes": "Verified live: continue_saver (requires accept_saver_restrictions), decline_refundable, and price guards for upgrade_to_main and make_refundable. Not verified: the successful click for upgrade_to_main or make_refundable. Independent QA (alaska-qa, five runs, final source) on live alaskaair.com while signed in: SEA-SFO and SEA-LAX Saver and Main round trips through to Review & pay, with exact restores. Nothing was purchased and no traveler or card data was typed.",
+      "provenance": {
+        "qa_agent": "herdr:alaska-qa:01a10c4e-c21a-77bf-a02c-f83229d7c102"
       }
     },
     {
@@ -51,6 +459,74 @@
       "notes": "Independent QA checked 60 flight options across six populated searches, plus no-results, invalid-input and offline cases. Domain-namespace migration verified live from /content/travel-info: SEA-SFO round trip returned 10 of 45 options. Adults only; outbound first page; displayed fares per adult, including round-trip starting fares rather than selected return flights. See domain README for limitations.",
       "provenance": {
         "qa_agent": "agt_9e874c140265bd2a438f"
+      }
+    },
+    {
+      "domain": "alaskaair.com",
+      "tool": "select_fare",
+      "file": "domains/alaskaair.com/select_fare.js",
+      "kind": "page",
+      "namespace": "alaskaair.com",
+      "url_patterns": [
+        "https://alaskaair.com/*",
+        "https://*.alaskaair.com/*"
+      ],
+      "status": "qa_passed",
+      "last_verified": "2026-10-05",
+      "notes": "Verified live: price_changed, not_found, Saver restrictions with the rule list, refundable upsell, return list, trip summary, and other_dialog_open (Alaska moving Saver flights to Main). Refuses while any dialog is open. Independent QA (alaska-qa, five runs, final source) on live alaskaair.com while signed in: SEA-SFO and SEA-LAX Saver and Main round trips through to Review & pay, with exact restores. Nothing was purchased and no traveler or card data was typed.",
+      "provenance": {
+        "qa_agent": "herdr:alaska-qa:01a10c4e-c21a-77bf-a02c-f83229d7c102"
+      }
+    },
+    {
+      "domain": "alaskaair.com",
+      "tool": "select_payment_method",
+      "file": "domains/alaskaair.com/select_payment_method.js",
+      "kind": "page",
+      "namespace": "alaskaair.com",
+      "url_patterns": [
+        "https://alaskaair.com/*",
+        "https://*.alaskaair.com/*"
+      ],
+      "status": "qa_passed",
+      "last_verified": "2026-10-05",
+      "notes": "Verified live: credit_debit_card opens an empty card form (nothing typed), none returns to the method list, saved_card_not_found, total_mismatch. Saved-card selection is not verified live (the account has none); Apple Pay and commercial account cannot be selected. Independent QA (alaska-qa, five runs, final source) on live alaskaair.com while signed in: SEA-SFO and SEA-LAX Saver and Main round trips through to Review & pay, with exact restores. Nothing was purchased and no traveler or card data was typed.",
+      "provenance": {
+        "qa_agent": "herdr:alaska-qa:01a10c4e-c21a-77bf-a02c-f83229d7c102"
+      }
+    },
+    {
+      "domain": "alaskaair.com",
+      "tool": "select_seat",
+      "file": "domains/alaskaair.com/select_seat.js",
+      "kind": "page",
+      "namespace": "alaskaair.com",
+      "url_patterns": [
+        "https://alaskaair.com/*",
+        "https://*.alaskaair.com/*"
+      ],
+      "status": "qa_passed",
+      "last_verified": "2026-10-05",
+      "notes": "Verified live: price_too_high (auto-released), paid and free seats selected and released with exact total restore, Saver standard seat returns not_included_in_fare, unavailable seats, nothing_to_release. Independent QA (alaska-qa, five runs, final source) on live alaskaair.com while signed in: SEA-SFO and SEA-LAX Saver and Main round trips through to Review & pay, with exact restores. Nothing was purchased and no traveler or card data was typed.",
+      "provenance": {
+        "qa_agent": "herdr:alaska-qa:01a10c4e-c21a-77bf-a02c-f83229d7c102"
+      }
+    },
+    {
+      "domain": "alaskaair.com",
+      "tool": "set_trip_protection",
+      "file": "domains/alaskaair.com/set_trip_protection.js",
+      "kind": "page",
+      "namespace": "alaskaair.com",
+      "url_patterns": [
+        "https://alaskaair.com/*",
+        "https://*.alaskaair.com/*"
+      ],
+      "status": "qa_passed",
+      "last_verified": "2026-10-05",
+      "notes": "Verified live: accept (+premium) and decline with exact total restore, premium_changed, already_set. Alaska's initial 'unanswered' cannot be restored, so carts were left on decline. Independent QA (alaska-qa, five runs, final source) on live alaskaair.com while signed in: SEA-SFO and SEA-LAX Saver and Main round trips through to Review & pay, with exact restores. Nothing was purchased and no traveler or card data was typed.",
+      "provenance": {
+        "qa_agent": "herdr:alaska-qa:01a10c4e-c21a-77bf-a02c-f83229d7c102"
       }
     },
     {
@@ -1908,6 +2384,108 @@
     },
     {
       "domain": "southwest.com",
+      "tool": "continue_checkout",
+      "file": "domains/southwest.com/continue_checkout.js",
+      "kind": "page",
+      "namespace": "southwest.com",
+      "url_patterns": [
+        "https://southwest.com/*",
+        "https://*.southwest.com/*"
+      ],
+      "status": "qa_passed",
+      "last_verified": "2026-10-05",
+      "notes": "Live: both results legs, price (missing/stale total refused), passenger (missing contact field refused), seats Next Flight and Continue to payment, payment page refused; repeat press from the old page refused. Independent final-source QA (southwest-qa) live on a signed-in DAL-HOU round trip through the payment page; nothing purchased, no card data typed. Not tested: paid seats, multiple passengers, one-way trips, signed-out flows, promo overlay dismissal.",
+      "provenance": {
+        "qa_agent": "herdr:southwest-qa:01a10c2e-4e9f-7357-9f67-b683b994a2bc"
+      }
+    },
+    {
+      "domain": "southwest.com",
+      "tool": "get_page_context",
+      "file": "domains/southwest.com/get_page_context.js",
+      "kind": "page",
+      "namespace": "southwest.com",
+      "url_patterns": [
+        "https://southwest.com/*",
+        "https://*.southwest.com/*"
+      ],
+      "status": "qa_passed",
+      "last_verified": "2026-10-05",
+      "notes": "Live: correct page_type/step on home, both results legs, price, passenger, seats and payment; reports navigating after continue_checkout until the new document loads. Independent final-source QA (southwest-qa) live on a signed-in DAL-HOU round trip through the payment page; nothing purchased, no card data typed. Not tested: paid seats, multiple passengers, one-way trips, signed-out flows, promo overlay dismissal.",
+      "provenance": {
+        "qa_agent": "herdr:southwest-qa:01a10c2e-4e9f-7357-9f67-b683b994a2bc"
+      }
+    },
+    {
+      "domain": "southwest.com",
+      "tool": "get_trip_summary",
+      "file": "domains/southwest.com/get_trip_summary.js",
+      "kind": "page",
+      "namespace": "southwest.com",
+      "url_patterns": [
+        "https://southwest.com/*",
+        "https://*.southwest.com/*"
+      ],
+      "status": "qa_passed",
+      "last_verified": "2026-10-05",
+      "notes": "Live: flights, fares, taxes and total on price and payment pages; held/skipped seats on payment. Seats page shows only seat charges and total (documented). Independent final-source QA (southwest-qa) live on a signed-in DAL-HOU round trip through the payment page; nothing purchased, no card data typed. Not tested: paid seats, multiple passengers, one-way trips, signed-out flows, promo overlay dismissal.",
+      "provenance": {
+        "qa_agent": "herdr:southwest-qa:01a10c2e-4e9f-7357-9f67-b683b994a2bc"
+      }
+    },
+    {
+      "domain": "southwest.com",
+      "tool": "list_flight_results",
+      "file": "domains/southwest.com/list_flight_results.js",
+      "kind": "page",
+      "namespace": "southwest.com",
+      "url_patterns": [
+        "https://southwest.com/*",
+        "https://*.southwest.com/*"
+      ],
+      "status": "qa_passed",
+      "last_verified": "2026-10-05",
+      "notes": "Live: both legs with four fares per row, sale and regular prices, selected fare. Independent final-source QA (southwest-qa) live on a signed-in DAL-HOU round trip through the payment page; nothing purchased, no card data typed. Not tested: paid seats, multiple passengers, one-way trips, signed-out flows, promo overlay dismissal.",
+      "provenance": {
+        "qa_agent": "herdr:southwest-qa:01a10c2e-4e9f-7357-9f67-b683b994a2bc"
+      }
+    },
+    {
+      "domain": "southwest.com",
+      "tool": "list_payment_methods",
+      "file": "domains/southwest.com/list_payment_methods.js",
+      "kind": "page",
+      "namespace": "southwest.com",
+      "url_patterns": [
+        "https://southwest.com/*",
+        "https://*.southwest.com/*"
+      ],
+      "status": "qa_passed",
+      "last_verified": "2026-10-05",
+      "notes": "Live: Flex Pay, PayPal, Credit/Debit, apply-funds options, opt-in states. No saved cards were offered on this account, so saved-card listing is unverified. Independent final-source QA (southwest-qa) live on a signed-in DAL-HOU round trip through the payment page; nothing purchased, no card data typed. Not tested: paid seats, multiple passengers, one-way trips, signed-out flows, promo overlay dismissal.",
+      "provenance": {
+        "qa_agent": "herdr:southwest-qa:01a10c2e-4e9f-7357-9f67-b683b994a2bc"
+      }
+    },
+    {
+      "domain": "southwest.com",
+      "tool": "list_seat_map",
+      "file": "domains/southwest.com/list_seat_map.js",
+      "kind": "page",
+      "namespace": "southwest.com",
+      "url_patterns": [
+        "https://southwest.com/*",
+        "https://*.southwest.com/*"
+      ],
+      "status": "qa_passed",
+      "last_verified": "2026-10-05",
+      "notes": "Live: both flights, prices, seat types, held seats; unavailable seats with only_available:false. Independent final-source QA (southwest-qa) live on a signed-in DAL-HOU round trip through the payment page; nothing purchased, no card data typed. Not tested: paid seats, multiple passengers, one-way trips, signed-out flows, promo overlay dismissal.",
+      "provenance": {
+        "qa_agent": "herdr:southwest-qa:01a10c2e-4e9f-7357-9f67-b683b994a2bc"
+      }
+    },
+    {
+      "domain": "southwest.com",
       "tool": "login",
       "file": "domains/southwest.com/login.js",
       "kind": "cdp",
@@ -1933,11 +2511,62 @@
         "https://southwest.com/*",
         "https://*.southwest.com/*"
       ],
-      "status": "verified",
-      "last_verified": "2026-09-24",
-      "notes": "First outbound results page only, including round trips; USD per adult per direction. Independent QA and live non-homepage invocation passed. Live zero-flight behavior remains unverified; synthetic empty/error/timeout tests passed. Long Browser REPL calls can time out before delivering results; see domain README.",
+      "status": "qa_passed",
+      "last_verified": "2026-10-05",
+      "notes": "First outbound results page only, including round trips; USD per adult per direction. Sale-fare fareName fix verified live (fareName Basic). Live zero-flight behavior remains unverified. Independent final-source QA (southwest-qa) live on a signed-in DAL-HOU round trip through the payment page; nothing purchased, no card data typed. Not tested: paid seats, multiple passengers, one-way trips, signed-out flows, promo overlay dismissal.",
       "provenance": {
-        "qa_agent": "agt_8afff9b68b132cd8ce86"
+        "qa_agent": "herdr:southwest-qa:01a10c2e-4e9f-7357-9f67-b683b994a2bc"
+      }
+    },
+    {
+      "domain": "southwest.com",
+      "tool": "select_fare",
+      "file": "domains/southwest.com/select_fare.js",
+      "kind": "cdp",
+      "namespace": "southwest.com",
+      "url_patterns": [
+        "https://southwest.com/*",
+        "https://*.southwest.com/*"
+      ],
+      "status": "qa_passed",
+      "last_verified": "2026-10-05",
+      "notes": "CDP: Southwest ignores scripted clicks on the row fare buttons (verified live), so the tool brings the tab to front and uses trusted input; no navigation. Live: Basic refusal, row/price guards, select, change, clear, first press on a freshly loaded return page. Independent final-source QA (southwest-qa) live on a signed-in DAL-HOU round trip through the payment page; nothing purchased, no card data typed. Not tested: paid seats, multiple passengers, one-way trips, signed-out flows, promo overlay dismissal.",
+      "provenance": {
+        "qa_agent": "herdr:southwest-qa:01a10c2e-4e9f-7357-9f67-b683b994a2bc"
+      }
+    },
+    {
+      "domain": "southwest.com",
+      "tool": "select_payment_method",
+      "file": "domains/southwest.com/select_payment_method.js",
+      "kind": "page",
+      "namespace": "southwest.com",
+      "url_patterns": [
+        "https://southwest.com/*",
+        "https://*.southwest.com/*"
+      ],
+      "status": "qa_passed",
+      "last_verified": "2026-10-05",
+      "notes": "Live: stale total refused, Flex Pay rejected, PayPal then Credit/Debit restored with unchanged total; save-card and marketing opt-ins left unchecked. Independent final-source QA (southwest-qa) live on a signed-in DAL-HOU round trip through the payment page; nothing purchased, no card data typed. Not tested: paid seats, multiple passengers, one-way trips, signed-out flows, promo overlay dismissal.",
+      "provenance": {
+        "qa_agent": "herdr:southwest-qa:01a10c2e-4e9f-7357-9f67-b683b994a2bc"
+      }
+    },
+    {
+      "domain": "southwest.com",
+      "tool": "select_seat",
+      "file": "domains/southwest.com/select_seat.js",
+      "kind": "page",
+      "namespace": "southwest.com",
+      "url_patterns": [
+        "https://southwest.com/*",
+        "https://*.southwest.com/*"
+      ],
+      "status": "qa_passed",
+      "last_verified": "2026-10-05",
+      "notes": "Live: price/missing-price/unavailable refusals, $0 seat select, idempotent repeat, remove with exact restore of seat and totals, reselect. Independent final-source QA (southwest-qa) live on a signed-in DAL-HOU round trip through the payment page; nothing purchased, no card data typed. Not tested: paid seats, multiple passengers, one-way trips, signed-out flows, promo overlay dismissal.",
+      "provenance": {
+        "qa_agent": "herdr:southwest-qa:01a10c2e-4e9f-7357-9f67-b683b994a2bc"
       }
     },
     {

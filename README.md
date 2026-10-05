@@ -117,10 +117,12 @@ xwebmcp invoke <tool_ref> \
   --input '{"origin":"DAL","destination":"HOU","departureDate":"2026-10-20","tripType":"oneway"}'
 ```
 
-The extension asks for no site access up front. After `attach`, open its popup and click
-**Grant access** once so the installed tools' sites can be reached; the popup also lists
-the tools on the current tab and whether each installed tool is registered there. The
-same popup can grant a site so that its own WebMCP tools are discovered.
+The extension asks for no site access up front. Open its popup and click **Grant access
+to all sites** to approve HTTP/HTTPS access once, including sites installed later. This
+lets the extension discover tools across those sites; Chrome still requires your consent.
+Alternatively, after `attach`, click **Grant access** for only the installed tools' sites,
+or grant the current site individually. The popup also lists the tools on the current
+tab and whether each installed tool is registered there.
 
 How invocation works and what to expect:
 
