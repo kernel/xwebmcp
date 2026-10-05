@@ -656,10 +656,13 @@
       "url_patterns": [
         "https://www.google.com/travel/flights/booking*"
       ],
-      "status": "draft",
-      "last_verified": null,
-      "notes": "Presses Continue for one seller's fare on Google Flights' booking page (trusted click; Google ignores synthetic clicks) and reports the seller tab it opens. Draft.",
-      "url_patterns_reason": "Narrowed to Google Flights' booking page (www.google.com/travel/flights/booking*), the only page with per-fare Continue buttons; google.com also serves unrelated products."
+      "status": "qa_passed",
+      "last_verified": "2026-10-05",
+      "notes": "Presses Continue for one seller's option on Google Flights' booking page (trusted click; Google ignores synthetic clicks) and reports the seller tab it opens. Independent QA on the final source: 19 handoffs opened the right seller with the chosen flights (fare-card airlines, airlines without fare cards, visible and collapsed travel agencies, several in a row from one page); separate-ticket options return each ticket's seller and every ticket opened its own tab, including with the separate-tickets dialog left open; wrong seller, fare_name and expected_price were refused without pressing anything. Unverified: an option that is both collapsed and covered by an open separate-tickets dialog; a seller tab stuck on google.com/travel/clk. Seller sites were checked by URL and title only.",
+      "url_patterns_reason": "Narrowed to Google Flights' booking page (www.google.com/travel/flights/booking*), the only page with per-fare Continue buttons; google.com also serves unrelated products.",
+      "provenance": {
+        "qa_agent": "agt_5ed4247d719c8b4700f1"
+      }
     },
     {
       "domain": "google.com",
@@ -670,10 +673,13 @@
       "url_patterns": [
         "https://www.google.com/travel/flights/booking*"
       ],
-      "status": "draft",
-      "last_verified": null,
-      "notes": "Reads Google Flights' booking options: each seller's fares with price, carry-on and checked-bag allowance, and features. Draft.",
-      "url_patterns_reason": "Narrowed to Google Flights' booking page (www.google.com/travel/flights/booking*), the only page that lists booking options; google.com also serves unrelated products."
+      "status": "qa_passed",
+      "last_verified": "2026-10-05",
+      "notes": "Reads Google Flights' booking options: every seller (airline or travel agency), including options collapsed behind 'N more booking options', with price, fare name where the seller lists fares, carry-on and checked-bag allowance (paid carry-ons are not included), features, separate-ticket flags, and itinerary-level bag_info. Independent QA: 133 of 133 options matched the page's Continue buttons in one pass and 94 of 94 in another, across fare-card airlines, airlines without fare cards, travel agencies, collapsed options, separate tickets (airline + airline and airline + agency) and an open separate-tickets dialog; bag_info matched the itinerary bag text on 14 pages including single-option pages. Known limitation: bag_info does not say which leg a line belongs to. Unverified: the not_ready path and non-English pages.",
+      "url_patterns_reason": "Narrowed to Google Flights' booking page (www.google.com/travel/flights/booking*), the only page that lists booking options; google.com also serves unrelated products.",
+      "provenance": {
+        "qa_agent": "agt_88e7fb0ff0ef77125202"
+      }
     },
     {
       "domain": "google.com",
@@ -684,10 +690,13 @@
       "url_patterns": [
         "https://www.google.com/travel/*"
       ],
-      "status": "draft",
-      "last_verified": null,
-      "notes": "Page type (home, departing/returning results, booking options), live tools, unsettled reasons, chosen flights, suggestions. Draft.",
-      "url_patterns_reason": "Narrowed to Google Travel (www.google.com/travel/*): google.com also serves Search, Gmail, Maps and other unrelated products where this tool must not be listed."
+      "status": "qa_passed",
+      "last_verified": "2026-10-05",
+      "notes": "Page type (home, departing/returning results, booking options), live tools, unsettled reasons, chosen flights, suggestions. Independent QA: page type, tools and suggestions correct on all standard pages. Known limitation: on returning results chosen_flights carries only Google's breadcrumb, and /travel/flights?q= results are reported as flights_home.",
+      "url_patterns_reason": "Narrowed to Google Travel (www.google.com/travel/*): google.com also serves Search, Gmail, Maps and other unrelated products where this tool must not be listed.",
+      "provenance": {
+        "qa_agent": "agt_2bf0d474ebdb5936b2bc"
+      }
     },
     {
       "domain": "google.com",
@@ -698,10 +707,13 @@
       "url_patterns": [
         "https://www.google.com/travel/flights/search*"
       ],
-      "status": "draft",
-      "last_verified": null,
-      "notes": "Reads the departing or returning flights on the current results page with bags included, sortable and filterable. Draft.",
-      "url_patterns_reason": "Narrowed to Google Flights results (www.google.com/travel/flights/search*), the only page with flight rows; google.com also serves unrelated products."
+      "status": "qa_passed",
+      "last_verified": "2026-10-05",
+      "notes": "Reads the departing or returning flights on the current results page with bags included, sortable and filterable. Independent QA on 12 one-way and round-trip flows: 35 of 36 lists matched every row's label across every sort_by, airline and max_stops filter on both legs, including one-way prices. Unverified: rows still rendering right after select_flight can be missed (one occurrence; calling again returned all rows); results under /travel/flights?q= are not matched.",
+      "url_patterns_reason": "Narrowed to Google Flights results (www.google.com/travel/flights/search*), the only page with flight rows; google.com also serves unrelated products.",
+      "provenance": {
+        "qa_agent": "agt_2bf0d474ebdb5936b2bc"
+      }
     },
     {
       "domain": "google.com",
@@ -715,10 +727,10 @@
       ],
       "url_patterns_reason": "Narrowed to /travel/* on google.com and its subdomains: google.com also serves Search, Gmail, Maps, Docs and other unrelated products, where a flight search tool must not be listed. /travel/* covers Google Flights and the other Google Travel pages.",
       "status": "qa_passed",
-      "last_verified": "2026-09-25",
-      "notes": "Google Flights via a tfs deep link (hl=en, gl=US, curr); returns outbound itineraries from the best and other sections with flight numbers, segments, layovers and total prices for the requested passengers. Three independent QA rounds passed the full matrix plus date-line, airport-change, non-USD and unsupported-currency probes; a first-round intermittent loss of expanded detail panels was fixed and did not recur in 10 runs. url_patterns are deliberately narrowed to /travel/* (see the domain README). Consent interstitial, /sorry blocks and 'Price unavailable' cards are covered by local tests only.",
+      "last_verified": "2026-10-05",
+      "notes": "Google Flights via a tfs deep link (hl=en, gl=US, curr); returns outbound itineraries from the best and other sections with flight numbers, segments, layovers and total prices for the requested passengers. Independent QA on the final source: 963 of 963 checked fields matched the page across domestic, international, round-trip, multi-passenger, business and EUR searches, including SIN-LAX connections that leave after midnight but land on the departure date; an earlier pass on the same parsing checked 869 flights with no mismatch. UNKNOWN_AIRPORT, past-the-booking-window no_results (with Google's reason) and invalid inputs return explicitly. p50 latency about 5-8 s. Known limitation: in 2 of about 100 cold QA searches Google added itineraries a few seconds after announcing its results, after the tool had read the page. Consent interstitial, /sorry blocks and 'Price unavailable' cards are covered by local tests only. url_patterns are deliberately narrowed to /travel/* (see the domain README).",
       "provenance": {
-        "qa_agent": "agt_7ffe2dcdda2935caea70"
+        "qa_agent": "agt_5ed4247d719c8b4700f1"
       }
     },
     {
@@ -730,10 +742,13 @@
       "url_patterns": [
         "https://www.google.com/travel/flights/search*"
       ],
-      "status": "draft",
-      "last_verified": null,
-      "notes": "Chooses a departing or returning flight by result_index and reports the next step (returning flights or booking options). Draft.",
-      "url_patterns_reason": "Narrowed to Google Flights results (www.google.com/travel/flights/search*), the only page with selectable flight rows; google.com also serves unrelated products."
+      "status": "qa_passed",
+      "last_verified": "2026-10-05",
+      "notes": "Chooses a departing or returning flight by result_index and reports the next step (returning flights or booking options). Independent QA on 12 flows: 19 of 19 selections correct with the right next_page; 22 of 22 guard cases refused without clicking, including airport and city words as expected_airline, invalid 24-hour times and invalid indexes. Unverified: multi-city results.",
+      "url_patterns_reason": "Narrowed to Google Flights results (www.google.com/travel/flights/search*), the only page with selectable flight rows; google.com also serves unrelated products.",
+      "provenance": {
+        "qa_agent": "agt_2bf0d474ebdb5936b2bc"
+      }
     },
     {
       "domain": "instacart.com",

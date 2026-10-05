@@ -110,7 +110,8 @@
       const times = /Leaves (.+?) at (\d{1,2}:\d{2}\s*[AP]M) on ([A-Za-z]+, [A-Za-z]+ \d{1,2}) and arrives at (.+?) at (\d{1,2}:\d{2}\s*[AP]M) on ([A-Za-z]+, [A-Za-z]+ \d{1,2})/.exec(aria);
       if (!times) { skipped++; return; }
       const stopsMatch = /(Nonstop|(\d+) stops?) flight with ([^.]+)\./.exec(aria);
-      const priceMatch = /From ([\d,]+(?:\.\d{2})?) ([A-Za-z ]+?) (round trip total|one way)?\./.exec(aria);
+      // One-way labels end at the currency ("From 204 US dollars."); round trips add " round trip total".
+      const priceMatch = /From ([\d,]+(?:\.\d{2})?) ([^.\d]+?)(?: (round trip total|one way))?\./.exec(aria);
       const duration = /Total duration (?:(\d+) hr)?\s*(?:(\d+) min)?/.exec(aria);
       const bags = /(\d+) carry-on bags? included\. (\d+) checked bags? included/.exec(aria) || /(\d+) carry-on bags? included\. (\d+) checked bags? included/.exec([...li.querySelectorAll("[aria-label*='carry-on']")].map((b) => b.getAttribute("aria-label")).join(" "));
       // Rows print the route as "ORD–CVG" (en dash); some also print "(CVG)" after names.
@@ -129,7 +130,7 @@
         duration_minutes: duration && (duration[1] || duration[2]) ? Number(duration[1] || 0) * 60 + Number(duration[2] || 0) : null,
         stops: stopsMatch ? (stopsMatch[1] === "Nonstop" ? 0 : Number(stopsMatch[2])) : layovers.length,
         layovers,
-        price: priceMatch ? { amount: Number(priceMatch[1].replace(/,/g, "")), currency_label: priceMatch[2].trim(), scope: priceMatch[3] === "round trip total" ? "round_trip_total" : priceMatch[3] === "one way" ? "one_way" : "unknown" } : null,
+        price: priceMatch ? { amount: Number(priceMatch[1].replace(/,/g, "")), currency_label: priceMatch[2].trim(), scope: priceMatch[3] === "round trip total" ? "round_trip_total" : priceMatch[3] === "one way" || (!priceMatch[3] && routeCodes.length === 2) ? "one_way" : "unknown" } : null,
         carry_on_bags: bags ? Number(bags[1]) : null,
         checked_bags: bags ? Number(bags[2]) : null,
         section: sectionFor(li)
@@ -145,7 +146,8 @@
     const out = flights
       .filter((f) => !airline || f.airlines.some((a) => a.toLowerCase().includes(airline)))
       .filter((f) => input?.max_stops === undefined || f.stops <= input.max_stops)
-      .sort((a, b) => key(a) - key(b) || tie(a) - tie(b) || a.result_index - b.result_index)
+      // Rows without a value (e.g. "Price unavailable") sort last; Infinity - Infinity would be NaN.
+      .sort((a, b) => (key(a) === key(b) ? 0 : key(a) - key(b)) || tie(a) - tie(b) || a.result_index - b.result_index)
       .slice(0, input?.limit ?? 40);
     return { status: "ok", leg, total_rows: total, skipped_rows: skipped, flights: out, url };
   }

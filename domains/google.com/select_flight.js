@@ -38,19 +38,23 @@
     const visible = (e) => !!e && e.getClientRects().length > 0;
     const text = (e) => (e?.innerText || e?.textContent || "").replace(/\s+/g, " ").trim();
     const rows = [...document.querySelectorAll("li")].filter((li) => visible(li) && li.querySelector('[role="link"][aria-label*="flight with"], [role="link"][aria-label*="Nonstop"], [role="link"][aria-label*="stop flight"]'));
-    const row = rows[input?.result_index];
+    if (!Number.isInteger(input?.result_index) || input.result_index < 0) return { status: "error", error_message: "result_index must be a non-negative integer from list_flights." };
+    const row = rows[input.result_index];
     if (!row) return { status: "row_changed", error_message: "No result row " + input?.result_index + " on this page (" + rows.length + " rows). Call list_flights again." };
     const link = row.querySelector('[role="link"][aria-label]');
     const aria = link.getAttribute("aria-label").replace(/\s+/g, " ");
     const norm = (s) => s.replace(/\s+/g, "").toUpperCase();
     if (input.expected_departure_time && /^\d{2}:\d{2}$/.test(input.expected_departure_time)) {
       const [h, m] = input.expected_departure_time.split(":").map(Number);
+      if (h > 23 || m > 59) return { status: "error", error_message: "expected_departure_time " + input.expected_departure_time + " is not a valid 24-hour time." };
       input = { ...input, expected_departure_time: ((h % 12) || 12) + ":" + String(m).padStart(2, "0") + " " + (h < 12 ? "AM" : "PM") };
     }
     if (input.expected_departure_time && !norm(aria).includes("AT" + norm(input.expected_departure_time) + "ON")) {
       return { status: "row_changed", error_message: "Row " + input.result_index + " no longer departs at " + input.expected_departure_time + ". Call list_flights again." };
     }
-    if (input.expected_airline && !aria.toLowerCase().includes(input.expected_airline.toLowerCase())) {
+    // Only the carriers count; airport and city names in the label must not satisfy the check.
+    const carriers = [/(?:Nonstop|\d+ stops?) flight with ([^.]+)\./.exec(aria)?.[1], /Operated by ([^.]+)\./.exec(aria)?.[1]].filter(Boolean).join(" | ").toLowerCase();
+    if (input.expected_airline && !carriers.includes(input.expected_airline.toLowerCase())) {
       return { status: "row_changed", error_message: "Row " + input.result_index + " is not " + input.expected_airline + ". Call list_flights again." };
     }
     const before = location.href;
