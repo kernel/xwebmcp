@@ -530,6 +530,329 @@
       }
     },
     {
+      "domain": "amctheatres.com",
+      "tool": "add_tickets_to_cart",
+      "file": "domains/amctheatres.com/add_tickets_to_cart.js",
+      "kind": "cdp",
+      "namespace": "amctheatres.com",
+      "url_patterns": [
+        "https://www.amctheatres.com/*"
+      ],
+      "url_patterns_reason": "Narrowed to www.amctheatres.com: it serves the movie, theatre, showtime, account and ticket pages; other amctheatres.com hosts are investor relations (investor.), the site API that pages call (graph.) and analytics (gtm.).",
+      "status": "qa_passed",
+      "last_verified": "2026-10-05",
+      "notes": "Creates an AMC cart (order) for one showtime through AMC's own seat and ticket pages: picks the seats, sets ticket types, re-checks seats, counts and the required expected_subtotal from preview_tickets immediately before Continue, presses Continue once and returns the cart AMC opens, which holds the seats for about 7 minutes. A cart listing other seats than requested is returned as cart_mismatch, to be released with cancel_cart. Refuses taken, wheelchair and companion seats (unless asked), unknown ticket types, preselected tickets, general admission, and a tab showing a cart or its edit page; it cannot see carts in other tabs. Never adds food, applies rewards, opens checkout or pays; the order token is not returned. cdp because the flow crosses three pages and the result is read on the last. AMC's security service (Cloudflare) rate-limits the ticket flow: after about five carts in a few minutes the order request fails with AMC's \"Failed to fetch\" dialog and the seat page shows a Cloudflare check, for an hour or more and across browser sessions on the same account; the tool returns rate_limited or challenge (site_error while the seat page still loads) after one press, with no retry. Independent QA on 2026-10-01 (live and source review) confirmed the cart, refusal, rate-limit (HTTP 429 with cf-mitigated: challenge) and cancel paths on earlier source. Builder live runs on 2026-10-02: a wrong expected_subtotal returned price_changed with no cart; the matching one created a $59.96 cart with a 413 s hold, which get_cart read and cancel_cart released. expected_subtotal then became required and the cart_mismatch check was added (fixture-tested only). Starting from AMC's 404 page in place of an expired cart is not cart_in_progress (fixture-tested). Independent live QA on 2026-10-05 of this source: refused without expected_subtotal; with preview_tickets' subtotal it created one cart (seats as requested, 413 s hold) and refused a second with cart_in_progress; the cart was released. Not re-observed in that run: the rate_limited path (observed live on 2026-10-01).",
+      "provenance": {
+        "qa_agent": "agt_67ae0a66868cd10478a0"
+      }
+    },
+    {
+      "domain": "amctheatres.com",
+      "tool": "cancel_cart",
+      "file": "domains/amctheatres.com/cancel_cart.js",
+      "kind": "cdp",
+      "namespace": "amctheatres.com",
+      "url_patterns": [
+        "https://www.amctheatres.com/*"
+      ],
+      "url_patterns_reason": "Narrowed to www.amctheatres.com: it serves the movie, theatre, showtime, account and ticket pages; other amctheatres.com hosts are investor relations (investor.), the site API that pages call (graph.) and analytics (gtm.).",
+      "status": "qa_passed",
+      "last_verified": "2026-10-05",
+      "notes": "Releases the AMC cart open in the tab by pressing its close button and Yes on AMC's cancel prompt, once each; confirmed when AMC leaves the cart page, and outcome_unknown if the close button leaves without the prompt. cdp because AMC navigates away after the cancel and that departure is the confirmation. Live on 2026-10-01: released seats showed as open again within 11 s. Independent QA (live and source review) passed on 2026-10-01. Back to draft after a source change on 2026-10-05: on the cart's Edit Tickets page (an order-token in the address) it returns wrong_page, saying to go back to the cart and pressing nothing, instead of no_cart; fixture-tested. A cart page whose address carries an order-token is still treated as the cart. Independent live QA on 2026-10-05 of this source: no_cart with no cart, pressing nothing; on the cart it returned canceled and both seats showed open again.",
+      "provenance": {
+        "qa_agent": "agt_67ae0a66868cd10478a0"
+      }
+    },
+    {
+      "domain": "amctheatres.com",
+      "tool": "get_cart",
+      "file": "domains/amctheatres.com/get_cart.js",
+      "kind": "page",
+      "namespace": "amctheatres.com",
+      "url_patterns": [
+        "https://www.amctheatres.com/*"
+      ],
+      "url_patterns_reason": "Narrowed to www.amctheatres.com: it serves the movie, theatre, showtime, account and ticket pages; other amctheatres.com hosts are investor relations (investor.), the site API that pages call (graph.) and analytics (gtm.).",
+      "status": "qa_passed",
+      "last_verified": "2026-10-05",
+      "notes": "Reads the AMC cart open in the tab before payment (the food-and-drink or purchase step): lines, seats, total, checkout step and seconds left on the hold. Presses nothing; other order pages, including a paid order's confirmation page, are refused as no_cart without being read. Independent QA (live and source review) passed on 2026-10-01: a live cart read matched add_tickets_to_cart exactly, and the home page, a seat page and a cancelled order's 404 page returned no_cart; the purchase and confirmation steps are fixture-tested only. Back to draft after a source change on 2026-10-05: on the cart's Edit Tickets page (an order-token in the address) it returns wrong_page, saying to go back to the cart, instead of no_cart; fixture-tested. A cart page whose address carries an order-token is still read as the cart. Independent live QA on 2026-10-05 of this source: no_cart with no cart; on the cart, lines, seats and total matched add_tickets_to_cart with no order id or token.",
+      "provenance": {
+        "qa_agent": "agt_67ae0a66868cd10478a0"
+      }
+    },
+    {
+      "domain": "amctheatres.com",
+      "tool": "get_favorite_theatres",
+      "file": "domains/amctheatres.com/get_favorite_theatres.js",
+      "kind": "page",
+      "namespace": "amctheatres.com",
+      "url_patterns": [
+        "https://www.amctheatres.com/*"
+      ],
+      "url_patterns_reason": "Narrowed to www.amctheatres.com: it serves the movie, theatre, showtime, account and ticket pages; other amctheatres.com hosts are investor relations (investor.), the site API that pages call (graph.) and analytics (gtm.).",
+      "status": "qa_passed",
+      "last_verified": "2026-10-05",
+      "notes": "Reads only the Favorite Theatres list on the signed-in member's open profile page (/my-amc/profile), names in preference order; the page shows no slugs. Live on 2026-10-01. Independent QA (live and source review) passed on 2026-10-01. Back to draft after a source change on 2026-10-02: wrong_page on another AMC page now names the navigate_to_page call that opens the page this tool needs; nothing else changed (fixture-tested). Signed-in run 2026-10-02: the wrong_page message was followed as written and the tool then succeeded. Independent live QA on 2026-10-05: profile list read without name or email; wrong_page with its navigate_to_page call; invalid input refused.",
+      "provenance": {
+        "qa_agent": "agt_65a16f888e1748c002ee"
+      }
+    },
+    {
+      "domain": "amctheatres.com",
+      "tool": "get_movie",
+      "file": "domains/amctheatres.com/get_movie.js",
+      "kind": "page",
+      "namespace": "amctheatres.com",
+      "url_patterns": [
+        "https://www.amctheatres.com/*"
+      ],
+      "url_patterns_reason": "Narrowed to www.amctheatres.com: it serves the movie, theatre, showtime, account and ticket pages; other amctheatres.com hosts are investor relations (investor.), the site API that pages call (graph.) and analytics (gtm.).",
+      "status": "qa_passed",
+      "last_verified": "2026-10-05",
+      "notes": "One movie's catalogue record. Reads the open /movies/<slug> page without a request when its address, canonical link and Movie structured data all name the movie; otherwise one same-origin GET to /movies/<slug>. Never selects a theatre. Independent QA (live and source review) passed on 2026-10-01. Back to draft after a source change on 2026-10-02: movie may be omitted on a /movies/<slug> page, which reads that movie; elsewhere an omitted movie returns invalid_input with no request. Independent live QA on 2026-10-05: by slug, from the open movie page with no input, invalid_input elsewhere, and not_found for an unknown slug all passed.",
+      "provenance": {
+        "qa_agent": "agt_a5290ee98f0329fb43fa"
+      }
+    },
+    {
+      "domain": "amctheatres.com",
+      "tool": "get_page_context",
+      "file": "domains/amctheatres.com/get_page_context.js",
+      "kind": "page",
+      "namespace": "amctheatres.com",
+      "url_patterns": [
+        "https://www.amctheatres.com/*"
+      ],
+      "url_patterns_reason": "Narrowed to www.amctheatres.com: it serves the movie, theatre, showtime, account and ticket pages; other amctheatres.com hosts are investor relations (investor.), the site API that pages call (graph.) and analytics (gtm.).",
+      "status": "qa_passed",
+      "last_verified": "2026-10-05",
+      "notes": "Read-only summary of the open AMC page: page type from the address (home, movie lists, movie, search, Find a Theatre, market, theatre, theatre showtimes, seat and ticket pages, cart, other order pages, profile, rewards, not found), market/theatre/movie slugs, showtime id, date and q from the address, the header's current theatre, signed_in, an open cart's step and seconds left on its hold, AMC's Cloudflare check or rate-limit page (blocked), the page's live tool names, unsettled reasons (document loading, a navigate_to_page mark, unhydrated buttons, the page's main content missing, aria-busy) with optional wait_for_settled_seconds, alerts, and suggested next steps that put preview_tickets before add_tickets_to_cart and never suggest pressing Continue. An order's id and order-token are never returned. Builder live run 2026-10-02, signed out: home (reported still loading while AMC's document stayed in readyState loading), Find a Theatre, theatre showtimes, seat page, ticket page after preview_tickets (cart null) and a not-found movie; the page listed all 19 namespace tools, cdp tools included. The header names the current theatre on Find a Theatre results but not on showtimes or seat pages, where current_theatre is null. Challenge and rate-limit pages are fixture-tested only. Signed-in run 2026-10-02 on the test account, WebMCP tools only: reported signed_in true and the current theatre on Find a Theatre, profile, rewards and theatre pages (null on seat pages, whose header shows neither), and on a real cart its step and seconds left with the order id replaced by {order}. A fresh browser's first page twice stayed in readyState loading with an empty body; after a wait the tool now says to load the page again with navigate_to_page, which recovered it live. Source change on 2026-10-05: on a cart's Edit Tickets page it no longer suggests get_cart or cancel_cart, which work only on the cart page, or reloading with navigate_to_page. AMC's 404 page in place of a seat, ticket, showtimes or cart page counts as settled instead of content_loading (fixture-tested). Independent live QA on 2026-10-05: home, theatre, showtimes, profile, rewards, AMC's 404 pages (not_found, settled), an open cart (step and hold time, order id masked) and invalid input all matched the description. Not observed live: the navigating state right after navigate_to_page (the next page had already settled). Back to draft after a source change on 2026-10-05 from code review: AMC's 404 page at a cart's Edit Tickets address no longer reports an open cart, matching navigate_to_page, add_tickets_to_cart and preview_tickets (fixture-tested). Independent live QA of this source on 2026-10-05: home, theatre and /showtimes/1 (not_found, settled) passed. The changed case could not be produced live: an invalid order token on the Edit Tickets address showed AMC's Error 500 rather than its 404, and the tool, like navigate_to_page, add_tickets_to_cart and preview_tickets, still treats that page as an open cart; the 404 case is fixture-tested.",
+      "provenance": {
+        "qa_agent": "agt_35b0f8020858b64d04f1"
+      }
+    },
+    {
+      "domain": "amctheatres.com",
+      "tool": "get_rewards",
+      "file": "domains/amctheatres.com/get_rewards.js",
+      "kind": "page",
+      "namespace": "amctheatres.com",
+      "url_patterns": [
+        "https://www.amctheatres.com/*"
+      ],
+      "url_patterns_reason": "Narrowed to www.amctheatres.com: it serves the movie, theatre, showtime, account and ticket pages; other amctheatres.com hosts are investor relations (investor.), the site API that pages call (graph.) and analytics (gtm.).",
+      "status": "qa_passed",
+      "last_verified": "2026-10-05",
+      "notes": "Reads the signed-in member's open Points & Rewards page (/my-amc/rewards): points, reward dollars, next-reward progress, listed rewards, spending benefits and visits toward the year's goal; no name or card number. Live on 2026-10-01 on an account with no rewards, so populated reward entries are fixture-only. Independent QA (live and source review) passed on 2026-10-01. Back to draft after a source change on 2026-10-02: wrong_page on another AMC page now names the navigate_to_page call that opens the page this tool needs; nothing else changed (fixture-tested). Signed-in run 2026-10-02: the wrong_page message was followed as written and the tool then succeeded. Independent live QA on 2026-10-05: rewards page read without name or card number; wrong_page with its navigate_to_page call; invalid input refused.",
+      "provenance": {
+        "qa_agent": "agt_65a16f888e1748c002ee"
+      }
+    },
+    {
+      "domain": "amctheatres.com",
+      "tool": "get_seat_map",
+      "file": "domains/amctheatres.com/get_seat_map.js",
+      "kind": "page",
+      "namespace": "amctheatres.com",
+      "url_patterns": [
+        "https://www.amctheatres.com/*"
+      ],
+      "url_patterns_reason": "Narrowed to www.amctheatres.com: it serves the movie, theatre, showtime, account and ticket pages; other amctheatres.com hosts are investor relations (investor.), the site API that pages call (graph.) and analytics (gtm.).",
+      "status": "qa_passed",
+      "last_verified": "2026-10-05",
+      "notes": "Reads the open seat page (/showtimes/<id>/seats): per-row runs of side-by-side open standard seats (broken by taken seats, accessible spaces and wide gaps), open wheelchair/companion spaces, seats picked on the page, optional party_size filter. Presses nothing; nothing is held before Continue on the ticket page. Opening the seat page did not change AMC's remembered theatre. Live on 2026-10-01: 480 seats, 337 open on a Lincoln Square showing. Independent QA (live and source review) passed on 2026-10-01. Back to draft after a source change on 2026-10-02: wrong_page on another AMC page now names the navigate_to_page call that opens the page this tool needs; nothing else changed (fixture-tested). Signed-in run 2026-10-02: the wrong_page message was followed as written and the tool then succeeded. showtime_id may now be omitted on a /showtimes/<id> page and is then taken from the address. Independent live QA on 2026-10-05: showtime id from the address, party_size, accessible spaces kept separate, wrong_page with its navigate_to_page call, and seats still open after preview_tickets all passed.",
+      "provenance": {
+        "qa_agent": "agt_65a16f888e1748c002ee"
+      }
+    },
+    {
+      "domain": "amctheatres.com",
+      "tool": "get_showtimes",
+      "file": "domains/amctheatres.com/get_showtimes.js",
+      "kind": "page",
+      "namespace": "amctheatres.com",
+      "url_patterns": [
+        "https://www.amctheatres.com/*"
+      ],
+      "url_patterns_reason": "Narrowed to www.amctheatres.com: it serves the movie, theatre, showtime, account and ticket pages; other amctheatres.com hosts are investor relations (investor.), the site API that pages call (graph.) and analytics (gtm.).",
+      "status": "qa_passed",
+      "last_verified": "2026-10-05",
+      "notes": "Reads the theatre showtimes page already open, without requests or navigation. The caller's separate page opening can change AMC's remembered theatre. Waits for hydration/date consistency and returns screening IDs, never ticket pages. Independent fixture/local-extension QA passed; live success in a Kernel stealth browser on 2026-10-01. Back to draft after a source change on 2026-10-02: wrong_page on another AMC page now names the navigate_to_page call that opens the page this tool needs; nothing else changed (fixture-tested). Signed-in run 2026-10-02: the wrong_page message was followed as written and the tool then succeeded. Each showtime now also has local_date (theatre-local date from starts_at_utc and the displayed clock; after-midnight shows get the next day) and display_time (the clock AMC shows). date is accepted as another name for expected_date (agents passed date in every benchmark run); both given must be equal. starts_after and starts_before filter by theatre-local HH:MM (after-midnight shows count as later than 23:59); more than 40 matching showtimes return status summary (per-format counts and first and last times, no ids) unless full is true. Independent live QA on 2026-10-05: the summary over 40 showtimes, format and starts_after filters with ids and local times, the date and expected_date aliases, full and movie filters all passed. Not observed live: an after-midnight show's next-day local_date. It needs AMC's page to hydrate, which did not happen while Cloudflare refused AMC's API (not_ready).",
+      "provenance": {
+        "qa_agent": "agt_65a16f888e1748c002ee"
+      }
+    },
+    {
+      "domain": "amctheatres.com",
+      "tool": "get_theatre",
+      "file": "domains/amctheatres.com/get_theatre.js",
+      "kind": "page",
+      "namespace": "amctheatres.com",
+      "url_patterns": [
+        "https://www.amctheatres.com/*"
+      ],
+      "url_patterns_reason": "Narrowed to www.amctheatres.com: it serves the movie, theatre, showtime, account and ticket pages; other amctheatres.com hosts are investor relations (investor.), the site API that pages call (graph.) and analytics (gtm.).",
+      "status": "qa_passed",
+      "last_verified": "2026-10-05",
+      "notes": "Reads the open theatre page: name, address, top highlights and the 'At this theatre' feature groups (null if that section never renders). AMC's 404 page for an unknown theatre is not_found, after about 5 s. Takes the market from the address, which AMC also serves under a wrong market slug. Presses nothing; opening a theatre page did not change AMC's remembered theatre. No phone or time zone: the page does not show them. Independent QA (live and source review) passed on 2026-10-01. Back to draft after a source change on 2026-10-02: wrong_page on another AMC page now names the navigate_to_page call that opens the page this tool needs; nothing else changed (fixture-tested). Signed-in run 2026-10-02: the wrong_page message was followed as written and the tool then succeeded. Independent live QA on 2026-10-05: theatre page, wrong-page guidance and a mismatched slug passed; a nonexistent theatre returned not_found once AMC showed its 404 (one run saw the page stuck loading and got not_ready). AMC's page under a wrong market slug names no market of its own (its canonical link repeats the address), so market_slug's description now says it is the address's market, not proof of the theatre's. Independent live QA on 2026-10-05 of this source: theatre page, a wrong market slug (reported as the address's market, as described), wrong_page and invalid input passed. A nonexistent theatre stayed on AMC's loading page in two QA runs (not_ready); not_found was seen live in a builder run.",
+      "provenance": {
+        "qa_agent": "agt_9c1ccb662f2c9e963e26"
+      }
+    },
+    {
+      "domain": "amctheatres.com",
+      "tool": "get_ticket_prices",
+      "file": "domains/amctheatres.com/get_ticket_prices.js",
+      "kind": "page",
+      "namespace": "amctheatres.com",
+      "url_patterns": [
+        "https://www.amctheatres.com/*"
+      ],
+      "url_patterns_reason": "Narrowed to www.amctheatres.com: it serves the movie, theatre, showtime, account and ticket pages; other amctheatres.com hosts are investor relations (investor.), the site API that pages call (graph.) and analytics (gtm.).",
+      "status": "qa_passed",
+      "last_verified": "2026-10-05",
+      "notes": "Reads the open ticket page (/showtimes/<id>/tickets) that AMC shows after seats are picked: per ticket type the price with fees, base price, convenience fee, age rule, and AMC's pricing notice. Accepts the digit-string showtime_id get_showtimes returns. Presses nothing; no order exists until Continue. Independent QA (live and source review) passed on 2026-10-01. Back to draft after a source change on 2026-10-02: wrong_page now names the preview_tickets call that opens the ticket page without creating an order; nothing else changed (fixture-tested). Signed-in run 2026-10-02: the wrong_page message was followed as written and the tool then succeeded. showtime_id may now be omitted on the ticket page and is then taken from the address. Independent live QA on 2026-10-05: wrong_page names preview_tickets on the seat page; on the ticket page after preview_tickets the Adult price with fees matched the preview.",
+      "provenance": {
+        "qa_agent": "agt_65a16f888e1748c002ee"
+      }
+    },
+    {
+      "domain": "amctheatres.com",
+      "tool": "list_theatres",
+      "file": "domains/amctheatres.com/list_theatres.js",
+      "kind": "page",
+      "namespace": "amctheatres.com",
+      "url_patterns": [
+        "https://www.amctheatres.com/*"
+      ],
+      "url_patterns_reason": "Narrowed to www.amctheatres.com: it serves the movie, theatre, showtime, account and ticket pages; other amctheatres.com hosts are investor relations (investor.), the site API that pages call (graph.) and analytics (gtm.).",
+      "status": "qa_passed",
+      "last_verified": "2026-10-05",
+      "notes": "Source changed 2026-10-01: reads AMC's published market/theatre sitemaps instead of the market pages, which render at most 10 theatres; adds addresses, city/ZIP-prefix filtering, and not_found for unknown markets. One same-origin GET, bounded filtered-snapshot pagination; no distance search, geolocation or remembered-theatre selection. Live success in a Kernel stealth browser on 2026-10-01. Independent QA (live and source review) passed on 2026-10-01. Independent live QA again on 2026-10-05 of this source: market list, one market (26 theatres), a ZIP-prefix filter, offset pagination without overlap, not_found for an unknown market and invalid input all passed. Not verified live: filtering by city name (ZIP prefix was), and whether AMC's sitemaps lag theatre openings and closings.",
+      "provenance": {
+        "qa_agent": "agt_06e2b605d09f73799aa1"
+      }
+    },
+    {
+      "domain": "amctheatres.com",
+      "tool": "navigate_to_page",
+      "file": "domains/amctheatres.com/navigate_to_page.js",
+      "kind": "page",
+      "namespace": "amctheatres.com",
+      "url_patterns": [
+        "https://www.amctheatres.com/*"
+      ],
+      "url_patterns_reason": "Narrowed to www.amctheatres.com: it serves the movie, theatre, showtime, account and ticket pages; other amctheatres.com hosts are investor relations (investor.), the site API that pages call (graph.) and analytics (gtm.).",
+      "status": "qa_passed",
+      "last_verified": "2026-10-05",
+      "notes": "Schedules a same-origin navigation 100 ms after returning and marks it for get_page_context; the description carries AMC's site map with the tool that reads each page. Rejects other origins, protocol-relative and backslash paths, unknown input and /orders paths, and refuses to leave a cart page (or a cart's Edit Tickets page) unless leave_cart is true, because leaving keeps the seats held. Not read-only: opening a theatre's showtimes page changes AMC's current theatre, as the description says. Builder live run 2026-10-02, signed out: navigated from the home page to Find a Theatre, a theatre's showtimes, a showtime (AMC opened its seat page) and a not-found movie, each confirmed with get_page_context; /orders refused. Signed-in run 2026-10-02: drove every step of the task run (profile, rewards, search, Find a Theatre, theatre, showtimes, seat page), and refused to leave a real cart with cart_open. A call made while set_favorite_theatre's own reloads were settling failed on a stale tool_ref; listing tools again fixed it. Source change on 2026-10-05: from_url replaces an order id with {order} and drops an order-token, as get_page_context does (fixture-tested). AMC's 404 page in place of an expired cart is not treated as an open cart, so leaving it needs no leave_cart (fixture-tested). Independent live QA on 2026-10-05: paths and full URLs navigated; other hosts, http:, //host, /orders paths and unknown input refused without navigating; leaving AMC's 404 page in place of an expired cart needed no leave_cart and from_url masked the order id; on an open cart it refused with cart_open.",
+      "provenance": {
+        "qa_agent": "agt_2c0572ca747de7469a1f"
+      }
+    },
+    {
+      "domain": "amctheatres.com",
+      "tool": "preview_tickets",
+      "file": "domains/amctheatres.com/preview_tickets.js",
+      "kind": "cdp",
+      "namespace": "amctheatres.com",
+      "url_patterns": [
+        "https://www.amctheatres.com/*"
+      ],
+      "url_patterns_reason": "Narrowed to www.amctheatres.com: it serves the movie, theatre, showtime, account and ticket pages; other amctheatres.com hosts are investor relations (investor.), the site API that pages call (graph.) and analytics (gtm.).",
+      "status": "qa_passed",
+      "last_verified": "2026-10-05",
+      "notes": "Makes add_tickets_to_cart's choices on AMC's seat and ticket pages (same validation and refusals, same seat-page and ticket-page reading) and reads each chosen type's price with fees, base price and fee, then stops: the ticket page's Continue, which creates the order, is never pressed. Returns lines, expected_subtotal (before taxes) and a next_step naming the add_tickets_to_cart call. cdp because it navigates to the seat page and then the ticket page, and its prices are read on the second. Builder live run 2026-10-02, signed out: two seats, Adult + Senior at $31.48 and $29.98 matched get_ticket_prices, subtotal $61.46; get_page_context then showed the ticket page with no cart, and the seat map showed both seats still open. Signed-in run 2026-10-02: an unknown ticket type returned invalid_ticket_type with Adult, Child and Senior; Adult + Child came to $59.96, matching get_ticket_prices; no cart; refused with cart_in_progress while a cart was open. Before reading prices it checks that the ticket page lists the requested seats, and returns site_error otherwise (fixture-tested only). Starting from AMC's 404 page in place of an expired cart is not cart_in_progress (fixture-tested). Independent live QA on 2026-10-05: an unknown ticket type returned the offered types; Adult x2 returned $62.96 with Continue not pressed, no cart, and the seats still open; on an open cart it refused with cart_in_progress. In one run AMC applied a Tuesday and Wednesday discount only in the cart ($50.96 preview, $30.46 cart), which the description now states.",
+      "provenance": {
+        "qa_agent": "agt_65a16f888e1748c002ee"
+      }
+    },
+    {
+      "domain": "amctheatres.com",
+      "tool": "search_catalog",
+      "file": "domains/amctheatres.com/search_catalog.js",
+      "kind": "page",
+      "namespace": "amctheatres.com",
+      "url_patterns": [
+        "https://www.amctheatres.com/*"
+      ],
+      "url_patterns_reason": "Narrowed to www.amctheatres.com: it serves the movie, theatre, showtime, account and ticket pages; other amctheatres.com hosts are investor relations (investor.), the site API that pages call (graph.) and analytics (gtm.).",
+      "status": "qa_passed",
+      "last_verified": "2026-10-05",
+      "notes": "Reads the movies on the open site search: AMC's full movie results (/search?filter=nowplaying%2Ccomingsoon&q=), 12 per page with the next page's address, or the plain search's 3-movie preview with the address of the full list. AMC shows Next on the last page too, so the tool gives no next page when a page has fewer than 12 movies or when AMC's Next cursor (base64 pc:1:<page>:<index>) shows the page reaches the stated total; AMC's Error 500 page past the end is site_error. Slug, title and AMC's ticket link per movie, plus AMC's movie count; private rentals hidden by default. Independent QA (live and source review) passed on 2026-10-01, walking totals from 5 to 46 to their last page. Back to draft after a source change on 2026-10-02: wrong_page on another AMC page now names the navigate_to_page call that opens the page this tool needs; nothing else changed (fixture-tested). Signed-in run 2026-10-02: the wrong_page message was followed as written and the tool then succeeded. Source change on 2026-10-05 after independent live QA (all cases passed): max_results defaulted to 10 while AMC shows 12 per page and more_results_url points at the next page, so paging with the default skipped two movies per page. The default is now 12, and omitted_on_page counts movies left out by a smaller max_results (fixture-tested). Independent live QA on 2026-10-05 of this source: 12 movies per page by default, omitted_on_page with a smaller max_results, the next page without repeats, the plain-search preview, wrong_page and invalid input all passed. Back to draft after a source change on 2026-10-05 from code review: the max_results and omitted_on_page descriptions now say that on the preview more_results_url is the full list, which includes omitted movies (description only). Independent live QA of this source on 2026-10-05: 12 movies with omitted_on_page 0 and a next page, max_results 5 with omitted_on_page 7 and the same next page, and the preview with its full-list link all matched the descriptions.",
+      "provenance": {
+        "qa_agent": "agt_35b0f8020858b64d04f1"
+      }
+    },
+    {
+      "domain": "amctheatres.com",
+      "tool": "search_movies",
+      "file": "domains/amctheatres.com/search_movies.js",
+      "kind": "page",
+      "namespace": "amctheatres.com",
+      "url_patterns": [
+        "https://www.amctheatres.com/*"
+      ],
+      "url_patterns_reason": "Narrowed to www.amctheatres.com: it serves the movie, theatre, showtime, account and ticket pages; other amctheatres.com hosts are investor relations (investor.), the site API that pages call (graph.) and analytics (gtm.).",
+      "status": "qa_passed",
+      "last_verified": "2026-10-05",
+      "notes": "AMC's limited featured Now Playing, Events or Coming Soon selection (25/50/50 on 2026-10-01), optionally title-filtered; no_results does not prove a movie is not playing. Reads the open /movies page without a request when its address and selected tab both name the list (no parameter means Now Playing); otherwise one same-origin GET. Never selects a theatre. Independent QA (live and source review) passed on 2026-10-01. Independent live QA again on 2026-10-05 of this source: now_playing, coming_soon and events, a title filter, no_results, reading the open /movies page and invalid input all passed. Not verified live: max_results below the list size.",
+      "provenance": {
+        "qa_agent": "agt_a5290ee98f0329fb43fa"
+      }
+    },
+    {
+      "domain": "amctheatres.com",
+      "tool": "search_theatres",
+      "file": "domains/amctheatres.com/search_theatres.js",
+      "kind": "page",
+      "namespace": "amctheatres.com",
+      "url_patterns": [
+        "https://www.amctheatres.com/*"
+      ],
+      "url_patterns_reason": "Narrowed to www.amctheatres.com: it serves the movie, theatre, showtime, account and ticket pages; other amctheatres.com hosts are investor relations (investor.), the site API that pages call (graph.) and analytics (gtm.).",
+      "status": "qa_passed",
+      "last_verified": "2026-10-05",
+      "notes": "Reads the open Find a Theatre search (/movie-theatres?q=) after AMC renders it: theatres nearest first with slug, address, distance and listed formats, AMC's 'Did You Mean?' choices, or its no-results message. Never presses Make Current or favorite. No coordinate search: AMC's location button needs browser geolocation. Live on 2026-10-01 (ZIP, ambiguous city, no match). Independent QA (live and source review) passed on 2026-10-01. Back to draft after a source change on 2026-10-02: wrong_page on another AMC page now names the navigate_to_page call that opens the page this tool needs; nothing else changed (fixture-tested). Signed-in run 2026-10-02: the wrong_page message was followed as written and the tool then succeeded. Independent live QA on 2026-10-05: results nearest first, max_results, AMC's Did You Mean? choices, no results, wrong_page and its navigate_to_page call all passed. Its results need AMC's API; while Cloudflare refused that API the page never rendered them and the tool answered not_ready.",
+      "provenance": {
+        "qa_agent": "agt_65a16f888e1748c002ee"
+      }
+    },
+    {
+      "domain": "amctheatres.com",
+      "tool": "set_current_theatre",
+      "file": "domains/amctheatres.com/set_current_theatre.js",
+      "kind": "cdp",
+      "namespace": "amctheatres.com",
+      "url_patterns": [
+        "https://www.amctheatres.com/*"
+      ],
+      "url_patterns_reason": "Narrowed to www.amctheatres.com: it serves the movie, theatre, showtime, account and ticket pages; other amctheatres.com hosts are investor relations (investor.), the site API that pages call (graph.) and analytics (gtm.).",
+      "status": "qa_passed",
+      "last_verified": "2026-10-05",
+      "notes": "Makes a theatre AMC's current theatre by pressing its Make Current button on the open Find a Theatre results, at most once, after reloading the search (AMC omits the button on the theatre that was current when the page loaded); confirmed when the site header names the theatre, and previous_theatre allows undoing it. Narrow cdp exception: the press fires the same tracking subframe navigation as the favorite button, which discarded a page-kind version's result live. Live on 2026-10-01: six switches between four theatres, ending on the original. Independent QA (live and source review) passed on 2026-10-01. Back to draft after a source change on 2026-10-02: wrong_page on another AMC page now names the navigate_to_page call that opens the page this tool needs; nothing else changed (fixture-tested). Signed-in run 2026-10-02: the wrong_page message was followed as written; changed the current theatre and restored the original, both confirmed in the header. Source change on 2026-10-05: a security check after its reload is reported as challenge instead of not_ready (fixture-tested). Independent live QA on 2026-10-05: switching, a repeat that pressed nothing, not_found and wrong_page all passed; the header matched each time and the account was restored.",
+      "provenance": {
+        "qa_agent": "agt_f7db28cefada621380e8"
+      }
+    },
+    {
+      "domain": "amctheatres.com",
+      "tool": "set_favorite_theatre",
+      "file": "domains/amctheatres.com/set_favorite_theatre.js",
+      "kind": "cdp",
+      "namespace": "amctheatres.com",
+      "url_patterns": [
+        "https://www.amctheatres.com/*"
+      ],
+      "url_patterns_reason": "Narrowed to www.amctheatres.com: it serves the movie, theatre, showtime, account and ticket pages; other amctheatres.com hosts are investor relations (investor.), the site API that pages call (graph.) and analytics (gtm.).",
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Adds or removes the open theatre page's theatre from the signed-in member's favorites with the page's own button, pressed at most once. Reloads the theatre page first because the label can lag the account after a press, then confirms on the Favorite Theatres list of the member's profile page (by name) and returns to the theatre page. Narrow cdp exception: pressing fires AMC's tracking, whose cross-origin subframe form post made the runtime discard a page tool's result in four of five live presses; the confirmation also navigates. Live add/no-op/remove on 2026-10-01 restored the favorites exactly. Independent QA (live and source review) passed on 2026-10-01. Back to draft after a source change on 2026-10-02: wrong_page on another AMC page now names the navigate_to_page call that opens the page this tool needs; nothing else changed (fixture-tested). Signed-in run 2026-10-02: the wrong_page message was followed as written; added a favorite and removed it, and the Favorite Theatres list matched its starting state. Source change on 2026-10-05: before a removal it reads the profile's Favorite Theatres list and presses nothing unless the theatre is listed there (names compared ignoring case and punctuation); a removal is confirmed only when the other favorites are still listed, or, when it was the only one, the empty list stays empty for about 2 s; a security check on a page it opens is reported as challenge. Fixture-tested only. A removal of the only favorite is also confirmed on the reloaded theatre page (Add Favorite), since a profile list still loading is empty too; a signed-out profile during a removal is not_signed_in (fixture-tested). Live QA on 2026-10-05 (independent agent, signed-in test profile) of the 3d1721b source: add, remove, and sole-favorite remove and re-add returned ok and matched the profile; one of two removals returned outcome_unknown after a single press that AMC did not apply (no second press, no false ok). Cause, found live with network capture on 2026-10-05: Cloudflare in front of AMC's API (graph.amctheatres.com) answers the press's CORS preflight with HTTP 403, so the theatresSet/theatresDelete request is never sent (net::ERR_FAILED with a CORS error); it was intermittent at first and then refused every request in the session, after many favorite changes. The tool now waits for AMC's request to finish before opening the profile (CDP Network events, as kroger.com and etsy.com tools do) and returns rate_limited, without checking the profile, when that request fails its CORS check. Builder live runs of this source: while AMC accepted requests, 16 of 16 calls ok (12 add/remove calls on AMC Empire 25, 4 remove/re-add calls on the sole favorite), 2-12 s each; while Cloudflare refused them, an add returned rate_limited in 1.9 s with the favorites unchanged. An independent run during the refusals (before the rate_limited check) returned outcome_unknown for every lost press, with no false ok and no second press. Favorites and current theatre were restored after every run. Independent live QA on 2026-10-05 of this source: add, a repeat that pressed nothing, remove, and removing and re-adding the sole favorite all returned ok and matched the profile; wrong_page passed; the account was restored. The rate_limited path was seen live only in a builder run. Back to draft after a source change on 2026-10-05 from code review: rate_limited is now returned only when the failed request's CORS error is a preflight failure (the request was never sent); any other failure, which may come after AMC applied the change, is decided on the profile (fixture-tested). Needs fresh independent QA. Independent live QA of this source on 2026-10-05: while Cloudflare refused the favorite request's CORS preflight, an add returned rate_limited with the favorites unchanged. The add/remove success paths were not re-run on this source because of that refusal.",
+      "provenance": {
+        "qa_agent": "agt_f7db28cefada621380e8"
+      }
+    },
+    {
       "domain": "bluebottlecoffee.com",
       "tool": "add_to_cart",
       "file": "domains/bluebottlecoffee.com/add_to_cart.js",
