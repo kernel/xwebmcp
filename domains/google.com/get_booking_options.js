@@ -105,11 +105,14 @@
     const selected = [...document.querySelectorAll('[aria-label*="Leaves "]')]
       .filter(visible).map((e) => e.getAttribute("aria-label").replace(/\s+/g, " ").replace(/^Flight details\.\s*/i, "").replace(/\s*(Select flight|Change flight)\s*$/i, "").slice(0, 300))
       .filter((s, i, a) => a.indexOf(s) === i).slice(0, 4);
-    // Itinerary-level bag text sits outside every option card (no ancestor holds exactly one Continue button).
+    // Itinerary-level bag text comes before Google's "Booking options" heading; without the heading, it is text outside
+    // every option card (no ancestor holds exactly one Continue button), which misses pages with a single option.
     const continueCount = (e) => e.querySelectorAll('button[aria-label^="Continue to book with"]').length;
     const inCard = (e) => { for (let a = e.parentElement; a; a = a.parentElement) { const n = continueCount(a); if (n) return n === 1; } return false; };
-    const bagInfo = [...new Set([...document.body.querySelectorAll("div, span, li, p")]
-      .filter((e) => visible(e) && /carry-on|checked bag|bag fee info/i.test(ownText(e)) && !inCard(e))
+    const ordered = [...document.body.querySelectorAll("div, span, li, p, h2, h3")];
+    const heading = ordered.findIndex((e) => /^Booking options$/i.test(ownText(e).trim()));
+    const bagInfo = [...new Set((heading < 0 ? ordered.filter((e) => !inCard(e)) : ordered.slice(0, heading))
+      .filter((e) => visible(e) && /carry-on|checked bag|bag fee info/i.test(ownText(e)))
       .map((e) => e.textContent.replace(/\s+/g, " ").trim()))];
     return { status: "ok", selected_flights: selected, bag_info: bagInfo, options, url };
   }

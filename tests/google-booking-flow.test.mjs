@@ -220,3 +220,11 @@ test("google continue_to_airline: a separate-ticket option reports its tickets, 
   assert.ok(!options.out.options.some(o => o.seller === "United" && o.price === 200));
 });
 
+test("google get_booking_options: itinerary bag text is read when the page has a single option", async () => {
+  const single = `<html><body><ul><li>1 free carry-on</li><li><span>First checked bag costs 45 US dollars</span></li></ul><h2>Booking options</h2>
+    ${option("Continue to book with Southwest, SmartFares for 338 US dollars. The 2 tickets in your itinerary must be booked individually", ["Book with Southwest, SmartFares", "$338"])}</body></html>`;
+  const { out } = await run("get_booking_options", single, {}, { url: "https://www.google.com/travel/flights/booking?tfs=x" });
+  assert.deepEqual(out.bag_info, ["1 free carry-on", "First checked bag costs 45 US dollars"]);
+  assert.deepEqual([out.options[0].seller, out.options[0].separate_tickets], ["Southwest, SmartFares", true]);
+});
+
