@@ -168,12 +168,13 @@
 
     const safeImage = src => src && /^https:\/\/[a-z0-9.-]+\.(media-amazon\.com|ssl-images-amazon\.com)\//.test(src) ? src : null;
     const products = [];
+    let excluded = 0;
     cards.forEach((card, index) => {
       const asin = card.getAttribute("data-asin");
       const title = text(card.querySelector("h2"));
       if (!title) return;
       const sponsored = !!(card.querySelector(".puis-sponsored-label-text") || card.querySelector("a[href*='/sspa/click']"));
-      if (sponsored && input.exclude_sponsored) return;
+      if (sponsored && input.exclude_sponsored) { excluded++; return; }
       const priceText = text(card.querySelector(".a-price:not(.a-text-price) .a-offscreen"));
       const listText = text(card.querySelector(".a-price[data-a-strike='true'] .a-offscreen"));
       const stars = card.querySelector("[aria-label*='out of 5 stars']");
@@ -190,7 +191,8 @@
         delivery_text: (text(card.querySelector("[data-cy='delivery-recipe']")) || "").slice(0, 200) || null
       });
     });
-    if (!products.length) return noResults("all_sponsored_excluded");
+    if (!products.length && excluded) return noResults("all_sponsored_excluded");
+    if (!products.length) return fail("site_changed", "The Amazon results page had product cards but none could be read; its layout may have changed. Nothing was changed.");
 
     let facets = null;
     if (input.include_facets) {
