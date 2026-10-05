@@ -68,13 +68,14 @@
       const parse = (aria) => {
         const m = /^Continue to book with (.+?) for ([\d,]+(?:\.\d+)?) /.exec(aria.replace(/\s+/g, " "));
         if (!m) return null;
+        const individually = /booked individually/i.test(aria);
         const direct = / airline$/.exec(m[1]);
         const comma = m[1].indexOf(", ");
         return {
           label: aria,
           inDialog: buttons.some((b) => b.getAttribute("aria-label") === aria && b.closest('[role="dialog"]')),
-          seller: direct ? m[1].slice(0, direct.index) : comma > 0 ? m[1].slice(0, comma) : m[1],
-          fare: direct || comma < 0 ? null : m[1].slice(comma + 2),
+          seller: direct ? m[1].slice(0, direct.index) : individually || comma < 0 ? m[1] : m[1].slice(0, comma),
+          fare: direct || individually || comma < 0 ? null : m[1].slice(comma + 2),
           price: Number(m[2].replace(/,/g, ""))
         };
       };
@@ -82,7 +83,8 @@
       const same = (a, b) => (a || "").toLowerCase() === (b || "").toLowerCase();
       const bySeller = options.filter((o) => same(o.seller, seller));
       const matches = fare ? bySeller.filter((o) => same(o.fare, fare)) : bySeller.filter((o) => o.fare === null).length ? bySeller.filter((o) => o.fare === null) : bySeller;
-      return { match: matches.length === 1 ? matches[0] : null, ambiguous: matches.length > 1, labels, onBooking: /\/travel\/flights\/booking/.test(location.pathname) };
+      const dialogOpen = [...document.querySelectorAll('[role="dialog"]')].some((d) => d.getClientRects().length > 0 && d.querySelector('button[aria-label^="Continue to book with"]'));
+      return { match: matches.length === 1 ? matches[0] : null, ambiguous: matches.length > 1, labels, dialogOpen, onBooking: /\/travel\/flights\/booking/.test(location.pathname) };
     }, { arg: { seller, fare } });
     if (!found.onBooking) return { status: "error", error_message: "Not on Google Flights' booking page; choose flights with select_flight first." };
     const available = found.labels.map((l) => l.replace(/^Continue to book with /, ""));
@@ -97,9 +99,19 @@
       await click('button[aria-label$="more booking options"]', { timeoutSec: 10 });
       if (!await waitForElement(selector, { state: "visible", timeoutSec: 10 })) return { status: "error", error_message: "The option is collapsed and did not appear after expanding \"more booking options\". Nothing was pressed." };
     }
+    // A separate-tickets dialog left open by an earlier call covers every option on the page behind it.
+    const ticketButtons = '[role="dialog"] button[aria-label^="Continue to book with"]';
+    if (found.dialogOpen && !found.match.inDialog) {
+      await click('[role="dialog"] button[aria-label="Close dialog"]', { timeoutSec: 5 }).catch(() => {});
+      if (!await waitForElement(ticketButtons, { state: "hidden", timeoutSec: 5 })) return { status: "error", error_message: "Google's \"Purchase separate tickets\" dialog is open and could not be closed. Nothing was pressed." };
+    }
     let before = [];
     try { before = ((await cdp("Target.getTargets")).targetInfos || []).map((t) => t.targetId); } catch {}
-    await click(selector, { timeoutSec: 10 });
+    try {
+      await click(selector, { timeoutSec: 10 });
+    } catch (error) {
+      return { status: "error", error_message: "Could not press Continue for " + seller + ": " + String(error?.message || error).split("\n")[0].slice(0, 200) };
+    }
     let opened = null;
     let tickets = null;
     for (let i = 0; i < 20 && !opened && !tickets; i++) {
@@ -137,7 +149,7 @@
       seller: found.match.seller, fare_name: found.match.fare, price,
       new_tab_url: opened ? opened.url : null,
       new_tab_target_id: opened ? opened.targetId : null,
-      next_step: (opened ? "The seller's site opened in tab " + opened.targetId + " with the chosen flights in its cart." : "Continue was pressed but no seller tab appeared within 10 s; check the browser's tabs before pressing again.") + " That tab has no Google Flights tools; this Google Flights tab and its tools are unchanged, so another seller or a new search needs no tab switch. Do not purchase without the user's explicit confirmation of the itinerary and total."
+      next_step: (opened ? "The seller's site opened in tab " + opened.targetId + " with the chosen flights in its cart." : "Continue was pressed but no seller tab appeared within 10 s; check the browser's tabs before pressing again.") + (opened ? " That tab has no Google Flights tools." : "") + " This Google Flights tab and its tools are unchanged, so another seller or a new search needs no tab switch. Do not purchase without the user's explicit confirmation of the itinerary and total."
     };
   }
 }]

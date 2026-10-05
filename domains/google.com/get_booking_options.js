@@ -62,13 +62,15 @@
       if (!m) return null;
       const [, head, amount, currency, equivalent, rest] = m;
       const note = [equivalent, rest].filter(Boolean).join(". ");
+      // "Southwest, AranGrant for 346 US dollars. The 2 tickets … booked individually" names two sellers, not a seller and a fare.
+      const individually = /booked individually/i.test(rest || "");
       const direct = / airline$/.exec(head);
       const comma = head.indexOf(", ");
-      const seller = direct ? head.slice(0, direct.index) : comma > 0 ? head.slice(0, comma) : head;
-      const fare = direct || comma < 0 ? null : head.slice(comma + 2);
+      const seller = direct ? head.slice(0, direct.index) : individually || comma < 0 ? head : head.slice(0, comma);
+      const fare = direct || individually || comma < 0 ? null : head.slice(comma + 2);
       return {
         seller, fare_name: fare, sold_by_airline: !!direct || fare !== null,
-        separate_tickets: /booked individually|separate tickets/i.test(note || "") || (!!direct && seller.includes(", ")),
+        separate_tickets: individually || /separate tickets/i.test(note) || (!!direct && seller.includes(", ")),
         price: Number(amount.replace(/,/g, "")), currency_label: currency, note: note || null
       };
     };
@@ -87,7 +89,7 @@
       const lines = [...card.querySelectorAll("div, span, h3, li, p")].filter((e) => ownText(e).trim()).map((e) => e.textContent.replace(/\s+/g, " ").trim());
       const carry = lines.find((l) => /carry-on/i.test(l)) || null;
       const checked = lines.find((l) => /checked bag/i.test(l)) || null;
-      const features = [...new Set(lines.filter((l) => l !== parsed.fare_name && l !== carry && l !== checked && !/^\$|^Continue$|^View options$|^Book with |^[\d,.]+ [A-Z]{3}$/.test(l)))];
+      const features = [...new Set(lines.filter((l) => l !== parsed.fare_name && !/carry-on|checked bag/i.test(l) && !/^\$|^Continue$|^View options$|^Book with |^[\d,.]+ [A-Z]{3}$/.test(l)))];
       const separately = lines.find((l) => /separate tickets/i.test(l));
       return {
         ...parsed,

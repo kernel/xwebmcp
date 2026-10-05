@@ -172,7 +172,8 @@
             const live = [...document.querySelectorAll("[aria-live]")].map(e => e.textContent.replace(/\s+/g, " ").trim());
             if (live.some(t => /^\d+ results? returned/i.test(t))) return { state: "results" };
             const empty = live.find(t => /^No results returned/i.test(t));
-            if (empty) return { state: "no_results", text: empty };
+            // Dates past Google's booking window also announce no results; keep the reason Google prints.
+            if (empty) return { state: "no_results", text: [empty, (document.body?.innerText.match(/[^\n]*too far in the future[^\n]*/i) || [])[0]].filter(Boolean).join(" ") };
             if (location.pathname.startsWith("/sorry")) return { state: "blocked" };
             // Google drops an airport code it does not know and leaves that search box empty, with no results.
             const blank = [...document.querySelectorAll('input[aria-label^="Where from?"], input[aria-label^="Where to?"]')].find(i => visible(i) && !i.value.trim());
