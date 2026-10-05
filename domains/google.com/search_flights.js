@@ -107,7 +107,7 @@
     match: { url_patterns: ["https://google.com/travel/*", "https://*.google.com/travel/*"] },
     tool: {
       name: "search_flights",
-      description: "Search Google Flights for one-way or round-trip itineraries across all airlines and return structured results: carriers, flight numbers, airport-local times, duration, stops, layovers, emissions and the displayed total price in the requested currency. 1–9 adults, four cabins. Returns the outbound options Google lists (best and other sections, expanding 'View more flights' as needed); round-trip prices are whole-trip totals for that outbound choice. Read-only: never selects, books or purchases. Invoke with a 120-second timeout.",
+      description: "Search Google Flights for one-way or round-trip itineraries across all airlines and return structured results: carriers, flight numbers, airport-local times, duration, stops, layovers, emissions and the displayed total price in the requested currency. 1–9 adults, four cabins. Returns the outbound options Google lists (best and other sections, expanding 'View more flights' as needed); round-trip prices are whole-trip totals for that outbound choice. Runs in the tab it is listed for, from any Google Travel page there; other tabs (such as a seller's site opened by continue_to_airline) need not be focused or closed. Read-only: never selects, books or purchases. Invoke with a 120-second timeout.",
       inputSchema, outputSchema,
       annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: true }
     },

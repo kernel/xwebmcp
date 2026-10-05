@@ -3,7 +3,7 @@
   match: { url_patterns: ["https://www.google.com/travel/flights/booking*"] },
   tool: {
     name: "continue_to_airline",
-    description: "On Google Flights' booking page, press \"Continue\" for one booking option: seller, and fare_name when the seller lists several fares, exactly as get_booking_options returned them (omit fare_name or pass null for sellers without per-fare cards, such as most travel agencies). Options collapsed behind \"N more booking options\" are expanded first. Google opens the seller's site in a NEW TAB with the chosen flights and fare already in the seller's cart (for United: its Traveler Info checkout page). The new tab belongs to the same xwebmcp session. This tool books and pays nothing; the purchase happens on the seller's site and is the user's decision. If the new tab stays on google.com/travel/clk for more than about 20 s, close it with close_tab and call this tool again. Then call list_tabs to find the new tab (new_tab_url is reported only when the tool can observe it, which is not always). Needs a trusted click, so it runs as a cdp tool.",
+    description: "On Google Flights' booking page, press \"Continue\" for one booking option: seller, and fare_name when the seller lists several fares, exactly as get_booking_options returned them (omit fare_name or pass null for sellers without per-fare cards, such as most travel agencies). Options collapsed behind \"N more booking options\" are expanded first. Google opens the seller's site in a NEW TAB of the same browser with the chosen flights and fare already in the seller's cart (for United: its Traveler Info checkout page); new_tab_target_id and new_tab_url identify that tab when it appears within 10 s, and are null otherwise. The Google Flights tab stays on the booking page and keeps its tools: every tool runs in the tab it is listed for, so no tab needs to be focused or closed before calling this tool again for another seller or starting a new search_flights. The seller's tab has no Google Flights tools; read it with the browser's own page or tab controls. If it stays on google.com/travel/clk for more than about 20 s, close it and call this tool again. This tool books and pays nothing; the purchase happens on the seller's site and is the user's decision. Needs a trusted click, so it runs as a cdp tool.",
     inputSchema: {
       type: "object", additionalProperties: false, required: ["seller"],
       properties: {
@@ -96,7 +96,7 @@
       seller: found.match.seller, fare_name: found.match.fare, price,
       new_tab_url: opened ? opened.url : null,
       new_tab_target_id: opened ? opened.targetId : null,
-      next_step: "The seller's site opened in a new tab of this session with the chosen flights in its cart. Call list_tabs to find it, then get_page_context (with wait_for_settled_seconds) and list_tools there. Do not purchase without the user's explicit confirmation of the itinerary and total."
+      next_step: (opened ? "The seller's site opened in tab " + opened.targetId + " with the chosen flights in its cart." : "The seller's site is opening in a new tab; it did not appear within 10 s, so find it among the browser's tabs.") + " That tab has no Google Flights tools; this Google Flights tab and its tools are unchanged, so another seller or a new search needs no tab switch. Do not purchase without the user's explicit confirmation of the itinerary and total."
     };
   }
 }]
