@@ -3,27 +3,33 @@
   match: { url_patterns: ["https://www.google.com/travel/flights/booking*"] },
   tool: {
     name: "get_booking_options",
-    description: "Read Google Flights' booking page for the flights already chosen: the selected flights and every booking option, i.e. each seller (usually the airline) and each of its fares with name, displayed total price, carry-on and checked-bag allowance, and the fare's listed features (seat selection, changes, refunds, boarding). Use it to pick the fare that meets the user's needs (for example the cheapest fare that includes a carry-on), then call continue_to_airline with that seller and fare. Read-only.",
+    description: "Read Google Flights' booking page for the flights already chosen: the selected flights and every booking option, including the ones Google collapses behind \"N more booking options\". Each option is one seller (an airline, or an online travel agency such as Expedia) with its displayed total price; airlines that offer several fares get one option per fare with its name, carry-on and checked-bag allowance, and listed features (seat selection, changes, refunds, boarding). carry_on_included is false when the carry-on costs extra. Sellers without per-fare cards have fare_name null; bag_info then carries Google's itinerary-level bag text. separate_tickets marks itineraries that must be booked as separate tickets. Use it to pick the option that meets the user's needs (for example the cheapest fare that includes a carry-on), then call continue_to_airline with that seller and fare_name. Read-only.",
     inputSchema: { type: "object", additionalProperties: false, properties: {} },
     outputSchema: {
       type: "object",
       oneOf: [
         {
-          type: "object", additionalProperties: false, required: ["status", "selected_flights", "options", "url"],
+          type: "object", additionalProperties: false, required: ["status", "selected_flights", "bag_info", "options", "url"],
           properties: {
             status: { const: "ok" },
             url: { type: "string" },
             selected_flights: { type: "array", items: { type: "string" }, description: "Google's descriptions of the chosen flights, in order." },
+            bag_info: { type: "array", items: { type: "string" }, description: "Google's bag text for the chosen flights, e.g. \"1 free carry-on\", \"1st checked bag available for a fee\"; it may name sellers whose bag fees are unknown." },
             options: {
               type: "array",
               items: {
                 type: "object", additionalProperties: false,
-                required: ["seller", "fare_name", "price", "currency_label", "carry_on", "carry_on_included", "checked_bag", "features"],
+                required: ["seller", "fare_name", "sold_by_airline", "separate_tickets", "price", "currency_label", "note", "collapsed", "carry_on", "carry_on_included", "checked_bag", "features"],
                 properties: {
-                  seller: { type: "string" }, fare_name: { type: "string" },
+                  seller: { type: "string", description: "Seller name exactly as continue_to_airline expects it; several airlines joined with \", \" for separate tickets." },
+                  fare_name: { type: ["string", "null"], description: "Fare name, e.g. \"Basic Economy\"; null when the seller has no per-fare cards." },
+                  sold_by_airline: { type: "boolean", description: "True when the seller is an airline: Google labels it \"airline\" or it lists per-fare cards." },
+                  separate_tickets: { type: "boolean" },
                   price: { type: ["number", "null"] }, currency_label: { type: ["string", "null"] },
-                  carry_on: { type: ["string", "null"], description: "Google's carry-on text, e.g. \"1 free carry-on\" or \"No carry-on bags\"." },
-                  carry_on_included: { type: ["boolean", "null"] },
+                  note: { type: ["string", "null"], description: "Extra text Google attaches to the option, e.g. that tickets must be booked individually." },
+                  collapsed: { type: "boolean", description: "Hidden behind Google's \"N more booking options\" button; continue_to_airline expands it." },
+                  carry_on: { type: ["string", "null"], description: "Google's carry-on text, e.g. \"1 free carry-on\", \"1 carry-on bag available for a fee\" or \"No carry-on bags\"." },
+                  carry_on_included: { type: ["boolean", "null"], description: "True only when a carry-on is included in the price; null when this option lists no carry-on text." },
                   checked_bag: { type: ["string", "null"] },
                   features: { type: "array", items: { type: "string" } }
                 }
@@ -42,43 +48,62 @@
   execute: async () => {
     const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     const visible = (e) => !!e && e.getClientRects().length > 0;
-    const text = (e) => (e?.innerText || e?.textContent || "").replace(/\s+/g, " ").trim();
     const url = location.href;
-    const buttons = () => [...document.querySelectorAll('button[aria-label^="Continue to book with"]')].filter(visible);
+    const all = () => [...document.querySelectorAll('button[aria-label^="Continue to book with"]')];
     const until = Date.now() + 15000;
-    while (!buttons().length && Date.now() < until) await sleep(300);
-    if (!buttons().length) {
-      // Some sellers show only a single "Book with X" link and no per-fare buttons.
+    while (!all().some(visible) && Date.now() < until) await sleep(300);
+    if (!all().some(visible)) {
       return { status: "not_ready", error_message: "No booking options are visible yet. Call get_page_context with wait_for_settled_seconds, then try again.", url };
     }
-    const options = buttons().map((button) => {
+    // Labels: "<seller>, <fare> for 512 US dollars", "<airline(s)> airline for 422 US dollars[. note]", "<agency> for 409 US dollars".
+    const parse = (aria) => {
+      const m = /^Continue to book with (.+?) for ([\d,]+(?:\.\d+)?) ([^.]+?)(?:\.\s*(.*))?$/.exec(aria.replace(/\s+/g, " ").trim());
+      if (!m) return null;
+      const [, head, amount, currency, note] = m;
+      const direct = / airline$/.exec(head);
+      const comma = head.indexOf(", ");
+      const seller = direct ? head.slice(0, direct.index) : comma > 0 ? head.slice(0, comma) : head;
+      const fare = direct || comma < 0 ? null : head.slice(comma + 2);
+      return {
+        seller, fare_name: fare, sold_by_airline: !!direct || fare !== null,
+        separate_tickets: /booked individually|separate tickets/i.test(note || "") || (!!direct && seller.includes(", ")),
+        price: Number(amount.replace(/,/g, "")), currency_label: currency, note: note || null
+      };
+    };
+    const ownText = (e) => [...e.childNodes].filter((n) => n.nodeType === 3).map((n) => n.textContent).join("");
+    const options = all().map((button) => {
       const aria = button.getAttribute("aria-label");
-      const m = /^Continue to book with (.+?), (.+?) for ([\d,]+(?:\.\d{2})?) (.+)$/.exec(aria) || [];
+      const parsed = parse(aria) || { seller: aria.replace(/^Continue to book with /, ""), fare_name: null, sold_by_airline: false, separate_tickets: false, price: null, currency_label: null, note: null };
       let card = button;
       for (let i = 0; i < 8 && card.parentElement; i++) {
         const parent = card.parentElement;
         if (parent.querySelectorAll('button[aria-label^="Continue to book with"]').length > 1) break;
         card = parent;
       }
-      const lines = (card.innerText || "").split("\n").map((s) => s.trim()).filter(Boolean);
-      const cardText = (card.innerText || card.textContent || "").replace(/\s+/g, " ");
-      const carry = (/(No carry-on bags?|\d+ (?:free )?carry-on(?: bags?)?(?: included)?)/i.exec(cardText) || [])[1] || null;
-      const checked = lines.find((l) => /checked bag/i.test(l) && !/^1st checked bag:/i.test(l)) || null;
-      const features = lines.filter((l) => l !== m[2] && !/^\$/.test(l) && !/carry-on/i.test(l) && l !== checked && !/^Continue$|^1st checked bag:/i.test(l));
+      const collapsed = !visible(button);
+      // Elements that hold text directly, not innerText: collapsed cards have no layout, so their innerText has no line breaks.
+      const lines = [...card.querySelectorAll("div, span, h3, li, p")].filter((e) => ownText(e).trim()).map((e) => e.textContent.replace(/\s+/g, " ").trim());
+      const carry = lines.find((l) => /carry-on/i.test(l)) || null;
+      const checked = lines.find((l) => /checked bag/i.test(l)) || null;
+      const features = [...new Set(lines.filter((l) => l !== parsed.fare_name && l !== carry && l !== checked && !/^\$|^Continue$|^View options$|^Book with |^[\d,.]+ [A-Z]{3}$/.test(l)))];
       return {
-        seller: m[1] || null,
-        fare_name: m[2] || lines[0] || "",
-        price: m[3] ? Number(m[3].replace(/,/g, "")) : null,
-        currency_label: m[4] || null,
+        ...parsed,
+        collapsed,
         carry_on: carry,
-        carry_on_included: carry ? !/^no /i.test(carry) : null,
+        carry_on_included: carry ? !/^no\b|fee|costs|not included|\$/i.test(carry) : null,
         checked_bag: checked,
-        features
+        features: parsed.fare_name ? features : []
       };
     });
     const selected = [...document.querySelectorAll('[aria-label*="Leaves "]')]
       .filter(visible).map((e) => e.getAttribute("aria-label").replace(/\s+/g, " ").replace(/^Flight details\.\s*/i, "").replace(/\s*(Select flight|Change flight)\s*$/i, "").slice(0, 300))
       .filter((s, i, a) => a.indexOf(s) === i).slice(0, 4);
-    return { status: "ok", selected_flights: selected, options, url };
+    // Itinerary-level bag text sits outside every option card (no ancestor holds exactly one Continue button).
+    const continueCount = (e) => e.querySelectorAll('button[aria-label^="Continue to book with"]').length;
+    const inCard = (e) => { for (let a = e.parentElement; a; a = a.parentElement) { const n = continueCount(a); if (n) return n === 1; } return false; };
+    const bagInfo = [...new Set([...document.body.querySelectorAll("div, span, li, p")]
+      .filter((e) => visible(e) && /carry-on|checked bag|bag fee info/i.test(ownText(e)) && !inCard(e))
+      .map((e) => e.textContent.replace(/\s+/g, " ").trim()))];
+    return { status: "ok", selected_flights: selected, bag_info: bagInfo, options, url };
   }
 }]

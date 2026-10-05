@@ -189,7 +189,6 @@
         if (readiness.state === "blocked") return fail("BLOCKED: Google served an automated-traffic challenge.");
         if (readiness.state === "site_error") return fail("SITE_ERROR: " + readiness.text.slice(0, 300));
         if (readiness.state !== "results") return fail("RESULTS_TIMEOUT: Google Flights neither announced results nor an explicit no-results state.");
-        await waitForNetworkIdle(1, remaining(10));
 
         // Expansion and parsing run in one page call so a list re-render cannot separate the expanded nodes from the parsed ones.
         const page = await js(async ({ departDate, tripType, passengers, maxResults, deadlineMs }) => {
@@ -242,8 +241,11 @@
             const stopsText = text(card.querySelector(".EfT7Ae")) || summary.match(/\b(Nonstop|\d+ stops?) flight/)?.[1] || "";
             const stops = /^Nonstop/i.test(stopsText) ? 0 : Number(stopsText.match(/^(\d+) stops?/)?.[1] ?? NaN);
             const durationMinutes = minutes(card.querySelector("[aria-label^='Total duration']")?.getAttribute("aria-label") || text(card.querySelector(".gvkrdb")));
-            const arrivalDateLabel = arrivalLabel?.match(/on\s+\w+,\s+(\w+)\s+(\d{1,2})/);
-            const arrivalDate = arrivalDateLabel ? isoNear(arrivalDateLabel[1], arrivalDateLabel[2]) : addDays(departDate, Number(card.querySelector(".bOzv6")?.textContent.match(/\+(\d)/)?.[1] || 0));
+            // The card summary always dates the arrival; the "Arrival time" label only does when the day changes.
+            // A "+N" mark inside the expanded segments (.c257Jb) belongs to a connecting flight, not the final arrival.
+            const arrivalDateLabel = summary.match(/arrives at .+? at \d{1,2}:\d{2}\s*[AP]M on \w+,\s+(\w+)\s+(\d{1,2})/i) || arrivalLabel?.match(/on\s+\w+,\s+(\w+)\s+(\d{1,2})/);
+            const plusMark = [...card.querySelectorAll(".bOzv6")].find(e => !e.closest(".c257Jb"));
+            const arrivalDate = arrivalDateLabel ? isoNear(arrivalDateLabel[1], arrivalDateLabel[2]) : addDays(departDate, Number(plusMark?.textContent.match(/\+(\d)/)?.[1] || 0));
             const dayOffset = Math.round((Date.parse(arrivalDate) - Date.parse(departDate)) / 86400000);
             const departureTime = clock(departureLabel), arrivalTime = clock(arrivalLabel);
             if (!departureTime || !arrivalTime || codes.length < 2 || !airlines.length || !priceSpan || !Number.isInteger(stops) || !durationMinutes || dayOffset < -1 || dayOffset > 3) {
