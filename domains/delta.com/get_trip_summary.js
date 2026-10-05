@@ -1,9 +1,9 @@
 [{
   kind: "page",
-  match: { url_patterns: ["https://www.delta.com/completepurchase/*"] },
+  match: { url_patterns: ["https://www.delta.com/completepurchase/*", "https://www.delta.com/purchase/flights/*"] },
   tool: {
     name: "get_trip_summary",
-    description: "Read what is in the Delta cart on the Trip Summary or Review and Pay page: each flight slice (flight numbers, airports, date, local times, stops, duration, cabin/experience), passenger count, the price breakdown (flights, taxes/fees, amount due with currency), refundability, the checkout step, and the cart id. Use it to confirm the exact itinerary and total with the user before they enter passenger or payment details. Read-only: never clicks, adds upgrades or protection, or purchases. Amounts are Delta's displayed totals for the whole cart at the time of reading.",
+    description: "Read what is in the Delta cart on the Trip Summary or Review and Pay page (both Delta's /purchase/flights/ checkout and the older /completepurchase/ pages): each flight slice (flight numbers, airports, date, local times, stops, duration, cabin/experience), passenger count, the price breakdown (flights, taxes/fees, amount due with currency), refundability, the checkout step, and the cart id. Use it to confirm the exact itinerary and total with the user before they enter passenger or payment details. Read-only: never clicks, adds upgrades or protection, or purchases. Amounts are Delta's displayed totals for the whole cart at the time of reading.",
     inputSchema: { type: "object", additionalProperties: false, properties: {} },
     outputSchema: {
       type: "object",
@@ -53,12 +53,62 @@
     const noSup = (node) => node.nodeType === 3 ? node.data : node.tagName === "SUP" ? " " : [...node.childNodes].map(noSup).join("");
     const url = location.href;
     const path = location.pathname;
-    const step = /\/trip-summary/.test(path) ? "trip_summary" : /\/review-pay/.test(path) ? "review_and_pay" : /confirm/i.test(path) ? "confirmation" : "other";
+    const step = /\/trip-summary/.test(path) ? "trip_summary" : /\/(?:review-pay|express-checkout)/.test(path) ? "review_and_pay" : /confirm/i.test(path) ? "confirmation" : "other";
     const loading = () => document.readyState !== "complete" || [...document.querySelectorAll(".review-pay-loading-view,.spinnerView,.spinner-overlay,idp-spinner,.page-loader")].some(visible);
     const until = Date.now() + 15000;
-    while ((loading() || !document.querySelector("#trip-total-content")) && Date.now() < until) await sleep(250);
+    // Delta serves two checkouts: the legacy /completepurchase/ pages (#trip-total-content) and the
+    // /purchase/flights/ app (data-cy hooks, mach-core-trip-total).
+    const machTotal = () => document.querySelector('[data-cy="trip-total-line-item"]') && document.querySelector(".mach-core-trip-total__details__footer__amount");
+    while ((loading() || !(document.querySelector("#trip-total-content") || machTotal())) && Date.now() < until) await sleep(250);
     const total = document.getElementById("trip-total-content");
-    if (loading() || !total) return { status: "not_ready", error_message: "The trip summary did not finish loading within 15 s.", url };
+    if (loading() || !(total || machTotal())) return { status: "not_ready", error_message: "The trip summary did not finish loading within 15 s.", url };
+    if (!total) {
+      const strip2 = (s) => (s || "").replace(/\s+/g, " ").trim() || null;
+      const slices2 = [...document.querySelectorAll('[data-cy="flight-route"]')].filter((r) => !r.closest('[hidden],[aria-hidden="true"]')).map((route) => {
+        let root = route;
+        while (root.parentElement && !root.querySelector('[data-cy="flight-times"]')) root = root.parentElement;
+        const codes = (strip2(text(route).replace(/\bto\b/i, " ")) || "").match(/\b[A-Z]{3}\b/g) || [];
+        const times = (text(root.querySelector('[data-cy="flight-times"]')).replace(/Departure time|Arrival time/gi, "").split(/\s-\s|\s-$/).map((t) => t.trim()).filter(Boolean));
+        const dur = strip2(text(root.querySelector('[data-cy="flight-duration"]')).replace(/^Flight duration/i, ""));
+        const stopsText = dur ? dur.split(",")[0] : null;
+        const changeLabel = root.querySelector('[data-cy="flight-change-link"]')?.getAttribute("aria-label") || "";
+        return {
+          trip_type: (changeLabel.match(/^Change (\w+) flight/i) || [null, null])[1],
+          flight_numbers: [...root.querySelectorAll('[data-cy="flight-number"]')].flatMap((n) => [...noSup(n).replace(/Flight number/gi, " ").matchAll(/\b([A-Z0-9]{2})\s?(\d{1,4})\b/g)].map((m) => m[1] + " " + m[2])),
+          origin: codes[0] || null,
+          destination: codes[codes.length - 1] || null,
+          date_display: strip2(text(root.querySelector('[data-cy="flight-date"]')).replace(/^Journey date/i, "")),
+          departure_time: times[0] || null,
+          arrival_time: times[1] || null,
+          stops: stopsText ? (/nonstop/i.test(stopsText) ? 0 : Number((stopsText.match(/\d+/) || [])[0]) || null) : null,
+          duration_display: dur && dur.includes(",") ? dur.split(",").slice(1).join(",").trim() : dur,
+          cabin: strip2(text(root.querySelector('[data-cy="flight-cabin-badge"]')).replace(/^Cabin class/i, ""))
+        };
+      });
+      const seen2 = new Set();
+      const lines = [];
+      for (const li of document.querySelectorAll('[data-cy="trip-total-line-item"]')) {
+        const label = text(li.querySelector(".mach-core-trip-total__details__line-items__line-item__text")) || text(li).replace(/\$.*$/, "").trim();
+        const m = /\$\s?([\d,]+(?:\.\d{2})?)/.exec(text(li.querySelector('[data-cy="trip-total-line-item-amount"]')) || text(li));
+        if (!label || !m) continue;
+        const amount = (/^-|credit/i.test(text(li.querySelector('[data-cy="trip-total-line-item-amount"]'))) ? -1 : 1) * Number(m[1].replace(/,/g, ""));
+        if (seen2.has(label + "|" + amount)) continue;
+        seen2.add(label + "|" + amount);
+        lines.push({ label, amount });
+      }
+      const footer = [...document.querySelectorAll(".mach-core-trip-total__details__footer__amount")].find(visible) || document.querySelector(".mach-core-trip-total__details__footer__amount");
+      const fm = /\$\s?([\d,]+(?:\.\d{1,2})?)\s*([A-Z]{3})?/.exec(text(footer).replace(/\s+/g, "").replace(/([A-Z]{3})$/, " $1"));
+      const due2 = fm ? Number(fm[1].replace(/,/g, "")) : null;
+      const pax = Number((text(document.querySelector(".mach-core-trip-total__subheader")).match(/(\d+)\s*Passengers?/i) || [])[1]) || null;
+      const refund2 = [...document.querySelectorAll("a, button, span")].map(text).find((t) => /^(changeable|refundable|non-?refundable)[^.]{0,40}$/i.test(t)) || null;
+      const warnings2 = [];
+      if (due2 === null) warnings2.push("Amount Due could not be read from the trip total panel.");
+      else if (!fm[2]) warnings2.push("Amount Due has no currency code next to it.");
+      const sum2 = lines.reduce((a, l) => a + l.amount, 0);
+      if (due2 !== null && lines.length && Math.abs(sum2 - due2) > 0.02) warnings2.push("Price lines add up to " + sum2.toFixed(2) + ", not the amount due " + due2.toFixed(2) + ".");
+      if (!slices2.length && due2 === null) return { status: "error", error_message: "No itinerary or amount due found on this page.", url };
+      return { status: "ok", step, cart_id: new URL(url).searchParams.get("cartId"), slices: slices2, passengers: pax, price_lines: lines, amount_due: due2, currency: fm ? fm[2] || null : null, refundability: refund2, warnings: warnings2, url };
+    }
 
     const strip = (s, prefix) => s.replace(prefix, "").replace(/^[\s,]+|[\s,]+$/g, "").trim() || null;
     const field = (root, sel, prefix) => { const e = [...root.querySelectorAll(sel)].find(visible) || root.querySelector(sel); return e ? strip(text(e), prefix) : null; };

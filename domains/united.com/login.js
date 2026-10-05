@@ -3,7 +3,7 @@
   match: { url_patterns: ["https://united.com/*", "https://*.united.com/*"] },
   tool: {
     name: "login",
-    description: "Sign in to United using email or MileagePlus number and password. Performs at most one submission per stage, never retries, and stops at challenges. logged_in=true means a submission in this invocation reached authenticated or MFA UI, NOT necessarily completed MFA; inspect authentication_complete. Existing sessions without account binding are rejected. prefilled_password submits a password securely filled by the human or vault without reading it. otp continues an already visible code step. Does not select an MFA delivery method or resend codes.",
+    description: "Sign in to United using email or MileagePlus number and password. Performs at most one submission per stage, never retries, and stops at challenges. When United remembers an account (masked number and password field only), credentials mode signs in only if the masked suffix matches the identifier and never switches accounts. logged_in=true means a submission in this invocation reached authenticated or MFA UI, NOT necessarily completed MFA; inspect authentication_complete. Existing sessions without account binding are rejected. prefilled_password submits a password securely filled by the human or vault without reading it. otp continues an already visible code step. Does not select an MFA delivery method or resend codes.",
     inputSchema: {
       type: "object", additionalProperties: false,
       properties: {
@@ -90,7 +90,7 @@
       const greeting = /\bHi,\s/.test(document.querySelector('header')?.innerText || '') ? 'header greeting (signed in)' : null;
       const signout = controls.find(t => /^(?:sign out|log out)$/i.test(t)) || greeting;
       const mfaText = [...headings, ...alerts, ...content.split('\n')].find(t => /we(?:'ve| have)? sent (?:you )?(?:a |an |the )?(?:verification |security |one.time )?code|enter (?:the |your )?(?:six.digit|6.digit|verification|one.time|security) (?:code|passcode)|enter code|choose (?:how|where) .*code|verify your identity/i.test(t));
-      return { url: location.href, origin: location.origin, idVisible: visible(id), pwVisible: visible(pw), pwFilled: visible(pw) && pw.value.length > 0, account: document.querySelector('input#username')?.value || null, codeCount: code.length, digitBoxes: single.length ? 0 : digits.length, errors: [...new Set(errors)], challenge: challenge || (challengeFrame ? challengeFrame.title : null), signout, mfaText };
+      return { url: location.href, origin: location.origin, idVisible: visible(id), pwVisible: visible(pw), pwFilled: visible(pw) && pw.value.length > 0, account: document.querySelector('input#username')?.value || null, maskedAccount: ([...document.querySelectorAll('main *, form *')].filter(e => !e.children.length && e.getClientRects().length).map(e => (e.textContent || '').trim()).find(t => /^[*•]{3,}[A-Za-z0-9]{2,4}$/.test(t)) || null), codeCount: code.length, digitBoxes: single.length ? 0 : digits.length, errors: [...new Set(errors)], challenge: challenge || (challengeFrame ? challengeFrame.title : null), signout, mfaText };
     });
     const outcome = s => {
       if (s.origin !== "https://www.united.com") return fail("unknown", "Navigation left the approved United origin; stopped.");
@@ -169,12 +169,21 @@
           const initial = outcome(s);
           if (initial) return initial;
         }
-        if (!s?.idVisible) {
+        if (!s?.idVisible && !(s?.pwVisible && s?.maskedAccount)) {
           await gotoUrl(entryUrl);
-          s = await poll(x => x.origin === "https://www.united.com" && (x.idVisible || !!outcome(x)));
+          s = await poll(x => x.origin === "https://www.united.com" && (x.idVisible || (x.pwVisible && !!x.maskedAccount) || !!outcome(x)));
         }
         if (!s) return fail("unknown", "Login form did not become ready. No credentials were submitted.");
         if (outcome(s)) return outcome(s);
+        // United may remember the last account and show only its masked number ("*****501") with a password field.
+        // Continue only when the visible suffix matches the requested identifier; never switch accounts.
+        const remembered = !s.idVisible && s.pwVisible && s.maskedAccount;
+        if (remembered) {
+          const suffix = s.maskedAccount.replace(/^[*•]+/, "").toLowerCase();
+          if (!identifier.trim().toLowerCase().endsWith(suffix)) return fail("invalid_input", "United remembers a different MileagePlus account on this sign-in page; the user must choose Switch accounts. No credentials were submitted.");
+          await js(() => { const e = document.querySelector('#password'); Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(e, ''); e.dispatchEvent(new Event('input', { bubbles: true })); });
+          await fillInput('#password', password);
+        } else {
         await fillInput('#MPIDEmailField', identifier);
         if (!await submit('#MPIDEmailField')) return fail("unknown", "Could not identify one enabled Continue button. No identifier submission was made.");
         if (networkFailure) return networkFailure;
@@ -182,6 +191,7 @@
         if (!s) return fail("unknown", "Identifier result timed out; do not automatically retry.");
         if (outcome(s)) return outcome(s);
         await fillInput('#password', password);
+        }
       } else if (mode === "otp") {
         s = await read();
         if (s.challenge) return outcome(s);

@@ -130,6 +130,25 @@
     },
     {
       "domain": "delta.com",
+      "tool": "continue_checkout",
+      "file": "domains/delta.com/continue_checkout.js",
+      "kind": "page",
+      "namespace": "delta.com",
+      "url_patterns": [
+        "https://www.delta.com/purchase/flights/*",
+        "https://www.delta.com/seats*"
+      ],
+      "url_patterns_reason": "Delta checkout product: page-local UI on the purchase/flights or seats app; unavailable on unrelated Delta pages.",
+      "status": "qa_passed",
+      "last_verified": "2026-10-05",
+      "notes": "Independent Herdr pi delta-qa PASS round 3 on final source, 2026-10-05. LIVE own signed-in cart: ATL–MCO Dec 3 DL1213 Main Classic $123.41 USD, search → express-checkout → saved passenger details → skip optional Seats & Upgrades → tool declines insurance → Delta accepts section and opens Payment → 4 payment choices and 3 saved cards → alternate saved card selected, CVV required → original method/card lists restored exactly → cart abandoned via homepage and tab closed. No account-record changes, PII output, personal/card/CVV typing, payment save or purchase. CVV guard independently returned missing_required_fields before any click. Prior failures fixed: insurance variant attributes and label prefix, unstable insurer controls/outer-label click, transient not-offered, CVV-required detection, express route and member-header detection, wallet single-asterisk mask vs expiry. Independent fixtures/schema/negative tests and 70 authored Delta tests pass; complete repo suite 2247 passed, 159 tools valid. Live accepting insurance, changed-total repricing, expired-card layout, round trips, payment submission and final review remain untested; payment save/purchase prohibited. Amount Due may briefly be null while repricing; continuation fails closed without a fresh readable total. Page navigation returns only navigation_scheduled; rediscover document-bound references.",
+      "provenance": {
+        "qa_agent": "herdr:delta-qa:01a10b62-6913-77c8-a408-9b019e08265d",
+        "source_sha256_prefix": "4fc54fbbcb9e"
+      }
+    },
+    {
+      "domain": "delta.com",
       "tool": "continue_to_review_and_pay",
       "file": "domains/delta.com/continue_to_review_and_pay.js",
       "kind": "page",
@@ -138,9 +157,32 @@
         "https://www.delta.com/completepurchase/trip-summary*"
       ],
       "url_patterns_reason": "Narrowed to www.delta.com/completepurchase/trip-summary*: it presses a button that exists only on Trip Summary.",
-      "status": "draft",
-      "last_verified": null,
-      "notes": "Schedules the Continue to Review & Pay click on Trip Summary after settling; enters no data, adds no extras, purchases nothing. Unit-tested."
+      "status": "qa_passed",
+      "last_verified": "2026-10-04",
+      "notes": "Independent Herdr pi delta-qa PASS round 3 (2026-10-04), final source; prior FAIL rounds fixed insurance polarity, saved-card expiry/last4 identification, unreadable/unapproved fees, validation-before-mutation and empty readiness. 65 Delta tests pass. Independent fixtures covered success/failure, malformed input, stale totals/fees, signed-out payment, purchase safety and output schemas (12 tools × 5 paths × 7 malformed inputs); live unrelated-page discovery and document-reference expiry checked. Builder live: ATL–MCO Dec 3 2026 Main Classic $123.41 USD, free/paid seat choice, skip/save, trip totals and passenger gate. Independent tester could not complete a live search because its tab was backgrounded. Round-trip attempts failed with ROF4004_400 / SFAF039_444; one-way used for mapping. No personal/card data, sign-in or purchase. Insurance and signed-in payment/card formats, payment continuation and final review success remain fixture-only; passenger data gate prevents deeper approved live QA. Paid seats fail closed on unrecognized formats. Page navigation returns navigation_scheduled only; rediscover references. Seat mutation is unsaved until Save & Exit; unexpected fees require canceling.",
+      "provenance": {
+        "qa_agent": "herdr:delta-qa:01a108d7-c82c-717c-a5d6-6bbad9dbb85b"
+      }
+    },
+    {
+      "domain": "delta.com",
+      "tool": "get_checkout_step",
+      "file": "domains/delta.com/get_checkout_step.js",
+      "kind": "page",
+      "namespace": "delta.com",
+      "url_patterns": [
+        "https://www.delta.com/purchase/flights/*",
+        "https://www.delta.com/completepurchase/*",
+        "https://www.delta.com/seats*"
+      ],
+      "url_patterns_reason": "Delta checkout product: page-local UI on the purchase/flights or seats app; unavailable on unrelated Delta pages.",
+      "status": "qa_passed",
+      "last_verified": "2026-10-05",
+      "notes": "Independent Herdr pi delta-qa PASS round 3 on final source, 2026-10-05. LIVE own signed-in cart: ATL–MCO Dec 3 DL1213 Main Classic $123.41 USD, search → express-checkout → saved passenger details → skip optional Seats & Upgrades → tool declines insurance → Delta accepts section and opens Payment → 4 payment choices and 3 saved cards → alternate saved card selected, CVV required → original method/card lists restored exactly → cart abandoned via homepage and tab closed. No account-record changes, PII output, personal/card/CVV typing, payment save or purchase. CVV guard independently returned missing_required_fields before any click. Prior failures fixed: insurance variant attributes and label prefix, unstable insurer controls/outer-label click, transient not-offered, CVV-required detection, express route and member-header detection, wallet single-asterisk mask vs expiry. Independent fixtures/schema/negative tests and 70 authored Delta tests pass; complete repo suite 2247 passed, 159 tools valid. Live accepting insurance, changed-total repricing, expired-card layout, round trips, payment submission and final review remain untested; payment save/purchase prohibited. Amount Due may briefly be null while repricing; continuation fails closed without a fresh readable total. Page navigation returns only navigation_scheduled; rediscover document-bound references.",
+      "provenance": {
+        "qa_agent": "herdr:delta-qa:01a10b62-6913-77c8-a408-9b019e08265d",
+        "source_sha256_prefix": "5cd2c3a8e9a6"
+      }
     },
     {
       "domain": "delta.com",
@@ -152,9 +194,13 @@
         "https://delta.com/*",
         "https://*.delta.com/*"
       ],
-      "status": "draft",
-      "last_verified": null,
-      "notes": "Read-only page summary: page type (incl. trip_summary / review_and_pay), live tool names, unsettled + reasons from observed Delta loading indicators (optional wait_for_settled_seconds), pending_choice for the fare experience drawer, cart_id, signed-in state, alerts and SFAF codes (seat badges excluded), and flow-aware suggestions that do not abandon an open cart. Unit-tested; exercised live on home, results, booking form and Trip Summary."
+      "status": "qa_passed",
+      "last_verified": "2026-10-05",
+      "notes": "Independent Herdr pi delta-qa PASS round 3 on final source, 2026-10-05. LIVE own signed-in cart: ATL–MCO Dec 3 DL1213 Main Classic $123.41 USD, search → express-checkout → saved passenger details → skip optional Seats & Upgrades → tool declines insurance → Delta accepts section and opens Payment → 4 payment choices and 3 saved cards → alternate saved card selected, CVV required → original method/card lists restored exactly → cart abandoned via homepage and tab closed. No account-record changes, PII output, personal/card/CVV typing, payment save or purchase. CVV guard independently returned missing_required_fields before any click. Prior failures fixed: insurance variant attributes and label prefix, unstable insurer controls/outer-label click, transient not-offered, CVV-required detection, express route and member-header detection, wallet single-asterisk mask vs expiry. Independent fixtures/schema/negative tests and 70 authored Delta tests pass; complete repo suite 2247 passed, 159 tools valid. Live accepting insurance, changed-total repricing, expired-card layout, round trips, payment submission and final review remain untested; payment save/purchase prohibited. Amount Due may briefly be null while repricing; continuation fails closed without a fresh readable total. Page navigation returns only navigation_scheduled; rediscover document-bound references.",
+      "provenance": {
+        "qa_agent": "herdr:delta-qa:01a10b62-6913-77c8-a408-9b019e08265d",
+        "source_sha256_prefix": "a6892f0199e2"
+      }
     },
     {
       "domain": "delta.com",
@@ -163,12 +209,17 @@
       "kind": "page",
       "namespace": "delta.com",
       "url_patterns": [
-        "https://www.delta.com/completepurchase/*"
+        "https://www.delta.com/completepurchase/*",
+        "https://www.delta.com/purchase/flights/*"
       ],
-      "url_patterns_reason": "Narrowed to www.delta.com/completepurchase/*: it reads the Trip Summary and Review and Pay pages and works nowhere else.",
-      "status": "draft",
-      "last_verified": null,
-      "notes": "Read-only cart reader on Trip Summary / Review and Pay: slices, passengers, price lines, amount due with currency, refundability, cart id. Unit-tested; exercised live on Trip Summary (CVG-SFO one way, Main Classic, $463.20 USD). Review and Pay reading not yet observed live."
+      "url_patterns_reason": "Reads both legacy completepurchase and redesigned purchase/flights checkout.",
+      "status": "qa_passed",
+      "last_verified": "2026-10-05",
+      "notes": "Independent Herdr pi delta-qa PASS round 3 on final source, 2026-10-05. LIVE own signed-in cart: ATL–MCO Dec 3 DL1213 Main Classic $123.41 USD, search → express-checkout → saved passenger details → skip optional Seats & Upgrades → tool declines insurance → Delta accepts section and opens Payment → 4 payment choices and 3 saved cards → alternate saved card selected, CVV required → original method/card lists restored exactly → cart abandoned via homepage and tab closed. No account-record changes, PII output, personal/card/CVV typing, payment save or purchase. CVV guard independently returned missing_required_fields before any click. Prior failures fixed: insurance variant attributes and label prefix, unstable insurer controls/outer-label click, transient not-offered, CVV-required detection, express route and member-header detection, wallet single-asterisk mask vs expiry. Independent fixtures/schema/negative tests and 70 authored Delta tests pass; complete repo suite 2247 passed, 159 tools valid. Live accepting insurance, changed-total repricing, expired-card layout, round trips, payment submission and final review remain untested; payment save/purchase prohibited. Amount Due may briefly be null while repricing; continuation fails closed without a fresh readable total. Page navigation returns only navigation_scheduled; rediscover document-bound references.",
+      "provenance": {
+        "qa_agent": "herdr:delta-qa:01a10b62-6913-77c8-a408-9b019e08265d",
+        "source_sha256_prefix": "f5d739c7c13f"
+      }
     },
     {
       "domain": "delta.com",
@@ -182,7 +233,43 @@
       "url_patterns_reason": "Narrowed to www.delta.com/flightsearch/search-results*: it reads the results page and works nowhere else.",
       "status": "draft",
       "last_verified": null,
-      "notes": "Read-only page tool on the results page: lists visible first-page itineraries with every fare column (brand_code, price, seats-left, sold out), sortable and filterable, plus the stored search context. Reuses search_flights' row parser. Unit-tested with fabricated rows; exercised live on two CVG-SFO one-way results pages (16 and 20 rows, none skipped). Adds column cabin names (also for sold-out cells), more_results_available, and opt-in load_more_results."
+      "notes": "Read-only page tool on the results page: lists visible first-page itineraries with every fare column (brand_code, price, seats-left, sold out), sortable and filterable, plus the stored search context. Reuses search_flights' row parser. Unit-tested with fabricated rows; exercised live on two CVG-SFO one-way results pages (16 and 20 rows, none skipped). Adds column cabin names (also for sold-out cells), more_results_available, and opt-in load_more_results. Checkout-scope QA FAILED (latest round): get_checkout_step, list_seat_map, select_seats/skip_seat_selection, decline_trip_insurance, list_payment_methods/select_saved_payment_method, continue_checkout not built; blocked because the xwebmcp extension lacks host access to delta.com (pending_origins)."
+    },
+    {
+      "domain": "delta.com",
+      "tool": "list_payment_methods",
+      "file": "domains/delta.com/list_payment_methods.js",
+      "kind": "page",
+      "namespace": "delta.com",
+      "url_patterns": [
+        "https://www.delta.com/purchase/flights/review-pay*",
+        "https://www.delta.com/purchase/flights/express-checkout*"
+      ],
+      "url_patterns_reason": "Delta checkout product: page-local UI on the purchase/flights or seats app; unavailable on unrelated Delta pages.",
+      "status": "qa_passed",
+      "last_verified": "2026-10-05",
+      "notes": "Independent Herdr pi delta-qa PASS round 3 on final source, 2026-10-05. LIVE own signed-in cart: ATL–MCO Dec 3 DL1213 Main Classic $123.41 USD, search → express-checkout → saved passenger details → skip optional Seats & Upgrades → tool declines insurance → Delta accepts section and opens Payment → 4 payment choices and 3 saved cards → alternate saved card selected, CVV required → original method/card lists restored exactly → cart abandoned via homepage and tab closed. No account-record changes, PII output, personal/card/CVV typing, payment save or purchase. CVV guard independently returned missing_required_fields before any click. Prior failures fixed: insurance variant attributes and label prefix, unstable insurer controls/outer-label click, transient not-offered, CVV-required detection, express route and member-header detection, wallet single-asterisk mask vs expiry. Independent fixtures/schema/negative tests and 70 authored Delta tests pass; complete repo suite 2247 passed, 159 tools valid. Live accepting insurance, changed-total repricing, expired-card layout, round trips, payment submission and final review remain untested; payment save/purchase prohibited. Amount Due may briefly be null while repricing; continuation fails closed without a fresh readable total. Page navigation returns only navigation_scheduled; rediscover document-bound references.",
+      "provenance": {
+        "qa_agent": "herdr:delta-qa:01a10b62-6913-77c8-a408-9b019e08265d",
+        "source_sha256_prefix": "45458f2259af"
+      }
+    },
+    {
+      "domain": "delta.com",
+      "tool": "list_seat_map",
+      "file": "domains/delta.com/list_seat_map.js",
+      "kind": "page",
+      "namespace": "delta.com",
+      "url_patterns": [
+        "https://www.delta.com/seats*"
+      ],
+      "url_patterns_reason": "Delta checkout product: page-local UI on the purchase/flights or seats app; unavailable on unrelated Delta pages.",
+      "status": "qa_passed",
+      "last_verified": "2026-10-04",
+      "notes": "Independent Herdr pi delta-qa PASS round 3 (2026-10-04), final source; prior FAIL rounds fixed insurance polarity, saved-card expiry/last4 identification, unreadable/unapproved fees, validation-before-mutation and empty readiness. 65 Delta tests pass. Independent fixtures covered success/failure, malformed input, stale totals/fees, signed-out payment, purchase safety and output schemas (12 tools × 5 paths × 7 malformed inputs); live unrelated-page discovery and document-reference expiry checked. Builder live: ATL–MCO Dec 3 2026 Main Classic $123.41 USD, free/paid seat choice, skip/save, trip totals and passenger gate. Independent tester could not complete a live search because its tab was backgrounded. Round-trip attempts failed with ROF4004_400 / SFAF039_444; one-way used for mapping. No personal/card data, sign-in or purchase. Insurance and signed-in payment/card formats, payment continuation and final review success remain fixture-only; passenger data gate prevents deeper approved live QA. Paid seats fail closed on unrecognized formats. Page navigation returns navigation_scheduled only; rediscover references. Seat mutation is unsaved until Save & Exit; unexpected fees require canceling.",
+      "provenance": {
+        "qa_agent": "herdr:delta-qa:01a108d7-c82c-717c-a5d6-6bbad9dbb85b"
+      }
     },
     {
       "domain": "delta.com",
@@ -201,7 +288,7 @@
       "url_patterns_reason": "Narrowed to the Delta homepage (/, /us/en, /us/en/, each also with ?*): the tool drives the homepage header Log in flyout, which exists only there.",
       "status": "draft",
       "last_verified": null,
-      "notes": "Homepage-only page tool: opens the top-nav Log in flyout, fills identifier and password, and schedules one submit click after returning; no output schema and the outcome is not observed. Live-checked with fabricated credentials and the submit click intercepted; no real submission or successful login observed."
+      "notes": "Homepage-only page tool: opens the top-nav Log in flyout, fills identifier and password, and schedules one submit click after returning; no output schema and the outcome is not observed. Live-checked with fabricated credentials and the submit click intercepted; no real submission or successful login observed. User-authorized real sign-in succeeded through login-tool inputs on 2026-10-05; credentials not recorded. Source unchanged, no new independent login-source sign-off claimed; status remains draft. Delta also exposed dv2-red-login-btn on a later homepage variant; opening that flyout manually allowed the existing login tool to submit from its already-open form. Login retries were not blind: expiry/UI state checked first."
     },
     {
       "domain": "delta.com",
@@ -215,7 +302,24 @@
       ],
       "status": "draft",
       "last_verified": null,
-      "notes": "Schedules a same-tab navigation to a www.delta.com path after returning; the description carries a basic site map. Unit-tested; live-checked navigating between the homepage and booking form."
+      "notes": "Schedules a same-tab navigation to a www.delta.com path after returning; the description carries a basic site map. Unit-tested; live-checked navigating between the homepage and booking form. Checkout-scope QA FAILED (latest round): get_checkout_step, list_seat_map, select_seats/skip_seat_selection, decline_trip_insurance, list_payment_methods/select_saved_payment_method, continue_checkout not built; blocked because the xwebmcp extension lacks host access to delta.com (pending_origins)."
+    },
+    {
+      "domain": "delta.com",
+      "tool": "open_seat_map",
+      "file": "domains/delta.com/open_seat_map.js",
+      "kind": "page",
+      "namespace": "delta.com",
+      "url_patterns": [
+        "https://www.delta.com/purchase/flights/trip-summary*"
+      ],
+      "url_patterns_reason": "Delta checkout product: page-local UI on the purchase/flights or seats app; unavailable on unrelated Delta pages.",
+      "status": "qa_passed",
+      "last_verified": "2026-10-04",
+      "notes": "Independent Herdr pi delta-qa PASS round 3 (2026-10-04), final source; prior FAIL rounds fixed insurance polarity, saved-card expiry/last4 identification, unreadable/unapproved fees, validation-before-mutation and empty readiness. 65 Delta tests pass. Independent fixtures covered success/failure, malformed input, stale totals/fees, signed-out payment, purchase safety and output schemas (12 tools × 5 paths × 7 malformed inputs); live unrelated-page discovery and document-reference expiry checked. Builder live: ATL–MCO Dec 3 2026 Main Classic $123.41 USD, free/paid seat choice, skip/save, trip totals and passenger gate. Independent tester could not complete a live search because its tab was backgrounded. Round-trip attempts failed with ROF4004_400 / SFAF039_444; one-way used for mapping. No personal/card data, sign-in or purchase. Insurance and signed-in payment/card formats, payment continuation and final review success remain fixture-only; passenger data gate prevents deeper approved live QA. Paid seats fail closed on unrecognized formats. Page navigation returns navigation_scheduled only; rediscover references. Seat mutation is unsaved until Save & Exit; unexpected fees require canceling.",
+      "provenance": {
+        "qa_agent": "herdr:delta-qa:01a108d7-c82c-717c-a5d6-6bbad9dbb85b"
+      }
     },
     {
       "domain": "delta.com",
@@ -229,7 +333,7 @@
       ],
       "status": "draft",
       "last_verified": null,
-      "notes": "Back to draft after a source change on 2026-09-29: airport boxes are now cleared through the page and typed with the inlined lib/input.js cadence, and the typed code is checked before choosing (fixes 'CVCVG' on macOS Chrome, where CDP Meta+A does not select all). First successful full live invocation: CVG-SFO one way, 1 adult, regular Chrome 154 on macOS via the xwebmcp extension, status ok with first-page flights. Needs fresh independent QA; earlier qa_passed sign-off (agt_b189571b6d300a05921c) covered the previous source. 2026-09-30: flights carry result_index and price.brand_code for select_fare; more_results_available added."
+      "notes": "Back to draft after a source change on 2026-09-29: airport boxes are now cleared through the page and typed with the inlined lib/input.js cadence, and the typed code is checked before choosing (fixes 'CVCVG' on macOS Chrome, where CDP Meta+A does not select all). First successful full live invocation: CVG-SFO one way, 1 adult, regular Chrome 154 on macOS via the xwebmcp extension, status ok with first-page flights. Needs fresh independent QA; earlier qa_passed sign-off (agt_b189571b6d300a05921c) covered the previous source. 2026-09-30: flights carry result_index and price.brand_code for select_fare; more_results_available added. Checkout-scope QA FAILED (latest round): get_checkout_step, list_seat_map, select_seats/skip_seat_selection, decline_trip_insurance, list_payment_methods/select_saved_payment_method, continue_checkout not built; blocked because the xwebmcp extension lacks host access to delta.com (pending_origins)."
     },
     {
       "domain": "delta.com",
@@ -243,7 +347,7 @@
       "url_patterns_reason": "Narrowed to www.delta.com/flightsearch/search-results*: it clicks fare columns on the results page and works nowhere else.",
       "status": "draft",
       "last_verified": null,
-      "notes": "Clicks one fare column on a results row (result_index + brand_code from list_flight_results, optional expected_flight_numbers check) and returns the experiences in Delta's drawer with details and the restrictions-consent flag. Does not navigate. Unit-tested; exercised live for Main (Basic/Classic/Extra); Comfort and First drawers observed (Classic/Extra)."
+      "notes": "Clicks one fare column on a results row (result_index + brand_code from list_flight_results, optional expected_flight_numbers check) and returns the experiences in Delta's drawer with details and the restrictions-consent flag. Does not navigate. Unit-tested; exercised live for Main (Basic/Classic/Extra); Comfort and First drawers observed (Classic/Extra). Checkout-scope QA FAILED (latest round): get_checkout_step, list_seat_map, select_seats/skip_seat_selection, decline_trip_insurance, list_payment_methods/select_saved_payment_method, continue_checkout not built; blocked because the xwebmcp extension lacks host access to delta.com (pending_origins)."
     },
     {
       "domain": "delta.com",
@@ -257,7 +361,79 @@
       "url_patterns_reason": "Narrowed to www.delta.com/flightsearch/search-results*: it acts on the experience drawer of the results page and works nowhere else.",
       "status": "draft",
       "last_verified": null,
-      "notes": "Picks an experience in the open drawer and schedules the Select click after settling (navigates to Trip Summary). Experiences with an Accept Restrictions box (Main Basic) require accept_restrictions: true. Unit-tested; live: Main Basic without consent refused, Main Classic reached Trip Summary. Ticking restrictions not exercised live."
+      "notes": "Picks an experience in the open drawer and schedules the Select click after settling (navigates to Trip Summary). Experiences with an Accept Restrictions box (Main Basic) require accept_restrictions: true. Unit-tested; live: Main Basic without consent refused, Main Classic reached Trip Summary. Ticking restrictions not exercised live. Checkout-scope QA FAILED (latest round): get_checkout_step, list_seat_map, select_seats/skip_seat_selection, decline_trip_insurance, list_payment_methods/select_saved_payment_method, continue_checkout not built; blocked because the xwebmcp extension lacks host access to delta.com (pending_origins)."
+    },
+    {
+      "domain": "delta.com",
+      "tool": "select_saved_payment_method",
+      "file": "domains/delta.com/select_saved_payment_method.js",
+      "kind": "page",
+      "namespace": "delta.com",
+      "url_patterns": [
+        "https://www.delta.com/purchase/flights/review-pay*",
+        "https://www.delta.com/purchase/flights/express-checkout*"
+      ],
+      "url_patterns_reason": "Delta checkout product: page-local UI on the purchase/flights or seats app; unavailable on unrelated Delta pages.",
+      "status": "qa_passed",
+      "last_verified": "2026-10-05",
+      "notes": "Independent Herdr pi delta-qa PASS round 3 on final source, 2026-10-05. LIVE own signed-in cart: ATL–MCO Dec 3 DL1213 Main Classic $123.41 USD, search → express-checkout → saved passenger details → skip optional Seats & Upgrades → tool declines insurance → Delta accepts section and opens Payment → 4 payment choices and 3 saved cards → alternate saved card selected, CVV required → original method/card lists restored exactly → cart abandoned via homepage and tab closed. No account-record changes, PII output, personal/card/CVV typing, payment save or purchase. CVV guard independently returned missing_required_fields before any click. Prior failures fixed: insurance variant attributes and label prefix, unstable insurer controls/outer-label click, transient not-offered, CVV-required detection, express route and member-header detection, wallet single-asterisk mask vs expiry. Independent fixtures/schema/negative tests and 70 authored Delta tests pass; complete repo suite 2247 passed, 159 tools valid. Live accepting insurance, changed-total repricing, expired-card layout, round trips, payment submission and final review remain untested; payment save/purchase prohibited. Amount Due may briefly be null while repricing; continuation fails closed without a fresh readable total. Page navigation returns only navigation_scheduled; rediscover document-bound references.",
+      "provenance": {
+        "qa_agent": "herdr:delta-qa:01a10b62-6913-77c8-a408-9b019e08265d",
+        "source_sha256_prefix": "cb42463e441a"
+      }
+    },
+    {
+      "domain": "delta.com",
+      "tool": "select_seat",
+      "file": "domains/delta.com/select_seat.js",
+      "kind": "page",
+      "namespace": "delta.com",
+      "url_patterns": [
+        "https://www.delta.com/seats*"
+      ],
+      "url_patterns_reason": "Delta checkout product: page-local UI on the purchase/flights or seats app; unavailable on unrelated Delta pages.",
+      "status": "qa_passed",
+      "last_verified": "2026-10-04",
+      "notes": "Independent Herdr pi delta-qa PASS round 3 (2026-10-04), final source; prior FAIL rounds fixed insurance polarity, saved-card expiry/last4 identification, unreadable/unapproved fees, validation-before-mutation and empty readiness. 65 Delta tests pass. Independent fixtures covered success/failure, malformed input, stale totals/fees, signed-out payment, purchase safety and output schemas (12 tools × 5 paths × 7 malformed inputs); live unrelated-page discovery and document-reference expiry checked. Builder live: ATL–MCO Dec 3 2026 Main Classic $123.41 USD, free/paid seat choice, skip/save, trip totals and passenger gate. Independent tester could not complete a live search because its tab was backgrounded. Round-trip attempts failed with ROF4004_400 / SFAF039_444; one-way used for mapping. No personal/card data, sign-in or purchase. Insurance and signed-in payment/card formats, payment continuation and final review success remain fixture-only; passenger data gate prevents deeper approved live QA. Paid seats fail closed on unrecognized formats. Page navigation returns navigation_scheduled only; rediscover references. Seat mutation is unsaved until Save & Exit; unexpected fees require canceling.",
+      "provenance": {
+        "qa_agent": "herdr:delta-qa:01a108d7-c82c-717c-a5d6-6bbad9dbb85b"
+      }
+    },
+    {
+      "domain": "delta.com",
+      "tool": "set_trip_protection",
+      "file": "domains/delta.com/set_trip_protection.js",
+      "kind": "page",
+      "namespace": "delta.com",
+      "url_patterns": [
+        "https://www.delta.com/purchase/flights/review-pay*",
+        "https://www.delta.com/purchase/flights/express-checkout*"
+      ],
+      "url_patterns_reason": "Delta checkout product: page-local UI on the purchase/flights or seats app; unavailable on unrelated Delta pages.",
+      "status": "qa_passed",
+      "last_verified": "2026-10-05",
+      "notes": "Independent Herdr pi delta-qa PASS round 3 on final source, 2026-10-05. LIVE own signed-in cart: ATL–MCO Dec 3 DL1213 Main Classic $123.41 USD, search → express-checkout → saved passenger details → skip optional Seats & Upgrades → tool declines insurance → Delta accepts section and opens Payment → 4 payment choices and 3 saved cards → alternate saved card selected, CVV required → original method/card lists restored exactly → cart abandoned via homepage and tab closed. No account-record changes, PII output, personal/card/CVV typing, payment save or purchase. CVV guard independently returned missing_required_fields before any click. Prior failures fixed: insurance variant attributes and label prefix, unstable insurer controls/outer-label click, transient not-offered, CVV-required detection, express route and member-header detection, wallet single-asterisk mask vs expiry. Independent fixtures/schema/negative tests and 70 authored Delta tests pass; complete repo suite 2247 passed, 159 tools valid. Live accepting insurance, changed-total repricing, expired-card layout, round trips, payment submission and final review remain untested; payment save/purchase prohibited. Amount Due may briefly be null while repricing; continuation fails closed without a fresh readable total. Page navigation returns only navigation_scheduled; rediscover document-bound references.",
+      "provenance": {
+        "qa_agent": "herdr:delta-qa:01a10b62-6913-77c8-a408-9b019e08265d",
+        "source_sha256_prefix": "3c5695b5228f"
+      }
+    },
+    {
+      "domain": "delta.com",
+      "tool": "skip_seat_selection",
+      "file": "domains/delta.com/skip_seat_selection.js",
+      "kind": "page",
+      "namespace": "delta.com",
+      "url_patterns": [
+        "https://www.delta.com/seats*"
+      ],
+      "url_patterns_reason": "Delta checkout product: page-local UI on the purchase/flights or seats app; unavailable on unrelated Delta pages.",
+      "status": "qa_passed",
+      "last_verified": "2026-10-04",
+      "notes": "Independent Herdr pi delta-qa PASS round 3 (2026-10-04), final source; prior FAIL rounds fixed insurance polarity, saved-card expiry/last4 identification, unreadable/unapproved fees, validation-before-mutation and empty readiness. 65 Delta tests pass. Independent fixtures covered success/failure, malformed input, stale totals/fees, signed-out payment, purchase safety and output schemas (12 tools × 5 paths × 7 malformed inputs); live unrelated-page discovery and document-reference expiry checked. Builder live: ATL–MCO Dec 3 2026 Main Classic $123.41 USD, free/paid seat choice, skip/save, trip totals and passenger gate. Independent tester could not complete a live search because its tab was backgrounded. Round-trip attempts failed with ROF4004_400 / SFAF039_444; one-way used for mapping. No personal/card data, sign-in or purchase. Insurance and signed-in payment/card formats, payment continuation and final review success remain fixture-only; passenger data gate prevents deeper approved live QA. Paid seats fail closed on unrecognized formats. Page navigation returns navigation_scheduled only; rediscover references. Seat mutation is unsaved until Save & Exit; unexpected fees require canceling.",
+      "provenance": {
+        "qa_agent": "herdr:delta-qa:01a108d7-c82c-717c-a5d6-6bbad9dbb85b"
+      }
     },
     {
       "domain": "doordash.com",
@@ -826,10 +1002,61 @@
         "https://*.kroger.com/*"
       ],
       "status": "qa_passed",
-      "last_verified": "2026-09-25",
-      "notes": "Independent QA verified the active-cart read with priced lines, saved-for-later separation, subtotal, not_authenticated when signed out, and restoration checks before and after cart mutations; degraded output when the product lookup fails is fixture-tested only.",
+      "last_verified": "2026-10-05",
+      "notes": "Independent QA verified the active-cart read with priced lines, saved-for-later separation, subtotal and restoration checks; on this exact source (with substitution_policy per line) a second independent QA confirmed substitution_policy tracks set_substitution_preference changes on active and saved-for-later lines. Degraded output when the product lookup fails and not_authenticated are fixture-tested. Not verified live: signed-out paths (shared session), challenge responses.",
       "provenance": {
-        "qa_agent": "agt_def5f2f10a89acbeeec4"
+        "qa_agent": "herdr:kroger-qa:01a10b65-31fa-72c3-87cd-fe7c51e0a189"
+      }
+    },
+    {
+      "domain": "kroger.com",
+      "tool": "get_delivery_slots",
+      "file": "domains/kroger.com/get_delivery_slots.js",
+      "kind": "cdp",
+      "namespace": "kroger.com",
+      "url_patterns": [
+        "https://kroger.com/*",
+        "https://*.kroger.com/*"
+      ],
+      "status": "qa_passed",
+      "last_verified": "2026-10-05",
+      "notes": "CDP for the same store-context capture reload as the other cart tools. Reads the site's /atlas/v1/promising/v4/timeslots quote for active cart lines; never selects, reserves or continues to payment. Independent QA (two passes, the second on this exact source) verified empty_cart, ok with a test-owned line (providers, fees, reserves_slot false, cart unchanged), max_days limits (site quotes 7 days) and schema bounds. not_delivery (pickup mode) is fixture-tested only; choosing a window was deliberately not exercised because Continue may reserve it. Not verified live: signed-out paths (shared session), challenge responses.",
+      "provenance": {
+        "qa_agent": "herdr:kroger-qa:01a10b65-31fa-72c3-87cd-fe7c51e0a189"
+      }
+    },
+    {
+      "domain": "kroger.com",
+      "tool": "get_order",
+      "file": "domains/kroger.com/get_order.js",
+      "kind": "cdp",
+      "namespace": "kroger.com",
+      "url_patterns": [
+        "https://kroger.com/*",
+        "https://*.kroger.com/*"
+      ],
+      "status": "qa_passed",
+      "last_verified": "2026-10-05",
+      "notes": "CDP because Kroger's bot protection resets order-detail POSTs not signed by its page script (observed net::ERR_HTTP2_PROTOCOL_ERROR), so the tool navigates to /mypurchases/pending/<id> or /mypurchases/detail/<key> and returns the structured details (items, quantities, substitution policy, fees, totals, change flags) from that page's own response. Independent QA (two passes, the second on this exact source) verified a pending order, a receipt, not_found for unknown ids, malformed-input rejection, no card digits or street address in output, and tool rediscovery after navigation. Read-only. A still-modifiable pending order was not available. Not verified live: signed-out paths (shared session), challenge responses.",
+      "provenance": {
+        "qa_agent": "herdr:kroger-qa:01a10b65-31fa-72c3-87cd-fe7c51e0a189"
+      }
+    },
+    {
+      "domain": "kroger.com",
+      "tool": "get_page_context",
+      "file": "domains/kroger.com/get_page_context.js",
+      "kind": "page",
+      "namespace": "kroger.com",
+      "url_patterns": [
+        "https://kroger.com/*",
+        "https://*.kroger.com/*"
+      ],
+      "status": "qa_passed",
+      "last_verified": "2026-10-05",
+      "notes": "Independent QA (two passes, the second on this exact source) verified live page_type, signed_in, header fulfillment, cart count, order id/receipt key extraction and suggestions on home, cart (empty and non-empty), search, purchase history, a pending order, a receipt, an unknown order page and developer.kroger.com (other). got-everything and scheduling classification is fixture-tested only. Not verified live: signed-out paths (shared session), challenge responses.",
+      "provenance": {
+        "qa_agent": "herdr:kroger-qa:01a10b65-31fa-72c3-87cd-fe7c51e0a189"
       }
     },
     {
@@ -847,6 +1074,23 @@
       "notes": "Independent QA verified lookups by UPC, zero-padding, not_found for unknown codes and the unpriced placeholder record (returned ok with available false), signed out and signed in. Prices and availability are for the session's selected store and fulfillment method only.",
       "provenance": {
         "qa_agent": "agt_def5f2f10a89acbeeec4"
+      }
+    },
+    {
+      "domain": "kroger.com",
+      "tool": "list_orders",
+      "file": "domains/kroger.com/list_orders.js",
+      "kind": "page",
+      "namespace": "kroger.com",
+      "url_patterns": [
+        "https://kroger.com/*",
+        "https://*.kroger.com/*"
+      ],
+      "status": "qa_passed",
+      "last_verified": "2026-10-05",
+      "notes": "Page tool (same-origin GETs, no navigation). Independent QA (two passes, the second on this exact source) verified live pending orders with the site's modifiable/cancelable flags, history paging (page, page_size, include_pending false), invalid-input rejection and wrong_page on developer.kroger.com. Read-only; no order is modified or canceled. A still-modifiable pending order was not available. Not verified live: signed-out paths (shared session), challenge responses.",
+      "provenance": {
+        "qa_agent": "herdr:kroger-qa:01a10b65-31fa-72c3-87cd-fe7c51e0a189"
       }
     },
     {
@@ -881,6 +1125,23 @@
       "notes": "Independent QA (three passes, the last on this exact source) verified first-page results, ordering against the site's own results page (organic order identical; the site's interleaved sponsored placements are returned in place and flagged), limits, fuzzy no-match behaviour, signed-out use in a fresh browser, header-capture caching and the schema gate. Author-verified live signed in. First page only; a nonsense query returns fuzzy matches rather than no_results.",
       "provenance": {
         "qa_agent": "agt_def5f2f10a89acbeeec4"
+      }
+    },
+    {
+      "domain": "kroger.com",
+      "tool": "set_substitution_preference",
+      "file": "domains/kroger.com/set_substitution_preference.js",
+      "kind": "cdp",
+      "namespace": "kroger.com",
+      "url_patterns": [
+        "https://kroger.com/*",
+        "https://*.kroger.com/*"
+      ],
+      "status": "qa_passed",
+      "last_verified": "2026-10-05",
+      "notes": "Sends the same single-line cart PUT as the cart page's substitution checkbox (SHOPPER_CHOICE or NONE). Independent QA (two passes, the second on this exact source) verified off/on on a test-owned line with quantity preserved (including quantity 2), the no-write repeat path, not_in_cart for saved-for-later and absent UPCs with the saved line untouched, and exact cart restoration afterwards. Choosing a specific backup item is not supported. Not verified live: signed-out paths (shared session), challenge responses.",
+      "provenance": {
+        "qa_agent": "herdr:kroger-qa:01a10b65-31fa-72c3-87cd-fe7c51e0a189"
       }
     },
     {
@@ -2026,6 +2287,40 @@
     },
     {
       "domain": "united.com",
+      "tool": "continue_checkout",
+      "file": "domains/united.com/continue_checkout.js",
+      "kind": "page",
+      "namespace": "united.com",
+      "url_patterns": [
+        "https://united.com/*",
+        "https://*.united.com/*"
+      ],
+      "status": "qa_passed",
+      "last_verified": "2026-10-04",
+      "notes": "Independent live QA by united-qa (5 rounds, 2026-10-04, final source fingerprint 9a11d338; signed-out rounds 1-3, signed-in MileagePlus rounds 4-5 with user authorization; CVG-ORD Oct 7-8, 1 adult, Standard; every reversible change restored, nothing purchased): PASS: travel_add_ons -> seat_map, seat_map skip (subtotal 0) -> travel_options, travel_options -> payment, final_step on payment (nothing pressed); 1-cent total and seat subtotal mismatches, from_step mismatch, missing confirm, empty traveler fields (missing_required_fields), not_in_checkout and cart_empty. Signed in: traveler_info -> travel_add_ons with the profile-filled traveler, and profile_update_pending refusal while \"Save information to my MileagePlus profile\" is checked (verified live; the box was unchecked so no account record changed). Unverified: the validation_failed branch.",
+      "provenance": {
+        "qa_agent": "herdr:united-qa:01a108e4-952e-7619-9803-d130e6e84e8d"
+      }
+    },
+    {
+      "domain": "united.com",
+      "tool": "get_checkout_step",
+      "file": "domains/united.com/get_checkout_step.js",
+      "kind": "page",
+      "namespace": "united.com",
+      "url_patterns": [
+        "https://united.com/*",
+        "https://*.united.com/*"
+      ],
+      "status": "qa_passed",
+      "last_verified": "2026-10-04",
+      "notes": "Independent live QA by united-qa (5 rounds, 2026-10-04, final source fingerprint 9a11d338; signed-out rounds 1-3, signed-in MileagePlus rounds 4-5 with user authorization; CVG-ORD Oct 7-8, 1 adult, Standard; every reversible change restored, nothing purchased): PASS for traveler_info (missing field labels only), travel_add_ons, seat_map (unavailable map, subtotal 0), travel_options, payment, not_in_checkout and cart_empty; cart id redacted; informational notices and cart toasts excluded from validation_messages. Unverified: a rendered seat map with chosen seats. Signed in: traveler_info with a profile-filled saved traveler is ready with no missing fields; Premier status notice filtered.",
+      "provenance": {
+        "qa_agent": "herdr:united-qa:01a108e4-952e-7619-9803-d130e6e84e8d"
+      }
+    },
+    {
+      "domain": "united.com",
       "tool": "get_page_context",
       "file": "domains/united.com/get_page_context.js",
       "kind": "page",
@@ -2034,9 +2329,12 @@
         "https://united.com/*",
         "https://*.united.com/*"
       ],
-      "status": "draft",
-      "last_verified": null,
-      "notes": "Page type (home, sign-in, results leg, checkout), live tools, unsettled reasons, open fare options, signed-in state and status level (no PII), verification-code step, suggestions. Draft."
+      "status": "qa_passed",
+      "last_verified": "2026-10-04",
+      "notes": "Independent live QA by united-qa (5 rounds, 2026-10-04, final source fingerprint 9a11d338; signed-out rounds 1-3, signed-in MileagePlus rounds 4-5 with user authorization; CVG-ORD Oct 7-8, 1 adult, Standard; every reversible change restored, nothing purchased): PASS on home, departing/returning results, traveler info and add-ons/seat map/checkout (checkout_other by design); cart id redacted from current_path; available_tools filtered by URL patterns after in-app navigation; remembered greeting reported as signed out. Unverified: signed-in member_status on checkout.",
+      "provenance": {
+        "qa_agent": "herdr:united-qa:01a108e4-952e-7619-9803-d130e6e84e8d"
+      }
     },
     {
       "domain": "united.com",
@@ -2048,9 +2346,12 @@
         "https://united.com/*",
         "https://*.united.com/*"
       ],
-      "status": "draft",
-      "last_verified": null,
-      "notes": "Reads United's checkout cart panel: flights with numbers and aircraft, fare per person, taxes, total due, cart id; never returns traveler details. Draft."
+      "status": "qa_passed",
+      "last_verified": "2026-10-04",
+      "notes": "Independent live QA by united-qa (5 rounds, 2026-10-04, final source fingerprint 9a11d338; signed-out rounds 1-3, signed-in MileagePlus rounds 4-5 with user authorization; CVG-ORD Oct 7-8, 1 adult, Standard; every reversible change restored, nothing purchased): PASS on traveler, add-ons, travel_options and payment: flights, fare, taxes, extras (Travel Options bundle, Premier Access, Trip Insurance; [] after restore), total, no traveler data, cart id redacted from url; no_cart off-cart. Unverified: seat charges in extras.",
+      "provenance": {
+        "qa_agent": "herdr:united-qa:01a108e4-952e-7619-9803-d130e6e84e8d"
+      }
     },
     {
       "domain": "united.com",
@@ -2068,6 +2369,57 @@
     },
     {
       "domain": "united.com",
+      "tool": "list_payment_methods",
+      "file": "domains/united.com/list_payment_methods.js",
+      "kind": "page",
+      "namespace": "united.com",
+      "url_patterns": [
+        "https://www.united.com/*/book-flight/checkout/*"
+      ],
+      "status": "qa_passed",
+      "last_verified": "2026-10-04",
+      "notes": "Independent live QA by united-qa (5 rounds, 2026-10-04, final source fingerprint 9a11d338; signed-out rounds 1-3, signed-in MileagePlus rounds 4-5 with user authorization; CVG-ORD Oct 7-8, 1 adult, Standard; every reversible change restored, nothing purchased): PASS: 9 methods with codes (CC, PPP, PVN, PPL, UL, TC, TRAVELBANK, AP, PZ), selected method, saved_cards [] with saved_cards_login_required when not signed in, total; not_payment_step and cart_empty elsewhere. Signed in: saved cards listed as brand, last4 and selected only, with no names or nicknames.",
+      "url_patterns_reason": "Narrowed to United's checkout pages (www.united.com/*/book-flight/checkout/*), the only pages with the payment step.",
+      "provenance": {
+        "qa_agent": "herdr:united-qa:01a108e4-952e-7619-9803-d130e6e84e8d"
+      }
+    },
+    {
+      "domain": "united.com",
+      "tool": "list_seat_map",
+      "file": "domains/united.com/list_seat_map.js",
+      "kind": "page",
+      "namespace": "united.com",
+      "url_patterns": [
+        "https://www.united.com/*/book-flight/seatmap/*"
+      ],
+      "status": "qa_passed",
+      "last_verified": "2026-10-04",
+      "notes": "Independent live QA by united-qa (5 rounds, 2026-10-04, final source fingerprint 9a11d338; signed-out rounds 1-3, signed-in MileagePlus rounds 4-5 with user authorization; CVG-ORD Oct 7-8, 1 adult, Standard; every reversible change restored, nothing purchased): PASS signed in on both flights (737-800 119 seats, 737-900 59): seat types, positions, prices ($0 Preferred for Premier Silver, $44.99-$49.99 Economy Plus), clean features, filters, travelers by number only; seat_map_unavailable path when signed out (traveler details not saved); malformed filters rejected as input errors. Unverified: multi-traveler carts.",
+      "url_patterns_reason": "Narrowed to United's checkout seat map (www.united.com/*/book-flight/seatmap/*), the only page with seats.",
+      "provenance": {
+        "qa_agent": "herdr:united-qa:01a108e4-952e-7619-9803-d130e6e84e8d"
+      }
+    },
+    {
+      "domain": "united.com",
+      "tool": "list_travel_add_ons",
+      "file": "domains/united.com/list_travel_add_ons.js",
+      "kind": "page",
+      "namespace": "united.com",
+      "url_patterns": [
+        "https://www.united.com/*/book-flight/*"
+      ],
+      "status": "qa_passed",
+      "last_verified": "2026-10-04",
+      "notes": "Independent live QA by united-qa (5 rounds, 2026-10-04, final source fingerprint 9a11d338; signed-out rounds 1-3, signed-in MileagePlus rounds 4-5 with user authorization; CVG-ORD Oct 7-8, 1 adult, Standard; every reversible change restored, nothing purchased): PASS: 6 bundles with prices on travel_add_ons; Premier Access plus insurance question (price, choice, quote_current false during re-quote) on travel_options; no_add_ons_step and cart_empty elsewhere; schema-conformant. Unverified: struck-through sale prices, multi-traveler carts. Unobserved: quote_current null (decline wording without a trip amount; seen once by the author, not by QA).",
+      "url_patterns_reason": "Narrowed to United's booking checkout (www.united.com/*/book-flight/*), where the add-ons and travel options steps live.",
+      "provenance": {
+        "qa_agent": "herdr:united-qa:01a108e4-952e-7619-9803-d130e6e84e8d"
+      }
+    },
+    {
+      "domain": "united.com",
       "tool": "login",
       "file": "domains/united.com/login.js",
       "kind": "cdp",
@@ -2076,11 +2428,11 @@
         "https://united.com/*",
         "https://*.united.com/*"
       ],
-      "status": "draft",
-      "last_verified": null,
-      "notes": "Live-verified: challenge classification, input validation, and one-submission-per-stage behaviour. Unverified: successful authentication, wrong-password rejection, and MFA; independent QA found three defects that were fixed but never re-ran against the fixed tool. United returns HTTP 428 at /xapi/auth/validate-username, persisting with stealth off, across both entry paths and both proxy types; an account-level flag is suspected but unproven.",
+      "status": "qa_passed",
+      "last_verified": "2026-10-04",
+      "notes": "Independent live QA by united-qa (2026-10-04, login.js sha 0ed11bed, user-authorized credentials, no account changes): input validation (missing mode, credentials without password, otp with identifier, malformed otp, unknown mode) rejected without submission; full-form credentials sign-in authenticated with no MFA (twice, after a site sign-out); credentials, mismatched identifier and prefilled_password while already signed in refused with no submission; otp without a code step refused; outputs schema-conformant and never contain the password or account number. The remembered-account path (masked number + password; signs in only when the suffix matches) was verified live only by the author, as United showed QA the full form. Unverified: remembered-account mismatch refusal live, wrong-password/lockout (not attempted), MFA/OTP continuation, challenges, prefilled_password success, remember_me true.",
       "provenance": {
-        "qa_agent": "agt_900288267257b91f1fdc"
+        "qa_agent": "herdr:united-qa:01a108e4-952e-7619-9803-d130e6e84e8d"
       }
     },
     {
@@ -2138,6 +2490,91 @@
       "last_verified": null,
       "notes": "Chooses a fare (Basic requires accept_restrictions); reports return results or checkout as the next page. Draft.",
       "url_patterns_reason": "Narrowed to United's flight results (www.united.com/*/fsr/*), where fare options open."
+    },
+    {
+      "domain": "united.com",
+      "tool": "select_payment_method",
+      "file": "domains/united.com/select_payment_method.js",
+      "kind": "page",
+      "namespace": "united.com",
+      "url_patterns": [
+        "https://www.united.com/*/book-flight/checkout/*"
+      ],
+      "status": "qa_passed",
+      "last_verified": "2026-10-04",
+      "notes": "Independent live QA by united-qa (5 rounds, 2026-10-04, final source fingerprint 9a11d338; signed-out rounds 1-3, signed-in MileagePlus rounds 4-5 with user authorization; CVG-ORD Oct 7-8, 1 adult, Standard; every reversible change restored, nothing purchased): PASS: CC -> PayPal/Venmo -> CC with total unchanged, idempotent repeat, wrong expected_current_method/total/cart id refused without clicking, unknown code returns available_codes, malformed input, not_payment_step, cart_empty. Never types card data or presses Agree and purchase.",
+      "url_patterns_reason": "Narrowed to United's checkout pages (www.united.com/*/book-flight/checkout/*), the only pages with the payment step.",
+      "provenance": {
+        "qa_agent": "herdr:united-qa:01a108e4-952e-7619-9803-d130e6e84e8d"
+      }
+    },
+    {
+      "domain": "united.com",
+      "tool": "select_saved_payment_method",
+      "file": "domains/united.com/select_saved_payment_method.js",
+      "kind": "page",
+      "namespace": "united.com",
+      "url_patterns": [
+        "https://www.united.com/*/book-flight/checkout/*"
+      ],
+      "status": "qa_passed",
+      "last_verified": "2026-10-04",
+      "notes": "Independent live QA by united-qa (5 rounds, 2026-10-04, final source fingerprint 9a11d338; signed-out rounds 1-3, signed-in MileagePlus rounds 4-5 with user authorization; CVG-ORD Oct 7-8, 1 adult, Standard; every reversible change restored, nothing purchased): PASS signed in: four saved cards, selection A -> B -> A restored with total unchanged, stale total / wrong expected_current_last4 / unknown last4 refused without clicking, malformed input errors, login_required when signed out, not_found while a non-card method is selected, cart_empty. Returns brand and last4 only (no names or nicknames). The author observed saved cards in a <select> dropdown and QA in radio-style options in another session; the tool handles both, but the dropdown path was only author-verified.",
+      "url_patterns_reason": "Narrowed to United's checkout pages (www.united.com/*/book-flight/checkout/*), the only pages with the payment step.",
+      "provenance": {
+        "qa_agent": "herdr:united-qa:01a108e4-952e-7619-9803-d130e6e84e8d"
+      }
+    },
+    {
+      "domain": "united.com",
+      "tool": "select_seat",
+      "file": "domains/united.com/select_seat.js",
+      "kind": "page",
+      "namespace": "united.com",
+      "url_patterns": [
+        "https://www.united.com/*/book-flight/seatmap/*"
+      ],
+      "status": "qa_passed",
+      "last_verified": "2026-10-04",
+      "notes": "Independent live QA by united-qa (5 rounds, 2026-10-04, final source fingerprint 9a11d338; signed-out rounds 1-3, signed-in MileagePlus rounds 4-5 with user authorization; CVG-ORD Oct 7-8, 1 adult, Standard; every reversible change restored, nothing purchased): PASS: free seat select, paid seat ($44.99) select with seat_subtotal update, stale price (stale_state), occupied seat (seat_unavailable), bad seat/flight index, clear and double-clear, restore to no seats, continue_checkout seat-subtotal guard with a paid seat in the cart. Unverified: multi-traveler carts, continuing with a paid seat kept.",
+      "url_patterns_reason": "Narrowed to United's checkout seat map (www.united.com/*/book-flight/seatmap/*), the only page with seats.",
+      "provenance": {
+        "qa_agent": "herdr:united-qa:01a108e4-952e-7619-9803-d130e6e84e8d"
+      }
+    },
+    {
+      "domain": "united.com",
+      "tool": "set_travel_add_on",
+      "file": "domains/united.com/set_travel_add_on.js",
+      "kind": "page",
+      "namespace": "united.com",
+      "url_patterns": [
+        "https://www.united.com/*/book-flight/*"
+      ],
+      "status": "qa_passed",
+      "last_verified": "2026-10-04",
+      "notes": "Independent live QA by united-qa (5 rounds, 2026-10-04, final source fingerprint 9a11d338; signed-out rounds 1-3, signed-in MileagePlus rounds 4-5 with user authorization; CVG-ORD Oct 7-8, 1 adult, Standard; every reversible change restored, nothing purchased): PASS: bundle and Premier Access add/remove restored to exact totals (incl. the all-flights section after selection), idempotent repeat, stale price/total, unknown id, wrong step, malformed input, cart_empty. Unverified: bundle swap within one direction, multi-traveler carts.",
+      "url_patterns_reason": "Narrowed to United's booking checkout (www.united.com/*/book-flight/*), where the add-ons and travel options steps live.",
+      "provenance": {
+        "qa_agent": "herdr:united-qa:01a108e4-952e-7619-9803-d130e6e84e8d"
+      }
+    },
+    {
+      "domain": "united.com",
+      "tool": "set_trip_protection",
+      "file": "domains/united.com/set_trip_protection.js",
+      "kind": "page",
+      "namespace": "united.com",
+      "url_patterns": [
+        "https://www.united.com/*/book-flight/*"
+      ],
+      "status": "qa_passed",
+      "last_verified": "2026-10-04",
+      "notes": "Independent live QA by united-qa (5 rounds, 2026-10-04, final source fingerprint 9a11d338; signed-out rounds 1-3, signed-in MileagePlus rounds 4-5 with user authorization; CVG-ORD Oct 7-8, 1 adult, Standard; every reversible change restored, nothing purchased): PASS: accept adds the premium and decline removes it with exact restore; stale total, wrong premium and live re-quote (quote for a different trip total) refused without clicking; idempotent repeats; not_offered on payment, cart_empty on expired carts. Returning the question to unanswered is impossible on the site. Signed-in accept verified the total rose by exactly the premium.",
+      "url_patterns_reason": "Narrowed to United's booking checkout (www.united.com/*/book-flight/*), where the travel options step with the insurance question lives.",
+      "provenance": {
+        "qa_agent": "herdr:united-qa:01a108e4-952e-7619-9803-d130e6e84e8d"
+      }
     }
   ]
 }

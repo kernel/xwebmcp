@@ -202,15 +202,15 @@ test("get_page_context: SFAF code on results is reported and not read as zero fl
 // --- continue_to_review_and_pay ---------------------------------------------------------------
 test("continue_to_review_and_pay: schedules the Continue click after settling; refuses elsewhere or while loading", async () => {
   const clicks = [];
-  const page = `<html><body><button class="idp-btn idp-primary">CONTINUE TO REVIEW &amp; PAY</button></body></html>`;
-  const ok = await run("continue_to_review_and_pay", page, {}, { url: "https://www.delta.com/completepurchase/trip-summary?cartId=c-1", onClick: el => clicks.push(el.tagName) });
+  const page = `<html><body><div id="trip-total-content"><div class="line-item">Amount Due $123.41 USD</div></div><button class="idp-btn idp-primary">CONTINUE TO REVIEW &amp; PAY</button></body></html>`;
+  const ok = await run("continue_to_review_and_pay", page, {confirm:true,expected_total_due:123.41}, { url: "https://www.delta.com/completepurchase/trip-summary?cartId=c-1", onClick: el => clicks.push(el.tagName) });
   assert.deepEqual(ok.out.status, "navigation_scheduled");
   assert.equal(ok.out.cart_id, "c-1");
   assert.deepEqual(clicks, []);
   ok.scheduled[0]();
   assert.deepEqual(clicks, ["BUTTON"]);
-  assert.equal((await run("continue_to_review_and_pay", page, {}, { url: "https://www.delta.com/completepurchase/review-pay?cartId=c-1" })).out.status, "error");
-  assert.equal((await run("continue_to_review_and_pay", page.replace("<body>", '<body><div class="spinnerView">x</div>'), {}, { url: "https://www.delta.com/completepurchase/trip-summary?cartId=c-1" })).out.status, "not_ready");
+  assert.equal((await run("continue_to_review_and_pay", page, {confirm:true,expected_total_due:123.41}, { url: "https://www.delta.com/completepurchase/review-pay?cartId=c-1" })).out.status, "error");
+  assert.equal((await run("continue_to_review_and_pay", page.replace("<body>", '<body><div class="spinnerView">x</div>'), {confirm:true,expected_total_due:123.41}, { url: "https://www.delta.com/completepurchase/trip-summary?cartId=c-1" })).out.status, "not_ready");
 });
 
 // --- QA subagent findings (2026-09-30) ------------------------------------------------------
@@ -286,7 +286,7 @@ test("get_page_context: return results leg; styling classes named *alert are not
 });
 
 test("continue_to_review_and_pay: on Review and Pay says it is already there", async () => {
-  const { out } = await run("continue_to_review_and_pay", "<html><body></body></html>", {}, { url: "https://www.delta.com/completepurchase/review-pay?cartId=c" });
+  const { out } = await run("continue_to_review_and_pay", "<html><body></body></html>", {confirm:true,expected_total_due:123.41}, { url: "https://www.delta.com/completepurchase/review-pay?cartId=c" });
   assert.match(out.error_message, /Already on Review and Pay/);
 });
 

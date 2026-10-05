@@ -3,7 +3,7 @@
   match: { url_patterns: ["https://delta.com/*", "https://*.delta.com/*"] },
   tool: {
     name: "get_page_context",
-    description: "Describe the current Delta page so you can decide what to do next: page type (home, booking form, flight results, trip summary, review and pay, …), which WebMCP tools this page exposes right now, whether the page is still loading (unsettled, with reasons such as results skeletons or Delta's page spinner), whether a choice is pending on the page (for example the fare experience drawer), the cart id on checkout pages, whether the user appears signed in, visible site alerts or error codes (for example SFAF001), and suggested next steps along the booking flow. Read-only: never clicks, types, or navigates. Pass wait_for_settled_seconds to wait until the page stops loading before answering. Call it after any navigation, after login, or whenever you are unsure where the tab is.",
+    description: "Describe the current Delta page so you can decide what to do next: page type (home, booking form, flight results, trip summary, seat map, review and pay, …), which WebMCP tools this page exposes right now, whether the page is still loading (unsettled, with reasons such as results skeletons or Delta's page spinner), whether a choice is pending on the page (for example the fare experience drawer), the cart id on checkout pages, whether the user appears signed in, visible site alerts or error codes (for example SFAF001, ROF4004_400 or CKO_101), and suggested next steps along the booking flow. Read-only: never clicks, types, or navigates. Pass wait_for_settled_seconds to wait until the page stops loading before answering. Call it after any navigation, after login, or whenever you are unsure where the tab is.",
     inputSchema: {
       type: "object", additionalProperties: false,
       properties: {
@@ -17,7 +17,7 @@
         current_url: { type: "string" },
         current_path: { type: "string" },
         page_title: { type: "string" },
-        page_type: { type: "string", enum: ["home", "booking_form", "flight_results", "trip_summary", "review_and_pay", "confirmation", "login", "my_trips", "flight_status", "skymiles", "info", "other"] },
+        page_type: { type: "string", enum: ["home", "booking_form", "flight_results", "trip_summary", "seat_map", "review_and_pay", "confirmation", "login", "my_trips", "flight_status", "skymiles", "info", "other"] },
         results_leg: { type: ["string", "null"], enum: ["outbound", "return", null], description: "On results pages: outbound, or return (round trip, after the outbound was chosen)." },
         available_tools: { type: ["array", "null"], items: { type: "string" }, description: "Tool names this page exposes now, or null when the page does not expose document.modelContext." },
         unsettled: { type: "boolean", description: "True while a known loading state is visible; tools may be missing or results partial." },
@@ -43,8 +43,9 @@
       if (document.readyState !== "complete") out.push("document_loading");
       if (any("idp-flight-row-skeleton")) out.push("results_loading");
       if (any("idp-spinner, .page-loader")) out.push("page_spinner");
-      if (any(".review-pay-loading-view, .spinnerView, .spinner-overlay")) out.push("checkout_loading");
-      if (any('[aria-busy="true"], [role="progressbar"]')) out.push("busy_region");
+      if (any(".review-pay-loading-view, .spinnerView, .spinner-overlay, [data-cy=passenger-details-loading], [data-cy=payment-skeleton], [data-cy=seat-selection-loading]")) out.push("checkout_loading");
+      // Delta's checkout keeps decorative .skeleton placeholders (role=progressbar) on screen indefinitely.
+      if (any('[aria-busy="true"]:not(.skeleton), [role="progressbar"]:not(.skeleton)')) out.push("busy_region");
       return out;
     };
     const waitSeconds = Math.max(0, Math.min(30, Number(input?.wait_for_settled_seconds) || 0));
@@ -64,9 +65,10 @@
     if (host === "www.delta.com" && (path === "/" || path === "/us/en")) pageType = "home";
     else if (path.startsWith("/flightsearch/book-a-flight")) pageType = "booking_form";
     else if (path.startsWith("/flightsearch/search-results")) pageType = "flight_results";
-    else if (path.startsWith("/completepurchase/trip-summary")) pageType = "trip_summary";
-    else if (path.startsWith("/completepurchase/review-pay")) pageType = "review_and_pay";
-    else if (path.startsWith("/completepurchase/") && /confirm/i.test(path)) pageType = "confirmation";
+    else if (path.startsWith("/completepurchase/trip-summary") || path.startsWith("/purchase/flights/trip-summary")) pageType = "trip_summary";
+    else if (path.startsWith("/completepurchase/review-pay") || path.startsWith("/purchase/flights/review-pay") || path.startsWith("/purchase/flights/express-checkout")) pageType = "review_and_pay";
+    else if (path === "/seats" || path.startsWith("/seats/")) pageType = "seat_map";
+    else if ((path.startsWith("/completepurchase/") || path.startsWith("/purchase/")) && /confirm/i.test(path)) pageType = "confirmation";
     else if (path.startsWith("/skymiles/login") || host.startsWith("login.")) pageType = "login";
     else if (path.startsWith("/my-trips") || path.startsWith("/mytrips")) pageType = "my_trips";
     else if (path.startsWith("/flightstatus")) pageType = "flight_status";
@@ -93,7 +95,7 @@
     const headerControls = [...document.querySelectorAll("header a, header button, nav a, nav button, #login-trigger, idp-nav-slim-links a, idp-nav-slim-links button")].filter(visible);
     let signedIn = null;
     if (headerControls.some((el) => el.id === "login-trigger" || /^log ?in$/i.test(text(el)))) signedIn = false;
-    else if (headerControls.some((el) => /^(log ?out|sign ?out)$/i.test(text(el)))) signedIn = true;
+    else if (visible(document.querySelector("#mach-core-login-flyout-details")) || headerControls.some((el) => /^(log ?out|sign ?out)$/i.test(text(el)))) signedIn = true;
     else if (pageType === "login" && visible(document.querySelector("#password-input"))) signedIn = false;
 
     const messages = [];
@@ -105,17 +107,34 @@
       messages.push(t);
       if (messages.length >= 10) break;
     }
-    const code = text(document.body).slice(0, 200000).match(/SFAF\d+(?:_\d+)?/);
+    const code = text(document.body).slice(0, 200000).match(/\b(?:SFAF|ROF|CKO)\d*(?:_\d+)?\b/);
     if (code && !messages.some((m) => m.includes(code[0])) && messages.length < 10) messages.push("Delta site error code on page: " + code[0]);
 
     const steps = [];
     if (unsettledReasons.length) steps.push("The page is still loading (" + unsettledReasons.join(", ") + "): call get_page_context with wait_for_settled_seconds before acting");
     if (loginFlyoutOpen) steps.push("The login flyout is open: if login was just called, check page_messages for an error or verification prompt before doing anything else; never resubmit blindly");
-    if (pageType === "trip_summary" || pageType === "review_and_pay") {
+    const newCheckout = path.startsWith("/purchase/flights/") || pageType === "seat_map";
+    if (pageType === "seat_map") {
+      if (has("list_seat_map")) steps.push("Use list_seat_map to read the seats, then select_seat with the user's choice (seats with a fee need max_additional_fee the user agreed to)");
+      if (has("continue_checkout")) steps.push("Use continue_checkout with from_step seat_map to save the chosen seats and return to Trip Summary");
+      if (has("skip_seat_selection")) steps.push("Use skip_seat_selection to leave the map without saving; seats are optional");
+    } else if (pageType === "trip_summary" || pageType === "review_and_pay") {
       if (has("get_trip_summary")) steps.push("Use get_trip_summary to confirm the itinerary, fare and amount due with the user");
-      steps.push(pageType === "trip_summary"
-        ? (has("continue_to_review_and_pay") ? "If the user confirms the itinerary and total, use continue_to_review_and_pay; upgrades and extras are optional offers, not required" : "If the user confirms, they continue to Review & Pay on the page; upgrades and extras are optional offers, not required")
-        : "Passenger details, the required Trip Protection Yes/No choice, payment and Complete Purchase must be done by the user; do not enter personal or payment data or answer Trip Protection");
+      if (newCheckout && has("get_checkout_step")) steps.push("Use get_checkout_step to see the checkout step, active section, missing fields and amount due before any checkout action");
+      if (pageType === "trip_summary") {
+        if (newCheckout) {
+          if (has("open_seat_map")) steps.push("Seats are optional: use open_seat_map if the user wants to choose seats");
+          if (has("continue_checkout")) steps.push("If the user confirms the itinerary and total, use continue_checkout with from_step trip_summary; upgrades are optional offers, not required");
+        } else steps.push(has("continue_to_review_and_pay") ? "If the user confirms the itinerary and total, use continue_to_review_and_pay; upgrades and extras are optional offers, not required" : "If the user confirms, they continue to Review & Pay on the page; upgrades and extras are optional offers, not required");
+      } else {
+        steps.push("Passenger details and any card number or security code must be entered by the user; no tool enters personal or payment data");
+        if (newCheckout) {
+          if (has("set_trip_protection")) steps.push("Answer Trip Protection only with the user's explicit choice, using set_trip_protection");
+          if (has("list_payment_methods")) steps.push("Use list_payment_methods / select_saved_payment_method for a signed-in member's saved card");
+          if (has("continue_checkout")) steps.push("Use continue_checkout for the active section once it is complete; it never presses Complete Purchase");
+        } else steps.push("Do not answer Trip Protection without the user's choice");
+        steps.push("Complete Purchase is the user's action only; never press it");
+      }
       steps.push("Leaving this page (a new search or the homepage) abandons the current selection; only do so if the user asks");
     } else if (pageType === "flight_results") {
       if (code) steps.push("Delta returned " + code[0] + " (often a rate limit): wait before searching again; do not treat it as zero flights");
@@ -133,7 +152,7 @@
       steps.push("Use search_flights with origin, destination, dates, trip type and passengers to get structured flight options");
     }
     if (signedIn === false && pageType === "home" && has("login") && !loginFlyoutOpen) steps.push("Use login to sign in with credentials the user provided, or let the user sign in manually");
-    if (!["trip_summary", "review_and_pay", "flight_results", "booking_form"].includes(pageType)) {
+    if (!["trip_summary", "seat_map", "review_and_pay", "flight_results", "booking_form"].includes(pageType)) {
       if (signedIn === false && pageType !== "home") steps.push("To sign in, use navigate_to_page({ url: \"/\" }), then login on the homepage");
       steps.push("Use navigate_to_page({ url: \"/flightsearch/book-a-flight\" }) to open the full booking form");
       if (pageType !== "my_trips") steps.push("Use navigate_to_page({ url: \"/my-trips/search\" }) to look up an existing reservation");

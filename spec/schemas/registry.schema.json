@@ -98,7 +98,7 @@
           "properties": {
             "qa_agent": {
               "type": ["string", "null"],
-              "pattern": "^agt_[0-9a-f]{20}$"
+              "pattern": "^(agt_[0-9a-f]{20}|herdr:[a-z][a-z0-9_-]{0,31}:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$"
             }
           },
           "additionalProperties": {

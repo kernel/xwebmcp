@@ -3,14 +3,14 @@
   match: { url_patterns: ["https://united.com/*", "https://*.united.com/*"] },
   tool: {
     name: "get_trip_summary",
-    description: "Read United's trip cart panel on its checkout pages (for example Traveler Info, reached from search or from Google Flights' \"Book with United\"): trip type, each flight (route, date, airport-local times, stops, duration, flight numbers, aircraft), the price breakdown (fare per person, taxes and fees) and the total due, plus United's cart id. It expands the panel's \"Show details\" sections on the page to read flight numbers; it never reads or returns traveler details (names, dates of birth, MileagePlus numbers, contact data) and never enters anything. Use it to confirm the exact itinerary and total with the user before they continue to payment. United's checkout panel shows a fare label only for some fares (\"Basic Economy\" under each flight; Standard fares show none) and never the bag allowance; confirm those from the fare chosen in select_fare_option or Google's get_booking_options, cross-checked by the total. cart_id is the Cart ID United displays, not the URL's cartId.",
+    description: "Read United's trip cart panel on its checkout pages (for example Traveler Info, reached from search or from Google Flights' \"Book with United\"): trip type, each flight (route, date, airport-local times, stops, duration, flight numbers, aircraft), the price breakdown (fare per person, taxes and fees, and extras such as seats, Premier Access or trip insurance) and the total due, plus United's cart id. It expands the panel's \"Show details\" sections on the page to read flight numbers; it never reads or returns traveler details (names, dates of birth, MileagePlus numbers, contact data) and never enters anything. Use it to confirm the exact itinerary and total with the user before they continue to payment. United's checkout panel shows a fare label only for some fares (\"Basic Economy\" under each flight; Standard fares show none) and never the bag allowance; confirm those from the fare chosen in select_fare_option or Google's get_booking_options, cross-checked by the total. cart_id is the Cart ID United displays, not the URL's cartId.",
     inputSchema: { type: "object", additionalProperties: false, properties: {} },
     outputSchema: {
       type: "object",
       oneOf: [
         {
           type: "object", additionalProperties: false,
-          required: ["status", "trip_type", "travelers", "flights", "fare_per_person", "taxes_and_fees", "total_due", "currency_symbol", "cart_id", "warnings", "url"],
+          required: ["status", "trip_type", "travelers", "flights", "fare_per_person", "taxes_and_fees", "extras", "total_due", "currency_symbol", "cart_id", "warnings", "url"],
           properties: {
             status: { const: "ok" },
             trip_type: { type: ["string", "null"], description: "e.g. ROUNDTRIP, ONE WAY" },
@@ -34,6 +34,10 @@
             },
             fare_per_person: { type: ["number", "null"] },
             taxes_and_fees: { type: ["number", "null"] },
+            extras: {
+              type: "array", description: "Other priced lines in United's price breakdown (e.g. seats, Premier Access, bundles, trip insurance) with their amounts; already included in total_due.",
+              items: { type: "object", additionalProperties: false, required: ["label", "amount"], properties: { label: { type: "string" }, amount: { type: "number" } } }
+            },
             total_due: { type: ["number", "null"] },
             currency_symbol: { type: ["string", "null"] },
             cart_id: { type: ["string", "null"], description: "United's displayed Cart ID." },
@@ -53,7 +57,7 @@
     const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     const visible = (e) => !!e && e.getClientRects().length > 0;
     const text = (e) => (e?.innerText || e?.textContent || "").replace(/\s+/g, " ").trim();
-    const url = location.href.replace(/([?&]cartId=)[^&]+/, "$1…");
+    const url = location.href.replace(/([?&]cartId=)[^&]+/, "$1…").replace(/(\/book-flight\/[a-z]+\/)[^/?#]+/i, "$1…");
     const panel = () => {
       const heading = [...document.querySelectorAll("h2, h3")].find((e) => visible(e) && /^(ROUNDTRIP|ONE ?WAY|MULTI.?CITY)\b/i.test(text(e)));
       let box = heading;
@@ -111,6 +115,17 @@
     const symbol = (() => { const i = lines.findIndex((l) => /^Total due$/i.test(l)); const v = i === -1 ? "" : lines[i + 1] || ""; return (/^([^\d\s,.]+)/.exec(v) || [])[1] || null; })();
     const perPerson = (() => { const l = lines.find((x) => /\/person$/i.test(x)); return l ? Number(l.replace(/[^\d.]/g, "")) : money("Fare"); })();
     const taxes = money("Taxes and fees");
+    const extras = [];
+    const from = lines.findIndex((l) => /^Price breakdown$/i.test(l));
+    const to = lines.findIndex((l, j) => j > from && /^Total due$/i.test(l));
+    if (from !== -1 && to !== -1) {
+      for (let j = from + 1; j < to - 1; j++) {
+        const label = lines[j], amount = lines[j + 1];
+        if (/^-?[^\d\s]?\$?[\d,]+\.\d{2}/.test(label) || !/^-?\$\s?[\d,]+\.\d{2}$/.test(amount)) continue;
+        if (/^(Fare|Taxes and fees)$/i.test(label) || /\d+ (adult|child|infant|senior)/i.test(label)) continue;
+        extras.push({ label: label.replace(/[®™℠]/g, "").slice(0, 80), amount: (amount.startsWith("-") ? -1 : 1) * Number(amount.replace(/[^\d.]/g, "")) });
+      }
+    }
     const warnings = [];
     if (total === null) warnings.push("Total due could not be read.");
     if (flights.some((f) => !f.flight_numbers.length)) warnings.push("Some flight numbers were not visible.");
@@ -118,7 +133,7 @@
       status: "ok",
       trip_type: trip ? trip[1].toUpperCase().replace(/\s+/, " ") : null,
       travelers: trip ? Number(trip[2]) : null,
-      flights, fare_per_person: perPerson, taxes_and_fees: taxes, total_due: total, currency_symbol: symbol,
+      flights, fare_per_person: perPerson, taxes_and_fees: taxes, extras, total_due: total, currency_symbol: symbol,
       cart_id: (lines.map((l) => /^Cart ID:\s*(\S+)/i.exec(l)).find(Boolean) || [])[1] || null,
       warnings, url
     };
