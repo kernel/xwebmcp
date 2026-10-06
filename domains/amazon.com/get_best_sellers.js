@@ -52,13 +52,14 @@
     const fail = (kind, message) => ({ status: "error", error_kind: kind, error_message: message });
     // @amazon-page-fetch: keep identical in all six amazon.com tools (tests compare the copies). Uses the tool's fail and signal.
     const ORIGIN = "https://www.amazon.com";
-    // Checked in order: off-host redirect, sign-in redirect, robot check, missing page (only when the caller passes a
-    // not_found message), throttling, other HTTP failures, then the access notice, which counts only without the content.
+    // Checked in order: off-host redirect, sign-in redirect, robot check (a title match counts only without the content),
+    // missing page (only when the caller passes a not_found message), throttling, other HTTP failures, then the access
+    // notice, which counts only without the content.
     const blocked = (doc, res, content, missing) => {
       const url = res.url ? new URL(res.url) : null;
       if (url && url.origin !== ORIGIN) return fail("site_changed", "Amazon redirected outside www.amazon.com; no data is returned.");
       if (url && /^\/(?:ap|ax)\//.test(url.pathname)) return fail("login_required", "Amazon redirected to its sign-in page. Sign in to Amazon in this browser yourself, then call again.");
-      if (/Robot Check|captcha/i.test(doc.title) || doc.querySelector("form[action*='validateCaptcha']")) return fail("challenge", "Amazon is showing a robot-check page for this browser. A person has to complete it on amazon.com in this browser; the tool never bypasses it or retries.");
+      if (!doc.querySelector(content) && /Robot Check|captcha/i.test(doc.title) || doc.querySelector("form[action*='validateCaptcha']")) return fail("challenge", "Amazon is showing a robot-check page for this browser. A person has to complete it on amazon.com in this browser; the tool never bypasses it or retries.");
       if (res.status === 404 && missing) return fail("not_found", missing);
       if (res.status === 429 || res.status === 503) return fail("rate_limited", "Amazon answered HTTP " + res.status + ": throttled or unavailable. Wait a few minutes; do not retry automatically.");
       if (res.status !== 200) return fail("site_error", "Amazon answered HTTP " + res.status + " instead of the requested page.");

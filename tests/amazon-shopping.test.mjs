@@ -664,6 +664,15 @@ test("read tools share the cart tools' block detection", async () => {
   assert.equal((await harness("search_products", { handler: serve(404, "<html></html>") }).run(READ_INPUTS.search_products)).error_kind, "site_error", "a search has no not_found outcome");
 });
 
+test("a page whose title names a captcha or robot check is read normally when it shows its content", async () => {
+  const pages = {
+    search_products: searchPage({ cards: CARDS }).replace("<title>Amazon.com : fabricated</title>", "<title>Amazon.com : captcha book</title>"),
+    get_product: productPage().replace("<title>Amazon.com: Testbrand Steel Bottle</title>", "<title>Amazon.com: Robot Check Valve</title>"),
+    get_best_sellers: sellersPage({ title: "Amazon Best Sellers: Best Captcha Kits" })
+  };
+  for (const [name, input] of Object.entries(READ_INPUTS)) assert.equal((await harness(name, { handler: serve(200, pages[name]) }).run(input)).status, "ok", name);
+});
+
 test("read tools pass the caller's signal to the request and honor cancellation", async () => {
   for (const [name, input] of Object.entries(READ_INPUTS)) {
     const live = new AbortController();
