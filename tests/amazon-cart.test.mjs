@@ -307,6 +307,13 @@ test("update_cart_item: request mirrors Amazon's cart script", async () => {
   assert.deepEqual(JSON.parse(p.get("activeItems")), ["test-line-1", "other"].map(id => ({ itemId: `sc-active-${id}`, quantity: 1, price: "29.99", isSelected: true, relatedItemIds: [] })));
   assert.deepEqual(JSON.parse(p.get("savedItems")), [{ itemId: "sc-saved-saved", price: "29.99" }]);
 });
+test("update_cart_item: isPrimeAsin and isSelected come from the line's own data attributes", async () => {
+  const h = harness({ state: { lines: [item()] }, handler: (u, init, { state }) => init.method === "GET" ? { body: fixture(state).replace('data-isselected="1" data-isprimeasin="0"', 'data-isselected="0" data-isprimeasin="1"') } : undefined });
+  assert.equal((await prepared(h, "update_cart_item", { ...target, quantity: 2 })).status, "ok");
+  const p = new URLSearchParams(h.posts()[0].body);
+  assert.equal(JSON.parse(p.get("actionPayload"))[0].payload.isPrimeAsin, true);
+  assert.equal(JSON.parse(p.get("activeItems"))[0].isSelected, false);
+});
 test("update_cart_item: update, restore and remove with exact readback", async () => {
   const h = harness({ state: { lines: [item(), item("other", "B0TEST0002")], saved: [item("saved", "B0TEST0003")] } });
   const initial = await h.run("get_cart");
