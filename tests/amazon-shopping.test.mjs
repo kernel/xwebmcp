@@ -659,7 +659,9 @@ test("read tools share the cart tools' block detection", async () => {
     assert.equal(await kind(serve(200, "<html><head><title>Amazon Sign-In</title></head><body>Sign in</body></html>", `${ORIGIN}/ax/claim/sign-in?arb=fabricated`)), "login_required", name);
     assert.equal(await kind(serve(200, "<html><head><title>Robot Check</title></head><body>Type the characters you see</body></html>")), "challenge", name);
     assert.equal(await kind(serve(404, "<html><head><title>Robot Check</title></head><body></body></html>")), "challenge", `${name}: a robot check served as 404 is not not_found`);
+    assert.equal(await kind(serve(200, "<html><head><title>Amazon.com</title></head><body><form action=\"/errors/validateCaptcha\"></form></body></html>")), "challenge", `${name}: the captcha form alone is a robot check`);
   }
+  assert.equal((await harness("search_products", { handler: serve(404, "<html></html>") }).run(READ_INPUTS.search_products)).error_kind, "site_error", "a search has no not_found outcome");
 });
 
 test("read tools pass the caller's signal to the request and honor cancellation", async () => {

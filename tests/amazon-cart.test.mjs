@@ -112,6 +112,8 @@ for (const name of cartTools) {
     for (const [body, status, url, kind] of [
       ["<title>Robot Check</title>", 200, undefined, "challenge"],
       ["<title>Robot Check</title>", 503, undefined, "challenge"],
+      ['<title>Amazon.com</title><form action="/errors/validateCaptcha"></form>', 200, undefined, "challenge"],
+      ["", 404, undefined, "site_error"],
       ["<body>Continued access violates Amazon’s Conditions of Use</body>", 200, undefined, "access_gated"],
       ["", 429, undefined, "rate_limited"],
       ["", 200, "https://www.amazon.com/ap/signin", "login_required"],
