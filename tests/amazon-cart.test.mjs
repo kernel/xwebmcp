@@ -463,6 +463,21 @@ test("add_to_cart: a line added at another quantity is unknown, not success", as
   assert.equal(r.error_kind, "outcome_unknown");
   assert.equal(h.posts().length, 1);
 });
+test("add_to_cart: a second line for the ASIN or a changed or missing active line is unknown, not success", async () => {
+  for (const mode of ["twice", "changed", "removed"]) {
+    const h = harness({ state: { lines: [item("other", "B0TEST0002")] }, handler: (u, init, { state }) => {
+      if (init.method !== "POST") return;
+      state.lines.unshift(item("new-line", add.asin));
+      if (mode === "twice") state.lines.unshift(item("new-line-2", add.asin));
+      if (mode === "changed") state.lines.find(l => l.id === "other").quantity = 3;
+      if (mode === "removed") state.lines = state.lines.filter(l => l.id !== "other");
+      return { body: "{}" };
+    } });
+    const r = await prepared(h, "add_to_cart", add);
+    assert.equal(r.error_kind, "outcome_unknown", mode);
+    assert.equal(h.posts().length, 1);
+  }
+});
 
 test("cart tools pass the caller's signal to every request", async () => {
   for (const name of cartTools) {
