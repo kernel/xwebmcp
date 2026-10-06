@@ -400,7 +400,19 @@ for (const name of writes) {
     assert.equal(r.error_kind, "outcome_unknown");
     assert.equal(r.mutation_attempted, true);
   });
+  test(`${name}: a session that changes during the write is unknown, even when the cart shows the change`, async () => {
+    const h = harness({ state: actionState(name), handler: (u, init, { doc }) => { if (init.method === "POST") doc.cookie = "session-id=reissued-session; ubid-main=fabricated-ubid"; } });
+    const r = await prepared(h, name, actionInput(name));
+    assert.equal(r.error_kind, "outcome_unknown");
+    assert.equal(h.posts().length, 1);
+  });
 }
+test("add_to_cart: a line added at another quantity is unknown, not success", async () => {
+  const h = harness({ product: product({ qty: "1,2" }), handler: (u, init, { state }) => { if (init.method === "POST") { state.lines.unshift(item("new-line", add.asin, 1)); return { body: "{}" }; } } });
+  const r = await prepared(h, "add_to_cart", { ...add, quantity: 2 });
+  assert.equal(r.error_kind, "outcome_unknown");
+  assert.equal(h.posts().length, 1);
+});
 
 test("cart tools pass the caller's signal to every request", async () => {
   for (const name of cartTools) {
