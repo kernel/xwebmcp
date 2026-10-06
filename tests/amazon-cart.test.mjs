@@ -400,6 +400,17 @@ for (const name of writes) {
     assert.equal(r.error_kind, "outcome_unknown");
     assert.equal(r.mutation_attempted, true);
   });
+  test(`${name}: a write answered by a redirect succeeds when the cart shows exactly the change`, async () => {
+    const h = harness({ state: actionState(name), handler: (u, init, { state }) => {
+      if (init.method !== "POST") return;
+      if (name === "add_to_cart") state.lines.unshift(item("new-line", add.asin, 1));
+      else state.lines.find(l => l.id === target.cart_item_id).quantity = 2;
+      return { status: 0, type: "opaqueredirect", body: "" };
+    } });
+    const r = await prepared(h, name, actionInput(name));
+    assert.equal(r.status, "ok", JSON.stringify(r));
+    assert.equal(h.posts().length, 1);
+  });
   test(`${name}: a session that changes during the write is unknown, even when the cart shows the change`, async () => {
     const h = harness({ state: actionState(name), handler: (u, init, { doc }) => { if (init.method === "POST") doc.cookie = "session-id=reissued-session; ubid-main=fabricated-ubid"; } });
     const r = await prepared(h, name, actionInput(name));
