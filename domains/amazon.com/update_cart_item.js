@@ -159,7 +159,7 @@
     const inputError = keys => {
       if (!input || typeof input !== "object" || Array.isArray(input)) return fail("invalid_input", "Input must be an object. Nothing was requested.");
       const extra = Object.keys(input).find(k => !keys.includes(k));
-      if (extra) return fail("invalid_input", `Unknown input '${extra}'. Nothing was requested.`);
+      if (extra) return fail("invalid_input", `Unknown input '${extra.slice(0, 100)}'. Nothing was requested.`);
       const digests = [input.expected_session_context, input.expected_cart_version];
       if (!digests.every(v => typeof v === "string" && /^[a-f0-9]{64}$/.test(v))) return fail("invalid_input", "Use the exact session_context and cart_version from get_cart. Nothing was requested.");
       return null;

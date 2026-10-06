@@ -102,7 +102,7 @@ for (const name of cartTools) {
     assert.equal(d.tool.annotations.destructiveHint, name === "update_cart_item");
   });
   test(`${name}: malformed inputs fail before any request`, async () => {
-    for (const input of [null, [], { confirmed: true }, { unexpected: "x" }, "x"]) {
+    for (const input of [null, [], { confirmed: true }, { unexpected: "x" }, { ["x".repeat(400)]: true }, "x"]) {
       const h = harness();
       assert.equal((await h.run(name, input)).error_kind, "invalid_input");
       assert.equal(h.requests.length, 0);
