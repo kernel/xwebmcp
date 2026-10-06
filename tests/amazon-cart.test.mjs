@@ -431,6 +431,18 @@ for (const name of writes) {
     assert.equal(r.error_kind, "outcome_unknown");
     assert.equal(h.posts().length, 1);
   });
+  test(`${name}: another cart or a delivery group that appears during the write is unknown, even when the cart shows the change`, async () => {
+    for (const page of [s => fixture({ ...s, other: true }), s => fixture(s).replace('<div id="sc-active-cart">', '<div id="sc-active-cart"><div class="sc-delivery-group"></div>')]) {
+      let sent = false;
+      const h = harness({ state: actionState(name), handler: (u, init, { state }) => {
+        if (init.method === "POST") sent = true;
+        else if (sent && u.pathname === "/gp/cart/view.html") return { body: page(state) };
+      } });
+      const r = await prepared(h, name, actionInput(name));
+      assert.equal(r.error_kind, "outcome_unknown");
+      assert.equal(h.posts().length, 1);
+    }
+  });
 }
 test("add_to_cart: a line added at another quantity is unknown, not success", async () => {
   const h = harness({ product: product({ qty: "1,2" }), handler: (u, init, { state }) => { if (init.method === "POST") { state.lines.unshift(item("new-line", add.asin, 1)); return { body: "{}" }; } } });
