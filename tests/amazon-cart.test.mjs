@@ -249,7 +249,8 @@ test("add_to_cart: refusals before any write", async () => {
     [{ lines: [item()] }, "already_in_cart"],
     [{ saved: [item("saved", add.asin)] }, "already_in_cart"],
     [{ other: true }, "unsupported_cart"],
-    [{ lines: [item("plan", "B0TEST0002", 1, 'data-related-item-ids="warranty_1"')] }, "unsupported_cart"]
+    [{ lines: [item("plan", "B0TEST0002", 1, 'data-related-item-ids="warranty_1"')] }, "unsupported_cart"],
+    [{ lines: [item("weighed", "B0TEST0002", 1, 'data-weighed="1"><span data-quantity-click-action-vw="1"></span')] }, "unsupported_cart"]
   ]) {
     const h = harness({ state });
     assert.equal((await prepared(h, "add_to_cart", add)).error_kind, kind);
@@ -324,7 +325,8 @@ test("update_cart_item: wrong target, quantity and special lines refuse writes",
     ["", { cart_item_id: "missing" }, "not_found"],
     ["", { expected_quantity: 2 }, "stale_cart"],
     ['data-related-item-ids="warranty_1"', {}, "unsupported_cart"],
-    ['data-subscription="1"><span class="sc-action-sns"></span', {}, "unsupported_cart"]
+    ['data-subscription="1"><span class="sc-action-sns"></span', {}, "unsupported_cart"],
+    ['data-weighed="1"><span data-quantity-click-action-vw="1"></span', {}, "unsupported_cart"]
   ]) {
     const h = harness({ state: { lines: [item("test-line-1", "B0TEST0001", 1, extra)] } });
     assert.equal((await prepared(h, "update_cart_item", { ...target, quantity: 2, ...patch })).error_kind, kind);
@@ -361,6 +363,14 @@ for (const name of writes) {
     h.doc.cookie = "session-id=different-session; ubid-main=fabricated-ubid";
     assert.equal((await h.run(name, { ...expect(c), ...actionInput(name) })).error_kind, "session_changed");
     assert.equal((await h.run(name, { ...expect(await h.run("get_cart")), expected_cart_version: "a".repeat(64), ...actionInput(name) })).error_kind, "stale_cart");
+    assert.equal(h.posts().length, 0);
+  });
+  test(`${name}: a line saved for later since get_cart makes the cart stale`, async () => {
+    const h = harness({ state: actionState(name) });
+    const c = await h.run("get_cart");
+    h.state().saved.push(item("saved-later", "B0TEST0003"));
+    assert.notEqual((await h.run("get_cart")).cart_version, c.cart_version);
+    assert.equal((await h.run(name, { ...expect(c), ...actionInput(name) })).error_kind, "stale_cart");
     assert.equal(h.posts().length, 0);
   });
   test(`${name}: canceled before requests; network failure after dispatch is unknown`, async () => {
