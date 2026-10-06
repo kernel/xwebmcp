@@ -224,6 +224,7 @@ test("add_to_cart: posts the form to the button target without Buy Now fields an
   assert.equal(post.path, "/cart/add-to-cart/ref=dp_start-bbf_1_glance");
   assert.equal(post.redirect, "manual");
   assert.equal(post.credentials, "include");
+  assert.equal(post.headers["content-type"], "application/x-www-form-urlencoded");
   const p = new URLSearchParams(post.body);
   assert.equal(p.get("quantity"), "2");
   assert.equal(p.get("items[0.base][quantity]"), "2");
@@ -291,12 +292,13 @@ test("update_cart_item: request mirrors Amazon's cart script", async () => {
   assert.equal(post.redirect, "manual");
   assert.equal(post.headers["anti-csrftoken-a2z"], "fabricated_csrf");
   assert.equal(post.headers["X-AUI-View"], "Desktop");
+  assert.equal(post.headers["content-type"], "application/x-www-form-urlencoded; charset=UTF-8");
   const p = new URLSearchParams(post.body);
   assert.equal(p.get("submit.cart-actions"), "1");
   assert.equal(p.get("pageAction"), "cart-actions");
   assert.equal(p.get("displayedSavedItemNum"), "1");
   assert.deepEqual(JSON.parse(p.get("actionPayload")), [{ type: "UPDATE_QUANTITY_START", payload: { itemId: "test-line-1", list: "activeItems", relatedItemIds: [], isPrimeAsin: false, quantity: 2 } }]);
-  assert.deepEqual(JSON.parse(p.get("activeItems")).map(i => i.itemId), ["sc-active-test-line-1", "sc-active-other"]);
+  assert.deepEqual(JSON.parse(p.get("activeItems")), ["test-line-1", "other"].map(id => ({ itemId: `sc-active-${id}`, quantity: 1, price: "29.99", isSelected: true, relatedItemIds: [] })));
   assert.deepEqual(JSON.parse(p.get("savedItems")), [{ itemId: "sc-saved-saved", price: "29.99" }]);
 });
 test("update_cart_item: update, restore and remove with exact readback", async () => {
