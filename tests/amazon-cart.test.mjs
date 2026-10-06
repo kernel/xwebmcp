@@ -7,8 +7,7 @@ import { DOMParser, Document } from "./etsy-dom.mjs";
 import { conforms } from "./amazon-schema.mjs";
 
 const names = ["get_cart", "add_to_cart", "update_cart_item", "get_product"];
-const allTools = [...names, "search_products", "get_best_sellers"];
-const sources = Object.fromEntries(allTools.map(n => [n, readFileSync(new URL(`../domains/amazon.com/${n}.js`, import.meta.url), "utf8")]));
+const sources = Object.fromEntries(names.map(n => [n, readFileSync(new URL(`../domains/amazon.com/${n}.js`, import.meta.url), "utf8")]));
 const cartTools = ["get_cart", "add_to_cart", "update_cart_item"];
 const writes = ["add_to_cart", "update_cart_item"];
 const plain = x => JSON.parse(JSON.stringify(x));
@@ -48,8 +47,15 @@ function harness(options = {}) {
   const requests = [];
   const location = new URL(options.url || "https://www.amazon.com/s?k=test");
   const ctx = createContext({ document: doc, location, DOMParser, URL, URLSearchParams, crypto: options.crypto || webcrypto, TextEncoder, fetch: async (path, init) => {
+    // Like a browser fetch: an aborted call sends nothing, and an abort during the request rejects it.
+    if (init.signal?.aborted) throw new DOMException("The operation was aborted.", "AbortError");
     const u = new URL(path, location.origin);
     requests.push({ path: u.pathname, ...init });
+    const response = await answer(u, init);
+    if (init.signal?.aborted) throw new DOMException("The operation was aborted.", "AbortError");
+    return response;
+  } });
+  const answer = async (u, init) => {
     if (options.handler) {
       const r = await options.handler(u, init, { requests, state, doc });
       if (r) return { status: 200, ok: (r.status ?? 200) < 300, url: u.href, text: async () => r.body || "", ...r };
@@ -66,7 +72,7 @@ function harness(options = {}) {
       body = "{}";
     } else body = u.pathname.startsWith("/dp/") ? options.product || product() : fixture(state);
     return { status: 200, ok: true, url: u.href, text: async () => body };
-  } });
+  };
   const tools = Object.fromEntries(names.map(n => {
     const [definition] = runInNewContext(`(${sources[n]})`);
     const execute = runInContext(`(${definition.execute.toString()})`, ctx);
@@ -85,32 +91,6 @@ const add = { asin: "B0TEST0001", quantity: 1, expected_unit_price_cents: 2999, 
 const prepared = async (h, name, input) => h.run(name, { ...expect(await h.run("get_cart")), ...input });
 const actionInput = name => name === "add_to_cart" ? add : { ...target, quantity: 2 };
 const actionState = name => ({ lines: name === "add_to_cart" ? [item("other", "B0TEST0002")] : [item(), item("other", "B0TEST0002")] });
-
-const block = (source, marker) => {
-  const start = source.indexOf(`// @${marker}:`), end = source.indexOf(`// @${marker}-end`);
-  assert.ok(start >= 0 && end > start, marker);
-  return source.slice(start, end);
-};
-for (const [marker, files] of [
-  ["amazon-page-fetch", allTools],
-  ["amazon-text", ["get_product", "add_to_cart", "search_products", "get_best_sellers"]],
-  ["amazon-cart-reader", cartTools],
-  ["amazon-cart-writer", writes],
-  ["amazon-offer-reader", ["get_product", "add_to_cart"]]
-]) {
-  test(`${marker} is byte-identical in ${files.join(", ")}`, () => {
-    const [first, ...rest] = files.map(n => block(sources[n], marker));
-    for (const other of rest) assert.equal(other, first);
-  });
-}
-test("cart tools return the same cart snapshot schema", () => {
-  const snapshotKeys = ["session_context", "cart_version", "lines", "items_quantity", "subtotal_cents", "other_carts_present"];
-  const [first, ...rest] = cartTools.map(n => {
-    const props = runInNewContext(`(${sources[n]})`)[0].tool.outputSchema.oneOf[0].properties;
-    return plain(Object.fromEntries(snapshotKeys.map(k => [k, props[k]])));
-  });
-  for (const other of rest) assert.deepEqual(other, first);
-});
 
 for (const name of cartTools) {
   test(`${name}: single self-contained page definition and annotations`, () => {
@@ -421,3 +401,22 @@ for (const name of writes) {
     assert.equal(r.mutation_attempted, true);
   });
 }
+
+test("cart tools pass the caller's signal to every request", async () => {
+  for (const name of cartTools) {
+    const ctl = new AbortController();
+    const h = harness({ state: actionState(name) });
+    const input = name === "get_cart" ? {} : { ...expect(await h.run("get_cart")), ...actionInput(name) };
+    const before = h.requests.length;
+    assert.equal((await h.run(name, input, ctl.signal)).status, "ok", name);
+    const sent = h.requests.slice(before);
+    assert.ok(sent.length > 0 && sent.every(r => r.signal === ctl.signal), name);
+  }
+});
+
+test("add_to_cart: a robot check served as HTTP 404 is a challenge, not not_found", async () => {
+  const h = harness({ handler: u => u.pathname.startsWith("/dp/") ? { status: 404, body: "<html><head><title>Robot Check</title></head><body></body></html>" } : undefined });
+  const r = await prepared(h, "add_to_cart", add);
+  assert.equal(r.error_kind, "challenge");
+  assert.equal(h.posts().length, 0);
+});

@@ -52,35 +52,37 @@
     const fail = (kind, message) => ({ status: "error", error_kind: kind, error_message: message });
     // @amazon-page-fetch: keep identical in all six amazon.com tools (tests compare the copies). Uses the tool's fail and signal.
     const ORIGIN = "https://www.amazon.com";
-    // Checked in order: off-host redirect, sign-in redirect, robot check, throttling, other HTTP failures,
-    // then the access notice, which only counts when the expected content is missing.
-    const blocked = (doc, res, content) => {
+    // Checked in order: off-host redirect, sign-in redirect, robot check, missing page (only when the caller passes a
+    // not_found message), throttling, other HTTP failures, then the access notice, which counts only without the content.
+    const blocked = (doc, res, content, missing) => {
       const url = res.url ? new URL(res.url) : null;
       if (url && url.origin !== ORIGIN) return fail("site_changed", "Amazon redirected outside www.amazon.com; no data is returned.");
       if (url && /^\/(?:ap|ax)\//.test(url.pathname)) return fail("login_required", "Amazon redirected to its sign-in page. Sign in to Amazon in this browser yourself, then call again.");
       if (/Robot Check|captcha/i.test(doc.title) || doc.querySelector("form[action*='validateCaptcha']")) return fail("challenge", "Amazon is showing a robot-check page for this browser. A person has to complete it on amazon.com in this browser; the tool never bypasses it or retries.");
+      if (res.status === 404 && missing) return fail("not_found", missing);
       if (res.status === 429 || res.status === 503) return fail("rate_limited", "Amazon answered HTTP " + res.status + ": throttled or unavailable. Wait a few minutes; do not retry automatically.");
       if (res.status !== 200) return fail("site_error", "Amazon answered HTTP " + res.status + " instead of the requested page.");
       if (!doc.querySelector(content) && /violates Amazon.s Conditions of Use/i.test(doc.body?.textContent || "")) return fail("access_gated", "Amazon is showing a Conditions of Use notice about automated or AI-agent access instead of the page. A person has to read it and continue on amazon.com in this browser; the tool never accepts or dismisses it and returned no data.");
       return null;
     };
-    const get = async (path, content) => {
+    const get = async (path, content, missing) => {
       const res = await fetch(path, { method: "GET", credentials: "include", headers: { accept: "text/html" }, signal, redirect: "follow" });
       const doc = new DOMParser().parseFromString(await res.text(), "text/html");
-      return { res, doc, error: blocked(doc, res, content) };
+      return { res, doc, error: blocked(doc, res, content, missing) };
     };
     // @amazon-page-fetch-end
     if (input === undefined || input === null) input = {};
-    if (typeof input !== "object" || Array.isArray(input)) return fail("invalid_input", "Input must be an object; nothing was requested.");
+    if (typeof input !== "object" || Array.isArray(input)) return fail("invalid_input", "Input must be an object. Nothing was requested.");
     const extra = Object.keys(input).find(key => !["category", "page", "limit"].includes(key));
-    if (extra) return fail("invalid_input", `Unknown input '${extra}'; nothing was requested.`);
+    if (extra) return fail("invalid_input", `Unknown input '${extra}'. Nothing was requested.`);
     const category = input.category === undefined ? null : input.category;
-    if (category !== null && (typeof category !== "string" || category.length > 80 || !CATEGORY.test(category))) return fail("invalid_input", "category must be a category path from categories[].category, like 'kitchen' or 'kitchen/289913'; nothing was requested.");
+    if (category !== null && (typeof category !== "string" || category.length > 80 || !CATEGORY.test(category))) return fail("invalid_input", "category must be a category path from categories[].category, like 'kitchen' or 'kitchen/289913'. Nothing was requested.");
     const page = input.page === undefined ? 1 : input.page, limit = input.limit === undefined ? 30 : input.limit;
-    if (!Number.isInteger(page) || page < 1 || page > 2) return fail("invalid_input", "page must be 1 or 2; nothing was requested.");
-    if (!Number.isInteger(limit) || limit < 1 || limit > 50) return fail("invalid_input", "limit must be an integer from 1 to 50; nothing was requested.");
-    if (page > 1 && category === null) return fail("invalid_input", "page 2 needs a category; nothing was requested.");
+    if (!Number.isInteger(page) || page < 1 || page > 2) return fail("invalid_input", "page must be 1 or 2. Nothing was requested.");
+    if (!Number.isInteger(limit) || limit < 1 || limit > 50) return fail("invalid_input", "limit must be an integer from 1 to 50. Nothing was requested.");
+    if (page > 1 && category === null) return fail("invalid_input", "page 2 needs a category. Nothing was requested.");
     if (location.origin !== ORIGIN) return fail("wrong_page", "Open https://www.amazon.com/ (any www.amazon.com page) in this tab, then call again. Nothing was requested.");
+    if (signal?.aborted) return fail("canceled", "Canceled before any request.");
 
     // @amazon-text: keep identical in get_product, add_to_cart, search_products and get_best_sellers (tests compare the copies).
     const text = el => {
@@ -104,11 +106,10 @@
     // @amazon-text-end
     let fetched;
     try {
-      fetched = await get(`/gp/bestsellers${category ? `/${category}` : ""}${page > 1 ? "?pg=2" : ""}`, "#gridItemRoot, #zg-left-col a");
+      fetched = await get(`/gp/bestsellers${category ? `/${category}` : ""}${page > 1 ? "?pg=2" : ""}`, "#gridItemRoot, #zg-left-col a", `Amazon has no Best Sellers page for category '${category}'.`);
     } catch {
-      return fail(signal?.aborted ? "canceled" : "site_error", "The request to www.amazon.com did not complete; nothing was changed. Try again.");
+      return fail(signal?.aborted ? "canceled" : "site_error", "The request to www.amazon.com did not complete. Nothing was changed. Try again.");
     }
-    if (fetched.res.status === 404) return fail("not_found", `Amazon has no Best Sellers page for category '${category}'.`);
     if (fetched.error) return fetched.error;
     const { doc } = fetched;
 

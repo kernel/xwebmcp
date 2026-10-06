@@ -19,9 +19,12 @@ function harness(name, { origin = ORIGIN, handler } = {}) {
   const requests = [];
   const location = { origin, pathname: "/", href: `${origin}/` };
   const fetch = async (target, init = {}) => {
+    // Like a browser fetch: an aborted call sends nothing, and an abort during the request rejects it.
+    if (init.signal?.aborted) throw new DOMException("The operation was aborted.", "AbortError");
     const url = new URL(target, location.origin);
-    requests.push({ method: (init.method || "GET").toUpperCase(), path: url.pathname + url.search, origin: url.origin, credentials: init.credentials });
+    requests.push({ method: (init.method || "GET").toUpperCase(), path: url.pathname + url.search, origin: url.origin, credentials: init.credentials, signal: init.signal });
     const answer = await handler(url, init);
+    if (init.signal?.aborted) throw new DOMException("The operation was aborted.", "AbortError");
     return { status: answer.status, ok: answer.status >= 200 && answer.status < 300, url: answer.url || url.href, text: async () => answer.body };
   };
   const pageContext = createContext({ location, fetch, DOMParser, URL, URLSearchParams });
@@ -648,14 +651,30 @@ test("get_best_sellers: invalid input is refused before any request", async () =
   assert.equal(requests.length, 0);
 });
 
-test("read tools share the cart tools' block detection and support cancellation", async () => {
-  const inputs = { search_products: { query: "x" }, get_product: { asin: "B0TEST0001" }, get_best_sellers: { category: "kitchen" } };
-  for (const [name, input] of Object.entries(inputs)) {
-    const kind = async (handler, signal) => (await harness(name, { handler }).run(input, signal)).error_kind;
+const READ_INPUTS = { search_products: { query: "x" }, get_product: { asin: "B0TEST0001" }, get_best_sellers: { category: "kitchen" } };
+
+test("read tools share the cart tools' block detection", async () => {
+  for (const [name, input] of Object.entries(READ_INPUTS)) {
+    const kind = async handler => (await harness(name, { handler }).run(input)).error_kind;
     assert.equal(await kind(serve(200, "<html><head><title>Amazon Sign-In</title></head><body>Sign in</body></html>", `${ORIGIN}/ax/claim/sign-in?arb=fabricated`)), "login_required", name);
     assert.equal(await kind(serve(200, "<html><head><title>Robot Check</title></head><body>Type the characters you see</body></html>")), "challenge", name);
-    const controller = new AbortController();
-    controller.abort();
-    assert.equal(await kind(() => { throw new Error("aborted"); }, controller.signal), "canceled", name);
+    assert.equal(await kind(serve(404, "<html><head><title>Robot Check</title></head><body></body></html>")), "challenge", `${name}: a robot check served as 404 is not not_found`);
+  }
+});
+
+test("read tools pass the caller's signal to the request and honor cancellation", async () => {
+  for (const [name, input] of Object.entries(READ_INPUTS)) {
+    const live = new AbortController();
+    const sent = harness(name, { handler: serve(500, "<html></html>") });
+    await sent.run(input, live.signal);
+    assert.deepEqual(sent.requests.map(r => r.signal === live.signal), [true], name);
+    const before = new AbortController();
+    before.abort();
+    const early = harness(name, { handler: serve(500, "<html></html>") });
+    assert.equal((await early.run(input, before.signal)).error_kind, "canceled", name);
+    assert.equal(early.requests.length, 0, `${name}: an already-canceled call sends nothing`);
+    const during = new AbortController();
+    const late = harness(name, { handler: () => { during.abort(); return { status: 200, body: "<html></html>" }; } });
+    assert.equal((await late.run(input, during.signal)).error_kind, "canceled", `${name}: an abort during the request`);
   }
 });

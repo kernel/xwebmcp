@@ -73,22 +73,23 @@
     const fail = (kind, message) => ({ status: "error", error_kind: kind, error_message: message, mutation_attempted: attempted });
     // @amazon-page-fetch: keep identical in all six amazon.com tools (tests compare the copies). Uses the tool's fail and signal.
     const ORIGIN = "https://www.amazon.com";
-    // Checked in order: off-host redirect, sign-in redirect, robot check, throttling, other HTTP failures,
-    // then the access notice, which only counts when the expected content is missing.
-    const blocked = (doc, res, content) => {
+    // Checked in order: off-host redirect, sign-in redirect, robot check, missing page (only when the caller passes a
+    // not_found message), throttling, other HTTP failures, then the access notice, which counts only without the content.
+    const blocked = (doc, res, content, missing) => {
       const url = res.url ? new URL(res.url) : null;
       if (url && url.origin !== ORIGIN) return fail("site_changed", "Amazon redirected outside www.amazon.com; no data is returned.");
       if (url && /^\/(?:ap|ax)\//.test(url.pathname)) return fail("login_required", "Amazon redirected to its sign-in page. Sign in to Amazon in this browser yourself, then call again.");
       if (/Robot Check|captcha/i.test(doc.title) || doc.querySelector("form[action*='validateCaptcha']")) return fail("challenge", "Amazon is showing a robot-check page for this browser. A person has to complete it on amazon.com in this browser; the tool never bypasses it or retries.");
+      if (res.status === 404 && missing) return fail("not_found", missing);
       if (res.status === 429 || res.status === 503) return fail("rate_limited", "Amazon answered HTTP " + res.status + ": throttled or unavailable. Wait a few minutes; do not retry automatically.");
       if (res.status !== 200) return fail("site_error", "Amazon answered HTTP " + res.status + " instead of the requested page.");
       if (!doc.querySelector(content) && /violates Amazon.s Conditions of Use/i.test(doc.body?.textContent || "")) return fail("access_gated", "Amazon is showing a Conditions of Use notice about automated or AI-agent access instead of the page. A person has to read it and continue on amazon.com in this browser; the tool never accepts or dismisses it and returned no data.");
       return null;
     };
-    const get = async (path, content) => {
+    const get = async (path, content, missing) => {
       const res = await fetch(path, { method: "GET", credentials: "include", headers: { accept: "text/html" }, signal, redirect: "follow" });
       const doc = new DOMParser().parseFromString(await res.text(), "text/html");
-      return { res, doc, error: blocked(doc, res, content) };
+      return { res, doc, error: blocked(doc, res, content, missing) };
     };
     // @amazon-page-fetch-end
     // @amazon-cart-reader: keep identical in get_cart, add_to_cart and update_cart_item (tests compare the copies). Uses the tool's fail and signal, and @amazon-page-fetch.
@@ -169,7 +170,7 @@
       const cart = await readCart();
       if (cart.error) return cart;
       if (cart.snapshot.session_context !== input.expected_session_context) return { error: fail("session_changed", "The browser's Amazon session no longer matches session_context. Nothing was changed.") };
-      if (cart.snapshot.cart_version !== input.expected_cart_version) return { error: fail("stale_cart", "The cart changed since get_cart. Read it again; nothing was changed.") };
+      if (cart.snapshot.cart_version !== input.expected_cart_version) return { error: fail("stale_cart", "The cart changed since get_cart. Read it again. Nothing was changed.") };
       if (!cart.writable) return { error: fail("unsupported_cart", "The cart holds other cart types, delivery groups, or related, subscription or variable-weight lines. Nothing was changed.") };
       return cart;
     };
@@ -226,7 +227,7 @@
     const buyBoxPriceText = doc => priceOf(doc.querySelector("#corePriceDisplay_desktop_feature_div .a-price:not(.a-text-price)"));
     const soldBy = doc => offer(doc, "#merchantInfoFeature_feature_div").value || text(doc.querySelector("#sellerProfileTriggerId"));
     // The buy box form and its enabled Add to Cart button, only when the form is for this ASIN.
-    const addToCart = (doc, asin) => {
+    const buyBoxAddToCart = (doc, asin) => {
       const form = doc.querySelector("form#addToCart");
       const button = form?.querySelector("#add-to-cart-button, #add-to-cart-button-ubb");
       return button && !button.hasAttribute("disabled") && form.querySelector("[name='ASIN']")?.value === asin ? { form, button } : null;
@@ -243,11 +244,10 @@
     if (wrongPage) return wrongPage;
     if (signal?.aborted) return fail("canceled", "Canceled before any request.");
     try {
-      const product = await get("/dp/" + input.asin, "#productTitle");
-      if (product.res.status === 404) return fail("not_found", "Amazon has no product page for this ASIN. Nothing was changed.");
+      const product = await get("/dp/" + input.asin, "#productTitle", "Amazon has no product page for this ASIN. Nothing was changed.");
       if (product.error) return product.error;
       const doc = product.doc;
-      const eligible = addToCart(doc, input.asin);
+      const eligible = buyBoxAddToCart(doc, input.asin);
       if (!eligible) return fail("unavailable", "This ASIN has no ordinary Add to Cart button; choose an available child variant with get_product. Nothing was changed.");
       const { form, button } = eligible;
       const action = new URL(button.getAttribute("formaction") || "", location.origin);
@@ -260,7 +260,7 @@
       const select = form.querySelector("select[name='quantity']");
       const offered = select ? [...select.querySelectorAll("option")].map(o => Number(o.getAttribute("value"))) : [1];
       if (!offered.includes(input.quantity)) return fail("quantity_unavailable", "Amazon does not offer the requested quantity for this item. Nothing was changed.");
-      if (cents(buyBoxPriceText(doc)) !== price || soldBy(doc) !== input.expected_sold_by) return fail("offer_changed", "The product's current price or seller differs from the expected values. Call get_product again; nothing was changed.");
+      if (cents(buyBoxPriceText(doc)) !== price || soldBy(doc) !== input.expected_sold_by) return fail("offer_changed", "The product's current price or seller differs from the expected values. Call get_product again. Nothing was changed.");
       // Serialize the form as the Add to Cart button submits it, minus Buy Now's pipeline fields.
       const body = new URLSearchParams();
       for (const node of form.querySelectorAll("input[name], select[name], textarea[name]")) {

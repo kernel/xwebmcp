@@ -85,46 +85,48 @@
     const fail = (kind, message) => ({ status: "error", error_kind: kind, error_message: message });
     // @amazon-page-fetch: keep identical in all six amazon.com tools (tests compare the copies). Uses the tool's fail and signal.
     const ORIGIN = "https://www.amazon.com";
-    // Checked in order: off-host redirect, sign-in redirect, robot check, throttling, other HTTP failures,
-    // then the access notice, which only counts when the expected content is missing.
-    const blocked = (doc, res, content) => {
+    // Checked in order: off-host redirect, sign-in redirect, robot check, missing page (only when the caller passes a
+    // not_found message), throttling, other HTTP failures, then the access notice, which counts only without the content.
+    const blocked = (doc, res, content, missing) => {
       const url = res.url ? new URL(res.url) : null;
       if (url && url.origin !== ORIGIN) return fail("site_changed", "Amazon redirected outside www.amazon.com; no data is returned.");
       if (url && /^\/(?:ap|ax)\//.test(url.pathname)) return fail("login_required", "Amazon redirected to its sign-in page. Sign in to Amazon in this browser yourself, then call again.");
       if (/Robot Check|captcha/i.test(doc.title) || doc.querySelector("form[action*='validateCaptcha']")) return fail("challenge", "Amazon is showing a robot-check page for this browser. A person has to complete it on amazon.com in this browser; the tool never bypasses it or retries.");
+      if (res.status === 404 && missing) return fail("not_found", missing);
       if (res.status === 429 || res.status === 503) return fail("rate_limited", "Amazon answered HTTP " + res.status + ": throttled or unavailable. Wait a few minutes; do not retry automatically.");
       if (res.status !== 200) return fail("site_error", "Amazon answered HTTP " + res.status + " instead of the requested page.");
       if (!doc.querySelector(content) && /violates Amazon.s Conditions of Use/i.test(doc.body?.textContent || "")) return fail("access_gated", "Amazon is showing a Conditions of Use notice about automated or AI-agent access instead of the page. A person has to read it and continue on amazon.com in this browser; the tool never accepts or dismisses it and returned no data.");
       return null;
     };
-    const get = async (path, content) => {
+    const get = async (path, content, missing) => {
       const res = await fetch(path, { method: "GET", credentials: "include", headers: { accept: "text/html" }, signal, redirect: "follow" });
       const doc = new DOMParser().parseFromString(await res.text(), "text/html");
-      return { res, doc, error: blocked(doc, res, content) };
+      return { res, doc, error: blocked(doc, res, content, missing) };
     };
     // @amazon-page-fetch-end
-    if (!input || typeof input !== "object" || Array.isArray(input)) return fail("invalid_input", "Input must be an object with a query; nothing was requested.");
+    if (!input || typeof input !== "object" || Array.isArray(input)) return fail("invalid_input", "Input must be an object with a query. Nothing was requested.");
     const known = ["query", "sort_by", "min_price_cents", "max_price_cents", "page", "limit", "exclude_sponsored", "facet_ids", "include_facets"];
     const extra = Object.keys(input).find(key => !known.includes(key));
-    if (extra) return fail("invalid_input", `Unknown input '${extra}'; nothing was requested.`);
+    if (extra) return fail("invalid_input", `Unknown input '${extra}'. Nothing was requested.`);
     const query = typeof input.query === "string" ? input.query.trim() : "";
-    if (!query || query.length > 200 || /[\u0000-\u001f]/.test(query)) return fail("invalid_input", "query must be 1 to 200 characters of keywords; nothing was requested.");
+    if (!query || query.length > 200 || /[\u0000-\u001f]/.test(query)) return fail("invalid_input", "query must be 1 to 200 characters of keywords. Nothing was requested.");
     const sortBy = input.sort_by === undefined ? "relevance" : input.sort_by;
-    if (typeof sortBy !== "string" || !Object.hasOwn(SORTS, sortBy)) return fail("invalid_input", `sort_by must be one of ${Object.keys(SORTS).join(", ")}; nothing was requested.`);
+    if (typeof sortBy !== "string" || !Object.hasOwn(SORTS, sortBy)) return fail("invalid_input", `sort_by must be one of ${Object.keys(SORTS).join(", ")}. Nothing was requested.`);
     const intIn = (value, fallback, min, max) => value === undefined ? fallback : Number.isInteger(value) && value >= min && value <= max ? value : NaN;
     const minPrice = intIn(input.min_price_cents, null, 0, 100000000), maxPrice = intIn(input.max_price_cents, null, 0, 100000000);
     const page = intIn(input.page, 1, 1, 20), limit = intIn(input.limit, 20, 1, 60);
-    if (Number.isNaN(minPrice) || Number.isNaN(maxPrice)) return fail("invalid_input", "min_price_cents and max_price_cents must be integers from 0 to 100000000; nothing was requested.");
-    if (minPrice !== null && maxPrice !== null && minPrice > maxPrice) return fail("invalid_input", "min_price_cents must not be above max_price_cents; nothing was requested.");
-    if (Number.isNaN(page) || Number.isNaN(limit)) return fail("invalid_input", "page must be an integer from 1 to 20 and limit an integer from 1 to 60; nothing was requested.");
-    for (const key of ["exclude_sponsored", "include_facets"]) if (input[key] !== undefined && typeof input[key] !== "boolean") return fail("invalid_input", `${key} must be true or false; nothing was requested.`);
+    if (Number.isNaN(minPrice) || Number.isNaN(maxPrice)) return fail("invalid_input", "min_price_cents and max_price_cents must be integers from 0 to 100000000. Nothing was requested.");
+    if (minPrice !== null && maxPrice !== null && minPrice > maxPrice) return fail("invalid_input", "min_price_cents must not be above max_price_cents. Nothing was requested.");
+    if (Number.isNaN(page) || Number.isNaN(limit)) return fail("invalid_input", "page must be an integer from 1 to 20 and limit an integer from 1 to 60. Nothing was requested.");
+    for (const key of ["exclude_sponsored", "include_facets"]) if (input[key] !== undefined && typeof input[key] !== "boolean") return fail("invalid_input", `${key} must be true or false. Nothing was requested.`);
     const facetIds = input.facet_ids === undefined ? [] : input.facet_ids;
-    if (!Array.isArray(facetIds) || facetIds.length > 8 || new Set(facetIds).size !== facetIds.length || !facetIds.every(id => typeof id === "string" && FACET.test(id))) return fail("invalid_input", "facet_ids must be up to 8 distinct option ids from include_facets, like 'p_123:912904'; nothing was requested.");
+    if (!Array.isArray(facetIds) || facetIds.length > 8 || new Set(facetIds).size !== facetIds.length || !facetIds.every(id => typeof id === "string" && FACET.test(id))) return fail("invalid_input", "facet_ids must be up to 8 distinct option ids from include_facets, like 'p_123:912904'. Nothing was requested.");
     const groups = facetIds.map(id => FACET.exec(id)[1]);
-    if (new Set(groups).size !== groups.length) return fail("invalid_input", "facet_ids may hold only one option per filter group; nothing was requested.");
+    if (new Set(groups).size !== groups.length) return fail("invalid_input", "facet_ids may hold only one option per filter group. Nothing was requested.");
     const priced = minPrice !== null || maxPrice !== null;
-    if (priced && groups.includes("p_36")) return fail("invalid_input", "Use either min_price_cents/max_price_cents or a price option in facet_ids, not both; nothing was requested.");
+    if (priced && groups.includes("p_36")) return fail("invalid_input", "Use either min_price_cents/max_price_cents or a price option in facet_ids, not both. Nothing was requested.");
     if (location.origin !== ORIGIN) return fail("wrong_page", "Open https://www.amazon.com/ (any www.amazon.com page) in this tab, then call again. Nothing was requested.");
+    if (signal?.aborted) return fail("canceled", "Canceled before any request.");
 
     // @amazon-text: keep identical in get_product, add_to_cart, search_products and get_best_sellers (tests compare the copies).
     const text = el => {
@@ -156,7 +158,7 @@
     try {
       fetched = await get(`/s?${params.toString()}`, "[data-component-type='s-search-result']");
     } catch {
-      return fail(signal?.aborted ? "canceled" : "site_error", "The request to www.amazon.com did not complete; nothing was changed. Try again.");
+      return fail(signal?.aborted ? "canceled" : "site_error", "The request to www.amazon.com did not complete. Nothing was changed. Try again.");
     }
     if (fetched.error) return fetched.error;
     const { doc } = fetched;

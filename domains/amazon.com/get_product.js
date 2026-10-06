@@ -65,34 +65,36 @@
     const fail = (kind, message) => ({ status: "error", error_kind: kind, error_message: message });
     // @amazon-page-fetch: keep identical in all six amazon.com tools (tests compare the copies). Uses the tool's fail and signal.
     const ORIGIN = "https://www.amazon.com";
-    // Checked in order: off-host redirect, sign-in redirect, robot check, throttling, other HTTP failures,
-    // then the access notice, which only counts when the expected content is missing.
-    const blocked = (doc, res, content) => {
+    // Checked in order: off-host redirect, sign-in redirect, robot check, missing page (only when the caller passes a
+    // not_found message), throttling, other HTTP failures, then the access notice, which counts only without the content.
+    const blocked = (doc, res, content, missing) => {
       const url = res.url ? new URL(res.url) : null;
       if (url && url.origin !== ORIGIN) return fail("site_changed", "Amazon redirected outside www.amazon.com; no data is returned.");
       if (url && /^\/(?:ap|ax)\//.test(url.pathname)) return fail("login_required", "Amazon redirected to its sign-in page. Sign in to Amazon in this browser yourself, then call again.");
       if (/Robot Check|captcha/i.test(doc.title) || doc.querySelector("form[action*='validateCaptcha']")) return fail("challenge", "Amazon is showing a robot-check page for this browser. A person has to complete it on amazon.com in this browser; the tool never bypasses it or retries.");
+      if (res.status === 404 && missing) return fail("not_found", missing);
       if (res.status === 429 || res.status === 503) return fail("rate_limited", "Amazon answered HTTP " + res.status + ": throttled or unavailable. Wait a few minutes; do not retry automatically.");
       if (res.status !== 200) return fail("site_error", "Amazon answered HTTP " + res.status + " instead of the requested page.");
       if (!doc.querySelector(content) && /violates Amazon.s Conditions of Use/i.test(doc.body?.textContent || "")) return fail("access_gated", "Amazon is showing a Conditions of Use notice about automated or AI-agent access instead of the page. A person has to read it and continue on amazon.com in this browser; the tool never accepts or dismisses it and returned no data.");
       return null;
     };
-    const get = async (path, content) => {
+    const get = async (path, content, missing) => {
       const res = await fetch(path, { method: "GET", credentials: "include", headers: { accept: "text/html" }, signal, redirect: "follow" });
       const doc = new DOMParser().parseFromString(await res.text(), "text/html");
-      return { res, doc, error: blocked(doc, res, content) };
+      return { res, doc, error: blocked(doc, res, content, missing) };
     };
     // @amazon-page-fetch-end
-    if (!input || typeof input !== "object" || Array.isArray(input)) return fail("invalid_input", "Input must be an object with an asin; nothing was requested.");
+    if (!input || typeof input !== "object" || Array.isArray(input)) return fail("invalid_input", "Input must be an object with an asin. Nothing was requested.");
     const extra = Object.keys(input).find(key => !["asin", "variant_filter", "max_variants"].includes(key));
-    if (extra) return fail("invalid_input", `Unknown input '${extra}'; nothing was requested.`);
+    if (extra) return fail("invalid_input", `Unknown input '${extra}'. Nothing was requested.`);
     const asin = input.asin;
-    if (typeof asin !== "string" || !/^[A-Z0-9]{10}$/.test(asin)) return fail("invalid_input", "asin must be a 10-character Amazon item id such as B0BZYCJK89; nothing was requested.");
+    if (typeof asin !== "string" || !/^[A-Z0-9]{10}$/.test(asin)) return fail("invalid_input", "asin must be a 10-character Amazon item id such as B0BZYCJK89. Nothing was requested.");
     const filter = input.variant_filter === undefined ? {} : input.variant_filter;
-    if (!filter || typeof filter !== "object" || Array.isArray(filter) || Object.keys(filter).length > 6 || !Object.values(filter).every(v => typeof v === "string" && v.length >= 1 && v.length <= 100)) return fail("invalid_input", "variant_filter must map up to 6 variation names to option texts; nothing was requested.");
+    if (!filter || typeof filter !== "object" || Array.isArray(filter) || Object.keys(filter).length > 6 || !Object.values(filter).every(v => typeof v === "string" && v.length >= 1 && v.length <= 100)) return fail("invalid_input", "variant_filter must map up to 6 variation names to option texts. Nothing was requested.");
     const maxVariants = input.max_variants === undefined ? 50 : input.max_variants;
-    if (!Number.isInteger(maxVariants) || maxVariants < 1 || maxVariants > 200) return fail("invalid_input", "max_variants must be an integer from 1 to 200; nothing was requested.");
+    if (!Number.isInteger(maxVariants) || maxVariants < 1 || maxVariants > 200) return fail("invalid_input", "max_variants must be an integer from 1 to 200. Nothing was requested.");
     if (location.origin !== ORIGIN) return fail("wrong_page", "Open https://www.amazon.com/ (any www.amazon.com page) in this tab, then call again. Nothing was requested.");
+    if (signal?.aborted) return fail("canceled", "Canceled before any request.");
 
     // @amazon-text: keep identical in get_product, add_to_cart, search_products and get_best_sellers (tests compare the copies).
     const text = el => {
@@ -130,7 +132,7 @@
     const buyBoxPriceText = doc => priceOf(doc.querySelector("#corePriceDisplay_desktop_feature_div .a-price:not(.a-text-price)"));
     const soldBy = doc => offer(doc, "#merchantInfoFeature_feature_div").value || text(doc.querySelector("#sellerProfileTriggerId"));
     // The buy box form and its enabled Add to Cart button, only when the form is for this ASIN.
-    const addToCart = (doc, asin) => {
+    const buyBoxAddToCart = (doc, asin) => {
       const form = doc.querySelector("form#addToCart");
       const button = form?.querySelector("#add-to-cart-button, #add-to-cart-button-ubb");
       return button && !button.hasAttribute("disabled") && form.querySelector("[name='ASIN']")?.value === asin ? { form, button } : null;
@@ -138,11 +140,10 @@
     // @amazon-offer-reader-end
     let fetched;
     try {
-      fetched = await get(`/dp/${asin}`, "#productTitle");
+      fetched = await get(`/dp/${asin}`, "#productTitle", `Amazon has no product page for ASIN ${asin}.`);
     } catch {
-      return fail(signal?.aborted ? "canceled" : "site_error", "The request to www.amazon.com did not complete; nothing was changed. Try again.");
+      return fail(signal?.aborted ? "canceled" : "site_error", "The request to www.amazon.com did not complete. Nothing was changed. Try again.");
     }
-    if (fetched.res.status === 404) return fail("not_found", `Amazon has no product page for ASIN ${asin}.`);
     if (fetched.error) return fetched.error;
     const { doc } = fetched;
     const title = text(doc.querySelector("#productTitle"));
@@ -199,7 +200,7 @@
       rating_average: stars ? parseFloat(stars[1]) : null, rating_count: count ? parseInt(count[1].replace(/,/g, ""), 10) : null, rating_histogram: histogram,
       bullets: [...doc.querySelectorAll("#feature-bullets li")].map(text).filter(Boolean).slice(0, 10).map(t => t.slice(0, 500)),
       ships_from: both ? seller.value : shipper.value, sold_by: soldBy(doc),
-      delivery_text: delivery ? delivery.slice(0, 300) : null, add_to_cart_available: !!addToCart(doc, asin),
+      delivery_text: delivery ? delivery.slice(0, 300) : null, add_to_cart_available: !!buyBoxAddToCart(doc, asin),
       selected_options: optionsOf((family.find(([id]) => id === asin) || [null, []])[1]),
       variation_dimensions: names.map((name, i) => ({ name, values: (Array.isArray(listed[dimensions[i]]) ? listed[dimensions[i]] : []).filter(v => typeof v === "string").slice(0, 100) })),
       variant_count: family.length, matching_variant_count: matching.length, variants_truncated: matching.length > maxVariants,
