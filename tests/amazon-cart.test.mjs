@@ -269,6 +269,7 @@ test("add_to_cart: refusals before any write", async () => {
     [product({ qty: "1" }).replace('formaction="/cart', 'data-x="/cart'), "site_changed"],
     [product({ target: "/checkout/entry/buynow" }), "site_changed"],
     [product({ target: "https://evil.example/cart/add-to-cart" }), "site_changed"],
+    [product({ target: "/cart/add-to-cart/ref=dp_start-bbf_1_glance?isBuyNow=1" }), "site_changed"],
     [product({ extra: '<input name="snsOrderType" value="1">' }), "unsupported_item"],
     [product({ extra: '<input type="hidden" name="isAddon" value="1">' }), "unsupported_item"],
     [product({ extra: '<input name="custom-name.1" value="x">' }), "unsupported_item"],
