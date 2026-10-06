@@ -73,17 +73,36 @@
         },
         {
           type: "object", additionalProperties: false, required: ["status", "error_kind", "error_message"],
-          properties: { status: { const: "error" }, error_kind: { enum: ["invalid_input", "wrong_page", "challenge", "access_gated", "rate_limited", "login_required", "filter_not_applied", "site_changed", "site_error"] }, error_message: { type: "string", minLength: 1 } }
+          properties: { status: { const: "error" }, error_kind: { enum: ["invalid_input", "wrong_page", "challenge", "access_gated", "rate_limited", "login_required", "filter_not_applied", "site_changed", "site_error", "canceled"] }, error_message: { type: "string", minLength: 1 } }
         }
       ]
     },
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true }
   },
-  execute: async (input) => {
-    const ORIGIN = "https://www.amazon.com";
+  execute: async (input, { signal } = {}) => {
     const SORTS = { relevance: null, price_low_to_high: "price-asc-rank", price_high_to_low: "price-desc-rank", highest_rated: "review-rank", newest: "date-desc-rank", bestselling: "exact-aware-popularity-rank" };
     const FACET = /^([A-Za-z][A-Za-z0-9_-]{0,80}):([A-Za-z0-9._|-]{1,80})$/;
     const fail = (kind, message) => ({ status: "error", error_kind: kind, error_message: message });
+    // @amazon-page-fetch: keep identical in all six amazon.com tools (tests compare the copies). Uses the tool's fail and signal.
+    const ORIGIN = "https://www.amazon.com";
+    // Checked in order: off-host redirect, sign-in redirect, robot check, throttling, other HTTP failures,
+    // then the access notice, which only counts when the expected content is missing.
+    const blocked = (doc, res, content) => {
+      const url = res.url ? new URL(res.url) : null;
+      if (url && url.origin !== ORIGIN) return fail("site_changed", "Amazon redirected outside www.amazon.com; no data is returned.");
+      if (url && /^\/(?:ap|ax)\//.test(url.pathname)) return fail("login_required", "Amazon redirected to its sign-in page. Sign in to Amazon in this browser yourself, then call again.");
+      if (/Robot Check|captcha/i.test(doc.title) || doc.querySelector("form[action*='validateCaptcha']")) return fail("challenge", "Amazon is showing a robot-check page for this browser. A person has to complete it on amazon.com in this browser; the tool never bypasses it or retries.");
+      if (res.status === 429 || res.status === 503) return fail("rate_limited", "Amazon answered HTTP " + res.status + ": throttled or unavailable. Wait a few minutes; do not retry automatically.");
+      if (res.status !== 200) return fail("site_error", "Amazon answered HTTP " + res.status + " instead of the requested page.");
+      if (!doc.querySelector(content) && /violates Amazon.s Conditions of Use/i.test(doc.body?.textContent || "")) return fail("access_gated", "Amazon is showing a Conditions of Use notice about automated or AI-agent access instead of the page. A person has to read it and continue on amazon.com in this browser; the tool never accepts or dismisses it and returned no data.");
+      return null;
+    };
+    const get = async (path, content) => {
+      const res = await fetch(path, { method: "GET", credentials: "include", headers: { accept: "text/html" }, signal, redirect: "follow" });
+      const doc = new DOMParser().parseFromString(await res.text(), "text/html");
+      return { res, doc, error: blocked(doc, res, content) };
+    };
+    // @amazon-page-fetch-end
     if (!input || typeof input !== "object" || Array.isArray(input)) return fail("invalid_input", "Input must be an object with a query; nothing was requested.");
     const known = ["query", "sort_by", "min_price_cents", "max_price_cents", "page", "limit", "exclude_sponsored", "facet_ids", "include_facets"];
     const extra = Object.keys(input).find(key => !known.includes(key));
@@ -107,6 +126,7 @@
     if (priced && groups.includes("p_36")) return fail("invalid_input", "Use either min_price_cents/max_price_cents or a price option in facet_ids, not both; nothing was requested.");
     if (location.origin !== ORIGIN) return fail("wrong_page", "Open https://www.amazon.com/ (any www.amazon.com page) in this tab, then call again. Nothing was requested.");
 
+    // @amazon-text: keep identical in get_product, add_to_cart, search_products and get_best_sellers (tests compare the copies).
     const text = el => {
       if (!el) return null;
       let out = "";
@@ -125,23 +145,21 @@
       const m = value && /^\$\s?([0-9][0-9,]*(?:\.[0-9]{1,2})?)$/.exec(value);
       return m ? Math.round(parseFloat(m[1].replace(/,/g, "")) * 100) : null;
     };
+    // @amazon-text-end
     const params = new URLSearchParams();
     params.set("k", query);
     const rh = [...facetIds, priced ? `p_36:${minPrice ?? ""}-${maxPrice ?? ""}` : null].filter(Boolean).join(",");
     if (rh) params.set("rh", rh);
     if (SORTS[sortBy]) params.set("s", SORTS[sortBy]);
     if (page > 1) params.set("page", String(page));
-    let res, doc;
+    let fetched;
     try {
-      res = await fetch(`/s?${params.toString()}`, { credentials: "include", headers: { accept: "text/html" } });
-      doc = new DOMParser().parseFromString(await res.text(), "text/html");
+      fetched = await get(`/s?${params.toString()}`, "[data-component-type='s-search-result']");
     } catch {
-      return fail("site_error", "The request to www.amazon.com did not complete; nothing was changed. Try again.");
+      return fail(signal?.aborted ? "canceled" : "site_error", "The request to www.amazon.com did not complete; nothing was changed. Try again.");
     }
-    if (/^\/ap\//.test(new URL(res.url).pathname)) return fail("login_required", "Amazon redirected this search to its sign-in page. Sign in to Amazon in this browser yourself, then call again.");
-    if (doc.querySelector("form[action*='validateCaptcha']")) return fail("challenge", "Amazon is showing a robot-check page for this browser. A person has to complete it on amazon.com in this browser; wait a few minutes before calling again.");
-    if (res.status === 429 || res.status === 503) return fail("rate_limited", `Amazon answered HTTP ${res.status}: too many requests from this browser. Wait a few minutes before calling again.`);
-    if (!res.ok) return fail("site_error", `Amazon answered HTTP ${res.status} for the search; nothing was changed.`);
+    if (fetched.error) return fetched.error;
+    const { doc } = fetched;
 
     const infoText = text(doc.querySelector("[data-component-type='s-result-info-bar']")) || "";
     const totalMatch = /(?:\bof\s+|^)(over\s+)?([0-9][0-9,]*)\s+results?\b/i.exec(infoText);
@@ -162,7 +180,6 @@
     if (!cards.length) {
       if (infoText && totalResults !== null) return noResults("page_out_of_range");
       if (noMessage) return noResults("no_matches");
-      if (/violates Amazon.s Conditions of Use/i.test(text(doc.body) || "")) return fail("access_gated", "Amazon is showing a Conditions of Use notice about automated or AI-agent access instead of the page. A person has to read it and continue on amazon.com in this browser; the tool never accepts or dismisses it and returned no data.");
       return fail("site_changed", "The Amazon results page had no product cards and no no-results message; its layout may have changed. Nothing was changed.");
     }
 

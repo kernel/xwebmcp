@@ -29,8 +29,8 @@ function harness(name, { origin = ORIGIN, handler } = {}) {
   const execute = runInContext(`(${definition.execute.toString()})`, pageContext);
   return {
     definition, requests,
-    run: async input => {
-      const result = plain(await execute(input));
+    run: async (input, signal) => {
+      const result = plain(await execute(input, { signal }));
       assert.ok(conforms(definition.tool.outputSchema, result), `${name} output violates its schema: ${JSON.stringify(result)}`);
       return result;
     }
@@ -111,7 +111,7 @@ ${o.merchant ?? `<div id="fulfillerInfoFeature_feature_div"><span class="offer-d
   <div id="mir-layout-DELIVERY_BLOCK-slot-SECONDARY_DELIVERY_MESSAGE_LARGE"><span>Or fastest delivery Thursday</span><style>.x{}</style></div>
   <div id="contextualIngressPtLabel_deliveryShortLine">${LOCATION_LABEL}</div>
 </div>
-${o.addToCart === false ? "" : "<input id=\"add-to-cart-button\" type=\"submit\">"}
+${o.addToCart === false ? "" : `<form id="addToCart"><input type="hidden" name="ASIN" value="${o.formAsin ?? "B0TEST0001"}">${o.addToCart ?? "<input id=\"add-to-cart-button\" type=\"submit\">"}</form>`}
 ${o.twister === false ? "" : twister(o)}
 </body></html>`;
 
@@ -498,12 +498,16 @@ test("get_product: variant_filter matches names and options case-insensitively; 
   assert.match(unknown.error_message, /Color, Size/);
 });
 
-test("get_product: the add-to-cart control is recognized under either id the site uses", async () => {
-  const available = async input => (await harness("get_product", { handler: serve(200, productPage({ addToCart: false }).replace("</body>", `${input}</body>`)) }).run({ asin: "B0TEST0001" })).add_to_cart_available;
+test("get_product: add_to_cart_available applies add_to_cart's own button check", async () => {
+  const available = async (button, formAsin) => (await harness("get_product", { handler: serve(200, productPage({ addToCart: button, formAsin })) }).run({ asin: "B0TEST0001" })).add_to_cart_available;
   assert.equal(await available("<input id=\"add-to-cart-button-ubb\" type=\"submit\" value=\"Add to cart\">"), true);
   assert.equal(await available("<input id=\"add-to-cart-button\" type=\"submit\">"), true);
   assert.equal(await available("<input id=\"buy-now-button\" type=\"submit\">"), false, "Buy Now is not add to cart");
   assert.equal(await available(""), false);
+  assert.equal(await available("<input id=\"add-to-cart-button\" type=\"submit\" disabled>"), false, "a disabled button cannot add");
+  assert.equal(await available(undefined, "B0TEST0002"), false, "a buy box for another ASIN cannot add this one");
+  const outside = productPage({ addToCart: false }).replace("</body>", "<input id=\"add-to-cart-button\" type=\"submit\"></body>");
+  assert.equal((await harness("get_product", { handler: serve(200, outside) }).run({ asin: "B0TEST0001" })).add_to_cart_available, false, "a button outside the buy box form is not used");
 });
 
 test("get_product: bullets are capped at 10 and option texts at 100 per dimension", async () => {
@@ -642,4 +646,16 @@ test("get_best_sellers: invalid input is refused before any request", async () =
     assert.equal(result.error_kind, "invalid_input", JSON.stringify(input));
   }
   assert.equal(requests.length, 0);
+});
+
+test("read tools share the cart tools' block detection and support cancellation", async () => {
+  const inputs = { search_products: { query: "x" }, get_product: { asin: "B0TEST0001" }, get_best_sellers: { category: "kitchen" } };
+  for (const [name, input] of Object.entries(inputs)) {
+    const kind = async (handler, signal) => (await harness(name, { handler }).run(input, signal)).error_kind;
+    assert.equal(await kind(serve(200, "<html><head><title>Amazon Sign-In</title></head><body>Sign in</body></html>", `${ORIGIN}/ax/claim/sign-in?arb=fabricated`)), "login_required", name);
+    assert.equal(await kind(serve(200, "<html><head><title>Robot Check</title></head><body>Type the characters you see</body></html>")), "challenge", name);
+    const controller = new AbortController();
+    controller.abort();
+    assert.equal(await kind(() => { throw new Error("aborted"); }, controller.signal), "canceled", name);
+  }
 });

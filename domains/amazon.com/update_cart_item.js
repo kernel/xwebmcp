@@ -72,8 +72,27 @@
   execute: async (input, { signal } = {}) => {
     let attempted = false;
     const fail = (kind, message) => ({ status: "error", error_kind: kind, error_message: message, mutation_attempted: attempted });
-    // @amazon-cart-reader: keep identical in get_cart, add_to_cart and update_cart_item (tests compare the copies).
+    // @amazon-page-fetch: keep identical in all six amazon.com tools (tests compare the copies). Uses the tool's fail and signal.
     const ORIGIN = "https://www.amazon.com";
+    // Checked in order: off-host redirect, sign-in redirect, robot check, throttling, other HTTP failures,
+    // then the access notice, which only counts when the expected content is missing.
+    const blocked = (doc, res, content) => {
+      const url = res.url ? new URL(res.url) : null;
+      if (url && url.origin !== ORIGIN) return fail("site_changed", "Amazon redirected outside www.amazon.com; no data is returned.");
+      if (url && /^\/(?:ap|ax)\//.test(url.pathname)) return fail("login_required", "Amazon redirected to its sign-in page. Sign in to Amazon in this browser yourself, then call again.");
+      if (/Robot Check|captcha/i.test(doc.title) || doc.querySelector("form[action*='validateCaptcha']")) return fail("challenge", "Amazon is showing a robot-check page for this browser. A person has to complete it on amazon.com in this browser; the tool never bypasses it or retries.");
+      if (res.status === 429 || res.status === 503) return fail("rate_limited", "Amazon answered HTTP " + res.status + ": throttled or unavailable. Wait a few minutes; do not retry automatically.");
+      if (res.status !== 200) return fail("site_error", "Amazon answered HTTP " + res.status + " instead of the requested page.");
+      if (!doc.querySelector(content) && /violates Amazon.s Conditions of Use/i.test(doc.body?.textContent || "")) return fail("access_gated", "Amazon is showing a Conditions of Use notice about automated or AI-agent access instead of the page. A person has to read it and continue on amazon.com in this browser; the tool never accepts or dismisses it and returned no data.");
+      return null;
+    };
+    const get = async (path, content) => {
+      const res = await fetch(path, { method: "GET", credentials: "include", headers: { accept: "text/html" }, signal, redirect: "follow" });
+      const doc = new DOMParser().parseFromString(await res.text(), "text/html");
+      return { res, doc, error: blocked(doc, res, content) };
+    };
+    // @amazon-page-fetch-end
+    // @amazon-cart-reader: keep identical in get_cart, add_to_cart and update_cart_item (tests compare the copies). Uses the tool's fail and signal, and @amazon-page-fetch.
     const hash = async value => [...new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value)))].map(b => b.toString(16).padStart(2, "0")).join("");
     const money = node => {
       const raw = (node?.querySelector(".a-offscreen")?.textContent || "").trim() || node?.textContent || "";
@@ -81,23 +100,6 @@
       return m ? Number(m[1].replace(/,/g, "")) * 100 + Number(m[2]) : null;
     };
     const decimalCents = value => /^\d{1,7}(?:\.\d{1,2})?$/.test(value || "") ? Math.round(Number(value) * 100) : null;
-    // Same order as the read tools: sign-in redirect, robot check, throttling, other failures, then the
-    // access notice, which only counts when the expected content is missing.
-    const blocked = (doc, res, content) => {
-      const url = res.url ? new URL(res.url) : null;
-      if (url && url.origin !== ORIGIN) return fail("site_changed", "Amazon redirected outside the shopping host; no data is returned.");
-      if (url && /^\/(?:ap|ax)\//.test(url.pathname)) return fail("login_required", "Sign in manually in this browser before using this tool.");
-      if (/Robot Check|captcha/i.test(doc.title) || doc.querySelector("form[action*='validateCaptcha']")) return fail("challenge", "Amazon requires browser verification. No bypass or automatic retry is supported.");
-      if (res.status === 429 || res.status === 503) return fail("rate_limited", "Amazon is throttling or unavailable. Do not retry automatically.");
-      if (res.status !== 200) return fail("site_error", "Amazon did not return the requested page (HTTP " + res.status + ").");
-      if (!doc.querySelector(content) && /violates Amazon.s Conditions of Use/i.test(doc.body?.textContent || "")) return fail("access_gated", "Amazon returned an access notice instead of the requested page. It is not accepted or dismissed.");
-      return null;
-    };
-    const get = async (path, content) => {
-      const res = await fetch(path, { method: "GET", credentials: "include", signal, redirect: "follow" });
-      const doc = new DOMParser().parseFromString(await res.text(), "text/html");
-      return { res, doc, error: blocked(doc, res, content) };
-    };
     // One record per cart row: the public line plus the row fields that cart requests and the
     // version digest need.
     const record = (n, type) => {
@@ -150,7 +152,8 @@
       return { active, saved, writable, csrf, snapshot: { session_context, cart_version, lines, items_quantity, subtotal_cents, other_carts_present } };
     };
     // @amazon-cart-reader-end
-    // @amazon-cart-writer: keep identical in add_to_cart and update_cart_item (tests compare the copies).
+    // @amazon-cart-writer: keep identical in add_to_cart and update_cart_item (tests compare the copies). Uses the tool's fail, input,
+    // signal and attempted, and @amazon-cart-reader.
     const inputError = keys => {
       if (!input || typeof input !== "object" || Array.isArray(input)) return fail("invalid_input", "Input must be an object. Nothing was requested.");
       const extra = Object.keys(input).find(k => !keys.includes(k));
@@ -183,7 +186,7 @@
     };
     const readAfter = async before => {
       const after = await readCart();
-      if (after.error || after.snapshot.session_context !== before.snapshot.session_context || !after.writable) return null;
+      if (after.error || after.snapshot.session_context !== before.snapshot.session_context || !after.writable) return { error: unknown("The cart could not be verified after the request.") };
       return after;
     };
     const failure = () => attempted ? unknown("The request was sent but its outcome is unknown.") : fail(signal?.aborted ? "canceled" : "site_error", "The change could not be prepared. Nothing was changed.");
@@ -221,7 +224,7 @@
       const sendError = await send("/cart/ref=ox_sc_cart_actions_1", headers, body);
       if (sendError) return sendError;
       const after = await readAfter(before);
-      if (!after) return unknown("The cart could not be verified after the request.");
+      if (after.error) return after.error;
       const changedLine = { ...target, line: { ...target.line, quantity: input.quantity } };
       const expected = remove ? before.active.filter(r => r !== target) : before.active.map(r => r === target ? changedLine : r);
       if (JSON.stringify([expected, before.saved]) !== JSON.stringify([after.active, after.saved])) return unknown("The cart did not show exactly the requested change with everything else unchanged.");

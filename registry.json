@@ -539,12 +539,9 @@
         "https://www.amazon.com/*"
       ],
       "url_patterns_reason": "Narrowed to www.amazon.com, the US retail shopping host; other amazon.com hosts serve unrelated products such as AWS (aws.), Seller Central (sellercentral.), developer and music applications.",
-      "status": "verified",
-      "last_verified": "2026-10-06",
-      "notes": "Adds one absent child ASIN by sending the product page's Add to Cart form to the button's /cart/add-to-cart target, minus the Buy Now pipeline fields; checks get_product's price and seller first (offer_changed otherwise) and refuses ASINs already in the cart or saved for later. Succeeds only when the re-read cart shows exactly that line at the requested quantity with everything else unchanged; otherwise outcome_unknown, with no retry. Refuses carts with other cart types, delivery groups or related, subscription or variable-weight lines (unsupported_cart), and subscription, add-on, customized or gift-wrapped items (unsupported_item). Independent live QA on 2026-10-06 of this source in signed-out guest carts, invoked from the homepage and a search page: two adds (B085DTZQNZ and B085DV8T75, sold by Amazon.com) returned ok and matched an independent cart read; stale cart_version, wrong price, wrong seller, duplicate ASIN and a variation parent were refused with no write. Not observed live: a signed-in cart, quantity_unavailable, outcome_unknown, and challenge or access-notice pages during a write. Amazon reissued the guest session cookie during one QA session, which a later write reports as session_changed until get_cart is read again.",
-      "provenance": {
-        "qa_agent": "agt_cb7d862c04ff167f5a7b"
-      }
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Adds one absent child ASIN by sending the product page's Add to Cart form to the button's /cart/add-to-cart target, minus the Buy Now pipeline fields; checks get_product's price and seller first (offer_changed otherwise) and refuses ASINs already in the cart or saved for later. Succeeds only when the re-read cart shows exactly that line at the requested quantity with everything else unchanged; otherwise outcome_unknown, with no retry. Refuses carts with other cart types, delivery groups or related, subscription or variable-weight lines (unsupported_cart), and subscription, add-on, customized or gift-wrapped items (unsupported_item). Independent live QA on 2026-10-06 of the previous source in signed-out guest carts, invoked from the homepage and a search page: two adds (B085DTZQNZ and B085DV8T75, sold by Amazon.com) returned ok and matched an independent cart read; stale cart_version, wrong price, wrong seller, duplicate ASIN and a variation parent were refused with no write. Not observed live: a signed-in cart, quantity_unavailable, outcome_unknown, and challenge or access-notice pages during a write. Amazon reissued the guest session cookie during one QA session, which a later write reports as session_changed until get_cart is read again. Draft: the current source shares one page fetch and block detection (including /ax/ sign-in redirects and title-only robot checks) across all six amazon.com tools and needs fresh independent QA."
     },
     {
       "domain": "amazon.com",
@@ -556,12 +553,9 @@
         "https://www.amazon.com/*"
       ],
       "url_patterns_reason": "Narrowed to www.amazon.com, the US retail shopping host; other amazon.com hosts serve unrelated products such as AWS (aws.), Seller Central (sellercentral.), developer and music applications.",
-      "status": "verified",
-      "last_verified": "2026-09-29",
-      "notes": "One page of a department or category Best Sellers ranking plus navigable categories; without a category it lists departments. Independent QA verified the department list, categories, page 2 and unknown-category handling live on the Kernel runtime. Only ranks 1-30 (page 1) and 51-80 (page 2) are server-rendered, so ranks are not contiguous; the access_gated notice is reported and never dismissed.",
-      "provenance": {
-        "qa_agent": "agt_ad94863d92ee1a4357a1"
-      }
+      "status": "draft",
+      "last_verified": null,
+      "notes": "One page of a department or category Best Sellers ranking plus navigable categories; without a category it lists departments. Independent QA of the previous source verified the department list, categories, page 2 and unknown-category handling live on the Kernel runtime. Only ranks 1-30 (page 1) and 51-80 (page 2) are server-rendered, so ranks are not contiguous; the access_gated notice is reported and never dismissed. Draft: the current source shares one page fetch and block detection (including /ax/ sign-in redirects and title-only robot checks) across all six amazon.com tools and needs fresh independent QA."
     },
     {
       "domain": "amazon.com",
@@ -573,12 +567,9 @@
         "https://www.amazon.com/*"
       ],
       "url_patterns_reason": "Narrowed to www.amazon.com, the US retail shopping host; other amazon.com hosts serve unrelated products such as AWS (aws.), Seller Central (sellercentral.), developer and music applications.",
-      "status": "verified",
-      "last_verified": "2026-10-06",
-      "notes": "Reads the retail cart from /gp/cart/view.html with a same-origin GET: up to 100 active lines (title and unit price from each row's data-producttitle and data-price), the subtotal, and an opaque session_context (digest of the session-id and ubid-main cookies) and cart_version (digest of the session, every active and saved-for-later row, and the other-cart and delivery-group flags) for cart writes. Fresh, Whole Foods and other carts are flagged, not parsed; unfamiliar, partial or paginated carts fail as site_changed. Read-only, so it reads from any www.amazon.com page, including sign-in. Independent live QA on 2026-10-06 of this source in a signed-out guest cart: from the homepage and a search page it returned the empty cart with identical session_context and cart_version, and an undeclared input returned invalid_input; populated reads were confirmed by the add_to_cart and update_cart_item QA the same day. Not observed live: a signed-in cart, other cart types, and challenge or access-notice pages.",
-      "provenance": {
-        "qa_agent": "agt_c32dec30218c1967cd46"
-      }
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Reads the retail cart from /gp/cart/view.html with a same-origin GET: up to 100 active lines (title and unit price from each row's data-producttitle and data-price), the subtotal, and an opaque session_context (digest of the session-id and ubid-main cookies) and cart_version (digest of the session, every active and saved-for-later row, and the other-cart and delivery-group flags) for cart writes. Fresh, Whole Foods and other carts are flagged, not parsed; unfamiliar, partial or paginated carts fail as site_changed. Read-only, so it reads from any www.amazon.com page, including sign-in. Independent live QA on 2026-10-06 of the previous source in a signed-out guest cart: from the homepage and a search page it returned the empty cart with identical session_context and cart_version, and an undeclared input returned invalid_input; populated reads were confirmed by the add_to_cart and update_cart_item QA the same day. Not observed live: a signed-in cart, other cart types, and challenge or access-notice pages. Draft: the current source shares one page fetch and block detection (including /ax/ sign-in redirects and title-only robot checks) across all six amazon.com tools and needs fresh independent QA."
     },
     {
       "domain": "amazon.com",
@@ -590,12 +581,9 @@
         "https://www.amazon.com/*"
       ],
       "url_patterns_reason": "Narrowed to www.amazon.com, the US retail shopping host; other amazon.com hosts serve unrelated products such as AWS (aws.), Seller Central (sellercentral.), developer and music applications.",
-      "status": "verified",
-      "last_verified": "2026-10-06",
-      "notes": "Product page fields for one ASIN: title, brand, current and list price, availability, rating and histogram, bullets, shipper and seller, delivery wording, add-to-cart availability, and variations with the ASIN of each combination (variant_filter narrows large families). Prices and delivery follow the session delivery location; a variation parent has no price; the access_gated notice is reported and never dismissed. Price and seller extraction is shared byte-for-byte with add_to_cart. Independent live QA on 2026-10-06 of this source, invoked from the homepage and a search page: price, seller, availability and rating matched the product page for B085DTZQNZ and B0BZYCJK89; B088NRLMPV (a USB-C cable) matched its search result; a variation parent, variant_filter, an unknown variation name, invalid inputs and a 404 ASIN (not_found) behaved as described.",
-      "provenance": {
-        "qa_agent": "agt_a089a2f7b2a245db81a0"
-      }
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Product page fields for one ASIN: title, brand, current and list price, availability, rating and histogram, bullets, shipper and seller, delivery wording, add-to-cart availability, and variations with the ASIN of each combination (variant_filter narrows large families). Prices and delivery follow the session delivery location; a variation parent has no price; the access_gated notice is reported and never dismissed. Price, seller and Add to Cart availability checks are shared byte-for-byte with add_to_cart. Independent live QA on 2026-10-06 of the previous source, invoked from the homepage and a search page: price, seller, availability and rating matched the product page for B085DTZQNZ and B0BZYCJK89; B088NRLMPV (a USB-C cable) matched its search result; a variation parent, variant_filter, an unknown variation name, invalid inputs and a 404 ASIN (not_found) behaved as described. Draft: the current source shares one page fetch and block detection (including /ax/ sign-in redirects and title-only robot checks) across all six amazon.com tools and needs fresh independent QA."
     },
     {
       "domain": "amazon.com",
@@ -607,12 +595,9 @@
         "https://www.amazon.com/*"
       ],
       "url_patterns_reason": "Narrowed to www.amazon.com, the US retail shopping host; other amazon.com hosts serve unrelated products such as AWS (aws.), Seller Central (sellercentral.), developer and music applications.",
-      "status": "verified",
-      "last_verified": "2026-10-05",
-      "notes": "One results page with the site sorts, price bounds and filters by id (include_facets lists them); products carry ASIN, price, list price, rating, sponsored flag and delivery wording. The price filter can still return items priced outside the bounds; an ignored filter id is reported, not returned unfiltered; results come from the server-rendered page so ad placements can differ from the tab; Amazon's AI-agent Conditions of Use notice is reported as access_gated and never dismissed. Product cards that exist but cannot be read fail as site_changed instead of no_results. Independent live QA on 2026-10-05 of this source, from the homepage and Best Sellers: all six sorts, a $10-$30 price range (no prices outside it), exclude_sponsored, include_facets and an applied brand filter, page 2, a nonsense query (no_matches) and invalid inputs.",
-      "provenance": {
-        "qa_agent": "agt_7ba29341fc1439a3eb55"
-      }
+      "status": "draft",
+      "last_verified": null,
+      "notes": "One results page with the site sorts, price bounds and filters by id (include_facets lists them); products carry ASIN, price, list price, rating, sponsored flag and delivery wording. The price filter can still return items priced outside the bounds; an ignored filter id is reported, not returned unfiltered; results come from the server-rendered page so ad placements can differ from the tab; Amazon's AI-agent Conditions of Use notice is reported as access_gated and never dismissed. Product cards that exist but cannot be read fail as site_changed instead of no_results. Independent live QA on 2026-10-05 of the previous source, from the homepage and Best Sellers: all six sorts, a $10-$30 price range (no prices outside it), exclude_sponsored, include_facets and an applied brand filter, page 2, a nonsense query (no_matches) and invalid inputs. Draft: the current source shares one page fetch and block detection (including /ax/ sign-in redirects and title-only robot checks) across all six amazon.com tools and needs fresh independent QA."
     },
     {
       "domain": "amazon.com",
@@ -624,12 +609,9 @@
         "https://www.amazon.com/*"
       ],
       "url_patterns_reason": "Narrowed to www.amazon.com, the US retail shopping host; other amazon.com hosts serve unrelated products such as AWS (aws.), Seller Central (sellercentral.), developer and music applications.",
-      "status": "verified",
-      "last_verified": "2026-10-06",
-      "notes": "Sets one ordinary retail cart line to an absolute quantity (0 removes it) with one POST to /cart/ref=ox_sc_cart_actions_1 that mirrors Amazon's own cart script, then requires the re-read cart to show exactly that change. Refuses carts with other cart types, delivery groups or related, subscription or variable-weight lines (unsupported_cart), and sign-in or checkout pages. Independent live QA on 2026-10-06 of this source in signed-out guest carts, invoked from the homepage and a search page: 1 to 2 and back to 1, a no-op at the current quantity (changed false, no request), then removal of both lines with 0, each confirmed by an independent cart read ending empty; a wrong cart_item_id and a stale expected_quantity were refused with no write, and a call from /ap/signin returned wrong_page without requests. Not observed live: a signed-in cart and outcome_unknown.",
-      "provenance": {
-        "qa_agent": "agt_cb7d862c04ff167f5a7b"
-      }
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Sets one ordinary retail cart line to an absolute quantity (0 removes it) with one POST to /cart/ref=ox_sc_cart_actions_1 that mirrors Amazon's own cart script, then requires the re-read cart to show exactly that change. Refuses carts with other cart types, delivery groups or related, subscription or variable-weight lines (unsupported_cart), and sign-in or checkout pages. Independent live QA on 2026-10-06 of the previous source in signed-out guest carts, invoked from the homepage and a search page: 1 to 2 and back to 1, a no-op at the current quantity (changed false, no request), then removal of both lines with 0, each confirmed by an independent cart read ending empty; a wrong cart_item_id and a stale expected_quantity were refused with no write, and a call from /ap/signin returned wrong_page without requests. Not observed live: a signed-in cart and outcome_unknown. Draft: the current source shares one page fetch and block detection (including /ax/ sign-in redirects and title-only robot checks) across all six amazon.com tools and needs fresh independent QA."
     },
     {
       "domain": "amctheatres.com",

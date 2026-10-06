@@ -7,7 +7,8 @@ import { DOMParser, Document } from "./etsy-dom.mjs";
 import { conforms } from "./amazon-schema.mjs";
 
 const names = ["get_cart", "add_to_cart", "update_cart_item", "get_product"];
-const sources = Object.fromEntries(names.map(n => [n, readFileSync(new URL(`../domains/amazon.com/${n}.js`, import.meta.url), "utf8")]));
+const allTools = [...names, "search_products", "get_best_sellers"];
+const sources = Object.fromEntries(allTools.map(n => [n, readFileSync(new URL(`../domains/amazon.com/${n}.js`, import.meta.url), "utf8")]));
 const cartTools = ["get_cart", "add_to_cart", "update_cart_item"];
 const writes = ["add_to_cart", "update_cart_item"];
 const plain = x => JSON.parse(JSON.stringify(x));
@@ -90,7 +91,13 @@ const block = (source, marker) => {
   assert.ok(start >= 0 && end > start, marker);
   return source.slice(start, end);
 };
-for (const [marker, files] of [["amazon-cart-reader", cartTools], ["amazon-cart-writer", writes], ["amazon-offer-reader", ["get_product", "add_to_cart"]]]) {
+for (const [marker, files] of [
+  ["amazon-page-fetch", allTools],
+  ["amazon-text", ["get_product", "add_to_cart", "search_products", "get_best_sellers"]],
+  ["amazon-cart-reader", cartTools],
+  ["amazon-cart-writer", writes],
+  ["amazon-offer-reader", ["get_product", "add_to_cart"]]
+]) {
   test(`${marker} is byte-identical in ${files.join(", ")}`, () => {
     const [first, ...rest] = files.map(n => block(sources[n], marker));
     for (const other of rest) assert.equal(other, first);
@@ -243,6 +250,13 @@ test("add_to_cart: posts the form to the button target without Buy Now fields an
   assert.equal(p.get("submit.add-to-cart"), "Add to cart");
   assert.equal(p.get("anti-csrftoken-a2z"), "fabricated_product_csrf");
   for (const key of ["submit.buy-now", "pipelineType", "referrer", "isBuyNow", "isEligibilityLogicDisabled", "ref_", "gift-wrap"]) assert.equal(p.has(key), false, key);
+});
+test("add_to_cart: a button without a name adds no submitter field", async () => {
+  const h = harness({ product: product().replace('name="submit.add-to-cart" ', "") });
+  assert.equal((await prepared(h, "add_to_cart", add)).status, "ok");
+  const p = new URLSearchParams(h.posts()[0].body);
+  assert.equal(p.has("null"), false);
+  assert.equal(p.has("submit.add-to-cart"), false);
 });
 test("add_to_cart: items without a quantity selector can add one", async () => {
   assert.equal((await prepared(harness({ product: product({ qty: null }) }), "add_to_cart", add)).status, "ok");
