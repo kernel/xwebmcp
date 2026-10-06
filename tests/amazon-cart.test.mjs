@@ -138,6 +138,8 @@ for (const name of writes) {
       "https://aws.amazon.com/",
       "https://www.amazon.com/checkout/entry",
       "https://www.amazon.com/gp/buy/spc/handlers/display.html",
+      "https://www.amazon.com/cpe/yourpayments/wallet",
+      "https://www.amazon.com/payments",
       "https://www.amazon.com/ap/signin",
       "https://www.amazon.com/ax/claim"
     ]) {
