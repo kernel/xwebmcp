@@ -75,6 +75,8 @@
     if (!Number.isInteger(maxVariants) || maxVariants < 1 || maxVariants > 200) return fail("invalid_input", "max_variants must be an integer from 1 to 200; nothing was requested.");
     if (location.origin !== ORIGIN) return fail("wrong_page", "Open https://www.amazon.com/ (any www.amazon.com page) in this tab, then call again. Nothing was requested.");
 
+    // @amazon-offer-reader: keep identical in get_product and add_to_cart (tests compare the copies), so
+    // add_to_cart accepts get_product's price and seller exactly.
     const text = el => {
       if (!el) return null;
       let out = "";
@@ -93,6 +95,20 @@
       const m = value && /^\$\s?([0-9][0-9,]*(?:\.[0-9]{1,2})?)$/.exec(value);
       return m ? Math.round(parseFloat(m[1].replace(/,/g, "")) * 100) : null;
     };
+    const priceOf = el => {
+      if (!el) return null;
+      const offscreen = text(el.querySelector(".a-offscreen"));
+      if (offscreen) return offscreen;
+      const symbol = text(el.querySelector(".a-price-symbol")), whole = text(el.querySelector(".a-price-whole")), fraction = text(el.querySelector(".a-price-fraction"));
+      return symbol && whole && fraction ? `${symbol}${whole.replace(/\.$/, "")}.${fraction}` : null;
+    };
+    const offer = (doc, selector) => {
+      const box = doc.querySelector(selector);
+      return box ? { label: text(box.querySelector(".offer-display-feature-label")), value: text(box.querySelector(".offer-display-feature-text-message")) } : { label: null, value: null };
+    };
+    const buyBoxPriceText = doc => priceOf(doc.querySelector("#corePriceDisplay_desktop_feature_div .a-price:not(.a-text-price)"));
+    const soldBy = doc => offer(doc, "#merchantInfoFeature_feature_div").value || text(doc.querySelector("#sellerProfileTriggerId"));
+    // @amazon-offer-reader-end
     let res, doc;
     try {
       res = await fetch(`/dp/${asin}`, { credentials: "include", headers: { accept: "text/html" } });
@@ -138,14 +154,7 @@
     if (unknown) return fail("invalid_input", `Unknown variation '${unknown[1]}'; this product's variations are: ${names.join(", ") || "none"}. Nothing was changed.`);
     const matching = family.filter(([, opts]) => wanted.every(([index, , value]) => opts[index].toLowerCase() === value));
 
-    const priceOf = el => {
-      if (!el) return null;
-      const offscreen = text(el.querySelector(".a-offscreen"));
-      if (offscreen) return offscreen;
-      const symbol = text(el.querySelector(".a-price-symbol")), whole = text(el.querySelector(".a-price-whole")), fraction = text(el.querySelector(".a-price-fraction"));
-      return symbol && whole && fraction ? `${symbol}${whole.replace(/\.$/, "")}.${fraction}` : null;
-    };
-    const priceText = priceOf(doc.querySelector("#corePriceDisplay_desktop_feature_div .a-price:not(.a-text-price)"));
+    const priceText = buyBoxPriceText(doc);
     const listText = priceOf(doc.querySelector("#corePriceDisplay_desktop_feature_div .a-price[data-a-strike='true']"));
     const availabilityText = text(doc.querySelector("#availability"));
     const availability = !availabilityText ? "unknown" : /currently unavailable|out of stock/i.test(availabilityText) ? "unavailable" : /^in stock|^only [0-9]+ left in stock/i.test(availabilityText) ? "in_stock" : "other";
@@ -156,11 +165,7 @@
     const brandCell = text(doc.querySelector("tr.po-brand td.a-span9"));
     const byline = text(doc.querySelector("#bylineInfo"));
     const brand = brandCell || (byline ? byline.replace(/^Visit the (.+) Store$/, "$1").replace(/^Brand:\s*/, "") : null);
-    const offer = selector => {
-      const box = doc.querySelector(selector);
-      return box ? { label: text(box.querySelector(".offer-display-feature-label")), value: text(box.querySelector(".offer-display-feature-text-message")) } : { label: null, value: null };
-    };
-    const shipper = offer("#fulfillerInfoFeature_feature_div"), seller = offer("#merchantInfoFeature_feature_div");
+    const shipper = offer(doc, "#fulfillerInfoFeature_feature_div"), seller = offer(doc, "#merchantInfoFeature_feature_div");
     const both = seller.label && /shipper\s*\/\s*seller/i.test(seller.label);
     const delivery = ["PRIMARY", "SECONDARY"].map(part => text(doc.querySelector(`#mir-layout-DELIVERY_BLOCK-slot-${part}_DELIVERY_MESSAGE_LARGE`))).filter(Boolean).join(" ");
     return {
@@ -170,7 +175,7 @@
       availability, availability_text: availabilityText ? availabilityText.slice(0, 200) : null,
       rating_average: stars ? parseFloat(stars[1]) : null, rating_count: count ? parseInt(count[1].replace(/,/g, ""), 10) : null, rating_histogram: histogram,
       bullets: [...doc.querySelectorAll("#feature-bullets li")].map(text).filter(Boolean).slice(0, 10).map(t => t.slice(0, 500)),
-      ships_from: both ? seller.value : shipper.value, sold_by: seller.value || text(doc.querySelector("#sellerProfileTriggerId")),
+      ships_from: both ? seller.value : shipper.value, sold_by: soldBy(doc),
       delivery_text: delivery ? delivery.slice(0, 300) : null, add_to_cart_available: !!doc.querySelector("#add-to-cart-button, #add-to-cart-button-ubb"),
       selected_options: optionsOf((family.find(([id]) => id === asin) || [null, []])[1]),
       variation_dimensions: names.map((name, i) => ({ name, values: (Array.isArray(listed[dimensions[i]]) ? listed[dimensions[i]] : []).filter(v => typeof v === "string").slice(0, 100) })),

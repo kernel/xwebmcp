@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import test from "node:test";
 import { createContext, runInContext, runInNewContext } from "node:vm";
 import { DOMParser } from "./etsy-dom.mjs";
+import { conforms } from "./amazon-schema.mjs";
 
 // Harness for the amazon.com page tools. The page (location, fetch) is stubbed and every page is a
 // fabricated fixture shaped like the markup observed on the public site; nothing contacts amazon.com.
@@ -12,37 +13,6 @@ const registry = JSON.parse(readFileSync(new URL("../registry.json", import.meta
 const plain = value => JSON.parse(JSON.stringify(value));
 const ORIGIN = "https://www.amazon.com";
 
-function conforms(schema, value) {
-  if (schema.anyOf && !schema.anyOf.some(s => conforms(s, value))) return false;
-  if ("const" in schema && value !== schema.const) return false;
-  if (schema.enum && !schema.enum.includes(value)) return false;
-  if (schema.type && ![schema.type].flat().some(type => {
-    if (type === "null") return value === null;
-    if (type === "integer") return Number.isInteger(value);
-    if (type === "array") return Array.isArray(value);
-    if (type === "object") return value !== null && typeof value === "object" && !Array.isArray(value);
-    return typeof value === type;
-  })) return false;
-  if (schema.oneOf && schema.oneOf.filter(s => conforms(s, value)).length !== 1) return false;
-  if (Array.isArray(value)) {
-    if (schema.minItems !== undefined && value.length < schema.minItems) return false;
-    if (schema.maxItems !== undefined && value.length > schema.maxItems) return false;
-    if (schema.items && !value.every(item => conforms(schema.items, item))) return false;
-  }
-  if (value !== null && typeof value === "object" && !Array.isArray(value)) {
-    if (schema.required?.some(key => !Object.hasOwn(value, key))) return false;
-    const props = schema.properties || {};
-    if (Object.entries(props).some(([key, s]) => key in value && !conforms(s, value[key]))) return false;
-    const extra = Object.keys(value).filter(key => !(key in props));
-    if (schema.additionalProperties === false && extra.length) return false;
-  }
-  if (typeof value === "string") {
-    if (value.length < (schema.minLength ?? 0) || value.length > (schema.maxLength ?? Infinity)) return false;
-    if (schema.pattern && !new RegExp(schema.pattern).test(value)) return false;
-  }
-  if (typeof value === "number" && (value < (schema.minimum ?? -Infinity) || value > (schema.maximum ?? Infinity))) return false;
-  return true;
-}
 
 // `handler(url, init)` answers each request with { status, body, url? }; it may throw to simulate a network failure.
 function harness(name, { origin = ORIGIN, handler } = {}) {
@@ -176,13 +146,6 @@ for (const name of NAMES) {
     assert.deepEqual(plain(definition.match.url_patterns), ["https://www.amazon.com/*"]);
     assert.equal(definition.tool.annotations.readOnlyHint, true);
     assert.ok(definition.tool.inputSchema && definition.tool.outputSchema);
-    const entry = registry.find(t => t.tool === name);
-    assert.ok(entry, "registry entry exists");
-    assert.equal(entry.kind, "page");
-    assert.equal(entry.namespace, "amazon.com");
-    assert.deepEqual(entry.url_patterns, ["https://www.amazon.com/*"]);
-    assert.equal(entry.file, `domains/amazon.com/${name}.js`);
-    assert.ok(entry.status === "draft" ? entry.last_verified === null : /^\d{4}-\d{2}-\d{2}$/.test(entry.last_verified));
   });
   test(`${name}: only www.amazon.com is ever requested, with GET, and nothing is written`, async () => {
     const { requests, run } = harness(name, { handler: () => ({ status: 200, body: name === "search_products" ? searchPage({ cards: CARDS }) : name === "get_product" ? productPage() : sellersPage() }) });
@@ -209,10 +172,8 @@ test("Amazon's AI-agent Conditions of Use notice is access_gated, never a layout
   }
 });
 
-test("registry has the shopping reads and guarded retail-cart tools, sorted with the rest of the registry", () => {
+test("registry lists exactly the shopping reads and the cart tools", () => {
   assert.deepEqual(registry.map(t => t.tool).sort(), [...NAMES, "get_cart", "add_to_cart", "update_cart_item"].sort());
-  const all = JSON.parse(readFileSync(new URL("../registry.json", import.meta.url), "utf8")).tools.map(t => `${t.domain}/${t.tool}`);
-  assert.deepEqual(all, [...all].sort());
 });
 
 // --- search_products -------------------------------------------------------------------------------

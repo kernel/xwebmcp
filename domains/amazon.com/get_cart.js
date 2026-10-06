@@ -15,7 +15,7 @@
           properties: {
             status: { const: "ok" },
             session_context: { type: "string", pattern: "^[a-f0-9]{64}$", description: "Opaque digest of this browser's Amazon session cookies, not a verified named account. Pass unchanged to cart writes." },
-            cart_version: { type: "string", pattern: "^[a-f0-9]{64}$", description: "Digest of the active and saved-for-later state. Writes refuse a stale version." },
+            cart_version: { type: "string", pattern: "^[a-f0-9]{64}$", description: "Digest of the session, every active and saved-for-later line, and other-cart and delivery-group flags. Writes refuse a stale version." },
             lines: {
               type: "array",
               maxItems: 100,
@@ -54,6 +54,7 @@
   execute: async (input, { signal } = {}) => {
     const fail = (kind, message) => ({ status: "error", error_kind: kind, error_message: message });
     // @amazon-cart-reader: keep identical in get_cart, add_to_cart and update_cart_item (tests compare the copies).
+    const ORIGIN = "https://www.amazon.com";
     const hash = async value => [...new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value)))].map(b => b.toString(16).padStart(2, "0")).join("");
     const money = node => {
       const raw = (node?.querySelector(".a-offscreen")?.textContent || "").trim() || node?.textContent || "";
@@ -61,54 +62,77 @@
       return m ? Number(m[1].replace(/,/g, "")) * 100 + Number(m[2]) : null;
     };
     const decimalCents = value => /^\d{1,7}(?:\.\d{1,2})?$/.test(value || "") ? Math.round(Number(value) * 100) : null;
-    const blocked = (doc, res) => {
-      if (res.status === 429 || res.status === 503) return fail("rate_limited", "Amazon is throttling or unavailable. Do not retry automatically.");
-      if (res.url && new URL(res.url).origin !== location.origin) return fail("site_changed", "Amazon redirected outside the shopping host; no data is returned.");
-      if (res.url && /^\/(?:ap|ax)\//.test(new URL(res.url).pathname)) return fail("login_required", "Sign in manually in this browser before using this surface.");
+    // Same order as the read tools: sign-in redirect, robot check, throttling, other failures, then the
+    // access notice, which only counts when the expected content is missing.
+    const blocked = (doc, res, content) => {
+      const url = res.url ? new URL(res.url) : null;
+      if (url && url.origin !== ORIGIN) return fail("site_changed", "Amazon redirected outside the shopping host; no data is returned.");
+      if (url && /^\/(?:ap|ax)\//.test(url.pathname)) return fail("login_required", "Sign in manually in this browser before using this tool.");
       if (/Robot Check|captcha/i.test(doc.title) || doc.querySelector("form[action*='validateCaptcha']")) return fail("challenge", "Amazon requires browser verification. No bypass or automatic retry is supported.");
-      if (/violates Amazon.s Conditions of Use/i.test(doc.body?.textContent || "")) return fail("access_gated", "Amazon returned an access notice instead of the requested page. It is not accepted or dismissed.");
+      if (res.status === 429 || res.status === 503) return fail("rate_limited", "Amazon is throttling or unavailable. Do not retry automatically.");
       if (res.status !== 200) return fail("site_error", "Amazon did not return the requested page (HTTP " + res.status + ").");
+      if (!doc.querySelector(content) && /violates Amazon.s Conditions of Use/i.test(doc.body?.textContent || "")) return fail("access_gated", "Amazon returned an access notice instead of the requested page. It is not accepted or dismissed.");
       return null;
     };
-    const get = async path => {
+    const get = async (path, content) => {
       const res = await fetch(path, { method: "GET", credentials: "include", signal, redirect: "follow" });
       const doc = new DOMParser().parseFromString(await res.text(), "text/html");
-      return { res, doc, error: blocked(doc, res) };
+      return { res, doc, error: blocked(doc, res, content) };
+    };
+    // One record per cart row: the public line plus the row fields that cart requests and the
+    // version digest need.
+    const record = (n, type) => {
+      const attr = name => n.getAttribute(name);
+      const cart_item_id = attr("data-itemid") || "";
+      const asin = attr("data-asin") || "";
+      const quantity = /^[1-9]\d{0,2}$/.test(attr("data-quantity") || "") ? Number(attr("data-quantity")) : null;
+      if (!/^[A-Za-z0-9_:-]{1,100}$/.test(cart_item_id) || !/^[A-Z0-9]{10}$/.test(asin)) return null;
+      if (type === "active" && quantity === null) return null;
+      const title = (attr("data-producttitle") || n.querySelector(".sc-product-title .a-truncate-full")?.textContent || "").replace(/\s+/g, " ").trim();
+      const special = !!attr("data-related-item-ids") || !!n.querySelector("[data-quantity-click-action-vw], .sc-action-sns");
+      const ordinary = !!n.id && attr("data-itemtype") === type && (type === "saved" || attr("data-itemcategory") === "normal") && !special;
+      return {
+        line: { cart_item_id, asin, title: title.slice(0, 300) || null, quantity, unit_price_cents: decimalCents(attr("data-price")) },
+        dom_id: n.id,
+        price: attr("data-price"),
+        selected: attr("data-isselected") === "1",
+        prime: attr("data-isprimeasin") === "1",
+        ordinary
+      };
     };
     const readCart = async () => {
-      const { doc, error } = await get("/gp/cart/view.html");
+      const { doc, error } = await get("/gp/cart/view.html", "#sc-active-cart");
       if (error) return { error };
-      const root = doc.querySelector("#sc-active-cart");
-      if (!root || !doc.querySelector("#sc-saved-cart") || !doc.querySelector("#sc-collapsed-carts-container")) return { error: fail("site_changed", "A recognized cart container is missing; no empty or partial cart is assumed.") };
-      const nodes = [...root.querySelectorAll(".sc-list-item")].filter(n => n.getAttribute("data-removed") !== "true");
-      const saved = [...doc.querySelectorAll("#sc-saved-cart .sc-list-item")].filter(n => n.getAttribute("data-removed") !== "true");
-      if (nodes.length > 100 || saved.length > 100 || doc.querySelector("#sc-active-cart .sc-pagination, #sc-saved-cart .sc-pagination")) return { error: fail("site_changed", "This cart is too large or paginated; inspect it manually. Nothing is truncated.") };
-      const parse = (n, active) => {
-        const cart_item_id = n.getAttribute("data-itemid") || "";
-        const asin = n.getAttribute("data-asin") || "";
-        const raw = n.getAttribute("data-quantity") || "";
-        const quantity = /^[1-9]\d{0,2}$/.test(raw) ? Number(raw) : null;
-        if (!/^[A-Za-z0-9_:-]{1,100}$/.test(cart_item_id) || !/^[A-Z0-9]{10}$/.test(asin) || active && quantity === null) return null;
-        const title = (n.getAttribute("data-producttitle") || n.querySelector(".sc-product-title .a-truncate-full")?.textContent || "").replace(/\s+/g, " ").trim();
-        return { cart_item_id, asin, title: title.slice(0, 300) || null, quantity, unit_price_cents: decimalCents(n.getAttribute("data-price")) };
-      };
-      const lines = nodes.map(n => parse(n, true));
-      const savedLines = saved.map(n => parse(n, false));
-      if (lines.some(l => !l) || savedLines.some(l => !l) || new Set([...lines, ...savedLines].map(l => l.cart_item_id)).size !== lines.length + savedLines.length) return { error: fail("site_changed", "A cart line has an unknown shape or duplicate id; no partial cart is returned.") };
-      if (!lines.length && !doc.querySelector("#sc-empty-cart")) return { error: fail("site_changed", "No retail lines or recognized empty state were found.") };
+      if (!doc.querySelector("#sc-active-cart") || !doc.querySelector("#sc-saved-cart") || !doc.querySelector("#sc-collapsed-carts-container")) return { error: fail("site_changed", "A recognized cart container is missing; no empty or partial cart is assumed.") };
+      const rows = selector => [...doc.querySelectorAll(selector)].filter(n => n.getAttribute("data-removed") !== "true");
+      const activeRows = rows("#sc-active-cart .sc-list-item");
+      const savedRows = rows("#sc-saved-cart .sc-list-item");
+      const paginated = !!doc.querySelector("#sc-active-cart .sc-pagination, #sc-saved-cart .sc-pagination");
+      if (activeRows.length > 100 || savedRows.length > 100 || paginated) return { error: fail("site_changed", "This cart is too large or paginated; inspect it manually. Nothing is truncated.") };
+      const active = activeRows.map(n => record(n, "active"));
+      const saved = savedRows.map(n => record(n, "saved"));
+      const records = [...active, ...saved];
+      if (records.some(r => !r)) return { error: fail("site_changed", "A cart line has an unknown shape; no partial cart is returned.") };
+      const duplicate = new Set(records.map(r => r.line.cart_item_id)).size !== records.length || new Set(records.map(r => r.dom_id)).size !== records.length;
+      if (duplicate) return { error: fail("site_changed", "Two cart lines share an id; no partial cart is returned.") };
+      if (!active.length && !doc.querySelector("#sc-empty-cart")) return { error: fail("site_changed", "No retail lines or recognized empty state were found.") };
       const cookies = document.cookie.split(";").map(c => c.trim()).filter(c => /^(session-id|ubid-main)=./.test(c)).sort();
-      if (!cookies.some(c => c.startsWith("session-id="))) return { error: fail("site_error", "This browser has no Amazon session cookie; open www.amazon.com in this tab first.") };
+      if (!cookies.some(c => c.startsWith("session-id="))) return { error: fail("site_error", "No Amazon session-id cookie is visible to this page, so the cart cannot be bound to a session. Cookies may be blocked.") };
       const session_context = await hash(JSON.stringify(cookies));
       const other_carts_present = !!doc.querySelector("#sc-collapsed-carts-container")?.children.length;
-      const safety = [...nodes, ...saved].map(n => ({ cart_item_id: n.getAttribute("data-itemid"), dom_id: n.id, item_type: n.getAttribute("data-itemtype"), category: n.getAttribute("data-itemcategory"), related_item_ids: n.getAttribute("data-related-item-ids"), variable_weight: !!n.querySelector("[data-quantity-click-action-vw]"), subscription: !!n.querySelector(".sc-action-sns"), selected: n.getAttribute("data-isselected"), prime_asin: n.getAttribute("data-isprimeasin") }));
-      const state = { lines, saved: savedLines, other_carts_present, grouped: !!doc.querySelector("#sc-active-cart .sc-delivery-group"), safety };
-      const cart_version = await hash(JSON.stringify({ session_context, state }));
+      const grouped = !!doc.querySelector("#sc-active-cart .sc-delivery-group");
+      const writable = !other_carts_present && !grouped && records.every(r => r.ordinary);
+      const cart_version = await hash(JSON.stringify({ session_context, other_carts_present, grouped, active, saved }));
       if (signal?.aborted) throw new Error("canceled");
-      return { doc, nodes, saved, state, snapshot: { session_context, cart_version, lines, items_quantity: lines.reduce((s, l) => s + l.quantity, 0), subtotal_cents: money(doc.querySelector("#sc-subtotal-amount-activecart, #sc-subtotal-amount-buybox")), other_carts_present } };
+      const lines = active.map(r => r.line);
+      const items_quantity = lines.reduce((sum, l) => sum + l.quantity, 0);
+      const subtotal_cents = money(doc.querySelector("#sc-subtotal-amount-activecart, #sc-subtotal-amount-buybox"));
+      const csrf = doc.querySelector("meta#cart-sp-csrf")?.getAttribute("content") || null;
+      return { active, saved, writable, csrf, snapshot: { session_context, cart_version, lines, items_quantity, subtotal_cents, other_carts_present } };
     };
     // @amazon-cart-reader-end
     if (!input || typeof input !== "object" || Array.isArray(input) || Object.keys(input).length > 0) return fail("invalid_input", "get_cart takes no inputs. Nothing was requested.");
-    if (location.origin !== "https://www.amazon.com") return fail("wrong_page", "Open any www.amazon.com page in this tab, then call again. Nothing was requested.");
+    if (location.origin !== ORIGIN) return fail("wrong_page", "Open any www.amazon.com page in this tab, then call again. Nothing was requested.");
     if (signal?.aborted) return fail("canceled", "Canceled before any request.");
     try {
       const cart = await readCart();
