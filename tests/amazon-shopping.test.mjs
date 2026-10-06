@@ -482,6 +482,14 @@ test("get_product: variations list dimensions, options and the ASIN of each comb
   assert.equal(result.variants.find(v => v.is_requested).asin, "B0TEST0001");
 });
 
+test("get_product: quotes and brackets inside option texts are read, and entries that are not ASINs or plain options are skipped", async () => {
+  const display = { B0TEST0001: ["Denim", "12\" Wide [Slim]"], "not-an-asin": ["Denim", "32 Ounces"], B0TEST0003: ["Very Black", 24], B0TEST0004: ["Very Black", "{Tall}"] };
+  const result = await harness("get_product", { handler: serve(200, productPage({ display })) }).run({ asin: "B0TEST0001" });
+  assert.deepEqual(result.variants.map(v => v.asin), ["B0TEST0001", "B0TEST0004"]);
+  assert.deepEqual(result.selected_options, [{ name: "Color", value: "Denim" }, { name: "Size", value: "12\" Wide [Slim]" }]);
+  assert.equal(result.variants[1].options[1].value, "{Tall}");
+});
+
 test("get_product: variant_filter matches names and options case-insensitively; max_variants truncates", async () => {
   const { run } = harness("get_product", { handler: serve(200, productPage()) });
   const filtered = await run({ asin: "B0TEST0001", variant_filter: { size: "32 ounces" } });
@@ -599,6 +607,13 @@ test("get_best_sellers: without a category it lists departments and no products"
   assert.equal(result.category_name, null);
   assert.deepEqual(result.items, []);
   assert.deepEqual(result.categories, [{ name: "Appliances", category: "appliances" }, { name: "Apps & Games", category: "mobile-apps" }]);
+});
+
+test("get_best_sellers: categories are capped at 60", async () => {
+  const categories = Array.from({ length: 70 }, (_, i) => [`Category ${i}`, `/Best-Sellers/zgbs/kitchen/${1000 + i}`]);
+  const result = await harness("get_best_sellers", { handler: serve(200, sellersPage({ categories })) }).run({ category: "kitchen" });
+  assert.equal(result.categories.length, 60);
+  assert.deepEqual(result.categories[59], { name: "Category 59", category: "kitchen/1059" });
 });
 
 test("get_best_sellers: prices are rounded to whole cents and image hosts are checked", async () => {
