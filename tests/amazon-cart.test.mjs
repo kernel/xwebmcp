@@ -198,9 +198,16 @@ test("get_cart: unknown empty state, malformed line, duplicates, oversized and p
     s => fixture({ ...s, lines: [item(), item("missing", "B0TEST0003")] }).replace('data-itemid="missing"', ""),
     s => fixture(s).replace('<div id="sc-saved-cart">', '<div id="sc-saved-cart"><span class="sc-pagination">Next</span>'),
     s => fixture({ ...s, saved: [item("duplicate", "B0TEST0003"), item("duplicate", "B0TEST0004")] }),
+    s => fixture({ ...s, lines: [item(), item("other", "B0TEST0002")] }).replace('id="sc-active-other"', 'id="sc-active-test-line-1"'),
     s => fixture(s).replace('id="sc-saved-cart"', 'id="unknown-saved-layout"'),
     s => fixture(s).replace('id="sc-collapsed-carts-container"', 'id="unknown-other-layout"')
   ]) assert.equal((await harness({ handler: (u, init, { state }) => ({ body: page(state) }) }).run("get_cart")).error_kind, "site_changed");
+});
+test("get_cart: rows the page marks as removed are not lines and do not change cart_version", async () => {
+  const plainCart = await harness({ state: { lines: [item()] } }).run("get_cart");
+  const withRemoved = await harness({ state: { lines: [item(), item("gone", "B0TEST0002", 1, 'data-removed="true"')] } }).run("get_cart");
+  assert.deepEqual(withRemoved.lines.map(l => l.cart_item_id), ["test-line-1"]);
+  assert.equal(withRemoved.cart_version, plainCart.cart_version);
 });
 test("get_cart: cancellation during hashing is canceled", async () => {
   const ctl = new AbortController(); let hashes = 0;
@@ -331,6 +338,11 @@ test("update_cart_item: update, restore and remove with exact readback", async (
   assert.equal(JSON.parse(new URLSearchParams(h.posts()[2].body).get("actionPayload"))[0].type, "DELETE_START");
   assert.equal("quantity" in JSON.parse(new URLSearchParams(h.posts()[2].body).get("actionPayload"))[0].payload, false);
 });
+test("update_cart_item: a line saved for later is not an active line to update", async () => {
+  const h = harness({ state: { lines: [item()], saved: [item("saved", "B0TEST0003")] } });
+  assert.equal((await prepared(h, "update_cart_item", { cart_item_id: "saved", asin: "B0TEST0003", expected_quantity: 1, quantity: 2 })).error_kind, "not_found");
+  assert.equal(h.posts().length, 0);
+});
 test("update_cart_item: already at the requested quantity is a no-op", async () => {
   const h = harness({ state: { lines: [item()] } }); const r = await prepared(h, "update_cart_item", { ...target, quantity: 1 });
   assert.equal(r.changed, false);
@@ -352,7 +364,9 @@ test("update_cart_item: wrong target, quantity and special lines refuse writes",
   for (const [page, kind] of [
     [s => fixture(s).replace('data-itemcategory="normal"', 'data-itemcategory="fresh"'), "unsupported_cart"],
     [s => fixture(s).replace('<div id="sc-active-cart">', '<div id="sc-active-cart"><div class="sc-delivery-group"></div>'), "unsupported_cart"],
-    [s => fixture({ ...s, csrf: false }), "site_changed"]
+    [s => fixture({ ...s, csrf: false }), "site_changed"],
+    [s => fixture(s).replace(' id="sc-active-test-line-1"', ""), "unsupported_cart"],
+    [s => fixture(s).replace('data-itemtype="active"', 'data-itemtype="saved"'), "unsupported_cart"]
   ]) {
     const h = harness({ state: { lines: [item()] }, handler: (u, init, { state }) => init.method === "GET" ? { body: page(state) } : undefined });
     assert.equal((await prepared(h, "update_cart_item", { ...target, quantity: 2 })).error_kind, kind);
