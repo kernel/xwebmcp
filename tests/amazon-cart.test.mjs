@@ -177,6 +177,8 @@ test("get_cart: live-shaped lines read title and price once from data attributes
   assert.equal(r.subtotal_cents, 2999);
   assert.equal(r.other_carts_present, true);
   assert.doesNotMatch(JSON.stringify(r), /saved-1|secret|Fabricated…/);
+  const titled = harness({ state: { lines: [item()] }, handler: (u, init, { state }) => ({ body: fixture(state).replace('data-producttitle="Fabricated bottle"', 'data-producttitle="Data attribute bottle"') }) });
+  assert.equal((await titled.run("get_cart")).lines[0].title, "Data attribute bottle");
 });
 test("get_cart: whitespace-only collapsed-cart container is not another cart", async () => {
   assert.equal((await harness({ state: { lines: [item()] } }).run("get_cart")).other_carts_present, false);
