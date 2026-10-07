@@ -117,3 +117,8 @@ npm run typecheck
 npm test
 npm run build
 ```
+
+## Releasing
+
+Bump `version` in `package.json` on `main`, then run the **publish js** workflow from
+the Actions tab. It publishes with npm trusted publishing, so no npm token is involved.
