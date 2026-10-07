@@ -19,6 +19,7 @@ registry.json                    # machine-readable index of every tool
 spec/                            # the rules this repo follows, and JSON Schemas
 scripts/validate-registry.mjs    # checks registry.json and domains/ against the spec
 bench/                           # A/B harness: an agent with vs without a domain's tools (bench/README.md)
+js/                              # the xwebmcp npm package for site authors (React, Next.js)
 ```
 
 ## Specification
@@ -257,6 +258,13 @@ const result = await webmcp.invokeTool(live.tool_ref, { /* input */ }, { timeout
 
 Never invoke a tool whose metadata you don't trust: check its `status`, `notes`, and
 `url_patterns` in `registry.json` first.
+
+## For site authors: the `xwebmcp` npm package
+
+The tools above are written for sites that don't expose their own. To expose WebMCP tools
+from your own React or Next.js app, use the package in [`js/`](js/README.md): components
+register their own tools, and a provider adds `get_page_context` and
+`navigate_to_page` built from what is mounted.
 
 ## Contributing
 
