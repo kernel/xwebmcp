@@ -10,8 +10,11 @@ browser settings:
 - **control**: a fresh browser on the intent's start URL, with nothing registered;
 - **treatment**: the same, plus the domain's read-only tools at commits pinned for the run.
 
-The prompt never mentions xwebmcp. A treatment trial that never invokes a tool still counts as
-treatment; adoption is reported next to every treatment number.
+Both arms get the same system prompt, which tells the agent to list the page's WebMCP tools first
+and fall back to Playwright or computer actions when none fits, as Kernel's docs tell customers
+to instruct their agents. It never mentions xwebmcp or whether tools are registered, so a control
+agent lists, finds nothing and falls back. A treatment trial that never invokes a tool still
+counts as treatment; adoption is reported next to every treatment number.
 
 ## Layout
 
