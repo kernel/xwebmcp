@@ -1,0 +1,28 @@
+{
+  "id": "fandango-theater-showtimes",
+  "domain": "fandango.com",
+  "stage": "inspect",
+  "prompt": "On fandango.com, list every film and every showtime at {{theater}} in {{city}} on {{date}}. Reply with JSON: {\"theater\": string, \"date\": \"YYYY-MM-DD\", \"films\": [{\"title\": string, \"showtimes\": [\"HH:MM\"]}]}, times in 24-hour local time.",
+  "fixture": {"theater": "AMC 19th St. East 6", "city": "New York, NY", "date": "2026-10-13"},
+  "start_url": "https://www.fandango.com/",
+  "tools": [
+    {
+      "repo": "kernel/xwebmcp",
+      "ref": "hypeship/fandango-showtimes",
+      "pr": 58,
+      "names": ["search_theaters", "get_theater_showtimes"]
+    }
+  ],
+  "entry_tool": "search_theaters",
+  "answer_schema": "schemas/theater-showtimes.json",
+  "rules": [
+    {"path": "date", "equals": "{{date}}"},
+    {"path": "theater", "matches": "19th st"},
+    {"path": "films", "count": [1, 60]},
+    {"path": "films[].title", "unique": true}
+  ],
+  "agreement": {"path": "films[].showtimes[]", "same": true},
+  "pairs": 5,
+  "trial_timeout_sec": 600,
+  "max_turns": 40
+}

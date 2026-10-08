@@ -18,6 +18,7 @@ tests/                           # node --test "tests/*.test.mjs"
 registry.json                    # machine-readable index of every tool
 spec/                            # the rules this repo follows, and JSON Schemas
 scripts/validate-registry.mjs    # checks registry.json and domains/ against the spec
+bench/                           # A/B harness: an agent with vs without a domain's tools (bench/README.md)
 ```
 
 ## Specification
