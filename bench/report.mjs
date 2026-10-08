@@ -299,6 +299,13 @@ export function buildReport(run, allRows, smokeRows = []) {
         + `pages loaded, treatment later in ${skews.filter(s => s > 0).length}, by up to ${(largest / 1000).toFixed(1)}s. Registration that `
         + "outlasts the start delay gives the treatment's page longer to settle.");
     }
+    const native = pairRows.filter(r => r.arm === "control" && r.native_tools?.length);
+    if (native.length) {
+      const byIntent = Map.groupBy(native, r => r.intent);
+      out.push("", `native tools check: ${native.length} control trial(s) started with the page's own WebMCP tools (`
+        + `${[...byIntent].map(([intent, list]) => `${intent}: ${[...new Set(list.flatMap(r => r.native_tools))].join(", ")}`).join("; ")}), `
+        + "which both arms can use, so there the comparison is the registered tools against the site's own, not against none.");
+    }
     const slowest = results.filter(r => r.control.slowest !== null).sort((a, b) => b.control.slowest - a.control.slowest)[0];
     if (slowest) out.push("", `cap calibration: slowest correct control trial ${clock(slowest.control.slowest)} (${slowest.plan.intent.id}); cap ${clock(slowest.plan.cap_sec * 1000)}.`);
     const noise = sum(labelled.filter(r => r.pairs.both >= THRESHOLDS.minBothCorrect).map(r => signTestRate(r.pairs.both, THRESHOLDS.p)));

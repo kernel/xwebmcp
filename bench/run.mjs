@@ -8,7 +8,7 @@
 import { execFileSync } from "node:child_process";
 import { createHash, randomInt } from "node:crypto";
 import { appendFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { dirname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import { setTimeout as sleep } from "node:timers/promises";
 import { parseArgs } from "node:util";
@@ -394,7 +394,11 @@ async function setUpBrowser(plan, intentPlan, arm, label) {
       }
       const before = await listCustomTools(browser);
       if (arm === "control" && before.length) throw new Error(`control browser already has ${before.length} custom tool(s) in ${[...new Set(before.map(t => t.namespace))].join(", ")}`);
-      return { browser, page, loadedAt, before, attempts: attempt };
+      // The page's own WebMCP tools reach both arms, so control is not tool-free where a site has them.
+      const live = await listLiveTools(browser);
+      if (arm === "control" && live.some(t => t.source?.custom)) throw new Error("control browser has live custom tools");
+      const nativeTools = live.filter(t => !t.source?.custom).map(t => t.tool?.name ?? "unknown");
+      return { browser, page, loadedAt, before, nativeTools, attempts: attempt };
     } catch (error) {
       if (stopping) return { stopped: true, attempts: attempt };
       if (browser) await releaseBrowser(browser);
@@ -409,13 +413,15 @@ async function runTrial(plan, intentPlan, arm, key) {
   if (stopping) return null;
   const { intent } = intentPlan;
   const label = key.pair ? `p${key.pair}` : `a${key.adoption}`;
-  const dir = join(runDir, "trials", intent.id, `${label}-${arm}`);
-  rmSync(dir, { recursive: true, force: true });
+  // Each attempt gets its own directory, so a rerun keeps the transcript of the one it replaces.
+  const base = join(runDir, "trials", intent.id, `${label}-${arm}`);
+  let dir = base;
+  for (let n = 2; existsSync(dir); n++) dir = `${base}-${n}`;
   mkdirSync(dir, { recursive: true });
   const row = {
-    run_id: runId, intent: intent.id, arm, pair: key.pair ?? null, adoption: key.adoption ?? null, order: key.order ?? null, attempt: key.attempt,
+    run_id: runId, intent: intent.id, arm, pair: key.pair ?? null, adoption: key.adoption ?? null, order: key.order ?? null, attempt: key.attempt, trial_dir: relative(runDir, dir),
     tools_shas: intentPlan.sources.map(s => s.sha.slice(0, 7)), profile: intentPlan.profile?.name ?? null, agent: plan.agent, model: plan.model, thinking: plan.thinking,
-    image_version: null, browser_id: null, setup_attempts: null, start_renavigated: null, start_delay_ms: null,
+    image_version: null, browser_id: null, setup_attempts: null, start_renavigated: null, start_delay_ms: null, native_tools: null,
     started_at: new Date().toISOString(), outcome: null, reason: null, duration_ms: null, setup_ms: null,
     turns: null, tool_calls: null, unknown_tool_errors: null, tokens_in: null, tokens_out: null, cost_usd: null,
     registration_changed: null, webmcp: null, grade: null,
@@ -431,7 +437,7 @@ async function runTrial(plan, intentPlan, arm, key) {
       return row.outcome;
     }
     browser = setup.browser;
-    [row.browser_id, row.image_version, row.start_renavigated] = [browser, setup.page.version, setup.page.renavigated];
+    [row.browser_id, row.image_version, row.start_renavigated, row.native_tools] = [browser, setup.page.version, setup.page.renavigated, setup.nativeTools];
     await sleep(Math.max(0, setup.loadedAt + START_DELAY_MS - performance.now()));
     row.start_delay_ms = Math.round(performance.now() - setup.loadedAt);
     row.setup_ms = Math.round(performance.now() - setupStart);

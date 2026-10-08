@@ -3,7 +3,7 @@
   "domain": "fandango.com",
   "stage": "inspect",
   "prompt": "On fandango.com, list every film and every showtime at {{theater}} in {{city}} on {{date}}. Reply with JSON: {\"theater\": string, \"date\": \"YYYY-MM-DD\", \"films\": [{\"title\": string, \"showtimes\": [\"HH:MM\"]}]}, times in 24-hour local time.",
-  "fixture": {"theater": "AMC 19th St. East 6", "city": "New York, NY", "date": "2026-10-13"},
+  "fixture": {"theater": "AMC 19th St. East 6", "city": "New York, NY", "date": {"days_from_start": 2}},
   "start_url": "https://www.fandango.com/",
   "tools": [
     {

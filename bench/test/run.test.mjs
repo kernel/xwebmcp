@@ -73,6 +73,10 @@ test("a signed-in pair runs the sign-in check in both arms and control starts wi
   const control = log().find(entry => entry[0] === "create" && entry[2] === "control")[1];
   assert.deepEqual(log().filter(entry => entry[1] === control).map(entry => entry[0]), ["create", "add", "invoke", "remove"]);
 
+  // Each arm records the page's own tools, and its directory.
+  assert.deepEqual(rows("ok").map(r => r.native_tools), [[], []]);
+  assert.deepEqual(rows("ok").map(r => r.trial_dir).sort(), ["trials/example-lookup/p1-control", "trials/example-lookup/p1-treatment"]);
+
   const again = run("ok");
   assert.equal(again.status, 0, again.stderr);
   assert.match(again.stdout, /nothing to run/);
@@ -86,4 +90,13 @@ test("a control browser that is signed out aborts its trial, and the pair is lef
   assert.equal(control.length, 2);
   for (const row of control) assert.match(row.reason, /^signed out: lookup returned/);
   assert.equal(control[0].setup_attempts, 1);
+  // The rerun kept the first attempt's directory.
+  assert.deepEqual(control.map(r => r.trial_dir), ["trials/example-lookup/p1-control", "trials/example-lookup/p1-control-2"]);
+});
+
+test("both arms record the page's own WebMCP tools", { timeout: 120_000 }, () => {
+  const { run, rows } = workspace();
+  const result = run("native", { STUB_NATIVE_TOOLS: "site_search" });
+  assert.equal(result.status, 0, result.stderr + result.stdout);
+  assert.deepEqual(rows("native").map(r => [r.arm, r.outcome, r.native_tools]).sort(), [["control", "correct", ["site_search"]], ["treatment", "correct", ["site_search"]]]);
 });

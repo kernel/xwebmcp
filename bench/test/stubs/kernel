@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // A stand-in for the kernel CLI in run.test.mjs. Browsers live in $STUB_STATE. Every browser's page
 // is example.com; the sign-in check fails in browsers tagged with an arm listed in
-// $STUB_SIGNED_OUT_ARMS.
+// $STUB_SIGNED_OUT_ARMS, and every page also lists the native tools named in $STUB_NATIVE_TOOLS.
 import { readFileSync, writeFileSync } from "node:fs";
 
 const args = process.argv.slice(2).filter(arg => arg !== "-o" && arg !== "json");
@@ -38,7 +38,8 @@ if (args[0] === "--version") {
   log(["remove", args[4]]);
   console.log(`SUCCESS: Removed custom WebMCP tool: ${args[5]}`);
 } else if (command.startsWith("browsers webmcp list")) {
-  print({ tools: state.browsers[args[3]].tools.map(tool => ({ tool_ref: `wmcp_${tool.id}`, tool: tool.tool, source: { custom: { namespace: tool.namespace }, page_url: "https://example.com/" } })) });
+  const native = (process.env.STUB_NATIVE_TOOLS ?? "").split(",").filter(Boolean).map(name => ({ tool_ref: `wmcp_native_${name}`, tool: { name }, source: { page_url: "https://example.com/" } }));
+  print({ tools: [...native, ...state.browsers[args[3]].tools.map(tool => ({ tool_ref: `wmcp_${tool.id}`, tool: tool.tool, source: { custom: { namespace: tool.namespace }, page_url: "https://example.com/" } }))] });
 } else if (command.startsWith("browsers webmcp invoke")) {
   const { arm } = state.browsers[args[3]].tags;
   log(["invoke", args[3], arm]);

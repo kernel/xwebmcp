@@ -92,10 +92,13 @@ interleaved across intents; a pair's two trials run back to back in one slot.
 2. Check the loaded URL matches the entry tool's URL patterns, in both arms.
 3. Treatment: register the batch, confirm the `entry_tool` is live on the tab, and on a signed-in
    domain run the sign-in check. Control: on a signed-in domain, register the batch, run the same
-   check and remove the tools again; then fail if any custom tools are registered.
+   check and remove the tools again; then fail if any custom tools are registered or live. Both
+   arms record the page's own WebMCP tools, which both can use.
 4. Wait until 10s after load in both arms, then launch the agent. The clock runs to
    `agent_settled`; the runner stops the agent at the time, turn or spend cap.
-5. Grade the answer, delete the browser and append a row to `rows.jsonl`.
+5. Grade the answer, delete the browser and append a row to `rows.jsonl`. Each attempt keeps its
+   own directory under `trials/<intent>/` (`p1-control`, then `p1-control-2` for a rerun), named in
+   the row's `trial_dir`.
 
 A setup failure gets up to three browsers before the trial is `aborted` (a signed-out profile
 gets one). A trial is also `aborted` when the agent started without exactly the allowlisted tools
@@ -112,7 +115,7 @@ and deletes every browser.
   "domain": "fandango.com",
   "stage": "inspect",
   "prompt": "On fandango.com, list every film and every showtime at {{theater}} in {{city}} on {{date}}. Reply with JSON: ...",
-  "fixture": {"theater": "AMC 19th St. East 6", "city": "New York, NY", "date": "2026-10-13"},
+  "fixture": {"theater": "AMC 19th St. East 6", "city": "New York, NY", "date": {"days_from_start": 2}},
   "start_url": "https://www.fandango.com/",
   "tools": [{"repo": "kernel/xwebmcp", "ref": "hypeship/fandango-showtimes", "pr": 58, "names": ["search_theaters", "get_theater_showtimes"]}],
   "entry_tool": "search_theaters",
@@ -133,7 +136,7 @@ and deletes every browser.
   marks it.
 - `{{name}}` in `prompt` and `rules` comes from `fixture`. `{"days_from_start": n}` resolves to a
   date when the run starts. A fixed date that has passed skips the intent, or stops the run if
-  the intent was selected by name; move film and showtime dates forward before each run.
+  the intent was selected by name; move dates tied to a film's run forward before each run.
 - `rules` apply to every value a path resolves to (`[]` steps into arrays): `equals` and `in`
   (case- and whitespace-insensitive), `matches` (case-insensitive regex; fixture values match
   literally), `range`, `count`, `time` (`HH:MM`), `date` (`YYYY-MM-DD`) and `unique`.
@@ -201,7 +204,8 @@ scored:
 Then the worst label per PR, and per run: spend over every attempt including smoke gates, the
 label histogram (noting labels from `shape only` intents), median speedup, each arm's
 agent-minutes, turns and spend over complete pairs, the pooled gap-intent
-placebo, an order check, a start delay check, cap calibration, and how many labels to expect
+placebo, an order check, a start delay check, a native tools check (control trials that started
+with the page's own WebMCP tools), cap calibration, and how many labels to expect
 from noise.
 
 ## Not built yet

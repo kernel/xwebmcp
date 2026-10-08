@@ -171,6 +171,19 @@ test("the start delay check flags pairs whose agents launched more than 1s apart
   assert.doesNotMatch(buildReport(run, exampleRows()), /start delay check/);
 });
 
+test("the native tools check names control trials that started with the page's own tools", () => {
+  const rows = exampleRows().map(r => ({ ...r, native_tools: [] }));
+  rows[0].native_tools = ["search"];
+  rows[2].native_tools = ["search", "get_cart"];
+  rows[10].native_tools = ["search"];
+  const run = {
+    run_id: "t", model: "m", thinking: null, agent: "pi 0", created_at: "2026-10-07T00:00:00Z",
+    intents: { "fandango-theater-showtimes": { intent: { id: "fandango-theater-showtimes", domain: "fandango.com", stage: "inspect" }, sources: [{ ref: "main", sha: "0".repeat(40) }], cap_sec: 600 } },
+  };
+  assert.match(buildReport(run, rows), /native tools check: 2 control trial\(s\) started with the page's own WebMCP tools \(fandango-theater-showtimes: search, get_cart\)/);
+  assert.doesNotMatch(buildReport(run, exampleRows()), /native tools check/);
+});
+
 test("the report checks run order and counts answers given without a tool call", () => {
   const rows = exampleRows().map(r => ({ ...r, order: r.pair % 2 ? "AB" : "BA", tool_calls: 5 }));
   rows[0].tool_calls = 0;
