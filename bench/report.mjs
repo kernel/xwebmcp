@@ -8,6 +8,7 @@ import { fileURLToPath } from "node:url";
 import { completePairRows, latestRows, readRows } from "./lib/rows.mjs";
 import { median, newcombe, signTest, signTestRate, wilson } from "./lib/stats.mjs";
 import { resolvePath } from "./grade.mjs";
+import { invocationFailed } from "./lib/agent.mjs";
 
 // The speedup ratios are recalibrated after the pilot.
 const THRESHOLDS = { adoption: 0.5, minBothCorrect: 5, p: 0.1, faster: 1.5, slower: 0.67, mixedDelta: 2 };
@@ -44,7 +45,7 @@ export function armStats(rows) {
     min_per_correct: correct.length ? sum(all) / 60_000 / correct.length : null,
     adoption: rows.length ? rows.filter(r => r.webmcp?.adopted).length / rows.length : null,
     invocations: invocations.length,
-    invoke_success: withStatus.length ? withStatus.filter(i => i.status === "completed").length / withStatus.length : null,
+    invoke_success: withStatus.length ? withStatus.filter(i => !invocationFailed(i)).length / withStatus.length : null,
     tool_median: median(withStatus.map(i => i.duration_ms).filter(d => d !== null)),
     turns: median(rows.map(r => r.turns).filter(t => typeof t === "number")),
     tokens_in: median(rows.map(r => r.tokens_in).filter(t => typeof t === "number")),
@@ -106,6 +107,7 @@ export function adoptedPairStats(rows, agreement = null) {
 
 // A rule that only repeats the fixture back pins nothing.
 export function answerCheck(intent) {
+  if (intent.check) return "end state";
   const pinned = (intent.rules ?? []).some(rule => ("equals" in rule || "in" in rule) && !JSON.stringify(rule.equals ?? rule.in).includes("{{"));
   return pinned ? "pinned" : intent.agreement ? "agreement" : "shape only";
 }
@@ -137,6 +139,27 @@ export function compare(control, treatment, pairs, stage) {
     delta_min_per_correct: control.min_per_correct !== null && treatment.min_per_correct !== null ? treatment.min_per_correct - control.min_per_correct : null,
     label,
   };
+}
+
+// Failed invocations per tool, with their most common errors, over treatment trials.
+export function toolFailures(rows, domainOf) {
+  const byTool = new Map();
+  for (const row of rows.filter(r => r.arm === "treatment")) {
+    for (const invocation of row.webmcp?.invocations ?? []) {
+      if (invocation.status === null) continue;
+      const key = `${domainOf(row.intent)}/${invocation.tool ?? "unknown"}`;
+      const entry = byTool.get(key) ?? { tool: key, calls: 0, failed: 0, errors: new Map() };
+      entry.calls++;
+      if (invocationFailed(invocation)) {
+        entry.failed++;
+        const error = invocation.error ?? invocation.status;
+        entry.errors.set(error, (entry.errors.get(error) ?? 0) + 1);
+      }
+      byTool.set(key, entry);
+    }
+  }
+  return [...byTool.values()].filter(e => e.failed).sort((a, b) => b.failed - a.failed || a.tool.localeCompare(b.tool))
+    .map(e => ({ ...e, errors: [...e.errors].sort((a, b) => b[1] - a[1]) }));
 }
 
 // --- formatting -----------------------------------------------------------------------------
@@ -311,6 +334,14 @@ export function buildReport(run, allRows, smokeRows = []) {
     const noise = sum(labelled.filter(r => r.pairs.both >= THRESHOLDS.minBothCorrect).map(r => signTestRate(r.pairs.both, THRESHOLDS.p)));
     out.push("", `Under no true effect, the sign test alone reaches p < ${THRESHOLDS.p} on about ${noise.toFixed(1)} of these ${labelled.length} `
       + "intents, so up to that many faster or slower labels may be noise.");
+  }
+
+  const failures = toolFailures(scored, id => run.intents[id]?.intent.domain ?? id);
+  if (failures.length) {
+    out.push("", "## Tool failures", "", "Invocations that did not complete or whose tool returned `status: \"error\"`, in scored treatment trials.", "");
+    out.push(table(["tool", "calls", "failed", "most common errors"], failures.map(f => [
+      f.tool, f.calls, f.failed, f.errors.slice(0, 3).map(([error, n]) => `${n}× ${error.replace(/\|/g, "\\|").replace(/\n/g, " ").slice(0, 160)}`).join("<br>"),
+    ])));
   }
 
   const flagged = rows.filter(r => r.outcome === "aborted" || r.outcome === "crashed" || r.registration_changed);

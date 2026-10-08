@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { classifyTrial, parseRecord, piArgs, summarize } from "../lib/agent.mjs";
+import { classifyTrial, invocationFailed, parseRecord, piArgs, summarize } from "../lib/agent.mjs";
 
 const allow = ["mcp__kernel__browser_repl", "mcp__kernel__computer_action", "mcp__kernel__execute_playwright_code", "mcp__kernel__webmcp"];
 
@@ -57,8 +57,8 @@ test("the transcript yields tools, the answer, metrics, leaks and WebMCP usage",
     listed: true,
     adopted: true,
     invocations: [
-      { path: "mcp", tool: "lookup_ip", status: "completed", duration_ms: 1500 },
-      { path: "playwright", tool: null, status: null, duration_ms: null },
+      { path: "mcp", tool: "lookup_ip", status: "completed", tool_status: null, error: null, duration_ms: 1500 },
+      { path: "playwright", tool: null, status: null, tool_status: null, error: null, duration_ms: null },
     ],
   });
 });
@@ -154,4 +154,22 @@ test("a provider error pi gave up retrying is reported, and a retry that recover
   assert.deepEqual(summary.retries_exhausted, { attempts: 3, error: "429 rate limited" });
   assert.deepEqual(classifyTrial(summary, { limit: null, exitCode: 1 }, allow, ""), ["aborted", "provider error after 3 retries: 429 rate limited"]);
   assert.equal(summarize([...failed.slice(0, 2), { type: "auto_retry_end", success: true, attempt: 1 }], allow).retries_exhausted, null);
+});
+
+test("a failed invocation keeps its error, whether the call, the tool or the MCP server failed", () => {
+  const invoke = (id) => call(id, "mcp__kernel__webmcp", { action: "invoke", tool_ref: "wmcp_a" });
+  const summary = summarize([
+    assistant([invoke("1"), invoke("2"), invoke("3"), invoke("4")]),
+    end("1", "mcp__kernel__webmcp", JSON.stringify({ status: "completed", output: { status: "error", message: "UI_CHANGED: missing button" } }), 10),
+    end("2", "mcp__kernel__webmcp", JSON.stringify({ status: "error", error_text: "input failed JSON Schema validation" }), 20),
+    end("3", "mcp__kernel__webmcp", 'error in webmcp (invoke): {"code":"not_found"}', 30),
+    end("4", "mcp__kernel__webmcp", JSON.stringify({ status: "completed", output: { status: "no_results", message: "nothing matched" } }), 40),
+  ], allow);
+  const shown = summary.webmcp.invocations.map(i => [i.status, i.tool_status, i.error, invocationFailed(i)]);
+  assert.deepEqual(shown, [
+    ["completed", "error", "UI_CHANGED: missing button", true],
+    ["error", null, "input failed JSON Schema validation", true],
+    ["error", null, 'error in webmcp (invoke): {"code":"not_found"}', true],
+    ["completed", "no_results", null, false],
+  ]);
 });

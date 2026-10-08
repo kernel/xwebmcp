@@ -10,7 +10,7 @@ Use the page's WebMCP tools first:
 
 Rules:
 
-- Do not check out, pay, place an order, or complete a booking or reservation.
+- Do not pay, place an order, or complete a booking or reservation, and go no further into a checkout than the task asks.
 - Do not add items or tickets to a cart unless the task says you may. Selecting seats and ticket types to see their prices is allowed.
 - Do not log in, sign up, or enter personal or payment details.
 - Do not post, comment, send messages, star, follow, or change anything else on the site.

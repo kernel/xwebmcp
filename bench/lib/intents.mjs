@@ -76,7 +76,13 @@ export function validateIntent(intent, benchDir) {
   need(intent.stage === "gap" ? named.length === 0 : named.length > 0, intent.stage === "gap" ? "gap intents name no tools" : "non-gap intents name the tools a treatment agent would use");
   need(typeof intent.entry_tool === "string", "entry_tool is required");
   need(typeof intent.answer_schema === "string" && existsSync(join(benchDir, intent.answer_schema)), "answer_schema must point at a file under bench/");
-  for (const rule of intent.rules ?? []) {
+  // A prepare intent changes site state, so the runner reads where the agent left the browser.
+  const { check, actions } = intent;
+  need(intent.stage === "prepare" ? check !== undefined : check === undefined && actions === undefined, "check, and actions, belong to prepare intents, and a prepare intent needs a check");
+  need(actions === undefined || (Array.isArray(actions) && actions.every(name => typeof name === "string")), "actions must list tool names");
+  need(check === undefined || (typeof check?.tool === "string" && Array.isArray(check.rules) && check.rules.length > 0 && (check.input === undefined || (check.input !== null && typeof check.input === "object"))),
+    "check needs a tool, rules and, optionally, an input object");
+  for (const rule of [...(intent.rules ?? []), ...(Array.isArray(check?.rules) ? check.rules : [])]) {
     const checks = Object.keys(rule).filter(key => key !== "path");
     need(typeof rule.path === "string" && checks.length === 1 && RULE_CHECKS.includes(checks[0]), `rule ${JSON.stringify(rule)} needs a path and one of ${RULE_CHECKS.join(", ")}`);
     if ("matches" in rule) need(typeof rule.matches === "string" && compiles(fillRules([rule], intent.fixture)[0].matches, "iu"), `rule ${JSON.stringify(rule)} needs a valid regex`);
@@ -89,7 +95,7 @@ export function validateIntent(intent, benchDir) {
   for (const [key, value] of Object.entries(intent.fixture ?? {})) {
     need(typeof value === "string" || typeof value === "number" || relativeDate(value), `fixture ${key} must be a string, a number or {"days_from_start": n}`);
   }
-  const text = JSON.stringify([intent.prompt, intent.rules ?? []]);
+  const text = JSON.stringify([intent.prompt, intent.rules ?? [], check?.rules ?? [], check?.input ?? {}]);
   for (const [, key] of text.matchAll(/\{\{(\w+)\}\}/g)) need(Object.hasOwn(intent.fixture ?? {}, key), `{{${key}}} has no fixture value`);
   for (const key of ["pairs", "trial_timeout_sec", "max_turns"]) need(Number.isInteger(intent[key]) && intent[key] > 0, `${key} must be a positive integer`);
   return problems;

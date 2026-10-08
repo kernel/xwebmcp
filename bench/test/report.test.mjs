@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { adoptedPairStats, answerCheck, armStats, buildReport, compare, pairStats, startDelaySkews } from "../report.mjs";
+import { adoptedPairStats, answerCheck, armStats, buildReport, compare, pairStats, startDelaySkews, toolFailures } from "../report.mjs";
 import { newcombe, signTest, signTestRate, wilson } from "../lib/stats.mjs";
 
 const round = (iv) => iv.map(x => Math.round(x * 100));
@@ -230,4 +230,14 @@ test("the report gives a paired test of correctness and each arm's turns, tokens
   assert.match(report, /Correct in one arm only: treatment in 2 pairs, control in 0, exact McNemar p = 0\.500\./);
   assert.match(report, /per trial, median: turns 12 control, 5 treatment; input tokens 90000 and 40000; cost \$0\.400 and \$0\.400\./);
   assert.match(report, /over complete pairs: control 39 agent-minutes, 120 turns and \$4\.00; treatment 22 agent-minutes, 50 turns and \$4\.00\./);
+});
+
+test("tool failures are counted per tool, with the most common errors first", () => {
+  const invocation = (tool, status, tool_status, error) => ({ path: "mcp", tool, status, tool_status, error, duration_ms: 1 });
+  const rows = [
+    { intent: "d", arm: "treatment", webmcp: { invocations: [invocation("search", "completed", "error", "UI_CHANGED"), invocation("search", "completed", "ok", null), invocation("read", "completed", null, null)] } },
+    { intent: "d", arm: "treatment", webmcp: { invocations: [invocation("search", "completed", "error", "UI_CHANGED"), invocation("search", "error", null, "schema")] } },
+    { intent: "d", arm: "control", webmcp: { invocations: [invocation("search", "error", null, "control never counts")] } },
+  ];
+  assert.deepEqual(toolFailures(rows, () => "x.com"), [{ tool: "x.com/search", calls: 4, failed: 3, errors: [["UI_CHANGED", 2], ["schema", 1]] }]);
 });

@@ -355,9 +355,11 @@ const registrationFingerprint = (tools) => JSON.stringify(tools.map(t => `${t.na
 // A fresh browser on a signed-out profile is still signed out, so setup does not retry.
 class SignedOut extends Error {}
 
+const liveRef = (live, intent, tool) => live.find(t => t.tool?.name === tool && t.source?.custom?.namespace === intent.domain)?.tool_ref;
+
 async function checkSignedIn(browser, intent, live) {
   const { tool, input = {} } = intent.signed_in_check;
-  const ref = live.find(t => t.tool?.name === tool && t.source?.custom?.namespace === intent.domain)?.tool_ref;
+  const ref = liveRef(live, intent, tool);
   if (!ref) throw new Error(`${tool} is not live on ${intent.start_url}`);
   const output = await invokeTool(browser, ref, input);
   if (output?.status === "error" || output?.error) throw new SignedOut(`signed out: ${tool} returned ${JSON.stringify(output).slice(0, 300)}`);
@@ -405,6 +407,22 @@ async function setUpBrowser(plan, intentPlan, arm, label) {
       if (attempt === SETUP_ATTEMPTS || error instanceof SignedOut) return { error: error.message, attempts: attempt };
       log(`${intent.id} ${label} ${arm}: setup attempt ${attempt} failed (${error.message}); retrying with a new browser`);
     }
+  }
+}
+
+// Reads where a prepare intent's agent left the browser, with the intent's check tool. Control
+// gets the batch registered only now, after its agent is done.
+async function readEndState(browser, intentPlan, arm) {
+  const { intent } = intentPlan;
+  if (arm === "control") await addCustomTools(browser, intent.domain, join(runDir, "sources", `${intent.id}.js`));
+  const live = await listLiveTools(browser);
+  const ref = liveRef(live, intent, intent.check.tool);
+  const pages = [...new Set(live.map(t => t.source?.page_url).filter(Boolean))];
+  if (!ref) return { error: `${intent.check.tool} is not live; the browser is on ${pages.join(", ") || "no page with tools"}` };
+  try {
+    return { output: await invokeTool(browser, ref, intent.check.input ?? {}) };
+  } catch (error) {
+    return { error: `${intent.check.tool} failed: ${error.message}` };
   }
 }
 
@@ -462,11 +480,13 @@ async function runTrial(plan, intentPlan, arm, key) {
     if (verdict) {
       [row.outcome, row.reason] = verdict;
     } else {
-      const grade = gradeAnswer(intent, intentPlan.schema, summary.answer);
+      const endState = intent.check ? await readEndState(browser, intentPlan, arm) : null;
+      if (endState) writeFileSync(join(dir, "end-state.json"), JSON.stringify(endState, null, 2) + "\n");
+      const grade = gradeAnswer(intent, intentPlan.schema, summary.answer, endState);
       writeFileSync(join(dir, "grade.json"), JSON.stringify(grade, null, 2) + "\n");
       row.outcome = grade.outcome;
       row.reason = grade.problems.slice(0, 3).join("; ") || null;
-      row.grade = { extracted: grade.extracted, shape: grade.shape, rules: grade.rules, answer: grade.answer };
+      row.grade = { extracted: grade.extracted, shape: grade.shape, rules: grade.rules, end_state: grade.end_state, answer: grade.answer };
     }
   } catch (error) {
     row.outcome = "aborted";

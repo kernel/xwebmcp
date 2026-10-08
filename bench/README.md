@@ -127,6 +127,12 @@ and deletes every browser.
 
 - `stage` is `find`, `inspect`, `compare`, `prepare` or `gap`. A `gap` intent is one no tool
   covers; it names no tools and serves as the placebo check.
+- A `prepare` intent walks a site's flow part way, such as putting a fare in Delta's cart and
+  stopping on Trip Summary. `actions` lists the tools that change site state that it may
+  register as well as the read-only ones. `check` names a read-only tool, an optional `input` and
+  `rules`: once the agent is done, the runner invokes that tool in the browser, in both arms
+  (control gets the tools registered only then), and grades its output, so the end state is read
+  from the site rather than taken from the agent's answer.
 - `tools` lists kernel/xwebmcp refs (or full `sha`s) to register from. Treatment gets every tool
   `registry.json` lists for the domain at those commits whose file declares
   `readOnlyHint: true`; later sources replace earlier tools of the same name, so a PR to an
@@ -178,6 +184,8 @@ by name.
 1. Extract an answer from the final message: the last fenced JSON block, then a trailing object,
    then `key: value` lines naming schema properties. Nothing extracted is `malformed`.
 2. A schema or rule failure is `wrong`; otherwise `correct`, which means plausible, not verified.
+3. For a `prepare` intent, the end state must also pass the check's rules, or it is `wrong`. The
+   check tool's output is saved as `end-state.json` next to the transcript.
 
 A successful call outside the allowlist, a pi error or a missing cost is `crashed`; hitting a
 cap is `timeout`. `node bench/grade.mjs bench/results/<run_id>/trials/<intent>/<trial>` regrades
@@ -201,9 +209,11 @@ scored:
   slower arm is `mixed` when it was correct in 2 fewer pairs, gave the worse `better` answer in
   2 more, or the arms' `same` answers differed in 2 pairs.
 
-Then the worst label per PR, and per run: spend over every attempt including smoke gates, the
-label histogram (noting labels from `shape only` intents), median speedup, each arm's
-agent-minutes, turns and spend over complete pairs, the pooled gap-intent
+A tool failures table lists, per tool, the treatment invocations that did not complete or whose
+tool returned `status: "error"`, with their most common error messages. Then the worst label per
+PR, and per run: spend over every attempt including smoke gates, the label histogram (noting
+labels from `shape only` intents), median speedup, each arm's agent-minutes, turns and spend
+over complete pairs, the pooled gap-intent
 placebo, an order check, a start delay check, a native tools check (control trials that started
 with the page's own WebMCP tools), cap calibration, and how many labels to expect
 from noise.

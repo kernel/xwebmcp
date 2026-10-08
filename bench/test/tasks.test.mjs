@@ -176,5 +176,22 @@ test("a file that declares more than one tool is refused", async () => {
 test("registration fails on a name that no source has or that would not be registered", async () => {
   await assert.rejects(registeredTools({ ...base, exclude: { whoamii: "typo" }, tools: [{ ref: "branch", names: [] }] }, ["branch"], show), /exclude names whoamii, which no source has/);
   await assert.rejects(registeredTools({ ...base, tools: [{ ref: "main", names: ["get_item"] }] }, ["main"], show), /get_item is not in registry.json at main/);
-  await assert.rejects(registeredTools({ ...base, tools: [{ ref: "main", names: ["save"] }] }, ["main"], show), /save is not read-only or is excluded/);
+  await assert.rejects(registeredTools({ ...base, tools: [{ ref: "main", names: ["save"] }] }, ["main"], show), /save is excluded or neither read-only nor an action/);
+});
+
+test("a prepare intent needs a check, and only prepare intents take checks and actions", () => {
+  const intent = JSON.parse(readFileSync(join(benchDir, "tasks/delta.com/delta-cart-main-classic.json"), "utf8"));
+  assert.deepEqual(validateIntent(intent, benchDir), []);
+  const { check, ...unchecked } = intent;
+  assert.ok(validateIntent(unchecked, benchDir).some(p => p.startsWith("check, and actions")));
+  assert.ok(validateIntent({ ...intent, stage: "find" }, benchDir).some(p => p.startsWith("check, and actions")));
+  assert.ok(validateIntent({ ...intent, check: { tool: "get_trip_summary", rules: [] } }, benchDir).some(p => p.startsWith("check needs")));
+  assert.ok(validateIntent({ ...intent, check: { ...check, rules: [{ path: "step", equals: "{{cabin}}" }] } }, benchDir).includes("{{cabin}} has no fixture value"));
+});
+
+test("a prepare intent's actions are registered, and must exist", async () => {
+  const intent = { ...base, exclude: {}, stage: "prepare", actions: ["save"], check: { tool: "search", rules: [] }, tools: [{ ref: "main", names: ["save"] }] };
+  assert.deepEqual((await registeredTools(intent, ["main"], show)).map(t => t.name), ["save", "search"]);
+  await assert.rejects(registeredTools({ ...intent, actions: ["delete"] }, ["main"], show), /actions names delete, which no source has/);
+  await assert.rejects(registeredTools({ ...intent, actions: [], check: { tool: "save", rules: [] }, tools: [{ ref: "main", names: [] }] }, ["main"], show), /save is excluded or neither/);
 });

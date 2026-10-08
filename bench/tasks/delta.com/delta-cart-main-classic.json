@@ -1,0 +1,33 @@
+{
+  "id": "delta-cart-main-classic",
+  "domain": "delta.com",
+  "stage": "prepare",
+  "prompt": "On delta.com, put the cheapest Delta Main Classic one-way fare for 1 adult from {{origin}} to {{destination}} on {{date}} in the cart, and stop on Delta's Trip Summary page with that flight in the cart. You may select the flight and its fare; do not go on to passenger details, seats or payment. Reply with JSON: {\"flight_numbers\": [string], \"amount_due\": number in US dollars, the total Delta shows on the Trip Summary page}.",
+  "fixture": {
+    "origin": "Atlanta (ATL)",
+    "destination": "Orlando (MCO)",
+    "date": {"days_from_start": 28}
+  },
+  "start_url": "https://www.delta.com/",
+  "tools": [{"repo": "kernel/xwebmcp", "ref": "main", "names": ["search_flights", "list_flight_results", "select_fare", "select_fare_experience", "get_trip_summary"]}],
+  "actions": ["select_fare", "select_fare_experience"],
+  "entry_tool": "search_flights",
+  "answer_schema": "schemas/cart-flight.json",
+  "rules": [{"path": "amount_due", "range": [1, 3000]}],
+  "check": {
+    "tool": "get_trip_summary",
+    "rules": [
+      {"path": "status", "equals": "ok"},
+      {"path": "step", "equals": "trip_summary"},
+      {"path": "passengers", "equals": 1},
+      {"path": "slices", "count": [1, 1]},
+      {"path": "slices[].origin", "matches": "ATL|Atlanta"},
+      {"path": "slices[].destination", "matches": "MCO|Orlando"},
+      {"path": "slices[].cabin", "matches": "classic"}
+    ]
+  },
+  "agreement": {"path": "amount_due", "better": "lower", "tolerance": 1},
+  "pairs": 5,
+  "trial_timeout_sec": 900,
+  "max_turns": 60
+}

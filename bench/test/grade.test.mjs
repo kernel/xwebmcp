@@ -75,3 +75,14 @@ test("a matches rule takes fixture values literally", () => {
   assert.equal(grade("verity (2026)"), "correct");
   assert.equal(grade("Verity 2026"), "wrong");
 });
+
+test("a prepare intent is correct only when the end state passes its check", () => {
+  const prepare = { ...intent, check: { tool: "get_trip_summary", rules: [{ path: "step", equals: "trip_summary" }, { path: "slices[].origin", matches: "ATL" }] } };
+  const text = '{"ip": "8.8.8.8", "country_code": "US", "asn": "AS15169"}';
+  const grade = (endState) => gradeAnswer(prepare, schema, text, endState);
+  assert.deepEqual([grade({ output: { step: "trip_summary", slices: [{ origin: "ATL" }] } }).outcome, grade({ output: { step: "trip_summary", slices: [{ origin: "ATL" }] } }).end_state], ["correct", true]);
+  const elsewhere = grade({ output: { step: "other", slices: [] } });
+  assert.deepEqual([elsewhere.outcome, elsewhere.end_state, elsewhere.problems], ["wrong", false, ['end state: step: "other" is not "trip_summary"', "end state: slices[].origin: no value"]]);
+  assert.deepEqual(grade({ error: "get_trip_summary is not live" }).problems, ["end state: get_trip_summary is not live"]);
+  assert.equal(gradeAnswer(intent, schema, text).end_state, null);
+});

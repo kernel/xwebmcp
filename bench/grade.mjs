@@ -3,7 +3,7 @@
 // rules. The first failing step decides the outcome.
 // Usage: node bench/grade.mjs bench/results/<run_id>/trials/<intent>/<trial>
 
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { summarize } from "./lib/agent.mjs";
@@ -119,8 +119,10 @@ export function checkRule(rule, answer) {
   return null;
 }
 
-export function gradeAnswer(intent, schema, text) {
-  const grade = { outcome: "malformed", extracted: false, shape: false, rules: false, answer: null, problems: [] };
+// `endState` is what the runner read from the browser with a prepare intent's check tool:
+// { output } or { error }.
+export function gradeAnswer(intent, schema, text, endState = null) {
+  const grade = { outcome: "malformed", extracted: false, shape: false, rules: false, end_state: null, answer: null, problems: [] };
   const answer = extractAnswer(text, schema);
   if (!answer) {
     grade.problems.push("no answer object in the final message");
@@ -135,6 +137,12 @@ export function gradeAnswer(intent, schema, text) {
   grade.problems = fillRules(intent.rules, intent.fixture).map(rule => checkRule(rule, answer)).filter(Boolean);
   if (grade.problems.length) return grade;
   grade.rules = true;
+  if (intent.check) {
+    grade.problems = endState?.error ? [`end state: ${endState.error}`]
+      : fillRules(intent.check.rules, intent.fixture).map(rule => checkRule(rule, endState?.output)).filter(Boolean).map(problem => `end state: ${problem}`);
+    grade.end_state = !grade.problems.length;
+    if (grade.problems.length) return grade;
+  }
   grade.outcome = "correct";
   return grade;
 }
@@ -148,5 +156,7 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
   const run = JSON.parse(readFileSync(join(trialDir, "../../../run.json"), "utf8"));
   const { intent, schema } = run.intents[basename(dirname(trialDir))];
   const events = readFileSync(join(trialDir, "transcript.jsonl"), "utf8").split("\n").filter(Boolean).map(line => JSON.parse(line));
-  console.log(JSON.stringify(gradeAnswer(intent, schema, summarize(events, []).answer), null, 2));
+  const endStateFile = join(trialDir, "end-state.json");
+  const endState = existsSync(endStateFile) ? JSON.parse(readFileSync(endStateFile, "utf8")) : null;
+  console.log(JSON.stringify(gradeAnswer(intent, schema, summarize(events, []).answer, endState), null, 2));
 }

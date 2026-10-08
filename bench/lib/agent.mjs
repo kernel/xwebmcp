@@ -140,6 +140,23 @@ function collectRefs(value, refs, depth = 0) {
   for (const child of Object.values(value)) collectRefs(child, refs, depth + 1);
 }
 
+// The invocation's status, the tool's own status, and an error message when either failed. A
+// call the MCP server rejected, such as one with a stale tool_ref, comes back as plain text.
+function invocationResult(call) {
+  if (!call.done) return { status: "no_result", tool_status: null, error: null };
+  const result = parseJson(call.text ?? "");
+  if (result === null || typeof result !== "object") {
+    return { status: call.isError || /^error\b/i.test(call.text ?? "") ? "error" : "unknown", tool_status: null, error: (call.text ?? "").slice(0, 300) || null };
+  }
+  const output = result.output !== null && typeof result.output === "object" ? result.output : {};
+  const toolStatus = typeof output.status === "string" ? output.status : null;
+  const failed = result.status !== "completed" || toolStatus === "error";
+  const error = failed ? result.error_text ?? output.error_message ?? output.message ?? output.error_kind ?? result.status ?? null : null;
+  return { status: result.status ?? "unknown", tool_status: toolStatus, error: typeof error === "string" ? error.slice(0, 300) : null };
+}
+
+export const invocationFailed = (invocation) => invocation.status !== "completed" || invocation.tool_status === "error";
+
 const WEBMCP = "mcp__kernel__webmcp";
 const CODE_PATHS = { mcp__kernel__execute_playwright_code: "playwright", mcp__kernel__browser_repl: "repl" };
 
@@ -182,17 +199,16 @@ export function summarize(events, allow) {
     if (call.name === WEBMCP && args.action === "list") {
       webmcp.listed = true;
     } else if (call.name === WEBMCP && args.action === "invoke") {
-      const output = parseJson(call.text ?? "");
       webmcp.invocations.push({
         path: "mcp",
         tool: refs.get(args.tool_ref) ?? args.tool_ref ?? null,
-        status: output?.status ?? (call.done ? (call.isError ? "error" : "unknown") : "no_result"),
+        ...invocationResult(call),
         duration_ms: call.done && call.startedAt !== undefined ? call.endedAt - call.startedAt : null,
       });
     } else if (CODE_PATHS[call.name] && typeof args.code === "string") {
       if (/\blistTools\s*\(/.test(args.code)) webmcp.listed = true;
       if (/\binvokeTool\s*\(/.test(args.code)) {
-        webmcp.invocations.push({ path: CODE_PATHS[call.name], tool: null, status: null, duration_ms: null });
+        webmcp.invocations.push({ path: CODE_PATHS[call.name], tool: null, status: null, tool_status: null, error: null, duration_ms: null });
       }
     }
   }
