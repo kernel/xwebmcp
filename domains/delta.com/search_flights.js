@@ -275,12 +275,18 @@
         )
           throw Error("TIMEOUT: missing " + selector);
       };
-      const choose = async (role, test) => {
-        const n = (await accessibilitySnapshot()).nodes.find(
-          (n) => n.role === role && test(n.name),
-        );
-        if (!n) throw Error("UI_CHANGED: missing " + role);
-        await click(n, { timeoutSec: Math.min(10, remaining()) });
+      // Delta renders some controls only after the click that opens them settles (the airport
+      // search box takes over a second), so poll the accessibility tree before giving up.
+      const choose = async (role, test, seconds = 8) => {
+        const until = Date.now() + Math.min(seconds, remaining()) * 1000;
+        for (;;) {
+          const n = (await accessibilitySnapshot()).nodes.find(
+            (n) => n.role === role && test(n.name),
+          );
+          if (n) return click(n, { timeoutSec: Math.min(10, remaining()) });
+          if (Date.now() >= until) throw Error("UI_CHANGED: missing " + role);
+          await waitMs(250);
+        }
       };
       try {
         const p = input.passengers ?? 1;
@@ -410,7 +416,7 @@
         }
         await choose("button", (n) => n.startsWith("Flight Date Field,"));
         const clear = (await accessibilitySnapshot()).nodes.find(
-          (n) => n.role === "button" && n.name.endsWith("Clear Button"),
+          (n) => n.role === "button" && (n.name === "Clear" || n.name.endsWith("Clear Button")),
         );
         if (clear) await click(clear);
         for (const target of [
@@ -451,7 +457,7 @@
             if (j === 12) throw Error("INVALID_INPUT: unavailable date");
           }
         }
-        await choose("button", (n) => n.endsWith("Done Button"));
+        await choose("button", (n) => n === "Done" || n.endsWith("Done Button"));
         // Find Flights sometimes does nothing on the first press even though the form is
         // complete (seen in regular Chrome on 2026-09-29: the form stayed put until a second,
         // page-level click). The page renders a hidden 0x0 duplicate with the same id, so the

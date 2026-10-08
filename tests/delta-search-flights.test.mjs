@@ -12,19 +12,19 @@ const input = { origin: "CVG", destination: "SFO", depart_date: day, trip_type: 
 // opens prefilled with the geolocated origin and the caret lands inside it, which is how the
 // macOS run produced "CVCVG". The harness stops at the trip-type combobox, which it omits.
 function harness(options = {}) {
-  const box = { value: "", label: null, selected: false };
+  const box = { value: "", label: null, selected: false, hidden: 0 };
   const events = { selectAll: 0, typed: [], chosen: [], keys: [], presses: 0, trustedClicks: 0, pageClicks: 0 };
   const nodes = () => [
     { role: "button", name: "Origin, CVG, Cincinnati, OH", backendDOMNodeId: 1 },
     { role: "button", name: "One Way Route Picker Destination", backendDOMNodeId: 2 },
-    ...(box.label ? [{ role: "textbox", name: box.label, backendDOMNodeId: 3 }] : []),
+    ...(box.label && !box.hidden ? [{ role: "textbox", name: box.label, backendDOMNodeId: 3 }] : []),
     ...(box.label && box.value.length === 3 ? [{ role: "option", name: `${box.value} ${box.value} airport`, backendDOMNodeId: 4 }] : []),
     ...(options.fullForm ? [
       { role: "combobox", name: "Trip Type, Round Trip" }, { role: "option", name: "One Way" },
       { role: "combobox", name: "Passenger Count, 1" }, { role: "option", name: "1 Passenger" },
       { role: "button", name: "Flight Date Field, DepartDate" },
       { role: "gridcell", name: dateLabel },
-      { role: "button", name: "Date Picker Done Button" }
+      { role: "button", name: options.doneName ?? "Date Picker Done Button" }
     ] : [])
   ];
   let clock = Date.now();
@@ -39,11 +39,12 @@ function harness(options = {}) {
       if (params?.commands?.includes("selectAll")) { events.selectAll++; if (!options.clearFails) box.selected = true; }
       return {};
     },
-    accessibilitySnapshot: async () => ({ nodes: nodes() }),
+    accessibilitySnapshot: async () => { const snapshot = { nodes: nodes() }; if (box.hidden) box.hidden--; return snapshot; },
     click: async n => {
       if (n === "#findFilghtsCta") { events.presses++; events.trustedClicks++; return; }
       if (n?.role === "button") box.label = n.name.startsWith("Origin") ? "Origin" : "Destination";
       if (n?.role === "button") box.value = box.label === "Origin" ? "CVG" : "";
+      if (n?.role === "button" && /^(Origin|One Way)/.test(n.name)) box.hidden = options.boxDelay ?? 0;
       if (n?.role === "option") { events.chosen.push(n.name.slice(0, 3)); box.label = null; }
     },
     pressKey: async key => {
@@ -125,4 +126,19 @@ test("submit: no visible Find Flights button for the retry reports SUBMIT_FAILED
   const h = harness({ fullForm: true, submitStartsOn: 99, noVisibleButton: true });
   const out = await h.run();
   assert.match(out.message, /SUBMIT_FAILED/);
+});
+
+test("waits for an airport box that renders after the picker opens and accepts the plain Done button", async () => {
+  const h = harness({ fullForm: true, boxDelay: 4, doneName: "Done", submitStartsOn: 1 });
+  const out = await h.run();
+  assert.deepEqual(h.events.chosen, ["CVG", "SFO", "One", "1 P"]);
+  assert.equal(h.events.presses, 1);
+  assert.doesNotMatch(out.message ?? "", /UI_CHANGED|SUBMIT_FAILED/);
+});
+
+test("still reports UI_CHANGED when the airport box never appears", async () => {
+  const h = harness({ boxDelay: 1000 });
+  const out = await h.run();
+  assert.equal(out.status, "error");
+  assert.match(out.message, /UI_CHANGED: missing textbox/);
 });
