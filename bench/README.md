@@ -189,16 +189,18 @@ scored:
   `agreement`, or `shape only`;
 - per arm: correct with a Wilson interval, outcomes, fastest/median/slowest correct, median over
   all, minutes per correct answer, and treatment tool use;
-- Δ correct with a Newcombe interval, and over both-correct pairs the speedup (ratio of medians)
-  and an exact sign test; the same over just the pairs whose treatment invoked a tool, when
-  that is some but not all;
+- Δ correct with a Newcombe interval and an exact McNemar test over the pairs correct in one arm
+  only, and over both-correct pairs the speedup (ratio of medians) and an exact sign test; the
+  same over just the pairs whose treatment invoked a tool, when that is some but not all;
+- per arm, the median turns, input tokens and cost per trial;
 - a screening label: `no adoption`, `inconclusive`, `faster`, `slower`, `mixed` or `no signal`.
   Thresholds are in `report.mjs`; at 5 pairs a label needs all 5 to go the same way. A faster or
   slower arm is `mixed` when it was correct in 2 fewer pairs, gave the worse `better` answer in
   2 more, or the arms' `same` answers differed in 2 pairs.
 
 Then the worst label per PR, and per run: spend over every attempt including smoke gates, the
-label histogram (noting labels from `shape only` intents), median speedup, the pooled gap-intent
+label histogram (noting labels from `shape only` intents), median speedup, each arm's
+agent-minutes, turns and spend over complete pairs, the pooled gap-intent
 placebo, an order check, a start delay check, cap calibration, and how many labels to expect
 from noise.
 

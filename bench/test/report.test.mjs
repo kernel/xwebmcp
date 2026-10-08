@@ -203,3 +203,18 @@ test("pairs whose treatment invoked a tool are compared on their own", () => {
   assert.deepEqual([used.pairs, used.both, used.faster], [8, 6, 6]);
   assert.equal(pairStats(rows).both, 7);
 });
+
+test("the report gives a paired test of correctness and each arm's turns, tokens and cost", () => {
+  const rows = exampleRows().map(r => ({ ...r, turns: r.arm === "control" ? 12 : 5, tokens_in: r.arm === "control" ? 90_000 : 40_000 }));
+  const pairs = pairStats(rows);
+  // Pairs 8 and 9: treatment correct, control wrong or malformed. Pair 10 timed out in both.
+  assert.deepEqual([pairs.only_treatment, pairs.only_control, pairs.correct_p], [2, 0, 0.5]);
+  const run = {
+    run_id: "t", model: "m", thinking: null, agent: "pi 0", created_at: "2026-10-07T00:00:00Z",
+    intents: { "fandango-theater-showtimes": { intent: { id: "fandango-theater-showtimes", domain: "fandango.com", stage: "inspect" }, sources: [{ ref: "main", sha: "0".repeat(40) }], cap_sec: 600 } },
+  };
+  const report = buildReport(run, rows);
+  assert.match(report, /Correct in one arm only: treatment in 2 pairs, control in 0, exact McNemar p = 0\.500\./);
+  assert.match(report, /per trial, median: turns 12 control, 5 treatment; input tokens 90000 and 40000; cost \$0\.400 and \$0\.400\./);
+  assert.match(report, /over complete pairs: control 39 agent-minutes, 120 turns and \$4\.00; treatment 22 agent-minutes, 50 turns and \$4\.00\./);
+});

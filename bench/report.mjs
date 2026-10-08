@@ -46,6 +46,9 @@ export function armStats(rows) {
     invocations: invocations.length,
     invoke_success: withStatus.length ? withStatus.filter(i => i.status === "completed").length / withStatus.length : null,
     tool_median: median(withStatus.map(i => i.duration_ms).filter(d => d !== null)),
+    turns: median(rows.map(r => r.turns).filter(t => typeof t === "number")),
+    tokens_in: median(rows.map(r => r.tokens_in).filter(t => typeof t === "number")),
+    cost: median(rows.map(r => r.cost_usd).filter(c => typeof c === "number")),
   };
 }
 
@@ -82,10 +85,17 @@ export function pairStats(rows, agreement = null) {
     byPair.set(key, { ...byPair.get(key), [row.arm]: row });
   }
   const both = [...byPair.values()].filter(p => p.control?.outcome === "correct" && p.treatment?.outcome === "correct");
+  // Pairs correct in one arm only; an exact McNemar test on them uses the pairing.
+  const paired = [...byPair.values()].filter(p => p.control && p.treatment);
+  const onlyTreatment = paired.filter(p => p.treatment.outcome === "correct" && p.control.outcome !== "correct").length;
+  const onlyControl = paired.filter(p => p.control.outcome === "correct" && p.treatment.outcome !== "correct").length;
   const faster = both.filter(p => p.treatment.duration_ms < p.control.duration_ms).length;
   const slower = both.filter(p => p.treatment.duration_ms > p.control.duration_ms).length;
   const speedup = both.length ? median(both.map(p => p.control.duration_ms)) / median(both.map(p => p.treatment.duration_ms)) : null;
-  return { both: both.length, faster, slower, p: signTest(faster, faster + slower), speedup, agreement: agreement && agreementStats(both, agreement) };
+  return {
+    both: both.length, faster, slower, p: signTest(faster, faster + slower), speedup, agreement: agreement && agreementStats(both, agreement),
+    only_treatment: onlyTreatment, only_control: onlyControl, correct_p: signTest(onlyTreatment, onlyTreatment + onlyControl),
+  };
 }
 
 export function adoptedPairStats(rows, agreement = null) {
@@ -138,6 +148,8 @@ const interval = (iv) => iv ? `[${Math.round(iv[0] * 100)}, ${Math.round(iv[1] *
 const signedInterval = (iv) => iv ? `[${signed(iv[0] * 100)}, ${signed(iv[1] * 100)}]` : "";
 const ratio = (x) => x === null ? na : `${x.toFixed(1)}×`;
 const pValue = (p) => p === null ? na : p.toFixed(3);
+const usd = (x) => x === null ? na : `$${x.toFixed(x < 1 ? 3 : 2)}`;
+const count = (x) => x === null ? na : String(Math.round(x));
 const clock = (ms) => {
   if (ms === null || ms === undefined) return na;
   const s = Math.round(ms / 1000);
@@ -175,7 +187,7 @@ export function buildReport(run, allRows, smokeRows = []) {
   out.push("");
   out.push("Labels are screening labels, not verdicts. Grading checks shape and rules only, so \"correct\" means plausible and "
     + "rule-consistent, not verified against a reference. Δ correct intervals treat the arms as independent samples; trials are "
-    + "paired, so the intervals are wider than they need be.");
+    + "paired, so the intervals are wider than they need be; the McNemar p under each table uses the pairing.");
 
   const adoptionRows = scored.filter(r => r.adoption !== null);
   if (adoptionRows.length) {
@@ -219,7 +231,11 @@ export function buildReport(run, allRows, smokeRows = []) {
     ]));
     const unbrowsed = (arm) => intentRows.filter(r => r.arm === arm && r.outcome === "correct" && r.tool_calls === 0).length;
     const unbrowsedText = unbrowsed("control") || unbrowsed("treatment") ? ` Correct without any tool call: control ${unbrowsed("control")}, treatment ${unbrowsed("treatment")}.` : "";
-    out.push("", `pairs: treatment faster in ${pairs.faster} of ${pairs.both} both-correct pairs, p = ${pValue(pairs.p)}.${leftOutText ? ` ${leftOutText}` : ""}${unbrowsedText}`);
+    const oneArm = pairs.only_treatment || pairs.only_control
+      ? ` Correct in one arm only: treatment in ${pairs.only_treatment} pairs, control in ${pairs.only_control}, exact McNemar p = ${pValue(pairs.correct_p)}.` : "";
+    out.push("", `pairs: treatment faster in ${pairs.faster} of ${pairs.both} both-correct pairs, p = ${pValue(pairs.p)}.${oneArm}${leftOutText ? ` ${leftOutText}` : ""}${unbrowsedText}`);
+    out.push("", `per trial, median: turns ${count(control.turns)} control, ${count(treatment.turns)} treatment; input tokens ${count(control.tokens_in)} and ${count(treatment.tokens_in)}; `
+      + `cost ${usd(control.cost)} and ${usd(treatment.cost)}.`);
     if (treatment.adoption > 0 && treatment.adoption < 1) {
       const used = adoptedPairStats(intentRows);
       out.push("", `treatment invoked a tool in ${used.pairs} of ${treatment.n} pairs; in the ${used.both} of those where both arms were correct, `
@@ -268,6 +284,11 @@ export function buildReport(run, allRows, smokeRows = []) {
         + `both-correct pairs, p = ${pValue(signTest(faster, faster + slower))}. Gap intents still get the domain's tools, none of which `
         + "covers them, so expected Δ is zero; a consistent difference here comes from registration itself, not from a tool that fits the task.");
     }
+    const totals = (arm) => {
+      const armRows = pairRows.filter(r => r.arm === arm);
+      return `${Math.round(sum(armRows.map(r => r.duration_ms ?? 0)) / 60_000)} agent-minutes, ${sum(armRows.map(r => r.turns ?? 0))} turns and ${spend(armRows)}`;
+    };
+    out.push("", `over complete pairs: control ${totals("control")}; treatment ${totals("treatment")}.`);
     const [controlFirst, treatmentFirst] = ["AB", "BA"].map(order => pairStats(pairRows.filter(r => r.order === order)));
     out.push("", `order check: treatment faster in ${controlFirst.faster} of ${controlFirst.both} both-correct pairs that ran control first, `
       + `and in ${treatmentFirst.faster} of ${treatmentFirst.both} that ran treatment first. A large gap means a pair's first trial affects its second.`);
