@@ -70,9 +70,10 @@
     if (!["available", "all"].includes(availability)) return { status: "error", error_message: "availability must be available or all.", url };
     if (!["main", "comfort", "first", "any"].includes(cabinFilter)) return { status: "error", error_message: "cabin must be main, comfort, first or any.", url };
     if (!/^\/seats/.test(location.pathname)) return { status: "error", error_message: "Not on Delta's seat map; use open_seat_map from Trip Summary.", url };
+    const seatButtons = () => [...document.querySelectorAll('button.seat-element, button[id^="seat-"]')].filter((b) => /^\d{1,2}[A-K]$/i.test(b.getAttribute("data-test-id") || b.id.replace(/^seat-/, "")));
     const until = Date.now() + 10000;
-    while (!document.querySelector("button.seat-element") && Date.now() < until) await sleep(250);
-    const buttons = [...document.querySelectorAll("button.seat-element")];
+    while (!seatButtons().length && Date.now() < until) await sleep(250);
+    const buttons = seatButtons();
     if (!buttons.length) return { status: "not_ready", error_message: "No seats rendered on the seat map within 10 s.", url };
 
     const seats = [];
@@ -97,23 +98,40 @@
       const t = text(b);
       const m = /\$\s?([\d,]+(?:\.\d{2})?)/.exec(t);
       const name = (t.match(/^(First|Comfort|Main|Premium Select|Delta One)/i) || [t.split(" ")[0]])[0];
-      cabins.push({ code: b.id.replace(/^cabin/, ""), name, selected: /\bSelected\b/i.test(t), extra_amount: m ? Number(m[1].replace(/,/g, "")) : null, extra_basis: m ? ((t.match(/(entire trip, per passenger|per passenger[^$]*)/i) || [null])[0]) : null });
+      cabins.push({ code: b.id.replace(/^cabin/, ""), name, selected: /\bCurrent Selection\b|\bSelected\b/i.test(t), extra_amount: m ? Number(m[1].replace(/,/g, "")) : null, extra_basis: m ? ((t.match(/(entire trip, per passenger|per passenger[^$]*)/i) || [null])[0]) : null });
     }
 
-    const body = text(document.querySelector("idp-seats-flight-info, [class*=flight-info]") || document.body).slice(0, 4000);
-    const grab = (re) => { const m = re.exec(body); return m ? m[1].trim() : null; };
-    const flight = {
-      origin: grab(/Departure:?\s*[^:]+:\s*([A-Z]{3})/),
-      destination: grab(/Arrival:?\s*[^:]+:\s*([A-Z]{3})/),
-      flight_number: grab(/Flight Number\s*([A-Z0-9]{2}\s?\d{1,4})/),
-      date_display: grab(/\bDate\s*([A-Z][a-z]{2}, [A-Z][a-z]{2} \d{1,2})/),
-      aircraft: grab(/Aircraft\s*(.+?)(?:\s+\d+ of \d+|\s+Flight Options|$)/),
-      position_display: grab(/Flight Options (\d+ of \d+)/) || grab(/(\d+ of \d+)/)
-    };
+    const header = document.querySelector(".mach-flight-list-header");
+    let flight;
+    if (header) {
+      const airports = /([A-Z]{3})\s+([A-Z]{3})/.exec(text(header.querySelector(".mach-flight-list-header__airport-code"))) || [];
+      const details = [...header.querySelectorAll(".mach-flight-list-header__travel-detail span")].map(text).filter(Boolean);
+      const find = (re) => { for (const d of details) { const m = re.exec(d); if (m) return m[1]; } return null; };
+      const date = /^([A-Z][a-z]{2}, [A-Z][a-z]{2} \d{1,2})$/, number = /^([A-Z0-9]{2}\d{1,4})\b/, position = /^(\d+ of \d+)$/;
+      flight = {
+        origin: airports[1] || null,
+        destination: airports[2] || null,
+        flight_number: find(number),
+        date_display: find(date),
+        aircraft: details.find((d) => !/ to /.test(d) && !date.test(d) && !number.test(d) && !position.test(d)) || null,
+        position_display: find(position)
+      };
+    } else {
+      const body = text(document.querySelector("idp-seats-flight-info, [class*=flight-info]") || document.body).slice(0, 4000);
+      const grab = (re) => { const m = re.exec(body); return m ? m[1].trim() : null; };
+      flight = {
+        origin: grab(/Departure:?\s*[^:]+:\s*([A-Z]{3})/),
+        destination: grab(/Arrival:?\s*[^:]+:\s*([A-Z]{3})/),
+        flight_number: grab(/Flight Number\s*([A-Z0-9]{2}\s?\d{1,4})/),
+        date_display: grab(/\bDate\s*([A-Z][a-z]{2}, [A-Z][a-z]{2} \d{1,2})/),
+        aircraft: grab(/Aircraft\s*(.+?)(?:\s+\d+ of \d+|\s+Flight Options|$)/),
+        position_display: grab(/Flight Options (\d+ of \d+)/) || grab(/(\d+ of \d+)/)
+      };
+    }
 
     const passengers = [...document.querySelectorAll(".passenger-info")].map((p, i) => ({
-      label: text(p.querySelector(".name")) || "Passenger " + (i + 1),
-      seat: text(p.querySelector(".passenger-info__seat_number")) || null
+      label: text(p.querySelector(".name, .passenger-info__detail--name")) || "Passenger " + (i + 1),
+      seat: (/^\d{1,2}[A-K]$/.exec(text(p.querySelector(".passenger-info__seat_number, .passenger-info__seat"))) || [null])[0]
     }));
 
     return { status: "ok", flight, cabins, seats, seat_count: seats.length, passengers, url };
