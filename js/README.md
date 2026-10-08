@@ -25,6 +25,8 @@ components can render `<WebMCPProvider>` and `<PageContext>` directly.
 
 ## Next.js
 
+Put the provider in the root layout:
+
 ```tsx
 // app/layout.tsx
 import { WebMCPProvider } from 'xwebmcp/nextjs';
@@ -40,33 +42,100 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
 }
 ```
 
+### Routes
+
+A component that renders a link declares the page it leads to. Mounted routes make up
+the page list in `navigate_to_page`'s description.
+
 ```tsx
 // a nav item (client component)
 useWebMCPRoute({ path: '/browsers', description: 'List running browser sessions' });
 ```
 
-```tsx
-// a page (server component); props must be serializable
-<PageContext
-  id="session"
-  value={{ pageType: 'browser_session', sessionId, status }}
-  suggestedNextSteps={['Use get_live_view to watch the session']}
-/>
-```
+### Page context
+
+`get_page_context` returns a single `context` object describing what the page shows.
+Each mounted `<PageContext>` adds one entry to it:
+
+- `id`: the key the entry appears under in `context`. Name it after what the
+  component shows, such as `"session"` or `"invoice"`. If two mounted elements use the
+  same `id`, the one mounted last wins.
+- `value`: any JSON-serializable data, passed to the agent unchanged. You define its
+  fields; the library does not read them. Include what an agent needs to act on the
+  page: the ids its tools take, the state the user sees.
+- `suggestedNextSteps`: optional sentences added to the page's `suggested_next_steps`.
+
+It renders nothing, and its props are serializable, so a server component can render it
+with data it already loaded:
 
 ```tsx
-// any client component
-useWebMCPTool({
-  name: 'delete_browser',
-  description: 'Delete the browser session shown on this page.',
-  inputSchema: { type: 'object', properties: {} },
-  annotations: { destructiveHint: true },
-  execute: async () => {
-    await deleteSession(sessionId);
-    return { status: 'deleted' };
-  },
-});
+// app/browsers/[id]/page.tsx (server component)
+const session = await getSession(id);
+return (
+  <>
+    <PageContext
+      id="session"
+      value={{ sessionId: session.id, status: session.status }}
+      suggestedNextSteps={['Use kill_session to end this session']}
+    />
+    <SessionView session={session} />
+  </>
+);
 ```
+
+With that page mounted, `get_page_context` includes:
+
+```json
+{
+  "context": { "session": { "sessionId": "abc", "status": "running" } },
+  "suggested_next_steps": ["Use kill_session to end this session"]
+}
+```
+
+### Tools
+
+Register a tool in the component that already implements the action, and have `execute`
+call the same function the UI calls. The tool then exists on every page that renders the
+component, and the agent and the user run identical code.
+
+```tsx
+'use client';
+
+function SessionActions({ sessionId }: { sessionId: string }) {
+  const router = useRouter();
+
+  // The one implementation, shared by the button and the tool.
+  const killSession = useCallback(() => deleteSession(sessionId), [sessionId]);
+
+  useWebMCPTool({
+    name: 'kill_session',
+    description: 'End the browser session shown on this page.',
+    annotations: { destructiveHint: true },
+    execute: async () => {
+      const result = await killSession();
+      return result.error ? { status: 'error', error: result.error } : { status: 'deleted' };
+    },
+  });
+
+  return (
+    <ConfirmButton
+      onConfirm={async () => {
+        const result = await killSession();
+        if (result.error) toast.error(result.error);
+        else router.push('/browsers');
+      }}
+    >
+      Kill session
+    </ConfirmButton>
+  );
+}
+```
+
+Keep the UI-only parts (confirmation dialog, toasts, redirects) in the click handler, and
+have the tool return a result the agent can read. In particular, don't let `execute`
+trigger a full page load (`window.location.href = ...`): it replaces the document before
+the result can be returned. Use the router, or return and let the agent call
+`navigate_to_page`.
 
 `useWebMCPTool` registers while the component is mounted. `execute` always sees the
 latest render; changing the name, description, schemas, or annotations re-registers the
@@ -83,12 +152,12 @@ For other React routers, use `<WebMCPPageProvider navigate={(href) => ...}>` fro
 
 ```json
 {
-  "current_url": "https://example.com/browsers",
-  "current_path": "/browsers",
-  "title": "Browsers",
-  "available_tools": ["delete_browser", "get_page_context", "navigate_to_page"],
-  "context": { "session": { "pageType": "browser_session", "sessionId": "abc", "status": "running" } },
-  "suggested_next_steps": ["Use get_live_view to watch the session"]
+  "current_url": "https://example.com/browsers/abc",
+  "current_path": "/browsers/abc",
+  "title": "Session abc",
+  "available_tools": ["get_page_context", "kill_session", "navigate_to_page"],
+  "context": { "session": { "sessionId": "abc", "status": "running" } },
+  "suggested_next_steps": ["Use kill_session to end this session"]
 }
 ```
 

@@ -47,8 +47,11 @@ export interface Route {
 }
 
 export interface PageContextEntry {
+  /** Key this entry appears under in get_page_context's `context`, e.g. "session". */
   id: string;
+  /** JSON-serializable data passed to the agent unchanged; its fields are up to you. */
   value?: unknown;
+  /** Sentences added to get_page_context's `suggested_next_steps`. */
   suggestedNextSteps?: string[];
 }
 
