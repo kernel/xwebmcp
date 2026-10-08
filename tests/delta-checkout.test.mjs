@@ -49,6 +49,24 @@ test('trip protection requires confirmation, detects stale totals and sets decli
  assert.equal((await run('set_trip_protection',html,{choice:'decline',confirm:true,expected_total_due:10})).out.status,'stale_state');
  const r=await run('set_trip_protection',html,{choice:'decline',confirm:true,expected_total_due:123.41},undefined,(el,doc)=>{doc.getElementById(el.id).checked=true});assert.equal(r.out.status,'set');assert.equal(r.out.choice,'decline');
 });
+test('seat reader parses the current seat map markup without seat-element classes',async()=>{
+ const sprite=s=>`style="background-image: url(sprite.svg#${s})"`;
+ const html='<idp-seatmap-header><div class="mach-flight-list-header"><div class="mach-flight-list-header__airport-code"> ATL <span class="mach-flight-list-header__direction"></span> MCO </div><div class="mach-flight-list-header__travel-detail"><div><span>Atlanta, GA to Orlando, FL</span></div><div><span>Thu, Dec 3</span></div><div><span>DL1234 1h 30m</span></div><div><span>Airbus A321</span></div><div><span>1 of 2</span></div></div></div></idp-seatmap-header>'
+  +'<button class="seat-key-legend__info-icon" id="seat-key-info-Icon"></button>'
+  +`<button class="first brs" id="seat-1A" aria-label="1A, Delta First, available" ${sprite('BRS-FCAVS-available')}></button>`
+  +`<button class="dcp srs aura-seat--label" id="seat-10C" aria-label="10C, Delta Comfort, unavailable" ${sprite('SRS-CPLAVS-selected')}>AB</button>`
+  +`<button class="main srs" id="seat-15C" aria-label="15C, Delta Main - Preferred, available" ${sprite('SRS-PRFAVS-available')}></button>`
+  +`<button class="main srs" id="seat-15D" aria-label="15D, Delta Main, unavailable" ${sprite('SRS-MCAVS-occupied')}></button>`
+  +'<button id="cabinFIRST">First Additional Amount $284.88 this flight per passenger</button><button id="cabinDCP">Comfort Current Selection</button><button id="cabinMAIN">Main Additional Amount</button>'
+  +'<div class="passenger-info"><div class="passenger-info__seat passenger-info__seat--selected">10C</div><div class="passenger-info__detail"><div class="passenger-info__detail--name">Test Traveler</div></div></div>';
+ const {out}=await run('list_seat_map',html,{},'/seats/update');
+ assert.equal(out.status,'ok');
+ assert.deepEqual(out.flight,{origin:'ATL',destination:'MCO',flight_number:'DL1234',date_display:'Thu, Dec 3',aircraft:'Airbus A321',position_display:'1 of 2'});
+ assert.deepEqual(out.seats.map(s=>[s.seat,s.cabin,s.seat_type,s.availability]),[['1A','first','first','available'],['10C','comfort','comfort','selected'],['15C','main','preferred','available']]);
+ assert.deepEqual(out.cabins.map(c=>[c.code,c.selected,c.extra_amount]),[['FIRST',false,284.88],['DCP',true,null],['MAIN',false,null]]);
+ assert.deepEqual(out.passengers,[{label:'Test Traveler',seat:'10C'}]);
+ assert.equal((await run('list_seat_map',html,{availability:'all'},'/seats/update')).out.seat_count,4);
+});
 test('seat reader and chooser exercise available, occupied, unknown and already held seats',async()=>{
  const html='<button class="main seat-element" id="seat-22B" aria-label="Seat 22B Delta Main available" style="background-image: url(sprite#SRS-MCAVS-available)"></button><button class="main seat-element" id="seat-22A" aria-label="Seat 22A Delta Main occupied"></button><div class="passenger-info"><span class="name">Passenger 1</span><span class="passenger-info__seat_number"></span></div><div class="passenger-info__col--price_info"></div>';
  const m=await run('list_seat_map',html,{},'/seats/');assert.equal(m.out.seat_count,1);assert.equal(m.out.seats[0].seat_type,'standard');

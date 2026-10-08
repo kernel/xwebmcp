@@ -1063,12 +1063,9 @@
         "https://www.delta.com/seats*"
       ],
       "url_patterns_reason": "Delta checkout product: page-local UI on the purchase/flights or seats app; unavailable on unrelated Delta pages.",
-      "status": "qa_passed",
-      "last_verified": "2026-10-04",
-      "notes": "Independent Herdr pi delta-qa PASS round 3 (2026-10-04), final source; prior FAIL rounds fixed insurance polarity, saved-card expiry/last4 identification, unreadable/unapproved fees, validation-before-mutation and empty readiness. 65 Delta tests pass. Independent fixtures covered success/failure, malformed input, stale totals/fees, signed-out payment, purchase safety and output schemas (12 tools × 5 paths × 7 malformed inputs); live unrelated-page discovery and document-reference expiry checked. Builder live: ATL–MCO Dec 3 2026 Main Classic $123.41 USD, free/paid seat choice, skip/save, trip totals and passenger gate. Independent tester could not complete a live search because its tab was backgrounded. Round-trip attempts failed with ROF4004_400 / SFAF039_444; one-way used for mapping. No personal/card data, sign-in or purchase. Insurance and signed-in payment/card formats, payment continuation and final review success remain fixture-only; passenger data gate prevents deeper approved live QA. Paid seats fail closed on unrecognized formats. Page navigation returns navigation_scheduled only; rediscover references. Seat mutation is unsaved until Save & Exit; unexpected fees require canceling.",
-      "provenance": {
-        "qa_agent": "herdr:delta-qa:01a108d7-c82c-717c-a5d6-6bbad9dbb85b"
-      }
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Updated for Delta's current seat map markup: seat buttons without the seat-element class or data-test-id, the mach-flight-list-header flight header, renamed passenger name/seat classes, and \"Current Selection\" on the active cabin. Builder live check (2026-10-08) on a signed-in seat map: flight header, 158 available / 180 total seats with cabin, seat type and availability, the held seat, cabin selection and the passenger seat read correctly; read-only, nothing clicked. The pre-change source was qa_passed (2026-10-04); this source needs a new independent QA pass."
     },
     {
       "domain": "delta.com",
