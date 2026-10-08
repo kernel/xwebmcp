@@ -338,7 +338,9 @@ export function buildReport(run, allRows, smokeRows = []) {
 
   const failures = toolFailures(scored, id => run.intents[id]?.intent.domain ?? id);
   if (failures.length) {
-    out.push("", "## Tool failures", "", "Invocations that did not complete or whose tool returned `status: \"error\"`, in scored treatment trials.", "");
+    const unrecorded = scored.filter(r => r.arm === "treatment").flatMap(r => r.webmcp?.invocations ?? []).filter(i => i.status === null).length;
+    const unrecordedText = unrecorded ? ` ${unrecorded} invocation(s) made through Playwright or the REPL have no recorded result and are not counted.` : "";
+    out.push("", "## Tool failures", "", `Invocations that did not complete or whose tool returned \`status: "error"\`, in scored treatment trials.${unrecordedText}`, "");
     out.push(table(["tool", "calls", "failed", "most common errors"], failures.map(f => [
       f.tool, f.calls, f.failed, f.errors.slice(0, 3).map(([error, n]) => `${n}× ${error.replace(/\|/g, "\\|").replace(/\n/g, " ").slice(0, 160)}`).join("<br>"),
     ])));

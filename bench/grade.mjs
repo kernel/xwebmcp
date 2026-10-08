@@ -99,6 +99,16 @@ function isDate(value) {
   return date.toISOString().slice(0, 10) === m[0];
 }
 
+// Compares what the agent reported with what the check tool read, as sets: strings ignoring case
+// and whitespace, amounts to the cent.
+export function checkSameAsAnswer({ answer: answerPath, end_state: endStatePath }, answer, output) {
+  const canonical = (value) => typeof value === "string" ? value.toLowerCase().replace(/\s+/g, "") : typeof value === "number" ? Math.round(value * 100) / 100 : value;
+  const values = (value, path) => resolvePath(value, path).map(canonical).map(v => JSON.stringify(v)).sort();
+  const [reported, read] = [values(answer, answerPath), values(output, endStatePath)];
+  if (JSON.stringify(reported) === JSON.stringify(read)) return null;
+  return `${answerPath} is [${reported.join(", ")}] in the answer but ${endStatePath} is [${read.join(", ")}] on the site`;
+}
+
 export function checkRule(rule, answer) {
   const values = resolvePath(answer, rule.path);
   if (!values.length) return `${rule.path}: no value`;
@@ -139,7 +149,10 @@ export function gradeAnswer(intent, schema, text, endState = null) {
   grade.rules = true;
   if (intent.check) {
     grade.problems = endState?.error ? [`end state: ${endState.error}`]
-      : fillRules(intent.check.rules, intent.fixture).map(rule => checkRule(rule, endState?.output)).filter(Boolean).map(problem => `end state: ${problem}`);
+      : [
+        ...fillRules(intent.check.rules, intent.fixture).map(rule => checkRule(rule, endState?.output)),
+        ...(intent.check.same_as_answer ?? []).map(pair => checkSameAsAnswer(pair, answer, endState?.output)),
+      ].filter(Boolean).map(problem => `end state: ${problem}`);
     grade.end_state = !grade.problems.length;
     if (grade.problems.length) return grade;
   }

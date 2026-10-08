@@ -132,7 +132,8 @@ and deletes every browser.
   register as well as the read-only ones. `check` names a read-only tool, an optional `input` and
   `rules`: once the agent is done, the runner invokes that tool in the browser, in both arms
   (control gets the tools registered only then), and grades its output, so the end state is read
-  from the site rather than taken from the agent's answer.
+  from the site rather than taken from the agent's answer. `same_as_answer` lists `{answer,
+  end_state}` path pairs whose values must match, so the answer reports what is in the cart.
 - `tools` lists kernel/xwebmcp refs (or full `sha`s) to register from. Treatment gets every tool
   `registry.json` lists for the domain at those commits whose file declares
   `readOnlyHint: true`; later sources replace earlier tools of the same name, so a PR to an
@@ -184,8 +185,9 @@ by name.
 1. Extract an answer from the final message: the last fenced JSON block, then a trailing object,
    then `key: value` lines naming schema properties. Nothing extracted is `malformed`.
 2. A schema or rule failure is `wrong`; otherwise `correct`, which means plausible, not verified.
-3. For a `prepare` intent, the end state must also pass the check's rules, or it is `wrong`. The
-   check tool's output is saved as `end-state.json` next to the transcript.
+3. For a `prepare` intent, the end state must also pass the check's rules and match the answer
+   at each `same_as_answer` pair, or it is `wrong`. The check tool's output is saved as
+   `end-state.json` next to the transcript.
 
 A successful call outside the allowlist, a pi error or a missing cost is `crashed`; hitting a
 cap is `timeout`. `node bench/grade.mjs bench/results/<run_id>/trials/<intent>/<trial>` regrades

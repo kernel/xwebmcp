@@ -82,6 +82,9 @@ export function validateIntent(intent, benchDir) {
   need(actions === undefined || (Array.isArray(actions) && actions.every(name => typeof name === "string")), "actions must list tool names");
   need(check === undefined || (typeof check?.tool === "string" && Array.isArray(check.rules) && check.rules.length > 0 && (check.input === undefined || (check.input !== null && typeof check.input === "object"))),
     "check needs a tool, rules and, optionally, an input object");
+  const sameAsAnswer = check?.same_as_answer;
+  need(sameAsAnswer === undefined || (Array.isArray(sameAsAnswer) && sameAsAnswer.every(pair => typeof pair?.answer === "string" && typeof pair?.end_state === "string")),
+    "check.same_as_answer must list {answer, end_state} paths");
   for (const rule of [...(intent.rules ?? []), ...(Array.isArray(check?.rules) ? check.rules : [])]) {
     const checks = Object.keys(rule).filter(key => key !== "path");
     need(typeof rule.path === "string" && checks.length === 1 && RULE_CHECKS.includes(checks[0]), `rule ${JSON.stringify(rule)} needs a path and one of ${RULE_CHECKS.join(", ")}`);

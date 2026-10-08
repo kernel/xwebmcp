@@ -187,6 +187,7 @@ test("a prepare intent needs a check, and only prepare intents take checks and a
   assert.ok(validateIntent({ ...intent, stage: "find" }, benchDir).some(p => p.startsWith("check, and actions")));
   assert.ok(validateIntent({ ...intent, check: { tool: "get_trip_summary", rules: [] } }, benchDir).some(p => p.startsWith("check needs")));
   assert.ok(validateIntent({ ...intent, check: { ...check, rules: [{ path: "step", equals: "{{cabin}}" }] } }, benchDir).includes("{{cabin}} has no fixture value"));
+  assert.ok(validateIntent({ ...intent, check: { ...check, same_as_answer: [{ answer: "amount_due" }] } }, benchDir).includes("check.same_as_answer must list {answer, end_state} paths"));
 });
 
 test("a prepare intent's actions are registered, and must exist", async () => {

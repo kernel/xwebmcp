@@ -240,4 +240,12 @@ test("tool failures are counted per tool, with the most common errors first", ()
     { intent: "d", arm: "control", webmcp: { invocations: [invocation("search", "error", null, "control never counts")] } },
   ];
   assert.deepEqual(toolFailures(rows, () => "x.com"), [{ tool: "x.com/search", calls: 4, failed: 3, errors: [["UI_CHANGED", 2], ["schema", 1]] }]);
+
+  const reportRows = exampleRows();
+  reportRows[10].webmcp = { adopted: true, invocations: [invocation("get_theater_showtimes", "completed", "error", "UI_CHANGED"), { path: "playwright", tool: null, status: null, tool_status: null, error: null, duration_ms: null }] };
+  const run = {
+    run_id: "t", model: "m", thinking: null, agent: "pi 0", created_at: "2026-10-07T00:00:00Z",
+    intents: { "fandango-theater-showtimes": { intent: { id: "fandango-theater-showtimes", domain: "fandango.com", stage: "inspect" }, sources: [{ ref: "main", sha: "0".repeat(40) }], cap_sec: 600 } },
+  };
+  assert.match(buildReport(run, reportRows), /in scored treatment trials\. 1 invocation\(s\) made through Playwright or the REPL have no recorded result and are not counted\.\n\n\| tool \|[^\n]*\n[^\n]*\n\| fandango\.com\/get_theater_showtimes \| 9 \| 1 \| 1× UI_CHANGED \|/);
 });

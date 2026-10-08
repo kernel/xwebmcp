@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { checkRule, extractAnswer, gradeAnswer, resolvePath } from "../grade.mjs";
+import { checkRule, checkSameAsAnswer, extractAnswer, gradeAnswer, resolvePath } from "../grade.mjs";
 import { fill } from "../lib/intents.mjs";
 
 const schema = {
@@ -85,4 +85,20 @@ test("a prepare intent is correct only when the end state passes its check", () 
   assert.deepEqual([elsewhere.outcome, elsewhere.end_state, elsewhere.problems], ["wrong", false, ['end state: step: "other" is not "trip_summary"', "end state: slices[].origin: no value"]]);
   assert.deepEqual(grade({ error: "get_trip_summary is not live" }).problems, ["end state: get_trip_summary is not live"]);
   assert.equal(gradeAnswer(intent, schema, text).end_state, null);
+});
+
+test("a prepare intent's answer must report what the check tool read on the site", () => {
+  const prepare = { ...intent, check: { tool: "get_trip_summary", rules: [], same_as_answer: [{ answer: "asn", end_state: "connection.asn" }, { answer: "ip", end_state: "ips[]" }] } };
+  const text = '{"ip": "8.8.8.8", "country_code": "US", "asn": "AS15169"}';
+  const grade = (output) => gradeAnswer(prepare, schema, text, { output });
+  assert.equal(grade({ connection: { asn: "as 15169" }, ips: ["8.8.8.8"] }).outcome, "correct");
+  const elsewhere = grade({ connection: { asn: "AS15170" }, ips: ["8.8.8.8"] });
+  assert.deepEqual([elsewhere.outcome, elsewhere.end_state, elsewhere.problems], ["wrong", false, ['end state: asn is ["as15169"] in the answer but connection.asn is ["as15170"] on the site']]);
+  assert.equal(grade({ connection: { asn: "AS15169" }, ips: [] }).outcome, "wrong");
+});
+
+test("amounts match to the cent", () => {
+  assert.equal(checkSameAsAnswer({ answer: "total", end_state: "amount_due" }, { total: 143.4 }, { amount_due: 143.40000001 }), null);
+  assert.match(checkSameAsAnswer({ answer: "total", end_state: "amount_due" }, { total: 143.4 }, { amount_due: 150.2 }), /\[143\.4\] in the answer but amount_due is \[150\.2\]/);
+  assert.match(checkSameAsAnswer({ answer: "total", end_state: "amount_due" }, { total: 143.4 }, { amount_due: null }), /\[null\] on the site/);
 });

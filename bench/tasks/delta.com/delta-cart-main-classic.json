@@ -24,7 +24,8 @@
       {"path": "slices[].origin", "matches": "ATL|Atlanta"},
       {"path": "slices[].destination", "matches": "MCO|Orlando"},
       {"path": "slices[].cabin", "matches": "classic"}
-    ]
+    ],
+    "same_as_answer": [{"answer": "amount_due", "end_state": "amount_due"}]
   },
   "agreement": {"path": "amount_due", "better": "lower", "tolerance": 1},
   "pairs": 5,
