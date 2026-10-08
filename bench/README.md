@@ -91,7 +91,8 @@ interleaved across intents; a pair's two trials run back to back in one slot.
    loading after 15s, navigate again; then wait up to 15s for `load`.
 2. Check the loaded URL matches the entry tool's URL patterns, in both arms.
 3. Treatment: register the batch, confirm the `entry_tool` is live on the tab, and on a signed-in
-   domain run the sign-in check. Control: fail if any custom tools are registered.
+   domain run the sign-in check. Control: on a signed-in domain, register the batch, run the same
+   check and remove the tools again; then fail if any custom tools are registered.
 4. Wait until 10s after load in both arms, then launch the agent. The clock runs to
    `agent_settled`; the runner stops the agent at the time, turn or spend cap.
 5. Grade the answer, delete the browser and append a row to `rows.jsonl`.
@@ -163,7 +164,8 @@ kernel auth connections login <connection id>
 ```
 
 `signed_in_check` names a read-only tool (and optional input) that returns an error when signed
-out. The smoke gate and every treatment setup invoke it; a signed-out treatment trial aborts.
+out. The smoke gate and every setup in both arms invoke it; a signed-out trial aborts. Control
+registers the batch for the check and removes it before the agent starts.
 Jobs on one profile run one at a time, but server-side state such as recent searches carries
 across trials and arms. A missing profile skips the domain, or stops the run if it was selected
 by name.

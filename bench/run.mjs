@@ -14,7 +14,7 @@ import { setTimeout as sleep } from "node:timers/promises";
 import { parseArgs } from "node:util";
 import { agentEnv, classifyTrial, piArgs, runAgent, runningAgents, summarize } from "./lib/agent.mjs";
 import { loadIntents, loadSchema, pastDates, resolveFixture, trialPrompt } from "./lib/intents.mjs";
-import { BROWSER, addCustomTools, createBrowser, deleteBrowser, invokeTool, listCustomTools, listLiveTools, profileId, waitForLoad } from "./lib/kernel.mjs";
+import { BROWSER, addCustomTools, createBrowser, deleteBrowser, invokeTool, listCustomTools, listLiveTools, profileId, removeCustomTool, waitForLoad } from "./lib/kernel.mjs";
 import { latestRows, readRows, rowKey } from "./lib/rows.mjs";
 import { adoptionVerdicts, balancedOrders, holdNeededSec, planJobs, runPairAttempts, runQueue } from "./lib/schedule.mjs";
 import { composeBatch, gitShow, matchesUrlPattern, registeredTools, resolveSource } from "./lib/tools.mjs";
@@ -386,6 +386,11 @@ async function setUpBrowser(plan, intentPlan, arm, label) {
         const entryLive = live.some(t => t.tool?.name === intent.entry_tool && t.source?.custom?.namespace === intent.domain && t.source?.page_url);
         if (!entryLive) throw new Error(`entry tool ${intent.entry_tool} is not live on ${page.url}`);
         if (intent.signed_in_check) await checkSignedIn(browser, intent, live);
+      } else if (intent.signed_in_check) {
+        // Control runs the same sign-in check, then removes the tools, so neither arm starts signed out.
+        await addCustomTools(browser, intent.domain, join(runDir, "sources", `${intent.id}.js`));
+        await checkSignedIn(browser, intent, await listLiveTools(browser));
+        for (const tool of await listCustomTools(browser)) await removeCustomTool(browser, tool.id);
       }
       const before = await listCustomTools(browser);
       if (arm === "control" && before.length) throw new Error(`control browser already has ${before.length} custom tool(s) in ${[...new Set(before.map(t => t.namespace))].join(", ")}`);

@@ -50,6 +50,10 @@ export async function listCustomTools(id) {
   return (await kernel(["browsers", "webmcp", "custom-tools", "list", id])).tools ?? [];
 }
 
+export async function removeCustomTool(id, toolId) {
+  await kernel(["browsers", "webmcp", "custom-tools", "remove", id, toolId], { json: false });
+}
+
 export async function listLiveTools(id) {
   return (await kernel(["browsers", "webmcp", "list", id])).tools ?? [];
 }
