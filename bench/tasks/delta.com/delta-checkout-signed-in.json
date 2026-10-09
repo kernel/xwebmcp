@@ -1,0 +1,113 @@
+{
+  "id": "delta-checkout-signed-in",
+  "domain": "delta.com",
+  "stage": "prepare",
+  "opt_in": "its guard has not been checked on Delta's live Review and Pay",
+  "profile": "bench-delta",
+  "signed_in_check": {
+    "tool": "get_page_context",
+    "rules": [
+      {
+        "path": "signed_in",
+        "equals": true
+      }
+    ]
+  },
+  "prompt": "On delta.com, where you are signed in to a SkyMiles account, book the cheapest Delta Main Classic one-way fare for 1 adult from {{origin}} to {{destination}} on {{date}} as far as the Payment section of Review and Pay: select the flight and its fare, continue from Trip Summary without seats or upgrades, keep the passenger details the account fills in, and decline trip protection. Stop when Delta asks for payment, and do not enter a card. Reply with JSON: {\"flight_numbers\": [string], \"amount_due\": number in US dollars, the Amount Due Delta shows}.",
+  "fixture": {
+    "origin": "Atlanta (ATL)",
+    "destination": "Orlando (MCO)",
+    "date": {
+      "days_from_start": 28
+    }
+  },
+  "start_url": "https://www.delta.com/",
+  "tools": [
+    {
+      "repo": "kernel/xwebmcp",
+      "ref": "main",
+      "names": [
+        "search_flights",
+        "list_flight_results",
+        "select_fare",
+        "select_fare_experience",
+        "get_trip_summary",
+        "continue_to_review_and_pay",
+        "continue_checkout",
+        "get_checkout_step",
+        "set_trip_protection"
+      ]
+    }
+  ],
+  "allow": [
+    "checkout"
+  ],
+  "guard": {
+    "hosts": [
+      "https://www.delta.com/purchase/*",
+      "https://www.delta.com/completepurchase/*"
+    ],
+    "buttons": "^(complete purchase|purchase|pay now|book now)\\b",
+    "selectors": "[data-cy^=\"complete-purchase\"]"
+  },
+  "entry_tool": "search_flights",
+  "answer_schema": "schemas/cart-flight.json",
+  "rules": [
+    {
+      "path": "amount_due",
+      "range": [
+        1,
+        3000
+      ]
+    }
+  ],
+  "check": {
+    "extract": {
+      "amount_due": "Amount Due[^$]{0,40}\\$\\s*([\\d,]+\\.\\d{2})",
+      "passengers": "(\\d+) Passengers?\\b"
+    },
+    "rules": [
+      {
+        "path": "url",
+        "matches": "^https://www\\.delta\\.com/(purchase/flights/(review-pay|express-checkout)|completepurchase/review-pay)"
+      },
+      {
+        "path": "text",
+        "matches": "\\bATL - MCO\\s*\\n\\s*One Way\\b"
+      },
+      {
+        "path": "text",
+        "matches": "Main Classic"
+      },
+      {
+        "path": "text",
+        "matches": "\\bPayment\\b"
+      },
+      {
+        "path": "extracted.passengers",
+        "equals": 1
+      },
+      {
+        "path": "extracted.amount_due",
+        "range": [
+          1,
+          3000
+        ]
+      }
+    ],
+    "same_as_answer": [
+      {
+        "answer": "amount_due",
+        "end_state": "extracted.amount_due"
+      }
+    ]
+  },
+  "agreement": {
+    "path": "amount_due",
+    "better": "lower",
+    "tolerance": 1
+  },
+  "pairs": 5,
+  "trial_timeout_sec": 900,
+  "max_turns": 60
+}

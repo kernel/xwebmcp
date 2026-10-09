@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
-import { fill, loadIntents, loadSchema, pastDates, resolveFixture, trialPrompt, validateDomain, validateIntent } from "../lib/intents.mjs";
+import { ALLOW, fill, loadIntents, loadSchema, pastDates, resolveFixture, trialPrompt, validateDomain, validateIntent } from "../lib/intents.mjs";
 import { checkSchema } from "../lib/schema.mjs";
 import { composeBatch, evaluateDefinitions, matchesUrlPattern, normalize, registeredTools, resolveSource } from "../lib/tools.mjs";
 
@@ -185,7 +185,37 @@ test("a file that declares more than one tool is refused", async () => {
 test("registration fails on a name that no source has or that would not be registered", async () => {
   await assert.rejects(registeredTools({ ...base, exclude: { whoamii: "typo" }, tools: [{ ref: "branch", names: [] }] }, ["branch"], show), /exclude names whoamii, which no source has/);
   await assert.rejects(registeredTools({ ...base, tools: [{ ref: "main", names: ["get_item"] }] }, ["main"], show), /get_item is not in registry.json at main/);
-  await assert.rejects(registeredTools({ ...base, tools: [{ ref: "main", names: ["save"] }] }, ["main"], show), /save is not read-only or is excluded/);
+  await assert.rejects(registeredTools({ ...base, tools: [{ ref: "main", names: ["save"] }] }, ["main"], show), /save is excluded or neither read-only nor an action/);
+});
+
+test("a prepare intent needs a check of the page, and only prepare intents take checks and allow", () => {
+  const intent = JSON.parse(readFileSync(join(benchDir, "tasks/delta.com/delta-cart-main-classic.json"), "utf8"));
+  assert.deepEqual(validateIntent(intent, benchDir), []);
+  const { check, ...unchecked } = intent;
+  assert.ok(validateIntent(unchecked, benchDir).some(p => p.startsWith("check and allow")));
+  assert.ok(validateIntent({ ...intent, stage: "find" }, benchDir).some(p => p.startsWith("check and allow")));
+  assert.ok(validateIntent({ ...intent, check: { ...check, rules: [] } }, benchDir).includes("check needs rules"));
+  // The end state is read from the page, never through the tools under test.
+  assert.ok(validateIntent({ ...intent, check: { ...check, tool: "get_trip_summary" } }, benchDir).includes("check takes fields, extract, rules and same_as_answer"));
+  assert.ok(validateIntent({ ...intent, check: { ...check, extract: { amount_due: "Amount Due \\$[\\d.]+" } } }, benchDir).includes("check.extract must map names to regexes with one capturing group"));
+  assert.ok(validateIntent({ ...intent, actions: ["select_fare"] }, benchDir).includes("actions belong in the domain's domain.json"));
+  assert.ok(validateIntent({ ...intent, check: { ...check, rules: [{ path: "step", equals: "{{cabin}}" }] } }, benchDir).includes("{{cabin}} has no fixture value"));
+  assert.ok(validateIntent({ ...intent, check: { ...check, same_as_answer: [{ answer: "amount_due" }] } }, benchDir).includes("check.same_as_answer must list {answer, end_state} paths"));
+});
+
+test("a prepare intent's actions are registered, and must exist", async () => {
+  const intent = { ...base, exclude: {}, stage: "prepare", actions: ["save"], tools: [{ ref: "main", names: ["save"] }] };
+  assert.deepEqual((await registeredTools(intent, ["main"], show)).map(t => t.name), ["save", "search"]);
+  await assert.rejects(registeredTools({ ...intent, actions: ["delete"] }, ["main"], show), /actions names delete, which no source has/);
+  await assert.rejects(registeredTools({ ...intent, actions: [] }, ["main"], show), /save is excluded or neither/);
+});
+
+test("a domain's actions reach its prepare intents, and its checkout actions only those that allow checkout", () => {
+  const delta = loadIntents(benchDir).filter(i => i.domain === "delta.com");
+  const actions = (id) => delta.find(i => i.id === id).actions;
+  assert.deepEqual(actions("delta-cheapest-fare"), []);
+  assert.deepEqual(actions("delta-cart-main-classic"), ["select_fare", "select_fare_experience"]);
+  assert.ok(actions("delta-checkout-signed-in").includes("continue_checkout"));
 });
 
 test("local browsers load the extension under the id Chrome gives it, and their MCP config fills in per browser", async () => {
@@ -230,4 +260,79 @@ test("a bridge answer split inside a character is read whole, and an unreadable 
   } finally {
     server.close();
   }
+});
+
+test("checkout intents need a guard, and fields checks name CSS selectors", () => {
+  const intent = JSON.parse(readFileSync(join(benchDir, "tasks/bluebottlecoffee.com/bluebottle-checkout-espresso.json"), "utf8"));
+  assert.deepEqual(validateIntent(intent, benchDir), []);
+  const { guard, ...unguarded } = intent;
+  assert.ok(validateIntent(unguarded, benchDir).includes("an intent that allows checkout needs a guard, and only such an intent has one"));
+  assert.ok(validateIntent({ ...intent, allow: ["payment_details"], guard: undefined }, benchDir).includes("allow payment_details needs checkout"));
+  assert.ok(validateIntent({ ...intent, allow: ["checkout", "pay"] }, benchDir).some(p => p.startsWith("allow must list")));
+  assert.ok(validateIntent({ ...intent, guard: { ...guard, hosts: ["checkout.bluebottlecoffee.com"] } }, benchDir).some(p => p.startsWith("guard needs")));
+  assert.ok(validateIntent({ ...intent, guard: { ...guard, buttons: "(" } }, benchDir).some(p => p.startsWith("guard needs")));
+  assert.ok(validateIntent({ ...intent, guard: { ...guard, selectors: "" } }, benchDir).some(p => p.startsWith("guard needs")));
+  // Chrome compiles requests with RE2, which has no lookarounds.
+  assert.ok(validateIntent({ ...intent, guard: { ...guard, requests: "/confirm(?!x)" } }, benchDir).some(p => p.startsWith("guard needs")));
+  assert.deepEqual(validateIntent({ ...intent, guard: { ...guard, selectors: '[data-cy^="complete-purchase"]' } }, benchDir), []);
+  assert.ok(validateIntent({ ...intent, check: { ...intent.check, fields: { email: "" } } }, benchDir).includes("check.fields must map names to CSS selectors"));
+  assert.ok(validateIntent({ ...intent, stage: "find" }, benchDir).some(p => p.startsWith("check and allow")));
+});
+
+test("an intent can name its own profile, which keeps its domain's needs_sign_in tools", () => {
+  const intents = loadIntents(benchDir);
+  const signedIn = intents.find(i => i.id === "delta-checkout-signed-in");
+  assert.equal(signedIn.profile, "bench-delta");
+  assert.deepEqual(signedIn.signed_in_check, { tool: "get_page_context", rules: [{ path: "signed_in", equals: true }] });
+  assert.ok(!Object.hasOwn(signedIn.exclude, "list_payment_methods"));
+  const cart = intents.find(i => i.id === "delta-cart-main-classic");
+  assert.equal(cart.profile, null);
+  assert.ok(Object.hasOwn(cart.exclude, "list_payment_methods"));
+  const raw = JSON.parse(readFileSync(join(benchDir, "tasks/delta.com/delta-checkout-signed-in.json"), "utf8"));
+  const { signed_in_check, ...noCheck } = raw;
+  assert.ok(validateIntent(noCheck, benchDir).includes("profile and signed_in_check go together"));
+  assert.ok(validateIntent({ ...raw, signed_in_check: { tool: "get_page_context", rules: [] } }, benchDir).some(p => p.startsWith("signed_in_check needs")));
+  assert.ok(validateIntent({ ...raw, signed_in_check: { tool: "get_page_context", rules: [{ path: "signed_in", equal: true }] } }, benchDir).some(p => p.startsWith("signed_in_check rule")));
+  assert.ok(validateIntent({ ...raw, opt_in: "" }, benchDir).some(p => p.startsWith("opt_in must")));
+});
+
+test("allow adds the same permissions to the prompt in both arms", () => {
+  const intent = loadIntents(benchDir).find(i => i.id === "bluebottle-checkout-espresso");
+  const prompt = trialPrompt(intent, "b");
+  assert.ok(prompt.includes(ALLOW.checkout) && prompt.includes(ALLOW.payment_details));
+  assert.ok(!trialPrompt(loadIntents(benchDir).find(i => i.id === "delta-checkout-signed-in"), "b").includes(ALLOW.payment_details));
+});
+
+test("blocked attempts are summed over the guard's cookies on every host", async () => {
+  const { blockedAttempts } = await import("../lib/guard.mjs");
+  assert.equal(blockedAttempts([]), 0);
+  assert.equal(blockedAttempts([
+    { name: "bench_submit_blocked", value: "2", domain: "checkout.example.com" },
+    { name: "bench_submit_blocked", value: "1", domain: "www.example.com" },
+    { name: "session", value: "9", domain: "www.example.com" },
+  ]), 3);
+});
+
+test("the guard extension runs the guard on its hosts and is named by its content", async () => {
+  const { writeGuardExtension } = await import("../lib/guard.mjs");
+  const dir = mkdtempSync(join(tmpdir(), "bench-guard-"));
+  const guard = { hosts: ["https://checkout.example.com/*"], buttons: "^pay$", form_submit: true };
+  const first = writeGuardExtension(join(dir, "a"), guard);
+  const manifest = JSON.parse(readFileSync(join(first.dir, "manifest.json"), "utf8"));
+  assert.deepEqual(manifest.content_scripts, [{ matches: guard.hosts, js: ["guard.js"], run_at: "document_start", all_frames: true, world: "MAIN" }]);
+  assert.match(readFileSync(join(first.dir, "guard.js"), "utf8"), /\{"buttons":"\^pay\$","selectors":null,"form_submit":true,"key":"bench_submit_blocked"\}\);\n$/);
+  // POST navigations from the guard's hosts are blocked by a network rule too, which also covers
+  // the isolated world page.evaluate runs in.
+  assert.deepEqual(manifest.permissions, ["declarativeNetRequest"]);
+  assert.deepEqual(JSON.parse(readFileSync(join(first.dir, "rules.json"), "utf8")).map(r => r.condition), [
+    { initiatorDomains: ["checkout.example.com"], requestMethods: ["post"], resourceTypes: ["main_frame", "sub_frame"] },
+  ]);
+  const withRequests = writeGuardExtension(join(dir, "e"), { hosts: ["https://*.example.com/*"], buttons: "^pay$", requests: "/confirm" });
+  assert.deepEqual(JSON.parse(readFileSync(join(withRequests.dir, "rules.json"), "utf8")).map(r => r.condition),
+    [{ regexFilter: "/confirm", isUrlFilterCaseSensitive: false, resourceTypes: ["xmlhttprequest", "ping"] }]);
+  const plain = writeGuardExtension(join(dir, "f"), { hosts: ["https://example.com/*"], buttons: "^pay$" });
+  assert.equal(JSON.parse(readFileSync(join(plain.dir, "manifest.json"), "utf8")).permissions, undefined);
+  assert.equal(writeGuardExtension(join(dir, "b"), guard).name, first.name);
+  assert.notEqual(writeGuardExtension(join(dir, "c"), { ...guard, buttons: "^buy$" }).name, first.name);
+  assert.notEqual(writeGuardExtension(join(dir, "d"), { ...guard, selectors: "#buy" }).name, first.name);
 });

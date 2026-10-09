@@ -19,10 +19,11 @@ export const BROWSER = {
 };
 
 // Without --save-changes, trials never change the profile.
-export async function createBrowser({ startUrl, timeoutSec, tags, stealth, profile }) {
+export async function createBrowser({ startUrl, timeoutSec, tags, stealth, profile, extension }) {
   const args = ["browsers", "create", "--start-url", startUrl, "--viewport", BROWSER.viewport, "--telemetry", BROWSER.telemetry, "-t", String(timeoutSec)];
   if (stealth) args.push("--stealth");
   if (profile) args.push("--profile-name", profile);
+  if (extension) args.push("--extension", extension.name);
   for (const [key, value] of Object.entries(tags)) args.push("--tag", `${key}=${value}`);
   return (await kernel(args)).session_id;
 }
@@ -40,6 +41,30 @@ export async function waitForLoad(id, startUrl) {
   const response = await kernel(["browsers", "playwright", "execute", id, code, "--timeout", "100"], { timeoutMs: 130_000 });
   if (!response.success) throw new Error(`page did not load: ${(response.error ?? "unknown error").split("\n")[0]}`);
   return response.result;
+}
+
+// Runs a function of one JSON argument in the current page and returns its result.
+export async function evaluate(id, fn, arg) {
+  const response = await kernel(["browsers", "playwright", "execute", id, `return await page.evaluate(${fn}, ${JSON.stringify(arg)});`, "--timeout", "30"], { timeoutMs: 60_000 });
+  if (!response.success) throw new Error(`evaluate: ${(response.error ?? "unknown error").split("\n")[0]}`);
+  return response.result;
+}
+
+// Every cookie in the browser, whatever page it is on.
+export async function cookies(id) {
+  const response = await kernel(["browsers", "playwright", "execute", id, "return await context.cookies();", "--timeout", "30"], { timeoutMs: 60_000 });
+  if (!response.success) throw new Error(`cookies: ${(response.error ?? "unknown error").split("\n")[0]}`);
+  return response.result;
+}
+
+// Uploads an extension directory under its name unless Kernel already has it.
+export async function ensureExtension({ name, dir }) {
+  try {
+    await kernel(["extensions", "get", name]);
+  } catch (error) {
+    if (!/not.?found/i.test(error.message)) throw error;
+    await kernel(["extensions", "upload", dir, "--name", name]);
+  }
 }
 
 export async function addCustomTools(id, namespace, sourceFile) {

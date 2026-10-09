@@ -1,9 +1,12 @@
 #!/usr/bin/env node
-// A stand-in for the kernel CLI in run.test.mjs. Browsers live in $STUB_STATE. Every browser's page
-// is example.com; the sign-in check fails in browsers tagged with an arm listed in
-// $STUB_SIGNED_OUT_ARMS, every page also lists the native tools named in $STUB_NATIVE_TOOLS, in
-// browsers tagged with an arm listed in $STUB_LIVE_CUSTOM_ARMS a custom tool is live without being registered,
-// and in those tagged with an arm listed in $STUB_OFF_PAGE_ARMS registered tools are listed without a page.
+// A stand-in for the kernel CLI in run.test.mjs. Browsers and extensions live in $STUB_STATE. Every
+// browser's page is example.com; the sign-in check fails in browsers tagged with an arm listed in
+// $STUB_SIGNED_OUT_ARMS, the submission guard reports one blocked attempt in browsers tagged with
+// an arm listed in $STUB_SUBMIT_ARMS, every page also lists the native tools named in
+// $STUB_NATIVE_TOOLS, in browsers tagged with an arm listed in $STUB_LIVE_CUSTOM_ARMS a custom tool
+// is live without being registered, and in those tagged with an arm listed in $STUB_OFF_PAGE_ARMS
+// registered tools are listed without a page. Reading cookies fails in browsers tagged with an arm
+// listed in $STUB_COOKIES_FAIL_ARMS, and reading the page in those listed in $STUB_PAGE_FAIL_ARMS.
 import { readFileSync, writeFileSync } from "node:fs";
 
 const args = process.argv.slice(2).filter(arg => arg !== "-o" && arg !== "json");
@@ -19,14 +22,37 @@ if (args[0] === "--version") {
   console.log("kernel 0.0.0-stub (stub)");
 } else if (command.startsWith("profiles get")) {
   print({ id: `profile-${args[2]}` });
+} else if (command.startsWith("extensions get")) {
+  if (!state.extensions?.includes(args[2])) {
+    console.error("ERROR: Not_found: extension not found");
+    process.exit(1);
+  }
+  print({ name: args[2] });
+} else if (command.startsWith("extensions upload")) {
+  state.extensions = [...(state.extensions ?? []), flag("--name")];
+  log(["upload", flag("--name")]);
+  print({ name: flag("--name") });
 } else if (command.startsWith("browsers create")) {
   const id = `b${++state.next}`;
   const tags = Object.fromEntries(args.flatMap((arg, i) => (arg === "--tag" ? [args[i + 1].split("=")] : [])));
   state.browsers[id] = { tags, tools: [] };
-  log(["create", id, tags.arm]);
+  log(["create", id, tags.arm, args.includes("--extension") ? flag("--extension") : null]);
   print({ session_id: id });
 } else if (command.startsWith("browsers playwright execute")) {
-  print({ success: true, result: { url: "https://example.com/", version: "stub", renavigated: false } });
+  const failing = (name) => (process.env[name] ?? "").split(",").includes(state.browsers[args[3]].tags.arm);
+  if (args[4].includes("context.cookies") && failing("STUB_COOKIES_FAIL_ARMS")) {
+    print({ success: false, error: "Target page, context or browser has been closed" });
+  } else if (args[4].includes("fields") && failing("STUB_PAGE_FAIL_ARMS")) {
+    print({ success: false, error: "Execution context was destroyed" });
+  } else if (args[4].includes("context.cookies")) {
+    // The guard's cookie sits on the checkout host, not on the page the agent ended on.
+    const blocked = (process.env.STUB_SUBMIT_ARMS ?? "").split(",").includes(state.browsers[args[3]].tags.arm);
+    print({ success: true, result: [{ name: "session", value: "x", domain: "example.com" }, ...(blocked ? [{ name: "bench_submit_blocked", value: "1", domain: "checkout.example.com" }] : [])] });
+  } else if (args[4].includes("fields")) {
+    print({ success: true, result: { url: "https://example.com/checkout", title: "Checkout", text: "Checkout", fields: { email: "a@example.com" }, missing: [], invalid: [] } });
+  } else {
+    print({ success: true, result: { url: "https://example.com/", version: "stub", renavigated: false } });
+  }
 } else if (command.startsWith("browsers webmcp custom-tools add")) {
   const browser = state.browsers[args[4]];
   browser.tools = [{ id: `ct_${++state.next}`, namespace: flag("--namespace"), tool: { name: "lookup" } }];

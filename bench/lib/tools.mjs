@@ -74,7 +74,9 @@ function namespaceTools(show, sha, namespace) {
 }
 
 // Sources apply in order, so a branch listed after main replaces main's tool of the same name.
+// A prepare intent's actions are the domain's tools that change site state, registered as well.
 export async function registeredTools(intent, shas, show) {
+  const actions = intent.actions ?? [];
   const byName = new Map();
   const known = new Set();
   const problems = [];
@@ -85,15 +87,15 @@ export async function registeredTools(intent, shas, show) {
       if (!all.some(tool => tool.name === name)) problems.push(`${name} is not in registry.json at ${source.ref} (${shas[i].slice(0, 7)})`);
     }
     for (const tool of all) {
-      if (tool.readOnly && !Object.hasOwn(intent.exclude, tool.name)) byName.set(tool.name, tool);
+      if ((tool.readOnly || actions.includes(tool.name)) && !Object.hasOwn(intent.exclude, tool.name)) byName.set(tool.name, tool);
       else byName.delete(tool.name);
     }
   }
-  for (const name of Object.keys(intent.exclude)) {
-    if (!known.has(name)) problems.push(`exclude names ${name}, which no source has`);
+  for (const [list, name] of [...Object.keys(intent.exclude).map(name => ["exclude", name]), ...actions.map(name => ["actions", name])]) {
+    if (!known.has(name)) problems.push(`${list} names ${name}, which no source has`);
   }
   for (const name of [...intent.tools.flatMap(s => s.names), intent.entry_tool]) {
-    if (!byName.has(name) && !problems.some(p => p.startsWith(`${name} `))) problems.push(`${name} is not read-only or is excluded, so it would not be registered`);
+    if (!byName.has(name) && !problems.some(p => p.startsWith(`${name} `))) problems.push(`${name} is excluded or neither read-only nor an action, so it would not be registered`);
   }
   if (problems.length) throw new Error(`${intent.id}: ${problems.join("; ")}`);
   return [...byName.values()].sort((a, b) => a.name.localeCompare(b.name));

@@ -3,11 +3,12 @@
 // rules. The first failing step decides the outcome.
 // Usage: node bench/grade.mjs bench/results/<run_id>/trials/<intent>/<trial>
 
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { summarize } from "./lib/agent.mjs";
 import { fillRules } from "./lib/intents.mjs";
+import { extractValues } from "./lib/page.mjs";
 import { validate } from "./lib/schema.mjs";
 
 const isObject = (value) => value !== null && typeof value === "object" && !Array.isArray(value);
@@ -99,6 +100,16 @@ function isDate(value) {
   return date.toISOString().slice(0, 10) === m[0];
 }
 
+// Compares what the agent reported with what the runner read from the page, as sets: strings
+// ignoring case and whitespace, amounts to the cent.
+export function checkSameAsAnswer({ answer: answerPath, end_state: endStatePath }, answer, output) {
+  const canonical = (value) => typeof value === "string" ? value.toLowerCase().replace(/\s+/g, "") : typeof value === "number" ? Math.round(value * 100) / 100 : value;
+  const values = (value, path) => resolvePath(value, path).map(canonical).map(v => JSON.stringify(v)).sort();
+  const [reported, read] = [values(answer, answerPath), values(output, endStatePath)];
+  if (JSON.stringify(reported) === JSON.stringify(read)) return null;
+  return `${answerPath} is [${reported.join(", ")}] in the answer but ${endStatePath} is [${read.join(", ")}] on the site`;
+}
+
 export function checkRule(rule, answer) {
   const values = resolvePath(answer, rule.path);
   if (!values.length) return `${rule.path}: no value`;
@@ -107,7 +118,9 @@ export function checkRule(rule, answer) {
     return new Set(seen.map(v => JSON.stringify(v))).size === seen.length ? null : `${rule.path}: not unique`;
   }
   for (const value of values) {
-    const shown = JSON.stringify(value);
+    // Page text can be long, so a failing value is shown cut short.
+    const json = JSON.stringify(value) ?? String(value);
+    const shown = json.length > 120 ? `${json.slice(0, 117)}...` : json;
     if ("equals" in rule && normalize(value) !== normalize(rule.equals)) return `${rule.path}: ${shown} is not ${JSON.stringify(rule.equals)}`;
     if (rule.in && !rule.in.map(normalize).includes(normalize(value))) return `${rule.path}: ${shown} is not one of ${JSON.stringify(rule.in)}`;
     if (rule.matches && !(typeof value === "string" && new RegExp(rule.matches, "iu").test(value))) return `${rule.path}: ${shown} does not match /${rule.matches}/i`;
@@ -119,8 +132,10 @@ export function checkRule(rule, answer) {
   return null;
 }
 
-export function gradeAnswer(intent, schema, text) {
-  const grade = { outcome: "malformed", extracted: false, shape: false, rules: false, answer: null, problems: [] };
+// `endState` is what the runner read from the page the agent left: { output }. The
+// check's rules see that page with `extracted` holding its extract patterns' values.
+export function gradeAnswer(intent, schema, text, endState = null) {
+  const grade = { outcome: "malformed", extracted: false, shape: false, rules: false, end_state: null, end_state_values: null, answer: null, problems: [] };
   const answer = extractAnswer(text, schema);
   if (!answer) {
     grade.problems.push("no answer object in the final message");
@@ -135,6 +150,16 @@ export function gradeAnswer(intent, schema, text) {
   grade.problems = fillRules(intent.rules, intent.fixture).map(rule => checkRule(rule, answer)).filter(Boolean);
   if (grade.problems.length) return grade;
   grade.rules = true;
+  if (intent.check) {
+    const page = endState?.output ? { ...endState.output, extracted: extractValues(endState.output.text, intent.check.extract) } : undefined;
+    grade.end_state_values = page ? { url: page.url, extracted: page.extracted, fields: page.fields } : null;
+    grade.problems = [
+      ...fillRules(intent.check.rules, intent.fixture).map(rule => checkRule(rule, page)),
+      ...(intent.check.same_as_answer ?? []).map(pair => checkSameAsAnswer(pair, answer, page)),
+    ].filter(Boolean).map(problem => `end state: ${problem}`);
+    grade.end_state = !grade.problems.length;
+    if (grade.problems.length) return grade;
+  }
   grade.outcome = "correct";
   return grade;
 }
@@ -148,5 +173,7 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
   const run = JSON.parse(readFileSync(join(trialDir, "../../../run.json"), "utf8"));
   const { intent, schema } = run.intents[basename(dirname(trialDir))];
   const events = readFileSync(join(trialDir, "transcript.jsonl"), "utf8").split("\n").filter(Boolean).map(line => JSON.parse(line));
-  console.log(JSON.stringify(gradeAnswer(intent, schema, summarize(events, []).answer), null, 2));
+  const endStateFile = join(trialDir, "end-state.json");
+  const endState = existsSync(endStateFile) ? JSON.parse(readFileSync(endStateFile, "utf8")) : null;
+  console.log(JSON.stringify(gradeAnswer(intent, schema, summarize(events, []).answer, endState), null, 2));
 }

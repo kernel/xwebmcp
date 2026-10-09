@@ -107,6 +107,7 @@ export function adoptedPairStats(rows) {
 
 // A rule that only repeats the fixture back pins nothing.
 export function answerCheck(intent) {
+  if (intent.check) return "end state";
   const pinned = (intent.rules ?? []).some(rule => ("equals" in rule || "in" in rule) && !JSON.stringify(rule.equals ?? rule.in).includes("{{"));
   return pinned ? "pinned" : intent.agreement ? "agreement" : "shape only";
 }

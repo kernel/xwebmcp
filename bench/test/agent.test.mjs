@@ -191,11 +191,12 @@ test("the runner stops pi at the turn, spend and time caps, and when a cost is m
 test("a failed invocation keeps its error, whether the call, the tool or the MCP server failed", () => {
   const invoke = (id) => call(id, "mcp__kernel__webmcp", { action: "invoke", tool_ref: "wmcp_a" });
   const summary = summarize([
-    assistant([invoke("1"), invoke("2"), invoke("3"), invoke("4")]),
+    assistant([invoke("1"), invoke("2"), invoke("3"), invoke("4"), invoke("5")]),
     end("1", "mcp__kernel__webmcp", JSON.stringify({ status: "completed", output: { status: "error", message: "UI_CHANGED: missing button" } }), 10),
     end("2", "mcp__kernel__webmcp", JSON.stringify({ status: "error", error_text: "input failed JSON Schema validation" }), 20),
     end("3", "mcp__kernel__webmcp", 'error in webmcp (invoke): {"code":"not_found"}', 30),
     end("4", "mcp__kernel__webmcp", JSON.stringify({ status: "completed", output: { status: "no_results", message: "nothing matched" } }), 40),
+    end("5", "mcp__kernel__webmcp", JSON.stringify({ status: "awaiting_submission", output: null }), 50),
   ], allow);
   const shown = summary.webmcp.invocations.map(i => [i.status, i.tool_status, i.error, invocationFailed(i)]);
   assert.deepEqual(shown, [
@@ -203,6 +204,7 @@ test("a failed invocation keeps its error, whether the call, the tool or the MCP
     ["error", null, "input failed JSON Schema validation", true],
     ["error", null, 'error in webmcp (invoke): {"code":"not_found"}', true],
     ["completed", "no_results", null, false],
+    ["awaiting_submission", null, null, false],
   ]);
 });
 
