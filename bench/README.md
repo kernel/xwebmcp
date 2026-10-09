@@ -28,7 +28,7 @@ bench/
   tasks/<domain>/<intent>.json    one intent per file; domain.json holds per-domain settings
   schemas/                        JSON Schemas for answers
   prompts/system.md               the system prompt both arms get
-  allowlist.txt                   the kernel MCP tools the agent gets, and no others
+  allowlist.txt                   the tools the agent gets, and no others: the kernel MCP tools and pi's read
   mcp.json                        the kernel MCP server; reads KERNEL_API_KEY
   .env.example                    keys run.mjs loads from bench/.env
   run.mjs  grade.mjs  report.mjs  lib/  test/
@@ -40,6 +40,24 @@ bench/
 Needs the `kernel` and `pi` CLIs, Node 22.13+, git, `KERNEL_API_KEY` and the model provider's
 key (such as `OPENAI_API_KEY`), from the environment or `bench/.env`. Each agent gets its own
 `PI_CODING_AGENT_DIR`, so stored pi logins and MCP servers are not used.
+
+### Sandbox
+
+pi cuts an MCP result over 20KB, such as a long WebMCP tool list, and saves the full text to a
+file, so the agent gets pi's `read` tool to open it. So that `read` cannot reach the bench's own
+files, agents on Kernel browsers run in a [bubblewrap](https://github.com/containers/bubblewrap)
+sandbox (`bwrap`, Linux only; `apt install bubblewrap`). It sees `/usr`, the `/etc` files DNS and
+TLS need, its own processes and a fresh directory with its pi config and `TMPDIR`; not your home,
+this checkout, other trials or the rest of `/tmp` and `/etc`. It shares the network. The agent gets
+only `KERNEL_API_KEY`, the variables of its model's provider (`ANTHROPIC_*` for `anthropic/...`,
+`GEMINI_*` for `google/...`), the proxy variables and `NODE_EXTRA_CA_CERTS`; the values of keys
+and proxy URLs are redacted from transcripts, which then leave out pi's streamed `message_update`
+events. If Node or pi is installed outside `/usr`, such as under `~/.nvm` or `~/.local`, only Node's
+binary and pi's package are mounted, read-only, and pi runs as `node <its cli.js>`, so it must be
+an npm install rather than a standalone binary or a version manager's shim. Unprivileged user
+namespaces must be allowed, which some distributions restrict with AppArmor; the smoke gate stops
+the run if `bwrap` cannot create a sandbox, if one can see this checkout or your home, or if pi
+does not start in one.
 
 Run it as a Hypeship service under a hold that covers the whole run; holds cannot be renewed.
 This pilot is 105 trials and can take about 8 hours if every trial reaches its cap:
@@ -108,6 +126,8 @@ Before any trial, stopping on the first failure:
 1. the hold covers the remaining jobs if every trial reaches its cap after 180s of setup (the
    hold is checked again before each job, and no job starts that it cannot outlast);
 2. `KERNEL_API_KEY` is set (Kernel browsers), and on resume pi is the same version;
+   with Kernel browsers, a sandbox works, can see neither this checkout nor your home, and runs the
+   same pi;
 3. a zero-tool pi run answers and reports a cost above zero (pi prices an unknown model at 0,
    which would disable the spend cap);
 4. a treatment setup on the first pending intent works end to end;

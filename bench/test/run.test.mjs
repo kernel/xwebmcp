@@ -240,3 +240,28 @@ test("a task on a domain with no tools runs control alone", { timeout: 120_000 }
   assert.ok(!log().some(entry => entry[0] === "add"));
   assert.match(run("uncovered").stdout, /nothing to run/);
 });
+
+test("a run with a built-in tool stops before any agent when bwrap cannot create a sandbox", { timeout: 120_000 }, () => {
+  const { run, log } = workspace();
+  const result = run("no-sandbox", { STUB_BWRAP_FAILS: "1" });
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /bwrap cannot create a sandbox: bwrap: setting up uid map: Permission denied/);
+  assert.deepEqual(log().filter(entry => entry[0] === "create"), []);
+});
+
+test("a run stops before any agent when the sandbox can see the bench", { timeout: 120_000 }, () => {
+  const { run, bench } = workspace();
+  const result = run("leaky", { STUB_SANDBOX_LEAKS: "1" });
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, new RegExp(`the agent sandbox can see ${bench}`));
+});
+
+test("a run stops before any browser when pi is a shim the sandbox cannot run with Node", { timeout: 120_000 }, () => {
+  const { run, log } = workspace();
+  const shim = mkdtempSync(join(tmpdir(), "bench-shim-"));
+  writeFileSync(join(shim, "pi"), `#!/bin/sh\nexec ${process.execPath} ${join(benchDir, "test/stubs/pi")} "$@"\n`, { mode: 0o755 });
+  const result = run("shimmed", { PATH: [shim, join(benchDir, "test/stubs"), dirname(process.execPath), process.env.PATH].join(delimiter) });
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /the agent sandbox runs pi with Node, and .* --version failed in the sandbox/);
+  assert.deepEqual(log().filter(entry => entry[0] === "create"), []);
+});

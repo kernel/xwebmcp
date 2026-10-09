@@ -188,6 +188,19 @@ test("the runner stops pi at the turn, spend and time caps, and when a cost is m
   assert.deepEqual([slow.limit, slow.durationMs], ["time cap", 300]);
 });
 
+test("the runner redacts the given strings from the transcript, including one split across streamed deltas", async () => {
+  const key = "sk-ant-0123456789abcdef";
+  const read = { type: "tool_execution_end", toolName: "read", result: { content: [{ type: "text", text: `ANTHROPIC_API_KEY=${key}\0PATH=/usr/bin` }] } };
+  const delta = (text) => ({ type: "message_update", assistantMessageEvent: { type: "text_delta", contentIndex: 0, delta: text } });
+  const echo = { type: "message_end", message: { role: "assistant", content: [{ type: "text", text: `It is ${key}` }], usage: { cost: { total: 0.01 } } } };
+  const { events } = await runEvents([read, delta(`It is ${key.slice(0, 10)}`), delta(key.slice(10)), echo, { type: "agent_settled" }], { redact: [key] });
+  assert.equal(events[0].result.content[0].text, "ANTHROPIC_API_KEY=[redacted]\0PATH=/usr/bin");
+  assert.deepEqual(events.map(event => event.type), ["tool_execution_end", "message_end", "agent_settled"]);
+  assert.equal(events[1].message.content[0].text, "It is [redacted]");
+  // Without strings to redact, the transcript keeps message_update.
+  assert.equal((await runEvents([delta("hi"), { type: "agent_settled" }])).events[0].type, "message_update");
+});
+
 test("a failed invocation keeps its error, whether the call, the tool or the MCP server failed", () => {
   const invoke = (id) => call(id, "mcp__kernel__webmcp", { action: "invoke", tool_ref: "wmcp_a" });
   const summary = summarize([
