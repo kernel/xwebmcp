@@ -3,18 +3,19 @@
 // read-only tools registered. See README.md.
 // Usage: node bench/run.mjs --run-id <id> --model <provider/model> [--thinking <level>] [--domain <d>]...
 //          [--intent <id>]... [--pairs <n>] [--adoption <n>] [--slots <n>] [--cap-sec <s>]
-//          [--max-budget-usd <usd>] [--stealth]
+//          [--max-budget-usd <usd>] [--stealth] [--browser kernel|local] [--chrome <path>] [--xwebmcp <path>] [--headless]
 
 import { execFileSync } from "node:child_process";
 import { createHash, randomInt } from "node:crypto";
 import { appendFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { dirname, join, relative } from "node:path";
+import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { setTimeout as sleep } from "node:timers/promises";
 import { parseArgs } from "node:util";
 import { agentEnv, classifyTrial, piArgs, runAgent, runningAgents, summarize } from "./lib/agent.mjs";
-import { loadIntents, loadSchema, pastDates, resolveFixture, trialPrompt } from "./lib/intents.mjs";
-import { BROWSER, addCustomTools, createBrowser, deleteBrowser, invokeTool, listCustomTools, listLiveTools, profileId, removeCustomTool, waitForLoad } from "./lib/kernel.mjs";
+import { fill, loadIntents, loadSchema, pastDates, resolveFixture, trialPrompt } from "./lib/intents.mjs";
+import * as kernel from "./lib/kernel.mjs";
+import * as local from "./lib/local.mjs";
 import { latestRows, readRows, rowKey } from "./lib/rows.mjs";
 import { adoptionVerdicts, balancedOrders, holdNeededSec, planJobs, runPairAttempts, runQueue } from "./lib/schedule.mjs";
 import { composeBatch, gitShow, matchesUrlPattern, registeredTools, resolveSource } from "./lib/tools.mjs";
@@ -48,6 +49,10 @@ const { values: opts } = parseArgs({
     "cap-sec": { type: "string" },
     "max-budget-usd": { type: "string", default: "2" },
     stealth: { type: "boolean", default: false },
+    browser: { type: "string", default: "kernel" },
+    chrome: { type: "string" },
+    xwebmcp: { type: "string" },
+    headless: { type: "boolean", default: false },
   },
 });
 
@@ -69,6 +74,8 @@ const flags = {
 };
 if (!(flags.maxBudgetUsd > 0)) usage("--max-budget-usd must be a positive number");
 if (opts.thinking !== undefined && !THINKING.includes(opts.thinking)) usage(`--thinking must be one of ${THINKING.join(", ")}`);
+if (!["kernel", "local"].includes(opts.browser)) usage("--browser must be kernel or local");
+if (opts.browser === "local" && opts.stealth) usage("--stealth applies to Kernel browsers only");
 
 const runId = opts["run-id"] ?? new Date().toISOString().replace(/[:.]/g, "-");
 if (!/^\w[\w.-]*$/.test(runId)) usage("--run-id may only contain letters, digits, _, . and -, and must start with a letter, digit or _");
@@ -76,11 +83,23 @@ const runDir = join(benchDir, "results", runId);
 const rowsFile = join(runDir, "rows.jsonl");
 const log = (message) => console.log(`${new Date().toISOString()} [${runId}] ${message}`);
 
-const experiment = {
-  allowlist: readLines("allowlist.txt"),
-  system_prompt: readFileSync(join(benchDir, "prompts/system.md"), "utf8"),
-  mcp: JSON.parse(readFileSync(join(benchDir, "mcp.json"), "utf8")),
+// Each browser backend has its own agent tools: the kernel MCP server for Kernel browsers, and
+// `xwebmcp mcp` plus Chrome DevTools MCP for a local Chromium.
+const EXPERIMENT_FILES = {
+  kernel: { allowlist: "allowlist.txt", system_prompt: "prompts/system.md", mcp: "mcp.json" },
+  local: { allowlist: "allowlist.local.txt", system_prompt: "prompts/system.local.md", mcp: "mcp.local.json" },
 };
+const experimentFor = (backend) => {
+  const files = EXPERIMENT_FILES[backend];
+  return {
+    files,
+    allowlist: readLines(files.allowlist),
+    system_prompt: readFileSync(join(benchDir, files.system_prompt), "utf8"),
+    mcp: JSON.parse(readFileSync(join(benchDir, files.mcp), "utf8")),
+  };
+};
+let experiment = experimentFor(opts.browser);
+let browsers = opts.browser === "local" ? local : kernel;
 
 // --- run plan -----------------------------------------------------------------------------
 
@@ -89,10 +108,20 @@ async function planRun() {
   const planFile = join(runDir, "run.json");
   if (existsSync(planFile)) {
     const plan = JSON.parse(readFileSync(planFile, "utf8"));
-    if (JSON.stringify(plan.allowlist) !== JSON.stringify(experiment.allowlist)) fail(`allowlist.txt changed since run ${runId} started; start a new run`);
-    if (JSON.stringify(plan.mcp_config) !== JSON.stringify(experiment.mcp)) fail(`mcp.json changed since run ${runId} started; start a new run`);
-    if (plan.system_prompt_sha256 !== sha256(experiment.system_prompt)) fail(`prompts/system.md changed since run ${runId} started; start a new run`);
-    log(`resuming; run.json is authoritative, so selection, model and cap flags are ignored`);
+    plan.backend ??= "kernel";
+    experiment = experimentFor(plan.backend);
+    browsers = plan.backend === "local" ? local : kernel;
+    const { files } = experiment;
+    if (JSON.stringify(plan.allowlist) !== JSON.stringify(experiment.allowlist)) fail(`${files.allowlist} changed since run ${runId} started; start a new run`);
+    if (JSON.stringify(plan.mcp_config) !== JSON.stringify(experiment.mcp)) fail(`${files.mcp} changed since run ${runId} started; start a new run`);
+    if (plan.system_prompt_sha256 !== sha256(experiment.system_prompt)) fail(`${files.system_prompt} changed since run ${runId} started; start a new run`);
+    if (plan.backend === "local") {
+      const now = useLocal(plan.browser);
+      for (const key of ["chrome_version", "xwebmcp_version"]) {
+        if (now[key] !== plan.browser[key]) log(`warning: run ${runId} started with ${plan.browser[key]}, and this machine has ${now[key]}`);
+      }
+    }
+    log(`resuming; run.json is authoritative, so selection, model, cap and browser flags are ignored`);
     return { plan, fresh: false };
   }
   if (existsSync(rowsFile)) fail(`${rowsFile} exists without run.json; restore run.json or start a new run id`);
@@ -117,9 +146,10 @@ async function planRun() {
     return !dates.length || skipUnlessNamed(intent, `${intent.id}: fixture dates before ${today} (${dates.join(", ")}); move them forward`);
   });
   const profiles = new Map();
-  for (const name of new Set(intents.map(i => i.profile).filter(Boolean))) profiles.set(name, await profileId(name));
+  for (const name of new Set(intents.map(i => i.profile).filter(Boolean))) profiles.set(name, await browsers.profileId(name));
   intents = intents.filter(intent => !intent.profile || profiles.get(intent.profile)
-    || skipUnlessNamed(intent, `${intent.id} needs the Kernel profile ${intent.profile}, which does not exist; see "Signed-in trials" in bench/README.md`));
+    || skipUnlessNamed(intent, opts.browser === "local" ? `${intent.id} needs the Kernel profile ${intent.profile}, which local browsers cannot load`
+      : `${intent.id} needs the Kernel profile ${intent.profile}, which does not exist; see "Signed-in trials" in bench/README.md`));
   if (!intents.length) fail("no intents selected");
 
   // Each run fetches into its own cache: concurrent runs would share FETCH_HEAD.
@@ -135,7 +165,8 @@ async function planRun() {
     allowlist: experiment.allowlist,
     system_prompt_sha256: sha256(experiment.system_prompt),
     mcp_config: experiment.mcp,
-    browser: { ...BROWSER, stealth: opts.stealth },
+    backend: opts.browser,
+    browser: opts.browser === "local" ? useLocal(localOptions()) : { ...kernel.BROWSER, stealth: opts.stealth },
     intents: {},
   };
   mkdirSync(join(runDir, "sources"), { recursive: true });
@@ -168,6 +199,32 @@ async function planRun() {
     log(`${intent.id}: ${tools.length} tools at ${shas.map(s => s.slice(0, 7)).join(", ")}`);
   }
   return { plan, fresh: true };
+}
+
+// A local run builds xwebmcp from this checkout unless --xwebmcp names one, so the extension and
+// the CLI match.
+function localOptions() {
+  const chrome = opts.chrome ?? ["chromium", "chromium-browser"].find(name => {
+    try {
+      execFileSync("sh", ["-c", `command -v ${name}`], { stdio: "ignore" });
+      return true;
+    } catch {
+      return false;
+    }
+  });
+  if (!chrome) fail("--browser local needs Chromium or Chrome for Testing: pass --chrome <path>; branded Chrome ignores --load-extension");
+  // Chrome needs an absolute native host path, and the agent's MCP server starts in the trial's directory.
+  let xwebmcp = opts.xwebmcp && resolve(opts.xwebmcp);
+  if (!xwebmcp) {
+    xwebmcp = join(runDir, "bin", "xwebmcp");
+    execFileSync("go", ["build", "-o", xwebmcp, "./cmd/xwebmcp"], { cwd: join(benchDir, ".."), stdio: ["ignore", "ignore", "inherit"] });
+  }
+  return { chrome, xwebmcp, headless: opts.headless };
+}
+
+function useLocal(options) {
+  browsers = local;
+  return { ...options, ...local.configure(options) };
 }
 
 function sha256(text) {
@@ -209,6 +266,8 @@ function runnerAlive(pid) {
 
 // --- smoke gate -----------------------------------------------------------------------------
 
+const mcpFor = (plan, browser) => plan.backend === "local" ? fill(plan.mcp_config, local.browserInfo(browser)) : plan.mcp_config;
+
 function trialArgs(plan, prompt) {
   return piArgs({ prompt, systemPrompt: experiment.system_prompt, allow: plan.allowlist, model: plan.model, thinking: plan.thinking });
 }
@@ -223,13 +282,15 @@ async function smokeGate(plan, probe, signedIn) {
   const dir = join(runDir, "smoke");
   rmSync(dir, { recursive: true, force: true });
   mkdirSync(dir, { recursive: true });
-  if (!process.env.KERNEL_API_KEY) fail("KERNEL_API_KEY is not set");
+  if (plan.backend === "kernel" && !process.env.KERNEL_API_KEY) fail("KERNEL_API_KEY is not set");
   const agent = `pi ${execFileSync("pi", ["--version"], { encoding: "utf8" }).trim()}`;
   if (plan.agent && plan.agent !== agent) fail(`run ${runId} started with ${plan.agent}, but this machine has ${agent}; install that version or start a new run`);
   plan.agent = agent;
-  const kernelCli = execFileSync("kernel", ["--version"], { encoding: "utf8" }).trim().split(" ").slice(0, 2).join(" ");
-  if (plan.kernel_cli && plan.kernel_cli !== kernelCli) log(`warning: run ${runId} started with ${plan.kernel_cli}, and this machine has ${kernelCli}`);
-  plan.kernel_cli ??= kernelCli;
+  if (plan.backend === "kernel") {
+    const kernelCli = execFileSync("kernel", ["--version"], { encoding: "utf8" }).trim().split(" ").slice(0, 2).join(" ");
+    if (plan.kernel_cli && plan.kernel_cli !== kernelCli) log(`warning: run ${runId} started with ${plan.kernel_cli}, and this machine has ${kernelCli}`);
+    plan.kernel_cli ??= kernelCli;
+  }
 
   const plain = await runAgent({
     args: piArgs({ prompt: "Reply with the single word READY.", systemPrompt: "Answer briefly.", model: plan.model, thinking: plan.thinking }),
@@ -245,23 +306,24 @@ async function smokeGate(plan, probe, signedIn) {
   // pi prices a model missing from its table at 0, which would disable the spend cap.
   if (!(cost_usd > 0)) fail(`pi reported a cost of ${cost_usd} for ${plan.model}, so --max-budget-usd cannot apply`);
 
+  // The agent's MCP servers are checked against a real treatment browser, since a local one's
+  // servers connect to that browser.
+  const setup = await setUpBrowser(plan, probe, "treatment", "smoke");
+  if (setup.stopped) return;
+  if (setup.error) fail(`treatment setup failed for ${probe.intent.id} after ${setup.attempts} browsers: ${setup.error}`);
   const configured = await runAgent({
     args: trialArgs(plan, "Reply with the single word READY. Do not call any tools."),
-    env: agentEnv(join(dir, "configured-agent"), plan.mcp_config),
+    env: agentEnv(join(dir, "configured-agent"), mcpFor(plan, setup.browser)),
     cwd: dir, capMs: 120_000, transcriptPath: join(dir, "configured.jsonl"), stderrPath: join(dir, "configured.stderr"),
   });
+  await releaseBrowser(setup.browser);
   if (stopping) return;
   const { tools, cost_usd: configuredCost } = summarize(configured.events, plan.allowlist);
   logSmokeSpend(configuredCost);
   if (JSON.stringify([...tools].sort()) !== JSON.stringify([...plan.allowlist].sort())) {
-    fail(`the agent's tools differ from allowlist.txt; the kernel MCP server did not connect or a name did not match.\n`
+    fail(`the agent's tools differ from ${experiment.files.allowlist}; an MCP server did not connect or a name did not match.\n`
       + `  tools:     ${tools.join(", ") || "none"}\n  allowlist: ${plan.allowlist.join(", ")}`);
   }
-
-  const setup = await setUpBrowser(plan, probe, "treatment", "smoke");
-  if (setup.stopped) return;
-  if (setup.browser) await releaseBrowser(setup.browser);
-  if (setup.error) fail(`treatment setup failed for ${probe.intent.id} after ${setup.attempts} browsers: ${setup.error}`);
   for (const intentPlan of signedIn.filter(p => p.intent.domain !== probe.intent.domain)) {
     const check = await setUpBrowser(plan, intentPlan, "treatment", "smoke");
     if (check.stopped) return;
@@ -318,7 +380,7 @@ const creating = new Set();
 let stopping = false;
 
 async function newBrowser(options) {
-  const pending = createBrowser(options).then(id => (openBrowsers.add(id), id));
+  const pending = browsers.createBrowser(options).then(id => (openBrowsers.add(id), id));
   creating.add(pending);
   try {
     return await pending;
@@ -330,7 +392,7 @@ async function newBrowser(options) {
 // A browser that fails to delete stays tracked for another try.
 async function releaseBrowser(id) {
   try {
-    await deleteBrowser(id);
+    await browsers.deleteBrowser(id);
     openBrowsers.delete(id);
   } catch (error) {
     log(`could not delete browser ${id}: ${error.message}`);
@@ -344,7 +406,7 @@ async function shutdown(code, message) {
   (code ? console.error : log)(message);
   for (const child of runningAgents) child.kill("SIGKILL");
   await Promise.allSettled([...creating]);
-  await Promise.allSettled([...openBrowsers].map(deleteBrowser));
+  await Promise.allSettled([...openBrowsers].map(id => browsers.deleteBrowser(id)));
   process.exit(code);
 }
 
@@ -359,7 +421,7 @@ async function checkSignedIn(browser, intent, live) {
   const { tool, input = {} } = intent.signed_in_check;
   const ref = live.find(t => t.tool?.name === tool && t.source?.custom?.namespace === intent.domain)?.tool_ref;
   if (!ref) throw new Error(`${tool} is not live on ${intent.start_url}`);
-  const output = await invokeTool(browser, ref, input);
+  const output = await browsers.invokeTool(browser, ref, input);
   if (output?.status === "error" || output?.error) throw new SignedOut(`signed out: ${tool} returned ${JSON.stringify(output).slice(0, 300)}`);
 }
 
@@ -376,26 +438,26 @@ async function setUpBrowser(plan, intentPlan, arm, label) {
         stealth: plan.browser.stealth,
         profile: intentPlan.profile?.name,
       });
-      const page = await waitForLoad(browser, intent.start_url);
+      const page = await browsers.waitForLoad(browser, intent.start_url);
       const loadedAt = performance.now();
       // Catches redirects and block pages on another host, in both arms.
       if (!intentPlan.entry_patterns.some(pattern => matchesUrlPattern(page.url, pattern))) throw new Error(`start page is ${page.url}, outside ${intent.entry_tool}'s URL patterns`);
       if (arm === "treatment") {
-        await addCustomTools(browser, intent.domain, join(runDir, "sources", `${intent.id}.js`));
-        const live = await listLiveTools(browser);
+        await browsers.addCustomTools(browser, intent.domain, join(runDir, "sources", `${intent.id}.js`));
+        const live = await browsers.listLiveTools(browser);
         const entryLive = live.some(t => t.tool?.name === intent.entry_tool && t.source?.custom?.namespace === intent.domain && t.source?.page_url);
         if (!entryLive) throw new Error(`entry tool ${intent.entry_tool} is not live on ${page.url}`);
         if (intent.signed_in_check) await checkSignedIn(browser, intent, live);
       } else if (intent.signed_in_check) {
         // Control runs the same sign-in check, then removes the tools, so neither arm starts signed out.
-        await addCustomTools(browser, intent.domain, join(runDir, "sources", `${intent.id}.js`));
-        await checkSignedIn(browser, intent, await listLiveTools(browser));
-        for (const tool of await listCustomTools(browser)) await removeCustomTool(browser, tool.id);
+        await browsers.addCustomTools(browser, intent.domain, join(runDir, "sources", `${intent.id}.js`));
+        await checkSignedIn(browser, intent, await browsers.listLiveTools(browser));
+        for (const tool of await browsers.listCustomTools(browser)) await browsers.removeCustomTool(browser, tool.id);
       }
-      const before = await listCustomTools(browser);
+      const before = await browsers.listCustomTools(browser);
       if (arm === "control" && before.length) throw new Error(`control browser already has ${before.length} custom tool(s) in ${[...new Set(before.map(t => t.namespace))].join(", ")}`);
       // The page's own WebMCP tools reach both arms, so control is not tool-free where a site has them.
-      const live = await listLiveTools(browser);
+      const live = await browsers.listLiveTools(browser);
       if (arm === "control" && live.some(t => t.source?.custom)) throw new Error("control browser has live custom tools");
       const nativeTools = live.filter(t => !t.source?.custom).map(t => t.tool?.name ?? "unknown");
       return { browser, page, loadedAt, before, nativeTools, attempts: attempt };
@@ -444,8 +506,8 @@ async function runTrial(plan, intentPlan, arm, key) {
     if (stopping) return null;
 
     const agent = await runAgent({
-      args: trialArgs(plan, trialPrompt(intent, browser)),
-      env: agentEnv(join(dir, "agent"), plan.mcp_config),
+      args: trialArgs(plan, trialPrompt(intent, plan.backend === "kernel" ? browser : null)),
+      env: agentEnv(join(dir, "agent"), mcpFor(plan, browser)),
       cwd: dir, capMs: intentPlan.cap_sec * 1000, maxTurns: intentPlan.max_turns, maxBudgetUsd: plan.max_budget_usd,
       transcriptPath: join(dir, "transcript.jsonl"), stderrPath: join(dir, "stderr.txt"),
     });
@@ -453,7 +515,7 @@ async function runTrial(plan, intentPlan, arm, key) {
     const summary = summarize(agent.events, plan.allowlist);
     for (const field of ["turns", "tool_calls", "unknown_tool_errors", "tokens_in", "tokens_out", "cost_usd", "webmcp"]) row[field] = summary[field];
     try {
-      row.registration_changed = registrationFingerprint(setup.before) !== registrationFingerprint(await listCustomTools(browser));
+      row.registration_changed = registrationFingerprint(setup.before) !== registrationFingerprint(await browsers.listCustomTools(browser));
     } catch (error) {
       log(`${intent.id} ${label} ${arm}: could not re-list custom tools: ${error.message}`);
     }

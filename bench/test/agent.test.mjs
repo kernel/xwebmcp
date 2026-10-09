@@ -205,3 +205,12 @@ test("a failed invocation keeps its error, whether the call, the tool or the MCP
     ["completed", "no_results", null, false],
   ]);
 });
+
+test("a local browser's agent lists and invokes through xwebmcp mcp", () => {
+  const summary = summarize([
+    assistant([call("1", "mcp__xwebmcp__list_tools", {}), call("2", "mcp__xwebmcp__invoke_tool", { tool_ref: "1:0:ab:custom.ct_x.search", input: {} })]),
+    end("1", "mcp__xwebmcp__list_tools", JSON.stringify({ tools: [{ tool_ref: "1:0:ab:custom.ct_x.search", tool: { name: "search" } }] }), 10),
+    end("2", "mcp__xwebmcp__invoke_tool", JSON.stringify({ invocation_id: "i", status: "completed", output: { status: "ok" } }), 20),
+  ], allow);
+  assert.deepEqual([summary.webmcp.listed, summary.webmcp.invocations.map(i => [i.tool, i.status])], [true, [["search", "completed"]]]);
+});

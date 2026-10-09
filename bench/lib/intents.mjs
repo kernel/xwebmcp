@@ -17,8 +17,9 @@ export function fill(value, fixture = {}) {
   return value;
 }
 
+// `browserId` is null for a local browser, the only one the agent can reach.
 export function trialPrompt(intent, browserId) {
-  const browser = `Use the Kernel browser with session id ${browserId}. It is already open on ${intent.start_url}.`;
+  const browser = browserId ? `Use the Kernel browser with session id ${browserId}. It is already open on ${intent.start_url}.` : `The browser is already open on ${intent.start_url}.`;
   return [fill(intent.prompt, intent.fixture), intent.instructions, browser].filter(Boolean).join("\n\n");
 }
 
