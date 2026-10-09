@@ -241,17 +241,17 @@ test("a task on a domain with no tools runs control alone", { timeout: 120_000 }
   assert.match(run("uncovered").stdout, /nothing to run/);
 });
 
-test("a run with a built-in tool stops before any agent without an agent user per slot", { timeout: 120_000 }, () => {
+test("a run with a built-in tool stops before any agent when bwrap cannot create a sandbox", { timeout: 120_000 }, () => {
   const { run, log } = workspace();
-  const result = run("no-agent-users", { STUB_AGENT_USERS: "1" }, ["--slots", "2"]);
+  const result = run("no-sandbox", { STUB_BWRAP_FAILS: "1" });
   assert.notEqual(result.status, 0);
-  assert.match(result.stderr, /found 1 for 2 slot\(s\); run `sudo bench\/setup-agent-users.sh/);
+  assert.match(result.stderr, /bwrap cannot create a sandbox: bwrap: setting up uid map: Permission denied/);
   assert.deepEqual(log().filter(entry => entry[0] === "create"), []);
 });
 
-test("a run stops before any agent when an agent user can read the checkout", { timeout: 120_000 }, () => {
-  const { run } = workspace();
-  const result = run("readable", { STUB_AGENT_CAN_READ: "1" });
+test("a run stops before any agent when the sandbox can see the bench", { timeout: 120_000 }, () => {
+  const { run, bench } = workspace();
+  const result = run("leaky", { STUB_SANDBOX_LEAKS: "1" });
   assert.notEqual(result.status, 0);
-  assert.match(result.stderr, /xwebmcp-bench-1 can read /);
+  assert.match(result.stderr, new RegExp(`the agent sandbox can see ${bench}`));
 });

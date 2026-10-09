@@ -22,7 +22,7 @@ import { composeBatch, domainPatterns, gitShow, matchesUrlPattern, registeredToo
 import { blockedAttempts, writeGuardExtension } from "./lib/guard.mjs";
 import { readPage, readPageArg, stepTimeline } from "./lib/page.mjs";
 import { checkRule, gradeAnswer } from "./grade.mjs";
-import { AgentUserPool, agentUserEnv, asAgentUser, canSudo, findAgentUsers, killAgentUser, readablePaths } from "./lib/users.mjs";
+import { hiddenPaths, installMounts, sandboxArgs, sandboxDir, sandboxEnv, visiblePaths } from "./lib/sandbox.mjs";
 
 const benchDir = dirname(fileURLToPath(import.meta.url));
 if (existsSync(join(benchDir, ".env"))) process.loadEnvFile(join(benchDir, ".env"));
@@ -282,31 +282,33 @@ function trialArgs(plan, prompt) {
   return piArgs({ prompt, systemPrompt: experiment.system_prompt, allow: plan.allowlist, model: plan.model, thinking: plan.thinking });
 }
 
-// Set by the smoke gate when the allowlist has a built-in tool, which then runs as an agent user.
-let agentUsers = null;
+// Set by the smoke gate when the allowlist has a built-in tool: agents then run in a sandbox, with
+// these read-only mounts besides /usr. Open sandbox directories are removed on shutdown.
+let sandboxMounts = null;
+const sandboxDirs = new Set();
 
-function checkAgentUsers(slots) {
-  const users = findAgentUsers();
-  const setup = `run \`sudo bench/setup-agent-users.sh $(id -un) ${slots}\``;
-  if (users.length < slots) fail(`${experiment.files.allowlist} has a built-in tool, so each slot needs an agent user; found ${users.length} for ${slots} slot(s); ${setup}`);
-  const hidden = [resolve(benchDir, ".."), process.env.HOME].filter(Boolean);
-  for (const user of users.slice(0, slots)) {
-    if (!canSudo(user)) fail(`cannot run commands as ${user.name} with \`sudo -n\`; ${setup}`);
-    const readable = readablePaths(user, hidden);
-    if (readable.length) fail(`${user.name} can read ${readable.join(", ")}; ${setup}`);
+function checkSandbox() {
+  const mounts = installMounts();
+  let visible;
+  try {
+    visible = visiblePaths(hiddenPaths(benchDir, process.env.HOME, mounts), mounts);
+  } catch (error) {
+    fail(`${experiment.files.allowlist} has a built-in tool, so agents run in a bubblewrap sandbox, and ${error.message}; see "Sandbox" in bench/README.md`);
   }
-  agentUsers = new AgentUserPool(users.slice(0, slots));
+  if (visible.length) fail(`the agent sandbox can see ${visible.join(", ")}; pi or Node is installed in a directory that holds it, so install them in a directory of their own`);
+  sandboxMounts = mounts;
 }
 
-// pi as the bench user, or as an agent user, which gets only the model's and Kernel's keys.
+// pi as the bench user, or in a sandbox that gets only the model's and Kernel's keys.
 async function runPi({ agentDir, mcpConfig, model, ...options }) {
-  if (!agentUsers) return runAgent({ ...options, env: agentEnv(agentDir, mcpConfig) });
-  const user = await agentUsers.acquire();
+  if (!sandboxMounts) return runAgent({ ...options, env: agentEnv(agentDir, mcpConfig) });
+  const dir = sandboxDir(mcpConfig);
+  sandboxDirs.add(dir);
   try {
-    return await runAgent({ ...options, ...asAgentUser(user, options.args, agentUserEnv(model, mcpConfig)) });
+    return await runAgent({ ...options, command: "bwrap", args: [...sandboxArgs(dir, sandboxMounts), "--", "pi", ...options.args], env: sandboxEnv(model, dir) });
   } finally {
-    killAgentUser(user);
-    agentUsers.release(user);
+    rmSync(dir, { recursive: true, force: true });
+    sandboxDirs.delete(dir);
   }
 }
 
@@ -330,7 +332,7 @@ async function smokeGate(plan, probe, signedIn) {
     plan.kernel_cli ??= kernelCli;
   }
 
-  if (plan.allowlist.some(tool => !tool.startsWith("mcp__"))) checkAgentUsers(flags.slots);
+  if (plan.allowlist.some(tool => !tool.startsWith("mcp__"))) checkSandbox();
 
   const plain = await runPi({
     args: piArgs({ prompt: "Reply with the single word READY.", systemPrompt: "Answer briefly.", model: plan.model, thinking: plan.thinking }),
@@ -446,7 +448,7 @@ async function shutdown(code, message) {
   stopping = true;
   (code ? console.error : log)(message);
   for (const child of runningAgents) child.kill("SIGKILL");
-  for (const user of agentUsers?.users ?? []) killAgentUser(user);
+  for (const dir of sandboxDirs) rmSync(dir, { recursive: true, force: true });
   await Promise.allSettled([...creating]);
   await Promise.allSettled([...openBrowsers].map(id => browsers.deleteBrowser(id)));
   process.exit(code);
