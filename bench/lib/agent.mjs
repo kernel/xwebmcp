@@ -122,9 +122,12 @@ function parseJson(text) {
   }
 }
 
+// Kernel's refs, and the extension's tab:frame:document:name ones.
+const isToolRef = (value) => value.startsWith("wmcp_") || /^\d+:\d+:[0-9a-f]+:/.test(value);
+
 // Maps tool_ref to name from any tool listing in a result. Agents reshape listTools() output
-// (for example to {n, r}), so an object with one wmcp_ value takes its tool.name, its name, or
-// its only other snake_case string.
+// (for example to {n, r}), so an object with one tool_ref value takes its tool.name, its name,
+// or its only other snake_case string.
 function collectRefs(value, refs, depth = 0) {
   if (depth > 8 || value === null) return;
   if (typeof value === "string") {
@@ -133,8 +136,8 @@ function collectRefs(value, refs, depth = 0) {
   }
   if (typeof value !== "object") return;
   const strings = Object.values(value).filter(v => typeof v === "string");
-  const ids = strings.filter(v => v.startsWith("wmcp_"));
-  const names = strings.filter(v => !v.startsWith("wmcp_") && /^[a-z][a-z0-9_]{2,63}$/.test(v));
+  const ids = strings.filter(isToolRef);
+  const names = strings.filter(v => !isToolRef(v) && /^[a-z][a-z0-9_]{2,63}$/.test(v));
   const name = value.tool?.name ?? (typeof value.name === "string" ? value.name : names.length === 1 ? names[0] : null);
   if (ids.length === 1 && name) refs.set(ids[0], name);
   for (const child of Object.values(value)) collectRefs(child, refs, depth + 1);
@@ -158,6 +161,9 @@ function invocationResult(call) {
 export const invocationFailed = (invocation) => invocation.status !== "completed" || invocation.tool_status === "error";
 
 const WEBMCP = "mcp__kernel__webmcp";
+// `xwebmcp mcp`'s list_tools and invoke_tool, which a local browser's agent uses instead.
+const isList = (call) => call.name === "mcp__xwebmcp__list_tools" || (call.name === WEBMCP && call.arguments?.action === "list");
+const isInvoke = (call) => call.name === "mcp__xwebmcp__invoke_tool" || (call.name === WEBMCP && call.arguments?.action === "invoke");
 const CODE_PATHS = { mcp__kernel__execute_playwright_code: "playwright", mcp__kernel__browser_repl: "repl" };
 
 export function summarize(events, allow) {
@@ -196,9 +202,9 @@ export function summarize(events, allow) {
     if (call.isError && /tool .*not found|unknown tool|no such tool/i.test(call.text)) unknownToolErrors++;
     if (!allowed.has(call.name) && call.done && !call.isError) outsideAllowlist.add(call.name);
 
-    if (call.name === WEBMCP && args.action === "list") {
+    if (isList(call)) {
       webmcp.listed = true;
-    } else if (call.name === WEBMCP && args.action === "invoke") {
+    } else if (isInvoke(call)) {
       webmcp.invocations.push({
         path: "mcp",
         tool: refs.get(args.tool_ref) ?? args.tool_ref ?? null,

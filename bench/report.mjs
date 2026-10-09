@@ -203,7 +203,7 @@ export function buildReport(run, allRows, smokeRows = []) {
   out.push(`# A/B screening · ${run.run_id}`);
   out.push("");
   const spend = (list) => `$${sum(list.map(r => r.cost_usd ?? 0)).toFixed(2)}`;
-  out.push(`model \`${run.model}\`${run.thinking ? ` (thinking ${run.thinking})` : ""} · agent ${run.agent ?? na}${run.kernel_cli ? ` · ${run.kernel_cli}` : ""} · started ${run.created_at} · `
+  out.push(`model \`${run.model}\`${run.thinking ? ` (thinking ${run.thinking})` : ""} · agent ${run.agent ?? na}${run.kernel_cli ? ` · ${run.kernel_cli}` : ""}${run.backend === "local" ? ` · local browsers (${run.browser.chrome_version})` : ""} · started ${run.created_at} · `
     + `${scored.length} trials scored, ${aborted.length} aborted, ${unpaired} left out because their pair's other trial aborted or has not run · `
     + `spend ${spend(allRows)} over every recorded attempt${smokeRows.length ? `, plus ${spend(smokeRows)} on smoke gates` : ""}`);
   out.push("");

@@ -66,17 +66,46 @@ control first, `BA` treatment first, split evenly within each intent and shuffle
 system prompt or the pi version changed. A resume reruns aborted or missing treatment-only
 trials and every pair without a scored trial in both arms. One runner per run id.
 
+### Local browsers
+
+`--browser local` runs every trial in a Chromium on your own machine instead of a Kernel
+browser, so sites see your IP and a real browser. Use it for sites whose bot protection blocks
+Kernel browsers. It needs Node, pi, Go (or `--xwebmcp <path>` to an `xwebmcp` build) and npx,
+the model provider's key, and git HTTPS access to this repository. It does not need
+`KERNEL_API_KEY` or a Hypeship hold.
+
+Branded Chrome ignores `--load-extension`, so use Chromium or Chrome for Testing (150 or later):
+
+```sh
+npx @puppeteer/browsers install chrome@stable    # prints the Chrome for Testing path
+node bench/run.mjs --run-id local-1 --browser local --chrome "<that path>" \
+  --model anthropic/claude-haiku-5-5 --thinking low --slots 2 --domain flyfrontier.com
+```
+
+Each trial gets a throwaway profile with the xwebmcp extension loaded (site access granted up
+front), the WebMCP flag on, and its own `XWEBMCP_HOME`, so trials share nothing. The runner builds
+`xwebmcp` from this checkout, registers the same pinned batch through the extension's bridge,
+and gives the agent `xwebmcp mcp` (`list_tools`, `invoke_tool`) and Chrome DevTools MCP for
+everything else (`allowlist.local.txt`, `mcp.local.json`, `prompts/system.local.md`). Chrome runs
+headed; `--headless` is for machines without a display, and sites block it more often.
+`--stealth` and signed-in domains are Kernel-only.
+
+Local runs are a different setup from Kernel runs, and the report says so in its header. The
+native messaging host manifest is written into each trial's profile, which Chromium reads on
+macOS as on Linux, so nothing outside the trial's directory changes. Local mode has been run on
+Linux only.
+
 ### Smoke gate
 
 Before any trial, stopping on the first failure:
 
 1. the hold covers the remaining jobs if every trial reaches its cap after 180s of setup (the
    hold is checked again before each job, and no job starts that it cannot outlast);
-2. `KERNEL_API_KEY` is set, and on resume pi is the same version;
+2. `KERNEL_API_KEY` is set (Kernel browsers), and on resume pi is the same version;
 3. a zero-tool pi run answers and reports a cost above zero (pi prices an unknown model at 0,
    which would disable the spend cap);
-4. the tools pi declares to the model equal `allowlist.txt`;
-5. a treatment setup on the first pending intent works end to end;
+4. a treatment setup on the first pending intent works end to end;
+5. in that browser, the tools pi declares to the model equal the allowlist;
 6. each signed-in domain passes its sign-in check.
 
 ### Stages

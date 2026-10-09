@@ -16,7 +16,7 @@ const START_DELAY_MS = 1000;
 function workspace() {
   const dir = mkdtempSync(join(tmpdir(), "bench-run-"));
   const bench = join(dir, "bench");
-  for (const path of ["run.mjs", "grade.mjs", "lib", "prompts", "allowlist.txt", "mcp.json", "schemas"]) cpSync(join(benchDir, path), join(bench, path), { recursive: true });
+  for (const path of ["run.mjs", "grade.mjs", "lib", "prompts", "allowlist.txt", "mcp.json", "allowlist.local.txt", "mcp.local.json", "schemas"]) cpSync(join(benchDir, path), join(bench, path), { recursive: true });
   cpSync(join(benchDir, "../extension/lib/url-pattern.js"), join(dir, "extension/lib/url-pattern.js"));
   mkdirSync(join(bench, "tasks/example.com"), { recursive: true });
   writeFileSync(join(bench, "tasks/example.com/domain.json"), JSON.stringify({ profile: "bench-example", signed_in_check: { tool: "lookup" } }));
@@ -62,7 +62,7 @@ function workspace() {
   });
   const rows = (runId) => readFileSync(join(bench, "results", runId, "rows.jsonl"), "utf8").trim().split("\n").map(line => JSON.parse(line));
   const log = () => JSON.parse(readFileSync(state, "utf8")).log;
-  return { run, rows, log };
+  return { run, rows, log, bench };
 }
 
 test("a signed-in pair runs the sign-in check in both arms and control starts with no tools", { timeout: 120_000 }, () => {
@@ -143,4 +143,18 @@ test("with one slot, the run stops once 6 trials in a row abort", { timeout: 120
   assert.match(result.stderr, /6 trials in a row aborted/);
   // Each pair aborts on its first trial, twice, so the fourth pair never starts.
   assert.deepEqual(rows("aborts").map(r => [r.pair, r.outcome]), [[1, "aborted"], [1, "aborted"], [2, "aborted"], [2, "aborted"], [3, "aborted"], [3, "aborted"]]);
+});
+
+test("a Kernel run resumed with --browser local still uses Kernel browsers", { timeout: 120_000 }, () => {
+  const { run, rows, log, bench } = workspace();
+  const first = run("backend", {}, ["--pairs", "2"]);
+  assert.equal(first.status, 0, first.stderr + first.stdout);
+  // Drop pair 2, so the resume has a pair to run.
+  const rowsFile = join(bench, "results/backend/rows.jsonl");
+  writeFileSync(rowsFile, rows("backend").filter(r => r.pair === 1).map(r => JSON.stringify(r) + "\n").join(""));
+  const created = log().filter(entry => entry[0] === "create").length;
+  const resumed = run("backend", {}, ["--browser", "local"]);
+  assert.equal(resumed.status, 0, resumed.stderr + resumed.stdout);
+  assert.deepEqual(rows("backend").filter(r => r.pair === 2).map(r => r.outcome), ["correct", "correct"]);
+  assert.ok(log().filter(entry => entry[0] === "create").length > created);
 });

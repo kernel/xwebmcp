@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
-import { loadIntents, loadSchema, pastDates, resolveFixture, trialPrompt, validateDomain, validateIntent } from "../lib/intents.mjs";
+import { fill, loadIntents, loadSchema, pastDates, resolveFixture, trialPrompt, validateDomain, validateIntent } from "../lib/intents.mjs";
 import { checkSchema } from "../lib/schema.mjs";
 import { composeBatch, evaluateDefinitions, matchesUrlPattern, normalize, registeredTools, resolveSource } from "../lib/tools.mjs";
 
@@ -55,6 +55,7 @@ test("a domain's instructions reach the prompt of every trial on it, in both arm
   const ipwho = intents.find(i => i.id === "ipwho-country-asn");
   assert.equal(ipwho.instructions, null);
   assert.equal(trialPrompt(ipwho, "x").split("\n\n").length, 2);
+  assert.match(trialPrompt(ipwho, null), /\n\nThe browser is already open on https:\/\/ipwho\.is\/\.$/);
 });
 
 test("a schema keyword the validator does not implement is refused", () => {
@@ -185,4 +186,48 @@ test("registration fails on a name that no source has or that would not be regis
   await assert.rejects(registeredTools({ ...base, exclude: { whoamii: "typo" }, tools: [{ ref: "branch", names: [] }] }, ["branch"], show), /exclude names whoamii, which no source has/);
   await assert.rejects(registeredTools({ ...base, tools: [{ ref: "main", names: ["get_item"] }] }, ["main"], show), /get_item is not in registry.json at main/);
   await assert.rejects(registeredTools({ ...base, tools: [{ ref: "main", names: ["save"] }] }, ["main"], show), /save is not read-only or is excluded/);
+});
+
+test("local browsers load the extension under the id Chrome gives it, and their MCP config fills in per browser", async () => {
+  const { extensionId } = await import("../lib/local.mjs");
+  const { key } = JSON.parse(readFileSync(join(benchDir, "../extension/manifest.json"), "utf8"));
+  assert.equal(extensionId(key), "gonbafhnhdlffidehindilafagapamff");
+  const config = fill(JSON.parse(readFileSync(join(benchDir, "mcp.local.json"), "utf8")), { xwebmcp: "/bin/xw", xwebmcp_home: "/tmp/h", browser_url: "http://127.0.0.1:9" });
+  assert.deepEqual([config.mcpServers.xwebmcp.command, config.mcpServers.xwebmcp.env.XWEBMCP_HOME], ["/bin/xw", "/tmp/h"]);
+  assert.ok(config.mcpServers.chrome.args.includes("http://127.0.0.1:9"));
+  assert.doesNotMatch(JSON.stringify(config), /\{\{/);
+  const allow = readFileSync(join(benchDir, "allowlist.local.txt"), "utf8").split("\n").filter(Boolean);
+  assert.ok(allow.includes("mcp__xwebmcp__list_tools") && allow.includes("mcp__xwebmcp__invoke_tool"));
+  // A control agent must not be able to register tools itself.
+  assert.ok(!allow.some(name => /install_tool|remove_tool|open_tab/.test(name)));
+});
+
+test("a bridge answer split inside a character is read whole, and an unreadable one rejects the call", async () => {
+  const { call } = await import("../lib/local.mjs");
+  const { createServer } = await import("node:net");
+  const home = mkdtempSync(join(tmpdir(), "bench-bridge-"));
+  mkdirSync(join(home, "run"));
+  const replies = [];
+  const server = createServer(socket => {
+    const reply = replies.shift();
+    if (!reply) return socket.end();
+    const [first, second] = reply;
+    socket.write(first);
+    setTimeout(() => socket.write(second), 20);
+  });
+  await new Promise(resolve => server.listen(join(home, "run", "bridge.sock"), resolve));
+  try {
+    const answer = Buffer.from(JSON.stringify({ id: 1, result: { price: "€12" } }) + "\n");
+    const split = answer.indexOf(Buffer.from("€")) + 1;
+    replies.push([answer.subarray(0, split), answer.subarray(split)]);
+    assert.deepEqual(await call({ home }, "invoke"), { price: "€12" });
+    replies.push(["{not json", "\n"]);
+    await assert.rejects(call({ home }, "invoke"), /invoke: unreadable answer from the extension/);
+    // A bridge that hangs up without answering fails the call at once, not at the timeout.
+    const started = Date.now();
+    await assert.rejects(call({ home }, "invoke", {}, 10_000), /invoke: the extension closed the connection without answering/);
+    assert.ok(Date.now() - started < 5_000);
+  } finally {
+    server.close();
+  }
 });
