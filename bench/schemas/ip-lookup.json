@@ -1,0 +1,9 @@
+{
+  "type": "object",
+  "required": ["ip", "country_code", "asn"],
+  "properties": {
+    "ip": { "type": "string" },
+    "country_code": { "type": "string", "pattern": "^[A-Z]{2}$" },
+    "asn": { "type": "string", "pattern": "^AS[0-9]+$" }
+  }
+}

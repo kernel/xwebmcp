@@ -1,0 +1,60 @@
+#!/usr/bin/env node
+// A stand-in for the kernel CLI in run.test.mjs. Browsers live in $STUB_STATE. Every browser's page
+// is example.com; the sign-in check fails in browsers tagged with an arm listed in
+// $STUB_SIGNED_OUT_ARMS, every page also lists the native tools named in $STUB_NATIVE_TOOLS, in
+// browsers tagged with an arm listed in $STUB_LIVE_CUSTOM_ARMS a custom tool is live without being registered,
+// and in those tagged with an arm listed in $STUB_OFF_PAGE_ARMS registered tools are listed without a page.
+import { readFileSync, writeFileSync } from "node:fs";
+
+const args = process.argv.slice(2).filter(arg => arg !== "-o" && arg !== "json");
+const stateFile = process.env.STUB_STATE;
+const state = JSON.parse(readFileSync(stateFile, "utf8"));
+const save = () => writeFileSync(stateFile, JSON.stringify(state));
+const print = (value) => console.log(JSON.stringify(value));
+const flag = (name) => args[args.indexOf(name) + 1];
+const log = (entry) => { state.log.push(entry); save(); };
+
+const command = args.slice(0, 4).filter(arg => !arg.startsWith("-")).join(" ");
+if (args[0] === "--version") {
+  console.log("kernel 0.0.0-stub (stub)");
+} else if (command.startsWith("profiles get")) {
+  print({ id: `profile-${args[2]}` });
+} else if (command.startsWith("browsers create")) {
+  const id = `b${++state.next}`;
+  const tags = Object.fromEntries(args.flatMap((arg, i) => (arg === "--tag" ? [args[i + 1].split("=")] : [])));
+  state.browsers[id] = { tags, tools: [] };
+  log(["create", id, tags.arm]);
+  print({ session_id: id });
+} else if (command.startsWith("browsers playwright execute")) {
+  print({ success: true, result: { url: "https://example.com/", version: "stub", renavigated: false } });
+} else if (command.startsWith("browsers webmcp custom-tools add")) {
+  const browser = state.browsers[args[4]];
+  browser.tools = [{ id: `ct_${++state.next}`, namespace: flag("--namespace"), tool: { name: "lookup" } }];
+  log(["add", args[4]]);
+  print({ tools: browser.tools });
+} else if (command.startsWith("browsers webmcp custom-tools list")) {
+  print({ tools: state.browsers[args[4]].tools });
+} else if (command.startsWith("browsers webmcp custom-tools remove")) {
+  const browser = state.browsers[args[4]];
+  browser.tools = browser.tools.filter(tool => tool.id !== args[5]);
+  log(["remove", args[4]]);
+  console.log(`SUCCESS: Removed custom WebMCP tool: ${args[5]}`);
+} else if (command.startsWith("browsers webmcp list")) {
+  const native = (process.env.STUB_NATIVE_TOOLS ?? "").split(",").filter(Boolean).map(name => ({ tool_ref: `wmcp_native_${name}`, tool: { name }, source: { page_url: "https://example.com/" } }));
+  const browser = state.browsers[args[3]];
+  const stray = (process.env.STUB_LIVE_CUSTOM_ARMS ?? "").split(",").includes(browser.tags.arm) ? [{ id: "ct_stray", namespace: "example.com", tool: { name: "stray" } }] : [];
+  const page = (process.env.STUB_OFF_PAGE_ARMS ?? "").split(",").includes(browser.tags.arm) ? {} : { page_url: "https://example.com/" };
+  print({ tools: [...native, ...[...browser.tools, ...stray].map(tool => ({ tool_ref: `wmcp_${tool.id}`, tool: tool.tool, source: { custom: { namespace: tool.namespace }, ...page } }))] });
+} else if (command.startsWith("browsers webmcp invoke")) {
+  const { arm } = state.browsers[args[3]].tags;
+  log(["invoke", args[3], arm]);
+  const signedOut = (process.env.STUB_SIGNED_OUT_ARMS ?? "").split(",").includes(arm);
+  print(signedOut ? { status: "error", error_kind: "not_logged_in", error_message: "Log in first." } : { status: "ok", address: "1 Main St" });
+} else if (command.startsWith("browsers delete")) {
+  delete state.browsers[args[2]];
+  save();
+  console.log("SUCCESS: deleted");
+} else {
+  console.error(`kernel stub: unknown command ${args.join(" ")}`);
+  process.exit(2);
+}

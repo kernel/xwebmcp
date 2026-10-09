@@ -1,0 +1,23 @@
+{
+  "id": "ticketmaster-concerts-in-city",
+  "domain": "ticketmaster.com",
+  "stage": "find",
+  "prompt": "On ticketmaster.com, find three concerts in {{city}} between {{start}} and {{end}}, with each one's name, local date and venue. Reply with JSON: {\"events\": [{\"name\": string, \"date\": \"YYYY-MM-DD\", \"venue\": string}]}.",
+  "fixture": {
+    "city": "Chicago, IL",
+    "start": {"days_from_start": 7},
+    "end": {"days_from_start": 21}
+  },
+  "start_url": "https://www.ticketmaster.com/",
+  "tools": [{"repo": "kernel/xwebmcp", "ref": "main", "names": ["search_events"]}],
+  "entry_tool": "search_events",
+  "answer_schema": "schemas/events.json",
+  "rules": [
+    {"path": "events", "count": [3, 3]},
+    {"path": "events[].date", "range": ["{{start}}", "{{end}}"]},
+    {"path": "events[].name", "unique": true}
+  ],
+  "pairs": 5,
+  "trial_timeout_sec": 600,
+  "max_turns": 40
+}

@@ -1,0 +1,15 @@
+{
+  "id": "kroger-item-price",
+  "domain": "kroger.com",
+  "stage": "inspect",
+  "prompt": "On kroger.com, find the price of {{item}} at the store the site has selected. Reply with JSON: {\"product\": string, \"price\": number in US dollars}.",
+  "fixture": {"item": "a gallon of Kroger 2% reduced fat milk"},
+  "start_url": "https://www.kroger.com/",
+  "tools": [{"repo": "kernel/xwebmcp", "ref": "main", "names": ["search_products"]}],
+  "entry_tool": "search_products",
+  "answer_schema": "schemas/product-price.json",
+  "rules": [{"path": "product", "matches": "milk"}, {"path": "price", "range": [0.5, 20]}],
+  "pairs": 5,
+  "trial_timeout_sec": 600,
+  "max_turns": 40
+}

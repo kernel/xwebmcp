@@ -1,0 +1,4 @@
+mcp__kernel__browser_repl
+mcp__kernel__computer_action
+mcp__kernel__execute_playwright_code
+mcp__kernel__webmcp
