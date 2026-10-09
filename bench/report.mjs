@@ -141,6 +141,34 @@ export function compare(control, treatment, pairs, stage) {
   };
 }
 
+// Agent time per step (page) per trial, and how many treatment trials invoked a tool on it. A step
+// a trial never reached counts as 0s for it, so steps compare across trials.
+export function stepCoverage(rows) {
+  const timed = rows.filter(r => Array.isArray(r.steps));
+  const arms = { control: timed.filter(r => r.arm === "control"), treatment: timed.filter(r => r.arm === "treatment") };
+  const byStep = new Map();
+  for (const row of timed) {
+    for (const step of row.steps) {
+      const entry = byStep.get(step.step) ?? { step: step.step, control_ms: 0, treatment_ms: 0, invoked: 0, tools: new Set() };
+      entry[`${row.arm}_ms`] += step.ms;
+      if (row.arm === "treatment" && step.invocations.length) entry.invoked++;
+      for (const tool of row.arm === "treatment" ? step.invocations : []) entry.tools.add(tool);
+      byStep.set(step.step, entry);
+    }
+  }
+  const perTrial = (ms, n) => (n ? ms / n : null);
+  return {
+    trials: { control: arms.control.length, treatment: arms.treatment.length },
+    steps: [...byStep.values()].map(e => ({
+      step: e.step, control_ms: perTrial(e.control_ms, arms.control.length), treatment_ms: perTrial(e.treatment_ms, arms.treatment.length),
+      invoked: e.invoked, tools: [...e.tools].sort(),
+    })).sort((a, b) => (b.control_ms ?? 0) - (a.control_ms ?? 0) || a.step.localeCompare(b.step)),
+  };
+}
+
+// Steps where control spends this long per trial are worth a tool.
+const BACKLOG_MIN_MS = 20_000;
+
 // Failed invocations per tool, with their most common errors, over treatment trials.
 export function toolFailures(rows, domainOf) {
   const byTool = new Map();
@@ -173,6 +201,7 @@ const ratio = (x) => x === null ? na : `${x.toFixed(1)}×`;
 const pValue = (p) => p === null ? na : p.toFixed(3);
 const usd = (x) => x === null ? na : `$${x.toFixed(x < 1 ? 3 : 2)}`;
 const count = (x) => x === null ? na : String(Math.round(x));
+const seconds = (ms) => ms === null ? na : `${Math.round(ms / 1000)}s`;
 const clock = (ms) => {
   if (ms === null) return na;
   const s = Math.round(ms / 1000);
@@ -198,7 +227,9 @@ export function buildReport(run, allRows, smokeRows = []) {
   const rows = latestRows(allRows);
   const aborted = rows.filter(r => r.outcome === "aborted");
   const pairRows = completePairRows(rows);
-  const scored = [...rows.filter(r => r.adoption !== null && r.outcome !== "aborted"), ...pairRows];
+  // An intent on a domain with no tools runs control alone, so its pairs are single trials.
+  const uncoveredRows = rows.filter(r => run.intents[r.intent]?.uncovered && r.pair !== null && r.outcome !== "aborted");
+  const scored = [...rows.filter(r => r.adoption !== null && r.outcome !== "aborted"), ...pairRows, ...uncoveredRows];
   const unpaired = rows.length - aborted.length - scored.length;
   const out = [];
   out.push(`# A/B screening · ${run.run_id}`);
@@ -225,8 +256,10 @@ export function buildReport(run, allRows, smokeRows = []) {
 
   const results = [];
   out.push("", "## Intents");
+  const backlog = [];
   for (const plan of Object.values(run.intents)) {
     const { intent } = plan;
+    if (plan.uncovered) continue;
     const intentRows = pairRows.filter(r => r.intent === intent.id);
     const leftOut = new Set(rows.filter(r => r.intent === intent.id && r.pair !== null && !intentRows.includes(r)).map(r => r.pair)).size;
     const abortedIn = (arm) => aborted.filter(r => r.intent === intent.id && r.pair !== null && r.arm === arm).length;
@@ -270,6 +303,35 @@ export function buildReport(run, allRows, smokeRows = []) {
       const { checked, treatment_worse: tw, control_worse: cw } = pairs.agreement;
       out.push("", `${intent.agreement.path}, ${intent.agreement.better} is better: in ${checked} both-correct pairs, treatment's was worse in ${tw} and control's in ${cw}.`);
     }
+    const coverage = stepCoverage(intentRows);
+    if (coverage.steps.length) {
+      out.push("", `steps, agent time per trial (${coverage.trials.control} control, ${coverage.trials.treatment} treatment trials with a timeline):`, "");
+      out.push(table(["step", "control", "treatment", "treatment invoked a tool", "tools"], coverage.steps.map(step => [
+        step.step, seconds(step.control_ms), seconds(step.treatment_ms), `${step.invoked} of ${coverage.trials.treatment}`, step.tools.join(", ") || "—",
+      ])));
+      for (const step of coverage.steps) {
+        if (step.control_ms >= BACKLOG_MIN_MS && step.invoked * 2 < coverage.trials.treatment) backlog.push({ intent: intent.id, ...step, treatment_trials: coverage.trials.treatment });
+      }
+    }
+  }
+
+  const uncovered = Object.values(run.intents).filter(plan => plan.uncovered);
+  if (uncovered.length) {
+    out.push("", "## Tasks with no tools yet", "", "These domains have no tools, so their tasks ran control alone: where the agent spends its time is where a tool would help.", "");
+    out.push(table(["intent", "trials", "correct", "outcomes", "median correct", "slowest steps"], uncovered.map(plan => {
+      const intentRows = uncoveredRows.filter(r => r.intent === plan.intent.id);
+      const stats = armStats(intentRows);
+      const coverage = stepCoverage(intentRows);
+      for (const step of coverage.steps) if (step.control_ms >= BACKLOG_MIN_MS) backlog.push({ intent: plan.intent.id, ...step, treatment_trials: 0 });
+      return [plan.intent.id, stats.n, stats.correct, outcomeText(stats.outcomes), clock(stats.median), coverage.steps.slice(0, 3).map(step => `${step.step} ${seconds(step.control_ms)}`).join(", ") || na];
+    })));
+  }
+
+  if (backlog.length) {
+    out.push("", "## Tool backlog", "", `Steps where control spent at least ${BACKLOG_MIN_MS / 1000}s per trial and treatment invoked a tool in fewer than half its trials, longest first.`, "");
+    out.push(table(["intent", "step", "control", "treatment", "treatment invoked a tool"], backlog.sort((a, b) => b.control_ms - a.control_ms).slice(0, 15).map(entry => [
+      entry.intent, entry.step, seconds(entry.control_ms), entry.treatment_trials ? seconds(entry.treatment_ms) : "no tools", entry.treatment_trials ? `${entry.invoked} of ${entry.treatment_trials}` : "—",
+    ])));
   }
 
   if (results.length) {

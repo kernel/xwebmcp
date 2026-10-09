@@ -35,7 +35,7 @@ if (args[0] === "--version") {
 } else if (command.startsWith("browsers create")) {
   const id = `b${++state.next}`;
   const tags = Object.fromEntries(args.flatMap((arg, i) => (arg === "--tag" ? [args[i + 1].split("=")] : [])));
-  state.browsers[id] = { tags, tools: [] };
+  state.browsers[id] = { tags, tools: [], created: Date.now() };
   log(["create", id, tags.arm, args.includes("--extension") ? flag("--extension") : null]);
   print({ session_id: id });
 } else if (command.startsWith("browsers playwright execute")) {
@@ -55,7 +55,9 @@ if (args[0] === "--version") {
   }
 } else if (command.startsWith("browsers webmcp custom-tools add")) {
   const browser = state.browsers[args[4]];
-  browser.tools = [{ id: `ct_${++state.next}`, namespace: flag("--namespace"), tool: { name: "lookup" } }];
+  // One tool per name declared in the batch.
+  const names = [...readFileSync(flag("--source-file"), "utf8").matchAll(/name: "(\w+)"/g)].map(m => m[1]);
+  browser.tools = names.map(name => ({ id: `ct_${++state.next}`, namespace: flag("--namespace"), tool: { name } }));
   log(["add", args[4]]);
   print({ tools: browser.tools });
 } else if (command.startsWith("browsers webmcp custom-tools list")) {
@@ -76,6 +78,11 @@ if (args[0] === "--version") {
   log(["invoke", args[3], arm]);
   const signedOut = (process.env.STUB_SIGNED_OUT_ARMS ?? "").split(",").includes(arm);
   print(signedOut ? { status: "error", error_kind: "not_logged_in", error_message: "Log in first." } : { status: "ok", address: "1 Main St" });
+} else if (command.startsWith("browsers telemetry events")) {
+  // One top-frame navigation to the start page, as the browser is created, in two pages of events.
+  const created = (state.browsers[args[3]] ?? { created: Date.now() }).created;
+  const navigation = { event: { ts: (created + 100) * 1000, type: "page_navigation", category: "page", data: { parent_frame_id: "", url: "https://example.com/" } } };
+  print(args.includes("--offset") ? { events: [navigation] } : { events: [], next_offset: "100" });
 } else if (command.startsWith("browsers delete")) {
   delete state.browsers[args[2]];
   save();

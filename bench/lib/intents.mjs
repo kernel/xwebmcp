@@ -1,6 +1,7 @@
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { checkSchema } from "./schema.mjs";
+import { matchesUrlPattern } from "./tools.mjs";
 
 const STAGES = ["find", "inspect", "compare", "prepare", "gap"];
 const RULE_CHECKS = ["equals", "in", "matches", "range", "count", "time", "date", "unique"];
@@ -28,6 +29,15 @@ export function trialPrompt(intent, browserId) {
   const browser = browserId ? `Use the Kernel browser with session id ${browserId}. It is already open on ${intent.start_url}.` : `The browser is already open on ${intent.start_url}.`;
   const allowed = (intent.allow ?? []).map(key => ALLOW[key]).join(" ");
   return [fill(intent.prompt, intent.fixture), allowed, intent.instructions, browser].filter(Boolean).join("\n\n");
+}
+
+function validUrlPattern(pattern) {
+  try {
+    matchesUrlPattern("https://example.com/", pattern);
+    return typeof pattern === "string";
+  } catch {
+    return false;
+  }
 }
 
 // `requests` becomes a declarativeNetRequest regexFilter, which Chrome compiles with RE2.
@@ -75,19 +85,24 @@ export function validateIntent(intent, benchDir) {
   need(STAGES.includes(intent.stage), `stage must be one of ${STAGES.join(", ")}`);
   need(typeof intent.prompt === "string" && intent.prompt.length > 0, "prompt is required");
   need(/^https:\/\//.test(intent.start_url ?? ""), "start_url must be https");
-  need(Array.isArray(intent.tools) && intent.tools.length > 0, "tools must list at least one {repo, ref, names}");
+  // An intent describes the user's task; `tools` only says which commits to register the domain's
+  // tools from (main by default), and `names`, when given, are tools it expects to be used.
+  need(intent.tools === undefined || (Array.isArray(intent.tools) && intent.tools.length > 0), "tools, when given, must list at least one {repo, ref}");
   for (const source of intent.tools ?? []) {
     need(typeof source.repo === "string" && typeof source.ref === "string", "each tools entry needs repo and ref");
     // The runner evaluates tool files, so only this repository.
     need(source.repo === "kernel/xwebmcp", "tools repo must be kernel/xwebmcp");
     need(source.sha === undefined || /^[0-9a-f]{40}$/.test(source.sha), "tools sha, when pinned, must be a full commit sha");
-    need(Array.isArray(source.names), "each tools entry needs a names array");
+    need(source.names === undefined || (Array.isArray(source.names) && source.names.every(name => typeof name === "string")), "tools names, when given, must list tool names");
   }
   const named = (intent.tools ?? []).flatMap(source => source.names ?? []);
-  need(intent.stage === "gap" ? named.length === 0 : named.length > 0, intent.stage === "gap" ? "gap intents name no tools" : "non-gap intents name the tools a treatment agent would use");
-  need(typeof intent.entry_tool === "string", "entry_tool is required");
-  need(typeof intent.answer_schema === "string" && existsSync(join(benchDir, intent.answer_schema)), "answer_schema must point at a file under bench/");
+  need(intent.stage !== "gap" || named.length === 0, "gap intents name no tools");
+  need(intent.entry_tool === undefined || typeof intent.entry_tool === "string", "entry_tool, when given, must be a tool name");
   need(intent.actions === undefined, "actions belong in the domain's domain.json");
+  need(intent.steps === undefined || (Array.isArray(intent.steps) && intent.steps.length > 0 && intent.steps.every(step => typeof step?.name === "string" && step.name.length > 0
+    && Array.isArray(step.url_patterns) && step.url_patterns.length > 0 && step.url_patterns.every(validUrlPattern))),
+    "steps must list {name, url_patterns} with valid URL patterns");
+  need(typeof intent.answer_schema === "string" && existsSync(join(benchDir, intent.answer_schema)), "answer_schema must point at a file under bench/");
   // A prepare intent changes site state, so the runner reads where the agent left the browser from
   // the page itself, never through the tools under test.
   const { check, allow, guard } = intent;
@@ -187,7 +202,8 @@ export function loadIntents(benchDir) {
       // checkout tools only intents that may go through checkout.
       const intentActions = intent.stage !== "prepare" ? [] : [...Object.keys(actions), ...(intent.allow?.includes("checkout") ? Object.keys(checkoutActions) : [])];
       intents.push({
-        ...intent, actions: intentActions, exclude: intentProfile ? exclude : { ...exclude, ...needsSignIn }, profile: intentProfile,
+        ...intent, tools: intent.tools ?? [{ repo: "kernel/xwebmcp", ref: "main" }], actions: intentActions,
+        exclude: intentProfile ? exclude : { ...exclude, ...needsSignIn }, profile: intentProfile,
         signed_in_check: intent.profile ? intent.signed_in_check : signedInCheck, instructions,
       });
     }

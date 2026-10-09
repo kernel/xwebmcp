@@ -17,18 +17,6 @@
     "card_cvc": "500"
   },
   "start_url": "https://bluebottlecoffee.com/",
-  "tools": [
-    {
-      "repo": "kernel/xwebmcp",
-      "ref": "main",
-      "names": [
-        "find_product",
-        "get_product",
-        "add_to_cart",
-        "continue_to_checkout"
-      ]
-    }
-  ],
   "allow": [
     "checkout",
     "payment_details"
@@ -41,7 +29,6 @@
     "form_submit": true,
     "requests": "/confirm(?:[/?#]|$)|payment_intents|setup_intents"
   },
-  "entry_tool": "find_product",
   "answer_schema": "schemas/checkout-order.json",
   "rules": [
     {

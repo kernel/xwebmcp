@@ -208,14 +208,18 @@ test("a prepare intent's actions are registered, and must exist", async () => {
   assert.deepEqual((await registeredTools(intent, ["main"], show)).map(t => t.name), ["save", "search"]);
   await assert.rejects(registeredTools({ ...intent, actions: ["delete"] }, ["main"], show), /actions names delete, which no source has/);
   await assert.rejects(registeredTools({ ...intent, actions: [] }, ["main"], show), /save is excluded or neither/);
+  // Without names or an entry tool, every read-only tool is registered, and a domain with none registers none.
+  assert.deepEqual((await registeredTools({ ...base, exclude: {}, actions: [], entry_tool: undefined, tools: [{ ref: "main" }] }, ["main"], show)).map(t => t.name), ["search"]);
+  assert.deepEqual(await registeredTools({ ...base, domain: "other.com", exclude: {}, actions: [], entry_tool: undefined, tools: [{ ref: "main" }] }, ["main"], show), []);
 });
 
-test("a domain's actions reach its prepare intents, and its checkout actions only those that allow checkout", () => {
-  const delta = loadIntents(benchDir).filter(i => i.domain === "delta.com");
-  const actions = (id) => delta.find(i => i.id === id).actions;
+test("a domain's actions reach its prepare intents, its checkout actions only those that allow checkout, and intents default to main", () => {
+  const intents = loadIntents(benchDir);
+  const actions = (id) => intents.find(i => i.id === id).actions;
   assert.deepEqual(actions("delta-cheapest-fare"), []);
   assert.deepEqual(actions("delta-cart-main-classic"), ["select_fare", "select_fare_experience"]);
   assert.ok(actions("delta-checkout-signed-in").includes("continue_checkout"));
+  assert.deepEqual(intents.find(i => i.id === "delta-cart-main-classic").tools, [{ repo: "kernel/xwebmcp", ref: "main" }]);
 });
 
 test("local browsers load the extension under the id Chrome gives it, and their MCP config fills in per browser", async () => {
