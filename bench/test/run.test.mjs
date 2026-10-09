@@ -6,39 +6,51 @@ import { delimiter, dirname, join } from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 
-// Runs run.mjs end to end against stub pi, kernel and hypeship commands, on one signed-in intent
-// whose tools come from a local repository standing in for kernel/xwebmcp. Each trial that reaches
-// its agent waits 10s after load, so a pair takes about 20s.
+// Runs run.mjs end to end against stub pi, kernel and hypeship commands, on one intent whose tools
+// come from a local repository standing in for kernel/xwebmcp. Each trial that reaches its agent
+// waits 10s after load, so a pair takes about 20s.
 
 const benchDir = join(dirname(fileURLToPath(import.meta.url)), "..");
 const START_DELAY_MS = 1000;
 
-function workspace() {
+const lookupIntent = {
+  id: "example-lookup", domain: "example.com", stage: "inspect",
+  prompt: "On example.com, look up 8.8.8.8. Reply with JSON: {\"ip\": string, \"country_code\": string, \"asn\": string}.",
+  start_url: "https://example.com/",
+  tools: [{ repo: "kernel/xwebmcp", ref: "main", names: ["lookup"] }],
+  entry_tool: "lookup", answer_schema: "schemas/ip-lookup.json",
+  rules: [{ path: "asn", equals: "AS15169" }],
+  pairs: 1, trial_timeout_sec: 60, max_turns: 5,
+};
+
+const checkoutIntent = {
+  ...lookupIntent, id: "example-checkout", stage: "prepare",
+  tools: [{ repo: "kernel/xwebmcp", ref: "main", names: ["lookup", "add"] }],
+  allow: ["checkout", "payment_details"],
+  guard: { hosts: ["https://example.com/*"], buttons: "^pay$", form_submit: true },
+  check: { fields: { email: "#email" }, rules: [{ path: "fields.email", equals: "a@example.com" }] },
+};
+
+function workspace({ domain = { profile: "bench-example", signed_in_check: { tool: "lookup" } }, intent = lookupIntent } = {}) {
   const dir = mkdtempSync(join(tmpdir(), "bench-run-"));
   const bench = join(dir, "bench");
   for (const path of ["run.mjs", "grade.mjs", "lib", "prompts", "allowlist.txt", "mcp.json", "allowlist.local.txt", "mcp.local.json", "schemas"]) cpSync(join(benchDir, path), join(bench, path), { recursive: true });
   cpSync(join(benchDir, "../extension/lib/url-pattern.js"), join(dir, "extension/lib/url-pattern.js"));
   mkdirSync(join(bench, "tasks/example.com"), { recursive: true });
-  writeFileSync(join(bench, "tasks/example.com/domain.json"), JSON.stringify({ profile: "bench-example", signed_in_check: { tool: "lookup" } }));
-  writeFileSync(join(bench, "tasks/example.com/example-lookup.json"), JSON.stringify({
-    id: "example-lookup", domain: "example.com", stage: "inspect",
-    prompt: "On example.com, look up 8.8.8.8. Reply with JSON: {\"ip\": string, \"country_code\": string, \"asn\": string}.",
-    start_url: "https://example.com/",
-    tools: [{ repo: "kernel/xwebmcp", ref: "main", names: ["lookup"] }],
-    entry_tool: "lookup", answer_schema: "schemas/ip-lookup.json",
-    rules: [{ path: "asn", equals: "AS15169" }],
-    pairs: 1, trial_timeout_sec: 60, max_turns: 5,
-  }));
+  writeFileSync(join(bench, "tasks/example.com/domain.json"), JSON.stringify(domain));
+  writeFileSync(join(bench, `tasks/example.com/${intent.id}.json`), JSON.stringify(intent));
 
   const source = join(dir, "source");
   mkdirSync(join(source, "domains/example.com"), { recursive: true });
-  writeFileSync(join(source, "registry.json"), JSON.stringify({ tools: [{ namespace: "example.com", file: "domains/example.com/lookup.js" }] }));
-  writeFileSync(join(source, "domains/example.com/lookup.js"), `[{
-    kind: "page",
-    match: { url_patterns: ["https://example.com/*"] },
-    tool: { name: "lookup", annotations: { readOnlyHint: true } },
-    execute: async () => ({ status: "ok" }),
-  }]`);
+  writeFileSync(join(source, "registry.json"), JSON.stringify({ tools: ["lookup", "add"].map(name => ({ namespace: "example.com", file: `domains/example.com/${name}.js` })) }));
+  for (const [name, readOnly] of [["lookup", true], ["add", false]]) {
+    writeFileSync(join(source, `domains/example.com/${name}.js`), `[{
+      kind: "page",
+      match: { url_patterns: ["https://example.com/*"] },
+      tool: { name: "${name}", annotations: { readOnlyHint: ${readOnly} } },
+      execute: async () => ({ status: "ok" }),
+    }]`);
+  }
   const git = (...args) => execFileSync("git", ["-C", source, ...args], { stdio: "ignore" });
   git("init", "--quiet", "--initial-branch=main");
   git("add", ".");
@@ -157,4 +169,45 @@ test("a Kernel run resumed with --browser local still uses Kernel browsers", { t
   assert.equal(resumed.status, 0, resumed.stderr + resumed.stdout);
   assert.deepEqual(rows("backend").filter(r => r.pair === 2).map(r => r.outcome), ["correct", "correct"]);
   assert.ok(log().filter(entry => entry[0] === "create").length > created);
+});
+
+test("a checkout intent loads the guard in both arms and fails a trial that tried to submit", { timeout: 120_000 }, () => {
+  const { run, rows, log } = workspace({ domain: { actions: { add: "adds to the cart" } }, intent: checkoutIntent });
+  const result = run("checkout", { STUB_SUBMIT_ARMS: "treatment" });
+  assert.equal(result.status, 0, result.stderr + result.stdout);
+  const uploads = log().filter(entry => entry[0] === "upload");
+  assert.equal(uploads.length, 1);
+  const extension = uploads[0][1];
+  assert.match(extension, /^bench-guard-[0-9a-f]{12}$/);
+  // The smoke gate's browser and both arms' browsers load it.
+  assert.deepEqual(log().filter(entry => entry[0] === "create").map(entry => entry[3]), [extension, extension, extension]);
+  const outcomes = Object.fromEntries(rows("checkout").map(r => [r.arm, [r.outcome, r.reason, r.submit_blocked]]));
+  assert.deepEqual(outcomes.control, ["correct", null, 0]);
+  assert.deepEqual(outcomes.treatment, ["crashed", "tried to submit: the guard blocked 1 attempt(s)", 1]);
+
+  // A second run reuses the uploaded extension.
+  assert.equal(run("checkout-again").status, 0);
+  assert.equal(log().filter(entry => entry[0] === "upload").length, 1);
+});
+
+test("a checkout trial whose guard count or end state cannot be read aborts", { timeout: 120_000 }, () => {
+  const { run, rows } = workspace({ domain: { actions: { add: "adds to the cart" } }, intent: checkoutIntent });
+  for (const [runId, env, reason] of [["no-cookies", { STUB_COOKIES_FAIL_ARMS: "treatment" }, /could not read the guard's count/],
+    ["no-page", { STUB_PAGE_FAIL_ARMS: "treatment" }, /could not read the end state/]]) {
+    const result = run(runId, env);
+    assert.equal(result.status, 0, result.stderr + result.stdout);
+    const treatment = rows(runId).filter(r => r.arm === "treatment");
+    assert.deepEqual(treatment.map(r => r.outcome), ["aborted", "aborted"], runId);
+    for (const row of treatment) assert.match(row.reason, reason);
+  }
+});
+
+test("an opt_in intent runs only when named with --intent", { timeout: 120_000 }, () => {
+  const { run } = workspace({ intent: { ...lookupIntent, opt_in: "not rehearsed" } });
+  const unnamed = run("opt-in");
+  assert.equal(unnamed.status, 1);
+  assert.match(unnamed.stdout, /skipping example-lookup: not rehearsed; name it with --intent/);
+  assert.match(unnamed.stderr, /no intents selected/);
+  const named = run("opt-in-named", {}, ["--intent", "example-lookup"]);
+  assert.equal(named.status, 0, named.stderr + named.stdout);
 });

@@ -143,6 +143,9 @@ function collectRefs(value, refs, depth = 0) {
   for (const child of Object.values(value)) collectRefs(child, refs, depth + 1);
 }
 
+// A form tool that fills a checkout without submitting it ends awaiting_submission.
+const SUCCEEDED = ["completed", "awaiting_submission"];
+
 // The invocation's status, the tool's own status, and an error message when either failed. A
 // call the MCP server rejected, such as one with a stale tool_ref, comes back as plain text.
 function invocationResult(call) {
@@ -153,12 +156,12 @@ function invocationResult(call) {
   }
   const output = result.output !== null && typeof result.output === "object" ? result.output : {};
   const toolStatus = typeof output.status === "string" ? output.status : null;
-  const failed = result.status !== "completed" || toolStatus === "error";
+  const failed = !SUCCEEDED.includes(result.status) || toolStatus === "error";
   const error = failed ? result.error_text ?? output.error_message ?? output.message ?? output.error_kind ?? result.status ?? null : null;
   return { status: result.status ?? "unknown", tool_status: toolStatus, error: typeof error === "string" ? error.slice(0, 300) : null };
 }
 
-export const invocationFailed = (invocation) => invocation.status !== "completed" || invocation.tool_status === "error";
+export const invocationFailed = (invocation) => !SUCCEEDED.includes(invocation.status) || invocation.tool_status === "error";
 
 const WEBMCP = "mcp__kernel__webmcp";
 // `xwebmcp mcp`'s list_tools and invoke_tool, which a local browser's agent uses instead.

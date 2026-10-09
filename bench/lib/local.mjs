@@ -107,14 +107,15 @@ async function waitFor(what, fn, timeoutMs) {
 
 // Opens the start page in a tab the extension owns, so `xwebmcp mcp` lists and invokes its
 // tools without allow_user_tabs, and closes Chrome's own first tab. `profile` names a Kernel
-// profile, which a local browser cannot load.
-export async function createBrowser({ startUrl, profile }) {
+// profile, which a local browser cannot load. `extension` is the submission guard, loaded unpacked.
+export async function createBrowser({ startUrl, profile, extension }) {
   if (profile) throw new Error(`local browsers cannot load the Kernel profile ${profile}`);
   const dir = mkdtempSync(join(tmpdir(), "bench-local-"));
   const paths = writeProfile(dir);
+  const extensions = [paths.extension, ...(extension ? [extension.dir] : [])].join(",");
   const args = [
     `--user-data-dir=${paths.profile}`, "--remote-debugging-port=0", "--no-first-run", "--no-default-browser-check",
-    `--disable-extensions-except=${paths.extension}`, `--load-extension=${paths.extension}`, "--window-size=1920,1080",
+    `--disable-extensions-except=${extensions}`, `--load-extension=${extensions}`, "--window-size=1920,1080",
   ];
   if (config.headless) args.push("--headless=new");
   const log = join(dir, "chrome.log");
@@ -161,6 +162,44 @@ export async function waitForLoad(id, startUrl) {
   }
   return { url: (await ownedTab(browser)).url, version: config.chrome_version, renavigated };
 }
+
+// Sends one DevTools protocol command to a target and returns its result.
+async function devtools(what, webSocketUrl, method, params) {
+  const socket = new WebSocket(webSocketUrl);
+  try {
+    await new Promise((resolve, reject) => { socket.onopen = resolve; socket.onerror = () => reject(new Error(`${what}: cannot connect to the browser`)); });
+    const reply = new Promise((resolve, reject) => {
+      socket.onmessage = (event) => resolve(JSON.parse(event.data));
+      setTimeout(() => reject(new Error(`${what}: no answer from the browser`)), 30_000).unref();
+    });
+    socket.send(JSON.stringify({ id: 1, method, params }));
+    const { result, error } = await reply;
+    if (error) throw new Error(`${what}: ${error.message}`);
+    return result;
+  } finally {
+    socket.close();
+  }
+}
+
+// Runs a function of one JSON argument in the bench's tab over the DevTools protocol.
+export async function evaluate(id, fn, arg) {
+  const browser = browsers.get(id);
+  const { url } = await ownedTab(browser);
+  const pages = (await (await fetch(`http://127.0.0.1:${browser.port}/json/list`)).json()).filter(t => t.type === "page");
+  const target = pages.find(t => t.url === url) ?? pages[0];
+  if (!target) throw new Error("evaluate: no page to read");
+  const result = await devtools("evaluate", target.webSocketDebuggerUrl, "Runtime.evaluate", { expression: `(${fn})(${JSON.stringify(arg)})`, returnByValue: true, awaitPromise: true });
+  if (result?.exceptionDetails) throw new Error(`evaluate: ${result.exceptionDetails.exception?.description ?? result.exceptionDetails.text}`);
+  return result?.result?.value;
+}
+
+// Every cookie in the browser, whatever page it is on.
+export async function cookies(id) {
+  const { webSocketDebuggerUrl } = await (await fetch(`http://127.0.0.1:${browsers.get(id).port}/json/version`)).json();
+  return (await devtools("cookies", webSocketDebuggerUrl, "Storage.getCookies", {})).cookies;
+}
+
+export async function ensureExtension() {}
 
 export async function addCustomTools(id, namespace, sourceFile) {
   const browser = browsers.get(id);

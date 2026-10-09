@@ -1,7 +1,12 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
 import test from "node:test";
-import { checkRule, extractAnswer, gradeAnswer, resolvePath } from "../grade.mjs";
+import { fileURLToPath } from "node:url";
+import { checkRule, checkSameAsAnswer, extractAnswer, gradeAnswer, resolvePath } from "../grade.mjs";
 import { fill } from "../lib/intents.mjs";
+
+const benchDir = join(dirname(fileURLToPath(import.meta.url)), "..");
 
 const schema = {
   type: "object",
@@ -77,4 +82,45 @@ test("a matches rule takes fixture values literally", () => {
   const grade = (film) => gradeAnswer(intent, { type: "object" }, JSON.stringify({ film })).outcome;
   assert.equal(grade("verity (2026)"), "correct");
   assert.equal(grade("Verity 2026"), "wrong");
+});
+
+test("a prepare intent is correct only when the end state passes its check", () => {
+  const prepare = { ...intent, check: { rules: [{ path: "step", equals: "trip_summary" }, { path: "slices[].origin", matches: "ATL" }] } };
+  const text = '{"ip": "8.8.8.8", "country_code": "US", "asn": "AS15169"}';
+  const grade = (endState) => gradeAnswer(prepare, schema, text, endState);
+  assert.deepEqual([grade({ output: { step: "trip_summary", slices: [{ origin: "ATL" }] } }).outcome, grade({ output: { step: "trip_summary", slices: [{ origin: "ATL" }] } }).end_state], ["correct", true]);
+  const elsewhere = grade({ output: { step: "other", slices: [] } });
+  assert.deepEqual([elsewhere.outcome, elsewhere.end_state, elsewhere.problems], ["wrong", false, ['end state: step: "other" is not "trip_summary"', "end state: slices[].origin: no value"]]);
+  assert.equal(gradeAnswer(intent, schema, text).end_state, null);
+});
+
+test("a prepare intent's answer must report what the runner read on the page", () => {
+  const prepare = { ...intent, check: { rules: [], same_as_answer: [{ answer: "asn", end_state: "connection.asn" }, { answer: "ip", end_state: "ips[]" }] } };
+  const text = '{"ip": "8.8.8.8", "country_code": "US", "asn": "AS15169"}';
+  const grade = (output) => gradeAnswer(prepare, schema, text, { output });
+  assert.equal(grade({ connection: { asn: "as 15169" }, ips: ["8.8.8.8"] }).outcome, "correct");
+  const elsewhere = grade({ connection: { asn: "AS15170" }, ips: ["8.8.8.8"] });
+  assert.deepEqual([elsewhere.outcome, elsewhere.end_state, elsewhere.problems], ["wrong", false, ['end state: asn is ["as15169"] in the answer but connection.asn is ["as15170"] on the site']]);
+  assert.equal(grade({ connection: { asn: "AS15169" }, ips: [] }).outcome, "wrong");
+});
+
+test("amounts match to the cent", () => {
+  assert.equal(checkSameAsAnswer({ answer: "total", end_state: "amount_due" }, { total: 143.4 }, { amount_due: 143.40000001 }), null);
+  assert.match(checkSameAsAnswer({ answer: "total", end_state: "amount_due" }, { total: 143.4 }, { amount_due: 150.2 }), /\[143\.4\] in the answer but amount_due is \[150\.2\]/);
+  assert.match(checkSameAsAnswer({ answer: "total", end_state: "amount_due" }, { total: 143.4 }, { amount_due: null }), /\[null\] on the site/);
+});
+
+test("the espresso checkout grades the fields read from the page", () => {
+  const intent = JSON.parse(readFileSync(join(benchDir, "tasks/bluebottlecoffee.com/bluebottle-checkout-espresso.json"), "utf8"));
+  const espressoSchema = JSON.parse(readFileSync(join(benchDir, intent.answer_schema), "utf8"));
+  const page = {
+    url: "https://checkout.bluebottlecoffee.com/c/pay/cs_live_x", missing: [], invalid: [],
+    fields: { email: "webmcp-demo@example.com", name: "Alex Demo", address: "500 Sansome Street", city: "San Francisco", zip: "94111", state: "CA", phone: "(415) 555-0123", card_number: "4242 4242 4242 4242", card_expiry: "08 / 31", card_cvc: "500" },
+  };
+  const grade = (output) => gradeAnswer(intent, espressoSchema, '{"product": "Opascope Espresso", "quantity": 1}', { output });
+  assert.deepEqual(grade(page).problems, []);
+  assert.equal(grade({ ...page, fields: { ...page.fields, phone: "+1 415-555-0123" } }).outcome, "correct");
+  assert.match(grade({ ...page, fields: { ...page.fields, card_number: "4000 0000 0000 0002" } }).problems[0], /card_number/);
+  assert.match(grade({ ...page, invalid: ["card_cvc"] }).problems[0], /invalid: count outside/);
+  assert.match(grade({ ...page, url: "https://bluebottlecoffee.com/us/eng" }).problems[0], /url/);
 });

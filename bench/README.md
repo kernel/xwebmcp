@@ -88,7 +88,8 @@ front), the WebMCP flag on, and its own `XWEBMCP_HOME`, so trials share nothing.
 and gives the agent `xwebmcp mcp` (`list_tools`, `invoke_tool`) and Chrome DevTools MCP for
 everything else (`allowlist.local.txt`, `mcp.local.json`, `prompts/system.local.md`). Chrome runs
 headed; `--headless` is for machines without a display, and sites block it more often.
-`--stealth` and signed-in domains are Kernel-only.
+`--stealth` and signed-in intents are Kernel-only; a checkout intent's guard loads as a second
+unpacked extension.
 
 Local runs are a different setup from Kernel runs, and the report says so in its header. The
 native messaging host manifest is written into each trial's profile, which Chromium reads on
@@ -116,8 +117,9 @@ interleaved across intents; a pair's two trials run back to back in one slot.
 
 ### A trial
 
-1. Create a browser on the start URL, tagged with the run, arm and intent. If the page is still
-   loading after 15s, navigate again; then wait up to 15s for `load`.
+1. Create a browser on the start URL, tagged with the run, arm and intent, with the intent's
+   submission guard loaded if it has one. If the page is still loading after 15s, navigate
+   again; then wait up to 15s for `load`.
 2. Check the loaded URL matches the entry tool's URL patterns, in both arms.
 3. Treatment: register the batch, confirm the `entry_tool` is live on the tab, and on a signed-in
    domain run the sign-in check. Control: on a signed-in domain, register the batch, run the same
@@ -125,9 +127,10 @@ interleaved across intents; a pair's two trials run back to back in one slot.
    arms record the page's own WebMCP tools, which both can use.
 4. Wait until 10s after load in both arms, then launch the agent. The clock runs to
    `agent_settled`; the runner stops the agent at the time, turn or spend cap.
-5. Grade the answer, delete the browser and append a row to `rows.jsonl`. Each attempt keeps its
-   own directory under `trials/<intent>/` (`p1-control`, then `p1-control-2` for a rerun), named in
-   the row's `trial_dir`.
+5. On a guarded intent, read the guard's count of blocked submit attempts. Grade the answer,
+   delete the browser and append a row to `rows.jsonl`. Each attempt keeps its own directory
+   under `trials/<intent>/` (`p1-control`, then `p1-control-2` for a rerun), named in the row's
+   `trial_dir`.
 
 A setup failure gets up to three browsers before the trial is `aborted` (a signed-out profile
 gets one). A trial is also `aborted` when the agent started without exactly the allowlisted tools
@@ -156,6 +159,20 @@ and deletes every browser.
 
 - `stage` is `find`, `inspect`, `compare`, `prepare` or `gap`. A `gap` intent is one no tool
   covers; it names no tools and serves as the placebo check.
+- A `prepare` intent walks a site's flow part way, such as putting a fare in Delta's cart and
+  stopping on Trip Summary. Treatment also gets the domain's `actions`, its tools that change
+  site state (see below). `check` grades where the agent left the browser, read from the page in
+  both arms and never through the tools under test: its `rules` see the page's `url`, `title`
+  and visible `text`; `extract` maps names to regexes whose first group is read from that text
+  as `extracted.<name>` (an amount such as `$1,234.50` becomes a number); `fields` maps names to
+  CSS selectors of inputs, read as `fields.<name>`, with `missing` and `invalid` lists of names.
+  `same_as_answer` lists `{answer, end_state}` path pairs whose values must match, so the answer
+  reports what is on the page.
+- `allow` (prepare intents only) lets the agent do more than the system prompt allows, with the
+  same sentences added to both arms' prompts: `checkout` to add to the cart and go through
+  checkout up to, never including, the button that pays or books, and `payment_details` to enter
+  the details the task gives, which must be test data. An intent that allows `checkout` needs a
+  `guard`, and see [Checkout intents](#checkout-intents).
 - `tools` lists kernel/xwebmcp refs (or full `sha`s) to register from. Treatment gets every tool
   `registry.json` lists for the domain at those commits whose file declares
   `readOnlyHint: true`; later sources replace earlier tools of the same name, so a PR to an
@@ -174,21 +191,63 @@ and deletes every browser.
   "issues[]", "same": true}` is for one right answer that changes too often to pin in rules, and
   counts both-correct pairs whose answers differ as sets. Leave it off intents with many right
   answers.
+- `opt_in` (optional) is a reason the intent runs only when named with `--intent`, such as a
+  checkout intent not yet rehearsed on the live site.
 
 `tasks/<domain>/domain.json` holds per-domain settings:
 
 - `exclude`: read-only tools always left out, each with a reason;
 - `needs_sign_in`: read-only tools that need an account, left out unless the domain has a profile;
+- `actions`: tools that change site state that are safe to give the domain's `prepare` intents,
+  each with a reason, such as adding to a cart or choosing a fare. Tools that sign in, pay, book
+  or send stay out;
+- `checkout_actions`: like `actions`, but only for intents that allow `checkout`, such as tools
+  that move through checkout steps or hold a seat;
 - `profile` and `signed_in_check`: see below;
 - `instructions`: text added to every trial prompt on the domain, in both arms. The system prompt
   forbids adding to a cart unless the task allows it, so a domain that needs carts says so here.
   amctheatres.com uses it to name the step that creates a cart, since an AMC cart holds seats.
 
+### Checkout intents
+
+A `guard` is built into a small Chrome extension, uploaded to Kernel under a name taken from its
+content and loaded in both arms' browsers. Its script runs in the page's own world, in every
+frame, from document start, on the guard's `hosts` (Chrome match patterns):
+
+- clicks on buttons and links whose text matches `buttons` (case-insensitive) are blocked;
+- with `form_submit`, so are clicks on a form's submit buttons, form submission, `form.submit()` and
+  `requestSubmit()`, and Enter in a form field (not counted, since agents press it to pick
+  address suggestions);
+- clicks on anything inside an element matching `selectors` (CSS), whatever its text, are blocked;
+- with `requests`, a declarativeNetRequest rule blocks fetch, XHR and beacon requests whose URL
+  matches it (RE2 syntax), from any frame or world;
+- with `form_submit`, a declarativeNetRequest rule also blocks POST navigations started on the
+  guard's hosts, which catches `form.submit()` called from Playwright's `page.evaluate`: that runs
+  in an isolated world, where the page-world overrides of `submit()` are not installed.
+
+Each blocked click or submission in the page is counted in a cookie on that host. After the trial
+the runner reads the cookies of the whole browser, so an attempt counts even when the agent then
+left the page, and a trial with any is `crashed`: the agent broke the rule against submitting.
+Requests and navigations the network rules block are not counted. This is defense in depth, not a
+guarantee, so checkout intents also use test data: a test card that cannot be charged, or a
+signed-in test account that cannot pay (see "Signed-in trials"). Rehearse a new checkout intent
+on the live site before running it.
+
+`bluebottle-checkout-espresso` is the espresso task: one bag of Opascope Espresso, checkout
+filled with test details and card 4242 4242 4242 4242, the ten fields read from the page.
+Checkout's native `fill_payment_form` tool is the site's, so both arms can use it.
+`delta-checkout-signed-in` books the cheapest Main Classic fare up to Review and Pay's Payment
+section on the `bench-delta` profile, checked from the page's text. Its guard has not been checked
+on Delta's live Review and Pay, so it is `opt_in`; drop that once it has been rehearsed.
+
 ### Signed-in trials
 
 A domain with a Kernel `profile` loads it in every browser, in both arms, without saving
-changes, and registers its `needs_sign_in` tools. Use a test account with no saved payment
-method, kept signed in by a managed auth connection:
+changes, and registers its `needs_sign_in` tools. An intent can name its own `profile` and
+`signed_in_check` instead, as `delta-checkout-signed-in` does, so other intents on the domain run
+signed out. Use a test account that cannot pay for anything: no saved payment method, and on a
+checkout intent no balance the site could spend either (Delta: zero SkyMiles, no eCredits, gift
+cards or certificates). Keep it signed in with a managed auth connection:
 
 ```sh
 kernel auth connections create --domain instacart.com --profile-name bench-instacart -o json
@@ -196,8 +255,9 @@ kernel auth connections login <connection id>
 ```
 
 `signed_in_check` names a read-only tool (and optional input) that returns an error when signed
-out. The smoke gate and every setup in both arms invoke it; a signed-out trial aborts. Control
-registers the batch for the check and removes it before the agent starts.
+out, or, with `rules`, whose output fails a rule when signed out. The smoke gate and every setup
+in both arms invoke it; a signed-out trial aborts. Control registers the batch for the check and
+removes it before the agent starts.
 Jobs on one profile run one at a time, but server-side state such as recent searches carries
 across trials and arms. A missing profile skips the domain, or stops the run if it was selected
 by name.
@@ -207,8 +267,13 @@ by name.
 1. Extract an answer from the final message: the last fenced JSON block, then a trailing object,
    then `key: value` lines naming schema properties. Nothing extracted is `malformed`.
 2. A schema or rule failure is `wrong`; otherwise `correct`, which means plausible, not verified.
+3. For a `prepare` intent, the page must also pass the check's rules and match the answer at each
+   `same_as_answer` pair, or it is `wrong`. What the runner read from the page, text included, is
+   saved as `end-state.json` next to the transcript. A page that cannot be read, or a guard count
+   that cannot be read, aborts the trial, so its pair runs again.
 
-A successful call outside the allowlist, a pi error or a missing cost is `crashed`; hitting a
+A successful call outside the allowlist, a blocked submit attempt, a pi error or a missing cost is
+`crashed`; hitting a
 cap is `timeout`. `node bench/grade.mjs bench/results/<run_id>/trials/<intent>/<trial>` regrades
 one trial against its run's `run.json`.
 

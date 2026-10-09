@@ -1,0 +1,136 @@
+{
+  "id": "bluebottle-checkout-espresso",
+  "domain": "bluebottlecoffee.com",
+  "stage": "prepare",
+  "prompt": "On bluebottlecoffee.com, put one bag of {{coffee}} in the cart as a one-time order, not a subscription. Go to checkout and fill it in with these details, then stop without submitting. Email: {{email}}. Full name: {{name}}. Address: {{address}}, {{city}}, {{state}} {{zip}}, United States. Phone: {{phone}}, United States. Card number {{card_number}}, expiration {{card_expiry}}, CVC {{card_cvc}}, billing address same as shipping. Leave marketing and save-my-information options unticked, and do not tick \"I am an AI agent\". Reply with JSON: {\"product\": string, \"quantity\": integer}.",
+  "fixture": {
+    "coffee": "Opascope Espresso",
+    "email": "webmcp-demo@example.com",
+    "name": "Alex Demo",
+    "address": "500 Sansome Street",
+    "city": "San Francisco",
+    "state": "CA",
+    "zip": "94111",
+    "phone": "4155550123",
+    "card_number": "4242424242424242",
+    "card_expiry": "08/31",
+    "card_cvc": "500"
+  },
+  "start_url": "https://bluebottlecoffee.com/",
+  "tools": [
+    {
+      "repo": "kernel/xwebmcp",
+      "ref": "main",
+      "names": [
+        "find_product",
+        "get_product",
+        "add_to_cart",
+        "continue_to_checkout"
+      ]
+    }
+  ],
+  "allow": [
+    "checkout",
+    "payment_details"
+  ],
+  "guard": {
+    "hosts": [
+      "https://checkout.bluebottlecoffee.com/*"
+    ],
+    "buttons": "^(pay|complete order|place order|subscribe)\\b(?! with)",
+    "form_submit": true,
+    "requests": "/confirm(?:[/?#]|$)|payment_intents|setup_intents"
+  },
+  "entry_tool": "find_product",
+  "answer_schema": "schemas/checkout-order.json",
+  "rules": [
+    {
+      "path": "product",
+      "matches": "{{coffee}}"
+    },
+    {
+      "path": "quantity",
+      "equals": 1
+    }
+  ],
+  "check": {
+    "fields": {
+      "email": "#email",
+      "name": "#shippingName",
+      "address": "#shippingAddressLine1",
+      "city": "#shippingLocality",
+      "zip": "#shippingPostalCode",
+      "state": "#shippingAdministrativeArea",
+      "phone": "#phoneNumber",
+      "card_number": "#cardNumber",
+      "card_expiry": "#cardExpiry",
+      "card_cvc": "#cardCvc"
+    },
+    "rules": [
+      {
+        "path": "url",
+        "matches": "^https://checkout\\.bluebottlecoffee\\.com/"
+      },
+      {
+        "path": "missing",
+        "count": [
+          0,
+          0
+        ]
+      },
+      {
+        "path": "invalid",
+        "count": [
+          0,
+          0
+        ]
+      },
+      {
+        "path": "fields.email",
+        "equals": "{{email}}"
+      },
+      {
+        "path": "fields.name",
+        "equals": "{{name}}"
+      },
+      {
+        "path": "fields.address",
+        "equals": "{{address}}"
+      },
+      {
+        "path": "fields.city",
+        "equals": "{{city}}"
+      },
+      {
+        "path": "fields.zip",
+        "equals": "{{zip}}"
+      },
+      {
+        "path": "fields.state",
+        "in": [
+          "CA",
+          "California"
+        ]
+      },
+      {
+        "path": "fields.phone",
+        "matches": "^\\D*(1\\D*)?415\\D*555\\D*0123$"
+      },
+      {
+        "path": "fields.card_number",
+        "matches": "^4242\\D*4242\\D*4242\\D*4242$"
+      },
+      {
+        "path": "fields.card_expiry",
+        "matches": "^08\\D*31$"
+      },
+      {
+        "path": "fields.card_cvc",
+        "equals": "{{card_cvc}}"
+      }
+    ]
+  },
+  "pairs": 5,
+  "trial_timeout_sec": 600,
+  "max_turns": 60
+}

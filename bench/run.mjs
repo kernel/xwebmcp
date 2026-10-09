@@ -19,7 +19,9 @@ import * as local from "./lib/local.mjs";
 import { latestRows, readRows, rowKey } from "./lib/rows.mjs";
 import { adoptionVerdicts, balancedOrders, holdNeededSec, planJobs, runPairAttempts, runQueue } from "./lib/schedule.mjs";
 import { composeBatch, gitShow, matchesUrlPattern, registeredTools, resolveSource } from "./lib/tools.mjs";
-import { gradeAnswer } from "./grade.mjs";
+import { blockedAttempts, writeGuardExtension } from "./lib/guard.mjs";
+import { readPage, readPageArg } from "./lib/page.mjs";
+import { checkRule, gradeAnswer } from "./grade.mjs";
 
 const benchDir = dirname(fileURLToPath(import.meta.url));
 if (existsSync(join(benchDir, ".env"))) process.loadEnvFile(join(benchDir, ".env"));
@@ -135,6 +137,8 @@ async function planRun() {
   if (unknown.length) fail(`no intent matches ${unknown.join(", ")}`);
   if (opts.domain) intents = intents.filter(i => opts.domain.includes(i.domain));
   if (opts.intent) intents = intents.filter(i => opts.intent.includes(i.id));
+  intents = intents.filter(intent => !intent.opt_in || opts.intent?.includes(intent.id)
+    || (log(`skipping ${intent.id}: ${intent.opt_in}; name it with --intent to run it`), false));
   const skipUnlessNamed = (intent, message) => {
     if (opts.domain?.includes(intent.domain) || opts.intent?.includes(intent.id)) fail(message);
     log(`skipping ${message}`);
@@ -195,6 +199,7 @@ async function planRun() {
       cap_sec: flags.capSec ?? intent.trial_timeout_sec,
       max_turns: intent.max_turns,
       orders: balancedOrders(pairs, randomInt),
+      guard_extension: intent.guard ? writeGuardExtension(join(runDir, "guards", intent.id), intent.guard) : null,
     };
     log(`${intent.id}: ${tools.length} tools at ${shas.map(s => s.slice(0, 7)).join(", ")}`);
   }
@@ -324,7 +329,7 @@ async function smokeGate(plan, probe, signedIn) {
     fail(`the agent's tools differ from ${experiment.files.allowlist}; an MCP server did not connect or a name did not match.\n`
       + `  tools:     ${tools.join(", ") || "none"}\n  allowlist: ${plan.allowlist.join(", ")}`);
   }
-  for (const intentPlan of signedIn.filter(p => p.intent.domain !== probe.intent.domain)) {
+  for (const intentPlan of signedIn.filter(p => p.profile.name !== probe.profile?.name)) {
     const check = await setUpBrowser(plan, intentPlan, "treatment", "smoke");
     if (check.stopped) return;
     if (check.browser) await releaseBrowser(check.browser);
@@ -333,7 +338,7 @@ async function smokeGate(plan, probe, signedIn) {
         + `If it is signed out, sign it in again; see "Signed-in trials" in bench/README.md`);
     }
   }
-  const signedInText = signedIn.length ? `; signed in to ${signedIn.map(p => p.intent.domain).join(", ")}` : "";
+  const signedInText = signedIn.length ? `; signed in to ${signedIn.map(p => `${p.intent.domain} (${p.profile.name})`).join(", ")}` : "";
   log(`smoke gate passed (${plan.agent}, ${plan.model}; registered ${probe.registered.length} tools for ${probe.intent.id}${signedInText})`);
 }
 
@@ -422,7 +427,8 @@ async function checkSignedIn(browser, intent, live) {
   const ref = live.find(t => t.tool?.name === tool && t.source?.custom?.namespace === intent.domain)?.tool_ref;
   if (!ref) throw new Error(`${tool} is not live on ${intent.start_url}`);
   const output = await browsers.invokeTool(browser, ref, input);
-  if (output?.status === "error" || output?.error) throw new SignedOut(`signed out: ${tool} returned ${JSON.stringify(output).slice(0, 300)}`);
+  const signedOut = intent.signed_in_check.rules ? intent.signed_in_check.rules.some(rule => checkRule(rule, output)) : output?.status === "error" || output?.error;
+  if (signedOut) throw new SignedOut(`signed out: ${tool} returned ${JSON.stringify(output).slice(0, 300)}`);
 }
 
 async function setUpBrowser(plan, intentPlan, arm, label) {
@@ -437,6 +443,7 @@ async function setUpBrowser(plan, intentPlan, arm, label) {
         tags: { bench: runId, arm: label === "smoke" ? "smoke" : arm, intent: intent.id },
         stealth: plan.browser.stealth,
         profile: intentPlan.profile?.name,
+        extension: intentPlan.guard_extension,
       });
       const page = await browsers.waitForLoad(browser, intent.start_url);
       const loadedAt = performance.now();
@@ -470,6 +477,17 @@ async function setUpBrowser(plan, intentPlan, arm, label) {
   }
 }
 
+// Reads where a prepare intent's agent left the browser from the page itself, the same way in both
+// arms, so the grade does not depend on the tools under test. A page that cannot be read aborts the
+// trial rather than grading it wrong.
+async function readEndState(browser, intent) {
+  try {
+    return { output: await browsers.evaluate(browser, readPage, readPageArg(intent.check.fields)) };
+  } catch (error) {
+    throw new Error(`could not read the end state: ${error.message}`);
+  }
+}
+
 // Returns the outcome, or null when the run is stopping and no row was written.
 async function runTrial(plan, intentPlan, arm, key) {
   if (stopping) return null;
@@ -486,7 +504,7 @@ async function runTrial(plan, intentPlan, arm, key) {
     image_version: null, browser_id: null, setup_attempts: null, start_renavigated: null, start_delay_ms: null, native_tools: null,
     started_at: new Date().toISOString(), outcome: null, reason: null, duration_ms: null, setup_ms: null,
     turns: null, tool_calls: null, unknown_tool_errors: null, tokens_in: null, tokens_out: null, cost_usd: null,
-    registration_changed: null, webmcp: null, grade: null,
+    registration_changed: null, submit_blocked: null, webmcp: null, grade: null,
   };
   const setupStart = performance.now();
   let browser = null;
@@ -520,15 +538,26 @@ async function runTrial(plan, intentPlan, arm, key) {
       log(`${intent.id} ${label} ${arm}: could not re-list custom tools: ${error.message}`);
     }
 
-    const verdict = classifyTrial(summary, agent, plan.allowlist, stderrTail(join(dir, "stderr.txt")));
+    if (intentPlan.guard_extension) {
+      // A count that cannot be read could hide an attempt to submit, so the trial aborts.
+      try {
+        row.submit_blocked = blockedAttempts(await browsers.cookies(browser));
+      } catch (error) {
+        throw new Error(`could not read the guard's count: ${error.message}`);
+      }
+    }
+    const verdict = row.submit_blocked ? ["crashed", `tried to submit: the guard blocked ${row.submit_blocked} attempt(s)`]
+      : classifyTrial(summary, agent, plan.allowlist, stderrTail(join(dir, "stderr.txt")));
     if (verdict) {
       [row.outcome, row.reason] = verdict;
     } else {
-      const grade = gradeAnswer(intent, intentPlan.schema, summary.answer);
+      const endState = intent.check ? await readEndState(browser, intent) : null;
+      if (endState) writeFileSync(join(dir, "end-state.json"), JSON.stringify(endState, null, 2) + "\n");
+      const grade = gradeAnswer(intent, intentPlan.schema, summary.answer, endState);
       writeFileSync(join(dir, "grade.json"), JSON.stringify(grade, null, 2) + "\n");
       row.outcome = grade.outcome;
       row.reason = grade.problems.slice(0, 3).join("; ") || null;
-      row.grade = { extracted: grade.extracted, shape: grade.shape, rules: grade.rules, answer: grade.answer };
+      row.grade = { extracted: grade.extracted, shape: grade.shape, rules: grade.rules, end_state: grade.end_state, answer: grade.answer };
     }
   } catch (error) {
     row.outcome = "aborted";
@@ -619,7 +648,8 @@ async function main() {
   if (!adoptionJobs.length && !pairJobs.length) return log(`nothing to run; node bench/report.mjs ${runDir}`);
 
   const pendingPlans = [...new Set([...adoptionJobs, ...pairJobs].map(job => job.intentPlan))];
-  const signedIn = [...new Map(pendingPlans.filter(p => p.profile).map(p => [p.intent.domain, p])).values()];
+  const signedIn = [...new Map(pendingPlans.filter(p => p.profile).map(p => [p.profile.name, p])).values()];
+  for (const intentPlan of pendingPlans.filter(p => p.guard_extension)) await browsers.ensureExtension(intentPlan.guard_extension);
   // Checked before the smoke gate, which spends money.
   checkHold(holdNeededSec([adoptionJobs, pairJobs], slots), slots);
   await smokeGate(plan, (adoptionJobs[0] ?? pairJobs[0]).intentPlan, signedIn);
