@@ -1,0 +1,20 @@
+#!/usr/bin/env node
+// A stand-in for sudo in run.test.mjs: runs the command as the current user with only the preserved
+// variables and PATH, the way `sudo --preserve-env` does. Agent users read nothing they test for,
+// unless STUB_AGENT_CAN_READ is set.
+import { spawnSync } from "node:child_process";
+
+const args = process.argv.slice(2);
+let preserved = [];
+while (args[0] !== "--" && args[0]?.startsWith("-")) {
+  const flag = args.shift();
+  if (flag === "-u") args.shift();
+  if (flag.startsWith("--preserve-env=")) preserved = flag.slice("--preserve-env=".length).split(",");
+}
+if (args[0] === "--") args.shift();
+const [command, ...rest] = args;
+if (command === "test") process.exit(process.env.STUB_AGENT_CAN_READ ? 0 : 1);
+if (command === "pkill") process.exit(1);
+const env = Object.fromEntries(Object.entries(process.env).filter(([name]) => name === "PATH" || preserved.includes(name)));
+const result = spawnSync(command, rest, { stdio: "inherit", env });
+process.exit(result.status ?? 1);

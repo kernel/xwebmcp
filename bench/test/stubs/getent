@@ -1,0 +1,5 @@
+#!/usr/bin/env node
+// A stand-in for `getent passwd` in run.test.mjs: STUB_AGENT_USERS agent users (default 4), with
+// homes under $HOME.
+const count = Number(process.env.STUB_AGENT_USERS ?? 4);
+for (let i = 1; i <= count; i++) console.log(`xwebmcp-bench-${i}:x:${2000 + i}:${2000 + i}::${process.env.HOME}/agent-users/${i}:/usr/sbin/nologin`);

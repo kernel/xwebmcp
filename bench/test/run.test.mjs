@@ -240,3 +240,18 @@ test("a task on a domain with no tools runs control alone", { timeout: 120_000 }
   assert.ok(!log().some(entry => entry[0] === "add"));
   assert.match(run("uncovered").stdout, /nothing to run/);
 });
+
+test("a run with a built-in tool stops before any agent without an agent user per slot", { timeout: 120_000 }, () => {
+  const { run, log } = workspace();
+  const result = run("no-agent-users", { STUB_AGENT_USERS: "1" }, ["--slots", "2"]);
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /found 1 for 2 slot\(s\); run `sudo bench\/setup-agent-users.sh/);
+  assert.deepEqual(log().filter(entry => entry[0] === "create"), []);
+});
+
+test("a run stops before any agent when an agent user can read the checkout", { timeout: 120_000 }, () => {
+  const { run } = workspace();
+  const result = run("readable", { STUB_AGENT_CAN_READ: "1" });
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /xwebmcp-bench-1 can read /);
+});

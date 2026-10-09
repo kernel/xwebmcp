@@ -22,6 +22,7 @@ import { composeBatch, domainPatterns, gitShow, matchesUrlPattern, registeredToo
 import { blockedAttempts, writeGuardExtension } from "./lib/guard.mjs";
 import { readPage, readPageArg, stepTimeline } from "./lib/page.mjs";
 import { checkRule, gradeAnswer } from "./grade.mjs";
+import { AgentUserPool, agentUserEnv, asAgentUser, canSudo, findAgentUsers, killAgentUser, readablePaths } from "./lib/users.mjs";
 
 const benchDir = dirname(fileURLToPath(import.meta.url));
 if (existsSync(join(benchDir, ".env"))) process.loadEnvFile(join(benchDir, ".env"));
@@ -281,6 +282,34 @@ function trialArgs(plan, prompt) {
   return piArgs({ prompt, systemPrompt: experiment.system_prompt, allow: plan.allowlist, model: plan.model, thinking: plan.thinking });
 }
 
+// Set by the smoke gate when the allowlist has a built-in tool, which then runs as an agent user.
+let agentUsers = null;
+
+function checkAgentUsers(slots) {
+  const users = findAgentUsers();
+  const setup = `run \`sudo bench/setup-agent-users.sh $(id -un) ${slots}\``;
+  if (users.length < slots) fail(`${experiment.files.allowlist} has a built-in tool, so each slot needs an agent user; found ${users.length} for ${slots} slot(s); ${setup}`);
+  const hidden = [resolve(benchDir, ".."), process.env.HOME].filter(Boolean);
+  for (const user of users.slice(0, slots)) {
+    if (!canSudo(user)) fail(`cannot run commands as ${user.name} with \`sudo -n\`; ${setup}`);
+    const readable = readablePaths(user, hidden);
+    if (readable.length) fail(`${user.name} can read ${readable.join(", ")}; ${setup}`);
+  }
+  agentUsers = new AgentUserPool(users.slice(0, slots));
+}
+
+// pi as the bench user, or as an agent user, which gets only the model's and Kernel's keys.
+async function runPi({ agentDir, mcpConfig, model, ...options }) {
+  if (!agentUsers) return runAgent({ ...options, env: agentEnv(agentDir, mcpConfig) });
+  const user = await agentUsers.acquire();
+  try {
+    return await runAgent({ ...options, ...asAgentUser(user, options.args, agentUserEnv(model, mcpConfig)) });
+  } finally {
+    killAgentUser(user);
+    agentUsers.release(user);
+  }
+}
+
 const stderrTail = (file) => (existsSync(file) ? readFileSync(file, "utf8") : "").trim().split("\n").slice(-3).join(" ");
 
 function logSmokeSpend(cost_usd) {
@@ -301,9 +330,11 @@ async function smokeGate(plan, probe, signedIn) {
     plan.kernel_cli ??= kernelCli;
   }
 
-  const plain = await runAgent({
+  if (plan.allowlist.some(tool => !tool.startsWith("mcp__"))) checkAgentUsers(flags.slots);
+
+  const plain = await runPi({
     args: piArgs({ prompt: "Reply with the single word READY.", systemPrompt: "Answer briefly.", model: plan.model, thinking: plan.thinking }),
-    env: agentEnv(join(dir, "plain-agent"), null),
+    agentDir: join(dir, "plain-agent"), mcpConfig: null, model: plan.model,
     cwd: dir, capMs: 120_000, transcriptPath: join(dir, "plain.jsonl"), stderrPath: join(dir, "plain.stderr"),
   });
   if (stopping) return;
@@ -321,9 +352,9 @@ async function smokeGate(plan, probe, signedIn) {
   const setup = await setUpBrowser(plan, probe, probeArm, "smoke");
   if (setup.stopped) return;
   if (setup.error) fail(`${probeArm} setup failed for ${probe.intent.id} after ${setup.attempts} browsers: ${setup.error}`);
-  const configured = await runAgent({
+  const configured = await runPi({
     args: trialArgs(plan, "Reply with the single word READY. Do not call any tools."),
-    env: agentEnv(join(dir, "configured-agent"), mcpFor(plan, setup.browser)),
+    agentDir: join(dir, "configured-agent"), mcpConfig: mcpFor(plan, setup.browser), model: plan.model,
     cwd: dir, capMs: 120_000, transcriptPath: join(dir, "configured.jsonl"), stderrPath: join(dir, "configured.stderr"),
   });
   await releaseBrowser(setup.browser);
@@ -415,6 +446,7 @@ async function shutdown(code, message) {
   stopping = true;
   (code ? console.error : log)(message);
   for (const child of runningAgents) child.kill("SIGKILL");
+  for (const user of agentUsers?.users ?? []) killAgentUser(user);
   await Promise.allSettled([...creating]);
   await Promise.allSettled([...openBrowsers].map(id => browsers.deleteBrowser(id)));
   process.exit(code);
@@ -533,9 +565,9 @@ async function runTrial(plan, intentPlan, arm, key) {
 
     const agentStartedAt = Date.now();
     row.agent_started_at = new Date(agentStartedAt).toISOString();
-    const agent = await runAgent({
+    const agent = await runPi({
       args: trialArgs(plan, trialPrompt(intent, plan.backend === "kernel" ? browser : null)),
-      env: agentEnv(join(dir, "agent"), mcpFor(plan, browser)),
+      agentDir: join(dir, "agent"), mcpConfig: mcpFor(plan, browser), model: plan.model,
       cwd: dir, capMs: intentPlan.cap_sec * 1000, maxTurns: intentPlan.max_turns, maxBudgetUsd: plan.max_budget_usd,
       transcriptPath: join(dir, "transcript.jsonl"), stderrPath: join(dir, "stderr.txt"),
     });
