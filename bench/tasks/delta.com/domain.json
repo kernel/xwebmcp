@@ -1,0 +1,5 @@
+{
+  "needs_sign_in": {
+    "list_payment_methods": "reads a signed-in SkyMiles member's wallet"
+  }
+}
