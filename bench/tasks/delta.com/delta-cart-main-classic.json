@@ -9,8 +9,11 @@
     "date": {"days_from_start": 28}
   },
   "start_url": "https://www.delta.com/",
-  "tools": [{"repo": "kernel/xwebmcp", "ref": "main", "names": ["search_flights", "list_flight_results", "select_fare", "select_fare_experience", "get_trip_summary"]}],
-  "entry_tool": "search_flights",
+  "steps": [
+    {"name": "search", "url_patterns": ["https://www.delta.com/", "https://www.delta.com/flightsearch/book-a-flight*"]},
+    {"name": "results", "url_patterns": ["https://www.delta.com/flightsearch/search-results*"]},
+    {"name": "trip summary", "url_patterns": ["https://www.delta.com/*/trip-summary*"]}
+  ],
   "answer_schema": "schemas/cart-flight.json",
   "rules": [{"path": "amount_due", "range": [1, 3000]}],
   "check": {

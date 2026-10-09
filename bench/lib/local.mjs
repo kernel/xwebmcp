@@ -211,7 +211,7 @@ export async function addCustomTools(id, namespace, sourceFile) {
   // setup then reports the entry tool as not live.
   const live = async () => (await call(browser, "listTools")).some(t => t.source?.custom?.namespace === namespace);
   await waitFor("tools", live, 10_000).catch(() => {});
-  return result.tools;
+  return result.tools ?? [];
 }
 
 export async function listCustomTools(id) {

@@ -72,13 +72,16 @@ export function balancedOrders(pairs, randomInt) {
   return orders;
 }
 
+// A pair's trials in run order. An intent on a domain with no tools runs control alone.
+export const pairArms = (intentPlan, order) => intentPlan.uncovered ? ["control"] : order === "AB" ? ["control", "treatment"] : ["treatment", "control"];
+
 // Treatment-only trials interleave across domains, so one broken domain cannot hit the abort
 // limit before its adoption verdict stops it. Pairs interleave across intents to spread site drift.
 export function planJobs(intentPlans, adoption, latest, today) {
   const scored = (intentPlan, key, arm) => isScored(latest.get(rowKey({ intent: intentPlan.intent.id, ...key, arm })));
   let adoptionJobs = [];
   const domains = [...new Set(intentPlans.map(p => p.intent.domain))];
-  const candidates = new Map(domains.map(domain => [domain, intentPlans.filter(p => p.intent.domain === domain && p.intent.stage !== "gap")]));
+  const candidates = new Map(domains.map(domain => [domain, intentPlans.filter(p => p.intent.domain === domain && p.intent.stage !== "gap" && !p.uncovered)]));
   for (let n = 1; n <= adoption; n++) {
     for (const domain of domains) {
       const plans = candidates.get(domain);
@@ -92,7 +95,7 @@ export function planJobs(intentPlans, adoption, latest, today) {
   for (let pair = 1; pair <= maxPairs; pair++) {
     for (const intentPlan of intentPlans) {
       const order = intentPlan.orders[pair - 1];
-      if (!order || (scored(intentPlan, { pair }, "control") && scored(intentPlan, { pair }, "treatment"))) continue;
+      if (!order || pairArms(intentPlan, order).every(arm => scored(intentPlan, { pair }, arm))) continue;
       pairJobs.push({ intentPlan, pair, order });
     }
   }

@@ -57,6 +57,23 @@ export async function cookies(id) {
   return response.result;
 }
 
+// Top-frame navigations since `sinceMs` from the browser's telemetry, as {at, url} in epoch ms.
+// The API filters each page of events after paging, so `--all` stops at the first page with no
+// page event; this follows next_offset to the end instead.
+export async function navigations(id, sinceMs) {
+  const args = ["browsers", "telemetry", "events", id, "--categories", "page", "--since", new Date(sinceMs).toISOString(), "--limit", "100"];
+  const found = [];
+  for (let offset = null, pages = 0; pages < 1000; pages++) {
+    const response = await kernel(offset ? [...args, "--offset", offset] : args);
+    for (const { event } of response.events ?? []) {
+      if (event.type === "page_navigation" && !event.data?.parent_frame_id) found.push({ at: event.ts / 1000, url: event.data.url });
+    }
+    offset = response.next_offset;
+    if (!offset) break;
+  }
+  return found;
+}
+
 // Uploads an extension directory under its name unless Kernel already has it.
 export async function ensureExtension({ name, dir }) {
   try {
@@ -68,7 +85,7 @@ export async function ensureExtension({ name, dir }) {
 }
 
 export async function addCustomTools(id, namespace, sourceFile) {
-  return (await kernel(["browsers", "webmcp", "custom-tools", "add", id, "--namespace", namespace, "--source-file", sourceFile, "--force-overwrite-namespace"])).tools;
+  return (await kernel(["browsers", "webmcp", "custom-tools", "add", id, "--namespace", namespace, "--source-file", sourceFile, "--force-overwrite-namespace"])).tools ?? [];
 }
 
 export async function listCustomTools(id) {

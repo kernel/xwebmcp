@@ -31,7 +31,14 @@ const checkoutIntent = {
   check: { fields: { email: "#email" }, rules: [{ path: "fields.email", equals: "a@example.com" }] },
 };
 
-function workspace({ domain = { profile: "bench-example", signed_in_check: { tool: "lookup" } }, intent = lookupIntent } = {}) {
+// A task written without naming tools, as task-first intents are.
+const taskIntent = {
+  id: "example-task", domain: "example.com", stage: "inspect",
+  prompt: lookupIntent.prompt, start_url: "https://example.com/", answer_schema: "schemas/ip-lookup.json",
+  rules: [{ path: "asn", equals: "AS15169" }], pairs: 1, trial_timeout_sec: 60, max_turns: 5,
+};
+
+function workspace({ domain = { profile: "bench-example", signed_in_check: { tool: "lookup" } }, intent = lookupIntent, sourceTools = ["lookup", "add"] } = {}) {
   const dir = mkdtempSync(join(tmpdir(), "bench-run-"));
   const bench = join(dir, "bench");
   for (const path of ["run.mjs", "grade.mjs", "lib", "prompts", "allowlist.txt", "mcp.json", "allowlist.local.txt", "mcp.local.json", "schemas"]) cpSync(join(benchDir, path), join(bench, path), { recursive: true });
@@ -42,8 +49,8 @@ function workspace({ domain = { profile: "bench-example", signed_in_check: { too
 
   const source = join(dir, "source");
   mkdirSync(join(source, "domains/example.com"), { recursive: true });
-  writeFileSync(join(source, "registry.json"), JSON.stringify({ tools: ["lookup", "add"].map(name => ({ namespace: "example.com", file: `domains/example.com/${name}.js` })) }));
-  for (const [name, readOnly] of [["lookup", true], ["add", false]]) {
+  writeFileSync(join(source, "registry.json"), JSON.stringify({ tools: sourceTools.map(name => ({ namespace: "example.com", file: `domains/example.com/${name}.js` })) }));
+  for (const [name, readOnly] of [["lookup", true], ["add", false]].filter(([name]) => sourceTools.includes(name))) {
     writeFileSync(join(source, `domains/example.com/${name}.js`), `[{
       kind: "page",
       match: { url_patterns: ["https://example.com/*"] },
@@ -210,4 +217,26 @@ test("an opt_in intent runs only when named with --intent", { timeout: 120_000 }
   assert.match(unnamed.stderr, /no intents selected/);
   const named = run("opt-in-named", {}, ["--intent", "example-lookup"]);
   assert.equal(named.status, 0, named.stderr + named.stdout);
+});
+
+test("a task that names no tools gets every tool its domain has, and its trials record their steps", { timeout: 120_000 }, () => {
+  const { run, rows, log } = workspace({ domain: {}, intent: taskIntent });
+  const result = run("task");
+  assert.equal(result.status, 0, result.stderr + result.stdout);
+  assert.deepEqual(rows("task").map(r => [r.arm, r.outcome]).sort(), [["control", "correct"], ["treatment", "correct"]]);
+  // Treatment registered the domain's read-only tool; control registered nothing.
+  const treatment = log().find(entry => entry[0] === "create" && entry[2] === "treatment")[1];
+  assert.ok(log().some(entry => entry[0] === "add" && entry[1] === treatment));
+  // The stub's browsers navigate to example.com before the agent starts, so all its time is on that step.
+  for (const row of rows("task")) assert.deepEqual(row.steps.map(s => [s.step, s.calls, s.invocations]), [["example.com", 0, []]]);
+});
+
+test("a task on a domain with no tools runs control alone", { timeout: 120_000 }, () => {
+  const { run, rows, log } = workspace({ domain: {}, intent: taskIntent, sourceTools: [] });
+  const result = run("uncovered");
+  assert.equal(result.status, 0, result.stderr + result.stdout);
+  assert.match(result.stdout, /example\.com has no tools to register, so its trials run control-only/);
+  assert.deepEqual(rows("uncovered").map(r => [r.arm, r.outcome]), [["control", "correct"]]);
+  assert.ok(!log().some(entry => entry[0] === "add"));
+  assert.match(run("uncovered").stdout, /nothing to run/);
 });

@@ -199,6 +199,8 @@ export function summarize(events, allow) {
   const refs = new Map();
   for (const call of calls.values()) collectRefs(call.text, refs);
   const webmcp = { listed: false, adopted: false, invocations: [] };
+  // When each call started, and which WebMCP tool it invoked, for the step timeline.
+  const timeline = [];
 
   for (const call of calls.values()) {
     const args = call.arguments ?? {};
@@ -208,18 +210,24 @@ export function summarize(events, allow) {
     if (isList(call)) {
       webmcp.listed = true;
     } else if (isInvoke(call)) {
+      const tool = refs.get(args.tool_ref) ?? args.tool_ref ?? null;
       webmcp.invocations.push({
         path: "mcp",
-        tool: refs.get(args.tool_ref) ?? args.tool_ref ?? null,
+        tool,
         ...invocationResult(call),
         duration_ms: call.done && call.startedAt !== undefined ? call.endedAt - call.startedAt : null,
       });
+      timeline.push({ start_ms: call.startedAt ?? null, invoke: tool ?? "unknown" });
+      continue;
     } else if (CODE_PATHS[call.name] && typeof args.code === "string") {
       if (/\blistTools\s*\(/.test(args.code)) webmcp.listed = true;
       if (/\binvokeTool\s*\(/.test(args.code)) {
         webmcp.invocations.push({ path: CODE_PATHS[call.name], tool: null, status: null, tool_status: null, error: null, duration_ms: null });
+        timeline.push({ start_ms: call.startedAt ?? null, invoke: `unknown (${CODE_PATHS[call.name]})` });
+        continue;
       }
     }
+    timeline.push({ start_ms: call.startedAt ?? null, invoke: null });
   }
   webmcp.adopted = webmcp.invocations.length > 0;
 
@@ -240,6 +248,7 @@ export function summarize(events, allow) {
     cost_usd: sum(u => u.cost?.total),
     outside_allowlist: [...outsideAllowlist],
     webmcp,
+    timeline: timeline.filter(call => call.start_ms !== null),
   };
 }
 

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { adoptedPairStats, answerCheck, armStats, buildReport, compare, pairStats, startDelaySkews, toolFailures } from "../report.mjs";
+import { adoptedPairStats, answerCheck, armStats, buildReport, compare, pairStats, startDelaySkews, stepCoverage, toolFailures } from "../report.mjs";
 import { newcombe, signTest, signTestRate, wilson } from "../lib/stats.mjs";
 
 const round = (iv) => iv.map(x => Math.round(x * 100));
@@ -295,4 +295,34 @@ test("tool failures are counted per tool, with the most common errors first", ()
     intents: { "fandango-theater-showtimes": { intent: { id: "fandango-theater-showtimes", domain: "fandango.com", stage: "inspect" }, sources: [{ ref: "main", sha: "0".repeat(40) }], cap_sec: 600 } },
   };
   assert.match(buildReport(run, reportRows), /in scored treatment trials\. 1 invocation\(s\) made through Playwright or the REPL have no recorded result and are not counted\.\n\n\| tool \|[^\n]*\n[^\n]*\n\| fandango\.com\/get_theater_showtimes \| 9 \| 1 \| 1× UI_CHANGED \|/);
+});
+
+test("steps show where each arm spent its time and which steps treatment covered with a tool", () => {
+  const step = (name, seconds, invocations = []) => ({ step: name, ms: seconds * 1000, calls: invocations.length + 1, invocations });
+  const rows = exampleRows().map(r => ({
+    ...r,
+    steps: r.arm === "control" ? [step("www.fandango.com", 20), step("www.fandango.com/theater/*", 60)] : [step("www.fandango.com", 5, ["search_theaters"]), step("www.fandango.com/theater/*", 40)],
+  }));
+  const { trials, steps } = stepCoverage(rows.filter(r => r.pair <= 9));
+  assert.deepEqual(trials, { control: 9, treatment: 9 });
+  assert.deepEqual(steps.map(s => [s.step, s.control_ms, s.treatment_ms, s.invoked, s.tools]), [
+    ["www.fandango.com/theater/*", 60_000, 40_000, 0, []],
+    ["www.fandango.com", 20_000, 5_000, 9, ["search_theaters"]],
+  ]);
+  const run = {
+    run_id: "t", model: "m", thinking: null, agent: "pi 0", created_at: "2026-10-07T00:00:00Z",
+    intents: {
+      "fandango-theater-showtimes": { intent: { id: "fandango-theater-showtimes", domain: "fandango.com", stage: "inspect" }, sources: [{ ref: "main", sha: "0".repeat(40) }], cap_sec: 600 },
+      "newsite-task": { intent: { id: "newsite-task", domain: "newsite.com", stage: "find" }, sources: [{ ref: "main", sha: "0".repeat(40) }], cap_sec: 600, uncovered: true },
+    },
+  };
+  const uncovered = [1, 2].map(pair => ({ intent: "newsite-task", arm: "control", pair, adoption: null, outcome: "correct", duration_ms: 90_000, cost_usd: 0.1, steps: [step("newsite.com/search", 70), step("newsite.com", 20)] }));
+  const report = buildReport(run, [...rows, ...uncovered]);
+  assert.match(report, /\| www\.fandango\.com\/theater\/\* \| 60s \| 40s \| 0 of 10 \| — \|/);
+  assert.match(report, /## Tasks with no tools yet[\s\S]*\| newsite-task \| 2 \| 2 \| 2 correct \| 1:30 \| newsite\.com\/search 70s, newsite\.com 20s \|/);
+  // The backlog lists the uncovered task's slow step and the step treatment drove without a tool, longest first.
+  const backlog = report.slice(report.indexOf("## Tool backlog"));
+  assert.match(backlog, /\| newsite-task \| newsite\.com\/search \| 70s \| no tools \| — \|\n\| fandango-theater-showtimes \| www\.fandango\.com\/theater\/\* \| 60s \| 40s \| 0 of 10 \|/);
+  assert.doesNotMatch(backlog, /\| www\.fandango\.com \|/);
+  assert.match(report, /22 trials scored/);
 });

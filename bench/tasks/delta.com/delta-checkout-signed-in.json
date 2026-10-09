@@ -22,23 +22,6 @@
     }
   },
   "start_url": "https://www.delta.com/",
-  "tools": [
-    {
-      "repo": "kernel/xwebmcp",
-      "ref": "main",
-      "names": [
-        "search_flights",
-        "list_flight_results",
-        "select_fare",
-        "select_fare_experience",
-        "get_trip_summary",
-        "continue_to_review_and_pay",
-        "continue_checkout",
-        "get_checkout_step",
-        "set_trip_protection"
-      ]
-    }
-  ],
   "allow": [
     "checkout"
   ],
@@ -50,7 +33,6 @@
     "buttons": "^(complete purchase|purchase|pay now|book now)\\b",
     "selectors": "[data-cy^=\"complete-purchase\"]"
   },
-  "entry_tool": "search_flights",
   "answer_schema": "schemas/cart-flight.json",
   "rules": [
     {

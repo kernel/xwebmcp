@@ -17,10 +17,10 @@ import { fill, loadIntents, loadSchema, pastDates, resolveFixture, trialPrompt }
 import * as kernel from "./lib/kernel.mjs";
 import * as local from "./lib/local.mjs";
 import { latestRows, readRows, rowKey } from "./lib/rows.mjs";
-import { adoptionVerdicts, balancedOrders, holdNeededSec, planJobs, runPairAttempts, runQueue } from "./lib/schedule.mjs";
-import { composeBatch, gitShow, matchesUrlPattern, registeredTools, resolveSource } from "./lib/tools.mjs";
+import { adoptionVerdicts, balancedOrders, holdNeededSec, pairArms, planJobs, runPairAttempts, runQueue } from "./lib/schedule.mjs";
+import { composeBatch, domainPatterns, gitShow, matchesUrlPattern, registeredTools, resolveSource } from "./lib/tools.mjs";
 import { blockedAttempts, writeGuardExtension } from "./lib/guard.mjs";
-import { readPage, readPageArg } from "./lib/page.mjs";
+import { readPage, readPageArg, stepTimeline } from "./lib/page.mjs";
 import { checkRule, gradeAnswer } from "./grade.mjs";
 
 const benchDir = dirname(fileURLToPath(import.meta.url));
@@ -117,6 +117,7 @@ async function planRun() {
     if (JSON.stringify(plan.allowlist) !== JSON.stringify(experiment.allowlist)) fail(`${files.allowlist} changed since run ${runId} started; start a new run`);
     if (JSON.stringify(plan.mcp_config) !== JSON.stringify(experiment.mcp)) fail(`${files.mcp} changed since run ${runId} started; start a new run`);
     if (plan.system_prompt_sha256 !== sha256(experiment.system_prompt)) fail(`${files.system_prompt} changed since run ${runId} started; start a new run`);
+    if (Object.values(plan.intents).some(p => !p.start_patterns)) fail(`run ${runId} was planned before intents became task-first; start a new run`);
     if (plan.backend === "local") {
       const now = useLocal(plan.browser);
       for (const key of ["chrome_version", "xwebmcp_version"]) {
@@ -186,7 +187,8 @@ async function planRun() {
     const shas = fetched.map(f => f.sha);
     const tools = await registeredTools(intent, shas, gitShow(cacheDir));
     if (intent.signed_in_check && !tools.some(tool => tool.name === intent.signed_in_check.tool)) fail(`${intent.id}: the signed_in_check tool ${intent.signed_in_check.tool} would not be registered`);
-    writeFileSync(join(runDir, "sources", `${intent.id}.js`), composeBatch(tools));
+    if (tools.length) writeFileSync(join(runDir, "sources", `${intent.id}.js`), composeBatch(tools));
+    else log(`${intent.id}: ${intent.domain} has no tools to register, so its trials run control-only`);
     const pairs = flags.pairs ?? intent.pairs;
     plan.intents[intent.id] = {
       intent,
@@ -195,7 +197,9 @@ async function planRun() {
       registered: tools.map(tool => tool.name),
       drafts: tools.filter(tool => tool.status === "draft").map(tool => tool.name),
       profile: intent.profile ? { name: intent.profile, id: profiles.get(intent.profile) } : null,
-      entry_patterns: tools.find(tool => tool.name === intent.entry_tool).urlPatterns,
+      uncovered: tools.length === 0,
+      // The start page must be on the entry tool's pages, or on the domain when there is none.
+      start_patterns: intent.entry_tool ? tools.find(tool => tool.name === intent.entry_tool).urlPatterns : domainPatterns(intent.domain),
       cap_sec: flags.capSec ?? intent.trial_timeout_sec,
       max_turns: intent.max_turns,
       orders: balancedOrders(pairs, randomInt),
@@ -311,11 +315,12 @@ async function smokeGate(plan, probe, signedIn) {
   // pi prices a model missing from its table at 0, which would disable the spend cap.
   if (!(cost_usd > 0)) fail(`pi reported a cost of ${cost_usd} for ${plan.model}, so --max-budget-usd cannot apply`);
 
-  // The agent's MCP servers are checked against a real treatment browser, since a local one's
-  // servers connect to that browser.
-  const setup = await setUpBrowser(plan, probe, "treatment", "smoke");
+  // The agent's MCP servers are checked against a real browser, treatment unless no selected domain
+  // has tools, since a local one's servers connect to that browser.
+  const probeArm = probe.uncovered ? "control" : "treatment";
+  const setup = await setUpBrowser(plan, probe, probeArm, "smoke");
   if (setup.stopped) return;
-  if (setup.error) fail(`treatment setup failed for ${probe.intent.id} after ${setup.attempts} browsers: ${setup.error}`);
+  if (setup.error) fail(`${probeArm} setup failed for ${probe.intent.id} after ${setup.attempts} browsers: ${setup.error}`);
   const configured = await runAgent({
     args: trialArgs(plan, "Reply with the single word READY. Do not call any tools."),
     env: agentEnv(join(dir, "configured-agent"), mcpFor(plan, setup.browser)),
@@ -448,11 +453,14 @@ async function setUpBrowser(plan, intentPlan, arm, label) {
       const page = await browsers.waitForLoad(browser, intent.start_url);
       const loadedAt = performance.now();
       // Catches redirects and block pages on another host, in both arms.
-      if (!intentPlan.entry_patterns.some(pattern => matchesUrlPattern(page.url, pattern))) throw new Error(`start page is ${page.url}, outside ${intent.entry_tool}'s URL patterns`);
+      if (!intentPlan.start_patterns.some(pattern => matchesUrlPattern(page.url, pattern))) {
+        throw new Error(`start page is ${page.url}, outside ${intent.entry_tool ? `${intent.entry_tool}'s URL patterns` : intent.domain}`);
+      }
       if (arm === "treatment") {
-        await browsers.addCustomTools(browser, intent.domain, join(runDir, "sources", `${intent.id}.js`));
+        const added = await browsers.addCustomTools(browser, intent.domain, join(runDir, "sources", `${intent.id}.js`));
+        if (added.length !== intentPlan.registered.length) throw new Error(`registered ${added.length} of ${intentPlan.registered.length} tools`);
         const live = await browsers.listLiveTools(browser);
-        const entryLive = live.some(t => t.tool?.name === intent.entry_tool && t.source?.custom?.namespace === intent.domain && t.source?.page_url);
+        const entryLive = !intent.entry_tool || live.some(t => t.tool?.name === intent.entry_tool && t.source?.custom?.namespace === intent.domain && t.source?.page_url);
         if (!entryLive) throw new Error(`entry tool ${intent.entry_tool} is not live on ${page.url}`);
         if (intent.signed_in_check) await checkSignedIn(browser, intent, live);
       } else if (intent.signed_in_check) {
@@ -504,7 +512,7 @@ async function runTrial(plan, intentPlan, arm, key) {
     image_version: null, browser_id: null, setup_attempts: null, start_renavigated: null, start_delay_ms: null, native_tools: null,
     started_at: new Date().toISOString(), outcome: null, reason: null, duration_ms: null, setup_ms: null,
     turns: null, tool_calls: null, unknown_tool_errors: null, tokens_in: null, tokens_out: null, cost_usd: null,
-    registration_changed: null, submit_blocked: null, webmcp: null, grade: null,
+    registration_changed: null, submit_blocked: null, webmcp: null, grade: null, agent_started_at: null, steps: null,
   };
   const setupStart = performance.now();
   let browser = null;
@@ -523,6 +531,8 @@ async function runTrial(plan, intentPlan, arm, key) {
     row.setup_ms = Math.round(performance.now() - setupStart);
     if (stopping) return null;
 
+    const agentStartedAt = Date.now();
+    row.agent_started_at = new Date(agentStartedAt).toISOString();
     const agent = await runAgent({
       args: trialArgs(plan, trialPrompt(intent, plan.backend === "kernel" ? browser : null)),
       env: agentEnv(join(dir, "agent"), mcpFor(plan, browser)),
@@ -559,6 +569,17 @@ async function runTrial(plan, intentPlan, arm, key) {
       row.reason = grade.problems.slice(0, 3).join("; ") || null;
       row.grade = { extracted: grade.extracted, shape: grade.shape, rules: grade.rules, end_state: grade.end_state, answer: grade.answer };
     }
+    // Where the agent spent its time, by page; Kernel browsers only, from their telemetry. Event
+    // times come from Kernel's clock and the agent's start from this machine's, so any skew between
+    // the two shifts each step boundary by that much.
+    if (browsers.navigations) {
+      try {
+        const navigations = (await browsers.navigations(browser, Date.parse(row.started_at))).map(n => ({ ms: n.at - agentStartedAt, url: n.url }));
+        row.steps = stepTimeline({ navigations, calls: summary.timeline, durationMs: agent.durationMs, startUrl: setup.page.url, steps: intent.steps });
+      } catch (error) {
+        log(`${intent.id} ${label} ${arm}: could not read page navigations: ${error.message}`);
+      }
+    }
   } catch (error) {
     row.outcome = "aborted";
     row.reason = `runner error: ${error.message}`;
@@ -582,7 +603,7 @@ async function runAdoption(plan, intentPlan, adoption) {
 
 async function runPair(plan, intentPlan, pair, order) {
   await runPairAttempts(
-    order === "AB" ? ["control", "treatment"] : ["treatment", "control"],
+    pairArms(intentPlan, order),
     JOB_ATTEMPTS,
     (arm, attempt) => runTrial(plan, intentPlan, arm, { pair, order, attempt }),
     () => log(`${intentPlan.intent.id} p${pair}: a trial aborted; running the pair again`),
@@ -626,7 +647,7 @@ async function main() {
     intentPlan, sec: trialSec(intentPlan), profile: intentPlan.profile?.name ?? null, run: () => runAdoption(plan, intentPlan, adoption),
   }));
   let pairJobs = planned.pairJobs.map(({ intentPlan, pair, order }) => ({
-    intentPlan, sec: 2 * trialSec(intentPlan), profile: intentPlan.profile?.name ?? null, run: () => runPair(plan, intentPlan, pair, order),
+    intentPlan, sec: pairArms(intentPlan, order).length * trialSec(intentPlan), profile: intentPlan.profile?.name ?? null, run: () => runPair(plan, intentPlan, pair, order),
   }));
 
   // A domain whose treatment-only trials never invoked a tool gets no pairs.
@@ -652,7 +673,7 @@ async function main() {
   for (const intentPlan of pendingPlans.filter(p => p.guard_extension)) await browsers.ensureExtension(intentPlan.guard_extension);
   // Checked before the smoke gate, which spends money.
   checkHold(holdNeededSec([adoptionJobs, pairJobs], slots), slots);
-  await smokeGate(plan, (adoptionJobs[0] ?? pairJobs[0]).intentPlan, signedIn);
+  await smokeGate(plan, pendingPlans.find(p => !p.uncovered) ?? pendingPlans[0], signedIn);
   if (stopping) return;
   writeFileSync(join(runDir, "run.json"), JSON.stringify(plan, null, 2) + "\n");
   if (fresh) log(`wrote run.json; rerun with --run-id ${runId} to resume`);

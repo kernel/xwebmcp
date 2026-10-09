@@ -1,7 +1,12 @@
 # bench
 
 Measures, per user intent on a site, how much more often and how much faster an agent succeeds
-when the domain's read-only xwebmcp tools are registered in its Kernel browser.
+when the domain's read-only xwebmcp tools are registered in its Kernel browser, and where on the
+site agents spend their time, so the tools can be built for the steps that need them.
+
+Intents describe what a user wants done on the site, written without looking at the tool list.
+Treatment gets whatever tools the domain has; a domain with none runs control alone, and the
+report's tool backlog lists the slow steps no tool covers.
 
 Each trial runs [pi](https://github.com/earendil-works/pi) (`pi -p --mode json`) against one
 Kernel browser. Both arms get the same model, prompt, kernel MCP server, tool allowlist and
@@ -120,15 +125,18 @@ interleaved across intents; a pair's two trials run back to back in one slot.
 1. Create a browser on the start URL, tagged with the run, arm and intent, with the intent's
    submission guard loaded if it has one. If the page is still loading after 15s, navigate
    again; then wait up to 15s for `load`.
-2. Check the loaded URL matches the entry tool's URL patterns, in both arms.
-3. Treatment: register the batch, confirm the `entry_tool` is live on the tab, and on a signed-in
+2. Check the loaded URL is on the domain (or matches the `entry_tool`'s URL patterns, when the
+   intent names one), in both arms.
+3. Treatment: register the batch, confirm every tool registered and, with an `entry_tool`, that it
+   is live on the tab, and on a signed-in
    domain run the sign-in check. Control: on a signed-in domain, register the batch, run the same
    check and remove the tools again; then fail if any custom tools are registered or live. Both
    arms record the page's own WebMCP tools, which both can use.
 4. Wait until 10s after load in both arms, then launch the agent. The clock runs to
    `agent_settled`; the runner stops the agent at the time, turn or spend cap.
-5. On a guarded intent, read the guard's count of blocked submit attempts. Grade the answer,
-   delete the browser and append a row to `rows.jsonl`. Each attempt keeps its own directory
+5. On a guarded intent, read the guard's count of blocked submit attempts. Grade the answer, read
+   the trial's page navigations from the browser's telemetry to split its time into steps (Kernel
+   browsers only), delete the browser and append a row to `rows.jsonl`. Each attempt keeps its own directory
    under `trials/<intent>/` (`p1-control`, then `p1-control-2` for a rerun), named in the row's
    `trial_dir`.
 
@@ -143,17 +151,20 @@ and deletes every browser.
 
 ```json
 {
-  "id": "fandango-theater-showtimes",
-  "domain": "fandango.com",
-  "stage": "inspect",
-  "prompt": "On fandango.com, list every film and every showtime at {{theater}} in {{city}} on {{date}}. Reply with JSON: ...",
-  "fixture": {"theater": "AMC 19th St. East 6", "city": "New York, NY", "date": {"days_from_start": 2}},
-  "start_url": "https://www.fandango.com/",
-  "tools": [{"repo": "kernel/xwebmcp", "ref": "hypeship/fandango-showtimes", "pr": 58, "names": ["search_theaters", "get_theater_showtimes"]}],
-  "entry_tool": "search_theaters",
-  "answer_schema": "schemas/theater-showtimes.json",
-  "rules": [{"path": "date", "equals": "{{date}}"}, {"path": "films[].title", "unique": true}],
-  "pairs": 5, "trial_timeout_sec": 600, "max_turns": 40
+  "id": "delta-cart-main-classic",
+  "domain": "delta.com",
+  "stage": "prepare",
+  "prompt": "On delta.com, put the cheapest Delta Main Classic one-way fare for 1 adult from {{origin}} to {{destination}} on {{date}} in the cart, and stop on Delta's Trip Summary page ... Reply with JSON: ...",
+  "fixture": {"origin": "Atlanta (ATL)", "destination": "Orlando (MCO)", "date": {"days_from_start": 28}},
+  "start_url": "https://www.delta.com/",
+  "answer_schema": "schemas/cart-flight.json",
+  "rules": [{"path": "amount_due", "range": [1, 3000]}],
+  "check": {
+    "extract": {"amount_due": "Amount Due\\s*(?:USD\\s*)?\\$\\s*([\\d,]+\\.\\d{2})"},
+    "rules": [{"path": "url", "matches": "/trip-summary"}, {"path": "text", "matches": "Main Classic"}],
+    "same_as_answer": [{"answer": "amount_due", "end_state": "extracted.amount_due"}]
+  },
+  "pairs": 5, "trial_timeout_sec": 900, "max_turns": 60
 }
 ```
 
@@ -168,18 +179,22 @@ and deletes every browser.
   CSS selectors of inputs, read as `fields.<name>`, with `missing` and `invalid` lists of names.
   `same_as_answer` lists `{answer, end_state}` path pairs whose values must match, so the answer
   reports what is on the page.
+- `steps` (optional) names the task's pages, `[{"name": "trip summary", "url_patterns":
+  ["https://www.delta.com/*/trip-summary*"]}]`, for the report's step tables. Without it a step is
+  the page's host and path, with id-like segments collapsed to `*`.
 - `allow` (prepare intents only) lets the agent do more than the system prompt allows, with the
   same sentences added to both arms' prompts: `checkout` to add to the cart and go through
   checkout up to, never including, the button that pays or books, and `payment_details` to enter
   the details the task gives, which must be test data. An intent that allows `checkout` needs a
   `guard`, and see [Checkout intents](#checkout-intents).
-- `tools` lists kernel/xwebmcp refs (or full `sha`s) to register from. Treatment gets every tool
-  `registry.json` lists for the domain at those commits whose file declares
-  `readOnlyHint: true`; later sources replace earlier tools of the same name, so a PR to an
-  existing domain lists main first. Tool files are evaluated in a sandboxed child process.
-  `names` are the tools a treatment agent would use, and the run fails at start if any would not
-  be registered. A `pr` whose branch is gone resolves to `refs/pull/<pr>/head`, and the report
-  marks it.
+- `tools` (optional, main by default) lists kernel/xwebmcp refs (or full `sha`s) to register
+  from, such as a PR's branch after main. Treatment gets every tool `registry.json` lists for the
+  domain at those commits whose file declares `readOnlyHint: true`; later sources replace earlier
+  tools of the same name. Tool files are evaluated in a sandboxed child process. `names`
+  (optional) are tools the intent expects to be used, and the run fails at start if any would not
+  be registered. `entry_tool` (optional) must be live on the start page. A `pr` whose branch is
+  gone resolves to `refs/pull/<pr>/head`, and the report marks it. Leave all three off a new
+  intent: it describes the user's task, and the report shows which tools it used.
 - `{{name}}` in `prompt` and `rules` comes from `fixture`. `{"days_from_start": n}` resolves to a
   date when the run starts. A fixed date that has passed skips the intent, or stops the run if
   the intent was selected by name; move dates tied to a film's run forward before each run.
@@ -294,6 +309,12 @@ scored:
   Thresholds are in `report.mjs`; at 5 pairs a label needs all 5 to go the same way. A faster or
   slower arm is `mixed` when it was correct in 2 fewer pairs, gave the worse `better` answer in
   2 more, or the arms' `same` answers differed in 2 pairs.
+
+Each intent with a step timeline also gets a steps table: agent seconds per trial on each page in
+each arm, how many treatment trials invoked a tool there, and which tools. Tasks on domains with no
+tools get their own table of control results and slowest steps. The tool backlog then lists, longest
+first, the steps where control spent at least 20s per trial and treatment invoked a tool in fewer
+than half its trials, or that have no tools at all.
 
 A tool failures table lists, per tool, the treatment invocations that did not complete or whose
 tool returned `status: "error"`, with their most common error messages. Then the worst label per
