@@ -255,6 +255,15 @@ Checkout's native `fill_payment_form` tool is the site's, so both arms can use i
 section on the `bench-delta` profile, checked from the page's text. Its guard has not been checked
 on Delta's live Review and Pay, so it is `opt_in`; drop that once it has been rehearsed.
 
+The `<site>-checkout-<item>` intents are guest purchases on retail sites: find an item, put one
+in the cart, and fill guest checkout's contact and shipping steps with fictional details, stopping
+at the step that asks for payment without entering any, so there is nothing an order could be
+placed with. Each is graded from the payment step's URL and text (or, on a single-page checkout,
+its address input). The address is Coit Tower, a building with no units: address validators on
+several sites asked for a suite at office addresses, and the agent stops when the site rejects a
+detail rather than inventing one. Intents still `opt_in` say why: the site blocks Kernel browsers,
+has no guest checkout, or rejects the fictional email or phone.
+
 ### Signed-in trials
 
 A domain with a Kernel `profile` loads it in every browser, in both arms, without saving

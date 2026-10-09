@@ -1,0 +1,5 @@
+{
+  "actions": {
+    "add_to_cart": "adds a product to the guest cart"
+  }
+}
