@@ -32,7 +32,8 @@ export function parseRecord(line) {
 
 // The clock runs from launch to agent_settled. pi has no turn or spend cap, so the runner
 // enforces both; a missing cost stops the agent, since the spend cap needs it. Each string in
-// `redact` is replaced in the transcript.
+// `redact` is replaced in the transcript, which then leaves out message_update: its streamed deltas
+// can split a string, and message_end holds the whole message.
 export function runAgent({ command = "pi", args, env, cwd, capMs, maxTurns = Infinity, maxBudgetUsd = Infinity, redact = [], transcriptPath, stderrPath }) {
   return new Promise((resolve, reject) => {
     const child = spawn(command, args, { cwd, env, stdio: ["ignore", "pipe", "pipe"] });
@@ -63,6 +64,7 @@ export function runAgent({ command = "pi", args, env, cwd, capMs, maxTurns = Inf
     const onRecord = (line) => {
       if (!line.trim()) return;
       const event = parseRecord(redact.reduce((text, secret) => text.replaceAll(secret, "[redacted]"), line));
+      if (redact.length && event.type === "message_update") return;
       event._t = elapsed();
       events.push(event);
       transcript.write(JSON.stringify(event) + "\n");

@@ -49,12 +49,15 @@ files, agents on Kernel browsers run in a [bubblewrap](https://github.com/contai
 sandbox (`bwrap`, Linux only; `apt install bubblewrap`). It sees `/usr`, the `/etc` files DNS and
 TLS need, its own processes and a fresh directory with its pi config and `TMPDIR`; not your home,
 this checkout, other trials or the rest of `/tmp` and `/etc`. It shares the network. The agent gets
-only `KERNEL_API_KEY` and the variables of its model's provider (`ANTHROPIC_*` for
-`anthropic/...`, `GEMINI_*` for `google/...`); their values are redacted from transcripts. If Node
-or pi is installed outside `/usr`, such as under `~/.nvm` or `~/.local`, only Node's binary and
-pi's package are mounted, read-only. Unprivileged user namespaces must be allowed, which some
-distributions restrict with AppArmor; the smoke gate stops the run if `bwrap` cannot create a
-sandbox or if one can see this checkout or your home.
+only `KERNEL_API_KEY`, the variables of its model's provider (`ANTHROPIC_*` for `anthropic/...`,
+`GEMINI_*` for `google/...`), the proxy variables and `NODE_EXTRA_CA_CERTS`; the values of keys
+and proxy URLs are redacted from transcripts, which then leave out pi's streamed `message_update`
+events. If Node or pi is installed outside `/usr`, such as under `~/.nvm` or `~/.local`, only Node's
+binary and pi's package are mounted, read-only, and pi runs as `node <its cli.js>`, so it must be
+an npm install rather than a standalone binary or a version manager's shim. Unprivileged user
+namespaces must be allowed, which some distributions restrict with AppArmor; the smoke gate stops
+the run if `bwrap` cannot create a sandbox, if one can see this checkout or your home, or if pi
+does not start in one.
 
 Run it as a Hypeship service under a hold that covers the whole run; holds cannot be renewed.
 This pilot is 105 trials and can take about 8 hours if every trial reaches its cap:
@@ -123,7 +126,8 @@ Before any trial, stopping on the first failure:
 1. the hold covers the remaining jobs if every trial reaches its cap after 180s of setup (the
    hold is checked again before each job, and no job starts that it cannot outlast);
 2. `KERNEL_API_KEY` is set (Kernel browsers), and on resume pi is the same version;
-   with Kernel browsers, a sandbox works and can see neither this checkout nor your home;
+   with Kernel browsers, a sandbox works, can see neither this checkout nor your home, and runs the
+   same pi;
 3. a zero-tool pi run answers and reports a cost above zero (pi prices an unknown model at 0,
    which would disable the spend cap);
 4. a treatment setup on the first pending intent works end to end;

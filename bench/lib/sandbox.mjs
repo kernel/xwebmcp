@@ -63,9 +63,12 @@ export function providerPrefixes(model) {
   return PROVIDER_PREFIXES[provider] ?? [`${provider.toUpperCase().replace(/-/g, "_")}_`];
 }
 
+// pi's HTTP client reads the proxy variables, and Node the extra CA file an intercepting proxy needs.
+const NETWORK = ["HTTP_PROXY", "HTTPS_PROXY", "NO_PROXY", "http_proxy", "https_proxy", "no_proxy", "NODE_EXTRA_CA_CERTS"];
+
 export function sandboxEnv(model, dir, env = process.env) {
   const prefixes = providerPrefixes(model);
-  const keys = Object.entries(env).filter(([name]) => name === "KERNEL_API_KEY" || prefixes.some(prefix => name.startsWith(prefix)));
+  const keys = Object.entries(env).filter(([name]) => name === "KERNEL_API_KEY" || NETWORK.includes(name) || prefixes.some(prefix => name.startsWith(prefix)));
   return {
     ...Object.fromEntries(keys),
     PATH: env.PATH,
@@ -78,9 +81,9 @@ export function sandboxEnv(model, dir, env = process.env) {
 }
 
 // The agent can read its keys in /proc/self/environ, so the runner removes their values from its
-// transcript.
+// transcript. A proxy URL can hold a password.
 export const secretValues = (env) => Object.entries(env)
-  .filter(([name, value]) => /KEY|TOKEN|SECRET/.test(name) && value.length >= 16)
+  .filter(([name, value]) => /KEY|TOKEN|SECRET|^https?_proxy$/i.test(name) && value.length >= 16)
   .map(([, value]) => value);
 
 // The paths to check a sandbox cannot see: the bench, and each entry of the home directory except
@@ -90,16 +93,37 @@ export function hiddenPaths(benchDir, home, mounts) {
   return [benchDir, ...entries.filter(path => !mounts.some(mount => under(mount, path)))];
 }
 
-// Throws when bwrap cannot create a sandbox; returns the paths a sandbox can see.
-export function visiblePaths(paths, mounts) {
+function runSandboxed(command, mounts) {
   const dir = sandboxDir(null);
   try {
-    const probe = ["sh", "-c", 'for p; do [ -e "$p" ] && echo "$p"; done; true', "sh", ...paths];
-    const output = execFileSync("bwrap", [...sandboxArgs(dir, mounts), "--", ...probe], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
-    return output.split("\n").filter(Boolean);
-  } catch (error) {
-    throw new Error(`bwrap cannot create a sandbox: ${error.stderr?.toString().trim() || error.message}`);
+    return execFileSync("bwrap", [...sandboxArgs(dir, mounts), "--", ...command], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
   } finally {
     rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+// The error line of a failed command's stderr, such as Node's SyntaxError, or else its last line.
+const stderrOf = (error) => {
+  const lines = (error.stderr?.toString() ?? "").trim().split("\n").filter(Boolean);
+  return lines.find(line => /^\w*Error\b/.test(line)) ?? lines.at(-1) ?? error.message;
+};
+
+// Throws when bwrap cannot create a sandbox; returns the paths a sandbox can see.
+export function visiblePaths(paths, mounts) {
+  const probe = ["sh", "-c", 'for p; do [ -e "$p" ] && echo "$p"; done; true', "sh", ...paths];
+  try {
+    return runSandboxed(probe, mounts).split("\n").filter(Boolean);
+  } catch (error) {
+    throw new Error(`bwrap cannot create a sandbox: ${stderrOf(error)}`);
+  }
+}
+
+// pi's --version as the sandbox runs it. Throws when it does not start there, as when `pi` is a
+// standalone binary or a version manager's shim rather than Node's script.
+export function sandboxedPiVersion({ command, mounts }) {
+  try {
+    return runSandboxed([...command, "--version"], mounts).trim();
+  } catch (error) {
+    throw new Error(`${command.join(" ")} --version failed in the sandbox: ${stderrOf(error)}`);
   }
 }

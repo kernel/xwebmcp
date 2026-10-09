@@ -4,7 +4,7 @@ import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync
 import { tmpdir } from "node:os";
 import { delimiter, dirname, join } from "node:path";
 import test from "node:test";
-import { hiddenPaths, piLauncher, sandboxArgs, sandboxDir, sandboxEnv, secretValues } from "../lib/sandbox.mjs";
+import { hiddenPaths, piLauncher, sandboxArgs, sandboxDir, sandboxedPiVersion, sandboxEnv, secretValues } from "../lib/sandbox.mjs";
 
 test("a sandboxed agent gets only Kernel's key, the model provider's variables and its own directories", () => {
   const env = sandboxEnv("anthropic/claude-haiku-5-5", "/tmp/xwebmcp-agent-1", {
@@ -18,11 +18,17 @@ test("a sandboxed agent gets only Kernel's key, the model provider's variables a
   const google = sandboxEnv("google/gemini-3-pro", "/tmp/xwebmcp-agent-1", { GEMINI_API_KEY: "g", GOOGLE_APPLICATION_CREDENTIALS: "/home/me/key.json" });
   assert.equal(google.GEMINI_API_KEY, "g");
   assert.ok(!("GOOGLE_APPLICATION_CREDENTIALS" in google));
+  // The proxy variables pi's HTTP client reads.
+  const proxied = sandboxEnv("openai/gpt", "/tmp/xwebmcp-agent-1", { HTTPS_PROXY: "http://proxy:3128", no_proxy: "localhost", NODE_EXTRA_CA_CERTS: "/etc/ssl/proxy.pem" });
+  assert.deepEqual([proxied.HTTPS_PROXY, proxied.no_proxy, proxied.NODE_EXTRA_CA_CERTS], ["http://proxy:3128", "localhost", "/etc/ssl/proxy.pem"]);
 });
 
-test("only long values of keys, tokens and secrets are redacted", () => {
+test("only long values of keys, tokens, secrets and proxy URLs are redacted", () => {
   const key = "sk-ant-0123456789abcdef";
-  assert.deepEqual(secretValues({ ANTHROPIC_API_KEY: key, ANTHROPIC_BASE_URL: "https://api.anthropic.com/v1", HF_TOKEN: "short" }), [key]);
+  const proxy = "http://user:pass@proxy:3128";
+  assert.deepEqual(secretValues({
+    ANTHROPIC_API_KEY: key, ANTHROPIC_BASE_URL: "https://api.anthropic.com/v1", HF_TOKEN: "short", https_proxy: proxy, NO_PROXY: "localhost,127.0.0.1",
+  }), [key, proxy]);
 });
 
 // A pi installed under a prefix that holds other files, as with an npm prefix of ~/.local.
@@ -95,5 +101,19 @@ console.log(JSON.stringify({
     rmSync(dir, { recursive: true, force: true });
     rmSync(other, { recursive: true, force: true });
     rmSync(prefix, { recursive: true, force: true });
+  }
+});
+
+test("a sandbox reports pi's version, and fails when pi is a shim rather than Node's script", { skip: !bwrapWorks && "bwrap cannot create a sandbox here" }, () => {
+  const { prefix, env } = installPi(`if (process.argv[2] === "--version") console.log("1.2.3");`);
+  const shim = mkdtempSync(join(tmpdir(), "bench-shim-"));
+  writeFileSync(join(shim, "pi"), `#!/bin/sh\nexec ${join(prefix, "bin/pi")} "$@"\n`, { mode: 0o755 });
+  try {
+    assert.equal(sandboxedPiVersion(piLauncher(env)), "1.2.3");
+    const shimmed = piLauncher({ PATH: [shim, env.PATH].join(delimiter) });
+    assert.throws(() => sandboxedPiVersion(shimmed), /--version failed in the sandbox: /);
+  } finally {
+    rmSync(prefix, { recursive: true, force: true });
+    rmSync(shim, { recursive: true, force: true });
   }
 });

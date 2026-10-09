@@ -22,7 +22,7 @@ import { composeBatch, domainPatterns, gitShow, matchesUrlPattern, registeredToo
 import { blockedAttempts, writeGuardExtension } from "./lib/guard.mjs";
 import { readPage, readPageArg, stepTimeline } from "./lib/page.mjs";
 import { checkRule, gradeAnswer } from "./grade.mjs";
-import { hiddenPaths, piLauncher, providerPrefixes, sandboxArgs, sandboxDir, sandboxEnv, secretValues, visiblePaths } from "./lib/sandbox.mjs";
+import { hiddenPaths, piLauncher, providerPrefixes, sandboxArgs, sandboxDir, sandboxedPiVersion, sandboxEnv, secretValues, visiblePaths } from "./lib/sandbox.mjs";
 
 const benchDir = dirname(fileURLToPath(import.meta.url));
 if (existsSync(join(benchDir, ".env"))) process.loadEnvFile(join(benchDir, ".env"));
@@ -288,7 +288,7 @@ function trialArgs(plan, prompt) {
 let sandbox = null;
 const sandboxDirs = new Set();
 
-function checkSandbox() {
+function checkSandbox(agent) {
   const launcher = piLauncher();
   let visible;
   try {
@@ -297,6 +297,13 @@ function checkSandbox() {
     fail(`${experiment.files.allowlist} has a built-in tool, so agents run in a bubblewrap sandbox, and ${error.message}; see "Sandbox" in bench/README.md`);
   }
   if (visible.length) fail(`the agent sandbox can see ${visible.join(", ")}; pi or Node is installed in a directory that holds it, so install them in a directory of their own`);
+  let version;
+  try {
+    version = `pi ${sandboxedPiVersion(launcher)}`;
+  } catch (error) {
+    fail(`the agent sandbox runs pi with Node, and ${error.message}; use an npm install of pi, with no version manager's shim for pi or Node on PATH`);
+  }
+  if (version !== agent) fail(`the agent sandbox runs ${version}, but \`pi --version\` is ${agent}`);
   sandbox = launcher;
 }
 
@@ -334,7 +341,7 @@ async function smokeGate(plan, probe, signedIn) {
     plan.kernel_cli ??= kernelCli;
   }
 
-  if (plan.allowlist.some(tool => !tool.startsWith("mcp__"))) checkSandbox();
+  if (plan.allowlist.some(tool => !tool.startsWith("mcp__"))) checkSandbox(agent);
 
   const plain = await runPi({
     args: piArgs({ prompt: "Reply with the single word READY.", systemPrompt: "Answer briefly.", model: plan.model, thinking: plan.thinking }),
