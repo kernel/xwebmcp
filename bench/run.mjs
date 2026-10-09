@@ -22,7 +22,7 @@ import { composeBatch, domainPatterns, gitShow, matchesUrlPattern, registeredToo
 import { blockedAttempts, writeGuardExtension } from "./lib/guard.mjs";
 import { readPage, readPageArg, stepTimeline } from "./lib/page.mjs";
 import { checkRule, gradeAnswer } from "./grade.mjs";
-import { hiddenPaths, installMounts, sandboxArgs, sandboxDir, sandboxEnv, visiblePaths } from "./lib/sandbox.mjs";
+import { hiddenPaths, piLauncher, providerPrefixes, sandboxArgs, sandboxDir, sandboxEnv, secretValues, visiblePaths } from "./lib/sandbox.mjs";
 
 const benchDir = dirname(fileURLToPath(import.meta.url));
 if (existsSync(join(benchDir, ".env"))) process.loadEnvFile(join(benchDir, ".env"));
@@ -283,29 +283,31 @@ function trialArgs(plan, prompt) {
 }
 
 // Set by the smoke gate when the allowlist has a built-in tool: agents then run in a sandbox, with
-// these read-only mounts besides /usr. Open sandbox directories are removed on shutdown.
-let sandboxMounts = null;
+// this pi command and its read-only mounts besides /usr. Open sandbox directories are removed on
+// shutdown.
+let sandbox = null;
 const sandboxDirs = new Set();
 
 function checkSandbox() {
-  const mounts = installMounts();
+  const launcher = piLauncher();
   let visible;
   try {
-    visible = visiblePaths(hiddenPaths(benchDir, process.env.HOME, mounts), mounts);
+    visible = visiblePaths(hiddenPaths(benchDir, process.env.HOME, launcher.mounts), launcher.mounts);
   } catch (error) {
     fail(`${experiment.files.allowlist} has a built-in tool, so agents run in a bubblewrap sandbox, and ${error.message}; see "Sandbox" in bench/README.md`);
   }
   if (visible.length) fail(`the agent sandbox can see ${visible.join(", ")}; pi or Node is installed in a directory that holds it, so install them in a directory of their own`);
-  sandboxMounts = mounts;
+  sandbox = launcher;
 }
 
 // pi as the bench user, or in a sandbox that gets only the model's and Kernel's keys.
 async function runPi({ agentDir, mcpConfig, model, ...options }) {
-  if (!sandboxMounts) return runAgent({ ...options, env: agentEnv(agentDir, mcpConfig) });
+  if (!sandbox) return runAgent({ ...options, env: agentEnv(agentDir, mcpConfig) });
   const dir = sandboxDir(mcpConfig);
   sandboxDirs.add(dir);
+  const env = sandboxEnv(model, dir);
   try {
-    return await runAgent({ ...options, command: "bwrap", args: [...sandboxArgs(dir, sandboxMounts), "--", "pi", ...options.args], env: sandboxEnv(model, dir) });
+    return await runAgent({ ...options, command: "bwrap", args: [...sandboxArgs(dir, sandbox.mounts), "--", ...sandbox.command, ...options.args], env, redact: secretValues(env) });
   } finally {
     rmSync(dir, { recursive: true, force: true });
     sandboxDirs.delete(dir);
@@ -343,7 +345,7 @@ async function smokeGate(plan, probe, signedIn) {
   const { final, answer, cost_usd } = summarize(plain.events, []);
   logSmokeSpend(cost_usd);
   if (final?.stopReason !== "stop" || !/READY/.test(answer)) {
-    fail(`a zero-tool pi run did not answer: ${final?.errorMessage || stderrTail(join(dir, "plain.stderr")) || "no answer"}. Check --model and the provider's API key.`);
+    fail(`a zero-tool pi run did not answer: ${final?.errorMessage || stderrTail(join(dir, "plain.stderr")) || "no answer"}. Check --model and the provider's API key${sandbox ? `; in the sandbox the agent gets only KERNEL_API_KEY and ${providerPrefixes(plan.model).map(prefix => `${prefix}*`).join(", ")}` : ""}.`);
   }
   // pi prices a model missing from its table at 0, which would disable the spend cap.
   if (!(cost_usd > 0)) fail(`pi reported a cost of ${cost_usd} for ${plan.model}, so --max-budget-usd cannot apply`);
@@ -448,9 +450,10 @@ async function shutdown(code, message) {
   stopping = true;
   (code ? console.error : log)(message);
   for (const child of runningAgents) child.kill("SIGKILL");
-  for (const dir of sandboxDirs) rmSync(dir, { recursive: true, force: true });
   await Promise.allSettled([...creating]);
   await Promise.allSettled([...openBrowsers].map(id => browsers.deleteBrowser(id)));
+  // After the browsers, so a directory a dying agent still writes to cannot stop their deletion.
+  for (const dir of sandboxDirs) rmSync(dir, { recursive: true, force: true, maxRetries: 3 });
   process.exit(code);
 }
 

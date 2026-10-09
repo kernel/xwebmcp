@@ -188,6 +188,13 @@ test("the runner stops pi at the turn, spend and time caps, and when a cost is m
   assert.deepEqual([slow.limit, slow.durationMs], ["time cap", 300]);
 });
 
+test("the runner redacts the given strings from the transcript", async () => {
+  const key = "sk-ant-0123456789abcdef";
+  const read = { type: "tool_execution_end", toolName: "read", result: { content: [{ type: "text", text: `ANTHROPIC_API_KEY=${key}\0PATH=/usr/bin` }] } };
+  const { events } = await runEvents([read, { type: "agent_settled" }], { redact: [key] });
+  assert.equal(events[0].result.content[0].text, "ANTHROPIC_API_KEY=[redacted]\0PATH=/usr/bin");
+});
+
 test("a failed invocation keeps its error, whether the call, the tool or the MCP server failed", () => {
   const invoke = (id) => call(id, "mcp__kernel__webmcp", { action: "invoke", tool_ref: "wmcp_a" });
   const summary = summarize([

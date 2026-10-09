@@ -5,8 +5,7 @@
 
 import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, realpathSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { delimiter, dirname, join } from "node:path";
+import { delimiter, join } from "node:path";
 
 const ETC = [
   "/etc/resolv.conf", "/etc/hosts", "/etc/nsswitch.conf", "/etc/gai.conf", "/etc/ssl", "/etc/pki",
@@ -15,16 +14,15 @@ const ETC = [
 
 const under = (path, dir) => path === dir || path.startsWith(`${dir}/`);
 
-// Node's and pi's installation prefixes when they are outside /usr, such as ~/.nvm/versions/node/v22.
-export function installMounts(env = process.env, execPath = process.execPath) {
-  const pi = (env.PATH ?? "").split(delimiter).map(dir => join(dir, "pi")).find(path => existsSync(path));
-  const prefixes = [dirname(dirname(realpathSync(execPath)))];
-  if (pi) {
-    const real = realpathSync(pi);
-    const modules = real.indexOf("/lib/node_modules/");
-    prefixes.push(modules > 0 ? real.slice(0, modules) : dirname(real));
-  }
-  return [...new Set(prefixes)].filter(prefix => !under(prefix, "/usr"));
+const which = (name, env) => (env.PATH ?? "").split(delimiter).map(dir => join(dir, name)).find(path => existsSync(path));
+
+// How a sandbox runs pi: with the host's node, mounting Node's binary and pi's package by themselves
+// when they are outside /usr, so the rest of a prefix such as ~/.local or ~/.nvm stays hidden.
+export function piLauncher(env = process.env, execPath = process.execPath) {
+  const node = realpathSync(which("node", env) ?? execPath);
+  const cli = realpathSync(which("pi", env));
+  const pkg = cli.match(/^(.*\/node_modules\/(?:@[^/]+\/)?[^/]+)\//)?.[1] ?? cli;
+  return { mounts: [...new Set([node, pkg])].filter(path => !under(path, "/usr")), command: [node, cli] };
 }
 
 export function sandboxArgs(dir, mounts = []) {
@@ -33,26 +31,41 @@ export function sandboxArgs(dir, mounts = []) {
     "--ro-bind", "/usr", "/usr",
     ...["/bin", "/sbin", "/lib", "/lib64"].flatMap(path => ["--ro-bind-try", path, path]),
     ...ETC.flatMap(path => ["--ro-bind-try", path, path]),
-    ...mounts.flatMap(path => ["--ro-bind", path, path]),
     "--proc", "/proc", "--dev", "/dev", "--tmpfs", "/tmp",
+    ...mounts.flatMap(path => ["--ro-bind", path, path]),
     "--bind", dir, dir, "--chdir", dir,
   ];
 }
 
-// A fresh directory for one agent, with its mcp.json, under the host's TMPDIR.
+// A fresh directory for one agent, with its mcp.json. It is under /tmp, not the host's TMPDIR,
+// which may be in the home directory and would then show the sandbox an entry of it.
 export function sandboxDir(mcpConfig) {
-  const dir = mkdtempSync(join(tmpdir(), "xwebmcp-agent-"));
+  const dir = mkdtempSync("/tmp/xwebmcp-agent-");
   mkdirSync(join(dir, "agent"));
   mkdirSync(join(dir, "tmp"));
   if (mcpConfig) writeFileSync(join(dir, "agent", "mcp.json"), JSON.stringify(mcpConfig, null, 2) + "\n");
   return dir;
 }
 
-// The model's provider is the part of --model before the slash; its variables, such as
-// ANTHROPIC_API_KEY for anthropic/..., are the only keys the agent gets besides Kernel's.
+// pi's providers whose variables are not named after them, as in pi's getApiKeyEnvVars.
+const PROVIDER_PREFIXES = {
+  "amazon-bedrock": ["AWS_"], "cloudflare-ai-gateway": ["CLOUDFLARE_"], "cloudflare-workers-ai": ["CLOUDFLARE_"],
+  "github-copilot": ["COPILOT_"], google: ["GEMINI_"], "google-vertex": ["GOOGLE_CLOUD_"], huggingface: ["HF_"],
+  "kimi-coding": ["KIMI_"], moonshotai: ["MOONSHOT_"], "moonshotai-cn": ["MOONSHOT_"], "opencode-go": ["OPENCODE_"],
+  "qwen-token-plan-individual": ["QWEN_TOKEN_PLAN_"], "vercel-ai-gateway": ["AI_GATEWAY_"],
+};
+
+// The model's provider is the part of --model before the slash. Its variables, such as
+// ANTHROPIC_API_KEY for anthropic/... or GEMINI_API_KEY for google/..., are the only keys the agent
+// gets besides Kernel's.
+export function providerPrefixes(model) {
+  const provider = model.split("/")[0];
+  return PROVIDER_PREFIXES[provider] ?? [`${provider.toUpperCase().replace(/-/g, "_")}_`];
+}
+
 export function sandboxEnv(model, dir, env = process.env) {
-  const prefix = `${model.split("/")[0].toUpperCase().replace(/-/g, "_")}_`;
-  const keys = Object.entries(env).filter(([name]) => name === "KERNEL_API_KEY" || name.startsWith(prefix));
+  const prefixes = providerPrefixes(model);
+  const keys = Object.entries(env).filter(([name]) => name === "KERNEL_API_KEY" || prefixes.some(prefix => name.startsWith(prefix)));
   return {
     ...Object.fromEntries(keys),
     PATH: env.PATH,
@@ -63,6 +76,12 @@ export function sandboxEnv(model, dir, env = process.env) {
     PI_TELEMETRY: "0",
   };
 }
+
+// The agent can read its keys in /proc/self/environ, so the runner removes their values from its
+// transcript.
+export const secretValues = (env) => Object.entries(env)
+  .filter(([name, value]) => /KEY|TOKEN|SECRET/.test(name) && value.length >= 16)
+  .map(([, value]) => value);
 
 // The paths to check a sandbox cannot see: the bench, and each entry of the home directory except
 // those that hold a mount, which bwrap creates as empty directories.

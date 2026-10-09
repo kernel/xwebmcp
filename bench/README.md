@@ -50,8 +50,9 @@ sandbox (`bwrap`, Linux only; `apt install bubblewrap`). It sees `/usr`, the `/e
 TLS need, its own processes and a fresh directory with its pi config and `TMPDIR`; not your home,
 this checkout, other trials or the rest of `/tmp` and `/etc`. It shares the network. The agent gets
 only `KERNEL_API_KEY` and the variables of its model's provider (`ANTHROPIC_*` for
-`anthropic/...`). Node and pi installed outside `/usr`, such as under `~/.nvm`, are mounted
-read-only from their own directories. Unprivileged user namespaces must be allowed, which some
+`anthropic/...`, `GEMINI_*` for `google/...`); their values are redacted from transcripts. If Node
+or pi is installed outside `/usr`, such as under `~/.nvm` or `~/.local`, only Node's binary and
+pi's package are mounted, read-only. Unprivileged user namespaces must be allowed, which some
 distributions restrict with AppArmor; the smoke gate stops the run if `bwrap` cannot create a
 sandbox or if one can see this checkout or your home.
 
