@@ -38,7 +38,7 @@ bench/
 ## Running
 
 Needs the `kernel` and `pi` CLIs, Node 22.13+, git, `KERNEL_API_KEY` and the model provider's
-key (such as `OPENAI_API_KEY`), from the environment or `bench/.env`. Each agent gets its own
+key (such as `ANTHROPIC_API_KEY`), from the environment or `bench/.env`. Each agent gets its own
 `PI_CODING_AGENT_DIR`, so stored pi logins and MCP servers are not used.
 
 Run it as a Hypeship service under a hold that covers the whole run; holds cannot be renewed.
@@ -47,7 +47,7 @@ This pilot is 105 trials and can take about 8 hours if every trial reaches its c
 ```sh
 hypeship hold acquire --duration 12h
 hypeship services create bench-pilot-1 --cwd "$PWD" \
-  --command "node bench/run.mjs --run-id pilot-1 --model openai/gpt-5.4 --domain fandango.com --domain github.com --domain ipwho.is --adoption 5 --pairs 5 --slots 3"
+  --command "node bench/run.mjs --run-id pilot-1 --model anthropic/claude-haiku-5-5 --thinking medium --domain fandango.com --domain github.com --domain ipwho.is --adoption 5 --pairs 5 --slots 3"
 hypeship services start bench-pilot-1
 node bench/report.mjs bench/results/pilot-1 > pilot-1.md
 ```
