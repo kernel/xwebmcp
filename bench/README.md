@@ -272,8 +272,10 @@ Checkout Complete Checkout", so its guard names it with `selectors`, and Tractor
 out `pay now`, the label of a payment-method toggle there. An intent that adds
 `payment_details` needs `form_submit`, and should block the site's payment requests as Blue
 Bottle's does. Run them with `--stealth`: Dick's blocks plain Kernel browsers, and the others
-have passed in stealth. Intents still `opt_in` say why: the site blocks Kernel browsers, has no
-guest checkout, rejects the fictional email or phone, or has not passed a rehearsal yet.
+have passed in stealth. Lowe's cart API still refuses the add-to-cart in some stealth trials (an
+Akamai 403), and the agent then stops without an answer. Intents still `opt_in` say why: the
+site blocks Kernel browsers, has no guest checkout, rejects the fictional email or phone, or has
+not passed a rehearsal yet.
 
 ### Signed-in trials
 
