@@ -26,7 +26,11 @@
   "rules": [
     {
       "path": "product",
-      "matches": "pan"
+      "matches": "sheet pan"
+    },
+    {
+      "path": "product",
+      "matches": "half[\\s-]size"
     },
     {
       "path": "quantity",
@@ -45,7 +49,7 @@
       },
       {
         "path": "text",
-        "matches": "pan"
+        "matches": "sheet pan"
       }
     ]
   },

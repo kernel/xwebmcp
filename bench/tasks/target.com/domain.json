@@ -1,5 +1,7 @@
 {
   "actions": {
-    "add_to_cart": "adds a product to the guest cart"
+    "add_to_cart": "adds a product to the guest cart",
+    "update_cart_item": "changes the quantity of a line in the guest cart",
+    "remove_cart_item": "removes a line from the guest cart"
   }
 }

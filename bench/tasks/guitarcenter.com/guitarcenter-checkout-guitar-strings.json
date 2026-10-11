@@ -37,7 +37,7 @@
     "rules": [
       {
         "path": "url",
-        "matches": "checkout"
+        "matches": "^https://([\\w-]+\\.)*guitarcenter\\.com/.*checkout"
       },
       {
         "path": "text",

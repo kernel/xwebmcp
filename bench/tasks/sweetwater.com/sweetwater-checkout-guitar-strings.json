@@ -37,7 +37,7 @@
     "rules": [
       {
         "path": "url",
-        "matches": "checkout"
+        "matches": "^https://([\\w-]+\\.)*sweetwater\\.com/.*checkout"
       },
       {
         "path": "text",

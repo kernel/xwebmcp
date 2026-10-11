@@ -258,11 +258,17 @@ on Delta's live Review and Pay, so it is `opt_in`; drop that once it has been re
 The `<site>-checkout-<item>` intents are guest purchases on retail sites: find an item, put one
 in the cart, and fill guest checkout's contact and shipping steps with fictional details, stopping
 at the step that asks for payment without entering any, so there is nothing an order could be
-placed with. Each is graded from the payment step's URL and text (or, on a single-page checkout,
-its address input). The address is Coit Tower, a building with no units: address validators on
-several sites asked for a suite at office addresses, and the agent stops when the site rejects a
-detail rather than inventing one. Intents still `opt_in` say why: the site blocks Kernel browsers,
-has no guest checkout, or rejects the fictional email or phone.
+placed with. Each is graded from the page: a checkout URL on the site's own host, the shipping
+address in its text (or, on Dick's single-page checkout, its address input), and, where checkout
+keeps one URL for every step, the billing address the payment form shows (Lowe's and Tractor
+Supply; Ace shows its payment form before the address, so the saved address is the signal). The
+address is Coit Tower, a building with no units: address validators on several sites asked for a
+suite at office addresses, and the agent stops when the site rejects a detail rather than
+inventing one. Their guards block only the place-order buttons, with no `form_submit` or
+`requests` rules, because the task gives no card to pay with; an intent that adds
+`payment_details` needs a guard as strict as Blue Bottle's. Intents still `opt_in` say why: the
+site blocks Kernel browsers, has no guest checkout, rejects the fictional email or phone, or has
+not passed a rehearsal yet.
 
 ### Signed-in trials
 

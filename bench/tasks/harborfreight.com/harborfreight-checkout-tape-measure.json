@@ -29,6 +29,10 @@
       "matches": "tape measure"
     },
     {
+      "path": "product",
+      "matches": "\\b25\\s*-?\\s*(ft|foot|feet|')"
+    },
+    {
       "path": "quantity",
       "equals": 1
     }
@@ -37,7 +41,7 @@
     "rules": [
       {
         "path": "url",
-        "matches": "checkout"
+        "matches": "^https://([\\w-]+\\.)*harborfreight\\.com/.*checkout"
       },
       {
         "path": "text",
