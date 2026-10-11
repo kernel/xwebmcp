@@ -45,7 +45,7 @@
       },
       {
         "path": "text",
-        "matches": "Telegraph Hill"
+        "matches": "Delivery Address\\s+Alex Demo\\s+1 Telegraph Hill"
       }
     ]
   },

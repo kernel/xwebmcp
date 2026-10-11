@@ -120,6 +120,8 @@ export function validateIntent(intent, benchDir) {
   need(!allow?.includes?.("payment_details") || allow.includes("checkout"), "allow payment_details needs checkout");
   // An agent that may enter checkout must not be able to submit it, in either arm.
   need(Boolean(allow?.includes?.("checkout")) === (guard !== undefined), "an intent that allows checkout needs a guard, and only such an intent has one");
+  // With payment details on the page, a form submission alone could place the order.
+  need(!allow?.includes?.("payment_details") || guard?.form_submit === true, "an intent that allows payment_details needs a guard with form_submit");
   need(guard === undefined || (Array.isArray(guard?.hosts) && guard.hosts.length > 0 && guard.hosts.every(host => typeof host === "string" && /^https:\/\/[^/]+\/\S*$/.test(host))
     && typeof guard.buttons === "string" && compiles(guard.buttons, "i") && (guard.requests === undefined || (typeof guard.requests === "string" && compiles(guard.requests, "i") && !RE2_UNSUPPORTED.test(guard.requests)))
     && (guard.selectors === undefined || (typeof guard.selectors === "string" && guard.selectors.length > 0))

@@ -42,6 +42,10 @@
       {
         "path": "text",
         "matches": "payment method"
+      },
+      {
+        "path": "text",
+        "matches": "Telegraph Hill"
       }
     ]
   },

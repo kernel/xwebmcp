@@ -34,9 +34,6 @@
     }
   ],
   "check": {
-    "fields": {
-      "address": "#homefield-textinput-shippingaddress"
-    },
     "rules": [
       {
         "path": "url",
@@ -47,8 +44,8 @@
         "matches": "bottle"
       },
       {
-        "path": "fields.address",
-        "matches": "Telegraph Hill"
+        "path": "text",
+        "matches": "Shipping (and |& )?(Billing )?Address\\s+Alex Demo\\s+1 Telegraph Hill"
       }
     ]
   },

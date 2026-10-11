@@ -20,7 +20,7 @@
     "hosts": [
       "https://*.tractorsupply.com/*"
     ],
-    "buttons": "^\\s*(place (my |your )?order|submit (my |your )?order|complete (my |your )?(order|purchase)|pay now|confirm (and|&) pay)\\b"
+    "buttons": "^\\s*(place (my |your )?order|submit (my |your )?order|complete (my |your )?(order|purchase)|confirm (and|&) pay)\\b"
   },
   "answer_schema": "schemas/checkout-order.json",
   "rules": [
@@ -42,10 +42,6 @@
       {
         "path": "url",
         "matches": "^https://www\\.tractorsupply\\.com/tsc/checkout"
-      },
-      {
-        "path": "text",
-        "matches": "Telegraph Hill"
       },
       {
         "path": "text",

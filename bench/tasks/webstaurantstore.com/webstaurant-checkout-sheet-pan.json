@@ -20,7 +20,8 @@
     "hosts": [
       "https://*.webstaurantstore.com/*"
     ],
-    "buttons": "^\\s*(place (my |your )?order|submit (my |your )?order|complete (my |your )?(order|purchase)|pay now|confirm (and|&) pay)\\b"
+    "buttons": "^\\s*(place (my |your )?order|submit (my |your )?order|complete (my |your )?(order|purchase)|pay now|confirm (and|&) pay)\\b",
+    "selectors": "[data-testid^=\"complete-checkout\"]"
   },
   "answer_schema": "schemas/checkout-order.json",
   "rules": [

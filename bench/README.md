@@ -258,17 +258,22 @@ on Delta's live Review and Pay, so it is `opt_in`; drop that once it has been re
 The `<site>-checkout-<item>` intents are guest purchases on retail sites: find an item, put one
 in the cart, and fill guest checkout's contact and shipping steps with fictional details, stopping
 at the step that asks for payment without entering any, so there is nothing an order could be
-placed with. Each is graded from the page: a checkout URL on the site's own host, the shipping
-address in its text (or, on Dick's single-page checkout, its address input), and, where checkout
-keeps one URL for every step, the billing address the payment form shows (Lowe's and Tractor
-Supply; Ace shows its payment form before the address, so the saved address is the signal). The
-address is Coit Tower, a building with no units: address validators on several sites asked for a
+placed with. Each is graded from the page: a checkout URL on the site's own host and the shipping
+address in its text. Where checkout keeps one URL for every step, the address must appear in the
+summary the page shows once it is saved, since an address typed but not saved can also be in the
+text, as an autocomplete suggestion or a confirmation pop-up: the billing address of the payment
+form on Lowe's and Tractor Supply, the delivery address on Ace, and the shipping and billing
+address on Dick's. Since those steps share a URL, the report counts all of checkout as one step.
+The address is Coit Tower, a building with no units: address validators on several sites asked for a
 suite at office addresses, and the agent stops when the site rejects a detail rather than
 inventing one. Their guards block only the place-order buttons, with no `form_submit` or
-`requests` rules, because the task gives no card to pay with; an intent that adds
-`payment_details` needs a guard as strict as Blue Bottle's. Intents still `opt_in` say why: the
-site blocks Kernel browsers, has no guest checkout, rejects the fictional email or phone, or has
-not passed a rehearsal yet.
+`requests` rules, because the task gives no card to pay with. WebstaurantStore's reads "Secure
+Checkout Complete Checkout", so its guard names it with `selectors`, and Tractor Supply's leaves
+out `pay now`, the label of a payment-method toggle there. An intent that adds
+`payment_details` needs `form_submit`, and should block the site's payment requests as Blue
+Bottle's does. Run them with `--stealth`: Dick's blocks plain Kernel browsers, and the others
+have passed in stealth. Intents still `opt_in` say why: the site blocks Kernel browsers, has no
+guest checkout, rejects the fictional email or phone, or has not passed a rehearsal yet.
 
 ### Signed-in trials
 

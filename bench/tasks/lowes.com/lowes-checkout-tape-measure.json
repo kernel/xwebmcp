@@ -45,10 +45,6 @@
       },
       {
         "path": "text",
-        "matches": "Telegraph Hill"
-      },
-      {
-        "path": "text",
         "matches": "Billing Address\\s+Alex Demo\\s+1 Telegraph Hill"
       },
       {

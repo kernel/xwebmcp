@@ -272,6 +272,9 @@ test("checkout intents need a guard, and fields checks name CSS selectors", () =
   const { guard, ...unguarded } = intent;
   assert.ok(validateIntent(unguarded, benchDir).includes("an intent that allows checkout needs a guard, and only such an intent has one"));
   assert.ok(validateIntent({ ...intent, allow: ["payment_details"], guard: undefined }, benchDir).includes("allow payment_details needs checkout"));
+  const guardWithoutFormSubmit = { ...guard, form_submit: undefined };
+  assert.ok(validateIntent({ ...intent, guard: guardWithoutFormSubmit }, benchDir).includes("an intent that allows payment_details needs a guard with form_submit"));
+  assert.deepEqual(validateIntent({ ...intent, allow: ["checkout"], guard: guardWithoutFormSubmit }, benchDir), []);
   assert.ok(validateIntent({ ...intent, allow: ["checkout", "pay"] }, benchDir).some(p => p.startsWith("allow must list")));
   assert.ok(validateIntent({ ...intent, guard: { ...guard, hosts: ["checkout.bluebottlecoffee.com"] } }, benchDir).some(p => p.startsWith("guard needs")));
   assert.ok(validateIntent({ ...intent, guard: { ...guard, buttons: "(" } }, benchDir).some(p => p.startsWith("guard needs")));
