@@ -398,6 +398,18 @@ test("get_issue reads the issue from the issueViewerRoute payload GitHub now emb
   assert.equal((await run("get_issue", { owner: "example-org", repo: "widgets", number: 7 }, { route: issueRoute({ issueViewerRoute: {} }) })).output.error_kind, "site_changed");
 });
 
+test("get_issue adds the latest items exactly when the two slices cover the whole timeline", async () => {
+  const slices = total => {
+    const { data } = issuePayload([comment(1), comment(2)], {}, total).preloadedQueries[0].result;
+    data.repository.issue.backTimelineItems.edges = [{ node: comment(3) }, { node: comment(4) }];
+    return issueRoute({ issueViewerRoute: { data } });
+  };
+  const joined = await run("get_issue", { owner: "example-org", repo: "widgets", number: 7 }, { route: slices(4) });
+  assert.deepEqual([joined.output.timeline_returned, joined.output.timeline_complete], [4, true]);
+  const gap = await run("get_issue", { owner: "example-org", repo: "widgets", number: 7 }, { route: slices(5) });
+  assert.deepEqual([gap.output.timeline_returned, gap.output.timeline_complete], [2, false]);
+});
+
 test("get_issue leaves out the page's latest items when they do not join the first ones", async () => {
   const { data } = issuePayload([comment(1), comment(2)], {}, 500).preloadedQueries[0].result;
   const issue = data.repository.issue;

@@ -4,7 +4,7 @@ Tools for GitHub (https://github.com): repository/issue/PR reads, exact-content 
 
 | tool | file | status | notes |
 |------|------|--------|-------|
-| get_issue | [get_issue.js](get_issue.js) | draft | Issue title, state and close reason, labels, assignees, milestone, linked pull requests, body and the first timeline items GitHub puts in the page (about 15). Signed-out tabs only (see Site quirks); private repositories not tested. |
+| get_issue | [get_issue.js](get_issue.js) | verified | Issue title, state and close reason, labels, assignees, milestone, linked pull requests, body and the timeline items GitHub puts in the page (the first ~15, and the latest ~16 when they join without a gap). Signed-out tabs only (see Site quirks); private repositories not tested. |
 | get_pull_request | [get_pull_request.js](get_pull_request.js) | qa_passed | Pull request state (open, draft, closed, merged), branches, head and merge commits, times, labels and the description as text. No comments, review threads, files, checks or lock state. Public repositories signed out; private repositories not tested. |
 | get_repository | [get_repository.js](get_repository.js) | qa_passed | Repository overview from the repository page: description, topics, star, fork and watcher counts, license, default branch, latest commit, counts, root entries and README text; `empty_repository` for a repository with no commits. Public repositories signed out; private repositories not tested. |
 | get_star_status | [get_star_status.js](get_star_status.js) | qa_passed | Fresh public repository star state for an explicitly expected signed-in account; no account identifier output. |
@@ -162,10 +162,10 @@ tools and `navigator.modelContext` is undefined, so the custom namespace conflic
 
 ## Status and known limitations
 
-All ten tools are `qa_passed`: independent review and one fix/recheck signed off the complete source at `da1717d`, including the read tools' explicit null/array/primitive guards. Later status/evidence edits change no tool source. Live mutation of stars is not authorized in development and is fixture-only. Creation/comments/merges/releases remain unshipped because the runtime does not provide trusted human approval enforcement.
+`get_issue` is `verified`: after GitHub changed its issue page payload, a separate independent review signed off its source at `ab9928d` on 2026-10-13, with a live run started from `github.com/explore`. The other nine tools are `qa_passed`: independent review and one fix/recheck signed off the complete source at `da1717d`, including the read tools' explicit null/array/primitive guards. Later status/evidence edits change no tool source. Live mutation of stars is not authorized in development and is fixture-only. Creation/comments/merges/releases remain unshipped because the runtime does not provide trusted human approval enforcement.
 
 - **Private repositories and organization SSO were not tested.** The original read tools may see what the authorized tab can access, but private targets were not exercised. New preparations/star tools reject non-public targets.
-- **Issue timelines and pull request conversations are partial.** `get_issue` returns only the items GitHub puts in the page.
+- **Issue timelines and pull request conversations are partial.** `get_issue` returns only the items GitHub puts in the page, and leaves out the latest slice when it does not join the first one.
   `get_pull_request` returns no comments, review threads, changed files, check results or lock state; their pages were not parsed, and the lock flag in the page data is wrong.
 - **`get_issue` is signed-out only.** See the preload note above; this is a deliberate refusal, not a bug, and a real-Chrome user who is signed in to GitHub
   will get `signed_in_side_effect` from it. The gate reads the current document's render-time state, so a stale signed-out document sitting over a signed-in session
