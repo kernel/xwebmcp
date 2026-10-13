@@ -1,0 +1,17 @@
+{
+  "type": "object",
+  "required": [
+    "room",
+    "total"
+  ],
+  "properties": {
+    "room": {
+      "type": "string",
+      "minLength": 1
+    },
+    "total": {
+      "type": "number",
+      "exclusiveMinimum": 0
+    }
+  }
+}

@@ -1,0 +1,38 @@
+{
+  "id": "youtube-channel-latest-uploads",
+  "domain": "youtube.com",
+  "stage": "find",
+  "prompt": "On youtube.com, list the three most recent videos the channel {{handle}} has uploaded, newest first, leaving out Shorts and live streams: each one's title and video id. Reply with JSON: {\"videos\": [{\"title\": string, \"video_id\": string}]}.",
+  "fixture": {
+    "handle": "@veritasium"
+  },
+  "start_url": "https://www.youtube.com/",
+  "tools": [
+    {
+      "repo": "kernel/xwebmcp",
+      "ref": "hypeship/youtube-search-video",
+      "pr": 53
+    }
+  ],
+  "answer_schema": "schemas/channel-uploads.json",
+  "rules": [
+    {
+      "path": "videos",
+      "count": [
+        3,
+        3
+      ]
+    },
+    {
+      "path": "videos[].video_id",
+      "unique": true
+    }
+  ],
+  "agreement": {
+    "path": "videos[].video_id",
+    "same": true
+  },
+  "pairs": 5,
+  "trial_timeout_sec": 600,
+  "max_turns": 40
+}
