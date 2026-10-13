@@ -221,11 +221,6 @@
         if (/\/(sign-?in|login|consent)\b/i.test(final.pathname)) return fail("gated", "Booking.com asked for sign-in or consent instead of showing results.");
         if (res.redirected && !final.pathname.includes("searchresults")) return fail("search_not_accepted", "Booking.com redirected away from the results page. It does that for a destination it cannot resolve and for dates in the past or beyond its bookable window (observed to end about 16 months ahead), and it may also do it when it treats the request as automated; the tool cannot tell which applied.");
         const doc = new DOMParser().parseFromString(html, "text/html");
-        const heading = /^(.*?):\s*([\d,]+)\s+propert(?:y|ies)\s+found/i.exec(text(doc.querySelector("h1")));
-        if (!heading) return botPage ? fail("challenge", "Booking.com served a bot-protection page instead of results; complete the check in the browser or wait before retrying.") : fail("site_changed", "The results page has no 'N properties found' heading; Booking.com's markup may have changed.");
-        const totalFound = Number(heading[2].replace(/,/g, ""));
-        const cardEls = [...doc.querySelectorAll("[data-testid=\"property-card\"]")];
-
         // Some sessions get a results page without the b_* page variables; it carries the same facts in its
         // application context and its Apollo store's searchMeta.
         const json = selector => { try { return JSON.parse(doc.querySelector(selector).textContent); } catch (e) { return null; } };
@@ -233,10 +228,20 @@
         const apollo = json("script[data-capla-store-data=\"apollo\"]");
         const searches = apollo && apollo.ROOT_QUERY && apollo.ROOT_QUERY.searchQueries || {};
         const search = Object.entries(searches).find(([key]) => key.startsWith("search("));
-        const meta = search && search[1] && search[1].searchMeta || {};
+        const result = search && search[1] || {};
+        const meta = result.searchMeta || {};
         const metaDates = meta.dates || {};
         const isoDate = value => typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value) ? value : null;
-        const destLocation = search && search[1] && search[1].destinationLocation || {};
+        const destLocation = result.destinationLocation || {};
+
+        const heading = /^(.*?):\s*([\d,]+)\s+propert(?:y|ies)\s+found/i.exec(text(doc.querySelector("h1")));
+        if (!heading && botPage) return fail("challenge", "Booking.com served a bot-protection page instead of results; complete the check in the browser or wait before retrying.");
+        // That page answers an unresolvable destination with a Redirect search result, and dates outside the
+        // bookable window with an undated search, where the other page redirects to the home page.
+        if (!heading && (result.__typename === "Redirect" || (result.searchMeta && !result.searchMeta.dates))) return fail("search_not_accepted", "Booking.com did not run the search. It does that for a destination it cannot resolve and for dates in the past or beyond its bookable window (observed to end about 16 months ahead); the tool cannot tell which applied.");
+        if (!heading) return fail("site_changed", "The results page has no 'N properties found' heading; Booking.com's markup may have changed.");
+        const totalFound = Number(heading[2].replace(/,/g, ""));
+        const cardEls = [...doc.querySelectorAll("[data-testid=\"property-card\"]")];
 
         const shownCurrency = text(pickTid(doc, "header-currency-picker-trigger"));
         const configCurrency = cfg(html, /\bb_selected_currency\s*:\s*'([A-Za-z_]+)'/) ?? (appContext && /^[A-Z]{3}$/.test(appContext.currency) ? appContext.currency : null);
@@ -247,6 +252,7 @@
         const occ = { adults: Number((/(\d+)\s+adults?/i.exec(occupancy) || [])[1]), children: Number((/(\d+)\s+child(?:ren)?/i.exec(occupancy) || [])[1] || 0), rooms: Number((/(\d+)\s+rooms?/i.exec(occupancy) || [])[1]) };
         if (!configCurrency || !occ.adults || !occ.rooms) return fail("site_changed", "The results page does not expose the currency and guests it searched; Booking.com's markup may have changed.");
         if (shownCurrency !== query.currency || configCurrency !== query.currency) return fail("currency_mismatch", "Booking.com is showing " + (/^[A-Z]{3}$/.test(shownCurrency) && shownCurrency === configCurrency ? shownCurrency : "prices in a mix of currencies or one it does not label with a code") + ", not " + query.currency + ". This tool never changes the site's currency: pass the currency the site shows, or change it in the site's currency picker first.");
+        if (!/\bb_selected_currency\s*:/.test(html) && !result.searchMeta) return fail("site_changed", "The results page does not expose the dates it searched; Booking.com's markup may have changed.");
         if (!checkIn || !checkOut || !interval) return fail("search_not_applied", "Booking.com did not apply the dates " + query.check_in + " to " + query.check_out + " (it ignores dates it cannot book, such as dates in the past) and returned an undated search.");
         if (checkIn !== query.check_in || checkOut !== query.check_out || interval !== nights || occ.adults !== query.adults || occ.children !== ages.length || occ.rooms !== 1) {
           return fail("search_not_applied", "Booking.com searched " + checkIn + " to " + checkOut + " for " + occupancy + ", not the " + query.check_in + " to " + query.check_out + ", " + query.adults + " adults, " + ages.length + " children, 1 room requested.");
@@ -328,6 +334,7 @@
         if (!properties.length) return fail("site_changed", "None of the " + cardEls.length + " property cards had a readable name and property URL; Booking.com's markup may have changed.");
         const membersOnly = properties.filter(prop => prop.price && prop.price.members_only).length;
         if (membersOnly) warnings.push(membersOnly + " returned properties show a members-only price that needs signing in; for those, price.total includes a member discount a signed-out visitor is not given, by an amount the card does not show (see get_property).");
+        if (properties.length > totalFound) warnings.push("Booking.com counted " + totalFound + " matching " + (totalFound === 1 ? "property" : "properties") + "; the other " + (properties.length - totalFound) + " returned are nearby properties it added to the results.");
         if (unpriced) warnings.push(unpriced + " returned properties showed no readable price on the results card.");
         if (skipped) warnings.push(skipped + " result cards were skipped because they had no name or a non-property URL, or repeated a property.");
         const output = {

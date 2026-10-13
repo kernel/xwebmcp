@@ -436,8 +436,33 @@ test("search_stays reads a results page that carries its search in the applicati
   assert.equal(otherDates.output.error_kind, "search_not_applied");
   const otherCurrency = await run("search_stays", SEARCH, { routes: [searchRoute({ body: searchPage({ cfg: capla({ currency: "EUR" }, search(meta)) }) })] });
   assert.equal(otherCurrency.output.error_kind, "currency_mismatch");
-  const noDates = await run("search_stays", SEARCH, { routes: [searchRoute({ body: searchPage({ cfg: capla({ currency: "USD" }, search({ ...meta, dates: null })) }) })] });
-  assert.equal(noDates.output.error_kind, "search_not_applied");
+  const otherNights = await run("search_stays", SEARCH, { routes: [searchRoute({ body: searchPage({ cfg: capla({ currency: "USD" }, search({ ...meta, dates: { ...meta.dates, lengthOfStayInDays: 3 } })) }) })] });
+  assert.equal(otherNights.output.error_kind, "search_not_applied");
+  const unknownPlace = await run("search_stays", SEARCH, { routes: [searchRoute({ body: searchPage({ cfg: capla({ currency: "USD" }, search({ ...meta, destId: 0, destType: "NO_DEST_TYPE" }, {})) }) })] });
+  assert.deepEqual([unknownPlace.output.destination.dest_id, unknownPlace.output.destination.dest_type, unknownPlace.output.destination.country_code], [null, null, null]);
+  const legacyFirst = await run("search_stays", SEARCH, { routes: [searchRoute({ body: searchPage({ cfg: config() + capla({ currency: "EUR" }, search({ ...meta, destId: 5, dates: { checkin: "2026-12-01", checkout: "2026-12-02", lengthOfStayInDays: 1 } })) }) })] });
+  assert.deepEqual([legacyFirst.output.status, legacyFirst.output.destination.dest_id], ["ok", "-1000001"]);
+});
+
+test("search_stays tells a search that page refused from a changed page", async () => {
+  const store = (result) => ({ ROOT_QUERY: { searchQueries: { [`search({"input":{}})`]: result } } });
+  const capla = (store) => `<script type="application/json" data-capla-application-context>{"currency":"USD"}</script>` + (store ? `<script type="application/json" data-capla-store-data="apollo">${JSON.stringify(store)}</script>` : "");
+  const page = (heading, cfg) => searchPage({ cards: [], heading, cfg });
+  const unresolved = page("0 properties are available in and around this destination", capla(store({ __typename: "Redirect" })));
+  const outOfWindow = page("Search results", capla(store({ searchMeta: { dates: null, destId: 0, destType: "NO_DEST_TYPE", nbAdults: 2, nbChildren: 0, nbRooms: 1 } })));
+  for (const [label, body, kind] of [["unresolved destination", unresolved, "search_not_accepted"], ["dates outside the window", outOfWindow, "search_not_accepted"],
+    ["no Apollo store", searchPage({ cfg: capla(null) }), "site_changed"], ["no search in the store", searchPage({ cfg: capla({ ROOT_QUERY: {} }) }), "site_changed"]]) {
+    const { output, calls } = await run("search_stays", SEARCH, { routes: [searchRoute({ body })] });
+    assert.equal(output.error_kind, kind, label);
+    assert.equal(calls.length, 1, label);
+  }
+});
+
+test("search_stays says when the results add nearby properties to the site's count", async () => {
+  const cards = [card(), card({ name: "Nearby Inn", slug: "nearby-inn" }), card({ name: "Other Inn", slug: "other-inn" })];
+  const { output } = await run("search_stays", SEARCH, { routes: [searchRoute({ body: searchPage({ cards, heading: "Harbor View Studios: 1 property found" }) })] });
+  assert.deepEqual([output.total_found, output.returned, output.has_more], [1, 3, false]);
+  assert.match(output.warnings.join(" "), /counted 1 matching property; the other 2 returned are nearby properties/);
 });
 
 test("search_stays flags a changed page instead of returning nothing", async () => {
