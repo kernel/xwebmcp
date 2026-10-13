@@ -385,6 +385,18 @@ test("get_issue merges and de-duplicates front and back timeline items", async (
   assert.equal(output.timeline_complete, true);
 });
 
+test("get_issue reads the issue from the issueViewerRoute payload GitHub now embeds", async () => {
+  const { data } = issuePayload([comment(1)]).preloadedQueries[0].result;
+  const issue = data.repository.issue;
+  issue.timelineItems = issue.frontTimelineItems;
+  delete issue.frontTimelineItems;
+  const { output } = await run("get_issue", { owner: "example-org", repo: "widgets", number: 7 }, { route: issueRoute({ issueViewerRoute: { data, feed: "activity" }, issuesLayoutRoute: {}, repoLayoutRoute: {} }) });
+  assert.deepEqual([output.status, output.title, output.linked_pull_requests.length, output.timeline_total, output.timeline[0].type], ["ok", "Widget crashes", 2, 1, "comment"]);
+  const noTimeline = { issueViewerRoute: { data: structuredClone(data) } };
+  delete noTimeline.issueViewerRoute.data.repository.issue.timelineItems;
+  assert.equal((await run("get_issue", { owner: "example-org", repo: "widgets", number: 7 }, { route: issueRoute(noTimeline) })).output.error_kind, "site_changed");
+});
+
 test("get_issue distinguishes pull requests, other pages, transfers and closed state", async () => {
   const pull = await run("get_issue", { owner: "example-org", repo: "widgets", number: 9 }, { route: () => ({ status: 200, body: "<html></html>", url: `${ORIGIN}/example-org/widgets/pull/9` }) });
   assert.equal(pull.output.error_kind, "is_pull_request");

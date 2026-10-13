@@ -276,12 +276,9 @@
       "url_patterns": [
         "https://github.com/*"
       ],
-      "status": "qa_passed",
-      "last_verified": "2026-09-30",
-      "notes": "Issue title, state and close reason, labels, assignees, milestone, linked pull requests, body and the first timeline items GitHub puts in the page (about 15). Signed-out tabs only: refuses in a signed-in tab because the issue page's markAsRead preload may mark a notification read. Private repositories not tested.",
-      "provenance": {
-        "qa_agent": "agt_a95c2a4fd4ea679db158"
-      }
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Issue title, state and close reason, labels, assignees, milestone, linked pull requests, body and the first timeline items GitHub puts in the page (about 15). Signed-out tabs only: refuses in a signed-in tab because the issue page's markAsRead preload may mark a notification read. Private repositories not tested. Updated for GitHub's issueViewerRoute page payload (current issue pages no longer embed the IssueViewerViewQuery preloaded query or frontTimelineItems); the change needs a fresh independent QA pass."
     },
     {
       "domain": "github.com",

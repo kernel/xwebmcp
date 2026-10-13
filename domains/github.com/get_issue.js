@@ -134,15 +134,18 @@
       if (!/^\/[^/]+\/[^/]+\/issues\/\d+\/?$/.test(path)) return fail("not_found", owner + "/" + repo + "#" + number + " is not an issue (GitHub redirected to a different kind of page).");
       const doc = new DOMParser().parseFromString(await response.text(), "text/html");
       const script = doc.querySelector('script[data-target="react-app.embeddedData"]');
-      let queries;
-      try { queries = JSON.parse(script.textContent).payload.preloadedQueries; } catch { throw changed(); }
-      const query = Array.isArray(queries) ? queries.find(q => q && q.queryName === "IssueViewerViewQuery") : null;
-      const issue = query && query.result && query.result.data && query.result.data.repository && query.result.data.repository.issue;
+      let payload;
+      try { payload = JSON.parse(script.textContent).payload; } catch { throw changed(); }
+      // GitHub embeds the issue either in issueViewerRoute or, on older pages, in an IssueViewerViewQuery preloaded query.
+      const query = Array.isArray(payload && payload.preloadedQueries) ? payload.preloadedQueries.find(q => q && q.queryName === "IssueViewerViewQuery") : null;
+      const data = payload && payload.issueViewerRoute ? payload.issueViewerRoute.data : query && query.result && query.result.data;
+      const issue = data && data.repository && data.repository.issue;
       if (!issue || !Number.isInteger(issue.number) || typeof issue.title !== "string" || !issue.repository || !slug(issue.repository.nameWithOwner) || (issue.state !== "OPEN" && issue.state !== "CLOSED")) throw changed();
 
       const fullName = issue.repository.nameWithOwner;
       const nodes = list => list && Array.isArray(list.nodes) ? list.nodes : [];
-      const front = issue.frontTimelineItems && Array.isArray(issue.frontTimelineItems.edges) ? issue.frontTimelineItems : null;
+      const firstItems = issue.frontTimelineItems || issue.timelineItems;
+      const front = firstItems && Array.isArray(firstItems.edges) ? firstItems : null;
       if (!front || !Number.isInteger(front.totalCount)) throw changed();
       const seen = new Set();
       const loaded = [];

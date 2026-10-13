@@ -4,7 +4,7 @@ Tools for GitHub (https://github.com): repository/issue/PR reads, exact-content 
 
 | tool | file | status | notes |
 |------|------|--------|-------|
-| get_issue | [get_issue.js](get_issue.js) | qa_passed | Issue title, state and close reason, labels, assignees, milestone, linked pull requests, body and the first timeline items GitHub puts in the page (about 15). Signed-out tabs only (see Site quirks); private repositories not tested. |
+| get_issue | [get_issue.js](get_issue.js) | draft | Issue title, state and close reason, labels, assignees, milestone, linked pull requests, body and the first timeline items GitHub puts in the page (about 15). Signed-out tabs only (see Site quirks); private repositories not tested. |
 | get_pull_request | [get_pull_request.js](get_pull_request.js) | qa_passed | Pull request state (open, draft, closed, merged), branches, head and merge commits, times, labels and the description as text. No comments, review threads, files, checks or lock state. Public repositories signed out; private repositories not tested. |
 | get_repository | [get_repository.js](get_repository.js) | qa_passed | Repository overview from the repository page: description, topics, star, fork and watcher counts, license, default branch, latest commit, counts, root entries and README text; `empty_repository` for a repository with no commits. Public repositories signed out; private repositories not tested. |
 | get_star_status | [get_star_status.js](get_star_status.js) | qa_passed | Fresh public repository star state for an explicitly expected signed-in account; no account identifier output. |
@@ -47,7 +47,7 @@ All ten tools are `kind: "page"`. Reads and preparations remain in the current d
 | search_repositories | page | `GET /search?q=…&type=repositories[&s=…&o=…][&p=…]` with `Accept: application/json`, the search page's own JSON (`payload.blackbirdSearchRoute`: results, `page_count`, `result_count`, `errors`). |
 | search_issues | page | the same route with `type=issues` or `type=pullrequests`. |
 | get_repository | page | `GET /<owner>/<repo>` as HTML; `meta[name="route-pattern"]` must be `/:user_id/:repository` (other pages such as `/topics/…` are `not_found`); a repository page without embedded data that says "This repository is empty" is an empty repository (`empty_repository`, name and visibility from the `octolytics-dimension-repository_*` meta tags); otherwise the page's embedded `script[data-target="react-app.embeddedData"]` JSON: `sidebarAbout` (description, topics, counts, license, flags), `codeViewLayoutRoute` (default branch, creation time, empty flag) and `codeViewRepoRoute` (root entries, commit count, latest commit, rendered README HTML). The README HTML is parsed with `DOMParser` (which runs nothing) and reduced to text. |
-| get_issue | page | refuses (`signed_in_side_effect`) unless the document has `meta[name="user-login"]` present with empty content, i.e. a signed-out GitHub page; otherwise `GET /<owner>/<repo>/issues/<n>` as HTML, then the embedded `IssueViewerViewQuery` result: the issue, its labels, assignees, linked pull requests and its first timeline items. |
+| get_issue | page | refuses (`signed_in_side_effect`) unless the document has `meta[name="user-login"]` present with empty content, i.e. a signed-out GitHub page; otherwise `GET /<owner>/<repo>/issues/<n>` as HTML, then the embedded `issueViewerRoute` data (or, on older pages, the `IssueViewerViewQuery` preloaded query): the issue, its labels, assignees, linked pull requests and its first timeline items. |
 | get_pull_request | page | `GET /<owner>/<repo>/pull/<n>` as HTML, then the embedded `pullRequestsLayoutRoute.pullRequest` record (state, branches, SHAs, times), and from the server-rendered conversation the description (first comment container that is not a review thread) and the labels sidebar. The page data's `locked` flag reads false even for locked pull requests, so no lock state is returned. |
 
 The five original read tools request `https://github.com` with the page's own cookies. Each sends one request, which the browser follows through any redirect (checked with a CDP network trace), except
@@ -129,7 +129,7 @@ empty result list; query problems GitHub reports come back in `warnings`.
   instead of an object when it contains a character in U+0080 to U+00FF (accented Latin letters, curly quotes are outside that range),
   while CJK and emoji come back as objects; the extension path returned objects. This is runtime behavior, not tool code: parse the string
   when `typeof output === "string"`.
-- **Long issues.** GitHub renders only the first ~15 timeline items into the issue page (`frontTimelineItems`) and loads the rest
+- **Long issues.** GitHub renders only the first ~15 timeline items into the issue page (`timelineItems`, formerly `frontTimelineItems`) and loads the rest
   through requests the tool does not make; on a 160-item issue `timeline_returned` was 15 and `timeline_complete` false.
 - **Pull request pages.** They are large (over 1 MB with many review threads) and their conversation is server-rendered HTML;
   only the description and the labels sidebar are read from it. The page's header badges are not used for the state because
