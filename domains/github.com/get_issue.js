@@ -55,7 +55,7 @@
             },
             body: { type: ["string", "null"], description: "The issue description as Markdown source." },
             body_truncated: { type: "boolean" },
-            timeline_total: { type: "integer", minimum: 0, description: "Timeline items GitHub reports for the issue." },
+            timeline_total: { type: "integer", minimum: 0, description: "Timeline items the issue page counts (its own timeline view, which can be fewer than every event the API lists)." },
             timeline_returned: { type: "integer", minimum: 0 },
             timeline_complete: { type: "boolean", description: "False when timeline_returned is smaller than timeline_total, because of max_timeline_items or because GitHub did not put the later items in the page." },
             timeline: {
@@ -149,7 +149,10 @@
       if (!front || !Number.isInteger(front.totalCount)) throw changed();
       const seen = new Set();
       const loaded = [];
-      for (const edge of [].concat(front.edges, issue.backTimelineItems && Array.isArray(issue.backTimelineItems.edges) ? issue.backTimelineItems.edges : [])) {
+      // The page also embeds the latest items; they are used only when the two slices together cover the whole
+      // timeline, so the returned items never skip a stretch in the middle.
+      const back = issue.backTimelineItems && Array.isArray(issue.backTimelineItems.edges) ? issue.backTimelineItems.edges : [];
+      for (const edge of front.edges.length + back.length >= front.totalCount ? front.edges.concat(back) : front.edges) {
         const node = edge && edge.node;
         if (!node || typeof node.__typename !== "string" || seen.has(node.id)) continue;
         seen.add(node.id);

@@ -395,6 +395,18 @@ test("get_issue reads the issue from the issueViewerRoute payload GitHub now emb
   const noTimeline = { issueViewerRoute: { data: structuredClone(data) } };
   delete noTimeline.issueViewerRoute.data.repository.issue.timelineItems;
   assert.equal((await run("get_issue", { owner: "example-org", repo: "widgets", number: 7 }, { route: issueRoute(noTimeline) })).output.error_kind, "site_changed");
+  assert.equal((await run("get_issue", { owner: "example-org", repo: "widgets", number: 7 }, { route: issueRoute({ issueViewerRoute: {} }) })).output.error_kind, "site_changed");
+});
+
+test("get_issue leaves out the page's latest items when they do not join the first ones", async () => {
+  const { data } = issuePayload([comment(1), comment(2)], {}, 500).preloadedQueries[0].result;
+  const issue = data.repository.issue;
+  issue.timelineItems = issue.frontTimelineItems;
+  delete issue.frontTimelineItems;
+  issue.backTimelineItems.edges = [{ node: comment(499) }, { node: comment(500) }];
+  const { output } = await run("get_issue", { owner: "example-org", repo: "widgets", number: 7 }, { route: issueRoute({ issueViewerRoute: { data } }) });
+  assert.deepEqual(output.timeline.map(item => item.url.slice(-4)), ["9001", "9002"]);
+  assert.deepEqual([output.timeline_total, output.timeline_returned, output.timeline_complete], [500, 2, false]);
 });
 
 test("get_issue distinguishes pull requests, other pages, transfers and closed state", async () => {

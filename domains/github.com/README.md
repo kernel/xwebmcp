@@ -129,8 +129,10 @@ empty result list; query problems GitHub reports come back in `warnings`.
   instead of an object when it contains a character in U+0080 to U+00FF (accented Latin letters, curly quotes are outside that range),
   while CJK and emoji come back as objects; the extension path returned objects. This is runtime behavior, not tool code: parse the string
   when `typeof output === "string"`.
-- **Long issues.** GitHub renders only the first ~15 timeline items into the issue page (`timelineItems`, formerly `frontTimelineItems`) and loads the rest
-  through requests the tool does not make; on a 160-item issue `timeline_returned` was 15 and `timeline_complete` false.
+- **Long issues.** GitHub renders the first ~15 timeline items (`timelineItems`, formerly `frontTimelineItems`) and the latest ~16
+  (`backTimelineItems`) into the issue page and loads the middle through requests the tool does not make. The tool adds the latest items only
+  when the two slices together cover the whole timeline, so it never returns a list with a hidden gap; on a 160-item issue
+  `timeline_returned` was 15 and `timeline_complete` false.
 - **Pull request pages.** They are large (over 1 MB with many review threads) and their conversation is server-rendered HTML;
   only the description and the labels sidebar are read from it. The page's header badges are not used for the state because
   a pull request page can show several badges; the embedded record's `state` (OPEN, DRAFT, CLOSED, MERGED) is.
