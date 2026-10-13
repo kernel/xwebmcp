@@ -93,7 +93,7 @@
                     review: {
                       type: ["object", "null"], additionalProperties: false, required: ["score", "label", "count"],
                       properties: { score: { type: "number" }, label: { type: ["string", "null"] }, count: { type: ["integer", "null"] } },
-                      description: "Guest review score out of 10; null when the property has no reviews."
+                      description: "Guest review score out of 10 as the results card shows it; null when the card shows no score, either because the property has no reviews or because the site left it off the card (see warnings)."
                     },
                     unit: {
                       type: ["object", "null"], additionalProperties: false, required: ["name", "details", "beds", "free_cancellation", "breakfast_included", "units_left"],
@@ -253,6 +253,7 @@
         if (!configCurrency || !occ.adults || !occ.rooms) return fail("site_changed", "The results page does not expose the currency and guests it searched; Booking.com's markup may have changed.");
         if (shownCurrency !== query.currency || configCurrency !== query.currency) return fail("currency_mismatch", "Booking.com is showing " + (/^[A-Z]{3}$/.test(shownCurrency) && shownCurrency === configCurrency ? shownCurrency : "prices in a mix of currencies or one it does not label with a code") + ", not " + query.currency + ". This tool never changes the site's currency: pass the currency the site shows, or change it in the site's currency picker first.");
         if (!/\bb_selected_currency\s*:/.test(html) && !result.searchMeta) return fail("site_changed", "The results page does not expose the dates it searched; Booking.com's markup may have changed.");
+        if (result.searchMeta && meta.dates && (!checkIn || !checkOut || !interval)) return fail("site_changed", "The results page's search data has dates in an unexpected form; Booking.com's markup may have changed.");
         if (!checkIn || !checkOut || !interval) return fail("search_not_applied", "Booking.com did not apply the dates " + query.check_in + " to " + query.check_out + " (it ignores dates it cannot book, such as dates in the past) and returned an undated search.");
         if (checkIn !== query.check_in || checkOut !== query.check_out || interval !== nights || occ.adults !== query.adults || occ.children !== ages.length || occ.rooms !== 1) {
           return fail("search_not_applied", "Booking.com searched " + checkIn + " to " + checkOut + " for " + occupancy + ", not the " + query.check_in + " to " + query.check_out + ", " + query.adults + " adults, " + ages.length + " children, 1 room requested.");
@@ -277,7 +278,7 @@
         if (ages.length) warnings.push("The results page echoes only the number of children, so the ages sent could not be confirmed.");
         const properties = [];
         const seen = new Set();
-        let unpriced = 0, skipped = 0;
+        let unpriced = 0, unscored = 0, skipped = 0;
         for (const card of cardEls) {
           if (properties.length >= limit) break;
           const link = pickTid(card, "title-link");
@@ -323,6 +324,7 @@
             if (totalText) price = { total: amount(totalText), original_total: struck ? amount(struck[1]) : null, per_night_average: spans.length > 1 ? amount(spans[0]) : null, total_text: totalText, additional_charges_may_apply: /additional charges may apply/i.test(rateText), members_only: !!pickTid(rate, "genius-rate-sharing-sign-in-prompt") || /members-only price/i.test(rateText) };
           }
           if (!price || price.total === null) unpriced++;
+          if (!review) unscored++;
           properties.push({
             rank: properties.length + 1, name, property_url: url,
             area: text(pickTid(card, "address-link")) || null, distance_from_center: text(pickTid(card, "distance")) || null,
@@ -334,7 +336,8 @@
         if (!properties.length) return fail("site_changed", "None of the " + cardEls.length + " property cards had a readable name and property URL; Booking.com's markup may have changed.");
         const membersOnly = properties.filter(prop => prop.price && prop.price.members_only).length;
         if (membersOnly) warnings.push(membersOnly + " returned properties show a members-only price that needs signing in; for those, price.total includes a member discount a signed-out visitor is not given, by an amount the card does not show (see get_property).");
-        if (properties.length > totalFound) warnings.push("Booking.com counted " + totalFound + " matching " + (totalFound === 1 ? "property" : "properties") + "; the other " + (properties.length - totalFound) + " returned are nearby properties it added to the results.");
+        if (properties.length > totalFound) warnings.push("Booking.com counted " + totalFound + " matching " + (totalFound === 1 ? "property" : "properties") + "; the remaining " + (properties.length - totalFound) + " returned " + (properties.length - totalFound === 1 ? "is a nearby property" : "are nearby properties") + " it added to the results.");
+        if (unscored) warnings.push(unscored + " returned properties showed no review score on the results card; Booking.com sometimes serves cards without it, so this does not prove the property has no reviews (get_property reads its page).");
         if (unpriced) warnings.push(unpriced + " returned properties showed no readable price on the results card.");
         if (skipped) warnings.push(skipped + " result cards were skipped because they had no name or a non-property URL, or repeated a property.");
         const output = {

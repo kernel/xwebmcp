@@ -440,6 +440,8 @@ test("search_stays reads a results page that carries its search in the applicati
   assert.equal(otherNights.output.error_kind, "search_not_applied");
   const unknownPlace = await run("search_stays", SEARCH, { routes: [searchRoute({ body: searchPage({ cfg: capla({ currency: "USD" }, search({ ...meta, destId: 0, destType: "NO_DEST_TYPE" }, {})) }) })] });
   assert.deepEqual([unknownPlace.output.destination.dest_id, unknownPlace.output.destination.dest_type, unknownPlace.output.destination.country_code], [null, null, null]);
+  const oddDates = await run("search_stays", SEARCH, { routes: [searchRoute({ body: searchPage({ cfg: capla({ currency: "USD" }, search({ ...meta, dates: { checkin: "10/11/2026", checkout: "2026-11-12" } })) }) })] });
+  assert.equal(oddDates.output.error_kind, "site_changed");
   const legacyFirst = await run("search_stays", SEARCH, { routes: [searchRoute({ body: searchPage({ cfg: config() + capla({ currency: "EUR" }, search({ ...meta, destId: 5, dates: { checkin: "2026-12-01", checkout: "2026-12-02", lengthOfStayInDays: 1 } })) }) })] });
   assert.deepEqual([legacyFirst.output.status, legacyFirst.output.destination.dest_id], ["ok", "-1000001"]);
 });
@@ -462,7 +464,15 @@ test("search_stays says when the results add nearby properties to the site's cou
   const cards = [card(), card({ name: "Nearby Inn", slug: "nearby-inn" }), card({ name: "Other Inn", slug: "other-inn" })];
   const { output } = await run("search_stays", SEARCH, { routes: [searchRoute({ body: searchPage({ cards, heading: "Harbor View Studios: 1 property found" }) })] });
   assert.deepEqual([output.total_found, output.returned, output.has_more], [1, 3, false]);
-  assert.match(output.warnings.join(" "), /counted 1 matching property; the other 2 returned are nearby properties/);
+  assert.match(output.warnings.join(" "), /counted 1 matching property; the remaining 2 returned are nearby properties/);
+  const one = await run("search_stays", SEARCH, { routes: [searchRoute({ body: searchPage({ cards: cards.slice(0, 2), heading: "Harbor View Studios: 1 property found" }) })] });
+  assert.match(one.output.warnings.join(" "), /the remaining 1 returned is a nearby property/);
+});
+
+test("search_stays warns when result cards show no review score", async () => {
+  const { output } = await run("search_stays", SEARCH, { routes: [searchRoute({ body: searchPage({ cards: [card(), card({ name: "Quay Suites", slug: "quay-suites", score: null })] }) })] });
+  assert.equal(output.properties[1].review, null);
+  assert.match(output.warnings.join(" "), /1 returned properties showed no review score/);
 });
 
 test("search_stays flags a changed page instead of returning nothing", async () => {
