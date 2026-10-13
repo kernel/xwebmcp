@@ -226,11 +226,23 @@
         const totalFound = Number(heading[2].replace(/,/g, ""));
         const cardEls = [...doc.querySelectorAll("[data-testid=\"property-card\"]")];
 
+        // Some sessions get a results page without the b_* page variables; it carries the same facts in its
+        // application context and its Apollo store's searchMeta.
+        const json = selector => { try { return JSON.parse(doc.querySelector(selector).textContent); } catch (e) { return null; } };
+        const appContext = json("script[data-capla-application-context]");
+        const apollo = json("script[data-capla-store-data=\"apollo\"]");
+        const searches = apollo && apollo.ROOT_QUERY && apollo.ROOT_QUERY.searchQueries || {};
+        const search = Object.entries(searches).find(([key]) => key.startsWith("search("));
+        const meta = search && search[1] && search[1].searchMeta || {};
+        const metaDates = meta.dates || {};
+        const isoDate = value => typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value) ? value : null;
+        const destLocation = search && search[1] && search[1].destinationLocation || {};
+
         const shownCurrency = text(pickTid(doc, "header-currency-picker-trigger"));
-        const configCurrency = cfg(html, /\bb_selected_currency\s*:\s*'([A-Za-z_]+)'/);
-        const checkIn = cfg(html, /"b_checkin_date"\s*:\s*'(\d{4}-\d{2}-\d{2})'/);
-        const checkOut = cfg(html, /"b_checkout_date"\s*:\s*'(\d{4}-\d{2}-\d{2})'/);
-        const interval = Number(cfg(html, /"b_checkin_checkout_interval"\s*:\s*(\d+)\s*,/));
+        const configCurrency = cfg(html, /\bb_selected_currency\s*:\s*'([A-Za-z_]+)'/) ?? (appContext && /^[A-Z]{3}$/.test(appContext.currency) ? appContext.currency : null);
+        const checkIn = cfg(html, /"b_checkin_date"\s*:\s*'(\d{4}-\d{2}-\d{2})'/) ?? isoDate(metaDates.checkin);
+        const checkOut = cfg(html, /"b_checkout_date"\s*:\s*'(\d{4}-\d{2}-\d{2})'/) ?? isoDate(metaDates.checkout);
+        const interval = Number(cfg(html, /"b_checkin_checkout_interval"\s*:\s*(\d+)\s*,/) ?? metaDates.lengthOfStayInDays);
         const occupancy = text(pickTid(doc, "occupancy-config"));
         const occ = { adults: Number((/(\d+)\s+adults?/i.exec(occupancy) || [])[1]), children: Number((/(\d+)\s+child(?:ren)?/i.exec(occupancy) || [])[1] || 0), rooms: Number((/(\d+)\s+rooms?/i.exec(occupancy) || [])[1]) };
         if (!configCurrency || !occ.adults || !occ.rooms) return fail("site_changed", "The results page does not expose the currency and guests it searched; Booking.com's markup may have changed.");
@@ -243,7 +255,11 @@
         const signedIn = profile === signIn ? null : profile;
         const crumbs = [...doc.querySelectorAll("[data-testid=\"breadcrumbs\"] li")].map(text).filter(t => t && t !== "Home" && t !== "Search results").slice(0, 20);
         const dest = {
-          name: heading[1].trim(), dest_id: cfg(html, /\bb_dest_id\s*:\s*'(-?\d{1,20})'/), dest_type: cfg(html, /\bb_dest_type\s*:\s*'([a-z_]{1,30})'/), country_code: cfg(html, /"b_countrycode"\s*:\s*'([a-z]{2})'/), breadcrumb: crumbs
+          name: heading[1].trim(),
+          dest_id: cfg(html, /\bb_dest_id\s*:\s*'(-?\d{1,20})'/) ?? (Number.isInteger(meta.destId) && meta.destId !== 0 ? String(meta.destId) : null),
+          dest_type: cfg(html, /\bb_dest_type\s*:\s*'([a-z_]{1,30})'/) ?? (typeof meta.destType === "string" && /^[A-Z_]{1,30}$/.test(meta.destType) && meta.destType !== "NO_DEST_TYPE" ? meta.destType.toLowerCase() : null),
+          country_code: cfg(html, /"b_countrycode"\s*:\s*'([a-z]{2})'/) ?? (typeof destLocation.countryCode === "string" && /^[a-z]{2}$/.test(destLocation.countryCode) ? destLocation.countryCode : null),
+          breadcrumb: crumbs
         };
         const effective = { check_in: checkIn, check_out: checkOut, nights: interval, adults: occ.adults, children: occ.children, rooms: occ.rooms, currency: shownCurrency, signed_in: signedIn };
         if (totalFound === 0 && cardEls.length) return fail("site_changed", "The heading reports 0 properties but the page lists property cards; Booking.com's markup may have changed.");

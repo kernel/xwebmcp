@@ -4,7 +4,7 @@ Tools for Booking.com stays (https://www.booking.com): search a destination, com
 
 | tool | file | status | notes |
 |------|------|--------|-------|
-| search_stays | [search_stays.js](search_stays.js) | verified | First results page (up to 25 properties) for a destination, explicit dates, adults, child ages and the currency the site shows, with sort and filters; echoes the dates, guests and currency the site applied |
+| search_stays | [search_stays.js](search_stays.js) | draft | First results page (up to 25 properties) for a destination, explicit dates, adults, child ages and the currency the site shows, with sort and filters; echoes the dates, guests and currency the site applied |
 | get_property | [get_property.js](get_property.js) | verified | Dated room rates, IDs and global comparison ranks; optional lowest-price ordering before the cap, excluded fees and policies; smaller-party rates are left out |
 | prepare_booking | [prepare_booking.js](prepare_booking.js) | qa_passed | Current-page-only exact-rate handoff for one room and adults without children; checks price, dates, party, sign-in state and terms; never selects, reserves or opens checkout |
 

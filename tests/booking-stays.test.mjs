@@ -424,6 +424,22 @@ test("search_stays reports a network failure as site_error, not an empty result"
   assert.match(output.error_message, /failed or timed out/);
 });
 
+test("search_stays reads a results page that carries its search in the application context and Apollo store", async () => {
+  const search = (meta, location = { countryCode: "xx" }) => ({ ROOT_QUERY: { searchQueries: { [`search({"input":{}})`]: { searchMeta: meta, destinationLocation: location } } } });
+  const meta = { dates: { checkin: "2026-11-10", checkout: "2026-11-12", lengthOfStayInDays: 2 }, destId: -1000001, destType: "CITY", nbAdults: 2, nbChildren: 0, nbRooms: 1 };
+  const capla = (context, store) => `<script type="application/json" data-capla-application-context>${JSON.stringify(context)}</script><script type="application/json" data-capla-store-data="apollo">${JSON.stringify(store)}</script>`;
+  const { output } = await run("search_stays", SEARCH, { routes: [searchRoute({ body: searchPage({ cfg: capla({ currency: "USD" }, search(meta)) }) })] });
+  assert.equal(output.status, "ok");
+  assert.deepEqual(output.effective, { check_in: "2026-11-10", check_out: "2026-11-12", nights: 2, adults: 2, children: 0, rooms: 1, currency: "USD", signed_in: false });
+  assert.deepEqual(output.destination, { name: "Example Harbor", dest_id: "-1000001", dest_type: "city", country_code: "xx", breadcrumb: ["Examplia", "Example Harbor"] });
+  const otherDates = await run("search_stays", SEARCH, { routes: [searchRoute({ body: searchPage({ cfg: capla({ currency: "USD" }, search({ ...meta, dates: { checkin: "2026-11-11", checkout: "2026-11-13", lengthOfStayInDays: 2 } })) }) })] });
+  assert.equal(otherDates.output.error_kind, "search_not_applied");
+  const otherCurrency = await run("search_stays", SEARCH, { routes: [searchRoute({ body: searchPage({ cfg: capla({ currency: "EUR" }, search(meta)) }) })] });
+  assert.equal(otherCurrency.output.error_kind, "currency_mismatch");
+  const noDates = await run("search_stays", SEARCH, { routes: [searchRoute({ body: searchPage({ cfg: capla({ currency: "USD" }, search({ ...meta, dates: null })) }) })] });
+  assert.equal(noDates.output.error_kind, "search_not_applied");
+});
+
 test("search_stays flags a changed page instead of returning nothing", async () => {
   const noHeading = searchPage().replace(/<h1>.*?<\/h1>/, "<h1>Search</h1>");
   const noCards = searchPage({ cards: [] });
