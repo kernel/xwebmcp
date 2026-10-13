@@ -1,0 +1,32 @@
+{
+  "id": "booking-check-in-times",
+  "domain": "booking.com",
+  "stage": "inspect",
+  "prompt": "On booking.com, find the earliest check-in time and the latest check-out time at {{hotel}} in {{city}}, as its house rules give them, in 24-hour time. Reply with JSON: {\"check_in_from\": \"HH:MM\", \"check_out_until\": \"HH:MM\"}.",
+  "fixture": {
+    "hotel": "Palacio Ramalhete",
+    "city": "Lisbon"
+  },
+  "start_url": "https://www.booking.com/",
+  "tools": [
+    {
+      "repo": "kernel/xwebmcp",
+      "ref": "hypeship/booking-stays",
+      "pr": 76
+    }
+  ],
+  "answer_schema": "schemas/check-in-times.json",
+  "rules": [
+    {
+      "path": "check_in_from",
+      "equals": "15:00"
+    },
+    {
+      "path": "check_out_until",
+      "equals": "12:00"
+    }
+  ],
+  "pairs": 5,
+  "trial_timeout_sec": 600,
+  "max_turns": 40
+}

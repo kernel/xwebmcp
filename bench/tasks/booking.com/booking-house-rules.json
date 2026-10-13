@@ -1,0 +1,32 @@
+{
+  "id": "booking-house-rules",
+  "domain": "booking.com",
+  "stage": "gap",
+  "prompt": "On booking.com, find whether {{hotel}} in {{city}} allows pets and whether it allows smoking, as its house rules say. Reply with JSON: {\"pets_allowed\": boolean, \"smoking_allowed\": boolean}.",
+  "fixture": {
+    "hotel": "Palacio Ramalhete",
+    "city": "Lisbon"
+  },
+  "start_url": "https://www.booking.com/",
+  "tools": [
+    {
+      "repo": "kernel/xwebmcp",
+      "ref": "hypeship/booking-stays",
+      "pr": 76
+    }
+  ],
+  "answer_schema": "schemas/house-rules.json",
+  "rules": [
+    {
+      "path": "pets_allowed",
+      "equals": false
+    },
+    {
+      "path": "smoking_allowed",
+      "equals": false
+    }
+  ],
+  "pairs": 5,
+  "trial_timeout_sec": 600,
+  "max_turns": 40
+}
