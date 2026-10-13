@@ -94,9 +94,12 @@
       "url_patterns": [
         "https://www.booking.com/*"
       ],
-      "status": "draft",
-      "last_verified": null,
-      "notes": "Public first results page, up to 25 properties, for explicit destination/dates/guests and the site's current currency, with sort/filters, canonical URLs, reviews and recommended-unit prices. Echoes effective dates/guests/currency, flags member previews and distinguishes empty, gated, blocked, rate-limited and unapplied results. English; one room; no currency changes or booking actions. Now also reads the effective currency, dates and destination from the application context and Apollo searchMeta of the results page some sessions get, which has no b_* page variables; the earlier source failed there with site_changed. Needs a fresh independent QA pass."
+      "status": "verified",
+      "last_verified": "2026-10-13",
+      "notes": "Public first results page, up to 25 properties, for explicit destination/dates/guests and the site's current currency, with sort/filters, canonical URLs, reviews and recommended-unit prices. Echoes effective dates/guests/currency, flags member previews, nearby properties the site adds beyond its count and cards without a review score, and distinguishes empty, gated, blocked, rate-limited, refused and unapplied searches. Reads both results pages Booking.com serves (with b_* page variables, or with the application context and Apollo searchMeta). English; one room; no currency changes or booking actions. Independent final-source QA passed on 2026-10-13 on both page variants, including live success from a dated property page. Signed-in and non-English sessions, live gated/rate_limited/challenge and the local extension were not tested.",
+      "provenance": {
+        "qa_agent": "agt_1cf3db33f12fadd1eac2"
+      }
     },
     {
       "domain": "delta.com",
