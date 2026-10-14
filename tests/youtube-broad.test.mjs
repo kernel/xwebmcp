@@ -213,7 +213,7 @@ function action(options = {}) {
   let label = options.subscribed ? "Subscribed" : "Subscribe", clicked = 0, now = 0, playing = !!options.playing;
   const config = { LOGGED_IN: true, USER_ACCOUNT_NAME: "Fabricated Account", SESSION_INDEX: "0", ...options.config };
   const location = { origin: "https://www.youtube.com", pathname: options.path || "/channel/" + channel, href: "https://www.youtube.com" + (options.path || "/channel/" + channel) };
-  const makeElement = () => {
+  const makeElement = (channelId = options.wrongTarget ? other : channel) => {
     const button = { get textContent() { return label; }, disabled: !!options.disabled, click() {
       clicked++;
       if (options.abort) options.signal.aborted = true;
@@ -223,11 +223,13 @@ function action(options = {}) {
       if (options.playAfter) playing = true;
       if (options.replaceControl) element.querySelector = () => ({ textContent: "Subscribed" });
       if (options.replaceHeader) replaceHeader();
+      if (options.replaceHeaderSubscribed) { replaceHeader(); label = "Subscribed"; }
+      if (options.replaceHeaderOther) { replaceHeader(other); label = "Subscribed"; }
     } };
-    return { isConnected: true, data: { channelId: options.wrongTarget ? other : channel, subscribeButtonContent: { onTapCommand: { innertubeCommand: { commandMetadata: { webCommandMetadata: { apiUrl: "/youtubei/v1/subscription/subscribe" } }, subscribeEndpoint: { channelIds: [options.wrongCommand ? other : channel] } } } } }, getClientRects: () => [1], querySelector: () => button };
+    return { isConnected: true, data: { channelId, subscribeButtonContent: { onTapCommand: { innertubeCommand: { commandMetadata: { webCommandMetadata: { apiUrl: "/youtubei/v1/subscription/subscribe" } }, subscribeEndpoint: { channelIds: [options.wrongCommand ? other : channel] } } } } }, getClientRects: () => [1], querySelector: () => button };
   };
   let element = makeElement();
-  const replaceHeader = () => { element.isConnected = false; label = "Subscribe"; element = makeElement(); };
+  const replaceHeader = channelId => { element.isConnected = false; label = "Subscribe"; element = makeElement(channelId); };
   const document = { querySelectorAll: s => s === "video,audio" ? [{ paused: !playing }] : [element], querySelector: () => ({ data: { metadata: { channelMetadataRenderer: { externalId: channel, vanityChannelUrl: options.vanity || "https://www.youtube.com/@fabricated" } } } }) };
   const h = harness("subscribe_channel", { config, signal: options.signal, document, globals: { location, Date: { now: () => now += 1000 }, setTimeout: f => f() } });
   return { ...h, clicks: () => clicked, pending: () => !!document[Symbol.for("xwebmcp.youtube.pendingSubscriptions")]?.size, replaceHeader, location };
@@ -247,8 +249,18 @@ test("subscribe: uncertain attempts survive header replacement in the document",
     assert.equal(h.clicks(), 1); assert.equal(h.pending(), true);
   }
 });
-test("subscribe: page, control and media changes after clicking retain unknown outcomes", async () => {
-  for (const options of [{ switchPage: true }, { replaceControl: true }, { playAfter: true }]) {
+test("subscribe: a header re-rendered after the click is read by channel identity, without another click", async () => {
+  for (const options of [{ replaceHeaderSubscribed: true }, { replaceControl: true }]) {
+    const h = action(options); const o = await h.run(actionInput);
+    assert.deepEqual([o.status, o.action_attempted, o.persistence_confirmed], ["observed", true, false]);
+    assert.equal(h.clicks(), 1); assert.equal(h.pending(), false);
+  }
+  const h = action({ replaceHeaderOther: true });
+  assert.equal((await h.run(actionInput)).error_kind, "outcome_unknown");
+  assert.equal(h.clicks(), 1); assert.equal(h.pending(), true);
+});
+test("subscribe: page and media changes after clicking retain unknown outcomes", async () => {
+  for (const options of [{ switchPage: true }, { playAfter: true }]) {
     const h = action(options); assert.equal((await h.run(actionInput)).error_kind, "outcome_unknown");
     assert.equal(h.clicks(), 1); assert.equal(h.pending(), true);
   }

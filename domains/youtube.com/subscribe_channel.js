@@ -44,17 +44,24 @@
     const elements = controls();
     if (elements.length !== 1) return fail("site_changed", "No unambiguous channel-header subscription control is available.");
     const element = elements[0], button = element.querySelector("button");
-    const targetMatches = () => {
-      const current = controls(), metadata = document.querySelector("ytd-browse")?.data?.metadata?.channelMetadataRenderer;
-      if (!pageMatches() || !element.isConnected || current.length !== 1 || current[0] !== element || element.querySelector("button") !== button || element.data?.channelId !== input.channel_id || metadata?.externalId !== input.channel_id) return false;
+    // Whether a subscription control belongs to the requested channel on the current page.
+    const identifies = control => {
+      const metadata = document.querySelector("ytd-browse")?.data?.metadata?.channelMetadataRenderer;
+      if (!pageMatches() || control?.data?.channelId !== input.channel_id || metadata?.externalId !== input.channel_id) return false;
       if (routeId) return true;
       let vanity;
       try { vanity = new URL(metadata.vanityChannelUrl); } catch { return false; }
       return vanity.origin === "https://www.youtube.com" && vanity.pathname === initialPath.split("/").slice(0, 2).join("/");
     };
+    // Before the click, the control must be the one observed at the start.
+    const targetMatches = () => {
+      const current = controls();
+      return element.isConnected && current.length === 1 && current[0] === element && element.querySelector("button") === button && identifies(element);
+    };
     if (!targetMatches()) return fail("wrong_channel", "The rendered channel header does not identify the requested channel. Nothing was changed.");
-    const label = () => button?.textContent?.replace(/\s+/g, " ").trim() || "";
-    const subscribed = () => /^Subscribed(?:\s|$)/.test(label());
+    const labelOf = control => control?.querySelector("button")?.textContent?.replace(/\s+/g, " ").trim() || "";
+    const label = () => labelOf(element);
+    const subscribed = (control = element) => /^Subscribed(?:\s|$)/.test(labelOf(control));
     const pending = document[Symbol.for("xwebmcp.youtube.pendingSubscriptions")] ??= new Set();
     const pendingKey = input.expected_account_index + ":" + input.channel_id;
     if (pending.has(pendingKey)) return fail("outcome_unknown", "A previous attempt in this document is unresolved. Inspect manually; do not retry automatically.");
@@ -68,8 +75,11 @@
       button.click();
       const deadline = Date.now() + 5000;
       while (Date.now() < deadline) {
-        if (context?.signal?.aborted || !accountMatches() || !targetMatches() || !mediaPaused()) return fail("outcome_unknown", "Canceled or account/page/control/media changed after the click; the subscription outcome is unknown. Inspect manually, do not retry.");
-        if (subscribed()) {
+        if (context?.signal?.aborted || !accountMatches() || !pageMatches() || !mediaPaused()) return fail("outcome_unknown", "Canceled or account/page/media changed after the click; the subscription outcome is unknown. Inspect manually, do not retry.");
+        // YouTube may re-render the header after subscribing, so read whichever single control now
+        // identifies the same channel; this only reads state and never clicks again.
+        const current = controls();
+        if (current.length === 1 && identifies(current[0]) && subscribed(current[0])) {
           pending.delete(pendingKey);
           return { status: "observed", channel_id: input.channel_id, action_attempted: true, subscription_state: "subscribed", persistence_confirmed: false };
         }
