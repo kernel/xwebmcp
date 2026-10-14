@@ -3550,9 +3550,12 @@
         "https://www.youtube.com/*"
       ],
       "url_patterns_reason": "Narrowed to www.youtube.com: it serves the main YouTube web app whose same-origin youtubei endpoints and page layout the tools use; other youtube.com hosts are separate products (music., studio., tv., m.) with different clients and layouts.",
-      "status": "draft",
-      "last_verified": null,
-      "notes": "Anonymous public channel profile by channel id (handles and URLs are not accepted); English count text, bounded description; no navigation or playback."
+      "status": "verified",
+      "last_verified": "2026-10-14",
+      "notes": "Anonymous public channel profile by channel id (handles and URLs are not accepted); English count text, bounded description; no navigation or playback. Independent QA on 2026-10-14 verified a large and a small channel live from a results page, counts and tabs matching the rendered channel page, and not_found for an unknown id, all schema-valid. Description truncation, challenge and rate-limit paths are fixture-only.",
+      "provenance": {
+        "qa_agent": "agt_2f04ad684be62e6ca18a"
+      }
     },
     {
       "domain": "youtube.com",
@@ -3566,7 +3569,7 @@
       "url_patterns_reason": "Narrowed to www.youtube.com: it serves the main YouTube web app whose same-origin youtubei endpoints and page layout the tools use; other youtube.com hosts are separate products (music., studio., tv., m.) with different clients and layouts.",
       "status": "draft",
       "last_verified": null,
-      "notes": "Anonymous public or unlisted playlist pages (PL, UU and OLAK5uy_ ids) in site order, repeats kept; private, Watch later, Liked and Mix lists unsupported; no playback or account reads."
+      "notes": "Anonymous public or unlisted playlist pages (PL, UU and OLAK5uy_ ids) in site order, repeats kept; private, Watch later, Liked and Mix lists unsupported; no playback or account reads. Independent QA on 2026-10-14 failed it: a playlist longer than 100 items returns 100 items with truncated false and no next_page_token, because YouTube now sends the first continuation as continuationItemViewModel, which the tool does not read. A nonexistent playlist or a bad page token returns site_error (HTTP 400) rather than not_found or invalid_page_token."
     },
     {
       "domain": "youtube.com",
@@ -3578,9 +3581,9 @@
         "https://www.youtube.com/*"
       ],
       "url_patterns_reason": "Narrowed to www.youtube.com: it serves the main YouTube web app whose same-origin youtubei endpoints and page layout the tools use; other youtube.com hosts are separate products (music., studio., tv., m.) with different clients and layouts.",
-      "status": "draft",
-      "last_verified": null,
-      "notes": "Reads an already-open transcript on the matching paused watch page, in the selected language; absent panel is transcript_not_open, not proof there is none; no navigation, requests or playback."
+      "status": "broken",
+      "last_verified": "2026-10-14",
+      "notes": "Broken on 2026-10-14: YouTube's watch page now renders the transcript as ytd-engagement-panel-section-list-renderer[target-id=PAmodern_transcript_view] with transcript-segment-view-model rows, and the tool only reads ytd-transcript-renderer rows, so with the panel open it returns transcript_not_open. Wrong-video, playing-media, wrong-page and malformed-input refusals worked live. Reads an already-open transcript on the matching paused watch page; no navigation, requests or playback."
     },
     {
       "domain": "youtube.com",
@@ -3592,9 +3595,12 @@
         "https://www.youtube.com/*"
       ],
       "url_patterns_reason": "Narrowed to www.youtube.com: it serves the main YouTube web app whose same-origin youtubei endpoints and page layout the tools use; other youtube.com hosts are separate products (music., studio., tv., m.) with different clients and layouts.",
-      "status": "draft",
-      "last_verified": null,
-      "notes": "Public metadata for one video or Short by id or URL: title, description, uploader, publish date, duration, counts, chapters, live flags. Anonymous requests to the site's player and next endpoints; never plays, returns no media or caption URLs, and does not report playability. Sign-in, age and content-warning screens return login_required or gated."
+      "status": "qa_passed",
+      "last_verified": "2026-10-14",
+      "notes": "Public metadata for one video or Short by id or URL: title, description, uploader, publish date, duration, counts, chapters, live flags. Anonymous requests to the site's player and next endpoints; never plays, returns no media or caption URLs, and does not report playability. Sign-in, age and content-warning screens return login_required or gated. Independent QA on 2026-10-14 passed it on code review and fixture tests; live, unknown ids gave video_unavailable and malformed input was rejected before any request, but every real video returned challenge (YouTube's anonymous bot check) after about 60 searches in the same browser, so no live success was recorded in that run. A youtu.be URL with a trailing slash is rejected as invalid_input.",
+      "provenance": {
+        "qa_agent": "agt_b08a641f8c5299e891d7"
+      }
     },
     {
       "domain": "youtube.com",
@@ -3606,9 +3612,12 @@
         "https://www.youtube.com/*"
       ],
       "url_patterns_reason": "Narrowed to www.youtube.com: it serves the main YouTube web app whose same-origin youtubei endpoints and page layout the tools use; other youtube.com hosts are separate products (music., studio., tv., m.) with different clients and layouts.",
-      "status": "draft",
-      "last_verified": null,
-      "notes": "Anonymous Videos or Shorts tab pages with the site's own browse tokens and bounded pagination; no navigation or playback."
+      "status": "verified",
+      "last_verified": "2026-10-14",
+      "notes": "Anonymous Videos or Shorts tab pages with the site's own browse tokens and bounded pagination; no navigation or playback. Independent QA on 2026-10-14 verified Videos and Shorts tabs over three pages without overlap, ids and titles matching the rendered tab, tab_unavailable for a channel without Shorts and not_found, all schema-valid, live from a results page. It reads only the continuationItemRenderer token shape; a tab served with YouTube's newer continuationItemViewModel shape (seen on playlists) would end without a token.",
+      "provenance": {
+        "qa_agent": "agt_2f04ad684be62e6ca18a"
+      }
     },
     {
       "domain": "youtube.com",
@@ -3620,9 +3629,12 @@
         "https://www.youtube.com/*"
       ],
       "url_patterns_reason": "Narrowed to www.youtube.com: it serves the main YouTube web app whose same-origin youtubei endpoints and page layout the tools use; other youtube.com hosts are separate products (music., studio., tv., m.) with different clients and layouts.",
-      "status": "draft",
-      "last_verified": null,
-      "notes": "One page of typed video, Short, channel and playlist results with the site's type, duration, upload-date and sort filters and an opaque page token. Anonymous requests to the site's search endpoint; sponsored results are omitted and counted. Challenges and rate limits are reported, not retried."
+      "status": "verified",
+      "last_verified": "2026-10-14",
+      "notes": "One page of typed video, Short, channel and playlist results with the site's type, duration, upload-date and sort filters and an opaque page token. Anonymous requests to the site's search endpoint; sponsored results are omitted and counted. Challenges and rate limits are reported, not retried. Independent QA on 2026-10-14 verified it live from the home page and a results page: several queries, every type filter, duration, upload-date and sort filters, pages 2 and 3, a corrected query, no results, filter_unavailable and invalid_page_token, with every output schema-valid and malformed input rejected before any request. The sponsored-result path was not seen live.",
+      "provenance": {
+        "qa_agent": "agt_b08a641f8c5299e891d7"
+      }
     },
     {
       "domain": "youtube.com",
@@ -3636,7 +3648,7 @@
       "url_patterns_reason": "Narrowed to www.youtube.com: it serves the main YouTube web app whose same-origin youtubei endpoints and page layout the tools use; other youtube.com hosts are separate products (music., studio., tv., m.) with different clients and layouts.",
       "status": "draft",
       "last_verified": null,
-      "notes": "Reversible subscription on current exact channel/account; UI postcondition only; mocked write QA, no live mutation."
+      "notes": "Reversible subscription on the current exact channel and account; UI postcondition only; mocked write QA, no live mutation. Independent QA on 2026-10-14 found that a successful click is reported as outcome_unknown if YouTube replaces the subscribe header, because the target check runs before the subscribed-state check; live refusals (login_required, wrong_channel, wrong_page, invalid_input) worked signed out."
     }
   ]
 }
