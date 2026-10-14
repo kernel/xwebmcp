@@ -1,0 +1,5 @@
+{
+  "needs_sign_in": {
+    "get_cart": "reads the signed-in account's data"
+  }
+}

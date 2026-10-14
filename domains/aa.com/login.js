@@ -89,7 +89,11 @@
         return { url: location.href, host: location.hostname, username: inputs.some(e => e.name === "username"),
           password: inputs.some(e => e.name === "password"),
           filled: ["username", "password"].every(name => inputs.some(e => e.name === name && e.value.length > 0)),
-          challenge: challenge ? (challenge.title || "Visible CAPTCHA challenge") : null, alerts };
+          challenge: challenge ? (challenge.title || "Visible CAPTCHA challenge") : null, alerts,
+          // The www.aa.com header keeps Log out and the miles balance in a collapsed account menu
+          // that the accessibility tree omits, so read the signed-in markers from the DOM too.
+          header_logout: all.some(e => /^(?:HP-ACCOUNT-DROPDOWN-BUTTON|BUTTON|A)$/.test(e.tagName) && /^(?:log out|logout|sign out)$/i.test(e.textContent.trim())),
+          header_miles: all.some(e => e.tagName === "LI" && /^available (?:award )?miles:/i.test(e.textContent.trim())) };
       });
       if (!["www.aa.com", "login.aa.com"].includes(state.host)) return { state, result: fail("unknown", "Stopped outside the approved airline hosts.") };
       if (state.challenge) return { state, result: fail("captcha_or_challenge", state.challenge, "site") };
@@ -115,8 +119,9 @@
         account_name_or_hint: null, mfa_required: true, next_step: mfa
       } };
       const logout = ax.nodes.find(n => ["link", "button"].includes(n.role) && /^(?:log out|logout|sign out)$/i.test((n.name || "").trim()));
-      const account = texts.find(t => /AAdvantage.*(?:#|number)|available miles|loyalty points/i.test(t));
-      if (!state.password && logout && account) return { state, result: {
+      const account = texts.find(t => /AAdvantage.*(?:#|number)|available (?:award )?miles|loyalty points/i.test(t)) ||
+        (state.header_miles ? "Available award miles shown in account menu" : null);
+      if (!state.password && (logout || state.header_logout) && account) return { state, result: {
         observation: submitted ? "after_submission" : "pre_existing", submission_attempted: submitted,
         outcome: "authenticated", logged_in: true, first_step_succeeded: true, landing_url: landingUrl,
         account_name_or_hint: account, mfa_required: false, next_step: "none"
