@@ -3549,9 +3549,10 @@
       "url_patterns": [
         "https://www.youtube.com/*"
       ],
+      "url_patterns_reason": "Narrowed to www.youtube.com: it serves the main YouTube web app whose same-origin youtubei endpoints and page layout the tools use; other youtube.com hosts are separate products (music., studio., tv., m.) with different clients and layouts.",
       "status": "draft",
       "last_verified": null,
-      "notes": "Anonymous public channel profile; no navigation or playback."
+      "notes": "Anonymous public channel profile by channel id (handles and URLs are not accepted); English count text, bounded description; no navigation or playback."
     },
     {
       "domain": "youtube.com",
@@ -3562,9 +3563,10 @@
       "url_patterns": [
         "https://www.youtube.com/*"
       ],
+      "url_patterns_reason": "Narrowed to www.youtube.com: it serves the main YouTube web app whose same-origin youtubei endpoints and page layout the tools use; other youtube.com hosts are separate products (music., studio., tv., m.) with different clients and layouts.",
       "status": "draft",
       "last_verified": null,
-      "notes": "Anonymous public/unlisted playlist browse pages; no playback or account reads."
+      "notes": "Anonymous public or unlisted playlist pages (PL, UU and OLAK5uy_ ids) in site order, repeats kept; private, Watch later, Liked and Mix lists unsupported; no playback or account reads."
     },
     {
       "domain": "youtube.com",
@@ -3575,9 +3577,10 @@
       "url_patterns": [
         "https://www.youtube.com/*"
       ],
+      "url_patterns_reason": "Narrowed to www.youtube.com: it serves the main YouTube web app whose same-origin youtubei endpoints and page layout the tools use; other youtube.com hosts are separate products (music., studio., tv., m.) with different clients and layouts.",
       "status": "draft",
       "last_verified": null,
-      "notes": "Read an already-open transcript on the matching paused watch page; no navigation or playback."
+      "notes": "Reads an already-open transcript on the matching paused watch page, in the selected language; absent panel is transcript_not_open, not proof there is none; no navigation, requests or playback."
     },
     {
       "domain": "youtube.com",
@@ -3588,6 +3591,7 @@
       "url_patterns": [
         "https://www.youtube.com/*"
       ],
+      "url_patterns_reason": "Narrowed to www.youtube.com: it serves the main YouTube web app whose same-origin youtubei endpoints and page layout the tools use; other youtube.com hosts are separate products (music., studio., tv., m.) with different clients and layouts.",
       "status": "draft",
       "last_verified": null,
       "notes": "Public metadata for one video or Short by id or URL: title, description, uploader, publish date, duration, counts, chapters, live flags. Anonymous requests to the site's player and next endpoints; never plays, returns no media or caption URLs, and does not report playability. Sign-in, age and content-warning screens return login_required or gated."
@@ -3601,9 +3605,10 @@
       "url_patterns": [
         "https://www.youtube.com/*"
       ],
+      "url_patterns_reason": "Narrowed to www.youtube.com: it serves the main YouTube web app whose same-origin youtubei endpoints and page layout the tools use; other youtube.com hosts are separate products (music., studio., tv., m.) with different clients and layouts.",
       "status": "draft",
       "last_verified": null,
-      "notes": "Anonymous uploads/Shorts browse pages; bounded pagination, no playback."
+      "notes": "Anonymous Videos or Shorts tab pages with the site's own browse tokens and bounded pagination; no navigation or playback."
     },
     {
       "domain": "youtube.com",
@@ -3614,9 +3619,10 @@
       "url_patterns": [
         "https://www.youtube.com/*"
       ],
+      "url_patterns_reason": "Narrowed to www.youtube.com: it serves the main YouTube web app whose same-origin youtubei endpoints and page layout the tools use; other youtube.com hosts are separate products (music., studio., tv., m.) with different clients and layouts.",
       "status": "draft",
       "last_verified": null,
-      "notes": "One page of typed video, Short, channel and playlist results with the site's type, duration, upload-date and sort filters and an opaque page token. Anonymous requests to the site's search endpoint; sponsored results are omitted and counted."
+      "notes": "One page of typed video, Short, channel and playlist results with the site's type, duration, upload-date and sort filters and an opaque page token. Anonymous requests to the site's search endpoint; sponsored results are omitted and counted. Challenges and rate limits are reported, not retried."
     },
     {
       "domain": "youtube.com",
@@ -3627,6 +3633,7 @@
       "url_patterns": [
         "https://www.youtube.com/*"
       ],
+      "url_patterns_reason": "Narrowed to www.youtube.com: it serves the main YouTube web app whose same-origin youtubei endpoints and page layout the tools use; other youtube.com hosts are separate products (music., studio., tv., m.) with different clients and layouts.",
       "status": "draft",
       "last_verified": null,
       "notes": "Reversible subscription on current exact channel/account; UI postcondition only; mocked write QA, no live mutation."
