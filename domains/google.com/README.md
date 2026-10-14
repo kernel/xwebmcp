@@ -6,5 +6,5 @@
 | get_booking_options | Reads Google Flights' booking options for the chosen flights: each seller's fares with price, carry-on and checked-bag allowance, and features. |
 | get_page_context | Describes the current Google Flights page: its type, the tools it exposes, whether it is still loading, the chosen flights and suggested next steps. |
 | list_flights | Lists the departing or returning flights on the current Google Flights results page with times, stops, price and bags included, without searching again. |
-| search_flights | Searches Google Flights across airlines and returns outbound itineraries with flight numbers, times, stops, layovers, emissions and total prices. |
+| search_flights | Searches Google Flights across airlines and returns outbound itineraries with flight numbers, times, stops, layovers, emissions and total prices. Supports max_stops (0 for nonstop), applied before the result limit, and warns when results are incomplete. |
 | select_flight | Chooses a departing or returning flight on Google Flights results and reports the next step: returning flights or booking options. Books nothing. |

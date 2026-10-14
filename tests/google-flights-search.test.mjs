@@ -157,7 +157,7 @@ function resultsPage({ live = "2 results returned.", roundTripCards = false, ext
   return { documentElement, body, querySelector: s => documentElement.querySelector(s), querySelectorAll: s => documentElement.querySelectorAll(s), cards: { a: cardA, b: cardB }, moreButton };
 }
 
-function harness({ startUrl = "https://www.google.com/travel/flights?hl=en", document = resultsPage(), consent = false, sorry = false, matches, timeoutClock = false } = {}) {
+function harness({ startUrl = "https://www.google.com/travel/flights?hl=en", document = resultsPage(), consent = false, sorry = false, matches, timeoutClock = false, onNavigate = () => {} } = {}) {
   const calls = [];
   let url = startUrl;
   let tabId = "target-a";
@@ -177,6 +177,7 @@ function harness({ startUrl = "https://www.google.com/travel/flights?hl=en", doc
     gotoUrl: async next => {
       calls.push(`goto:${next}`);
       url = consent ? `https://consent.google.com/m?continue=${encodeURIComponent(next)}` : resultsHost ?? next;
+      onNavigate(next);
     },
     waitForElement: async (selector, options) => { calls.push(`wait:${selector}:${options.state}`); return true; },
     waitForNetworkIdle: async () => { calls.push("idle"); return true; },
@@ -227,6 +228,8 @@ test("source is a self-contained expression with narrow Google Travel matching a
   assert.equal(definition.tool.inputSchema.type, "object");
   assert.deepEqual(Array.from(definition.tool.inputSchema.required), ["origin", "destination", "departDate", "tripType"]);
   assert.deepEqual(Array.from(definition.tool.inputSchema.properties.tripType.enum), ["one_way", "round_trip"]);
+  assert.equal(definition.tool.inputSchema.properties.max_stops.minimum, 0);
+  assert.equal(definition.tool.inputSchema.properties.max_stops.maximum, 2);
   assert.equal(definition.tool.inputSchema.properties.passengers.maximum, 9);
   assert.deepEqual(Array.from(definition.tool.inputSchema.properties.cabin.enum), ["economy", "premium_economy", "business", "first"]);
   assert.equal(definition.tool.outputSchema.properties.flights.items.properties.price.properties.amount.type, "number");
@@ -245,6 +248,11 @@ for (const [name, input, pattern] of [
   ["too many passengers", { ...oneWay, passengers: 10 }, /1–9 adults/],
   ["unknown cabin", { ...oneWay, cabin: "coach" }, /cabin must be/],
   ["bad currency", { ...oneWay, currency: "us$" }, /currency must be/],
+  ["negative stop limit", { ...oneWay, max_stops: -1 }, /max_stops must be/],
+  ["unsupported stop limit", { ...oneWay, max_stops: 3 }, /max_stops must be/],
+  ["fractional stop limit", { ...oneWay, max_stops: 0.5 }, /max_stops must be/],
+  ["string stop limit", { ...oneWay, max_stops: "0" }, /max_stops must be/],
+  ["null stop limit", { ...oneWay, max_stops: null }, /max_stops must be/],
 ]) {
   test(`invalid input (${name}) fails before touching the page`, async () => {
     const h = harness();
@@ -271,6 +279,23 @@ test("deep link encodes the query as Google's tfs protobuf with locale and curre
   const leg = Buffer.concat([Buffer.from([0x12, 10]), Buffer.from(departDate), Buffer.from([0x6a, 7, 0x08, 1, 0x12, 3]), Buffer.from("CVG"), Buffer.from([0x72, 7, 0x08, 1, 0x12, 3]), Buffer.from("SFO")]);
   assert.deepEqual(tfs, Buffer.concat([Buffer.from([0x1a, leg.length]), leg, Buffer.from([0x40, 1, 0x40, 1, 0x48, 3, 0x98, 1, 2])]));
 });
+
+for (const max_stops of [0, 1, 2]) {
+  for (const input of [oneWay, roundTrip]) {
+    test(`${input.tripType} encodes max_stops=${max_stops} on every leg before navigation`, async () => {
+      const h = harness({ document: resultsPage({ live: "No results returned." }) });
+      await h.execute({ ...input, max_stops });
+      const tfs = Buffer.from(new URL(h.calls.find(c => c.startsWith("goto:")).slice(5)).searchParams.get("tfs"), "base64url");
+      const leg = (day, from, to) => {
+        const payload = Buffer.concat([Buffer.from([0x12, 10]), Buffer.from(day), Buffer.from([0x28, max_stops, 0x6a, 7, 0x08, 1, 0x12, 3]), Buffer.from(from), Buffer.from([0x72, 7, 0x08, 1, 0x12, 3]), Buffer.from(to)]);
+        return Buffer.concat([Buffer.from([0x1a, payload.length]), payload]);
+      };
+      const legs = [leg(departDate, "CVG", "SFO")];
+      if (input.tripType === "round_trip") legs.push(leg(returnDate, "SFO", "CVG"));
+      assert.deepEqual(tfs, Buffer.concat([...legs, Buffer.from([0x40, 1, 0x48, 1, 0x98, 1, input.tripType === "round_trip" ? 1 : 2])]));
+    });
+  }
+}
 
 test("round trips encode a reversed second leg and the round-trip marker", async () => {
   const h = harness({ document: resultsPage({ live: "No results returned." }) });
@@ -371,6 +396,72 @@ test("expands the collapsed View more flights set only when more results are wan
   assert.equal(limited.flights[0].airline, "Delta");
   assert.equal(limited.hasMore, true);
   assert.equal(capped.cards.b.querySelector("button[aria-label^='Flight details']").getAttribute("aria-expanded"), "false");
+});
+
+test("the nonstop filter is sent to Google before the default result cap is applied", async () => {
+  const page = resultsPage();
+  const topList = page.cards.a.parentElement;
+  const otherList = page.cards.b.parentElement;
+  const nonstop = page.cards.a;
+  topList.children = [];
+  topList.append(page.cards.b);
+  otherList.children = [];
+  for (let i = 0; i < 128; i++) {
+    otherList.append(card({ dep: "7:00 AM", arr: "9:30 PM", airline: "Example Air", duration: "17 hr 30 min", from: "CVG X", to: "SFO Y", stops: 1, price: "$200", emissions: "300 kg CO2e", comparison: "Avg emissions", segments: [] }));
+  }
+  otherList.append(nonstop);
+  const cards = [...topList.children, ...otherList.children];
+  assert.equal(cards.indexOf(nonstop), 129);
+  const h = harness({ document: page, onNavigate: url => {
+    const tfs = Buffer.from(new URL(url).searchParams.get("tfs"), "base64url");
+    assert.ok(tfs.includes(Buffer.from([0x28, 0])));
+    // Google applies the encoded stops constraint to its inventory, before the parser sees any cards.
+    for (const c of cards) c.hidden = c.querySelector(".EfT7Ae").textContent !== "Nonstop";
+    page.querySelector("[aria-live]").text = "1 result returned.";
+  } });
+  const result = await h.execute({ ...oneWay, max_stops: 0 });
+  validate(h.tools[0].tool.outputSchema, result);
+  assert.equal(result.status, "ok");
+  assert.equal(result.resultCount, 1);
+  assert.equal(result.totalResults, 1);
+  assert.equal(result.hasMore, false);
+  assert.deepEqual(result.flights[0].flightNumbers, ["DL 1234"]);
+  assert.deepEqual(result.warnings, []);
+  assert.equal(page.cards.b.querySelector("button[aria-label^='Flight details']").clicks, 0);
+});
+
+test("a filtered search still reports truncation after the matching itinerary cap", async () => {
+  const page = resultsPage();
+  page.cards.b.hidden = true;
+  const extra = card({ dep: "7:00 AM", arr: "9:30 AM", airline: "Alaska", duration: "5 hr 30 min", from: "CVG X", to: "SFO Y", stops: 0, price: "$400", emissions: "300 kg CO2e", comparison: "+5% emissions", segments: [] });
+  page.cards.b.parentElement.append(extra);
+  const result = await harness({ document: page }).execute({ ...oneWay, max_stops: 0, maxResults: 1 });
+  validate(harness().tools[0].tool.outputSchema, result);
+  assert.equal(result.status, "ok");
+  assert.equal(result.resultCount, 1);
+  assert.equal(result.totalResults, 2);
+  assert.equal(result.hasMore, true);
+  assert.match(result.warnings[0], /^Partial results:/);
+  assert.match(result.warnings[0], /Do not infer an airline or nonstop is unavailable/);
+  assert.equal(extra.querySelector("button[aria-label^='Flight details']").clicks, 0);
+});
+
+test("an ignored stops constraint is an explicit error rather than an unfiltered success", async () => {
+  const h = harness();
+  const result = await h.execute({ ...oneWay, max_stops: 0 });
+  validate(h.tools[0].tool.outputSchema, result);
+  assert.equal(result.status, "error");
+  assert.match(result.message, /^FILTER_NOT_APPLIED:/);
+  assert.deepEqual(result.flights, []);
+});
+
+test("a filtered no-results announcement preserves Google's no-results response", async () => {
+  const h = harness({ document: resultsPage({ live: "No results returned, alternative suggestions found." }) });
+  const result = await h.execute({ ...oneWay, max_stops: 0 });
+  validate(h.tools[0].tool.outputSchema, result);
+  assert.equal(result.status, "no_results");
+  assert.equal(result.hasMore, false);
+  assert.equal(result.totalResults, 0);
 });
 
 test("missing segment details leave flightNumbers empty with a warning instead of failing", async () => {
@@ -493,6 +584,7 @@ test("an unreadable card is skipped with a warning instead of failing the whole 
   assert.equal(result.totalResults, 2);
   assert.equal(result.flights[0].airline, "United");
   assert.match(result.warnings[0], /^Skipped 1 unreadable itinerary card\(s\): itinerary 1/);
+  assert.match(result.warnings[1], /^Partial results:/);
 });
 
 test("all cards unreadable is an explicit parse error", async () => {

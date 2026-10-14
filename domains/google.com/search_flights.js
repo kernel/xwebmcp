@@ -18,7 +18,8 @@
       passengers: { type: "integer", minimum: 1, maximum: 9, default: 1, description: "Adults only. Displayed prices are totals for all passengers." },
       cabin: { type: "string", enum: Object.keys(CABINS), default: "economy" },
       currency: { type: "string", pattern: "^[A-Z]{3}$", default: "USD", description: "ISO 4217 code for displayed prices, e.g. USD, EUR, GBP. Google falls back to USD for codes it does not support; price.currency reports what the page labeled." },
-      maxResults: { type: "integer", minimum: 1, maximum: 100, default: 25, description: "Maximum itineraries to return, in page order (best section first). The collapsed 'View more flights' set is expanded when needed." }
+      max_stops: { type: "integer", minimum: 0, maximum: 2, description: "Maximum stops per leg, applied by Google before limiting results. Use 0 for nonstop only; omit for any number of stops. Applies to both legs of a round trip." },
+      maxResults: { type: "integer", minimum: 1, maximum: 100, default: 25, description: "Maximum itineraries to return after the stops filter, in page order (best section first). The collapsed 'View more flights' set is expanded when needed. hasMore means the returned list is incomplete." }
     },
     allOf: [{ if: { properties: { tripType: { const: "round_trip" } } }, then: { required: ["returnDate"] }, else: { not: { required: ["returnDate"] } } }]
   };
@@ -62,7 +63,7 @@
     resultsUrl: { type: "string", description: "Results page URL actually reached; empty when validation fails before navigation." },
     resultCount: { type: "integer", minimum: 0, description: "Returned itineraries, not total inventory." },
     totalResults: { type: ["integer", "null"], minimum: 0, description: "Itineraries present on the page after any 'View more flights' expansion; null on failures." },
-    hasMore: { type: "boolean", description: "True when the page holds more itineraries than were returned." },
+    hasMore: { type: "boolean", description: "True when the page holds more itineraries than were returned. Do not infer that an airline or nonstop is unavailable from an incomplete list." },
     direction: { type: "string", const: "outbound" },
     timeBasis: { type: "string", const: "airport_local" },
     tripType: { type: "string", description: "Echo of the request." },
@@ -88,13 +89,13 @@
     "Peruvian soles": "PEN", "Icelandic krónur": "ISK", "Romanian lei": "RON", "Russian rubles": "RUB"
   };
 
-  const encodeTfs = ({ origin, destination, departDate, returnDate, passengers, cabin }) => {
+  const encodeTfs = ({ origin, destination, departDate, returnDate, passengers, cabin, max_stops }) => {
     const varint = value => { const out = []; do { let byte = value & 0x7f; value = Math.floor(value / 128); if (value) byte |= 0x80; out.push(byte); } while (value); return out; };
     const key = (field, wire) => varint(field * 8 + wire);
     const int = (field, value) => [...key(field, 0), ...varint(value)];
     const bytes = (field, payload) => [...key(field, 2), ...varint(payload.length), ...payload];
     const str = (field, value) => bytes(field, [...value].map(c => c.charCodeAt(0)));
-    const leg = (day, from, to) => bytes(3, [...str(2, day), ...bytes(13, [...int(1, 1), ...str(2, from)]), ...bytes(14, [...int(1, 1), ...str(2, to)])]);
+    const leg = (day, from, to) => bytes(3, [...str(2, day), ...(max_stops === undefined ? [] : int(5, max_stops)), ...bytes(13, [...int(1, 1), ...str(2, from)]), ...bytes(14, [...int(1, 1), ...str(2, to)])]);
     const message = [...leg(departDate, origin, destination)];
     if (returnDate) message.push(...leg(returnDate, destination, origin));
     for (let i = 0; i < passengers; i++) message.push(...int(8, 1));
@@ -107,7 +108,7 @@
     match: { url_patterns: ["https://google.com/travel/*", "https://*.google.com/travel/*"] },
     tool: {
       name: "search_flights",
-      description: "Search Google Flights for one-way or round-trip itineraries across all airlines and return structured results: carriers, flight numbers, airport-local times, duration, stops, layovers, emissions and the displayed total price in the requested currency. 1–9 adults, four cabins. Returns the outbound options Google lists (best and other sections, expanding 'View more flights' as needed); round-trip prices are whole-trip totals for that outbound choice. Runs in the tab it is listed for, from any Google Travel page there; other tabs (such as a seller's site opened by continue_to_airline) need not be focused or closed. Read-only: never selects, books or purchases. Invoke with a 120-second timeout.",
+      description: "Search Google Flights for one-way or round-trip itineraries across all airlines and return structured results: carriers, flight numbers, airport-local times, duration, stops, layovers, emissions and the displayed total price in the requested currency. 1–9 adults, four cabins. For nonstop requests set max_stops to 0; Google applies the stops filter before maxResults. When hasMore is true, results are incomplete: never claim an airline or nonstop is unavailable from that list. Returns the outbound options Google lists (best and other sections, expanding 'View more flights' as needed); round-trip prices are whole-trip totals for that outbound choice. Runs in the tab it is listed for, from any Google Travel page there; other tabs (such as a seller's site opened by continue_to_airline) need not be focused or closed. Read-only: never selects, books or purchases. Invoke with a 120-second timeout.",
       inputSchema, outputSchema,
       annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: true }
     },
@@ -134,8 +135,9 @@
       if (!CABINS[cabin]) return fail("INVALID_INPUT: cabin must be economy, premium_economy, business or first.");
       if (!/^[A-Z]{3}$/.test(currency)) return fail("INVALID_INPUT: currency must be a three-letter ISO code.");
       if (!Number.isInteger(maxResults) || maxResults < 1 || maxResults > 100) return fail("INVALID_INPUT: maxResults must be 1–100.");
+      if (input.max_stops !== undefined && (!Number.isInteger(input.max_stops) || input.max_stops < 0 || input.max_stops > 2)) return fail("INVALID_INPUT: max_stops must be 0–2, or omitted for any number of stops.");
 
-      const tfs = encodeTfs({ origin: input.origin, destination: input.destination, departDate: input.departDate, returnDate: input.tripType === "round_trip" ? input.returnDate : undefined, passengers, cabin });
+      const tfs = encodeTfs({ origin: input.origin, destination: input.destination, departDate: input.departDate, returnDate: input.tripType === "round_trip" ? input.returnDate : undefined, passengers, cabin, max_stops: input.max_stops });
       const url = "https://www.google.com/travel/flights/search?" + new URLSearchParams({ tfs, hl: "en", gl: "US", curr: currency });
       const deadline = Date.now() + 110000;
       const remaining = cap => Math.max(1, Math.min(cap, Math.floor((deadline - Date.now()) / 1000)));
@@ -313,9 +315,12 @@
           else if (code !== currency) warnings.push(`Google labeled prices as ${label} (${code}), not the requested ${currency}; price.currency reports ${code}.`);
         }
         const flights = page.flights.map(f => ({ ...f, price: { amount: f.price.amount, currency: CURRENCY_LABELS[f.price.currencyLabel] || currency, currencyLabel: f.price.currencyLabel, displayText: f.price.displayText, scope: f.price.scope, passengersIncluded: f.price.passengersIncluded } }));
+        if (input.max_stops !== undefined && flights.some(f => f.stops > input.max_stops)) return fail("FILTER_NOT_APPLIED: Google returned itineraries exceeding max_stops.");
         const unexpanded = flights.filter(f => f.flightNumbers.length === 0).length;
         if (unexpanded) warnings.push(`${unexpanded} itinerary detail panel(s) could not be read; their flightNumbers and segments are empty.`);
-        return { ...result, status: "ok", resultCount: flights.length, totalResults: page.totalVisible, hasMore: page.moreLeft || page.totalVisible > flights.length, flights };
+        const hasMore = page.moreLeft || page.totalVisible > flights.length;
+        if (hasMore) warnings.push("Partial results: additional itineraries were not returned. Do not infer an airline or nonstop is unavailable; narrow the search with max_stops or increase maxResults.");
+        return { ...result, status: "ok", resultCount: flights.length, totalResults: page.totalVisible, hasMore, flights };
       } catch (error) {
         return fail(String(error?.message || error).replace(/^Error: /, "").split("\n")[0].slice(0, 500));
       }

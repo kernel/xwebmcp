@@ -1522,12 +1522,9 @@
         "https://*.google.com/travel/*"
       ],
       "url_patterns_reason": "Narrowed to /travel/* on google.com and its subdomains: google.com also serves Search, Gmail, Maps, Docs and other unrelated products, where a flight search tool must not be listed. /travel/* covers Google Flights and the other Google Travel pages.",
-      "status": "qa_passed",
-      "last_verified": "2026-10-05",
-      "notes": "Google Flights via a tfs deep link (hl=en, gl=US, curr); returns outbound itineraries from the best and other sections with flight numbers, segments, layovers and total prices for the requested passengers. Independent QA on the final source: 963 of 963 checked fields matched the page across domestic, international, round-trip, multi-passenger, business and EUR searches, including SIN-LAX connections that leave after midnight but land on the departure date; an earlier pass on the same parsing checked 869 flights with no mismatch. UNKNOWN_AIRPORT, past-the-booking-window no_results (with Google's reason) and invalid inputs return explicitly. p50 latency about 5-8 s. Known limitation: in 2 of about 100 cold QA searches Google added itineraries a few seconds after announcing its results, after the tool had read the page. Consent interstitial, /sorry blocks and 'Price unavailable' cards are covered by local tests only. url_patterns are deliberately narrowed to /travel/* (see the domain README).",
-      "provenance": {
-        "qa_agent": "agt_5ed4247d719c8b4700f1"
-      }
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Navigates to a Google Flights tfs deep link (hl=en, gl=US, curr) and reads outbound flight numbers, segments, layovers and total prices after navigation. max_stops is encoded on each search leg so Google filters inventory before maxResults; omitted max_stops preserves unrestricted searches. Partial results produce an explicit warning, and returned flights exceeding the requested stops limit fail closed. Local regression tests cover filter encoding on both round-trip legs, a nonstop beyond 100 unfiltered candidates, truncated matching results, ignored filters and invalid input. Author live QA exercised nonstop, one-stop, two-stop, round-trip, capped and unrestricted searches. Final-source independent QA is pending. Known limitation: Google can add itineraries after announcing results; counts describe the page when read, not guaranteed complete airline inventory."
     },
     {
       "domain": "google.com",
