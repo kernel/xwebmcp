@@ -164,7 +164,7 @@ function transcript(options = {}) {
 function modernTranscript(options = {}) {
   const count = options.count ?? 30;
   const time = i => `${Math.floor(i * 7 / 60)}:${String(i * 7 % 60).padStart(2, "0")}`;
-  const items = Array.from({ length: count }, (_, i) => ({ macroMarkersPanelItemViewModel: {
+  const items = Array.from({ length: count }, (_, i) => options.unknownItem && i === 3 ? { someNewRowViewModel: {} } : ({ macroMarkersPanelItemViewModel: {
     item: { timelineItemViewModel: { timestamp: time(i), contentItems: [{ transcriptSegmentViewModel: { simpleText: options.text?.(i) ?? "Fabricated line " + i, timestamp: time(i) } }] } },
     onTap: { innertubeCommand: { watchEndpoint: { videoId: options.stale && i === count - 1 ? "other000001" : video, startTimeSeconds: i * 7 } } }
   } }));
@@ -187,6 +187,7 @@ test("transcript: the newer panel refuses stale or mismatched data", async () =>
   assert.equal((await modernTranscript({ stale: true }).run({ video_id: video })).error_kind, "wrong_video");
   assert.equal((await modernTranscript({ missingRow: true }).run({ video_id: video })).error_kind, "site_changed");
   assert.equal((await modernTranscript({ shiftedTime: true }).run({ video_id: video })).error_kind, "site_changed");
+  assert.equal((await modernTranscript({ unknownItem: true }).run({ video_id: video })).error_kind, "site_changed");
 });
 test("transcript: an open panel that is loading or unrecognized is not reported as closed", async () => {
   const loading = element({ "target-id": "engagement-panel-searchable-transcript" }, { "tp-yt-paper-spinner[active], ytd-continuation-item-renderer": [{}] });

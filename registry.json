@@ -3567,9 +3567,12 @@
         "https://www.youtube.com/*"
       ],
       "url_patterns_reason": "Narrowed to www.youtube.com: it serves the main YouTube web app whose same-origin youtubei endpoints and page layout the tools use; other youtube.com hosts are separate products (music., studio., tv., m.) with different clients and layouts.",
-      "status": "draft",
-      "last_verified": null,
-      "notes": "Anonymous public or unlisted playlist pages (PL, UU and OLAK5uy_ ids) in site order, repeats kept; private, Watch later, Liked and Mix lists unsupported; no playback or account reads. Reads the next-page token in either of YouTube's shapes, only from the list that holds the videos (a section-level token beside it returns nothing); an unknown playlist is not_found and a rejected page_token invalid_page_token. Fixes the truncation at 100 items found by QA on 2026-10-14; needs a fresh independent QA pass."
+      "status": "verified",
+      "last_verified": "2026-10-14",
+      "notes": "Anonymous public or unlisted playlist pages (PL, UU and OLAK5uy_ ids) in site order, repeats kept; private, Watch later, Liked and Mix lists unsupported; no playback or account reads. Reads the next-page token in either of YouTube's shapes, only from the list that holds the videos. Independent QA on 2026-10-14 verified it live from the home page and a playlist page: a 239-video playlist over three pages matching the rendered list, a 158-video playlist, a 1006-video uploads list over 11 pages without repeats, not_found for an unknown playlist and invalid_page_token for a bogus token, all schema-valid. Challenge and rate-limit paths are fixture-only.",
+      "provenance": {
+        "qa_agent": "agt_a2266ed35a0f601cd43e"
+      }
     },
     {
       "domain": "youtube.com",
@@ -3612,9 +3615,12 @@
         "https://www.youtube.com/*"
       ],
       "url_patterns_reason": "Narrowed to www.youtube.com: it serves the main YouTube web app whose same-origin youtubei endpoints and page layout the tools use; other youtube.com hosts are separate products (music., studio., tv., m.) with different clients and layouts.",
-      "status": "draft",
-      "last_verified": null,
-      "notes": "Anonymous Videos or Shorts tab pages with the site's own browse tokens and bounded pagination; no navigation or playback. Reads the next-page token in either of YouTube's shapes (continuationItemRenderer or continuationItemViewModel), only from the list that holds the videos; a page_token the site rejects is invalid_page_token. Changed after its 2026-10-14 sign-off; needs a fresh independent QA pass."
+      "status": "verified",
+      "last_verified": "2026-10-14",
+      "notes": "Anonymous Videos or Shorts tab pages with the site's own browse tokens and bounded pagination; no navigation or playback. Reads the next-page token in either of YouTube's shapes, only from the list that holds the videos. Independent QA on 2026-10-14 verified Videos and Shorts paging over four pages each without repeats, entries matching the rendered tab and invalid_page_token for a bogus token, all schema-valid, live from a playlist page. Challenge and rate-limit paths are fixture-only.",
+      "provenance": {
+        "qa_agent": "agt_a2266ed35a0f601cd43e"
+      }
     },
     {
       "domain": "youtube.com",
@@ -3643,9 +3649,12 @@
         "https://www.youtube.com/*"
       ],
       "url_patterns_reason": "Narrowed to www.youtube.com: it serves the main YouTube web app whose same-origin youtubei endpoints and page layout the tools use; other youtube.com hosts are separate products (music., studio., tv., m.) with different clients and layouts.",
-      "status": "draft",
-      "last_verified": null,
-      "notes": "Reversible subscription on the current exact channel and account; at most one click, no retry after an unknown outcome, UI postcondition only (persistence_confirmed false). After the click it reads whichever single subscription control identifies the same channel, so a header YouTube re-renders is not reported as outcome_unknown. Mocked write QA only; no live mutation. Needs a fresh independent QA pass."
+      "status": "qa_passed",
+      "last_verified": "2026-10-14",
+      "notes": "Reversible subscription on the current exact channel and account; at most one click, UI postcondition only (persistence_confirmed false). After the click it reads whichever single subscription control identifies the same channel, so a re-rendered header is not reported as outcome_unknown. The guard against retrying after outcome_unknown lasts for the document; a reload clears it, so a caller must still inspect before trying again. Independent QA on 2026-10-14 passed it on code review and fixtures, with live signed-out refusals (login_required, wrong_channel, wrong_page, invalid_input) before any click. Live mutation and every signed-in path are untested.",
+      "provenance": {
+        "qa_agent": "agt_8177f6c63bb367eaccb1"
+      }
     }
   ]
 }

@@ -76,13 +76,14 @@
       const items = (panel.data?.content?.sectionListRenderer?.contents || []).flatMap(section => section?.itemSectionRenderer?.contents || []).map(item => item?.macroMarkersPanelItemViewModel);
       if (items.length !== rendered.length) return fail("site_changed", "The transcript panel's data does not match its rendered rows.");
       rows = items.map((item, i) => {
-        const watch = item?.onTap?.innertubeCommand?.watchEndpoint;
-        if (watch?.videoId !== input.video_id) return { stale: true };
+        if (!item) return null;
+        const endpoint = item.onTap?.innertubeCommand?.watchEndpoint;
+        if (endpoint?.videoId !== input.video_id) return { stale: true };
         const timeline = item.item?.timelineItemViewModel;
         const segments = (timeline?.contentItems || []).map(x => x?.transcriptSegmentViewModel).filter(Boolean);
         const shownTime = rendered[i].querySelector(".ytwTranscriptSegmentViewModelTimestamp")?.textContent?.trim();
-        if (!segments.length || typeof timeline.timestamp !== "string" || timeline.timestamp !== shownTime || !Number.isInteger(watch.startTimeSeconds) || watch.startTimeSeconds < 0) return null;
-        return { start_ms: watch.startTimeSeconds * 1000, end_ms: null, time_text: timeline.timestamp, raw: segments.map(x => typeof x.simpleText === "string" ? x.simpleText : "").join(" ") };
+        if (!segments.length || typeof timeline.timestamp !== "string" || timeline.timestamp !== shownTime || !Number.isInteger(endpoint.startTimeSeconds) || endpoint.startTimeSeconds < 0) return null;
+        return { start_ms: endpoint.startTimeSeconds * 1000, end_ms: null, time_text: timeline.timestamp, raw: segments.map(x => typeof x.simpleText === "string" ? x.simpleText : "").join(" ") };
       });
     }
     if (!rows.length || rows.length > 20000) return fail("site_changed", "The transcript has no readable rows or exceeds the safe row bound.");
