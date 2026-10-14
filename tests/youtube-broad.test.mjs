@@ -66,7 +66,7 @@ for (const name of ["get_channel", "list_channel_videos", "get_playlist"]) {
       assert.equal((await h.run(invalid)).error_kind, "invalid_input"); assert.equal(h.calls.length, 0);
     }
   });
-  for (const [status, raw, kind] of [[429, "", "rate_limited"], [403, "", "challenge"], [404, "", "not_found"], [400, "{}", "site_error"], [400, "<html>unusual traffic /sorry/</html>", "challenge"], [404, "<html>unusual traffic</html>", "challenge"], [500, "<html>/sorry/</html>", "challenge"], [200, "<html>unusual traffic</html>", "challenge"], [200, "not json", "site_changed"], [200, "[]", "site_changed"]]) {
+  for (const [status, raw, kind] of [[429, "", "rate_limited"], [403, "", "challenge"], [404, "", "not_found"], [400, "{}", name === "get_playlist" ? "not_found" : "site_error"], [400, "<html>unusual traffic /sorry/</html>", "challenge"], [404, "<html>unusual traffic</html>", "challenge"], [500, "<html>/sorry/</html>", "challenge"], [200, "<html>unusual traffic</html>", "challenge"], [200, "not json", "site_changed"], [200, "[]", "site_changed"]]) {
     test(`${name}: HTTP ${status} ${kind}`, async () => assert.equal((await harness(name, { route: () => ({ status, raw }) }).run(input)).error_kind, kind));
   }
   test(`${name}: wrong page, cancel and changed site`, async () => {
@@ -74,6 +74,25 @@ for (const name of ["get_channel", "list_channel_videos", "get_playlist"]) {
     const canceled = harness(name, { signal: { aborted: true } }); assert.equal((await canceled.run(input)).error_kind, "canceled"); assert.equal(canceled.calls.length, 0);
     assert.equal((await harness(name, { route: () => ({ data: {} }) }).run(input)).error_kind, "site_changed");
     assert.equal((await harness(name, { route: () => ({ data: { alerts: [{ alertRenderer: { type: "ERROR" } }] } }) }).run(input)).error_kind, "not_found");
+  });
+}
+
+const viewModelCont = (t = token) => ({ continuationItemViewModel: { continuationCommand: { innertubeCommand: { continuationCommand: { token: t } } } } });
+
+for (const name of ["list_channel_videos", "get_playlist"]) {
+  const input = name === "get_playlist" ? { playlist_id: playlist } : { channel_id: channel };
+  test(`${name}: reads the next page token in either shape, only from the list of videos`, async () => {
+    const decoy = "SECTIONCONTINUATION0123456789";
+    const layout = items => ({ data: browse([{ sectionListRenderer: { contents: [{ itemSectionRenderer: { contents: items } }, viewModelCont(decoy)] } }]) });
+    assert.equal((await harness(name, { route: () => layout([lockup(), viewModelCont()]) }).run(input)).next_page_token, token);
+    assert.equal((await harness(name, { route: () => layout([lockup(), cont()]) }).run(input)).next_page_token, token);
+    const last = await harness(name, { route: () => layout([lockup()]) }).run(input);
+    assert.deepEqual([last.next_page_token, last.items.length], [null, 1]);
+    const page = await harness(name, { route: () => ({ data: { onResponseReceivedActions: [{ appendContinuationItemsAction: { continuationItems: [lockup(), viewModelCont()] } }] } }) }).run({ page_token: token });
+    assert.deepEqual([page.status, page.next_page_token], ["ok", token]);
+  });
+  test(`${name}: a page_token the site rejects is invalid_page_token`, async () => {
+    assert.equal((await harness(name, { route: () => ({ status: 400, raw: "{}" }) }).run({ page_token: token })).error_kind, "invalid_page_token");
   });
 }
 

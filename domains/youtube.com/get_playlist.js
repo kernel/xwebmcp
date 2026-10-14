@@ -155,6 +155,7 @@
                 "site_error",
                 "site_changed",
                 "tab_unavailable",
+                "invalid_page_token",
                 "canceled"
               ]
             },
@@ -198,6 +199,7 @@
           if (res.ok) return { error: fail("site_changed", "YouTube returned non-JSON browse data.") };
         }
         if (res.status === 404) return { error: fail("not_found", "The requested public resource was not found.") };
+        if (res.status === 400) return { error: paging ? fail("invalid_page_token", "YouTube did not accept this page_token; it may be altered or expired. Start again from the first page.") : fail("not_found", "YouTube rejected this playlist id (HTTP 400); the playlist may not exist.") };
         if (!res.ok) return { error: fail("site_error", "YouTube returned HTTP " + res.status + ".") };
         if (!data || typeof data !== "object" || Array.isArray(data)) return { error: fail("site_changed", "YouTube returned an unexpected browse response.") };
         if (data.error) return { error: fail("site_error", "YouTube returned an API error.") };
@@ -224,16 +226,23 @@
       if (!Array.isArray(roots) || (paging && !continuationLists.length)) return fail("site_changed", "No recognized browse content was returned.");
       const items = [];
       let next = null, truncated = false, unsupported = 0, empty = false, scanned = 0, outputUnits = 0;
-      const stack = [...roots].reverse();
+      const stack = [...(paging ? continuationLists : roots)].reverse();
       while (stack.length && scanned++ < 20000) {
         const node = stack.pop();
         if (!node || typeof node !== "object") continue;
         if (Array.isArray(node)) {
           if (node.length > 5000) return fail("site_changed", "The browse content exceeded the safe array bound.");
+          // The next page's token sits beside the videos it follows; other lists on the page carry
+          // tokens for unrelated sections, so a token counts only in a list that holds videos.
+          if (node.some(x => x && (x.lockupViewModel || x.playlistVideoRenderer || x.videoRenderer || x.gridVideoRenderer || x.shortsLockupViewModel || x.richItemRenderer))) {
+            for (const x of node) {
+              const token = x?.continuationItemRenderer?.continuationEndpoint?.continuationCommand?.token ?? x?.continuationItemViewModel?.continuationCommand?.innertubeCommand?.continuationCommand?.token;
+              if (typeof token === "string" && /^[A-Za-z0-9_%=.+/:-]{16,16000}$/.test(token)) next = token;
+            }
+          }
           stack.push(...node.slice().reverse()); continue;
         }
-        const continuation = node.continuationItemRenderer?.continuationEndpoint?.continuationCommand?.token;
-        if (typeof continuation === "string" && /^[A-Za-z0-9_%=.+/:-]{16,16000}$/.test(continuation)) { next = continuation; continue; }
+        if (node.continuationItemRenderer || node.continuationItemViewModel) continue;
         if (node.messageRenderer || node.backgroundPromoRenderer) { empty = true; continue; }
         if (node.adSlotRenderer || node.searchPyvRenderer) { unsupported++; continue; }
         const lockup = node.lockupViewModel;
