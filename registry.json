@@ -936,6 +936,7 @@
       "url_patterns": [
         "https://www.booking.com/*"
       ],
+      "url_patterns_reason": "Narrowed to www.booking.com: the stays search and property pages are served there, and the read tools fetch those pages same-origin while preparation reads the current page; a fetch from www.booking.com to flights. or secure.booking.com fails, so the tools cannot work on other booking.com hosts.",
       "status": "verified",
       "last_verified": "2026-09-30",
       "notes": "Dated property facts and room rates with effective party/currency, excluded fees, cancellation, prepayment, meals, rate IDs and comparison ranks. Optional lowest displayed-price ordering before the 40-rate cap; scans at most 400 rows. Smaller-party rates are omitted; member previews and uncertain child charges are warned. One room only; English; no currency changes, selection, hold or checkout. Independent final-source QA passed; live Kernel success from the home page and local extension success on 2026-09-30.",
@@ -952,6 +953,7 @@
       "url_patterns": [
         "https://www.booking.com/*"
       ],
+      "url_patterns_reason": "Narrowed to www.booking.com: the stays search and property pages are served there, and the read tools fetch those pages same-origin while preparation reads the current page; a fetch from www.booking.com to flights. or secure.booking.com fails, so the tools cannot work on other booking.com hosts.",
       "status": "qa_passed",
       "last_verified": "2026-09-30",
       "notes": "Current-page-only preparation for an exact property and rate, dates, adult party, sign-in state, currency and displayed total. Requires zero selections, confirmed capacity and readable terms. Returns manual handoff only: no selection, hold, checkout, booking, payment or approval token. Children and populated account reads are unsupported. Independent final-source QA passed; local extension success with zero requests and unchanged selections. Kernel returned account_state_changed; no Kernel success or parity claimed.",
@@ -968,6 +970,7 @@
       "url_patterns": [
         "https://www.booking.com/*"
       ],
+      "url_patterns_reason": "Narrowed to www.booking.com: the stays search and property pages are served there, and the read tools fetch those pages same-origin while preparation reads the current page; a fetch from www.booking.com to flights. or secure.booking.com fails, so the tools cannot work on other booking.com hosts.",
       "status": "verified",
       "last_verified": "2026-10-13",
       "notes": "Public first results page, up to 25 properties, for explicit destination/dates/guests and the site's current currency, with sort/filters, canonical URLs, reviews and recommended-unit prices. Echoes effective dates/guests/currency, flags member previews, nearby properties the site adds beyond its count and cards without a review score, and distinguishes empty, gated, blocked, rate-limited, refused and unapplied searches. Reads both results pages Booking.com serves (with b_* page variables, or with the application context and Apollo searchMeta). English; one room; no currency changes or booking actions. Independent final-source QA passed on 2026-10-13 on both page variants, including live success from a dated property page. Signed-in and non-English sessions, live gated/rate_limited/challenge and the local extension were not tested.",
