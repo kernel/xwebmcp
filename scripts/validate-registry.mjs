@@ -6,6 +6,7 @@ import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { join, relative, resolve } from "node:path";
 import { runInNewContext } from "node:vm";
 import { compose } from "./compose.mjs";
+import { checkDomainReadme } from "./readme.mjs";
 
 const SUPPORTED_SPEC_VERSION = 1;
 const root = resolve(process.argv[2] ?? ".");
@@ -23,7 +24,6 @@ const LEGACY_CAMEL_CASE_FILES = new Set([
   "domains/google.com/search_flights.js",
   "domains/jetblue.com/search_flights.js",
   "domains/southwest.com/search_flights.js",
-  "domains/united.com/search_flights.js",
 ]);
 
 function schemaPropertyNames(schema, out = []) {
@@ -122,29 +122,13 @@ function hostWithinDomain(pattern, domain) {
   return !host.startsWith("*.") && host.endsWith(`.${domain}`);
 }
 
-// A specific host on another registrable domain is allowed when the domain README's URL patterns section names it (spec §6.3).
-function documentedExternalHost(pattern, domain) {
-  const host = pattern.slice("https://".length).split("/")[0];
-  const file = join(root, `domains/${domain}/README.md`);
-  if (host.startsWith("*.") || !existsSync(file)) return false;
-  const section = readFileSync(file, "utf8").split(/^(?=#{1,6}\s)/m).find((part) => /^#{1,6}\s+.*url.?patterns?/i.test(part));
-  return !!section && section.includes(host);
-}
+const patternHost = (pattern) => pattern.slice("https://".length).split("/")[0];
 
 function checkReadme(domain, entries) {
   const file = `domains/${domain}/README.md`;
   if (!existsSync(join(root, file))) return fail(`${file}: missing`);
   const text = readFileSync(join(root, file), "utf8");
-  const firstHeading = text.split("\n").find((line) => line.startsWith("# "));
-  if (!firstHeading || !firstHeading.slice(2).trim().startsWith(domain)) fail(`${file}: first heading must be "# ${domain}"`);
-  if (!/^#{1,6}\s+.*known limitations/im.test(text)) fail(`${file}: missing a "Known limitations" section`);
-  const rows = text.split("\n").filter((line) => line.trim().startsWith("|")).map((line) =>
-    line.split("|").slice(1, -1).map((cell) => cell.trim()));
-  for (const entry of entries) {
-    const row = rows.find((cells) => cells[0] === entry.tool || cells[0] === `\`${entry.tool}\``);
-    if (!row) { fail(`${file}: status table has no row for ${entry.tool}`); continue; }
-    if (!row.some((cell) => cell === entry.status)) fail(`${file}: status table row for ${entry.tool} does not say "${entry.status}" (registry status)`);
-  }
+  for (const problem of checkDomainReadme(domain, entries.map((entry) => entry.tool), text)) fail(`${file}: ${problem}`);
 }
 
 function listJSFiles(dir) {
@@ -188,10 +172,22 @@ function main() {
     if (entry.file !== expectedFile) fail(`${label}: file must be ${expectedFile}, got ${entry.file}`);
     if (!existsSync(join(root, entry.file))) { fail(`${label}: ${entry.file} does not exist`); return; }
 
+    const external = new Set(entry.external_hosts ?? []);
+    for (const host of external) {
+      if (host === entry.domain || host.endsWith(`.${entry.domain}`)) fail(`${label}: external_hosts entry ${host} is inside ${entry.domain}; list only hosts on another registrable domain`);
+      if (!(entry.url_patterns ?? []).some((pattern) => typeof pattern === "string" && patternHost(pattern) === host)) fail(`${label}: external_hosts entry ${host} is not used by any url pattern`);
+    }
     for (const pattern of entry.url_patterns ?? []) {
-      if (typeof pattern === "string" && pattern.startsWith("https://") && !hostWithinDomain(pattern, entry.domain) && !documentedExternalHost(pattern, entry.domain)) {
-        fail(`${label}: url pattern ${pattern} is outside ${entry.domain}`);
+      if (typeof pattern === "string" && pattern.startsWith("https://") && !hostWithinDomain(pattern, entry.domain) && !external.has(patternHost(pattern))) {
+        fail(`${label}: url pattern ${pattern} is outside ${entry.domain} and its host is not in external_hosts (spec §6.3)`);
       }
+    }
+    const defaultPatterns = [`https://${entry.domain}/*`, `https://*.${entry.domain}/*`];
+    if (JSON.stringify(entry.url_patterns) !== JSON.stringify(defaultPatterns) && !entry.url_patterns_reason?.trim()) {
+      fail(`${label}: url_patterns differ from the default ${JSON.stringify(defaultPatterns)}; url_patterns_reason must say why (spec §6.2)`);
+    }
+    if ((entry.status === "qa_passed" || entry.status === "verified") && !entry.provenance?.qa_agent) {
+      fail(`${label}: status ${entry.status} requires provenance.qa_agent pointing at the independent QA (spec §5.4)`);
     }
 
     let definitions;

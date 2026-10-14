@@ -1,0 +1,3 @@
+#!/usr/bin/env node
+// A stand-in for hypeship in run.test.mjs: a hold that lasts a day.
+console.log(JSON.stringify({ hold: { expires_at: new Date(Date.now() + 86_400_000).toISOString() } }));

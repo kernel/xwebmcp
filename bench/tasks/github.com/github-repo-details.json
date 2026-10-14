@@ -1,0 +1,28 @@
+{
+  "id": "github-repo-details",
+  "domain": "github.com",
+  "stage": "inspect",
+  "prompt": "On github.com, look up the repository {{repo}}: its default branch, its license as an SPDX identifier, its star count, and how many releases it has. Reply with JSON: {\"repository\": \"owner/repo\", \"default_branch\": string, \"license\": string, \"stars\": integer, \"releases\": integer}.",
+  "fixture": {"repo": "microsoft/playwright"},
+  "start_url": "https://github.com/explore",
+  "tools": [
+    {
+      "repo": "kernel/xwebmcp",
+      "ref": "hypeship/github-read-tools",
+      "pr": 55,
+      "names": ["get_repository"]
+    }
+  ],
+  "entry_tool": "get_repository",
+  "answer_schema": "schemas/repository-details.json",
+  "rules": [
+    {"path": "repository", "equals": "{{repo}}"},
+    {"path": "default_branch", "equals": "main"},
+    {"path": "license", "equals": "Apache-2.0"},
+    {"path": "stars", "range": [95000, 10000000]},
+    {"path": "releases", "range": [160, 10000]}
+  ],
+  "pairs": 5,
+  "trial_timeout_sec": 600,
+  "max_turns": 40
+}

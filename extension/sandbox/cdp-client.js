@@ -245,11 +245,8 @@
       this.pendingDialog = null;
       this.#inFlightRequests.clear();
       this.#lastNetworkActivity = Date.now();
-      try {
-        await this.#send(targetId, undefined, 'Target.activateTarget', {targetId});
-      } catch {
-        // Activation can be rejected for some target types.
-      }
+      // Tab activation is handled by the invoker without focusing Chrome's window.
+      // Target.activateTarget can bring the entire application to the foreground.
       this.#rendererResponsive = await this.#enableDomains(targetId);
       await this.#dismissStaleDialog();
       if (previousTargetId && previousTargetId !== targetId) {

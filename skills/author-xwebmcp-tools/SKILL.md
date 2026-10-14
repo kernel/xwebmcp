@@ -5,7 +5,7 @@ description: Design, implement, QA, or review custom WebMCP tools in this reposi
 
 # Author xWebMCP tools
 
-Read the [repository specification](https://github.com/kernel/xwebmcp/blob/main/spec/repository.md), the relevant domain README and tool files before changing code. Check the site's native WebMCP tools first; add only capabilities they do not cover. Design for an agent's real task, not a particular benchmark selector.
+Read the [repository specification](https://github.com/kernel/xwebmcp/blob/main/spec/repository.md), the domain's `registry.json` entries and tool files before changing code. Check the site's native WebMCP tools first; add only capabilities they do not cover. Design for an agent's real task, not a particular benchmark selector.
 
 ## Prerequisites
 
@@ -24,19 +24,20 @@ Connect the Kernel MCP server before probing a site. Discover its browser lifecy
 
 A page tool's function runs in the registering document and **does not survive that document's navigation**. If the flow cannot be separated into navigation and page-local work, document the concrete runtime constraint and seek review for a narrow CDP exception; do not claim a page tool can return after its own document is destroyed. Both kinds may declare a typed `outputSchema`; schema presence or output size alone never selects CDP. Do not use CDP solely to call `js(() => fetch(...))` or to ensure the tab is on a domain where discovery already limits the tool.
 
-Record the reason for any CDP tool in the domain README: which navigation occurs and which post-navigation structured fields justify it. For a migration, preserve input/output behavior, URL matching, errors and safety invariants; changing `kind` and runtime code requires independent QA again.
+Record the reason for any CDP tool in its registry `notes`: which navigation occurs and which post-navigation structured fields justify it. For a migration, preserve input/output behavior, URL matching, errors and safety invariants; changing `kind` and runtime code requires independent QA again.
 
 ## Build the tool
 
 1. Keep one JS expression per `domains/<domain>/<tool>.js` evaluating to a one-element array; no trailing semicolon, import, `require`, `Buffer` or `process`. A `page` execute function is serialized into the page, so it must not depend on outer closure variables or browser-REPL helpers.
 2. Give the agent a precise description: action, prerequisites, IDs produced/consumed, side effects, and what a result does *not* prove. Define typed `inputSchema` and `outputSchema`, with explicit success/error branches. Reject invalid input before any site interaction; do not fabricate success when account identity, submission outcome or availability is uncertain.
+   For tools that navigate, distinguish scheduled from confirmed navigation in results and include the next action; tell callers to rediscover tools and use fresh document-bound references after navigation. A page tool scheduling navigation returns only an acknowledgment. Before a CDP tool claims destination readiness, verify the actual URL and required element waits, checking their boolean results. Test redirects and missing destination elements.
 3. Prefer observed site behavior to guessed endpoints or selectors. Page-local `fetch` uses the current page's credentials; it is still a browser tool, not an external service API fallback. Avoid stale state, hidden navigation, duplicate writes and retries when a mutation's outcome is unknown.
 4. For CDP tools that type identity or verification fields, use the optional `lib/input.js` snippet instead of copying typing code. Place its inline markers inside `execute`, run `node scripts/compose.mjs`, and commit the expanded tool file; consumers do not load the snippet separately. Leave page tools page-kind unless their behavior independently justifies CDP. Changes to inlined source require fresh QA.
-5. Update sorted `registry.json` and the domain README. `kind`, URL patterns, status and QA provenance must match the source. Register the **entire namespace together** when using `forceOverwriteNamespace`, including existing tools.
+5. Update sorted `registry.json` and the domain README. `kind`, URL patterns, status and QA provenance must match the source; non-default URL patterns need `url_patterns_reason` (and `external_hosts` for hosts on another domain). The README is only `# <domain>` plus one `| tool | description |` table with a sorted one- or two-sentence row per tool; status, evidence and limitations go in the registry entry, not the README. Register the **entire namespace together** when using `forceOverwriteNamespace`, including existing tools.
 
 ## Safety and QA
 
 - Never put passwords, OTPs, real account identifiers, session URLs, user names or private context in tool code, tests, commit messages or PR text. Test with fabricated identities and a user-approved credential path.
 - For reversible cart, favorite or mailbox-setting QA, record initial state, change only what the test owns, restore it, and verify exact equality. Do not expose checkout, payment, order placement or other irreversible actions without a separately approved scope and safety design.
-- Exercise success, failure, wrong-account, malformed input, unrelated pages, schema conformance and navigation lifetime. An independent reviewer must sign off on the **final source** before setting `qa_passed`; a source change invalidates earlier sign-off. State unverified cases honestly in the README.
+- Exercise success, failure, wrong-account, malformed input, unrelated pages, schema conformance and navigation lifetime. An independent reviewer must sign off on the **final source** before setting `qa_passed`; a source change invalidates earlier sign-off. State unverified cases honestly in the registry `notes`, and set `provenance.qa_agent` for `qa_passed` or `verified`.
 - Run `node scripts/validate-registry.mjs` and `node --test "tests/*.test.mjs"`. Rebase on current main and inspect the full diff before opening a ready-for-review PR.

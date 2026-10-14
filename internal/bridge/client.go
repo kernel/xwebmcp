@@ -17,41 +17,66 @@ import (
 // extension is not loaded, or the host manifest is not installed.
 var ErrNotRunning = errors.New("the xwebmcp extension is not connected; open Chrome with the extension loaded, or run `xwebmcp setup chrome`")
 
-// Client talks to a running Host over its Unix socket.
+// reconnectWait bounds how long a call waits for a restarted native host (for
+// example after the extension is reloaded) before reporting ErrNotRunning.
+const reconnectWait = 10 * time.Second
+
+// Client talks to a running Host over its Unix socket. The host restarts
+// whenever Chrome restarts the extension's native messaging port, so the
+// client redials on the next call after its connection is lost.
 type Client struct {
+	stateDir string
+	nextID   atomic.Int64
+
+	mu      sync.Mutex // guards current and closed
+	current *connection
+	closed  bool
+}
+
+// connection is one socket to one host process.
+type connection struct {
 	conn    net.Conn
 	reader  *bufio.Reader
 	writeMu sync.Mutex
 	mu      sync.Mutex
 	pending map[int64]chan Response
-	nextID  atomic.Int64
-	closed  chan struct{}
+	done    chan struct{}
 }
 
 // Dial connects to the host socket in stateDir.
 func Dial(ctx context.Context, stateDir string) (*Client, error) {
+	c := &Client{stateDir: stateDir}
+	conn, err := dialOnce(ctx, stateDir)
+	if err != nil {
+		return nil, err
+	}
+	c.current = conn
+	return c, nil
+}
+
+func dialOnce(ctx context.Context, stateDir string) (*connection, error) {
 	socket := SocketPath(stateDir)
 	if _, err := os.Stat(socket); err != nil {
 		return nil, ErrNotRunning
 	}
 	var dialer net.Dialer
-	conn, err := dialer.DialContext(ctx, "unix", socket)
+	raw, err := dialer.DialContext(ctx, "unix", socket)
 	if err != nil {
 		return nil, ErrNotRunning
 	}
-	client := &Client{conn: conn, reader: bufio.NewReaderSize(conn, 1<<20), pending: map[int64]chan Response{}, closed: make(chan struct{})}
-	go client.readLoop()
-	return client, nil
+	conn := &connection{conn: raw, reader: bufio.NewReaderSize(raw, 1<<20), pending: map[int64]chan Response{}, done: make(chan struct{})}
+	go conn.readLoop()
+	return conn, nil
 }
 
-func (c *Client) readLoop() {
-	defer close(c.closed)
+func (c *connection) readLoop() {
+	defer close(c.done)
 	for {
 		line, err := c.reader.ReadBytes('\n')
 		if err != nil {
 			c.mu.Lock()
 			for id, ch := range c.pending {
-				ch <- Response{ID: id, Error: &Error{Message: "bridge connection closed"}}
+				ch <- Response{ID: id, Error: &Error{Message: "bridge connection closed before the extension answered; the request may or may not have run"}}
 				delete(c.pending, id)
 			}
 			c.mu.Unlock()
@@ -71,12 +96,63 @@ func (c *Client) readLoop() {
 	}
 }
 
-// Close releases the connection.
-func (c *Client) Close() error {
-	return c.conn.Close()
+func (c *connection) alive() bool {
+	select {
+	case <-c.done:
+		return false
+	default:
+		return true
+	}
 }
 
-// Call invokes an extension API method and decodes its result into out.
+// connection returns a live connection, redialing if the previous one closed.
+// fresh forces a redial (used after a failed write).
+func (c *Client) connection(ctx context.Context, fresh bool) (*connection, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.closed {
+		return nil, errors.New("bridge client is closed")
+	}
+	if c.current != nil && !fresh && c.current.alive() {
+		return c.current, nil
+	}
+	if c.current != nil {
+		c.current.conn.Close()
+		c.current = nil
+	}
+	deadline := time.Now().Add(reconnectWait)
+	for {
+		conn, err := dialOnce(ctx, c.stateDir)
+		if err == nil {
+			c.current = conn
+			return conn, nil
+		}
+		if time.Now().After(deadline) {
+			return nil, err
+		}
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-time.After(200 * time.Millisecond):
+		}
+	}
+}
+
+// Close releases the connection.
+func (c *Client) Close() error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.closed = true
+	if c.current == nil {
+		return nil
+	}
+	return c.current.conn.Close()
+}
+
+// Call invokes an extension API method and decodes its result into out. If
+// the host restarted since the last call, Call reconnects first; a request
+// whose write fails is retried once on a new connection, because it never
+// reached the host. A request that was sent is never resent.
 func (c *Client) Call(ctx context.Context, method string, params any, out any) error {
 	var raw json.RawMessage
 	if params != nil {
@@ -91,16 +167,31 @@ func (c *Client) Call(ctx context.Context, method string, params any, out any) e
 	if err != nil {
 		return err
 	}
-	ch := make(chan Response, 1)
-	c.mu.Lock()
-	c.pending[id] = ch
-	c.mu.Unlock()
+	payload = append(payload, '\n')
 
-	c.writeMu.Lock()
-	_, err = c.conn.Write(append(payload, '\n'))
-	c.writeMu.Unlock()
-	if err != nil {
-		return fmt.Errorf("write to bridge: %w", err)
+	var conn *connection
+	var ch chan Response
+	for attempt := 0; ; attempt++ {
+		conn, err = c.connection(ctx, attempt > 0)
+		if err != nil {
+			return err
+		}
+		ch = make(chan Response, 1)
+		conn.mu.Lock()
+		conn.pending[id] = ch
+		conn.mu.Unlock()
+		conn.writeMu.Lock()
+		_, err = conn.conn.Write(payload)
+		conn.writeMu.Unlock()
+		if err == nil {
+			break
+		}
+		conn.mu.Lock()
+		delete(conn.pending, id)
+		conn.mu.Unlock()
+		if attempt > 0 {
+			return fmt.Errorf("write to bridge: %w", err)
+		}
 	}
 	select {
 	case response := <-ch:
@@ -112,9 +203,9 @@ func (c *Client) Call(ctx context.Context, method string, params any, out any) e
 		}
 		return nil
 	case <-ctx.Done():
-		c.mu.Lock()
-		delete(c.pending, id)
-		c.mu.Unlock()
+		conn.mu.Lock()
+		delete(conn.pending, id)
+		conn.mu.Unlock()
 		return ctx.Err()
 	}
 }

@@ -1,0 +1,21 @@
+#!/usr/bin/env node
+// A stand-in for bwrap in run.test.mjs: runs the command in --chdir with the caller's environment,
+// without mounts. The visibility probe sees nothing unless STUB_SANDBOX_LEAKS is set, and every
+// sandbox fails when STUB_BWRAP_FAILS is set.
+import { spawnSync } from "node:child_process";
+
+if (process.env.STUB_BWRAP_FAILS) {
+  console.error("bwrap: setting up uid map: Permission denied");
+  process.exit(1);
+}
+const args = process.argv.slice(2);
+const dashes = args.indexOf("--");
+const options = args.slice(0, dashes);
+const [command, ...rest] = args.slice(dashes + 1);
+const chdir = options.includes("--chdir") ? options[options.indexOf("--chdir") + 1] : process.cwd();
+if (command === "sh" && rest[0] === "-c") {
+  if (process.env.STUB_SANDBOX_LEAKS) console.log(rest.slice(3).join("\n"));
+  process.exit(0);
+}
+const result = spawnSync(command, rest, { stdio: "inherit", cwd: chdir });
+process.exit(result.status ?? 1);

@@ -1,0 +1,4 @@
+{
+  "profile": "bench-instacart",
+  "signed_in_check": {"tool": "get_delivery_address"}
+}

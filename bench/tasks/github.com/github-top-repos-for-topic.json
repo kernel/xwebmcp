@@ -1,0 +1,26 @@
+{
+  "id": "github-top-repos-for-topic",
+  "domain": "github.com",
+  "stage": "find",
+  "prompt": "On github.com, find the three repositories with the most stars among those tagged with the topic \"{{topic}}\". Reply with JSON: {\"repositories\": [\"owner/repo\"]}, most stars first.",
+  "fixture": {"topic": "headless-chrome"},
+  "start_url": "https://github.com/explore",
+  "tools": [
+    {
+      "repo": "kernel/xwebmcp",
+      "ref": "hypeship/github-read-tools",
+      "pr": 55,
+      "names": ["search_repositories"]
+    }
+  ],
+  "entry_tool": "search_repositories",
+  "answer_schema": "schemas/top-repositories.json",
+  "rules": [
+    {"path": "repositories", "count": [3, 3]},
+    {"path": "repositories[]", "unique": true},
+    {"path": "repositories[]", "in": ["puppeteer/puppeteer", "apify/crawlee", "browserbase/stagehand"]}
+  ],
+  "pairs": 5,
+  "trial_timeout_sec": 600,
+  "max_turns": 40
+}

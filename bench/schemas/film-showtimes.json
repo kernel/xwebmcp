@@ -1,0 +1,10 @@
+{
+  "type": "object",
+  "required": ["film", "theatre", "date", "showtimes"],
+  "properties": {
+    "film": { "type": "string", "minLength": 1 },
+    "theatre": { "type": "string", "minLength": 1 },
+    "date": { "type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$" },
+    "showtimes": { "type": "array", "items": { "type": "string", "pattern": "^([01][0-9]|2[0-3]):[0-5][0-9]$" } }
+  }
+}

@@ -25,3 +25,5 @@ jobs:
         run: node --test "tests/*.test.mjs"
       - name: Run extension tests
         run: node --test "extension/**/*.test.mjs"
+      - name: Run bench tests
+        run: node --test "bench/**/*.test.mjs"

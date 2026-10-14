@@ -30,6 +30,7 @@ function definitionSummary(definition) {
 
 // owned_only restricts the snapshot to tabs xwebmcp opened itself.
 export async function listTools({tab_id, tabId, exclude_custom, owned_only} = {}) {
+  await tabs.ready();
   const wanted = tab_id ?? tabId;
   const all = await discovery.tools({excludeCustom: !!exclude_custom, ownedOnly: !!owned_only});
   return wanted === undefined ? all : all.filter((tool) => tool.source.tab_id === wanted);
@@ -39,22 +40,10 @@ export async function listTools({tab_id, tabId, exclude_custom, owned_only} = {}
 // default only tabs opened through openTab (or by an invocation) are used.
 export async function invoke({tool_ref, input, timeout_sec, allow_user_tabs}) {
   if (typeof tool_ref !== 'string' || !tool_ref) throw new Error('tool_ref is required');
+  await tabs.ready();
   if (input === undefined) input = {};
   if (typeof input !== 'object' || input === null || Array.isArray(input)) throw new Error('input must be an object');
   return discovery.invoke({toolRef: tool_ref, input, timeoutSec: timeout_sec, allowUserTabs: !!allow_user_tabs});
-}
-
-// invokeCustomTool runs an installed cdp tool without a live registration,
-// opening a tab for its namespace when none matches. This is what the CLI
-// uses when the tool is installed but no tab is on the site yet.
-export async function invokeCustomTool({id, namespace, name, input, timeout_sec, tab_id, allow_user_tabs}) {
-  let definition = id ? await registry.getDefinition(id) : null;
-  if (!definition && namespace && name) definition = await registry.findDefinition(namespace, name);
-  if (!definition) throw Object.assign(new Error('custom tool not found'), {code: 'tool_not_found'});
-  if (definition.kind !== 'cdp') {
-    throw new Error(`${definition.namespace}/${definition.tool.name} is a page tool; invoke it through its tool_ref`);
-  }
-  return invoker.invoke({definitionId: definition.id, input: input ?? {}, tabId: tab_id, timeoutSec: timeout_sec, origin: 'bridge', allowUserTabs: !!allow_user_tabs});
 }
 
 export async function addCustomTools({namespace, source, file, force_overwrite_namespace}) {
@@ -96,6 +85,7 @@ function tabSummary(tab) {
 }
 
 export async function listTabs({owned_only} = {}) {
+  await tabs.ready();
   const all = owned_only ? await tabs.ownedTabs() : await chrome.tabs.query({});
   return all.map(tabSummary);
 }
@@ -134,7 +124,6 @@ export function onToolsChanged(listener) {
 export const methods = {
   listTools,
   invoke,
-  invokeCustomTool,
   addCustomTools,
   listCustomTools,
   removeCustomTool,
