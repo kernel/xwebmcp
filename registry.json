@@ -3584,9 +3584,12 @@
         "https://www.youtube.com/*"
       ],
       "url_patterns_reason": "Narrowed to www.youtube.com: it serves the main YouTube web app whose same-origin youtubei endpoints and page layout the tools use; other youtube.com hosts are separate products (music., studio., tv., m.) with different clients and layouts.",
-      "status": "draft",
-      "last_verified": null,
-      "notes": "Reads an already-open transcript on the matching paused watch page, from YouTube's older ytd-transcript-renderer panel or its newer engagement panel of transcript-segment-view-model rows (start times in whole seconds, no end times or language label). Every row must name the video; a panel still loading is transcript_loading and an unrecognized open panel site_changed; no navigation, requests or playback. Fixes the newer-panel failure found by QA on 2026-10-14; needs a fresh independent QA pass."
+      "status": "qa_passed",
+      "last_verified": "2026-10-14",
+      "notes": "Reads an already-open transcript on the matching paused watch page, from YouTube's older ytd-transcript-renderer panel or its newer engagement panel of transcript-segment-view-model rows (start times in whole seconds, end_ms null, no language label). Every row must name the video; a panel still loading is transcript_loading and an unrecognized open panel or row site_changed; no navigation, requests or playback. Independent QA on 2026-10-14 passed it live on the newer panel (24- and 110-row transcripts matching the rendered rows, paging to the end, wrong_video, playing_media, transcript_not_open, wrong_page, an offset past the end and malformed input). A newer-panel row that lacks its watch link is reported as wrong_video rather than site_changed. The older panel and transcript_loading were not reached live. It works only on a watch page, so no live success from another page exists.",
+      "provenance": {
+        "qa_agent": "agt_185e76063c62892fea37"
+      }
     },
     {
       "domain": "youtube.com",
