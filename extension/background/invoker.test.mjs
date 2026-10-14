@@ -22,7 +22,7 @@ globalThis.chrome = {
   },
   webNavigation: {async getFrame() { return {documentId: 'document-1', url: 'https://example.test/'}; }},
   runtime: {onConnect: noopEvent},
-  tabs: {onRemoved: noopEvent},
+  tabs: {onRemoved: noopEvent, onCreated: noopEvent},
   storage: {
     session: {async get() { return {}; }, async set() {}},
     local: {async get() { return {definitions: []}; }},
@@ -135,7 +135,7 @@ test('same-document URL changes use the current platform URL within the tool sco
   };
   try {
     await registerPageTool(5, 'https://example.test/old', pageDefinition, 'document-1');
-    assert.ok(expression.includes('location.href !== "https://example.test/new"'));
+    assert.ok(expression.includes(`location.href.split('#')[0] !== "https://example.test/new"`));
   } finally {
     chrome.webNavigation.getFrame = async () => ({documentId: 'document-1', url: 'https://example.test/'});
   }
@@ -171,4 +171,19 @@ test('missing document identity or debugger refusal never compiles the page sour
     chrome.debugger.attach = originalAttach;
     chrome.debugger.sendCommand = registrationCommand;
   }
+});
+
+test('a cdp tool in a background tab makes it the active tab before running', async () => {
+  const definition = {
+    id: 'probe-bg', namespace: 'example.test', kind: 'cdp', revision: 1,
+    tool: {name: 'probe-bg'}, match: {url_patterns: ['https://example.test/*']},
+  };
+  chrome.storage.local.get = async () => ({definitions: [definition]});
+  chrome.tabs.get = async () => ({id: 5, url: 'https://unrelated.test/', status: 'complete', active: false});
+  const updates = [];
+  chrome.tabs.update = async (id, props) => { updates.push([id, props]); return {}; };
+  chrome.debugger.sendCommand = async (_target, method) => (method === 'Page.getFrameTree' ? {frameTree: {frame: {id: 'f', url: 'https://unrelated.test/'}}} : {});
+  await invoke({definitionId: 'probe-bg', input: {}, tabId: 5, origin: 'bridge', allowUserTabs: true}).catch(() => {});
+  assert.deepEqual(updates, [[5, {active: true}]]);
+  delete chrome.tabs.update;
 });

@@ -65,6 +65,7 @@ class El {
     return out;
   }
   querySelector(selector) { return this.querySelectorAll(selector)[0] ?? null; }
+  closest(selector) { for (let node = this; node; node = node.parentElement) if (node.matches(selector)) return node; return null; }
 }
 
 function segment({ from, fromName, dep, to, toName, arr, plus = "", travel, airline, number, aircraft, cabin = "Economy", operator = null, layover = null }) {
@@ -288,7 +289,7 @@ for (const startUrl of ["https://www.google.com/travel/flights?hl=en", "https://
     assert.equal(h.calls.filter(c => c.startsWith("goto:")).length, 1);
     assert.equal(h.calls.indexOf("js"), 0);
     assert.ok(h.calls.indexOf("wait:html:not([data-xwebmcp-stale]):attached") > h.calls.findIndex(c => c.startsWith("goto:")));
-    assert.ok(h.calls.includes("idle"));
+    assert.ok(!h.calls.includes("idle"));
   });
 }
 
@@ -443,6 +444,43 @@ test("an arrival the day before departure (eastbound date-line crossing) is kept
   assert.equal(result.status, "ok");
   assert.equal(result.flights[0].arrivalDayOffset, -1);
   assert.equal(result.flights[0].arrivalDate, plusDays(departDate, -1));
+});
+
+test("an airport code Google drops from the search box is reported as unknown, not as a timeout", async () => {
+  const page = resultsPage({ live: "" });
+  for (const list of page.querySelectorAll("ul")) list.hidden = true;
+  const from = page.body.append(new El("input", { attrs: { "aria-label": "Where from? " } }));
+  from.value = "";
+  page.body.append(new El("input", { attrs: { "aria-label": "Where to? Los Angeles LAX" } })).value = "Los Angeles";
+  const h = harness({ document: page, timeoutClock: true });
+  const result = await h.execute({ ...oneWay, origin: "QQQ" });
+  assert.equal(result.status, "error");
+  assert.equal(result.message, "UNKNOWN_AIRPORT: Google Flights did not recognize the origin code QQQ.");
+});
+
+test("a connection departing after midnight does not move a same-day final arrival to the next day", async () => {
+  // SIN 8:35 AM -> HKG 12:35 AM+1 (Google prints "+1" in the expanded segment), HKG 1:30 AM -> LAX 9:05 PM, back on the departure date.
+  const crossing = card({ dep: "8:35 AM", arr: "9:05 PM", airline: "Cathay Pacific", duration: "29 hr 30 min", from: "SIN Singapore Changi Airport", to: "LAX Los Angeles International Airport",
+    stops: 1, price: "$900", emissions: "900 kg CO2e", comparison: "Avg emissions",
+    segments: [
+      segment({ from: "SIN", fromName: "Singapore Changi Airport", dep: "8:35 AM", to: "HKG", toName: "Hong Kong International Airport", arr: "12:35 AM", plus: "+1", travel: "16 hr", airline: "Cathay Pacific", number: "CX 710", aircraft: "Airbus A350", layover: "55 min layoverHong Kong (HKG)" }),
+      segment({ from: "HKG", fromName: "Hong Kong International Airport", dep: "1:30 AM", to: "LAX", toName: "Los Angeles International Airport", arr: "9:05 PM", travel: "12 hr 35 min", airline: "Cathay Pacific", number: "CX 880", aircraft: "Boeing 777" }),
+    ] });
+  const run = async summaryDated => {
+    const page = resultsPage({ firstCard: crossing });
+    const summary = crossing.children[0];
+    const label = summary.attrs["aria-label"].replace(/ at 9:05 PM\. /, summaryDated ? ` at 9:05 PM on ${longDate(departDate)}. ` : " at 9:05 PM. ");
+    summary.setAttribute("aria-label", label);
+    const h = harness({ document: page });
+    const result = await h.execute({ ...oneWay, origin: "SIN", destination: "LAX" });
+    validate(h.tools[0].tool.outputSchema, result);
+    return result.flights[0];
+  };
+  for (const summaryDated of [true, false]) {
+    const flight = await run(summaryDated);
+    assert.equal(flight.arrivalDate, departDate);
+    assert.equal(flight.arrivalDayOffset, 0);
+  }
 });
 
 test("an unreadable card is skipped with a warning instead of failing the whole search", async () => {

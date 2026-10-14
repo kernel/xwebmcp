@@ -1,0 +1,17 @@
+{
+  "needs_sign_in": {
+    "list_payment_methods": "reads a signed-in SkyMiles member's wallet"
+  },
+  "actions": {
+    "select_fare": "picks a fare on the results page; adds nothing to pay",
+    "select_fare_experience": "picks a fare experience and creates the cart"
+  },
+  "checkout_actions": {
+    "open_seat_map": "opens the seat map; chooses no seat",
+    "select_seat": "holds a seat, refusing any with a fee unless the task allows one",
+    "skip_seat_selection": "leaves the seat map without saving",
+    "continue_to_review_and_pay": "moves from Trip Summary to Review and Pay; enters no data",
+    "continue_checkout": "saves one checkout step; never presses Complete Purchase",
+    "set_trip_protection": "accepts or declines trip protection"
+  }
+}

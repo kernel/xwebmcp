@@ -1,8 +1,12 @@
-// MAIN-world content script for kind:"page" tools. Their execute bodies must
-// run with the page's own globals, so the ISOLATED agent hands the source
-// over and this script materializes and registers it.
+// MAIN-world content script that registers every installed custom tool in the
+// page's modelContext. kind:"page" bodies must run with the page's own
+// globals, so the ISOLATED agent hands the source over and this script
+// materializes it. kind:"cdp" tools get a stub whose execute asks the agent to
+// run the tool in the extension. Keeping all custom registrations here, in a
+// world that survives extension reloads, lets a freshly injected agent drop
+// and replace them (retain-page-tools) without touching the site's own tools.
 //
-// If page CSP or Trusted Types forbids Function, the ISOLATED agent asks the service worker
+// If page CSP forbids Function, the ISOLATED agent asks the service worker
 // to compile the same source in this document through CDP.
 
 (() => {
@@ -28,9 +32,42 @@
     return new Function(`return (${source})`)();
   }
 
+  // A cdp tool runs in the extension: post the call to the ISOLATED agent and
+  // wait for its answer. Works across extension reloads because the newly
+  // injected agent answers the same messages.
+  const pendingCalls = new Map();
+  function cdpStub(id) {
+    return (input) => new Promise((resolve, reject) => {
+      const callId = crypto.randomUUID();
+      pendingCalls.set(callId, {resolve, reject});
+      window.postMessage({source: 'xwebmcp-page', type: 'cdp-invoke', callId, id, input}, '*');
+    });
+  }
+
   window.addEventListener('message', async (event) => {
     if (event.source !== window || event.data?.source !== 'xwebmcp') return;
     const {type} = event.data;
+    if (type === 'cdp-result') {
+      const call = pendingCalls.get(event.data.callId);
+      if (!call) return;
+      pendingCalls.delete(event.data.callId);
+      if (event.data.ok) call.resolve(event.data.output);
+      else call.reject(new Error(event.data.error || 'custom tool failed'));
+      return;
+    }
+    if (type === 'retain-page-tools') {
+      // Sent by the ISOLATED agent on every sync. After the extension reloads,
+      // a fresh agent does not know what an earlier agent registered in this
+      // (surviving) MAIN world, so anything it does not want is dropped here.
+      const keep = new Set(event.data.ids ?? []);
+      for (const [id, controller] of controllers) {
+        if (!keep.has(id)) {
+          controller.abort();
+          controllers.delete(id);
+        }
+      }
+      return;
+    }
     if (type === 'unregister-page-tools') {
       for (const id of event.data.ids ?? []) {
         controllers.get(id)?.abort();
@@ -39,30 +76,39 @@
       return;
     }
     if (type !== 'register-page-tools') return;
+    // Materialize everything first and report CSP-blocked tools at once, then
+    // register concurrently: one registration that is slow to settle (e.g.
+    // while a cdp tool holds the debugger on this tab) must not hold up the rest.
     const errors = [];
-    const registered = [];
     const cspBlocked = [];
+    const pending = [];
     for (const definition of event.data.definitions ?? []) {
-      let compiling = true;
       try {
-        const execute = materialize(definition.pageExecuteSource);
-        compiling = false;
+        const execute = definition.kind === 'cdp' ? cdpStub(definition.id) : materialize(definition.pageExecuteSource);
         if (typeof execute !== 'function') throw new Error('execute is not a function');
-        await globalThis.__xwebmcpPageTools.register(definition, execute);
-        registered.push(definition.id);
+        pending.push([definition, execute]);
       } catch (error) {
-        if (compiling && (
-          (error instanceof EvalError && /unsafe-eval|Content Security Policy|Trusted Type assignment requirements/i.test(error.message)) ||
-          (error instanceof TypeError && /This document requires 'TrustedScript' assignment/.test(error.message))
-        )) {
+        // Blocked dynamic compilation: CSP without 'unsafe-eval' throws EvalError;
+        // require-trusted-types-for 'script' (e.g. Google Flights) throws a
+        // TypeError about TrustedScript. Both fall back to CDP registration.
+        // Chrome words the Trusted Types refusal two ways (TypeError about
+        // 'TrustedScript', or EvalError about "Trusted Type assignment").
+        if ((error instanceof EvalError || error instanceof TypeError) &&
+            /unsafe-eval|Content Security Policy|Trusted ?Script|Trusted Type/i.test(error.message)) {
           cspBlocked.push(definition.id);
         } else {
           errors.push(`${definition.name}: ${error instanceof Error ? error.message : String(error)}`);
         }
       }
     }
-    if (registered.length) window.postMessage({source: 'xwebmcp-page', type: 'page-tools-registered', ids: registered}, '*');
     if (cspBlocked.length) window.postMessage({source: 'xwebmcp-page', type: 'page-tools-csp', ids: cspBlocked}, '*');
+    const results = await Promise.allSettled(pending.map(([definition, execute]) => globalThis.__xwebmcpPageTools.register(definition, execute).then(() => definition.id)));
+    const registered = [];
+    results.forEach((result, index) => {
+      if (result.status === 'fulfilled') registered.push(result.value);
+      else errors.push(`${pending[index][0].name}: ${result.reason instanceof Error ? result.reason.message : String(result.reason)}`);
+    });
+    if (registered.length) window.postMessage({source: 'xwebmcp-page', type: 'page-tools-registered', ids: registered}, '*');
     if (errors.length) window.postMessage({source: 'xwebmcp-page', type: 'page-tools-error', errors}, '*');
   });
 
