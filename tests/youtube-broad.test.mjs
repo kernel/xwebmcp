@@ -146,17 +146,62 @@ for (const name of ["list_channel_videos", "get_playlist"]) {
   });
 }
 
+function transcriptPage(options, panels) {
+  return harness("get_transcript", { location: { pathname: "/watch", href: `https://www.youtube.com/watch?v=${video}` }, document: {
+    querySelector: s => s === "ytd-watch-flexy" ? { getAttribute: () => options.wrong ? "other000001" : video } : null,
+    querySelectorAll: s => s === "video,audio" ? [{ paused: !options.playing }] : options.closed ? [] : panels[s] ?? []
+  }, ...options.harness });
+}
+const element = (props = {}, children = {}) => ({ getClientRects: () => [1], getAttribute: name => props[name] ?? null, querySelector: s => children[s]?.[0] ?? null, querySelectorAll: s => children[s] ?? [], ...props.own });
+// The older panel: ytd-transcript-renderer whose rows carry their own data.
 function transcript(options = {}) {
   const data = Array.from({ length: 120 }, (_, i) => ({ targetId: video + ".fabricated." + i, startMs: String(i * 1000), endMs: String(i * 1000 + 999), startTimeText: { simpleText: "0:01" }, snippet: { runs: [{ text: "Fabricated transcript " + i }] } }));
   if (options.stale) data.at(-1).targetId = "other000001.fabricated";
-  const panel = { getClientRects: () => [1], querySelectorAll: () => data.map(data => ({ data })), querySelector: () => ({ textContent: "English (auto-generated)" }) };
-  return harness("get_transcript", { location: { pathname: "/watch", href: `https://www.youtube.com/watch?v=${video}` }, document: {
-    querySelector: () => ({ getAttribute: () => options.wrong ? "other000001" : video }),
-    querySelectorAll: s => s === "video,audio" ? [{ paused: !options.playing }] : options.closed ? [] : [panel]
-  }, ...options.harness });
+  const panel = element({}, { "ytd-transcript-segment-renderer": data.map(data => ({ data })), "ytd-transcript-footer-renderer": [{ textContent: "English (auto-generated)" }] });
+  return transcriptPage(options, { "ytd-transcript-renderer": [panel], "ytd-engagement-panel-section-list-renderer": [element({ "target-id": "engagement-panel-searchable-transcript" })] });
 }
-test("transcript: page-local pagination and schema", async () => { const o = await transcript().run({ video_id: video, offset: 100, limit: 20 }); assert.equal(o.segments.length, 20); assert.equal(o.next_offset, null); assert.equal(o.complete_transcript_verified, false); });
+// The newer panel: transcript-segment-view-model rows whose data is on the engagement panel.
+function modernTranscript(options = {}) {
+  const count = options.count ?? 30;
+  const time = i => `${Math.floor(i * 7 / 60)}:${String(i * 7 % 60).padStart(2, "0")}`;
+  const items = Array.from({ length: count }, (_, i) => ({ macroMarkersPanelItemViewModel: {
+    item: { timelineItemViewModel: { timestamp: time(i), contentItems: [{ transcriptSegmentViewModel: { simpleText: options.text?.(i) ?? "Fabricated line " + i, timestamp: time(i) } }] } },
+    onTap: { innertubeCommand: { watchEndpoint: { videoId: options.stale && i === count - 1 ? "other000001" : video, startTimeSeconds: i * 7 } } }
+  } }));
+  const rendered = Array.from({ length: count - (options.missingRow ? 1 : 0) }, (_, i) => element({}, { ".ytwTranscriptSegmentViewModelTimestamp": [{ textContent: options.shiftedTime && i === 3 ? "9:99" : time(i) }] }));
+  const data = { content: { sectionListRenderer: { contents: [{ itemSectionRenderer: { contents: items.slice(0, 10) } }, { itemSectionRenderer: { contents: items.slice(10) } }] } } };
+  const panel = element({ "target-id": options.target ?? null, own: { data } }, { "transcript-segment-view-model": rendered });
+  return transcriptPage(options, { "ytd-engagement-panel-section-list-renderer": [panel] });
+}
+test("transcript: page-local pagination and schema", async () => { const o = await transcript().run({ video_id: video, offset: 100, limit: 20 }); assert.equal(o.segments.length, 20); assert.equal(o.next_offset, null); assert.equal(o.complete_transcript_verified, false); assert.equal(o.language_text, "English (auto-generated)"); });
 for (const [option, kind] of [["stale", "wrong_video"], ["wrong", "wrong_video"], ["closed", "transcript_not_open"], ["playing", "playing_media"]]) test(`transcript: ${kind} without interaction`, async () => assert.equal((await transcript({ [option]: true }).run({ video_id: video })).error_kind, kind));
+test("transcript: the newer panel, with or without a target id, reads whole-second rows across sections", async () => {
+  for (const target of [null, "PAmodern_transcript_view"]) {
+    const o = await modernTranscript({ target }).run({ video_id: video, offset: 8, limit: 5 });
+    assert.deepEqual([o.status, o.loaded_count, o.next_offset, o.language_text], ["ok", 30, 13, null]);
+    assert.deepEqual(o.segments[0], { start_ms: 56000, end_ms: null, time_text: "0:56", text: "Fabricated line 8", text_truncated: false });
+    assert.equal(o.segments[2].text, "Fabricated line 10");
+  }
+});
+test("transcript: the newer panel refuses stale or mismatched data", async () => {
+  assert.equal((await modernTranscript({ stale: true }).run({ video_id: video })).error_kind, "wrong_video");
+  assert.equal((await modernTranscript({ missingRow: true }).run({ video_id: video })).error_kind, "site_changed");
+  assert.equal((await modernTranscript({ shiftedTime: true }).run({ video_id: video })).error_kind, "site_changed");
+});
+test("transcript: an open panel that is loading or unrecognized is not reported as closed", async () => {
+  const loading = element({ "target-id": "engagement-panel-searchable-transcript" }, { "tp-yt-paper-spinner[active], ytd-continuation-item-renderer": [{}] });
+  assert.equal((await transcriptPage({}, { "ytd-engagement-panel-section-list-renderer": [loading] }).run({ video_id: video })).error_kind, "transcript_loading");
+  const unknown = element({ "target-id": "PAmodern_transcript_view" }, { "transcript-row-v2": [{}] });
+  assert.equal((await transcriptPage({}, { "ytd-engagement-panel-section-list-renderer": [unknown] }).run({ video_id: video })).error_kind, "site_changed");
+  const comments = element({ "target-id": "engagement-panel-comments-section" });
+  assert.equal((await transcriptPage({}, { "ytd-engagement-panel-section-list-renderer": [comments] }).run({ video_id: video })).error_kind, "transcript_not_open");
+});
+test("transcript: truncation is judged on cleaned text, and an offset past the rows is refused", async () => {
+  const o = await modernTranscript({ text: i => i === 0 ? "word" + " ".repeat(600) + "end" : "line " + i }).run({ video_id: video, limit: 1 });
+  assert.deepEqual([o.segments[0].text, o.segments[0].text_truncated], ["word end", false]);
+  assert.equal((await modernTranscript({ text: i => "x".repeat(501) }).run({ video_id: video, limit: 1 })).segments[0].text_truncated, true);
+  assert.equal((await modernTranscript().run({ video_id: video, offset: 30 })).error_kind, "invalid_input");
+});
 test("transcript: invalid and null pagination rejected before DOM access", async () => {
   for (const input of [{ video_id: video, offset: null }, { video_id: video, limit: null }, { video_id: video, limit: 101 }, { video_id: video, offset: -1 }, { video_id: video, language: "en" }]) {
     assert.equal((await transcript({ harness: { document: new Proxy({}, { get() { throw Error("DOM touched"); } }) } }).run(input)).error_kind, "invalid_input");
