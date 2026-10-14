@@ -82,7 +82,6 @@
         const segments = (timeline?.contentItems || []).map(x => x?.transcriptSegmentViewModel).filter(Boolean);
         const shownTime = rendered[i].querySelector(".ytwTranscriptSegmentViewModelTimestamp")?.textContent?.trim();
         if (!segments.length || typeof timeline.timestamp !== "string" || timeline.timestamp !== shownTime || !Number.isInteger(watch.startTimeSeconds) || watch.startTimeSeconds < 0) return null;
-        // This panel gives whole-second start times and no end time.
         return { start_ms: watch.startTimeSeconds * 1000, end_ms: null, time_text: timeline.timestamp, raw: segments.map(x => typeof x.simpleText === "string" ? x.simpleText : "").join(" ") };
       });
     }
