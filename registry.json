@@ -1486,13 +1486,10 @@
       "url_patterns": [
         "https://www.google.com/travel/*"
       ],
-      "status": "qa_passed",
-      "last_verified": "2026-10-05",
-      "notes": "Page type (home, departing/returning results, booking options), live tools, unsettled reasons, chosen flights, suggestions. Independent QA: page type, tools and suggestions correct on all standard pages. Known limitation: on returning results chosen_flights carries only Google's breadcrumb, and /travel/flights?q= results are reported as flights_home.",
-      "url_patterns_reason": "Narrowed to Google Travel (www.google.com/travel/*): google.com also serves Search, Gmail, Maps and other unrelated products where this tool must not be listed.",
-      "provenance": {
-        "qa_agent": "agt_2bf0d474ebdb5936b2bc"
-      }
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Page type (home, departing/returning results, booking options), live tools, unsettled reasons, chosen flights, suggestions; suggestions now point select_flight at selection_ref and expected_leg. The earlier independent QA covered the previous source, whose behavior is otherwise unchanged; final-source independent QA is pending. Known limitation: on returning results chosen_flights carries only Google's breadcrumb (list_flights' selected_outbound names the departing flight), and /travel/flights?q= results are reported as flights_home.",
+      "url_patterns_reason": "Narrowed to Google Travel (www.google.com/travel/*): google.com also serves Search, Gmail, Maps and other unrelated products where this tool must not be listed."
     },
     {
       "domain": "google.com",
@@ -1503,13 +1500,10 @@
       "url_patterns": [
         "https://www.google.com/travel/flights/search*"
       ],
-      "status": "qa_passed",
-      "last_verified": "2026-10-05",
-      "notes": "Reads the departing or returning flights on the current results page with bags included, sortable and filterable. Independent QA on 12 one-way and round-trip flows: 35 of 36 lists matched every row's label across every sort_by, airline and max_stops filter on both legs, including one-way prices. Unverified: rows still rendering right after select_flight can be missed (one occurrence; calling again returned all rows); results under /travel/flights?q= are not matched.",
-      "url_patterns_reason": "Narrowed to Google Flights results (www.google.com/travel/flights/search*), the only page with flight rows; google.com also serves unrelated products.",
-      "provenance": {
-        "qa_agent": "agt_2bf0d474ebdb5936b2bc"
-      }
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Reads the departing flights, or the returning flights Google offers for the departing flight recorded in the results URL, after Google announces a settled list (not_ready while rows render or the previous leg's rows remain; no_results for an explicit empty page). Expands 'View more flights' and returns per row a selection_ref, marketing carriers and flight numbers, ordered segments and layovers, ISO dates, airport-local times with day offset, and price scope and passenger count. Uses the parser shared with search_flights and select_flight. Breaking changes from the previous version: departure_date and arrival_date are ISO dates and layovers are objects. Author live checks on 2026-10-15: JFK-LAX departing (108 rows) and returning lists for two different departing flights, and CVG-ORD one-way. The previous independent QA covered older source and no longer applies; final-source independent QA is pending. Known limitation: selected_outbound comes from the results URL because Google shows only a route breadcrumb for it.",
+      "url_patterns_reason": "Narrowed to Google Flights results (www.google.com/travel/flights/search*), the only page with flight rows; google.com also serves unrelated products."
     },
     {
       "domain": "google.com",
@@ -1524,7 +1518,7 @@
       "url_patterns_reason": "Narrowed to /travel/* on google.com and its subdomains: google.com also serves Search, Gmail, Maps, Docs and other unrelated products, where a flight search tool must not be listed. /travel/* covers Google Flights and the other Google Travel pages.",
       "status": "draft",
       "last_verified": null,
-      "notes": "Navigates to a Google Flights tfs deep link (hl=en, gl=US, curr) and reads outbound flight numbers, segments, layovers and total prices after navigation. max_stops is encoded on each search leg so Google filters inventory before maxResults; omitted max_stops preserves unrestricted searches. Partial results produce an explicit warning, and returned flights exceeding the requested stops limit fail closed. Local regression tests cover filter encoding on both round-trip legs, a nonstop beyond 100 unfiltered candidates, truncated matching results, ignored filters and invalid input. Author live QA exercised nonstop, one-stop, two-stop, round-trip, capped and unrestricted searches. Final-source independent QA is pending. Known limitation: Google can add itineraries after announcing results; counts describe the page when read, not guaranteed complete airline inventory."
+      "notes": "Navigates to a Google Flights tfs deep link (hl=en, gl=US, curr) and reads outbound flight numbers, segments, layovers and total prices after navigation; each flight carries a selection_ref for select_flight. Rows are read by the parser shared verbatim with list_flights and select_flight, and a row without Google's per-card itinerary data (marketing flights and local dates) is skipped with a warning. max_stops is encoded on each search leg so Google filters inventory before maxResults; omitted max_stops preserves unrestricted searches. Partial results produce an explicit warning, and returned flights exceeding the requested stops limit fail closed. Local regression tests cover filter encoding on both round-trip legs, a nonstop beyond 100 unfiltered candidates, truncated matching results, ignored filters, invalid input and selection references. Author live checks on 2026-10-15: JFK-LAX round trip (nonstop and one-stop, overnight arrival) whose references matched list_flights' and selected in select_flight, and a CVG-ORD one-way nonstop search. Final-source independent QA is pending. Known limitation: Google can add itineraries after announcing results; counts describe the page when read, not guaranteed complete airline inventory."
     },
     {
       "domain": "google.com",
@@ -1535,13 +1529,10 @@
       "url_patterns": [
         "https://www.google.com/travel/flights/search*"
       ],
-      "status": "qa_passed",
-      "last_verified": "2026-10-05",
-      "notes": "Chooses a departing or returning flight by result_index and reports the next step (returning flights or booking options). Independent QA on 12 flows: 19 of 19 selections correct with the right next_page; 22 of 22 guard cases refused without clicking, including airport and city words as expected_airline, invalid 24-hour times and invalid indexes. Unverified: multi-city results.",
-      "url_patterns_reason": "Narrowed to Google Flights results (www.google.com/travel/flights/search*), the only page with selectable flight rows; google.com also serves unrelated products.",
-      "provenance": {
-        "qa_agent": "agt_2bf0d474ebdb5936b2bc"
-      }
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Chooses a departing or returning flight by selection_ref with an expected_leg assertion; result_index is no longer accepted. Before clicking it requires a settled list and refuses a malformed ref, another search, the wrong leg, a return listed for a different departing flight, an itinerary missing or duplicated on the page, or a changed price (with a fresh ref). It clicks once and reports selected only after Google's URL records exactly that itinerary and the returning list or booking page has settled; otherwise unconfirmed or selection_mismatch. Author live checks on 2026-10-15: JFK-LAX one-stop and nonstop outbounds, a one-stop return and a CVG-ORD one-way all reached the right next page, and wrong-search, wrong-leg, edited-ref, legacy-index and outbound-mismatch inputs were refused without clicking. The previous independent QA covered older source and no longer applies; final-source independent QA is pending. Unverified: multi-city results.",
+      "url_patterns_reason": "Narrowed to Google Flights results (www.google.com/travel/flights/search*), the only page with selectable flight rows; google.com also serves unrelated products."
     },
     {
       "domain": "instacart.com",
