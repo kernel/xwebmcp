@@ -246,7 +246,7 @@
       const roots = paging ? continuationLists.flat() : selected?.content ? [selected.content] : null;
       if (!Array.isArray(roots) || (paging && !continuationLists.length)) return fail("site_changed", "No recognized browse content was returned.");
       const items = [];
-      let next = null, truncated = false, unsupported = 0, empty = false, scanned = 0, outputUnits = 0;
+      let next = null, truncated = false, unsupported = 0, empty = false, continuations = 0, scanned = 0, outputUnits = 0;
       const stack = [...(paging ? continuationLists : roots)].reverse();
       while (stack.length && scanned++ < 20000) {
         const node = stack.pop();
@@ -263,7 +263,7 @@
           }
           stack.push(...node.slice().reverse()); continue;
         }
-        if (node.continuationItemRenderer || node.continuationItemViewModel) continue;
+        if (node.continuationItemRenderer || node.continuationItemViewModel) { continuations++; continue; }
         if (node.messageRenderer || node.backgroundPromoRenderer) { empty = true; continue; }
         if (node.adSlotRenderer || node.searchPyvRenderer) { unsupported++; continue; }
         const lockup = node.lockupViewModel;
@@ -285,7 +285,9 @@
       }
       if (stack.length) return fail("site_changed", "The browse content exceeded the safe parsing bound.");
       if (!items.length && !empty && roots.length) return fail("site_changed", "Browse content contained no recognized videos or explicit empty state.");
+      if (next && seen.has(next)) return fail("site_changed", "YouTube offered a continuation token it had already served; the list cannot be paged further.");
       const warnings = [];
+      if (!next && continuations) warnings.push("YouTube offered a continuation outside the list of videos and no next page for it; the list may be incomplete.");
       if (truncated) warnings.push("Only the first " + items.length + " items are returned due to count/size bounds. The next token skips omitted items from this page.");
       if (paging) warnings.push("YouTube does not attest the originating resource for a continuation; its id and title are null.");
       const title = clean(data.metadata?.playlistMetadataRenderer?.title || data.header?.pageHeaderRenderer?.pageTitle);

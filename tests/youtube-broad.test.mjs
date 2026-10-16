@@ -5,7 +5,7 @@ import test from "node:test";
 
 const names = ["get_channel", "list_channel_videos", "get_playlist", "get_transcript", "subscribe_channel"];
 const sources = Object.fromEntries(names.map(n => [n, readFileSync(new URL(`../domains/youtube.com/${n}.js`, import.meta.url), "utf8")]));
-const channel = "UC" + "x".repeat(22), other = "UC" + "y".repeat(22), video = "vid00000001", playlist = "PLexample00000001", token = "EXAMPLECONTINUATION0123456789";
+const channel = "UC" + "x".repeat(22), other = "UC" + "y".repeat(22), video = "vid00000001", playlist = "PLexample00000001", token = "EXAMPLECONTINUATION0123456789", pageToken = "EXAMPLECALLERTOKEN0123456789";
 const plain = x => JSON.parse(JSON.stringify(x));
 
 function conforms(s, v) {
@@ -61,7 +61,7 @@ for (const name of ["get_channel", "list_channel_videos", "get_playlist"]) {
     else { assert.equal(o.items[0].video_id, video); assert.equal(o.next_page_token, token); }
   });
   test(`${name}: input errors happen before site access`, async () => {
-    for (const invalid of [null, [], {}, { unknown: "x" }, { ...input, unknown: 1 }, name === "get_playlist" ? { playlist_id: "WL" } : { channel_id: "UCbad" }, { page_token: token, ...input }]) {
+    for (const invalid of [null, [], {}, { unknown: "x" }, { ...input, unknown: 1 }, name === "get_playlist" ? { playlist_id: "WL" } : { channel_id: "UCbad" }, { page_token: pageToken, ...input }]) {
       const h = harness(name, { globals: { location: new Proxy({}, { get() { throw Error("site touched"); } }) } });
       assert.equal((await h.run(invalid)).error_kind, "invalid_input"); assert.equal(h.calls.length, 0);
     }
@@ -88,11 +88,11 @@ for (const name of ["list_channel_videos", "get_playlist"]) {
     assert.equal((await harness(name, { route: () => layout([lockup(), cont()]) }).run(input)).next_page_token, token);
     const last = await harness(name, { route: () => layout([lockup()]) }).run(input);
     assert.deepEqual([last.next_page_token, last.items.length], [null, 1]);
-    const page = await harness(name, { route: () => ({ data: { onResponseReceivedActions: [{ appendContinuationItemsAction: { continuationItems: [lockup(), viewModelCont()] } }] } }) }).run({ page_token: token });
+    const page = await harness(name, { route: () => ({ data: { onResponseReceivedActions: [{ appendContinuationItemsAction: { continuationItems: [lockup(), viewModelCont()] } }] } }) }).run({ page_token: pageToken });
     assert.deepEqual([page.status, page.next_page_token], ["ok", token]);
   });
   test(`${name}: a page_token the site rejects is invalid_page_token`, async () => {
-    assert.equal((await harness(name, { route: () => ({ status: 400, raw: "{}" }) }).run({ page_token: token })).error_kind, "invalid_page_token");
+    assert.equal((await harness(name, { route: () => ({ status: 400, raw: "{}" }) }).run({ page_token: pageToken })).error_kind, "invalid_page_token");
   });
 }
 
@@ -127,16 +127,16 @@ for (const name of ["list_channel_videos", "get_playlist"]) {
   });
   test(`${name}: continuation doesn't fabricate source identity`, async () => {
     const d = { onResponseReceivedActions: [{ appendContinuationItemsAction: { continuationItems: [lockup(), cont()] } }] };
-    const o = await harness(name, { route: () => ({ data: d }) }).run({ page_token: token }); assert.equal(o.status, "ok"); assert.equal(o[name === "get_playlist" ? "playlist_id" : "channel_id"], null);
+    const o = await harness(name, { route: () => ({ data: d }) }).run({ page_token: pageToken }); assert.equal(o.status, "ok"); assert.equal(o[name === "get_playlist" ? "playlist_id" : "channel_id"], null);
     if (name === "get_playlist") assert.equal(o.title, null);
   });
   test(`${name}: unrecognized continuations cannot claim empty results`, async () => {
     for (const actions of [[], [{ unrelatedCommand: {} }], [{ appendContinuationItemsAction: {} }], [{ appendContinuationItemsAction: { continuationItems: "invalid" } }]]) {
-      const out = await harness(name, { route: () => ({ data: { onResponseReceivedActions: actions } }) }).run({ page_token: token });
+      const out = await harness(name, { route: () => ({ data: { onResponseReceivedActions: actions } }) }).run({ page_token: pageToken });
       assert.equal(out.error_kind, "site_changed");
     }
     for (const command of ["appendContinuationItemsAction", "reloadContinuationItemsCommand"]) {
-      const out = await harness(name, { route: () => ({ data: { onResponseReceivedCommands: [{ [command]: { continuationItems: [] } }] } }) }).run({ page_token: token });
+      const out = await harness(name, { route: () => ({ data: { onResponseReceivedCommands: [{ [command]: { continuationItems: [] } }] } }) }).run({ page_token: pageToken });
       assert.equal(out.status, "no_results");
     }
   });
@@ -145,32 +145,41 @@ for (const name of ["list_channel_videos", "get_playlist"]) {
     const only = entries => ({ data: { onResponseReceivedActions: [{ appendContinuationItemsAction: { continuationItems: entries } }] } });
     const videos = only([lockup(), cont()]);
     const gap = harness(name, { route: () => gap.calls.length <= 3 ? only([hop(gap.calls.length)]) : videos });
-    const found = await gap.run({ page_token: token });
+    const found = await gap.run({ page_token: pageToken });
     assert.deepEqual([found.status, found.items.length, found.next_page_token], ["ok", 1, token]);
-    assert.deepEqual(gap.calls.map(c => c.body.continuation), [token, hop(1).continuationItemRenderer.continuationEndpoint.continuationCommand.token, hop(2).continuationItemRenderer.continuationEndpoint.continuationCommand.token, hop(3).continuationItemRenderer.continuationEndpoint.continuationCommand.token]);
-    const end = await harness(name, { route: () => only([{ continuationItemRenderer: {} }]) }).run({ page_token: token });
+    assert.deepEqual(gap.calls.map(c => c.body.continuation), [pageToken, hop(1).continuationItemRenderer.continuationEndpoint.continuationCommand.token, hop(2).continuationItemRenderer.continuationEndpoint.continuationCommand.token, hop(3).continuationItemRenderer.continuationEndpoint.continuationCommand.token]);
+    const end = await harness(name, { route: () => only([{ continuationItemRenderer: {} }]) }).run({ page_token: pageToken });
     assert.deepEqual([end.status, end.items.length, end.next_page_token], ["no_results", 0, null]);
     assert.match(end.warnings.join(" "), /list has ended/);
     const endless = harness(name, { route: () => only([hop(endless.calls.length)]) });
-    const bounded = await endless.run({ page_token: token });
+    const bounded = await endless.run({ page_token: pageToken });
     assert.deepEqual([bounded.status, bounded.items.length, bounded.next_page_token], ["ok", 0, hop(11).continuationItemRenderer.continuationEndpoint.continuationCommand.token], "stopping at the bound is not the end of the list");
     assert.match(bounded.warnings.join(" "), /11 continuation pages without videos/);
     assert.equal(endless.calls.length, 11);
     const cycle = harness(name, { route: () => only([cont()]) });
-    assert.equal((await cycle.run({ page_token: token })).error_kind, "site_changed", "a token served twice does not loop");
-    assert.equal(cycle.calls.length, 1);
+    assert.equal((await cycle.run({ page_token: pageToken })).error_kind, "site_changed", "a token served twice does not loop");
+    assert.equal(cycle.calls.length, 2);
+    const back = await harness(name, { route: () => only([lockup(), { continuationItemRenderer: { continuationEndpoint: { continuationCommand: { token: pageToken } } } }]) }).run({ page_token: pageToken });
+    assert.equal(back.error_kind, "site_changed", "a next token equal to the one passed in would loop");
     const refused = harness(name, { route: () => refused.calls.length === 1 ? only([hop(1)]) : { status: 400, data: {} } });
-    const midChain = await refused.run({ page_token: token });
+    const midChain = await refused.run({ page_token: pageToken });
     assert.equal(midChain.error_kind, "site_error", "a 400 on a later page does not blame the caller's token");
-    assert.equal((await harness(name, { route: () => ({ status: 400, data: {} }) }).run({ page_token: token })).error_kind, "invalid_page_token");
-    const mixed = await harness(name, { route: () => ({ data: { onResponseReceivedActions: [{ appendContinuationItemsAction: { continuationItems: [cont()] } }, { appendContinuationItemsAction: { continuationItems: [{ strangeShelfRenderer: { title: "x" } }] } }] } }) }).run({ page_token: token });
+    assert.equal((await harness(name, { route: () => ({ status: 400, data: {} }) }).run({ page_token: pageToken })).error_kind, "invalid_page_token");
+    const mixed = await harness(name, { route: () => ({ data: { onResponseReceivedActions: [{ appendContinuationItemsAction: { continuationItems: [cont()] } }, { appendContinuationItemsAction: { continuationItems: [{ strangeShelfRenderer: { title: "x" } }] } }] } }) }).run({ page_token: pageToken });
     assert.equal(mixed.error_kind, "site_changed");
     const first = await harness(name, { route: () => ({ data: browse([cont()]) }) }).run(input);
     assert.equal(first.error_kind, "site_changed", "a first page with no videos is not an end of list");
   });
+  test(`${name}: a continuation outside the video list is flagged when no next page is found`, async () => {
+    const sections = (...extra) => ({ data: browse([{ sectionListRenderer: { contents: [{ itemSectionRenderer: { contents: [lockup()] } }, ...extra] } }]) });
+    const out = await harness(name, { route: () => sections(cont()) }).run(input);
+    assert.deepEqual([out.status, out.next_page_token], ["ok", null]);
+    assert.match(out.warnings.join(" "), /may be incomplete/);
+    assert.deepEqual((await harness(name, { route: () => sections() }).run(input)).warnings, []);
+  });
   test(`${name}: a page without videos that still has a next token is ok, not no_results`, async () => {
     const playlistCard = { lockupViewModel: { contentType: "LOCKUP_CONTENT_TYPE_PLAYLIST", contentId: "PLother" } };
-    const out = await harness(name, { route: () => ({ data: { onResponseReceivedActions: [{ appendContinuationItemsAction: { continuationItems: [playlistCard, { messageRenderer: { text: { simpleText: "No videos" } } }, cont()] } }] } }) }).run({ page_token: token });
+    const out = await harness(name, { route: () => ({ data: { onResponseReceivedActions: [{ appendContinuationItemsAction: { continuationItems: [playlistCard, { messageRenderer: { text: { simpleText: "No videos" } } }, cont()] } }] } }) }).run({ page_token: pageToken });
     assert.deepEqual([out.status, out.items.length, out.next_page_token], ["ok", 0, token]);
   });
   test(`${name}: empty and unsupported layouts are different`, async () => {
