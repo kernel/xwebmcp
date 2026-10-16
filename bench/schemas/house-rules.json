@@ -1,0 +1,15 @@
+{
+  "type": "object",
+  "required": [
+    "pets_allowed",
+    "smoking_allowed"
+  ],
+  "properties": {
+    "pets_allowed": {
+      "type": "boolean"
+    },
+    "smoking_allowed": {
+      "type": "boolean"
+    }
+  }
+}
