@@ -130,12 +130,17 @@
     const timing = [...document.querySelectorAll('input[name="payment-timing"]')].find(e => e.checked);
     // Every non-empty text node under an element, so bare text beside child elements is kept.
     const words = el => el ? [...el.childNodes].flatMap(n => n.nodeType === 3 ? [(n.textContent || "").replace(/\s+/g, " ").trim()] : n.nodeType === 1 && !["SCRIPT", "STYLE", "TEMPLATE"].includes(n.tagName) ? words(n) : []).filter(Boolean) : [];
-    const option = timing && (timing.closest("label") || timing.parentElement?.parentElement);
-    const paymentTiming = step !== "finish_booking" ? null : ((option && words(option).join(". ")) || [text(tid("payment-timing-header")), text(tid("payment-timing-description"))].filter(Boolean).join(". ")).replace(/\.\./g, ".").slice(0, 300) || null;
+    // Text nodes joined as the page reads them, without a space before punctuation.
+    const prose = list => list.join(" ").replace(/\s+([,.;:!?])/g, "$1");
+    // The radio's own label: wrapping it, or bound to it by for=; the live page puts each label beside its radio.
+    const option = timing && (timing.closest("label") || (timing.id && document.querySelector('label[for="' + timing.id + '"]')) || timing.parentElement?.parentElement);
+    const paymentTiming = step !== "finish_booking" ? null : ((option && prose(words(option))) || [text(tid("payment-timing-header")), text(tid("payment-timing-description"))].filter(Boolean).join(". ").replace(/\.\./g, ".")).slice(0, 300) || null;
     // Partner checkouts have no cancellation test ids: read the lines under "How much will it cost to cancel?".
     const cancelHeading = [...document.body.querySelectorAll("*")].find(e => text(e, 100) === "How much will it cost to cancel?" && ![...e.children].some(c => text(c, 100) === "How much will it cost to cancel?"));
-    // Only the block right after the heading, never a later section.
-    const cancelBlock = words(cancelHeading?.nextElementSibling).slice(0, 6).join(" ").slice(0, 300);
+    // The block after the heading (climbing out of wrappers that hold only the heading), never past a section.
+    let cancelBox = cancelHeading;
+    while (cancelBox && !cancelBox.nextElementSibling && !/^(?:SECTION|FORM|MAIN)$/.test(cancelBox.parentElement?.tagName || "")) cancelBox = cancelBox.parentElement;
+    const cancelBlock = prose(words(cancelBox?.nextElementSibling).slice(0, 10)).slice(0, 300);
     // Only rendered text: the partner page also carries the sentence as a template in a script.
     const sellerMatch = /Your booking is with (.+?)\. By completing/.exec((document.body.innerText || "").replace(/\s+/g, " "));
     const seller = partnerPage && step === "finish_booking" && sellerMatch && !/[{}]/.test(sellerMatch[1]) ? sellerMatch[1].slice(0, 200) : null;

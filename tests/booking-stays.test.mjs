@@ -981,7 +981,7 @@ test("get_checkout_step names the partner a Partner Offer is booked with on its 
 
 test("get_checkout_step reports the chosen payment timing, a partner's cancellation cost and no seller placeholder", async () => {
   const radios = checkoutPage({ step: "final" }).replace("</body>", '<div data-testid="bs3-payment-timing-section"><div data-testid="payment-timing-header">When do you want to pay?</div><label><input type="radio" name="payment-timing" value="now"><div>Pay now</div></label><label><input type="radio" name="payment-timing" value="stay" checked><div>Pay when you stay</div><div>No payment today</div></label></div></body>');
-  assert.equal((await run("get_checkout_step", {}, { start: CHECKOUT, liveHtml: radios })).output.payment_timing, "Pay when you stay. No payment today");
+  assert.equal((await run("get_checkout_step", {}, { start: CHECKOUT, liveHtml: radios })).output.payment_timing, "Pay when you stay No payment today");
   const partnerFinal = summaryPartnerCheckout().replace("Your Details. Step 2 of 3.", "Confirm your reservation. Step 3 of 3.").replace('<div><span>Free cancellation before November 11, 2026</span></div>', '<div><span>Free cancellation before November 11, 2026</span><span>From 00:00 on November 11, 2026</span><span>$500</span></div>');
   assert.equal((await run("get_checkout_step", {}, { start: "https://secure.booking.com/tpi_book.html", liveHtml: partnerFinal })).output.cancellation, "Free cancellation before November 11, 2026 From 00:00 on November 11, 2026 $500");
   const template = partnerDetailsForm().replace("</body>", "<script>var t = 'Your booking is with {provider_name}. By completing this booking';</script></body>");
@@ -996,6 +996,10 @@ test("get_checkout_step keeps bare text in payment options and cancellation bloc
   assert.equal(await read(final("<div>How much will it cost to cancel?</div><p>Non-refundable. $500</p>")), "Non-refundable. $500");
   assert.equal(await read(final("<div>How much will it cost to cancel?</div><div><span>Free cancellation before November 11, 2026</span> From 00:00 on November 11, 2026 <span>$500</span></div>")), "Free cancellation before November 11, 2026 From 00:00 on November 11, 2026 $500");
   assert.equal(await read(final("<section><div>How much will it cost to cancel?</div></section><section><div>Need help?</div><div>Call the partner on the number in your email</div></section>")), null, "a later section is not the cancellation policy");
+  assert.equal(await read(final("<div><h2>How much will it cost to cancel?</h2></div><div><div><span>Free cancellation before Nov 7</span><span>After 12:00 AM on Nov 7</span><span>$296</span></div></div>")), "Free cancellation before Nov 7 After 12:00 AM on Nov 7 $296", "a heading in its own wrapper");
+  assert.equal(await read(final("<div>How much will it cost to cancel?</div><div>Free cancellation before <strong>November 11</strong>, 2026</div>")), "Free cancellation before November 11, 2026");
+  const group = checkoutPage({ step: "final" }).replace("</body>", '<div data-testid="payment-timing-group-PAY_WITH_BOOKING"><div><input type="radio" name="payment-timing" id="later"><label for="later">Pay on Nov 4, 2026</label></div><div><input type="radio" name="payment-timing" id="now" checked><label for="now">Pay now <span>with Booking.com</span></label></div></div></body>');
+  assert.equal((await run("get_checkout_step", {}, { start: CHECKOUT, liveHtml: group })).output.payment_timing, "Pay now with Booking.com", "only the chosen radio's label");
 });
 
 test("fill_guest_details fills a partner layout's email confirmation, and the partner phone counts as required", async () => {
