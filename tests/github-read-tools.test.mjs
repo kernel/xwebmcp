@@ -377,7 +377,14 @@ test("get_issue bounds the body, comments and timeline and says when the page ho
   const bare = await run("get_issue", { owner: "example-org", repo: "widgets", number: 7, body_max_chars: 0, comment_max_chars: 0, max_timeline_items: 1 }, { route: issueRoute(issuePayload(edges)) });
   assert.deepEqual([bare.output.body, bare.output.body_truncated, bare.output.timeline[0].body, bare.output.timeline[0].body_truncated], [null, false, null, false]);
   const emoji = await run("get_issue", { owner: "example-org", repo: "widgets", number: 7, comment_max_chars: 3 }, { route: issueRoute(issuePayload([comment(1, { body: "ab😀cd" })])) });
-  assert.equal(emoji.output.timeline[0].body, "ab");
+  assert.equal(emoji.output.timeline[0].body, "ab😀", "limits count characters, not UTF-16 code units");
+});
+
+test("get_issue reports a throttled or failed rename lookup instead of not_found", async () => {
+  for (const [status, kind] of [[429, "throttled"], [403, "blocked"], [500, "unknown"]]) {
+    const { output } = await run("get_issue", { owner: "old-org", repo: "widgets", number: 7 }, { route: target => target === "/old-org/widgets" ? { status, body: "" } : { status: 404, body: "" } });
+    assert.equal(output.error_kind, kind);
+  }
 });
 
 test("get_issue merges and de-duplicates front and back timeline items", async () => {

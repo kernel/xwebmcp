@@ -109,8 +109,8 @@
 
     const utc = value => { const time = new Date(value); return Number.isNaN(time.getTime()) ? null : time.toISOString(); };
     const clip = (value, max) => {
-      if (value.length <= max) return { text: value, truncated: false };
-      return { text: value.slice(0, /[\ud800-\udbff]/.test(value[max - 1] || "") ? max - 1 : max), truncated: true };
+      const chars = Array.from(value);
+      return chars.length <= max ? { text: value, truncated: false } : { text: chars.slice(0, max).join(""), truncated: true };
     };
     const lower = value => typeof value === "string" && value ? value.toLowerCase() : null;
     const login = actor => actor && typeof actor.login === "string" ? actor.login : null;
@@ -123,6 +123,9 @@
       if (response.status === 404) {
         // GitHub does not redirect issue URLs under a renamed repository's old name; its repository page does.
         const moved = await fetch("/" + owner + "/" + repo, { credentials: "omit" });
+        if (moved.status === 429) return fail("throttled", "GitHub rate-limited this browser (HTTP 429). Wait a minute or more before retrying; nothing was changed.");
+        if (moved.status === 403) return fail("blocked", "GitHub refused the request (HTTP 403). Nothing was changed.");
+        if (!moved.ok && moved.status !== 404) return fail("unknown", "GitHub answered HTTP " + moved.status + ".");
         const canonical = new URL(moved.url).pathname.replace(/\/$/, "");
         if (moved.ok && /^\/[^/]+\/[^/]+$/.test(canonical) && canonical.toLowerCase() !== ("/" + owner + "/" + repo).toLowerCase()) response = await fetch(canonical + "/issues/" + number, { credentials: "omit" });
       }

@@ -131,12 +131,12 @@ test("GitHub preparations count title and body length in characters, not UTF-16 
 });
 
 test("GitHub PR preparation rejects invalid refs and never checks or creates a comparison", async () => {
-  for (const head_branch of ["main", "", "a..b", "-flag", ".hidden", "a/.hidden", "x.lock", "a/", "a//b", "a b", "a:b", "a?b", "a*b", "a\\b", "a[b", "a~b", "a^b", "a@{b", "@", "a.", "bad\ud800", "bad\udfff", "x".repeat(201)]) {
+  for (const head_branch of ["main", "", "a..b", "-flag", ".hidden", "a/.hidden", "x.lock", "a/", "a//b", "a b", "a:b", "a?b", "a*b", "a\\b", "a[b", "a~b", "a^b", "a@{b", "@", "a.", "bad\ud800", "bad\udfff", "x".repeat(201), "\ud83c\udfad".repeat(201)]) {
     const r = await run("prepare_pull_request", { ...good.prepare_pull_request, head_branch });
     assert.equal(r.output.error_kind, "invalid_input", head_branch);
     assert.equal(r.calls.length, 0);
   }
-  for (const head_branch of ["feature/utf8", "fix+one", "release@next", "修正"]) {
+  for (const head_branch of ["feature/utf8", "fix+one", "release@next", "修正", "\ud83c\udfad".repeat(200)]) {
     const r = await run("prepare_pull_request", { ...good.prepare_pull_request, head_branch });
     assert.equal(r.output.status, "prepared", head_branch);
     assert.equal(r.calls.length, 1);
