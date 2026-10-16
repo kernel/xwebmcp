@@ -75,11 +75,11 @@
     if (pageType === "flights_home" || pageType === "other") { if (has("search_flights")) steps.push("Use search_flights with origin, destination, dates and trip type to open Google Flights results"); }
     if (pageType === "departing_results") {
       if (has("list_flights")) steps.push("Use list_flights (sort_by departure, airline filter, max_stops) to read the departing flights");
-      if (has("select_flight")) steps.push("Use select_flight with a result_index to choose the departing flight; round trips then show returning flights");
+      if (has("select_flight")) steps.push("Use select_flight with a selection_ref from list_flights and expected_leg departing; round trips then show the returning flights for that departing flight");
     }
     if (pageType === "returning_results") {
       if (has("list_flights")) steps.push("The departing flight is chosen; use list_flights to read the returning flights");
-      if (has("select_flight")) steps.push("Use select_flight on a returning flight to open booking options");
+      if (has("select_flight")) steps.push("Use select_flight with a returning selection_ref from list_flights and expected_leg returning to open booking options");
     }
     if (pageType === "booking_options") {
       if (has("get_booking_options")) steps.push("Use get_booking_options to compare each seller's fares, prices and bags (basic fares often exclude a carry-on)");

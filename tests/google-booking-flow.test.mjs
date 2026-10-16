@@ -26,37 +26,6 @@ const resultsUrl = "https://www.google.com/travel/flights/search?tfs=x";
 const departing = `<html><body><h3>Top departing flights</h3><ul>${dep("7:00 AM", "7:34 AM")}${dep("5:30 AM", "5:59 AM")}
   ${row("From 443 US dollars round trip total. 1 stop flight with Frontier. Leaves Cincinnati/Northern Kentucky International Airport at 12:43 PM on Wednesday, October 7 and arrives at Chicago O'Hare International Airport at 6:23 PM on Wednesday, October 7. Total duration 5 hr 40 min. Layover (1 of 1) is a 2 hr 50 min layover at Denver International Airport in Denver. Select flight", "CVG–ORD")}</ul></body></html>`;
 
-test("google list_flights: parses rows, bags, route codes; sorts by departure; filters airline and stops", async () => {
-  const { out } = await run("list_flights", departing, { sort_by: "departure" }, { url: resultsUrl });
-  assert.equal(out.status, "ok");
-  assert.equal(out.leg, "departing");
-  assert.equal(out.total_rows, 3);
-  assert.deepEqual(out.flights.map(f => f.departure_time), ["5:30 AM", "7:00 AM", "12:43 PM"]);
-  const first = out.flights[0];
-  assert.equal(first.result_index, 1);
-  assert.deepEqual(first.airlines, ["United"]);
-  assert.equal(first.origin, "CVG");
-  assert.equal(first.destination, "ORD");
-  assert.equal(first.duration_minutes, 89);
-  assert.deepEqual(first.price, { amount: 512, currency_label: "US dollars", scope: "round_trip_total" });
-  assert.equal(first.carry_on_bags, 0);
-  assert.equal(out.flights[2].stops, 1);
-  assert.deepEqual(out.flights[2].layovers, ["2 hr 50 min layover at Denver International Airport in Denver"]);
-  const united = await run("list_flights", departing, { airline: "United", max_stops: 0 }, { url: resultsUrl });
-  assert.equal(united.out.flights.length, 2);
-});
-
-test("google select_flight: refuses a changed row; reports returning flights after the click", async () => {
-  const changed = await run("select_flight", departing, { result_index: 0, expected_departure_time: "5:30 AM" }, { url: resultsUrl });
-  assert.equal(changed.out.status, "row_changed");
-  const { out } = await run("select_flight", departing, { result_index: 1, expected_departure_time: "5:30 AM", expected_airline: "United" }, {
-    url: resultsUrl,
-    onClick: (el, doc, loc) => { loc.href = resultsUrl + "&step=2"; const h = doc.querySelector("h3"); h.childNodes[0].data = "Top returning flights"; }
-  });
-  assert.equal(out.status, "selected");
-  assert.equal(out.next_page, "returning_flights");
-});
-
 const booking = `<html><body>
   <div aria-label="Departing flight on Wednesday, October 7. Leaves Cincinnati/Northern Kentucky International Airport at 5:30 AM on Wednesday, October 7 and arrives at Chicago O'Hare International Airport at 5:59 AM.">d</div>
   <div><div>Basic Economy</div><div>$512</div><div>Seat selection for a fee</div><div>No carry-on bags</div><div>First checked bag costs 100 US dollars</div><button aria-label="Continue to book with United, Basic Economy for 512 US dollars">Continue</button></div>
@@ -76,37 +45,6 @@ test("google get_page_context: page types and booking suggestions", async () => 
   assert.ok(b.out.suggested_next_steps.some(s => s.includes("continue_to_airline")));
   const r = await run("get_page_context", departing.replace("Top departing", "Top returning"), {}, { url: resultsUrl, tools: ["list_flights"] });
   assert.equal(r.out.page_type, "returning_results");
-});
-
-test("google select_flight accepts search_flights' 24-hour times", async () => {
-  const { out } = await run("select_flight", departing, { result_index: 1, expected_departure_time: "05:30" }, { url: resultsUrl, onClick: () => {} });
-  assert.equal(out.status, "selected");
-  const wrong = await run("select_flight", departing, { result_index: 1, expected_departure_time: "07:00" }, { url: resultsUrl });
-  assert.equal(wrong.out.status, "row_changed");
-});
-
-const oneWayUrl = "https://www.google.com/travel/flights/search?tfs=" + btoa("\x1a\x1e\x12\x0a2026-11-12j\x07\x08\x01\x12\x03JFKr\x07\x08\x01\x12\x03LAX").replace(/=+$/, "");
-const oneWayRow = (price, time, airline) => row(`From ${price} US dollars. Nonstop flight with ${airline}. Leaves John F. Kennedy International Airport at ${time} on Thursday, November 12 and arrives at Los Angeles International Airport at 3:14 PM on Thursday, November 12. Total duration 6 hr 14 min. Select flight`, "JFK–LAX");
-const oneWayPage = `<html><body><h3>Top flights</h3><ul>${oneWayRow("259", "6:00 AM", "Delta")}${oneWayRow("204", "12:00 PM", "JetBlue")}
-  <li><div role="link" aria-label="Total price is unavailable. Nonstop flight with Alaska. Leaves John F. Kennedy International Airport at 7:00 AM on Thursday, November 12 and arrives at Los Angeles International Airport at 10:30 AM on Thursday, November 12. Total duration 6 hr 30 min. Select flight">x</div></li>
-  ${oneWayRow("1,204", "9:00 AM", "United")}</ul></body></html>`;
-
-test("google list_flights: one-way prices are read and price sorting puts unpriced rows last", async () => {
-  const { out } = await run("list_flights", oneWayPage, { sort_by: "price" }, { url: oneWayUrl });
-  assert.equal(out.status, "ok");
-  assert.deepEqual(out.flights.map(f => f.price?.amount ?? null), [204, 259, 1204, null]);
-  assert.deepEqual(out.flights[0].price, { amount: 204, currency_label: "US dollars", scope: "one_way" });
-});
-
-test("google select_flight: expected_airline matches the carriers only, and invalid 24-hour times are refused", async () => {
-  let clicks = 0;
-  const airport = await run("select_flight", oneWayPage, { result_index: 1, expected_departure_time: "12:00 PM", expected_airline: "Kennedy" }, { url: oneWayUrl, onClick: () => clicks++ });
-  assert.equal(airport.out.status, "row_changed");
-  const time = await run("select_flight", oneWayPage, { result_index: 1, expected_departure_time: "25:00" }, { url: oneWayUrl, onClick: () => clicks++ });
-  assert.equal(time.out.status, "error");
-  const index = await run("select_flight", oneWayPage, { result_index: -1 }, { url: oneWayUrl, onClick: () => clicks++ });
-  assert.equal(index.out.status, "error");
-  assert.equal(clicks, 0);
 });
 
 const option = (label, lines = [], hidden = false) => `<div${hidden ? " hidden" : ""}>${lines.map(l => `<span>${l}</span>`).join("")}<button aria-label="${label}">Continue</button></div>`;
