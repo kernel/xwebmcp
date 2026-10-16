@@ -7,7 +7,7 @@ import { Document, DOMParser } from "./etsy-dom.mjs";
 // Harness for the booking.com stay tools. Every page and network interaction is stubbed; nothing here
 // contacts the live site. Properties, prices and identifiers below are fabricated, but the markup mirrors
 // the structure observed on www.booking.com (data-testid hooks, hprt rate table, inline page config).
-const NAMES = ["search_stays", "get_property", "select_room", "get_checkout_step"];
+const NAMES = ["search_stays", "get_property", "select_room", "get_checkout_step", "fill_guest_details", "continue_checkout"];
 const sources = Object.fromEntries(NAMES.map(name => [name, readFileSync(new URL(`../domains/booking.com/${name}.js`, import.meta.url), "utf8")]));
 const registry = JSON.parse(readFileSync(new URL("../registry.json", import.meta.url), "utf8"));
 const HOME = "https://www.booking.com/";
@@ -165,7 +165,8 @@ function makeEnv({ start = HOME, liveCurrency = "USD", lang = "en-us", liveHtml,
   const window = { location: new URL(start) };
   const timers = [];
   class Event { constructor(type, init = {}) { this.type = type; this.bubbles = !!init.bubbles; } }
-  const context = { window, document: live, fetch, DOMParser, URL, URLSearchParams, AbortSignal, TextEncoder, Date: FrozenDate, console, Event, setTimeout: fn => timers.push(fn) };
+  const element = Object.getPrototypeOf(live.body);
+  const context = { window, document: live, fetch, DOMParser, URL, URLSearchParams, AbortSignal, TextEncoder, Date: FrozenDate, console, Event, setTimeout: fn => timers.push(fn), HTMLInputElement: { prototype: element }, HTMLSelectElement: { prototype: element } };
   return { calls, context, live, timers };
 }
 
@@ -201,10 +202,10 @@ test("registry entries match the files, kind and narrowed URL pattern", () => {
     const definition = register(name, makeEnv());
     assert.equal(entry.kind, "page");
     assert.equal(definition.kind, "page");
-    assert.deepEqual(entry.url_patterns, [name === "get_checkout_step" ? "https://secure.booking.com/*" : "https://www.booking.com/*"]);
+    assert.deepEqual(entry.url_patterns, [["get_checkout_step", "fill_guest_details", "continue_checkout"].includes(name) ? "https://secure.booking.com/*" : "https://www.booking.com/*"]);
     assert.deepEqual(plain(definition.match.url_patterns), entry.url_patterns);
     assert.equal(definition.tool.name, name);
-    assert.equal(definition.tool.annotations.readOnlyHint, name !== "select_room");
+    assert.equal(definition.tool.annotations.readOnlyHint, !["select_room", "fill_guest_details", "continue_checkout"].includes(name));
     assert.doesNotMatch(definition.execute.toString(), /\b(?:gotoUrl|pageInfo|accessibilitySnapshot|currentTab|waitMs|webmcp|repl|cdp|js)\(/, "page execute must not use REPL helpers");
   }
   assert.deepEqual(registry.tools.filter(t => t.domain === "booking.com").map(t => t.tool), [...NAMES].sort());
@@ -215,7 +216,7 @@ test("page tools serialize: execute has no dependency on the enclosing scope", a
     const env = makeEnv();
     const definition = register(name, env);
     const rebuilt = runInNewContext(`(${definition.execute.toString()})`, env.context);
-    const out = plain(await rebuilt(name === "get_checkout_step" ? { x: 1 } : {}));
+    const out = plain(await rebuilt(name === "get_checkout_step" ? { x: 1 } : name === "continue_checkout" ? { expected_total: "1" } : {}));
     assert.equal(out.status, "error");
     assert.equal(out.error_kind, "invalid_input");
   }
@@ -882,7 +883,7 @@ test("get_checkout_step reads both partner checkout layouts a Partner Offer open
   const start = "https://secure.booking.com/tpi_book.en-us.html?hotel_id=1000001&num_adults=2&num_children=0&num_rooms=1";
   const labelled = await run("get_checkout_step", {}, { start, liveHtml: labelledPartnerCheckout() });
   assert.deepEqual(labelled.output, {
-    status: "ok", step: "your_details", partner_offer: true, property_id: "1000001", property_name: "Harbor View Studios",
+    status: "ok", step: "your_details", seller: null, payment_timing: null, partner_offer: true, property_id: "1000001", property_name: "Harbor View Studios",
     check_in: "2026-11-10", check_out: "2026-11-12", check_in_time: "from 3:00 PM", check_out_time: "until 11:00 AM",
     selection: "2 nights, 1 room for 2 adults", units: ["Studio"], total: 425.85, currency: "USD", total_text: "$425.85",
     price_notes: ["Today you'll pay", "$204 × 2 nights", "$407.89", "At the property you'll pay", "Additional fees", "$17.96", "(for 2 nights & all guests)", "Includes taxes and fees"],
@@ -893,7 +894,7 @@ test("get_checkout_step reads both partner checkout layouts a Partner Offer open
   assert.deepEqual([unlabelled.output.selection, unlabelled.output.units], ["2 nights, 1 room for 2 adults", []], "without labelled guests the room name is not guessed");
   const summary = await run("get_checkout_step", {}, { start, liveHtml: summaryPartnerCheckout() });
   assert.deepEqual(summary.output, {
-    status: "ok", step: "your_details", partner_offer: true, property_id: "1000001", property_name: "Harbor View Studios",
+    status: "ok", step: "your_details", seller: null, payment_timing: null, partner_offer: true, property_id: "1000001", property_name: "Harbor View Studios",
     check_in: "2026-11-10", check_out: "2026-11-12", check_in_time: "From 3:00 PM", check_out_time: "Until 11:00 AM",
     selection: "2 nights, 1 room for 2 adults", units: ["1 x Studio"], total: 355.69, currency: "USD", total_text: "$355.69",
     price_notes: ["Today you'll pay", "$169 × 2 nights", "$337.73", "At the property you'll pay", "Additional fees", "$17.96", "Includes taxes and fees"],
@@ -903,10 +904,101 @@ test("get_checkout_step reads both partner checkout layouts a Partner Offer open
   assert.equal((await run("get_checkout_step", {}, { start: "https://secure.booking.com/tpi_booking.html", liveHtml: labelledPartnerCheckout() })).output.error_kind, "wrong_page");
 });
 
+// --- guest details and continuing ---------------------------------------------------------------------------
+
+// Booking.com's own "Your details" step, as observed: test ids, starred labels, a default-on "Sign in to save" box.
+const detailsForm = ({ offer = true, nextLabel = "Next: Final details" } = {}) => checkoutPage().replace('<div data-testid="user-details-container"><input data-testid="user-details-firstname"></div>',
+  `<form id="bookForm"><div data-testid="user-details-container">` +
+  [["firstname", "user-details-firstname", "First name*", true], ["lastname", "user-details-lastname", "Last name*", true], ["email", "user-details-email", "Email address*", true], ["address1", "user-details-address1", "Address*", true], ["city", "user-details-city", "City*", true], ["zip", "user-details-zip", "Zip Code(optional)", false], ["phoneNumber", "phone-number-input", "Phone number*", true]]
+    .map(([name, id, label, required]) => `<label for="f-${name}">${label}</label><input id="f-${name}" name="${name}" data-testid="${id}"${required ? " required" : ""}>`).join("") +
+  `<label for="f-cc1">Country/Region*</label><select id="f-cc1" name="cc1" data-testid="user-details-cc1" required><option value="us" selected>United States</option><option value="pt">Portugal</option></select>` +
+  `<select id="f-cc" name="countryCode" data-testid="phone-country-code-select"><option value="us" selected>us +1</option><option value="pt">pt +351</option></select>` +
+  `<input type="checkbox" name="sign_in_to_save" data-testid="user-details-sign-in-to-save"${offer ? " checked" : ""}>` +
+  `</div><button type="submit" name="book">${nextLabel}</button></form>`);
+const partnerDetailsForm = () => summaryPartnerCheckout().replace(partnerFoot, `<form id="bookForm"><label for="p-first">First Name*</label><input id="p-first" name="firstname"><label for="p-last">Last Name*</label><input id="p-last" name="lastname"><label for="p-email">Email Address*</label><input id="p-email" type="email" name="email"><select id="p-cc" name="phone__country"><option value="us">United States (+1)</option></select><label for="p-phone">Telephone (mobile number preferred)</label><input id="p-phone" type="tel" name="phone__number"><button type="submit">Next: Final details</button></form>` + partnerFoot);
+const GUEST = { first_name: "Alex", last_name: "Testperson", email: "alex.testperson@example.com", phone: "4155550123", address: "1 Telegraph Hill Blvd", city: "San Francisco", zip: "94133", country: "PT" };
+const CHECKOUT = "https://secure.booking.com/book.html?hotel_id=1000001&stage=1";
+
+test("fill_guest_details fills the details step, unticks the sign-in offer and presses nothing", async () => {
+  const { output, env, timers, calls } = await run("fill_guest_details", GUEST, { start: CHECKOUT, liveHtml: detailsForm() });
+  assert.deepEqual(output, { status: "filled", filled: ["cc1", "countryCode", "firstname", "lastname", "email", "address1", "city", "zip", "phoneNumber"], missing_fields: [], invalid_fields: [], sign_in_offer_declined: true, next_tool: "continue_checkout" });
+  const value = name => env.live.querySelector(`[name="${name}"]`).value;
+  assert.deepEqual(["firstname", "email", "phoneNumber", "cc1", "countryCode"].map(value), ["Alex", "alex.testperson@example.com", "4155550123", "pt", "pt"]);
+  assert.equal(env.live.querySelector('[name="sign_in_to_save"]').checked, false);
+  assert.equal(calls.length, 0);
+  assert.equal(timers.length, 0, "nothing is pressed");
+  const partial = await run("fill_guest_details", { first_name: "Alex", last_name: "Testperson", email: "alex@example.com", phone: "4155550123" }, { start: CHECKOUT, liveHtml: detailsForm({ offer: false }) });
+  assert.deepEqual([partial.output.missing_fields, partial.output.sign_in_offer_declined], [["Address", "City"], false]);
+});
+
+test("fill_guest_details also fills the partner checkout's named fields", async () => {
+  const { output } = await run("fill_guest_details", { first_name: "Alex", last_name: "Testperson", email: "alex@example.com", phone: "4155550123", country: "us" }, { start: "https://secure.booking.com/tpi_book.en-us.html", liveHtml: partnerDetailsForm() });
+  assert.deepEqual([output.status, output.filled, output.missing_fields], ["filled", ["phone__country", "firstname", "lastname", "email", "phone__number"], []]);
+});
+
+test("fill_guest_details rejects bad input before touching the page and refuses other steps", async () => {
+  for (const patch of [{ email: "not-an-email" }, { phone: "call me" }, { country: "Portugal" }, { first_name: "" }, { notes: "x" }, { first_name: "x".repeat(61) }]) {
+    assert.equal((await run("fill_guest_details", { ...GUEST, ...patch }, { start: CHECKOUT, liveHtml: detailsForm() })).output.error_kind, "invalid_input", JSON.stringify(patch));
+  }
+  assert.equal((await run("fill_guest_details", { ...GUEST, country: "FR" }, { start: CHECKOUT, liveHtml: detailsForm() })).output.error_kind, "invalid_input");
+  assert.equal((await run("fill_guest_details", GUEST, { start: CHECKOUT, liveHtml: checkoutPage({ step: "final" }) })).output.error_kind, "wrong_page");
+  assert.equal((await run("fill_guest_details", GUEST, { start: PROPERTY.property_url, liveHtml: detailsForm() })).output.error_kind, "wrong_page");
+});
+
+test("continue_checkout presses Next only with the expected total, complete fields and no sign-in offer", async () => {
+  const empty = await run("continue_checkout", { expected_total: 397.97 }, { start: CHECKOUT, liveHtml: detailsForm() });
+  assert.deepEqual([empty.output.error_kind, empty.output.fields], ["fields_incomplete", ["First name", "Last name", "Email address", "Address", "City", "Phone number"]]);
+  assert.equal(empty.timers.length, 0);
+  const env = makeEnv({ start: CHECKOUT, liveHtml: detailsForm() });
+  await register("fill_guest_details", env).execute(GUEST);
+  const pressed = [];
+  env.live.querySelector('button[name="book"]').addEventListener("click", () => pressed.push(1));
+  const wrongTotal = plain(await register("continue_checkout", env).execute({ expected_total: 300 }));
+  assert.deepEqual([wrongTotal.error_kind, wrongTotal.current_total], ["price_changed", 397.97]);
+  const ok = plain(await register("continue_checkout", env).execute({ expected_total: 397.97 }));
+  assert.deepEqual(ok, { status: "navigation_scheduled", from_step: "your_details", total: 397.97, next_tool: "get_checkout_step" });
+  assert.equal(pressed.length, 0, "the press waits until the tool settles");
+  env.timers.at(-1)();
+  assert.equal(pressed.length, 1);
+  const offerEnv = makeEnv({ start: CHECKOUT, liveHtml: detailsForm() });
+  await register("fill_guest_details", offerEnv).execute(GUEST);
+  offerEnv.live.querySelector('[name="sign_in_to_save"]').checked = true;
+  assert.equal(plain(await register("continue_checkout", offerEnv).execute({ expected_total: 397.97 })).error_kind, "sign_in_offer_ticked");
+});
+
+test("get_checkout_step reads the finish booking step's payment timing and cancellation cost", async () => {
+  const page = checkoutPage({ step: "final" }).replace('<div data-testid="cancellation-policy"><div data-testid="policy-title">Non-refundable</div></div>', '<div data-testid="cancellation-timeline"><div>If you cancel, you\'ll pay</div><div>$383</div><span>*</span></div>')
+    .replace("</body>", '<div data-testid="bs3-payment-timing-section"><div data-testid="payment-timing-header">Pay online</div><div data-testid="payment-timing-description">You\'ll pay when you complete this booking.</div></div><form id="bookForm"><button type="submit" name="book">Complete booking</button></form></body>');
+  const { output } = await run("get_checkout_step", {}, { start: CHECKOUT, liveHtml: page });
+  assert.deepEqual([output.step, output.payment_timing, output.cancellation, output.seller], ["finish_booking", "Pay online. You'll pay when you complete this booking.", "If you cancel, you'll pay $383", null]);
+});
+
+test("get_checkout_step names the partner a Partner Offer is booked with on its final step", async () => {
+  const page = summaryPartnerCheckout().replace("Your Details. Step 2 of 3.", "Confirm your reservation. Step 3 of 3.").replace(partnerFoot, '<div><span>Your booking is with Example Travel Company Ltd. By completing this booking, you agree to the booking conditions.</span></div>' + partnerFoot);
+  const { output } = await run("get_checkout_step", {}, { start: "https://secure.booking.com/tpi_book.html", liveHtml: page });
+  assert.deepEqual([output.step, output.partner_offer, output.seller], ["finish_booking", true, "Example Travel Company Ltd"]);
+});
+
+test("continue_checkout never presses the button that books", async () => {
+  for (const label of ["Complete booking", "Book now"]) {
+    const { output, timers } = await run("continue_checkout", { expected_total: 397.97 }, { start: CHECKOUT, liveHtml: detailsForm({ nextLabel: label }) });
+    assert.equal(output.error_kind, "wrong_step", label);
+    assert.equal(timers.length, 0);
+  }
+  assert.equal((await run("continue_checkout", { expected_total: 397.97 }, { start: CHECKOUT, liveHtml: checkoutPage({ step: "final" }) })).output.error_kind, "wrong_step");
+  for (const input of [{}, { expected_total: "397.97" }, { expected_total: 1, extra: true }]) assert.equal((await run("continue_checkout", input, { start: CHECKOUT, liveHtml: detailsForm() })).output.error_kind, "invalid_input");
+});
+
+test("continue_checkout reads the partner checkout's Total row", async () => {
+  const env = makeEnv({ start: "https://secure.booking.com/tpi_book.en-us.html", liveHtml: partnerDetailsForm() });
+  await register("fill_guest_details", env).execute({ first_name: "Alex", last_name: "Testperson", email: "alex@example.com", phone: "4155550123" });
+  assert.equal(plain(await register("continue_checkout", env).execute({ expected_total: 355.69 })).status, "navigation_scheduled");
+});
+
 // --- read-only guarantees -------------------------------------------------------------------------------------
 
 test("the read tools never submit forms, post, or touch booking, save or account endpoints", async () => {
-  for (const name of NAMES.filter(name => name !== "select_room")) {
+  for (const name of NAMES.filter(name => !["select_room", "fill_guest_details", "continue_checkout"].includes(name))) {
     assert.doesNotMatch(sources[name], /method:\s*["'](?:POST|PUT|PATCH|DELETE)/i);
     assert.doesNotMatch(sources[name], /["'?&]selected_currency|"\/index\.html/, "the tools must not change or restore the site's currency");
     assert.doesNotMatch(sources[name].replace(name === "get_checkout_step" ? /book\.html/g : /^$/, ""), /\.click\(|requestSubmit|\.submit\(|book\.html|mywishlist|wishlist|mytrips|myaccount|location\.(?:assign|href\s*=)|history\./);
@@ -1094,7 +1186,7 @@ const checkoutPage = ({ step = "details", total = "397.97153", currency = "USD",
 test("get_checkout_step reads the details step: dates, selection, total and price notes", async () => {
   const { output, calls } = await run("get_checkout_step", {}, { start: "https://secure.booking.com/book.html?hotel_id=1000001&stage=1", liveHtml: checkoutPage() });
   assert.deepEqual(output, {
-    status: "ok", step: "your_details", partner_offer: false, property_id: "1000001", property_name: "Harbor View Studios",
+    status: "ok", step: "your_details", seller: null, payment_timing: null, partner_offer: false, property_id: "1000001", property_name: "Harbor View Studios",
     check_in: "2026-11-10", check_out: "2026-11-12", check_in_time: "From 2:00 PM", check_out_time: "Until 11:00 AM",
     selection: "2 nights, 1 room for 2 adults", units: ["1 x Studio"], total: 397.97, currency: "USD", total_text: "$397.97",
     price_notes: ["Includes taxes and fees", "In property currency: € 355.30"], cancellation: "Non-refundable", signed_in: false

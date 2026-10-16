@@ -47,6 +47,12 @@ class Element {
   }
   get outerHTML() { return serialize(this); }
   get disabled() { return this.hasAttribute("disabled"); }
+  get name() { return this.getAttribute("name") ?? ""; }
+  get id() { return this.getAttribute("id") ?? ""; }
+  get type() { return (this.getAttribute("type") || (this.localName === "select" ? "select-one" : this.localName === "textarea" ? "textarea" : this.localName === "button" ? "submit" : "text")).toLowerCase(); }
+  get required() { return this.hasAttribute("required"); }
+  get checked() { return this._checked ?? this.hasAttribute("checked"); }
+  set checked(v) { this._checked = !!v; }
   get maxLength() { return this.hasAttribute("maxlength") ? Number(this.getAttribute("maxlength")) : -1; }
   get options() { return this.querySelectorAll("option"); }
   get value() {
@@ -76,7 +82,7 @@ class Element {
     for (const fn of (doc.listeners && doc.listeners[event.type]) || []) fn.call(doc, { ...event, target: this });
     return true;
   }
-  click() { this.dispatchEvent({ type: "click" }); }
+  click() { if (this.localName === "input" && /^(checkbox|radio)$/.test(this.type)) this.checked = this.type === "radio" || !this.checked; this.dispatchEvent({ type: "click" }); }
 }
 
 function walk(root, fn) { for (const child of root.childNodes) if (child instanceof Element) { fn(child); walk(child, fn); } }

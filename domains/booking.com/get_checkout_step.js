@@ -10,10 +10,12 @@
       oneOf: [
         {
           type: "object", additionalProperties: false,
-          required: ["status", "step", "partner_offer", "property_id", "property_name", "check_in", "check_out", "check_in_time", "check_out_time", "selection", "units", "total", "currency", "total_text", "price_notes", "cancellation", "signed_in"],
+          required: ["status", "step", "partner_offer", "seller", "payment_timing", "property_id", "property_name", "check_in", "check_out", "check_in_time", "check_out_time", "selection", "units", "total", "currency", "total_text", "price_notes", "cancellation", "signed_in"],
           properties: {
             status: { const: "ok" },
             step: { enum: ["your_details", "finish_booking", "other"], description: "your_details asks for the guest's name and contact details; finish_booking asks for payment." },
+            seller: { type: ["string", "null"], maxLength: 200, description: "On a partner checkout's finish_booking step, the travel company the booking is with, as the page names it; null otherwise." },
+            payment_timing: { type: ["string", "null"], maxLength: 300, description: "On the finish_booking step, when and how Booking.com says the stay is paid, for example \"Pay online. You'll pay when you complete this booking.\"; null on other steps." },
             partner_offer: { type: "boolean", description: "True on the partner checkout (tpi_book) a Partner Offer opens. Its price and cancellation terms are the partner's and can differ from the property page." },
             property_id: { type: ["string", "null"] }, property_name: { type: ["string", "null"], maxLength: 300 },
             check_in: { type: ["string", "null"], description: "YYYY-MM-DD" }, check_out: { type: ["string", "null"], description: "YYYY-MM-DD" },
@@ -122,17 +124,18 @@
     const cancelAt = all.indexOf("How much will it cost to cancel?");
     const profile = !!tid("header-profile"), signIn = !!tid("header-sign-in-button");
     const hotelId = (/\bb_hotel_id\s*[:=]\s*['"]?(\d+)/.exec(scripts) || [])[1] || null;
-    const step = tid("user-details-container") || (partnerPage && all.some(line => /^(?:Your Details|Enter your details)\. Step 2 of 3\.$/.test(line))) ? "your_details" : document.querySelector('[data-testid*="payment"], iframe[src*="payment"]') ? "finish_booking" : "other";
+    const stepper = all.find(line => /\. Step \d of 3\.$/.test(line)) || "";
+    const step = tid("user-details-container") || (partnerPage && /Step 2 of 3\.$/.test(stepper)) ? "your_details" : /Step 3 of 3\.$/.test(stepper) || document.querySelector('[data-testid*="payment"], iframe[src*="payment"]') ? "finish_booking" : "other";
     const nameEl = document.querySelector('[data-testid="property-details__metadata--property-type"]')?.closest("div")?.parentElement?.querySelector("h1, h2") || document.querySelector("h1, h2");
     const currency = totalEl ? totalEl.getAttribute("data-currency") : text(tid("header-currency-picker-trigger"));
     return {
-      status: "ok", step, partner_offer: partnerPage || all.includes("Partner Offer"), property_id: hotelId, property_name: text(nameEl),
+      status: "ok", step, seller: partnerPage ? (/Your booking is with (.+?)\. By completing/.exec((document.body.textContent || "").replace(/\s+/g, " ")) || [])[1]?.slice(0, 200) || null : null, payment_timing: step === "finish_booking" ? [text(tid("payment-timing-header")), text(tid("payment-timing-description"))].filter(Boolean).join(". ").replace(/\.\./g, ".").slice(0, 300) || null : null, partner_offer: partnerPage || all.includes("Partner Offer"), property_id: hotelId, property_name: text(nameEl),
       check_in: checkIn.date, check_out: checkOut.date, check_in_time: checkIn.time, check_out_time: checkOut.time,
       selection, units,
       total: Math.round(total * 100) / 100,
       currency: /^[A-Z]{3}$/.test(currency || "") ? currency : null,
       total_text: totalText, price_notes: notes.slice(0, 10).map(line => line.slice(0, 300)),
-      cancellation: text(tid("cancellation-policy")) || (cancelAt >= 0 && all[cancelAt + 1] ? all[cancelAt + 1].slice(0, 300) : text(label(/^(?:Non-refundable|Free cancellation\b.*)$/))),
+      cancellation: text(tid("cancellation-policy")) || lines(tid("cancellation-timeline")).filter(line => line !== "*").join(" ").slice(0, 300) || (cancelAt >= 0 && all[cancelAt + 1] ? all[cancelAt + 1].slice(0, 300) : text(label(/^(?:Non-refundable|Free cancellation\b.*)$/))),
       signed_in: profile === signIn ? null : profile
     };
   }

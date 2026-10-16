@@ -929,6 +929,34 @@
     },
     {
       "domain": "booking.com",
+      "tool": "continue_checkout",
+      "file": "domains/booking.com/continue_checkout.js",
+      "kind": "page",
+      "namespace": "booking.com",
+      "url_patterns": [
+        "https://secure.booking.com/*"
+      ],
+      "url_patterns_reason": "Narrowed to secure.booking.com: Booking.com serves its checkout steps there (book.html, and tpi_book for Partner Offers), after select_room; the other tools run on www.booking.com.",
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Presses \"Next: Final details\" on the \"Your details\" step after checking the total, the required fields and the sign-in offer (navigation_scheduled). Never presses Complete booking or enters payment details; on the final step it returns wrong_step."
+    },
+    {
+      "domain": "booking.com",
+      "tool": "fill_guest_details",
+      "file": "domains/booking.com/fill_guest_details.js",
+      "kind": "page",
+      "namespace": "booking.com",
+      "url_patterns": [
+        "https://secure.booking.com/*"
+      ],
+      "url_patterns_reason": "Narrowed to secure.booking.com: Booking.com serves its checkout steps there (book.html, and tpi_book for Partner Offers), after select_room; the other tools run on www.booking.com.",
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Types the main guest's name, email, phone and, when asked, address, city, zip and country into the \"Your details\" step on book.html or tpi_book, and unticks the optional \"Sign in to save\" offer; presses nothing. Reports required fields still empty or invalid."
+    },
+    {
+      "domain": "booking.com",
       "tool": "get_checkout_step",
       "file": "domains/booking.com/get_checkout_step.js",
       "kind": "page",
@@ -937,12 +965,9 @@
         "https://secure.booking.com/*"
       ],
       "url_patterns_reason": "Narrowed to secure.booking.com: Booking.com serves its checkout steps there (book.html, and tpi_book for Partner Offers), after select_room; the other tools run on www.booking.com.",
-      "status": "qa_passed",
-      "last_verified": "2026-10-16",
-      "notes": "Reads the checkout after select_room: secure.booking.com/book.html, or tpi_book for a Partner Offer in either of its two layouts (partner_offer true). Returns the step, property, dates and times, selection, units, total including taxes and fees with its currency, price notes (pay-now and at-property lines on partner checkouts) and cancellation. Read-only. Independent QA on 2026-10-16 compared live reads with the page on several book.html checkouts and on partner checkouts in both layouts, including a non-refundable one without a cancellation section; missing or malformed structured totals by fixture. The finish_booking step and signed-in sessions were not tested.",
-      "provenance": {
-        "qa_agent": "agt_ee7a889befd28f79816d"
-      }
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Reads the checkout after select_room: secure.booking.com/book.html, or tpi_book for a Partner Offer in either of its two layouts (partner_offer true). Returns the step, property, dates and times, selection, units, total including taxes and fees with its currency, price notes (pay-now and at-property lines on partner checkouts) and cancellation. Read-only. Independent QA on 2026-10-16 compared live reads with the page on several book.html checkouts and on partner checkouts in both layouts, including a non-refundable one without a cancellation section; missing or malformed structured totals by fixture. The finish_booking step and signed-in sessions were not tested."
     },
     {
       "domain": "booking.com",
