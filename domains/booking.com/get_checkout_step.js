@@ -50,8 +50,21 @@
 
     const text = (el, max = 300) => el ? (el.textContent || "").replace(/\s+/g, " ").trim().slice(0, max) || null : null;
     // The innermost elements, in document order: one per line the page shows.
-    const leaves = el => el ? [...el.querySelectorAll("*")].filter(e => !e.children.length && text(e)) : [];
-    const lines = el => leaves(el).map(e => text(e, 1000));
+    // One entry per line the page shows: an element with text of its own (bare text beside a bold date, say) is one
+    // line; otherwise its children are. Unrendered elements are skipped unless hidden is true (the page keeps its
+    // step announcement there).
+    const lines = (el, hidden = false) => {
+      const out = [];
+      const walk = node => {
+        for (const child of node.children) {
+          if (["SCRIPT", "STYLE", "TEMPLATE"].includes(child.tagName) || (!hidden && !child.getClientRects().length)) continue;
+          if (!child.children.length || [...child.childNodes].some(n => n.nodeType === 3 && n.textContent.trim())) { const line = text(child, 1000); if (line) out.push(line); }
+          else walk(child);
+        }
+      };
+      if (el) walk(el);
+      return out;
+    };
     const tid = id => document.querySelector('[data-testid="' + id + '"]');
     const scripts = [...document.querySelectorAll("script")].map(s => s.textContent || "").join("\n");
     const isoDate = value => {
@@ -92,7 +105,9 @@
     const selectedAt = detailLines.indexOf("You selected");
     let selection = selectedAt >= 0 && detailLines[selectedAt + 1] ? detailLines[selectedAt + 1].slice(0, 300) : null;
     let units = selectedAt >= 0 ? [...details.querySelectorAll("li")].map(li => text(li)).filter(Boolean).slice(0, 20) : [];
-    if (selectedAt < 0 && partnerPage) {
+    const all = lines(document.body, true);
+    const stepper = all.find(line => /\. Step \d of 3\.$/.test(line)) || "";
+    if (selectedAt < 0 && partnerPage && !/Step 3 of 3\.$/.test(stepper)) {
       // The labelled partner layout shows only the length of stay; the party comes from the checkout URL, and the
       // room's name only when the page labels its guests.
       const params = new URL(window.location.href).searchParams;
@@ -120,11 +135,9 @@
       const end = rest.findIndex(stop);
       notes = rest.slice(0, end < 0 ? undefined : end).filter(line => line !== text(totalLabel) && line !== totalText);
     }
-    const all = lines(document.body);
     const cancelAt = all.indexOf("How much will it cost to cancel?");
     const profile = !!tid("header-profile"), signIn = !!tid("header-sign-in-button");
     const hotelId = (/\bb_hotel_id\s*[:=]\s*['"]?(\d+)/.exec(scripts) || [])[1] || null;
-    const stepper = all.find(line => /\. Step \d of 3\.$/.test(line)) || "";
     const step = tid("user-details-container") || (partnerPage && /Step 2 of 3\.$/.test(stepper)) ? "your_details" : /Step 3 of 3\.$/.test(stepper) || document.querySelector('[data-testid*="payment"], iframe[src*="payment"]') ? "finish_booking" : "other";
     // The final step offers payment timings as radios; report the chosen one, else the section's own text.
     const timing = [...document.querySelectorAll('input[name="payment-timing"]')].find(e => e.checked);
@@ -132,7 +145,7 @@
     // line, and each block element starts a new one.
     const INLINE = new Set(["SPAN", "STRONG", "B", "EM", "I", "A", "SMALL", "LABEL", "TIME", "SUP", "SUB"]);
     // Hidden copies, scripts and the payment section's own question are not part of an answer.
-    const skipped = n => n.nodeType !== 1 || ["SCRIPT", "STYLE", "TEMPLATE", "BR"].includes(n.tagName) || n.hasAttribute("hidden") || n.getAttribute("data-testid") === "payment-timing-header" || /display:\s*none/.test(n.getAttribute("style") || "");
+    const skipped = n => n.nodeType !== 1 || ["SCRIPT", "STYLE", "TEMPLATE", "BR"].includes(n.tagName) || n.hasAttribute("hidden") || !n.getClientRects().length || n.getAttribute("data-testid") === "payment-timing-header" || /display:\s*none/.test(n.getAttribute("style") || "");
     const blocks = el => {
       const out = [];
       let line = "";
