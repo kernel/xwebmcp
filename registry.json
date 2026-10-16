@@ -1453,9 +1453,12 @@
         "https://github.com/*"
       ],
       "url_patterns_reason": "Narrowed to github.com: it serves repositories, issues, pull requests and search, and the tools read its pages and endpoints same-origin; other github.com hosts are separate products (docs., gist., api. and others) where they cannot work.",
-      "status": "draft",
-      "last_verified": null,
-      "notes": "Issue title, state and close reason, labels, assignees, milestone, linked pull requests, body and the timeline items GitHub puts in the page: the first ~15, plus the latest ~16 only when the two slices together cover the whole timeline, so a long issue never comes back with a hidden gap. Reads GitHub's issueViewerRoute page payload (and the older IssueViewerViewQuery shape). Signed-out tabs only: refuses in a signed-in tab because the issue page's markAsRead preload may mark a notification read. Independent final-source QA passed on 2026-10-13, including a live run started from github.com/explore: open, closed-by-PR, locked and not_planned issues, timelines at and around the 15+16 cut-off, limits, is_pull_request, not_found and malformed input, all schema-valid. Private repositories, a real signed-in account, live throttled/blocked/login_required and a transferred issue were not tested."
+      "status": "verified",
+      "last_verified": "2026-10-16",
+      "notes": "Issue title, state and close reason, labels, assignees, milestone, linked pull requests, body and the timeline items the page holds (first ~15, plus the latest ~16 only when together they cover the whole timeline). Requests the page without cookies, so it reads public repositories only and never marks a signed-in account's notification as read; follows renamed repositories (redirected_from). Body and comment limits count characters. Independent QA on 2026-10-16 ran it live from github.com/explore: open and closed (not_planned, closed by PR) issues, a renamed repository (denoland/deno_std #7355), a PR number (is_pull_request), missing numbers in renamed and non-renamed repositories, character-exact clipping with CJK and emoji, malformed input; throttled/blocked/unknown rename lookups by fixture. Signed-in tabs, private repositories and transferred issues were not tested.",
+      "provenance": {
+        "qa_agent": "agt_c8aa59c8f978d857cdb2"
+      }
     },
     {
       "domain": "github.com",
@@ -1467,9 +1470,12 @@
         "https://github.com/*"
       ],
       "url_patterns_reason": "Narrowed to github.com: it serves repositories, issues, pull requests and search, and the tools read its pages and endpoints same-origin; other github.com hosts are separate products (docs., gist., api. and others) where they cannot work.",
-      "status": "draft",
-      "last_verified": null,
-      "notes": "State (open, draft, closed, merged), branches, head and merge commits, times, sidebar labels and the description as text; no comments, review threads, files, checks or lock state (the page data's locked flag is wrong). Independent QA (three rounds, final sign-off at da1717d) ran it live on Kernel and through the local extension, all outputs schema-valid. Covered merged, closed-unmerged, draft and locked pull requests, an empty description, is_issue and not_found. Signed-in sessions and private repositories not tested."
+      "status": "verified",
+      "last_verified": "2026-10-16",
+      "notes": "State (open, draft, closed, merged), branches, head and merge commits, times, sidebar labels and the description as text; no comments, review threads, files, checks or lock state. Requested without cookies, so public repositories only. Independent QA on 2026-10-16 ran it live from the explore, issues, PR and search pages: merged microsoft/playwright #43109 (merger, 3 commits and merge SHA matched the API), closed-unmerged, open drafts including a fork head, a renamed repository (redirected_from), is_issue and not_found. Signed-in tabs and private repositories were not tested.",
+      "provenance": {
+        "qa_agent": "agt_5ff0e98492a9b2235c87"
+      }
     },
     {
       "domain": "github.com",
@@ -1481,11 +1487,11 @@
         "https://github.com/*"
       ],
       "url_patterns_reason": "Narrowed to github.com: it serves repositories, issues, pull requests and search, and the tools read its pages and endpoints same-origin; other github.com hosts are separate products (docs., gist., api. and others) where they cannot work.",
-      "status": "qa_passed",
-      "last_verified": "2026-09-30",
-      "notes": "Description, topics, counts, license, default branch, creation time, latest commit, root entries and README text; empty_repository for a repository with no commits. Independent QA (three rounds, final sign-off at da1717d) ran it live on Kernel and through the local extension, all outputs schema-valid. Covered large, small, renamed (redirected_from), archived, mirror, fork, template and empty repositories and non-repository pages (not_found). Languages, contributors and latest release are not read; a signed-in owner's view of an empty repository and private repositories not tested.",
+      "status": "verified",
+      "last_verified": "2026-10-16",
+      "notes": "Description, topics, counts, license, default branch, creation time, latest commit, root entries and README text; empty_repository for a repository with no commits. Independent QA on 2026-10-16 ran it live from an issues page: microsoft/playwright (description, counts, license, topics, default branch, latest SHA, commit and release counts matched the API), a fork, a case variant, a renamed repository (redirected_from), readme_max_chars 0, not_found and login_required. Empty and private repositories were not retested live.",
       "provenance": {
-        "qa_agent": "agt_a95c2a4fd4ea679db158"
+        "qa_agent": "agt_5ff0e98492a9b2235c87"
       }
     },
     {
@@ -1500,7 +1506,7 @@
       "url_patterns_reason": "Narrowed to github.com: it serves repositories, issues, pull requests and search, and the tools read its pages and endpoints same-origin; other github.com hosts are separate products (docs., gist., api. and others) where they cannot work.",
       "status": "draft",
       "last_verified": null,
-      "notes": "Public repository star state for the expected signed-in account; no account identifier or token output. Independent QA (final sign-off at da1717d) verified login_required signed out, ok for the matching account and wrong_account for a mismatch, on Kernel and the extension."
+      "notes": "Star state and can_star for the signed-in account on one repository, from a fresh request. Signed out it returns login_required (checked live on 2026-10-16). The signed-in result has not been observed: no test account was available, so success is covered only by fixtures."
     },
     {
       "domain": "github.com",
@@ -1512,9 +1518,12 @@
         "https://github.com/*"
       ],
       "url_patterns_reason": "Narrowed to github.com: it serves repositories, issues, pull requests and search, and the tools read its pages and endpoints same-origin; other github.com hosts are separate products (docs., gist., api. and others) where they cannot work.",
-      "status": "draft",
-      "last_verified": null,
-      "notes": "Public repository and Issues-link check, exact title and body, and a manual new-issue URL; not a persisted draft. Independent QA (final sign-off at da1717d) verified prepared from an unrelated page, differently cased repository names and refusal for non-public targets, on Kernel and the extension."
+      "status": "verified",
+      "last_verified": "2026-10-16",
+      "notes": "Checks that a public repository accepts issues and returns GitHub's new-issue URL with the title and body in the query (body dropped above 8000 URL characters, body_in_url false); creates nothing. Limits count characters. Independent QA on 2026-10-16 ran it live from github.com/explore: title and body boundaries with astral and mixed-script text, body dropped from the URL, missing and renamed repositories; opening target_url signed out redirects to login with a return_to that keeps the exact title and body. Signed-in form prefill and issue templates were not tested.",
+      "provenance": {
+        "qa_agent": "agt_f9fb8adca983ab973ed9"
+      }
     },
     {
       "domain": "github.com",
@@ -1526,9 +1535,12 @@
         "https://github.com/*"
       ],
       "url_patterns_reason": "Narrowed to github.com: it serves repositories, issues, pull requests and search, and the tools read its pages and endpoints same-origin; other github.com hosts are separate products (docs., gist., api. and others) where they cannot work.",
-      "status": "draft",
-      "last_verified": null,
-      "notes": "Public repository check, exact title, body, base and head, and a comparison URL; branch existence and the comparison itself are not verified. Independent QA (final sign-off at da1717d) verified prepared and the rejection of malformed branch text before any request, on Kernel and the extension."
+      "status": "verified",
+      "last_verified": "2026-10-16",
+      "notes": "Checks a public repository and returns its compare URL for base...head with expand=1 and the title and body in the query; branch existence and the diff are not checked (comparison_verified false). Branch, title and body limits count characters. Independent QA on 2026-10-16 ran it live: branch-length boundaries with ASCII, astral and mixed text on both branches, a slash branch that opens on GitHub, invalid refs rejected before any request, missing and renamed repositories. Signed-in compare prefill was not tested.",
+      "provenance": {
+        "qa_agent": "agt_c8aa59c8f978d857cdb2"
+      }
     },
     {
       "domain": "github.com",
@@ -1540,11 +1552,11 @@
         "https://github.com/*"
       ],
       "url_patterns_reason": "Narrowed to github.com: it serves repositories, issues, pull requests and search, and the tools read its pages and endpoints same-origin; other github.com hosts are separate products (docs., gist., api. and others) where they cannot work.",
-      "status": "qa_passed",
-      "last_verified": "2026-09-30",
-      "notes": "One page of 10 issue or pull request results with GitHub qualifiers, sorting and paging; only the first 1000 results of a query are reachable. Independent QA (three rounds, final sign-off at da1717d) ran it live on Kernel and through the local extension, all outputs schema-valid. Covered sorted repository-scoped queries, non-ASCII text, no_results and malformed input. Signed-in sessions not tested.",
+      "status": "verified",
+      "last_verified": "2026-10-16",
+      "notes": "One page of 10 issue or pull request results with GitHub qualifiers, sorting and paging; only the first 1000 results of a query are reachable. Independent QA on 2026-10-16 ran it live: repo:denoland/deno is:open label:bug sorted by created, pages 1 and 2 matching the API, is:pr is:merged result count matching the API, no_results and an out-of-range page. Signed-in sessions were not tested.",
       "provenance": {
-        "qa_agent": "agt_a95c2a4fd4ea679db158"
+        "qa_agent": "agt_5ff0e98492a9b2235c87"
       }
     },
     {
@@ -1557,11 +1569,11 @@
         "https://github.com/*"
       ],
       "url_patterns_reason": "Narrowed to github.com: it serves repositories, issues, pull requests and search, and the tools read its pages and endpoints same-origin; other github.com hosts are separate products (docs., gist., api. and others) where they cannot work.",
-      "status": "qa_passed",
-      "last_verified": "2026-09-30",
-      "notes": "One page of 10 repository results with GitHub qualifiers, sorting and paging; only the first 1000 results of a query are reachable. Independent QA (three rounds, final sign-off at da1717d) ran it live on Kernel and through the local extension, all outputs schema-valid. Covered sorted queries, no_results and malformed input. Signed-in sessions not tested.",
+      "status": "verified",
+      "last_verified": "2026-10-16",
+      "notes": "One page of 10 repository results with GitHub qualifiers, sorting and paging; only the first 1000 results of a query are reachable. Independent QA on 2026-10-16 ran it live: topic:cli stars:>5000 sorted by stars matched the API's order and count, and no_results. Signed-in sessions were not tested.",
       "provenance": {
-        "qa_agent": "agt_a95c2a4fd4ea679db158"
+        "qa_agent": "agt_5ff0e98492a9b2235c87"
       }
     },
     {
@@ -1574,9 +1586,12 @@
         "https://github.com/*"
       ],
       "url_patterns_reason": "Narrowed to github.com: it serves repositories, issues, pull requests and search, and the tools read its pages and endpoints same-origin; other github.com hosts are separate products (docs., gist., api. and others) where they cannot work.",
-      "status": "draft",
-      "last_verified": null,
-      "notes": "Public star or unstar on the exact repository page for the expected account and current state: one click, server verification, no retries. Independent QA (final sign-off at da1717d) verified login_required with mutation_attempted false signed out, and in fixtures visible and hidden controls, no-op, stale state and unknown outcomes. Live mutation is untested."
+      "status": "qa_passed",
+      "last_verified": "2026-10-16",
+      "notes": "Stars or unstars a repository for the signed-in account with one press of the star button on that repository's page, a fresh-request pre-check and post-check, no retries and an in-page busy lock against overlapping calls. Independent QA on 2026-10-16 checked live that signed out it returns login_required with mutation_attempted false and no press, wrong_page from another repository or a subpage, and invalid input; overlap, lock clean-up on every exit, no-op, changed account and unknown outcomes by fixture. A live star or unstar was not performed (no test account), so the signed-in button markup is unverified.",
+      "provenance": {
+        "qa_agent": "agt_f9fb8adca983ab973ed9"
+      }
     },
     {
       "domain": "google.com",
