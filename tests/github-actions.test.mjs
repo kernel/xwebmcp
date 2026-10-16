@@ -22,7 +22,8 @@ function conforms(schema, value) {
   if ("const" in schema && schema.const !== value) return false;
   if (schema.enum && !schema.enum.includes(value)) return false;
   if (schema.oneOf && schema.oneOf.filter(s => conforms(s, value)).length !== 1) return false;
-  if (schema.type && ![schema.type].flat().some(t => t === "integer" ? Number.isInteger(value) : t === "object" ? value !== null && typeof value === "object" && !Array.isArray(value) : typeof value === t)) return false;
+  if (schema.type && ![schema.type].flat().some(t => t === "null" ? value === null : t === "array" ? Array.isArray(value) : t === "integer" ? Number.isInteger(value) : t === "object" ? value !== null && typeof value === "object" && !Array.isArray(value) : typeof value === t)) return false;
+  if (Array.isArray(value)) return !schema.items || value.every(item => conforms(schema.items, item));
   if (value && typeof value === "object") {
     if (schema.required?.some(k => !Object.hasOwn(value, k))) return false;
     if (schema.additionalProperties === false && Object.keys(value).some(k => !Object.hasOwn(schema.properties, k))) return false;

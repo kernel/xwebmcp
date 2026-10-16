@@ -1487,9 +1487,12 @@
         "https://github.com/*"
       ],
       "url_patterns_reason": "Narrowed to github.com: it serves repositories, issues, pull requests and search, and the tools read its pages and endpoints same-origin; other github.com hosts are separate products (docs., gist., api. and others) where they cannot work.",
-      "status": "draft",
-      "last_verified": null,
-      "notes": "Description, topics, counts, license, default branch, creation time, latest commit, root entries and README text; empty_repository for a repository with no commits. Independent QA on 2026-10-16 ran it live from an issues page: microsoft/playwright (description, counts, license, topics, default branch, latest SHA, commit and release counts matched the API), a fork, a case variant, a renamed repository (redirected_from), readme_max_chars 0, not_found and login_required. Empty and private repositories were not retested live."
+      "status": "verified",
+      "last_verified": "2026-10-16",
+      "notes": "Description, topics, counts, license, default branch, creation time, latest commit, root entries and README text; empty_repository for a repository with no commits. Requested without cookies, so it reads public repositories only (a private one is not_found) and works in signed-in tabs, which get a newer repository page without this data. Independent QA on 2026-10-16 ran it live signed out and signed in from github.com/explore and a repository page: microsoft/playwright and kernel/xwebmcp matched the API, plus a renamed repository (redirected_from), not_found and invalid owner.",
+      "provenance": {
+        "qa_agent": "agt_0859fa5802d9062366dd"
+      }
     },
     {
       "domain": "github.com",
@@ -1501,9 +1504,12 @@
         "https://github.com/*"
       ],
       "url_patterns_reason": "Narrowed to github.com: it serves repositories, issues, pull requests and search, and the tools read its pages and endpoints same-origin; other github.com hosts are separate products (docs., gist., api. and others) where they cannot work.",
-      "status": "draft",
-      "last_verified": null,
-      "notes": "Star state and can_star for the signed-in account on one repository, from a fresh request. Signed out it returns login_required (checked live on 2026-10-16). The signed-in result has not been observed: no test account was available, so success is covered only by fixtures."
+      "status": "verified",
+      "last_verified": "2026-10-16",
+      "notes": "Star state and can_star for the signed-in account on one repository, from a fresh request: the older page's embedded JSON or the newer page's server-rendered star button. Reports the canonical owner/name. Independent QA on 2026-10-16 ran it live in a signed-in session from github.com/explore and other pages on kernel/xwebmcp (before and after star changes), microsoft/playwright and denoland/deno, with mixed-case input, plus signed-out login_required.",
+      "provenance": {
+        "qa_agent": "agt_0859fa5802d9062366dd"
+      }
     },
     {
       "domain": "github.com",
@@ -1515,9 +1521,12 @@
         "https://github.com/*"
       ],
       "url_patterns_reason": "Narrowed to github.com: it serves repositories, issues, pull requests and search, and the tools read its pages and endpoints same-origin; other github.com hosts are separate products (docs., gist., api. and others) where they cannot work.",
-      "status": "draft",
-      "last_verified": null,
-      "notes": "Checks that a public repository accepts issues and returns GitHub's new-issue URL with the title and body in the query (body dropped above 8000 URL characters, body_in_url false); creates nothing. Limits count characters. Independent QA on 2026-10-16 ran it live from github.com/explore: title and body boundaries with astral and mixed-script text, body dropped from the URL, missing and renamed repositories; opening target_url signed out redirects to login with a return_to that keeps the exact title and body. Signed-in form prefill and issue templates were not tested."
+      "status": "verified",
+      "last_verified": "2026-10-16",
+      "notes": "Checks that a public repository accepts issues (read without cookies) and returns GitHub's new-issue URL with the title and body in the query (body dropped above 8000 URL characters); creates nothing. Independent QA on 2026-10-16 ran it live signed out and signed in from github.com/explore: unicode title and body, a missing repository, and opening target_url in a signed-in tab, where the form showed the exact title and body; nothing was submitted.",
+      "provenance": {
+        "qa_agent": "agt_5f4f1556143cb25c5532"
+      }
     },
     {
       "domain": "github.com",
@@ -1529,9 +1538,12 @@
         "https://github.com/*"
       ],
       "url_patterns_reason": "Narrowed to github.com: it serves repositories, issues, pull requests and search, and the tools read its pages and endpoints same-origin; other github.com hosts are separate products (docs., gist., api. and others) where they cannot work.",
-      "status": "draft",
-      "last_verified": null,
-      "notes": "Checks a public repository and returns its compare URL for base...head with expand=1 and the title and body in the query; branch existence and the diff are not checked (comparison_verified false). Branch, title and body limits count characters. Independent QA on 2026-10-16 ran it live: branch-length boundaries with ASCII, astral and mixed text on both branches, a slash branch that opens on GitHub, invalid refs rejected before any request, missing and renamed repositories. Signed-in compare prefill was not tested."
+      "status": "verified",
+      "last_verified": "2026-10-16",
+      "notes": "Checks a public repository (read without cookies) and returns its compare URL for base...head with the title and body in the query; branch existence and the diff are not checked. Independent QA on 2026-10-16 ran it live signed out and signed in: branch-length boundaries, a slash branch, invalid refs rejected before any request, missing and renamed repositories.",
+      "provenance": {
+        "qa_agent": "agt_5f4f1556143cb25c5532"
+      }
     },
     {
       "domain": "github.com",
@@ -1577,9 +1589,12 @@
         "https://github.com/*"
       ],
       "url_patterns_reason": "Narrowed to github.com: it serves repositories, issues, pull requests and search, and the tools read its pages and endpoints same-origin; other github.com hosts are separate products (docs., gist., api. and others) where they cannot work.",
-      "status": "draft",
-      "last_verified": null,
-      "notes": "Stars or unstars a repository for the signed-in account with one press of the star button on that repository's page, a fresh-request pre-check and post-check, no retries and an in-page busy lock against overlapping calls. Independent QA on 2026-10-16 checked live that signed out it returns login_required with mutation_attempted false and no press, wrong_page from another repository or a subpage, and invalid input; overlap, lock clean-up on every exit, no-op, changed account and unknown outcomes by fixture. A live star or unstar was not performed (no test account), so the signed-in button markup is unverified."
+      "status": "qa_passed",
+      "last_verified": "2026-10-16",
+      "notes": "Stars or unstars a repository for the signed-in account with one press of the star button on its page, after a fresh-request check and before a fresh-request verification; no retries, busy for an overlapping call, state_changed when the page still shows the button from before a change elsewhere. Independent QA on 2026-10-16 ran it live in a signed-in session on kernel/xwebmcp: star, no-op, unstar, mixed-case input, overlapping calls, stale tabs in both directions, wrong pages and invalid input, plus signed-out login_required; the account was left as found. A repository in star lists (which asks to confirm unstarring) was not tested.",
+      "provenance": {
+        "qa_agent": "agt_0859fa5802d9062366dd"
+      }
     },
     {
       "domain": "google.com",
