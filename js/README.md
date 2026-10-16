@@ -188,6 +188,12 @@ From wiring a production dashboard:
   a password as tool input.
 - **Refresh what the user would see.** After a mutation, revalidate or `router.refresh()`
   so the next `get_page_context` matches the UI.
+- **Return the result of a change in the same call.** A tool that sets a search query or
+  toggles a filter can keep the list's loading flags in a ref, wait for them to clear, and
+  return the new rows, so the agent doesn't need a second call to see what it did.
+- **Open the dialog for the rest.** For settings that need the user (passwords, leaving an
+  organization, payment), a tool that opens the existing dialog (`open_account_settings`)
+  covers the long tail without putting those actions behind an agent.
 
 ## What the agent sees
 
