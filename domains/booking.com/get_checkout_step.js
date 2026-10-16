@@ -70,7 +70,9 @@
     const detailLines = lines(details);
     const selectedAt = detailLines.indexOf("You selected");
     const units = details ? [...details.querySelectorAll("li")].map(li => text(li)).filter(Boolean).slice(0, 20) : [];
-    const summaryLines = lines(container(priceHeading, 3));
+    let summary = totalEl;
+    while (summary.parentElement && !summary.contains(priceHeading)) summary = summary.parentElement;
+    const summaryLines = lines(summary);
     const totalAt = summaryLines.indexOf("Total");
     const value = Number(totalEl.getAttribute("data-value"));
     const currency = totalEl.getAttribute("data-currency");

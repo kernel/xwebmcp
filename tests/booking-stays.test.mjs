@@ -898,6 +898,7 @@ test("select_room selects one room of the exact rate and schedules the reserve b
   assert.equal(output.taxes_and_fees_excluded, "6 % VAT, € 4 City tax per person per night");
   assert.equal(output.signed_in, false);
   assert.equal(output.next_tool, "get_checkout_step");
+  assert.equal("next_step" in output, false, "the destination is not confirmed when the tool settles");
   assert.equal(calls.length, 0);
   assert.equal(env.live.querySelector(`select[name="nr_rooms_${SELECT.rate_id}"]`).value, "1");
   assert.ok([...env.live.querySelectorAll("select")].filter(s => s.getAttribute("name") !== `nr_rooms_${SELECT.rate_id}`).every(s => s.value === "0"));
@@ -999,6 +1000,13 @@ test("get_checkout_step reads the details step: dates, selection, total and pric
   });
   assert.equal(calls.length, 0);
   assert.equal((await run("get_checkout_step", undefined, { start: "https://secure.booking.com/book.html", liveHtml: checkoutPage({ step: "other" }) })).output.step, "other");
+});
+
+test("get_checkout_step reads the price notes when the summary also shows a discount", async () => {
+  const page = checkoutPage().replace("<div><div><h2>Your price summary</h2></div>", "<div><div><div><h2>Your price summary</h2></div><div><div>Original price</div><div>$380.83</div></div><div><div>Limited-time Deal</div></div></div>");
+  const { output } = await run("get_checkout_step", {}, { start: "https://secure.booking.com/book.html", liveHtml: page });
+  assert.equal(output.total, 397.97);
+  assert.deepEqual(output.price_notes, ["Includes taxes and fees", "In property currency: € 355.30"]);
 });
 
 test("get_checkout_step refuses other pages, input and unreadable checkout pages", async () => {

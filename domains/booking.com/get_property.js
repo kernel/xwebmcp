@@ -109,7 +109,7 @@
                         type: "object", additionalProperties: false,
                         required: ["rate_id", "comparison_rank", "max_guests", "max_adults", "price", "cancellation", "free_cancellation", "non_refundable", "prepayment", "meal_plan", "member_discount"],
                         properties: {
-                          rate_id: { type: ["string", "null"], description: "The row's data-block-id, for prepare_booking on the same dated property page. Not a reservation, persistent quote or approval token." },
+                          rate_id: { type: ["string", "null"], description: "The row's data-block-id, for select_room on the same dated property page. Null for rows without a Booking.com rate id, such as partner offers; select_room cannot select those." },
                           comparison_rank: { type: "integer", minimum: 1, description: "Global rank across returned rooms, under query.sort; equal prices keep page order." },
                           max_guests: { type: ["integer", "null"], description: "The page's 'Max. people' for this rate (shown when the search has no children)." },
                           max_adults: { type: ["integer", "null"], description: "The page's 'Max adults' for this rate (shown when the search has children)." },

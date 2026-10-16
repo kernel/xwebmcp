@@ -18,7 +18,7 @@
       oneOf: [
         {
           type: "object", additionalProperties: false,
-          required: ["status", "property_id", "rate_id", "room_id", "room_name", "check_in", "check_out", "adults", "children", "rooms", "currency", "displayed_total", "taxes_and_fees_excluded", "cancellation", "signed_in", "next_step", "next_tool"],
+          required: ["status", "property_id", "rate_id", "room_id", "room_name", "check_in", "check_out", "adults", "children", "rooms", "currency", "displayed_total", "taxes_and_fees_excluded", "cancellation", "signed_in", "next_tool"],
           properties: {
             status: { const: "navigation_scheduled", description: "\"I'll reserve\" is pressed right after this result; the outcome is read with get_checkout_step." },
             property_id: { type: "string" }, rate_id: { type: "string" }, room_id: { type: "string" }, room_name: { type: "string", maxLength: 300 },
@@ -28,7 +28,7 @@
             taxes_and_fees_excluded: { type: ["string", "null"], maxLength: 600, description: "Fees the property page lists as not included in displayed_total, or null." },
             cancellation: { type: ["string", "null"], maxLength: 600 },
             signed_in: { type: ["boolean", "null"] },
-            next_step: { const: "your_details" }, next_tool: { const: "get_checkout_step" }
+            next_tool: { const: "get_checkout_step", description: "Call it after listing tools again, once the tab has left the property page; the press and its outcome are not confirmed by this result." }
           }
         },
         {
@@ -112,7 +112,7 @@
       taxes_and_fees_excluded: excluded ? text(excluded).replace(/^Excluded:\s*/i, "") : /^\+/.test(under) ? under.replace(/^\+\s*/, "") : null,
       cancellation: text(conditions?.querySelector('[data-testid="cancellation-policy"] [data-testid="policy-title"]')) || null,
       signed_in: profile === signIn ? null : profile,
-      next_step: "your_details", next_tool: "get_checkout_step"
+      next_tool: "get_checkout_step"
     };
   }
 }]
