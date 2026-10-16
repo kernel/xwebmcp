@@ -9,7 +9,7 @@ import {chromium, waitFor} from './chromium.mjs';
 import {channelId, videoId, playlistId, token, html, script, response} from './youtube-fixture.mjs';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
-const names = ['get_channel', 'get_playlist', 'get_transcript', 'get_video', 'list_channel_videos', 'search', 'subscribe_channel'];
+const names = ['get_channel', 'get_playlist', 'get_transcript', 'get_video', 'list_channel_videos', 'search', 'set_subscription'];
 const sources = await Promise.all(names.map(name => readFile(new URL(`../../domains/youtube.com/${name}.js`, import.meta.url), 'utf8')));
 const batch = `[${sources.map(source => `...(${source})`).join(',')}]`;
 const policies = {
@@ -107,10 +107,10 @@ test('stored page tools register through CSP/Trusted Types without changing kind
           const transcript = await invoke(entries, 'get_transcript', {video_id: videoId, limit: 2});
           assert.equal(transcript.segments.length, 2); assert.equal(transcript.next_offset, 2);
           await browser.evaluate(session, `history.pushState(null,'','/channel/${channelId}/videos');fixture.config.LOGGED_IN=true`);
-          const input = {channel_id: channelId};
-          const subscribed = await invoke(entries, 'subscribe_channel', input);
+          const input = {channel_id: channelId, subscribed: true};
+          const subscribed = await invoke(entries, 'set_subscription', input);
           assert.equal(subscribed.status, 'observed'); assert.equal(subscribed.persistence_confirmed, false);
-          assert.equal((await invoke(entries, 'subscribe_channel', input)).action_attempted, false);
+          assert.equal((await invoke(entries, 'set_subscription', input)).action_attempted, false);
           assert.equal(await browser.evaluate(session, 'fixture.clicks'), 1);
           for (const name of names) await invoke(entries, name, {});
           const native = entries.find(entry => !entry.source.custom && entry.tool.name === 'search');

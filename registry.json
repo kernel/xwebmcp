@@ -3644,8 +3644,8 @@
     },
     {
       "domain": "youtube.com",
-      "tool": "subscribe_channel",
-      "file": "domains/youtube.com/subscribe_channel.js",
+      "tool": "set_subscription",
+      "file": "domains/youtube.com/set_subscription.js",
       "kind": "page",
       "namespace": "youtube.com",
       "url_patterns": [
@@ -3654,7 +3654,7 @@
       "url_patterns_reason": "Narrowed to www.youtube.com: it serves the main YouTube web app whose same-origin youtubei endpoints and page layout the tools use; other youtube.com hosts are separate products (music., studio., tv., m.) with different clients and layouts.",
       "status": "draft",
       "last_verified": null,
-      "notes": "Subscribes the signed-in account to the channel whose page is open, with at most one press of its Subscribe button; reports the Subscribed state the page shows (persistence_confirmed false). An uncertain attempt blocks further presses for that channel in the document. Independent QA on 2026-10-16 checked signed-out login_required, wrong_page and wrong_channel live with no press. Not verified signed in: the signed-out channel header does not render the yt-subscribe-button-view-model control this tool presses, and no test account was available to observe the signed-in header."
+      "notes": "Subscribes the signed-in account to, or unsubscribes it from, the channel whose page is open: one press of Subscribe, or Subscribed, Unsubscribe and YouTube's confirmation. Reports the state the page shows (persistence_confirmed false); an uncertain attempt blocks further presses for that channel in the document. English channel header only."
     }
   ]
 }

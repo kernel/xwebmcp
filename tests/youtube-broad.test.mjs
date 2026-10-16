@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import { runInNewContext } from "node:vm";
 import test from "node:test";
 
-const names = ["get_channel", "list_channel_videos", "get_playlist", "get_transcript", "subscribe_channel"];
+const names = ["get_channel", "list_channel_videos", "get_playlist", "get_transcript", "set_subscription"];
 const sources = Object.fromEntries(names.map(n => [n, readFileSync(new URL(`../domains/youtube.com/${n}.js`, import.meta.url), "utf8")]));
 const channel = "UC" + "x".repeat(22), other = "UC" + "y".repeat(22), video = "vid00000001", playlist = "PLexample00000001", token = "EXAMPLECONTINUATION0123456789", pageToken = "EXAMPLECALLERTOKEN0123456789";
 const plain = x => JSON.parse(JSON.stringify(x));
@@ -246,15 +246,18 @@ test("transcript: invalid and null pagination rejected before DOM access", async
   }
 });
 
-const actionInput = { channel_id: channel };
+const actionInput = { channel_id: channel, subscribed: true };
+const unsubscribeInput = { channel_id: channel, subscribed: false };
 function action(options = {}) {
-  let label = options.subscribed ? "Subscribed" : "Subscribe", clicked = 0, now = 0;
+  let label = options.subscribed ? "Subscribed" : "Subscribe", clicked = 0, now = 0, menuOpen = false, dialogOpen = false;
   const config = { LOGGED_IN: true, USER_ACCOUNT_NAME: "Fabricated Account", SESSION_INDEX: "0", ...options.config };
   const location = { origin: "https://www.youtube.com", pathname: options.path || "/channel/" + channel, href: "https://www.youtube.com" + (options.path || "/channel/" + channel) };
   const makeElement = (channelId = options.wrongTarget ? other : channel) => {
     const button = { get textContent() { return label; }, disabled: !!options.disabled, click() {
       clicked++;
       if (options.abort) options.signal.aborted = true;
+      // Subscribed opens the menu with Unsubscribe; Subscribe subscribes.
+      if (label.startsWith("Subscribed")) { menuOpen = true; return; }
       if (!options.unknown) label = "Subscribed";
       if (options.switchAccount) config.SESSION_INDEX = "1";
       if (options.switchPage) { location.pathname = "/watch"; location.href = "https://www.youtube.com/watch?v=" + video; }
@@ -263,15 +266,44 @@ function action(options = {}) {
       if (options.replaceHeaderSubscribed) { replaceHeader(); label = "Subscribed"; }
       if (options.replaceHeaderOther) { replaceHeader(other); label = "Subscribed"; }
     } };
-    return { isConnected: true, data: { channelId, subscribeButtonContent: { onTapCommand: { innertubeCommand: { commandMetadata: { webCommandMetadata: { apiUrl: "/youtubei/v1/subscription/subscribe" } }, subscribeEndpoint: { channelIds: [options.wrongCommand ? other : channel] } } } } }, getClientRects: () => [1], querySelector: () => button };
+    return { isConnected: true, data: { channelId, unsubscribeButtonContent: {}, subscribeButtonContent: { onTapCommand: { innertubeCommand: { commandMetadata: { webCommandMetadata: { apiUrl: "/youtubei/v1/subscription/subscribe" } }, subscribeEndpoint: { channelIds: [options.wrongCommand ? other : channel] } } } } }, getClientRects: () => [1], querySelector: () => button };
   };
   let element = makeElement();
   const replaceHeader = channelId => { element.isConnected = false; label = "Subscribe"; element = makeElement(channelId); };
-  const document = { querySelectorAll: () => [element], querySelector: () => ({ data: { metadata: { channelMetadataRenderer: { externalId: channel, vanityChannelUrl: options.vanity || "http://www.youtube.com/@fabricated" } } } }) };
-  const h = harness("subscribe_channel", { config, signal: options.signal, document, globals: { location, Date: { now: () => now += 1000 }, setTimeout: f => f() } });
+  const confirmButton = { textContent: "Unsubscribe", click() { clicked++; dialogOpen = false; if (options.abort) options.signal.aborted = true; if (!options.unknown) label = "Subscribe"; } };
+  const dialog = { tagName: "YT-CONFIRM-DIALOG-RENDERER", textContent: "Unsubscribe from " + (options.otherDialog ? "Another Channel" : "Fabricated Channel") + "? Cancel Unsubscribe", getClientRects: () => [1], querySelectorAll: () => [{ textContent: "Cancel", click() {} }, confirmButton] };
+  const menuItem = { tagName: "YT-LIST-ITEM-VIEW-MODEL", textContent: "Unsubscribe", getClientRects: () => [1], querySelector: () => ({ click() { menuOpen = false; if (!options.noDialog) dialogOpen = true; } }) };
+  const document = {
+    querySelectorAll: selector => selector === "tp-yt-iron-dropdown yt-list-item-view-model" ? (menuOpen ? [menuItem] : []) : selector === "yt-confirm-dialog-renderer" ? (dialogOpen ? [dialog] : []) : [element],
+    querySelector: () => ({ data: { metadata: { channelMetadataRenderer: { externalId: channel, title: "Fabricated Channel", vanityChannelUrl: options.vanity || "http://www.youtube.com/@fabricated" } } } })
+  };
+  const h = harness("set_subscription", { config, signal: options.signal, document, globals: { location, Date: { now: () => now += 1000 }, setTimeout: f => f() } });
   return { ...h, clicks: () => clicked, pending: () => !!document[Symbol.for("xwebmcp.youtube.pendingSubscriptions")]?.size, replaceHeader, location };
 }
 test("subscribe: mocked UI postcondition, not server persistence", async () => { const h = action(); const o = await h.run(actionInput); assert.equal(o.status, "observed"); assert.equal(o.persistence_confirmed, false); assert.equal(o.action_attempted, true); assert.equal(h.clicks(), 1); assert.equal((await h.run(actionInput)).action_attempted, false); assert.equal(h.clicks(), 1); });
+test("unsubscribe: presses Subscribed, chooses Unsubscribe and confirms the dialog for this channel", async () => {
+  const h = action({ subscribed: true });
+  const o = await h.run(unsubscribeInput);
+  assert.deepEqual([o.status, o.action_attempted, o.subscription_state, o.persistence_confirmed], ["observed", true, "unsubscribed", false]);
+  assert.equal(h.clicks(), 2, "the Subscribed button and the confirmation");
+  assert.equal(h.pending(), false);
+  assert.equal((await h.run(unsubscribeInput)).action_attempted, false);
+  assert.equal(h.clicks(), 2);
+  assert.equal((await action().run(unsubscribeInput)).action_attempted, false, "already unsubscribed is a no-op");
+});
+test("unsubscribe: a missing or foreign confirmation changes nothing", async () => {
+  for (const options of [{ noDialog: true }, { otherDialog: true }]) {
+    const h = action({ subscribed: true, ...options });
+    assert.equal((await h.run(unsubscribeInput)).error_kind, "blocked");
+    assert.equal(h.clicks(), 1, "only the Subscribed button, never a confirmation");
+    assert.equal(h.pending(), false);
+  }
+});
+test("unsubscribe: an unconfirmed outcome keeps the guard", async () => {
+  const h = action({ subscribed: true, unknown: true });
+  assert.equal((await h.run(unsubscribeInput)).error_kind, "outcome_unknown");
+  assert.equal(h.pending(), true);
+});
 test("subscribe: already subscribed is no-op", async () => { const h = action({ subscribed: true }); assert.equal((await h.run(actionInput)).action_attempted, false); assert.equal(h.clicks(), 0); });
 for (const [options, kind] of [[{ config: { LOGGED_IN: false } }, "login_required"], [{ wrongTarget: true }, "wrong_channel"], [{ wrongCommand: true }, "blocked"], [{ disabled: true }, "blocked"], [{ signal: { aborted: true } }, "canceled"]]) test(`subscribe guard: ${kind}`, async () => { const h = action(options); assert.equal((await h.run(actionInput)).error_kind, kind); assert.equal(h.clicks(), 0); });
 test("subscribe: unknown, account switch and post-click cancellation never retry", async () => {
@@ -315,5 +347,5 @@ test("subscribe: concurrent mocked actions fail closed", async () => {
   assert.equal(h.clicks(), 1);
 });
 test("subscribe: fake confirmation and invalid identifiers rejected", async () => {
-  for (const input of [{ ...actionInput, confirmed: true }, { ...actionInput, channel_id: "bad" }, { ...actionInput, expected_account_label: "Fabricated Account" }, {}]) { const h = action(); assert.equal((await h.run(input)).error_kind, "invalid_input"); assert.equal(h.clicks(), 0); }
+  for (const input of [{ ...actionInput, confirmed: true }, { ...actionInput, channel_id: "bad" }, { ...actionInput, expected_account_label: "Fabricated Account" }, { channel_id: channel }, { ...actionInput, subscribed: "yes" }, {}]) { const h = action(); assert.equal((await h.run(input)).error_kind, "invalid_input"); assert.equal(h.clicks(), 0); }
 });

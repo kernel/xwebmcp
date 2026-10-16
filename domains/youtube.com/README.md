@@ -8,4 +8,4 @@
 | get_video | Reads one video's or Short's public metadata: title, description, uploader, publish date, duration, counts and chapters. |
 | list_channel_videos | Lists one page of a public channel's Videos or Shorts tab, with a token for the next page. |
 | search | Searches YouTube and returns one page of typed video, Short, channel and playlist results with the site's filters. |
-| subscribe_channel | Subscribes the signed-in account to the channel whose page is open, with one click, and reports the state the page shows. |
+| set_subscription | Subscribes the signed-in account to, or unsubscribes it from, the channel whose page is open, and reports the state the page shows. |
