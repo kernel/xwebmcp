@@ -307,6 +307,14 @@ test("unsubscribe: a second call while the first waits for the menu presses noth
   assert.deepEqual([first.status, second.error_kind], ["observed", "busy"]);
   assert.equal(h.clicks(), 2, "one Subscribed press and one confirmation");
 });
+test("subscribe: a second call while the first waits for the new state is busy, not unresolved", async () => {
+  const h = action({ unknown: true });
+  let now = 0;
+  const slow = harness("set_subscription", { config: { LOGGED_IN: true, SESSION_INDEX: "0" }, document: h.document, globals: { location: h.location, Date: { now: () => now += 100 }, setTimeout: (f, ms) => globalThis.setTimeout(f, Math.min(ms, 2)) } });
+  const [first, second] = await Promise.all([slow.run(actionInput), new Promise(resolve => globalThis.setTimeout(resolve, 3)).then(() => slow.run(actionInput))]);
+  assert.deepEqual([first.error_kind, second.error_kind], ["outcome_unknown", "busy"]);
+  assert.equal(h.clicks(), 1);
+});
 test("unsubscribe: an unconfirmed outcome keeps the guard", async () => {
   const h = action({ subscribed: true, unknown: true });
   assert.equal((await h.run(unsubscribeInput)).error_kind, "outcome_unknown");

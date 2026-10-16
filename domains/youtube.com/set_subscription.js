@@ -64,10 +64,10 @@
     const subscribed = (control = element) => /^Subscribed(?:\s|$)/.test(labelOf(control));
     const pending = document[Symbol.for("xwebmcp.youtube.pendingSubscriptions")] ??= new Set();
     const pendingKey = account + ":" + input.channel_id;
-    if (pending.has(pendingKey)) return fail("outcome_unknown", "A previous attempt in this document is unresolved. Inspect manually; do not retry automatically.");
-    // Unsubscribing waits for a menu and a dialog; a second call meanwhile must not press again.
+    // A call still running (waiting for YouTube's menu, dialog or new state) is busy, not unresolved.
     const busy = document[Symbol.for("xwebmcp.youtube.subscriptionsInProgress")] ??= new Set();
     if (busy.has(pendingKey)) return fail("busy", "Another set_subscription call for this channel is still running in this page. Nothing was changed.");
+    if (pending.has(pendingKey)) return fail("outcome_unknown", "A previous attempt in this document is unresolved. Inspect manually; do not retry automatically.");
     const observed = attempted => ({ status: "observed", channel_id: input.channel_id, action_attempted: attempted, subscription_state: input.subscribed ? "subscribed" : "unsubscribed", persistence_confirmed: false });
     if (subscribed() === input.subscribed) return observed(false);
     const visible = selector => [...document.querySelectorAll(selector)].filter(x => x.getClientRects().length);

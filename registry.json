@@ -3652,9 +3652,12 @@
         "https://www.youtube.com/*"
       ],
       "url_patterns_reason": "Narrowed to www.youtube.com: it serves the main YouTube web app whose same-origin youtubei endpoints and page layout the tools use; other youtube.com hosts are separate products (music., studio., tv., m.) with different clients and layouts.",
-      "status": "draft",
-      "last_verified": null,
-      "notes": "Subscribes the signed-in account to, or unsubscribes it from, the channel whose page is open: one press of Subscribe, or Subscribed, Unsubscribe and YouTube's confirmation. Reports the state the page shows (persistence_confirmed false); an uncertain attempt blocks further presses for that channel in the document. English channel header only."
+      "status": "qa_passed",
+      "last_verified": "2026-10-16",
+      "notes": "Subscribes the signed-in account to, or unsubscribes it from, the channel whose page is open: one press of Subscribe, or Subscribed, Unsubscribe and YouTube's confirmation for this channel. Reports the state the page shows (persistence_confirmed false); a second call while one is running is busy, and an uncertain attempt blocks further presses for that channel in the document. Independent QA on 2026-10-16 ran it live in a signed-in session on Lofi Girl via /@LofiGirl, /@lofigirl and /channel/<id>: subscribe, no-op, unsubscribe with the confirmation, reload checks, overlapping unsubscribes (busy), wrong channel, wrong page and invalid input, plus signed-out login_required; the account was left as found. The final busy-before-unresolved check order is the reviewer's own fix, checked by fixture. English channel header only.",
+      "provenance": {
+        "qa_agent": "agt_3f71312cec739d8ec9a3"
+      }
     }
   ]
 }
