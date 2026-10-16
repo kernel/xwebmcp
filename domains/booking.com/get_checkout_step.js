@@ -64,7 +64,7 @@
     const heading = re => [...document.querySelectorAll("h1, h2, h3, div")].find(h => !h.children.length && re.test(h.textContent || ""));
     const container = (h, min) => { let c = h; while (c && c.parentElement && lines(c).length < min) c = c.parentElement; return c; };
     // A visible line with exactly this text; the partner page also hides a date picker with the same labels.
-    const label = re => [...document.body.querySelectorAll("div, span, strong, h3")].find(e => !e.children.length && re.test(text(e) || "") && e.getClientRects().length);
+    const label = re => [...document.body.querySelectorAll("div, span, strong, h3, li")].find(e => !e.children.length && re.test(text(e) || "") && e.getClientRects().length);
 
     const priceHeading = heading(/^\s*Your price summary\s*$/i);
     const detailsHeading = heading(/^\s*Your booking details\s*$/i);
@@ -131,32 +131,40 @@
     // The text of an element as the lines a reader sees: inline text (bare or in spans, strong, links) stays in one
     // line, and each block element starts a new one.
     const INLINE = new Set(["SPAN", "STRONG", "B", "EM", "I", "A", "SMALL", "LABEL", "TIME", "SUP", "SUB"]);
+    // Hidden copies, scripts and the payment section's own question are not part of an answer.
+    const skipped = n => n.nodeType !== 1 || ["SCRIPT", "STYLE", "TEMPLATE", "BR"].includes(n.tagName) || n.hasAttribute("hidden") || n.getAttribute("data-testid") === "payment-timing-header" || /display:\s*none/.test(n.getAttribute("style") || "");
     const blocks = el => {
       const out = [];
       let line = "";
       const walk = node => {
         for (const n of node.childNodes) {
-          if (n.nodeType === 3) line += " " + (n.textContent || "");
-          else if (n.nodeType !== 1 || ["SCRIPT", "STYLE", "TEMPLATE"].includes(n.tagName)) continue;
-          else if (INLINE.has(n.tagName)) walk(n);
+          if (n.nodeType === 3) line += n.textContent || "";
+          else if (skipped(n)) continue;
+          // Separate inline elements by a space: the site often styles adjacent spans as separate lines.
+          else if (INLINE.has(n.tagName)) { line += " "; walk(n); line += " "; }
           else { out.push(line); line = ""; walk(n); out.push(line); line = ""; }
         }
       };
-      if (el) walk(el);
+      if (el && !(el.nodeType === 1 && skipped(el))) el.nodeType === 3 ? (line = el.textContent || "") : walk(el);
       out.push(line);
       return out.map(l => l.replace(/\s+/g, " ").replace(/\s+([,.;:!?])/g, "$1").trim()).filter(Boolean);
     };
-    const sentences = list => list.map((l, i) => i < list.length - 1 && !/[.!?]$/.test(l) ? l + "." : l).join(" ");
+    const sentences = list => list.map((l, i) => i < list.length - 1 && /[\p{L}\p{N})"'”’]$/u.test(l) ? l + "." : l).join(" ");
     // The radio's own label (wrapping it, or bound by for=; the live page puts each label beside its radio), or its
     // parent when that holds no other option.
-    const option = timing && (timing.closest("label") || (timing.id && document.querySelector('label[for="' + timing.id + '"]')) || (timing.parentElement?.querySelectorAll('input[name="payment-timing"]').length === 1 ? timing.parentElement : null));
+    const alone = el => el && el.querySelectorAll('input[name="payment-timing"]').length <= 1 ? el : null;
+    const option = timing && (alone(timing.closest("label")) || (timing.id && document.querySelector('label[for="' + timing.id + '"]')) || alone(timing.parentElement));
     const paymentTiming = step !== "finish_booking" ? null : sentences(option ? blocks(option) : [text(tid("payment-timing-header")), text(tid("payment-timing-description"))].filter(Boolean)).slice(0, 300) || null;
     // Partner checkouts have no cancellation test ids: read the lines under "How much will it cost to cancel?".
-    const cancelHeading = [...document.body.querySelectorAll("*")].find(e => text(e, 100) === "How much will it cost to cancel?" && ![...e.children].some(c => text(c, 100) === "How much will it cost to cancel?"));
+    const cancelHeading = [...document.body.querySelectorAll("*")].find(e => text(e, 100) === "How much will it cost to cancel?" && ![...e.children].some(c => text(c, 100) === "How much will it cost to cancel?") && e.getClientRects().length);
     // The block right after the heading, or after the heading's own wrapper; never further, so a later section is
     // not read as the policy.
+    // The first non-empty node after the heading (text or block), or after its own wrapper when that block reads as
+    // a cancellation policy; never further, so an unrelated later section is not reported.
+    const after = node => { for (let n = node?.nextSibling; n; n = n.nextSibling) { const found = blocks(n); if (found.length) return found; } return []; };
     const wrapper = cancelHeading?.parentElement;
-    const cancelBlock = blocks(cancelHeading?.nextElementSibling || (wrapper && !/^(?:SECTION|FORM|MAIN)$/.test(wrapper.tagName) ? wrapper.nextElementSibling : null)).slice(0, 10).join(" ").slice(0, 300);
+    const climbed = wrapper && !/^(?:SECTION|FORM|MAIN)$/.test(wrapper.tagName) ? after(wrapper) : [];
+    const cancelBlock = (after(cancelHeading).length ? after(cancelHeading) : /cancel|refund|charge|pay/i.test(climbed.join(" ")) ? climbed : []).slice(0, 10).join(" ").slice(0, 300);
     // Only rendered text: the partner page also carries the sentence as a template in a script.
     const sellerMatch = /Your booking is with (.+?)\. By completing/.exec((document.body.innerText || "").replace(/\s+/g, " "));
     const seller = partnerPage && step === "finish_booking" && sellerMatch && !/[{}]/.test(sellerMatch[1]) ? sellerMatch[1].slice(0, 200) : null;

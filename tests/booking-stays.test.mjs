@@ -1008,6 +1008,20 @@ test("get_checkout_step keeps bare text in payment options and cancellation bloc
   assert.equal((await run("get_checkout_step", {}, { start: CHECKOUT, liveHtml: titled })).output.payment_timing, "Pay when you stay. Your card won’t be charged.");
 });
 
+test("get_checkout_step skips hidden copies, scripts and empty nodes, and reads a partner offer's listed policy", async () => {
+  const final = text => summaryPartnerCheckout().replace("Your Details. Step 2 of 3.", "Confirm your reservation. Step 3 of 3.").replace('<div>How much will it cost to cancel?</div><div><span>Free cancellation before November 11, 2026</span></div>', text);
+  const read = async html => (await run("get_checkout_step", {}, { start: "https://secure.booking.com/tpi_book.html", liveHtml: html })).output.cancellation;
+  assert.equal(await read(final('<div hidden><h3>How much will it cost to cancel?</h3></div><div><h3>How much will it cost to cancel?</h3><div>Cancel by Nov 6 and pay $296</div></div>')), "Cancel by Nov 6 and pay $296", "a hidden duplicate heading");
+  assert.equal(await read(final("<h3>How much will it cost to cancel?</h3><script>var cfg = {a: 1};</script><span class=\"icon\"></span><br><div>Non-refundable.</div>")), "Non-refundable.", "scripts and empty nodes");
+  assert.equal(await read(final("<div><h3>How much will it cost to cancel?</h3>Cancel by Nov 6 and pay $296</div>")), "Cancel by Nov 6 and pay $296", "bare text after the heading");
+  assert.equal(await read(final('<div><div><h3>How much will it cost to cancel?</h3></div><div><div>Need help?</div><div>Call the partner on the number in your email</div></div></div>')), null, "a climbed block that is not a policy");
+  assert.equal(await read(final('<section><div>Partner Offer</div><ul><li>Non-refundable</li><li>Pay in advance</li></ul></section>')), "Non-refundable", "a partner offer lists its policy");
+  const pay = async inner => (await run("get_checkout_step", {}, { start: CHECKOUT, liveHtml: checkoutPage({ step: "final" }).replace("</body>", '<div data-testid="bs3-payment-timing-section">' + inner + "</div></body>") })).output.payment_timing;
+  assert.equal(await pay('<label><input type="radio" name="payment-timing" checked><div>Pay when you stay</div><div hidden>Hidden old copy</div><span style="display:none">Hidden span</span><div>Your card won’t be charged.</div></label>'), "Pay when you stay. Your card won’t be charged.");
+  assert.equal(await pay('<label><input type="radio" name="payment-timing" checked><div>Pay on Nov 4, 2026:</div><div>Booking.com charges your card</div></label>'), "Pay on Nov 4, 2026: Booking.com charges your card");
+  assert.equal(await pay('<div data-testid="payment-timing-header">When do you want to pay?</div><label><div><input type="radio" name="payment-timing"> Pay on Nov 4, 2026</div><div><input type="radio" name="payment-timing" checked> Pay now</div></label>'), "Pay now", "a label around the whole group is not the option");
+});
+
 test("fill_guest_details fills a partner layout's email confirmation, and the partner phone counts as required", async () => {
   const confirm = partnerDetailsForm().replace('<select id="p-cc"', '<label for="p-confirm">Confirm Email Address*</label><input id="p-confirm" type="email" name="emailConfirm"><select id="p-cc"');
   const env = makeEnv({ start: "https://secure.booking.com/tpi_book.html", liveHtml: confirm });
