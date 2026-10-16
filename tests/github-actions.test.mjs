@@ -221,6 +221,16 @@ test("GitHub star tools read the star state from the newer repository page's sta
   assert.deepEqual([starred.output.status, starred.output.changed, starred.clicks], ["ok", true, 1]);
 });
 
+test("GitHub star tools report the repository's canonical name and catch a page loaded before the star changed", async () => {
+  const cased = await run("get_star_status", { owner: "Example-Org", repo: "WIDGETS" }, { path: "/about" });
+  assert.deepEqual([cased.output.full_name, cased.output.url], ["example-org/widgets", "https://github.com/example-org/widgets"]);
+  const stale = await run("set_star", good.set_star, { route: () => ({ body: repoPage({ starred: true }) }), button: b => b.setAttribute("aria-label", "Star example-org/widgets") });
+  assert.equal(stale.output.status, "ok", "the fresh state already matches: no press");
+  const behind = await run("set_star", { ...good.set_star, starred: false }, { route: () => ({ body: repoPage({ starred: true }) }) });
+  assert.equal(behind.output.error_kind, "state_changed");
+  assert.equal(behind.clicks, 0);
+});
+
 test("GitHub set_star fixture success clicks once and verifies a fresh server postcondition", async () => {
   const r = await run("set_star");
   assert.equal(r.output.status, "ok");

@@ -162,14 +162,17 @@
         if (actor !== localActor) return fail("state_changed", "The signed-in account changed since this page loaded; reload the page.");
         const star = readStar(doc);
         if (!star) return fail("site_changed", "GitHub no longer exposes the expected star state.");
-        return star;
+        return { ...star, full_name: meta("octolytics-dimension-repository_nwo") };
       };
       const initial = await lookup();
       if (initial.status === "error") return initial;
-      if (initial.starred === input.starred) return { status: "ok", full_name: fullName, url, previous_starred: initial.starred, starred: initial.starred, changed: false, mutation_attempted: false };
+      const canonical = { full_name: initial.full_name, url: "https://github.com/" + initial.full_name };
+      if (initial.starred === input.starred) return { status: "ok", ...canonical, previous_starred: initial.starred, starred: initial.starred, changed: false, mutation_attempted: false };
       if (!initial.can_star) return fail("blocked", "GitHub says this account cannot star this repository. Nothing was changed.");
       const buttons = Array.from(document.querySelectorAll('button[data-testid="star-button"]'));
       const button = buttons.length === 1 ? buttons[0] : null;
+      // A page loaded before the star changed elsewhere still shows the old button.
+      if (button && button.getAttribute("aria-label")?.toLowerCase() === label(!initial.starred)) return fail("state_changed", "The star changed since this page loaded; reload the page. Nothing was changed.");
       if (!button || button.getAttribute("aria-label")?.toLowerCase() !== label(initial.starred) || button.disabled || button.getAttribute("data-loading") !== "false" || !button.getClientRects().length) return fail("site_changed", "No single ready star button for this repository on the page. Nothing was changed.");
       for (let node = button; node; node = node.parentElement) {
         const style = getComputedStyle(node);
@@ -187,7 +190,7 @@
       }
       const final = await lookup();
       if (final.status === "error" || final.starred !== input.starred) return fail("outcome_unknown", "The button was pressed but GitHub does not report the new state. Read get_star_status before calling again.");
-      return { status: "ok", full_name: fullName, url, previous_starred: initial.starred, starred: final.starred, changed: true, mutation_attempted: true };
+      return { status: "ok", ...canonical, previous_starred: initial.starred, starred: final.starred, changed: true, mutation_attempted: true };
     } catch {
       return fail(attempted ? "outcome_unknown" : signal && signal.aborted ? "canceled" : "unknown", attempted ? "The star outcome is unknown. Read get_star_status before calling again." : "The repository request failed. Nothing was changed.");
     } finally {

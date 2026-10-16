@@ -104,7 +104,6 @@
     const { owner, repo } = input;
     if (typeof owner !== "string" || !/^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})$/.test(owner) || typeof repo !== "string" || !/^(?!\.{1,2}$)[A-Za-z0-9._-]{1,100}$/.test(repo)) return fail("invalid_input", "owner and repo must identify one GitHub repository. Nothing was requested.");
     const fullName = owner + "/" + repo;
-    const url = "https://github.com/" + fullName;
 
     if (location.origin !== "https://github.com") return fail("wrong_page", "Open github.com in this tab. Nothing was requested.");
     if (signal && signal.aborted) return fail("canceled", "Canceled before any request.");
@@ -137,7 +136,8 @@
       };
       const star = readStar(doc);
       if (!star) return fail("site_changed", "GitHub no longer exposes the expected star state.");
-      return { status: "ok", full_name: fullName, url, starred: star.starred, can_star: star.can_star };
+      const canonical = meta("octolytics-dimension-repository_nwo");
+      return { status: "ok", full_name: canonical, url: "https://github.com/" + canonical, starred: star.starred, can_star: star.can_star };
 
     } catch {
       return fail(signal && signal.aborted ? "canceled" : "unknown", "The read failed; no action was submitted.");
