@@ -618,6 +618,15 @@ test("get_video rejects malformed input and foreign URLs before any request", as
   assert.equal(h.calls.length, 0);
 });
 
+test("get_video nulls the length of a past live stream whose recording is gone", async () => {
+  const gone = await harness("get_video", { player: playerBody(vid(1), { top: { playabilityStatus: { status: "UNPLAYABLE", reason: "This live stream recording is not available." } }, details: { isLiveContent: true, lengthSeconds: "121601512" } }) }).ok({ video: vid(1) });
+  assert.equal(gone.status, "ok");
+  assert.equal(gone.duration_seconds, null);
+  assert.match(gone.warnings.join(" "), /recording is not available/);
+  const other = await harness("get_video", { player: playerBody(vid(1), { details: { isLiveContent: true, lengthSeconds: "3600" } }) }).ok({ video: vid(1) });
+  assert.equal(other.duration_seconds, 3600);
+});
+
 test("get_video reports live, upcoming and Short metadata without inventing a duration", async () => {
   const live = harness("get_video", { player: playerBody(vid(1), { details: { isLive: true, isLiveContent: true, lengthSeconds: "0" } }) });
   const liveOut = await live.ok({ video: vid(1) });

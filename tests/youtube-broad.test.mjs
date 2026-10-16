@@ -230,7 +230,7 @@ function action(options = {}) {
   };
   let element = makeElement();
   const replaceHeader = channelId => { element.isConnected = false; label = "Subscribe"; element = makeElement(channelId); };
-  const document = { querySelectorAll: () => [element], querySelector: () => ({ data: { metadata: { channelMetadataRenderer: { externalId: channel, vanityChannelUrl: options.vanity || "https://www.youtube.com/@fabricated" } } } }) };
+  const document = { querySelectorAll: () => [element], querySelector: () => ({ data: { metadata: { channelMetadataRenderer: { externalId: channel, vanityChannelUrl: options.vanity || "http://www.youtube.com/@fabricated" } } } }) };
   const h = harness("subscribe_channel", { config, signal: options.signal, document, globals: { location, Date: { now: () => now += 1000 }, setTimeout: f => f() } });
   return { ...h, clicks: () => clicked, pending: () => !!document[Symbol.for("xwebmcp.youtube.pendingSubscriptions")]?.size, replaceHeader, location };
 }
@@ -270,6 +270,7 @@ test("subscribe: channel routes and handles must attest the requested identity",
     const h = action(options); assert.equal((await h.run(actionInput)).error_kind, "wrong_channel"); assert.equal(h.clicks(), 0);
   }
   assert.equal((await action({ path: "/@fabricated/videos" }).run(actionInput)).status, "observed");
+  assert.equal((await action({ path: "/@fabricated", vanity: "https://www.youtube.com/@fabricated" }).run(actionInput)).status, "observed");
 });
 test("subscribe: concurrent mocked actions fail closed", async () => {
   const h = action({ unknown: true });

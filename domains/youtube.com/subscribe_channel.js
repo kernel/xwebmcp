@@ -48,7 +48,8 @@
       if (routeId) return true;
       let vanity;
       try { vanity = new URL(metadata.vanityChannelUrl); } catch { return false; }
-      return vanity.origin === "https://www.youtube.com" && vanity.pathname === initialPath.split("/").slice(0, 2).join("/");
+      // The page's metadata gives this URL with http://, so only the host and path are compared.
+      return vanity.hostname === "www.youtube.com" && vanity.pathname === initialPath.split("/").slice(0, 2).join("/");
     };
     // Before the click, the control must be the one observed at the start.
     const targetMatches = () => {

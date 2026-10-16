@@ -144,7 +144,10 @@
     const meta = player.json.microformat?.playerMicroformatRenderer || {};
     const isLive = details.isLive === true;
     const isUpcoming = details.isUpcoming === true;
-    const length = count(details.lengthSeconds);
+    // A past live stream whose recording YouTube no longer serves reports the whole broadcast span as its length.
+    const recordingGone = details.isLiveContent === true && !isLive && !isUpcoming && status !== "OK" && /recording is not available/i.test(reason || "");
+    const length = recordingGone ? null : count(details.lengthSeconds);
+    if (recordingGone) warnings.push("YouTube says this past live stream's recording is not available, so duration_seconds is null.");
     const description = typeof details.shortDescription === "string" ? details.shortDescription.replace(/\r\n?/g, "\n").replace(/[\u0000-\u0008\u000b-\u001f\u007f-\u009f]+/g, " ").trim() : "";
     const allKeywords = (Array.isArray(details.keywords) ? details.keywords : []).map(k => clean(k, 100)).filter(Boolean);
     const keywords = allKeywords.slice(0, 25);

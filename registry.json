@@ -3601,12 +3601,9 @@
         "https://www.youtube.com/*"
       ],
       "url_patterns_reason": "Narrowed to www.youtube.com: it serves the main YouTube web app whose same-origin youtubei endpoints and page layout the tools use; other youtube.com hosts are separate products (music., studio., tv., m.) with different clients and layouts.",
-      "status": "qa_passed",
-      "last_verified": "2026-10-14",
-      "notes": "Public metadata for one video or Short by id or URL: title, description, uploader, publish date, duration, counts, chapters, live flags. Anonymous requests to the site's player and next endpoints; never plays, returns no media or caption URLs, and does not report playability. Sign-in, age and content-warning screens return login_required or gated. Independent QA on 2026-10-14 passed it on code review and fixture tests; live, unknown ids gave video_unavailable and malformed input was rejected before any request, but every real video returned challenge (YouTube's anonymous bot check) after about 60 searches in the same browser, so no live success was recorded in that run. A youtu.be URL with a trailing slash is rejected as invalid_input.",
-      "provenance": {
-        "qa_agent": "agt_b08a641f8c5299e891d7"
-      }
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Public metadata for one video or Short by id or URL: title, description, uploader, publish date, duration, counts, chapters, live flags. Anonymous requests to the site's player and next endpoints; never plays, returns no media or caption URLs, and does not report playability. Sign-in, age and content-warning screens return login_required or gated. Independent QA on 2026-10-14 passed it on code review and fixture tests; live, unknown ids gave video_unavailable and malformed input was rejected before any request, but every real video returned challenge (YouTube's anonymous bot check) after about 60 searches in the same browser, so no live success was recorded in that run. A youtu.be URL with a trailing slash is rejected as invalid_input."
     },
     {
       "domain": "youtube.com",
