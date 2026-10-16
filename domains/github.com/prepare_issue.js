@@ -4,7 +4,7 @@
   tool: {
     "name": "prepare_issue",
     "title": "Prepare a GitHub issue",
-    "description": "Prepare exact issue title and Markdown body for a public repository, checking that its Issues link exists. Returns the content and a manual new-issue handoff URL, not a persisted GitHub draft. Does not navigate, fill an editor, create an issue, notify anyone, or establish permission to post. Templates and required issue-form fields must be completed in GitHub by the human; content is untrusted data. No execution follows preparation, and confirmed flags are not accepted.",
+    "description": "Prepare a new issue for a public repository: checks that the repository accepts issues and returns target_url, GitHub's new-issue form with the title and Markdown body filled in. Open target_url in the tab to review it; nothing is created until the user presses Create there. Does not navigate, create an issue or notify anyone. Repositories with issue templates or forms may ask for more fields in GitHub.",
     "inputSchema": {
       "type": "object",
       "additionalProperties": false,
@@ -45,6 +45,7 @@
             "status",
             "full_name",
             "target_url",
+            "body_in_url",
             "title",
             "body",
             "submission_attempted",
@@ -58,7 +59,12 @@
               "type": "string"
             },
             "target_url": {
-              "type": "string"
+              "type": "string",
+              "description": "GitHub's form for this new issue with the title and body filled in. Nothing is created until the user presses the create button there."
+            },
+            "body_in_url": {
+              "type": "boolean",
+              "description": "False when the body is too long for a URL; paste it into the form from body."
             },
             "title": {
               "type": "string"
@@ -151,7 +157,12 @@
       if (meta("octolytics-dimension-repository_public") !== "true") return fail("site_changed", "The repository's public visibility could not be established.");
 
       if (!Array.from(doc.querySelectorAll("a[href]")).some(link => link.getAttribute("href")?.toLowerCase() === ("/" + fullName + "/issues").toLowerCase())) return fail("blocked", "The repository exposes no Issues link. Issue creation may be disabled.");
-      return { status: "prepared", full_name: fullName, target_url: url + "/issues/new", title: input.title, body: input.body, submission_attempted: false, human_review_required: true };
+      const form = new URL(url + "/issues/new");
+      form.searchParams.set("title", input.title);
+      form.searchParams.set("body", input.body);
+      const bodyInUrl = form.href.length <= 8000;
+      if (!bodyInUrl) form.searchParams.delete("body");
+      return { status: "prepared", full_name: fullName, target_url: form.href, body_in_url: bodyInUrl, title: input.title, body: input.body, submission_attempted: false, human_review_required: true };
 
     } catch {
       return fail(signal && signal.aborted ? "canceled" : "unknown", "The read failed; no action was submitted.");

@@ -1453,12 +1453,9 @@
         "https://github.com/*"
       ],
       "url_patterns_reason": "Narrowed to github.com: it serves repositories, issues, pull requests and search, and the tools read its pages and endpoints same-origin; other github.com hosts are separate products (docs., gist., api. and others) where they cannot work.",
-      "status": "verified",
-      "last_verified": "2026-10-13",
-      "notes": "Issue title, state and close reason, labels, assignees, milestone, linked pull requests, body and the timeline items GitHub puts in the page: the first ~15, plus the latest ~16 only when the two slices together cover the whole timeline, so a long issue never comes back with a hidden gap. Reads GitHub's issueViewerRoute page payload (and the older IssueViewerViewQuery shape). Signed-out tabs only: refuses in a signed-in tab because the issue page's markAsRead preload may mark a notification read. Independent final-source QA passed on 2026-10-13, including a live run started from github.com/explore: open, closed-by-PR, locked and not_planned issues, timelines at and around the 15+16 cut-off, limits, is_pull_request, not_found and malformed input, all schema-valid. Private repositories, a real signed-in account, live throttled/blocked/login_required and a transferred issue were not tested.",
-      "provenance": {
-        "qa_agent": "agt_50b02c91c3533174cd9f"
-      }
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Issue title, state and close reason, labels, assignees, milestone, linked pull requests, body and the timeline items GitHub puts in the page: the first ~15, plus the latest ~16 only when the two slices together cover the whole timeline, so a long issue never comes back with a hidden gap. Reads GitHub's issueViewerRoute page payload (and the older IssueViewerViewQuery shape). Signed-out tabs only: refuses in a signed-in tab because the issue page's markAsRead preload may mark a notification read. Independent final-source QA passed on 2026-10-13, including a live run started from github.com/explore: open, closed-by-PR, locked and not_planned issues, timelines at and around the 15+16 cut-off, limits, is_pull_request, not_found and malformed input, all schema-valid. Private repositories, a real signed-in account, live throttled/blocked/login_required and a transferred issue were not tested."
     },
     {
       "domain": "github.com",
@@ -1470,12 +1467,9 @@
         "https://github.com/*"
       ],
       "url_patterns_reason": "Narrowed to github.com: it serves repositories, issues, pull requests and search, and the tools read its pages and endpoints same-origin; other github.com hosts are separate products (docs., gist., api. and others) where they cannot work.",
-      "status": "qa_passed",
-      "last_verified": "2026-09-30",
-      "notes": "State (open, draft, closed, merged), branches, head and merge commits, times, sidebar labels and the description as text; no comments, review threads, files, checks or lock state (the page data's locked flag is wrong). Independent QA (three rounds, final sign-off at da1717d) ran it live on Kernel and through the local extension, all outputs schema-valid. Covered merged, closed-unmerged, draft and locked pull requests, an empty description, is_issue and not_found. Signed-in sessions and private repositories not tested.",
-      "provenance": {
-        "qa_agent": "agt_a95c2a4fd4ea679db158"
-      }
+      "status": "draft",
+      "last_verified": null,
+      "notes": "State (open, draft, closed, merged), branches, head and merge commits, times, sidebar labels and the description as text; no comments, review threads, files, checks or lock state (the page data's locked flag is wrong). Independent QA (three rounds, final sign-off at da1717d) ran it live on Kernel and through the local extension, all outputs schema-valid. Covered merged, closed-unmerged, draft and locked pull requests, an empty description, is_issue and not_found. Signed-in sessions and private repositories not tested."
     },
     {
       "domain": "github.com",
@@ -1504,29 +1498,9 @@
         "https://github.com/*"
       ],
       "url_patterns_reason": "Narrowed to github.com: it serves repositories, issues, pull requests and search, and the tools read its pages and endpoints same-origin; other github.com hosts are separate products (docs., gist., api. and others) where they cannot work.",
-      "status": "qa_passed",
-      "last_verified": "2026-09-30",
-      "notes": "Public repository star state for the expected signed-in account; no account identifier or token output. Independent QA (final sign-off at da1717d) verified login_required signed out, ok for the matching account and wrong_account for a mismatch, on Kernel and the extension.",
-      "provenance": {
-        "qa_agent": "agt_a95c2a4fd4ea679db158"
-      }
-    },
-    {
-      "domain": "github.com",
-      "tool": "prepare_comment",
-      "file": "domains/github.com/prepare_comment.js",
-      "kind": "page",
-      "namespace": "github.com",
-      "url_patterns": [
-        "https://github.com/*"
-      ],
-      "url_patterns_reason": "Narrowed to github.com: it serves repositories, issues, pull requests and search, and the tools read its pages and endpoints same-origin; other github.com hosts are separate products (docs., gist., api. and others) where they cannot work.",
-      "status": "qa_passed",
-      "last_verified": "2026-09-30",
-      "notes": "Exact Markdown and a manual handoff for the public issue or pull request conversation already open; never requests the thread, fills an editor or sends. Independent QA (final sign-off at da1717d) verified prepared on the open conversation and refusal elsewhere, on Kernel and the extension.",
-      "provenance": {
-        "qa_agent": "agt_a95c2a4fd4ea679db158"
-      }
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Public repository star state for the expected signed-in account; no account identifier or token output. Independent QA (final sign-off at da1717d) verified login_required signed out, ok for the matching account and wrong_account for a mismatch, on Kernel and the extension."
     },
     {
       "domain": "github.com",
@@ -1538,12 +1512,9 @@
         "https://github.com/*"
       ],
       "url_patterns_reason": "Narrowed to github.com: it serves repositories, issues, pull requests and search, and the tools read its pages and endpoints same-origin; other github.com hosts are separate products (docs., gist., api. and others) where they cannot work.",
-      "status": "qa_passed",
-      "last_verified": "2026-09-30",
-      "notes": "Public repository and Issues-link check, exact title and body, and a manual new-issue URL; not a persisted draft. Independent QA (final sign-off at da1717d) verified prepared from an unrelated page, differently cased repository names and refusal for non-public targets, on Kernel and the extension.",
-      "provenance": {
-        "qa_agent": "agt_a95c2a4fd4ea679db158"
-      }
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Public repository and Issues-link check, exact title and body, and a manual new-issue URL; not a persisted draft. Independent QA (final sign-off at da1717d) verified prepared from an unrelated page, differently cased repository names and refusal for non-public targets, on Kernel and the extension."
     },
     {
       "domain": "github.com",
@@ -1555,12 +1526,9 @@
         "https://github.com/*"
       ],
       "url_patterns_reason": "Narrowed to github.com: it serves repositories, issues, pull requests and search, and the tools read its pages and endpoints same-origin; other github.com hosts are separate products (docs., gist., api. and others) where they cannot work.",
-      "status": "qa_passed",
-      "last_verified": "2026-09-30",
-      "notes": "Public repository check, exact title, body, base and head, and a comparison URL; branch existence and the comparison itself are not verified. Independent QA (final sign-off at da1717d) verified prepared and the rejection of malformed branch text before any request, on Kernel and the extension.",
-      "provenance": {
-        "qa_agent": "agt_a95c2a4fd4ea679db158"
-      }
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Public repository check, exact title, body, base and head, and a comparison URL; branch existence and the comparison itself are not verified. Independent QA (final sign-off at da1717d) verified prepared and the rejection of malformed branch text before any request, on Kernel and the extension."
     },
     {
       "domain": "github.com",
@@ -1606,12 +1574,9 @@
         "https://github.com/*"
       ],
       "url_patterns_reason": "Narrowed to github.com: it serves repositories, issues, pull requests and search, and the tools read its pages and endpoints same-origin; other github.com hosts are separate products (docs., gist., api. and others) where they cannot work.",
-      "status": "qa_passed",
-      "last_verified": "2026-09-30",
-      "notes": "Public star or unstar on the exact repository page for the expected account and current state: one click, server verification, no retries. Independent QA (final sign-off at da1717d) verified login_required with mutation_attempted false signed out, and in fixtures visible and hidden controls, no-op, stale state and unknown outcomes. Live mutation is untested.",
-      "provenance": {
-        "qa_agent": "agt_a95c2a4fd4ea679db158"
-      }
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Public star or unstar on the exact repository page for the expected account and current state: one click, server verification, no retries. Independent QA (final sign-off at da1717d) verified login_required with mutation_attempted false signed out, and in fixtures visible and hidden controls, no-op, stale state and unknown outcomes. Live mutation is untested."
     },
     {
       "domain": "google.com",

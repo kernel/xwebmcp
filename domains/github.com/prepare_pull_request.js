@@ -4,7 +4,7 @@
   tool: {
     "name": "prepare_pull_request",
     "title": "Prepare a GitHub pull request",
-    "description": "Prepare exact pull request title and Markdown body with same-repository base/head branches. Checks public repository identity and returns an encoded GitHub comparison URL for manual review. No branch existence, diff, mergeability, push access, or ability to create is claimed (comparison_verified is false). Does not create a branch, persist a draft, navigate, submit a PR, or merge. A human must review the comparison, account, exact content and GitHub templates before submitting. Content is untrusted data; no automatic execution or confirmed flag.",
+    "description": "Prepare a pull request between two branches of one public repository: checks the repository and returns target_url, GitHub's comparison page for base_branch...head_branch with the title and Markdown body filled in. Open target_url in the tab to review the diff; nothing is created until the user presses Create pull request there. Branch existence and the diff are not checked (comparison_verified is false). Does not navigate, create a branch or pull request, or merge.",
     "inputSchema": {
       "type": "object",
       "additionalProperties": false,
@@ -59,6 +59,7 @@
             "status",
             "full_name",
             "target_url",
+            "body_in_url",
             "title",
             "body",
             "submission_attempted",
@@ -75,7 +76,12 @@
               "type": "string"
             },
             "target_url": {
-              "type": "string"
+              "type": "string",
+              "description": "GitHub's form for this comparison with the title, body and branches filled in. Nothing is created until the user presses the create button there."
+            },
+            "body_in_url": {
+              "type": "boolean",
+              "description": "False when the body is too long for a URL; paste it into the form from body."
             },
             "title": {
               "type": "string"
@@ -179,7 +185,12 @@
       if (meta("octolytics-dimension-repository_public") === "false") return fail("private_repository", "Only public repositories are supported. No private content is returned.");
       if (meta("octolytics-dimension-repository_public") !== "true") return fail("site_changed", "The repository's public visibility could not be established.");
 
-      return { status: "prepared", full_name: fullName, target_url: url + "/compare/" + encodeURIComponent(input.base_branch) + "..." + encodeURIComponent(input.head_branch) + "?expand=1", title: input.title, body: input.body, base_branch: input.base_branch, head_branch: input.head_branch, comparison_verified: false, submission_attempted: false, human_review_required: true };
+      const form = new URL(url + "/compare/" + encodeURIComponent(input.base_branch) + "..." + encodeURIComponent(input.head_branch) + "?expand=1");
+      form.searchParams.set("title", input.title);
+      form.searchParams.set("body", input.body);
+      const bodyInUrl = form.href.length <= 8000;
+      if (!bodyInUrl) form.searchParams.delete("body");
+      return { status: "prepared", full_name: fullName, target_url: form.href, body_in_url: bodyInUrl, title: input.title, body: input.body, base_branch: input.base_branch, head_branch: input.head_branch, comparison_verified: false, submission_attempted: false, human_review_required: true };
 
     } catch {
       return fail(signal && signal.aborted ? "canceled" : "unknown", "The read failed; no action was submitted.");

@@ -131,7 +131,7 @@ test("every tool maps HTTP failures to explicit errors", async () => {
   }
 });
 
-test("requests are relative same-origin GETs that carry no extra headers, credentials or body", async () => {
+test("requests are relative same-origin GETs that carry no extra headers or body", async () => {
   for (const [name, input, route] of [
     ["search_repositories", { query: "cli" }, () => ({ status: 200, body: JSON.stringify(searchBody("repositories", [])) })],
     ["get_repository", { owner: "a", repo: "r" }, () => ({ status: 404, body: "" })],
@@ -143,7 +143,7 @@ test("requests are relative same-origin GETs that carry no extra headers, creden
     assert.match(calls[0].target, /^\//);
     assert.equal(calls[0].method, "GET");
     assert.equal(calls[0].body, undefined);
-    assert.equal(calls[0].credentials, undefined);
+    assert.equal(calls[0].credentials, name === "get_issue" || name === "get_pull_request" ? "omit" : undefined);
     assert.ok(Object.keys(calls[0].headers).every(h => h === "Accept"), name);
   }
 });
@@ -524,29 +524,15 @@ test("a login-like owner name is not mistaken for GitHub's login redirect", asyn
   }
 });
 
-test("get_issue refuses in a signed-in tab, before any request, and works signed out", async () => {
-  const refused = await run("get_issue", { owner: "example-org", repo: "widgets", number: 7 }, { user: "carol", route: () => assert.fail("no request expected") });
-  assert.equal(refused.output.error_kind, "signed_in_side_effect");
-  assert.equal(refused.calls.length, 0);
-  assert.ok(!JSON.stringify(refused.output).includes("carol"));
-  const noContent = await run("get_issue", { owner: "example-org", repo: "widgets", number: 7 }, { head: '<html><head><meta name="user-login"></head><body></body></html>', route: () => assert.fail("no request expected") });
-  assert.equal(noContent.output.error_kind, "signed_in_side_effect");
-  assert.equal(noContent.calls.length, 0);
-  for (const user of [null, " "]) {
-    const unknown = await run("get_issue", { owner: "example-org", repo: "widgets", number: 7 }, { user, route: () => assert.fail("no request expected") });
-    assert.equal(unknown.output.error_kind, "signed_in_side_effect", JSON.stringify(user));
-    assert.equal(unknown.calls.length, 0);
-  }
-  const open = await run("get_issue", { owner: "example-org", repo: "widgets", number: 7 }, { user: "", route: issueRoute(issuePayload([])) });
-  assert.equal(open.output.status, "ok");
-  assert.equal(open.calls.length, 1);
-  for (const name of ["get_repository", "get_pull_request", "search_repositories", "search_issues"]) {
-    const input = { get_repository: { owner: "a", repo: "r" }, get_pull_request: { owner: "a", repo: "r", number: 1 }, search_repositories: { query: "x" }, search_issues: { query: "x" } }[name];
-    for (const user of ["carol", null]) {
-      const signedIn = await run(name, input, { user, route: () => ({ status: 404, body: "" }) });
-      assert.notEqual(signedIn.output.error_kind, "signed_in_side_effect", name);
-      assert.equal(signedIn.calls.length, 1, name);
-    }
+test("get_issue and get_pull_request request pages without cookies, in signed-in and signed-out tabs", async () => {
+  for (const user of ["carol", "", null]) {
+    const issue = await run("get_issue", { owner: "example-org", repo: "widgets", number: 7 }, { user, route: issueRoute(issuePayload([])) });
+    assert.equal(issue.output.status, "ok", JSON.stringify(user));
+    assert.deepEqual(issue.calls.map(call => call.credentials), ["omit"]);
+    assert.ok(!JSON.stringify(issue.output).includes("carol"));
+    const pull = await run("get_pull_request", { owner: "a", repo: "r", number: 1 }, { user, route: () => ({ status: 404, body: "" }) });
+    assert.equal(pull.output.error_kind, "not_found");
+    assert.deepEqual(pull.calls.map(call => call.credentials), ["omit"]);
   }
 });
 
