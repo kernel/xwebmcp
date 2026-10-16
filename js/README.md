@@ -13,7 +13,7 @@ from React.
 
 - `useWebMCPTool(...)` in a component registers a tool while that component is mounted.
 - `useWebMCPRoute(...)` in a nav item tells agents the page exists.
-- `<PageContext>` on a page tells agents what it shows.
+- `<WebMCPPageContext>` on a page tells agents what it shows.
 - `<WebMCPProvider>` in the layout adds two site-wide tools built from the above:
   `get_page_context` (what is on this page and which tools it has) and `navigate_to_page`
   (go to another page and return the same for it).
@@ -70,18 +70,18 @@ If the same path is declared twice (a desktop and a mobile nav, say), it is list
 
 ### 3. Page context
 
-On a page, say what it shows. `<PageContext>` renders nothing and its props are plain
+On a page, say what it shows. `<WebMCPPageContext>` renders nothing and its props are plain
 data, so a server component can render it with data it already loaded.
 
 ```tsx
 // app/browsers/[id]/page.tsx (server component)
-import { PageContext } from 'xwebmcp/nextjs';
+import { WebMCPPageContext } from 'xwebmcp/nextjs';
 
 export default async function Page({ params }) {
   const session = await getSession((await params).id);
   return (
     <>
-      <PageContext
+      <WebMCPPageContext
         id="session"
         value={{ sessionId: session.id, status: session.status }}
         suggestedNextSteps={['Use kill_session to end this session']}
@@ -167,6 +167,28 @@ tool. Pass `enabled: false` to unregister it without unmounting. When two mounte
 components register the same name, the most recently mounted one is exposed and the
 other takes over when it unmounts. React StrictMode's double mount is handled.
 
+## Patterns
+
+From wiring a production dashboard:
+
+- **One function, two callers.** Pull the action out of the click handler into a function
+  that returns a result, and call it from both the handler and `execute`. Anything the
+  handler reads from dialog state (a checkbox, a selected option) becomes an explicit tool
+  input with a default, because the agent can't see the dialog.
+- **Register routes in the nav item.** A desktop and a mobile sidebar both mounting the same
+  item is fine: a path is listed once and stays listed while any copy is mounted. Pass
+  `enabled: false` for items the user can't open, so the agent isn't offered them.
+- **Let the description follow state.** A tool whose description depends on props ("Release
+  this browser to its pool" vs "Delete this browser") re-registers when it changes, so
+  the agent always reads the current meaning.
+- **Gate on loaded SDKs.** `enabled: !!signIn` (or `isLoaded`) keeps a tool unregistered
+  until the client it calls is ready, instead of registering a tool that fails.
+- **Multi-step flows are several small tools.** `sign_in_start({ email })` then
+  `sign_in_verify({ code })`, each returning a `status` the agent can branch on. Never take
+  a password as tool input.
+- **Refresh what the user would see.** After a mutation, revalidate or `router.refresh()`
+  so the next `get_page_context` matches the UI.
+
 ## What the agent sees
 
 `get_page_context` returns:
@@ -182,7 +204,7 @@ other takes over when it unmounts. React StrictMode's double mount is handled.
 }
 ```
 
-`context` is keyed by each `<PageContext>` `id`. `available_tools` also includes tools
+`context` is keyed by each `<WebMCPPageContext>` `id`. `available_tools` also includes tools
 registered outside this package (declarative forms, extensions) when the browser supports
 `getTools()`.
 
@@ -201,8 +223,8 @@ call before it can return.
 
 | import | exports |
 | --- | --- |
-| `xwebmcp/nextjs` | `<WebMCPProvider site? navigationTimeoutMs?>`, `useWebMCPTool`, `useWebMCPRoute`, `<PageContext>`, `refresh` |
-| `xwebmcp/react` | `useWebMCPTool`, `useWebMCPRoute`, `<PageContext>`, `<WebMCPPageProvider navigate>` for other routers |
+| `xwebmcp/nextjs` | `<WebMCPProvider site? navigationTimeoutMs?>`, `useWebMCPTool`, `useWebMCPRoute`, `<WebMCPPageContext>`, `refresh` |
+| `xwebmcp/react` | `useWebMCPTool`, `useWebMCPRoute`, `<WebMCPPageContext>`, `<WebMCPPageProvider navigate>` for other routers |
 | `xwebmcp` | `registerTool(tool, { signal })`, `refresh()`, `getModelContext()`, `availableToolNames()`, `subscribe(listener)`; no React |
 
 `useWebMCPTool({ name, description, inputSchema?, outputSchema?, annotations?, title?, execute, enabled? })`
@@ -210,7 +232,7 @@ takes the fields of a WebMCP tool plus `enabled`.
 
 `useWebMCPRoute({ path, description, enabled? })`.
 
-`<PageContext id value? suggestedNextSteps?>`.
+`<WebMCPPageContext id value? suggestedNextSteps?>`.
 
 For a React app that isn't on Next, render `<WebMCPPageProvider navigate={(href) => ...}>`
 from `xwebmcp/react` with your router's client-side navigation.

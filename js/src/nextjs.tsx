@@ -2,8 +2,8 @@ import { useRouter } from 'next/navigation';
 import type { ReactNode } from 'react';
 import { WebMCPPageProvider } from 'xwebmcp/react';
 
-export { PageContext, useWebMCPRoute, useWebMCPTool } from 'xwebmcp/react';
-export type { PageContextProps, Route, UseWebMCPRouteOptions, UseWebMCPToolOptions, WebMCPTool } from 'xwebmcp/react';
+export { WebMCPPageContext, useWebMCPRoute, useWebMCPTool } from 'xwebmcp/react';
+export type { WebMCPPageContextProps, Route, UseWebMCPRouteOptions, UseWebMCPToolOptions, WebMCPTool } from 'xwebmcp/react';
 export { refresh } from 'xwebmcp';
 
 export interface WebMCPProviderProps {

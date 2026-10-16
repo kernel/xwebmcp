@@ -127,15 +127,15 @@ export function useWebMCPRoute({ path, description, enabled = true }: UseWebMCPR
   }, [store, key, path, description, enabled]);
 }
 
-export type PageContextProps = PageContextEntry;
+export type WebMCPPageContextProps = PageContextEntry;
 
 /**
  * Contribute to get_page_context while mounted. Props must be serializable,
  * so server components can render it directly. Entries with the same id are
  * merged, the last mounted one winning.
  */
-export function PageContext({ id, value, suggestedNextSteps }: PageContextProps): null {
-  const store = usePageStore('PageContext');
+export function WebMCPPageContext({ id, value, suggestedNextSteps }: WebMCPPageContextProps): null {
+  const store = usePageStore('WebMCPPageContext');
   const key = useId();
   const serialized = JSON.stringify({ id, value, suggestedNextSteps });
   useEffect(() => {
@@ -226,7 +226,7 @@ function navigateDescription(site: string, routes: Route[]): string {
 
 /**
  * Registers get_page_context and navigate_to_page, built from the
- * PageContext and useWebMCPRoute calls mounted below it.
+ * WebMCPPageContext and useWebMCPRoute calls mounted below it.
  */
 export function WebMCPPageProvider({ site, navigate, navigationTimeoutMs = 10_000, children }: WebMCPPageProviderProps) {
   const store = useMemo(() => new PageStore(), []);

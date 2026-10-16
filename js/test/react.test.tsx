@@ -64,12 +64,12 @@ describe('useWebMCPTool', () => {
 });
 
 describe('WebMCPPageProvider', () => {
-  it('builds get_page_context from mounted PageContext entries', async () => {
+  it('builds get_page_context from mounted WebMCPPageContext entries', async () => {
     document.title = 'Browsers';
     render(
       <x.WebMCPPageProvider navigate={() => {}}>
-        <x.PageContext id="page" value={{ pageType: 'browsers' }} suggestedNextSteps={['Use list_browsers']} />
-        <x.PageContext id="org" value={{ slug: 'acme' }} suggestedNextSteps={['Use list_browsers']} />
+        <x.WebMCPPageContext id="page" value={{ pageType: 'browsers' }} suggestedNextSteps={['Use list_browsers']} />
+        <x.WebMCPPageContext id="org" value={{ slug: 'acme' }} suggestedNextSteps={['Use list_browsers']} />
       </x.WebMCPPageProvider>,
     );
     await waitFor(() => expect(ctx.tools.has('get_page_context')).toBe(true));
@@ -108,10 +108,31 @@ describe('WebMCPPageProvider', () => {
     await waitFor(() => expect(ctx.tools.get('navigate_to_page')?.description).not.toContain('/b'));
   });
 
+  it('lists a path declared by several mounted components once, until the last one unmounts', async () => {
+    function NavItem({ path }: { path: string }) {
+      x.useWebMCPRoute({ path, description: `the ${path} page` });
+      return null;
+    }
+    function Sidebars({ mobile }: { mobile: boolean }) {
+      return (
+        <x.WebMCPPageProvider site="Example" navigate={() => {}}>
+          <NavItem path="/a" />
+          {mobile && <NavItem path="/a" />}
+        </x.WebMCPPageProvider>
+      );
+    }
+    const pages = () => ctx.tools.get('navigate_to_page')?.description.split('\n').filter((l) => l.startsWith('- '));
+    const { rerender } = render(<Sidebars mobile />);
+    await waitFor(() => expect(pages()).toEqual(['- /a: the /a page']));
+    rerender(<Sidebars mobile={false} />);
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(pages()).toEqual(['- /a: the /a page']);
+  });
+
   it('navigates and returns the new page context and tools', async () => {
     function Detail() {
       x.useWebMCPTool({ name: 'get_detail', description: 'detail', execute: () => 'detail' });
-      return <x.PageContext id="page" value={{ pageType: 'detail' }} />;
+      return <x.WebMCPPageContext id="page" value={{ pageType: 'detail' }} />;
     }
     function App() {
       const [path, setPath] = useState('/');
@@ -124,7 +145,7 @@ describe('WebMCPPageProvider', () => {
       };
       return (
         <x.WebMCPPageProvider navigate={navigate}>
-          {path === '/detail' ? <Detail /> : <x.PageContext id="page" value={{ pageType: 'home' }} />}
+          {path === '/detail' ? <Detail /> : <x.WebMCPPageContext id="page" value={{ pageType: 'home' }} />}
         </x.WebMCPPageProvider>
       );
     }
