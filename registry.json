@@ -936,10 +936,13 @@
       "url_patterns": [
         "https://secure.booking.com/*"
       ],
-      "url_patterns_reason": "Narrowed to secure.booking.com: Booking.com serves its checkout steps (book.html) there, after select_room; the other tools run on www.booking.com.",
-      "status": "draft",
-      "last_verified": null,
-      "notes": "Reads secure.booking.com/book.html after select_room: step, property, dates and times, selection, units, total including taxes and fees with its currency, the price notes under the total and the cancellation policy. Read-only. Independent QA on 2026-10-16 compared four live reads, three with an original price or deal in the summary, with the page: dates, times, selection, units, total and price notes matched. The finish_booking step (after guest details) and signed-in sessions were not tested."
+      "url_patterns_reason": "Narrowed to secure.booking.com: Booking.com serves its checkout steps there (book.html, and tpi_book for Partner Offers), after select_room; the other tools run on www.booking.com.",
+      "status": "qa_passed",
+      "last_verified": "2026-10-16",
+      "notes": "Reads the checkout after select_room: secure.booking.com/book.html, or tpi_book for a Partner Offer in either of its two layouts (partner_offer true). Returns the step, property, dates and times, selection, units, total including taxes and fees with its currency, price notes (pay-now and at-property lines on partner checkouts) and cancellation. Read-only. Independent QA on 2026-10-16 compared live reads with the page on several book.html checkouts and on partner checkouts in both layouts, including a non-refundable one without a cancellation section; missing or malformed structured totals by fixture. The finish_booking step and signed-in sessions were not tested.",
+      "provenance": {
+        "qa_agent": "agt_ee7a889befd28f79816d"
+      }
     },
     {
       "domain": "booking.com",
@@ -951,9 +954,12 @@
         "https://www.booking.com/*"
       ],
       "url_patterns_reason": "Narrowed to www.booking.com: the stays search and property pages are served there, and the read tools fetch those pages same-origin; a fetch from www.booking.com to flights. or secure.booking.com fails, so the tools cannot work on other booking.com hosts.",
-      "status": "draft",
-      "last_verified": null,
-      "notes": "Dated property facts and room rates with effective party and currency, excluded fees, cancellation, prepayment, meals, rate IDs (null for partner offers) and comparison ranks, plus page_url, the dated property page select_room acts on. Optional lowest-price ordering before the 40-rate cap; scans at most 400 rows. A price that says it includes taxes is not flagged. Independent QA on 2026-10-16 ran it live from the home page and property pages on more than ten properties: rates, partner-offer rows with null rate_id, no-availability dates, currency mismatch, invalid input, past check_in. One room; English."
+      "status": "verified",
+      "last_verified": "2026-10-16",
+      "notes": "Dated property facts and room rates with effective party and currency, excluded fees, cancellation, prepayment, meals, rate IDs and comparison ranks, plus page_url, the dated property page select_room acts on. Partner Offers keep their row id (bbasic_0, <room>_bbasic_0) and are marked partner_offer, with a warning that their price, terms and availability can change at checkout. Optional lowest-price ordering before the 40-rate cap; scans at most 400 rows. Independent QA on 2026-10-16 ran it live from the home and search pages on more than ten properties and on about a dozen sessions at Palacio Ramalhete with and without Partner Offers: partner flags and counts matched the page, room_id agreed with select_room, plus no-availability dates, currency mismatch, invalid input and past check_in. One room; English.",
+      "provenance": {
+        "qa_agent": "agt_a45dc06aa2f46d7bcab8"
+      }
     },
     {
       "domain": "booking.com",
@@ -982,9 +988,12 @@
         "https://www.booking.com/*"
       ],
       "url_patterns_reason": "Narrowed to www.booking.com: it acts on the dated property page served there; the reserve button takes the tab to secure.booking.com, where get_checkout_step reads the result.",
-      "status": "draft",
-      "last_verified": null,
-      "notes": "Selects one room of one rate on the open dated property page after checking the property, rate_id, expected_total and that no other rate is selected, then schedules the \"I'll reserve\" press (navigation_scheduled, next_tool get_checkout_step). Reaches Booking.com's \"Your details\" step on secure.booking.com; never enters guest details, books or pays. Independent QA on 2026-10-16 ran four live selections that reached the details step, plus price_changed with current_total, unknown and null rate_id, another rate already selected, wrong property and non-property pages. Members-only previews (login_required) and challenge pages were not reached live."
+      "status": "qa_passed",
+      "last_verified": "2026-10-16",
+      "notes": "Selects one room of one rate, Partner Offers included, on the dated property page after checking the property, rate_id, expected_total and that no other rate is selected, then schedules the \"I'll reserve\" press (navigation_scheduled). With page_url it first opens that page from anywhere else (opening_property_page) and never reopens it once there. Never enters guest details, books or pays. Independent QA on 2026-10-16 ran live selections on Booking.com rates and Partner Offers (including a Booking.com rate under a partner header) that reached book.html or tpi_book, page_url from the home, search, another property and the same property for other dates, a wrong property on page_url (wrong_page, no reopen), price_changed, rate_not_found and invalid input. The out-of-range page_url date guard is the reviewer's own fix, checked by fixture. Members-only previews and challenge pages were not reached live.",
+      "provenance": {
+        "qa_agent": "agt_61fb16bb07611b7045a1"
+      }
     },
     {
       "domain": "delta.com",
