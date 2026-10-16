@@ -128,19 +128,35 @@
     const step = tid("user-details-container") || (partnerPage && /Step 2 of 3\.$/.test(stepper)) ? "your_details" : /Step 3 of 3\.$/.test(stepper) || document.querySelector('[data-testid*="payment"], iframe[src*="payment"]') ? "finish_booking" : "other";
     // The final step offers payment timings as radios; report the chosen one, else the section's own text.
     const timing = [...document.querySelectorAll('input[name="payment-timing"]')].find(e => e.checked);
-    // Every non-empty text node under an element, so bare text beside child elements is kept.
-    const words = el => el ? [...el.childNodes].flatMap(n => n.nodeType === 3 ? [(n.textContent || "").replace(/\s+/g, " ").trim()] : n.nodeType === 1 && !["SCRIPT", "STYLE", "TEMPLATE"].includes(n.tagName) ? words(n) : []).filter(Boolean) : [];
-    // Text nodes joined as the page reads them, without a space before punctuation.
-    const prose = list => list.join(" ").replace(/\s+([,.;:!?])/g, "$1");
-    // The radio's own label: wrapping it, or bound to it by for=; the live page puts each label beside its radio.
-    const option = timing && (timing.closest("label") || (timing.id && document.querySelector('label[for="' + timing.id + '"]')) || timing.parentElement?.parentElement);
-    const paymentTiming = step !== "finish_booking" ? null : ((option && prose(words(option))) || [text(tid("payment-timing-header")), text(tid("payment-timing-description"))].filter(Boolean).join(". ").replace(/\.\./g, ".")).slice(0, 300) || null;
+    // The text of an element as the lines a reader sees: inline text (bare or in spans, strong, links) stays in one
+    // line, and each block element starts a new one.
+    const INLINE = new Set(["SPAN", "STRONG", "B", "EM", "I", "A", "SMALL", "LABEL", "TIME", "SUP", "SUB"]);
+    const blocks = el => {
+      const out = [];
+      let line = "";
+      const walk = node => {
+        for (const n of node.childNodes) {
+          if (n.nodeType === 3) line += " " + (n.textContent || "");
+          else if (n.nodeType !== 1 || ["SCRIPT", "STYLE", "TEMPLATE"].includes(n.tagName)) continue;
+          else if (INLINE.has(n.tagName)) walk(n);
+          else { out.push(line); line = ""; walk(n); out.push(line); line = ""; }
+        }
+      };
+      if (el) walk(el);
+      out.push(line);
+      return out.map(l => l.replace(/\s+/g, " ").replace(/\s+([,.;:!?])/g, "$1").trim()).filter(Boolean);
+    };
+    const sentences = list => list.map((l, i) => i < list.length - 1 && !/[.!?]$/.test(l) ? l + "." : l).join(" ");
+    // The radio's own label (wrapping it, or bound by for=; the live page puts each label beside its radio), or its
+    // parent when that holds no other option.
+    const option = timing && (timing.closest("label") || (timing.id && document.querySelector('label[for="' + timing.id + '"]')) || (timing.parentElement?.querySelectorAll('input[name="payment-timing"]').length === 1 ? timing.parentElement : null));
+    const paymentTiming = step !== "finish_booking" ? null : sentences(option ? blocks(option) : [text(tid("payment-timing-header")), text(tid("payment-timing-description"))].filter(Boolean)).slice(0, 300) || null;
     // Partner checkouts have no cancellation test ids: read the lines under "How much will it cost to cancel?".
     const cancelHeading = [...document.body.querySelectorAll("*")].find(e => text(e, 100) === "How much will it cost to cancel?" && ![...e.children].some(c => text(c, 100) === "How much will it cost to cancel?"));
-    // The block after the heading (climbing out of wrappers that hold only the heading), never past a section.
-    let cancelBox = cancelHeading;
-    while (cancelBox && !cancelBox.nextElementSibling && !/^(?:SECTION|FORM|MAIN)$/.test(cancelBox.parentElement?.tagName || "")) cancelBox = cancelBox.parentElement;
-    const cancelBlock = prose(words(cancelBox?.nextElementSibling).slice(0, 10)).slice(0, 300);
+    // The block right after the heading, or after the heading's own wrapper; never further, so a later section is
+    // not read as the policy.
+    const wrapper = cancelHeading?.parentElement;
+    const cancelBlock = blocks(cancelHeading?.nextElementSibling || (wrapper && !/^(?:SECTION|FORM|MAIN)$/.test(wrapper.tagName) ? wrapper.nextElementSibling : null)).slice(0, 10).join(" ").slice(0, 300);
     // Only rendered text: the partner page also carries the sentence as a template in a script.
     const sellerMatch = /Your booking is with (.+?)\. By completing/.exec((document.body.innerText || "").replace(/\s+/g, " "));
     const seller = partnerPage && step === "finish_booking" && sellerMatch && !/[{}]/.test(sellerMatch[1]) ? sellerMatch[1].slice(0, 200) : null;
