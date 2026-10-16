@@ -27,6 +27,7 @@ class Element {
   }
   get parentElement() { return this.parentNode instanceof Element ? this.parentNode : null; }
   get children() { return this.childNodes.filter(n => n instanceof Element); }
+  get nextElementSibling() { const siblings = this.parentElement ? this.parentElement.children : []; return siblings[siblings.indexOf(this) + 1] || null; }
   getAttribute(name) { return this.attrs.has(name) ? this.attrs.get(name) : null; }
   hasAttribute(name) { return this.attrs.has(name); }
   setAttribute(name, value) { this.attrs.set(name, String(value)); }

@@ -107,9 +107,10 @@
                       type: "array", minItems: 1,
                       items: {
                         type: "object", additionalProperties: false,
-                        required: ["rate_id", "comparison_rank", "max_guests", "max_adults", "price", "cancellation", "free_cancellation", "non_refundable", "prepayment", "meal_plan", "member_discount"],
+                        required: ["rate_id", "comparison_rank", "partner_offer", "max_guests", "max_adults", "price", "cancellation", "free_cancellation", "non_refundable", "prepayment", "meal_plan", "member_discount"],
                         properties: {
-                          rate_id: { type: ["string", "null"], description: "The row's data-block-id, for select_room on the same dated property page. Null for rows without a Booking.com rate id, such as partner offers; select_room cannot select those." },
+                          rate_id: { type: ["string", "null"], description: "The row's data-block-id, for select_room on the same dated property page; null when the row has none." },
+                          partner_offer: { type: "boolean", description: "A Partner Offer, sold through a partner company: its price, cancellation terms and availability can change at checkout (get_checkout_step shows the final ones)." },
                           comparison_rank: { type: "integer", minimum: 1, description: "Global rank across returned rooms, under query.sort; equal prices keep page order." },
                           max_guests: { type: ["integer", "null"], description: "The page's 'Max. people' for this rate (shown when the search has no children)." },
                           max_adults: { type: ["integer", "null"], description: "The page's 'Max adults' for this rate (shown when the search has children)." },
@@ -303,7 +304,7 @@
         if (ages.length) warnings.push("Adult capacity alone does not confirm that this price covers children or any child supplements; review the property policies manually.");
         const party = query.adults + ages.length;
         const rooms = [];
-        let room = null, read = 0, tooLarge = 0, unreadableRows = 0, unreadablePrices = 0, noTaxes = 0, memberOnly = 0;
+        let room = null, read = 0, tooLarge = 0, unreadableRows = 0, unreadablePrices = 0, noTaxes = 0, memberOnly = 0, partners = 0;
         for (const row of rowEls) {
           const head = row.querySelector("th.hprt-table-cell-roomtype");
           if (head) {
@@ -350,9 +351,12 @@
           const total = amount(totalText);
           if (total === null) unreadablePrices++;
           const blockId = row.getAttribute("data-block-id");
+          const partner = row.classList.contains("tpi_table__row") || /\bPartner Offer\b/.test(rawText(conditions));
+          if (partner) partners++;
           room.rates.push({
-            rate_id: blockId && /^\d+(?:_\d+){1,9}$/.test(blockId) && blockId.length <= 120 ? blockId : null,
+            rate_id: blockId && /^[A-Za-z0-9]+(?:_[A-Za-z0-9]+){0,9}$/.test(blockId) && blockId.length <= 120 ? blockId : null,
             comparison_rank: 0,
+            partner_offer: partner,
             max_guests: maxGuests ? Number(maxGuests[1]) : null, max_adults: maxAdults ? Number(maxAdults[1]) : null,
             price: {
               total,
@@ -372,6 +376,7 @@
         if (unreadableRows) warnings.push(unreadableRows + " rate rows in a room or with a price the tool could not read were left out.");
         if (memberOnly) warnings.push(memberOnly + " rates show a members-only price that needs signing in; for those, price.total includes the member discount, so the price without signing in is higher by about member_discount.amount when that amount is readable; otherwise the non-member price is unknown.");
         if (noTaxes) warnings.push(noTaxes + " rates listed no excluded taxes and fees in a form this tool reads; their displayed price may exclude taxes and fees.");
+        if (partners) warnings.push(partners + " rates are Partner Offers sold through a partner company; their price, cancellation terms and availability can change at checkout.");
         if (unreadablePrices) warnings.push(unreadablePrices + " rates showed a price that could not be read as a number; see total_text.");
         const ordered = rooms.flatMap(r => r.rates);
         if (sort === "price_low_to_high") ordered.sort((a, b) => (a.price.total ?? Infinity) - (b.price.total ?? Infinity));

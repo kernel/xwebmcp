@@ -3,13 +3,13 @@
   match: { url_patterns: ["https://www.booking.com/*"] },
   tool: {
     name: "select_room",
-    description: "Reserve one unit of one rate on the dated Booking.com property page that is open in this tab, using the property_id, rate_id and price.total returned by get_property: selects 1 in that rate's room count and presses \"I'll reserve\", which takes the tab to Booking.com's \"Your details\" step on secure.booking.com. Open the property page for your dates and party first (get_property's property.page_url); otherwise the tool returns wrong_page. Refuses when the page shows a different total than expected_total (price_changed, with the current total), when another rate already has rooms selected, when the rate is a members-only preview, or when the rate cannot be selected. The press is scheduled after the tool returns (status navigation_scheduled): list tools again and call get_checkout_step to read the step, the selection and the total including taxes. Does not enter guest details, does not book and never pays; nothing is reserved until the guest completes the later steps. English pages only.",
+    description: "Reserve one unit of one rate on the dated Booking.com property page that is open in this tab, using the property_id, rate_id and price.total returned by get_property: selects 1 in that rate's room count and presses \"I'll reserve\", which takes the tab to Booking.com's \"Your details\" step on secure.booking.com. Open the property page for your dates and party first (get_property's property.page_url); otherwise the tool returns wrong_page. Partner Offers can be selected too (partner_offer true); their checkout may show a different price or cancellation terms, or Booking.com may say the offer is no longer available and return to the property page. Refuses when the page shows a different total than expected_total (price_changed, with the current total), when another rate already has rooms selected, when the rate is a members-only preview, or when the rate cannot be selected. The press is scheduled after the tool returns (status navigation_scheduled): list tools again and call get_checkout_step to read the step, the selection and the total including taxes. Does not enter guest details, does not book and never pays; nothing is reserved until the guest completes the later steps. English pages only.",
     inputSchema: {
       type: "object", additionalProperties: false,
       required: ["property_id", "rate_id", "expected_total"],
       properties: {
         property_id: { type: "string", pattern: "^[0-9]{1,20}$", description: "property_id from get_property." },
-        rate_id: { type: "string", maxLength: 120, pattern: "^[0-9]+(?:_[0-9]+){1,9}$", description: "rate_id of one rate from get_property." },
+        rate_id: { type: "string", maxLength: 120, pattern: "^[A-Za-z0-9]+(?:_[A-Za-z0-9]+){0,9}$", description: "rate_id of one rate from get_property." },
         expected_total: { type: "number", minimum: 0, description: "That rate's price.total from get_property; the tool refuses if the page shows a different total." }
       }
     },
@@ -18,10 +18,11 @@
       oneOf: [
         {
           type: "object", additionalProperties: false,
-          required: ["status", "property_id", "rate_id", "room_id", "room_name", "check_in", "check_out", "adults", "children", "rooms", "currency", "displayed_total", "taxes_and_fees_excluded", "cancellation", "signed_in", "next_tool"],
+          required: ["status", "property_id", "rate_id", "room_id", "room_name", "partner_offer", "check_in", "check_out", "adults", "children", "rooms", "currency", "displayed_total", "taxes_and_fees_excluded", "cancellation", "signed_in", "next_tool"],
           properties: {
             status: { const: "navigation_scheduled", description: "\"I'll reserve\" is pressed right after this result; the outcome is read with get_checkout_step." },
-            property_id: { type: "string" }, rate_id: { type: "string" }, room_id: { type: "string" }, room_name: { type: "string", maxLength: 300 },
+            property_id: { type: "string" }, rate_id: { type: "string" }, room_id: { type: ["string", "null"] }, room_name: { type: "string", maxLength: 300 },
+            partner_offer: { type: "boolean", description: "A Partner Offer: checkout opens on Booking.com's partner page, and the price, cancellation terms and availability there can differ from the property page." },
             check_in: { type: ["string", "null"] }, check_out: { type: ["string", "null"] },
             adults: { type: ["integer", "null"] }, children: { type: ["integer", "null"] }, rooms: { type: ["integer", "null"] },
             currency: { type: ["string", "null"] }, displayed_total: { type: "number" },
@@ -48,7 +49,7 @@
     const fail = (error_kind, error_message, extra) => ({ status: "error", error_kind, error_message, ...extra });
     if (!input || typeof input !== "object" || Array.isArray(input) || Object.keys(input).some(k => !["property_id", "rate_id", "expected_total"].includes(k))) return fail("invalid_input", "Input must contain only property_id, rate_id and expected_total.");
     if (typeof input.property_id !== "string" || !/^\d{1,20}$/.test(input.property_id)) return fail("invalid_input", "property_id must be the numeric ID from get_property.");
-    if (typeof input.rate_id !== "string" || input.rate_id.length > 120 || !/^\d+(?:_\d+){1,9}$/.test(input.rate_id)) return fail("invalid_input", "rate_id must be a rate_id from get_property.");
+    if (typeof input.rate_id !== "string" || input.rate_id.length > 120 || !/^[A-Za-z0-9]+(?:_[A-Za-z0-9]+){0,9}$/.test(input.rate_id)) return fail("invalid_input", "rate_id must be a rate_id from get_property.");
     if (typeof input.expected_total !== "number" || !Number.isFinite(input.expected_total) || input.expected_total < 0) return fail("invalid_input", "expected_total must be the rate's price.total from get_property.");
     if (context.signal?.aborted) return fail("canceled", "Canceled; nothing was selected.");
     if (window.location.origin !== "https://www.booking.com" || !/^\/hotel\/[a-z]{2}\/[A-Za-z0-9._-]+\.html$/.test(window.location.pathname)) return fail("wrong_page", "Open the property page for your dates (get_property's property.page_url) in this tab first. Nothing was selected.");
@@ -75,9 +76,11 @@
       if (h) head = h;
       if (candidate === row) break;
     }
-    const roomLink = head?.querySelector("a[data-room-id]");
-    const roomId = roomLink?.getAttribute("data-room-id");
-    if (!roomId || !/^\d{1,20}$/.test(roomId) || !text(roomLink)) return fail("site_changed", "The rate cannot be matched to a room on the page.");
+    // Partner Offer rows carry their own room header, whose link has no data-room-id.
+    const roomLink = head?.querySelector("a[data-room-id], a.hprt-roomtype-link");
+    if (!roomLink || !text(roomLink)) return fail("site_changed", "The rate cannot be matched to a room on the page.");
+    const roomId = /^\d{1,20}$/.test(roomLink.getAttribute("data-room-id") || "") ? roomLink.getAttribute("data-room-id") : /^(\d{1,20})_/.exec(input.rate_id)?.[1] ?? null;
+    const partner = row.classList.contains("tpi_table__row") || /\bPartner Offer\b/.test(rawText(row.querySelector(".hprt-table-cell-conditions")));
     const select = row.querySelector('select[name="nr_rooms_' + input.rate_id + '"]');
     const one = select && [...select.querySelectorAll("option")].find(o => o.getAttribute("value") === "1" && !o.disabled && !o.closest("optgroup[disabled]"));
     if (!select || select.disabled || select.matches(":disabled") || !one) return fail("rate_not_found", "The page does not offer one room of this rate.");
@@ -105,7 +108,7 @@
     const button = buttons[0];
     setTimeout(() => button.click(), 100);
     return {
-      status: "navigation_scheduled", property_id: input.property_id, rate_id: input.rate_id, room_id: roomId, room_name: text(roomLink).slice(0, 300),
+      status: "navigation_scheduled", property_id: input.property_id, rate_id: input.rate_id, room_id: roomId, room_name: text(roomLink).slice(0, 300), partner_offer: partner,
       check_in: config(/"b_checkin_date"\s*:\s*'(\d{4}-\d{2}-\d{2})'/), check_out: config(/"b_checkout_date"\s*:\s*'(\d{4}-\d{2}-\d{2})'/),
       adults: count(/(\d+)\s+adults?/i), children: occupancy ? count(/(\d+)\s+child(?:ren)?/i) ?? 0 : null, rooms: count(/(\d+)\s+rooms?/i),
       currency: /^[A-Z]{3}$/.test(currency) ? currency : null, displayed_total: total,

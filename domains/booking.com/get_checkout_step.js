@@ -3,17 +3,18 @@
   match: { url_patterns: ["https://secure.booking.com/*"] },
   tool: {
     name: "get_checkout_step",
-    description: "Read Booking.com's checkout page open in this tab (secure.booking.com/book.html, reached with select_room): the current step (your_details or finish_booking), the property, check-in and check-out dates and times, what is selected (nights, rooms, party and room names), the total including taxes and fees with its currency, the taxes note, the cancellation policy and whether the browser is signed in. Read-only: never types, clicks or navigates. Elsewhere it returns wrong_page. English pages only.",
+    description: "Read Booking.com's checkout page open in this tab, reached with select_room: secure.booking.com/book.html, or tpi_book for a Partner Offer (partner_offer true): the current step (your_details or finish_booking), the property, check-in and check-out dates and times, what is selected (nights, rooms, party and room names), the total including taxes and fees with its currency, the taxes note, the cancellation policy and whether the browser is signed in. Read-only: never types, clicks or navigates. Elsewhere it returns wrong_page. English pages only.",
     inputSchema: { type: "object", additionalProperties: false, properties: {} },
     outputSchema: {
       type: "object",
       oneOf: [
         {
           type: "object", additionalProperties: false,
-          required: ["status", "step", "property_id", "property_name", "check_in", "check_out", "check_in_time", "check_out_time", "selection", "units", "total", "currency", "total_text", "price_notes", "cancellation", "signed_in"],
+          required: ["status", "step", "partner_offer", "property_id", "property_name", "check_in", "check_out", "check_in_time", "check_out_time", "selection", "units", "total", "currency", "total_text", "price_notes", "cancellation", "signed_in"],
           properties: {
             status: { const: "ok" },
             step: { enum: ["your_details", "finish_booking", "other"], description: "your_details asks for the guest's name and contact details; finish_booking asks for payment." },
+            partner_offer: { type: "boolean", description: "True on the partner checkout (tpi_book) a Partner Offer opens. Its price and cancellation terms are the partner's and can differ from the property page." },
             property_id: { type: ["string", "null"] }, property_name: { type: ["string", "null"], maxLength: 300 },
             check_in: { type: ["string", "null"], description: "YYYY-MM-DD" }, check_out: { type: ["string", "null"], description: "YYYY-MM-DD" },
             check_in_time: { type: ["string", "null"], maxLength: 100 }, check_out_time: { type: ["string", "null"], maxLength: 100 },
@@ -41,7 +42,8 @@
   execute: async (input) => {
     const fail = (error_kind, error_message) => ({ status: "error", error_kind, error_message });
     if (input !== undefined && input !== null && (typeof input !== "object" || Array.isArray(input) || Object.keys(input).length)) return fail("invalid_input", "This tool takes no input.");
-    if (window.location.origin !== "https://secure.booking.com" || window.location.pathname !== "/book.html") return fail("wrong_page", "This is not Booking.com's checkout page; use select_room on a property page to get there.");
+    const partnerPage = /^\/tpi_book(?:\.[a-z]{2}(?:-[a-z]{2})?)?\.html$/.test(window.location.pathname);
+    if (window.location.origin !== "https://secure.booking.com" || (window.location.pathname !== "/book.html" && !partnerPage)) return fail("wrong_page", "This is not Booking.com's checkout page; use select_room on a property page to get there.");
     if (!/^en(-|$)/i.test(document.documentElement.getAttribute("lang") || "")) return fail("unsupported_language", "This tool reads English labels; switch the Booking.com page language to English first.");
 
     const text = (el, max = 300) => el ? (el.textContent || "").replace(/\s+/g, " ").trim().slice(0, max) || null : null;
@@ -57,6 +59,39 @@
     };
     const heading = re => [...document.querySelectorAll("h1, h2, h3")].find(h => re.test(h.textContent || ""));
     const container = (h, min) => { let c = h; while (c && c.parentElement && lines(c).length < min) c = c.parentElement; return c; };
+    const profile = !!tid("header-profile"), signIn = !!tid("header-sign-in-button");
+    const hotelId = (/\bb_hotel_id\s*[:=]\s*['"]?(\d+)/.exec(scripts) || [])[1] || null;
+
+    if (partnerPage) {
+      // A Partner Offer checks out on tpi_book, a page with its own layout and no structured price.
+      const all = lines(document.body);
+      const labelled = label => [...document.body.querySelectorAll("div, span, strong")].find(e => !e.children.length && text(e) === label);
+      const after = label => text(labelled(label)?.nextElementSibling);
+      const stay = value => { const m = /^(?:[A-Za-z]+, )?([A-Za-z]+ \d{1,2}, \d{4})\s*(.*)$/.exec(value || ""); return m ? { date: isoDate(m[1]), time: m[2].slice(0, 100) || null } : { date: null, time: null }; };
+      const checkIn = stay(after("Check-in:")), checkOut = stay(after("Check-out:"));
+      const totalText = after("Total price");
+      const amount = /[\d][\d,]*(?:\.\d+)?/.exec(totalText || "")?.[0];
+      if (!checkIn.date || !checkOut.date || !amount) return fail("site_changed", "The partner checkout page does not show the booking details and total this tool reads; Booking.com's page may have changed or still be loading.");
+      const guestLabels = [...document.body.querySelectorAll("strong")].filter(e => text(e) === "Guests:");
+      const guests = guestLabels.map(e => text(e.parentElement).replace(/^Guests:\s*/, "")).filter(Boolean);
+      const units = guestLabels.map(e => { let c = e; while (c && !c.querySelector("h2")) c = c.parentElement; return text(c?.querySelector("h2")); }).filter(Boolean).slice(0, 20);
+      const nights = after("Total length of stay:");
+      const from = all.indexOf("Your price summary"), totalAt = all.indexOf("Total price"), cancelAt = all.indexOf("How much will it cost to cancel?");
+      const notes = from >= 0 && totalAt > from ? all.slice(from + 1, totalAt).concat(all.slice(totalAt + 2, cancelAt > totalAt ? cancelAt : totalAt + 4)).slice(0, 10).map(line => line.slice(0, 300)) : [];
+      const currency = text(tid("header-currency-picker-trigger"));
+      return {
+        status: "ok", step: document.querySelector("h2") && [...document.querySelectorAll("h2")].some(h => text(h) === "Enter your details") ? "your_details" : "other",
+        partner_offer: true, property_id: hotelId, property_name: text(document.querySelector("h1")),
+        check_in: checkIn.date, check_out: checkOut.date, check_in_time: checkIn.time, check_out_time: checkOut.time,
+        selection: [nights, guests[0]].filter(Boolean).join(", ").slice(0, 300) || null,
+        units,
+        total: Number(amount.replace(/,/g, "")),
+        currency: /^[A-Z]{3}$/.test(currency || "") ? currency : null,
+        total_text: totalText.slice(0, 100), price_notes: notes,
+        cancellation: cancelAt >= 0 && all[cancelAt + 1] ? all[cancelAt + 1].slice(0, 300) : null,
+        signed_in: profile === signIn ? null : profile
+      };
+    }
 
     const dates = tid("booking-details-date-summary");
     const times = dates ? [...dates.querySelectorAll("time")] : [];
@@ -80,12 +115,10 @@
     const after = totalAt >= 0 ? summaryLines.slice(totalAt + 1) : [];
     const end = after.indexOf("Price information");
     const notes = after.slice(0, end < 0 ? undefined : end).filter(line => line !== totalText).slice(0, 10).map(line => line.slice(0, 300));
-    const profile = !!tid("header-profile"), signIn = !!tid("header-sign-in-button");
-    const hotelId = (/\bb_hotel_id\s*[:=]\s*['"]?(\d+)/.exec(scripts) || [])[1] || null;
     const step = tid("user-details-container") ? "your_details" : document.querySelector('[data-testid*="payment"], iframe[src*="payment"]') ? "finish_booking" : "other";
     const nameEl = document.querySelector('[data-testid="property-details__metadata--property-type"]')?.closest("div")?.parentElement?.querySelector("h1, h2") || document.querySelector("h1, h2");
     return {
-      status: "ok", step, property_id: hotelId, property_name: text(nameEl),
+      status: "ok", step, partner_offer: false, property_id: hotelId, property_name: text(nameEl),
       check_in: isoDate(times[0].getAttribute("datetime")), check_out: isoDate(times[1].getAttribute("datetime")),
       check_in_time: timeLines[0][2] ? timeLines[0][2].slice(0, 100) : null, check_out_time: timeLines[1][2] ? timeLines[1][2].slice(0, 100) : null,
       selection: selectedAt >= 0 && detailLines[selectedAt + 1] ? detailLines[selectedAt + 1].slice(0, 300) : null,
