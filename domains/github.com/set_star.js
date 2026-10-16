@@ -93,6 +93,7 @@
                 "canceled",
                 "unknown",
                 "state_changed",
+                "busy",
                 "outcome_unknown"
               ]
             },
@@ -130,6 +131,9 @@
     if (localActor === "") return fail("login_required", "Sign in to GitHub to star repositories. Nothing was changed.");
     if (typeof localActor !== "string") return fail("site_changed", "The page does not say which account is signed in. Nothing was changed.");
     const label = starred => ((starred ? "Unstar " : "Star ") + fullName).toLowerCase();
+    const lock = "data-xwebmcp-star-busy";
+    if (document.documentElement.hasAttribute(lock)) return fail("busy", "Another set_star call is running in this page. Nothing was changed.");
+    document.documentElement.setAttribute(lock, "true");
     try {
       const lookup = async () => {
         const response = await fetch("/" + fullName, { cache: "no-store", signal });
@@ -178,6 +182,8 @@
       return { status: "ok", full_name: fullName, url, previous_starred: initial.starred, starred: final.starred, changed: true, mutation_attempted: true };
     } catch {
       return fail(attempted ? "outcome_unknown" : signal && signal.aborted ? "canceled" : "unknown", attempted ? "The star outcome is unknown. Read get_star_status before calling again." : "The repository request failed. Nothing was changed.");
+    } finally {
+      document.documentElement.removeAttribute(lock);
     }
   }
 }]

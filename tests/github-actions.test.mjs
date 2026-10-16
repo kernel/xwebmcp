@@ -122,6 +122,14 @@ test("GitHub action malformed inputs including fake confirmation are rejected be
   }
 });
 
+test("GitHub preparations count title and body length in characters, not UTF-16 code units", async () => {
+  for (const name of ["prepare_issue", "prepare_pull_request"]) {
+    assert.equal((await run(name, { ...good[name], title: "\ud83c\udfad".repeat(256) })).output.status, "prepared", name);
+    assert.equal((await run(name, { ...good[name], title: "\ud83c\udfad".repeat(257) })).output.error_kind, "invalid_input", name);
+    assert.equal((await run(name, { ...good[name], body: "\ud83c\udfad".repeat(10000) })).output.status, "prepared", name);
+  }
+});
+
 test("GitHub PR preparation rejects invalid refs and never checks or creates a comparison", async () => {
   for (const head_branch of ["main", "", "a..b", "-flag", ".hidden", "a/.hidden", "x.lock", "a/", "a//b", "a b", "a:b", "a?b", "a*b", "a\\b", "a[b", "a~b", "a^b", "a@{b", "@", "a.", "bad\ud800", "bad\udfff", "x".repeat(201)]) {
     const r = await run("prepare_pull_request", { ...good.prepare_pull_request, head_branch });
@@ -246,7 +254,8 @@ test("GitHub set_star rejects wrong pages, local accounts and unusable buttons b
     [{ button: b => b.setAttribute("style", "opacity:0") }, "site_changed"],
     [{ button: b => b.setAttribute("inert", "") }, "site_changed"],
     [{ computedStyle: node => node.localName === "body" ? { opacity: "0" } : {} }, "site_changed"],
-    [{ html: repoPage().replace("</body>", '<button data-testid="star-button"></button></body>') }, "site_changed"]
+    [{ html: repoPage().replace("</body>", '<button data-testid="star-button"></button></body>') }, "site_changed"],
+    [{ button: (b, doc) => doc.documentElement.setAttribute("data-xwebmcp-star-busy", "true") }, "busy"]
   ]) {
     const r = await run("set_star", good.set_star, options);
     assert.equal(r.output.error_kind, kind);
@@ -267,6 +276,7 @@ test("GitHub set_star uncertain, canceled or changed-account outcomes never retr
     assert.equal(r.output.mutation_attempted, true);
     assert.equal(r.clicks, 1);
     assert.ok(r.calls.length <= 2);
+    assert.equal(r.doc.documentElement.hasAttribute("data-xwebmcp-star-busy"), false);
   }
   const before = await run("set_star", good.set_star, { route: (n, { signal }) => { signal.aborted = true; return { body: repoPage() }; } });
   assert.equal(before.output.error_kind, "canceled");

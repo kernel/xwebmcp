@@ -119,7 +119,13 @@
 
     try {
       // Without cookies: signed in, the issue page makes the browser mark the notification for the issue as read.
-      const response = await fetch("/" + owner + "/" + repo + "/issues/" + number, { credentials: "omit" });
+      let response = await fetch("/" + owner + "/" + repo + "/issues/" + number, { credentials: "omit" });
+      if (response.status === 404) {
+        // GitHub does not redirect issue URLs under a renamed repository's old name; its repository page does.
+        const moved = await fetch("/" + owner + "/" + repo, { credentials: "omit" });
+        const canonical = new URL(moved.url).pathname.replace(/\/$/, "");
+        if (moved.ok && /^\/[^/]+\/[^/]+$/.test(canonical) && canonical.toLowerCase() !== ("/" + owner + "/" + repo).toLowerCase()) response = await fetch(canonical + "/issues/" + number, { credentials: "omit" });
+      }
       const path = new URL(response.url).pathname;
       if (response.status === 429) return fail("throttled", "GitHub rate-limited this browser (HTTP 429). Wait a minute or more before retrying; nothing was changed.");
       if (response.status === 403) return fail("blocked", "GitHub refused the request (HTTP 403). Nothing was changed.");

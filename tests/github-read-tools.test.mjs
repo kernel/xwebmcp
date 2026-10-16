@@ -139,12 +139,15 @@ test("requests are relative same-origin GETs that carry no extra headers or body
     ["get_pull_request", { owner: "a", repo: "r", number: 7 }, () => ({ status: 404, body: "" })]
   ]) {
     const { calls } = await run(name, input, { route });
-    assert.equal(calls.length, 1);
-    assert.match(calls[0].target, /^\//);
-    assert.equal(calls[0].method, "GET");
-    assert.equal(calls[0].body, undefined);
-    assert.equal(calls[0].credentials, name === "get_issue" || name === "get_pull_request" ? "omit" : undefined);
-    assert.ok(Object.keys(calls[0].headers).every(h => h === "Accept"), name);
+    // get_issue checks the repository page for a rename after a 404.
+    assert.equal(calls.length, name === "get_issue" ? 2 : 1);
+    for (const call of calls) {
+      assert.match(call.target, /^\//);
+      assert.equal(call.method, "GET");
+      assert.equal(call.body, undefined);
+      assert.equal(call.credentials, name === "get_issue" || name === "get_pull_request" ? "omit" : undefined);
+      assert.ok(Object.keys(call.headers).every(h => h === "Accept"), name);
+    }
   }
 });
 
@@ -522,6 +525,19 @@ test("a login-like owner name is not mistaken for GitHub's login redirect", asyn
       assert.equal((await run(name, input, { route: () => ({ status: 200, body: "", url }) })).output.error_kind, "login_required", `${name} ${url}`);
     }
   }
+});
+
+test("get_issue follows a renamed repository, whose old issue URLs GitHub answers with 404", async () => {
+  const route = target => target === "/old-org/widgets/issues/7" ? { status: 404, body: "" }
+    : target === "/old-org/widgets" ? { status: 200, body: "", url: `${ORIGIN}/example-org/widgets` }
+    : target === "/example-org/widgets/issues/7" ? issueRoute(issuePayload([]))() : assert.fail("unexpected " + target);
+  const { output, calls } = await run("get_issue", { owner: "old-org", repo: "widgets", number: 7 }, { route });
+  assert.equal(output.status, "ok");
+  assert.equal(output.redirected_from, "old-org/widgets#7");
+  assert.deepEqual(calls.map(call => [call.target, call.credentials]), [["/old-org/widgets/issues/7", "omit"], ["/old-org/widgets", "omit"], ["/example-org/widgets/issues/7", "omit"]]);
+  const missing = await run("get_issue", { owner: "example-org", repo: "widgets", number: 8 }, { route: target => target === "/example-org/widgets" ? { status: 200, body: "" } : { status: 404, body: "" } });
+  assert.equal(missing.output.error_kind, "not_found");
+  assert.equal(missing.calls.length, 2);
 });
 
 test("get_issue and get_pull_request request pages without cookies, in signed-in and signed-out tabs", async () => {

@@ -134,9 +134,9 @@
     const fullName = owner + "/" + repo;
     const url = "https://github.com/" + fullName;
 
-    if (typeof input.title !== "string" || !input.title.trim() || input.title.length > 256 || /[\r\n\u0000]/.test(input.title)) return fail("invalid_input", "title must be one nonblank line of at most 256 UTF-16 code units. Nothing was requested.");
+    if (typeof input.title !== "string" || !input.title.trim() || [...input.title].length > 256 || /[\r\n\u0000]/.test(input.title)) return fail("invalid_input", "title must be one nonblank line of at most 256 characters. Nothing was requested.");
 
-    if (typeof input.body !== "string" || input.body.length > 10000 || !input.body.trim() || input.body.includes("\u0000")) return fail("invalid_input", "body must be nonblank text of at most 10000 UTF-16 code units, with no NUL. Nothing was requested.");
+    if (typeof input.body !== "string" || [...input.body].length > 10000 || !input.body.trim() || input.body.includes("\u0000")) return fail("invalid_input", "body must be nonblank text of at most 10000 characters, with no NUL. Nothing was requested.");
 
     if (location.origin !== "https://github.com") return fail("wrong_page", "Open github.com in this tab. Nothing was requested.");
     if (signal && signal.aborted) return fail("canceled", "Canceled before any request.");
