@@ -223,11 +223,11 @@
     const seen = new Set([input.page_token]);
     for (let entries = paging && continuationOnly(data), hops = 0; entries; entries = continuationOnly(data), hops++) {
       const token = entries.map(x => x.continuationItemRenderer?.continuationEndpoint?.continuationCommand?.token ?? x.continuationItemViewModel?.continuationCommand?.innertubeCommand?.continuationCommand?.token).find(t => typeof t === "string" && /^[A-Za-z0-9_%=.+/:-]{16,16000}$/.test(t)) ?? null;
+      if (token && seen.has(token)) return fail("site_changed", "YouTube returned a continuation token it had already served; the list cannot be paged further.");
       if (!token || hops === 10) {
         const warnings = [token ? "YouTube returned " + (hops + 1) + " continuation pages without videos; pass next_page_token to keep paging." : "The list has ended.", "YouTube does not attest the originating resource for a continuation; its id and title are null."];
         return { status: token ? "ok" : "no_results", playlist_id: null, title: null, items: [], next_page_token: token, truncated: false, unsupported_count: 0, warnings };
       }
-      if (seen.has(token)) return fail("site_changed", "YouTube returned a continuation token it had already served; the list cannot be paged further.");
       seen.add(token);
       if (context?.signal?.aborted) return fail("canceled", "Canceled between continuation pages.");
       response = await call({ continuation: token }, true);
@@ -246,7 +246,7 @@
       const roots = paging ? continuationLists.flat() : selected?.content ? [selected.content] : null;
       if (!Array.isArray(roots) || (paging && !continuationLists.length)) return fail("site_changed", "No recognized browse content was returned.");
       const items = [];
-      let next = null, truncated = false, unsupported = 0, empty = false, continuations = 0, scanned = 0, outputUnits = 0;
+      let next = null, truncated = false, unsupported = 0, empty = false, scanned = 0, outputUnits = 0;
       const stack = [...(paging ? continuationLists : roots)].reverse();
       while (stack.length && scanned++ < 20000) {
         const node = stack.pop();
@@ -263,7 +263,7 @@
           }
           stack.push(...node.slice().reverse()); continue;
         }
-        if (node.continuationItemRenderer || node.continuationItemViewModel) { continuations++; continue; }
+        if (node.continuationItemRenderer || node.continuationItemViewModel) continue;
         if (node.messageRenderer || node.backgroundPromoRenderer) { empty = true; continue; }
         if (node.adSlotRenderer || node.searchPyvRenderer) { unsupported++; continue; }
         const lockup = node.lockupViewModel;
@@ -287,7 +287,6 @@
       if (!items.length && !empty && roots.length) return fail("site_changed", "Browse content contained no recognized videos or explicit empty state.");
       if (next && seen.has(next)) return fail("site_changed", "YouTube offered a continuation token it had already served; the list cannot be paged further.");
       const warnings = [];
-      if (!next && continuations) warnings.push("YouTube offered a continuation outside the list of videos and no next page for it; the list may be incomplete.");
       if (truncated) warnings.push("Only the first " + items.length + " items are returned due to count/size bounds. The next token skips omitted items from this page.");
       if (paging) warnings.push("YouTube does not attest the originating resource for a continuation; its id and title are null.");
       const title = clean(data.metadata?.playlistMetadataRenderer?.title || data.header?.pageHeaderRenderer?.pageTitle);

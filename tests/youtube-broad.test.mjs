@@ -156,6 +156,8 @@ for (const name of ["list_channel_videos", "get_playlist"]) {
     assert.deepEqual([bounded.status, bounded.items.length, bounded.next_page_token], ["ok", 0, hop(11).continuationItemRenderer.continuationEndpoint.continuationCommand.token], "stopping at the bound is not the end of the list");
     assert.match(bounded.warnings.join(" "), /11 continuation pages without videos/);
     assert.equal(endless.calls.length, 11);
+    const repeatAtBound = harness(name, { route: () => only([repeatAtBound.calls.length === 11 ? hop(3) : hop(repeatAtBound.calls.length)]) });
+    assert.equal((await repeatAtBound.run({ page_token: pageToken })).error_kind, "site_changed", "a repeated token at the bound is not handed back");
     const cycle = harness(name, { route: () => only([cont()]) });
     assert.equal((await cycle.run({ page_token: pageToken })).error_kind, "site_changed", "a token served twice does not loop");
     assert.equal(cycle.calls.length, 2);
@@ -169,13 +171,6 @@ for (const name of ["list_channel_videos", "get_playlist"]) {
     assert.equal(mixed.error_kind, "site_changed");
     const first = await harness(name, { route: () => ({ data: browse([cont()]) }) }).run(input);
     assert.equal(first.error_kind, "site_changed", "a first page with no videos is not an end of list");
-  });
-  test(`${name}: a continuation outside the video list is flagged when no next page is found`, async () => {
-    const sections = (...extra) => ({ data: browse([{ sectionListRenderer: { contents: [{ itemSectionRenderer: { contents: [lockup()] } }, ...extra] } }]) });
-    const out = await harness(name, { route: () => sections(cont()) }).run(input);
-    assert.deepEqual([out.status, out.next_page_token], ["ok", null]);
-    assert.match(out.warnings.join(" "), /may be incomplete/);
-    assert.deepEqual((await harness(name, { route: () => sections() }).run(input)).warnings, []);
   });
   test(`${name}: a page without videos that still has a next token is ok, not no_results`, async () => {
     const playlistCard = { lockupViewModel: { contentType: "LOCKUP_CONTENT_TYPE_PLAYLIST", contentId: "PLother" } };
