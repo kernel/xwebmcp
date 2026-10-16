@@ -153,11 +153,16 @@ for (const name of ["list_channel_videos", "get_playlist"]) {
     assert.match(end.warnings.join(" "), /list has ended/);
     const endless = harness(name, { route: () => only() });
     const bounded = await endless.run({ page_token: token });
-    assert.deepEqual([bounded.status, bounded.next_page_token], ["no_results", token]);
-    assert.match(bounded.warnings.join(" "), /10 continuation pages without videos/);
+    assert.deepEqual([bounded.status, bounded.items.length, bounded.next_page_token], ["ok", 0, token], "stopping at the bound is not the end of the list");
+    assert.match(bounded.warnings.join(" "), /11 continuation pages without videos/);
     assert.equal(endless.calls.length, 11);
     const mixed = await harness(name, { route: () => ({ data: { onResponseReceivedActions: [{ appendContinuationItemsAction: { continuationItems: [cont()] } }, { appendContinuationItemsAction: { continuationItems: [{ strangeShelfRenderer: { title: "x" } }] } }] } }) }).run({ page_token: token });
     assert.equal(mixed.error_kind, "site_changed");
+    const later = { continuationItemRenderer: { continuationEndpoint: { continuationCommand: { token: "LATERCONTINUATION0123456789" } } } };
+    const refused = harness(name, { route: () => refused.calls.length === 1 ? only([later]) : { status: 400, data: {} } });
+    const midChain = await refused.run({ page_token: token });
+    assert.equal(midChain.error_kind, "site_error", "a 400 on a later page does not blame the caller's token");
+    assert.equal((await harness(name, { route: () => ({ status: 400, data: {} }) }).run({ page_token: token })).error_kind, "invalid_page_token");
     const first = await harness(name, { route: () => ({ data: browse([cont()]) }) }).run(input);
     assert.equal(first.error_kind, "site_changed", "a first page with no videos is not an end of list");
   });
