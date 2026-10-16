@@ -255,7 +255,7 @@ for (const [label, input] of invalidSearch) {
 test("a past check_in names today's date so the caller can correct it", async () => {
   for (const [name, input] of [["search_stays", SEARCH], ["get_property", PROPERTY]]) {
     const { output } = await run(name, { ...input, check_in: "2025-11-10", check_out: "2025-11-12" });
-    assert.equal(output.error_message, "check_in 2025-11-10 is in the past; today is 2026-09-29.");
+    assert.equal(output.error_message, "check_in 2025-11-10 is in the past; today is 2026-09-29 (UTC).");
   }
 });
 

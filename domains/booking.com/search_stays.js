@@ -158,7 +158,7 @@
       if (!isDate(input.check_out)) return fail("invalid_input", "check_out must be a real calendar date, YYYY-MM-DD.");
       const dayMs = 86400000;
       const nights = Math.round((Date.parse(input.check_out) - Date.parse(input.check_in)) / dayMs);
-      if (Date.parse(input.check_in) < Math.floor(Date.now() / dayMs) * dayMs - dayMs) return fail("invalid_input", "check_in " + input.check_in + " is in the past; today is " + new Date().toISOString().slice(0, 10) + ".");
+      if (Date.parse(input.check_in) < Math.floor(Date.now() / dayMs) * dayMs - dayMs) return fail("invalid_input", "check_in " + input.check_in + " is in the past; today is " + new Date().toISOString().slice(0, 10) + " (UTC).");
       if (nights < 1) return fail("invalid_input", "check_out must be after check_in.");
       if (nights > 30) return fail("invalid_input", "The stay may be at most 30 nights.");
       if (!Number.isInteger(input.adults) || input.adults < 1 || input.adults > 30) return fail("invalid_input", "adults must be an integer from 1 to 30.");
