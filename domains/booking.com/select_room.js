@@ -3,14 +3,15 @@
   match: { url_patterns: ["https://www.booking.com/*"] },
   tool: {
     name: "select_room",
-    description: "Reserve one unit of one rate on the dated Booking.com property page that is open in this tab, using the property_id, rate_id and price.total returned by get_property: selects 1 in that rate's room count and presses \"I'll reserve\", which takes the tab to Booking.com's \"Your details\" step on secure.booking.com. Open the property page for your dates and party first (get_property's property.page_url); otherwise the tool returns wrong_page. Partner Offers can be selected too (partner_offer true); their checkout may show a different price or cancellation terms, or Booking.com may say the offer is no longer available and return to the property page. Refuses when the page shows a different total than expected_total (price_changed, with the current total), when another rate already has rooms selected, when the rate is a members-only preview, or when the rate cannot be selected. The press is scheduled after the tool returns (status navigation_scheduled): list tools again and call get_checkout_step to read the step, the selection and the total including taxes. Does not enter guest details, does not book and never pays; nothing is reserved until the guest completes the later steps. English pages only.",
+    description: "Reserve one unit of one rate on the dated Booking.com property page that is open in this tab, using the property_id, rate_id and price.total returned by get_property: selects 1 in that rate's room count and presses \"I'll reserve\", which takes the tab to Booking.com's \"Your details\" step on secure.booking.com. It acts on the property page for your dates and party (get_property's property.page_url): pass that URL as page_url and, from any other page, the tool opens it and returns opening_property_page, after which you list tools again and repeat the call; without page_url it returns wrong_page. Partner Offers can be selected too (partner_offer true); their checkout may show a different price or cancellation terms, or Booking.com may say the offer is no longer available and return to the property page. Refuses when the page shows a different total than expected_total (price_changed, with the current total), when another rate already has rooms selected, when the rate is a members-only preview, or when the rate cannot be selected. The press is scheduled after the tool returns (status navigation_scheduled): list tools again and call get_checkout_step to read the step, the selection and the total including taxes. Does not enter guest details, does not book and never pays; nothing is reserved until the guest completes the later steps. English pages only.",
     inputSchema: {
       type: "object", additionalProperties: false,
       required: ["property_id", "rate_id", "expected_total"],
       properties: {
         property_id: { type: "string", pattern: "^[0-9]{1,20}$", description: "property_id from get_property." },
         rate_id: { type: "string", maxLength: 120, pattern: "^[A-Za-z0-9]+(?:_[A-Za-z0-9]+){0,9}$", description: "rate_id of one rate from get_property." },
-        expected_total: { type: "number", minimum: 0, description: "That rate's price.total from get_property; the tool refuses if the page shows a different total." }
+        expected_total: { type: "number", minimum: 0, description: "That rate's price.total from get_property; the tool refuses if the page shows a different total." },
+        page_url: { type: "string", maxLength: 400, description: "get_property's property.page_url. When the tab is not on that property page, the tool opens it instead of selecting (status opening_property_page); list tools again and call select_room with the same input." }
       }
     },
     outputSchema: {
@@ -33,6 +34,13 @@
           }
         },
         {
+          type: "object", additionalProperties: false, required: ["status", "page_url", "next_tool"],
+          properties: {
+            status: { const: "opening_property_page", description: "The tab was not on the property page; it loads page_url right after this result. Nothing was selected." },
+            page_url: { type: "string" }, next_tool: { const: "select_room" }
+          }
+        },
+        {
           type: "object", additionalProperties: false, required: ["status", "error_kind", "error_message"],
           properties: {
             status: { const: "error" },
@@ -47,12 +55,25 @@
   },
   execute: async (input, context = {}) => {
     const fail = (error_kind, error_message, extra) => ({ status: "error", error_kind, error_message, ...extra });
-    if (!input || typeof input !== "object" || Array.isArray(input) || Object.keys(input).some(k => !["property_id", "rate_id", "expected_total"].includes(k))) return fail("invalid_input", "Input must contain only property_id, rate_id and expected_total.");
+    if (!input || typeof input !== "object" || Array.isArray(input) || Object.keys(input).some(k => !["property_id", "rate_id", "expected_total", "page_url"].includes(k))) return fail("invalid_input", "Input must contain only property_id, rate_id, expected_total and page_url.");
     if (typeof input.property_id !== "string" || !/^\d{1,20}$/.test(input.property_id)) return fail("invalid_input", "property_id must be the numeric ID from get_property.");
     if (typeof input.rate_id !== "string" || input.rate_id.length > 120 || !/^[A-Za-z0-9]+(?:_[A-Za-z0-9]+){0,9}$/.test(input.rate_id)) return fail("invalid_input", "rate_id must be a rate_id from get_property.");
     if (typeof input.expected_total !== "number" || !Number.isFinite(input.expected_total) || input.expected_total < 0) return fail("invalid_input", "expected_total must be the rate's price.total from get_property.");
+    let pageUrl = null;
+    if (input.page_url !== undefined) {
+      try { pageUrl = typeof input.page_url === "string" && input.page_url.length <= 400 ? new URL(input.page_url) : null; } catch { pageUrl = null; }
+      if (!pageUrl || pageUrl.origin !== "https://www.booking.com" || pageUrl.username || pageUrl.password || !/^\/hotel\/[a-z]{2}\/[A-Za-z0-9._-]+\.html$/.test(pageUrl.pathname) || !pageUrl.searchParams.get("checkin") || !pageUrl.searchParams.get("checkout")) return fail("invalid_input", "page_url must be get_property's property.page_url, a dated www.booking.com property page.");
+    }
     if (context.signal?.aborted) return fail("canceled", "Canceled; nothing was selected.");
-    if (window.location.origin !== "https://www.booking.com" || !/^\/hotel\/[a-z]{2}\/[A-Za-z0-9._-]+\.html$/.test(window.location.pathname)) return fail("wrong_page", "Open the property page for your dates (get_property's property.page_url) in this tab first. Nothing was selected.");
+    // Off the property page, open page_url when given; never again once the tab is on it, so a mismatch cannot loop.
+    const elsewhere = message => {
+      const here = new URL(window.location.href);
+      const atPageUrl = pageUrl && here.origin === pageUrl.origin && here.pathname === pageUrl.pathname && ["checkin", "checkout", "group_adults"].every(k => here.searchParams.get(k) === pageUrl.searchParams.get(k));
+      if (!pageUrl || atPageUrl) return fail("wrong_page", message);
+      setTimeout(() => window.location.assign(pageUrl.href), 100);
+      return { status: "opening_property_page", page_url: pageUrl.href, next_tool: "select_room" };
+    };
+    if (window.location.origin !== "https://www.booking.com" || !/^\/hotel\/[a-z]{2}\/[A-Za-z0-9._-]+\.html$/.test(window.location.pathname)) return elsewhere( "Open the property page for your dates (get_property's property.page_url) in this tab first. Nothing was selected.");
     if (!/^en(-|$)/i.test(document.documentElement.getAttribute("lang") || "")) return fail("unsupported_language", "This tool reads English labels; switch the Booking.com page language to English first.");
 
     const rawText = el => el ? (el.textContent || "").replace(/\s+/g, " ").trim() : "";
@@ -62,8 +83,8 @@
     const config = re => (re.exec(scripts) || [])[1] ?? null;
     const table = document.querySelector("#hprt-table");
     if (!table && /awswaf|AwsWafIntegration/i.test(scripts) && /JavaScript is disabled|verify you are human/i.test(rawText(document.body))) return fail("challenge", "The page is a bot check, not a property page.");
-    if (config(/\bb_hotel_id\s*:\s*'(\d+)'/) !== input.property_id) return fail("wrong_page", "The open property page is not property " + input.property_id + ". Nothing was selected.");
-    if (!table) return fail("wrong_page", "The property page shows no rates; open it with check-in and check-out dates. Nothing was selected.");
+    if (config(/\bb_hotel_id\s*:\s*'(\d+)'/) !== input.property_id) return elsewhere("The open property page is not property " + input.property_id + ". Nothing was selected.");
+    if (!table) return elsewhere("The property page shows no rates; open it with check-in and check-out dates. Nothing was selected.");
     const rows = [...table.querySelectorAll("tr.js-rt-block-row")];
     const selects = [...table.querySelectorAll('select[name^="nr_rooms_"]')];
     if (selects.some(s => s.value !== "0" && s.getAttribute("name") !== "nr_rooms_" + input.rate_id)) return fail("selection_present", "Another rate already has rooms selected on this page; reload the page to clear it. Nothing was selected.");

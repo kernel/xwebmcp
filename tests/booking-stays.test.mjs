@@ -1028,6 +1028,24 @@ for (const [label, page, patch, kind] of [
   });
 }
 
+test("select_room opens page_url from another page and never loops once it is there", async () => {
+  const pageUrl = PROPERTY.property_url + "?checkin=2026-11-10&checkout=2026-11-12&group_adults=2&no_rooms=1&group_children=0";
+  for (const start of [HOME, "https://www.booking.com/searchresults.html?ss=Example", "https://www.booking.com/hotel/xx/other.html?checkin=2026-11-10&checkout=2026-11-12&group_adults=2"]) {
+    const { output, timers, env } = await run("select_room", { ...SELECT, page_url: pageUrl }, { start, liveHtml: reservePage(propertyPage({ cfg: config({ hotelId: "999" }) })) });
+    assert.deepEqual(output, { status: "opening_property_page", page_url: pageUrl, next_tool: "select_room" }, start);
+    assert.equal(timers.length, 1);
+    assert.ok([...env.live.querySelectorAll("select")].every(s => s.value === "0"), "nothing is selected before opening the page");
+  }
+  const there = await run("select_room", { ...SELECT, property_id: "9999", page_url: pageUrl }, { start: pageUrl + "&aid=1", liveHtml: reservePage() });
+  assert.equal(there.output.error_kind, "wrong_page", "already on page_url: a property mismatch is reported, not reopened");
+  assert.equal(there.timers.length, 0);
+  const selected = await run("select_room", { ...SELECT, page_url: pageUrl }, { start: pageUrl, liveHtml: reservePage() });
+  assert.equal(selected.output.status, "navigation_scheduled");
+  for (const bad of ["https://example.com/hotel/xx/a.html?checkin=2026-11-10&checkout=2026-11-12", PROPERTY.property_url, "not a url", 7]) {
+    assert.equal((await run("select_room", { ...SELECT, page_url: bad }, selectOptions())).output.error_kind, "invalid_input", String(bad));
+  }
+});
+
 test("select_room reports the current total when the price changed", async () => {
   const { output } = await run("select_room", { ...SELECT, expected_total: 300 }, selectOptions());
   assert.equal(output.current_total, 316);
@@ -1087,6 +1105,16 @@ test("get_checkout_step reads the price notes when the summary also shows a disc
   const { output } = await run("get_checkout_step", {}, { start: "https://secure.booking.com/book.html", liveHtml: page });
   assert.equal(output.total, 397.97);
   assert.deepEqual(output.price_notes, ["Includes taxes and fees", "In property currency: € 355.30"]);
+});
+
+test("get_checkout_step falls back to the shown total and the room's cancellation line", async () => {
+  const start = "https://secure.booking.com/book.html";
+  for (const page of [checkoutPage().replace(' data-value="397.97153"', ""), checkoutPage().replace('data-value="397.97153"', 'data-value="abc"')]) {
+    assert.deepEqual(plain((await run("get_checkout_step", {}, { start, liveHtml: page })).output).total, 397.97);
+  }
+  const nonRefundable = summaryPartnerCheckout().replace(/<div>How much will it cost to cancel\?<\/div><div><span>Free cancellation before November 11, 2026<\/span><\/div>/, "").replace("<h2>Your booking details</h2>", "<h2>Your booking details</h2><strong>Non-refundable</strong>");
+  const out = await run("get_checkout_step", {}, { start: "https://secure.booking.com/tpi_book.en-us.html", liveHtml: nonRefundable });
+  assert.equal(out.output.cancellation, "Non-refundable");
 });
 
 test("get_checkout_step refuses other pages, input and unreadable checkout pages", async () => {

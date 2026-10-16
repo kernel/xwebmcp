@@ -19,7 +19,7 @@
             check_in: { type: ["string", "null"], description: "YYYY-MM-DD" }, check_out: { type: ["string", "null"], description: "YYYY-MM-DD" },
             check_in_time: { type: ["string", "null"], maxLength: 100 }, check_out_time: { type: ["string", "null"], maxLength: 100 },
             selection: { type: ["string", "null"], maxLength: 300, description: "For example \"2 nights, 1 room for 2 adults\"." },
-            units: { type: "array", maxItems: 20, items: { type: "string", maxLength: 300 }, description: "Selected rooms, for example \"1 x Double or Twin Room\"." },
+            units: { type: "array", maxItems: 20, items: { type: "string", maxLength: 300 }, description: "Selected rooms, for example \"1 x Double or Twin Room\", or the room name alone where a partner checkout shows no count." },
             total: { type: ["number", "null"], description: "The price summary's total, which Booking.com says includes taxes and fees unless price_notes says otherwise." },
             currency: { type: ["string", "null"] }, total_text: { type: ["string", "null"], maxLength: 100 },
             price_notes: { type: "array", maxItems: 10, items: { type: "string", maxLength: 300 }, description: "Lines under the total, such as \"Includes taxes and fees\" or the amount in the property's currency." },
@@ -69,7 +69,8 @@
     const totalEl = document.querySelector('[data-animate-price-group-name="bp_user_total_price"]');
     const totalLabel = totalEl ? null : label(/^Total(?: price)?$/);
     const totalText = totalEl ? text(totalEl, 100) : text(totalLabel?.nextElementSibling, 100);
-    const total = totalEl ? Number(totalEl.getAttribute("data-value")) : amount(totalText);
+    const raw = totalEl?.getAttribute("data-value");
+    const total = /^\d+(?:\.\d+)?$/.test(raw || "") ? Number(raw) : amount(totalText);
 
     // Dates: Booking.com's own checkout and one partner layout use a date summary; the other partner layout labels them.
     const dates = tid("booking-details-date-summary");
@@ -131,7 +132,7 @@
       total: Math.round(total * 100) / 100,
       currency: /^[A-Z]{3}$/.test(currency || "") ? currency : null,
       total_text: totalText, price_notes: notes.slice(0, 10).map(line => line.slice(0, 300)),
-      cancellation: text(tid("cancellation-policy")) || (cancelAt >= 0 && all[cancelAt + 1] ? all[cancelAt + 1].slice(0, 300) : null),
+      cancellation: text(tid("cancellation-policy")) || (cancelAt >= 0 && all[cancelAt + 1] ? all[cancelAt + 1].slice(0, 300) : text(label(/^(?:Non-refundable|Free cancellation\b.*)$/))),
       signed_in: profile === signIn ? null : profile
     };
   }
