@@ -2,7 +2,7 @@
   "id": "booking-reserve-cheapest-room",
   "domain": "booking.com",
   "stage": "prepare",
-  "prompt": "On booking.com, start a reservation of the cheapest room option that Booking.com itself sells (skip any rate marked \"Partner Offer\") at {{hotel}} in {{city}} from {{check_in}} to {{check_out}} for 2 adults in one room: select one of that room and continue to Booking.com's \"Your details\" step, then stop there without entering any details. You may select the room; do not fill in guest details or go further. Reply with JSON: {\"room\": string, \"total\": number in US dollars, the total the \"Your details\" page shows in its price summary}.",
+  "prompt": "On booking.com, start a reservation of the cheapest room option at {{hotel}} in {{city}} from {{check_in}} to {{check_out}} for 2 adults in one room: select one of that room and continue to Booking.com's \"Your details\" step, then stop there without entering any details. You may select the room; do not fill in guest details or go further. Reply with JSON: {\"room\": string, \"total\": number in US dollars, the total the \"Your details\" page shows in its price summary}.",
   "fixture": {
     "hotel": "Palacio Ramalhete",
     "city": "Lisbon",
@@ -39,7 +39,8 @@
     {
       "name": "your details",
       "url_patterns": [
-        "https://secure.booking.com/book.html*"
+        "https://secure.booking.com/book.html*",
+        "https://secure.booking.com/tpi_book*"
       ]
     }
   ],
@@ -55,13 +56,13 @@
   ],
   "check": {
     "extract": {
-      "total": "\\bTotal\\s*\\n\\s*(?:US)?\\$\\s*([\\d,]+(?:\\.\\d{2})?)\\s*\\n\\s*Includes taxes",
-      "adults": "1 room for (\\d+) adults"
+      "total": "\\bTotal(?: price)?\\s*\\n\\s*(?:US)?\\$\\s*([\\d,]+(?:\\.\\d{2})?)\\s*\\n\\s*(?:\\(for [^)\\n]*\\)\\s*\\n\\s*)?Includes taxes",
+      "adults": "(?:1 room for|Guests:)\\s*(\\d+) adults"
     },
     "rules": [
       {
         "path": "url",
-        "matches": "^https://secure\\.booking\\.com/book\\.html"
+        "matches": "^https://secure\\.booking\\.com/(?:tpi_)?book(?:\\.[a-z-]+)?\\.html"
       },
       {
         "path": "text",
