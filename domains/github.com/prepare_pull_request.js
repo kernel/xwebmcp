@@ -171,7 +171,8 @@
     if (signal && signal.aborted) return fail("canceled", "Canceled before any request.");
 
     try {
-      const response = await fetch("/" + fullName, { cache: "no-store", signal });
+      // Without cookies: signed in, GitHub serves a newer repository page without the data this tool reads.
+      const response = await fetch("/" + fullName, { cache: "no-store", signal, credentials: "omit" });
       const finalUrl = new URL(response.url);
       if (response.status === 429) return fail("throttled", "GitHub rate-limited this browser. Do not retry automatically.");
       if (response.status === 401 || (finalUrl.origin === "https://github.com" && /^\/login(\/|$)/.test(finalUrl.pathname))) return fail("login_required", "GitHub requires sign-in to show this target.");

@@ -200,9 +200,25 @@ test("GitHub star status reads the signed-in account's state without returning t
     const signedOut = await run(name, good[name], { route: () => ({ body: repoPage({ user: "" }) }) });
     assert.equal(signedOut.output.error_kind, "login_required");
     assert.equal(signedOut.clicks, 0);
-    const malformed = await run(name, good[name], { route: () => ({ body: repoPage().replace('"viewerHasStarred":false', '"viewerHasStarred":"false"') }) });
+    const malformed = await run(name, good[name], { route: () => ({ body: repoPage().replace('"viewerHasStarred":false', '"viewerHasStarred":"false"').replace(/<button data-testid="star-button"[^>]*><\/button>/, "") }) });
     assert.equal(malformed.output.error_kind, "site_changed");
   }
+});
+
+// The newer repository page signed-in accounts get: no embedded JSON or public meta, a server-rendered star button.
+const newRepoPage = ({ starred = false, user = actor } = {}) => `<html><head>${meta("user-login", user)}${meta("route-pattern", "/$owner/$repo/")}${meta("octolytics-dimension-repository_nwo", "example-org/widgets")}</head><body><div data-loading-wrapper="true"><button data-testid="star-button" type="button" aria-label="${starred ? "Unstar" : "Star"} example-org/widgets" data-loading="false"></button></div></body></html>`;
+
+test("GitHub star tools read the star state from the newer repository page's star button", async () => {
+  for (const starred of [false, true]) {
+    const r = await run("get_star_status", good.get_star_status, { route: () => ({ body: newRepoPage({ starred }) }) });
+    assert.deepEqual([r.output.status, r.output.starred, r.output.can_star], ["ok", starred, true]);
+  }
+  const disabled = await run("get_star_status", good.get_star_status, { route: () => ({ body: newRepoPage().replace('type="button"', 'type="button" disabled') }) });
+  assert.equal(disabled.output.can_star, false);
+  const other = await run("get_star_status", good.get_star_status, { route: () => ({ body: newRepoPage().replace("Star example-org/widgets", "Star other/widgets") }) });
+  assert.equal(other.output.error_kind, "site_changed");
+  const starred = await run("set_star", good.set_star, { html: newRepoPage(), route: n => ({ body: newRepoPage({ starred: n > 1 }) }) });
+  assert.deepEqual([starred.output.status, starred.output.changed, starred.clicks], ["ok", true, 1]);
 });
 
 test("GitHub set_star fixture success clicks once and verifies a fresh server postcondition", async () => {

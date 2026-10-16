@@ -135,6 +135,16 @@
     if (document.documentElement.hasAttribute(lock)) return fail("busy", "Another set_star call is running in this page. Nothing was changed.");
     document.documentElement.setAttribute(lock, "true");
     try {
+      // GitHub serves two repository pages: the older embeds the star state as JSON, the newer renders the star button.
+      const readStar = doc => {
+        let star = null;
+        try { star = JSON.parse(doc.querySelector('script[data-target="react-app.embeddedData"]').textContent).payload?.sidebarAbout?.star; } catch { star = null; }
+        if (star && typeof star.viewerHasStarred === "boolean" && typeof star.canStar === "boolean") return { starred: star.viewerHasStarred, can_star: star.canStar };
+        const buttons = [...doc.querySelectorAll('button[data-testid="star-button"]')];
+        const label = buttons.length === 1 ? (buttons[0].getAttribute("aria-label") || "").toLowerCase() : "";
+        if (label === ("star " + fullName).toLowerCase() || label === ("unstar " + fullName).toLowerCase()) return { starred: label.startsWith("unstar "), can_star: !buttons[0].hasAttribute("disabled") };
+        return null;
+      };
       const lookup = async () => {
         const response = await fetch("/" + fullName, { cache: "no-store", signal });
         const finalUrl = new URL(response.url);
@@ -146,15 +156,13 @@
         if (finalUrl.origin !== "https://github.com" || finalUrl.pathname.replace(/\/$/, "").toLowerCase() !== ("/" + fullName).toLowerCase()) return fail("site_changed", "The repository redirected; use its current owner and name.");
         const doc = new DOMParser().parseFromString(await response.text(), "text/html");
         const meta = name => doc.querySelector('meta[name="' + name + '"]')?.getAttribute("content");
-        if (meta("route-pattern") !== "/:user_id/:repository" || meta("octolytics-dimension-repository_nwo")?.toLowerCase() !== fullName.toLowerCase()) return fail("site_changed", "GitHub did not return the expected repository page.");
+        if (!["/:user_id/:repository", "/$owner/$repo/"].includes(meta("route-pattern")) || meta("octolytics-dimension-repository_nwo")?.toLowerCase() !== fullName.toLowerCase()) return fail("site_changed", "GitHub did not return the expected repository page.");
         const actor = meta("user-login");
         if (actor === "") return fail("login_required", "Sign in to GitHub to star repositories.");
         if (actor !== localActor) return fail("state_changed", "The signed-in account changed since this page loaded; reload the page.");
-        let data;
-        try { data = JSON.parse(doc.querySelector('script[data-target="react-app.embeddedData"]').textContent).payload; } catch { return fail("site_changed", "The repository's star state is missing."); }
-        const star = data && data.sidebarAbout && data.sidebarAbout.star;
-        if (!star || typeof star.viewerHasStarred !== "boolean" || typeof star.canStar !== "boolean") return fail("site_changed", "GitHub no longer exposes the expected star state.");
-        return { starred: star.viewerHasStarred, can_star: star.canStar };
+        const star = readStar(doc);
+        if (!star) return fail("site_changed", "GitHub no longer exposes the expected star state.");
+        return star;
       };
       const initial = await lookup();
       if (initial.status === "error") return initial;

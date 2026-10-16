@@ -116,7 +116,8 @@
     const changed = () => Object.assign(new Error("unexpected repository page shape"), { siteChanged: true });
 
     try {
-      const response = await fetch("/" + owner + "/" + repo);
+      // Without cookies: signed in, GitHub serves a newer repository page without the data this tool reads.
+      const response = await fetch("/" + owner + "/" + repo, { credentials: "omit" });
       const path = new URL(response.url).pathname;
       if (response.status === 429) return fail("throttled", "GitHub rate-limited this browser (HTTP 429). Wait a minute or more before retrying; nothing was changed.");
       if (response.status === 403) return fail("blocked", "GitHub refused the request (HTTP 403). Nothing was changed.");

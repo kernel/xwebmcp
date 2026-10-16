@@ -145,7 +145,7 @@ test("requests are relative same-origin GETs that carry no extra headers or body
       assert.match(call.target, /^\//);
       assert.equal(call.method, "GET");
       assert.equal(call.body, undefined);
-      assert.equal(call.credentials, name === "get_issue" || name === "get_pull_request" ? "omit" : undefined);
+      assert.equal(call.credentials, ["get_issue", "get_pull_request", "get_repository"].includes(name) ? "omit" : undefined);
       assert.ok(Object.keys(call.headers).every(h => h === "Accept"), name);
     }
   }
