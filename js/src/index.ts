@@ -33,17 +33,17 @@ export function getModelContext(): ModelContext | null {
   return doc.modelContext ?? nav.modelContext ?? null;
 }
 
-// Every registration for a name, oldest first. The newest one is the one
+// Every live registration for a name, oldest first. The newest one is the one
 // registered with the browser; when it goes away the previous one takes over.
 const stacks = new Map<string, WebMCPTool[]>();
 const active = new Map<string, { tool: WebMCPTool; controller: AbortController }>();
 const listeners = new Set<() => void>();
 
 let context: ModelContext | null = null;
-let timers: ReturnType<typeof setTimeout>[] = [];
-let warned = false;
+let detecting = false;
 
-const RETRY_DELAYS_MS = [250, 1000, 2500, 5000];
+const DETECT_POLL_MS = 250;
+const DETECT_FOR_MS = 5000;
 
 declare const process: { env: { NODE_ENV?: string } };
 
@@ -85,37 +85,29 @@ function sync(name: string) {
   notify();
 }
 
-function stopDetecting() {
-  for (const timer of timers) clearTimeout(timer);
-  timers = [];
-  if (typeof window !== 'undefined') window.removeEventListener('load', check);
-}
-
 function check(): boolean {
   const found = getModelContext();
   if (!found) return false;
-  stopDetecting();
   context = found;
   for (const name of stacks.keys()) sync(name);
   return true;
 }
 
+// An extension or polyfill can install modelContext after hydration, so keep
+// looking for a few seconds before staying inert.
 function detect() {
-  if (context || timers.length || typeof window === 'undefined') return;
+  if (context || detecting || typeof window === 'undefined') return;
   if (check()) return;
-  // An extension or polyfill can install modelContext after hydration, so
-  // look again a few times before staying inert.
-  window.addEventListener('load', check);
-  timers = RETRY_DELAYS_MS.map((delay) => setTimeout(check, delay));
-  timers.push(
-    setTimeout(() => {
-      stopDetecting();
-      if (!warned && typeof process !== 'undefined' && process.env.NODE_ENV !== 'production') {
-        warned = true;
-        console.info('xwebmcp: WebMCP not detected, tools are not registered. Call refresh() after loading a polyfill.');
-      }
-    }, RETRY_DELAYS_MS.at(-1)! + 1),
-  );
+  detecting = true;
+  const deadline = Date.now() + DETECT_FOR_MS;
+  const timer = setInterval(() => {
+    if (!check() && Date.now() < deadline) return;
+    clearInterval(timer);
+    detecting = false;
+    if (!context && typeof process !== 'undefined' && process.env.NODE_ENV !== 'production') {
+      console.info('xwebmcp: WebMCP not detected, tools are not registered. Call refresh() after loading a polyfill.');
+    }
+  }, DETECT_POLL_MS);
 }
 
 /**
@@ -147,14 +139,9 @@ export function refresh(): void {
   if (!context) check();
 }
 
-/** Names of the tools this package currently has registered with the browser. */
-export function registeredToolNames(): string[] {
-  return [...active.keys()];
-}
-
 /** Names of every tool this document exposes, including ones registered outside this package. */
 export async function availableToolNames(): Promise<string[]> {
-  const names = new Set(registeredToolNames());
+  const names = new Set(active.keys());
   if (context?.getTools) {
     try {
       for (const tool of await context.getTools()) {
@@ -167,7 +154,7 @@ export async function availableToolNames(): Promise<string[]> {
   return [...names].sort();
 }
 
-/** Called whenever the set of registered tools changes. */
+/** Calls `listener` whenever the set of registered tools changes. */
 export function subscribe(listener: () => void): () => void {
   listeners.add(listener);
   return () => listeners.delete(listener);

@@ -27,7 +27,7 @@ describe('without WebMCP', () => {
     const controller = new AbortController();
     core.registerTool(tool('a'), { signal: controller.signal });
     await flush();
-    expect(core.registeredToolNames()).toEqual([]);
+    expect(await core.availableToolNames()).toEqual([]);
     controller.abort();
   });
 
@@ -56,10 +56,10 @@ describe('with WebMCP', () => {
     const controller = new AbortController();
     core.registerTool(tool('a'), { signal: controller.signal });
     await flush();
-    expect(core.registeredToolNames()).toEqual(['a']);
+    expect([...ctx.tools.keys()]).toEqual(['a']);
     controller.abort();
     expect(ctx.tools.size).toBe(0);
-    expect(core.registeredToolNames()).toEqual([]);
+    expect(await core.availableToolNames()).toEqual([]);
   });
 
   it('exposes the newest registration of a name and falls back when it goes away', async () => {

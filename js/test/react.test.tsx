@@ -84,14 +84,15 @@ describe('WebMCPPageProvider', () => {
   });
 
   it('lists routes declared by mounted components in navigate_to_page', async () => {
-    function NavItem({ path }: { path: string }) {
-      x.useWebMCPRoute({ path, description: `the ${path} page` });
+    function NavItem({ path, enabled }: { path: string; enabled?: boolean }) {
+      x.useWebMCPRoute({ path, description: `the ${path} page`, enabled });
       return null;
     }
     const { rerender } = render(
       <x.WebMCPPageProvider site="Example" navigate={() => {}}>
         <NavItem path="/a" />
         <NavItem path="/b" />
+        <NavItem path="/locked" enabled={false} />
       </x.WebMCPPageProvider>,
     );
     await waitFor(() =>

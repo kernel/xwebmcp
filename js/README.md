@@ -1,31 +1,37 @@
-# xwebmcp (npm)
+# xwebmcp
 
-Register WebMCP tools from the React and Next.js components that own them. A provider
-adds two site-wide tools whose contents come from whatever is mounted:
+Expose the actions in your React or Next.js app to AI agents, from the components that
+already implement them.
 
-- `get_page_context`: the current URL, title, every tool the page exposes, and the
-  context and suggested next steps contributed by mounted `<PageContext>` elements.
-- `navigate_to_page`: its description lists the pages declared by mounted
-  `useWebMCPRoute` calls. It navigates client-side, waits for the new page to mount, and
-  returns that page's context, including its tools.
+[WebMCP](https://github.com/webmachinelearning/webmcp) is a browser API. A page registers
+*tools* (a name, a description, a JSON Schema for the input, and a function) on
+`document.modelContext`, and an agent driving the browser, such as an extension or a
+[Kernel](https://kernel.sh) browser, calls them instead of clicking through the UI.
+Registering a tool by hand means managing `AbortController`s, keeping the list in sync with
+what is on screen, and handling browsers that don't have the API. This package does that
+from React.
 
-Nothing is listed centrally: a nav item declares its route, a page declares its
-context, and a component declares its tools.
+- `useWebMCPTool(...)` in a component registers a tool while that component is mounted.
+- `useWebMCPRoute(...)` in a nav item tells agents the page exists.
+- `<PageContext>` on a page tells agents what it shows.
+- `<WebMCPProvider>` in the layout adds two site-wide tools built from the above:
+  `get_page_context` (what is on this page and which tools it has) and `navigate_to_page`
+  (go to another page and return the same for it).
 
-## Entry points
+Nothing is listed centrally. On a browser without WebMCP everything is inert.
 
-| import | exports |
-| --- | --- |
-| `xwebmcp` | `registerTool(tool, { signal })`, `refresh()`, `getModelContext()`, `availableToolNames()`, `registeredToolNames()`, `subscribe()` |
-| `xwebmcp/react` | `useWebMCPTool`, `useWebMCPRoute`, `<PageContext>`, `<WebMCPPageProvider navigate>` |
-| `xwebmcp/nextjs` | `<WebMCPProvider>` (App Router), plus `useWebMCPTool`, `useWebMCPRoute`, `<PageContext>`, `refresh` |
+## Install
 
-`xwebmcp/react` and `xwebmcp/nextjs` are client modules (`'use client'`), so server
-components can render `<WebMCPProvider>` and `<PageContext>` directly.
+```sh
+npm install xwebmcp
+```
 
-## Next.js
+No runtime dependencies. `react >= 18` is a peer dependency for `xwebmcp/react`, and
+`next >= 14` for `xwebmcp/nextjs`.
 
-Put the provider in the root layout:
+## Next.js in four steps
+
+### 1. Provider
 
 ```tsx
 // app/layout.tsx
@@ -42,69 +48,69 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
 }
 ```
 
-### Routes
+`WebMCPProvider` is a client component, so a server layout can render it directly. It
+navigates with the App Router.
 
-A component that renders a link declares the page it leads to. Mounted routes make up
-the page list in `navigate_to_page`'s description.
+### 2. Routes
 
-```tsx
-// a nav item (client component)
-useWebMCPRoute({ path: '/browsers', description: 'List running browser sessions' });
-```
-
-### Page context
-
-`get_page_context` returns a single `context` object describing what the page shows.
-Each mounted `<PageContext>` adds one entry to it:
-
-- `id`: the key the entry appears under in `context`. Name it after what the
-  component shows, such as `"session"` or `"invoice"`. If two mounted elements use the
-  same `id`, the one mounted last wins.
-- `value`: any JSON-serializable data, passed to the agent unchanged. You define its
-  fields; the library does not read them. Include what an agent needs to act on the
-  page: the ids its tools take, the state the user sees.
-- `suggestedNextSteps`: optional sentences added to the page's `suggested_next_steps`.
-
-It renders nothing, and its props are serializable, so a server component can render it
-with data it already loaded:
-
-```tsx
-// app/browsers/[id]/page.tsx (server component)
-const session = await getSession(id);
-return (
-  <>
-    <PageContext
-      id="session"
-      value={{ sessionId: session.id, status: session.status }}
-      suggestedNextSteps={['Use kill_session to end this session']}
-    />
-    <SessionView session={session} />
-  </>
-);
-```
-
-With that page mounted, `get_page_context` includes:
-
-```json
-{
-  "context": { "session": { "sessionId": "abc", "status": "running" } },
-  "suggested_next_steps": ["Use kill_session to end this session"]
-}
-```
-
-### Tools
-
-Register a tool in the component that already implements the action, and have `execute`
-call the same function the UI calls. The tool then exists on every page that renders the
-component, and the agent and the user run identical code.
+Where a nav item renders, declare the page it leads to. Mounted routes become the page
+list in `navigate_to_page`'s description.
 
 ```tsx
 'use client';
+import { useWebMCPRoute } from 'xwebmcp/nextjs';
+
+function NavItem({ href, label, description, locked }: NavItemProps) {
+  useWebMCPRoute({ path: href, description, enabled: !locked });
+  return <Link href={href}>{label}</Link>;
+}
+```
+
+If the same path is declared twice (a desktop and a mobile nav, say), it is listed once.
+
+### 3. Page context
+
+On a page, say what it shows. `<PageContext>` renders nothing and its props are plain
+data, so a server component can render it with data it already loaded.
+
+```tsx
+// app/browsers/[id]/page.tsx (server component)
+import { PageContext } from 'xwebmcp/nextjs';
+
+export default async function Page({ params }) {
+  const session = await getSession((await params).id);
+  return (
+    <>
+      <PageContext
+        id="session"
+        value={{ sessionId: session.id, status: session.status }}
+        suggestedNextSteps={['Use kill_session to end this session']}
+      />
+      <SessionView session={session} />
+    </>
+  );
+}
+```
+
+- `id` is the key the entry appears under in `get_page_context`'s `context`. Name it after
+  what the component shows (`"session"`, `"invoice"`). If two mounted elements share an
+  `id`, the last one mounted wins.
+- `value` is any JSON-serializable data, passed to the agent unchanged. Include what an
+  agent needs to act: the ids its tools take, the state the user sees.
+- `suggestedNextSteps` are sentences appended to the page's `suggested_next_steps`.
+
+### 4. Tools
+
+Register a tool in the component that implements the action, and have `execute` call the
+function the button calls. The tool exists on every page that renders the component, and
+the agent and the user run the same code.
+
+```tsx
+'use client';
+import { useWebMCPTool } from 'xwebmcp/nextjs';
 
 function SessionActions({ sessionId }: { sessionId: string }) {
   const router = useRouter();
-
-  // The one implementation, shared by the button and the tool.
   const killSession = useCallback(() => deleteSession(sessionId), [sessionId]);
 
   useWebMCPTool({
@@ -131,22 +137,37 @@ function SessionActions({ sessionId }: { sessionId: string }) {
 }
 ```
 
-Keep the UI-only parts (confirmation dialog, toasts, redirects) in the click handler, and
-have the tool return a result the agent can read. In particular, don't let `execute`
-trigger a full page load (`window.location.href = ...`): it replaces the document before
-the result can be returned. Use the router, or return and let the agent call
-`navigate_to_page`.
+A tool that takes input declares it with JSON Schema, and types `execute`'s parameter to
+match:
+
+```tsx
+useWebMCPTool({
+  name: 'sign_in_start',
+  description: 'Send a one-time sign-in code to an email address.',
+  inputSchema: {
+    type: 'object',
+    properties: { email: { type: 'string', description: 'The account email' } },
+    required: ['email'],
+  },
+  execute: async ({ email }: { email: string }) => sendCode(email),
+});
+```
+
+Keep UI-only steps (confirmation dialogs, toasts, redirects) in the click handler, and
+return a result the agent can read. If `execute` throws, the agent gets the error message;
+return a structured error when there is more to say. After a mutation, update the page the
+way the UI would (SWR revalidation, `router.refresh()`) so `get_page_context` reflects it.
+Don't let `execute` trigger a full page load (`window.location.href = ...`): it replaces
+the document before the result is returned. Use the router, or return and let the agent
+call `navigate_to_page`.
 
 `useWebMCPTool` registers while the component is mounted. `execute` always sees the
-latest render; changing the name, description, schemas, or annotations re-registers the
+latest render. Changing the name, description, schemas, or annotations re-registers the
 tool. Pass `enabled: false` to unregister it without unmounting. When two mounted
 components register the same name, the most recently mounted one is exposed and the
-other takes over when it unmounts.
+other takes over when it unmounts. React StrictMode's double mount is handled.
 
-For other React routers, use `<WebMCPPageProvider navigate={(href) => ...}>` from
-`xwebmcp/react`.
-
-## Tool output
+## What the agent sees
 
 `get_page_context` returns:
 
@@ -161,22 +182,62 @@ For other React routers, use `<WebMCPPageProvider navigate={(href) => ...}>` fro
 }
 ```
 
-`context` is keyed by each `<PageContext>` `id`. `available_tools` includes tools
-registered outside this package (site-native, declarative forms, extensions) when the
-browser supports `getTools()`.
+`context` is keyed by each `<PageContext>` `id`. `available_tools` also includes tools
+registered outside this package (declarative forms, extensions) when the browser supports
+`getTools()`.
 
-`navigate_to_page({ url })` accepts a path or a same-origin URL and returns the same
-shape plus `status`: `navigated`, `timeout` (the URL did not change within
-`navigationTimeoutMs`, default 10s), or `error` (invalid or cross-origin URL). It waits
-for any URL change, so redirects count as arrival. A navigation that replaces the
-document (a full page load) ends the call before it can return.
+`navigate_to_page({ url })` takes a path or a same-origin URL. Its description lists the
+mounted routes. It navigates client-side, waits for the URL to change and for the new
+page's registrations to settle, and returns the same shape plus `status`:
+
+- `navigated`: the new page's context and tools.
+- `timeout`: the URL did not change within `navigationTimeoutMs` (default 10s).
+- `error`: the URL was invalid or on another origin.
+
+It waits for any URL change, so a redirect counts as arrival. A full page load ends the
+call before it can return.
+
+## Reference
+
+| import | exports |
+| --- | --- |
+| `xwebmcp/nextjs` | `<WebMCPProvider site? navigationTimeoutMs?>`, plus everything below except `WebMCPPageProvider` |
+| `xwebmcp/react` | `useWebMCPTool`, `useWebMCPRoute`, `<PageContext>`, `<WebMCPPageProvider navigate>` for other routers |
+| `xwebmcp` | `registerTool(tool, { signal })`, `refresh()`, `getModelContext()`, `availableToolNames()`, `subscribe(listener)`; no React |
+
+`useWebMCPTool({ name, description, inputSchema?, outputSchema?, annotations?, title?, execute, enabled? })`
+takes the fields of a WebMCP tool plus `enabled`.
+
+`useWebMCPRoute({ path, description, enabled? })`.
+
+`<PageContext id value? suggestedNextSteps?>`.
+
+For a React app that isn't on Next, render `<WebMCPPageProvider navigate={(href) => ...}>`
+from `xwebmcp/react` with your router's client-side navigation.
+
+## Trying it out
+
+Open the app in a browser with WebMCP, such as Chrome with the WebMCP flag enabled or a
+[Kernel](https://kernel.sh) browser, and list the page's tools from DevTools:
+
+```js
+(await document.modelContext.getTools()).map((t) => t.name);
+```
+
+From a Kernel browser, `kernel browsers webmcp list <session>` shows the same list and
+`kernel browsers webmcp invoke <session> --tool-ref <ref> --input '{...}'` calls a tool,
+which is how an agent uses them.
+
+If the page loads but no tools appear, check that it hydrated. Next's dev server, for one,
+refuses `/_next/*` requests from hosts other than `localhost` unless they are listed in
+`allowedDevOrigins`, and the page then renders without running any client code.
 
 ## Without WebMCP
 
 The package does nothing unless the page has `document.modelContext` or
-`navigator.modelContext`. It checks again at `load` and for five seconds after the
-first registration, so an extension or polyfill that installs late is picked up. To use
-a polyfill loaded later than that, call `refresh()` once it has loaded.
+`navigator.modelContext`. It keeps checking for five seconds after the first registration,
+so an extension or polyfill that installs late is picked up. For a polyfill loaded after
+that, call `refresh()` once it has loaded. Whether to ship a polyfill is up to the app.
 
 ## Development
 

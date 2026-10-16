@@ -46,6 +46,11 @@ export interface Route {
   description: string;
 }
 
+export interface UseWebMCPRouteOptions extends Route {
+  /** Leaves the route out while false, e.g. for a page the user can't open. Defaults to true. */
+  enabled?: boolean;
+}
+
 export interface PageContextEntry {
   /** Key this entry appears under in get_page_context's `context`, e.g. "session". */
   id: string;
@@ -112,15 +117,14 @@ function usePageStore(hook: string): PageStore | null {
 }
 
 /** Add a page to navigate_to_page's site map while the calling component is mounted. */
-export function useWebMCPRoute(route: Route): void {
+export function useWebMCPRoute({ path, description, enabled = true }: UseWebMCPRouteOptions): void {
   const store = usePageStore('useWebMCPRoute');
   const key = useId();
-  const { path, description } = route;
   useEffect(() => {
-    if (!store) return;
+    if (!store || !enabled) return;
     store.setRoute(key, { path, description });
     return () => store.setRoute(key, null);
-  }, [store, key, path, description]);
+  }, [store, key, path, description, enabled]);
 }
 
 export type PageContextProps = PageContextEntry;
@@ -259,19 +263,21 @@ export function WebMCPPageProvider({ site, navigate, navigationTimeoutMs = 10_00
       if (target.origin !== location.origin) {
         return { status: 'error', error: `navigate_to_page only navigates within ${location.origin}` };
       }
+      const href = target.pathname + target.search + target.hash;
       const before = location.pathname + location.search;
-      if (target.pathname + target.search !== before) {
-        navigate(target.pathname + target.search + target.hash);
-        const deadline = Date.now() + navigationTimeoutMs;
-        // Wait for any URL change rather than the exact target so redirects count as arrival.
-        while (location.pathname + location.search === before) {
-          if (Date.now() > deadline) return { status: 'timeout', ...(await readPageContext(store)) };
-          await sleep(POLL_MS);
-        }
-        await settle(store);
-      } else if (target.hash !== location.hash) {
-        navigate(target.pathname + target.search + target.hash);
+      if (target.pathname + target.search === before) {
+        // Same page: at most the hash changes, which doesn't remount anything.
+        if (href !== location.pathname + location.search + location.hash) navigate(href);
+        return { status: 'navigated', ...(await readPageContext(store)) };
       }
+      navigate(href);
+      const deadline = Date.now() + navigationTimeoutMs;
+      // Wait for any URL change rather than the exact target so redirects count as arrival.
+      while (location.pathname + location.search === before) {
+        if (Date.now() > deadline) return { status: 'timeout', ...(await readPageContext(store)) };
+        await sleep(POLL_MS);
+      }
+      await settle(store);
       return { status: 'navigated', ...(await readPageContext(store)) };
     },
   });
