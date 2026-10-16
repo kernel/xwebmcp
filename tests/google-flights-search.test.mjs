@@ -2,122 +2,15 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 import vm from "node:vm";
+import { El, card as makeCard, segment, plusDays, longDate, validate } from "./google-flights-dom.mjs";
 
 const source = readFileSync(new URL("../domains/google.com/search_flights.js", import.meta.url), "utf8");
 const departDate = new Date(Date.now() + 21 * 86400000).toISOString().slice(0, 10);
 const returnDate = new Date(Date.now() + 28 * 86400000).toISOString().slice(0, 10);
 const oneWay = { origin: "CVG", destination: "SFO", departDate, tripType: "one_way" };
 const roundTrip = { ...oneWay, returnDate, tripType: "round_trip" };
-const plusDays = (iso, days) => new Date(Date.parse(iso) + days * 86400000).toISOString().slice(0, 10);
-const longDate = iso => new Date(iso).toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric", timeZone: "UTC" });
 
-// Minimal DOM: only what the tool's page functions use.
-class El {
-  constructor(tag, { cls = "", attrs = {}, text = "", hidden = false, children = [] } = {}) {
-    this.tagName = tag.toUpperCase();
-    this.className = cls;
-    this.attrs = { ...attrs };
-    this.text = text;
-    this.hidden = hidden;
-    this.parentElement = null;
-    this.children = [];
-    this.clicks = 0;
-    for (const child of children) this.append(child);
-  }
-  append(child) { child.parentElement = this; this.children.push(child); return child; }
-  get textContent() { return this.text + this.children.map(c => c.textContent).join(""); }
-  get innerText() { return this.text + this.children.map(c => c.innerText).join("\n"); }
-  get classes() { return this.className.split(" ").filter(Boolean); }
-  isVisible() { return !this.hidden && (!this.parentElement || this.parentElement.isVisible()); }
-  getClientRects() { return this.isVisible() ? [{}] : []; }
-  getAttribute(name) { return name in this.attrs ? this.attrs[name] : null; }
-  setAttribute(name, value) { this.attrs[name] = String(value); }
-  click() { this.clicks++; this.onclick?.(); }
-  descendants() { return this.children.flatMap(c => [c, ...c.descendants()]); }
-  matches(compound) {
-    const tag = compound.match(/^[a-z0-9]+/i)?.[0];
-    if (tag && this.tagName !== tag.toUpperCase()) return false;
-    for (const [, cls] of compound.matchAll(/\.([\w-]+)/g)) if (!this.classes.includes(cls)) return false;
-    for (const [, name, op, value] of compound.matchAll(/\[([\w-]+)(?:([\^$]?=)["']([^"']*)["'])?\]/g)) {
-      const actual = this.getAttribute(name);
-      if (actual === null) return false;
-      if (op === "=" && actual !== value) return false;
-      if (op === "^=" && !actual.startsWith(value)) return false;
-      if (op === "$=" && !actual.endsWith(value)) return false;
-    }
-    return true;
-  }
-  querySelectorAll(selector) {
-    const out = [];
-    for (const part of selector.split(",").map(s => s.trim())) {
-      const steps = part.replace(/^:scope\s*/, "").split(/\s+(?=[^\]]*(?:\[|$))/).filter(Boolean);
-      let candidates = [this];
-      let childOnly = false;
-      for (const step of steps) {
-        if (step === ">") { childOnly = true; continue; }
-        const next = [];
-        for (const node of candidates) for (const el of childOnly ? node.children : node.descendants()) if (el.matches(step) && !next.includes(el)) next.push(el);
-        candidates = next;
-        childOnly = false;
-      }
-      for (const el of candidates) if (!out.includes(el)) out.push(el);
-    }
-    return out;
-  }
-  querySelector(selector) { return this.querySelectorAll(selector)[0] ?? null; }
-  closest(selector) { for (let node = this; node; node = node.parentElement) if (node.matches(selector)) return node; return null; }
-}
-
-function segment({ from, fromName, dep, to, toName, arr, plus = "", travel, airline, number, aircraft, cabin = "Economy", operator = null, layover = null }) {
-  const block = new El("div", { cls: "c257Jb", children: [
-    new El("span", { cls: "b0EVyb", text: dep }),
-    new El("span", { cls: "ZHa2lc", text: `${fromName} (${from})` }),
-    new El("span", { cls: "P102Lb", text: `Travel time: ${travel}` }),
-    new El("span", { cls: "OJg28c", text: arr, children: plus ? [new El("span", { cls: "bOzv6", text: plus })] : [] }),
-    new El("span", { cls: "FY5t7d", text: `${toName} (${to})` }),
-    new El("span", { cls: "Xsgmwe", text: airline }),
-    new El("span", { cls: "Xsgmwe", text: number }),
-    new El("span", { cls: "Xsgmwe", text: cabin }),
-    new El("span", { cls: "Xsgmwe", text: aircraft }),
-    new El("span", { cls: "Xsgmwe", text: number }),
-    new El("span", { cls: "h6GTp", text: "Emissions estimate: 100 kg CO2e" }),
-  ] });
-  if (operator) block.append(new El("span", { cls: "CoZk4", text: `Plane and crew by ${operator}` }));
-  if (layover) block.append(new El("span", { cls: "tvtJdb", text: layover }));
-  return block;
-}
-
-function card({ dep, arr, plus = "", arrivalDate, airline, partners = null, operatedBy = null, duration, from, to, stops, layoverSummary = "", price, currencyName = "US dollars", roundTrip = false, emissions, comparison, segments, hidden = false, priceless = false }) {
-  const arrivalDay = arrivalDate ? ` on  ${longDate(arrivalDate)}` : "";
-  const summary = `From ${price.replace(/[^\d]/g, "")} ${currencyName}${roundTrip ? " round trip total" : ""}. ${stops ? `${stops} stop` : "Nonstop"} flight with ${airline}. ${operatedBy ? `Operated by ${operatedBy}. ` : ""}Leaves ${from} at ${dep} and arrives at ${to} at ${arr}${arrivalDay}. Total duration ${duration}.  Select flight`;
-  const carrierRow = new El("div", { cls: "sSHqwe", children: [new El("span", { text: airline }), new El("span", { cls: "qeoz6e", text: "" })] });
-  if (operatedBy) carrierRow.append(new El("span", { text: `Operated by ${operatedBy}` }));
-  if (partners) carrierRow.append(new El("span", { text: partners }));
-  const details = new El("button", { attrs: { "aria-label": `Flight details. Leaves ${from} at ${dep}.`, "aria-expanded": "false" } });
-  const li = new El("li", { cls: "pIav2d", hidden, children: [
-    new El("div", { attrs: { "aria-label": summary }, children: [
-      new El("div", { cls: "mv1WYe", children: [
-        new El("span", { attrs: { "aria-label": `Departure time: ${dep}.` }, text: dep }),
-        new El("span", { attrs: { "aria-label": `Arrival time: ${arr}${arrivalDay}.` }, text: arr, children: plus ? [new El("span", { cls: "bOzv6", text: plus })] : [] }),
-      ] }),
-      carrierRow,
-      new El("div", { cls: "gvkrdb", attrs: { "aria-label": `Total duration ${duration}.` }, text: duration }),
-      new El("div", { cls: "QylvBf", text: from.slice(0, 3), children: [new El("span", { cls: "eoY5cb", text: from.slice(4) })] }),
-      new El("div", { cls: "QylvBf", text: to.slice(0, 3), children: [new El("span", { cls: "eoY5cb", text: to.slice(4) })] }),
-      new El("div", { cls: "EfT7Ae", text: stops ? `${stops} stop${stops > 1 ? "s" : ""}${layoverSummary}` : "Nonstop" }),
-      new El("div", { cls: "AdWm1c", text: emissions }),
-      new El("div", { cls: "rRrlfc", text: comparison }),
-      new El("div", { cls: "YMlIz", children: priceless ? [new El("span", { text: "Price unavailable" })] : [new El("span", { attrs: { "aria-label": `${price.replace(/[^\d]/g, "")} ${currencyName}` }, text: price })] }),
-      ...(roundTrip ? [new El("span", { text: "round trip" })] : []),
-      details,
-    ] }),
-  ] });
-  details.onclick = () => {
-    details.setAttribute("aria-expanded", "true");
-    for (const block of segments) li.append(block);
-  };
-  return li;
-}
+const card = options => makeCard({ date: departDate, ...options });
 
 function resultsPage({ live = "2 results returned.", roundTripCards = false, extraCard = null, currencyName = "US dollars", firstCard = null } = {}) {
   const cardA = firstCard ?? card({ currencyName,
@@ -165,7 +58,7 @@ function harness({ startUrl = "https://www.google.com/travel/flights?hl=en", doc
   const pageGlobals = () => {
     const location = new URL(url);
     let offset = 0;
-    const globals = { document, location, setTimeout, Date };
+    const globals = { document, location, setTimeout, Date, URL, atob, btoa, TextEncoder };
     if (timeoutClock) globals.Date = class extends Date { static now() { offset += 30000; return Date.now() + offset; } };
     return globals;
   };
@@ -191,31 +84,6 @@ function harness({ startUrl = "https://www.google.com/travel/flights?hl=en", doc
   // JSON round-trip: results come from another vm realm, whose arrays fail deepEqual.
   const execute = async (input, context) => JSON.parse(JSON.stringify(await tools[0].execute(input, context)));
   return { tools, execute, calls, currentUrl: () => url };
-}
-
-// Small JSON Schema walker so fixture results are checked against the tool's own outputSchema.
-function validate(schema, value, path = "$") {
-  const type = Array.isArray(schema.type) ? schema.type : schema.type ? [schema.type] : [];
-  const actual = value === null ? "null" : Array.isArray(value) ? "array" : Number.isInteger(value) ? "integer" : typeof value;
-  if (type.length) assert.ok(type.includes(actual) || (actual === "integer" && type.includes("number")), `${path}: type ${actual} not in ${type}`);
-  if (schema.enum) assert.ok(schema.enum.includes(value), `${path}: ${JSON.stringify(value)} not in enum`);
-  if ("const" in schema) assert.equal(value, schema.const, `${path}: const`);
-  if (schema.pattern && typeof value === "string") assert.match(value, new RegExp(schema.pattern), `${path}: pattern`);
-  if (schema.minLength !== undefined && typeof value === "string") assert.ok(value.length >= schema.minLength, `${path}: minLength`);
-  if (schema.minimum !== undefined && typeof value === "number") assert.ok(value >= schema.minimum, `${path}: minimum`);
-  if (schema.maximum !== undefined && typeof value === "number") assert.ok(value <= schema.maximum, `${path}: maximum`);
-  if (schema.exclusiveMinimum !== undefined && typeof value === "number") assert.ok(value > schema.exclusiveMinimum, `${path}: exclusiveMinimum`);
-  if (actual === "array") {
-    if (schema.minItems !== undefined) assert.ok(value.length >= schema.minItems, `${path}: minItems`);
-    if (schema.items) value.forEach((item, i) => validate(schema.items, item, `${path}[${i}]`));
-  }
-  if (actual === "object") {
-    for (const key of schema.required ?? []) assert.ok(key in value, `${path}: missing ${key}`);
-    for (const [key, item] of Object.entries(value)) {
-      if (schema.properties?.[key]) validate(schema.properties[key], item, `${path}.${key}`);
-      else if (schema.additionalProperties === false) assert.fail(`${path}: unexpected property ${key}`);
-    }
-  }
 }
 
 test("source is a self-contained expression with narrow Google Travel matching and typed schemas", () => {
@@ -340,7 +208,13 @@ test("parses best and other sections, segments, layovers, prices and overnight a
   assert.match(result.pricingNote, /^Prices include required taxes \+ fees for 1 adult/);
   assert.deepEqual(result.warnings, []);
   assert.equal(h.currentUrl(), result.resultsUrl);
-  const [a, b] = result.flights;
+  const [{ selection_ref: refA, ...a }, b] = result.flights;
+  const payload = JSON.parse(Buffer.from(refA.split(".")[1], "base64url").toString("utf8"));
+  assert.deepEqual(payload, {
+    v: 1, search: { trip: "one_way", legs: [[departDate, "CVG", "SFO"]], pax: [1], cabin: 1 }, leg: "departing", outbound: null,
+    itinerary: [["CVG", departDate, "SFO", "DL", "1234"]], departure: `${departDate}T18:08`, arrival: `${departDate}T20:45`, price: [314, "US dollars"],
+  });
+  assert.notEqual(b.selection_ref, refA);
   assert.deepEqual(a, {
     section: "best", airline: "Delta", airlines: ["Delta"], partnerAirlines: [], operatedBy: null, flightNumbers: ["DL 1234"],
     departureAirport: "CVG", arrivalAirport: "SFO", departureDate: departDate, departureTime: "18:08", arrivalDate: departDate, arrivalTime: "20:45", arrivalDayOffset: 0,
@@ -376,6 +250,9 @@ test("round-trip searches report whole-trip totals and the departing-flight sect
   assert.deepEqual(result.flights.map(f => f.price.scope), ["round_trip", "round_trip"]);
   assert.deepEqual(result.flights.map(f => f.price.passengersIncluded), [2, 2]);
   assert.deepEqual(result.warnings, ["Google priced the page for 1 adult(s), not the requested 2."]);
+  // Round trips return departing choices only; each reference is for the departing leg of this search.
+  const refs = result.flights.map(f => JSON.parse(Buffer.from(f.selection_ref.split(".")[1], "base64url").toString("utf8")));
+  assert.deepEqual(refs.map(r => [r.leg, r.outbound, r.search.trip, r.search.legs, r.search.pax]), Array(2).fill(["departing", null, "round_trip", [[departDate, "CVG", "SFO"], [returnDate, "SFO", "CVG"]], [1, 1]]));
 });
 
 test("expands the collapsed View more flights set only when more results are wanted", async () => {
@@ -464,17 +341,19 @@ test("a filtered no-results announcement preserves Google's no-results response"
   assert.equal(result.totalResults, 0);
 });
 
-test("missing segment details leave flightNumbers empty with a warning instead of failing", async () => {
+test("missing segment details leave segments empty with a warning; flight numbers still come from Google's itinerary data", async () => {
   const page = resultsPage();
   page.cards.a.querySelector("button[aria-label^='Flight details']").onclick = null;
   const h = harness({ document: page, timeoutClock: true });
   const result = await h.execute(oneWay);
   validate(h.tools[0].tool.outputSchema, result);
   assert.equal(result.status, "ok");
-  assert.deepEqual(result.flights[0].flightNumbers, []);
+  assert.deepEqual(result.flights[0].flightNumbers, ["DL 1234"]);
   assert.deepEqual(result.flights[0].segments, []);
+  assert.match(result.flights[0].selection_ref, /^gf1\./);
   assert.deepEqual(result.flights[1].flightNumbers, ["UA 5595", "UA 2106"]);
-  assert.deepEqual(result.warnings, ["1 itinerary detail panel(s) could not be read; their flightNumbers and segments are empty."]);
+  assert.equal(result.flights[1].segments.length, 2);
+  assert.deepEqual(result.warnings, ["1 itinerary detail panel(s) could not be read; their segments are empty."]);
   assert.deepEqual(result.flights[1].layovers, [{ airport: "DEN", durationMinutes: 282 }]);
 });
 
@@ -555,7 +434,7 @@ test("a connection departing after midnight does not move a same-day final arriv
     stops: 1, price: "$900", emissions: "900 kg CO2e", comparison: "Avg emissions",
     segments: [
       segment({ from: "SIN", fromName: "Singapore Changi Airport", dep: "8:35 AM", to: "HKG", toName: "Hong Kong International Airport", arr: "12:35 AM", plus: "+1", travel: "16 hr", airline: "Cathay Pacific", number: "CX 710", aircraft: "Airbus A350", layover: "55 min layoverHong Kong (HKG)" }),
-      segment({ from: "HKG", fromName: "Hong Kong International Airport", dep: "1:30 AM", to: "LAX", toName: "Los Angeles International Airport", arr: "9:05 PM", travel: "12 hr 35 min", airline: "Cathay Pacific", number: "CX 880", aircraft: "Boeing 777" }),
+      segment({ from: "HKG", fromName: "Hong Kong International Airport", dep: "1:30 AM", depPlus: "+1", to: "LAX", toName: "Los Angeles International Airport", arr: "9:05 PM", travel: "12 hr 35 min", airline: "Cathay Pacific", number: "CX 880", aircraft: "Boeing 777" }),
     ] });
   const run = async summaryDated => {
     const page = resultsPage({ firstCard: crossing });
@@ -585,6 +464,16 @@ test("an unreadable card is skipped with a warning instead of failing the whole 
   assert.equal(result.flights[0].airline, "United");
   assert.match(result.warnings[0], /^Skipped 1 unreadable itinerary card\(s\): itinerary 1/);
   assert.match(result.warnings[1], /^Partial results:/);
+});
+
+test("an announced count that disagrees with the cards read is reported as possibly incomplete", async () => {
+  const h = harness({ document: resultsPage({ live: "3 results returned." }), timeoutClock: true });
+  const result = await h.execute(oneWay);
+  validate(h.tools[0].tool.outputSchema, result);
+  assert.equal(result.status, "ok");
+  assert.equal(result.resultCount, 2);
+  assert.equal(result.hasMore, true);
+  assert.match(result.warnings[0], /^Google announced 3 results but 2 were on the page when read/);
 });
 
 test("all cards unreadable is an explicit parse error", async () => {
@@ -624,8 +513,8 @@ test("a card that never opens its details is not waited on for the whole budget"
   const started = Date.now();
   const result = await harness({ document: page, timeoutClock: true }).execute(oneWay);
   assert.ok(Date.now() - started < 5000);
-  assert.deepEqual(result.flights[0].flightNumbers, []);
-  assert.deepEqual(result.warnings, ["1 itinerary detail panel(s) could not be read; their flightNumbers and segments are empty."]);
+  assert.deepEqual(result.flights[0].segments, []);
+  assert.deepEqual(result.warnings, ["1 itinerary detail panel(s) could not be read; their segments are empty."]);
 });
 
 test("registry entry matches the file, namespace, and url patterns", () => {
