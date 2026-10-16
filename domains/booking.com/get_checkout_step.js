@@ -128,12 +128,14 @@
     const step = tid("user-details-container") || (partnerPage && /Step 2 of 3\.$/.test(stepper)) ? "your_details" : /Step 3 of 3\.$/.test(stepper) || document.querySelector('[data-testid*="payment"], iframe[src*="payment"]') ? "finish_booking" : "other";
     // The final step offers payment timings as radios; report the chosen one, else the section's own text.
     const timing = [...document.querySelectorAll('input[name="payment-timing"]')].find(e => e.checked);
-    const paymentTiming = step !== "finish_booking" ? null : (timing ? lines(timing.closest("label") || timing.parentElement?.parentElement) : [text(tid("payment-timing-header")), text(tid("payment-timing-description"))].filter(Boolean)).join(". ").replace(/\.\./g, ".").slice(0, 300) || null;
+    // Every non-empty text node under an element, so bare text beside child elements is kept.
+    const words = el => el ? [...el.childNodes].flatMap(n => n.nodeType === 3 ? [(n.textContent || "").replace(/\s+/g, " ").trim()] : n.nodeType === 1 && !["SCRIPT", "STYLE", "TEMPLATE"].includes(n.tagName) ? words(n) : []).filter(Boolean) : [];
+    const option = timing && (timing.closest("label") || timing.parentElement?.parentElement);
+    const paymentTiming = step !== "finish_booking" ? null : ((option && words(option).join(". ")) || [text(tid("payment-timing-header")), text(tid("payment-timing-description"))].filter(Boolean).join(". ")).replace(/\.\./g, ".").slice(0, 300) || null;
     // Partner checkouts have no cancellation test ids: read the lines under "How much will it cost to cancel?".
     const cancelHeading = [...document.body.querySelectorAll("*")].find(e => text(e, 100) === "How much will it cost to cancel?" && ![...e.children].some(c => text(c, 100) === "How much will it cost to cancel?"));
-    let cancelBox = cancelHeading;
-    while (cancelBox && !cancelBox.nextElementSibling) cancelBox = cancelBox.parentElement;
-    const cancelBlock = lines(cancelBox?.nextElementSibling).slice(0, 6).join(" ").slice(0, 300);
+    // Only the block right after the heading, never a later section.
+    const cancelBlock = words(cancelHeading?.nextElementSibling).slice(0, 6).join(" ").slice(0, 300);
     // Only rendered text: the partner page also carries the sentence as a template in a script.
     const sellerMatch = /Your booking is with (.+?)\. By completing/.exec((document.body.innerText || "").replace(/\s+/g, " "));
     const seller = partnerPage && step === "finish_booking" && sellerMatch && !/[{}]/.test(sellerMatch[1]) ? sellerMatch[1].slice(0, 200) : null;

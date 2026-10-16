@@ -988,6 +988,16 @@ test("get_checkout_step reports the chosen payment timing, a partner's cancellat
   assert.equal((await run("get_checkout_step", {}, { start: "https://secure.booking.com/tpi_book.html", liveHtml: template })).output.seller, null);
 });
 
+test("get_checkout_step keeps bare text in payment options and cancellation blocks, and stays inside the cancellation section", async () => {
+  const bare = checkoutPage({ step: "final" }).replace("</body>", '<div data-testid="bs3-payment-timing-section"><label><input type="radio" name="payment-timing" value="stay" checked> Pay when you stay</label></div></body>');
+  assert.equal((await run("get_checkout_step", {}, { start: CHECKOUT, liveHtml: bare })).output.payment_timing, "Pay when you stay");
+  const final = text => summaryPartnerCheckout().replace("Your Details. Step 2 of 3.", "Confirm your reservation. Step 3 of 3.").replace('<div>How much will it cost to cancel?</div><div><span>Free cancellation before November 11, 2026</span></div>', text);
+  const read = async html => (await run("get_checkout_step", {}, { start: "https://secure.booking.com/tpi_book.html", liveHtml: html })).output.cancellation;
+  assert.equal(await read(final("<div>How much will it cost to cancel?</div><p>Non-refundable. $500</p>")), "Non-refundable. $500");
+  assert.equal(await read(final("<div>How much will it cost to cancel?</div><div><span>Free cancellation before November 11, 2026</span> From 00:00 on November 11, 2026 <span>$500</span></div>")), "Free cancellation before November 11, 2026 From 00:00 on November 11, 2026 $500");
+  assert.equal(await read(final("<section><div>How much will it cost to cancel?</div></section><section><div>Need help?</div><div>Call the partner on the number in your email</div></section>")), null, "a later section is not the cancellation policy");
+});
+
 test("fill_guest_details fills a partner layout's email confirmation, and the partner phone counts as required", async () => {
   const confirm = partnerDetailsForm().replace('<select id="p-cc"', '<label for="p-confirm">Confirm Email Address*</label><input id="p-confirm" type="email" name="emailConfirm"><select id="p-cc"');
   const env = makeEnv({ start: "https://secure.booking.com/tpi_book.html", liveHtml: confirm });
