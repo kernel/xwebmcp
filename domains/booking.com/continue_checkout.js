@@ -46,7 +46,8 @@
     const form = document.querySelector("form#bookForm");
     const container = tid("user-details-container") || (partnerPage && form?.querySelector('input[name="firstname"]') ? form : null);
     const buttons = form ? [...form.querySelectorAll('button[type="submit"], input[type="submit"]')].filter(shown) : [];
-    if (buttons.some(b => /^(?:Complete booking|Book now|Confirm|Pay)\b/i.test(text(b) || b.value || ""))) return fail("wrong_step", "This is the \"Finish booking\" step. This tool never presses the button that books; payment is up to the user.");
+    const bookingButtons = [...document.querySelectorAll('button, input[type="submit"]')].filter(b => shown(b) && /^(?:Complete booking|Book now|Confirm and pay|Pay now)\b/i.test(text(b) || b.value || ""));
+    if (bookingButtons.length) return fail("wrong_step", "This is the \"Finish booking\" step. This tool never presses the button that books; payment is up to the user.");
     if (!container) return fail("wrong_step", "The checkout page is not on the \"Your details\" step.");
     const next = buttons.filter(b => /^Next\b/i.test(text(b)));
     if (next.length !== 1 || next[0].disabled) return fail("site_changed", "The page has no single \"Next: Final details\" button.");
@@ -64,7 +65,7 @@
     const rawLabel = el => (document.querySelector('label[for="' + el.id + '"]')?.textContent || el.getAttribute("aria-label") || el.name || "").replace(/\s+/g, " ").trim();
     const labelOf = el => rawLabel(el).replace(/\*$/, "").trim().slice(0, 100);
     const inputs = [...(container.closest("form") || container).querySelectorAll("input, select, textarea")].filter(el => shown(el) && !["hidden", "checkbox", "radio"].includes(el.type));
-    const incomplete = inputs.filter(el => ((el.required || /\*$/.test(rawLabel(el))) && !el.value.trim()) || el.getAttribute("aria-invalid") === "true").map(labelOf);
+    const incomplete = inputs.filter(el => ((el.required || /\*$/.test(rawLabel(el)) || ["phone__number", "emailConfirm"].includes(el.name)) && !el.value.trim()) || el.getAttribute("aria-invalid") === "true").map(labelOf);
     if (incomplete.length) return fail("fields_incomplete", "Required fields are empty or invalid; fill them with fill_guest_details. Nothing was pressed.", { fields: incomplete });
     const offer = tid("user-details-sign-in-to-save");
     if (shown(offer) && offer.checked) return fail("sign_in_offer_ticked", "The \"Sign in to save\" offer is ticked, which opens a sign-in dialog instead of continuing; fill_guest_details unticks it. Nothing was pressed.");

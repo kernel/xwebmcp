@@ -25,7 +25,7 @@
           type: "object", additionalProperties: false, required: ["status", "filled", "missing_fields", "invalid_fields", "sign_in_offer_declined", "next_tool"],
           properties: {
             status: { const: "filled" },
-            filled: { type: "array", items: { type: "string" }, description: "Input fields that now hold the given values." },
+            filled: { type: "array", items: { type: "string" }, description: "Which given values the page now holds: first_name, last_name, email, email_confirmation (when the page asks twice), phone, address, city, zip, country." },
             missing_fields: { type: "array", items: { type: "string", maxLength: 100 }, description: "Labels of required fields the page still shows empty; continue_checkout refuses until they are filled." },
             invalid_fields: { type: "array", items: { type: "string", maxLength: 100 }, description: "Labels of fields the page marks invalid." },
             sign_in_offer_declined: { type: "boolean", description: "True when the tool unticked the \"Sign in to save\" offer." },
@@ -73,7 +73,7 @@
       Object.getOwnPropertyDescriptor(proto, "value").set.call(el, value);
       for (const type of ["input", "change", "blur"]) el.dispatchEvent(new Event(type, { bubbles: true }));
     };
-    const fields = { first_name: field("user-details-firstname", "firstname"), last_name: field("user-details-lastname", "lastname"), email: field("user-details-email", "email"), address: field("user-details-address1", "address1"), city: field("user-details-city", "city"), zip: field("user-details-zip", "zip"), phone: field("phone-number-input", "phone__number") };
+    const fields = { first_name: field("user-details-firstname", "firstname"), last_name: field("user-details-lastname", "lastname"), email: field("user-details-email", "email"), email_confirmation: container.querySelector('[name="emailConfirm"]'), address: field("user-details-address1", "address1"), city: field("user-details-city", "city"), zip: field("user-details-zip", "zip"), phone: field("phone-number-input", "phone__number") };
     const countrySelects = [field("user-details-cc1", "cc1"), field("phone-country-code-select", "phone__country")];
     const country = input.country?.toLowerCase();
     for (const select of countrySelects) {
@@ -82,11 +82,13 @@
     if (!shown(fields.first_name) || !shown(fields.last_name) || !shown(fields.email) || !shown(fields.phone)) return fail("site_changed", "The page does not show the name, email and phone fields this tool fills.");
 
     const filled = [];
-    if (country) for (const select of countrySelects) if (shown(select)) { set(select, country); filled.push(select.name); }
+    if (country && countrySelects.some(shown)) { for (const select of countrySelects) if (shown(select)) set(select, country); filled.push("country"); }
+    // One partner layout asks for the email twice.
+    const values = { ...input, email_confirmation: input.email };
     for (const [key, el] of Object.entries(fields)) {
-      if (input[key] === undefined || !shown(el)) continue;
-      set(el, input[key]);
-      filled.push(el.name || key);
+      if (values[key] === undefined || !shown(el)) continue;
+      set(el, values[key]);
+      filled.push(key);
     }
     const offer = tid("user-details-sign-in-to-save");
     const declined = !!(shown(offer) && offer.checked);
@@ -94,8 +96,8 @@
 
     const rawLabel = el => (document.querySelector('label[for="' + el.id + '"]')?.textContent || el.getAttribute("aria-label") || el.name || "").replace(/\s+/g, " ").trim();
     const labelOf = el => rawLabel(el).replace(/\*$/, "").trim().slice(0, 100);
-    // The partner checkout marks required fields only with an asterisk in the label.
-    const required = el => el.required || /\*$/.test(rawLabel(el));
+    // The partner checkout marks required fields only with an asterisk in the label, and the phone not at all.
+    const required = el => el.required || /\*$/.test(rawLabel(el)) || ["phone__number", "emailConfirm"].includes(el.name);
     const inputs = [...(container.closest("form") || container).querySelectorAll("input, select, textarea")].filter(el => shown(el) && el.type !== "hidden" && el.type !== "checkbox" && el.type !== "radio");
     return {
       status: "filled", filled,

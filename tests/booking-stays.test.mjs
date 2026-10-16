@@ -921,7 +921,7 @@ const CHECKOUT = "https://secure.booking.com/book.html?hotel_id=1000001&stage=1"
 
 test("fill_guest_details fills the details step, unticks the sign-in offer and presses nothing", async () => {
   const { output, env, timers, calls } = await run("fill_guest_details", GUEST, { start: CHECKOUT, liveHtml: detailsForm() });
-  assert.deepEqual(output, { status: "filled", filled: ["cc1", "countryCode", "firstname", "lastname", "email", "address1", "city", "zip", "phoneNumber"], missing_fields: [], invalid_fields: [], sign_in_offer_declined: true, next_tool: "continue_checkout" });
+  assert.deepEqual(output, { status: "filled", filled: ["country", "first_name", "last_name", "email", "address", "city", "zip", "phone"], missing_fields: [], invalid_fields: [], sign_in_offer_declined: true, next_tool: "continue_checkout" });
   const value = name => env.live.querySelector(`[name="${name}"]`).value;
   assert.deepEqual(["firstname", "email", "phoneNumber", "cc1", "countryCode"].map(value), ["Alex", "alex.testperson@example.com", "4155550123", "pt", "pt"]);
   assert.equal(env.live.querySelector('[name="sign_in_to_save"]').checked, false);
@@ -933,7 +933,7 @@ test("fill_guest_details fills the details step, unticks the sign-in offer and p
 
 test("fill_guest_details also fills the partner checkout's named fields", async () => {
   const { output } = await run("fill_guest_details", { first_name: "Alex", last_name: "Testperson", email: "alex@example.com", phone: "4155550123", country: "us" }, { start: "https://secure.booking.com/tpi_book.en-us.html", liveHtml: partnerDetailsForm() });
-  assert.deepEqual([output.status, output.filled, output.missing_fields], ["filled", ["phone__country", "firstname", "lastname", "email", "phone__number"], []]);
+  assert.deepEqual([output.status, output.filled, output.missing_fields], ["filled", ["country", "first_name", "last_name", "email", "phone"], []]);
 });
 
 test("fill_guest_details rejects bad input before touching the page and refuses other steps", async () => {
@@ -977,6 +977,33 @@ test("get_checkout_step names the partner a Partner Offer is booked with on its 
   const page = summaryPartnerCheckout().replace("Your Details. Step 2 of 3.", "Confirm your reservation. Step 3 of 3.").replace(partnerFoot, '<div><span>Your booking is with Example Travel Company Ltd. By completing this booking, you agree to the booking conditions.</span></div>' + partnerFoot);
   const { output } = await run("get_checkout_step", {}, { start: "https://secure.booking.com/tpi_book.html", liveHtml: page });
   assert.deepEqual([output.step, output.partner_offer, output.seller], ["finish_booking", true, "Example Travel Company Ltd"]);
+});
+
+test("get_checkout_step reports the chosen payment timing, a partner's cancellation cost and no seller placeholder", async () => {
+  const radios = checkoutPage({ step: "final" }).replace("</body>", '<div data-testid="bs3-payment-timing-section"><div data-testid="payment-timing-header">When do you want to pay?</div><label><input type="radio" name="payment-timing" value="now"><div>Pay now</div></label><label><input type="radio" name="payment-timing" value="stay" checked><div>Pay when you stay</div><div>No payment today</div></label></div></body>');
+  assert.equal((await run("get_checkout_step", {}, { start: CHECKOUT, liveHtml: radios })).output.payment_timing, "Pay when you stay. No payment today");
+  const partnerFinal = summaryPartnerCheckout().replace("Your Details. Step 2 of 3.", "Confirm your reservation. Step 3 of 3.").replace('<div><span>Free cancellation before November 11, 2026</span></div>', '<div><span>Free cancellation before November 11, 2026</span><span>From 00:00 on November 11, 2026</span><span>$500</span></div>');
+  assert.equal((await run("get_checkout_step", {}, { start: "https://secure.booking.com/tpi_book.html", liveHtml: partnerFinal })).output.cancellation, "Free cancellation before November 11, 2026 From 00:00 on November 11, 2026 $500");
+  const template = partnerDetailsForm().replace("</body>", "<script>var t = 'Your booking is with {provider_name}. By completing this booking';</script></body>");
+  assert.equal((await run("get_checkout_step", {}, { start: "https://secure.booking.com/tpi_book.html", liveHtml: template })).output.seller, null);
+});
+
+test("fill_guest_details fills a partner layout's email confirmation, and the partner phone counts as required", async () => {
+  const confirm = partnerDetailsForm().replace('<select id="p-cc"', '<label for="p-confirm">Confirm Email Address*</label><input id="p-confirm" type="email" name="emailConfirm"><select id="p-cc"');
+  const env = makeEnv({ start: "https://secure.booking.com/tpi_book.html", liveHtml: confirm });
+  const filled = plain(await register("fill_guest_details", env).execute({ first_name: "Alex", last_name: "Testperson", email: "alex@example.com", phone: "4155550123" }));
+  assert.deepEqual([filled.filled, filled.missing_fields], [["first_name", "last_name", "email", "email_confirmation", "phone"], []]);
+  assert.equal(env.live.querySelector('[name="emailConfirm"]').value, "alex@example.com");
+  env.live.querySelector('[name="phone__number"]').value = "";
+  const refused = plain(await register("continue_checkout", env).execute({ expected_total: 355.69 }));
+  assert.deepEqual([refused.error_kind, refused.fields], ["fields_incomplete", ["Telephone (mobile number preferred)"]]);
+});
+
+test("continue_checkout recognises the partner final step's booking button outside the form", async () => {
+  const page = summaryPartnerCheckout().replace(partnerFoot, '<form id="bookForm"><input name="specialRequest"></form><div><button type="button">Complete booking</button></div>' + partnerFoot);
+  const { output, timers } = await run("continue_checkout", { expected_total: 355.69 }, { start: "https://secure.booking.com/tpi_book.html", liveHtml: page });
+  assert.match(output.error_message, /never presses the button that books/);
+  assert.equal(timers.length, 0);
 });
 
 test("continue_checkout never presses the button that books", async () => {
