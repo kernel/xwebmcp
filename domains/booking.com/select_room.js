@@ -79,7 +79,7 @@
     // Partner Offer rows carry their own room header, whose link has no data-room-id.
     const roomLink = head?.querySelector("a[data-room-id], a.hprt-roomtype-link");
     if (!roomLink || !text(roomLink)) return fail("site_changed", "The rate cannot be matched to a room on the page.");
-    const roomId = /^\d{1,20}$/.test(roomLink.getAttribute("data-room-id") || "") ? roomLink.getAttribute("data-room-id") : /^(\d{1,20})_/.exec(input.rate_id)?.[1] ?? null;
+    const roomId = /^\d{1,20}$/.test(roomLink.getAttribute("data-room-id") || "") ? roomLink.getAttribute("data-room-id") : null;
     const partner = row.classList.contains("tpi_table__row") || /\bPartner Offer\b/.test(rawText(row.querySelector(".hprt-table-cell-conditions")));
     const select = row.querySelector('select[name="nr_rooms_' + input.rate_id + '"]');
     const one = select && [...select.querySelectorAll("option")].find(o => o.getAttribute("value") === "1" && !o.disabled && !o.closest("optgroup[disabled]"));

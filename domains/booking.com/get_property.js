@@ -376,7 +376,7 @@
         if (unreadableRows) warnings.push(unreadableRows + " rate rows in a room or with a price the tool could not read were left out.");
         if (memberOnly) warnings.push(memberOnly + " rates show a members-only price that needs signing in; for those, price.total includes the member discount, so the price without signing in is higher by about member_discount.amount when that amount is readable; otherwise the non-member price is unknown.");
         if (noTaxes) warnings.push(noTaxes + " rates listed no excluded taxes and fees in a form this tool reads; their displayed price may exclude taxes and fees.");
-        if (partners) warnings.push(partners + " rates are Partner Offers sold through a partner company; their price, cancellation terms and availability can change at checkout.");
+        if (partners) warnings.push((partners === 1 ? "1 rate is a Partner Offer" : partners + " rates are Partner Offers") + " sold through a partner company; their price, cancellation terms and availability can change at checkout.");
         if (unreadablePrices) warnings.push(unreadablePrices + " rates showed a price that could not be read as a number; see total_text.");
         const ordered = rooms.flatMap(r => r.rates);
         if (sort === "price_low_to_high") ordered.sort((a, b) => (a.price.total ?? Infinity) - (b.price.total ?? Infinity));

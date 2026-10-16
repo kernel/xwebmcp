@@ -843,6 +843,8 @@ test("get_property lists Partner Offers with their row id, and Booking.com's own
   const rates = output.rooms.flatMap(room => room.rates.map(rate => [room.name, rate.rate_id, rate.partner_offer, rate.price.total]));
   assert.deepEqual(rates, [["Studio", "bbasic_0", true, 298], ["Executive One-Bedroom Apartment", "1002_bbasic_0", true, 320], ["Executive One-Bedroom Apartment", "1002_2001_2_2_0", false, 348]]);
   assert.match(output.warnings.join(" "), /2 rates are Partner Offers/);
+  const one = await run("get_property", PROPERTY, { routes: [propertyRoute({ body: propertyPage({ rows: [partnerRow()] }) })] });
+  assert.match(one.output.warnings.join(" "), /1 rate is a Partner Offer sold/);
 });
 
 test("select_room selects a Partner Offer and a Booking.com rate that follows a partner header", async () => {
@@ -851,34 +853,54 @@ test("select_room selects a Partner Offer and a Booking.com rate that follows a 
   assert.deepEqual([partner.output.status, partner.output.partner_offer, partner.output.room_id, partner.output.room_name], ["navigation_scheduled", true, null, "Studio"]);
   assert.equal(partner.env.live.querySelector('select[name="nr_rooms_bbasic_0"]').value, "1");
   const prefixed = await run("select_room", { ...SELECT, rate_id: "1002_bbasic_0", expected_total: 320 }, selectOptions(page));
-  assert.deepEqual([prefixed.output.partner_offer, prefixed.output.room_id], [true, "1002"]);
+  assert.deepEqual([prefixed.output.partner_offer, prefixed.output.room_id], [true, null], "room_id comes only from the header, as in get_property");
   const own = await run("select_room", { ...SELECT, rate_id: "1002_2001_2_2_0", expected_total: 348 }, selectOptions(page));
-  assert.deepEqual([own.output.status, own.output.partner_offer, own.output.room_id, own.output.room_name], ["navigation_scheduled", false, "1002", "Executive One-Bedroom Apartment"]);
+  assert.deepEqual([own.output.status, own.output.partner_offer, own.output.room_name], ["navigation_scheduled", false, "Executive One-Bedroom Apartment"]);
 });
 
-// Mirrors the partner checkout observed on secure.booking.com/tpi_book.en-us.html.
-const partnerCheckout = ({ total = "$425.85" } = {}) => `<!DOCTYPE html><html lang="en-us"><head><title>Booking.com: Your Details</title></head><body>` +
+// Booking.com serves Partner Offer checkouts (tpi_book) in two layouts, both observed live: one labels the dates
+// ("Check-in:") and hides a date picker with the same labels earlier in the page; the other reuses the date summary
+// of its own checkout. Neither has the structured total of book.html.
+const partnerHead = step => `<!DOCTYPE html><html lang="en-us"><head><title>Booking.com: Your Details</title></head><body>` +
   `<header><button data-testid="header-currency-picker-trigger">USD</button><a data-testid="header-sign-in-button">Sign in</a></header>` +
-  `<div><h1>Harbor View Studios</h1><div data-testid="property-details__metadata--property-type"></div></div>` +
+  `<div role="group"><div hidden>${step}. Step 2 of 3.</div><ol><li><div>Your Selection</div></li><li aria-current="step"><div>${step}</div></li></ol></div>` +
+  `<div><h1>Harbor View Studios</h1><div data-testid="property-details__metadata--property-type"></div></div>`;
+const partnerFoot = `<div>How much will it cost to cancel?</div><div><span>Free cancellation before November 11, 2026</span></div><div>Partner Offer</div>` +
+  `<script>window.booking = { b_hotel_id: '1000001', b_action: 'tpi_book' };</script></body></html>`;
+const labelledPartnerCheckout = ({ total = "$425.85" } = {}) => partnerHead("Enter your details") +
+  `<div style="display:none"><h2>Change dates</h2><strong>Check-in:</strong><strong>Check-out:</strong></div>` +
   `<div><div><div>Your booking details</div></div><div><div>Check-in:</div><div>Tuesday, <strong>November 10</strong>, 2026 from 3:00 PM</div></div><div><div>Check-out:</div><div>Thursday, <strong>November 12</strong>, 2026 until 11:00 AM</div></div><div><div>Total length of stay:</div><div>2 nights</div></div></div>` +
   `<div><div>Your price summary</div><div><div>Today you'll pay</div><div><span>$204 × 2 nights</span><span>$407.89</span></div></div><div><div>At the property you'll pay</div><div><span>Additional fees</span><span>$17.96</span></div></div>` +
-  `<div><span>Total price</span><span>${total}</span></div><div>(for 2 nights &amp; all guests)</div><div>Includes taxes and fees</div>` +
-  `<div>How much will it cost to cancel?</div><div><span>Free cancellation before November 11, 2026</span></div><div>Partner Offer</div></div>` +
-  `<div><h2>Enter your details</h2><input></div><div><div><h2>Studio</h2></div><div><div><strong>Guests: </strong> 2 adults</div></div></div>` +
-  `<script>window.booking = { b_hotel_id: '1000001', b_action: 'tpi_book' };</script></body></html>`;
+  `<div><span>Total price</span><span>${total}</span></div><div>(for 2 nights &amp; all guests)</div><div>Includes taxes and fees</div></div>` +
+  `<div><h2>Enter your details</h2><input></div><div><div><h2>Studio</h2></div><div><div><strong>Guests: </strong> 2 adults</div></div></div>` + partnerFoot;
+const summaryPartnerCheckout = () => partnerHead("Your Details") +
+  `<div><div><div><h2>Your booking details</h2></div><div data-testid="booking-details-date-summary"><div><div><time datetime="Tue, Nov 10, 2026"><h3>Check-in</h3><div>Tue, Nov 10, 2026</div><div>From 3:00 PM</div></time><div><hr></div><time datetime="Thu, Nov 12, 2026"><h3>Check-out</h3><div>Thu, Nov 12, 2026</div><div>Until 11:00 AM</div></time></div></div></div><div><hr></div><div><div><div><div>You selected</div><div>2 nights, 1 room for 2 adults</div></div><ul><li><div>1 x Studio</div></li></ul></div></div></div></div>` +
+  `<div><div><div><div>Your price summary</div></div><div><div><div><div><div>Today you'll pay</div></div><div><div><div>$169 × 2 nights</div><div>$337.73</div></div></div></div><div><div><div>At the property you'll pay</div></div><div><div><div>Additional fees</div><div>$17.96</div></div></div></div></div></div></div>` +
+  `<div><div><div>Total</div><div>$355.69</div></div><div>Includes taxes and fees</div></div><div><div><div><div>Price information</div></div><div><ul><li><div>Includes $37.08 in taxes and fees</div></li></ul></div></div></div></div>` + partnerFoot;
 
-test("get_checkout_step reads the partner checkout a Partner Offer opens", async () => {
-  const { output, calls } = await run("get_checkout_step", {}, { start: "https://secure.booking.com/tpi_book.en-us.html?hotel_id=1000001", liveHtml: partnerCheckout() });
-  assert.deepEqual(output, {
+test("get_checkout_step reads both partner checkout layouts a Partner Offer opens", async () => {
+  const start = "https://secure.booking.com/tpi_book.en-us.html?hotel_id=1000001&num_adults=2&num_children=0&num_rooms=1";
+  const labelled = await run("get_checkout_step", {}, { start, liveHtml: labelledPartnerCheckout() });
+  assert.deepEqual(labelled.output, {
     status: "ok", step: "your_details", partner_offer: true, property_id: "1000001", property_name: "Harbor View Studios",
     check_in: "2026-11-10", check_out: "2026-11-12", check_in_time: "from 3:00 PM", check_out_time: "until 11:00 AM",
-    selection: "2 nights, 2 adults", units: ["Studio"], total: 425.85, currency: "USD", total_text: "$425.85",
+    selection: "2 nights, 1 room for 2 adults", units: ["Studio"], total: 425.85, currency: "USD", total_text: "$425.85",
     price_notes: ["Today you'll pay", "$204 × 2 nights", "$407.89", "At the property you'll pay", "Additional fees", "$17.96", "(for 2 nights & all guests)", "Includes taxes and fees"],
     cancellation: "Free cancellation before November 11, 2026", signed_in: false
   });
-  assert.equal(calls.length, 0);
-  assert.equal((await run("get_checkout_step", {}, { start: "https://secure.booking.com/tpi_book.html", liveHtml: partnerCheckout({ total: "" }) })).output.error_kind, "site_changed");
-  assert.equal((await run("get_checkout_step", {}, { start: "https://secure.booking.com/tpi_booking.html", liveHtml: partnerCheckout() })).output.error_kind, "wrong_page");
+  assert.equal(labelled.calls.length, 0);
+  const unlabelled = await run("get_checkout_step", {}, { start, liveHtml: labelledPartnerCheckout().replace(/<div><div><h2>Studio<\/h2>.*?<\/div><\/div><\/div>/, "<div><div>Studio</div></div>") });
+  assert.deepEqual([unlabelled.output.selection, unlabelled.output.units], ["2 nights, 1 room for 2 adults", []], "without labelled guests the room name is not guessed");
+  const summary = await run("get_checkout_step", {}, { start, liveHtml: summaryPartnerCheckout() });
+  assert.deepEqual(summary.output, {
+    status: "ok", step: "your_details", partner_offer: true, property_id: "1000001", property_name: "Harbor View Studios",
+    check_in: "2026-11-10", check_out: "2026-11-12", check_in_time: "From 3:00 PM", check_out_time: "Until 11:00 AM",
+    selection: "2 nights, 1 room for 2 adults", units: ["1 x Studio"], total: 355.69, currency: "USD", total_text: "$355.69",
+    price_notes: ["Today you'll pay", "$169 × 2 nights", "$337.73", "At the property you'll pay", "Additional fees", "$17.96", "Includes taxes and fees"],
+    cancellation: "Free cancellation before November 11, 2026", signed_in: false
+  });
+  assert.equal((await run("get_checkout_step", {}, { start: "https://secure.booking.com/tpi_book.html", liveHtml: labelledPartnerCheckout({ total: "" }) })).output.error_kind, "site_changed");
+  assert.equal((await run("get_checkout_step", {}, { start: "https://secure.booking.com/tpi_booking.html", liveHtml: labelledPartnerCheckout() })).output.error_kind, "wrong_page");
 });
 
 // --- read-only guarantees -------------------------------------------------------------------------------------
