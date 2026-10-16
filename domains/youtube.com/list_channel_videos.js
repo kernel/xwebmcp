@@ -187,7 +187,7 @@
     const config = window.ytcfg?.get?.("INNERTUBE_CONTEXT")?.client;
     if (!config || config.clientName !== "WEB" || typeof config.clientVersion !== "string" || !/^[\w.]{1,40}$/.test(config.clientVersion)) return fail("wrong_page", "The main YouTube web app configuration is unavailable; wait for it to load.");
     const client = { clientName: "WEB", clientVersion: config.clientVersion, hl: "en", gl: /^[A-Z]{2}$/.test(config.gl) ? config.gl : "US" };
-    const call = async body => {
+    const call = async (body, followed = false) => {
       try {
         const res = await fetch("/youtubei/v1/browse?prettyPrint=false", { method: "POST", credentials: "omit", headers: { "content-type": "application/json" }, body: JSON.stringify({ context: { client }, ...body }), signal: context?.signal });
         const raw = await res.text();
@@ -199,7 +199,7 @@
           if (res.ok) return { error: fail("site_changed", "YouTube returned non-JSON browse data.") };
         }
         if (res.status === 404) return { error: fail("not_found", "The requested public resource was not found.") };
-        if (res.status === 400 && paging) return { error: body.continuation === input.page_token ? fail("invalid_page_token", "YouTube did not accept this page_token; it may be altered or expired. Start again from the first page.") : fail("site_error", "YouTube refused a later continuation page (HTTP 400); page_token is still valid, so the same call can be retried.") };
+        if (res.status === 400 && paging) return { error: !followed ? fail("invalid_page_token", "YouTube did not accept this page_token; it may be altered or expired. Start again from the first page.") : fail("site_error", "YouTube refused a continuation page it had linked to (HTTP 400); the page_token you passed was accepted.") };
         if (!res.ok) return { error: fail("site_error", "YouTube returned HTTP " + res.status + ".") };
         if (!data || typeof data !== "object" || Array.isArray(data)) return { error: fail("site_changed", "YouTube returned an unexpected browse response.") };
         if (data.error) return { error: fail("site_error", "YouTube returned an API error.") };
@@ -220,14 +220,17 @@
       const entries = Array.isArray(actions) ? actions.flatMap(x => [x?.appendContinuationItemsAction?.continuationItems, x?.reloadContinuationItemsCommand?.continuationItems].filter(Array.isArray)).flat() : [];
       return entries.length && entries.every(x => x && (x.continuationItemRenderer || x.continuationItemViewModel)) ? entries : null;
     };
+    const seen = new Set([input.page_token]);
     for (let entries = paging && continuationOnly(data), hops = 0; entries; entries = continuationOnly(data), hops++) {
       const token = entries.map(x => x.continuationItemRenderer?.continuationEndpoint?.continuationCommand?.token ?? x.continuationItemViewModel?.continuationCommand?.innertubeCommand?.continuationCommand?.token).find(t => typeof t === "string" && /^[A-Za-z0-9_%=.+/:-]{16,16000}$/.test(t)) ?? null;
       if (!token || hops === 10) {
         const warnings = [token ? "YouTube returned " + (hops + 1) + " continuation pages without videos; pass next_page_token to keep paging." : "The list has ended.", "YouTube does not attest the originating resource for a continuation; its id and title are null."];
         return { status: token ? "ok" : "no_results", channel_id: null, items: [], next_page_token: token, truncated: false, unsupported_count: 0, warnings };
       }
+      if (seen.has(token)) return fail("site_changed", "YouTube returned a continuation token it had already served; the list cannot be paged further.");
+      seen.add(token);
       if (context?.signal?.aborted) return fail("canceled", "Canceled between continuation pages.");
-      response = await call({ continuation: token });
+      response = await call({ continuation: token }, true);
       if (response.error) return response.error;
       data = response.data;
     }
@@ -294,7 +297,7 @@
       const warnings = [];
       if (truncated) warnings.push("Only the first " + items.length + " items are returned due to count/size bounds. The next token skips omitted items from this page.");
       if (paging) warnings.push("YouTube does not attest the originating resource for a continuation; its id and title are null.");
-      return { status: items.length ? "ok" : "no_results", channel_id: paging ? null : input.channel_id, items, next_page_token: next, truncated, unsupported_count: unsupported, warnings };
+      return { status: items.length || next ? "ok" : "no_results", channel_id: paging ? null : input.channel_id, items, next_page_token: next, truncated, unsupported_count: unsupported, warnings };
     } catch { return fail("site_changed", "The channel tab response layout could not be read safely."); }
   }
 }]
