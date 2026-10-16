@@ -107,7 +107,7 @@ test('stored page tools register through CSP/Trusted Types without changing kind
           const transcript = await invoke(entries, 'get_transcript', {video_id: videoId, limit: 2});
           assert.equal(transcript.segments.length, 2); assert.equal(transcript.next_offset, 2);
           await browser.evaluate(session, `history.pushState(null,'','/channel/${channelId}/videos');fixture.config.LOGGED_IN=true`);
-          const input = {channel_id: channelId, expected_account_label: 'Fabricated Account', expected_account_index: '0'};
+          const input = {channel_id: channelId};
           const subscribed = await invoke(entries, 'subscribe_channel', input);
           assert.equal(subscribed.status, 'observed'); assert.equal(subscribed.persistence_confirmed, false);
           assert.equal((await invoke(entries, 'subscribe_channel', input)).action_attempted, false);

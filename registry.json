@@ -3652,12 +3652,9 @@
         "https://www.youtube.com/*"
       ],
       "url_patterns_reason": "Narrowed to www.youtube.com: it serves the main YouTube web app whose same-origin youtubei endpoints and page layout the tools use; other youtube.com hosts are separate products (music., studio., tv., m.) with different clients and layouts.",
-      "status": "qa_passed",
-      "last_verified": "2026-10-14",
-      "notes": "Reversible subscription on the current exact channel and account; at most one click, UI postcondition only (persistence_confirmed false). After the click it reads whichever single subscription control identifies the same channel, so a re-rendered header is not reported as outcome_unknown. The guard against retrying after outcome_unknown lasts for the document; a reload clears it, so a caller must still inspect before trying again. Independent QA on 2026-10-14 passed it on code review and fixtures, with live signed-out refusals (login_required, wrong_channel, wrong_page, invalid_input) before any click. Live mutation and every signed-in path are untested.",
-      "provenance": {
-        "qa_agent": "agt_8177f6c63bb367eaccb1"
-      }
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Subscribes the signed-in account to the channel whose page is open, with at most one press of its Subscribe button; reports the Subscribed state the page shows (persistence_confirmed false). An uncertain attempt blocks further presses for that channel in the document. English channel header only."
     }
   ]
 }
