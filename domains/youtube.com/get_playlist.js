@@ -225,7 +225,7 @@
       const roots = paging ? continuationLists.flat() : selected?.content ? [selected.content] : null;
       if (!Array.isArray(roots) || (paging && !continuationLists.length)) return fail("site_changed", "No recognized browse content was returned.");
       const items = [];
-      let next = null, truncated = false, unsupported = 0, empty = false, scanned = 0, outputUnits = 0;
+      let next = null, truncated = false, unsupported = 0, empty = false, continuationOnly = false, scanned = 0, outputUnits = 0;
       const stack = [...(paging ? continuationLists : roots)].reverse();
       while (stack.length && scanned++ < 20000) {
         const node = stack.pop();
@@ -240,6 +240,7 @@
               if (typeof token === "string" && /^[A-Za-z0-9_%=.+/:-]{16,16000}$/.test(token)) next = token;
             }
           }
+          if (node.length && node.every(x => x && (x.continuationItemRenderer || x.continuationItemViewModel))) continuationOnly = true;
           stack.push(...node.slice().reverse()); continue;
         }
         if (node.continuationItemRenderer || node.continuationItemViewModel) continue;
@@ -263,8 +264,11 @@
         stack.push(...Object.values(node).filter(x => x && typeof x === "object").reverse());
       }
       if (stack.length) return fail("site_changed", "The browse content exceeded the safe parsing bound.");
-      if (!items.length && !empty && roots.length) return fail("site_changed", "Browse content contained no recognized videos or explicit empty state.");
+      // A continuation page holding only another continuation marks the end of a short list.
+      const ended = paging && !items.length && !unsupported && continuationOnly;
+      if (!items.length && !empty && !ended && roots.length) return fail("site_changed", "Browse content contained no recognized videos or explicit empty state.");
       const warnings = [];
+      if (ended) warnings.push("YouTube returned a continuation with no videos; the list has ended.");
       if (truncated) warnings.push("Only the first " + items.length + " items are returned due to count/size bounds. The next token skips omitted items from this page.");
       if (paging) warnings.push("YouTube does not attest the originating resource for a continuation; its id and title are null.");
       const title = clean(data.metadata?.playlistMetadataRenderer?.title || data.header?.pageHeaderRenderer?.pageTitle);

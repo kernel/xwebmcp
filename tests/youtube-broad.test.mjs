@@ -140,6 +140,15 @@ for (const name of ["list_channel_videos", "get_playlist"]) {
       assert.equal(out.status, "no_results");
     }
   });
+  test(`${name}: a continuation holding only another continuation ends the list`, async () => {
+    const ended = await harness(name, { route: () => ({ data: { onResponseReceivedActions: [{ appendContinuationItemsAction: { continuationItems: [cont()] } }] } }) }).run({ page_token: token });
+    assert.deepEqual([ended.status, ended.items.length, ended.next_page_token], ["no_results", 0, null]);
+    assert.match(ended.warnings.join(" "), /list has ended/);
+    const strange = await harness(name, { route: () => ({ data: { onResponseReceivedActions: [{ appendContinuationItemsAction: { continuationItems: [{ strangeRenderer: {} }, cont()] } }] } }) }).run({ page_token: token });
+    assert.equal(strange.error_kind, "site_changed");
+    const first = await harness(name, { route: () => ({ data: browse([cont()]) }) }).run(input);
+    assert.equal(first.error_kind, "site_changed", "a first page with no videos is not an end of list");
+  });
   test(`${name}: empty and unsupported layouts are different`, async () => {
     assert.equal((await harness(name, { route: () => ({ data: browse([{ messageRenderer: { text: { simpleText: "No videos" } } }]) }) }).run(input)).status, "no_results");
     assert.equal((await harness(name, { route: () => ({ data: browse([{ strangeRenderer: {} }]) }) }).run(input)).error_kind, "site_changed");

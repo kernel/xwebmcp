@@ -33,7 +33,7 @@
               }
             },
             published_at: { type: ["string", "null"], description: "The site's publish timestamp with UTC offset, for example 2020-09-16T06:00:20-07:00." },
-            duration_seconds: { type: ["integer", "null"], minimum: 1, description: "Null for live and upcoming streams." },
+            duration_seconds: { type: ["integer", "null"], minimum: 1, description: "Null for live and upcoming streams, and for a past live stream whose recording is no longer available (see warnings)." },
             view_count: { type: ["integer", "null"], minimum: 0, description: "The site's view count field; for a live stream it is whatever the site reports at that moment." },
             like_count: { type: ["integer", "null"], minimum: 0, description: "Null when the uploader hides likes or the site omits them." },
             category: { type: ["string", "null"] },

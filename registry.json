@@ -3567,12 +3567,9 @@
         "https://www.youtube.com/*"
       ],
       "url_patterns_reason": "Narrowed to www.youtube.com: it serves the main YouTube web app whose same-origin youtubei endpoints and page layout the tools use; other youtube.com hosts are separate products (music., studio., tv., m.) with different clients and layouts.",
-      "status": "verified",
-      "last_verified": "2026-10-14",
-      "notes": "Anonymous public or unlisted playlist pages (PL, UU and OLAK5uy_ ids) in site order, repeats kept; private, Watch later, Liked and Mix lists unsupported; no playback or account reads. Reads the next-page token in either of YouTube's shapes, only from the list that holds the videos. Independent QA on 2026-10-14 verified it live from the home page and a playlist page: a 239-video playlist over three pages matching the rendered list, a 158-video playlist, a 1006-video uploads list over 11 pages without repeats, not_found for an unknown playlist and invalid_page_token for a bogus token, all schema-valid. Challenge and rate-limit paths are fixture-only.",
-      "provenance": {
-        "qa_agent": "agt_a2266ed35a0f601cd43e"
-      }
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Anonymous public or unlisted playlist pages (PL, UU and OLAK5uy_ ids) in site order, repeats kept; private, Watch later, Liked and Mix lists unsupported; no playback or account reads. Reads the next-page token in either of YouTube's shapes, only from the list that holds the videos. Independent QA on 2026-10-14 verified it live from the home page and a playlist page: a 239-video playlist over three pages matching the rendered list, a 158-video playlist, a 1006-video uploads list over 11 pages without repeats, not_found for an unknown playlist and invalid_page_token for a bogus token, all schema-valid. Challenge and rate-limit paths are fixture-only."
     },
     {
       "domain": "youtube.com",
@@ -3615,12 +3612,9 @@
         "https://www.youtube.com/*"
       ],
       "url_patterns_reason": "Narrowed to www.youtube.com: it serves the main YouTube web app whose same-origin youtubei endpoints and page layout the tools use; other youtube.com hosts are separate products (music., studio., tv., m.) with different clients and layouts.",
-      "status": "verified",
-      "last_verified": "2026-10-14",
-      "notes": "Anonymous Videos or Shorts tab pages with the site's own browse tokens and bounded pagination; no navigation or playback. Reads the next-page token in either of YouTube's shapes, only from the list that holds the videos. Independent QA on 2026-10-14 verified Videos and Shorts paging over four pages each without repeats, entries matching the rendered tab and invalid_page_token for a bogus token, all schema-valid, live from a playlist page. Challenge and rate-limit paths are fixture-only.",
-      "provenance": {
-        "qa_agent": "agt_a2266ed35a0f601cd43e"
-      }
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Anonymous Videos or Shorts tab pages with the site's own browse tokens and bounded pagination; no navigation or playback. Reads the next-page token in either of YouTube's shapes, only from the list that holds the videos. Independent QA on 2026-10-14 verified Videos and Shorts paging over four pages each without repeats, entries matching the rendered tab and invalid_page_token for a bogus token, all schema-valid, live from a playlist page. Challenge and rate-limit paths are fixture-only."
     },
     {
       "domain": "youtube.com",
