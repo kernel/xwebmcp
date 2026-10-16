@@ -1044,7 +1044,7 @@ test("select_room opens page_url from another page and never loops once it is th
   assert.ok([...otherDates.env.live.querySelectorAll("select")].every(s => s.value === "0"));
   const selected = await run("select_room", { ...SELECT, page_url: pageUrl }, { start: pageUrl, liveHtml: reservePage() });
   assert.equal(selected.output.status, "navigation_scheduled");
-  for (const bad of ["https://example.com/hotel/xx/a.html?checkin=2026-11-10&checkout=2026-11-12", PROPERTY.property_url, PROPERTY.property_url + "?checkin=xyz&checkout=abc", PROPERTY.property_url + "?checkin=2026-02-30&checkout=2026-03-02", "not a url", 7]) {
+  for (const bad of ["https://example.com/hotel/xx/a.html?checkin=2026-11-10&checkout=2026-11-12", PROPERTY.property_url, PROPERTY.property_url + "?checkin=xyz&checkout=abc", PROPERTY.property_url + "?checkin=2026-02-30&checkout=2026-03-02", ...["2026-13-01", "2026-00-10", "2026-11-99"].map(d => PROPERTY.property_url + "?checkin=" + d + "&checkout=2026-11-12"), "not a url", 7]) {
     assert.equal((await run("select_room", { ...SELECT, page_url: bad }, selectOptions())).output.error_kind, "invalid_input", String(bad));
   }
 });

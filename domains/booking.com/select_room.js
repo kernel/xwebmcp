@@ -59,7 +59,7 @@
     if (typeof input.property_id !== "string" || !/^\d{1,20}$/.test(input.property_id)) return fail("invalid_input", "property_id must be the numeric ID from get_property.");
     if (typeof input.rate_id !== "string" || input.rate_id.length > 120 || !/^[A-Za-z0-9]+(?:_[A-Za-z0-9]+){0,9}$/.test(input.rate_id)) return fail("invalid_input", "rate_id must be a rate_id from get_property.");
     if (typeof input.expected_total !== "number" || !Number.isFinite(input.expected_total) || input.expected_total < 0) return fail("invalid_input", "expected_total must be the rate's price.total from get_property.");
-    const isDate = v => typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v) && new Date(v + "T00:00:00Z").toISOString().slice(0, 10) === v;
+    const isDate = v => typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v) && Number.isFinite(Date.parse(v + "T00:00:00Z")) && new Date(v + "T00:00:00Z").toISOString().slice(0, 10) === v;
     let pageUrl = null;
     if (input.page_url !== undefined) {
       try { pageUrl = typeof input.page_url === "string" && input.page_url.length <= 400 ? new URL(input.page_url) : null; } catch { pageUrl = null; }
