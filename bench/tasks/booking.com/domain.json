@@ -1,0 +1,5 @@
+{
+  "actions": {
+    "select_room": "selects one room of a rate and opens Booking.com's details step; enters no details and never books"
+  }
+}
