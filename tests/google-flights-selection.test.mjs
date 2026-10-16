@@ -294,6 +294,18 @@ test("without Google's results announcement a stable list is read with a warning
   assert.match(out.warnings[0], /Google announced no results but 3 rows are visible/);
 });
 
+test("an announced count that disagrees with the visible rows is never settled: list is not_ready and selection does not click", async () => {
+  const page = new GooglePage();
+  const [nonstop] = (await invoke(page, "list_flights")).flights;
+  page.live.text = "4 results returned.";
+  const list = await invoke(page, "list_flights");
+  assert.equal(list.status, "not_ready");
+  assert.ok(list.reasons.includes("announced_count_mismatch"));
+  const out = await invoke(page, "select_flight", { selection_ref: nonstop.selection_ref, expected_leg: "departing" });
+  assert.equal(out.status, "not_ready");
+  assert.deepEqual(page.clicks, []);
+});
+
 test("limits, collapsed rows and unreadable cards are disclosed; filters and sorting act before limit", async () => {
   const unreadable = { ...B6_523, dep: "6:00 AM", arr: "9:15 AM", tim: null, price: "$642" };
   const page = new GooglePage({ departing: [B6_523, AA_PHX, unreadable, B6_823], collapsed: [AS_SEA] });

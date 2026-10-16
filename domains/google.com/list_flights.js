@@ -3,7 +3,7 @@
   match: { url_patterns: ["https://www.google.com/travel/flights/search*"] },
   tool: {
     name: "list_flights",
-    description: "Read the flights Google Flights is showing on this results page right now, without searching again: the departing flights, or, after a departing flight is chosen on a round trip, the returning flights Google offers for that departing flight (selected_outbound names it). Waits until Google has announced a settled list (status not_ready otherwise) and expands Google's collapsed 'View more flights' rows. For each row: selection_ref (pass to select_flight with expected_leg equal to leg), marketing carriers and flight numbers, operating carrier, ordered segments and layovers with airport codes, ISO dates and airport-local times with day offset, duration and stops, the displayed price with its scope and passenger count, and the carry-on and checked bags Google lists. Segment times, aircraft and operators come from Google's flight-details panel and are null when it could not be read (details_read false). Sort by departure, arrival, price or duration and filter by airline or maximum stops; these act on the rows already on the page, so use search_flights' max_stops to have Google filter its inventory. The list is a snapshot of this page, not all airline inventory: never conclude an airline or nonstop is unavailable when has_more is true or warnings report skipped rows. Read-only apart from expanding rows; books nothing. Google's lowest price is often a basic fare without a carry-on bag; get_booking_options shows each fare once flights are chosen.",
+    description: "Read the flights Google Flights is showing on this results page right now, without searching again: the departing flights, or, after a departing flight is chosen on a round trip, the returning flights Google offers for that departing flight (selected_outbound names it). Waits until Google has announced a settled list (status not_ready otherwise) and expands Google's collapsed 'View more flights' rows. For each row: selection_ref (pass to select_flight with expected_leg equal to leg), marketing carriers and flight numbers, operating carrier, ordered segments and layovers with airport codes, ISO dates and airport-local times with day offset, duration and stops, the displayed price with its scope and passenger count, and the carry-on and checked bags Google lists. Segment times, aircraft and operators come from Google's flight-details panel and are null when it could not be read (details_read false). Sort by departure, arrival, price or duration and filter by airline or maximum stops; these act on the rows already on the page, so use search_flights' max_stops to have Google filter its inventory. The list is a snapshot of this page, not all airline inventory: never conclude an airline or nonstop is unavailable when has_more is true or warnings report skipped rows. Read-only apart from expanding rows; books nothing. Google's price is often a basic fare without a carry-on bag, or a combination sold as separate tickets; get_booking_options shows each seller's fares once flights are chosen.",
     inputSchema: {
       type: "object", additionalProperties: false,
       properties: {
@@ -256,14 +256,16 @@
       };
       const settle = async () => {
         const quiet = opts.quiet_ms ?? 600;
+        const settleBy = Math.min(deadline, Number(opts.settle_by_ms) || deadline);
         let s = snapshot(), key = s.key, since = Date.now();
         for (;;) {
           if (s.state === "not_results_page" || s.state === "unsupported") return { ...s, settled: true };
           const still = Date.now() - since;
-          // Google announces "N results returned" once the list is rendered; without a matching announcement, require a longer quiet period.
+          // Google announces "N results returned" once the list is rendered. A count that disagrees with the visible rows is
+          // never settled; with no announcement at all, require a longer quiet period.
           if (s.state === "no_results" && still >= quiet) return { ...s, settled: true };
-          if (s.state === "results" && still >= (s.announced === s.cards.length ? quiet : Math.max(quiet, 4000))) return { ...s, settled: true };
-          if (Date.now() >= deadline) return { ...s, settled: false };
+          if (s.state === "results" && (s.announced === s.cards.length ? still >= quiet : s.announced === null && still >= Math.max(quiet, 4000))) return { ...s, settled: true };
+          if (Date.now() >= settleBy) return { ...s, settled: false, reasons: s.state === "results" && s.announced !== null && s.announced !== s.cards.length ? [...s.reasons, "announced_count_mismatch"] : s.reasons };
           await sleep(250);
           s = snapshot();
           if (s.key !== key) { key = s.key; since = Date.now(); }

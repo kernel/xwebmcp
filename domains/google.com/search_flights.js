@@ -216,14 +216,16 @@
     };
     const settle = async () => {
       const quiet = opts.quiet_ms ?? 600;
+      const settleBy = Math.min(deadline, Number(opts.settle_by_ms) || deadline);
       let s = snapshot(), key = s.key, since = Date.now();
       for (;;) {
         if (s.state === "not_results_page" || s.state === "unsupported") return { ...s, settled: true };
         const still = Date.now() - since;
-        // Google announces "N results returned" once the list is rendered; without a matching announcement, require a longer quiet period.
+        // Google announces "N results returned" once the list is rendered. A count that disagrees with the visible rows is
+        // never settled; with no announcement at all, require a longer quiet period.
         if (s.state === "no_results" && still >= quiet) return { ...s, settled: true };
-        if (s.state === "results" && still >= (s.announced === s.cards.length ? quiet : Math.max(quiet, 4000))) return { ...s, settled: true };
-        if (Date.now() >= deadline) return { ...s, settled: false };
+        if (s.state === "results" && (s.announced === s.cards.length ? still >= quiet : s.announced === null && still >= Math.max(quiet, 4000))) return { ...s, settled: true };
+        if (Date.now() >= settleBy) return { ...s, settled: false, reasons: s.state === "results" && s.announced !== null && s.announced !== s.cards.length ? [...s.reasons, "announced_count_mismatch"] : s.reasons };
         await sleep(250);
         s = snapshot();
         if (s.key !== key) { key = s.key; since = Date.now(); }
@@ -491,7 +493,7 @@
         if (readiness.state !== "results") return fail("RESULTS_TIMEOUT: Google Flights neither announced results nor an explicit no-results state.");
 
         // Expansion and parsing run in one page call so a list re-render cannot separate the expanded nodes from the parsed ones.
-        const page = await js(readGoogleFlights, { arg: { deadline_ms: Date.now() + remaining(30) * 1000, quiet_ms: 0, expand_more: true, want: maxResults, detail_first: maxResults } });
+        const page = await js(readGoogleFlights, { arg: { deadline_ms: Date.now() + remaining(30) * 1000, settle_by_ms: Date.now() + remaining(5) * 1000, quiet_ms: 0, expand_more: true, want: maxResults, detail_first: maxResults } });
         result.resultsUrl = page.url;
         result.pricingNote = page.pricing_note || "";
         result.priceInsight = page.price_insight;
@@ -530,7 +532,9 @@
         if (input.max_stops !== undefined && flights.some(f => f.stops > input.max_stops)) return fail("FILTER_NOT_APPLIED: Google returned itineraries exceeding max_stops.");
         const unexpanded = flights.filter(f => f.segments.length === 0).length;
         if (unexpanded) warnings.push(`${unexpanded} itinerary detail panel(s) could not be read; their segments are empty.`);
-        const hasMore = page.more_left || page.total > flights.length;
+        const miscounted = page.announced !== null && page.announced !== page.total;
+        if (miscounted) warnings.push(`Google announced ${page.announced} results but ${page.total} were on the page when read; the list may be incomplete.`);
+        const hasMore = page.more_left || page.total > flights.length || (miscounted && page.announced > page.total);
         if (hasMore) warnings.push("Partial results: additional itineraries were not returned. Do not infer an airline or nonstop is unavailable; narrow the search with max_stops or increase maxResults.");
         return { ...result, status: "ok", resultCount: flights.length, totalResults: page.total, hasMore, flights };
       } catch (error) {

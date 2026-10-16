@@ -209,14 +209,16 @@
       };
       const settle = async () => {
         const quiet = opts.quiet_ms ?? 600;
+        const settleBy = Math.min(deadline, Number(opts.settle_by_ms) || deadline);
         let s = snapshot(), key = s.key, since = Date.now();
         for (;;) {
           if (s.state === "not_results_page" || s.state === "unsupported") return { ...s, settled: true };
           const still = Date.now() - since;
-          // Google announces "N results returned" once the list is rendered; without a matching announcement, require a longer quiet period.
+          // Google announces "N results returned" once the list is rendered. A count that disagrees with the visible rows is
+          // never settled; with no announcement at all, require a longer quiet period.
           if (s.state === "no_results" && still >= quiet) return { ...s, settled: true };
-          if (s.state === "results" && still >= (s.announced === s.cards.length ? quiet : Math.max(quiet, 4000))) return { ...s, settled: true };
-          if (Date.now() >= deadline) return { ...s, settled: false };
+          if (s.state === "results" && (s.announced === s.cards.length ? still >= quiet : s.announced === null && still >= Math.max(quiet, 4000))) return { ...s, settled: true };
+          if (Date.now() >= settleBy) return { ...s, settled: false, reasons: s.state === "results" && s.announced !== null && s.announced !== s.cards.length ? [...s.reasons, "announced_count_mismatch"] : s.reasons };
           await sleep(250);
           s = snapshot();
           if (s.key !== key) { key = s.key; since = Date.now(); }

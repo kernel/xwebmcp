@@ -466,6 +466,16 @@ test("an unreadable card is skipped with a warning instead of failing the whole 
   assert.match(result.warnings[1], /^Partial results:/);
 });
 
+test("an announced count that disagrees with the cards read is reported as possibly incomplete", async () => {
+  const h = harness({ document: resultsPage({ live: "3 results returned." }), timeoutClock: true });
+  const result = await h.execute(oneWay);
+  validate(h.tools[0].tool.outputSchema, result);
+  assert.equal(result.status, "ok");
+  assert.equal(result.resultCount, 2);
+  assert.equal(result.hasMore, true);
+  assert.match(result.warnings[0], /^Google announced 3 results but 2 were on the page when read/);
+});
+
 test("all cards unreadable is an explicit parse error", async () => {
   const page = resultsPage();
   for (const span of page.querySelectorAll("span[aria-label$='dollars']")) span.attrs["aria-label"] = "";
