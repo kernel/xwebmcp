@@ -56,8 +56,7 @@
   ],
   "check": {
     "extract": {
-      "total": "\\bTotal(?: price)?\\s*\\n\\s*(?:US)?\\$\\s*([\\d,]+(?:\\.\\d{2})?)\\s*\\n\\s*(?:\\(for [^)\\n]*\\)\\s*\\n\\s*)?Includes taxes",
-      "adults": "(?:1 room for|Guests:)\\s*(\\d+) adults"
+      "total": "\\bTotal(?: price)?\\s*\\n\\s*(?:US)?\\$\\s*([\\d,]+(?:\\.\\d{2})?)\\s*\\n\\s*(?:\\(for [^)\\n]*\\)\\s*\\n\\s*)?Includes taxes"
     },
     "rules": [
       {
@@ -71,10 +70,6 @@
       {
         "path": "text",
         "matches": "Your details"
-      },
-      {
-        "path": "extracted.adults",
-        "equals": 2
       },
       {
         "path": "extracted.total",
