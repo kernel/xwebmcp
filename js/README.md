@@ -201,7 +201,7 @@ call before it can return.
 
 | import | exports |
 | --- | --- |
-| `xwebmcp/nextjs` | `<WebMCPProvider site? navigationTimeoutMs?>`, plus everything below except `WebMCPPageProvider` |
+| `xwebmcp/nextjs` | `<WebMCPProvider site? navigationTimeoutMs?>`, `useWebMCPTool`, `useWebMCPRoute`, `<PageContext>`, `refresh` |
 | `xwebmcp/react` | `useWebMCPTool`, `useWebMCPRoute`, `<PageContext>`, `<WebMCPPageProvider navigate>` for other routers |
 | `xwebmcp` | `registerTool(tool, { signal })`, `refresh()`, `getModelContext()`, `availableToolNames()`, `subscribe(listener)`; no React |
 
