@@ -278,7 +278,7 @@ function action(options = {}) {
     querySelector: () => ({ data: { metadata: { channelMetadataRenderer: { externalId: channel, title: "Fabricated Channel", vanityChannelUrl: options.vanity || "http://www.youtube.com/@fabricated" } } } })
   };
   const h = harness("set_subscription", { config, signal: options.signal, document, globals: { location, Date: { now: () => now += 1000 }, setTimeout: f => f() } });
-  return { ...h, clicks: () => clicked, pending: () => !!document[Symbol.for("xwebmcp.youtube.pendingSubscriptions")]?.size, replaceHeader, location };
+  return { ...h, clicks: () => clicked, pending: () => !!document[Symbol.for("xwebmcp.youtube.pendingSubscriptions")]?.size, replaceHeader, location, document };
 }
 test("subscribe: mocked UI postcondition, not server persistence", async () => { const h = action(); const o = await h.run(actionInput); assert.equal(o.status, "observed"); assert.equal(o.persistence_confirmed, false); assert.equal(o.action_attempted, true); assert.equal(h.clicks(), 1); assert.equal((await h.run(actionInput)).action_attempted, false); assert.equal(h.clicks(), 1); });
 test("unsubscribe: presses Subscribed, chooses Unsubscribe and confirms the dialog for this channel", async () => {
@@ -298,6 +298,14 @@ test("unsubscribe: a missing or foreign confirmation changes nothing", async () 
     assert.equal(h.clicks(), 1, "only the Subscribed button, never a confirmation");
     assert.equal(h.pending(), false);
   }
+});
+test("unsubscribe: a second call while the first waits for the menu presses nothing", async () => {
+  const h = action({ subscribed: true });
+  const realTimers = { setTimeout: (f, ms) => globalThis.setTimeout(f, Math.min(ms, 5)) };
+  const slow = harness("set_subscription", { config: { LOGGED_IN: true, SESSION_INDEX: "0" }, document: h.document, globals: { location: h.location, Date, ...realTimers } });
+  const [first, second] = await Promise.all([slow.run(unsubscribeInput), slow.run(unsubscribeInput)]);
+  assert.deepEqual([first.status, second.error_kind], ["observed", "busy"]);
+  assert.equal(h.clicks(), 2, "one Subscribed press and one confirmation");
 });
 test("unsubscribe: an unconfirmed outcome keeps the guard", async () => {
   const h = action({ subscribed: true, unknown: true });
@@ -340,6 +348,7 @@ test("subscribe: channel routes and handles must attest the requested identity",
   }
   assert.equal((await action({ path: "/@fabricated/videos" }).run(actionInput)).status, "observed");
   assert.equal((await action({ path: "/@fabricated", vanity: "https://www.youtube.com/@fabricated" }).run(actionInput)).status, "observed");
+  assert.equal((await action({ path: "/@fabricated", vanity: "http://www.youtube.com/@Fabricated" }).run(actionInput)).status, "observed", "handles are case-insensitive");
 });
 test("subscribe: concurrent mocked actions fail closed", async () => {
   const h = action({ unknown: true });

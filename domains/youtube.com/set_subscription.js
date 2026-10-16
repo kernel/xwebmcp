@@ -19,7 +19,7 @@
         },
         {
           type: "object", additionalProperties: false, required: ["status", "error_kind", "error_message"],
-          properties: { status: { const: "error" }, error_kind: { enum: ["invalid_input", "wrong_page", "wrong_channel", "login_required", "blocked", "site_changed", "canceled", "outcome_unknown"] }, error_message: { type: "string", maxLength: 300 } }
+          properties: { status: { const: "error" }, error_kind: { enum: ["invalid_input", "wrong_page", "wrong_channel", "login_required", "blocked", "site_changed", "canceled", "busy", "outcome_unknown"] }, error_message: { type: "string", maxLength: 300 } }
         }
       ]
     },
@@ -49,8 +49,9 @@
       if (routeId) return true;
       let vanity;
       try { vanity = new URL(metadata.vanityChannelUrl); } catch { return false; }
-      // The page's metadata gives this URL with http://, so only the host and path are compared.
-      return vanity.hostname === "www.youtube.com" && vanity.pathname === initialPath.split("/").slice(0, 2).join("/");
+      // The page's metadata gives this URL with http://, so only the host and path are compared,
+      // and handles are case-insensitive: /@lofigirl is the channel whose metadata says /@LofiGirl.
+      return vanity.hostname === "www.youtube.com" && vanity.pathname.toLowerCase() === initialPath.split("/").slice(0, 2).join("/").toLowerCase();
     };
     // Before the click, the control must be the one observed at the start.
     const targetMatches = () => {
@@ -64,6 +65,9 @@
     const pending = document[Symbol.for("xwebmcp.youtube.pendingSubscriptions")] ??= new Set();
     const pendingKey = account + ":" + input.channel_id;
     if (pending.has(pendingKey)) return fail("outcome_unknown", "A previous attempt in this document is unresolved. Inspect manually; do not retry automatically.");
+    // Unsubscribing waits for a menu and a dialog; a second call meanwhile must not press again.
+    const busy = document[Symbol.for("xwebmcp.youtube.subscriptionsInProgress")] ??= new Set();
+    if (busy.has(pendingKey)) return fail("busy", "Another set_subscription call for this channel is still running in this page. Nothing was changed.");
     const observed = attempted => ({ status: "observed", channel_id: input.channel_id, action_attempted: attempted, subscription_state: input.subscribed ? "subscribed" : "unsubscribed", persistence_confirmed: false });
     if (subscribed() === input.subscribed) return observed(false);
     const visible = selector => [...document.querySelectorAll(selector)].filter(x => x.getClientRects().length);
@@ -83,36 +87,41 @@
     if (context?.signal?.aborted) return fail("canceled", "Canceled before interaction.");
     if (!accountMatches() || !targetMatches()) return fail("wrong_channel", "The account or channel header changed before the press. Nothing was changed.");
     let confirm = null;
-    if (!input.subscribed) {
-      // Subscribed opens a menu whose last item is Unsubscribe (or, on some pages, the confirmation directly);
-      // neither step changes anything until the dialog is confirmed.
-      const title = document.querySelector("ytd-browse")?.data?.metadata?.channelMetadataRenderer?.title;
-      const dialog = () => visible("yt-confirm-dialog-renderer").find(d => typeof title === "string" && (d.textContent || "").replace(/\s+/g, " ").includes("Unsubscribe from " + title + "?"));
-      button.click();
-      const item = await wait(() => dialog() || visible("tp-yt-iron-dropdown yt-list-item-view-model").find(x => x.textContent.trim() === "Unsubscribe"), 3000);
-      if (item && item.tagName !== "YT-CONFIRM-DIALOG-RENDERER") (item.querySelector('button[role="menuitem"]') || item).click();
-      const found = item && await wait(dialog, 3000);
-      confirm = found && [...found.querySelectorAll("button")].find(b => b.textContent.trim() === "Unsubscribe");
-      if (!confirm) return fail("blocked", "YouTube did not show its Unsubscribe confirmation for this channel. Nothing was changed; close any open menu.");
-      if (context?.signal?.aborted) return fail("canceled", "Canceled before confirming; nothing was changed. Close the open dialog.");
-      if (!accountMatches() || !pageMatches()) return fail("wrong_channel", "The account or page changed before confirming. Nothing was changed.");
-    }
-    pending.add(pendingKey);
+    busy.add(pendingKey);
     try {
-      (confirm || button).click();
-      const deadline = Date.now() + 5000;
-      while (Date.now() < deadline) {
-        if (context?.signal?.aborted || !accountMatches() || !pageMatches()) return fail("outcome_unknown", "Canceled, or the account or page changed after the press; the outcome is unknown. Check the channel page before calling again.");
-        // YouTube may re-render the header afterwards, so read whichever single control now identifies the same
-        // channel; this only reads state and never presses again.
-        const current = controls();
-        if (current.length === 1 && identifies(current[0]) && subscribed(current[0]) === input.subscribed) {
-          pending.delete(pendingKey);
-          return observed(true);
-        }
-        await new Promise(resolve => setTimeout(resolve, 100));
+      if (!input.subscribed) {
+        // Subscribed opens a menu whose last item is Unsubscribe (or, on some pages, the confirmation directly);
+        // neither step changes anything until the dialog is confirmed.
+        const title = document.querySelector("ytd-browse")?.data?.metadata?.channelMetadataRenderer?.title;
+        const dialog = () => visible("yt-confirm-dialog-renderer").find(d => typeof title === "string" && (d.textContent || "").replace(/\s+/g, " ").includes("Unsubscribe from " + title + "?"));
+        button.click();
+        const item = await wait(() => dialog() || visible("tp-yt-iron-dropdown yt-list-item-view-model").find(x => x.textContent.trim() === "Unsubscribe"), 3000);
+        if (item && item.tagName !== "YT-CONFIRM-DIALOG-RENDERER") (item.querySelector('button[role="menuitem"]') || item).click();
+        const found = item && await wait(dialog, 3000);
+        confirm = found && [...found.querySelectorAll("button")].find(b => b.textContent.trim() === "Unsubscribe");
+        if (!confirm) return fail("blocked", "YouTube did not show its Unsubscribe confirmation for this channel. Nothing was changed; close any open menu.");
+        if (context?.signal?.aborted) return fail("canceled", "Canceled before confirming; nothing was changed. Close the open dialog.");
+        if (!accountMatches() || !pageMatches()) return fail("wrong_channel", "The account or page changed before confirming. Nothing was changed.");
       }
-    } catch { /* A press may have sent a write even when it throws. Keep the pending guard. */ }
-    return fail("outcome_unknown", "The " + (input.subscribed ? "Subscribe" : "Unsubscribe") + " press was attempted but the page does not show the new state. Inspect manually; do not retry automatically.");
+      pending.add(pendingKey);
+      try {
+        (confirm || button).click();
+        const deadline = Date.now() + 5000;
+        while (Date.now() < deadline) {
+          if (context?.signal?.aborted || !accountMatches() || !pageMatches()) return fail("outcome_unknown", "Canceled, or the account or page changed after the press; the outcome is unknown. Check the channel page before calling again.");
+          // YouTube may re-render the header afterwards, so read whichever single control now identifies the same
+          // channel; this only reads state and never presses again.
+          const current = controls();
+          if (current.length === 1 && identifies(current[0]) && subscribed(current[0]) === input.subscribed) {
+            pending.delete(pendingKey);
+            return observed(true);
+          }
+          await new Promise(resolve => setTimeout(resolve, 100));
+        }
+      } catch { /* A press may have sent a write even when it throws. Keep the pending guard. */ }
+      return fail("outcome_unknown", "The " + (input.subscribed ? "Subscribe" : "Unsubscribe") + " press was attempted but the page does not show the new state. Inspect manually; do not retry automatically.");
+    } finally {
+      busy.delete(pendingKey);
+    }
   }
 }]
