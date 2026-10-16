@@ -929,6 +929,20 @@
     },
     {
       "domain": "booking.com",
+      "tool": "get_checkout_step",
+      "file": "domains/booking.com/get_checkout_step.js",
+      "kind": "page",
+      "namespace": "booking.com",
+      "url_patterns": [
+        "https://secure.booking.com/*"
+      ],
+      "url_patterns_reason": "Narrowed to secure.booking.com: Booking.com serves its checkout steps (book.html) there, after select_room; the other tools run on www.booking.com.",
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Reads secure.booking.com/book.html: step, property, dates and times, selection, total including taxes and fees with its currency, price notes and cancellation policy. Read-only."
+    },
+    {
+      "domain": "booking.com",
       "tool": "get_property",
       "file": "domains/booking.com/get_property.js",
       "kind": "page",
@@ -936,30 +950,10 @@
       "url_patterns": [
         "https://www.booking.com/*"
       ],
-      "url_patterns_reason": "Narrowed to www.booking.com: the stays search and property pages are served there, and the read tools fetch those pages same-origin while preparation reads the current page; a fetch from www.booking.com to flights. or secure.booking.com fails, so the tools cannot work on other booking.com hosts.",
-      "status": "verified",
-      "last_verified": "2026-09-30",
-      "notes": "Dated property facts and room rates with effective party/currency, excluded fees, cancellation, prepayment, meals, rate IDs and comparison ranks. Optional lowest displayed-price ordering before the 40-rate cap; scans at most 400 rows. Smaller-party rates are omitted; member previews and uncertain child charges are warned. One room only; English; no currency changes, selection, hold or checkout. Independent final-source QA passed; live Kernel success from the home page and local extension success on 2026-09-30.",
-      "provenance": {
-        "qa_agent": "agt_dd7f389d3c2826a1698e"
-      }
-    },
-    {
-      "domain": "booking.com",
-      "tool": "prepare_booking",
-      "file": "domains/booking.com/prepare_booking.js",
-      "kind": "page",
-      "namespace": "booking.com",
-      "url_patterns": [
-        "https://www.booking.com/*"
-      ],
-      "url_patterns_reason": "Narrowed to www.booking.com: the stays search and property pages are served there, and the read tools fetch those pages same-origin while preparation reads the current page; a fetch from www.booking.com to flights. or secure.booking.com fails, so the tools cannot work on other booking.com hosts.",
-      "status": "qa_passed",
-      "last_verified": "2026-09-30",
-      "notes": "Current-page-only preparation for an exact property and rate, dates, adult party, sign-in state, currency and displayed total. Requires zero selections, confirmed capacity and readable terms. Returns manual handoff only: no selection, hold, checkout, booking, payment or approval token. Children and populated account reads are unsupported. Independent final-source QA passed; local extension success with zero requests and unchanged selections. Kernel returned account_state_changed; no Kernel success or parity claimed.",
-      "provenance": {
-        "qa_agent": "agt_dd7f389d3c2826a1698e"
-      }
+      "url_patterns_reason": "Narrowed to www.booking.com: the stays search and property pages are served there, and the read tools fetch those pages same-origin; a fetch from www.booking.com to flights. or secure.booking.com fails, so the tools cannot work on other booking.com hosts.",
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Dated property facts and room rates with effective party/currency, excluded fees, cancellation, prepayment, meals, rate IDs and comparison ranks. Optional lowest displayed-price ordering before the 40-rate cap; scans at most 400 rows. Smaller-party rates are omitted; member previews and uncertain child charges are warned. One room only; English; no currency changes, selection, hold or checkout. Independent final-source QA passed; live Kernel success from the home page and local extension success on 2026-09-30."
     },
     {
       "domain": "booking.com",
@@ -970,13 +964,27 @@
       "url_patterns": [
         "https://www.booking.com/*"
       ],
-      "url_patterns_reason": "Narrowed to www.booking.com: the stays search and property pages are served there, and the read tools fetch those pages same-origin while preparation reads the current page; a fetch from www.booking.com to flights. or secure.booking.com fails, so the tools cannot work on other booking.com hosts.",
+      "url_patterns_reason": "Narrowed to www.booking.com: the stays search and property pages are served there, and the read tools fetch those pages same-origin; a fetch from www.booking.com to flights. or secure.booking.com fails, so the tools cannot work on other booking.com hosts.",
       "status": "verified",
       "last_verified": "2026-10-13",
       "notes": "Public first results page, up to 25 properties, for explicit destination/dates/guests and the site's current currency, with sort/filters, canonical URLs, reviews and recommended-unit prices. Echoes effective dates/guests/currency, flags member previews, nearby properties the site adds beyond its count and cards without a review score, and distinguishes empty, gated, blocked, rate-limited, refused and unapplied searches. Reads both results pages Booking.com serves (with b_* page variables, or with the application context and Apollo searchMeta). English; one room; no currency changes or booking actions. Independent final-source QA passed on 2026-10-13 on both page variants, including live success from a dated property page. Signed-in and non-English sessions, live gated/rate_limited/challenge and the local extension were not tested.",
       "provenance": {
         "qa_agent": "agt_1cf3db33f12fadd1eac2"
       }
+    },
+    {
+      "domain": "booking.com",
+      "tool": "select_room",
+      "file": "domains/booking.com/select_room.js",
+      "kind": "page",
+      "namespace": "booking.com",
+      "url_patterns": [
+        "https://www.booking.com/*"
+      ],
+      "url_patterns_reason": "Narrowed to www.booking.com: it acts on the dated property page served there; the reserve button takes the tab to secure.booking.com, where get_checkout_step reads the result.",
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Selects one room of one rate on the open dated property page after checking the property, rate, total and that no other rate is selected, then schedules the \"I'll reserve\" press (navigation_scheduled). Reaches Booking.com's \"Your details\" step; never enters guest details, books or pays."
     },
     {
       "domain": "delta.com",

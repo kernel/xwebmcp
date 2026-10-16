@@ -7,7 +7,7 @@ import { Document, DOMParser } from "./etsy-dom.mjs";
 // Harness for the booking.com stay tools. Every page and network interaction is stubbed; nothing here
 // contacts the live site. Properties, prices and identifiers below are fabricated, but the markup mirrors
 // the structure observed on www.booking.com (data-testid hooks, hprt rate table, inline page config).
-const NAMES = ["search_stays", "get_property", "prepare_booking"];
+const NAMES = ["search_stays", "get_property", "select_room", "get_checkout_step"];
 const sources = Object.fromEntries(NAMES.map(name => [name, readFileSync(new URL(`../domains/booking.com/${name}.js`, import.meta.url), "utf8")]));
 const registry = JSON.parse(readFileSync(new URL("../registry.json", import.meta.url), "utf8"));
 const HOME = "https://www.booking.com/";
@@ -158,8 +158,10 @@ function makeEnv({ start = HOME, liveCurrency = "USD", lang = "en-us", liveHtml,
     return { status, redirected, url: new URL(finalPath + (finalPath === u.pathname ? u.search : ""), HOME).href, text: async () => body };
   };
   const window = { location: new URL(start) };
-  const context = { window, document: live, fetch, DOMParser, URL, URLSearchParams, AbortSignal, TextEncoder, Date: FrozenDate, console };
-  return { calls, context, live };
+  const timers = [];
+  class Event { constructor(type, init = {}) { this.type = type; this.bubbles = !!init.bubbles; } }
+  const context = { window, document: live, fetch, DOMParser, URL, URLSearchParams, AbortSignal, TextEncoder, Date: FrozenDate, console, Event, setTimeout: fn => timers.push(fn) };
+  return { calls, context, live, timers };
 }
 
 function register(name, env) {
@@ -173,7 +175,7 @@ const run = async (name, input, options = {}) => {
   const definition = register(name, env);
   const output = plain(await definition.execute(input, { signal: options.signal }));
   assert.ok(conforms(definition.tool.outputSchema, output), "output must conform to outputSchema: " + JSON.stringify(output).slice(0, 400));
-  return { output, calls: env.calls, definition, env };
+  return { output, calls: env.calls, definition, env, timers: env.timers };
 };
 
 const searchRoute = (reply) => ({ match: u => u.pathname === "/searchresults.html", reply });
@@ -194,10 +196,10 @@ test("registry entries match the files, kind and narrowed URL pattern", () => {
     const definition = register(name, makeEnv());
     assert.equal(entry.kind, "page");
     assert.equal(definition.kind, "page");
-    assert.deepEqual(entry.url_patterns, ["https://www.booking.com/*"]);
+    assert.deepEqual(entry.url_patterns, [name === "get_checkout_step" ? "https://secure.booking.com/*" : "https://www.booking.com/*"]);
     assert.deepEqual(plain(definition.match.url_patterns), entry.url_patterns);
     assert.equal(definition.tool.name, name);
-    assert.equal(definition.tool.annotations.readOnlyHint, true);
+    assert.equal(definition.tool.annotations.readOnlyHint, name !== "select_room");
     assert.doesNotMatch(definition.execute.toString(), /\b(?:gotoUrl|pageInfo|accessibilitySnapshot|currentTab|waitMs|webmcp|repl|cdp|js)\(/, "page execute must not use REPL helpers");
   }
   assert.deepEqual(registry.tools.filter(t => t.domain === "booking.com").map(t => t.tool), [...NAMES].sort());
@@ -208,7 +210,7 @@ test("page tools serialize: execute has no dependency on the enclosing scope", a
     const env = makeEnv();
     const definition = register(name, env);
     const rebuilt = runInNewContext(`(${definition.execute.toString()})`, env.context);
-    const out = plain(await rebuilt({}));
+    const out = plain(await rebuilt(name === "get_checkout_step" ? { x: 1 } : {}));
     assert.equal(out.status, "error");
     assert.equal(out.error_kind, "invalid_input");
   }
@@ -581,6 +583,7 @@ test("get_property reads rooms, rates, cancellation, meal, taxes and the page's 
   assert.equal(output.query.property_url, "https://www.booking.com/hotel/xx/harbor-view-studios.html");
   assert.deepEqual(output.property, {
     property_id: "1000001", name: "Harbor View Studios", property_url: "https://www.booking.com/hotel/xx/harbor-view-studios.html",
+    page_url: "https://www.booking.com/hotel/xx/harbor-view-studios.html?checkin=2026-11-10&checkout=2026-11-12&group_adults=2&no_rooms=1&group_children=0",
     address: "1 Example Quay, Old Quarter, 1000-000 Example Harbor, Examplia", review: { score: 8.4, label: "Very Good", count: 1234 },
     review_categories: [{ category: "Staff", score: 9.1 }, { category: "Value for money", score: 7.9 }], popular_facilities: ["Free Wifi", "Air conditioning"],
     check_in_time: "From 2:00 PM", check_out_time: "Until 11:00 AM"
@@ -809,7 +812,7 @@ test("get_property warns when a rate lists no excluded taxes, and reads the alte
   const included = under.replace("+US$18 taxes and fees", "Includes taxes and fees");
   r = await run("get_property", PROPERTY, { routes: [propertyRoute({ body: propertyPage({ rows: [included] }) })] });
   assert.equal(r.output.rooms[0].rates[0].price.taxes_and_fees_excluded, null, "an 'Includes' line is not an excluded charge");
-  assert.match(r.output.warnings.join(" "), /listed no excluded taxes and fees/);
+  assert.deepEqual(r.output.warnings, [], "a price that includes taxes is not flagged as possibly excluding them");
 });
 
 test("get_property needs a www.booking.com page and an English page", async () => {
@@ -822,11 +825,11 @@ test("get_property needs a www.booking.com page and an English page", async () =
 
 // --- read-only guarantees -------------------------------------------------------------------------------------
 
-test("neither tool submits forms, posts, or touches booking, save or account endpoints", async () => {
-  for (const name of NAMES) {
+test("the read tools never submit forms, post, or touch booking, save or account endpoints", async () => {
+  for (const name of NAMES.filter(name => name !== "select_room")) {
     assert.doesNotMatch(sources[name], /method:\s*["'](?:POST|PUT|PATCH|DELETE)/i);
     assert.doesNotMatch(sources[name], /["'?&]selected_currency|"\/index\.html/, "the tools must not change or restore the site's currency");
-    assert.doesNotMatch(sources[name], /\.click\(|requestSubmit|\.submit\(|book\.html|mywishlist|wishlist|mytrips|myaccount|location\.(?:assign|href\s*=)|history\./);
+    assert.doesNotMatch(sources[name].replace(name === "get_checkout_step" ? /book\.html/g : /^$/, ""), /\.click\(|requestSubmit|\.submit\(|book\.html|mywishlist|wishlist|mytrips|myaccount|location\.(?:assign|href\s*=)|history\./);
   }
   const env = makeEnv({ routes: [searchRoute({ body: searchPage() }), propertyRoute({ body: propertyPage() })] });
   await register("search_stays", env).execute(SEARCH, {});
@@ -834,9 +837,10 @@ test("neither tool submits forms, posts, or touches booking, save or account end
   assert.deepEqual([...new Set(env.calls.map(c => c.path.replace(/\/hotel\/.*/, "/hotel/*")))].sort(), ["/hotel/*", "/searchresults.html"]);
 });
 
-// Comparison and preparation use fabricated rates, never live selection or reservation.
-const PREPARE = { ...PROPERTY, property_id: "1000001", rate_id: "1001_2001_2_2_0", expected_total: 316, expected_signed_in: false };
-const prepOptions = (liveHtml = propertyPage()) => ({ start: PROPERTY.property_url, liveHtml });
+// Room selection runs against fabricated property pages; the scheduled click is captured, never run against the site.
+const SELECT = { property_id: "1000001", rate_id: "1001_2001_2_2_0", expected_total: 316 };
+const reservePage = (page = propertyPage()) => page.replace('<input type="hidden" name="checkin" value="2026-11-10"></form>', '<input type="hidden" name="checkin" value="2026-11-10"><button type="submit" class="js-reservation-button">I\'ll reserve</button></form>');
+const selectOptions = (liveHtml = reservePage()) => ({ start: PROPERTY.property_url + "?checkin=2026-11-10&checkout=2026-11-12&group_adults=2&no_rooms=1&group_children=0", liveHtml });
 
 test("get_property selects the cheapest rates before applying max_rates, retaining global ranks", async () => {
   const rows = [rateRow({ head: ROOM_A, total: "$900" }), rateRow({ head: ROOM_B, blockId: "1002_2001_2_2_0", total: "$100" }), rateRow({ blockId: "1002_2002_2_2_0", total: "$150" })];
@@ -885,72 +889,126 @@ test("get_property rejects unsupported sort before requests and limits scanned r
   assert.equal(large.output.error_kind, "site_changed");
 });
 
-test("prepare_booking returns exact terms and a sanitized handoff without modifying the document", async () => {
-  const page = propertyPage();
-  const { output, calls, env } = await run("prepare_booking", { ...PREPARE, property_url: PROPERTY.property_url + "?sid=private#reserve" }, prepOptions(page));
-  assert.equal(output.status, "prepared");
-  assert.equal(output.displayed_total, 316);
-  assert.equal(output.room_id, "1001");
-  assert.equal(output.rate_id, PREPARE.rate_id);
+test("select_room selects one room of the exact rate and schedules the reserve button", async () => {
+  const { output, calls, env, timers } = await run("select_room", SELECT, selectOptions());
+  assert.equal(output.status, "navigation_scheduled");
+  assert.deepEqual([output.room_id, output.room_name, output.rate_id, output.displayed_total], ["1001", "Studio", SELECT.rate_id, 316]);
+  assert.deepEqual([output.check_in, output.check_out, output.adults, output.children, output.rooms, output.currency], ["2026-11-10", "2026-11-12", 2, 0, 1, "USD"]);
   assert.equal(output.cancellation, "Non-refundable");
-  assert.equal(output.prepayment, "Pay the property before arrival");
   assert.equal(output.taxes_and_fees_excluded, "6 % VAT, € 4 City tax per person per night");
-  assert.equal(output.inventory_reserved, false);
-  assert.equal(output.execution_available, false);
-  assert.match(output.execution_blocker, /trusted human approval/);
-  assert.doesNotMatch(output.property_url, /sid=|reserve|nr_rooms|block_id/);
+  assert.equal(output.signed_in, false);
+  assert.equal(output.next_tool, "get_checkout_step");
   assert.equal(calls.length, 0);
-  assert.equal(env.live.documentElement.outerHTML, new Document(page).documentElement.outerHTML);
-  assert.ok([...env.live.querySelectorAll("select")].every(s => s.value === "0"));
+  assert.equal(env.live.querySelector(`select[name="nr_rooms_${SELECT.rate_id}"]`).value, "1");
+  assert.ok([...env.live.querySelectorAll("select")].filter(s => s.getAttribute("name") !== `nr_rooms_${SELECT.rate_id}`).every(s => s.value === "0"));
+  let clicked = 0;
+  env.live.querySelector("button.js-reservation-button").addEventListener("click", () => clicked++);
+  assert.equal(clicked, 0, "the button is pressed only after the tool settles");
+  assert.equal(timers.length, 1);
+  timers[0]();
+  assert.equal(clicked, 1);
 });
 
 for (const [label, patch] of [
-  ["unknown confirmed flag", { confirmed: true }], ["unknown execute flag", { execute: true }],
-  ["selector injection", { rate_id: "1001']" }], ["bad property ID", { property_id: "secret" }],
-  ["invalid calendar date", { check_in: "2026-99-01" }], ["past stay", { check_in: "2026-01-01" }],
-  ["wrong URL", { property_url: "https://other.example/hotel/xx/harbor-view-studios.html" }],
-  ["missing total", { expected_total: undefined }], ["NaN total", { expected_total: NaN }],
-  ["missing state", { expected_signed_in: undefined }], ["children input", { children_ages: [7] }]
+  ["unknown confirmed flag", { confirmed: true }], ["selector injection", { rate_id: "1001']" }], ["bad property ID", { property_id: "secret" }],
+  ["missing total", { expected_total: undefined }], ["NaN total", { expected_total: NaN }], ["negative total", { expected_total: -1 }]
 ]) {
-  test(`prepare_booking rejects ${label} before reading the page`, async () => {
+  test(`select_room rejects ${label} before reading the page`, async () => {
     const env = makeEnv();
-    const definition = register("prepare_booking", env);
+    const definition = register("select_room", env);
     Object.defineProperty(env.context, "document", { get() { throw new Error("must not read the page"); } });
     Object.defineProperty(env.context, "window", { get() { throw new Error("must not inspect location"); } });
-    const output = plain(await definition.execute({ ...PREPARE, ...patch }));
+    const output = plain(await definition.execute({ ...SELECT, ...patch }));
     assert.equal(output.error_kind, "invalid_input");
-    assert.equal(env.calls.length, 0);
+    assert.equal(env.timers.length, 0);
   });
 }
 
 for (const [label, page, patch, kind] of [
-  ["price changed", propertyPage(), { expected_total: 317 }, "price_changed"],
-  ["rate disappeared", propertyPage(), { rate_id: "1001_9999_2_2_0" }, "rate_not_found"],
-  ["different account state", propertyPage({ signedIn: true }), {}, "account_state_changed"],
-  ["unknown sign-in state", propertyPage().replace(/<a data-testid="header-sign-in-button">Sign in<\/a>/, ""), {}, "account_state_changed"],
-  ["wrong property ID", propertyPage(), { property_id: "9999" }, "site_changed"],
-  ["currency mismatch", propertyPage({ currency: "EUR" }), {}, "currency_mismatch"],
-  ["different dates", propertyPage({ cfg: config({ hotelId: "1000001", checkIn: "2026-11-11" }) }), {}, "search_not_applied"],
-  ["children party", propertyPage({ occupancy: "2 adults · 1 child · 1 room" }), {}, "search_not_applied"],
-  ["unknown occupancy", propertyPage({ occupancy: "2 adults · 1 room" }), {}, "search_not_applied"],
-  ["small party rate", propertyPage({ rows: [rateRow({ head: ROOM_A, guests: "Max. people: 1" })] }), {}, "party_not_confirmed"],
-  ["missing capacity", propertyPage({ rows: [rateRow({ head: ROOM_A, guests: null })] }), {}, "party_not_confirmed"],
-  ["members-only preview", propertyPage({ rows: [rateRow({ head: ROOM_A, preview: true })] }), {}, "login_required"],
-  ["missing taxes", propertyPage({ rows: [rateRow({ head: ROOM_A, excluded: null })] }), {}, "terms_unavailable"],
-  ["missing cancellation", propertyPage({ rows: [rateRow({ head: ROOM_A, cancellation: "" })] }), {}, "terms_unavailable"],
-  ["missing prepayment", propertyPage({ rows: [rateRow({ head: ROOM_A, prepay: "" })] }), {}, "terms_unavailable"],
-  ["selected unit", propertyPage().replace('<option value="1">', '<option value="1" selected>'), {}, "selection_present"],
-  ["no one-unit option", propertyPage().replace(/<option value="1">.*?<\/option>/g, ""), {}, "rate_not_found"],
-  ["ambiguous rate", propertyPage({ rows: [rateRow({ head: ROOM_A }), rateRow({ head: ROOM_A })] }), {}, "rate_not_found"],
-  ["unsupported language", propertyPage().replace('lang="en-us"', 'lang="de"'), {}, "unsupported_language"]
+  ["price changed", reservePage(), { expected_total: 317 }, "price_changed"],
+  ["rate disappeared", reservePage(), { rate_id: "1001_9999_2_2_0" }, "rate_not_found"],
+  ["wrong property ID", reservePage(), { property_id: "9999" }, "wrong_page"],
+  ["undated page", reservePage(propertyPage({ noAvailability: true })), {}, "wrong_page"],
+  ["members-only preview", reservePage(propertyPage({ rows: [rateRow({ head: ROOM_A, preview: true })] })), {}, "login_required"],
+  ["another rate selected", reservePage().replace('<select name="nr_rooms_1001_2002_2_2_0"><option value="0">0</option><option value="1">', '<select name="nr_rooms_1001_2002_2_2_0"><option value="0">0</option><option value="1" selected>'), {}, "selection_present"],
+  ["no one-unit option", reservePage(propertyPage().replace(/<option value="1">.*?<\/option>/g, "")), {}, "rate_not_found"],
+  ["ambiguous rate", reservePage(propertyPage({ rows: [rateRow({ head: ROOM_A }), rateRow({ head: ROOM_A })] })), {}, "rate_not_found"],
+  ["no reserve button", propertyPage(), {}, "site_changed"],
+  ["hidden reserve button", reservePage().replace('class="js-reservation-button"', 'class="js-reservation-button" hidden'), {}, "site_changed"],
+  ["unreadable total", reservePage(propertyPage({ rows: [rateRow({ head: ROOM_A, total: "unreadable" })] })), {}, "site_changed"],
+  ["unsupported language", reservePage().replace('lang="en-us"', 'lang="de"'), {}, "unsupported_language"]
 ]) {
-  test(`prepare_booking fails closed for ${label} without interaction`, async () => {
-    const { output, calls, env } = await run("prepare_booking", { ...PREPARE, ...patch }, prepOptions(page));
+  test(`select_room refuses ${label} without selecting anything`, async () => {
+    const { output, calls, env, timers } = await run("select_room", { ...SELECT, ...patch }, selectOptions(page));
     assert.equal(output.error_kind, kind);
     assert.equal(calls.length, 0);
+    assert.equal(timers.length, 0);
     assert.equal(env.live.documentElement.outerHTML, new Document(page).documentElement.outerHTML);
   });
 }
+
+test("select_room reports the current total when the price changed", async () => {
+  const { output } = await run("select_room", { ...SELECT, expected_total: 300 }, selectOptions());
+  assert.equal(output.current_total, 316);
+});
+
+test("select_room accepts the same rate already selected and rates without a listed tax line", async () => {
+  const preselected = reservePage().replace('<select name="nr_rooms_1001_2001_2_2_0"><option value="0">0</option><option value="1">', '<select name="nr_rooms_1001_2001_2_2_0"><option value="0">0</option><option value="1" selected>');
+  assert.equal((await run("select_room", SELECT, selectOptions(preselected))).output.status, "navigation_scheduled");
+  const included = await run("select_room", SELECT, selectOptions(reservePage(propertyPage({ rows: [rateRow({ head: ROOM_A, excluded: null })] }))));
+  assert.equal(included.output.status, "navigation_scheduled");
+  assert.equal(included.output.taxes_and_fees_excluded, null);
+});
+
+test("select_room rejects inherited disabled select and option states", async () => {
+  const group = reservePage().replace('<option value="1">1 ($316)</option>', '<optgroup disabled><option value="1">1 ($316)</option></optgroup>');
+  assert.equal((await run("select_room", SELECT, selectOptions(group))).output.error_kind, "rate_not_found");
+  const fieldset = reservePage().replace('<select name="nr_rooms_1001_2001_2_2_0">', '<fieldset disabled><select name="nr_rooms_1001_2001_2_2_0">').replace("</select>", "</select></fieldset>");
+  assert.equal((await run("select_room", SELECT, selectOptions(fieldset))).output.error_kind, "rate_not_found");
+});
+
+test("select_room rejects unrelated pages and canceled calls", async () => {
+  for (const start of [HOME, "https://example.com/", "https://secure.booking.com/book.html"]) {
+    const { output, timers } = await run("select_room", SELECT, { start, liveHtml: reservePage() });
+    assert.equal(output.error_kind, "wrong_page");
+    assert.equal(timers.length, 0);
+  }
+  const c = new AbortController(); c.abort();
+  const { output, timers } = await run("select_room", SELECT, { ...selectOptions(), signal: c.signal });
+  assert.equal(output.error_kind, "canceled");
+  assert.equal(timers.length, 0);
+});
+
+// Mirrors the "Your details" step observed on secure.booking.com/book.html.
+const checkoutPage = ({ step = "details", total = "397.97153", currency = "USD", lang = "en-us" } = {}) => `<!DOCTYPE html><html lang="${lang}"><head><title>Booking.com: Your Details</title></head><body>` +
+  `<header><button data-testid="header-currency-picker-trigger">${currency}</button><a data-testid="header-sign-in-button">Sign in</a></header>` +
+  `<div><h2>Harbor View Studios</h2><span data-testid="property-details__metadata--property-type">Hotel</span></div>` +
+  `<div><div><h2>Your booking details</h2></div><div data-testid="booking-details-date-summary"><div><div><time datetime="Tue, Nov 10, 2026"><h3>Check-in</h3><div>Tue, Nov 10, 2026</div><div>From 2:00 PM</div></time><div><hr></div><time datetime="Thu, Nov 12, 2026"><h3>Check-out</h3><div>Thu, Nov 12, 2026</div><div>Until 11:00 AM</div></time></div></div></div><div><div><div><div>You selected</div><div>2 nights, 1 room for 2 adults</div></div><ul><li><div>1 x Studio</div></li></ul></div></div></div>` +
+  `<div><div><h2>Your price summary</h2></div><div><div><div><div>Total</div></div><div><div><span data-component="core/animate-price" data-value="${total}" data-currency="${currency}" data-animate-price-group-name="bp_user_total_price">$397.97</span></div></div></div><div><div><div>Includes taxes and fees</div></div><div><div>In property currency: € 355.30</div></div></div></div></div>` +
+  `<div data-testid="cancellation-policy"><div data-testid="policy-title">Non-refundable</div></div>` +
+  (step === "details" ? `<div data-testid="user-details-container"><input data-testid="user-details-firstname"></div>` : "") +
+  `<script>window.booking = { b_hotel_id: '1000001', b_action: 'book' };</script></body></html>`;
+
+test("get_checkout_step reads the details step: dates, selection, total and price notes", async () => {
+  const { output, calls } = await run("get_checkout_step", {}, { start: "https://secure.booking.com/book.html?hotel_id=1000001&stage=1", liveHtml: checkoutPage() });
+  assert.deepEqual(output, {
+    status: "ok", step: "your_details", property_id: "1000001", property_name: "Harbor View Studios",
+    check_in: "2026-11-10", check_out: "2026-11-12", check_in_time: "From 2:00 PM", check_out_time: "Until 11:00 AM",
+    selection: "2 nights, 1 room for 2 adults", units: ["1 x Studio"], total: 397.97, currency: "USD", total_text: "$397.97",
+    price_notes: ["Includes taxes and fees", "In property currency: € 355.30"], cancellation: "Non-refundable", signed_in: false
+  });
+  assert.equal(calls.length, 0);
+  assert.equal((await run("get_checkout_step", undefined, { start: "https://secure.booking.com/book.html", liveHtml: checkoutPage({ step: "other" }) })).output.step, "other");
+});
+
+test("get_checkout_step refuses other pages, input and unreadable checkout pages", async () => {
+  for (const start of [HOME, PROPERTY.property_url, "https://secure.booking.com/mytrips.html"]) {
+    assert.equal((await run("get_checkout_step", {}, { start, liveHtml: checkoutPage() })).output.error_kind, "wrong_page");
+  }
+  assert.equal((await run("get_checkout_step", { rate_id: "1" }, { start: "https://secure.booking.com/book.html", liveHtml: checkoutPage() })).output.error_kind, "invalid_input");
+  assert.equal((await run("get_checkout_step", {}, { start: "https://secure.booking.com/book.html", liveHtml: checkoutPage({ lang: "fr" }) })).output.error_kind, "unsupported_language");
+  assert.equal((await run("get_checkout_step", {}, { start: "https://secure.booking.com/book.html", liveHtml: checkoutPage().replace("bp_user_total_price", "other") })).output.error_kind, "site_changed");
+});
 
 test("read tools reject outputs over the byte bound without returning oversized page text", async () => {
   const long = "界".repeat(600);
@@ -963,17 +1021,15 @@ test("read tools reject outputs over the byte bound without returning oversized 
   assert.ok(new TextEncoder().encode(JSON.stringify(read.output)).length < 200000);
 });
 
-test("price reads and preparation reject explicit conflicting currencies", async () => {
+test("price reads reject explicit conflicting currencies", async () => {
   for (const price of ["EUR 316", "EUR316", "316EUR", "€316", "£316", "CA$316", "AU$316", "CHF 316", "CHF316"]) {
     const property = await run("get_property", PROPERTY, { routes: [propertyRoute({ body: propertyPage({ rows: [rateRow({ head: ROOM_A, total: price })] }) })] });
     assert.equal(property.output.error_kind, "currency_mismatch", price);
-    const prep = await run("prepare_booking", PREPARE, prepOptions(propertyPage({ rows: [rateRow({ head: ROOM_A, total: price })] })));
-    assert.equal(prep.output.error_kind, "currency_mismatch", price);
     const search = await run("search_stays", SEARCH, { routes: [searchRoute({ body: searchPage({ cards: [card({ price: { total: price } })] }) })] });
     assert.equal(search.output.error_kind, "currency_mismatch", price);
   }
-  const allowed = await run("prepare_booking", PREPARE, prepOptions(propertyPage({ rows: [rateRow({ head: ROOM_A, total: "US$316" })] })));
-  assert.equal(allowed.output.status, "prepared", "US$ must not be mistaken for S$");
+  const allowed = await run("get_property", PROPERTY, { routes: [propertyRoute({ body: propertyPage({ rows: [rateRow({ head: ROOM_A, total: "US$316" })] }) })] });
+  assert.equal(allowed.output.status, "ok", "US$ must not be mistaken for S$");
 });
 
 test("search cards parse spaced original prices and reject contradictory currencies", async () => {
@@ -986,35 +1042,10 @@ test("search cards parse spaced original prices and reject contradictory currenc
   }
 });
 
-test("read tools report unknown sign-in state and preparation blocks conflicting markers", async () => {
+test("read tools report unknown sign-in state", async () => {
   const conflict = page => page.replace("</header>", '<div data-testid="header-profile">Account</div></header>');
   const searched = await run("search_stays", SEARCH, { routes: [searchRoute({ body: conflict(searchPage()) })] });
   const read = await run("get_property", PROPERTY, { routes: [propertyRoute({ body: conflict(propertyPage()) })] });
   assert.equal(searched.output.effective.signed_in, null);
   assert.equal(read.output.effective.signed_in, null);
-  const prep = await run("prepare_booking", { ...PREPARE, expected_signed_in: true }, prepOptions(conflict(propertyPage())));
-  assert.equal(prep.output.error_kind, "account_state_changed");
-});
-
-test("prepare_booking rejects inherited disabled select and option states", async () => {
-  const group = propertyPage().replace('<option value="1">1 ($316)</option>', '<optgroup disabled><option value="1">1 ($316)</option></optgroup>');
-  const grouped = await run("prepare_booking", PREPARE, prepOptions(group));
-  assert.equal(grouped.output.error_kind, "rate_not_found");
-  const fieldset = propertyPage().replace('<select name="nr_rooms_1001_2001_2_2_0">', '<fieldset disabled><select name="nr_rooms_1001_2001_2_2_0">').replace("</select>", "</select></fieldset>");
-  const env = makeEnv(prepOptions(fieldset));
-  const definition = register("prepare_booking", env);
-  const output = plain(await definition.execute(PREPARE));
-  assert.equal(output.error_kind, "rate_not_found");
-  assert.equal(env.calls.length, 0);
-});
-
-test("prepare_booking rejects unrelated pages and canceled calls without navigation", async () => {
-  for (const start of [HOME, "https://example.com/", "https://www.booking.com/hotel/xx/other.html"]) {
-    const { output, calls } = await run("prepare_booking", PREPARE, { start, liveHtml: propertyPage() });
-    assert.equal(output.error_kind, "wrong_page");
-    assert.equal(calls.length, 0);
-  }
-  const c = new AbortController(); c.abort();
-  const { output } = await run("prepare_booking", PREPARE, { ...prepOptions(), signal: c.signal });
-  assert.equal(output.error_kind, "canceled");
 });

@@ -29,11 +29,12 @@
     }
   };
   const propertySchema = {
-    type: "object", additionalProperties: false, required: ["property_id", "name", "property_url", "address", "review", "review_categories", "popular_facilities", "check_in_time", "check_out_time"],
+    type: "object", additionalProperties: false, required: ["property_id", "name", "property_url", "page_url", "address", "review", "review_categories", "popular_facilities", "check_in_time", "check_out_time"],
     properties: {
       property_id: { type: ["string", "null"], description: "Booking.com's numeric property id." },
       name: { type: "string" },
       property_url: { type: "string", format: "uri", description: "Canonical https://www.booking.com/hotel/<country>/<slug>.html URL without tracking parameters." },
+      page_url: { type: "string", format: "uri", description: "The property page for these dates and party; open it in the tab before select_room." },
       address: { type: ["string", "null"] },
       review: {
         type: ["object", "null"], additionalProperties: false, required: ["score", "label", "count"],
@@ -281,7 +282,7 @@
         const time = label => (new RegExp(label + "\\s*((?:From|Until|Between)\\s+\\d{1,2}(?::\\d{2})?\\s*(?:[AP]M)?(?:\\s*(?:-|to|\\u2013)\\s*\\d{1,2}(?::\\d{2})?\\s*(?:[AP]M)?)?)", "i").exec(rules) || [])[1] ?? null;
         const property = {
           property_id: cfg(html, /\bb_hotel_id\s*:\s*'(\d{1,20})'/),
-          name: name.slice(0, 300), property_url: query.property_url,
+          name: name.slice(0, 300), property_url: query.property_url, page_url: query.property_url + "?" + params.toString(),
           address: ld && ld.address && typeof ld.address.streetAddress === "string" ? ld.address.streetAddress.slice(0, 600) : null,
           review: scoreMatch ? { score: Number(scoreMatch[1]), label: scoreMatch[2].trim(), count: Number(scoreMatch[3].replace(/,/g, "")) } : null,
           review_categories: [...doc.querySelectorAll("[data-testid=\"review-subscore\"]")].slice(0, 20).map(el => /^(.*?),\s*([\d.]+),\s*Average rating/.exec(text(el))).filter(Boolean).map(m => ({ category: m[1], score: Number(m[2]) })),
@@ -341,7 +342,7 @@
           const excludedEl = row.querySelector(".js-us-excluded-fees");
           const underEl = row.querySelector(".prd-taxes-and-fees-under-price");
           const excluded = excludedEl ? text(excludedEl).replace(/^Excluded:\s*/i, "") : underEl && /^\+/.test(text(underEl)) ? text(underEl).replace(/^\+\s*/, "") : "";
-          if (!excluded) noTaxes++;
+          if (!excluded && !(underEl && /^Includes\b.*\btax/i.test(text(underEl)))) noTaxes++;
           const conditions = row.querySelector(".hprt-table-cell-conditions");
           const policyTitle = id => text(conditions && conditions.querySelector("[data-testid=\"" + id + "\"] [data-testid=\"policy-title\"]")) || null;
           const cancellation = policyTitle("cancellation-policy");
