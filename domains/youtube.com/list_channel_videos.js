@@ -213,6 +213,24 @@
     let response = await call(paging ? { continuation: input.page_token } : { browseId: input.channel_id });
     if (response.error) return response.error;
     let data = response.data;
+    // YouTube can answer a continuation with pages that hold nothing but the next continuation, several in a row
+    // before more videos; follow up to 10 of them. A page like that without a token ends the list.
+    const continuationOnly = d => {
+      const actions = d.onResponseReceivedActions || d.onResponseReceivedCommands;
+      const entries = Array.isArray(actions) ? actions.flatMap(x => [x?.appendContinuationItemsAction?.continuationItems, x?.reloadContinuationItemsCommand?.continuationItems].filter(Array.isArray)).flat() : [];
+      return entries.length && entries.every(x => x && (x.continuationItemRenderer || x.continuationItemViewModel)) ? entries : null;
+    };
+    for (let entries = paging && continuationOnly(data), hops = 0; entries; entries = continuationOnly(data), hops++) {
+      const token = entries.map(x => x.continuationItemRenderer?.continuationEndpoint?.continuationCommand?.token ?? x.continuationItemViewModel?.continuationCommand?.innertubeCommand?.continuationCommand?.token).find(t => typeof t === "string" && /^[A-Za-z0-9_%=.+/:-]{16,16000}$/.test(t)) ?? null;
+      if (!token || hops === 10) {
+        const warnings = [token ? "YouTube returned " + hops + " continuation pages without videos; pass next_page_token to keep paging." : "The list has ended.", "YouTube does not attest the originating resource for a continuation; its id and title are null."];
+        return { status: "no_results", channel_id: null, items: [], next_page_token: token, truncated: false, unsupported_count: 0, warnings };
+      }
+      if (context?.signal?.aborted) return fail("canceled", "Canceled between continuation pages.");
+      response = await call({ continuation: token });
+      if (response.error) return response.error;
+      data = response.data;
+    }
     try {
       if (!paging) {
         if (data.metadata?.channelMetadataRenderer?.externalId !== input.channel_id) return fail("site_changed", "The response did not identify the requested channel.");
@@ -234,7 +252,7 @@
       const roots = paging ? continuationLists.flat() : selected?.content ? [selected.content] : null;
       if (!Array.isArray(roots) || (paging && !continuationLists.length)) return fail("site_changed", "No recognized browse content was returned.");
       const items = [];
-      let next = null, truncated = false, unsupported = 0, empty = false, continuationOnly = false, scanned = 0, outputUnits = 0;
+      let next = null, truncated = false, unsupported = 0, empty = false, scanned = 0, outputUnits = 0;
       const stack = [...(paging ? continuationLists : roots)].reverse();
       while (stack.length && scanned++ < 20000) {
         const node = stack.pop();
@@ -249,7 +267,6 @@
               if (typeof token === "string" && /^[A-Za-z0-9_%=.+/:-]{16,16000}$/.test(token)) next = token;
             }
           }
-          if (node.length && node.every(x => x && (x.continuationItemRenderer || x.continuationItemViewModel))) continuationOnly = true;
           stack.push(...node.slice().reverse()); continue;
         }
         if (node.continuationItemRenderer || node.continuationItemViewModel) continue;
@@ -273,11 +290,8 @@
         stack.push(...Object.values(node).filter(x => x && typeof x === "object").reverse());
       }
       if (stack.length) return fail("site_changed", "The browse content exceeded the safe parsing bound.");
-      // A continuation page holding only another continuation marks the end of a short list.
-      const ended = paging && !items.length && !unsupported && continuationOnly;
-      if (!items.length && !empty && !ended && roots.length) return fail("site_changed", "Browse content contained no recognized videos or explicit empty state.");
+      if (!items.length && !empty && roots.length) return fail("site_changed", "Browse content contained no recognized videos or explicit empty state.");
       const warnings = [];
-      if (ended) warnings.push("YouTube returned a continuation with no videos; the list has ended.");
       if (truncated) warnings.push("Only the first " + items.length + " items are returned due to count/size bounds. The next token skips omitted items from this page.");
       if (paging) warnings.push("YouTube does not attest the originating resource for a continuation; its id and title are null.");
       return { status: items.length ? "ok" : "no_results", channel_id: paging ? null : input.channel_id, items, next_page_token: next, truncated, unsupported_count: unsupported, warnings };

@@ -140,12 +140,24 @@ for (const name of ["list_channel_videos", "get_playlist"]) {
       assert.equal(out.status, "no_results");
     }
   });
-  test(`${name}: a continuation holding only another continuation ends the list`, async () => {
-    const ended = await harness(name, { route: () => ({ data: { onResponseReceivedActions: [{ appendContinuationItemsAction: { continuationItems: [cont()] } }] } }) }).run({ page_token: token });
-    assert.deepEqual([ended.status, ended.items.length, ended.next_page_token], ["no_results", 0, null]);
-    assert.match(ended.warnings.join(" "), /list has ended/);
-    const strange = await harness(name, { route: () => ({ data: { onResponseReceivedActions: [{ appendContinuationItemsAction: { continuationItems: [{ strangeRenderer: {} }, cont()] } }] } }) }).run({ page_token: token });
-    assert.equal(strange.error_kind, "site_changed");
+  test(`${name}: continuation pages holding only the next continuation are followed, up to 10`, async () => {
+    const only = (entries = [cont()]) => ({ data: { onResponseReceivedActions: [{ appendContinuationItemsAction: { continuationItems: entries } }] } });
+    const videos = { data: { onResponseReceivedActions: [{ appendContinuationItemsAction: { continuationItems: [lockup(), cont()] } }] } };
+    const gap = harness(name, { route: () => gap.calls.length <= 3 ? only() : videos });
+    const found = await gap.run({ page_token: token });
+    assert.deepEqual([found.status, found.items.length, found.next_page_token], ["ok", 1, token]);
+    assert.equal(gap.calls.length, 4);
+    assert.ok(gap.calls.every(c => c.body.continuation === token));
+    const end = await harness(name, { route: () => only([{ continuationItemRenderer: {} }]) }).run({ page_token: token });
+    assert.deepEqual([end.status, end.items.length, end.next_page_token], ["no_results", 0, null]);
+    assert.match(end.warnings.join(" "), /list has ended/);
+    const endless = harness(name, { route: () => only() });
+    const bounded = await endless.run({ page_token: token });
+    assert.deepEqual([bounded.status, bounded.next_page_token], ["no_results", token]);
+    assert.match(bounded.warnings.join(" "), /10 continuation pages without videos/);
+    assert.equal(endless.calls.length, 11);
+    const mixed = await harness(name, { route: () => ({ data: { onResponseReceivedActions: [{ appendContinuationItemsAction: { continuationItems: [cont()] } }, { appendContinuationItemsAction: { continuationItems: [{ strangeShelfRenderer: { title: "x" } }] } }] } }) }).run({ page_token: token });
+    assert.equal(mixed.error_kind, "site_changed");
     const first = await harness(name, { route: () => ({ data: browse([cont()]) }) }).run(input);
     assert.equal(first.error_kind, "site_changed", "a first page with no videos is not an end of list");
   });
