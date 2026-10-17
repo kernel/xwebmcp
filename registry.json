@@ -1351,6 +1351,57 @@
       }
     },
     {
+      "domain": "dfm.ae",
+      "tool": "get_price_history",
+      "file": "domains/dfm.ae/get_price_history.js",
+      "kind": "page",
+      "namespace": "dfm.ae",
+      "url_patterns": [
+        "https://www.dfm.ae/*",
+        "https://marketwatch.dfm.ae/*"
+      ],
+      "status": "qa_passed",
+      "last_verified": "2026-09-30",
+      "notes": "Daily summaries for one symbol between two Dubai dates, newest first, at most 500 rows. Includes retrieval time, coverage dates and explicitly unknown currency. Empty history is distinguished from an unknown symbol. No intraday timestamps or real-time guarantee.",
+      "provenance": {
+        "qa_agent": "agt_6305576496a3aa4284fd"
+      }
+    },
+    {
+      "domain": "dfm.ae",
+      "tool": "get_security",
+      "file": "domains/dfm.ae/get_security.js",
+      "kind": "page",
+      "namespace": "dfm.ae",
+      "url_patterns": [
+        "https://www.dfm.ae/*",
+        "https://marketwatch.dfm.ae/*"
+      ],
+      "status": "qa_passed",
+      "last_verified": "2026-09-30",
+      "notes": "Public instrument identity plus the Trading-tab quote, retrieval time and date-only last trade. Marks zero or absent prices; preserves stated profile currency without inferring quote denominations. No account access, intraday timestamp or real-time guarantee.",
+      "provenance": {
+        "qa_agent": "agt_6305576496a3aa4284fd"
+      }
+    },
+    {
+      "domain": "dfm.ae",
+      "tool": "search_securities",
+      "file": "domains/dfm.ae/search_securities.js",
+      "kind": "page",
+      "namespace": "dfm.ae",
+      "url_patterns": [
+        "https://www.dfm.ae/*",
+        "https://marketwatch.dfm.ae/*"
+      ],
+      "status": "qa_passed",
+      "last_verified": "2026-09-30",
+      "notes": "Ranked symbol/name search across six public directory lists, at most 50 matches within a 45-second request budget. Failed lists are explicit. Active flags are unreliable and directory coverage is incomplete; no account data or investment recommendations.",
+      "provenance": {
+        "qa_agent": "agt_6305576496a3aa4284fd"
+      }
+    },
+    {
       "domain": "doordash.com",
       "tool": "login",
       "file": "domains/doordash.com/login.js",
