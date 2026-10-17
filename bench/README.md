@@ -344,8 +344,10 @@ scored:
 - per arm: correct with a Wilson interval, outcomes, fastest/median/slowest correct, median over
   all, minutes per correct answer, and treatment tool use;
 - Δ correct with a Newcombe interval and an exact McNemar test over the pairs correct in one arm
-  only, and over both-correct pairs the speedup (ratio of medians) and an exact sign test; the
-  same over just the pairs whose treatment invoked a tool, when that is some but not all;
+  only, and over both-correct pairs each arm's median, the speedup (the ratio of those two medians)
+  and an exact sign test; the same over just the pairs whose treatment invoked a tool, when that
+  is some but not all. The per-arm medians above count every correct trial, so they differ from
+  the paired ones when a trial is correct in one arm only;
 - per arm, the median turns, input tokens and cost per trial;
 - a screening label: `no adoption`, `inconclusive`, `faster`, `slower`, `mixed` or `no signal`.
   Thresholds are in `report.mjs`; at 5 pairs a label needs all 5 to go the same way. A faster or
@@ -359,8 +361,9 @@ first, the steps where control spent at least 20s per trial and treatment invoke
 than half its trials, or that have no tools at all.
 
 A tool failures table lists, per tool, the treatment invocations that did not complete or whose
-tool returned `status: "error"`, with their most common error messages. Then the worst label per
-PR, and per run: spend over every attempt including smoke gates, the label histogram (noting
+tool returned `status: "error"`, with their most common error messages. Then, per PR, the worst
+label and each intent's speedup next to its paired medians, and per run: spend over every attempt
+including smoke gates, the label histogram (noting
 labels from `shape only` intents), median speedup, each arm's agent-minutes, turns and spend
 over complete pairs, the pooled gap-intent
 placebo, an order check, a start delay check, a native tools check (control trials that started

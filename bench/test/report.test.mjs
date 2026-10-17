@@ -81,6 +81,7 @@ test("the speedup comes from the same both-correct pairs as the sign test", () =
   for (let pair = 6; pair <= 10; pair++) rows.push(row("control", pair, 600, "timeout"), row("treatment", pair, 20, "correct"));
   const pairs = pairStats(rows);
   assert.equal(pairs.speedup.toFixed(2), "1.10");
+  assert.deepEqual([pairs.control_median, pairs.treatment_median], [103000, 103000 / 1.1]);
   const delta = compare(armStats(rows.filter(r => r.arm === "control")), armStats(rows.filter(r => r.arm === "treatment")), pairs, "inspect");
   assert.equal(delta.label, "no signal");
 });
@@ -132,13 +133,14 @@ test("the report renders intents, rollups and the latest row per trial", () => {
   assert.match(report, /\| treatment \| 10 \| 9 · 90% \[60, 98\] \| 9 correct · 1 timeout \| 0:41 \| 1:12 \| 2:31 \| 1:16 \| 2\.5 \|/);
   assert.match(report, /\| Δ \|  \| \+2 · \+20 pp \[−16, \+51\] \|  \|  \| speedup 2\.6× \|  \|  \| −3\.1 \|/);
   assert.match(report, /\*\*faster\*\*/);
-  assert.match(report, /treatment faster in 7 of 7 both-correct pairs, p = 0\.016/);
+  assert.match(report, /treatment faster in 7 of 7 both-correct pairs, p = 0\.016\. Median over those pairs: control 3:05, treatment 1:10\./);
   assert.match(report, /### fandango\.com #58 · worst label: \*\*faster\*\*/);
   assert.match(report, /20 trials scored, 0 aborted, 0 left out/);
   assert.doesNotMatch(report, /without any tool call/);
   assert.match(report, /spend \$8\.40 over every recorded attempt\n/);
   assert.match(report, /the sign test alone reaches p < 0\.1 on about 0\.0 of these 1 intents/);
-  assert.match(report, /treatment invoked a tool in 9 of 10 pairs; in the 7 of those where both arms were correct, treatment was faster in 7, speedup 2\.6×, sign test p = 0\.016\./);
+  assert.match(report, /treatment invoked a tool in 9 of 10 pairs; in the 7 of those where both arms were correct, treatment was faster in 7, median 3:05 control and 1:10 treatment, speedup 2\.6×, sign test p = 0\.016\./);
+  assert.match(report, /\| fandango-theater-showtimes \| inspect \| shape only \| faster \| \+2 \| 2\.6× \| 3:05 → 1:10 \|/);
   assert.match(report, /1 faster or slower label\(s\) come from intents whose answers are checked by shape only \(fandango-theater-showtimes\)/);
   assert.match(buildReport(run, rows, [{ cost_usd: 0.01 }, { cost_usd: 0.02 }]), /spend \$8\.40 over every recorded attempt, plus \$0\.03 on smoke gates/);
   run.intents["fandango-theater-showtimes"].sources[0].fetched = "refs/pull/58/head";

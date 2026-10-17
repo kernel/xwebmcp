@@ -92,9 +92,12 @@ export function pairStats(rows, agreement = null) {
   const onlyControl = paired.filter(p => p.control.outcome === "correct" && p.treatment.outcome !== "correct").length;
   const faster = both.filter(p => p.treatment.duration_ms < p.control.duration_ms).length;
   const slower = both.filter(p => p.treatment.duration_ms > p.control.duration_ms).length;
-  const speedup = both.length ? median(both.map(p => p.control.duration_ms)) / median(both.map(p => p.treatment.duration_ms)) : null;
+  const controlMedian = median(both.map(p => p.control.duration_ms));
+  const treatmentMedian = median(both.map(p => p.treatment.duration_ms));
   return {
-    both: both.length, faster, slower, p: signTest(faster, faster + slower), speedup, agreement: agreement && agreementStats(both, agreement),
+    both: both.length, faster, slower, p: signTest(faster, faster + slower),
+    control_median: controlMedian, treatment_median: treatmentMedian, speedup: both.length ? controlMedian / treatmentMedian : null,
+    agreement: agreement && agreementStats(both, agreement),
     only_treatment: onlyTreatment, only_control: onlyControl, correct_p: signTest(onlyTreatment, onlyTreatment + onlyControl),
   };
 }
@@ -289,13 +292,14 @@ export function buildReport(run, allRows, smokeRows = []) {
     const unbrowsedText = unbrowsed("control") || unbrowsed("treatment") ? ` Correct without any tool call: control ${unbrowsed("control")}, treatment ${unbrowsed("treatment")}.` : "";
     const oneArm = pairs.only_treatment || pairs.only_control
       ? ` Correct in one arm only: treatment in ${pairs.only_treatment} pairs, control in ${pairs.only_control}, exact McNemar p = ${pValue(pairs.correct_p)}.` : "";
-    out.push("", `pairs: treatment faster in ${pairs.faster} of ${pairs.both} both-correct pairs, p = ${pValue(pairs.p)}.${oneArm}${leftOutText ? ` ${leftOutText}` : ""}${unbrowsedText}`);
+    const pairedMedians = pairs.both ? ` Median over those pairs: control ${clock(pairs.control_median)}, treatment ${clock(pairs.treatment_median)}.` : "";
+    out.push("", `pairs: treatment faster in ${pairs.faster} of ${pairs.both} both-correct pairs, p = ${pValue(pairs.p)}.${pairedMedians}${oneArm}${leftOutText ? ` ${leftOutText}` : ""}${unbrowsedText}`);
     out.push("", `per trial, median: turns ${count(control.turns)} control, ${count(treatment.turns)} treatment; input tokens ${count(control.tokens_in)} and ${count(treatment.tokens_in)}; `
       + `cost ${usd(control.cost)} and ${usd(treatment.cost)}.`);
     if (treatment.adoption > 0 && treatment.adoption < 1) {
       const used = adoptedPairStats(intentRows);
       out.push("", `treatment invoked a tool in ${used.pairs} of ${treatment.n} pairs; in the ${used.both} of those where both arms were correct, `
-        + `treatment was faster in ${used.faster}, speedup ${ratio(used.speedup)}, sign test p = ${pValue(used.p)}. These pairs are picked by what the agent did, so they are not a randomized comparison.`);
+        + `treatment was faster in ${used.faster}, median ${clock(used.control_median)} control and ${clock(used.treatment_median)} treatment, speedup ${ratio(used.speedup)}, sign test p = ${pValue(used.p)}. These pairs are picked by what the agent did, so they are not a randomized comparison.`);
     }
     if (pairs.agreement?.differed !== undefined) {
       out.push("", `${intent.agreement.path} has one right answer: in ${pairs.agreement.checked} both-correct pairs, the arms' answers differed in ${pairs.agreement.differed}.`);
@@ -341,8 +345,9 @@ export function buildReport(run, allRows, smokeRows = []) {
       const labelled = group.filter(r => r.plan.intent.stage !== "gap").map(r => r.delta.label);
       const worst = LABELS.find(label => labelled.includes(label)) ?? na;
       out.push("", `### ${key} · worst label: **${worst}**`, "");
-      out.push(table(["intent", "stage", "answers", "label", "Δ correct", "speedup", "adoption", "invocations", "invoke ok", "tool median"], group.map(r => [
+      out.push(table(["intent", "stage", "answers", "label", "Δ correct", "speedup", "paired median", "adoption", "invocations", "invoke ok", "tool median"], group.map(r => [
         r.plan.intent.id, r.plan.intent.stage, answerCheck(r.plan.intent), r.delta.label, signed(r.delta.delta_correct), ratio(r.delta.speedup),
+        r.pairs.both ? `${clock(r.pairs.control_median)} → ${clock(r.pairs.treatment_median)}` : na,
         pct(r.treatment.adoption), r.treatment.invocations, pct(r.treatment.invoke_success), clock(r.treatment.tool_median),
       ])));
     }
