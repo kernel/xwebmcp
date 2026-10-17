@@ -3794,6 +3794,150 @@
       "provenance": {
         "qa_agent": "herdr:united-qa:01a108e4-952e-7619-9803-d130e6e84e8d"
       }
+    },
+    {
+      "domain": "walmart.com",
+      "tool": "add_to_cart",
+      "file": "domains/walmart.com/add_to_cart.js",
+      "kind": "page",
+      "namespace": "walmart.com",
+      "url_patterns": [
+        "https://www.walmart.com/*"
+      ],
+      "status": "qa_passed",
+      "last_verified": "2026-09-30",
+      "notes": "Independent final-source QA passed; Bed Sheets additions only. Action success is fabricated fixture-only; no live mutation/restoration or final-source extension success verified.",
+      "provenance": {
+        "qa_agent": "agt_43bb0ce72ad9154374be"
+      }
+    },
+    {
+      "domain": "walmart.com",
+      "tool": "get_cart",
+      "file": "domains/walmart.com/get_cart.js",
+      "kind": "page",
+      "namespace": "walmart.com",
+      "url_patterns": [
+        "https://www.walmart.com/*"
+      ],
+      "status": "qa_passed",
+      "last_verified": "2026-09-30",
+      "notes": "Independent final-source QA passed. Historical guest/signed-in reads; final-source category-page read explicitly failed site_changed. Final-source live success and extension invocation untested.",
+      "provenance": {
+        "qa_agent": "agt_43bb0ce72ad9154374be"
+      }
+    },
+    {
+      "domain": "walmart.com",
+      "tool": "get_product",
+      "file": "domains/walmart.com/get_product.js",
+      "kind": "page",
+      "namespace": "walmart.com",
+      "url_patterns": [
+        "https://www.walmart.com/*"
+      ],
+      "status": "qa_passed",
+      "last_verified": "2026-09-30",
+      "notes": "Independent final-source QA passed; reviewer/builder Kernel read success at byte-identical dba80aef. Historical local product read only; final-source live extension invocation untested.",
+      "provenance": {
+        "qa_agent": "agt_43bb0ce72ad9154374be"
+      }
+    },
+    {
+      "domain": "walmart.com",
+      "tool": "get_product_reviews",
+      "file": "domains/walmart.com/get_product_reviews.js",
+      "kind": "page",
+      "namespace": "walmart.com",
+      "url_patterns": [
+        "https://www.walmart.com/*"
+      ],
+      "status": "qa_passed",
+      "last_verified": "2026-09-30",
+      "notes": "Independent final-source QA passed; reviewer Kernel pages 8/9 pagination success at byte-identical dba80aef. Final-source live extension invocation untested.",
+      "provenance": {
+        "qa_agent": "agt_43bb0ce72ad9154374be"
+      }
+    },
+    {
+      "domain": "walmart.com",
+      "tool": "get_store",
+      "file": "domains/walmart.com/get_store.js",
+      "kind": "page",
+      "namespace": "walmart.com",
+      "url_patterns": [
+        "https://www.walmart.com/*"
+      ],
+      "status": "qa_passed",
+      "last_verified": "2026-09-30",
+      "notes": "Independent final-source QA passed; builder Kernel read success at byte-identical dba80aef. Historical reviewer Kernel/local read success; final-source extension invocation untested.",
+      "provenance": {
+        "qa_agent": "agt_43bb0ce72ad9154374be"
+      }
+    },
+    {
+      "domain": "walmart.com",
+      "tool": "remove_cart_item",
+      "file": "domains/walmart.com/remove_cart_item.js",
+      "kind": "page",
+      "namespace": "walmart.com",
+      "url_patterns": [
+        "https://www.walmart.com/*"
+      ],
+      "status": "qa_passed",
+      "last_verified": "2026-09-30",
+      "notes": "Independent final-source QA passed; exact ordinary line removal, not cart clear. Action success is fabricated fixture-only; no live mutation/restoration or final-source extension success verified.",
+      "provenance": {
+        "qa_agent": "agt_43bb0ce72ad9154374be"
+      }
+    },
+    {
+      "domain": "walmart.com",
+      "tool": "save_for_later",
+      "file": "domains/walmart.com/save_for_later.js",
+      "kind": "page",
+      "namespace": "walmart.com",
+      "url_patterns": [
+        "https://www.walmart.com/*"
+      ],
+      "status": "qa_passed",
+      "last_verified": "2026-09-30",
+      "notes": "Independent final-source QA passed; saved-for-later, not shopping-list editing. Capacity/selection safeguards exercised in fabricated flows only; no live mutation/restoration or extension success verified.",
+      "provenance": {
+        "qa_agent": "agt_43bb0ce72ad9154374be"
+      }
+    },
+    {
+      "domain": "walmart.com",
+      "tool": "search_products",
+      "file": "domains/walmart.com/search_products.js",
+      "kind": "page",
+      "namespace": "walmart.com",
+      "url_patterns": [
+        "https://www.walmart.com/*"
+      ],
+      "status": "qa_passed",
+      "last_verified": "2026-09-30",
+      "notes": "Independent final-source QA passed; historical Kernel success, latest reviewer request at byte-identical dba80aef returned challenge and testing stopped. Final-source extension invocation untested.",
+      "provenance": {
+        "qa_agent": "agt_43bb0ce72ad9154374be"
+      }
+    },
+    {
+      "domain": "walmart.com",
+      "tool": "update_cart_item",
+      "file": "domains/walmart.com/update_cart_item.js",
+      "kind": "page",
+      "namespace": "walmart.com",
+      "url_patterns": [
+        "https://www.walmart.com/*"
+      ],
+      "status": "qa_passed",
+      "last_verified": "2026-09-30",
+      "notes": "Independent final-source QA passed; absolute ordinary-line quantities and unchanged no-op. Action success is fabricated fixture-only; no live mutation/restoration or final-source extension success verified.",
+      "provenance": {
+        "qa_agent": "agt_43bb0ce72ad9154374be"
+      }
     }
   ]
 }
