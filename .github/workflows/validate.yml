@@ -23,7 +23,15 @@ jobs:
         run: node scripts/validate-registry.mjs
       - name: Run tool tests
         run: node --test "tests/*.test.mjs"
+      - name: Install Chrome for extension browser tests
+        run: |
+          npx --yes @puppeteer/browsers@3.2.3 install chrome@stable --path "$RUNNER_TEMP/chrome"
+          CHROME_BIN="$(find "$RUNNER_TEMP/chrome" -type f -path '*/chrome-linux64/chrome' -print -quit)"
+          test -n "$CHROME_BIN"
+          echo "XWEBMCP_CHROME_BIN=$CHROME_BIN" >> "$GITHUB_ENV"
       - name: Run extension tests
+        env:
+          XWEBMCP_SYNTHETIC_CI: '1'
         run: node --test "extension/**/*.test.mjs"
       - name: Run bench tests
         run: node --test "bench/**/*.test.mjs"

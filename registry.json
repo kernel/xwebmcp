@@ -3794,6 +3794,125 @@
       "provenance": {
         "qa_agent": "herdr:united-qa:01a108e4-952e-7619-9803-d130e6e84e8d"
       }
+    },
+    {
+      "domain": "youtube.com",
+      "tool": "get_channel",
+      "file": "domains/youtube.com/get_channel.js",
+      "kind": "page",
+      "namespace": "youtube.com",
+      "url_patterns": [
+        "https://www.youtube.com/*"
+      ],
+      "url_patterns_reason": "Narrowed to www.youtube.com: it serves the main YouTube web app whose same-origin youtubei endpoints and page layout the tools use; other youtube.com hosts are separate products (music., studio., tv., m.) with different clients and layouts.",
+      "status": "verified",
+      "last_verified": "2026-10-16",
+      "notes": "Anonymous public channel profile by channel id (handles and URLs are not accepted); English count text, bounded description; no navigation or playback. Independent QA on 2026-10-16 verified two channels live from the home page, plus not_found for an unknown id, handle input and an extra key, all schema-valid.",
+      "provenance": {
+        "qa_agent": "agt_e60b2859388bf2b2daea"
+      }
+    },
+    {
+      "domain": "youtube.com",
+      "tool": "get_playlist",
+      "file": "domains/youtube.com/get_playlist.js",
+      "kind": "page",
+      "namespace": "youtube.com",
+      "url_patterns": [
+        "https://www.youtube.com/*"
+      ],
+      "url_patterns_reason": "Narrowed to www.youtube.com: it serves the main YouTube web app whose same-origin youtubei endpoints and page layout the tools use; other youtube.com hosts are separate products (music., studio., tv., m.) with different clients and layouts.",
+      "status": "verified",
+      "last_verified": "2026-10-16",
+      "notes": "Anonymous public or unlisted playlist pages (PL, UU and OLAK5uy_ ids) in site order, repeats kept; private, Watch later, Liked and Mix lists unsupported. Pages like list_channel_videos, including the continuation-only handling. Independent QA on 2026-10-16 read two complete playlists live from the home page with counts matching the page, paged ARTE's uploads playlist, and checked invalid_page_token, not_found and invalid input; the 10-page bound and repeated tokens by fixture.",
+      "provenance": {
+        "qa_agent": "agt_d56b243501c98c16f369"
+      }
+    },
+    {
+      "domain": "youtube.com",
+      "tool": "get_transcript",
+      "file": "domains/youtube.com/get_transcript.js",
+      "kind": "page",
+      "namespace": "youtube.com",
+      "url_patterns": [
+        "https://www.youtube.com/*"
+      ],
+      "url_patterns_reason": "Narrowed to www.youtube.com: it serves the main YouTube web app whose same-origin youtubei endpoints and page layout the tools use; other youtube.com hosts are separate products (music., studio., tv., m.) with different clients and layouts.",
+      "status": "qa_passed",
+      "last_verified": "2026-10-16",
+      "notes": "Reads an already-open transcript on the matching paused watch page, from YouTube's older ytd-transcript-renderer panel or its newer engagement panel; every row must name the video; a panel still loading is transcript_loading. Never opens the panel, plays or changes language. Independent QA on 2026-10-16 read a 602-row older panel live (first page, offset continuity, last page, past-end offset) and checked playing_media, wrong_video, transcript_not_open, wrong_page and malformed input. The newer panel, transcript_loading and site_changed were not reached live.",
+      "provenance": {
+        "qa_agent": "agt_e60b2859388bf2b2daea"
+      }
+    },
+    {
+      "domain": "youtube.com",
+      "tool": "get_video",
+      "file": "domains/youtube.com/get_video.js",
+      "kind": "page",
+      "namespace": "youtube.com",
+      "url_patterns": [
+        "https://www.youtube.com/*"
+      ],
+      "url_patterns_reason": "Narrowed to www.youtube.com: it serves the main YouTube web app whose same-origin youtubei endpoints and page layout the tools use; other youtube.com hosts are separate products (music., studio., tv., m.) with different clients and layouts.",
+      "status": "verified",
+      "last_verified": "2026-10-16",
+      "notes": "Public metadata for one video or Short by id or URL: title, description, uploader, publish date, duration, counts, chapters, live flags. Anonymous requests to the site's player and next endpoints; never plays and returns no media or caption URLs. A past live stream whose recording is gone has a null duration and a warning. Independent QA on 2026-10-16 ran it live from the home page on a normal video, a Short, live and past live streams, a video with 23 chapters, youtu.be and /shorts/ URLs, unknown ids and malformed input, all schema-valid. The anonymous player request sometimes meets YouTube's bot check (challenge): 4 of about 15 calls in one QA browser and 3 of 17 in a benchmark run; age-restricted and gated videos were not reached live.",
+      "provenance": {
+        "qa_agent": "agt_5560491177f6bb4d3b42"
+      }
+    },
+    {
+      "domain": "youtube.com",
+      "tool": "list_channel_videos",
+      "file": "domains/youtube.com/list_channel_videos.js",
+      "kind": "page",
+      "namespace": "youtube.com",
+      "url_patterns": [
+        "https://www.youtube.com/*"
+      ],
+      "url_patterns_reason": "Narrowed to www.youtube.com: it serves the main YouTube web app whose same-origin youtubei endpoints and page layout the tools use; other youtube.com hosts are separate products (music., studio., tv., m.) with different clients and layouts.",
+      "status": "verified",
+      "last_verified": "2026-10-16",
+      "notes": "Anonymous Videos or Shorts tab pages with the site's own browse tokens; no navigation or playback. While paging it follows up to 10 continuation pages that hold only the next continuation, refuses a token served twice, and returns no_results only with a null token. Independent QA on 2026-10-16 walked ARTE's Shorts tab to its end live from the home page (14 pages, 103 unique Shorts, matching an independent crawl of the continuation chain), ARTE's Videos tab for several pages, and the error paths (invalid input, invalid_page_token, not_found, tab_unavailable); the 10-page bound, a mid-chain HTTP 400 and repeated tokens by fixture.",
+      "provenance": {
+        "qa_agent": "agt_d56b243501c98c16f369"
+      }
+    },
+    {
+      "domain": "youtube.com",
+      "tool": "search",
+      "file": "domains/youtube.com/search.js",
+      "kind": "page",
+      "namespace": "youtube.com",
+      "url_patterns": [
+        "https://www.youtube.com/*"
+      ],
+      "url_patterns_reason": "Narrowed to www.youtube.com: it serves the main YouTube web app whose same-origin youtubei endpoints and page layout the tools use; other youtube.com hosts are separate products (music., studio., tv., m.) with different clients and layouts.",
+      "status": "verified",
+      "last_verified": "2026-10-16",
+      "notes": "One page of typed video, Short, channel and playlist results with the site's type, duration, upload-date and sort filters and an opaque page token. Anonymous requests to the site's search endpoint; sponsored results are omitted and counted. Independent QA on 2026-10-16 ran about 27 live calls from the home and results pages: every type, duration, upload date and sort, pages 2 and 3 with filters kept, filter_unavailable, no_results, invalid_page_token and malformed input, all schema-valid.",
+      "provenance": {
+        "qa_agent": "agt_e60b2859388bf2b2daea"
+      }
+    },
+    {
+      "domain": "youtube.com",
+      "tool": "set_subscription",
+      "file": "domains/youtube.com/set_subscription.js",
+      "kind": "page",
+      "namespace": "youtube.com",
+      "url_patterns": [
+        "https://www.youtube.com/*"
+      ],
+      "url_patterns_reason": "Narrowed to www.youtube.com: it serves the main YouTube web app whose same-origin youtubei endpoints and page layout the tools use; other youtube.com hosts are separate products (music., studio., tv., m.) with different clients and layouts.",
+      "status": "qa_passed",
+      "last_verified": "2026-10-16",
+      "notes": "Subscribes the signed-in account to, or unsubscribes it from, the channel whose page is open: one press of Subscribe, or Subscribed, Unsubscribe and YouTube's confirmation for this channel. Reports the state the page shows (persistence_confirmed false); a second call while one is running is busy, and an uncertain attempt blocks further presses for that channel in the document. Independent QA on 2026-10-16 ran it live in a signed-in session on Lofi Girl via /@LofiGirl, /@lofigirl and /channel/<id>: subscribe, no-op, unsubscribe with the confirmation, reload checks, overlapping unsubscribes (busy), wrong channel, wrong page and invalid input, plus signed-out login_required; the account was left as found. The final busy-before-unresolved check order is the reviewer's own fix, checked by fixture. English channel header only.",
+      "provenance": {
+        "qa_agent": "agt_3f71312cec739d8ec9a3"
+      }
     }
   ]
 }
