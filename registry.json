@@ -937,9 +937,12 @@
         "https://secure.booking.com/*"
       ],
       "url_patterns_reason": "Narrowed to secure.booking.com: Booking.com serves its checkout steps there (book.html, and tpi_book for Partner Offers), after select_room; the other tools run on www.booking.com.",
-      "status": "draft",
-      "last_verified": null,
-      "notes": "Presses \"Next: Final details\" on the \"Your details\" step after checking the total, the required fields and the sign-in offer (navigation_scheduled). Never presses Complete booking or enters payment details; on the final step it returns wrong_step."
+      "status": "qa_passed",
+      "last_verified": "2026-10-17",
+      "notes": "Presses \"Next: Final details\" on the \"Your details\" step after checking the total, the required fields and the sign-in offer (navigation_scheduled). Never presses Complete booking or enters payment: on the final step, or when a booking button is on the page, it returns wrong_step. Independent QA on 2026-10-16 ran it live: presses that reached the final step, refusals for empty fields, an empty phone, a wrong total and the final step. Some properties insert an extra step (for example travel protection) between details and payment that this tool does not continue past; it returns wrong_step there. Booking.com renders the final step only in stealth Kernel browsers in our runs.",
+      "provenance": {
+        "qa_agent": "agt_31b28e953ebb7800b185"
+      }
     },
     {
       "domain": "booking.com",
@@ -951,9 +954,12 @@
         "https://secure.booking.com/*"
       ],
       "url_patterns_reason": "Narrowed to secure.booking.com: Booking.com serves its checkout steps there (book.html, and tpi_book for Partner Offers), after select_room; the other tools run on www.booking.com.",
-      "status": "draft",
-      "last_verified": null,
-      "notes": "Types the main guest's name, email, phone and, when asked, address, city, zip and country into the \"Your details\" step on book.html or tpi_book, and unticks the optional \"Sign in to save\" offer; presses nothing. Reports required fields still empty or invalid."
+      "status": "qa_passed",
+      "last_verified": "2026-10-17",
+      "notes": "Types the main guest's name, email, phone and, when asked, address, city, zip and country (and an email confirmation on one partner layout) into the \"Your details\" step on book.html or tpi_book, and unticks the optional \"Sign in to save\" offer; presses nothing. Reports required fields still empty or invalid. Independent QA on 2026-10-16 ran it live with fictional guest data on several properties, plus malformed input, wrong steps and pages; the partner email confirmation and phone rules are covered by fixtures.",
+      "provenance": {
+        "qa_agent": "agt_31b28e953ebb7800b185"
+      }
     },
     {
       "domain": "booking.com",
@@ -965,9 +971,12 @@
         "https://secure.booking.com/*"
       ],
       "url_patterns_reason": "Narrowed to secure.booking.com: Booking.com serves its checkout steps there (book.html, and tpi_book for Partner Offers), after select_room; the other tools run on www.booking.com.",
-      "status": "draft",
-      "last_verified": null,
-      "notes": "Reads the checkout after select_room: secure.booking.com/book.html, or tpi_book for a Partner Offer in either of its two layouts (partner_offer true). Returns the step, property, dates and times, selection, units, total including taxes and fees with its currency, price notes (pay-now and at-property lines on partner checkouts) and cancellation. Read-only. Independent QA on 2026-10-16 compared live reads with the page on several book.html checkouts and on partner checkouts in both layouts, including a non-refundable one without a cancellation section; missing or malformed structured totals by fixture. The finish_booking step and signed-in sessions were not tested."
+      "status": "qa_passed",
+      "last_verified": "2026-10-17",
+      "notes": "Reads the checkout after select_room: secure.booking.com/book.html, or tpi_book for a Partner Offer in either of its two layouts. Returns the step (your_details or finish_booking), property, dates and times, selection and units (details step), total including taxes and fees with its currency, price notes, cancellation (including the cost timeline), and on the final step the chosen payment timing and a partner's seller. Every field is read from rendered text only. Read-only. Independent QA over several rounds through 2026-10-17 compared live reads with the page on details and final steps at several properties and on Partner Offer checkouts, and probed hidden, script and nested markup by injection; the last round signed off with minor findings, the hidden-text, property-name, partner-units and line-break ones of which were then fixed as suggested. Signed-in sessions were not tested.",
+      "provenance": {
+        "qa_agent": "agt_3fb32e6a7657fb28fd0f"
+      }
     },
     {
       "domain": "booking.com",

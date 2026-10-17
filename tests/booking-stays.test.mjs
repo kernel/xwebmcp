@@ -1048,6 +1048,14 @@ test("get_checkout_step reports only rendered text in every field", async () => 
   assert.ok(!JSON.stringify(output).includes("HIDDEN") && !JSON.stringify(output).includes("INVISIBLE"));
 });
 
+test("get_checkout_step keeps hidden text out of the payment fallback and the property name, and breaks lines at br", async () => {
+  const page = checkoutPage({ step: "final" }).replace("<h2>Harbor View Studios</h2>", '<h2>Harbor View Studios<span style="display:none"> HIDDEN</span></h2>')
+    .replace("<div>In property currency: € 355.30</div>", "<div>In property currency: € 355.30</div><div>First line<br>Second line</div>")
+    .replace("</body>", '<div data-testid="bs3-payment-timing-section"><div data-testid="payment-timing-header">Pay online</div><div data-testid="payment-timing-description" style="display:none">Hidden description</div></div></body>');
+  const { output } = await run("get_checkout_step", {}, { start: CHECKOUT, liveHtml: page });
+  assert.deepEqual([output.property_name, output.payment_timing, output.price_notes.slice(-2)], ["Harbor View Studios", "Pay online", ["First line", "Second line"]]);
+});
+
 test("get_checkout_step prefers a visible step announcement and gives no selection on any partner final step", async () => {
   const twice = summaryPartnerCheckout().replace('<div hidden>Your Details. Step 2 of 3.</div>', '<div hidden>Your Details. Step 2 of 3.</div><div>Confirm your reservation. Step 3 of 3.</div>');
   assert.equal((await run("get_checkout_step", {}, { start: "https://secure.booking.com/tpi_book.html", liveHtml: twice })).output.step, "finish_booking");

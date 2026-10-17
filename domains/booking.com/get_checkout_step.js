@@ -62,6 +62,7 @@
       const walk = node => {
         for (const n of node.childNodes) {
           if (n.nodeType === 3) line += n.textContent || "";
+          else if (n.tagName === "BR") { out.push(line); line = ""; }
           else if (skipped(n)) continue;
           else if (INLINE.has(n.tagName) || contents(n)) { line += " "; walk(n); line += " "; }
           else { out.push(line); line = ""; walk(n); out.push(line); line = ""; }
@@ -141,7 +142,7 @@
       const rooms = count("num_rooms"), adults = count("num_adults"), children = count("num_children");
       const party = rooms && adults ? rooms + (rooms === 1 ? " room" : " rooms") + " for " + adults + (adults === 1 ? " adult" : " adults") + (children ? ", " + children + (children === 1 ? " child" : " children") : "") : null;
       selection = [text(label(/^Total length of stay:$/)?.nextElementSibling), party].filter(Boolean).join(", ").slice(0, 300) || null;
-      units = [...document.body.querySelectorAll("strong")].filter(e => text(e) === "Guests:").map(e => { let c = e; while (c && !c.querySelector("h2")) c = c.parentElement; return text(c?.querySelector("h2")); }).filter(Boolean).slice(0, 20);
+      units = [...document.body.querySelectorAll("strong")].filter(e => text(e) === "Guests:" && blocks(e).length).map(e => { let c = e; while (c && !c.querySelector("h2")) c = c.parentElement; return visible(c?.querySelector("h2")); }).filter(Boolean).slice(0, 20);
     }
 
     let summary = totalEl || totalLabel;
@@ -171,7 +172,7 @@
     // parent when that holds no other option.
     const alone = el => el && el.querySelectorAll('input[name="payment-timing"]').length <= 1 ? el : null;
     const option = timing && (alone(timing.closest("label")) || (timing.id && document.querySelector('label[for="' + timing.id + '"]')) || alone(timing.parentElement));
-    const paymentTiming = step !== "finish_booking" ? null : sentences(option ? blocks(option) : [text(tid("payment-timing-header")), text(tid("payment-timing-description"))].filter(Boolean)).slice(0, 300) || null;
+    const paymentTiming = step !== "finish_booking" ? null : sentences(option ? blocks(option) : [tid("payment-timing-header"), tid("payment-timing-description")].filter(el => el && el.getClientRects().length && getComputedStyle(el).visibility !== "hidden").map(el => text(el))).slice(0, 300) || null;
     // Partner checkouts have no cancellation test ids: read the lines under "How much will it cost to cancel?".
     const cancelHeading = [...document.body.querySelectorAll("*")].find(e => text(e, 100) === "How much will it cost to cancel?" && ![...e.children].some(c => text(c, 100) === "How much will it cost to cancel?") && e.getClientRects().length);
     // The block right after the heading, or after the heading's own wrapper; never further, so a later section is
@@ -188,7 +189,7 @@
     const nameEl = document.querySelector('[data-testid="property-details__metadata--property-type"]')?.closest("div")?.parentElement?.querySelector("h1, h2") || document.querySelector("h1, h2");
     const currency = totalEl ? totalEl.getAttribute("data-currency") : text(tid("header-currency-picker-trigger"));
     return {
-      status: "ok", step, seller, payment_timing: paymentTiming, partner_offer: partnerPage || all.includes("Partner Offer"), property_id: hotelId, property_name: text(nameEl),
+      status: "ok", step, seller, payment_timing: paymentTiming, partner_offer: partnerPage || all.includes("Partner Offer"), property_id: hotelId, property_name: visible(nameEl),
       check_in: checkIn.date, check_out: checkOut.date, check_in_time: checkIn.time, check_out_time: checkOut.time,
       selection, units,
       total: Math.round(total * 100) / 100,
