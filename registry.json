@@ -3794,6 +3794,70 @@
       "provenance": {
         "qa_agent": "herdr:united-qa:01a108e4-952e-7619-9803-d130e6e84e8d"
       }
+    },
+    {
+      "domain": "x.com",
+      "tool": "draft_post",
+      "file": "domains/x.com/draft_post.js",
+      "kind": "page",
+      "namespace": "x.com",
+      "url_patterns": [
+        "https://x.com/*"
+      ],
+      "status": "verified",
+      "last_verified": "2026-09-30",
+      "notes": "Verified local post/reply preview and manual handoff only; no composer interaction, saved draft or publishing. Live X extension parity unverified.",
+      "provenance": {
+        "qa_agent": "agt_8e3cd2960b20a49f21ab"
+      }
+    },
+    {
+      "domain": "x.com",
+      "tool": "get_post",
+      "file": "domains/x.com/get_post.js",
+      "kind": "page",
+      "namespace": "x.com",
+      "url_patterns": [
+        "https://x.com/*"
+      ],
+      "status": "verified",
+      "last_verified": "2026-09-30",
+      "notes": "Final-source Kernel public read succeeded from an unrelated starting page; independent fixture/extension QA passed. Anonymous requests, no navigation/scrolling. X terms restrict scraping without written consent; live X extension parity unverified.",
+      "provenance": {
+        "qa_agent": "agt_8e3cd2960b20a49f21ab"
+      }
+    },
+    {
+      "domain": "x.com",
+      "tool": "get_profile",
+      "file": "domains/x.com/get_profile.js",
+      "kind": "page",
+      "namespace": "x.com",
+      "url_patterns": [
+        "https://x.com/*"
+      ],
+      "status": "verified",
+      "last_verified": "2026-09-30",
+      "notes": "Final-source Kernel public read succeeded from an unrelated starting page; independent fixture/extension QA passed. Anonymous requests, no navigation/scrolling. X terms restrict scraping without written consent; live X extension parity unverified.",
+      "provenance": {
+        "qa_agent": "agt_8e3cd2960b20a49f21ab"
+      }
+    },
+    {
+      "domain": "x.com",
+      "tool": "search_posts",
+      "file": "domains/x.com/search_posts.js",
+      "kind": "page",
+      "namespace": "x.com",
+      "url_patterns": [
+        "https://x.com/*"
+      ],
+      "status": "qa_passed",
+      "last_verified": "2026-09-30",
+      "notes": "Independent fixture/extension QA passed; bounded signed-in Kernel success observed by author. Requires matching open results page, max three anonymous public checks, no scrolling/navigation. Live X extension parity unverified.",
+      "provenance": {
+        "qa_agent": "agt_8e3cd2960b20a49f21ab"
+      }
     }
   ]
 }
