@@ -2228,6 +2228,40 @@
       }
     },
     {
+      "domain": "linkedin.com",
+      "tool": "get_job",
+      "file": "domains/linkedin.com/get_job.js",
+      "kind": "page",
+      "namespace": "linkedin.com",
+      "url_patterns": [
+        "https://linkedin.com/*",
+        "https://*.linkedin.com/*"
+      ],
+      "status": "qa_passed",
+      "last_verified": "2026-09-30",
+      "notes": "Independent fixture and extension QA passed. Public guest read with shared document cooldown and denial latch; no retries or login. Final-source live verification incomplete.",
+      "provenance": {
+        "qa_agent": "agt_96f809f4a41246af0791"
+      }
+    },
+    {
+      "domain": "linkedin.com",
+      "tool": "search_jobs",
+      "file": "domains/linkedin.com/search_jobs.js",
+      "kind": "page",
+      "namespace": "linkedin.com",
+      "url_patterns": [
+        "https://linkedin.com/*",
+        "https://*.linkedin.com/*"
+      ],
+      "status": "qa_passed",
+      "last_verified": "2026-09-30",
+      "notes": "Independent fixture and extension QA passed. Public guest read with shared document cooldown and denial latch; no retries or login. Final-source live verification incomplete.",
+      "provenance": {
+        "qa_agent": "agt_96f809f4a41246af0791"
+      }
+    },
+    {
       "domain": "purelymail.com",
       "tool": "create_filter",
       "file": "domains/purelymail.com/create_filter.js",
