@@ -285,7 +285,7 @@ export function buildReport(run, allRows, smokeRows = []) {
       arm("control", control, false),
       arm("treatment", treatment, true),
       ["Δ", "", delta.delta_rate === null ? na : `${signed(delta.delta_correct)} · ${signed(delta.delta_rate * 100)} pp ${signedInterval(delta.delta_interval)}`,
-        "", "", `speedup ${ratio(delta.speedup)}`, "", "", delta.delta_min_per_correct === null ? na : signed(delta.delta_min_per_correct, 1),
+        "", "", `speedup ${ratio(delta.speedup)}${pairs.both ? ` (${clock(pairs.control_median)} → ${clock(pairs.treatment_median)})` : ""}`, "", "", delta.delta_min_per_correct === null ? na : signed(delta.delta_min_per_correct, 1),
         `**${delta.label}**`, "", "", ""],
     ]));
     const unbrowsed = (arm) => intentRows.filter(r => r.arm === arm && r.outcome === "correct" && r.tool_calls === 0).length;
@@ -298,8 +298,10 @@ export function buildReport(run, allRows, smokeRows = []) {
       + `cost ${usd(control.cost)} and ${usd(treatment.cost)}.`);
     if (treatment.adoption > 0 && treatment.adoption < 1) {
       const used = adoptedPairStats(intentRows);
-      out.push("", `treatment invoked a tool in ${used.pairs} of ${treatment.n} pairs; in the ${used.both} of those where both arms were correct, `
-        + `treatment was faster in ${used.faster}, median ${clock(used.control_median)} control and ${clock(used.treatment_median)} treatment, speedup ${ratio(used.speedup)}, sign test p = ${pValue(used.p)}. These pairs are picked by what the agent did, so they are not a randomized comparison.`);
+      const usedText = used.both
+        ? `in the ${used.both} of those where both arms were correct, treatment was faster in ${used.faster}, median ${clock(used.control_median)} control and ${clock(used.treatment_median)} treatment, speedup ${ratio(used.speedup)}, sign test p = ${pValue(used.p)}`
+        : "in none of those were both arms correct";
+      out.push("", `treatment invoked a tool in ${used.pairs} of ${treatment.n} pairs; ${usedText}. These pairs are picked by what the agent did, so they are not a randomized comparison.`);
     }
     if (pairs.agreement?.differed !== undefined) {
       out.push("", `${intent.agreement.path} has one right answer: in ${pairs.agreement.checked} both-correct pairs, the arms' answers differed in ${pairs.agreement.differed}.`);

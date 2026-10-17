@@ -360,15 +360,13 @@ tools get their own table of control results and slowest steps. The tool backlog
 first, the steps where control spent at least 20s per trial and treatment invoked a tool in fewer
 than half its trials, or that have no tools at all.
 
-A tool failures table lists, per tool, the treatment invocations that did not complete or whose
-tool returned `status: "error"`, with their most common error messages. Then, per PR, the worst
-label and each intent's speedup next to its paired medians, and per run: spend over every attempt
-including smoke gates, the label histogram (noting
-labels from `shape only` intents), median speedup, each arm's agent-minutes, turns and spend
-over complete pairs, the pooled gap-intent
-placebo, an order check, a start delay check, a native tools check (control trials that started
-with the page's own WebMCP tools), cap calibration, and how many labels to expect
-from noise.
+A tool failures table lists, per tool, the treatment invocations that did not complete or whose tool
+returned `status: "error"`, with their most common error messages. Then, per PR, the worst label and
+each intent's speedup next to its paired medians, and per run: spend over every attempt including
+smoke gates, the label histogram (noting labels from `shape only` intents), median speedup, each
+arm's agent-minutes, turns and spend over complete pairs, the pooled gap-intent placebo, an order
+check, a start delay check, a native tools check (control trials that started with the page's own
+WebMCP tools), cap calibration, and how many labels to expect from noise.
 
 ## Not built yet
 
