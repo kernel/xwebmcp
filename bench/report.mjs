@@ -347,7 +347,7 @@ export function buildReport(run, allRows, smokeRows = []) {
       const labelled = group.filter(r => r.plan.intent.stage !== "gap").map(r => r.delta.label);
       const worst = LABELS.find(label => labelled.includes(label)) ?? na;
       out.push("", `### ${key} · worst label: **${worst}**`, "");
-      out.push(table(["intent", "stage", "answers", "label", "Δ correct", "speedup", "paired median", "adoption", "invocations", "invoke ok", "tool median"], group.map(r => [
+      out.push(table(["intent", "stage", "answers", "label", "Δ correct", "speedup", "paired median (control → treatment)", "adoption", "invocations", "invoke ok", "tool median"], group.map(r => [
         r.plan.intent.id, r.plan.intent.stage, answerCheck(r.plan.intent), r.delta.label, signed(r.delta.delta_correct), ratio(r.delta.speedup),
         r.pairs.both ? `${clock(r.pairs.control_median)} → ${clock(r.pairs.treatment_median)}` : na,
         pct(r.treatment.adoption), r.treatment.invocations, pct(r.treatment.invoke_success), clock(r.treatment.tool_median),

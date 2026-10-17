@@ -81,7 +81,7 @@ test("the speedup comes from the same both-correct pairs as the sign test", () =
   for (let pair = 6; pair <= 10; pair++) rows.push(row("control", pair, 600, "timeout"), row("treatment", pair, 20, "correct"));
   const pairs = pairStats(rows);
   assert.equal(pairs.speedup.toFixed(2), "1.10");
-  assert.deepEqual([pairs.control_median, pairs.treatment_median.toFixed(0)], [103000, "93636"]);
+  assert.deepEqual([pairs.control_median, Math.round(pairs.treatment_median)], [103000, 93636]);
   const delta = compare(armStats(rows.filter(r => r.arm === "control")), armStats(rows.filter(r => r.arm === "treatment")), pairs, "inspect");
   assert.equal(delta.label, "no signal");
 });
