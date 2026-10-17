@@ -1022,9 +1022,9 @@
         "https://www.booking.com/*"
       ],
       "url_patterns_reason": "Narrowed to www.booking.com: it acts on the dated property page served there; the reserve button takes the tab to secure.booking.com, where get_checkout_step reads the result.",
-      "status": "qa_passed",
-      "last_verified": "2026-10-16",
-      "notes": "Selects one room of one rate, Partner Offers included, on the dated property page after checking the property, rate_id, expected_total and that no other rate is selected, then schedules the \"I'll reserve\" press (navigation_scheduled). With page_url it first opens that page from anywhere else (opening_property_page) and never reopens it once there. Never enters guest details, books or pays. Independent QA on 2026-10-16 ran live selections on Booking.com rates and Partner Offers (including a Booking.com rate under a partner header) that reached book.html or tpi_book, page_url from the home, search, another property and the same property for other dates, a wrong property on page_url (wrong_page, no reopen), price_changed, rate_not_found and invalid input. The out-of-range page_url date guard is the reviewer's own fix, checked by fixture. Members-only previews and challenge pages were not reached live.",
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Selects one room of one rate, Partner Offers included, on the dated property page after checking the property, rate_id, expected_total, the party and that no other rate is selected, then schedules the \"I'll reserve\" press (navigation_scheduled). With page_url it first opens that page from anywhere else, including the same property for other dates or another party (adults, children, child ages, rooms) (opening_property_page), and never reopens it once there; a page that shows another party than page_url is wrong_page. Never enters guest details, books or pays. Draft again because the party check changed the source: the 2026-10-16 independent QA (live selections on Booking.com rates and Partner Offers reaching book.html or tpi_book, page_url from the home, search, another property and the same property for other dates, wrong property, price_changed, rate_not_found, invalid input) predates it. Rates for a party with and without a young child were observed live with the same rate ids and totals, which is why the party is checked; the new party paths are checked by fixture only.",
       "provenance": {
         "qa_agent": "agt_61fb16bb07611b7045a1"
       }

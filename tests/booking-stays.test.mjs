@@ -1244,6 +1244,36 @@ test("select_room opens page_url from another page and never loops once it is th
   }
 });
 
+test("select_room acts only on page_url's party", async () => {
+  const dated = PROPERTY.property_url + "?checkin=2026-11-10&checkout=2026-11-12";
+  const pageUrl = dated + "&group_adults=2&no_rooms=1&group_children=2&age=5&age=12";
+  const withChildren = reservePage(propertyPage({ occupancy: "2 adults · 2 children · 1 room" }));
+  for (const start of [dated + "&group_adults=2&no_rooms=1&group_children=0", dated + "&group_adults=2&no_rooms=1&group_children=2&age=5&age=11", dated + "&group_adults=2&no_rooms=2&group_children=2&age=5&age=12"]) {
+    const { output, timers, env } = await run("select_room", { ...SELECT, page_url: pageUrl }, { start, liveHtml: withChildren });
+    assert.equal(output.status, "opening_property_page", start);
+    assert.equal(timers.length, 1);
+    assert.ok([...env.live.querySelectorAll("select")].every(s => s.value === "0"));
+  }
+  const reordered = await run("select_room", { ...SELECT, page_url: pageUrl }, { start: dated + "&age=12&group_children=2&age=5&group_adults=2&no_rooms=1", liveHtml: withChildren });
+  assert.equal(reordered.output.status, "navigation_scheduled");
+  assert.deepEqual([reordered.output.adults, reordered.output.children, reordered.output.rooms], [2, 2, 1]);
+  const defaults = await run("select_room", { ...SELECT, page_url: dated + "&group_adults=2&no_rooms=1&group_children=0" }, { start: dated + "&group_adults=2", liveHtml: reservePage() });
+  assert.equal(defaults.output.status, "navigation_scheduled", "absent group_children and no_rooms mean 0 and 1");
+  assert.equal((await run("select_room", { ...SELECT, page_url: dated + "&no_rooms=1&group_children=0" }, selectOptions())).output.error_kind, "invalid_input");
+});
+
+test("select_room refuses a page that applied another party than page_url", async () => {
+  const pageUrl = PROPERTY.property_url + "?checkin=2026-11-10&checkout=2026-11-12&group_adults=2&no_rooms=1&group_children=1&age=5";
+  const page = reservePage();
+  const { output, timers, env } = await run("select_room", { ...SELECT, page_url: pageUrl }, { start: pageUrl, liveHtml: page });
+  assert.equal(output.error_kind, "wrong_page");
+  assert.match(output.error_message, /2 adults · 0 children · 1 room/);
+  assert.equal(timers.length, 0, "neither reopened nor pressed");
+  assert.equal(env.live.documentElement.outerHTML, new Document(page).documentElement.outerHTML);
+  const applied = await run("select_room", { ...SELECT, page_url: pageUrl }, { start: pageUrl, liveHtml: reservePage(propertyPage({ occupancy: "2 adults · 1 child · 1 room" })) });
+  assert.equal(applied.output.status, "navigation_scheduled");
+});
+
 test("select_room reports the current total when the price changed", async () => {
   const { output } = await run("select_room", { ...SELECT, expected_total: 300 }, selectOptions());
   assert.equal(output.current_total, 316);
