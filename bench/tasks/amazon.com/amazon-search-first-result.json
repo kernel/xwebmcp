@@ -1,0 +1,14 @@
+{
+  "id": "amazon-search-first-result",
+  "domain": "amazon.com",
+  "stage": "find",
+  "prompt": "On amazon.com, search for \"{{query}}\" and report the first result that is not sponsored: its title as the product, its price and its ASIN. Reply with JSON: {\"product\": string, \"price\": number in US dollars, \"asin\": string}.",
+  "fixture": {"query": "usb c cable"},
+  "start_url": "https://www.amazon.com/",
+  "tools": [{"repo": "kernel/xwebmcp", "ref": "hypeship/amazon-search-product-bestsellers", "pr": 56}],
+  "answer_schema": "schemas/asin-search-result.json",
+  "rules": [{"path": "product", "matches": "usb"}, {"path": "price", "range": [1, 100]}],
+  "pairs": 5,
+  "trial_timeout_sec": 600,
+  "max_turns": 40
+}
