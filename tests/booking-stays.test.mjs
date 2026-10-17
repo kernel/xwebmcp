@@ -166,7 +166,9 @@ function makeEnv({ start = HOME, liveCurrency = "USD", lang = "en-us", liveHtml,
   const timers = [];
   class Event { constructor(type, init = {}) { this.type = type; this.bubbles = !!init.bubbles; } }
   const element = Object.getPrototypeOf(live.body);
-  const context = { window, document: live, fetch, DOMParser, URL, URLSearchParams, AbortSignal, TextEncoder, Date: FrozenDate, console, Event, setTimeout: fn => timers.push(fn), HTMLInputElement: { prototype: element }, HTMLSelectElement: { prototype: element } };
+  const context = { window, document: live, fetch, DOMParser, URL, URLSearchParams, AbortSignal, TextEncoder, Date: FrozenDate, console, Event, setTimeout: fn => timers.push(fn), HTMLInputElement: { prototype: element }, HTMLSelectElement: { prototype: element },
+    // Inline styles only: the fake DOM has no style sheets.
+    getComputedStyle: el => { const style = el.getAttribute("style") || ""; return { display: (/display:\s*([\w-]+)/.exec(style) || [])[1] || "block", visibility: /visibility:\s*hidden/.test(style) ? "hidden" : "visible" }; } };
   return { calls, context, live, timers };
 }
 
@@ -1029,6 +1031,28 @@ test("get_checkout_step keeps a line's bare text beside a bold part, and gives n
   assert.deepEqual([output.price_notes, output.cancellation], [["Includes taxes and fees", "In property currency: € 355.30"], "Free cancellation before Nov 7 After 12:00 AM on Nov 7 $296"]);
   const partnerFinal = labelledPartnerCheckout().replace("Enter your details. Step 2 of 3.", "Confirm your reservation. Step 3 of 3.").replace(/<div><h2>Enter your details<\/h2><input><\/div><div><div><h2>Studio<\/h2>.*?<\/div><\/div><\/div>/, "");
   const final = await run("get_checkout_step", {}, { start: "https://secure.booking.com/tpi_book.html?num_adults=2&num_rooms=1", liveHtml: partnerFinal });
+  assert.deepEqual([final.output.step, final.output.selection], ["finish_booking", null]);
+});
+
+test("get_checkout_step reports only rendered text in every field", async () => {
+  const hide = ' <span style="display:none">HIDDEN</span>';
+  const page = checkoutPage()
+    .replace("<div>In property currency: € 355.30</div>", `<div>In property currency: € 355.30${hide}</div><div style="visibility:hidden">INVISIBLE</div><div style="display:contents"><div>Shown through contents</div></div><div>Bare<div>nested</div></div>`)
+    .replace('>$397.97</span>', `>$397.97${hide}</span>`)
+    .replace('<div data-testid="policy-title">Non-refundable</div>', `<div data-testid="policy-title">Non-refundable${hide}</div>`)
+    .replace("<li><div>1 x Studio</div></li>", `<li><div>1 x Studio</div></li><li style="display:none">HIDDEN ROOM</li>`)
+    .replace("</body>", '<span style="display:none">Partner Offer</span></body>');
+  const { output } = await run("get_checkout_step", {}, { start: CHECKOUT, liveHtml: page });
+  assert.deepEqual(output.price_notes, ["Includes taxes and fees", "In property currency: € 355.30", "Shown through contents", "Bare", "nested"]);
+  assert.deepEqual([output.total_text, output.cancellation, output.units, output.partner_offer], ["$397.97", "Non-refundable", ["1 x Studio"], false]);
+  assert.ok(!JSON.stringify(output).includes("HIDDEN") && !JSON.stringify(output).includes("INVISIBLE"));
+});
+
+test("get_checkout_step prefers a visible step announcement and gives no selection on any partner final step", async () => {
+  const twice = summaryPartnerCheckout().replace('<div hidden>Your Details. Step 2 of 3.</div>', '<div hidden>Your Details. Step 2 of 3.</div><div>Confirm your reservation. Step 3 of 3.</div>');
+  assert.equal((await run("get_checkout_step", {}, { start: "https://secure.booking.com/tpi_book.html", liveHtml: twice })).output.step, "finish_booking");
+  const silent = labelledPartnerCheckout().replace('<div hidden>Enter your details. Step 2 of 3.</div>', "").replace(/<div><h2>Enter your details<\/h2><input><\/div><div><div><h2>Studio<\/h2>.*?<\/div><\/div><\/div>/, '<iframe src="https://paymentcomponent.booking.com/"></iframe>');
+  const final = await run("get_checkout_step", {}, { start: "https://secure.booking.com/tpi_book.html?num_adults=2&num_rooms=1", liveHtml: silent });
   assert.deepEqual([final.output.step, final.output.selection], ["finish_booking", null]);
 });
 

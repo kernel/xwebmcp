@@ -49,16 +49,39 @@
     if (!/^en(-|$)/i.test(document.documentElement.getAttribute("lang") || "")) return fail("unsupported_language", "This tool reads English labels; switch the Booking.com page language to English first.");
 
     const text = (el, max = 300) => el ? (el.textContent || "").replace(/\s+/g, " ").trim().slice(0, max) || null : null;
-    // The innermost elements, in document order: one per line the page shows.
-    // One entry per line the page shows: an element with text of its own (bare text beside a bold date, say) is one
-    // line; otherwise its children are. Unrendered elements are skipped unless hidden is true (the page keeps its
-    // step announcement there).
+    // What a reader sees: unrendered elements (no box, or visibility:hidden) are skipped, display:contents wrappers
+    // are looked through, and scripts and the payment section's own question are never part of an answer.
+    const INLINE = new Set(["SPAN", "STRONG", "B", "EM", "I", "A", "SMALL", "LABEL", "TIME", "SUP", "SUB"]);
+    const contents = n => getComputedStyle(n).display === "contents";
+    const skipped = n => n.nodeType !== 1 || ["SCRIPT", "STYLE", "TEMPLATE", "BR"].includes(n.tagName) || n.hasAttribute("hidden") || n.getAttribute("data-testid") === "payment-timing-header" || (!contents(n) && (!n.getClientRects().length || getComputedStyle(n).visibility === "hidden"));
+    // The visible text of an element as lines: inline text (bare or in spans, strong, links) stays in one line, block
+    // elements start new ones. Adjacent inline elements get a space, since the site often styles them as lines.
+    const blocks = el => {
+      const out = [];
+      let line = "";
+      const walk = node => {
+        for (const n of node.childNodes) {
+          if (n.nodeType === 3) line += n.textContent || "";
+          else if (skipped(n)) continue;
+          else if (INLINE.has(n.tagName) || contents(n)) { line += " "; walk(n); line += " "; }
+          else { out.push(line); line = ""; walk(n); out.push(line); line = ""; }
+        }
+      };
+      if (el && !(el.nodeType === 1 && skipped(el))) el.nodeType === 3 ? (line = el.textContent || "") : walk(el);
+      out.push(line);
+      return out.map(l => l.replace(/\s+/g, " ").replace(/\s+([,.;:!?])/g, "$1").trim()).filter(Boolean);
+    };
+    const visible = (el, max = 300) => el ? blocks(el).join(" ").slice(0, max) || null : null;
+    // One entry per line the page shows: an element with text of its own (bare text beside a bold date, say) is read
+    // as its visible lines; otherwise its children are. With hidden true, unrendered elements are read too (the page
+    // keeps its step announcement there).
     const lines = (el, hidden = false) => {
       const out = [];
       const walk = node => {
         for (const child of node.children) {
-          if (["SCRIPT", "STYLE", "TEMPLATE"].includes(child.tagName) || (!hidden && !child.getClientRects().length)) continue;
-          if (!child.children.length || [...child.childNodes].some(n => n.nodeType === 3 && n.textContent.trim())) { const line = text(child, 1000); if (line) out.push(line); }
+          if (["SCRIPT", "STYLE", "TEMPLATE"].includes(child.tagName)) continue;
+          if (!hidden && skipped(child)) continue;
+          if (!child.children.length || [...child.childNodes].some(n => n.nodeType === 3 && n.textContent.trim())) out.push(...(hidden ? [text(child, 1000)] : blocks(child)).filter(Boolean));
           else walk(child);
         }
       };
@@ -83,7 +106,7 @@
     const detailsHeading = heading(/^\s*Your booking details\s*$/i);
     const totalEl = document.querySelector('[data-animate-price-group-name="bp_user_total_price"]');
     const totalLabel = totalEl ? null : label(/^Total(?: price)?$/);
-    const totalText = totalEl ? text(totalEl, 100) : text(totalLabel?.nextElementSibling, 100);
+    const totalText = visible(totalEl || totalLabel?.nextElementSibling, 100);
     const raw = totalEl?.getAttribute("data-value");
     const total = /^\d+(?:\.\d+)?$/.test(raw || "") ? Number(raw) : amount(totalText);
 
@@ -104,10 +127,13 @@
     const detailLines = lines(details);
     const selectedAt = detailLines.indexOf("You selected");
     let selection = selectedAt >= 0 && detailLines[selectedAt + 1] ? detailLines[selectedAt + 1].slice(0, 300) : null;
-    let units = selectedAt >= 0 ? [...details.querySelectorAll("li")].map(li => text(li)).filter(Boolean).slice(0, 20) : [];
-    const all = lines(document.body, true);
-    const stepper = all.find(line => /\. Step \d of 3\.$/.test(line)) || "";
-    if (selectedAt < 0 && partnerPage && !/Step 3 of 3\.$/.test(stepper)) {
+    let units = selectedAt >= 0 ? [...details.querySelectorAll("li")].map(li => visible(li)).filter(Boolean).slice(0, 20) : [];
+    const all = lines(document.body);
+    // The step announcement: a visible one when the page shows it, else the hidden copy for screen readers.
+    const announcement = list => list.find(line => /\. Step \d of 3\.$/.test(line));
+    const stepper = announcement(all) || announcement(lines(document.body, true)) || "";
+    const step = tid("user-details-container") || (partnerPage && /Step 2 of 3\.$/.test(stepper)) ? "your_details" : /Step 3 of 3\.$/.test(stepper) || document.querySelector('[data-testid*="payment"], iframe[src*="payment"]') ? "finish_booking" : "other";
+    if (selectedAt < 0 && partnerPage && step !== "finish_booking") {
       // The labelled partner layout shows only the length of stay; the party comes from the checkout URL, and the
       // room's name only when the page labels its guests.
       const params = new URL(window.location.href).searchParams;
@@ -138,30 +164,8 @@
     const cancelAt = all.indexOf("How much will it cost to cancel?");
     const profile = !!tid("header-profile"), signIn = !!tid("header-sign-in-button");
     const hotelId = (/\bb_hotel_id\s*[:=]\s*['"]?(\d+)/.exec(scripts) || [])[1] || null;
-    const step = tid("user-details-container") || (partnerPage && /Step 2 of 3\.$/.test(stepper)) ? "your_details" : /Step 3 of 3\.$/.test(stepper) || document.querySelector('[data-testid*="payment"], iframe[src*="payment"]') ? "finish_booking" : "other";
     // The final step offers payment timings as radios; report the chosen one, else the section's own text.
     const timing = [...document.querySelectorAll('input[name="payment-timing"]')].find(e => e.checked);
-    // The text of an element as the lines a reader sees: inline text (bare or in spans, strong, links) stays in one
-    // line, and each block element starts a new one.
-    const INLINE = new Set(["SPAN", "STRONG", "B", "EM", "I", "A", "SMALL", "LABEL", "TIME", "SUP", "SUB"]);
-    // Hidden copies, scripts and the payment section's own question are not part of an answer.
-    const skipped = n => n.nodeType !== 1 || ["SCRIPT", "STYLE", "TEMPLATE", "BR"].includes(n.tagName) || n.hasAttribute("hidden") || !n.getClientRects().length || n.getAttribute("data-testid") === "payment-timing-header" || /display:\s*none/.test(n.getAttribute("style") || "");
-    const blocks = el => {
-      const out = [];
-      let line = "";
-      const walk = node => {
-        for (const n of node.childNodes) {
-          if (n.nodeType === 3) line += n.textContent || "";
-          else if (skipped(n)) continue;
-          // Separate inline elements by a space: the site often styles adjacent spans as separate lines.
-          else if (INLINE.has(n.tagName)) { line += " "; walk(n); line += " "; }
-          else { out.push(line); line = ""; walk(n); out.push(line); line = ""; }
-        }
-      };
-      if (el && !(el.nodeType === 1 && skipped(el))) el.nodeType === 3 ? (line = el.textContent || "") : walk(el);
-      out.push(line);
-      return out.map(l => l.replace(/\s+/g, " ").replace(/\s+([,.;:!?])/g, "$1").trim()).filter(Boolean);
-    };
     const sentences = list => list.map((l, i) => i < list.length - 1 && /[\p{L}\p{N})"'”’]$/u.test(l) ? l + "." : l).join(" ");
     // The radio's own label (wrapping it, or bound by for=; the live page puts each label beside its radio), or its
     // parent when that holds no other option.
@@ -190,7 +194,7 @@
       total: Math.round(total * 100) / 100,
       currency: /^[A-Z]{3}$/.test(currency || "") ? currency : null,
       total_text: totalText, price_notes: notes.slice(0, 10).map(line => line.slice(0, 300)),
-      cancellation: text(tid("cancellation-policy")) || lines(tid("cancellation-timeline")).filter(line => line !== "*").join(" ").slice(0, 300) || cancelBlock || text(label(/^(?:Non-refundable|Free cancellation\b.*)$/)),
+      cancellation: visible(tid("cancellation-policy")) || lines(tid("cancellation-timeline")).filter(line => line !== "*").join(" ").slice(0, 300) || cancelBlock || text(label(/^(?:Non-refundable|Free cancellation\b.*)$/)),
       signed_in: profile === signIn ? null : profile
     };
   }
