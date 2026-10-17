@@ -790,9 +790,14 @@ test("get_property keeps rates short of child places, marked, and leaves out rat
   ];
   const old = await run("get_property", { ...PROPERTY, children_ages: [5], sort: "price_low_to_high" }, { routes: [propertyRoute({ body: childPage(occupancyRows) })] });
   assert.deepEqual(old.output.rooms.flatMap(r => r.rates).sort((a, b) => a.comparison_rank - b.comparison_rank).map(x => [x.rate_id, x.max_adults, x.max_children, x.fits_party]),
-    [["1001_2001_2_1_0", 2, 0, false], ["1001_2001_2_1_9", 2, 1, true], ["1002_2001_3_1_0", 3, 0, true]]);
+    [["1001_2001_2_1_9", 2, 1, true], ["1002_2001_3_1_0", 3, 0, true], ["1001_2001_2_1_0", 2, 0, false]]);
   assert.deepEqual(old.output.rates_left_out, { party_too_large: 1, unreadable: 0 });
   assert.match(old.output.warnings.join(" "), /1 rates have places for the adults but not for every child \(fits_party false\)/);
+  const capped = await run("get_property", { ...PROPERTY, children_ages: [5], sort: "price_low_to_high", max_rates: 1 }, { routes: [propertyRoute({ body: childPage(occupancyRows) })] });
+  assert.deepEqual(capped.output.rooms.flatMap(r => r.rates.map(x => [x.rate_id, x.comparison_rank])), [["1001_2001_2_1_9", 1]], "the cheaper rate short of a child place does not crowd out the cheapest fitting one");
+  assert.equal(capped.output.truncated, true);
+  const pageOrder = await run("get_property", { ...PROPERTY, children_ages: [5] }, { routes: [propertyRoute({ body: childPage(occupancyRows) })] });
+  assert.deepEqual(pageOrder.output.rooms.flatMap(r => r.rates).sort((a, b) => a.comparison_rank - b.comparison_rank).map(x => x.rate_id), ["1001_2001_2_1_9", "1002_2001_3_1_0", "1001_2001_2_1_0"]);
   const sleepsRows = [
     rateRow({ head: ROOM_A, blockId: "1001_2001_2_1_0", guests: null, sleeps: "Guests: 2 adults", total: "$279" }),
     rateRow({ blockId: "1001_2001_2_1_9", guests: null, sleeps: "Guests: 2 adults , 1 child", total: "$328" }),
@@ -801,7 +806,7 @@ test("get_property keeps rates short of child places, marked, and leaves out rat
   ];
   const fresh = await run("get_property", { ...PROPERTY, children_ages: [5] }, { routes: [propertyRoute({ body: childPage(sleepsRows) })] });
   assert.deepEqual(fresh.output.rooms.flatMap(r => r.rates.map(x => [x.rate_id, x.max_guests, x.max_adults, x.max_children, x.fits_party])),
-    [["1001_2001_2_1_0", null, 2, 0, false], ["1001_2001_2_1_9", null, 2, 1, true]]);
+    [["1001_2001_2_1_9", null, 2, 1, true], ["1001_2001_2_1_0", null, 2, 0, false]]);
   assert.deepEqual(fresh.output.rates_left_out, { party_too_large: 2, unreadable: 0 });
   const twoChildren = await run("get_property", { ...PROPERTY, children_ages: [12, 5] }, { routes: [propertyRoute({ body: childPage(sleepsRows, "2 adults · 2 children · 1 room", "A,A,12,5") })] });
   assert.deepEqual(twoChildren.output.rooms.flatMap(r => r.rates.map(x => x.fits_party)), [false, false], "2 adult and 1 child places do not hold 2 adults and 2 children");
