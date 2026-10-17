@@ -3,7 +3,7 @@
   match: { url_patterns: ["https://www.booking.com/*"] },
   tool: {
     name: "select_room",
-    description: "Reserve one unit of one rate on the dated Booking.com property page that is open in this tab, using the property_id, rate_id and price.total returned by get_property: selects 1 in that rate's room count and presses \"I'll reserve\", which takes the tab to Booking.com's \"Your details\" step on secure.booking.com. It acts on the property page for your dates and party (get_property's property.page_url): pass that URL as page_url and, from any other page (the same property for other dates or another party included), the tool opens it and returns opening_property_page, after which you list tools again and repeat the call; without page_url it returns wrong_page. Partner Offers can be selected too (partner_offer true); their checkout may show a different price or cancellation terms, or Booking.com may say the offer is no longer available and return to the property page. Refuses when the page shows a different party than page_url (wrong_page), a different total than expected_total (price_changed, with the current total), when another rate already has rooms selected, when the rate is a members-only preview, or when the rate cannot be selected. The press is scheduled after the tool returns (status navigation_scheduled): list tools again and call get_checkout_step to read the step, the selection and the total including taxes. Does not enter guest details, does not book and never pays; nothing is reserved until the guest completes the later steps. English pages only.",
+    description: "Reserve one unit of one rate on the dated Booking.com property page that is open in this tab, using the property_id, rate_id and price.total returned by get_property: selects 1 in that rate's room count and presses \"I'll reserve\", which takes the tab to Booking.com's \"Your details\" step on secure.booking.com. It acts on the property page for your dates and party (get_property's property.page_url): pass that URL as page_url and, from any other page (the same property for other dates or another party included), the tool opens it and returns opening_property_page, after which you list tools again and repeat the call; without page_url it returns wrong_page. Partner Offers can be selected too (partner_offer true); their checkout may show a different price or cancellation terms, or Booking.com may say the offer is no longer available and return to the property page. Refuses when the page shows a different party than page_url (wrong_page), when the rate's listed adult and child places cannot hold the party the page shows (party_not_covered), a different total than expected_total (price_changed, with the current total), when another rate already has rooms selected, when the rate is a members-only preview, or when the rate cannot be selected. The press is scheduled after the tool returns (status navigation_scheduled): list tools again and call get_checkout_step to read the step, the selection and the total including taxes. Does not enter guest details, does not book and never pays; nothing is reserved until the guest completes the later steps. English pages only.",
     inputSchema: {
       type: "object", additionalProperties: false,
       required: ["property_id", "rate_id", "expected_total"],
@@ -44,7 +44,7 @@
           type: "object", additionalProperties: false, required: ["status", "error_kind", "error_message"],
           properties: {
             status: { const: "error" },
-            error_kind: { enum: ["invalid_input", "wrong_page", "unsupported_language", "challenge", "rate_not_found", "price_changed", "selection_present", "login_required", "site_changed", "canceled"] },
+            error_kind: { enum: ["invalid_input", "wrong_page", "unsupported_language", "challenge", "rate_not_found", "party_not_covered", "price_changed", "selection_present", "login_required", "site_changed", "canceled"] },
             error_message: { type: "string", maxLength: 600 },
             current_total: { type: ["number", "null"] }
           }
@@ -118,6 +118,17 @@
     const select = row.querySelector('select[name="nr_rooms_' + input.rate_id + '"]');
     const one = select && [...select.querySelectorAll("option")].find(o => o.getAttribute("value") === "1" && !o.disabled && !o.closest("optgroup[disabled]"));
     if (!select || select.disabled || select.matches(":disabled") || !one) return fail("rate_not_found", "The page does not offer one room of this rate.");
+    // The rate's places, read as get_property reads them: an occupancy cell or a "Guests: 2 adults, 1 child" line.
+    // A rate without a place for every guest reaches a checkout for fewer people than the party.
+    const occupancyCell = rawText(row.querySelector(".hprt-table-cell-occupancy"));
+    const sleeps = rawText(row.querySelector(".hprt-conditions-sleeps"));
+    const guestsLine = /^Guests?:/i.test(sleeps) ? sleeps : "";
+    const n = (re, s) => { const m = re.exec(s); return m ? Number(m[1]) : null; };
+    const maxAdults = n(/Max\.? adults?:\s*(\d+)/i, occupancyCell) ?? n(/(\d+)\s+adults?\b/i, guestsLine);
+    const maxChildren = maxAdults === null ? null : n(/Max\.? child(?:ren)?:\s*(\d+)/i, occupancyCell) ?? n(/(\d+)\s+child(?:ren)?\b/i, guestsLine) ?? 0;
+    const maxPeople = n(/Max\.? people:\s*(\d+)/i, occupancyCell) ?? n(/(\d+)\s+(?:people|guests)\b/i, guestsLine) ?? (/Only for 1 guest/i.test(occupancyCell) ? 1 : null);
+    const partyAdults = count(/(\d+)\s+adults?/i), partyChildren = count(/(\d+)\s+child(?:ren)?/i) ?? 0;
+    if (partyAdults !== null && ((maxPeople !== null && maxPeople < partyAdults + partyChildren) || (maxAdults !== null && (maxAdults < partyAdults || maxAdults + maxChildren < partyAdults + partyChildren)))) return fail("party_not_covered", "This rate has places for " + (maxAdults !== null ? maxAdults + " adults and " + maxChildren + " children" : maxPeople + " guests") + ", fewer than the party the page shows (" + occupancy + "); choose a rate get_property lists for this party. Nothing was selected.");
     const block = row.querySelector(".hprt-price-block");
     if (block?.querySelector(".prd-genius-preview-rate-inline") || /members-only price/i.test(rawText(block))) return fail("login_required", "This rate is a members-only preview; it needs a signed-in Booking.com account. Nothing was selected.");
     const totalEl = block?.querySelector(".bui-price-display__value");

@@ -98,7 +98,7 @@ const home = ({ currency = "USD" } = {}) => shell({ body: "<h1>Find your next st
 
 const PROPERTY_LD = { "@context": "http://schema.org", "@type": "Hotel", name: "Harbor View Studios", url: "https://www.booking.com/hotel/xx/harbor-view-studios.html", address: { "@type": "PostalAddress", streetAddress: "1 Example Quay, Old Quarter, 1000-000 Example Harbor, Examplia", addressCountry: "Examplia" }, aggregateRating: { "@type": "AggregateRating", reviewCount: 1233, bestRating: 10, ratingValue: 8.4 } };
 
-function rateRow({ head = null, blockId = "1001_2001_2_2_0", guests = "Max. people: 2", total = "$316", original = "$352", perNight = "$158", before = "$316.46", excluded = "6 % VAT, € 4 City tax per person per night", cancellation = "Non-refundable", meal = "Wonderful breakfast $16", prepay = "Pay the property before arrival", genius = false, preview = false } = {}) {
+function rateRow({ head = null, blockId = "1001_2001_2_2_0", guests = "Max. people: 2", total = "$316", original = "$352", perNight = "$158", before = "$316.46", excluded = "6 % VAT, € 4 City tax per person per night", cancellation = "Non-refundable", meal = "Wonderful breakfast $16", prepay = "Pay the property before arrival", genius = false, preview = false, sleeps = null } = {}) {
   const th = head ? `<th class="hprt-table-cell -first hprt-table-cell-roomtype" rowspan="6"><div data-et-view=""><a></a><a data-room-id="${head.id}" id="room_type_id_${head.id}"><span> ${head.name} </span></a></div>` +
     (head.left ? `<div><span><div><span><span> We have ${head.left} left </span></span></div></span></div>` : "") +
     `<div><ul><li><span> ${head.beds} <i></i></span></li></ul></div><div><div role="list"><div role="listitem"><span>Entire studio</span></div><div role="listitem"><span>441 feet²</span></div><div role="listitem"><span>Private bathroom</span></div></div></div></th>` : "";
@@ -112,7 +112,9 @@ function rateRow({ head = null, blockId = "1001_2001_2_2_0", guests = "Max. peop
   const price = `<td class="hp-price-left-align hprt-table-cell hprt-table-cell-price"><div class="hprt-price-block"><div class="prco-wrapper bui-price-display"><div><div><span class="prco-f-font-caption js-average-per-night-price">${perNight}</span><span class="prco-f-font-caption">per night</span></div><div class="prco-inline-block-maker-helper">${strike}<div class="bui-price-display__value prco-text-nowrap-helper prco-f-font-heading"><span>${total}</span><span class="prco-hp-rt-icon-pos-fix"><svg><path></path></svg></span></div><span>Original price ${original} Current price ${total}</span></div></div>${breakdown}<div><div class="prco-inline-block-maker-helper bui-price-display__label">2 nights</div></div></div>` +
     (excluded ? `<div class="hprt-roomtype-block"><div><div class="js-us-excluded-fees"><span> Excluded: </span> ${excluded}</div></div></div>` : "") + `</div></td>`;
   const policy = (id, title) => `<div data-testid="${id}"><div><span data-testid="policy-icon" role="presentation"></span></div><div><div><div><div data-testid="policy-title"><span><strong>${title}</strong></span></div></div></div></div></div>`;
-  const conditions = `<td class="hprt-table-cell hprt-table-cell-conditions"><div class="hprt-block"><ul class="hprt-conditions-bui bui-f-font-caption">` +
+  // The other layout has no occupancy cell and lists the rate's guests first under its conditions.
+  const sleepsItem = sleeps ? `<li class="bui-list__item hprt-conditions-sleeps"><span class="bui-list__icon" role="presentation"></span><div class="bui-list__body"><div class="bui-list__description">${sleeps}</div></div></li>` : "";
+  const conditions = `<td class="hprt-table-cell hprt-table-cell-conditions"><div class="hprt-block"><ul class="hprt-conditions-bui bui-f-font-caption">${sleepsItem}` +
     (meal ? `<li><span role="presentation"></span><div><div>${meal}</div></div></li>` : "") +
     `<li class="e2e-cancellation" data-testid="cancellation-subtitle">${policy("cancellation-policy", cancellation)}</li><li data-testid="prepayment-subtitle">${policy("prepayment-policy", prepay)}</li><li><div aria-label="Genius discount may be available when you sign in."> discount may be available </div></li></ul></div></td>`;
   return `<tr class="js-rt-block-row e2e-hprt-table-row" data-block-id="${blockId}">${th}${occupancy}${price}${conditions}<td class="hprt-table-cell hprt-table-room-select"><select name="nr_rooms_${blockId}"><option value="0">0</option><option value="1">1 (${total})</option></select></td></tr>`;
@@ -615,7 +617,7 @@ test("get_property reads rooms, rates, cancellation, meal, taxes and the page's 
   assert.deepEqual(studio.highlights, ["Entire studio", "441 feet²", "Private bathroom"]);
   assert.deepEqual(studio.rates[0], {
     rate_id: "1001_2001_2_2_0", comparison_rank: 1, partner_offer: false,
-    max_guests: 2, max_adults: null,
+    max_guests: 2, max_adults: null, max_children: null,
     price: { total: 316, original_total: 352, per_night_average: 158, total_before_taxes: 316.46, taxes_and_fees_excluded: "6 % VAT, € 4 City tax per person per night", total_text: "$316" },
     cancellation: "Non-refundable", free_cancellation: false, non_refundable: true, prepayment: "Pay the property before arrival", meal_plan: "Wonderful breakfast $16", member_discount: null
   });
@@ -778,6 +780,42 @@ test("get_property reads 'Max adults' when children are in the party and checks 
   assert.deepEqual(output.rates_left_out, { party_too_large: 1, unreadable: 0 });
 });
 
+test("get_property leaves out rates without a place for every child, in both capacity layouts", async () => {
+  const childPage = (rows, occupancy = "2 adults · 1 child · 1 room", room1 = "A,A,5") => propertyPage({ rows, occupancy, room1 });
+  const occupancyRows = [
+    rateRow({ head: ROOM_A, blockId: "1001_2001_2_1_0", guests: "Max adults: 2", total: "$279" }),
+    rateRow({ blockId: "1001_2001_2_1_9", guests: "+ Max adults: 2 <br> Max children: 1", total: "$328" }),
+    rateRow({ head: ROOM_B, blockId: "1002_2001_3_1_0", guests: "Max adults: 3", total: "$377" }),
+    rateRow({ blockId: "1002_2001_1_1_9", guests: "+ Max adults: 1 <br> Max children: 1 Only for 1 guest", total: "$271" })
+  ];
+  const old = await run("get_property", { ...PROPERTY, children_ages: [5], sort: "price_low_to_high" }, { routes: [propertyRoute({ body: childPage(occupancyRows) })] });
+  assert.deepEqual(old.output.rooms.flatMap(r => r.rates.map(x => [x.rate_id, x.max_adults, x.max_children])).sort(), [["1001_2001_2_1_9", 2, 1], ["1002_2001_3_1_0", 3, 0]]);
+  assert.deepEqual(old.output.rates_left_out, { party_too_large: 2, unreadable: 0 });
+  const sleepsRows = [
+    rateRow({ head: ROOM_A, blockId: "1001_2001_2_1_0", guests: null, sleeps: "Guests: 2 adults", total: "$279" }),
+    rateRow({ blockId: "1001_2001_2_1_9", guests: null, sleeps: "Guests: 2 adults , 1 child", total: "$328" }),
+    rateRow({ head: ROOM_B, blockId: "1002_2001_1_1_0", guests: null, sleeps: "Guests: 1 adult", total: "$247" }),
+    rateRow({ blockId: "1002_2001_1_1_9", guests: null, sleeps: "Guests: 1 adult , 1 child", total: "$271" })
+  ];
+  const fresh = await run("get_property", { ...PROPERTY, children_ages: [5], sort: "price_low_to_high" }, { routes: [propertyRoute({ body: childPage(sleepsRows) })] });
+  assert.deepEqual(fresh.output.rooms.flatMap(r => r.rates.map(x => [x.rate_id, x.max_guests, x.max_adults, x.max_children])), [["1001_2001_2_1_9", null, 2, 1]]);
+  assert.deepEqual(fresh.output.rates_left_out, { party_too_large: 3, unreadable: 0 });
+  const twoChildren = await run("get_property", { ...PROPERTY, children_ages: [12, 5] }, { routes: [propertyRoute({ body: childPage(sleepsRows, "2 adults · 2 children · 1 room", "A,A,12,5") })] });
+  assert.equal(twoChildren.output.status, "no_rate_for_party", "2 adults and 1 child places do not hold 2 adults and 2 children");
+  const adultsOnly = await run("get_property", PROPERTY, { routes: [propertyRoute({ body: propertyPage({ rows: sleepsRows }) })] });
+  assert.deepEqual(adultsOnly.output.rooms.flatMap(r => r.rates.map(x => x.rate_id)), ["1001_2001_2_1_0", "1001_2001_2_1_9"]);
+  assert.deepEqual(adultsOnly.output.rates_left_out, { party_too_large: 2, unreadable: 0 });
+});
+
+test("get_property warns about rates that list no guest capacity", async () => {
+  const rows = [rateRow({ head: ROOM_A, guests: null }), partnerRow({ head: ROOM_B })];
+  const { output } = await run("get_property", PROPERTY, { routes: [propertyRoute({ body: propertyPage({ rows }) })] });
+  assert.equal(output.rates_returned, 2);
+  assert.match(output.warnings.join(" "), /2 rates list no guest capacity, so the tool could not check that their price covers this party/);
+  const solo = await run("get_property", { ...PROPERTY, adults: 1 }, { routes: [propertyRoute({ body: propertyPage({ rows, occupancy: "1 adult · 0 children · 1 room" }) })] });
+  assert.doesNotMatch(solo.output.warnings.join(" "), /no guest capacity/);
+});
+
 test("get_property says so when every rate is for a smaller party, without calling it no availability", async () => {
   const rows = [rateRow({ head: ROOM_A, guests: "Max. people: 1 Only for 1 guest" })];
   const { output } = await run("get_property", PROPERTY, { routes: [propertyRoute({ body: propertyPage({ rows }) })] });
@@ -887,7 +925,7 @@ test("get_checkout_step reads both partner checkout layouts a Partner Offer open
   assert.deepEqual(labelled.output, {
     status: "ok", step: "your_details", seller: null, payment_timing: null, partner_offer: true, property_id: "1000001", property_name: "Harbor View Studios",
     check_in: "2026-11-10", check_out: "2026-11-12", check_in_time: "from 3:00 PM", check_out_time: "until 11:00 AM",
-    selection: "2 nights, 1 room for 2 adults", units: ["Studio"], total: 425.85, currency: "USD", total_text: "$425.85",
+    selection: "2 nights, 1 room for 2 adults", units: ["Studio"], party_warning: null, total: 425.85, currency: "USD", total_text: "$425.85",
     price_notes: ["Today you'll pay", "$204 × 2 nights", "$407.89", "At the property you'll pay", "Additional fees", "$17.96", "(for 2 nights & all guests)", "Includes taxes and fees"],
     cancellation: "Free cancellation before November 11, 2026", signed_in: false
   });
@@ -898,7 +936,7 @@ test("get_checkout_step reads both partner checkout layouts a Partner Offer open
   assert.deepEqual(summary.output, {
     status: "ok", step: "your_details", seller: null, payment_timing: null, partner_offer: true, property_id: "1000001", property_name: "Harbor View Studios",
     check_in: "2026-11-10", check_out: "2026-11-12", check_in_time: "From 3:00 PM", check_out_time: "Until 11:00 AM",
-    selection: "2 nights, 1 room for 2 adults", units: ["1 x Studio"], total: 355.69, currency: "USD", total_text: "$355.69",
+    selection: "2 nights, 1 room for 2 adults", units: ["1 x Studio"], party_warning: null, total: 355.69, currency: "USD", total_text: "$355.69",
     price_notes: ["Today you'll pay", "$169 × 2 nights", "$337.73", "At the property you'll pay", "Additional fees", "$17.96", "Includes taxes and fees"],
     cancellation: "Free cancellation before November 11, 2026", signed_in: false
   });
@@ -1247,7 +1285,7 @@ test("select_room opens page_url from another page and never loops once it is th
 test("select_room acts only on page_url's party", async () => {
   const dated = PROPERTY.property_url + "?checkin=2026-11-10&checkout=2026-11-12";
   const pageUrl = dated + "&group_adults=2&no_rooms=1&group_children=2&age=5&age=12";
-  const withChildren = reservePage(propertyPage({ occupancy: "2 adults · 2 children · 1 room" }));
+  const withChildren = reservePage(propertyPage({ occupancy: "2 adults · 2 children · 1 room", rows: [rateRow({ head: ROOM_A, guests: "+ Max adults: 2 <br> Max children: 2" })] }));
   for (const start of [dated + "&group_adults=2&no_rooms=1&group_children=0", dated + "&group_adults=2&no_rooms=1&group_children=2&age=5&age=11", dated + "&group_adults=2&no_rooms=2&group_children=2&age=5&age=12"]) {
     const { output, timers, env } = await run("select_room", { ...SELECT, page_url: pageUrl }, { start, liveHtml: withChildren });
     assert.equal(output.status, "opening_property_page", start);
@@ -1270,8 +1308,34 @@ test("select_room refuses a page that applied another party than page_url", asyn
   assert.match(output.error_message, /2 adults · 0 children · 1 room/);
   assert.equal(timers.length, 0, "neither reopened nor pressed");
   assert.equal(env.live.documentElement.outerHTML, new Document(page).documentElement.outerHTML);
-  const applied = await run("select_room", { ...SELECT, page_url: pageUrl }, { start: pageUrl, liveHtml: reservePage(propertyPage({ occupancy: "2 adults · 1 child · 1 room" })) });
+  const applied = await run("select_room", { ...SELECT, page_url: pageUrl }, { start: pageUrl, liveHtml: reservePage(propertyPage({ occupancy: "2 adults · 1 child · 1 room", rows: [rateRow({ head: ROOM_A, guests: null, sleeps: "Guests: 2 adults , 1 child" })] })) });
   assert.equal(applied.output.status, "navigation_scheduled");
+});
+
+test("select_room refuses a rate without a place for every guest the page shows", async () => {
+  const pageUrl = PROPERTY.property_url + "?checkin=2026-11-10&checkout=2026-11-12&group_adults=2&no_rooms=1&group_children=1&age=5";
+  const child = rows => reservePage(propertyPage({ occupancy: "2 adults · 1 child · 1 room", rows }));
+  for (const [label, row] of [
+    ["adults-only occupancy", rateRow({ head: ROOM_A, guests: "Max adults: 2" })],
+    ["adults-only guests line", rateRow({ head: ROOM_A, guests: null, sleeps: "Guests: 2 adults" })],
+    ["too few people", rateRow({ head: ROOM_A, guests: "Max. people: 2" })],
+    ["single-guest rate", rateRow({ head: ROOM_A, guests: "Only for 1 guest" })]
+  ]) {
+    const page = child([row]);
+    const { output, timers, env } = await run("select_room", { ...SELECT, page_url: pageUrl }, { start: pageUrl, liveHtml: page });
+    assert.equal(output.error_kind, "party_not_covered", label);
+    assert.match(output.error_message, /2 adults · 1 child · 1 room/);
+    assert.equal(timers.length, 0);
+    assert.equal(env.live.documentElement.outerHTML, new Document(page).documentElement.outerHTML, label);
+  }
+  for (const [label, row] of [
+    ["child place", rateRow({ head: ROOM_A, guests: "+ Max adults: 2 <br> Max children: 1" })],
+    ["child in an adult place", rateRow({ head: ROOM_A, guests: "Max adults: 3" })],
+    ["guests line with a child", rateRow({ head: ROOM_A, guests: null, sleeps: "Guests: 2 adults , 1 child" })],
+    ["no listed capacity", rateRow({ head: ROOM_A, guests: null })]
+  ]) {
+    assert.equal((await run("select_room", { ...SELECT, page_url: pageUrl }, { start: pageUrl, liveHtml: child([row]) })).output.status, "navigation_scheduled", label);
+  }
 });
 
 test("select_room reports the current total when the price changed", async () => {
@@ -1307,10 +1371,12 @@ test("select_room rejects unrelated pages and canceled calls", async () => {
 });
 
 // Mirrors the "Your details" step observed on secure.booking.com/book.html.
-const checkoutPage = ({ step = "details", total = "397.97153", currency = "USD", lang = "en-us" } = {}) => `<!DOCTYPE html><html lang="${lang}"><head><title>Booking.com: Your Details</title></head><body>` +
+// The alert Booking.com shows under "You selected" when the rate cannot hold the searched party, as observed.
+const PARTY_ALERT = `<div class=""><div class="dc52072838 a4719dfa47" aria-live="polite" role="alert"><div class="f6e3a11b0d a19a26a18c"><span><span aria-hidden="true"><svg></svg></span></span><div class="aa225776f2"><div class="f6e3a11b0d ae5dbab14d"><div class=""><p class="b99b6ef58f">Your selection accommodates fewer than 3 guests</p></div><div class="f546354b44">You need to fit 1 child (5 years old)</div></div></div></div></div></div>`;
+const checkoutPage = ({ step = "details", total = "397.97153", currency = "USD", lang = "en-us", partyAlert = false } = {}) => `<!DOCTYPE html><html lang="${lang}"><head><title>Booking.com: Your Details</title></head><body>` +
   `<header><button data-testid="header-currency-picker-trigger">${currency}</button><a data-testid="header-sign-in-button">Sign in</a></header>` +
   `<div><h2>Harbor View Studios</h2><span data-testid="property-details__metadata--property-type">Hotel</span></div>` +
-  `<div><div><h2>Your booking details</h2></div><div data-testid="booking-details-date-summary"><div><div><time datetime="Tue, Nov 10, 2026"><h3>Check-in</h3><div>Tue, Nov 10, 2026</div><div>From 2:00 PM</div></time><div><hr></div><time datetime="Thu, Nov 12, 2026"><h3>Check-out</h3><div>Thu, Nov 12, 2026</div><div>Until 11:00 AM</div></time></div></div></div><div><div><div><div>You selected</div><div>2 nights, 1 room for 2 adults</div></div><ul><li><div>1 x Studio</div></li></ul></div></div></div>` +
+  `<div><div><h2>Your booking details</h2></div><div data-testid="booking-details-date-summary"><div><div><time datetime="Tue, Nov 10, 2026"><h3>Check-in</h3><div>Tue, Nov 10, 2026</div><div>From 2:00 PM</div></time><div><hr></div><time datetime="Thu, Nov 12, 2026"><h3>Check-out</h3><div>Thu, Nov 12, 2026</div><div>Until 11:00 AM</div></time></div></div></div><div><div><div><div>You selected</div><div>2 nights, 1 room for 2 adults</div></div><ul><li><div>1 x Studio</div></li></ul>${partyAlert ? PARTY_ALERT : ""}</div></div></div>` +
   `<div><div><h2>Your price summary</h2></div><div><div><div><div>Total</div></div><div><div><span data-component="core/animate-price" data-value="${total}" data-currency="${currency}" data-animate-price-group-name="bp_user_total_price">$397.97</span></div></div></div><div><div><div>Includes taxes and fees</div></div><div><div>In property currency: € 355.30</div></div></div></div></div>` +
   `<div data-testid="cancellation-policy"><div data-testid="policy-title">Non-refundable</div></div>` +
   (step === "details" ? `<div data-testid="user-details-container"><input data-testid="user-details-firstname"></div>` : "") +
@@ -1321,11 +1387,27 @@ test("get_checkout_step reads the details step: dates, selection, total and pric
   assert.deepEqual(output, {
     status: "ok", step: "your_details", seller: null, payment_timing: null, partner_offer: false, property_id: "1000001", property_name: "Harbor View Studios",
     check_in: "2026-11-10", check_out: "2026-11-12", check_in_time: "From 2:00 PM", check_out_time: "Until 11:00 AM",
-    selection: "2 nights, 1 room for 2 adults", units: ["1 x Studio"], total: 397.97, currency: "USD", total_text: "$397.97",
+    selection: "2 nights, 1 room for 2 adults", units: ["1 x Studio"], party_warning: null, total: 397.97, currency: "USD", total_text: "$397.97",
     price_notes: ["Includes taxes and fees", "In property currency: € 355.30"], cancellation: "Non-refundable", signed_in: false
   });
   assert.equal(calls.length, 0);
   assert.equal((await run("get_checkout_step", undefined, { start: "https://secure.booking.com/book.html", liveHtml: checkoutPage({ step: "other" }) })).output.step, "other");
+});
+
+test("get_checkout_step and continue_checkout report a selection that cannot hold the party", async () => {
+  const page = checkoutPage({ partyAlert: true });
+  const read = await run("get_checkout_step", {}, { start: "https://secure.booking.com/book.html?hotel_id=1000001&stage=1", liveHtml: page });
+  assert.equal(read.output.status, "ok");
+  assert.equal(read.output.party_warning, "Your selection accommodates fewer than 3 guests. You need to fit 1 child (5 years old)");
+  assert.deepEqual(read.output.units, ["1 x Studio"], "the alert is not read as a selected room");
+  const hidden = await run("get_checkout_step", {}, { start: "https://secure.booking.com/book.html?hotel_id=1000001&stage=1", liveHtml: page.replace('role="alert"', 'role="alert" hidden') });
+  assert.equal(hidden.output.party_warning, null, "an unrendered alert is not reported");
+  const env = makeEnv({ start: CHECKOUT, liveHtml: detailsForm().replace("<ul><li><div>1 x Studio</div></li></ul>", "<ul><li><div>1 x Studio</div></li></ul>" + PARTY_ALERT) });
+  await register("fill_guest_details", env).execute(GUEST);
+  const refused = plain(await register("continue_checkout", env).execute({ expected_total: 397.97 }));
+  assert.equal(refused.error_kind, "party_not_covered");
+  assert.match(refused.error_message, /"Your selection accommodates fewer than 3 guests\. You need to fit 1 child \(5 years old\)"/);
+  assert.equal(env.timers.length, 0, "nothing is pressed");
 });
 
 test("get_checkout_step reads the price notes when the summary also shows a discount", async () => {
