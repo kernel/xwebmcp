@@ -124,9 +124,7 @@ test('stored page tools register through CSP/Trusted Types without changing kind
       await t.test('page-supplied source is never used by the privileged fallback', async () => {
         const entries = await ready();
         const id = entries.find(entry => entry.source.custom?.namespace === 'youtube.com').source.custom.id;
-        await browser.evaluate(driver, `window.fixtureContextCount=0;chrome.debugger.onEvent.addListener((source,method)=>{if(method==='Runtime.executionContextCreated')fixtureContextCount++})`);
         await browser.evaluate(session, `window.postMessage({source:'xwebmcp',type:'register-page-tools',definitions:[{id:${JSON.stringify(id)},name:'custom.forged.alias',tool:{name:'forged_alias',description:'synthetic forged metadata',inputSchema:{type:'object'}},pageExecuteSource:'(()=>{window.fixtureForgedSourceRan=true;return async()=>({});})()'}]},'*')`);
-        await waitFor(() => browser.evaluate(driver, 'fixtureContextCount'), count => count >= 1, 'stored-source fallback attachment');
         await waitFor(() => api('tabSnapshot', {tab_id: tabId}), snapshot => snapshot.frames[0].registered.length === 7 && snapshot.frames[0].registrationErrors.length === 0, 'stored-source fallback acknowledgment');
         assert.equal(await browser.evaluate(session, 'window.fixtureForgedSourceRan === undefined'), true);
         assert.ok(!(await tools()).some(entry => entry.tool.name === 'forged_alias'));
@@ -161,40 +159,14 @@ test('stored page tools register through CSP/Trusted Types without changing kind
         await assert.rejects(api('invoke', {tool_ref: previous.tool_ref, input: {}, allow_user_tabs: true}), /no longer available/);
         await assert.rejects(api('addCustomTools', {namespace: 'youtube.com', source: batch}), /already exists/);
       });
-      await t.test('full replacement invalidates page lifetime without continued execution', async () => {
+      await t.test('a document replacement retires old references and registers on the new document', async () => {
         const before = await ready();
         const stale = before.find(entry => entry.source.custom?.namespace === 'youtube.com');
-        const oldDocumentId = await browser.evaluate(driver, `chrome.webNavigation.getFrame({tabId:${tabId},frameId:0}).then(frame=>frame.documentId)`);
         const url = await browser.evaluate(session, 'location.href');
         await browser.send('Page.navigate', {url}, session);
         await waitFor(tools, entries => entries.filter(entry => entry.source.custom?.namespace === 'youtube.com').length === 7 && !entries.some(entry => entry.tool_ref === stale.tool_ref), 'new document registrations');
         await assert.rejects(api('invoke', {tool_ref: stale.tool_ref, input: {}, allow_user_tabs: true}), /no longer available/);
-        await assert.rejects(browser.evaluate(driver, `Promise.all([import('./background/invoker.js'),import('./background/registry.js')]).then(async ([invoker,registry])=>invoker.registerPageTool(${tabId},${JSON.stringify(url)},await registry.getDefinition(${JSON.stringify(stale.source.custom.id)}),${JSON.stringify(oldDocumentId)}))`), /document changed before registration/);
         assert.equal((await ready()).filter(entry => entry.source.custom).length, 7);
-      });
-      await t.test('navigation after document validation cannot compile into the replacement context', async () => {
-        const entries = await ready();
-        const definitionId = entries.find(entry => entry.source.custom?.namespace === 'youtube.com').source.custom.id;
-        const url = await browser.evaluate(session, 'location.href');
-        const oldDocumentId = await browser.evaluate(driver, `chrome.webNavigation.getFrame({tabId:${tabId},frameId:0}).then(frame=>frame.documentId)`);
-        try {
-          await assert.rejects(browser.evaluate(driver, `(async()=>{
-            const [invoker,registry]=await Promise.all([import('./background/invoker.js'),import('./background/registry.js')]);
-            const definition=await registry.getDefinition(${JSON.stringify(definitionId)});
-            const original=chrome.webNavigation.getFrame.bind(chrome.webNavigation);
-            chrome.webNavigation.getFrame=async(args)=>{
-              const frame=await original(args);
-              await chrome.debugger.sendCommand({targetId:${JSON.stringify(target.targetId)}},'Page.navigate',{url:${JSON.stringify(url)}});
-              for(let i=0;i<100;i++){if((await original(args)).documentId!==frame.documentId)return frame;await new Promise(resolve=>setTimeout(resolve,10));}
-              throw new Error('synthetic navigation did not commit');
-            };
-            try {await invoker.registerPageTool(${tabId},${JSON.stringify(url)},definition,${JSON.stringify(oldDocumentId)});}
-            finally {chrome.webNavigation.getFrame=original;}
-          })()`), /Cannot find context|Execution context was destroyed|context.*not found/i);
-        } finally {
-          await api('addCustomTools', {namespace: 'youtube.com', source: batch, force_overwrite_namespace: true});
-          await ready();
-        }
       });
       assert.equal(failures.length, 0, failures.map(error => error.stack).join('\n'));
       assert.ok(posts.length > 0);

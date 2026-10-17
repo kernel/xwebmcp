@@ -86,7 +86,7 @@ chrome.runtime.onMessage.addListener((message, sender, reply) => {
           try {
             if (typeof message.url === 'string' && new URL(message.url).origin === new URL(sender.url).origin) url = message.url;
           } catch {}
-          return invoker.registerPageTool(sender.tab.id, url.split('#')[0], definition, sender.documentId);
+          return invoker.registerPageTool(sender.tab.id, url.split('#')[0], definition);
         })
         .then(() => reply({ok: true}))
         .catch((error) => reply({error: error instanceof Error ? error.message : String(error)}));
