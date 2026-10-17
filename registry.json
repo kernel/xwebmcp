@@ -445,6 +445,45 @@
       }
     },
     {
+      "domain": "airbnb.com",
+      "tool": "get_listing",
+      "file": "domains/airbnb.com/get_listing.js",
+      "kind": "page",
+      "namespace": "airbnb.com",
+      "url_patterns": [
+        "https://www.airbnb.com/*"
+      ],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "One anonymous public listing read; no dated prices, availability, host identities or account data. No navigation, redirects or retries. Automated access is restricted by site terms."
+    },
+    {
+      "domain": "airbnb.com",
+      "tool": "prepare_booking",
+      "file": "domains/airbnb.com/prepare_booking.js",
+      "kind": "page",
+      "namespace": "airbnb.com",
+      "url_patterns": [
+        "https://www.airbnb.com/*"
+      ],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Page-local preliminary dated price and human listing-page handoff; requires matching loaded English listing, dates, adult guests and USD request. Does not reserve, hold, message, accept terms or open checkout. Full totals and terms require human review."
+    },
+    {
+      "domain": "airbnb.com",
+      "tool": "search_stays",
+      "file": "domains/airbnb.com/search_stays.js",
+      "kind": "page",
+      "namespace": "airbnb.com",
+      "url_patterns": [
+        "https://www.airbnb.com/*"
+      ],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "One anonymous first-page stays search, at most 18 results; display-price text is not a dated quote. No navigation, pagination, redirects or retries. Automated access is restricted by site terms and robots.txt."
+    },
+    {
       "domain": "alaskaair.com",
       "tool": "search_flights",
       "file": "domains/alaskaair.com/search_flights.js",
