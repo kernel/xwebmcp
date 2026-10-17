@@ -617,7 +617,7 @@ test("get_property reads rooms, rates, cancellation, meal, taxes and the page's 
   assert.deepEqual(studio.highlights, ["Entire studio", "441 feet²", "Private bathroom"]);
   assert.deepEqual(studio.rates[0], {
     rate_id: "1001_2001_2_2_0", comparison_rank: 1, partner_offer: false,
-    max_guests: 2, max_adults: null, max_children: null,
+    max_guests: 2, max_adults: null, max_children: null, fits_party: true,
     price: { total: 316, original_total: 352, per_night_average: 158, total_before_taxes: 316.46, taxes_and_fees_excluded: "6 % VAT, € 4 City tax per person per night", total_text: "$316" },
     cancellation: "Non-refundable", free_cancellation: false, non_refundable: true, prepayment: "Pay the property before arrival", meal_plan: "Wonderful breakfast $16", member_discount: null
   });
@@ -780,7 +780,7 @@ test("get_property reads 'Max adults' when children are in the party and checks 
   assert.deepEqual(output.rates_left_out, { party_too_large: 1, unreadable: 0 });
 });
 
-test("get_property leaves out rates without a place for every child, in both capacity layouts", async () => {
+test("get_property keeps rates short of child places, marked, and leaves out rates short of adult places, in both capacity layouts", async () => {
   const childPage = (rows, occupancy = "2 adults · 1 child · 1 room", room1 = "A,A,5") => propertyPage({ rows, occupancy, room1 });
   const occupancyRows = [
     rateRow({ head: ROOM_A, blockId: "1001_2001_2_1_0", guests: "Max adults: 2", total: "$279" }),
@@ -789,22 +789,28 @@ test("get_property leaves out rates without a place for every child, in both cap
     rateRow({ blockId: "1002_2001_1_1_9", guests: "+ Max adults: 1 <br> Max children: 1 Only for 1 guest", total: "$271" })
   ];
   const old = await run("get_property", { ...PROPERTY, children_ages: [5], sort: "price_low_to_high" }, { routes: [propertyRoute({ body: childPage(occupancyRows) })] });
-  assert.deepEqual(old.output.rooms.flatMap(r => r.rates.map(x => [x.rate_id, x.max_adults, x.max_children])).sort(), [["1001_2001_2_1_9", 2, 1], ["1002_2001_3_1_0", 3, 0]]);
-  assert.deepEqual(old.output.rates_left_out, { party_too_large: 2, unreadable: 0 });
+  assert.deepEqual(old.output.rooms.flatMap(r => r.rates).sort((a, b) => a.comparison_rank - b.comparison_rank).map(x => [x.rate_id, x.max_adults, x.max_children, x.fits_party]),
+    [["1001_2001_2_1_0", 2, 0, false], ["1001_2001_2_1_9", 2, 1, true], ["1002_2001_3_1_0", 3, 0, true]]);
+  assert.deepEqual(old.output.rates_left_out, { party_too_large: 1, unreadable: 0 });
+  assert.match(old.output.warnings.join(" "), /1 rates have places for the adults but not for every child \(fits_party false\)/);
   const sleepsRows = [
     rateRow({ head: ROOM_A, blockId: "1001_2001_2_1_0", guests: null, sleeps: "Guests: 2 adults", total: "$279" }),
     rateRow({ blockId: "1001_2001_2_1_9", guests: null, sleeps: "Guests: 2 adults , 1 child", total: "$328" }),
     rateRow({ head: ROOM_B, blockId: "1002_2001_1_1_0", guests: null, sleeps: "Guests: 1 adult", total: "$247" }),
     rateRow({ blockId: "1002_2001_1_1_9", guests: null, sleeps: "Guests: 1 adult , 1 child", total: "$271" })
   ];
-  const fresh = await run("get_property", { ...PROPERTY, children_ages: [5], sort: "price_low_to_high" }, { routes: [propertyRoute({ body: childPage(sleepsRows) })] });
-  assert.deepEqual(fresh.output.rooms.flatMap(r => r.rates.map(x => [x.rate_id, x.max_guests, x.max_adults, x.max_children])), [["1001_2001_2_1_9", null, 2, 1]]);
-  assert.deepEqual(fresh.output.rates_left_out, { party_too_large: 3, unreadable: 0 });
+  const fresh = await run("get_property", { ...PROPERTY, children_ages: [5] }, { routes: [propertyRoute({ body: childPage(sleepsRows) })] });
+  assert.deepEqual(fresh.output.rooms.flatMap(r => r.rates.map(x => [x.rate_id, x.max_guests, x.max_adults, x.max_children, x.fits_party])),
+    [["1001_2001_2_1_0", null, 2, 0, false], ["1001_2001_2_1_9", null, 2, 1, true]]);
+  assert.deepEqual(fresh.output.rates_left_out, { party_too_large: 2, unreadable: 0 });
   const twoChildren = await run("get_property", { ...PROPERTY, children_ages: [12, 5] }, { routes: [propertyRoute({ body: childPage(sleepsRows, "2 adults · 2 children · 1 room", "A,A,12,5") })] });
-  assert.equal(twoChildren.output.status, "no_rate_for_party", "2 adults and 1 child places do not hold 2 adults and 2 children");
+  assert.deepEqual(twoChildren.output.rooms.flatMap(r => r.rates.map(x => x.fits_party)), [false, false], "2 adult and 1 child places do not hold 2 adults and 2 children");
   const adultsOnly = await run("get_property", PROPERTY, { routes: [propertyRoute({ body: propertyPage({ rows: sleepsRows }) })] });
-  assert.deepEqual(adultsOnly.output.rooms.flatMap(r => r.rates.map(x => x.rate_id)), ["1001_2001_2_1_0", "1001_2001_2_1_9"]);
+  assert.deepEqual(adultsOnly.output.rooms.flatMap(r => r.rates.map(x => [x.rate_id, x.fits_party])), [["1001_2001_2_1_0", true], ["1001_2001_2_1_9", true]]);
   assert.deepEqual(adultsOnly.output.rates_left_out, { party_too_large: 2, unreadable: 0 });
+  assert.doesNotMatch(adultsOnly.output.warnings.join(" "), /fits_party false/);
+  const total = await run("get_property", { ...PROPERTY, children_ages: [5] }, { routes: [propertyRoute({ body: childPage([rateRow({ head: ROOM_A, guests: "Max. people: 2" }), rateRow({ blockId: "1001_2002_2_2_0", guests: "Max. people: 1" })]) })] });
+  assert.deepEqual(total.output.rooms.flatMap(r => r.rates.map(x => [x.max_guests, x.max_children, x.fits_party])), [[2, null, false]], "a total holding only the adults is kept and marked; one short of the adults is left out");
 });
 
 test("get_property warns about rates that list no guest capacity", async () => {
@@ -1285,7 +1291,7 @@ test("select_room opens page_url from another page and never loops once it is th
 test("select_room acts only on page_url's party", async () => {
   const dated = PROPERTY.property_url + "?checkin=2026-11-10&checkout=2026-11-12";
   const pageUrl = dated + "&group_adults=2&no_rooms=1&group_children=2&age=5&age=12";
-  const withChildren = reservePage(propertyPage({ occupancy: "2 adults · 2 children · 1 room", rows: [rateRow({ head: ROOM_A, guests: "+ Max adults: 2 <br> Max children: 2" })] }));
+  const withChildren = reservePage(propertyPage({ occupancy: "2 adults · 2 children · 1 room", room1: "A,A,5,12", rows: [rateRow({ head: ROOM_A, guests: "+ Max adults: 2 <br> Max children: 2" })] }));
   for (const start of [dated + "&group_adults=2&no_rooms=1&group_children=0", dated + "&group_adults=2&no_rooms=1&group_children=2&age=5&age=11", dated + "&group_adults=2&no_rooms=2&group_children=2&age=5&age=12"]) {
     const { output, timers, env } = await run("select_room", { ...SELECT, page_url: pageUrl }, { start, liveHtml: withChildren });
     assert.equal(output.status, "opening_property_page", start);
@@ -1308,33 +1314,47 @@ test("select_room refuses a page that applied another party than page_url", asyn
   assert.match(output.error_message, /2 adults · 0 children · 1 room/);
   assert.equal(timers.length, 0, "neither reopened nor pressed");
   assert.equal(env.live.documentElement.outerHTML, new Document(page).documentElement.outerHTML);
-  const applied = await run("select_room", { ...SELECT, page_url: pageUrl }, { start: pageUrl, liveHtml: reservePage(propertyPage({ occupancy: "2 adults · 1 child · 1 room", rows: [rateRow({ head: ROOM_A, guests: null, sleeps: "Guests: 2 adults , 1 child" })] })) });
+  const childRows = [rateRow({ head: ROOM_A, guests: null, sleeps: "Guests: 2 adults , 1 child" })];
+  const applied = await run("select_room", { ...SELECT, page_url: pageUrl }, { start: pageUrl, liveHtml: reservePage(propertyPage({ occupancy: "2 adults · 1 child · 1 room", room1: "A,A,5", rows: childRows })) });
   assert.equal(applied.output.status, "navigation_scheduled");
+  const otherAge = reservePage(propertyPage({ occupancy: "2 adults · 1 child · 1 room", room1: "A,A,9", rows: childRows }));
+  const aged = await run("select_room", { ...SELECT, page_url: pageUrl }, { start: pageUrl, liveHtml: otherAge });
+  assert.equal(aged.output.error_kind, "wrong_page", "the same counts for another child age are another party");
+  assert.match(aged.output.error_message, /child ages 9/);
+  assert.equal(aged.timers.length, 0);
+  const noRooms = await run("select_room", { ...SELECT, page_url: pageUrl }, { start: pageUrl, liveHtml: reservePage(propertyPage({ occupancy: "2 adults · 1 child", room1: "A,A,5", rows: childRows })) });
+  assert.equal(noRooms.output.status, "navigation_scheduled", "an occupancy line without a room count is compared on what it shows");
+  const noForm = await run("select_room", { ...SELECT, page_url: pageUrl }, { start: pageUrl, liveHtml: reservePage(propertyPage({ occupancy: "2 adults · 1 child · 1 room", rows: childRows })).replace('<input type="hidden" name="room1" value="A,A">', "") });
+  assert.equal(noForm.output.status, "navigation_scheduled", "without the form's party the ages are not compared");
 });
 
-test("select_room refuses a rate without a place for every guest the page shows", async () => {
+test("select_room refuses a rate short of adult places and marks one short of child places", async () => {
   const pageUrl = PROPERTY.property_url + "?checkin=2026-11-10&checkout=2026-11-12&group_adults=2&no_rooms=1&group_children=1&age=5";
-  const child = rows => reservePage(propertyPage({ occupancy: "2 adults · 1 child · 1 room", rows }));
-  for (const [label, row] of [
-    ["adults-only occupancy", rateRow({ head: ROOM_A, guests: "Max adults: 2" })],
-    ["adults-only guests line", rateRow({ head: ROOM_A, guests: null, sleeps: "Guests: 2 adults" })],
-    ["too few people", rateRow({ head: ROOM_A, guests: "Max. people: 2" })],
-    ["single-guest rate", rateRow({ head: ROOM_A, guests: "Only for 1 guest" })]
+  const child = rows => reservePage(propertyPage({ occupancy: "2 adults · 1 child · 1 room", room1: "A,A,5", rows }));
+  for (const [label, row, message] of [
+    ["1-adult occupancy", rateRow({ head: ROOM_A, guests: "+ Max adults: 1 <br> Max children: 1" }), /places for 1 adult, fewer than the 2 adults/],
+    ["1-adult guests line", rateRow({ head: ROOM_A, guests: null, sleeps: "Guests: 1 adult , 1 child" }), /places for 1 adult, fewer than the 2 adults/],
+    ["single-guest rate", rateRow({ head: ROOM_A, guests: "Only for 1 guest" }), /places for 1 guest, fewer than the 2 adults/]
   ]) {
     const page = child([row]);
     const { output, timers, env } = await run("select_room", { ...SELECT, page_url: pageUrl }, { start: pageUrl, liveHtml: page });
     assert.equal(output.error_kind, "party_not_covered", label);
+    assert.match(output.error_message, message, label);
     assert.match(output.error_message, /2 adults · 1 child · 1 room/);
     assert.equal(timers.length, 0);
     assert.equal(env.live.documentElement.outerHTML, new Document(page).documentElement.outerHTML, label);
   }
-  for (const [label, row] of [
-    ["child place", rateRow({ head: ROOM_A, guests: "+ Max adults: 2 <br> Max children: 1" })],
-    ["child in an adult place", rateRow({ head: ROOM_A, guests: "Max adults: 3" })],
-    ["guests line with a child", rateRow({ head: ROOM_A, guests: null, sleeps: "Guests: 2 adults , 1 child" })],
-    ["no listed capacity", rateRow({ head: ROOM_A, guests: null })]
+  for (const [label, row, fits] of [
+    ["adults-only occupancy", rateRow({ head: ROOM_A, guests: "Max adults: 2" }), false],
+    ["adults-only guests line", rateRow({ head: ROOM_A, guests: null, sleeps: "Guests: 2 adults" }), false],
+    ["total for the adults", rateRow({ head: ROOM_A, guests: "Max. people: 2" }), false],
+    ["child place", rateRow({ head: ROOM_A, guests: "+ Max adults: 2 <br> Max children: 1" }), true],
+    ["child in an adult place", rateRow({ head: ROOM_A, guests: "Max adults: 3" }), true],
+    ["guests line with a child", rateRow({ head: ROOM_A, guests: null, sleeps: "Guests: 2 adults , 1 child" }), true],
+    ["no listed capacity", rateRow({ head: ROOM_A, guests: null }), null]
   ]) {
-    assert.equal((await run("select_room", { ...SELECT, page_url: pageUrl }, { start: pageUrl, liveHtml: child([row]) })).output.status, "navigation_scheduled", label);
+    const { output } = await run("select_room", { ...SELECT, page_url: pageUrl }, { start: pageUrl, liveHtml: child([row]) });
+    assert.deepEqual([output.status, output.fits_party], ["navigation_scheduled", fits], label);
   }
 });
 
