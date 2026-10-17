@@ -1,0 +1,1115 @@
+import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import test from "node:test";
+import { runInNewContext } from "node:vm";
+
+// Harness for the familysearch.org record tools. Every page and API interaction is stubbed and nothing here
+// contacts the live site. People, records, collections, places and the session id below are fabricated.
+const NAMES = ["search_records", "get_record", "list_collections", "get_collection", "prepare_source"];
+const sources = Object.fromEntries(NAMES.map(name => [name, readFileSync(new URL(`../domains/familysearch.org/${name}.js`, import.meta.url), "utf8")]));
+const registry = JSON.parse(readFileSync(new URL("../registry.json", import.meta.url), "utf8"));
+const plain = value => JSON.parse(JSON.stringify(value));
+const FAKE_SESSION = "fabricated-session-id-000";
+const OPERATOR = "fabricated-operator-note";
+
+function conforms(schema, value) {
+  if ("const" in schema && value !== schema.const) return false;
+  if (schema.enum && !schema.enum.includes(value)) return false;
+  if (schema.type && ![schema.type].flat().some(type => {
+    if (type === "null") return value === null;
+    if (type === "integer") return Number.isInteger(value);
+    if (type === "array") return Array.isArray(value);
+    if (type === "object") return value !== null && typeof value === "object" && !Array.isArray(value);
+    return typeof value === type;
+  })) return false;
+  if (schema.oneOf && schema.oneOf.filter(s => conforms(s, value)).length !== 1) return false;
+  if (Array.isArray(value)) {
+    if (schema.minItems !== undefined && value.length < schema.minItems) return false;
+    if (schema.maxItems !== undefined && value.length > schema.maxItems) return false;
+    if (schema.items && !value.every(item => conforms(schema.items, item))) return false;
+  }
+  if (value !== null && typeof value === "object" && !Array.isArray(value)) {
+    if (schema.required?.some(key => !Object.hasOwn(value, key))) return false;
+    if (schema.properties) {
+      if (Object.entries(schema.properties).some(([key, s]) => key in value && !conforms(s, value[key]))) return false;
+      if (schema.additionalProperties === false && Object.keys(value).some(key => !(key in schema.properties))) return false;
+    }
+  }
+  if (typeof value === "string") {
+    if (value.length < (schema.minLength ?? 0) || value.length > (schema.maxLength ?? Infinity)) return false;
+    if (schema.pattern && !new RegExp(schema.pattern).test(value)) return false;
+  }
+  if (typeof value === "number") {
+    if (value < (schema.minimum ?? -Infinity) || value > (schema.maximum ?? Infinity)) return false;
+  }
+  return true;
+}
+
+// --- fabricated site data ---------------------------------------------------------------------------
+
+const fact = (type, { date, place, normalized, value } = {}) => ({
+  type: `http://gedcomx.org/${type}`,
+  ...(date ? { date: { original: date } } : {}),
+  ...(place ? { place: { original: place, ...(normalized ? { normalized: [{ value: normalized }] } : {}) } } : {}),
+  ...(value ? { value } : {})
+});
+const field = (type, text, kind = "Interpreted") => ({ type: `http://familysearch.org/types/fields/${type}`, values: [{ labelId: type.toUpperCase(), text, type: `http://gedcomx.org/${kind}` }] });
+const person = (id, persona, name, gender, facts = [], fields = []) => ({
+  id, principal: true, display: { name, gender }, facts, fields,
+  identifiers: { "http://gedcomx.org/Persistent": [`https://www.familysearch.org/ark:/61903/1:1:${persona}`] }
+});
+const rel = (type, a, b) => ({ type: `http://gedcomx.org/${type}`, person1: { resource: `#${a}` }, person2: { resource: `#${b}` } });
+const recordSource = (title = "Household of Ada Example, \"Exampleland, Census, 1901\"") => ({
+  id: "src_r_1", resourceType: "http://gedcomx.org/Record", about: "https://www.familysearch.org/ark:/61903/1:2:AAAA-BBBB", titles: [{ value: title }],
+  citations: [{ value: "\"Exampleland, Census, 1901\", <i>FamilySearch</i> (https://www.familysearch.org/ark:/61903/1:1:AAAA-CCCC : Mon Jan 1 00:00:00 UTC 2024), Entry for Ada Example, 31 March 1901." }],
+  coverage: [{ recordType: "http://gedcomx.org/Census", spatial: { original: "Exampletown, Exampleshire, Exampleland" }, temporal: { original: "31 March 1901" } }]
+});
+const collectionSource = (id = "9000001", title = "Exampleland, Census, 1901") => ({
+  id: `sd_c_${id}`, resourceType: "http://gedcomx.org/Collection", about: `https://www.familysearch.org/service/cds/recapi/collections/${id}`, titles: [{ value: title }]
+});
+const FAMILY = () => [
+  person("p_1", "AAAA-CCCC", "Ada Example", "Female", [fact("Birth", { date: "1860", place: "Exampletown", normalized: "Exampletown, Exampleshire, Exampleland" }), fact("Census", { date: "31 March 1901", place: "Exampletown, Exampleshire, Exampleland" }), fact("Census", { date: "31 March 1901", place: "Exampletown, Exampleshire, Exampleland" }), fact("Occupation", { value: "Weaver" }), fact("MaritalStatus", { value: "Married" })],
+    [field("Age", "41 years"), field("RelationshipToHead", "Wife", "Original"), field("OccupationIndustry", "Textiles", "Original"), field("SortKey", "0000000000123_00001"), field("EnumeratorName", "Fabricated Enumerator", "Original")]),
+  person("p_2", "AAAA-CCCD", "Ben Example", "Male", [fact("Census", { date: "31 March 1901", place: "Exampletown" })], [field("Age", "45 years")]),
+  person("p_3", "AAAA-CCCF", "Cy Example", "Male", [fact("Census", { date: "31 March 1901", place: "Exampletown" })], [])
+];
+const FAMILY_RELS = () => [rel("Couple", "p_1", "p_2"), rel("ParentChild", "p_1", "p_3"), rel("ParentChild", "p_2", "p_3")];
+const searchEntry = (id = "AAAA-CCCC", extra = {}) => ({
+  id, score: 5.1, confidence: 4,
+  content: { gedcomx: { persons: FAMILY(), relationships: FAMILY_RELS(), sourceDescriptions: [recordSource(), collectionSource(), { id: "sd_da1", resourceType: "http://gedcomx.org/DigitalArtifact", about: "https://www.familysearch.org/ark:/61903/3:1:AAAA-BBBB-CCCC" }], links: { self: { href: `https://www.familysearch.org/ark:/61903/1:1:${id}` } } } },
+  ...extra
+});
+const collectionFacet = () => [{
+  displayName: "Collection", params: "c.collectionId=on&m.facetNestCollectionInCategory=on", count: 30,
+  facets: [
+    { displayName: "Censuses & Lists", params: "c.collectionType=on&f.collectionType=0", count: 30, facets: [{ displayName: "Exampleland, Census, 1901", params: "c.collectionId=on&f.collectionId=9000001", count: 25 }, { displayName: "Exampleland, Census, 1911", params: "c.collectionId=on&f.collectionId=9000002", count: 5 }] }
+  ]
+}, { displayName: "Sex", params: "c.sex=on", count: 30, facets: [{ displayName: "Female", params: "c.sex=on&f.sex=female", count: 20 }] }];
+const searchBody = (entries = [searchEntry()], results = 941) => ({ results, index: 0, entries, facets: collectionFacet() });
+
+const recordBody = (extra = {}) => ({
+  id: "r_1", description: "#sd_p_1", persons: FAMILY(), relationships: FAMILY_RELS(),
+  sourceDescriptions: [recordSource(), collectionSource(), { id: "sd_da1", resourceType: "http://gedcomx.org/DigitalArtifact", about: "https://www.familysearch.org/ark:/61903/3:1:AAAA-BBBB-CCCC" }],
+  fields: [{ type: "http://familysearch.org/types/fields/RecordGroup", values: [{ text: OPERATOR }] }, { type: "http://familysearch.org/types/fields/ExtData", values: [{ text: "{\"FS_COLLECTION_ID\":\"9000001\"}" }] }],
+  ...extra
+});
+const listEntry = (id, title, o = {}) => ({ collectionId: id, title, lastUpdatedMillis: Date.UTC(2026, 0, 15), startYear: 1901, endYear: 1901, placeIds: [100], recordType: "CENSUS", region: "UNITED_KINGDOM_IRELAND", recordCount: 1000, imageCount: 50, waypointUrl: null, ...o });
+const LIST = () => [
+  listEntry("9000001", "Exampleland, Census, 1901", { recordCount: 3000000 }),
+  listEntry("9000002", "Exampleland, Census, 1911", { startYear: 1911, endYear: 1911, recordCount: 4000000, imageCount: 0 }),
+  listEntry("9000003", "Exampleland, Civil Registration, 1850–1950", { startYear: 1850, endYear: 1950, recordType: "VITAL", recordCount: 0, imageCount: 900, lastUpdatedMillis: Date.UTC(2026, 5, 1) }),
+  listEntry("9000004", "Otherstate, Vital Records, 1880-1930", { startYear: 1880, endYear: 1930, placeIds: [200], region: "UNITED_STATES", recordType: "VITAL", recordCount: 500 }),
+  listEntry("9000005", "United States, Census, 1950", { startYear: 1950, endYear: 1950, placeIds: [1], region: "UNITED_STATES", recordCount: 150000000 }),
+  listEntry("9000006", "Exampleland Census Index", { startYear: 1901, endYear: 1921, recordType: "CENSUS", recordCount: 10 })
+];
+const listBody = (list = LIST()) => ({
+  collectionList: list, totalHits: 0,
+  facets: [{
+    token: "region", displayName: "Place", values: [
+      { token: "region:UNITED_KINGDOM_IRELAND", displayName: "United Kingdom and Ireland", facets: [{ token: "countryId", displayName: "Country", values: [{ token: "placeId:100", displayName: "Exampleland", "token-orig": "100" }] }] },
+      { token: "region:UNITED_STATES", displayName: "United States of America", facets: [{ token: "countryId", displayName: "Country", values: [{ token: "placeId:200", displayName: "Otherstate", "token-orig": "200" }, { token: "placeId:1", displayName: "United States", "token-orig": "1" }] }] }
+    ]
+  }]
+});
+
+// --- harness ------------------------------------------------------------------------------------------
+
+function harness(name, o = {}) {
+  const calls = [];
+  const timers = [];
+  const route = o.route ?? (() => ({ status: 200, body: {} }));
+  let sleeps = 0;
+  const document = {
+    get cookie() {
+      const cookie = o.cookie ?? `fs_experiments=abc; fssessionid=${FAKE_SESSION}; fsgeo=203.0.113.9`;
+      return o.cookieAfter !== undefined && sleeps < o.cookieAfter ? cookie.replace(/fssessionid=[^;]+;?\s*/, "") : cookie;
+    },
+    querySelector: selector => {
+      if (o.header === "in" && selector.includes("/auth/logout")) return {};
+      if (o.header === "out" && selector.includes("/identity/signup")) return {};
+      return null;
+    }
+  };
+  const origin = o.origin ?? "https://www.familysearch.org";
+  const context = {
+    URL, URLSearchParams, AbortController, document, location: { origin, host: new URL(origin).host },
+    setTimeout: (fn, ms) => {
+      if (ms === 500) { sleeps++; queueMicrotask(fn); return 0; }
+      timers.push(fn);
+      return timers.length;
+    },
+    clearTimeout: id => { timers[id - 1] = null; },
+    fetch: async (url, init) => {
+      calls.push({ url, init });
+      assert.equal(init.credentials, "include");
+      assert.ok(!String(url).startsWith("http"), "requests must be same-origin relative URLs");
+      if (o.fetchError) {
+        if (o.fetchError === "timeout") {
+          const aborted = new Promise((_, reject) => init.signal.addEventListener("abort", () => reject(new Error("aborted"))));
+          timers[0]();
+          return aborted;
+        }
+        throw new Error("network down");
+      }
+      const r = route(String(url), init);
+      const raw = r.html ? "<html>challenge</html>" : typeof r.body === "string" ? r.body : JSON.stringify(r.body ?? {});
+      return { status: r.status, headers: { get: header => (header.toLowerCase() === "content-type" ? (r.html ? "text/html" : "application/json") : null) }, text: async () => raw };
+    }
+  };
+  const [definition] = runInNewContext(`(${sources[name]})`, context);
+  return {
+    definition, calls, sleeps: () => sleeps,
+    run: async input => {
+      const result = plain(await definition.execute(input, o.signal ? { signal: o.signal } : {}));
+      assert.ok(conforms(definition.tool.outputSchema, result), `${name} output violates its schema: ${JSON.stringify(result)}`);
+      const text = JSON.stringify(result);
+      assert.ok(!text.includes(FAKE_SESSION), "the session id must not leave the page");
+      assert.ok(!text.includes(OPERATOR) && !text.includes("FS_COLLECTION_ID") && !text.includes("SortKey") && !text.includes("Fabricated Enumerator"), "internal record fields must not be returned");
+      return result;
+    }
+  };
+}
+const query = call => new URL(call.url, "https://www.familysearch.org").searchParams;
+
+// --- structure ----------------------------------------------------------------------------------------
+
+for (const name of NAMES) {
+  test(`${name}: single-expression page tool with typed schemas and a registry entry`, () => {
+    assert.equal(sources[name].trimEnd().endsWith(";"), false);
+    assert.equal(/\b(Buffer|require|process)\b/.test(sources[name]), false, "tool source must not depend on Node globals");
+    assert.equal(/\b(js|gotoUrl|pageInfo|waitForLoad|accessibilitySnapshot|click|pressKey|cdp)\(/.test(sources[name]), false, "page tools cannot use runtime helpers");
+    assert.equal(/location\.(assign|replace|href\s*=)|\.submit\(|window\.open/.test(sources[name]), false, "tools must never navigate the tab");
+    assert.equal(/method\s*:\s*["'](POST|PUT|PATCH|DELETE)/i.test(sources[name]), false, "tools only issue GET requests");
+    const { definition } = harness(name);
+    assert.equal(definition.tool.name, name);
+    assert.equal(definition.kind, "page");
+    assert.deepEqual(plain(definition.match.url_patterns), ["https://www.familysearch.org/*"]);
+    assert.equal(definition.tool.inputSchema.type, "object");
+    assert.equal(definition.tool.inputSchema.additionalProperties, false);
+    assert.equal(definition.tool.outputSchema.type, "object");
+    assert.equal(definition.tool.annotations.readOnlyHint, true);
+    assert.equal(definition.tool.annotations.destructiveHint, false);
+    const entry = registry.tools.find(t => t.domain === "familysearch.org" && t.tool === name);
+    assert.ok(entry, "registry entry missing");
+    assert.equal(entry.file, `domains/familysearch.org/${name}.js`);
+    assert.equal(entry.kind, "page");
+    assert.deepEqual(entry.url_patterns, plain(definition.match.url_patterns));
+  });
+}
+
+test("registry lists every familysearch.org tool exactly once", () => {
+  assert.deepEqual(registry.tools.filter(t => t.domain === "familysearch.org").map(t => t.tool).sort(), [...NAMES].sort());
+});
+
+// --- input validation happens before any request ------------------------------------------------------
+
+const invalidInputs = {
+  search_records: [undefined, null, [], "smith", {}, { surname: "" }, { surname: "   " }, { surname: 5 }, { surname: "x".repeat(101) }, { surname: "smith", extra: 1 },
+    { birth_year_from: 1880 }, { exact: true }, { surname: "smith", birth_year_from: 0 }, { surname: "smith", birth_year_from: 2101 }, { surname: "smith", birth_year_from: 1880.5 },
+    { surname: "smith", birth_year_from: "1880" }, { surname: "smith", birth_year_from: 1890, birth_year_to: 1880 }, { surname: "smith", exact: "yes" },
+    { surname: "smith", collection_id: "abc" }, { surname: "smith", collection_id: 4464515 }, { surname: "smith", collection_id: "12345678901" }, { surname: "smith", limit: 0 }, { surname: "smith", limit: 51 },
+    { surname: "smith", limit: "5" }, { surname: "smith", offset: -1 }, { surname: "smith", offset: 4999 }, { surname: "smith", limit: 50, offset: 4950 }, { surname: "smith", limit: 2, offset: 4998 }],
+  get_record: [undefined, null, [], {}, { record: "" }, { record: 5 }, { record: "   " }, { record: "abc" }, { record: "AAAA-BB" }, { record: "aaaa-bbbb" }, { record: "1:3:AAAA-BBBB" }, { record: "3:1:AAAA-BBBB-CCCC" },
+    { record: "https://www.familysearch.org/ark:/61903/1:3:AAAA-CCCC" }, { record: "ark:/61904/1:1:AAAA-CCCC" }, { record: "1:1:AAAA-CCCC?x=1" }, { record: "1:1:AAAA-CCCC#x" }, { record: "1:3:AAAA-CCCC" }, { record: "https://familysearch.org1:1:AAAA-CCCC" }, { record: "https://www.familysearch.org1:1:AAAA-CCCC" }, { record: "https://www.familysearch.org/1:1:AAAA-CCCC" }, { record: "https://familysearch.orgark:/61903/1:1:AAAA-CCCC" },
+    { record: "AAAA-CCCC" }, { record: "KWCJ-RN4" }, { record: "4:1:AAAA-CCCC" }, { record: "https://www.familysearch.org/ark:/61903/4:1:AAAA-CCCC" }, { record: "1:1:aaaa-cccc" }, { record: "https://www.familysearch.org/ark:/61903/1:1:AAAA-CCCC?" + "x".repeat(300) },
+    { record: "https://ancestors.familysearch.org/ark:/61903/1:1:AAAA-BBBB" }, { record: "https://familysearch.org.example.net/ark:/61903/1:1:AAAA-BBBB" }, { record: "http://www.familysearch.org/ark:/61903/1:1:AAAA-BBBB" },
+    { record: "https://www.familysearch.org/en/tree/person/details/AAAA-BBB" }, { record: "AAAA-BBBB", extra: 1 }, { record: "x".repeat(301) }],
+  get_collection: [undefined, null, [], {}, { collection_id: 5 }, { collection_id: "" }, { collection_id: "12345678901" }, { collection_id: "1?x" }, { collection_id: "9000001", extra: true }],
+  prepare_source: [undefined, null, [], {}, { record_url: "1:1:AAAA-CCCC" }, { record_url: "https://evil.example/ark:/61903/1:1:AAAA-CCCC" }, { record_url: "https://www.familysearch.org/ark:/61903/3:1:AAAA-CCCC" }, { record_url: "https://www.familysearch.org/ark:/61903/1:1:AAAA-CCCC?session=secret" }, { record_url: "https://www.familysearch.org/ark:/61903/1:1:AAAA-CCCC", confirmed: true }, { record_url: "https://www.familysearch.org/ark:/61903/1:1:AAAA-CCCC", research_note: "" }, { record_url: "https://www.familysearch.org/ark:/61903/1:1:AAAA-CCCC", research_note: "x".repeat(2001) }],
+  list_collections: [undefined, null, [], "ireland", { extra: 1 }, { query: "" }, { query: 5 }, { query: "x".repeat(101) }, { place: " " }, { record_type: "census" }, { record_type: "BIRTHS" }, { year_from: 0 }, { year_to: 2101 }, { year_from: 1950, year_to: 1900 },
+    { year_from: "1900" }, { min_records: 0 }, { min_records: 1.5 }, { has_images: "yes" }, { sort_by: "size" }, { limit: 0 }, { limit: 51 }, { offset: -1 }, { offset: 3501 }]
+};
+for (const [name, inputs] of Object.entries(invalidInputs)) {
+  for (const input of inputs) {
+    test(`${name}: rejects ${JSON.stringify(input)?.slice(0, 80)} before any request`, async () => {
+      const h = harness(name, { route: () => ({ status: 200, body: {} }) });
+      const result = await h.run(input);
+      assert.equal(result.status, "error");
+      assert.equal(result.error_kind, "invalid_input");
+      assert.deepEqual(h.calls, []);
+    });
+  }
+}
+
+const validInputs = { search_records: { surname: "Example" }, get_record: { record: "1:1:AAAA-CCCC" }, list_collections: {}, get_collection: { collection_id: "9000001" }, prepare_source: { record_url: "https://www.familysearch.org/ark:/61903/1:1:AAAA-CCCC" } };
+for (const name of NAMES) {
+  test(`${name}: a registration on another familysearch.org host returns wrong_page without any request`, async () => {
+    for (const origin of ["https://ident.familysearch.org", "https://ancestors.familysearch.org", "https://familysearch.org"]) {
+      const h = harness(name, { origin, route: () => ({ status: 200, body: {} }) });
+      const result = await h.run(validInputs[name]);
+      assert.equal(result.status, "error");
+      assert.equal(result.error_kind, "wrong_page");
+      assert.match(result.error_message, /www\.familysearch\.org/);
+      assert.deepEqual(h.calls, []);
+    }
+  });
+}
+
+// --- search_records -----------------------------------------------------------------------------------
+
+test("search_records: sends the site's own query flags and terms and maps hits to the allowlisted fields", async () => {
+  const h = harness("search_records", { header: "out", route: () => ({ status: 200, body: searchBody([searchEntry("AAAA-CCCC"), searchEntry("AAAA-CCCD")], 941) }) });
+  const result = await h.run({ given_name: "  Ada  ", surname: "Example", birth_place: "Exampleshire", birth_year_from: 1855, birth_year_to: 1865, keyword: "weaver", limit: 2 });
+  assert.equal(h.calls.length, 1);
+  const call = h.calls[0];
+  assert.match(call.url, /^\/service\/search\/hr\/v2\/personas\?/);
+  assert.equal(call.init.headers.Authorization, undefined, "search sends no bearer token");
+  assert.deepEqual(Object.fromEntries(query(call)), {
+    count: "2", offset: "0", "m.defaultFacets": "on", "m.facetNestCollectionInCategory": "on", "m.queryRequireDefault": "on",
+    "q.givenName": "Ada", "q.surname": "Example", "q.birthLikePlace": "Exampleshire", "q.birthLikeDate.from": "1855", "q.birthLikeDate.to": "1865", "q.miscKeyword": "weaver"
+  });
+  assert.equal(result.status, "ok");
+  assert.equal(result.signed_in, false);
+  assert.equal(result.total_results, 941);
+  assert.equal(result.returned, 2);
+  assert.equal(result.has_more, true);
+  const [first, second] = result.hits;
+  assert.equal(first.persona_id, "AAAA-CCCC");
+  assert.equal(first.record_url, "https://www.familysearch.org/ark:/61903/1:1:AAAA-CCCC");
+  assert.equal(second.persona_id, "AAAA-CCCD");
+  assert.equal(first.name, "Ada Example");
+  assert.equal(first.sex, "Female");
+  assert.equal(first.record_type, "Census");
+  assert.equal(first.record_title, "Household of Ada Example, \"Exampleland, Census, 1901\"");
+  assert.deepEqual(first.collection, { collection_id: "9000001", title: "Exampleland, Census, 1901" });
+  assert.deepEqual(first.birth, { date: "1860", place: "Exampletown, Exampleshire, Exampleland" });
+  assert.deepEqual(first.events, [{ type: "Census", date: "31 March 1901", place: "Exampletown, Exampleshire, Exampleland" }]);
+  assert.deepEqual(first.attributes, [{ type: "Occupation", value: "Weaver" }, { type: "MaritalStatus", value: "Married" }]);
+  assert.deepEqual(first.relatives, [
+    { relationship: "spouse", name: "Ben Example", sex: "Male", persona_id: "AAAA-CCCD" },
+    { relationship: "child", name: "Cy Example", sex: "Male", persona_id: "AAAA-CCCF" }
+  ]);
+  assert.deepEqual(second.relatives, [{ relationship: "spouse", name: "Ada Example", sex: "Female", persona_id: "AAAA-CCCC" }, { relationship: "child", name: "Cy Example", sex: "Male", persona_id: "AAAA-CCCF" }]);
+  assert.deepEqual(result.collections, [
+    { collection_id: "9000001", title: "Exampleland, Census, 1901", hit_count: 25 },
+    { collection_id: "9000002", title: "Exampleland, Census, 1911", hit_count: 5 }
+  ]);
+});
+
+test("search_records: exact and collection filters use the site's parameter names", async () => {
+  const h = harness("search_records", { header: "in", route: () => ({ status: 200, body: searchBody([searchEntry()], 1) }) });
+  const result = await h.run({ given_name: "Ada", surname: "Example", birth_place: "Exampleshire", exact: true, collection_id: "9000001", offset: 40, limit: 10 });
+  const params = query(h.calls[0]);
+  for (const key of ["q.givenName.exact", "q.surname.exact", "q.birthLikePlace.exact", "c.collectionId"]) assert.equal(params.get(key), "on", key);
+  assert.equal(params.get("f.collectionId"), "9000001");
+  assert.equal(params.get("offset"), "40");
+  assert.equal(params.get("count"), "10");
+  assert.equal(params.has("q.miscKeyword"), false);
+  assert.equal(result.signed_in, true);
+  assert.equal(result.has_more, false);
+});
+
+test("search_records: encodes special characters instead of splicing them into the query", async () => {
+  const h = harness("search_records", { route: () => ({ status: 200, body: searchBody() }) });
+  await h.run({ surname: "O'Neil & Sons=x", given_name: "Zoë #1" });
+  assert.equal(query(h.calls[0]).get("q.surname"), "O'Neil & Sons=x");
+  assert.equal(query(h.calls[0]).get("q.givenName"), "Zoë #1");
+  assert.equal([...query(h.calls[0]).keys()].filter(k => k.startsWith("q.")).length, 2);
+});
+
+test("search_records: the subject is the entry whose persistent id matches, whichever order the people come in", async () => {
+  const entry = searchEntry("AAAA-CCCD");
+  const h = harness("search_records", { route: () => ({ status: 200, body: searchBody([entry], 1) }) });
+  const result = await h.run({ surname: "Example" });
+  assert.equal(result.hits[0].name, "Ben Example");
+  assert.deepEqual(result.hits[0].relatives.map(r => r.relationship), ["spouse", "child"]);
+  assert.equal(result.hits[0].birth, null);
+});
+
+test("search_records: has_more respects the site's result depth", async () => {
+  const total = 100000;
+  const entries = [searchEntry("AAAA-CCCC"), searchEntry("AAAA-CCCD")];
+  for (const [offset, expected] of [[4996, true], [4997, false]]) {
+    const h = harness("search_records", { route: () => ({ status: 200, body: searchBody(entries, total) }) });
+    const result = await h.run({ surname: "Example", limit: 2, offset });
+    assert.equal(result.has_more, offset + 2 <= 4998, `offset ${offset}`);
+    assert.equal(result.has_more, expected);
+  }
+  const h = harness("search_records", { route: () => ({ status: 200, body: searchBody([searchEntry()], 1) }) });
+  assert.equal((await h.run({ surname: "Example" })).has_more, false);
+});
+
+test("search_records: reports no_results, and an offset past the last hit, without inventing hits", async () => {
+  const empty = harness("search_records", { header: "out", route: () => ({ status: 200, body: { results: 0, index: 0, entries: [], facets: [] } }) });
+  assert.deepEqual(await empty.run({ surname: "Nobody" }), { status: "no_results", signed_in: false, total_results: 0, offset: 0 });
+  const past = harness("search_records", { route: () => ({ status: 200, body: { results: 30, index: 40, facets: [] } }) });
+  assert.deepEqual(await past.run({ surname: "Example", offset: 40 }), { status: "no_results", signed_in: null, total_results: 30, offset: 40 });
+});
+
+test("search_records: signed_in comes from the page header only", async () => {
+  for (const [header, expected] of [["in", true], ["out", false], [undefined, null]]) {
+    const h = harness("search_records", { header, route: () => ({ status: 200, body: searchBody() }) });
+    assert.equal((await h.run({ surname: "Example" })).signed_in, expected);
+    assert.equal(h.calls.length, 1, "no extra request is made to learn the sign-in state");
+  }
+});
+
+test("search_records: maps site refusals to explicit errors", async () => {
+  const cases = [
+    [{ status: 401 }, "out", "login_required", /signed-in browser/],
+    [{ status: 401 }, "in", "login_required", /expired/],
+    [{ status: 403, body: { message: "no" } }, "out", "forbidden", /refused/],
+    [{ status: 403, html: true }, "out", "challenge", /bot protection/],
+    [{ status: 200, html: true }, "out", "challenge", /instead of search data/],
+    [{ status: 429 }, "out", "rate_limited", /rate limiting/],
+    [{ status: 500, body: {} }, "out", "site_error", /HTTP 500/],
+    [{ status: 400, body: { errors: ["Unsupported Term=zzz"] } }, "out", "site_error", /Unsupported Term=zzz/],
+    [{ status: 200, body: { unexpected: true } }, "out", "site_changed", /expected shape/],
+    [{ status: 200, body: { results: "many", entries: [] } }, "out", "site_changed", /expected shape/],
+    [{ status: 200, body: { results: 3, entries: [{ id: "AAAA-CCCC", content: {} }, { id: 7 }] } }, "out", "site_changed", /persona structure/]
+  ];
+  for (const [response, header, kind, message] of cases) {
+    const h = harness("search_records", { header, route: () => response });
+    const result = await h.run({ surname: "Example", collection_id: "9000001" });
+    assert.equal(result.status, "error");
+    assert.equal(result.error_kind, kind, JSON.stringify(response));
+    assert.match(result.error_message, message);
+  }
+  for (const fetchError of [true, "timeout"]) {
+    const result = await harness("search_records", { fetchError }).run({ surname: "Example" });
+    assert.equal(result.error_kind, "site_error");
+    assert.match(result.error_message, fetchError === "timeout" ? /40 seconds/ : /failed before a response/);
+  }
+});
+
+test("search_records: sanitizes untrusted record text and bounds every list", async () => {
+  const persons = FAMILY();
+  persons[0].display.name = "Ada\u0000 \u0007Example\n" + "x".repeat(400);
+  persons[0].facts = Array.from({ length: 30 }, (_, i) => fact("Residence", { date: `${1800 + i}`, place: `Place ${i}` })).concat(Array.from({ length: 30 }, (_, i) => fact(`Attr${i}`, { value: `v${i}` })));
+  const entry = searchEntry();
+  entry.content.gedcomx.persons = persons.concat(Array.from({ length: 30 }, (_, i) => person(`p_x${i}`, `ZZZZ-${String(1000 + i)}`, `Extra ${i}`, "Male")));
+  entry.content.gedcomx.relationships = Array.from({ length: 30 }, (_, i) => rel("ParentChild", "p_1", `p_x${i}`));
+  const h = harness("search_records", { route: () => ({ status: 200, body: searchBody([entry], 1) }) });
+  const [hit] = (await h.run({ surname: "Example" })).hits;
+  assert.ok(hit.name.length <= 200 && !/[\u0000-\u001f]/.test(hit.name));
+  assert.equal(hit.events.length, 8);
+  assert.equal(hit.attributes.length, 8);
+  assert.equal(hit.relatives.length, 10);
+});
+
+// --- get_record ---------------------------------------------------------------------------------------
+
+const recordRoute = (body = recordBody()) => (url, init) => {
+  if (/\/ark:\/61903\/1:[12]:AAAA-CCCC\?/.test(url) || /\/ark:\/61903\/1:2:AAAA-BBBB\?/.test(url)) return { status: 200, body };
+  return { status: 404, body: {} };
+};
+
+test("get_record: reads the persona and returns the household, links, collection and citation", async () => {
+  const h = harness("get_record", { header: "in", route: recordRoute() });
+  const result = await h.run({ record: "https://www.familysearch.org/ark:/61903/1:1:AAAA-CCCC?lang=en&cc=123#x" });
+  assert.equal(h.calls.length, 1);
+  assert.equal(h.calls[0].url, "/ark:/61903/1:1:AAAA-CCCC?useSLS=true&useRolesOverride=false");
+  assert.equal(h.calls[0].init.headers.Authorization, `Bearer ${FAKE_SESSION}`);
+  assert.equal(h.calls[0].init.headers.Accept, "application/json");
+  assert.equal(result.status, "ok");
+  assert.equal(result.record_url, "https://www.familysearch.org/ark:/61903/1:1:AAAA-CCCC");
+  assert.equal(result.ark_kind, "persona");
+  assert.equal(result.record_type, "Census");
+  assert.equal(result.record_title, "Household of Ada Example, \"Exampleland, Census, 1901\"");
+  assert.deepEqual(result.collection, { collection_id: "9000001", title: "Exampleland, Census, 1901", url: "https://www.familysearch.org/en/search/collection/9000001" });
+  assert.deepEqual(result.event, { date: "31 March 1901", place: "Exampletown, Exampleshire, Exampleland" });
+  assert.equal(result.subject_index, 0);
+  assert.equal(result.persons_truncated, false);
+  assert.deepEqual(result.persons.map(p => p.persona_id), ["AAAA-CCCC", "AAAA-CCCD", "AAAA-CCCF"]);
+  assert.deepEqual(result.persons[0], {
+    persona_id: "AAAA-CCCC", record_url: "https://www.familysearch.org/ark:/61903/1:1:AAAA-CCCC", name: "Ada Example", sex: "Female",
+    birth: { date: "1860", place: "Exampletown, Exampleshire, Exampleland" },
+    events: [{ type: "Census", date: "31 March 1901", place: "Exampletown, Exampleshire, Exampleland" }],
+    attributes: [{ type: "Occupation", value: "Weaver" }, { type: "MaritalStatus", value: "Married" }, { type: "Age", value: "41 years" }, { type: "RelationshipToHead", value: "Wife" }, { type: "OccupationIndustry", value: "Textiles" }]
+  });
+  assert.deepEqual(result.relationships, [{ type: "couple", person_1: 0, person_2: 1 }, { type: "parent_child", person_1: 0, person_2: 2 }, { type: "parent_child", person_1: 1, person_2: 2 }]);
+  assert.equal(result.citation, "\"Exampleland, Census, 1901\", FamilySearch (https://www.familysearch.org/ark:/61903/1:1:AAAA-CCCC : Mon Jan 1 00:00:00 UTC 2024), Entry for Ada Example, 31 March 1901.");
+});
+
+test("get_record: accepts ark paths, household arks and URLs, and canonicalizes the URL", async () => {
+  for (const [record, url, kind, subject] of [
+    ["1:1:AAAA-CCCC", "/ark:/61903/1:1:AAAA-CCCC?", "persona", 0],
+    ["ark:/61903/1:1:AAAA-CCCC", "/ark:/61903/1:1:AAAA-CCCC?", "persona", 0],
+    ["/ark:/61903/1:2:AAAA-BBBB", "/ark:/61903/1:2:AAAA-BBBB?", "record", null],
+    ["https://familysearch.org/ark:/61903/1:2:AAAA-BBBB", "/ark:/61903/1:2:AAAA-BBBB?", "record", null],
+    ["  https://www.familysearch.org/ark:/61903/1:1:AAAA-CCCC  ", "/ark:/61903/1:1:AAAA-CCCC?", "persona", 0]
+  ]) {
+    const h = harness("get_record", { route: recordRoute() });
+    const result = await h.run({ record });
+    assert.ok(h.calls[0].url.startsWith(url), record);
+    assert.equal(result.ark_kind, kind);
+    assert.equal(result.subject_index, subject);
+    assert.equal(result.record_url, "https://www.familysearch.org/ark:/61903" + url.slice("/ark:/61903".length, -1));
+  }
+});
+
+test("get_record: sends the session bearer only when the page has a session cookie, and never returns it", async () => {
+  const anonymous = harness("get_record", { cookie: "fsgeo=203.0.113.9", route: recordRoute() });
+  const result = await anonymous.run({ record: "1:1:AAAA-CCCC" });
+  assert.equal(result.status, "ok");
+  assert.equal(anonymous.calls[0].init.headers.Authorization, undefined);
+  const withSession = harness("get_record", { cookie: `a=1;fssessionid=${FAKE_SESSION};b=2`, route: recordRoute() });
+  await withSession.run({ record: "1:1:AAAA-CCCC" });
+  assert.equal(withSession.calls[0].init.headers.Authorization, `Bearer ${FAKE_SESSION}`);
+});
+
+test("get_record: strips markup, control characters and unallowlisted fields from untrusted record data", async () => {
+  const body = recordBody();
+  body.persons[0].display.name = "Ada <b>Example</b>\u0000\u0007";
+  body.sourceDescriptions[0].citations[0].value = "<script>alert(1)</script>Cited <i>work</i>, entry";
+  const h = harness("get_record", { route: recordRoute(body) });
+  const result = await h.run({ record: "1:1:AAAA-CCCC" });
+  assert.equal(result.citation, "alert(1)Cited work, entry");
+  assert.ok(!/[\u0000-\u001f]/.test(result.persons[0].name));
+  const text = JSON.stringify(result);
+  for (const banned of [OPERATOR, "ExtData", "SortKey", "EnumeratorName", "RecordGroup"]) assert.ok(!text.includes(banned), banned);
+});
+
+test("get_record: caps a very large household at 40 people and keeps links between those people only", async () => {
+  const body = recordBody();
+  body.persons = Array.from({ length: 45 }, (_, i) => person(`p_${i}`, `BBBB-${String(1000 + i)}`, `Person ${i}`, "Male"));
+  body.persons[0] = { ...FAMILY()[0], id: "p_0" };
+  body.relationships = [rel("Couple", "p_0", "p_1"), rel("ParentChild", "p_0", "p_44"), rel("Friend", "p_0", "p_2")];
+  const h = harness("get_record", { route: (url) => (/AAAA-CCCC/.test(url) ? { status: 200, body } : { status: 404 }) });
+  const result = await h.run({ record: "1:1:AAAA-CCCC" });
+  assert.equal(result.persons.length, 40);
+  assert.equal(result.persons_truncated, true);
+  assert.deepEqual(result.relationships, [{ type: "couple", person_1: 0, person_2: 1 }]);
+});
+
+test("get_record: a persona ark that is not among the listed people has no subject", async () => {
+  const body = recordBody();
+  body.persons.forEach(p => { p.identifiers = {}; });
+  const h = harness("get_record", { route: recordRoute(body) });
+  const result = await h.run({ record: "1:1:AAAA-CCCC" });
+  assert.equal(result.subject_index, null);
+  assert.equal(result.persons[0].persona_id, null);
+  assert.equal(result.persons[0].record_url, null);
+});
+
+test("get_record: a persistent id with trailing text is not read as a persona id", async () => {
+  const body = recordBody();
+  body.persons[0].identifiers["http://gedcomx.org/Persistent"] = ["https://www.familysearch.org/ark:/61903/1:1:AAAA-CCCCZZ", "https://www.familysearch.org/ark:/61903/1:1:AAAA-CCCC/extra"];
+  const result = await harness("get_record", { route: recordRoute(body) }).run({ record: "1:1:AAAA-CCCC" });
+  assert.equal(result.persons[0].persona_id, null);
+  assert.equal(result.subject_index, null);
+});
+
+test("get_record: maps site refusals to explicit errors", async () => {
+  const cases = [
+    [{ status: 401 }, "out", "login_required", /requires a signed-in browser/],
+    [{ status: 401 }, "in", "login_required", /did not accept this browser's session/],
+    [{ status: 403, body: { message: "no" } }, "in", "forbidden", /needs a signed-in account/],
+    [{ status: 403, html: true }, "out", "challenge", /bot protection/],
+    [{ status: 200, html: true }, "out", "challenge", /instead of record data/],
+    [{ status: 404, body: {} }, "out", "not_found", /no record 1:1:AAAA-CCCC/],
+    [{ status: 429 }, "out", "rate_limited", /rate limiting/],
+    [{ status: 503, body: {} }, "out", "site_error", /HTTP 503/],
+    [{ status: 200, body: { persons: [] } }, "out", "site_changed", /expected shape/],
+    [{ status: 200, body: { unexpected: 1 } }, "out", "site_changed", /expected shape/]
+  ];
+  for (const [response, header, kind, message] of cases) {
+    const h = harness("get_record", { header, route: () => response });
+    const result = await h.run({ record: "1:1:AAAA-CCCC" });
+    assert.equal(result.status, "error");
+    assert.equal(result.error_kind, kind, JSON.stringify(response));
+    assert.match(result.error_message, message);
+  }
+  for (const fetchError of [true, "timeout"]) {
+    const result = await harness("get_record", { fetchError }).run({ record: "1:1:AAAA-CCCC" });
+    assert.equal(result.error_kind, "site_error");
+  }
+});
+
+// --- list_collections ---------------------------------------------------------------------------------
+
+const listRun = async (input, list = listBody()) => {
+  const h = harness("list_collections", { route: () => ({ status: 200, body: list }) });
+  return { h, result: await h.run(input) };
+};
+const ids = result => result.collections.map(c => c.collection_id);
+
+test("list_collections: reads the site's own collection list once and maps the allowlisted fields", async () => {
+  const { h, result } = await listRun({});
+  assert.equal(h.calls.length, 1);
+  assert.equal(h.calls[0].url, "/search/orchestration/collectionListData");
+  assert.equal(h.calls[0].init.headers.Authorization, undefined);
+  assert.equal(result.status, "ok");
+  assert.equal(result.total_matches, 6);
+  assert.deepEqual(ids(result), ["9000005", "9000002", "9000001", "9000004", "9000006", "9000003"]);
+  const census = result.collections.find(c => c.collection_id === "9000001");
+  assert.deepEqual(census, {
+    collection_id: "9000001", title: "Exampleland, Census, 1901", url: "https://www.familysearch.org/en/search/collection/9000001", record_type: "CENSUS", region: "UNITED_KINGDOM_IRELAND",
+    start_year: 1901, end_year: 1901, places: ["Exampleland"], record_count: 3000000, image_count: 50, last_updated: "2026-01-15"
+  });
+  assert.ok(!JSON.stringify(result).includes("waypoint"));
+});
+
+test("list_collections: title words must all match, and relevance puts titles that start with the query first", async () => {
+  assert.deepEqual(ids((await listRun({ query: "census exampleland" })).result), ["9000002", "9000001", "9000006"]);
+  assert.deepEqual(ids((await listRun({ query: "exampleland census" })).result), ["9000002", "9000001", "9000006"]);
+  const withPrefix = listBody([...LIST(), listEntry("9000007", "Census: Exampleland Supplement", { recordCount: 20 })]);
+  assert.deepEqual(ids((await listRun({ query: "census exampleland" }, withPrefix)).result), ["9000007", "9000002", "9000001", "9000006"]);
+  assert.deepEqual(ids((await listRun({ query: "CIVIL registration" })).result), ["9000003"]);
+  assert.deepEqual(await (await listRun({ query: "zzz" })).result, { status: "no_results", total_matches: 0, offset: 0 });
+});
+
+test("list_collections: place matches a country, a state or a world region by its filter name", async () => {
+  assert.deepEqual(ids((await listRun({ place: "exampleland" })).result).sort(), ["9000001", "9000002", "9000003", "9000006"]);
+  assert.deepEqual(ids((await listRun({ place: "OTHERSTATE" })).result), ["9000004"]);
+  assert.deepEqual(ids((await listRun({ place: "United States" })).result), ["9000005"]);
+  assert.deepEqual(ids((await listRun({ place: "United States of America" })).result), ["9000005", "9000004"]);
+  assert.deepEqual(ids((await listRun({ place: "United Kingdom and Ireland" })).result).sort(), ["9000001", "9000002", "9000003", "9000006"]);
+});
+
+test("list_collections: an unknown place is an input error with similar names, not an empty list", async () => {
+  const { result } = await listRun({ place: "Example" });
+  assert.equal(result.status, "error");
+  assert.equal(result.error_kind, "invalid_input");
+  assert.match(result.error_message, /similar names: Exampleland/);
+  const none = (await listRun({ place: "Atlantis" })).result;
+  assert.equal(none.error_kind, "invalid_input");
+  assert.match(none.error_message, /use a country, US state or world-region name/);
+});
+
+test("list_collections: type, year overlap, size and image filters", async () => {
+  assert.deepEqual(ids((await listRun({ record_type: "VITAL" })).result).sort(), ["9000003", "9000004"]);
+  assert.deepEqual(ids((await listRun({ year_from: 1940 })).result).sort(), ["9000003", "9000005"]);
+  assert.deepEqual(ids((await listRun({ year_to: 1850 })).result), ["9000003"]);
+  assert.deepEqual(ids((await listRun({ year_from: 1905, year_to: 1911 })).result).sort(), ["9000002", "9000003", "9000004", "9000006"]);
+  assert.deepEqual(ids((await listRun({ min_records: 3500000 })).result), ["9000005", "9000002"]);
+  assert.deepEqual(ids((await listRun({ has_images: false })).result), ["9000002"]);
+  assert.deepEqual(ids((await listRun({ has_images: true, record_type: "CENSUS", place: "exampleland" })).result).sort(), ["9000001", "9000006"]);
+  const imageOnly = (await listRun({ record_type: "VITAL", place: "exampleland" })).result.collections[0];
+  assert.equal(imageOnly.record_count, 0);
+  assert.equal(imageOnly.image_count, 900);
+});
+
+test("list_collections: sorting and paging", async () => {
+  const byTitle = LIST().sort((a, b) => a.title.localeCompare(b.title)).map(c => c.collectionId);
+  assert.deepEqual(ids((await listRun({ sort_by: "title" })).result), byTitle);
+  assert.deepEqual(ids((await listRun({ sort_by: "last_updated", limit: 1 })).result), ["9000003"]);
+  const page = (await listRun({ limit: 2, offset: 2 })).result;
+  assert.deepEqual([page.total_matches, page.offset, page.returned, page.has_more, ids(page)], [6, 2, 2, true, ["9000001", "9000004"]]);
+  const last = (await listRun({ limit: 5, offset: 4 })).result;
+  assert.deepEqual([last.returned, last.has_more], [2, false]);
+  assert.deepEqual((await listRun({ offset: 6 })).result, { status: "no_results", total_matches: 6, offset: 6 });
+});
+
+test("list_collections: keeps non-ASCII titles and reports absent dates and counts as safe defaults", async () => {
+  const { result } = await listRun({ query: "1850–1950" });
+  assert.equal(result.collections[0].title, "Exampleland, Civil Registration, 1850–1950");
+  const odd = listBody([listEntry("9000009", "Odd", { startYear: null, endYear: null, recordCount: null, imageCount: undefined, lastUpdatedMillis: undefined, placeIds: [999] })]);
+  const item = (await listRun({}, odd)).result.collections[0];
+  assert.deepEqual([item.start_year, item.end_year, item.record_count, item.image_count, item.last_updated, item.places], [null, null, 0, 0, null, []]);
+});
+
+test("list_collections: maps site refusals and shape changes to explicit errors", async () => {
+  const cases = [
+    [{ status: 401 }, "login_required", /signed-in browser/],
+    [{ status: 403, body: {} }, "forbidden", /refused/],
+    [{ status: 403, html: true }, "challenge", /bot protection/],
+    [{ status: 200, html: true }, "challenge", /instead of the collection list/],
+    [{ status: 429 }, "rate_limited", /rate limiting/],
+    [{ status: 502, body: {} }, "site_error", /HTTP 502/],
+    [{ status: 200, body: { collectionList: [] } }, "site_changed", /expected shape/],
+    [{ status: 200, body: { collectionList: [{ collectionId: 5, title: "x" }] } }, "site_changed", /expected shape/],
+    [{ status: 200, body: { nothing: true } }, "site_changed", /expected shape/]
+  ];
+  for (const [response, kind, message] of cases) {
+    const h = harness("list_collections", { route: () => response });
+    const result = await h.run({});
+    assert.equal(result.status, "error");
+    assert.equal(result.error_kind, kind, JSON.stringify(response));
+    assert.match(result.error_message, message);
+  }
+  const noFacet = harness("list_collections", { route: () => ({ status: 200, body: { collectionList: LIST(), facets: [] } }) });
+  assert.equal((await noFacet.run({ place: "Exampleland" })).error_kind, "site_changed");
+  assert.equal((await noFacet.run({ query: "census" })).status, "ok");
+  for (const fetchError of [true, "timeout"]) {
+    assert.equal((await harness("list_collections", { fetchError }).run({})).error_kind, "site_error");
+  }
+});
+
+// --- review fixes ---------------------------------------------------------------------------------------
+
+test("search_records: waits for the site to set an anonymous session cookie before searching", async () => {
+  const late = harness("search_records", { cookieAfter: 3, route: () => ({ status: 200, body: searchBody() }) });
+  assert.equal((await late.run({ surname: "Example" })).status, "ok");
+  assert.equal(late.sleeps(), 3);
+  const ready = harness("search_records", { route: () => ({ status: 200, body: searchBody() }) });
+  await ready.run({ surname: "Example" });
+  assert.equal(ready.sleeps(), 0);
+});
+
+test("search_records: a page that never gets a session cookie is a site_error, not a sign-in request", async () => {
+  const noCookie = { cookie: "fsgeo=203.0.113.9" };
+  const refused = harness("search_records", { ...noCookie, header: "out", route: () => ({ status: 401 }) });
+  const result = await refused.run({ surname: "Example" });
+  assert.equal(result.error_kind, "site_error");
+  assert.match(result.error_message, /no FamilySearch session cookie/);
+  assert.doesNotMatch(result.error_message, /Sign in/);
+  assert.equal(refused.sleeps(), 20);
+  const answered = harness("search_records", { ...noCookie, route: () => ({ status: 200, body: searchBody() }) });
+  assert.equal((await answered.run({ surname: "Example" })).status, "ok");
+});
+
+test("search_records: keeps the site's error text readable when errors are not strings", async () => {
+  const h = harness("search_records", { route: () => ({ status: 400, body: { errors: [{ code: 1 }, "Bad Term=x"] } }) });
+  assert.match((await h.run({ surname: "Example" })).error_message, /HTTP 400: Bad Term=x\./);
+  const objects = harness("search_records", { route: () => ({ status: 400, body: { errors: [{ code: 1 }] } }) });
+  const result = await objects.run({ surname: "Example" });
+  assert.doesNotMatch(result.error_message, /object Object/);
+  assert.match(result.error_message, /HTTP 400\./);
+});
+
+test("search_records: skips entries whose persona id is not in the site's uppercase format", async () => {
+  const entry = searchEntry("AAAA-CCCC");
+  entry.id = "aaaa-cccc";
+  for (const person of entry.content.gedcomx.persons) person.identifiers["http://gedcomx.org/Persistent"] = person.identifiers["http://gedcomx.org/Persistent"].map(uri => uri.toLowerCase());
+  const h = harness("search_records", { route: () => ({ status: 200, body: searchBody([entry], 1) }) });
+  assert.equal((await h.run({ surname: "Example" })).error_kind, "site_changed");
+});
+
+test("search_records: lists at most 10 collections, largest first", async () => {
+  const body = searchBody();
+  body.facets = [{ displayName: "Collection", params: "c.collectionId=on&m.facetNestCollectionInCategory=on", count: 100, facets: [{ displayName: "Group", params: "c.collectionType=on&f.collectionType=0", facets: Array.from({ length: 12 }, (_, i) => ({ displayName: `Collection ${i}`, params: `c.collectionId=on&f.collectionId=${8000000 + i}`, count: i + 1 })) }] }];
+  const result = await harness("search_records", { route: () => ({ status: 200, body }) }).run({ surname: "Example" });
+  assert.deepEqual(result.collections.map(c => c.hit_count), [12, 11, 10, 9, 8, 7, 6, 5, 4, 3]);
+});
+
+test("every tool removes default-ignorable characters and turns other control characters into spaces", async () => {
+  const ignorable = ["\u00ad", "\u034f", "\u061c", "\u115f", "\u1160", "\u17b4", "\u17b5", "\u180b", "\u180d", "\u180e", "\u180f", "\u200b", "\u200c", "\u200d", "\u200e", "\u200f", "\u202a", "\u202e", "\u2060", "\u2064", "\u2065", "\u2066", "\u2069", "\u206f", "\u3164", "\ufe00", "\ufe0e", "\ufe0f", "\ufeff", "\uffa0", "\ufff0", "\u{e0000}", "\u{e0041}", "\u{e007f}", "\u{e0100}", "\u{e01ef}"];
+  const spaced = ["\u0085", "\u2028", "\u2029", "\u2800", "\u0007", "\t", "\n"];
+  const dirty = "Ada" + ignorable.join("") + " Exa" + ignorable.join("x") + "mple " + spaced.join("z") + "!";
+  const cleaned = "Ada Exa" + "x".repeat(ignorable.length - 1) + "mple " + "z ".repeat(spaced.length - 1) + "!";
+  const entry = searchEntry();
+  entry.content.gedcomx.persons[0].display.name = dirty;
+  const search = await harness("search_records", { route: () => ({ status: 200, body: searchBody([entry], 1) }) }).run({ surname: "Example" });
+  assert.equal(search.hits[0].name, cleaned);
+  const body = recordBody();
+  body.persons[0].display.name = dirty;
+  const record = await harness("get_record", { route: recordRoute(body) }).run({ record: "1:1:AAAA-CCCC" });
+  assert.equal(record.persons[0].name, cleaned);
+  const list = await harness("list_collections", { route: () => ({ status: 200, body: listBody([listEntry("9000001", dirty)]) }) }).run({});
+  assert.equal(list.collections[0].title, cleaned);
+  for (const blankTitle of [ignorable.join(""), spaced.join(""), ignorable.join("") + spaced.join("")]) {
+    const blank = await harness("list_collections", { route: () => ({ status: 200, body: listBody([listEntry("9000001", blankTitle)]) }) }).run({});
+    assert.equal(blank.collections[0].title, "(untitled)");
+  }
+});
+
+test("search_records and list_collections delete invisible characters in input terms instead of splitting words", async () => {
+  const search = harness("search_records", { route: () => ({ status: 200, body: searchBody() }) });
+  await search.run({ surname: "Sch\u00admidt", given_name: "Ali\u200crez\u200da", birth_place: "Ex\u202eam\u200bple", keyword: "wea\u2060ver\u0007x" });
+  const params = query(search.calls[0]);
+  assert.deepEqual([params.get("q.surname"), params.get("q.givenName"), params.get("q.birthLikePlace"), params.get("q.miscKeyword")], ["Schmidt", "Alireza", "Example", "weaver x"]);
+  assert.equal((await harness("search_records").run({ surname: "\u00ad\u200b" })).error_kind, "invalid_input");
+  const list = listBody([listEntry("9000001", "Ire\u00adland, Civil Registration"), listEntry("9000002", "Ireland Census")]);
+  assert.deepEqual(ids((await listRun({ query: "Ire\u00adland civil\u200b" }, list)).result), ["9000001"]);
+  assert.deepEqual(ids((await listRun({ query: "ireland" }, list)).result).sort(), ["9000001", "9000002"]);
+  assert.equal((await harness("list_collections").run({ query: "\u00ad\u200b\u2060" })).error_kind, "invalid_input");
+  assert.equal((await harness("list_collections").run({ place: "\u00ad" })).error_kind, "invalid_input");
+});
+
+const crowd = (count, subjectAt) => Array.from({ length: count }, (_, i) => person(`p_${i}`, i === subjectAt ? "AAAA-CCCC" : `BBBB-${String(1000 + i)}`, `Person ${i}`, "Male"));
+
+test("get_record: the requested person is always included and listed first when the record is truncated", async () => {
+  const body = recordBody({ persons: crowd(60, 55), relationships: [rel("Couple", "p_55", "p_1"), rel("Couple", "p_0", "p_1")] });
+  const result = await harness("get_record", { route: recordRoute(body) }).run({ record: "1:1:AAAA-CCCC" });
+  assert.equal(result.persons.length, 40);
+  assert.equal(result.persons_truncated, true);
+  assert.equal(result.subject_index, 0);
+  assert.equal(result.persons[0].persona_id, "AAAA-CCCC");
+  assert.equal(result.persons[1].name, "Person 0");
+  assert.deepEqual(result.relationships, [{ type: "couple", person_1: 0, person_2: 2 }, { type: "couple", person_1: 1, person_2: 2 }]);
+});
+
+test("get_record: the requested person stays in place at index 39 and moves to the front at index 40", async () => {
+  for (const [at, expected] of [[39, 39], [40, 0]]) {
+    const body = recordBody({ persons: crowd(60, at), relationships: [] });
+    const result = await harness("get_record", { route: recordRoute(body) }).run({ record: "1:1:AAAA-CCCC" });
+    assert.equal(result.subject_index, expected, `subject at ${at}`);
+    assert.equal(result.persons[expected].persona_id, "AAAA-CCCC");
+  }
+});
+
+test("get_record: persons_truncated turns on only above 40 people", async () => {
+  for (const [count, truncated] of [[40, false], [41, true]]) {
+    const body = recordBody({ persons: crowd(count, 0), relationships: [] });
+    const result = await harness("get_record", { route: recordRoute(body) }).run({ record: "1:1:AAAA-CCCC" });
+    assert.equal(result.persons.length, 40);
+    assert.equal(result.persons_truncated, truncated, `${count} people`);
+    assert.equal(result.subject_index, 0);
+  }
+});
+
+test("get_record: bounds events, attributes and links per record", async () => {
+  const body = recordBody({ persons: crowd(40, 0), relationships: [] });
+  body.persons[0].facts = Array.from({ length: 20 }, (_, i) => fact("Residence", { date: `${1800 + i}`, place: `Place ${i}` })).concat(Array.from({ length: 20 }, (_, i) => fact(`Attr${i}`, { value: `v${i}` })));
+  body.persons[0].fields = [field("Age", "40 years")];
+  for (const [links, truncated] of [[80, false], [81, true]]) {
+    body.relationships = Array.from({ length: links }, (_, i) => rel("ParentChild", "p_0", `p_${1 + (i % 39)}`));
+    const result = await harness("get_record", { route: recordRoute(body) }).run({ record: "1:1:AAAA-CCCC" });
+    assert.equal(result.persons[0].events.length, 12);
+    assert.equal(result.persons[0].attributes.length, 12);
+    assert.equal(result.relationships.length, 80);
+    assert.equal(result.relationships_truncated, truncated, `${links} links`);
+  }
+});
+
+test("get_record: only a cookie named exactly fssessionid becomes the bearer token", async () => {
+  for (const cookie of ["notfssessionid=abc; x=1", "xfssessionid=abc", "fssessionid_old=abc", "a=1"]) {
+    const h = harness("get_record", { cookie, route: recordRoute() });
+    await h.run({ record: "1:1:AAAA-CCCC" });
+    assert.equal(h.calls[0].init.headers.Authorization, undefined, cookie);
+  }
+});
+
+test("get_record: removes entity-encoded and literal markup from the citation", async () => {
+  const body = recordBody();
+  body.sourceDescriptions[0].citations[0].value = "&lt;script&gt;alert(1)&lt;/script&gt;Cited &amp;amp; <i>x</i> &#39;q&#39; &quot;r&quot;";
+  const result = await harness("get_record", { route: recordRoute(body) }).run({ record: "1:1:AAAA-CCCC" });
+  assert.equal(result.citation, "alert(1)Cited &amp; x 'q' \"r\"");
+});
+
+test("list_collections: query words match whole words only, ignoring case, accents and punctuation", async () => {
+  const list = listBody([
+    listEntry("9000010", "Us Census Records"), listEntry("9000011", "Albania, Census, 1930"), listEntry("9000012", "Argentina, Córdoba, Censuses, 1869"),
+    listEntry("9000013", "Exampleland, Civil Registration, 1850–1950"), listEntry("9000014", "Exampleland Marriages")
+  ]);
+  assert.deepEqual(ids((await listRun({ query: "us" }, list)).result), ["9000010"]);
+  assert.deepEqual(ids((await listRun({ query: "us census" }, list)).result), ["9000010"]);
+  assert.deepEqual((await listRun({ query: "cens" }, list)).result, { status: "no_results", total_matches: 0, offset: 0 });
+  assert.deepEqual(ids((await listRun({ query: "CORDOBA censuses" }, list)).result), ["9000012"]);
+  assert.deepEqual(ids((await listRun({ query: "civil-registration 1850 1950" }, list)).result), ["9000013"]);
+  for (const query of ["!!!", " – ", "---"]) {
+    const h = harness("list_collections", { route: () => ({ status: 200, body: list }) });
+    const result = await h.run({ query });
+    assert.equal(result.error_kind, "invalid_input");
+    assert.deepEqual(h.calls, []);
+  }
+});
+
+test("list_collections: filter boundaries are inclusive", async () => {
+  const list = listBody([
+    listEntry("9000021", "A", { startYear: 1900, endYear: 1910, recordCount: 100 }),
+    listEntry("9000022", "B", { startYear: 1911, endYear: 1920, recordCount: 99 })
+  ]);
+  assert.deepEqual(ids((await listRun({ year_from: 1910 }, list)).result).sort(), ["9000021", "9000022"]);
+  assert.deepEqual(ids((await listRun({ year_from: 1911 }, list)).result), ["9000022"]);
+  assert.deepEqual(ids((await listRun({ year_to: 1911 }, list)).result).sort(), ["9000021", "9000022"]);
+  assert.deepEqual(ids((await listRun({ year_to: 1910 }, list)).result), ["9000021"]);
+  assert.deepEqual(ids((await listRun({ min_records: 100 }, list)).result), ["9000021"]);
+  assert.deepEqual(ids((await listRun({ min_records: 99 }, list)).result).sort(), ["9000021", "9000022"]);
+});
+
+test("list_collections: lists at most 6 places per collection and survives implausible dates", async () => {
+  const many = Array.from({ length: 8 }, (_, i) => 300 + i);
+  const list = listBody([listEntry("9000031", "Wide", { placeIds: many, lastUpdatedMillis: 1e20 }), listEntry("9000032", "Old", { lastUpdatedMillis: -5 })]);
+  list.facets[0].values[0].facets[0].values.push(...many.map(id => ({ token: `placeId:${id}`, displayName: `Place ${id}`, "token-orig": String(id) })));
+  const result = (await listRun({ sort_by: "title" }, list)).result;
+  assert.deepEqual(result.collections.map(c => c.places.length), [0 + 1, 6]);
+  assert.deepEqual(result.collections.map(c => c.last_updated), [null, null]);
+});
+
+test("list_collections: collection ids that are not plain digits are a site_changed error", async () => {
+  for (const collectionId of ["../../evil", "123456789012", "12a", ""]) {
+    const h = harness("list_collections", { route: () => ({ status: 200, body: listBody([listEntry(collectionId, "Odd")]) }) });
+    assert.equal((await h.run({})).error_kind, "site_changed", collectionId);
+  }
+});
+
+// --- second review round --------------------------------------------------------------------------------
+
+test("list_collections: folds letters without a decomposition and keeps other scripts intact", async () => {
+  const list = listBody([
+    listEntry("9000041", "Croatia, Međimurje, Church Records"), listEntry("9000042", "Deutschland, Ahnenpäße"), listEntry("9000043", "Norge, Øvre Æble, Łódź"),
+    listEntry("9000044", "Ελλάδα, Μητρώα")
+  ]);
+  assert.deepEqual(ids((await listRun({ query: "medimurje" }, list)).result), ["9000041"]);
+  assert.deepEqual(ids((await listRun({ query: "Međimurje" }, list)).result), ["9000041"]);
+  assert.deepEqual(ids((await listRun({ query: "ahnenpasse" }, list)).result), ["9000042"]);
+  assert.deepEqual(ids((await listRun({ query: "ovre aeble lodz" }, list)).result), ["9000043"]);
+  assert.deepEqual(ids((await listRun({ query: "ΕΛΛΆΔΑ" }, list)).result), ["9000044"]);
+});
+
+test("list_collections: every folded letter matches its ASCII spelling", async () => {
+  const pairs = [["Hođić", "hodic"], ["Ðorđe", "dorde"], ["Łódź", "lodz"], ["Ørsted", "orsted"], ["Æsir", "aesir"], ["Œuvre", "oeuvre"], ["Straße", "strasse"], ["Þór", "thor"], ["Ħal", "hal"], ["Ismaıl", "ismail"]];
+  const list = listBody(pairs.map(([title], i) => listEntry(String(9000100 + i), title)));
+  for (const [i, [title, ascii]] of pairs.entries()) {
+    assert.deepEqual(ids((await listRun({ query: ascii }, list)).result), [String(9000100 + i)], title);
+    assert.deepEqual(ids((await listRun({ query: title }, list)).result), [String(9000100 + i)], title);
+  }
+});
+
+test("search_records: only a cookie named exactly fssessionid counts as the session", async () => {
+  const h = harness("search_records", { cookie: "xfssessionid=abc; fssessionid_old=1", route: () => ({ status: 200, body: searchBody() }) });
+  await h.run({ surname: "Example" });
+  assert.equal(h.sleeps(), 20);
+  const ok = harness("search_records", { cookie: "a=1; fssessionid=abc", route: () => ({ status: 200, body: searchBody() }) });
+  await ok.run({ surname: "Example" });
+  assert.equal(ok.sleeps(), 0);
+});
+
+test("search_records: a persistent id with trailing text does not identify the hit's person", async () => {
+  const entry = searchEntry("AAAA-CCCC");
+  entry.content.gedcomx.persons[0].identifiers["http://gedcomx.org/Persistent"] = ["https://www.familysearch.org/ark:/61903/1:1:AAAA-CCCCZZ"];
+  const h = harness("search_records", { route: () => ({ status: 200, body: searchBody([entry], 1) }) });
+  assert.equal((await h.run({ surname: "Example" })).error_kind, "site_changed");
+});
+
+test("search_records: collection_id accepts up to 10 digits and rejects 11", async () => {
+  const ok = harness("search_records", { route: () => ({ status: 200, body: searchBody() }) });
+  assert.equal((await ok.run({ surname: "Example", collection_id: "1234567890" })).status, "ok");
+  assert.equal(query(ok.calls[0]).get("f.collectionId"), "1234567890");
+  for (const collection_id of ["12345678901", "", "1 2"]) assert.equal((await harness("search_records").run({ surname: "Example", collection_id })).error_kind, "invalid_input");
+});
+
+test("list_collections: collection ids of 10 digits are kept and 11 digits are a site_changed error", async () => {
+  const ok = await harness("list_collections", { route: () => ({ status: 200, body: listBody([listEntry("1234567890", "Ten")]) }) }).run({});
+  assert.equal(ok.collections[0].url, "https://www.familysearch.org/en/search/collection/1234567890");
+  const bad = harness("list_collections", { route: () => ({ status: 200, body: listBody([listEntry("12345678901", "Eleven")]) }) });
+  assert.equal((await bad.run({})).error_kind, "site_changed");
+});
+
+test("get_record: the record length limit is exactly 300 characters and the host must be followed by a slash", async () => {
+  const base = "https://www.familysearch.org/ark:/61903/1:1:AAAA-CCCC?";
+  for (const [length, ok] of [[299, true], [300, true], [301, false]]) {
+    const h = harness("get_record", { route: recordRoute() });
+    const result = await h.run({ record: base + "x".repeat(length - base.length) });
+    assert.equal(result.status === "ok", ok, `length ${length}`);
+    if (!ok) assert.equal(result.error_kind, "invalid_input");
+  }
+  for (const record of ["https://familysearch.org1:1:AAAA-CCCC", "https://www.familysearch.org1:1:AAAA-CCCC", "https://familysearch.orgark:/61903/1:1:AAAA-CCCC", "https://www.familysearch.org/1:1:AAAA-CCCC"]) {
+    const result = await harness("get_record", { route: recordRoute() }).run({ record });
+    assert.equal(result.error_kind, "invalid_input", record);
+  }
+});
+
+test("get_record: entities are decoded once and only real tags are removed from the citation", async () => {
+  const cases = [
+    ["&amp;lt;b&amp;gt;kept&amp;lt;/b&amp;gt;", "&lt;b&gt;kept&lt;/b&gt;"],
+    ["Value 1 < 2 and 3 > 1", "Value 1 < 2 and 3 > 1"],
+    ["Cited <b>work</b> <br/> here", "Cited work here"],
+    ["Cited <unclosed and more", "Cited"],
+    ["a &lt; b &amp;&amp; c &gt; d", "a < b && c > d"],
+    ["&#60;script&#62;alert(1)&#60;/script&#62;kept &#x3c;b&#x3e;bold&#x3c;/b&#x3e;", "alert(1)kept bold"],
+    ["&#0;x&#1114112;y&#55296;z&#8238;w", "xyzw"],
+    ["Cited <B>work</B> <!-- hidden --> and <!-- unterminated", "Cited work and"],
+    ["See <http://example.com/a> for &lt;http://example.com/b&gt;", "See <http://example.com/a> for <http://example.com/b>"],
+    ["x <a href=\"u\">link</a> y <br> z", "x link y z"]
+  ];
+  for (const [value, expected] of cases) {
+    const body = recordBody();
+    body.sourceDescriptions[0].citations[0].value = value;
+    const result = await harness("get_record", { route: recordRoute(body) }).run({ record: "1:1:AAAA-CCCC" });
+    assert.equal(result.citation, expected, value);
+  }
+});
+
+test("get_record: a truncated record lists the requested person once and ignores links to dropped people", async () => {
+  const body = recordBody({ persons: crowd(60, 55), relationships: [] });
+  const result = await harness("get_record", { route: recordRoute(body) }).run({ record: "1:1:AAAA-CCCC" });
+  assert.equal(result.persons.filter(p => p.persona_id === "AAAA-CCCC").length, 1);
+  assert.equal(new Set(result.persons.map(p => p.name)).size, 40);
+  for (const [valid, dropped, truncated] of [[79, 21, false], [80, 20, false], [81, 19, true]]) {
+    const links = Array.from({ length: valid }, (_, i) => rel("ParentChild", "p_55", `p_${i % 39}`)).concat(Array.from({ length: dropped }, (_, i) => rel("ParentChild", "p_55", `p_${45 + (i % 10)}`)));
+    const many = await harness("get_record", { route: recordRoute(recordBody({ persons: crowd(60, 55), relationships: links })) }).run({ record: "1:1:AAAA-CCCC" });
+    assert.equal(many.relationships.length, Math.min(valid, 80), `${valid} valid links`);
+    assert.equal(many.relationships_truncated, truncated, `${valid} valid links`);
+  }
+});
+
+const detailBody = () => ({
+  id: "9000001", sourceDescriptions: [{ id: "9000001", resourceType: "http://gedcomx.org/Collection", titles: [{ value: "Exampleland Census" }], descriptions: [{ value: "Index <b>description</b>" }], citations: [{ value: "Cited &#60;i&#62;work&#60;/i&#62;." }], coverage: [{ recordType: "http://gedcomx.org/Census", temporal: { original: "1901" }, spatial: { original: "Exampleland" } }] }],
+  collections: [{ id: "9000001", content: [{ resourceType: "http://gedcomx.org/Record", count: 100 }, { resourceType: "http://gedcomx.org/Person", count: 200 }, { resourceType: "http://gedcomx.org/DigitalArtifact#FamilySearch", count: 50 }] }],
+  links: { private: { href: "https://evil.example/?token=fabricated" } }
+});
+const detailRoute = (body = detailBody(), guide = { data: "/wiki/en/Exampleland_Census_-_Historical_Records" }) => path => ({ status: 200, body: path.includes("wikiurl") ? guide : body });
+
+test("get_collection: exact identity, coverage, counts, citation and safe guide handoff", async () => {
+  const h = harness("get_collection", { route: detailRoute() });
+  const out = await h.run(validInputs.get_collection);
+  assert.deepEqual(out, { status: "ok", collection_id: "9000001", url: "https://www.familysearch.org/en/search/collection/9000001", title: "Exampleland Census", description: "Index description", citation: "Cited work.", coverage: [{ record_type: "Census", date: "1901", place: "Exampleland" }], record_count: 100, person_count: 200, image_count: 50, research_guide_url: "https://www.familysearch.org/wiki/en/Exampleland_Census_-_Historical_Records" });
+  assert.deepEqual(h.calls.map(c => c.url), ["/service/search/hr/v2/collections/9000001", "/search/orchestration/wikiurl/9000001"]);
+  assert.ok(h.calls.every(c => !c.init.headers.Authorization && !c.init.method));
+  assert.ok(!JSON.stringify(out).includes("evil.example"));
+});
+
+test("get_collection: missing guide/counts are null; wrong identity fails before guide lookup", async () => {
+  const body = detailBody(); body.collections[0].content = [];
+  const out = await harness("get_collection", { route: detailRoute(body, { data: null }) }).run(validInputs.get_collection);
+  assert.deepEqual([out.record_count, out.person_count, out.image_count, out.research_guide_url], [null, null, null, null]);
+  body.id = "9000002";
+  const h = harness("get_collection", { route: detailRoute(body) });
+  assert.equal((await h.run(validInputs.get_collection)).error_kind, "site_changed");
+  assert.equal(h.calls.length, 1);
+});
+
+for (const data of [undefined, "https://evil.example/guide", "//evil.example/guide", "/wiki/en/Guide?session=secret", "/wiki/en/Guide#secret", "/wiki/en/Guide\\evil", "/wiki/en/" + "x".repeat(1001)]) {
+  test(`get_collection: rejects unsafe guide path ${String(data).slice(0, 50)}`, async () => {
+    const out = await harness("get_collection", { route: detailRoute(detailBody(), { data }) }).run(validInputs.get_collection);
+    assert.equal(out.error_kind, "site_changed");
+    assert.ok(!JSON.stringify(out).includes("secret"));
+  });
+}
+
+test("get_collection: text/coverage bounds and absent versus invalid counts", async () => {
+  const body = detailBody(); const s = body.sourceDescriptions[0];
+  s.titles[0].value = "T\u00ad" + "x".repeat(500); s.descriptions[0].value = "x".repeat(3000); s.citations[0].value = "x".repeat(1500); s.coverage = Array.from({ length: 10 }, () => ({ temporal: { original: "x".repeat(200) }, spatial: { original: "x".repeat(300) } }));
+  body.collections[0].content[0].count = -1; body.collections[0].content[1].count = 1.5;
+  const out = await harness("get_collection", { route: detailRoute(body) }).run(validInputs.get_collection);
+  assert.deepEqual([out.title.length, out.description.length, out.citation.length, out.coverage.length, out.coverage[0].date.length, out.coverage[0].place.length], [300, 2000, 1000, 6, 100, 200]);
+  assert.deepEqual([out.record_count, out.person_count], [null, null]);
+});
+
+test("prepare_source: separates caller note from observed evidence and never saves", async () => {
+  const h = harness("prepare_source", { route: recordRoute() });
+  const out = await h.run({ ...validInputs.prepare_source, research_note: "Check Exa\u00admple\nagainst another record." });
+  assert.deepEqual([out.status, out.saved, out.review_required, out.subject_name, out.research_note], ["prepared", false, true, "Ada Example", "Check Example against another record."]);
+  assert.equal(out.title, recordSource().titles[0].value);
+  assert.equal(out.collection_url, "https://www.familysearch.org/en/search/collection/9000001");
+  assert.ok(out.citation.includes("FamilySearch") && !out.citation.includes("<i>"));
+  assert.equal(h.calls.length, 1);
+  assert.equal(h.calls[0].init.headers.Authorization, `Bearer ${FAKE_SESSION}`);
+  assert.equal(h.calls[0].init.method, undefined);
+  assert.equal(h.calls[0].url, "/ark:/61903/1:1:AAAA-CCCC?useSLS=true&useRolesOverride=false");
+});
+
+test("prepare_source: whole-record draft has no inferred person or fabricated citation", async () => {
+  const body = recordBody(); delete body.sourceDescriptions[0].citations;
+  const h = harness("prepare_source", { cookie: "xfssessionid=fabricated", route: recordRoute(body) });
+  const out = await h.run({ record_url: "https://www.familysearch.org/ark:/61903/1:2:AAAA-BBBB" });
+  assert.deepEqual([out.subject_name, out.citation, out.research_note, out.saved], [null, null, null, false]);
+  assert.equal(h.calls[0].init.headers.Authorization, undefined);
+});
+
+test("prepare_source: mismatched persona or missing source never produces a draft", async () => {
+  for (const body of [recordBody({ persons: [] }), recordBody({ sourceDescriptions: [] }), recordBody({ persons: [person("p_9", "ZZZZ-CCCC", "Other Example", "Female")] })]) {
+    const out = await harness("prepare_source", { route: recordRoute(body) }).run(validInputs.prepare_source);
+    assert.equal(out.error_kind, "site_changed");
+    assert.ok(!("saved" in out));
+  }
+});
+
+for (const name of ["get_collection", "prepare_source"]) {
+  for (const [status, html, kind] of [[401, false, "login_required"], [403, false, "forbidden"], [403, true, "challenge"], [404, false, "not_found"], [429, false, "rate_limited"], [500, false, "site_error"], [200, true, "challenge"]]) {
+    test(`${name}: HTTP ${status} html=${html} fails explicitly with no retry`, async () => {
+      const h = harness(name, { route: () => ({ status, html }) });
+      assert.equal((await h.run(validInputs[name])).error_kind, kind);
+      assert.equal(h.calls.length, 1);
+    });
+  }
+  test(`${name}: invalid JSON, network failure and timeout cannot claim success`, async () => {
+    for (const fetchError of [true, "timeout"]) assert.equal((await harness(name, { fetchError }).run(validInputs[name])).error_kind, "site_error");
+    assert.equal((await harness(name, { route: () => ({ status: 200, body: "not JSON" }) }).run(validInputs[name])).error_kind, "site_changed");
+  });
+}
+
+for (const name of NAMES) {
+  test(`${name}: cancellation before interaction prevents all requests`, async () => {
+    const c = new AbortController(); c.abort();
+    const h = harness(name, { signal: c.signal });
+    assert.equal((await h.run(validInputs[name])).error_kind, "canceled");
+    assert.equal(h.calls.length, 0);
+  });
+  test(`${name}: cancellation during a request reports canceled, not success`, async () => {
+    const c = new AbortController();
+    const h = harness(name, { signal: c.signal, route: () => { c.abort(); return { status: 200, body: {} }; } });
+    assert.equal((await h.run(validInputs[name])).error_kind, "canceled");
+    assert.equal(h.calls.length, 1);
+  });
+}
+
+test("search_records: bounds hits even if the site ignores count", async () => {
+  const result = await harness("search_records", { route: () => ({ status: 200, body: searchBody(Array.from({ length: 100 }, () => searchEntry()), 100) }) }).run({ surname: "Example", limit: 2 });
+  assert.equal(result.returned, 2); assert.equal(result.hits.length, 2);
+  assert.equal(result.has_more, true);
+});
+
+test("prepare_source: mismatched whole-record evidence and duplicate records/personas fail closed", async () => {
+  const wrongRecord = recordBody(); wrongRecord.sourceDescriptions[0].about = "https://www.familysearch.org/ark:/61903/1:2:ZZZZ-YYYY";
+  assert.equal((await harness("prepare_source", { route: recordRoute(wrongRecord) }).run({ record_url: "https://www.familysearch.org/ark:/61903/1:2:AAAA-BBBB" })).error_kind, "site_changed");
+  const duplicateRecord = recordBody(); duplicateRecord.sourceDescriptions.push(recordSource("Conflicting title"));
+  const duplicatePerson = recordBody(); duplicatePerson.persons.push(person("p_conflict", "AAAA-CCCC", "Other Example", "Male"));
+  for (const body of [duplicateRecord, duplicatePerson]) {
+    const out = await harness("prepare_source", { route: recordRoute(body) }).run(validInputs.prepare_source);
+    assert.equal(out.error_kind, "site_changed");
+    assert.ok(!("saved" in out));
+  }
+});
+
+test("get_collection: duplicate identity matches are ambiguous, not first-match successes", async () => {
+  for (const key of ["sourceDescriptions", "collections"]) {
+    const body = detailBody(); const duplicate = plain(body[key][0]);
+    if (key === "sourceDescriptions") duplicate.titles[0].value = "Conflicting title";
+    else duplicate.content[0].count = 12345;
+    body[key].push(duplicate);
+    const h = harness("get_collection", { route: detailRoute(body) });
+    assert.equal((await h.run(validInputs.get_collection)).error_kind, "site_changed");
+    assert.equal(h.calls.length, 1);
+  }
+});
+
+test("get_collection: normalizes guide paths and rejects encoded traversal or separators", async () => {
+  for (const suffix of [".", "..", "%2e", "%2e%2e", "%2E%2e", "%2f", "x%2fy", "x%5cy", "x%3fy", "x%23y", "%", "%zz"]) {
+    const out = await harness("get_collection", { route: detailRoute(detailBody(), { data: "/wiki/en/" + suffix }) }).run(validInputs.get_collection);
+    assert.equal(out.error_kind, "site_changed", suffix);
+  }
+  const out = await harness("get_collection", { route: detailRoute(detailBody(), { data: "/wiki/en/Example_%C3%A9" }) }).run(validInputs.get_collection);
+  assert.equal(out.research_guide_url, "https://www.familysearch.org/wiki/en/Example_%C3%A9");
+});
+
+test("search_records: capped entries still report another page at the result and depth boundaries", async () => {
+  const entries = Array.from({ length: 5 }, () => searchEntry());
+  for (const [offset, total, expected] of [[0, 5, true], [3, 5, true], [4, 5, false], [4997, 10000, true], [4998, 10000, false]]) {
+    const out = await harness("search_records", { route: () => ({ status: 200, body: searchBody(entries, total) }) }).run({ surname: "Example", offset, limit: 1 });
+    assert.equal(out.returned, 1); assert.equal(out.has_more, expected, `offset ${offset}`);
+  }
+});
+
+test("search_records and list_collections reject negative or unsafe counts", async () => {
+  for (const count of [-1, 1.5, Number.MAX_SAFE_INTEGER + 1]) {
+    const body = searchBody(); body.facets[0].facets[0].facets[0].count = count;
+    assert.equal((await harness("search_records", { route: () => ({ status: 200, body }) }).run(validInputs.search_records)).error_kind, "site_changed");
+    for (const key of ["recordCount", "imageCount"]) {
+      const list = listBody(); list.collectionList[0][key] = count;
+      assert.equal((await harness("list_collections", { route: () => ({ status: 200, body: list }) }).run({})).error_kind, "site_changed");
+    }
+  }
+});
+
+test("get_record and search_records return site_changed for malformed nested record arrays", async () => {
+  const bodies = [];
+  bodies.push(recordBody({ persons: [null] }));
+  const persistent = recordBody(); persistent.persons[0].identifiers["http://gedcomx.org/Persistent"] = {}; bodies.push(persistent);
+  const facts = recordBody(); facts.persons[0].facts = [null]; bodies.push(facts);
+  bodies.push(recordBody({ relationships: [null] }));
+  bodies.push(recordBody({ sourceDescriptions: [null] }));
+  for (const body of bodies) {
+    assert.equal((await harness("get_record", { route: recordRoute(body) }).run(validInputs.get_record)).error_kind, "site_changed");
+    const entry = searchEntry(); entry.content.gedcomx = body;
+    assert.equal((await harness("search_records", { route: () => ({ status: 200, body: searchBody([entry], 1) }) }).run(validInputs.search_records)).error_kind, "site_changed");
+  }
+  const fieldBody = recordBody(); fieldBody.persons[0].fields = [field("Age", "41")]; fieldBody.persons[0].fields[0].values = [null];
+  assert.equal((await harness("get_record", { route: recordRoute(fieldBody) }).run(validInputs.get_record)).error_kind, "site_changed");
+});
+
+test("get_collection and prepare_source pin text sanitization and draft bounds", async () => {
+  const dirty = "Exa\u00admple\u{e0100}\u200b\ntext";
+  const detail = detailBody(); detail.sourceDescriptions[0].titles[0].value = dirty;
+  detail.sourceDescriptions[0].descriptions[0].value = "&#60;B&#62;" + dirty + "&#60;/B&#62;";
+  const collection = await harness("get_collection", { route: detailRoute(detail) }).run(validInputs.get_collection);
+  assert.equal(collection.title, "Example text"); assert.equal(collection.description, "Example text");
+  const body = recordBody(); body.sourceDescriptions[0].titles[0].value = dirty;
+  body.sourceDescriptions[0].citations[0].value = "<!--hidden--><B>" + dirty + "</B>";
+  body.persons[0].display.name = dirty;
+  const draft = await harness("prepare_source", { route: recordRoute(body) }).run({ ...validInputs.prepare_source, research_note: dirty });
+  assert.deepEqual([draft.title, draft.citation, draft.subject_name, draft.research_note], ["Example text", "Example text", "Example text", "Example text"]);
+  body.sourceDescriptions[0].titles[0].value = "x".repeat(500); body.sourceDescriptions[0].citations[0].value = "x".repeat(1500); body.persons[0].display.name = "x".repeat(300);
+  const bounded = await harness("prepare_source", { route: recordRoute(body) }).run({ ...validInputs.prepare_source, research_note: "x".repeat(2000) });
+  assert.deepEqual([bounded.title.length, bounded.citation.length, bounded.subject_name.length, bounded.research_note.length], [300, 1000, 200, 2000]);
+});
+
+test("list_collections returns site_changed for malformed nested Place facets", async () => {
+  for (const change of [body => { body.facets[0].values = [null]; }, body => { body.facets[0].values = {}; }, body => { body.facets[0].values[0].facets = [null]; }, body => { body.facets[0].values[0].facets[0].values = [null]; }]) {
+    const body = listBody(); change(body);
+    assert.equal((await harness("list_collections", { route: () => ({ status: 200, body }) }).run({})).error_kind, "site_changed");
+  }
+});
