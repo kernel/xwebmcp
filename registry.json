@@ -1515,6 +1515,126 @@
       }
     },
     {
+      "domain": "fandango.com",
+      "tool": "get_movie",
+      "file": "domains/fandango.com/get_movie.js",
+      "kind": "page",
+      "namespace": "fandango.com",
+      "url_patterns": [
+        "https://www.fandango.com/*"
+      ],
+      "status": "verified",
+      "last_verified": "2026-09-30",
+      "notes": "Final-source independent QA passed; live Kernel and extension invocations from public HOME succeeded on 2026-09-30. Public movie overview, bounded cast and scores; no media playback or account access.",
+      "provenance": { "qa_agent": "agt_7481b4b4b98a44369c89" }
+    },
+    {
+      "domain": "fandango.com",
+      "tool": "get_movie_showtimes",
+      "file": "domains/fandango.com/get_movie_showtimes.js",
+      "kind": "page",
+      "namespace": "fandango.com",
+      "url_patterns": [
+        "https://www.fandango.com/*"
+      ],
+      "status": "verified",
+      "last_verified": "2026-09-29",
+      "notes": "Independent QA passed on the final source and the tool was invoked live from several www.fandango.com pages on 2026-09-29. Page tool: one movie's showtimes on one local date at theaters near a required US ZIP, grouped by theater and format, with a status per showtime; returns no_showtimes with available_dates for empty or out-of-window dates. Reads only the site's own /napi showtimes and calendar endpoints; no ticket pages, seat maps or prices. First page of theaters only; US only.",
+      "provenance": {
+        "qa_agent": "agt_7481b4b4b98a44369c89"
+      }
+    },
+    {
+      "domain": "fandango.com",
+      "tool": "get_theater_showtimes",
+      "file": "domains/fandango.com/get_theater_showtimes.js",
+      "kind": "page",
+      "namespace": "fandango.com",
+      "url_patterns": [
+        "https://www.fandango.com/*"
+      ],
+      "status": "verified",
+      "last_verified": "2026-09-29",
+      "notes": "Independent QA passed on the final source and the tool was invoked live from several www.fandango.com pages on 2026-09-29. Page tool: every movie and showtime at one theater on one local date, plus theater details and the dates with showtimes; returns no_showtimes for empty or out-of-window dates. Reads only the site's own /napi showtimes and calendar endpoints; no ticket pages, seat maps or prices. US only.",
+      "provenance": {
+        "qa_agent": "agt_7481b4b4b98a44369c89"
+      }
+    },
+    {
+      "domain": "fandango.com",
+      "tool": "get_ticket_offers",
+      "file": "domains/fandango.com/get_ticket_offers.js",
+      "kind": "page",
+      "namespace": "fandango.com",
+      "url_patterns": [
+        "https://www.fandango.com/*"
+      ],
+      "status": "verified",
+      "last_verified": "2026-09-30",
+      "notes": "Final-source independent QA passed; live Kernel and extension invocations from public HOME succeeded on 2026-09-30. Exact reserved-screening noninteractive seat preview; USD price and fee estimates, not a final checkout quote or hold. Numeric site showtime id required; unsupported identifier shapes fail closed.",
+      "provenance": { "qa_agent": "agt_7481b4b4b98a44369c89" }
+    },
+    {
+      "domain": "fandango.com",
+      "tool": "list_movies",
+      "file": "domains/fandango.com/list_movies.js",
+      "kind": "page",
+      "namespace": "fandango.com",
+      "url_patterns": [
+        "https://www.fandango.com/*"
+      ],
+      "status": "verified",
+      "last_verified": "2026-09-30",
+      "notes": "Final-source independent QA passed; live Kernel and extension invocations from public HOME succeeded on 2026-09-30. Public now-playing/coming-soon pages; next_page is only a candidate, no total count.",
+      "provenance": { "qa_agent": "agt_7481b4b4b98a44369c89" }
+    },
+    {
+      "domain": "fandango.com",
+      "tool": "prepare_checkout",
+      "file": "domains/fandango.com/prepare_checkout.js",
+      "kind": "page",
+      "namespace": "fandango.com",
+      "url_patterns": [
+        "https://www.fandango.com/*"
+      ],
+      "status": "verified",
+      "last_verified": "2026-09-30",
+      "notes": "Final-source independent QA passed; live Kernel and extension invocations from public HOME succeeded on 2026-09-30. Returned-only exact-screening ticket plan with quantities, optional proposed independent standard seats and preview subtotal; no cart, hold, validation or execution. Seat-block members, unsupported ids and nonempty surcharges fail closed.",
+      "provenance": { "qa_agent": "agt_7481b4b4b98a44369c89" }
+    },
+    {
+      "domain": "fandango.com",
+      "tool": "search",
+      "file": "domains/fandango.com/search.js",
+      "kind": "page",
+      "namespace": "fandango.com",
+      "url_patterns": [
+        "https://www.fandango.com/*"
+      ],
+      "status": "verified",
+      "last_verified": "2026-09-29",
+      "notes": "Independent QA passed on the final source and the tool was invoked live from several www.fandango.com pages on 2026-09-29. Page tool: the header search box's suggestions (movies, theaters, cities, people) as ids and canonical URLs. About four suggestions per type; not the full results page. US only.",
+      "provenance": {
+        "qa_agent": "agt_7481b4b4b98a44369c89"
+      }
+    },
+    {
+      "domain": "fandango.com",
+      "tool": "search_theaters",
+      "file": "domains/fandango.com/search_theaters.js",
+      "kind": "page",
+      "namespace": "fandango.com",
+      "url_patterns": [
+        "https://www.fandango.com/*"
+      ],
+      "status": "verified",
+      "last_verified": "2026-09-29",
+      "notes": "Independent QA passed on the final source and the tool was invoked live from several www.fandango.com pages on 2026-09-29. Page tool: theaters near a US ZIP or city and state as the site's nearby-theaters list shows them, with distance, chain, amenities and whether tickets are sold online. The ZIP form is the reliable one: the site does not resolve some real city spellings and returns no_results for them. US only.",
+      "provenance": {
+        "qa_agent": "agt_7481b4b4b98a44369c89"
+      }
+    },
+    {
       "domain": "flyfrontier.com",
       "tool": "login",
       "file": "domains/flyfrontier.com/login.js",
