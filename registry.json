@@ -3794,6 +3794,86 @@
       "provenance": {
         "qa_agent": "herdr:united-qa:01a108e4-952e-7619-9803-d130e6e84e8d"
       }
+    },
+    {
+      "domain": "vividseats.com",
+      "tool": "get_event",
+      "file": "domains/vividseats.com/get_event.js",
+      "kind": "page",
+      "namespace": "vividseats.com",
+      "url_patterns": [
+        "https://www.vividseats.com/*"
+      ],
+      "status": "verified",
+      "last_verified": "2026-09-30",
+      "notes": "Public event details from an exact URL: identity, stated local date/time, lineup, restrictions and venue address. Independent live success from Explore in Kernel and the extension; TBD placeholder time/start stay null. No navigation or inventory hold.",
+      "provenance": {
+        "qa_agent": "agt_0257fb751e04553b9365"
+      }
+    },
+    {
+      "domain": "vividseats.com",
+      "tool": "get_ticket_offers",
+      "file": "domains/vividseats.com/get_ticket_offers.js",
+      "kind": "page",
+      "namespace": "vividseats.com",
+      "url_patterns": [
+        "https://www.vividseats.com/*"
+      ],
+      "status": "verified",
+      "last_verified": "2026-09-30",
+      "notes": "Public, read-only listings with all-in USD prices, exact quantity splits, price/zone/section filters and grouping. Independent live success from Explore in Kernel and the extension. Unknown fee/VAT basis fails closed; page GA rows may collapse multiple listings. Never selects, carts or buys.",
+      "provenance": {
+        "qa_agent": "agt_0257fb751e04553b9365"
+      }
+    },
+    {
+      "domain": "vividseats.com",
+      "tool": "get_venue",
+      "file": "domains/vividseats.com/get_venue.js",
+      "kind": "page",
+      "namespace": "vividseats.com",
+      "url_patterns": [
+        "https://www.vividseats.com/*"
+      ],
+      "status": "verified",
+      "last_verified": "2026-09-30",
+      "notes": "Public venue address, coordinates, timezone and catalog capacity from an exact URL. Independent live success from Explore in Kernel and the extension. Capacity is not configuration-specific availability; no navigation or account reads.",
+      "provenance": {
+        "qa_agent": "agt_0257fb751e04553b9365"
+      }
+    },
+    {
+      "domain": "vividseats.com",
+      "tool": "prepare_ticket_selection",
+      "file": "domains/vividseats.com/prepare_ticket_selection.js",
+      "kind": "page",
+      "namespace": "vividseats.com",
+      "url_patterns": [
+        "https://www.vividseats.com/*"
+      ],
+      "status": "verified",
+      "last_verified": "2026-09-30",
+      "notes": "Independent live GET-only quote preparation from Explore in Kernel and the extension. Revalidates exact event/listing/quantity/price/group and fee basis. Returns an ordinary event-page handoff; no site selection, checkout, hold, approval or payment execution.",
+      "provenance": {
+        "qa_agent": "agt_0257fb751e04553b9365"
+      }
+    },
+    {
+      "domain": "vividseats.com",
+      "tool": "search_events",
+      "file": "domains/vividseats.com/search_events.js",
+      "kind": "page",
+      "namespace": "vividseats.com",
+      "url_patterns": [
+        "https://www.vividseats.com/*"
+      ],
+      "status": "verified",
+      "last_verified": "2026-09-30",
+      "notes": "Public read-only events by text, location, local dates, category, performer, venue and price ceiling, within the site's 1000-match window. Independent live success from Explore in Kernel and the extension. Search-index prices/counts can be stale; radius is approximate and warns; USD only.",
+      "provenance": {
+        "qa_agent": "agt_0257fb751e04553b9365"
+      }
     }
   ]
 }
