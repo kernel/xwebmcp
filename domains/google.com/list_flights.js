@@ -69,7 +69,7 @@
 
   const GF_PAGE_SCHEMA = gfObject({
     url: { type: "string" },
-    page_type: { enum: ["flights_home", "departing_results", "returning_results", "unsupported_results", "booking_options", "other"], description: "unsupported_results: a results page these tools do not read (multi-city, or a city or other place instead of an airport)." },
+    page_type: { enum: ["flights_home", "departing_results", "returning_results", "unsupported_results", "booking_options", "other"], description: "unsupported_results: results these tools do not read (multi-city, a city or other place instead of an airport, or a typed /travel/flights?q= query)." },
     settled: { type: "boolean", description: "Google had stopped changing the page when it was read." },
     unsettled_reasons: GF_STRINGS,
     results_state: { enum: ["results", "no_results", "loading", "not_applicable"] },
@@ -369,6 +369,8 @@
           const loading = ![...document.querySelectorAll('button[aria-label^="Continue to book with"]')].some(gfVisible);
           return { ...base, state: loading ? "loading" : "booking", reasons: loading ? ["no_booking_options_yet"] : [], key: url + "#" + loading };
         }
+        // Google also renders results on /travel/flights?q=… (a typed query); these tools read only /travel/flights/search.
+        if (base.page_type === "flights_home" && gfRowNodes().length) return { ...base, page_type: "unsupported_results", state: "unsupported", reasons: ["query_results_page"], key: url };
         if (!/^\/travel\/flights\/search/.test(location.pathname)) return { ...base, state: "not_results_page", key: url };
         if (!search) return { ...base, state: "unsupported", reasons: ["no_search_in_url"], key: url };
         if (!position) return { ...base, state: "unsupported", reasons: [search.trip_type === "multi_city" ? "multi_city" : search.legs.some(l => l.from && l.to && !(/^[A-Z]{3}$/.test(l.from) && /^[A-Z]{3}$/.test(l.to))) ? "non_airport_place" : "unrecognized_search"], key: url };
@@ -831,7 +833,7 @@
       return gfFit(await (async () => {
         const args = input || {};
         const self = "list_flights";
-        const invalid = message => gfRead({ self, flights: false }).then(out => ({ ...out.envelope, flights: [], status: "invalid_input", message }));
+        const invalid = message => gfRead({ self, flights: false, settle_by_ms: Date.now() + 1500 }).then(out => ({ ...out.envelope, flights: [], status: "invalid_input", message }));
         const unexpected = Object.keys(args).filter(k => !["offset", "limit"].includes(k));
         if (unexpected.length) return invalid("Unexpected input: " + unexpected.join(", ") + ". list_flights only reads the page; use set_flight_sort, set_flight_filters or set_results_view to change Google's list, and get_flight_details or select_flight with a selection_ref.");
         const offset = args.offset ?? 0, limit = args.limit ?? 50;

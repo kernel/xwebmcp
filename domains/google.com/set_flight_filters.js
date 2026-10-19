@@ -69,7 +69,7 @@
 
   const GF_PAGE_SCHEMA = gfObject({
     url: { type: "string" },
-    page_type: { enum: ["flights_home", "departing_results", "returning_results", "unsupported_results", "booking_options", "other"], description: "unsupported_results: a results page these tools do not read (multi-city, or a city or other place instead of an airport)." },
+    page_type: { enum: ["flights_home", "departing_results", "returning_results", "unsupported_results", "booking_options", "other"], description: "unsupported_results: results these tools do not read (multi-city, a city or other place instead of an airport, or a typed /travel/flights?q= query)." },
     settled: { type: "boolean", description: "Google had stopped changing the page when it was read." },
     unsettled_reasons: GF_STRINGS,
     results_state: { enum: ["results", "no_results", "loading", "not_applicable"] },
@@ -382,6 +382,8 @@
           const loading = ![...document.querySelectorAll('button[aria-label^="Continue to book with"]')].some(gfVisible);
           return { ...base, state: loading ? "loading" : "booking", reasons: loading ? ["no_booking_options_yet"] : [], key: url + "#" + loading };
         }
+        // Google also renders results on /travel/flights?q=… (a typed query); these tools read only /travel/flights/search.
+        if (base.page_type === "flights_home" && gfRowNodes().length) return { ...base, page_type: "unsupported_results", state: "unsupported", reasons: ["query_results_page"], key: url };
         if (!/^\/travel\/flights\/search/.test(location.pathname)) return { ...base, state: "not_results_page", key: url };
         if (!search) return { ...base, state: "unsupported", reasons: ["no_search_in_url"], key: url };
         if (!position) return { ...base, state: "unsupported", reasons: [search.trip_type === "multi_city" ? "multi_city" : search.legs.some(l => l.from && l.to && !(/^[A-Z]{3}$/.test(l.from) && /^[A-Z]{3}$/.test(l.to))) ? "non_airport_place" : "unrecognized_search"], key: url };
@@ -937,7 +939,7 @@
           && args.airlines.every(a => typeof a === "string" && a.trim().length >= 2 && a.length <= 60) && new Set(args.airlines.map(a => a.trim().toLowerCase())).size === args.airlines.length);
         if (Object.keys(args).some(k => !["stops", "airlines", "limit"].includes(k)) || (args.stops === undefined && args.airlines === undefined)
           || (args.stops !== undefined && !GF_STOPS[args.stops]) || !validAirlines || !Number.isInteger(limit) || limit < 1 || limit > 150) {
-          const out = await gfRead({ self, flights: false });
+          const out = await gfRead({ self, flights: false, settle_by_ms: Date.now() + 1500 });
           return finish({ ...out.envelope, flights: [] }, "invalid_input", "Pass stops (" + Object.keys(GF_STOPS).join(", ") + ") and/or airlines (\"all\" or a list of distinct airline names), and optionally limit 1–150. Nothing was clicked.");
         }
         const started = Date.now();
@@ -976,10 +978,17 @@
               if (!all) return ["unavailable", "Google's Airlines filter shows no 'Select all airlines' switch."];
               if (!await gfClickProcessed(all, "Airlines", matches, within(8000))) return ["unconfirmed", "Google did not re-select every airline."];
             } else {
-              if (!await gfClickProcessed(airlineOptions().only(wanted[0]), "Airlines", () => airlineOptions().airlines.every(o => o.checked === (o.name === wanted[0])), within(8000))) return ["unconfirmed", "Google did not apply '" + wanted[0] + " only'."];
-              for (const name of wanted.slice(1)) {
-                if (!within(1)) return ["unconfirmed", "Ran out of time before adding " + name + " to the Airlines filter."];
-                if (!await gfClickProcessed(airlineOptions().airlines.find(o => o.name === name).node, "Airlines", () => airlineOptions().airlines.find(o => o.name === name)?.checked, within(8000))) return ["unconfirmed", "Google did not add " + name + " to the Airlines filter."];
+              // From every airline, "<first> only" clears the rest in one click; from a partial selection, tick the
+              // missing airlines and then untick the extra ones, one processed click at a time.
+              const checked = name => !!airlineOptions().airlines.find(o => o.name === name)?.checked;
+              let toggles = wanted.filter(name => !checked(name)).map(name => [name, true]).concat(airlineOptions().airlines.filter(o => o.checked && !wanted.includes(o.name)).map(o => [o.name, false]));
+              if (airlineOptions().airlines.every(o => o.checked)) {
+                if (!await gfClickProcessed(airlineOptions().only(wanted[0]), "Airlines", () => airlineOptions().airlines.every(o => o.checked === (o.name === wanted[0])), within(8000))) return ["unconfirmed", "Google did not apply '" + wanted[0] + " only'."];
+                toggles = wanted.slice(1).map(name => [name, true]);
+              }
+              for (const [name, on] of toggles) {
+                if (!within(1)) return ["unconfirmed", "Ran out of time before " + (on ? "adding " : "removing ") + name + (on ? " to" : " from") + " the Airlines filter."];
+                if (!await gfClickProcessed(airlineOptions().airlines.find(o => o.name === name).node, "Airlines", () => checked(name) === on, within(8000))) return ["unconfirmed", "Google did not " + (on ? "add " : "remove ") + name + (on ? " to" : " from") + " the Airlines filter."];
               }
             }
             if (!await gfWaitFor(matches, within(8000))) return ["unconfirmed", "Google's Airlines filter does not show exactly " + (args.airlines === "all" ? "every airline" : wanted.join(", ")) + "."];

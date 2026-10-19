@@ -194,6 +194,10 @@ test("set_flight_filters sets Google's Stops and Airlines filters through their 
   assert.equal(airlines.filters.airlines, "United +1");
   assert.ok(airlines.flights.every(f => ["United", "Delta"].includes(f.airlines[0])));
   assert.ok(airlines.offered_airlines.includes("Southwest"));
+  const narrowed = await invoke(p, "set_flight_filters", { airlines: ["Delta"] });
+  assert.deepEqual([narrowed.status, p.state.airlines], ["changed", ["Delta"]]);
+  const widened = await invoke(p, "set_flight_filters", { airlines: ["Delta", "United"] });
+  assert.deepEqual([widened.status, p.state.airlines.sort()], ["changed", ["Delta", "United"]]);
   const repeat = await invoke(p, "set_flight_filters", { airlines: ["Delta", "United"] });
   assert.deepEqual([repeat.status, repeat.applied, repeat.clicked], ["unchanged", [], true]);
   assert.equal(p.dialog(), null);
@@ -520,4 +524,23 @@ test("get_flight_details and get_page_context stay within the response limit whe
   const filters = context.available_actions.find(a => a.tool === "set_flight_filters");
   assert.ok(filters.choices.airlines.every(name => name.length <= 60));
   for (const action of context.available_actions.filter(a => a.input)) validate(tool(action.tool).tool.inputSchema, action.input);
+});
+
+test("refusals of invalid input on a settled list still advertise the actions that list allows", async () => {
+  const p = cvgSfo();
+  for (const [name, input] of [["list_flights", { limit: 0 }], ["set_flight_sort", { sort_by: "cheapest" }], ["get_flight_details", { selection_ref: "gf1.abc.00000000" }], ["select_flight", { selection_ref: "gf1.abc.00000000", expected_leg: "departing" }]]) {
+    const out = await invoke(p, name, input);
+    assert.equal(out.status, "invalid_input", name);
+    const select = out.available_actions.find(a => a.tool === "select_flight");
+    assert.equal(select.enabled, true, name);
+    assert.ok(!out.next_steps.some(step => /still changing/.test(step)), name);
+  }
+});
+
+test("results Google renders for a typed /travel/flights?q= query are reported as unsupported, not as the home page", async () => {
+  const p = cvgSfo();
+  p.path = "/travel/flights";
+  const out = await invoke(p, "get_page_context");
+  assert.deepEqual([out.status, out.page.page_type], ["unsupported", "unsupported_results"]);
+  assert.deepEqual(out.available_actions.map(a => a.tool), ["search_flights"]);
 });

@@ -69,7 +69,7 @@ test("google get_booking_options: carries the page and actions, with a continue_
   const { out } = await run("get_booking_options", booking, {}, { url, tools });
   const definition = (await run("get_booking_options", booking, null, { url, definitionOnly: true })).definition;
   validate(definition.tool.outputSchema, out);
-  assert.equal(out.page.page_type, "booking_options");
+  assert.deepEqual([out.page.page_type, out.page.settled], ["booking_options", true]);
   const go = out.available_actions.find(a => a.tool === "continue_to_airline");
   const first = out.options[0];
   assert.deepEqual(go.input, { seller: first.seller, fare_name: first.fare_name, expected_price: first.price });
