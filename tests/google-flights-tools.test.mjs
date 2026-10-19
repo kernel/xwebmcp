@@ -544,3 +544,22 @@ test("results Google renders for a typed /travel/flights?q= query are reported a
   assert.deepEqual([out.status, out.page.page_type], ["unsupported", "unsupported_results"]);
   assert.deepEqual(out.available_actions.map(a => a.tool), ["search_flights"]);
 });
+
+test("set_flight_filters waits for Google to finish each airline change before the next, so none is dropped", async () => {
+  const p = cvgSfo({ busyMs: 2000, timing: { change: 500, settleChange: 700 } });
+  assert.equal((await invoke(p, "set_flight_filters", { airlines: ["Southwest"] })).status, "changed");
+  const out = await invoke(p, "set_flight_filters", { airlines: ["Delta", "United"] });
+  assert.equal(out.status, "changed");
+  assert.deepEqual(p.state.airlines.sort(), ["Delta", "United"]);
+  assert.deepEqual(out.applied, [{ filter: "airlines", value: ["Delta", "United"] }]);
+});
+
+test("an unconfirmed change still describes the settled page and its actions", async () => {
+  const p = cvgSfo({ cheapest: { initial: INITIAL, collapsed: COLLAPSED } });
+  const out = await invoke(p, "set_results_view", { view: "cheapest" });
+  assert.equal(out.status, "unconfirmed");
+  assert.match(out.message, /identical to the list before the click/);
+  assert.equal(out.page.settled, true);
+  assert.equal(out.available_actions.find(a => a.tool === "select_flight").enabled, true);
+  assert.ok(!out.next_steps.some(step => /still changing/.test(step)));
+});

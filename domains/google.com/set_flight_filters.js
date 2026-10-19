@@ -689,10 +689,10 @@
           add("set_flight_filters", !!(stopsChip || airlinesChip) && settled, true, filterExample,
             !(stopsChip || airlinesChip) ? "Google shows no enabled Stops or Airlines filter here." : !settled ? "Wait for the list to settle first." : "Sets Google's Stops and/or Airlines filters. Airline names are Google's own labels; the names seen on the current rows are listed, and the Airlines filter offers the full list when it opens.",
             { stops: stopsChip ? Object.keys(GF_STOPS) : [], airlines: airlinesChip ? ["all", ...seen] : [] });
-          const refNote = first ? "Uses the row's selection_ref from the results; refs from another search, leg or price are refused without clicking." : "No readable row with a selection_ref is on the page.";
+          const noRow = "No readable row with a selection_ref is on the page.";
           const openable = first && (first.panel_open || (gfDetailToggle(first.li) && !gfDisabled(gfDetailToggle(first.li))));
-          add("get_flight_details", !!openable && settled, true, first ? { selection_ref: first.selection_ref } : null, !first ? refNote : !openable ? "Google's flight-details control for this row is missing or disabled." : "Opens Google's flight-details panel for one row and returns its segments, aircraft, cabin and amenities. " + refNote);
-          add("select_flight", !!first && settled, true, first ? { selection_ref: first.selection_ref, expected_leg: s.leg } : null, first ? "Chooses one row; Google then shows " + (s.search.trip_type === "round_trip" && s.leg === "departing" ? "returning flights for it." : "booking options. Books nothing.") + " " + refNote : refNote);
+          add("get_flight_details", !!openable && settled, true, first ? { selection_ref: first.selection_ref } : null, !first ? noRow : !openable ? "Google's flight-details control for this row is missing or disabled." : "Opens Google's flight-details panel for one row and returns its segments, aircraft, cabin and amenities. Refs from another search, leg or departing flight are refused without clicking; a changed price is reported with the current ref.");
+          add("select_flight", !!first && settled, true, first ? { selection_ref: first.selection_ref, expected_leg: s.leg } : null, first ? "Chooses one row; Google then shows " + (s.search.trip_type === "round_trip" && s.leg === "departing" ? "returning flights for it." : "booking options. Books nothing.") + " Refs from another search, leg, departing flight or price are refused without clicking." : noRow);
         }
         if (s.page_type === "booking_options") {
           add("get_booking_options", true, false, {}, s.state === "booking" ? "Read every seller's fares, prices and bag allowances for the chosen flights." : "Google is still loading booking options; read them once loaded.");
@@ -856,14 +856,28 @@
         return { refreshed: () => gfRowsKey(gfRowNodes()) !== before };
       };
 
-      // Clicks a filter option once and waits until test() holds and Google has processed the click (its filter chip changed,
-      // or a new list rendered), so the next click or closing the dialog cannot drop the change.
+      // Clicks a filter option once and waits until Google has processed it: test() holds, Google rendered a new list or
+      // changed the filter's chip, and the dialog's options have then stayed the same nodes, still passing test(), for a while.
+      // Google re-renders the dialog as it applies a change and drops clicks made before that, so the next click or closing
+      // the dialog must wait. A chip change alone comes early, so it needs the longer quiet period.
       const gfClickProcessed = async (node, chipName, test, ms) => {
         const chip = () => gfLabel(gfControls().chips.find(c => c.name === chipName)?.node);
-        const before = chip(), watch = gfWatch();
+        const options = () => [...(gfDialog()?.querySelectorAll("input") || [])];
+        const before = chip(), watch = gfWatch(), until = Date.now() + ms;
         node.click();
-        return gfWaitFor(() => test() && (chip() !== before || watch.refreshed()), ms);
+        let nodes = null, since = 0;
+        while (Date.now() < until) {
+          await gfSleep(150);
+          const refreshed = watch.refreshed();
+          if (!test() || (!refreshed && chip() === before)) { nodes = null; continue; }
+          const now = options();
+          if (!nodes || now.length !== nodes.length || now.some((n, i) => n !== nodes[i])) { nodes = now; since = Date.now(); continue; }
+          if (Date.now() - since >= (refreshed ? 600 : 1500)) return true;
+        }
+        return false;
       };
+      // What a person clicks for a dialog option: its label, which activates the input.
+      const gfOptionTarget = input => document.querySelector('label[for="' + input.id + '"]') || input;
 
       // Polls until test() holds or the deadline passes; returns test()'s last value.
       const gfWaitFor = async (test, ms) => {
@@ -874,10 +888,19 @@
       };
 
       // Clicks once, then reads the list after Google reflects the change (reflected()) and re-announces it.
+      // Reads the list after an action. confirmed: Google reflects the change (reflected()) and rendered a new list that
+      // settled. When the rows stay identical to those before the action, the page is read again without that requirement,
+      // so the envelope and its actions describe what Google shows (unchanged: true).
+      const gfReadAfter = async (watch, reflected, read) => {
+        const after = await gfRead({ quiet_ms: 1000, ...read, changed: () => reflected() && watch.refreshed() });
+        if (after.snapshot.settled || !after.snapshot.reasons.includes("change_not_observed")) return { ...after, confirmed: after.snapshot.settled && reflected(), unchanged: false };
+        const plain = await gfRead({ ...read, settle_by_ms: Date.now() + 5000 });
+        return { ...plain, confirmed: false, unchanged: plain.snapshot.settled };
+      };
       const gfClickAndRead = async (node, reflected, read) => {
         const watch = gfWatch();
         node.click();
-        return gfRead({ quiet_ms: 1000, ...read, changed: () => reflected() && watch.refreshed() });
+        return gfReadAfter(watch, reflected, read);
       };
 
       const gfDialog = () => [...document.querySelectorAll('[role="dialog"]')].find(gfVisible) || null;
@@ -917,7 +940,7 @@
       };
 
       // Why an action's new list was not confirmed, for its unconfirmed message.
-      const gfUnconfirmed = after => after.snapshot.reasons.includes("change_not_observed")
+      const gfUnconfirmed = after => after.unchanged
         ? "Google's rows are still identical to the list before the click (it may not have re-rendered yet, or the new list is the same), so the new list is not confirmed"
         : "the list did not settle in time (" + after.snapshot.reasons.join(", ") + ")";
 
@@ -981,19 +1004,23 @@
               // From every airline, "<first> only" clears the rest in one click; from a partial selection, tick the
               // missing airlines and then untick the extra ones, one processed click at a time.
               const checked = name => !!airlineOptions().airlines.find(o => o.name === name)?.checked;
+              // Each confirmed step is recorded, so a later failure reports what Google already applied (status partial).
+              const progress = () => { applied.splice(0, applied.length, { filter: "airlines", value: airlineOptions().airlines.filter(o => o.checked).map(o => o.name) }); };
               let toggles = wanted.filter(name => !checked(name)).map(name => [name, true]).concat(airlineOptions().airlines.filter(o => o.checked && !wanted.includes(o.name)).map(o => [o.name, false]));
               if (airlineOptions().airlines.every(o => o.checked)) {
                 if (!await gfClickProcessed(airlineOptions().only(wanted[0]), "Airlines", () => airlineOptions().airlines.every(o => o.checked === (o.name === wanted[0])), within(8000))) return ["unconfirmed", "Google did not apply '" + wanted[0] + " only'."];
+                progress();
                 toggles = wanted.slice(1).map(name => [name, true]);
               }
               for (const [name, on] of toggles) {
                 if (!within(1)) return ["unconfirmed", "Ran out of time before " + (on ? "adding " : "removing ") + name + (on ? " to" : " from") + " the Airlines filter."];
-                if (!await gfClickProcessed(airlineOptions().airlines.find(o => o.name === name).node, "Airlines", () => checked(name) === on, within(8000))) return ["unconfirmed", "Google did not " + (on ? "add " : "remove ") + name + (on ? " to" : " from") + " the Airlines filter."];
+                if (!await gfClickProcessed(gfOptionTarget(airlineOptions().airlines.find(o => o.name === name).node), "Airlines", () => checked(name) === on, within(8000))) return ["unconfirmed", "Google did not " + (on ? "add " : "remove ") + name + (on ? " to" : " from") + " the Airlines filter."];
+                progress();
               }
             }
             if (!await gfWaitFor(matches, within(8000))) return ["unconfirmed", "Google's Airlines filter does not show exactly " + (args.airlines === "all" ? "every airline" : wanted.join(", ")) + "."];
             if (!await gfWaitFor(() => chip("Airlines")?.selected === (args.airlines !== "all"), within(8000))) return ["unconfirmed", "Google's Airlines chip does not show the new selection."];
-            applied.push({ filter: "airlines", value: args.airlines === "all" ? "all" : wanted });
+            applied.splice(0, applied.length, { filter: "airlines", value: args.airlines === "all" ? "all" : wanted });
           }
           return await gfCloseDialog() ? null : ["unconfirmed", "Google's Airlines dialog did not close."];
         };
@@ -1003,9 +1030,7 @@
           const radio = () => [...(gfDialog()?.querySelectorAll('input[type="radio"]') || [])].find(r => gfInputLabel(r) === GF_STOPS[args.stops]);
           if (!radio() || gfDisabled(radio())) return ["unavailable", "Google's Stops filter " + (radio() ? "shows '" + GF_STOPS[args.stops] + "' disabled" : "does not offer '" + GF_STOPS[args.stops] + "'") + "."];
           // Google applies the choice before its chip shows it; closing the dialog earlier can drop the change.
-          // A person clicks the option's label; Google listens there, and the label activates the radio.
-          const target = document.querySelector('label[for="' + radio().id + '"]') || radio();
-          if (!await gfClickProcessed(target, "Stops", () => radio()?.checked && stopsNow() === args.stops, within(8000))) return ["unconfirmed", "Google did not apply '" + GF_STOPS[args.stops] + "' (its Stops chip does not show it)."];
+          if (!await gfClickProcessed(gfOptionTarget(radio()), "Stops", () => radio()?.checked && stopsNow() === args.stops, within(8000))) return ["unconfirmed", "Google did not apply '" + GF_STOPS[args.stops] + "' (its Stops chip does not show it)."];
           applied.push({ filter: "stops", value: args.stops });
           return await gfCloseDialog() ? null : ["unconfirmed", "Google's Stops dialog did not close."];
         };
@@ -1028,8 +1053,8 @@
           return finish(before.envelope, "unchanged", "Google's filters already match the request." + (clicked ? " The Airlines dialog was opened and closed without changes." : " Nothing was clicked."));
         }
         const reflected = () => (args.stops === undefined || stopsNow() === args.stops) && (args.airlines === undefined || chip("Airlines")?.selected === (args.airlines !== "all"));
-        const after = await gfRead({ self, settle_by_ms: Math.min(Date.now() + 25000, started + 55000), quiet_ms: 1000, limit, changed: () => reflected() && watch.refreshed() });
-        if (!reflected() || !after.snapshot.settled) return finish(after.envelope, "unconfirmed", (reflected() ? "Google's filter chips show the requested filters but " + gfUnconfirmed(after) : "Google's filter chips do not yet show the requested filters") + ". Inspect with get_page_context; do not repeat blindly.");
+        const after = await gfReadAfter(watch, reflected, { self, settle_by_ms: Math.min(Date.now() + 20000, started + 50000), limit });
+        if (!after.confirmed) return finish(after.envelope, "unconfirmed", (reflected() ? "Google's filter chips show the requested filters but " + gfUnconfirmed(after) : "Google's filter chips do not yet show the requested filters") + ". Inspect with get_page_context; do not repeat blindly.");
         return finish(after.envelope, "changed", "Google applied " + applied.map(a => a.filter + " " + (Array.isArray(a.value) ? a.value.join(", ") : a.value)).join(" and ") + ". " + after.envelope.message);
       })());
     }

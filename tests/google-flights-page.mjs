@@ -54,12 +54,14 @@ export class GooglePage {
   constructor({
     route, departing = [], collapsed = [], cheapest = null, returning = () => [], returningCollapsed = [], pax = [1], timing = {}, onChoose = null,
     cheapestAnnouncement = "No results returned.", tabs = true, sorts = Object.keys(SORTS), stops = STOPS.map(s => s[0]), reorderOnExpand = null, topCount = 2, alliances = ["Oneworld", "SkyTeam", "Star Alliance"],
-    disabled = [], dropIfClosedEarly = false, emptyHeading = true
+    disabled = [], dropIfClosedEarly = false, emptyHeading = true, busyMs = 0
   } = {}) {
     // disabled: controls Google shows disabled ("sort", "Cheapest", "Stops", "Airlines").
     // dropIfClosedEarly: a filter option takes effect only if its dialog is still open when Google processes it.
     // emptyHeading: an empty list keeps its heading (false: Google's "No … flights found" page, with no list heading).
-    Object.assign(this, { route, pax, returning, returningCollapsed, onChoose, cheapestAnnouncement, showTabs: tabs, sorts, stopChoices: stops, reorderOnExpand, topCount, alliances, disabled, dropIfClosedEarly, emptyHeading });
+    // busyMs: a filter option takes this long to apply; Google ignores option clicks meanwhile and then re-renders the
+    // dialog from its own state, dropping them.
+    Object.assign(this, { route, pax, returning, returningCollapsed, onChoose, cheapestAnnouncement, showTabs: tabs, sorts, stopChoices: stops, reorderOnExpand, topCount, alliances, disabled, dropIfClosedEarly, emptyHeading, busyMs });
     this.timing = { select: 150, firstRows: 400, allRows: 900, announce: 1300, booking: 500, change: 300, settleChange: 700, ...timing };
     this.lists = { best: { initial: departing, collapsed }, cheapest: cheapest || { initial: departing, collapsed } };
     this.state = { view: "best", sort: "top_flights", stops: "any", airlines: null, expanded: false };
@@ -207,9 +209,13 @@ export class GooglePage {
       input.checked = checked;
       input.onchange = () => {
         input.checked = type === "radio" ? true : !input.checked;
-        if (this.dropIfClosedEarly) this.later(this.timing.change, () => { if (dialog.isConnected) onchange(); });
+        const busy = this.clock.Date.now() < (this.busyUntil || 0);
+        if (busy) { this.later(this.busyUntil - this.clock.Date.now(), () => { if (dialog.isConnected) this.fillDialog(dialog, name); }); return; }
+        if (this.busyMs) this.busyUntil = this.clock.Date.now() + this.busyMs;
+        const delay = this.busyMs || (this.dropIfClosedEarly ? this.timing.change : 0);
+        if (delay) this.later(delay, () => { if (dialog.isConnected) onchange(); });
         else onchange();
-        this.later(this.timing.change, () => { if (dialog.isConnected) this.fillDialog(dialog, name); });
+        this.later(delay + this.timing.change, () => { if (dialog.isConnected) this.fillDialog(dialog, name); });
       };
       const text = new El("label", { attrs: { for: id }, text: label });
       text.onclick = () => input.click();
@@ -231,7 +237,12 @@ export class GooglePage {
           this.state.airlines = next.length === offered.length ? null : next;
         }));
         const only = dialog.append(new El("button", { attrs: { "aria-label": `${airline} only` }, text: "Only" }));
-        only.onclick = () => { this.change(() => { this.state.airlines = [airline]; }); this.later(this.timing.change, () => { if (dialog.isConnected) this.fillDialog(dialog, name); }); };
+        only.onclick = () => {
+        if (this.clock.Date.now() < (this.busyUntil || 0)) return;
+        if (this.busyMs) this.busyUntil = this.clock.Date.now() + this.busyMs;
+        this.later(this.busyMs, () => this.change(() => { this.state.airlines = [airline]; }));
+        this.later(this.busyMs + this.timing.change, () => { if (dialog.isConnected) this.fillDialog(dialog, name); });
+      };
       }
     }
   }
