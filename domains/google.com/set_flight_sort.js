@@ -646,7 +646,7 @@
           add("continue_to_airline", s.state === "booking", true, null, s.state === "booking" ? "Presses Continue for one booking option; it opens the seller's site in a new tab and books nothing." : "Google is still loading booking options.",
             null, "seller (required), fare_name and expected_price exactly as one option from get_booking_options returns them (seller, fare_name, price)");
         }
-        add("search_flights", true, true, searchInput, "Starts a new Google Flights search (navigates the tab)" + (searchInput ? "; the example repeats the current search." : "."), null, searchInput ? null : "origin, destination, depart_date and trip_type (plus return_date for round_trip)");
+        add("search_flights", true, true, searchInput, "Starts a new Google Flights search (navigates the tab)" + (searchInput ? "; the example repeats the current route, dates, travelers and cabin with Google's default filters." : "."), null, searchInput ? null : "origin, destination, depart_date and trip_type (plus return_date for round_trip)");
         return out;
       };
       
