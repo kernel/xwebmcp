@@ -288,6 +288,17 @@ test("get_page_context reports controls and actions, and stays honest when the t
   assert.equal(invalid.status, "invalid_input");
 });
 
+test("on the flights home page the only next step is a new search, with the inputs it needs", async () => {
+  const p = cvgSfo();
+  p.path = "/travel/flights";
+  p.body.children = [];
+  const out = await invoke(p, "get_page_context");
+  assert.equal(out.page.page_type, "flights_home");
+  assert.equal(out.results, null);
+  assert.deepEqual(out.available_actions.map(a => [a.tool, a.enabled]), [["search_flights", true]]);
+  assert.match(out.next_steps[0], /^search_flights/);
+});
+
 test("a tool registered as absent is not suggested as a next step", async () => {
   const p = cvgSfo();
   p.registered = p.registered.filter(name => name !== "select_flight");
