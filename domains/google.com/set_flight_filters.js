@@ -836,70 +836,77 @@
         const out = await gfRead({ self, flights: false });
         return finish({ ...out.envelope, flights: [] }, "invalid_input", "Pass stops (" + Object.keys(GF_STOPS).join(", ") + ") and/or airlines (\"all\" or a list of distinct airline names), and optionally limit 1–150. Nothing was clicked.");
       }
+      const started = Date.now();
       const { refusal, before } = await gfReadyForAction(self, { limit });
       if (refusal) return { ...refusal, applied, offered_airlines: null };
       const chip = name => gfControls().chips.find(c => c.name === name);
       for (const [key, name] of [["airlines", "Airlines"], ["stops", "Stops"]]) {
         if (args[key] !== undefined && !chip(name)) return finish(before.envelope, "unavailable", "Google shows no " + name + " filter on this page. Nothing was clicked.");
       }
-      const watch = gfWatch();
-      const fail = async (status, message) => {
-        if (gfDialog()) await gfCloseDialog();
-        const now = await gfRead({ self, settle_by_ms: Date.now() + 10000, limit });
-        watch.stop();
-        return finish(now.envelope, applied.length && status !== "unconfirmed" ? "partial" : status, message);
+      const by = started + 40000;
+      const within = ms => Math.max(0, Math.min(ms, by - Date.now()));
+      const airlineOptions = () => {
+        const d = gfDialog();
+        const buttons = d ? [...d.querySelectorAll("button")] : [];
+        const only = new Set(buttons.map(gfLabel).filter(l => / only$/.test(l)).map(l => l.slice(0, -5)));
+        return {
+          all: d?.querySelector('[role="switch"]') || null,
+          airlines: d ? [...d.querySelectorAll('input[type="checkbox"]')].map(node => ({ name: gfInputLabel(node), checked: node.checked, node })).filter(o => only.has(o.name)) : [],
+          only: name => buttons.find(b => gfLabel(b) === name + " only")
+        };
+      };
+      // Each step returns null when done, or [status, message] to stop. Google re-renders the dialog after every
+      // change, so options are looked up again after each click.
+      const applyAirlines = async () => {
+        if (!await gfOpenFilter("Airlines")) return ["unconfirmed", "Clicked Google's Airlines filter but its dialog did not open."];
+        offered = airlineOptions().airlines.map(o => o.name);
+        const wanted = args.airlines === "all" ? offered : args.airlines.map(a => offered.find(name => name.toLowerCase() === a.trim().toLowerCase()));
+        const unknown = args.airlines === "all" ? [] : args.airlines.filter((a, i) => !wanted[i]);
+        if (unknown.length) return ["unavailable", "Google's Airlines filter does not offer " + unknown.join(", ") + "; it offers " + offered.join(", ") + ". Nothing was changed."];
+        const matches = () => airlineOptions().airlines.every(o => o.checked === wanted.includes(o.name));
+        if (!matches()) {
+          if (args.airlines === "all") {
+            const all = airlineOptions().all;
+            if (!all) return ["unavailable", "Google's Airlines filter shows no 'Select all airlines' switch."];
+            all.click();
+          } else {
+            airlineOptions().only(wanted[0]).click();
+            if (!await gfWaitFor(() => airlineOptions().airlines.every(o => o.checked === (o.name === wanted[0])), within(8000))) return ["unconfirmed", "Google did not apply '" + wanted[0] + " only'."];
+            for (const name of wanted.slice(1)) {
+              if (!within(1)) return ["unconfirmed", "Ran out of time before adding " + name + " to the Airlines filter."];
+              airlineOptions().airlines.find(o => o.name === name).node.click();
+              if (!await gfWaitFor(() => airlineOptions().airlines.find(o => o.name === name)?.checked, within(8000))) return ["unconfirmed", "Google did not add " + name + " to the Airlines filter."];
+            }
+          }
+          if (!await gfWaitFor(matches, within(8000))) return ["unconfirmed", "Google's Airlines filter does not show exactly " + (args.airlines === "all" ? "every airline" : wanted.join(", ")) + "."];
+          applied.push({ filter: "airlines", value: args.airlines === "all" ? "all" : wanted });
+        }
+        return await gfCloseDialog() ? null : ["unconfirmed", "Google's Airlines dialog did not close."];
+      };
+      const stopsNow = () => { const c = chip("Stops"); return c ? (c.selected ? GF_STOP_CHIPS[c.value] || "unknown" : "any") : null; };
+      const applyStops = async () => {
+        if (!await gfOpenFilter("Stops")) return ["unconfirmed", "Clicked Google's Stops filter but its dialog did not open."];
+        const radio = () => [...(gfDialog()?.querySelectorAll('input[type="radio"]') || [])].find(r => gfInputLabel(r) === GF_STOPS[args.stops]);
+        if (!radio()) return ["unavailable", "Google's Stops filter does not offer '" + GF_STOPS[args.stops] + "'."];
+        radio().click();
+        if (!await gfWaitFor(() => radio()?.checked, within(8000))) return ["unconfirmed", "Google did not select '" + GF_STOPS[args.stops] + "'."];
+        applied.push({ filter: "stops", value: args.stops });
+        return await gfCloseDialog() ? null : ["unconfirmed", "Google's Stops dialog did not close."];
       };
 
-      if (args.airlines !== undefined && (args.airlines !== "all" || chip("Airlines").selected)) {
-        const dialog = await gfOpenFilter("Airlines");
+      const watch = gfWatch();
+      const steps = [];
+      if (args.airlines !== undefined && (args.airlines !== "all" || chip("Airlines").selected)) steps.push(applyAirlines);
+      if (args.stops !== undefined && stopsNow() !== args.stops) steps.push(applyStops);
+      for (const step of steps) {
         clicked = true;
-        if (!dialog) return fail("unconfirmed", "Clicked Google's Airlines filter but its dialog did not open.");
-        const options = () => {
-          const d = gfDialog();
-          if (!d) return { all: null, airlines: [] };
-          const only = new Set([...d.querySelectorAll("button")].map(gfLabel).filter(l => / only$/.test(l)).map(l => l.slice(0, -5)));
-          return {
-            all: d.querySelector('[role="switch"]'),
-            airlines: [...d.querySelectorAll('input[type="checkbox"]')].map(node => ({ name: gfInputLabel(node), checked: node.checked, node })).filter(o => only.has(o.name)),
-            only: name => [...d.querySelectorAll("button")].find(b => gfLabel(b) === name + " only")
-          };
-        };
-        offered = options().airlines.map(o => o.name);
-        if (args.airlines === "all") {
-          const all = options().all;
-          if (!all) return fail("unavailable", "Google's Airlines filter shows no 'Select all airlines' switch.");
-          all.click();
-          if (!await gfWaitFor(() => options().airlines.every(o => o.checked), 8000)) return fail("unconfirmed", "Google did not re-select every airline after 'Select all airlines'.");
-        } else {
-          const wanted = args.airlines.map(a => offered.find(name => name.toLowerCase() === a.trim().toLowerCase()));
-          const unknown = args.airlines.filter((a, i) => !wanted[i]);
-          if (unknown.length) return fail("unavailable", "Google's Airlines filter does not offer " + unknown.join(", ") + "; it offers " + offered.join(", ") + ". Nothing was changed.");
-          const matches = () => options().airlines.every(o => o.checked === wanted.includes(o.name));
-          if (!matches()) {
-            options().only(wanted[0]).click();
-            if (!await gfWaitFor(() => options().airlines.every(o => o.checked === (o.name === wanted[0])), 8000)) return fail("unconfirmed", "Google did not apply '" + wanted[0] + " only'.");
-            for (const name of wanted.slice(1)) {
-              options().airlines.find(o => o.name === name).node.click();
-              if (!await gfWaitFor(() => options().airlines.find(o => o.name === name)?.checked, 8000)) return fail("unconfirmed", "Google did not add " + name + " to the Airlines filter.");
-            }
-            if (!matches()) return fail("unconfirmed", "Google's Airlines filter does not show exactly " + wanted.join(", ") + ".");
-          }
+        const stop = await step();
+        if (stop) {
+          if (gfDialog()) await gfCloseDialog();
+          const now = await gfRead({ self, settle_by_ms: Date.now() + 10000, limit });
+          watch.stop();
+          return finish(now.envelope, applied.length ? "partial" : stop[0], stop[1] + (applied.length ? " Already applied: " + applied.map(a => a.filter).join(", ") + "." : ""));
         }
-        applied.push({ filter: "airlines", value: args.airlines === "all" ? "all" : args.airlines.map(a => offered.find(name => name.toLowerCase() === a.trim().toLowerCase())) });
-        if (!await gfCloseDialog()) return fail("unconfirmed", "Applied the Airlines filter but Google's dialog did not close.");
-      }
-
-      const stopsNow = () => { const c = chip("Stops"); return c ? (c.selected ? GF_STOP_CHIPS[c.value] || "unknown" : "any") : null; };
-      if (args.stops !== undefined && stopsNow() !== args.stops) {
-        const dialog = await gfOpenFilter("Stops");
-        clicked = true;
-        if (!dialog) return fail("unconfirmed", "Clicked Google's Stops filter but its dialog did not open.");
-        const radio = () => [...(gfDialog()?.querySelectorAll('input[type="radio"]') || [])].find(r => gfInputLabel(r) === GF_STOPS[args.stops]);
-        if (!radio()) return fail("unavailable", "Google's Stops filter does not offer '" + GF_STOPS[args.stops] + "'.");
-        radio().click();
-        if (!await gfWaitFor(() => radio()?.checked, 8000)) return fail("unconfirmed", "Google did not select '" + GF_STOPS[args.stops] + "'.");
-        applied.push({ filter: "stops", value: args.stops });
-        if (!await gfCloseDialog()) return fail("unconfirmed", "Applied the Stops filter but Google's dialog did not close.");
       }
 
       if (!applied.length) {
@@ -907,7 +914,7 @@
         return finish(before.envelope, "unchanged", "Google's filters already match the request." + (clicked ? " The Airlines dialog was opened and closed without changes." : " Nothing was clicked."));
       }
       const reflected = () => (args.stops === undefined || stopsNow() === args.stops) && (args.airlines === undefined || chip("Airlines")?.selected === (args.airlines !== "all"));
-      const after = await gfRead({ self, settle_by_ms: Date.now() + 25000, limit, changed: () => reflected() && watch.refreshed() });
+      const after = await gfRead({ self, settle_by_ms: Math.min(Date.now() + 25000, started + 55000), limit, changed: () => reflected() && watch.refreshed() });
       watch.stop();
       if (!reflected() || !after.snapshot.settled) return finish(after.envelope, "unconfirmed", "Google's filter chips do not yet show the requested filters, or the list did not settle (" + after.snapshot.reasons.join(", ") + "). Inspect with get_page_context; do not repeat blindly.");
       return finish(after.envelope, "changed", "Google applied " + applied.map(a => a.filter + " " + (Array.isArray(a.value) ? a.value.join(", ") : a.value)).join(" and ") + ". " + after.envelope.message);

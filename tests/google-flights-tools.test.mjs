@@ -178,6 +178,9 @@ test("set_flight_filters sets Google's Stops and Airlines filters through their 
   assert.equal(airlines.filters.airlines, "United +1");
   assert.ok(airlines.flights.every(f => ["United", "Delta"].includes(f.airlines[0])));
   assert.ok(airlines.offered_airlines.includes("Southwest"));
+  const repeat = await invoke(p, "set_flight_filters", { airlines: ["Delta", "United"] });
+  assert.deepEqual([repeat.status, repeat.applied, repeat.clicked], ["unchanged", [], true]);
+  assert.equal(p.dialog(), null);
 
   const unknown = await invoke(p, "set_flight_filters", { airlines: ["Lufthansa"], stops: "nonstop" });
   assert.equal(unknown.status, "unavailable");
