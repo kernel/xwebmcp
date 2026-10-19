@@ -297,6 +297,12 @@ Akamai 403), and the agent then stops without an answer. Intents still `opt_in` 
 site blocks Kernel browsers, has no guest checkout, rejects the fictional email or phone, or has
 not passed a rehearsal yet.
 
+`booking-checkout-room` is the hotel equivalent: the cheapest room at one hotel, booked as a guest
+with the same fictional details up to Booking.com's "How do you want to pay?" step, graded from
+that page's URL, hotel and price-summary total. Its guard blocks Complete booking and the other
+booking and pay buttons. Booking.com renders that step only in stealth browsers, so it is `opt_in`:
+run it with `--intent booking-checkout-room --stealth`.
+
 ### Signed-in trials
 
 A domain with a Kernel `profile` loads it in every browser, in both arms, without saving
