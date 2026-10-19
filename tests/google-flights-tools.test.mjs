@@ -31,8 +31,18 @@ const COLLAPSED = [TWO_STOP, ...Array.from({ length: 108 }, (_, i) => connection
 // Google re-ranks when it expands: the initial nonstop drops far down the longer list.
 const RETURN_UA = { ...NONSTOP_B, date: "2026-11-19", tim: "SFO-CVG-UA-2391-20261119", from: base.to, to: base.from, arrivalDate: "2026-11-19",
   segments: () => [segment({ from: "SFO", fromName: "San Francisco International Airport", dep: "7:00 AM", to: "CVG", toName: "Cincinnati", arr: "9:15 AM", travel: "5 hr 15 min", airline: "United", number: "UA 2391", aircraft: "Boeing 737" })] };
+// A pricier nonstop listed first, so Google's price sort re-orders the returning list, and a connection the stops filter removes.
+const RETURN_AA = { ...RETURN_UA, airline: "American", dep: "6:00 AM", arr: "8:15 AM", price: "$420", tim: "SFO-CVG-AA-2600-20261119",
+  segments: () => [segment({ from: "SFO", fromName: "San Francisco International Airport", dep: "6:00 AM", to: "CVG", toName: "Cincinnati", arr: "8:15 AM", travel: "5 hr 15 min", airline: "American", number: "AA 2600", aircraft: "Airbus A321" })] };
+const RETURN_DL = { ...RETURN_UA, airline: "Delta", dep: "9:00 AM", arr: "6:00 PM", stops: 1, price: "$380", layoverLabel: "Layover (1 of 1) is a 1 hr layover at ATL Airport in Atlanta. ", tim: "SFO-ATL-DL-500-20261119,ATL-CVG-DL-501-20261119",
+  segments: () => [
+    segment({ from: "SFO", fromName: "San Francisco International Airport", dep: "9:00 AM", to: "ATL", toName: "Atlanta", arr: "4:00 PM", travel: "4 hr", airline: "Delta", number: "DL 500", aircraft: "Boeing 757", layover: "1 hr layoverATL" }),
+    segment({ from: "ATL", fromName: "Atlanta", dep: "5:00 PM", to: "CVG", toName: "Cincinnati", arr: "6:00 PM", travel: "1 hr", airline: "Delta", number: "DL 501", aircraft: "Airbus A319" }),
+  ] };
 const reorder = rows => { const rest = rows.filter(r => r !== NONSTOP_B); return [...rest.slice(0, 102), NONSTOP_B, ...rest.slice(102)]; };
-const cvgSfo = (options = {}) => new GooglePage({ route: ONE_WAY, departing: INITIAL, collapsed: COLLAPSED, reorderOnExpand: reorder, topCount: 3, ...options });
+// Google's Cheapest tab prices some rows lower than Best.
+const CHEAPEST = { initial: INITIAL.map(r => r === NONSTOP_A ? { ...NONSTOP_A, price: "$183" } : r), collapsed: COLLAPSED };
+const cvgSfo = (options = {}) => new GooglePage({ route: ONE_WAY, departing: INITIAL, collapsed: COLLAPSED, cheapest: CHEAPEST, reorderOnExpand: reorder, topCount: 3, ...options });
 
 // Everything a read must leave alone.
 const pageState = p => JSON.stringify({ state: p.state, url: p.url, clicks: p.clicks, more: p.moreClicks || 0, panels: p.rows().map(li => li.querySelector('button[aria-label^="Flight details"]').getAttribute("aria-expanded")), dialogs: p.dialog() ? 1 : 0, menu: p.body.children.some(c => c.attrs.role === "menu") });
@@ -134,7 +144,7 @@ test("set_results_view switches Google's tab, waits for the new list and reports
 });
 
 test("set_results_view is unavailable on the returning list, where Google shows no tabs", async () => {
-  const p = new GooglePage({ route: ROUND_TRIP, departing: INITIAL, returning: () => [RETURN_UA] });
+  const p = new GooglePage({ route: ROUND_TRIP, departing: INITIAL, returning: () => [RETURN_AA, RETURN_UA, RETURN_DL] });
   const [first] = (await invoke(p, "list_flights")).flights;
   await invoke(p, "select_flight", { selection_ref: first.selection_ref, expected_leg: "departing" });
   const out = await invoke(p, "set_results_view", { view: "cheapest" });
@@ -333,7 +343,7 @@ for (const [name, build] of [
   ["cheapest tab sorted by price", async () => { const page = cvgSfo(); await invoke(page, "set_results_view", { view: "cheapest" }); await invoke(page, "set_flight_sort", { sort_by: "price" }); return { page, out: await invoke(page, "get_page_context") }; }],
   ["expanded list with a stops filter", async () => { const page = cvgSfo(); await invoke(page, "set_flight_filters", { stops: "one_or_fewer" }); await invoke(page, "show_more_flights"); return { page, out: await invoke(page, "list_flights", { limit: 5 }) }; }],
   ["returning list", async () => {
-    const page = new GooglePage({ route: ROUND_TRIP, departing: INITIAL, returning: () => [RETURN_UA] });
+    const page = new GooglePage({ route: ROUND_TRIP, departing: INITIAL, returning: () => [RETURN_AA, RETURN_UA, RETURN_DL] });
     const [first] = (await invoke(page, "list_flights")).flights;
     return { page, out: await invoke(page, "select_flight", { selection_ref: first.selection_ref, expected_leg: "departing" }) };
   }],
@@ -380,9 +390,10 @@ test("controls Google shows disabled are never advertised, and the tools refuse 
 // Google switches the tab and URL first and shows the new rows later; same route and row count, different price.
 const cheaperView = { initial: INITIAL.map(r => r === NONSTOP_A ? { ...NONSTOP_A, price: "$150" } : r), collapsed: COLLAPSED };
 for (const [name, options] of [
-  ["rows arrive 3 s later, no results request observed", { fetches: false, timing: { change: 100, rows: 3000, settleChange: 3200 } }],
-  ["results request completes before the rows render", { timing: { change: 100, fetch: 500, rows: 1300, settleChange: 1400 } }],
-  ["the stale announcement stays while the rows change", { cheapestAnnouncement: "10 results returned.", timing: { change: 100, fetch: 400, rows: 1200, settleChange: 50 } }],
+  ["the new rows arrive 3 s after the tab", { timing: { change: 100, rows: 3000, settleChange: 3200 } }],
+  ["the new rows arrive 10 s after the tab, under an early announcement", { timing: { change: 100, rows: 10000, settleChange: 1300 } }],
+  ["the stale announcement stays while the rows change", { cheapestAnnouncement: "10 results returned.", timing: { change: 100, rows: 1200, settleChange: 50 } }],
+  ["Google blanks the list, restores the old rows and announces them before the new rows", { timing: { change: 100, clear: 150, restore: 600, rows: 10000, settleChange: 10100 } }],
 ]) {
   test(`set_results_view never reports the previous view's rows as the new view: ${name}`, async () => {
     const p = cvgSfo({ cheapest: cheaperView, ...options });
@@ -394,8 +405,8 @@ for (const [name, options] of [
   });
 }
 
-test("a tab change with no sign of a new list (no request, identical rows) is unconfirmed, not changed", async () => {
-  const p = cvgSfo({ fetches: false });
+test("a tab change whose list is identical to the previous one is unconfirmed, not changed", async () => {
+  const p = cvgSfo({ cheapest: { initial: INITIAL, collapsed: COLLAPSED } });
   const out = await invoke(p, "set_results_view", { view: "cheapest" });
   assert.equal(out.status, "unconfirmed");
   assert.equal(out.clicked, true);
@@ -423,9 +434,13 @@ test("the whole response stays within the API's 240 KiB in UTF-8 bytes, with a c
   assert.deepEqual(pages.flatMap(x => x.flights).map(f => f.position), Array.from({ length: 150 }, (_, i) => i + 1));
 });
 
-test("a single row too large for any response is reported as skipped and the continuation moves past it", async () => {
-  const huge = { ...connection(5000, 300), from: "Cincinnati " + "x".repeat(260000) };
-  const p = cvgSfo({ departing: [INITIAL[0], huge, INITIAL[2]], collapsed: [] });
+test("a row too large for any response is skipped with a continuation that moves past it, and details fail explicitly", async () => {
+  // Long texts are shortened, so only an absurd details panel (thousands of amenity lines) makes one row too large.
+  const amenities = block => { for (let i = 0; i < 400; i++) block.append(new El("li", { text: `Amenity ${i} ` + "x".repeat(900) })); return block; };
+  const crowded = { ...NONSTOP_B, segments: () => NONSTOP_B.segments().map(amenities) };
+  const p = cvgSfo({ departing: [INITIAL[0], crowded, INITIAL[2]], collapsed: [] });
+  const ref = (await invoke(p, "list_flights")).flights[1].selection_ref;
+  await assert.rejects(invoke(p, "get_flight_details", { selection_ref: ref }), /above the 240 KiB response limit/);
   const out = await invoke(p, "list_flights");
   assert.ok(Buffer.byteLength(JSON.stringify(out)) <= 240 * 1024);
   assert.deepEqual(out.flights.map(f => f.position), [1, 3]);
@@ -462,7 +477,7 @@ test("an unsettled list reports what Google renders without claiming the rows we
 
 test("after expanding Best, the Cheapest tab under Google's stale smaller count is read (with a warning), not left unsettled", async () => {
   const extra = Array.from({ length: 20 }, (_, i) => connection(7000 + i * 2, 400 + i, "Delta", "DL", "ATL"));
-  const p = cvgSfo({ cheapest: { initial: INITIAL, collapsed: [...COLLAPSED, ...extra] }, cheapestAnnouncement: "119 results returned." });
+  const p = cvgSfo({ cheapest: { initial: CHEAPEST.initial, collapsed: [...COLLAPSED, ...extra] }, cheapestAnnouncement: "119 results returned." });
   await invoke(p, "show_more_flights");
   const out = await invoke(p, "set_results_view", { view: "cheapest", limit: 150 });
   assert.equal(out.status, "changed");
@@ -474,10 +489,10 @@ test("after expanding Best, the Cheapest tab under Google's stale smaller count 
 });
 
 test("a returning list a filter leaves empty, shown by Google without a list heading, is no_results with a way back", async () => {
-  const p = new GooglePage({ route: ROUND_TRIP, departing: INITIAL, returning: () => [RETURN_UA], emptyHeading: false });
+  const p = new GooglePage({ route: ROUND_TRIP, departing: INITIAL, returning: () => [RETURN_AA, RETURN_UA, RETURN_DL], emptyHeading: false });
   const [first] = (await invoke(p, "list_flights")).flights;
   await invoke(p, "select_flight", { selection_ref: first.selection_ref, expected_leg: "departing" });
-  const out = await invoke(p, "set_flight_filters", { airlines: ["Delta"] });
+  const out = await invoke(p, "set_flight_filters", { airlines: ["Breeze"] });
   assert.equal(out.status, "changed");
   assert.deepEqual([out.page.leg, out.page.results_state, out.results.rendered_rows], ["returning", "no_results", 0]);
   const context = await invoke(p, "get_page_context");
@@ -486,5 +501,23 @@ test("a returning list a filter leaves empty, shown by Google without a list hea
   assert.deepEqual([back.enabled, back.input], [true, { airlines: "all" }]);
   const restored = await invoke(p, "set_flight_filters", back.input);
   assert.equal(restored.status, "changed");
-  assert.deepEqual(restored.flights.map(f => f.flight_numbers[0]), ["UA 2391"]);
+  assert.deepEqual(restored.flights.map(f => f.flight_numbers[0]), ["AA 2600", "UA 2391", "DL 500"]);
+});
+
+test("get_flight_details and get_page_context stay within the response limit when Google's texts are huge, keeping refs and inputs exact", async () => {
+  const giant = "Ö".repeat(150000);
+  const p = cvgSfo({ departing: [{ ...NONSTOP_B, from: `Cincinnati ${giant}` }, { ...NONSTOP_A, airline: `Breeze ${giant}` }, ...INITIAL.slice(2, 9)], collapsed: [] });
+  const list = await invoke(p, "list_flights");
+  const big = list.flights[0];
+  assert.ok(Buffer.byteLength(JSON.stringify(list)) <= 240 * 1024);
+  assert.ok(big.origin_name.length <= 1001);
+  const details = await invoke(p, "get_flight_details", { selection_ref: big.selection_ref });
+  assert.equal(details.status, "ok");
+  assert.ok(Buffer.byteLength(JSON.stringify(details)) <= 240 * 1024);
+  assert.equal(details.flight.selection_ref, big.selection_ref);
+  const context = await invoke(p, "get_page_context");
+  assert.ok(Buffer.byteLength(JSON.stringify(context)) <= 240 * 1024);
+  const filters = context.available_actions.find(a => a.tool === "set_flight_filters");
+  assert.ok(filters.choices.airlines.every(name => name.length <= 60));
+  for (const action of context.available_actions.filter(a => a.input)) validate(tool(action.tool).tool.inputSchema, action.input);
 });

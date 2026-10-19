@@ -10,7 +10,7 @@
   const GF_FLIGHT_NUMBER = { type: "string", pattern: "^[A-Z0-9]{2} \\d{1,4}$" };
   const GF_REF = { type: "string", pattern: "^gf1\\.[A-Za-z0-9_-]+\\.[0-9a-f]{8}$", description: "Opaque reference to this itinerary on this leg of this search at this price; pass to get_flight_details or select_flight. Not a credential and not a position." };
   const GF_STRINGS = { type: "array", items: { type: "string" } };
-  
+
   const GF_SEGMENT_SCHEMA = gfObject({
     marketing_carrier_code: { type: "string", pattern: "^[A-Z0-9]{2}$" }, flight_number: GF_FLIGHT_NUMBER,
     airline: { type: ["string", "null"] }, operated_by: { type: ["string", "null"] }, aircraft: { type: ["string", "null"] }, cabin: { type: ["string", "null"] },
@@ -19,7 +19,7 @@
     arrival_airport: GF_AIRPORT, arrival_date: gfNullable(GF_DATE), arrival_time: gfNullable(GF_TIME),
     duration_minutes: { type: ["integer", "null"], minimum: 1 }
   });
-  
+
   const GF_FLIGHT_SCHEMA = gfObject({
     selection_ref: GF_REF,
     position: { type: "integer", minimum: 1, description: "1-based place of the row on the page when read. Changes when Google re-orders or expands the list; never an identity." },
@@ -66,7 +66,7 @@
     emissions_kg_co2e: { type: ["integer", "null"] },
     emissions_vs_typical_percent: { type: ["integer", "null"], description: "Google's emissions comparison; 0 when labeled average." }
   });
-  
+
   const GF_PAGE_SCHEMA = gfObject({
     url: { type: "string" },
     page_type: { enum: ["flights_home", "departing_results", "returning_results", "unsupported_results", "booking_options", "other"], description: "unsupported_results: a results page these tools do not read (multi-city, or a city or other place instead of an airport)." },
@@ -94,7 +94,7 @@
       }
     }
   });
-  
+
   const GF_VIEW_SCHEMA = gfObject({
     available: { type: "boolean", description: "Google shows Best/Cheapest tabs on this page." },
     active: { enum: ["best", "cheapest", null], description: "The selected tab; null when Google shows no tabs." },
@@ -218,7 +218,7 @@
     const GF_STOP_CHIPS = { Nonstop: "nonstop", "1 stop or fewer": "one_or_fewer", "2 stops or fewer": "two_or_fewer" };
     const GF_FILTER_NAMES = ["Stops", "Airlines", "Bags", "Price", "Times", "Emissions", "Connecting airports", "Duration"];
     const GF_SUMMARY = /\b(?:Nonstop|\d+ stops?) flight with /;
-    
+
     const gfSleep = ms => new Promise(resolve => setTimeout(resolve, ms));
     const gfVisible = e => !!e && e.getClientRects().length > 0;
     const gfText = e => (e?.textContent || "").replace(/\s+/g, " ").trim();
@@ -232,7 +232,7 @@
       const year = Number(base.slice(0, 4));
       return [year, year + 1, year - 1].map(y => new Date(Date.UTC(y, month, Number(day))).toISOString().slice(0, 10)).sort((a, b) => Math.abs(Date.parse(a) - Date.parse(base)) - Math.abs(Date.parse(b) - Date.parse(base)))[0];
     };
-    
+
     // The results URL carries the search as a base64url protobuf (tfs). Once a flight is chosen,
     // Google adds its segments to that leg: [from, date, to, marketing carrier, flight number].
     const gfDecodeSearch = href => {
@@ -285,7 +285,7 @@
       return null;
     };
     const gfSearchContext = search => ({ trip: search.trip_type, legs: search.legs.map(l => [l.date, l.from, l.to]), pax: search.passengers, cabin: search.cabin });
-    
+
     // A reference is a consistency handle, not a credential: base64url JSON plus an FNV-1a checksum that catches truncation.
     const gfChecksum = body => { let hash = 0x811c9dc5; for (let i = 0; i < body.length; i++) hash = Math.imul(hash ^ body.charCodeAt(i), 0x01000193) >>> 0; return hash.toString(16).padStart(8, "0"); };
     const gfEncodeRef = payload => {
@@ -308,7 +308,7 @@
     };
     const gfRefKey = ref => JSON.stringify([ref.itinerary, ref.departure, ref.arrival]);
     const gfFlightNumbers = segments => (segments || []).map(s => s[3] + " " + s[4]);
-    
+
     const gfSummaryOf = li => [...li.querySelectorAll("[aria-label]")].find(e => GF_SUMMARY.test(e.getAttribute("aria-label") || "")) || null;
     const gfRowNodes = () => {
       const out = [];
@@ -339,9 +339,9 @@
     const gfRowsKey = rows => rows.map(li => (gfSummaryOf(li)?.getAttribute("aria-label") || "") + "|" + (li.querySelector("[data-travelimpactmodelwebsiteurl]")?.getAttribute("data-travelimpactmodelwebsiteurl") || "") + "|" + gfSectionOf(li)).join("\n");
     const gfDetailToggle = li => li.querySelector('button[aria-label^="Flight details"]');
     const gfPanelOpen = li => gfDetailToggle(li)?.getAttribute("aria-expanded") === "true" && !!li.querySelector(".c257Jb");
-    
-    // Google's own controls on the results page, read without opening anything.
+
     const gfDisabled = e => !!e && (e.disabled === true || e.getAttribute("aria-disabled") === "true");
+    // Google's own controls on the results page, read without opening anything.
     const gfControls = () => {
       const buttons = [...document.querySelectorAll("button")].filter(gfVisible);
       const tabs = [...document.querySelectorAll('[role="tab"]')].filter(gfVisible).map(e => {
@@ -368,11 +368,11 @@
         all_filters_count: Number(buttons.map(gfText).find(t => /^All filters \(\d+\)$/.test(t))?.match(/\d+/)[0] ?? 0)
       };
     };
-    
+
     const gfPageType = (path, leg) => /^\/travel\/flights\/booking/.test(path) ? "booking_options"
       : /^\/travel\/flights\/search/.test(path) ? (leg === "returning" ? "returning_results" : leg === "departing" ? "departing_results" : "unsupported_results")
       : /^\/travel\/flights\/?$/.test(path) ? "flights_home" : "other";
-    
+
     // One observation of the page. key changes whenever anything a reader depends on changes.
     const gfSnapshot = () => {
       const url = location.href;
@@ -411,7 +411,7 @@
       const controlKey = [controls.tabs.map(t => t.view + t.selected), controls.sort_label, controls.chips.map(c => c.name + c.selected + c.value), !!controls.more].join("|");
       return { ...base, state, reasons, announced, announcement, rows, content, key: [url, state, announcement, content, controlKey].join("#") };
     };
-    
+
     // Waits until the page stops changing. Google announces "N results returned" for the rows it renders; a collapsed list
     // may announce more rows than it shows while "View more flights" is offered. Rows shown under a missing, smaller or
     // contradicting announcement (Google's Cheapest tab says "No results returned" above its rows, and keeps the previous
@@ -419,13 +419,13 @@
     // shown, with nothing collapsed, never settles: the list may still be rendering.
     const gfSettle = async ({ settle_by_ms, quiet_ms = 600, changed = null } = {}) => {
       const by = Number(settle_by_ms) || Date.now();
-      let s = gfSnapshot(), key = s.key, since = Date.now(), evidenceAt = null;
+      let s = gfSnapshot(), key = s.key, since = Date.now();
       for (;;) {
         if (["not_results_page", "unsupported", "booking"].includes(s.state)) return { ...s, settled: true };
-        // After an action, the quiet period starts no earlier than Google's evidence of a new list.
-        if (changed && evidenceAt === null && changed()) evidenceAt = Date.now();
-        const waiting = !!changed && evidenceAt === null;
-        const still = Date.now() - Math.max(since, evidenceAt ?? 0);
+        // After an action, the list settles only while it differs from the one before the click; a transient change
+        // (Google clearing and restoring the old rows) does not count.
+        const waiting = !!changed && !changed();
+        const still = Date.now() - since;
         const counted = s.announced !== null && (s.announced === s.rows.length || (s.announced > s.rows.length && !!s.controls.more));
         if (!waiting && s.state === "no_results" && still >= quiet_ms) return { ...s, settled: true };
         const contradicted = s.announced === null || s.announced < s.rows.length;
@@ -441,7 +441,7 @@
         if (s.key !== key) { key = s.key; since = Date.now(); }
       }
     };
-    
+
     // One result row: identity from Google's itinerary data, summary fields from its accessible label, and segment
     // times, aircraft, cabin and amenities only when Google's flight-details panel is already open on the page.
     const gfParseRow = (li, s, context) => {
@@ -480,7 +480,7 @@
       const priceSpan = [...li.querySelectorAll("span[aria-label]")].find(e => /^[\d,]+(?:\.\d+)? [\p{L} ]+$/u.test(e.getAttribute("aria-label")) && !/CO2|emission|kilogram|minute|hour/i.test(e.getAttribute("aria-label")) && /\d/.test(gfText(e)));
       const priceMatch = priceSpan ? priceSpan.getAttribute("aria-label").match(/^([\d,]+(?:\.\d+)?) ([\p{L} ]+)$/u) : summary.match(/^From ([\d,]+(?:\.\d+)?) ([^.\d]+?)(?: round trip total)?\./);
       const price = priceMatch ? { amount: Number(priceMatch[1].replace(/,/g, "")), currency: GF_CURRENCIES[priceMatch[2].trim()] || null, currency_label: priceMatch[2].trim(), display_text: priceSpan ? gfText(priceSpan) : null, round_trip: /round trip total/.test(summary) } : null;
-    
+
       const panelOpen = gfPanelOpen(li);
       const blocks = panelOpen ? [...li.querySelectorAll(".c257Jb")].map(block => {
         const labels = [...block.querySelectorAll(".Xsgmwe")].map(gfText).filter(Boolean);
@@ -530,10 +530,13 @@
       const arrivalLocal = arrivalDate && arrivalTime ? arrivalDate + "T" + arrivalTime : null;
       const key = itinerary && departureLocal && arrivalLocal ? JSON.stringify([itinerary, departureLocal, arrivalLocal]) : null;
       const usable = key && !missing.some(m => /conflict|airlines|stops|arrival date/.test(m));
+      const ref = usable ? gfEncodeRef({ v: 1, search: context, leg: s.leg, outbound: s.leg === "returning" ? s.search.legs[0].selected : null, itinerary, departure: departureLocal, arrival: arrivalLocal, price: price ? [price.amount, price.currency_label] : null }) : null;
+      // select_flight and get_flight_details accept references up to 4000 characters.
+      if (ref && ref.length > 4000) missing.push("reference too long");
       return {
         // identity names the itinerary even when the row is not trusted (key null), so a contradicting panel can be reported.
-        key: usable ? key : null, identity: key, node: gfSummaryOf(li), li, summary: summary.slice(0, 500), missing,
-        selection_ref: usable ? gfEncodeRef({ v: 1, search: context, leg: s.leg, outbound: s.leg === "returning" ? s.search.legs[0].selected : null, itinerary, departure: departureLocal, arrival: arrivalLocal, price: price ? [price.amount, price.currency_label] : null }) : null,
+        key: usable && ref.length <= 4000 ? key : null, identity: key, node: gfSummaryOf(li), li, summary: summary.slice(0, 500), missing,
+        selection_ref: ref && ref.length <= 4000 ? ref : null,
         section: gfSectionOf(li), panel_open: panelOpen, details_read: detailsRead,
         airlines, partner_airlines: partnerAirlines, operated_by: operatedBy,
         marketing_carriers: itinerary ? [...new Set(itinerary.map(x => x[3]))] : [], flight_numbers: itinerary ? itinerary.map(x => x[3] + " " + x[4]) : [],
@@ -546,7 +549,7 @@
         price, carry_on_bags: bags ? Number(bags[1]) : null, checked_bags: bags ? Number(bags[2]) : null
       };
     };
-    
+
     // The public form of a readable row (see the tools' flight schema).
     const gfFlightOut = (row, position, s) => {
       const trip = s.search.trip_type;
@@ -567,14 +570,14 @@
         emissions_kg_co2e: row.emissions_kg_co2e, emissions_vs_typical_percent: row.emissions_vs_typical_percent
       };
     };
-    
+
     // Reads every rendered row. Rows are never expanded, opened or re-ordered here.
     const gfReadRows = s => {
       if (!s.search || s.leg === null || !s.rows.length) return [];
       const context = gfSearchContext(s.search);
       return s.rows.map((li, i) => ({ ...gfParseRow(li, s, context), position: i + 1 }));
     };
-    
+
     const gfPageOut = s => {
       const search = gfAirportSearch(s.search) ? s.search : null;
       const route = search && s.index !== null ? search.legs[s.index] : null;
@@ -594,7 +597,7 @@
         } : null
       };
     };
-    
+
     const gfControlsOut = s => {
       const c = s.controls;
       const onResults = s.page_type === "departing_results" || s.page_type === "returning_results";
@@ -615,7 +618,7 @@
         }
       };
     };
-    
+
     // Registered-tool knowledge comes from the page's WebMCP registry. It counts as known only when the registry lists the
     // calling tool or get_page_context (registered on every Google Travel page); otherwise it stays unknown.
     const gfRegisteredTools = async self => {
@@ -626,8 +629,7 @@
         return names.includes(self) || names.includes("get_page_context") ? { known: true, names } : { known: false, names: [] };
       } catch { return { known: false, names: [] }; }
     };
-    
-    // The actions the caller can take on this exact state, with inputs that are valid for each tool's schema right now.
+
     // Google's booking-page Continue buttons (those inside a dialog are per-ticket parts of a separate-ticket option) and
     // their labels: "<seller>, <fare> for 512 US dollars", "<airline(s)> airline for 422 US dollars[. note]", "<agency> for 409 US dollars".
     const gfContinueButtons = () => [...document.querySelectorAll('button[aria-label^="Continue to book with"]')].filter(b => !b.closest('[role="dialog"]'));
@@ -648,7 +650,8 @@
         price: Number(amount.replace(/,/g, "")), currency_label: currency, note: note || null
       };
     };
-    
+
+    // The actions the caller can take on this exact state, with inputs that are valid for each tool's schema right now.
     // example_key picks the row whose selection_ref the examples use (the row a caller is working with); default: the first readable row.
     const gfActions = (s, rows, registered, window, example_key = null) => {
       const out = [];
@@ -680,7 +683,7 @@
           sortable ? { sort_by: Object.keys(GF_SORTS) } : null);
         const stopsChip = c.chips.find(x => x.name === "Stops" && !x.disabled), airlinesChip = c.chips.find(x => x.name === "Airlines" && !x.disabled);
         const stopsNow = stopsChip ? (stopsChip.selected ? GF_STOP_CHIPS[stopsChip.value] || "unknown" : "any") : null;
-        const seen = [...new Set(rows.flatMap(r => r.key ? r.airlines : []))].slice(0, 12);
+        const seen = [...new Set(rows.flatMap(r => r.key ? r.airlines : []))].filter(name => name.length <= 60).slice(0, 12);
         // Example: clear a filter that is set (the way back from an empty list), otherwise ask Google for nonstops.
         const filterExample = airlinesChip?.selected ? { airlines: "all" } : stopsChip ? { stops: stopsNow === "any" ? "nonstop" : "any" } : seen.length ? { airlines: [seen[0]] } : null;
         add("set_flight_filters", !!(stopsChip || airlinesChip) && settled, true, filterExample,
@@ -703,7 +706,7 @@
       add("search_flights", true, true, searchInput, "Starts a new Google Flights search (navigates the tab)" + (searchInput ? "; the example repeats the current route, dates, travelers and cabin with Google's default filters." : "."), null, searchInput ? null : "origin, destination, depart_date and trip_type (plus return_date for round_trip)");
       return out;
     };
-    
+
     // Up to four enabled actions as one-line instructions, most useful first; prefer moves recovery steps to the front.
     const GF_STEP_ORDER = ["select_flight", "get_flight_details", "show_more_flights", "set_results_view", "set_flight_filters", "set_flight_sort", "list_flights", "get_booking_options", "continue_to_airline", "search_flights"];
     const gfNextSteps = (actions, prefer = []) => {
@@ -717,9 +720,26 @@
           return a.tool + (input ? (input.length <= 120 ? " " + input : " (input in available_actions)") : "") + ": " + a.note + (a.requires ? " Needs " + a.requires + "." : "");
         });
     };
-    
+
     const gfBytes = value => new TextEncoder().encode(JSON.stringify(value)).length;
-    
+    // Page texts longer than GF_TEXT_CHARS are shortened so one response fits the API limit. References, URLs and example
+    // inputs are never shortened; their sizes are bounded where they are made.
+    const GF_TEXT_CHARS = 1000;
+    const gfClip = (value, key = "") => {
+      if (typeof value === "string") return value.length > GF_TEXT_CHARS && !["selection_ref", "url", "results_url"].includes(key) ? value.slice(0, GF_TEXT_CHARS) + "…" : value;
+      if (Array.isArray(value)) return value.map(item => gfClip(item, key));
+      if (value && typeof value === "object") return Object.fromEntries(Object.entries(value).map(([k, v]) => [k, k === "input" ? v : gfClip(v, k)]));
+      return value;
+    };
+    // Every tool's result passes through here: shortened texts, then a hard size check (the API rejects results above
+    // 240 KiB). Failing loudly beats a result the transport would drop.
+    const gfFit = out => {
+      const fitted = gfClip(out);
+      const bytes = gfBytes(fitted);
+      if (bytes > 235000) throw new Error("The result would be " + bytes + " bytes, above the 240 KiB response limit, even with long page texts shortened. Read the rows with list_flights and a smaller limit.");
+      return fitted;
+    };
+
     // Serializes readable rows from offset in page order within limit and a UTF-8 byte budget, so a larger limit only ever
     // adds rows. A single row larger than the whole budget is omitted and reported rather than stalling the continuation.
     const gfWindow = (s, rows, offset, limit, budget) => {
@@ -728,7 +748,7 @@
       const readable = rows.filter(r => r.key);
       for (; index < readable.length; index++) {
         if (flights.length >= limit) { cut = "limit"; break; }
-        const flight = gfFlightOut(readable[index], readable[index].position, s);
+        const flight = gfClip(gfFlightOut(readable[index], readable[index].position, s));
         const size = gfBytes(flight) + 1;
         if (size + 2 > budget) { oversized.push(readable[index].position); continue; }
         if (bytes + size > budget) { cut = "size_budget"; break; }
@@ -737,7 +757,7 @@
       }
       return { flights, offset, limit, returned_rows: flights.length, next_offset: cut ? index : null, truncated_by: cut, oversized };
     };
-    
+
     // rows are the parsed rows when the list was read; otherwise only what the DOM shows is counted.
     const gfResultsOut = (s, rows, win) => {
       const parsed = rows.length > 0 || !s.rows.length;
@@ -765,7 +785,7 @@
         pricing_note: (body.match(/Prices include[^\n]*/) || [""])[0].trim() || null
       };
     };
-    
+
     const gfWarnings = (s, rows) => {
       const warnings = [];
       const skipped = rows.filter(r => !r.key);
@@ -778,7 +798,7 @@
       if (unknownLabels.length) warnings.push("Unrecognized currency label(s): " + unknownLabels.join(", ") + "; price.currency is null.");
       return warnings;
     };
-    
+
     // The common result envelope: what the page shows, Google's controls, the rows (windowed), and what to do next. The whole
     // response stays within GF_RESPONSE_BYTES of UTF-8 (the API rejects results above 240 KiB): rows get what the rest leaves.
     const GF_RESPONSE_BYTES = 200000;
@@ -788,13 +808,13 @@
       const onResults = s.page_type === "departing_results" || s.page_type === "returning_results";
       const build = win => {
         const actions = gfActions(s, rows, registered, flights ? win : null, example_key);
-        return {
+        return gfClip({
           status, message, page: gfPageOut(s), ...gfControlsOut(s),
           results: onResults ? gfResultsOut(s, rows, win) : null,
           ...(flights ? { flights: win.flights } : {}),
           warnings: onResults && s.settled ? gfWarnings(s, rows) : [],
           registered_tools: registered, available_actions: actions, next_steps: gfNextSteps(actions, prefer)
-        };
+        });
       };
       const empty = { flights: [], offset: flights ? offset : 0, limit: flights ? limit : 0, returned_rows: 0, next_offset: null, truncated_by: null, oversized: [] };
       if (!flights) return { envelope: build(empty), rows };
@@ -802,7 +822,7 @@
       const budget = GF_RESPONSE_BYTES - gfBytes(build(empty)) - 4096;
       return { envelope: build(gfWindow(s, rows, offset, limit, budget)), rows };
     };
-    
+
     // Standard read used by every tool: settle, then classify. Returns the envelope and the parsed rows (with their nodes).
     const gfRead = async ({ self, settle_by_ms, quiet_ms, offset, limit, flights = true, changed = null, prefer = [], example_key = null }) => {
       const s = await gfSettle({ settle_by_ms, quiet_ms, changed });
@@ -826,29 +846,25 @@
     // Google Flights page operations shared by the google.com tools that press Google's own controls. Each helper clicks
     // at most once per call and reports what the page shows afterwards; callers decide whether that confirms their change.
     // Requires lib/google-flights-read.js.
-    
-    // Evidence that Google produced a new list after a click: the rendered rows changed (itinerary, price or section), or
-    // Google's results request completed after the click. Neither elapsed time nor a URL change counts: Google updates the
-    // URL and the selected control before the new rows arrive, and may first re-render the old rows.
+
+    // Evidence that Google rendered a new list after a click: the rows it renders now (itinerary, price, section, order)
+    // differ from those before the click. Elapsed time, a URL change, a finished request or a re-render of the same rows do
+    // not count: Google updates the URL and the selected control first, and may clear and restore the old rows before the
+    // new ones arrive. A list identical to the previous one therefore stays unconfirmed.
     const gfWatch = () => {
       const before = gfRowsKey(gfRowNodes());
-      const clickedAt = typeof performance === "object" ? performance.now() : 0;
-      let fetched = false, observer = null;
-      if (typeof PerformanceObserver === "function") {
-        observer = new PerformanceObserver(list => { if (list.getEntries().some(e => /GetShoppingResults/.test(e.name) && e.startTime >= clickedAt)) fetched = true; });
-        observer.observe({ type: "resource" });
-      }
-      return { refreshed: () => fetched || gfRowsKey(gfRowNodes()) !== before, stop: () => observer?.disconnect() };
+      return { refreshed: () => gfRowsKey(gfRowNodes()) !== before };
     };
-    
-    // Clicks a filter option once and waits until Google has processed it (a new list, see gfWatch) and test() holds, so the
-    // next click or closing the dialog cannot drop the change.
-    const gfClickProcessed = async (node, test, ms) => {
-      const watch = gfWatch();
+
+    // Clicks a filter option once and waits until test() holds and Google has processed the click (its filter chip changed,
+    // or a new list rendered), so the next click or closing the dialog cannot drop the change.
+    const gfClickProcessed = async (node, chipName, test, ms) => {
+      const chip = () => gfLabel(gfControls().chips.find(c => c.name === chipName)?.node);
+      const before = chip(), watch = gfWatch();
       node.click();
-      try { return await gfWaitFor(() => watch.refreshed() && test(), ms); } finally { watch.stop(); }
+      return gfWaitFor(() => test() && (chip() !== before || watch.refreshed()), ms);
     };
-    
+
     // Polls until test() holds or the deadline passes; returns test()'s last value.
     const gfWaitFor = async (test, ms) => {
       const until = Date.now() + ms;
@@ -856,17 +872,17 @@
       while (!value && Date.now() < until) { await gfSleep(150); value = test(); }
       return value;
     };
-    
+
     // Clicks once, then reads the list after Google reflects the change (reflected()) and re-announces it.
     const gfClickAndRead = async (node, reflected, read) => {
       const watch = gfWatch();
       node.click();
-      try { return await gfRead({ quiet_ms: 1000, ...read, changed: () => reflected() && watch.refreshed() }); } finally { watch.stop(); }
+      return gfRead({ quiet_ms: 1000, ...read, changed: () => reflected() && watch.refreshed() });
     };
-    
+
     const gfDialog = () => [...document.querySelectorAll('[role="dialog"]')].find(gfVisible) || null;
     const gfInputLabel = input => input.getAttribute("aria-label") || gfText(document.querySelector('label[for="' + input.id + '"]')) || input.value || "";
-    
+
     // Opens one filter chip's dialog (Stops, Airlines); null when Google did not show it.
     const gfOpenFilter = async name => {
       const chip = gfControls().chips.find(c => c.name === name);
@@ -885,7 +901,7 @@
       close.click();
       return !!await gfWaitFor(() => !gfDialog(), 3000);
     };
-    
+
     // Google's sort menu exists only while open; returns its entries, or null when it did not open.
     const gfOpenSortMenu = async () => {
       const button = gfControls().sort_button;
@@ -899,7 +915,12 @@
       target.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", code: "Escape", keyCode: 27, bubbles: true }));
       return !!await gfWaitFor(() => ![...document.querySelectorAll('[role="menuitemradio"]')].some(gfVisible), 2000);
     };
-    
+
+    // Why an action's new list was not confirmed, for its unconfirmed message.
+    const gfUnconfirmed = after => after.snapshot.reasons.includes("change_not_observed")
+      ? "Google's rows are still identical to the list before the click (it may not have re-rendered yet, or the new list is the same), so the new list is not confirmed"
+      : "the list did not settle in time (" + after.snapshot.reasons.join(", ") + ")";
+
     // Shared preamble of the page-changing tools: the page must be a settled results list before anything is clicked.
     const gfReadyForAction = async (self, read) => {
       const before = await gfRead({ self, settle_by_ms: Date.now() + 15000, ...read });

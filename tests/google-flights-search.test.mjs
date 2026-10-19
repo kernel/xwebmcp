@@ -14,7 +14,7 @@ const TOOLS = ["get_page_context", "search_flights", "list_flights", "select_fli
 const card = options => makeCard({ date: departDate, ...options });
 
 // A static Google Flights results page with Google's controls: Best/Cheapest tabs, the sort button, filter chips and
-// 'View more flights'. Clicking a tab selects it, completes a results request and re-announces the list.
+// 'View more flights'. Clicking a tab selects it, shows that view's rows and re-announces the list.
 function resultsPage({ live = "2 results returned.", roundTripCards = false, extraCard = null, currencyName = "US dollars", firstCard = null, selectedView = "best", tabs = true, stopsChip = null } = {}) {
   const cardA = firstCard ?? card({ currencyName,
     dep: "6:08 PM", arr: "8:45 PM", airline: "Delta", duration: "5 hr 37 min",
@@ -42,9 +42,18 @@ function resultsPage({ live = "2 results returned.", roundTripCards = false, ext
     moreButton.onclick = () => { extraCard.hidden = false; moreButton.hidden = true; liveRegion.text = "3 results returned."; };
   } else moreButton.hidden = true;
   const tabNodes = tabs ? ["Best", "Cheapest"].map(name => new El("div", { attrs: { role: "tab", "aria-selected": String(name.toLowerCase() === selectedView) }, text: name })) : [];
-  const observers = new Set();
-  const fetched = () => { for (const o of observers) o.callback({ getEntries: () => [{ name: "https://www.google.com/_/FlightsFrontendUi/data/travel.frontend.flights.FlightsFrontendService/GetShoppingResults", startTime: Date.now() }] }); };
-  for (const tab of tabNodes) tab.onclick = () => { for (const t of tabNodes) t.setAttribute("aria-selected", String(t === tab)); liveRegion.text = ""; setTimeout(() => { fetched(); liveRegion.text = live; }, 50); };
+  // Each view prices the first row differently, as Google's tabs do.
+  const firstPrice = cardA.querySelector("span[aria-label$='dollars'], span[aria-label$='pounds'], span[aria-label$='krónur'], span[aria-label$='credits']");
+  for (const tab of tabNodes) tab.onclick = () => {
+    for (const t of tabNodes) t.setAttribute("aria-selected", String(t === tab));
+    liveRegion.text = "";
+    const shift = n => String(Number(n) + (tab.text === "Cheapest" ? -1 : 1));
+    setTimeout(() => {
+      firstPrice?.setAttribute("aria-label", firstPrice.getAttribute("aria-label").replace(/^\d+/, shift));
+      cardA.link.setAttribute("aria-label", cardA.link.getAttribute("aria-label").replace(/^From (\d+)/, (_, n) => "From " + shift(n)));
+      liveRegion.text = live;
+    }, 50);
+  };
   const body = new El("body", { children: [
     liveRegion,
     new El("div", { children: tabNodes }),
@@ -60,7 +69,7 @@ function resultsPage({ live = "2 results returned.", roundTripCards = false, ext
   return {
     documentElement, body, querySelector: s => documentElement.querySelector(s), querySelectorAll: s => documentElement.querySelectorAll(s),
     modelContext: { getTools: async () => TOOLS.map(name => ({ name: `custom.ct_x.${name}` })) },
-    cards: { a: cardA, b: cardB }, moreButton, tabs: tabNodes, observers,
+    cards: { a: cardA, b: cardB }, moreButton, tabs: tabNodes,
   };
 }
 
@@ -72,8 +81,7 @@ function harness({ startUrl = "https://www.google.com/travel/flights?hl=en", doc
   const pageGlobals = () => {
     const location = new URL(url);
     let offset = 0;
-    const PerformanceObserver = class { constructor(callback) { this.callback = callback; } observe() { document.observers?.add(this); } disconnect() { document.observers?.delete(this); } };
-    const globals = { document, location, navigator: {}, setTimeout, Date, URL, atob, btoa, TextEncoder, TextDecoder, PerformanceObserver, performance: { now: () => Date.now() } };
+    const globals = { document, location, navigator: {}, setTimeout, Date, URL, atob, btoa, TextEncoder, TextDecoder };
     // Advances 30 s per reading so quiet periods and timeouts pass instantly.
     if (fastClock) globals.Date = class extends Date { static now() { offset += 30000; return Date.now() + offset; } };
     return globals;

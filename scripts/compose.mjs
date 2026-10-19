@@ -18,7 +18,7 @@ export function renderInline(source, snippets) {
     const snippet = lookup(name);
     if (snippet === undefined) throw new Error(`unknown inline snippet ${name}`);
     count++;
-    return `${indent}// @xwebmcp-inline ${name}\n${snippet.trimEnd().split("\n").map(line => indent + line).join("\n")}\n${indent}${end}`;
+    return `${indent}// @xwebmcp-inline ${name}\n${snippet.trimEnd().split("\n").map(line => line ? indent + line : line).join("\n")}\n${indent}${end}`;
   });
   if (count !== [...source.matchAll(start)].length || count !== source.split(end).length - 1) {
     throw new Error("unpaired or unsupported inline marker");
