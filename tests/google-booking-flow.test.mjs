@@ -3,11 +3,12 @@ import { readFileSync } from "node:fs";
 import test from "node:test";
 import { runInNewContext } from "node:vm";
 import { Document } from "./etsy-dom.mjs";
+import { tfs } from "./google-flights-page.mjs";
 
 const load = name => readFileSync(new URL(`../domains/google.com/${name}.js`, import.meta.url), "utf8");
 const plain = v => JSON.parse(JSON.stringify(v));
 
-function run(name, html, input = {}, { url, onClick = () => {}, tools = [] } = {}) {
+function run(name, html, input = {}, { url, onClick = () => {}, tools = [], definitionOnly = false } = {}) {
   const document = new Document(html);
   document.modelContext = { getTools: async () => tools.map(t => ({ name: `custom.ct_x.${t}` })) };
   const proto = Object.getPrototypeOf(document.body);
@@ -16,6 +17,7 @@ function run(name, html, input = {}, { url, onClick = () => {}, tools = [] } = {
   const location = { href: u.href, pathname: u.pathname, search: u.search };
   const context = { document, navigator: {}, URL, JSON, Number, Math, Date, Infinity, atob, location, setTimeout: fn => setImmediate(fn) };
   const [tool] = runInNewContext(`(${load(name)})`, context);
+  if (definitionOnly) return Promise.resolve({ definition: tool });
   return tool.execute(input).then(out => ({ out: plain(out), document, location }));
 }
 
@@ -39,12 +41,22 @@ test("google get_booking_options: each fare with price and carry-on inclusion", 
   assert.equal(out.selected_flights.length, 1);
 });
 
-test("google get_page_context: page types and booking suggestions", async () => {
-  const b = await run("get_page_context", booking, {}, { url: "https://www.google.com/travel/flights/booking?tfs=x", tools: ["get_booking_options", "continue_to_airline", "get_page_context"] });
-  assert.equal(b.out.page_type, "booking_options");
-  assert.ok(b.out.suggested_next_steps.some(s => s.includes("continue_to_airline")));
-  const r = await run("get_page_context", departing.replace("Top departing", "Top returning"), {}, { url: resultsUrl, tools: ["list_flights"] });
-  assert.equal(r.out.page_type, "returning_results");
+test("google get_page_context: page types and booking-page actions that match the booking tools' schemas", async () => {
+  const b = await run("get_page_context", booking, {}, { url: "https://www.google.com/travel/flights/booking?tfs=" + tfs({ trip: "one_way", legs: [["2026-10-07", "CVG", "ORD"]], selected: [[["CVG", "2026-10-07", "ORD", "UA", "1"]]] }), tools: ["get_booking_options", "continue_to_airline", "get_page_context"] });
+  assert.equal(b.out.page.page_type, "booking_options");
+  assert.deepEqual(b.out.page.selected_outbound.flight_numbers, ["UA 1"]);
+  const actions = Object.fromEntries(b.out.available_actions.map(a => [a.tool, a]));
+  assert.deepEqual([actions.get_booking_options.enabled, actions.get_booking_options.input], [true, {}]);
+  // continue_to_airline needs a seller from get_booking_options, so no input is invented for it.
+  assert.deepEqual([actions.continue_to_airline.enabled, actions.continue_to_airline.input, actions.continue_to_airline.registered], [true, null, true]);
+  assert.match(actions.continue_to_airline.requires, /^seller \(required\), fare_name and expected_price/);
+  const schema = (await run("continue_to_airline", booking, null, { url: "https://www.google.com/travel/flights/booking?tfs=x", definitionOnly: true })).definition.tool.inputSchema;
+  assert.deepEqual(Array.from(schema.required), ["seller"]);
+  assert.ok(b.out.next_steps.some(s => s.startsWith("get_booking_options")));
+  assert.ok(b.out.next_steps.some(s => s.startsWith("continue_to_airline") && s.includes("Needs seller (required)")));
+  const r = await run("get_page_context", departing.replace("Top departing", "Top returning"), {}, { url: "https://www.google.com/travel/flights/search?tfs=" + tfs({ trip: "round_trip", legs: [["2026-10-07", "CVG", "ORD"], ["2026-10-09", "ORD", "CVG"]], selected: [[["CVG", "2026-10-07", "ORD", "UA", "1"]]] }), tools: ["list_flights", "get_page_context"] });
+  assert.equal(r.out.page.page_type, "returning_results");
+  assert.equal(r.out.available_actions.find(a => a.tool === "select_flight").registered, false);
 });
 
 const option = (label, lines = [], hidden = false) => `<div${hidden ? " hidden" : ""}>${lines.map(l => `<span>${l}</span>`).join("")}<button aria-label="${label}">Continue</button></div>`;

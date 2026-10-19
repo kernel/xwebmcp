@@ -25,7 +25,12 @@ export class El {
   getClientRects() { return this.isVisible() ? [{}] : []; }
   getAttribute(name) { return name in this.attrs ? this.attrs[name] : null; }
   setAttribute(name, value) { this.attrs[name] = String(value); }
-  click() { this.clicks++; this.onclick?.(); }
+  click() { this.clicks++; if (this.attrs.type === "checkbox" || this.attrs.type === "radio") this.onchange?.(); this.onclick?.(); }
+  dispatchEvent(event) { for (let node = this; node; node = node.parentElement) node.onevent?.(event); return true; }
+  get id() { return this.attrs.id ?? ""; }
+  get value() { return this._value ?? this.attrs.value ?? ""; }
+  set value(v) { this._value = v; }
+  get disabled() { return "disabled" in this.attrs; }
   descendants() { return this.children.flatMap(c => [c, ...c.descendants()]); }
   matches(compound) {
     const tag = compound.match(/^[a-z0-9]+/i)?.[0];
@@ -133,6 +138,10 @@ export function card({ date, dep, arr, plus = "", arrivalDate, airline, partners
 
 // Small JSON Schema walker so fixture results are checked against a tool's own outputSchema (including oneOf branches).
 export function validate(schema, value, path = "$") {
+  if (schema.anyOf) {
+    const passing = schema.anyOf.filter(branch => { try { validate(branch, value, path); return true; } catch { return false; } });
+    assert.ok(passing.length >= 1, `${path}: matches no anyOf branch`);
+  }
   if (schema.oneOf) {
     const passing = schema.oneOf.filter(branch => { try { validate(branch, value, path); return true; } catch { return false; } });
     assert.equal(passing.length, 1, `${path}: matches ${passing.length} oneOf branches`);
@@ -141,6 +150,8 @@ export function validate(schema, value, path = "$") {
   const actual = value === null ? "null" : Array.isArray(value) ? "array" : Number.isInteger(value) ? "integer" : typeof value;
   if (type.length) assert.ok(type.includes(actual) || (actual === "integer" && type.includes("number")), `${path}: type ${actual} not in ${type}`);
   if (schema.enum) assert.ok(schema.enum.includes(value), `${path}: ${JSON.stringify(value)} not in enum`);
+  if (schema.maxLength !== undefined && typeof value === "string") assert.ok(value.length <= schema.maxLength, `${path}: maxLength`);
+  if (schema.maxItems !== undefined && Array.isArray(value)) assert.ok(value.length <= schema.maxItems, `${path}: maxItems`);
   if ("const" in schema) assert.equal(value, schema.const, `${path}: const`);
   if (schema.pattern && typeof value === "string") assert.match(value, new RegExp(schema.pattern), `${path}: pattern`);
   if (schema.minLength !== undefined && typeof value === "string") assert.ok(value.length >= schema.minLength, `${path}: minLength`);

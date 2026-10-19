@@ -21,7 +21,6 @@ const fail = (message) => errors.push(message);
 const LEGACY_CAMEL_CASE_FILES = new Set([
   "domains/aa.com/search_flights.js",
   "domains/flyfrontier.com/search_flights.js",
-  "domains/google.com/search_flights.js",
   "domains/jetblue.com/search_flights.js",
   "domains/southwest.com/search_flights.js",
 ]);

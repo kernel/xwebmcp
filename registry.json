@@ -1734,6 +1734,20 @@
     },
     {
       "domain": "google.com",
+      "tool": "get_flight_details",
+      "file": "domains/google.com/get_flight_details.js",
+      "kind": "page",
+      "namespace": "google.com",
+      "url_patterns": [
+        "https://www.google.com/travel/flights/search*"
+      ],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Draft. Opens Google's flight-details panel for the row named by a selection_ref (one click on the row's own toggle, none when already open), verifies every panel segment against the reference's flight numbers and airports, and returns segments with aircraft, cabin, times and amenities; the panel stays open. Refuses malformed, foreign-search, wrong-leg and other-outbound references and itineraries not rendered now (not_visible) without clicking.",
+      "url_patterns_reason": "Narrowed to Google Flights results (www.google.com/travel/flights/search*), the only page with these results controls; google.com also serves unrelated products."
+    },
+    {
+      "domain": "google.com",
       "tool": "get_page_context",
       "file": "domains/google.com/get_page_context.js",
       "kind": "page",
@@ -1741,13 +1755,10 @@
       "url_patterns": [
         "https://www.google.com/travel/*"
       ],
-      "status": "qa_passed",
-      "last_verified": "2026-10-16",
-      "notes": "Page type (home, departing/returning results, booking options), live tools, unsettled reasons, chosen flights, suggestions; suggestions point select_flight at selection_ref and expected_leg. Independent QA passed this exact source (byte-identical since) in the first pass, including the suggestion text and the booking-page context live; it was not re-exercised in the second pass. Known limitation: on returning results chosen_flights carries only Google's breadcrumb (list_flights' selected_outbound names the departing flight), and /travel/flights?q= results are reported as flights_home.",
-      "url_patterns_reason": "Narrowed to Google Travel (www.google.com/travel/*): google.com also serves Search, Gmail, Maps and other unrelated products where this tool must not be listed.",
-      "provenance": {
-        "qa_agent": "agt_994afecca05dbe35538a"
-      }
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Draft. Breaking change: returns the common Google Flights envelope (page, view, sort, filters, results, registered_tools, available_actions with valid inputs, next_steps) plus chosen_flights; available_tools and suggested_next_steps were replaced. Read-only.",
+      "url_patterns_reason": "Narrowed to Google Travel (www.google.com/travel/*): google.com also serves Search, Gmail, Maps and other unrelated products where this tool must not be listed."
     },
     {
       "domain": "google.com",
@@ -1758,13 +1769,10 @@
       "url_patterns": [
         "https://www.google.com/travel/flights/search*"
       ],
-      "status": "qa_passed",
-      "last_verified": "2026-10-16",
-      "notes": "Reads the departing flights, or the returning flights Google offers for the departing flight recorded in the results URL, once Google's announced count matches the visible rows (not_ready while rows render, while the previous leg's rows remain or while the count disagrees; no_results for an explicit empty page). Expands 'View more flights' and returns per row a selection_ref, marketing carriers and flight numbers, ordered segments and layovers, ISO dates, airport-local times with day offset, and price scope and passenger count. Breaking changes from the previous version: departure_date and arrival_date are ISO dates and layovers are objects. Independent QA, two passes. Final source: live CVG-LAX returning list read immediately after choosing the outbound, announced and visible counts matching (29/29 departing, 30/30 returning). First pass (before a settle fix): a 71-row expansion matching Google's announcement, native stop filters on both legs and a limited list with has_more. Fixture-only: announced-count mismatch, settled no-results returns and unreadable rows. Known limitation: selected_outbound comes from the results URL because Google shows only a route breadcrumb for it.",
-      "url_patterns_reason": "Narrowed to Google Flights results (www.google.com/travel/flights/search*), the only page with flight rows; google.com also serves unrelated products.",
-      "provenance": {
-        "qa_agent": "agt_994afecca05dbe35538a"
-      }
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Draft. Breaking change: read-only snapshot of the rows Google renders, in page order with section headings and positions; never expands 'View more flights', opens panels, filters or sorts (sort_by, airline and max_stops inputs removed; see set_flight_sort and set_flight_filters). offset/limit only bound serialization. departure_time and arrival_time are 24-hour (Google's text moves to *_time_text); result_index became position; details_read became detail_level. A collapsed list is settled when Google's announcement exceeds the rows while 'View more flights' is offered.",
+      "url_patterns_reason": "Narrowed to Google Flights results (www.google.com/travel/flights/search*), the only page with flight rows; google.com also serves unrelated products."
     },
     {
       "domain": "google.com",
@@ -1777,12 +1785,9 @@
         "https://*.google.com/travel/*"
       ],
       "url_patterns_reason": "Narrowed to /travel/* on google.com and its subdomains: google.com also serves Search, Gmail, Maps, Docs and other unrelated products, where a flight search tool must not be listed. /travel/* covers Google Flights and the other Google Travel pages.",
-      "status": "qa_passed",
-      "last_verified": "2026-10-16",
-      "notes": "Navigates to a Google Flights tfs deep link (hl=en, gl=US, curr) and reads outbound flight numbers, segments, layovers and total prices after navigation; each flight carries a selection_ref for select_flight. Rows are read by the parser shared verbatim with list_flights and select_flight; a row without Google's per-card itinerary data (marketing flights and local dates) is skipped with a warning, and an announced result count that disagrees with the rows read is warned about (hasMore is set when Google announced more). max_stops is encoded on each search leg so Google filters inventory before maxResults; omitted max_stops preserves unrestricted searches; returned flights exceeding the limit fail closed. Independent QA, two passes. Final source: live CVG-LAX round trip whose nonstop selection_ref selected the displayed outbound, CVG-ORD one-way and limited results with hasMore; all local suites pass. First pass (same parser before a settle fix): a one-stop CVG-PHX-LAX itinerary's segments and layover, and native max_stops 0 and 1 on both legs. Unverified live: an announced-count mismatch (fixture-only). Known limitation: Google can add itineraries after announcing results; counts describe the page when read, not guaranteed complete airline inventory.",
-      "provenance": {
-        "qa_agent": "agt_994afecca05dbe35538a"
-      }
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Draft. Breaking change: snake_case inputs and outputs (depart_date, return_date, trip_type; limit replaces maxResults) and the common Google Flights envelope. Navigates to a tfs deep link (max_stops sets Google's Stops filter), confirms Google's Best or Cheapest tab (clicking the requested tab once when Google opened another) and returns the initial rows without expanding 'View more flights' or opening detail panels; a limit only bounds serialization. CDP because it navigates and returns the parsed results from the destination."
     },
     {
       "domain": "google.com",
@@ -1793,13 +1798,66 @@
       "url_patterns": [
         "https://www.google.com/travel/flights/search*"
       ],
-      "status": "qa_passed",
-      "last_verified": "2026-10-16",
-      "notes": "Chooses a departing or returning flight by selection_ref with an expected_leg assertion; result_index is no longer accepted. Before clicking it requires a settled list and refuses a malformed ref, another search, the wrong leg, a return listed for a different departing flight, an itinerary missing or duplicated on the page, or a changed price (with a fresh ref). It clicks once and reports selected only after Google's URL records exactly that itinerary and the returning list or booking page has settled; otherwise unconfirmed or selection_mismatch. Independent QA, two passes. Final source: live CVG-LAX nonstop outbound and return selections reached returning flights and Google's booking page; malformed, edited, other-search, contradicting expected_leg and other-outbound references were refused without clicking. First pass (before a settle fix): the selected flights confirmed with get_booking_options, a page marker showing both transitions are same-document, a reference reused on a fresh page for the same search, and legacy result_index refused. Fixture-only: price_changed, ambiguous, not_found, unconfirmed and selection_mismatch outcomes and slow or no-results transitions. Unverified: multi-city results.",
-      "url_patterns_reason": "Narrowed to Google Flights results (www.google.com/travel/flights/search*), the only page with selectable flight rows; google.com also serves unrelated products.",
-      "provenance": {
-        "qa_agent": "agt_994afecca05dbe35538a"
-      }
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Draft. Selection guards unchanged (search, leg, chosen outbound, itinerary, price, ambiguity, one click, no blind retries); the hidden 'View more flights' expansion when a reference was not rendered is removed: not_found now points at show_more_flights. Every result carries registered_tools, available_actions and next_steps for the state it leaves the page in.",
+      "url_patterns_reason": "Narrowed to Google Flights results (www.google.com/travel/flights/search*), the only page with selectable flight rows; google.com also serves unrelated products."
+    },
+    {
+      "domain": "google.com",
+      "tool": "set_flight_filters",
+      "file": "domains/google.com/set_flight_filters.js",
+      "kind": "page",
+      "namespace": "google.com",
+      "url_patterns": [
+        "https://www.google.com/travel/flights/search*"
+      ],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Draft. Sets Google's Stops and Airlines filters through their chips and dialogs; airline names are checked against Google's dialog before anything changes; waits for Google's chips and announcement before reading the re-rendered list.",
+      "url_patterns_reason": "Narrowed to Google Flights results (www.google.com/travel/flights/search*), the only page with these results controls; google.com also serves unrelated products."
+    },
+    {
+      "domain": "google.com",
+      "tool": "set_flight_sort",
+      "file": "domains/google.com/set_flight_sort.js",
+      "kind": "page",
+      "namespace": "google.com",
+      "url_patterns": [
+        "https://www.google.com/travel/flights/search*"
+      ],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Draft. Opens Google's sort menu once and chooses the requested entry, or closes it and refuses an entry Google does not offer; confirms Google's sort label before reading the re-sorted list.",
+      "url_patterns_reason": "Narrowed to Google Flights results (www.google.com/travel/flights/search*), the only page with these results controls; google.com also serves unrelated products."
+    },
+    {
+      "domain": "google.com",
+      "tool": "set_results_view",
+      "file": "domains/google.com/set_results_view.js",
+      "kind": "page",
+      "namespace": "google.com",
+      "url_patterns": [
+        "https://www.google.com/travel/flights/search*"
+      ],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Draft. Clicks Google's Best or Cheapest tab once and confirms the selection before reading that view's initial rows; unavailable on the returning list, which has no tabs.",
+      "url_patterns_reason": "Narrowed to Google Flights results (www.google.com/travel/flights/search*), the only page with these results controls; google.com also serves unrelated products."
+    },
+    {
+      "domain": "google.com",
+      "tool": "show_more_flights",
+      "file": "domains/google.com/show_more_flights.js",
+      "kind": "page",
+      "namespace": "google.com",
+      "url_patterns": [
+        "https://www.google.com/travel/flights/search*"
+      ],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Draft. Clicks Google's 'View more flights' once and returns the expanded list; unavailable (no click) when Google shows no such control or shows it disabled.",
+      "url_patterns_reason": "Narrowed to Google Flights results (www.google.com/travel/flights/search*), the only page with these results controls; google.com also serves unrelated products."
     },
     {
       "domain": "instacart.com",

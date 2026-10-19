@@ -1,92 +1,205 @@
 (() => {
-  const airport = { type: "string", pattern: "^[A-Z]{3}$" };
-  const date = { type: "string", format: "date", pattern: "^\\d{4}-\\d{2}-\\d{2}$" };
-  const time = { type: "string", pattern: "^([01][0-9]|2[0-3]):[0-5][0-9]$" };
-  const nonempty = { type: "string", minLength: 1 };
-  const nullableString = { type: ["string", "null"] };
-  const object = (properties, required = Object.keys(properties)) => ({ type: "object", additionalProperties: false, required, properties });
+  // @xwebmcp-inline lib/google-flights-schema.js
+  // Output schema of the common Google Flights result envelope, shared by the google.com flight tools.
+  const gfObject = (properties, required = Object.keys(properties)) => ({ type: "object", additionalProperties: false, required, properties });
+  const gfNullable = schema => ({ ...schema, type: [schema.type, "null"] });
+  const GF_AIRPORT = { type: "string", pattern: "^[A-Z]{3}$" };
+  const GF_DATE = { type: "string", pattern: "^\\d{4}-\\d{2}-\\d{2}$" };
+  const GF_TIME = { type: "string", pattern: "^([01]\\d|2[0-3]):[0-5]\\d$", description: "Airport-local 24-hour time." };
+  const GF_LOCAL = { type: "string", pattern: "^\\d{4}-\\d{2}-\\d{2}T([01]\\d|2[0-3]):[0-5]\\d$", description: "Airport-local date and time, no time zone." };
+  const GF_FLIGHT_NUMBER = { type: "string", pattern: "^[A-Z0-9]{2} \\d{1,4}$" };
+  const GF_REF = { type: "string", pattern: "^gf1\\.[A-Za-z0-9_-]+\\.[0-9a-f]{8}$", description: "Opaque reference to this itinerary on this leg of this search at this price; pass to get_flight_details or select_flight. Not a credential and not a position." };
+  const GF_STRINGS = { type: "array", items: { type: "string" } };
+  
+  const GF_SEGMENT_SCHEMA = gfObject({
+    marketing_carrier_code: { type: "string", pattern: "^[A-Z0-9]{2}$" }, flight_number: GF_FLIGHT_NUMBER,
+    airline: { type: ["string", "null"] }, operated_by: { type: ["string", "null"] }, aircraft: { type: ["string", "null"] }, cabin: { type: ["string", "null"] },
+    features: { type: ["array", "null"], items: { type: "string" }, description: "Amenities Google lists in the open flight-details panel (legroom, Wi-Fi, power); null when the panel was not read." },
+    departure_airport: GF_AIRPORT, departure_date: GF_DATE, departure_time: gfNullable(GF_TIME),
+    arrival_airport: GF_AIRPORT, arrival_date: gfNullable(GF_DATE), arrival_time: gfNullable(GF_TIME),
+    duration_minutes: { type: ["integer", "null"], minimum: 1 }
+  });
+  
+  const GF_FLIGHT_SCHEMA = gfObject({
+    selection_ref: GF_REF,
+    position: { type: "integer", minimum: 1, description: "1-based place of the row on the page when read. Changes when Google re-orders or expands the list; never an identity." },
+    section: { type: ["string", "null"], description: "Google's heading above the row, e.g. \"Top flights\", \"Other departing flights\", \"All flights\"." },
+    detail_level: { enum: ["summary", "detail_panel"], description: "detail_panel when Google's flight-details panel for this row was open and agreed with the itinerary; otherwise segment times, aircraft, cabin and features are null (unknown, not absent). get_flight_details opens it." },
+    airlines: { type: "array", minItems: 1, items: { type: "string" }, description: "Marketing airline names." },
+    partner_airlines: { ...GF_STRINGS, description: "Other carriers Google lists as also selling this itinerary." },
+    operated_by: { type: ["string", "null"] },
+    marketing_carriers: { type: "array", minItems: 1, items: { type: "string", pattern: "^[A-Z0-9]{2}$" } },
+    flight_numbers: { type: "array", minItems: 1, items: GF_FLIGHT_NUMBER, description: "Marketing flight numbers in segment order." },
+    origin: GF_AIRPORT, destination: GF_AIRPORT,
+    origin_name: { type: ["string", "null"] }, destination_name: { type: ["string", "null"] },
+    departure_date: GF_DATE, departure_time: GF_TIME, departure_time_text: { type: "string", description: "Google's text, e.g. \"7:05 PM\"." }, departure_local: GF_LOCAL,
+    arrival_date: GF_DATE, arrival_time: GF_TIME, arrival_time_text: { type: "string" }, arrival_local: GF_LOCAL,
+    arrival_day_offset: { type: "integer", minimum: -1, maximum: 3, description: "Days between departure_date and arrival_date; -1 for eastbound date-line crossings." },
+    duration_minutes: { type: ["integer", "null"], minimum: 1 },
+    stops: { type: "integer", minimum: 0 },
+    layovers: {
+      type: "array", description: "One per stop, in order.",
+      items: gfObject({
+        airport: { ...GF_AIRPORT, description: "Arrival airport of the preceding segment." },
+        airport_name: { type: ["string", "null"] }, city: { type: ["string", "null"] },
+        duration_minutes: { type: ["integer", "null"], minimum: 1 },
+        change_of_airport_to: { type: ["string", "null"], description: "Departure airport of the next segment when it differs from airport." }
+      })
+    },
+    segments: { type: "array", minItems: 1, items: GF_SEGMENT_SCHEMA },
+    price: {
+      type: ["object", "null"], additionalProperties: false,
+      required: ["amount", "currency", "currency_label", "display_text", "scope", "basis", "passengers_included"],
+      description: "Null when Google shows no price for the row.",
+      properties: {
+        amount: { type: "number" },
+        currency: { type: ["string", "null"], pattern: "^[A-Z]{3}$", description: "ISO code from Google's currency label; null when the label is not recognized." },
+        currency_label: { type: "string" },
+        display_text: { type: ["string", "null"], description: "The price as Google prints it, e.g. \"$339\"." },
+        scope: { enum: ["round_trip_total", "one_way", "unknown"] },
+        basis: { enum: ["one_way_total", "round_trip_total_from_this_departing_flight", "round_trip_total_with_selected_departing_flight", "unknown"], description: "What the amount covers: a one-way fare; the lowest whole-trip total Google offers starting with this departing flight; or the whole-trip total of the selected departing flight plus this returning flight." },
+        passengers_included: { type: "integer", minimum: 1, description: "The price is one total for this many travelers." }
+      }
+    },
+    carry_on_bags: { type: ["integer", "null"], description: "Included carry-on bags Google lists for this fare; null when not shown." },
+    checked_bags: { type: ["integer", "null"] },
+    emissions_kg_co2e: { type: ["integer", "null"] },
+    emissions_vs_typical_percent: { type: ["integer", "null"], description: "Google's emissions comparison; 0 when labeled average." }
+  });
+  
+  const GF_PAGE_SCHEMA = gfObject({
+    url: { type: "string" },
+    page_type: { enum: ["flights_home", "departing_results", "returning_results", "booking_options", "other"] },
+    settled: { type: "boolean", description: "Google had stopped changing the page when it was read." },
+    unsettled_reasons: GF_STRINGS,
+    results_state: { enum: ["results", "no_results", "loading", "not_applicable"] },
+    trip_type: { enum: ["one_way", "round_trip", "multi_city", null] },
+    search: {
+      type: ["object", "null"], additionalProperties: false, required: ["origin", "destination", "depart_date", "return_date", "passengers", "cabin"],
+      description: "The search Google's URL records.",
+      properties: {
+        origin: GF_AIRPORT, destination: GF_AIRPORT, depart_date: GF_DATE, return_date: gfNullable(GF_DATE),
+        passengers: { type: "integer", minimum: 1, description: "Travelers in Google's search; prices are totals for all of them." },
+        cabin: { enum: ["economy", "premium_economy", "business", "first", "unknown"] }
+      }
+    },
+    leg: { enum: ["departing", "returning", null] },
+    leg_route: { type: ["object", "null"], additionalProperties: false, required: ["origin", "destination", "date"], properties: { origin: GF_AIRPORT, destination: GF_AIRPORT, date: GF_DATE } },
+    selected_outbound: {
+      type: ["object", "null"], additionalProperties: false, required: ["source", "flight_numbers", "segments"],
+      description: "The departing flight Google records as chosen (returning results and booking page), read from the URL; Google's page shows only a breadcrumb for it.",
+      properties: {
+        source: { const: "results_url" }, flight_numbers: { type: "array", minItems: 1, items: GF_FLIGHT_NUMBER },
+        segments: { type: "array", minItems: 1, items: gfObject({ departure_airport: GF_AIRPORT, departure_date: GF_DATE, arrival_airport: GF_AIRPORT, marketing_carrier_code: { type: "string", pattern: "^[A-Z0-9]{2}$" }, flight_number: GF_FLIGHT_NUMBER }) }
+      }
+    }
+  });
+  
+  const GF_VIEW_SCHEMA = gfObject({
+    available: { type: "boolean", description: "Google shows Best/Cheapest tabs on this page." },
+    active: { enum: ["best", "cheapest", null], description: "The selected tab; null when Google shows no tabs." },
+    choices: { type: "array", items: gfObject({ view: { enum: ["best", "cheapest"] }, label: { type: "string" }, selected: { type: "boolean" } }) },
+    note: { type: ["string", "null"] }
+  }, ["available", "active", "choices", "note"]);
+  const GF_SORT_SCHEMA = gfObject({
+    available: { type: "boolean" },
+    active: { enum: ["top_flights", "price", "departure_time", "arrival_time", "duration", "emissions", "unknown", null], description: "Google's row order within the active view (Google's sort menu); independent of the Best/Cheapest tab." },
+    label: { type: ["string", "null"], description: "Google's text, e.g. \"Sorted by top flights\"." }
+  });
+  const GF_FILTERS_SCHEMA = gfObject({
+    available: { type: "boolean" },
+    chips: { type: "array", description: "Google's filter chips as labeled now.", items: gfObject({ name: { type: "string" }, selected: { type: "boolean" }, value: { type: ["string", "null"], description: "Google's summary of the selected value, e.g. \"Nonstop\", \"United\"." } }) },
+    stops: { enum: ["any", "nonstop", "one_or_fewer", "two_or_fewer", "unknown", null] },
+    airlines: { type: ["string", "null"], description: "\"all\", or Google's chip summary of the selected airlines; null when there is no Airlines filter." },
+    active_count: { type: "integer", minimum: 0, description: "Google's 'All filters (N)' count." }
+  });
+  const GF_RESULTS_SCHEMA = {
+    type: ["object", "null"], additionalProperties: false,
+    required: ["rendered_rows", "announced_rows", "announcement", "sections", "readable_rows", "skipped_rows", "open_detail_panels", "show_more", "offset", "limit", "returned_rows", "next_offset", "truncated_by", "price_insight", "pricing_note"],
+    description: "Results pages only. Separates what Google renders from what this response serializes.",
+    properties: {
+      rendered_rows: { type: "integer", minimum: 0, description: "Rows Google renders now. Rows behind 'View more flights' are not rendered and not counted." },
+      announced_rows: { type: ["integer", "null"], description: "Google's own \"N results returned\" count, when announced." },
+      announcement: { type: ["string", "null"] },
+      sections: { type: "array", description: "Google's headings in page order with the rows under each.", items: gfObject({ heading: { type: ["string", "null"] }, first_position: { type: "integer", minimum: 1 }, rows: { type: "integer", minimum: 1 } }) },
+      readable_rows: { type: "integer", minimum: 0 },
+      skipped_rows: { type: "array", description: "Rendered rows that could not be read with a trustworthy identity (first 20); they are never returned.", items: gfObject({ position: { type: "integer", minimum: 1 }, missing: GF_STRINGS }) },
+      open_detail_panels: { type: "array", items: { type: "integer", minimum: 1 }, description: "Positions whose flight-details panel is open." },
+      show_more: gfObject({ available: { type: "boolean", description: "Google shows an enabled 'View more flights' control now." }, reason: { enum: ["absent", "disabled", null] } }),
+      offset: { type: "integer", minimum: 0, description: "Readable rows skipped before the first returned one." },
+      limit: { type: "integer", minimum: 0 },
+      returned_rows: { type: "integer", minimum: 0 },
+      next_offset: { type: ["integer", "null"], description: "Pass as offset to list_flights for the rows not returned in this response; null when every readable row from offset on was returned." },
+      truncated_by: { enum: ["limit", "size_budget", null], description: "Why this response stopped early. Serialization only: the page is unchanged." },
+      price_insight: { type: ["string", "null"] },
+      pricing_note: { type: ["string", "null"] }
+    }
+  };
+  const GF_ACTION_SCHEMA = gfObject({
+    tool: { type: "string" },
+    enabled: { type: "boolean", description: "Google's page offers this action now and the tool supports it." },
+    registered: { type: ["boolean", "null"], description: "Whether the tool is registered on this page; null when the page's tool registry could not be read." },
+    changes_page: { type: "boolean" },
+    input: { type: ["object", "null"], description: "A valid input for this exact state; null when the action is disabled or needs values from another step (see requires)." },
+    requires: { type: ["string", "null"] },
+    choices: { type: ["object", "null"], description: "Accepted values per argument." },
+    note: { type: "string" }
+  });
+  const GF_ENVELOPE_PROPERTIES = {
+    page: GF_PAGE_SCHEMA, view: GF_VIEW_SCHEMA, sort: GF_SORT_SCHEMA, filters: GF_FILTERS_SCHEMA, results: GF_RESULTS_SCHEMA,
+    warnings: GF_STRINGS,
+    registered_tools: gfObject({ known: { type: "boolean" }, names: GF_STRINGS }),
+    available_actions: { type: "array", items: GF_ACTION_SCHEMA, description: "What can be done next on this page, including disabled actions with the reason." },
+    next_steps: GF_STRINGS
+  };
+  // The envelope every Google Flights results tool returns; extra adds tool-specific fields. With page_unknown, page and
+  // the control sections are null when the tool could not read the page it ended on.
+  const gfEnvelopeSchema = ({ statuses, flights = true, page_unknown = false, extra = {} }) => gfObject({
+    status: { enum: statuses }, message: { type: "string" },
+    ...GF_ENVELOPE_PROPERTIES,
+    ...(page_unknown ? Object.fromEntries(["page", "view", "sort", "filters"].map(k => [k, { anyOf: [GF_ENVELOPE_PROPERTIES[k], { type: "null" }] }])) : {}),
+    ...(flights ? { flights: { type: "array", items: GF_FLIGHT_SCHEMA, description: "Readable rows in page order from results.offset." } } : {}),
+    ...extra
+  });
+  // @xwebmcp-end
   const CABINS = { economy: 1, premium_economy: 2, business: 3, first: 4 };
+  const STOP_FILTERS = ["nonstop", "one_or_fewer", "two_or_fewer"];
   const inputSchema = {
     type: "object", additionalProperties: false,
-    required: ["origin", "destination", "departDate", "tripType"],
+    required: ["origin", "destination", "depart_date", "trip_type"],
     properties: {
-      origin: { ...airport, description: "Origin IATA airport code." },
-      destination: { ...airport, description: "Destination IATA airport code." },
-      departDate: { ...date, description: "YYYY-MM-DD, today (UTC) or later." },
-      returnDate: { ...date, description: "Required for round_trip; prohibited for one_way. Must not precede departDate." },
-      tripType: { type: "string", enum: ["one_way", "round_trip"] },
+      origin: { ...GF_AIRPORT, description: "Origin IATA airport code." },
+      destination: { ...GF_AIRPORT, description: "Destination IATA airport code." },
+      depart_date: { ...GF_DATE, format: "date", description: "YYYY-MM-DD, today (UTC) or later." },
+      return_date: { ...GF_DATE, format: "date", description: "Required for round_trip; prohibited for one_way. Must not precede depart_date." },
+      trip_type: { enum: ["one_way", "round_trip"] },
       passengers: { type: "integer", minimum: 1, maximum: 9, default: 1, description: "Adults only. Displayed prices are totals for all passengers." },
-      cabin: { type: "string", enum: Object.keys(CABINS), default: "economy" },
+      cabin: { enum: Object.keys(CABINS), default: "economy" },
       currency: { type: "string", pattern: "^[A-Z]{3}$", default: "USD", description: "ISO 4217 code for displayed prices, e.g. USD, EUR, GBP. Google falls back to USD for codes it does not support; price.currency reports what the page labeled." },
-      max_stops: { type: "integer", minimum: 0, maximum: 2, description: "Maximum stops per leg, applied by Google before limiting results. Use 0 for nonstop only; omit for any number of stops. Applies to both legs of a round trip." },
-      maxResults: { type: "integer", minimum: 1, maximum: 100, default: 25, description: "Maximum itineraries to return after the stops filter, in page order (best section first). The collapsed 'View more flights' set is expanded when needed. hasMore means the returned list is incomplete." }
+      max_stops: { type: "integer", minimum: 0, maximum: 2, description: "Google's Stops filter, sent with the search: 0 nonstop only, 1 one stop or fewer, 2 two stops or fewer; omit for any number of stops. Applies to both legs of a round trip and shows as filters.stops." },
+      view: { enum: ["best", "cheapest"], default: "best", description: "Google's Best or Cheapest tab. The tool confirms the selected tab after loading and clicks the requested one when Google opened another." },
+      limit: { type: "integer", minimum: 1, maximum: 150, default: 50, description: "Most rows to return. Serialization only: the tool never expands 'View more flights' or changes the page to fill it." }
     },
-    allOf: [{ if: { properties: { tripType: { const: "round_trip" } } }, then: { required: ["returnDate"] }, else: { not: { required: ["returnDate"] } } }]
+    allOf: [{ if: { properties: { trip_type: { const: "round_trip" } } }, then: { required: ["return_date"] }, else: { not: { required: ["return_date"] } } }]
   };
-  const segment = object({
-    airline: nonempty,
-    flightNumber: { type: "string", pattern: "^[A-Z0-9]{2} [0-9]{1,4}$" },
-    operatedBy: nullableString,
-    aircraft: nullableString,
-    departureAirport: airport, departureTime: time,
-    arrivalAirport: airport, arrivalTime: time,
-    durationMinutes: { type: "integer", minimum: 1 }
-  });
-  const flight = object({
-    section: { type: "string", enum: ["best", "other"], description: "Google's 'Top/Best flights' section versus 'Other flights'." },
-    airline: { ...nonempty, description: "Marketing airline names, joined with ' / ' for mixed-carrier itineraries." },
-    airlines: { type: "array", minItems: 1, items: nonempty },
-    partnerAirlines: { type: "array", items: nonempty, description: "Additional carriers Google lists as also selling this itinerary." },
-    operatedBy: nullableString,
-    flightNumbers: { type: "array", minItems: 1, items: { type: "string", pattern: "^[A-Z0-9]{2} [0-9]{1,4}$" }, description: "Marketing flight numbers in segment order, from Google's itinerary data on the card." },
-    departureAirport: airport, arrivalAirport: airport,
-    departureDate: date, departureTime: time,
-    arrivalDate: date, arrivalTime: time,
-    arrivalDayOffset: { type: "integer", minimum: -1, maximum: 3, description: "-1 for eastbound date-line crossings that land the day before departure." },
-    durationMinutes: { type: "integer", minimum: 1 },
-    stops: { type: "integer", minimum: 0 },
-    layovers: { type: "array", items: object({ airport: { ...airport, description: "Arrival airport of the preceding segment; an airport change is visible in segments." }, durationMinutes: { type: "integer", minimum: 1 } }), description: "One entry per stop when the layover row or summary label could be read; otherwise empty." },
-    emissionsKgCo2e: { type: ["integer", "null"] },
-    emissionsVsTypicalPercent: { type: ["integer", "null"], description: "Google's emissions comparison; 0 when labeled average." },
-    price: object({
-      amount: { type: "number", exclusiveMinimum: 0 },
-      currency: { type: "string", pattern: "^[A-Z]{3}$", description: "ISO code derived from Google's price label when recognized, otherwise the requested code (see warnings)." },
-      currencyLabel: { ...nonempty, description: "Currency name from Google's accessible price label, e.g. 'US dollars'." },
-      displayText: nonempty,
-      scope: { type: "string", enum: ["one_way", "round_trip"], description: "round_trip prices are whole-trip totals for the shown outbound choice." },
-      passengersIncluded: { type: "integer", minimum: 1, description: "Google shows one total for all passengers, not a per-person fare." }
-    }),
-    segments: { type: "array", items: segment, description: "From Google's flight-details panel; empty when it could not be read (see warnings)." },
-    selection_ref: { type: "string", pattern: "^gf1\\.[A-Za-z0-9_-]+\\.[0-9a-f]{8}$", description: "Opaque reference for select_flight (expected_leg departing) on this results page, bound to this search, itinerary and price. Not a credential." }
-  });
-  const outputSchema = object({
-    status: { type: "string", enum: ["ok", "no_results", "error"] },
-    resultsUrl: { type: "string", description: "Results page URL actually reached; empty when validation fails before navigation." },
-    resultCount: { type: "integer", minimum: 0, description: "Returned itineraries, not total inventory." },
-    totalResults: { type: ["integer", "null"], minimum: 0, description: "Itineraries present on the page after any 'View more flights' expansion; null on failures." },
-    hasMore: { type: "boolean", description: "True when the page holds more itineraries than were returned. Do not infer that an airline or nonstop is unavailable from an incomplete list." },
-    direction: { type: "string", const: "outbound" },
-    timeBasis: { type: "string", const: "airport_local" },
-    tripType: { type: "string", description: "Echo of the request." },
-    passengers: { type: "integer", description: "Echo of the request." },
-    cabin: { type: "string", description: "Echo of the request." },
-    currency: { type: "string", description: "Echo of the request." },
-    priceInsight: { ...nullableString, description: "Google's price-level statement, e.g. 'Prices are currently typical'." },
-    pricingNote: { type: "string" },
-    warnings: { type: "array", items: nonempty },
-    message: { type: "string" },
-    flights: { type: "array", items: flight }
+  const request = gfObject({ trip_type: { type: ["string", "null"] }, passengers: { type: ["integer", "null"] }, cabin: { type: ["string", "null"] }, currency: { type: ["string", "null"] }, view: { type: ["string", "null"] } });
+  const outputSchema = gfEnvelopeSchema({
+    statuses: ["ok", "no_results", "unavailable", "unconfirmed", "not_ready", "invalid_input", "error"], page_unknown: true,
+    extra: {
+      results_url: { type: "string", description: "The page URL reached; empty when validation failed before navigation." },
+      request: { ...request, description: "Echo of the request." },
+      view_clicked: { type: "boolean", description: "Whether the tool clicked Google's tab because Google opened another view." }
+    }
   });
 
-  // google-flights-reader:begin — copied verbatim into search_flights, list_flights and select_flight; tests/google-flights-selection.test.mjs checks the copies match.
-  const readGoogleFlights = async (options) => {
-    const opts = options || {};
-    const deadline = Number(opts.deadline_ms) || Date.now();
-    const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
-    const visible = e => !!e && e.getClientRects().length > 0;
-    const text = e => (e?.textContent || "").replace(/\s+/g, " ").trim();
-    const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
-    const CURRENCIES = {
+  // Runs inside the page: reads it and, when view is given, confirms Google's tab, clicking it once if Google opened another view.
+  const readResults = async ({ view, settle_ms, limit }) => {
+    // @xwebmcp-inline lib/google-flights-read.js
+    // Google Flights page model shared by the google.com tools. It decodes the search from the results URL, reads
+    // Google's own controls (Best/Cheapest tabs, sort menu button, filter chips, "View more flights") and rows, decides
+    // when the list has settled, and derives the actions the caller can take next. Reading never clicks anything.
+    const GF_MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+    const GF_CURRENCIES = {
       "US dollars": "USD", "euros": "EUR", "British pounds": "GBP", "Canadian dollars": "CAD", "Australian dollars": "AUD",
       "Japanese yen": "JPY", "Swiss francs": "CHF", "Indian rupees": "INR", "Mexican pesos": "MXN", "Brazilian reals": "BRL",
       "Swedish kronor": "SEK", "Norwegian kroner": "NOK", "Danish kroner": "DKK", "Polish zlotys": "PLN", "Czech korunas": "CZK",
@@ -97,19 +210,32 @@
       "Saudi riyals": "SAR", "Egyptian pounds": "EGP", "Chilean pesos": "CLP", "Colombian pesos": "COP", "Argentine pesos": "ARS",
       "Peruvian soles": "PEN", "Icelandic krónur": "ISK", "Romanian lei": "RON", "Russian rubles": "RUB"
     };
-    const minutes = value => { const total = Number((value || "").match(/(\d+)\s*hr/)?.[1] || 0) * 60 + Number((value || "").match(/(\d+)\s*min/)?.[1] || 0); return total > 0 ? total : null; };
-    const clock = value => { const m = (value || "").match(/(\d{1,2}):(\d{2})\s*([AP]M)/i); return m ? String(Number(m[1]) % 12 + (m[3].toUpperCase() === "PM" ? 12 : 0)).padStart(2, "0") + ":" + m[2] : null; };
-    const addDays = (iso, days) => new Date(Date.parse(iso) + days * 86400000).toISOString().slice(0, 10);
-    const isoNear = (monthName, day, base) => {
-      const month = MONTHS.findIndex(name => name.startsWith(monthName.slice(0, 3)));
+    const GF_CABINS = { 1: "economy", 2: "premium_economy", 3: "business", 4: "first" };
+    // Google's sort menu entries and stop choices, keyed by the values the tools accept.
+    const GF_SORTS = { top_flights: "Top flights", price: "Price", departure_time: "Departure time", arrival_time: "Arrival time", duration: "Duration", emissions: "Emissions" };
+    const GF_STOPS = { any: "Any number of stops", nonstop: "Nonstop only", one_or_fewer: "1 stop or fewer", two_or_fewer: "2 stops or fewer" };
+    const GF_STOP_CHIPS = { Nonstop: "nonstop", "1 stop or fewer": "one_or_fewer", "2 stops or fewer": "two_or_fewer" };
+    const GF_FILTER_NAMES = ["Stops", "Airlines", "Bags", "Price", "Times", "Emissions", "Connecting airports", "Duration"];
+    const GF_SUMMARY = /\b(?:Nonstop|\d+ stops?) flight with /;
+    const GF_BUDGET_BYTES = 180000;
+    
+    const gfSleep = ms => new Promise(resolve => setTimeout(resolve, ms));
+    const gfVisible = e => !!e && e.getClientRects().length > 0;
+    const gfText = e => (e?.textContent || "").replace(/\s+/g, " ").trim();
+    const gfLabel = e => (e?.getAttribute("aria-label") || "").replace(/\s+/g, " ").trim();
+    const gfMinutes = value => { const total = Number((value || "").match(/(\d+)\s*hr/)?.[1] || 0) * 60 + Number((value || "").match(/(\d+)\s*min/)?.[1] || 0); return total > 0 ? total : null; };
+    const gfClock = value => { const m = (value || "").match(/(\d{1,2}):(\d{2})\s*([AP]M)/i); return m ? String(Number(m[1]) % 12 + (m[3].toUpperCase() === "PM" ? 12 : 0)).padStart(2, "0") + ":" + m[2] : null; };
+    const gfAddDays = (iso, days) => new Date(Date.parse(iso) + days * 86400000).toISOString().slice(0, 10);
+    const gfIsoNear = (monthName, day, base) => {
+      const month = GF_MONTHS.findIndex(name => name.startsWith(monthName.slice(0, 3)));
       if (month < 0) return null;
       const year = Number(base.slice(0, 4));
       return [year, year + 1, year - 1].map(y => new Date(Date.UTC(y, month, Number(day))).toISOString().slice(0, 10)).sort((a, b) => Math.abs(Date.parse(a) - Date.parse(base)) - Math.abs(Date.parse(b) - Date.parse(base)))[0];
     };
-
+    
     // The results URL carries the search as a base64url protobuf (tfs). Once a flight is chosen,
     // Google adds its segments to that leg: [from, date, to, marketing carrier, flight number].
-    const decodeSearch = href => {
+    const gfDecodeSearch = href => {
       let bin;
       try {
         const tfs = new URL(href).searchParams.get("tfs");
@@ -148,35 +274,49 @@
         };
       } catch { return null; }
     };
-    const legOf = search => {
+    const gfLegOf = search => {
       if (!search || search.legs.some(l => !l.date || !l.from || !l.to || l.selected.some(s => s.some(v => !v)))) return null;
       if (search.trip_type === "one_way" && search.legs.length === 1 && !search.legs[0].selected.length) return { leg: "departing", index: 0 };
       if (search.trip_type === "round_trip" && search.legs.length === 2 && !search.legs[1].selected.length) return search.legs[0].selected.length ? { leg: "returning", index: 1 } : { leg: "departing", index: 0 };
       return null;
     };
+    const gfSearchContext = search => ({ trip: search.trip_type, legs: search.legs.map(l => [l.date, l.from, l.to]), pax: search.passengers, cabin: search.cabin });
+    
     // A reference is a consistency handle, not a credential: base64url JSON plus an FNV-1a checksum that catches truncation.
-    const encodeRef = payload => {
+    const gfChecksum = body => { let hash = 0x811c9dc5; for (let i = 0; i < body.length; i++) hash = Math.imul(hash ^ body.charCodeAt(i), 0x01000193) >>> 0; return hash.toString(16).padStart(8, "0"); };
+    const gfEncodeRef = payload => {
       let bin = "";
       for (const byte of new TextEncoder().encode(JSON.stringify(payload))) bin += String.fromCharCode(byte);
       const body = btoa(bin).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
-      let hash = 0x811c9dc5;
-      for (let i = 0; i < body.length; i++) hash = Math.imul(hash ^ body.charCodeAt(i), 0x01000193) >>> 0;
-      return "gf1." + body + "." + hash.toString(16).padStart(8, "0");
+      return "gf1." + body + "." + gfChecksum(body);
     };
-
-    const SUMMARY = /\b(?:Nonstop|\d+ stops?) flight with /;
-    const summaryOf = li => [...li.querySelectorAll("[aria-label]")].find(e => SUMMARY.test(e.getAttribute("aria-label") || "")) || null;
-    const cardsNow = () => {
+    // Returns the decoded reference, or null when it is malformed, truncated or edited.
+    const gfDecodeRef = value => {
+      const match = /^gf1\.([A-Za-z0-9_-]+)\.([0-9a-f]{8})$/.exec(typeof value === "string" && value.length <= 4000 ? value : "");
+      if (!match || gfChecksum(match[1]) !== match[2]) return null;
+      let ref;
+      try { ref = JSON.parse(new TextDecoder().decode(Uint8Array.from(atob(match[1].replace(/-/g, "+").replace(/_/g, "/") + "===".slice((match[1].length + 3) % 4)), c => c.charCodeAt(0)))); } catch { return null; }
+      const segmentsOk = list => Array.isArray(list) && list.length > 0 && list.every(s => Array.isArray(s) && s.length === 5 && s.every(v => typeof v === "string" && v));
+      if (!ref || ref.v !== 1 || !ref.search || !Array.isArray(ref.search.legs) || !["departing", "returning"].includes(ref.leg) || !segmentsOk(ref.itinerary)
+        || (ref.leg === "returning" ? !segmentsOk(ref.outbound) : ref.outbound !== null) || typeof ref.departure !== "string" || typeof ref.arrival !== "string"
+        || !(ref.price === null || (Array.isArray(ref.price) && typeof ref.price[0] === "number" && typeof ref.price[1] === "string"))) return null;
+      return ref;
+    };
+    const gfRefKey = ref => JSON.stringify([ref.itinerary, ref.departure, ref.arrival]);
+    const gfFlightNumbers = segments => (segments || []).map(s => s[3] + " " + s[4]);
+    
+    const gfSummaryOf = li => [...li.querySelectorAll("[aria-label]")].find(e => GF_SUMMARY.test(e.getAttribute("aria-label") || "")) || null;
+    const gfRowNodes = () => {
       const out = [];
       for (const e of document.querySelectorAll("[aria-label]")) {
-        if (!SUMMARY.test(e.getAttribute("aria-label") || "")) continue;
+        if (!GF_SUMMARY.test(e.getAttribute("aria-label") || "")) continue;
         const li = e.closest("li");
-        if (li && visible(li) && !out.includes(li)) out.push(li);
+        if (li && gfVisible(li) && !out.includes(li)) out.push(li);
       }
       return out;
     };
     // Google's itinerary data on each card: "CVG-DEN-UA-5595-20261007,DEN-SFO-UA-2106-20261007" (marketing flights, local departure dates).
-    const itineraryOf = li => {
+    const gfItineraryOf = li => {
       const values = [...new Set([...li.querySelectorAll("[data-travelimpactmodelwebsiteurl]")].map(e => (e.getAttribute("data-travelimpactmodelwebsiteurl").match(/[?&]itinerary=([^&#]+)/) || [])[1]).filter(Boolean))];
       if (values.length !== 1) return { itinerary: null, conflict: values.length > 1 };
       let parts;
@@ -184,115 +324,171 @@
       if (!parts.every(p => p.length === 5 && /^[A-Z]{3}$/.test(p[0]) && /^[A-Z]{3}$/.test(p[1]) && /^[A-Z0-9]{2}$/.test(p[2]) && /^\d{1,4}$/.test(p[3]) && /^\d{8}$/.test(p[4]))) return { itinerary: null, conflict: false };
       return { itinerary: parts.map(([from, to, carrier, number, day]) => [from, day.slice(0, 4) + "-" + day.slice(4, 6) + "-" + day.slice(6), to, carrier, number]), conflict: false };
     };
-
-    const snapshot = () => {
+    const gfSectionOf = li => {
+      for (let node = li.parentElement; node && node !== document.body; node = node.parentElement) {
+        const heading = node.querySelector("h3");
+        if (heading) return gfText(heading);
+      }
+      return null;
+    };
+    const gfDetailToggle = li => li.querySelector('button[aria-label^="Flight details"]');
+    const gfPanelOpen = li => gfDetailToggle(li)?.getAttribute("aria-expanded") === "true" && !!li.querySelector(".c257Jb");
+    
+    // Google's own controls on the results page, read without opening anything.
+    const gfControls = () => {
+      const buttons = [...document.querySelectorAll("button")].filter(gfVisible);
+      const tabs = [...document.querySelectorAll('[role="tab"]')].filter(gfVisible).map(e => {
+        const name = gfText(e).match(/^(Best|Cheapest)/)?.[1];
+        return name ? { view: name.toLowerCase(), label: name, selected: e.getAttribute("aria-selected") === "true", node: e } : null;
+      }).filter(Boolean);
+      const sortButton = buttons.find(b => /^Sorted by .+, Change sort order\.?$/.test(gfLabel(b))) || null;
+      const sortLabel = sortButton ? gfLabel(sortButton).replace(/, Change sort order\.?$/, "") : null;
+      const sortText = sortLabel?.replace(/^Sorted by /, "").toLowerCase();
+      const chips = [];
+      for (const b of buttons) {
+        const l = gfLabel(b);
+        const off = l.match(/^(.+), Not selected$/);
+        if (off && GF_FILTER_NAMES.includes(off[1])) { chips.push({ name: off[1], selected: false, value: null, node: b }); continue; }
+        const on = l.match(/^(.+), Selected$/);
+        const name = on && GF_FILTER_NAMES.find(n => on[1] === n || on[1].endsWith(", " + n));
+        if (name && !chips.some(c => c.name === name)) chips.push({ name, selected: true, value: on[1] === name ? null : on[1].slice(0, -(name.length + 2)), node: b });
+      }
+      const more = [...document.querySelectorAll('button[aria-label="View more flights"]')].find(gfVisible) || null;
+      return {
+        tabs, sort_button: sortButton, sort_label: sortLabel,
+        sort: sortText ? Object.keys(GF_SORTS).find(k => GF_SORTS[k].toLowerCase() === sortText) || "unknown" : null,
+        chips, more, more_disabled: !!more && (more.disabled || more.getAttribute("aria-disabled") === "true"),
+        all_filters_count: Number(buttons.map(gfText).find(t => /^All filters \(\d+\)$/.test(t))?.match(/\d+/)[0] ?? 0)
+      };
+    };
+    
+    const gfPageType = (path, leg) => /^\/travel\/flights\/booking/.test(path) ? "booking_options"
+      : /^\/travel\/flights\/search/.test(path) ? (leg === "returning" ? "returning_results" : leg === "departing" ? "departing_results" : "other")
+      : /^\/travel\/flights\/?$/.test(path) ? "flights_home" : "other";
+    
+    // One observation of the page. key changes whenever anything a reader depends on changes.
+    const gfSnapshot = () => {
       const url = location.href;
-      const search = decodeSearch(url);
-      const position = legOf(search);
-      const base = { url, search, leg: position?.leg ?? null, index: position?.index ?? null, announced: null, cards: [], more: null, reasons: [] };
+      const search = gfDecodeSearch(url);
+      const position = gfLegOf(search);
+      const controls = gfControls();
+      const base = { url, path: location.pathname, search, leg: position?.leg ?? null, index: position?.index ?? null, controls, announced: null, announcement: null, rows: [], reasons: [], page_type: gfPageType(location.pathname, position?.leg) };
+      if (base.page_type === "booking_options") {
+        const loading = ![...document.querySelectorAll('button[aria-label^="Continue to book with"]')].some(gfVisible);
+        return { ...base, state: loading ? "loading" : "booking", reasons: loading ? ["no_booking_options_yet"] : [], key: url + "#" + loading };
+      }
       if (!/^\/travel\/flights\/search/.test(location.pathname)) return { ...base, state: "not_results_page", key: url };
       if (!search) return { ...base, state: "unsupported", reasons: ["no_search_in_url"], key: url };
       if (!position) return { ...base, state: "unsupported", reasons: [search.trip_type === "multi_city" ? "multi_city" : "unrecognized_search"], key: url };
-      const headings = [...document.querySelectorAll("h2, h3")].filter(visible).map(text);
-      const live = [...document.querySelectorAll("[aria-live]")].map(text);
-      const announcedText = live.find(t => /^\d+ results? returned/i.test(t));
-      const announced = announcedText ? Number(announcedText.match(/^\d+/)[0]) : null;
-      const noResults = live.some(t => /^No results returned/i.test(t));
-      const cards = cardsNow();
-      const more = [...document.querySelectorAll('button[aria-label="View more flights"]')].find(visible) || null;
-      const ends = cards.map(li => { const it = itineraryOf(li).itinerary; return it ? it[0][0] + "-" + it[it.length - 1][2] : null; });
+      const headings = [...document.querySelectorAll("h2, h3")].filter(gfVisible).map(gfText);
+      const live = [...document.querySelectorAll("[aria-live]")].map(gfText);
+      const announcement = live.find(t => /^(\d+ results? returned|No results returned)/i.test(t)) || null;
+      const announced = /^\d+/.test(announcement || "") ? Number(announcement.match(/^\d+/)[0]) : null;
+      const rows = gfRowNodes();
+      const ends = rows.map(li => { const it = gfItineraryOf(li).itinerary; return it ? it[0][0] + "-" + it[it.length - 1][2] : null; });
       const reasons = [];
       if (headings.some(h => /returning flights/i.test(h)) !== (position.leg === "returning")) reasons.push("leg_transition");
-      if ([...document.querySelectorAll('[role="progressbar"]')].some(e => visible(e) && e.getAttribute("aria-hidden") !== "true")) reasons.push("progress_bar");
+      if ([...document.querySelectorAll('[role="progressbar"]')].some(e => gfVisible(e) && e.getAttribute("aria-hidden") !== "true")) reasons.push("progress_bar");
       const own = search.legs[position.index], other = search.legs[1 - position.index];
-      if (other && cards.length && ends.every(e => e === other.from + "-" + other.to) && other.from + "-" + other.to !== own.from + "-" + own.to) reasons.push("previous_leg_rows");
+      if (other && rows.length && ends.every(e => e === other.from + "-" + other.to) && other.from + "-" + other.to !== own.from + "-" + own.to) reasons.push("previous_leg_rows");
       let state = "loading";
       if (!reasons.length) {
-        if (cards.length) state = "results";
-        else if (noResults) state = "no_results";
+        if (rows.length) state = "results";
+        else if (/^No results returned/i.test(announcement || "")) state = "no_results";
         else reasons.push("no_rows_yet");
       }
-      return { ...base, state, reasons, announced, cards, more, key: [url, state, announced, ends.join(",")].join("#") };
+      const controlKey = [controls.tabs.map(t => t.view + t.selected), controls.sort_label, controls.chips.map(c => c.name + c.selected + c.value), !!controls.more].join("|");
+      return { ...base, state, reasons, announced, announcement, rows, key: [url, state, announcement, ends.join(","), controlKey].join("#") };
     };
-    const settle = async () => {
-      const quiet = opts.quiet_ms ?? 600;
-      const settleBy = Math.min(deadline, Number(opts.settle_by_ms) || deadline);
-      let s = snapshot(), key = s.key, since = Date.now();
+    
+    // Waits until the page stops changing. Google announces "N results returned" for the rows it renders; a collapsed list
+    // may announce more rows than it shows while "View more flights" is offered. Rows shown under a contradicting or missing
+    // announcement (Google's Cheapest tab says "No results returned" above its rows) need a longer quiet period.
+    const gfSettle = async ({ settle_by_ms, quiet_ms = 600, changed = null } = {}) => {
+      const by = Number(settle_by_ms) || Date.now();
+      let s = gfSnapshot(), key = s.key, since = Date.now();
       for (;;) {
-        if (s.state === "not_results_page" || s.state === "unsupported") return { ...s, settled: true };
+        if (["not_results_page", "unsupported", "booking"].includes(s.state)) return { ...s, settled: true };
         const still = Date.now() - since;
-        // Google announces "N results returned" once the list is rendered. A count that disagrees with the visible rows is
-        // never settled; with no announcement at all, require a longer quiet period.
-        if (s.state === "no_results" && still >= quiet) return { ...s, settled: true };
-        if (s.state === "results" && (s.announced === s.cards.length ? still >= quiet : s.announced === null && still >= Math.max(quiet, 4000))) return { ...s, settled: true };
-        if (Date.now() >= settleBy) return { ...s, settled: false, reasons: s.state === "results" && s.announced !== null && s.announced !== s.cards.length ? [...s.reasons, "announced_count_mismatch"] : s.reasons };
-        await sleep(250);
-        s = snapshot();
+        const waiting = changed && !changed();
+        const counted = s.announced !== null && (s.announced === s.rows.length || (s.announced > s.rows.length && !!s.controls.more));
+        if (!waiting && s.state === "no_results" && still >= quiet_ms) return { ...s, settled: true };
+        if (!waiting && s.state === "results" && (counted ? still >= quiet_ms : s.announced === null && still >= Math.max(quiet_ms, 4000))) return { ...s, settled: true };
+        if (Date.now() >= by) {
+          const reasons = [...s.reasons];
+          if (s.state === "results" && s.announced !== null && !counted) reasons.push("announced_count_mismatch");
+          if (waiting) reasons.push("change_not_observed");
+          return { ...s, settled: false, reasons: reasons.length ? reasons : ["still_changing"] };
+        }
+        await gfSleep(250);
+        s = gfSnapshot();
         if (s.key !== key) { key = s.key; since = Date.now(); }
       }
     };
-
-    const parseCard = (li, s, context) => {
+    
+    // One result row: identity from Google's itinerary data, summary fields from its accessible label, and segment
+    // times, aircraft, cabin and amenities only when Google's flight-details panel is already open on the page.
+    const gfParseRow = (li, s, context) => {
       const missing = [];
-      const summary = (summaryOf(li)?.getAttribute("aria-label") || "").replace(/\s+/g, " ").trim();
-      const { itinerary, conflict } = itineraryOf(li);
+      const summary = (gfSummaryOf(li)?.getAttribute("aria-label") || "").replace(/\s+/g, " ").trim();
+      const { itinerary, conflict } = gfItineraryOf(li);
       if (!itinerary) missing.push(conflict ? "conflicting itinerary data" : "itinerary data");
       const leaves = summary.match(/Leaves (.+?) at (\d{1,2}:\d{2} ?[AP]M)(?: on \w+, (\w+) (\d{1,2}))? and arrives at (.+?) at (\d{1,2}:\d{2} ?[AP]M)(?: on \w+, (\w+) (\d{1,2}))?\./i);
       const departureLabel = li.querySelector("span[aria-label^='Departure time']")?.getAttribute("aria-label");
       const arrivalLabel = li.querySelector("span[aria-label^='Arrival time']")?.getAttribute("aria-label");
       const departureText = (leaves?.[2] || departureLabel?.match(/\d{1,2}:\d{2}\s*[AP]M/i)?.[0] || "").replace(/\s+/g, " ") || null;
       const arrivalText = (leaves?.[6] || arrivalLabel?.match(/\d{1,2}:\d{2}\s*[AP]M/i)?.[0] || "").replace(/\s+/g, " ") || null;
-      const departureTime = clock(departureText), arrivalTime = clock(arrivalText);
+      const departureTime = gfClock(departureText), arrivalTime = gfClock(arrivalText);
       if (!departureTime || !arrivalTime) missing.push("times");
       const departureDate = itinerary ? itinerary[0][1] : null;
-      if (departureDate && leaves?.[3] && isoNear(leaves[3], leaves[4], departureDate) !== departureDate) missing.push("departure date conflicts with itinerary data");
+      if (departureDate && leaves?.[3] && gfIsoNear(leaves[3], leaves[4], departureDate) !== departureDate) missing.push("departure date conflicts with itinerary data");
       let arrivalDate = null;
       if (departureDate) {
         const dated = leaves?.[7] ? [null, leaves[7], leaves[8]] : arrivalLabel?.match(/on\s+\w+,\s+(\w+)\s+(\d{1,2})/);
         const plusMark = [...li.querySelectorAll(".bOzv6")].find(e => !e.closest(".c257Jb"));
-        arrivalDate = dated ? isoNear(dated[1], dated[2], departureDate) : addDays(departureDate, Number(plusMark?.textContent.match(/\+(\d)/)?.[1] || 0));
+        arrivalDate = dated ? gfIsoNear(dated[1], dated[2], departureDate) : gfAddDays(departureDate, Number(plusMark?.textContent.match(/\+(\d)/)?.[1] || 0));
       }
       const dayOffset = departureDate && arrivalDate ? Math.round((Date.parse(arrivalDate) - Date.parse(departureDate)) / 86400000) : null;
       if (dayOffset !== null && (dayOffset < -1 || dayOffset > 3)) missing.push("arrival date");
-      const stopsText = summary.match(/\b(Nonstop|\d+ stops?) flight/)?.[1] || text(li.querySelector(".EfT7Ae"));
+      const stopsText = summary.match(/\b(Nonstop|\d+ stops?) flight/)?.[1] || gfText(li.querySelector(".EfT7Ae"));
       const stops = /^Nonstop/i.test(stopsText) ? 0 : Number(stopsText.match(/^(\d+) stops?/)?.[1] ?? NaN);
       if (!Number.isInteger(stops)) missing.push("stops");
       else if (itinerary && itinerary.length !== stops + 1) missing.push("stops conflict with itinerary data");
-      const durationMinutes = minutes(li.querySelector("[aria-label^='Total duration']")?.getAttribute("aria-label") || summary.match(/Total duration ([^.]+)\./)?.[1] || text(li.querySelector(".gvkrdb")));
+      const durationMinutes = gfMinutes(li.querySelector("[aria-label^='Total duration']")?.getAttribute("aria-label") || summary.match(/Total duration ([^.]+)\./)?.[1] || gfText(li.querySelector(".gvkrdb")));
       const carrierRow = li.querySelector(".sSHqwe");
-      const carrierSpans = carrierRow ? [...carrierRow.querySelectorAll(":scope > span")].map(text).filter(Boolean) : [];
+      const carrierSpans = carrierRow ? [...carrierRow.querySelectorAll(":scope > span")].map(gfText).filter(Boolean) : [];
       const airlines = (carrierSpans[0] || summary.match(/ flight with (.+?)\. /)?.[1] || "").split(/,\s*|\s+and\s+/).filter(Boolean);
+      if (!airlines.length) missing.push("airlines");
       const operatedBy = summary.match(/Operated by (.+?)\. Leaves/)?.[1] || carrierSpans.find(t => /^Operated by /.test(t))?.replace(/^Operated by /, "") || null;
       const partnerAirlines = carrierSpans.slice(1).filter(t => !/^Operated by /.test(t)).flatMap(t => t.split(/,\s*/)).filter(Boolean);
-      const priceSpan = [...li.querySelectorAll("span[aria-label]")].find(e => /^[\d,]+(?:\.\d+)? [\p{L} ]+$/u.test(e.getAttribute("aria-label")) && !/CO2|emission|kilogram|minute|hour/i.test(e.getAttribute("aria-label")) && /\d/.test(text(e)));
+      const priceSpan = [...li.querySelectorAll("span[aria-label]")].find(e => /^[\d,]+(?:\.\d+)? [\p{L} ]+$/u.test(e.getAttribute("aria-label")) && !/CO2|emission|kilogram|minute|hour/i.test(e.getAttribute("aria-label")) && /\d/.test(gfText(e)));
       const priceMatch = priceSpan ? priceSpan.getAttribute("aria-label").match(/^([\d,]+(?:\.\d+)?) ([\p{L} ]+)$/u) : summary.match(/^From ([\d,]+(?:\.\d+)?) ([^.\d]+?)(?: round trip total)?\./);
-      const price = priceMatch ? { amount: Number(priceMatch[1].replace(/,/g, "")), currency: CURRENCIES[priceMatch[2].trim()] || null, currency_label: priceMatch[2].trim(), display_text: priceSpan ? text(priceSpan) : null, round_trip: /round trip total/.test(summary) } : null;
-
-      const blocks = [...li.querySelectorAll(".c257Jb")].map(block => {
-        const labels = [...block.querySelectorAll(".Xsgmwe")].map(text).filter(Boolean);
+      const price = priceMatch ? { amount: Number(priceMatch[1].replace(/,/g, "")), currency: GF_CURRENCIES[priceMatch[2].trim()] || null, currency_label: priceMatch[2].trim(), display_text: priceSpan ? gfText(priceSpan) : null, round_trip: /round trip total/.test(summary) } : null;
+    
+      const panelOpen = gfPanelOpen(li);
+      const blocks = panelOpen ? [...li.querySelectorAll(".c257Jb")].map(block => {
+        const labels = [...block.querySelectorAll(".Xsgmwe")].map(gfText).filter(Boolean);
         const flightNumber = labels.find(l => /^[A-Z0-9]{2} \d{1,4}$/.test(l));
-        const from = text(block.querySelector(".ZHa2lc")).match(/\(([A-Z]{3})\)/)?.[1];
-        const to = text(block.querySelector(".FY5t7d")).match(/\(([A-Z]{3})\)/)?.[1];
-        const travel = minutes(text(block.querySelector(".P102Lb")));
-        const departure = clock(text(block.querySelector(".b0EVyb"))), arrival = clock(text(block.querySelector(".OJg28c")));
+        const from = gfText(block.querySelector(".ZHa2lc")).match(/\(([A-Z]{3})\)/)?.[1];
+        const to = gfText(block.querySelector(".FY5t7d")).match(/\(([A-Z]{3})\)/)?.[1];
+        const travel = gfMinutes(gfText(block.querySelector(".P102Lb")));
+        const departure = gfClock(gfText(block.querySelector(".b0EVyb"))), arrival = gfClock(gfText(block.querySelector(".OJg28c")));
         if (!flightNumber || !from || !to || !travel || !departure || !arrival) return null;
-        const cabinLabel = labels.find(l => /class|economy|business|first/i.test(l) && !/^[A-Z0-9]{2} \d/.test(l));
-        const mark = selector => Number(text(block.querySelector(selector + " .bOzv6")).match(/([+-]\d)/)?.[1] || 0);
+        const cabin = labels.find(l => /class|economy|business|first/i.test(l) && !/^[A-Z0-9]{2} \d/.test(l)) || null;
+        const mark = selector => Number(gfText(block.querySelector(selector + " .bOzv6")).match(/([+-]\d)/)?.[1] || 0);
         return {
-          airline: labels[0], flightNumber, from, to, travel, departure, arrival, departureMark: mark(".b0EVyb"), arrivalMark: mark(".OJg28c"),
-          operatedBy: text(block.querySelector(".CoZk4")).replace(/^Plane and crew by /, "") || null,
-          aircraft: labels.find(l => l !== labels[0] && l !== flightNumber && l !== cabinLabel) || null
+          airline: labels[0], flightNumber, from, to, travel, departure, arrival, departureMark: mark(".b0EVyb"), arrivalMark: mark(".OJg28c"), cabin,
+          operatedBy: gfText(block.querySelector(".CoZk4")).replace(/^Plane and crew by /, "") || null,
+          aircraft: labels.find(l => l !== labels[0] && l !== flightNumber && l !== cabin) || null,
+          features: [...block.querySelectorAll("li")].map(e => gfText(e).replace(/Close dialog.*$/, "").trim()).filter(Boolean)
         };
-      });
-      // Detail panels add segment times, aircraft and operators; they must agree with the itinerary data or the card is not trusted.
-      const detailsRead = !!itinerary && blocks.length === itinerary.length && blocks.every(Boolean);
-      if (detailsRead && blocks.some((b, i) => {
-        const [from, date, to, carrier, number] = itinerary[i];
-        return b.flightNumber !== carrier + " " + number || b.from !== from || b.to !== to;
-      })) missing.push("detail panel conflicts with itinerary data");
+      }) : [];
+      // The panel must agree with the itinerary data or the row's detail fields are not trusted.
+      const detailsRead = panelOpen && !!itinerary && blocks.length === itinerary.length && blocks.every(Boolean);
+      if (detailsRead && blocks.some((b, i) => b.flightNumber !== itinerary[i][3] + " " + itinerary[i][4] || b.from !== itinerary[i][0] || b.to !== itinerary[i][2])) missing.push("detail panel conflicts with itinerary data");
       if (detailsRead && departureTime && arrivalTime && (blocks[0].departure !== departureTime || blocks[blocks.length - 1].arrival !== arrivalTime)) missing.push("detail panel times conflict with the summary");
-      const summaryLayovers = [...summary.matchAll(/Layover \(\d+ of \d+\) is an? (.+?) layover at (.+?)(?: in ([^.]+))?\./g)].map(m => ({ minutes: minutes(m[1]), name: m[2], city: m[3] || null }));
-      const detailDurations = [...li.querySelectorAll(".tvtJdb")].map(e => minutes(text(e).match(/^(.*?)layover/)?.[1]));
+      const summaryLayovers = [...summary.matchAll(/Layover \(\d+ of \d+\) is an? (.+?) layover at (.+?)(?: in ([^.]+))?\./g)].map(m => ({ minutes: gfMinutes(m[1]), name: m[2], city: m[3] || null }));
+      const detailDurations = panelOpen ? [...li.querySelectorAll(".tvtJdb")].map(e => gfMinutes(gfText(e).match(/^(.*?)layover/)?.[1])) : [];
       const durations = detailDurations.length === stops && detailDurations.every(Boolean) ? detailDurations : summaryLayovers.map(l => l.minutes);
       const layovers = itinerary ? itinerary.slice(0, -1).map((segment, i) => ({
         airport: segment[2], airport_name: summaryLayovers.length === stops ? summaryLayovers[i].name : null, city: summaryLayovers.length === stops ? summaryLayovers[i].city : null,
@@ -304,9 +500,9 @@
         const last = i === itinerary.length - 1;
         return {
           marketing_carrier_code: carrier, flight_number: carrier + " " + number,
-          airline: detail?.airline ?? null, operated_by: detail?.operatedBy ?? null, aircraft: detail?.aircraft ?? null,
+          airline: detail?.airline ?? null, operated_by: detail?.operatedBy ?? null, aircraft: detail?.aircraft ?? null, cabin: detail?.cabin ?? null, features: detail ? detail.features : null,
           departure_airport: from, departure_date: date, departure_time: detail?.departure ?? (i === 0 ? departureTime : null),
-          arrival_airport: to, arrival_date: last ? arrivalDate : detail && addDays(departureDate, detail.departureMark) === date ? addDays(departureDate, detail.arrivalMark) : null, arrival_time: detail?.arrival ?? (last ? arrivalTime : null),
+          arrival_airport: to, arrival_date: last ? arrivalDate : detail && gfAddDays(departureDate, detail.departureMark) === date ? gfAddDays(departureDate, detail.arrivalMark) : null, arrival_time: detail?.arrival ?? (last ? arrivalTime : null),
           duration_minutes: detail?.travel ?? (itinerary.length === 1 ? durationMinutes : null)
         };
       }) : [];
@@ -314,88 +510,369 @@
       const bags = bagsText.match(/(\d+) carry-on bags? included\. (\d+) checked bags? included/);
       const emissions = li.textContent.match(/([\d,]+) kg CO2e/);
       const comparison = li.textContent.match(/([+-]\d+)% emissions/) || (/Avg emissions/.test(li.textContent) ? [null, "0"] : null);
-      let section = "other", sectionHeading = null;
-      for (let node = li.parentElement; node && node !== document.body; node = node.parentElement) {
-        const heading = node.querySelector("h3");
-        if (heading) { sectionHeading = text(heading); section = /^(Top|Best)\b/i.test(sectionHeading) ? "best" : "other"; break; }
-      }
       const departureLocal = departureDate && departureTime ? departureDate + "T" + departureTime : null;
       const arrivalLocal = arrivalDate && arrivalTime ? arrivalDate + "T" + arrivalTime : null;
       const key = itinerary && departureLocal && arrivalLocal ? JSON.stringify([itinerary, departureLocal, arrivalLocal]) : null;
-      const usable = key && !missing.some(m => /conflict/.test(m));
+      const usable = key && !missing.some(m => /conflict|airlines|stops|arrival date/.test(m));
       return {
-        key: usable ? key : null,
-        selection_ref: usable ? encodeRef({ v: 1, search: context, leg: s.leg, outbound: s.leg === "returning" ? s.search.legs[0].selected : null, itinerary, departure: departureLocal, arrival: arrivalLocal, price: price ? [price.amount, price.currency_label] : null }) : null,
-        missing, summary: summary.slice(0, 500), section, section_heading: sectionHeading,
+        // identity names the itinerary even when the row is not trusted (key null), so a contradicting panel can be reported.
+        key: usable ? key : null, identity: key, node: gfSummaryOf(li), li, summary: summary.slice(0, 500), missing,
+        selection_ref: usable ? gfEncodeRef({ v: 1, search: context, leg: s.leg, outbound: s.leg === "returning" ? s.search.legs[0].selected : null, itinerary, departure: departureLocal, arrival: arrivalLocal, price: price ? [price.amount, price.currency_label] : null }) : null,
+        section: gfSectionOf(li), panel_open: panelOpen, details_read: detailsRead,
         airlines, partner_airlines: partnerAirlines, operated_by: operatedBy,
-        marketing_carriers: itinerary ? [...new Set(itinerary.map(s => s[3]))] : [], flight_numbers: itinerary ? itinerary.map(s => s[3] + " " + s[4]) : [],
+        marketing_carriers: itinerary ? [...new Set(itinerary.map(x => x[3]))] : [], flight_numbers: itinerary ? itinerary.map(x => x[3] + " " + x[4]) : [],
         origin: itinerary ? itinerary[0][0] : null, destination: itinerary ? itinerary[itinerary.length - 1][2] : null,
         origin_name: leaves?.[1] || null, destination_name: leaves?.[5] || null,
         departure_date: departureDate, departure_time: departureTime, departure_time_text: departureText, departure_local: departureLocal,
         arrival_date: arrivalDate, arrival_time: arrivalTime, arrival_time_text: arrivalText, arrival_local: arrivalLocal, arrival_day_offset: dayOffset,
-        duration_minutes: durationMinutes, stops: Number.isInteger(stops) ? stops : null, layovers, segments, details_read: detailsRead,
+        duration_minutes: durationMinutes, stops: Number.isInteger(stops) ? stops : null, layovers, segments,
         emissions_kg_co2e: emissions ? Number(emissions[1].replace(/,/g, "")) : null, emissions_vs_typical_percent: comparison ? Number(comparison[1]) : null,
         price, carry_on_bags: bags ? Number(bags[1]) : null, checked_bags: bags ? Number(bags[2]) : null
       };
     };
-
-    let s = await settle();
-    let expandedMore = false;
-    if (s.state === "results" && opts.expand_more && s.more && (opts.want == null || s.cards.length < opts.want)) {
-      const before = s.cards.length;
-      s.more.click();
-      expandedMore = true;
-      while (cardsNow().length <= before && Date.now() < deadline) await sleep(200);
-      s = await settle();
-    }
-    const out = {
-      url: s.url, state: s.state, settled: s.settled, reasons: s.reasons, leg: s.leg, search: s.search, announced: s.announced,
-      total: s.cards.length, more_left: !!s.more && visible(s.more), expanded_more: expandedMore,
-      selected_outbound: s.leg === "returning" ? s.search.legs[0].selected : null,
-      pricing_note: null, price_insight: null, flights: [], unreadable: []
+    
+    // The public form of a readable row (see the tools' flight schema).
+    const gfFlightOut = (row, position, s) => {
+      const trip = s.search.trip_type;
+      const basis = trip === "one_way" ? "one_way_total" : s.leg === "returning" ? "round_trip_total_with_selected_departing_flight" : "round_trip_total_from_this_departing_flight";
+      return {
+        selection_ref: row.selection_ref, position, section: row.section, detail_level: row.details_read ? "detail_panel" : "summary",
+        airlines: row.airlines, partner_airlines: row.partner_airlines, operated_by: row.operated_by, marketing_carriers: row.marketing_carriers, flight_numbers: row.flight_numbers,
+        origin: row.origin, destination: row.destination, origin_name: row.origin_name, destination_name: row.destination_name,
+        departure_date: row.departure_date, departure_time: row.departure_time, departure_time_text: row.departure_time_text, departure_local: row.departure_local,
+        arrival_date: row.arrival_date, arrival_time: row.arrival_time, arrival_time_text: row.arrival_time_text, arrival_local: row.arrival_local, arrival_day_offset: row.arrival_day_offset,
+        duration_minutes: row.duration_minutes, stops: row.stops, layovers: row.layovers, segments: row.segments,
+        price: row.price ? {
+          amount: row.price.amount, currency: row.price.currency, currency_label: row.price.currency_label, display_text: row.price.display_text,
+          scope: row.price.round_trip ? "round_trip_total" : trip === "one_way" ? "one_way" : "unknown",
+          basis: row.price.round_trip || trip === "one_way" ? basis : "unknown", passengers_included: s.search.passengers.length || 1
+        } : null,
+        carry_on_bags: row.carry_on_bags, checked_bags: row.checked_bags,
+        emissions_kg_co2e: row.emissions_kg_co2e, emissions_vs_typical_percent: row.emissions_vs_typical_percent
+      };
     };
-    if (!s.cards.length || opts.peek) return out;
-    const context = { trip: s.search.trip_type, legs: s.search.legs.map(l => [l.date, l.from, l.to]), pax: s.search.passengers, cabin: s.search.cabin };
-    let cards = s.cards;
-    let parsed = cards.map(li => parseCard(li, s, context));
-    const keys = typeof opts.choose_details === "function" ? opts.choose_details(parsed.filter(f => f.key)) : [];
-    const wanted = opts.detail_first ? cards.slice(0, opts.detail_first) : cards.filter((li, i) => parsed[i].key && keys.includes(parsed[i].key));
-    const collapsed = li => li.querySelector('button[aria-label^="Flight details"][aria-expanded="false"]');
-    const pending = li => li.querySelector('button[aria-label^="Flight details"]') && (collapsed(li) || !li.querySelector(".c257Jb"));
-    let targets = wanted;
-    for (let pass = 0; pass < 3 && targets.some(pending) && (pass === 0 || Date.now() < deadline); pass++) {
-      for (const li of targets) collapsed(li)?.click();
-      const passDeadline = Math.min(deadline, Date.now() + 5000);
-      while (targets.some(pending) && Date.now() < passDeadline) await sleep(200);
-      cards = cardsNow();
-      parsed = cards.map(li => parseCard(li, s, context));
-      targets = opts.detail_first ? cards.slice(0, opts.detail_first) : cards.filter((li, i) => parsed[i].key && keys.includes(parsed[i].key));
-    }
-    out.total = cards.length;
-    out.more_left = [...document.querySelectorAll('button[aria-label="View more flights"]')].some(visible);
-    out.pricing_note = (document.body.innerText.match(/Prices include[^\n]*/) || [""])[0].trim() || null;
-    out.price_insight = document.body.innerText.match(/Prices are currently [a-z]+/i)?.[0] || null;
-    parsed.forEach((flight, index) => {
-      if (flight.key) out.flights.push({ ...flight, index });
-      else out.unreadable.push({ index, summary: flight.summary.slice(0, 120), missing: flight.missing });
-    });
-    if (opts.with_nodes) out.nodes = parsed.map((flight, i) => flight.key ? summaryOf(cards[i]) : null).filter((node, i) => parsed[i].key);
-    return out;
+    
+    // Reads every rendered row. Rows are never expanded, opened or re-ordered here.
+    const gfReadRows = s => {
+      if (!s.search || s.leg === null || !s.rows.length) return [];
+      const context = gfSearchContext(s.search);
+      return s.rows.map((li, i) => ({ ...gfParseRow(li, s, context), position: i + 1 }));
+    };
+    
+    const gfPageOut = s => {
+      const search = s.search;
+      const route = search && s.index !== null ? search.legs[s.index] : null;
+      const outbound = search && (s.leg === "returning" || s.page_type === "booking_options") ? search.legs[0].selected : [];
+      return {
+        url: s.url, page_type: s.page_type, settled: !!s.settled, unsettled_reasons: s.settled ? [] : s.reasons,
+        results_state: s.page_type === "departing_results" || s.page_type === "returning_results" ? (s.state === "results" || s.state === "no_results" ? s.state : "loading") : "not_applicable",
+        trip_type: search && search.trip_type !== "unknown" ? search.trip_type : null,
+        search: search && search.legs.length && search.legs.every(l => l.date && l.from && l.to) ? {
+          origin: search.legs[0].from, destination: search.legs[0].to, depart_date: search.legs[0].date, return_date: search.trip_type === "round_trip" ? search.legs[1]?.date ?? null : null,
+          passengers: search.passengers.length || 1, cabin: GF_CABINS[search.cabin] || "unknown"
+        } : null,
+        leg: s.leg, leg_route: route ? { origin: route.from, destination: route.to, date: route.date } : null,
+        selected_outbound: outbound.length ? {
+          source: "results_url", flight_numbers: gfFlightNumbers(outbound),
+          segments: outbound.map(([from, day, to, carrier, number]) => ({ departure_airport: from, departure_date: day, arrival_airport: to, marketing_carrier_code: carrier, flight_number: carrier + " " + number }))
+        } : null
+      };
+    };
+    
+    const gfControlsOut = s => {
+      const c = s.controls;
+      const onResults = s.page_type === "departing_results" || s.page_type === "returning_results";
+      const stopsChip = c.chips.find(x => x.name === "Stops"), airlinesChip = c.chips.find(x => x.name === "Airlines");
+      return {
+        view: {
+          available: c.tabs.length > 0, active: c.tabs.find(t => t.selected)?.view ?? null,
+          choices: c.tabs.map(t => ({ view: t.view, label: t.label, selected: t.selected })),
+          note: c.tabs.length ? null : onResults ? "Google shows no Best/Cheapest tabs on this " + (s.leg === "returning" ? "returning list" : "page") + "." : "Not a results page."
+        },
+        sort: { available: !!c.sort_button, active: c.sort, label: c.sort_label },
+        filters: {
+          available: !!(stopsChip || airlinesChip),
+          chips: c.chips.map(x => ({ name: x.name, selected: x.selected, value: x.value })),
+          stops: stopsChip ? (stopsChip.selected ? GF_STOP_CHIPS[stopsChip.value] || "unknown" : "any") : null,
+          airlines: airlinesChip ? (airlinesChip.selected ? airlinesChip.value || "unknown" : "all") : null,
+          active_count: c.all_filters_count
+        }
+      };
+    };
+    
+    // Registered-tool knowledge comes from the page's WebMCP registry. It counts as known only when the registry lists the
+    // calling tool itself; otherwise introspection is unavailable or unreliable and stays unknown.
+    const gfRegisteredTools = async self => {
+      try {
+        const mc = document.modelContext || navigator.modelContext;
+        if (!mc?.getTools) return { known: false, names: [] };
+        const names = [...new Set((await mc.getTools()).map(t => String(t?.name ?? t).split(".").pop()))].sort();
+        return names.includes(self) ? { known: true, names } : { known: false, names: [] };
+      } catch { return { known: false, names: [] }; }
+    };
+    
+    // The actions the caller can take on this exact state, with inputs that are valid for each tool's schema right now.
+    // example_key picks the row whose selection_ref the examples use (the row a caller is working with); default: the first readable row.
+    const gfActions = (s, rows, registered, window, example_key = null) => {
+      const out = [];
+      const add = (tool, enabled, changes_page, input, note, choices = null, requires = null) => out.push({ tool, enabled, registered: registered.known ? registered.names.includes(tool) : null, changes_page, input: enabled ? input : null, requires, choices, note });
+      const c = s.controls;
+      const onResults = s.page_type === "departing_results" || s.page_type === "returning_results";
+      const settled = !!s.settled;
+      const first = rows.find(r => r.key && r.key === example_key) || rows.find(r => r.key);
+      const searchInput = (() => {
+        const p = s.search;
+        if (!p || !["one_way", "round_trip"].includes(p.trip_type) || !p.legs[0]?.date || p.legs[0].date < new Date().toISOString().slice(0, 10)) return null;
+        const input = { origin: p.legs[0].from, destination: p.legs[0].to, depart_date: p.legs[0].date, trip_type: p.trip_type };
+        if (p.trip_type === "round_trip") input.return_date = p.legs[1].date;
+        if ((p.passengers.length || 1) > 1) input.passengers = p.passengers.length;
+        if (GF_CABINS[p.cabin] && p.cabin !== 1) input.cabin = GF_CABINS[p.cabin];
+        return input;
+      })();
+      if (onResults) {
+        add("list_flights", true, false, window?.next_offset ? { offset: window.next_offset } : {}, settled ? (window?.next_offset ? "Read the rows after the ones returned; the page is unchanged." : "Re-read the rows on the page; never clicks.") : "The list is still changing; call again to read it once settled.");
+        const moreReason = !c.more ? "Google shows no 'View more flights' control on this list (it is already expanded or has no hidden rows)." : c.more_disabled ? "Google's 'View more flights' control is disabled." : !settled ? "Wait for the list to settle first." : null;
+        add("show_more_flights", !moreReason, true, {}, moreReason || "Clicks Google's 'View more flights' once and returns the longer list; hidden rows are not part of this list until then.");
+        const otherTab = c.tabs.find(t => !t.selected);
+        add("set_results_view", c.tabs.length > 0 && !!otherTab && settled, true, otherTab ? { view: otherTab.view } : null,
+          !c.tabs.length ? "Google shows no Best/Cheapest tabs here" + (s.leg === "returning" ? " (returning flights have none)." : ".") : !settled ? "Wait for the list to settle first." : "Switches Google's Best/Cheapest tab.",
+          c.tabs.length ? { view: c.tabs.map(t => t.view) } : null);
+        add("set_flight_sort", !!c.sort_button && settled, true, c.sort_button ? { sort_by: c.sort === "price" ? "top_flights" : "price" } : null,
+          !c.sort_button ? "Google shows no sort control here." : !settled ? "Wait for the list to settle first." : "Chooses an entry in Google's sort menu (currently " + (c.sort_label || "unknown") + "). The menu's entries are confirmed when it opens; an entry Google does not offer is refused.",
+          c.sort_button ? { sort_by: Object.keys(GF_SORTS) } : null);
+        const stopsChip = c.chips.find(x => x.name === "Stops"), airlinesChip = c.chips.find(x => x.name === "Airlines");
+        const stopsNow = stopsChip ? (stopsChip.selected ? GF_STOP_CHIPS[stopsChip.value] || "unknown" : "any") : null;
+        const seen = [...new Set(rows.flatMap(r => r.key ? r.airlines : []))].slice(0, 12);
+        add("set_flight_filters", !!(stopsChip || airlinesChip) && settled, true, stopsChip ? { stops: stopsNow === "nonstop" ? "any" : "nonstop" } : airlinesChip && seen.length ? { airlines: [seen[0]] } : null,
+          !(stopsChip || airlinesChip) ? "Google shows no Stops or Airlines filter here." : !settled ? "Wait for the list to settle first." : "Sets Google's Stops and/or Airlines filters. Airline names are Google's own labels; the names seen on the current rows are listed, and the Airlines filter offers the full list when it opens.",
+          { stops: stopsChip ? Object.keys(GF_STOPS) : [], airlines: airlinesChip ? ["all", ...seen] : [] });
+        const refNote = first ? "Uses the row's selection_ref from the results; refs from another search, leg or price are refused without clicking." : "No readable row with a selection_ref is on the page.";
+        add("get_flight_details", !!first && settled, true, first ? { selection_ref: first.selection_ref } : null, first ? "Opens Google's flight-details panel for one row and returns its segments, aircraft, cabin and amenities. " + refNote : refNote);
+        add("select_flight", !!first && settled, true, first ? { selection_ref: first.selection_ref, expected_leg: s.leg } : null, first ? "Chooses one row; Google then shows " + (s.search.trip_type === "round_trip" && s.leg === "departing" ? "returning flights for it." : "booking options. Books nothing.") + " " + refNote : refNote);
+      }
+      if (s.page_type === "booking_options") {
+        add("get_booking_options", true, false, {}, s.state === "booking" ? "Read every seller's fares, prices and bag allowances for the chosen flights." : "Google is still loading booking options; read them once loaded.");
+        add("continue_to_airline", s.state === "booking", true, null, s.state === "booking" ? "Presses Continue for one booking option; it opens the seller's site in a new tab and books nothing." : "Google is still loading booking options.",
+          null, "seller (required), fare_name and expected_price exactly as one option from get_booking_options returns them (seller, fare_name, price)");
+      }
+      add("search_flights", true, true, searchInput, "Starts a new Google Flights search (navigates the tab)" + (searchInput ? "; the example repeats the current search." : "."), null, searchInput ? null : "origin, destination, depart_date and trip_type (plus return_date for round_trip)");
+      return out;
+    };
+    
+    // Up to four enabled actions as one-line instructions, most useful first; prefer moves recovery steps to the front.
+    const GF_STEP_ORDER = ["select_flight", "get_flight_details", "show_more_flights", "set_results_view", "set_flight_filters", "set_flight_sort", "list_flights", "get_booking_options", "continue_to_airline", "search_flights"];
+    const gfNextSteps = (actions, prefer = []) => {
+      const rank = tool => prefer.includes(tool) ? prefer.indexOf(tool) - prefer.length : GF_STEP_ORDER.indexOf(tool);
+      return actions.filter(a => a.enabled && a.registered !== false && a.tool !== "search_flights").sort((a, b) => rank(a.tool) - rank(b.tool)).slice(0, 4)
+        .map(a => a.tool + (a.input && Object.keys(a.input).length ? " " + JSON.stringify(a.input).slice(0, 160) : "") + ": " + a.note + (a.requires ? " Needs " + a.requires + "." : ""));
+    };
+    
+    // Serializes rows[offset..] in page order, bounded by limit and a byte budget, so a larger limit only ever adds rows.
+    const gfWindow = (s, rows, offset, limit) => {
+      const flights = [];
+      let bytes = 0, cut = null, index = offset;
+      const readable = rows.filter(r => r.key);
+      for (; index < readable.length; index++) {
+        if (flights.length >= limit) { cut = "limit"; break; }
+        const flight = gfFlightOut(readable[index], readable[index].position, s);
+        const size = JSON.stringify(flight).length;
+        if (flights.length && bytes + size > GF_BUDGET_BYTES) { cut = "size_budget"; break; }
+        flights.push(flight);
+        bytes += size;
+      }
+      return { flights, offset, limit, returned_rows: flights.length, next_offset: cut ? index : null, truncated_by: cut };
+    };
+    
+    const gfResultsOut = (s, rows, win) => {
+      const sections = [];
+      for (const row of rows) {
+        const last = sections[sections.length - 1];
+        if (last && last.heading === row.section) last.rows++;
+        else sections.push({ heading: row.section, first_position: row.position, rows: 1 });
+      }
+      const c = s.controls;
+      const body = document.body?.innerText || "";
+      return {
+        rendered_rows: rows.length, announced_rows: s.announced, announcement: s.announcement,
+        sections, readable_rows: rows.filter(r => r.key).length,
+        skipped_rows: rows.filter(r => !r.key).slice(0, 20).map(r => ({ position: r.position, missing: r.missing.length ? r.missing : ["required summary fields"] })),
+        open_detail_panels: rows.filter(r => r.panel_open).map(r => r.position),
+        show_more: { available: !!c.more && !c.more_disabled, reason: c.more ? (c.more_disabled ? "disabled" : null) : "absent" },
+        offset: win.offset, limit: win.limit, returned_rows: win.returned_rows, next_offset: win.next_offset, truncated_by: win.truncated_by,
+        price_insight: body.match(/Prices are currently [a-z]+/i)?.[0] || null,
+        pricing_note: (body.match(/Prices include[^\n]*/) || [""])[0].trim() || null
+      };
+    };
+    
+    const gfWarnings = (s, rows) => {
+      const warnings = [];
+      const skipped = rows.filter(r => !r.key);
+      if (skipped.length) warnings.push(`Skipped ${skipped.length} row(s) without a readable itinerary: ${skipped.slice(0, 5).map(r => "position " + r.position + " (" + (r.missing.join(", ") || "required summary fields") + ")").join("; ")}.`.slice(0, 500));
+      if (s.state === "results" && s.announced === null) warnings.push(s.announcement ? `Google's announcement ("${s.announcement}") contradicts the ${rows.length} rows it shows; the rows were read after the page stayed unchanged.` : `Google announced no result count; the ${rows.length} rows were read after the page stayed unchanged.`);
+      if (s.controls.more) warnings.push("Google collapses more rows behind 'View more flights'; they are not on the page yet. Never conclude an airline or itinerary is unavailable from this list; call show_more_flights to expand it.");
+      const pax = (document.body?.innerText.match(/Prices include[^\n]*/) || [""])[0].match(/for (\d+) adult/);
+      if (pax && s.search && Number(pax[1]) !== (s.search.passengers.length || 1)) warnings.push(`Google's pricing note mentions ${pax[1]} adult(s) but the search has ${s.search.passengers.length || 1} traveler(s).`);
+      const unknownLabels = [...new Set(rows.filter(r => r.key && r.price && !r.price.currency).map(r => r.price.currency_label))];
+      if (unknownLabels.length) warnings.push("Unrecognized currency label(s): " + unknownLabels.join(", ") + "; price.currency is null.");
+      return warnings;
+    };
+    
+    // The common result envelope: what the page shows, Google's controls, the rows (windowed), and what to do next.
+    const gfEnvelope = async (s, { self, status, message, offset = 0, limit = 50, flights = true, prefer = [], example_key = null }) => {
+      const rows = s.settled && s.state === "results" ? gfReadRows(s) : [];
+      const win = gfWindow(s, rows, offset, flights ? limit : 0);
+      const registered = await gfRegisteredTools(self);
+      const actions = gfActions(s, rows, registered, flights ? win : null, example_key);
+      const onResults = s.page_type === "departing_results" || s.page_type === "returning_results";
+      return {
+        envelope: {
+          status, message, page: gfPageOut(s), ...gfControlsOut(s),
+          results: onResults ? gfResultsOut(s, rows, win) : null,
+          ...(flights ? { flights: win.flights } : {}),
+          warnings: onResults && s.settled ? gfWarnings(s, rows) : [],
+          registered_tools: registered, available_actions: actions, next_steps: gfNextSteps(actions, prefer)
+        },
+        rows
+      };
+    };
+    
+    // Standard read used by every tool: settle, then classify. Returns the envelope and the parsed rows (with their nodes).
+    const gfRead = async ({ self, settle_by_ms, quiet_ms, offset, limit, flights = true, changed = null, prefer = [], example_key = null }) => {
+      const s = await gfSettle({ settle_by_ms, quiet_ms, changed });
+      let status = "ok", message = "";
+      if (s.state === "not_results_page" || s.state === "booking" || (s.page_type === "booking_options" && s.state === "loading")) { status = "wrong_page"; message = "This is not a Google Flights results page."; }
+      else if (s.state === "unsupported") { status = "unsupported"; message = "Unsupported results page (" + s.reasons.join(", ") + "): only one-way and round-trip searches are read."; }
+      else if (!s.settled) { status = "not_ready"; message = "Google Flights has not settled on a " + (s.leg || "flight") + " list yet (" + s.reasons.join(", ") + "). Nothing was clicked; call again. Do not treat this as no flights."; }
+      else if (s.state === "no_results") { status = "no_results"; message = "Google settled on an explicit no-results page for this " + s.leg + " list (" + s.announcement + ")."; }
+      const out = await gfEnvelope(s, { self, status, message, offset, limit, flights, prefer, example_key });
+      if (status === "ok" && !out.rows.some(r => r.key)) {
+        out.envelope.status = "error";
+        out.envelope.message = "PARSE_ERROR: Google shows " + out.rows.length + " row(s) but none could be read with an itinerary identity.";
+      } else if (status === "ok") {
+        const r = out.envelope.results;
+        out.envelope.message = `Google shows ${r.rendered_rows} ${s.leg} row(s)` + (s.controls.tabs.length ? ` on the ${out.envelope.view.active || "unknown"} tab` : "") + `, ${out.envelope.sort.label ? out.envelope.sort.label.toLowerCase() : "unsorted"}` + (r.show_more.available ? ", with more behind 'View more flights'" : "") + `; returned ${r.returned_rows} readable row(s) from offset ${r.offset}` + (r.next_offset !== null ? ` (next_offset ${r.next_offset})` : "") + ".";
+      }
+      return { ...out, snapshot: s };
+    };
+    // @xwebmcp-end
+    // @xwebmcp-inline lib/google-flights-ui.js
+    // Google Flights page operations shared by the google.com tools that press Google's own controls. Each helper clicks
+    // at most once per call and reports what the page shows afterwards; callers decide whether that confirms their change.
+    // Requires lib/google-flights-read.js.
+    
+    // Watches Google's live region and URL after a click so the old list is not mistaken for the new one.
+    const gfWatch = () => {
+      const startUrl = location.href, started = Date.now();
+      let mutated = false, observer = null;
+      if (typeof MutationObserver === "function") {
+        observer = new MutationObserver(() => { mutated = true; });
+        for (const e of document.querySelectorAll("[aria-live]")) observer.observe(e, { childList: true, characterData: true, subtree: true });
+      }
+      return { refreshed: () => mutated || location.href !== startUrl || Date.now() - started >= 2500, stop: () => observer?.disconnect() };
+    };
+    
+    // Polls until test() holds or the deadline passes; returns test()'s last value.
+    const gfWaitFor = async (test, ms) => {
+      const until = Date.now() + ms;
+      let value = test();
+      while (!value && Date.now() < until) { await gfSleep(150); value = test(); }
+      return value;
+    };
+    
+    // Clicks once, then reads the list after Google reflects the change (reflected()) and re-announces it.
+    const gfClickAndRead = async (node, reflected, read) => {
+      const watch = gfWatch();
+      node.click();
+      try { return await gfRead({ ...read, changed: () => reflected() && watch.refreshed() }); } finally { watch.stop(); }
+    };
+    
+    const gfDialog = () => [...document.querySelectorAll('[role="dialog"]')].find(gfVisible) || null;
+    const gfInputLabel = input => input.getAttribute("aria-label") || gfText(document.querySelector('label[for="' + input.id + '"]')) || input.value || "";
+    
+    // Opens one filter chip's dialog (Stops, Airlines); null when Google did not show it.
+    const gfOpenFilter = async name => {
+      const chip = gfControls().chips.find(c => c.name === name);
+      if (!chip) return null;
+      chip.node.click();
+      return gfWaitFor(() => { const d = gfDialog(); return d && gfText(d).startsWith(name) ? d : null; }, 5000);
+    };
+    const gfCloseDialog = async () => {
+      const dialog = gfDialog();
+      if (!dialog) return true;
+      const close = [...dialog.querySelectorAll('button[aria-label="Close dialog"]')].find(gfVisible);
+      if (!close) return false;
+      close.click();
+      return !!await gfWaitFor(() => !gfDialog(), 3000);
+    };
+    
+    // Google's sort menu exists only while open; returns its entries, or null when it did not open.
+    const gfOpenSortMenu = async () => {
+      const button = gfControls().sort_button;
+      if (!button) return null;
+      button.click();
+      const items = await gfWaitFor(() => { const list = [...document.querySelectorAll('[role="menuitemradio"]')].filter(gfVisible); return list.length ? list : null; }, 4000);
+      return items ? items.map(node => ({ label: gfText(node), checked: node.getAttribute("aria-checked") === "true", node })) : null;
+    };
+    const gfCloseMenu = async () => {
+      const target = document.activeElement || document.body;
+      target.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", code: "Escape", keyCode: 27, bubbles: true }));
+      return !!await gfWaitFor(() => ![...document.querySelectorAll('[role="menuitemradio"]')].some(gfVisible), 2000);
+    };
+    
+    // Shared preamble of the page-changing tools: the page must be a settled results list before anything is clicked.
+    const gfReadyForAction = async (self, read) => {
+      const before = await gfRead({ self, settle_by_ms: Date.now() + 15000, ...read });
+      return ["wrong_page", "unsupported", "not_ready"].includes(before.envelope.status) ? { refusal: { ...before.envelope, clicked: false }, before } : { refusal: null, before };
+    };
+    // @xwebmcp-end
+    const self = "search_flights";
+    const read = { self, settle_by_ms: Date.now() + settle_ms, limit };
+    const first = await gfRead(read);
+    const tab = first.snapshot.controls.tabs.find(t => t.view === view);
+    if (!view || !first.snapshot.settled || !tab || tab.selected) return { envelope: first.envelope, view_clicked: false };
+    const selected = () => !!gfControls().tabs.find(t => t.view === view && t.selected);
+    const after = await gfClickAndRead(tab.node, selected, read);
+    return { envelope: after.envelope, view_clicked: true, view_confirmed: selected() && after.snapshot.settled };
   };
-  // google-flights-reader:end
 
-  const encodeTfs = ({ origin, destination, departDate, returnDate, passengers, cabin, max_stops }) => {
+  const encodeTfs = ({ origin, destination, depart_date, return_date, passengers, cabin, max_stops }) => {
     const varint = value => { const out = []; do { let byte = value & 0x7f; value = Math.floor(value / 128); if (value) byte |= 0x80; out.push(byte); } while (value); return out; };
     const key = (field, wire) => varint(field * 8 + wire);
     const int = (field, value) => [...key(field, 0), ...varint(value)];
     const bytes = (field, payload) => [...key(field, 2), ...varint(payload.length), ...payload];
     const str = (field, value) => bytes(field, [...value].map(c => c.charCodeAt(0)));
     const leg = (day, from, to) => bytes(3, [...str(2, day), ...(max_stops === undefined ? [] : int(5, max_stops)), ...bytes(13, [...int(1, 1), ...str(2, from)]), ...bytes(14, [...int(1, 1), ...str(2, to)])]);
-    const message = [...leg(departDate, origin, destination)];
-    if (returnDate) message.push(...leg(returnDate, destination, origin));
+    const message = [...leg(depart_date, origin, destination)];
+    if (return_date) message.push(...leg(return_date, destination, origin));
     for (let i = 0; i < passengers; i++) message.push(...int(8, 1));
-    message.push(...int(9, CABINS[cabin]), ...int(19, returnDate ? 1 : 2));
+    message.push(...int(9, CABINS[cabin]), ...int(19, return_date ? 1 : 2));
     return btoa(String.fromCharCode(...message)).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+  };
+
+  // Rejects anything the schema rejects, before touching the page.
+  const validate = input => {
+    const known = Object.keys(inputSchema.properties);
+    const extra = Object.keys(input).filter(k => !known.includes(k));
+    if (extra.length) return "unexpected input " + extra.join(", ") + (extra.some(k => /[A-Z]/.test(k)) ? " (inputs are snake_case: depart_date, return_date, trip_type, limit)" : "");
+    const validDate = value => typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value) && Number.isFinite(Date.parse(value)) && new Date(value).toISOString().slice(0, 10) === value;
+    const today = new Date().toISOString().slice(0, 10);
+    if (!/^[A-Z]{3}$/.test(input.origin || "") || !/^[A-Z]{3}$/.test(input.destination || "")) return "origin and destination must be uppercase three-letter IATA airport codes.";
+    if (input.origin === input.destination) return "origin and destination must differ.";
+    if (!["one_way", "round_trip"].includes(input.trip_type)) return "trip_type must be one_way or round_trip.";
+    if (!validDate(input.depart_date)) return "depart_date must be a real YYYY-MM-DD date.";
+    if (input.depart_date < today) return `depart_date ${input.depart_date} is in the past (today is ${today} UTC).`;
+    if (input.trip_type === "round_trip") {
+      if (!validDate(input.return_date)) return "round_trip requires a real YYYY-MM-DD return_date.";
+      if (input.return_date < input.depart_date) return "return_date must be on or after depart_date.";
+    } else if (input.return_date !== undefined) return "one_way searches must omit return_date.";
+    const passengers = input.passengers ?? 1, limit = input.limit ?? 50;
+    if (!Number.isInteger(passengers) || passengers < 1 || passengers > 9) return "passengers must be 1–9 adults.";
+    if (!CABINS[input.cabin ?? "economy"]) return "cabin must be economy, premium_economy, business or first.";
+    if (!/^[A-Z]{3}$/.test(input.currency ?? "USD")) return "currency must be a three-letter ISO code.";
+    if (!["best", "cheapest"].includes(input.view ?? "best")) return "view must be best or cheapest.";
+    if (!Number.isInteger(limit) || limit < 1 || limit > 150) return "limit must be 1–150.";
+    if (input.max_stops !== undefined && (!Number.isInteger(input.max_stops) || input.max_stops < 0 || input.max_stops > 2)) return "max_stops must be 0–2, or omitted for any number of stops.";
+    return null;
   };
 
   return [{
@@ -403,36 +880,34 @@
     match: { url_patterns: ["https://google.com/travel/*", "https://*.google.com/travel/*"] },
     tool: {
       name: "search_flights",
-      description: "Search Google Flights for one-way or round-trip itineraries across all airlines and return structured results: carriers, flight numbers, airport-local times, duration, stops, layovers, emissions and the displayed total price in the requested currency. 1–9 adults, four cabins. For nonstop requests set max_stops to 0; Google applies the stops filter before maxResults. When hasMore is true, results are incomplete: never claim an airline or nonstop is unavailable from that list. Returns the outbound options Google lists (best and other sections, expanding 'View more flights' as needed); round-trip prices are the lowest whole-trip totals Google offers starting with that outbound, and returning flights are not invented: choose an outbound with select_flight (its selection_ref, expected_leg departing), then read Google's returning flights for it with list_flights. A selection_ref is valid for this search: on the results page this tool leaves open, or a later results page for the same search. Runs in the tab it is listed for, from any Google Travel page there; other tabs (such as a seller's site opened by continue_to_airline) need not be focused or closed. Read-only: never selects, books or purchases. Invoke with a 120-second timeout.",
+      description: "Search Google Flights for one-way or round-trip itineraries across all airlines, as a person would by submitting Google's search form, and return the initial results Google shows: the requested Best or Cheapest tab (Google's own views; the tool confirms the selected tab and clicks the requested one once if Google opened another), never expanded ('View more flights' is not clicked) and with no detail panels opened. 1–9 adults, four cabins; max_stops sets Google's Stops filter with the search. Rows come in page order with Google's section headings and position, carriers, flight numbers, airport-local times, duration, stops, layovers, emissions and the displayed price; each has a selection_ref for get_flight_details and select_flight. The common envelope reports the page, active view, row sort, filters, rendered versus returned rows (limit is serialization only) and available_actions with valid inputs for the next step (show_more_flights, set_results_view, set_flight_sort, set_flight_filters, list_flights, get_flight_details, select_flight). Never conclude that an airline or nonstop is unavailable while results.show_more is available, rows were skipped or next_offset is set. Round-trip prices are the lowest whole-trip totals starting with that outbound; returning flights appear only after select_flight chooses an outbound. Runs in the tab it is listed for, from any Google Travel page there. Navigates the tab but never selects, books or purchases. Invoke with a 120-second timeout. Breaking change: inputs and outputs are snake_case (depart_date, return_date, trip_type, limit replaces maxResults).",
       inputSchema, outputSchema,
-      annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: true }
+      annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: true }
     },
     execute: async (input, context = {}) => {
-      const passengers = input.passengers ?? 1;
-      const cabin = input.cabin ?? "economy";
-      const currency = input.currency ?? "USD";
-      const maxResults = input.maxResults ?? 25;
-      const warnings = [];
-      const result = { status: "error", resultsUrl: "", resultCount: 0, totalResults: null, hasMore: false, direction: "outbound", timeBasis: "airport_local", tripType: input.tripType, passengers, cabin, currency, priceInsight: null, pricingNote: "", warnings, message: "", flights: [] };
-      const fail = message => ({ ...result, message });
-      const validDate = value => typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value) && Number.isFinite(Date.parse(value)) && new Date(value).toISOString().slice(0, 10) === value;
-      const today = new Date().toISOString().slice(0, 10);
-      if (!/^[A-Z]{3}$/.test(input.origin || "") || !/^[A-Z]{3}$/.test(input.destination || "")) return fail("INVALID_INPUT: origin and destination must be uppercase three-letter IATA airport codes.");
-      if (input.origin === input.destination) return fail("INVALID_INPUT: origin and destination must differ.");
-      if (!["one_way", "round_trip"].includes(input.tripType)) return fail("INVALID_INPUT: tripType must be one_way or round_trip.");
-      if (!validDate(input.departDate)) return fail("INVALID_INPUT: departDate must be a real YYYY-MM-DD date.");
-      if (input.departDate < today) return fail(`INVALID_INPUT: departDate ${input.departDate} is in the past (today is ${today} UTC).`);
-      if (input.tripType === "round_trip") {
-        if (!validDate(input.returnDate)) return fail("INVALID_INPUT: round_trip requires a real YYYY-MM-DD returnDate.");
-        if (input.returnDate < input.departDate) return fail("INVALID_INPUT: returnDate must be on or after departDate.");
-      } else if (input.returnDate !== undefined) return fail("INVALID_INPUT: one_way searches must omit returnDate.");
-      if (!Number.isInteger(passengers) || passengers < 1 || passengers > 9) return fail("INVALID_INPUT: passengers must be 1–9 adults.");
-      if (!CABINS[cabin]) return fail("INVALID_INPUT: cabin must be economy, premium_economy, business or first.");
-      if (!/^[A-Z]{3}$/.test(currency)) return fail("INVALID_INPUT: currency must be a three-letter ISO code.");
-      if (!Number.isInteger(maxResults) || maxResults < 1 || maxResults > 100) return fail("INVALID_INPUT: maxResults must be 1–100.");
-      if (input.max_stops !== undefined && (!Number.isInteger(input.max_stops) || input.max_stops < 0 || input.max_stops > 2)) return fail("INVALID_INPUT: max_stops must be 0–2, or omitted for any number of stops.");
+      const args = input || {};
+      const passengers = args.passengers ?? 1, cabin = args.cabin ?? "economy", currency = args.currency ?? "USD", view = args.view ?? "best", limit = args.limit ?? 50;
+      const echo = { trip_type: typeof args.trip_type === "string" ? args.trip_type : null, passengers: Number.isInteger(passengers) ? passengers : null, cabin: typeof cabin === "string" ? cabin : null, currency: typeof currency === "string" ? currency : null, view: typeof view === "string" ? view : null };
+      let resultsUrl = "";
+      // Failures still describe the page the tab is on (read-only) so the caller sees what it can do next; when the page
+      // cannot be read, its controls are reported as unknown (null) and only a new search is suggested.
+      const describe = async () => {
+        try {
+          const here = (await pageInfo()).url;
+          if (/^https:\/\/(www\.)?google\.com\/travel\//.test(here)) return (await js(readResults, { arg: { view: null, settle_ms: 1500, limit } })).envelope;
+        } catch { /* fall through to unknown */ }
+        const note = "Starts a new Google Flights search (navigates the tab).";
+        return {
+          page: null, view: null, sort: null, filters: null, results: null, flights: [], warnings: [], registered_tools: { known: false, names: [] },
+          available_actions: [{ tool: "search_flights", enabled: true, registered: null, changes_page: true, input: null, requires: "valid origin, destination, depart_date and trip_type (plus return_date for round_trip)", choices: null, note }],
+          next_steps: ["The current page could not be read; its controls are unknown. Call get_page_context there, or search_flights again with corrected input."]
+        };
+      };
+      const fail = async (message, status = "error") => ({ ...await describe(), status, message, results_url: resultsUrl, request: echo, view_clicked: false });
+      const problem = validate(args);
+      if (problem) return fail("INVALID_INPUT: " + problem + " Nothing was searched.", "invalid_input");
 
-      const tfs = encodeTfs({ origin: input.origin, destination: input.destination, departDate: input.departDate, returnDate: input.tripType === "round_trip" ? input.returnDate : undefined, passengers, cabin, max_stops: input.max_stops });
+      const tfs = encodeTfs({ ...args, return_date: args.trip_type === "round_trip" ? args.return_date : undefined, passengers, cabin });
       const url = "https://www.google.com/travel/flights/search?" + new URLSearchParams({ tfs, hl: "en", gl: "US", curr: currency });
       const deadline = Date.now() + 110000;
       const remaining = cap => Math.max(1, Math.min(cap, Math.floor((deadline - Date.now()) / 1000)));
@@ -444,8 +919,8 @@
         const navigation = await gotoUrl(url);
         if (navigation?.errorText) return fail("NAVIGATION_FAILED: " + navigation.errorText);
         if (!await waitForElement("html:not([data-xwebmcp-stale])", { state: "attached", timeoutSec: remaining(30) })) return fail("NAVIGATION_TIMEOUT: Google Flights did not load a new document.");
-        result.resultsUrl = (await pageInfo()).url;
-        if (/^consent\.google\./.test(new URL(result.resultsUrl).hostname)) {
+        resultsUrl = (await pageInfo()).url;
+        if (/^consent\.google\./.test(new URL(resultsUrl).hostname)) {
           const consented = await js(() => {
             const visible = e => e.getClientRects().length > 0;
             const buttons = [...document.querySelectorAll("button")].filter(visible);
@@ -457,86 +932,56 @@
           });
           if (!consented) return fail("CONSENT_BLOCKED: Google consent page has no recognizable Reject all / Accept all button.");
           if (!await waitForElement("html:not([data-xwebmcp-stale])", { state: "attached", timeoutSec: remaining(30) })) return fail("CONSENT_TIMEOUT: the consent page did not return to Google Flights.");
-          result.resultsUrl = (await pageInfo()).url;
+          resultsUrl = (await pageInfo()).url;
         }
-        if (!isFlightsPage(result.resultsUrl)) return fail(new URL(result.resultsUrl).pathname.startsWith("/sorry") ? "BLOCKED: Google served an automated-traffic challenge." : "UNEXPECTED_PAGE: navigation ended at " + result.resultsUrl);
+        if (!isFlightsPage(resultsUrl)) return fail(new URL(resultsUrl).pathname.startsWith("/sorry") ? "BLOCKED: Google served an automated-traffic challenge." : "UNEXPECTED_PAGE: navigation ended at " + resultsUrl);
 
         const readiness = await js(timeoutMs => new Promise(resolve => {
           const visible = e => e.getClientRects().length > 0;
           const started = Date.now();
-          let cardsSeenAt = 0;
+          let rowsSeenAt = 0;
           const check = () => {
             const live = [...document.querySelectorAll("[aria-live]")].map(e => e.textContent.replace(/\s+/g, " ").trim());
+            const rows = [...document.querySelectorAll("li.pIav2d")].filter(visible).length;
             if (live.some(t => /^\d+ results? returned/i.test(t))) return { state: "results" };
             const empty = live.find(t => /^No results returned/i.test(t));
-            // Dates past Google's booking window also announce no results; keep the reason Google prints.
-            if (empty) return { state: "no_results", text: [empty, (document.body?.innerText.match(/[^\n]*too far in the future[^\n]*/i) || [])[0]].filter(Boolean).join(" ") };
+            // Dates past Google's booking window also announce no results; keep the reason Google prints. Rows under a
+            // "No results returned" announcement (Google's Cheapest tab) are results, read once they stop changing.
+            if (empty && !rows) return { state: "no_results", text: [empty, (document.body?.innerText.match(/[^\n]*too far in the future[^\n]*/i) || [])[0]].filter(Boolean).join(" ") };
             if (location.pathname.startsWith("/sorry")) return { state: "blocked" };
             // Google drops an airport code it does not know and leaves that search box empty, with no results.
             const blank = [...document.querySelectorAll('input[aria-label^="Where from?"], input[aria-label^="Where to?"]')].find(i => visible(i) && !i.value.trim());
-            if (blank && Date.now() - started > 3000 && ![...document.querySelectorAll("li.pIav2d")].some(visible)) return { state: "unknown_airport", field: /^Where from/.test(blank.getAttribute("aria-label")) ? "origin" : "destination" };
+            if (blank && Date.now() - started > 3000 && !rows) return { state: "unknown_airport", field: /^Where from/.test(blank.getAttribute("aria-label")) ? "origin" : "destination" };
             const body = document.body?.innerText || "";
-            if (/Something went wrong|An error occurred|Try again later/i.test(body) && !document.querySelector("li.pIav2d")) return { state: "site_error", text: body.match(/[^\n]*(?:Something went wrong|An error occurred|Try again later)[^\n]*/i)[0] };
-            const cards = [...document.querySelectorAll("li.pIav2d")].filter(visible).length;
-            if (cards) { cardsSeenAt ||= Date.now(); if (Date.now() - cardsSeenAt > 8000) return { state: "results" }; } else cardsSeenAt = 0;
+            if (/Something went wrong|An error occurred|Try again later/i.test(body) && !rows) return { state: "site_error", text: body.match(/[^\n]*(?:Something went wrong|An error occurred|Try again later)[^\n]*/i)[0] };
+            if (rows) { rowsSeenAt ||= Date.now(); if (Date.now() - rowsSeenAt > 8000) return { state: "results" }; } else rowsSeenAt = 0;
             if (Date.now() - started > timeoutMs) return { state: "pending" };
             return null;
           };
           const tick = () => { const value = check(); if (value) resolve(value); else setTimeout(tick, 250); };
           tick();
         }), { arg: remaining(25) * 1000 }); // one js() call is cut off by CDP after 30 s
-        result.resultsUrl = (await pageInfo()).url;
-        if (readiness.state === "no_results") return { ...result, status: "no_results", totalResults: 0, message: readiness.text };
-        if (readiness.state === "unknown_airport") return fail(`UNKNOWN_AIRPORT: Google Flights did not recognize the ${readiness.field} code ${readiness.field === "origin" ? input.origin : input.destination}.`);
+        resultsUrl = (await pageInfo()).url;
+        if (readiness.state === "unknown_airport") return fail(`UNKNOWN_AIRPORT: Google Flights did not recognize the ${readiness.field} code ${readiness.field === "origin" ? args.origin : args.destination}.`);
         if (readiness.state === "blocked") return fail("BLOCKED: Google served an automated-traffic challenge.");
         if (readiness.state === "site_error") return fail("SITE_ERROR: " + readiness.text.slice(0, 300));
-        if (readiness.state !== "results") return fail("RESULTS_TIMEOUT: Google Flights neither announced results nor an explicit no-results state.");
+        if (readiness.state === "pending") return fail("RESULTS_TIMEOUT: Google Flights neither announced results nor an explicit no-results state.");
 
-        // Expansion and parsing run in one page call so a list re-render cannot separate the expanded nodes from the parsed ones.
-        const page = await js(readGoogleFlights, { arg: { deadline_ms: Date.now() + remaining(30) * 1000, settle_by_ms: Date.now() + remaining(5) * 1000, quiet_ms: 0, expand_more: true, want: maxResults, detail_first: maxResults } });
-        result.resultsUrl = page.url;
-        result.pricingNote = page.pricing_note || "";
-        result.priceInsight = page.price_insight;
-        if (page.leg !== "departing") return fail("UNEXPECTED_PAGE: the results page is not showing departing flights for this search.");
-        // Fields search_flights has always required; the reader also requires an itinerary identity for selection_ref.
-        const problems = page.unreadable.map(u => ({ index: u.index, summary: u.summary }));
-        const readable = [];
-        for (const f of page.flights.filter(f => f.index < maxResults)) {
-          if (!f.airlines.length || !f.price?.display_text || f.stops === null || !f.duration_minutes || f.arrival_day_offset === null) problems.push({ index: f.index, summary: f.summary });
-          else readable.push(f);
-        }
-        const described = problems.filter(p => p.index < maxResults).sort((a, b) => a.index - b.index).map(p => `itinerary ${p.index + 1} (${p.summary.slice(0, 80) || "no label"})`);
-        if (!readable.length) return fail(`PARSE_ERROR: Google announced results but no itinerary card was readable${described.length ? ": " + described.join("; ").slice(0, 300) : ""}.`);
-        if (described.length) warnings.push(`Skipped ${described.length} unreadable itinerary card(s): ${described.join("; ").slice(0, 300)}`);
-        const paxNote = result.pricingNote.match(/for (\d+) adult/);
-        if (paxNote && Number(paxNote[1]) !== passengers) warnings.push(`Google priced the page for ${paxNote[1]} adult(s), not the requested ${passengers}.`);
-        const labels = [...new Set(readable.map(f => f.price.currency_label))];
-        if (labels.length > 1) warnings.push("Mixed currency labels on the page: " + labels.join(", "));
-        for (const label of labels) {
-          const code = readable.find(f => f.price.currency_label === label).price.currency;
-          if (!code) warnings.push(`Google labeled prices as "${label}", which is not a recognized currency name; price.currency repeats the requested ${currency} unverified.`);
-          else if (code !== currency) warnings.push(`Google labeled prices as ${label} (${code}), not the requested ${currency}; price.currency reports ${code}.`);
-        }
-        const flights = readable.map(f => ({
-          section: f.section, airline: f.airlines.join(" / "), airlines: f.airlines, partnerAirlines: f.partner_airlines, operatedBy: f.operated_by,
-          flightNumbers: f.flight_numbers,
-          departureAirport: f.origin, arrivalAirport: f.destination,
-          departureDate: f.departure_date, departureTime: f.departure_time, arrivalDate: f.arrival_date, arrivalTime: f.arrival_time, arrivalDayOffset: f.arrival_day_offset,
-          durationMinutes: f.duration_minutes, stops: f.stops,
-          layovers: f.layovers.every(l => l.duration_minutes) ? f.layovers.map(l => ({ airport: l.airport, durationMinutes: l.duration_minutes })) : [],
-          emissionsKgCo2e: f.emissions_kg_co2e, emissionsVsTypicalPercent: f.emissions_vs_typical_percent,
-          price: { amount: f.price.amount, currency: f.price.currency || currency, currencyLabel: f.price.currency_label, displayText: f.price.display_text, scope: f.price.round_trip ? "round_trip" : input.tripType, passengersIncluded: passengers },
-          segments: f.details_read ? f.segments.map(s => ({ airline: s.airline, flightNumber: s.flight_number, operatedBy: s.operated_by, aircraft: s.aircraft, departureAirport: s.departure_airport, departureTime: s.departure_time, arrivalAirport: s.arrival_airport, arrivalTime: s.arrival_time, durationMinutes: s.duration_minutes })) : [],
-          selection_ref: f.selection_ref
-        }));
-        if (input.max_stops !== undefined && flights.some(f => f.stops > input.max_stops)) return fail("FILTER_NOT_APPLIED: Google returned itineraries exceeding max_stops.");
-        const unexpanded = flights.filter(f => f.segments.length === 0).length;
-        if (unexpanded) warnings.push(`${unexpanded} itinerary detail panel(s) could not be read; their segments are empty.`);
-        const miscounted = page.announced !== null && page.announced !== page.total;
-        if (miscounted) warnings.push(`Google announced ${page.announced} results but ${page.total} were on the page when read; the list may be incomplete.`);
-        const hasMore = page.more_left || page.total > flights.length || (miscounted && page.announced > page.total);
-        if (hasMore) warnings.push("Partial results: additional itineraries were not returned. Do not infer an airline or nonstop is unavailable; narrow the search with max_stops or increase maxResults.");
-        return { ...result, status: "ok", resultCount: flights.length, totalResults: page.total, hasMore, flights };
+        const page = await js(readResults, { arg: { view, settle_ms: remaining(25) * 1000, limit } });
+        const envelope = page.envelope;
+        resultsUrl = envelope.page.url;
+        const out = { ...envelope, results_url: resultsUrl, request: echo, view_clicked: page.view_clicked };
+        if (envelope.page.leg !== "departing") return { ...out, status: "error", message: "UNEXPECTED_PAGE: the results page is not showing departing flights for this search." };
+        if (envelope.status === "no_results") return { ...out, message: readiness.text || envelope.message };
+        if (page.view_clicked && !page.view_confirmed) return { ...out, status: "unconfirmed", message: "Google opened the " + (envelope.view.active || "other") + " tab; the tool clicked " + view + " once but Google did not confirm it and settle its list. Inspect with get_page_context; do not click again blindly." };
+        if (envelope.status !== "ok") return out;
+        const stops = envelope.filters.stops;
+        if (args.max_stops !== undefined && (stops !== STOP_FILTERS[args.max_stops] || envelope.flights.some(f => f.stops > args.max_stops))) return { ...out, status: "error", message: "FILTER_NOT_APPLIED: Google's Stops filter shows " + stops + " instead of " + STOP_FILTERS[args.max_stops] + ", or rows have more stops; the rows below are not a " + STOP_FILTERS[args.max_stops] + " list." };
+        if (!envelope.view.choices.some(c => c.view === view)) return { ...out, status: "unavailable", message: "Google does not offer a " + view + " tab on this results page" + (envelope.view.active ? " (it shows " + envelope.view.active + ")" : "") + "; the rows below are Google's list as shown, not a " + view + " view." };
+        if (envelope.view.active !== view) return { ...out, status: "unconfirmed", message: "Google shows the " + envelope.view.active + " tab, not " + view + ". Inspect with get_page_context or call set_results_view; the rows below are not a " + view + " view." };
+        const labels = [...new Set(envelope.flights.map(f => f.price?.currency).filter(Boolean))];
+        const warnings = labels.some(code => code !== currency) ? [...envelope.warnings, `Google labeled prices as ${labels.join(", ")}, not the requested ${currency}; price.currency reports what the page labeled.`] : envelope.warnings;
+        return { ...out, warnings };
       } catch (error) {
         return fail(String(error?.message || error).replace(/^Error: /, "").split("\n")[0].slice(0, 500));
       }

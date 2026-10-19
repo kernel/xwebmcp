@@ -43,8 +43,8 @@ tests/
   *.test.mjs                      node --test "tests/*.test.mjs" MUST pass
 spec/                             this specification and its JSON Schemas
 scripts/validate-registry.mjs     the validator (§9)
-lib/input.js                      optional CDP typing snippet (§2)
-scripts/compose.mjs               inlines the snippet into tool sources (§2)
+lib/*.js                          optional snippets inlined into tool files (§2)
+scripts/compose.mjs               inlines the snippets into tool sources (§2)
 ```
 
 Rules:
@@ -63,12 +63,14 @@ Rules:
 - Files that are neither tool files, tests, documentation, nor tooling (build output,
   `node_modules/`) MUST NOT be committed.
 
-A CDP tool MAY use `lib/input.js` for trusted, paced typing. Since consumers fetch only
-registered tool files (§10.2), the tool MUST commit the snippet inside its `execute`
-function between `// @xwebmcp-inline lib/input.js` and `// @xwebmcp-end`. The snippet is
-not imported at runtime. Run `node scripts/compose.mjs` to refresh marked tools; the
-validator rejects stale or unpaired blocks. Page tools cannot use this CDP helper and
-must still obey the page-first kind rule in `cdp-tools.md`.
+A tool MAY share code with other tools through a snippet under `lib/`. Since consumers
+fetch only registered tool files (§10.2), the tool MUST commit the snippet's text between
+`// @xwebmcp-inline lib/<name>.js` and `// @xwebmcp-end`; the snippet is not imported at
+runtime. Code that a `page` tool runs in the page MUST be inlined inside its `execute`
+function (cdp-tools.md §3.3). Run `node scripts/compose.mjs` to refresh marked tools; the
+validator rejects stale or unpaired blocks and unknown snippets. `lib/input.js` provides
+trusted, paced typing for CDP tools and MUST NOT be inlined into a `page` tool, which must
+still obey the page-first kind rule in `cdp-tools.md`.
 
 ## 3. Namespace: the registrable domain
 
@@ -336,7 +338,8 @@ repository root. It has no dependencies beyond Node itself and checks:
 8. Every domain directory has a `README.md` of exactly the shape in §8: the heading,
    one `| tool | description |` table with one sorted row per registry tool, non-empty
    descriptions, and no other content.
-9. Any inlined CDP typing snippet matches `lib/input.js` byte-for-byte after indentation.
+9. Every inlined `lib/` snippet matches its file byte-for-byte after indentation, and
+   `lib/input.js` is inlined only into `cdp` tools.
 
 CI (`.github/workflows/validate.yml`) runs the validator and `node --test "tests/*.test.mjs"` on pull
 requests and on pushes to `main`. A pull request that fails either MUST NOT be merged.
