@@ -21,13 +21,6 @@
     "zip": "94133"
   },
   "start_url": "https://www.booking.com/",
-  "tools": [
-    {
-      "repo": "kernel/xwebmcp",
-      "ref": "hypeship/booking-stays",
-      "pr": 76
-    }
-  ],
   "allow": [
     "checkout"
   ],

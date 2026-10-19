@@ -14,13 +14,6 @@
     }
   },
   "start_url": "https://www.booking.com/",
-  "tools": [
-    {
-      "repo": "kernel/xwebmcp",
-      "ref": "hypeship/booking-stays",
-      "pr": 76
-    }
-  ],
   "steps": [
     {
       "name": "search",

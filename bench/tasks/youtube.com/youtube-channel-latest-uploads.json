@@ -7,13 +7,6 @@
     "handle": "@veritasium"
   },
   "start_url": "https://www.youtube.com/",
-  "tools": [
-    {
-      "repo": "kernel/xwebmcp",
-      "ref": "hypeship/youtube-search-video",
-      "pr": 53
-    }
-  ],
   "answer_schema": "schemas/channel-uploads.json",
   "rules": [
     {
