@@ -73,7 +73,7 @@
   ],
   "check": {
     "extract": {
-      "total": "\\bTotal(?: price)?\\s*\\n\\s*(?:US)?\\$\\s*([\\d,]+(?:\\.\\d{2})?)\\s*\\n\\s*(?:\\(for [^)\\n]*\\)\\s*\\n\\s*)?Includes taxes"
+      "total": "\\b(?:Total(?: price)?|Price)\\s*\\n\\s*(?:US)?\\$\\s*([\\d,]+(?:\\.\\d{2})?)\\s*\\n\\s*(?:\\(for [^)\\n]*\\)\\s*\\n\\s*)?(?:Includes taxes|Additional charges may apply)"
     },
     "rules": [
       {
@@ -112,6 +112,7 @@
     "better": "lower",
     "tolerance": 1
   },
+  "opt_in": "needs --stealth: Booking.com renders the payment step only in stealth browsers",
   "pairs": 5,
   "trial_timeout_sec": 1200,
   "max_turns": 100
