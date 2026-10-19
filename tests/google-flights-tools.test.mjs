@@ -563,3 +563,30 @@ test("an unconfirmed change still describes the settled page and its actions", a
   assert.equal(out.available_actions.find(a => a.tool === "select_flight").enabled, true);
   assert.ok(!out.next_steps.some(step => /still changing/.test(step)));
 });
+
+test("get_page_context waits long enough to describe a stable list under Google's missing or contradicting count", async () => {
+  const p = cvgSfo();
+  await invoke(p, "set_results_view", { view: "cheapest" });
+  const out = await invoke(p, "get_page_context");
+  assert.deepEqual([out.status, out.page.settled, out.results.announcement], ["ok", true, "No results returned."]);
+  assert.equal(out.available_actions.find(a => a.tool === "select_flight").enabled, true);
+});
+
+test("on an unfiltered no-results page, filters are not advertised; on a filtered one, clearing is", async () => {
+  const p = cvgSfo({ departing: [], collapsed: [] });
+  const empty = await invoke(p, "get_page_context");
+  assert.equal(empty.page.results_state, "no_results");
+  const filters = empty.available_actions.find(a => a.tool === "set_flight_filters");
+  assert.deepEqual([filters.enabled, filters.input], [false, null]);
+  assert.match(filters.note, /nothing to filter/);
+});
+
+test("controls are read only on Google Flights pages, and a truncated list suggests its continuation", async () => {
+  const p = cvgSfo();
+  p.path = "/travel/hotels";
+  const hotels = await invoke(p, "get_page_context");
+  assert.deepEqual([hotels.page.page_type, hotels.filters.chips, hotels.view.available, hotels.sort.available], ["other", [], false, false]);
+  p.path = "/travel/flights/search";
+  const list = await invoke(p, "list_flights", { limit: 3 });
+  assert.ok(list.next_steps.some(step => step.startsWith('list_flights {"offset":3}')));
+});

@@ -1724,13 +1724,10 @@
       "url_patterns": [
         "https://www.google.com/travel/flights/booking*"
       ],
-      "status": "qa_passed",
-      "last_verified": "2026-10-05",
-      "notes": "Reads Google Flights' booking options: every seller (airline or travel agency), including options collapsed behind 'N more booking options', with price, fare name where the seller lists fares, carry-on and checked-bag allowance (paid carry-ons are not included), features, separate-ticket flags, and itinerary-level bag_info. Independent QA: 133 of 133 options matched the page's Continue buttons in one pass and 94 of 94 in another, across fare-card airlines, airlines without fare cards, travel agencies, collapsed options, separate tickets (airline + airline and airline + agency) and an open separate-tickets dialog; bag_info matched the itinerary bag text on 14 pages including single-option pages. Known limitation: bag_info does not say which leg a line belongs to. Unverified: the not_ready path and non-English pages.",
-      "url_patterns_reason": "Narrowed to Google Flights' booking page (www.google.com/travel/flights/booking*), the only page that lists booking options; google.com also serves unrelated products.",
-      "provenance": {
-        "qa_agent": "agt_88e7fb0ff0ef77125202"
-      }
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Draft. Booking-option fields unchanged (every seller and fare with price, bags, features, separate-ticket flags, itinerary bag_info). Now also returns page, registered_tools, available_actions and next_steps, with a continue_to_airline input built from Google's first option (seller, fare_name, price as expected_price), and refuses unexpected input.",
+      "url_patterns_reason": "Narrowed to Google Flights' booking page (www.google.com/travel/flights/booking*), the only page that lists booking options; google.com also serves unrelated products."
     },
     {
       "domain": "google.com",

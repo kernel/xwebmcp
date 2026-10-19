@@ -376,7 +376,7 @@
         const url = location.href;
         const search = gfDecodeSearch(url);
         const position = gfLegOf(search);
-        const controls = gfControls();
+        const controls = /^\/travel\/flights/.test(location.pathname) ? gfControls() : { tabs: [], sort_button: null, sort_label: null, sort_disabled: false, sort: null, chips: [], more: null, more_disabled: false, all_filters_count: 0 };
         const base = { url, path: location.pathname, search, leg: position?.leg ?? null, index: position?.index ?? null, controls, announced: null, announcement: null, rows: [], reasons: [], page_type: gfPageType(location.pathname, position?.leg) };
         if (base.page_type === "booking_options") {
           const loading = ![...document.querySelectorAll('button[aria-label^="Continue to book with"]')].some(gfVisible);
@@ -686,8 +686,10 @@
           const seen = [...new Set(rows.flatMap(r => r.key ? r.airlines : []))].filter(name => name.length <= 60).slice(0, 12);
           // Example: clear a filter that is set (the way back from an empty list), otherwise ask Google for nonstops.
           const filterExample = airlinesChip?.selected ? { airlines: "all" } : stopsChip ? { stops: stopsNow === "any" ? "nonstop" : "any" } : seen.length ? { airlines: [seen[0]] } : null;
-          add("set_flight_filters", !!(stopsChip || airlinesChip) && settled, true, filterExample,
-            !(stopsChip || airlinesChip) ? "Google shows no enabled Stops or Airlines filter here." : !settled ? "Wait for the list to settle first." : "Sets Google's Stops and/or Airlines filters. Airline names are Google's own labels; the names seen on the current rows are listed, and the Airlines filter offers the full list when it opens.",
+          // An empty list with no filter set has nothing to narrow, and a change to it could never show a different list.
+          const emptyUnfiltered = s.state === "no_results" && !c.chips.some(x => x.selected);
+          add("set_flight_filters", !!(stopsChip || airlinesChip) && settled && !emptyUnfiltered, true, filterExample,
+            !(stopsChip || airlinesChip) ? "Google shows no enabled Stops or Airlines filter here." : !settled ? "Wait for the list to settle first." : emptyUnfiltered ? "Google shows no results and no filter is set, so there is nothing to filter; start another search instead." : "Sets Google's Stops and/or Airlines filters. Airline names are Google's own labels; the names seen on the current rows are listed, and the Airlines filter offers the full list when it opens.",
             { stops: stopsChip ? Object.keys(GF_STOPS) : [], airlines: airlinesChip ? ["all", ...seen] : [] });
           const noRow = "No readable row with a selection_ref is on the page.";
           const openable = first && (first.panel_open || (gfDetailToggle(first.li) && !gfDisabled(gfDetailToggle(first.li))));
@@ -760,7 +762,7 @@
 
       // rows are the parsed rows when the list was read; otherwise only what the DOM shows is counted.
       const gfResultsOut = (s, rows, win) => {
-        const parsed = rows.length > 0 || !s.rows.length;
+        const parsed = !!s.settled && (s.state === "results" || s.state === "no_results");
         const items = parsed ? rows : s.rows.map((li, i) => ({ li, position: i + 1, section: gfSectionOf(li), panel_open: gfPanelOpen(li) }));
         const sections = [];
         for (const row of items) {
@@ -808,12 +810,13 @@
         const onResults = s.page_type === "departing_results" || s.page_type === "returning_results";
         const build = win => {
           const actions = gfActions(s, rows, registered, flights ? win : null, example_key);
+          const steps = gfNextSteps(actions, flights && win.next_offset !== null ? [...prefer, "list_flights"] : prefer);
           return gfClip({
             status, message, page: gfPageOut(s), ...gfControlsOut(s),
             results: onResults ? gfResultsOut(s, rows, win) : null,
             ...(flights ? { flights: win.flights } : {}),
             warnings: onResults && s.settled ? gfWarnings(s, rows) : [],
-            registered_tools: registered, available_actions: actions, next_steps: gfNextSteps(actions, prefer)
+            registered_tools: registered, available_actions: actions, next_steps: steps
           });
         };
         const empty = { flights: [], offset: flights ? offset : 0, limit: flights ? limit : 0, returned_rows: 0, next_offset: null, truncated_by: null, oversized: [] };
@@ -962,7 +965,7 @@
           && args.airlines.every(a => typeof a === "string" && a.trim().length >= 2 && a.length <= 60) && new Set(args.airlines.map(a => a.trim().toLowerCase())).size === args.airlines.length);
         if (Object.keys(args).some(k => !["stops", "airlines", "limit"].includes(k)) || (args.stops === undefined && args.airlines === undefined)
           || (args.stops !== undefined && !GF_STOPS[args.stops]) || !validAirlines || !Number.isInteger(limit) || limit < 1 || limit > 150) {
-          const out = await gfRead({ self, flights: false, settle_by_ms: Date.now() + 1500 });
+          const out = await gfRead({ self, flights: false, settle_by_ms: Date.now() + 5000 });
           return finish({ ...out.envelope, flights: [] }, "invalid_input", "Pass stops (" + Object.keys(GF_STOPS).join(", ") + ") and/or airlines (\"all\" or a list of distinct airline names), and optionally limit 1–150. Nothing was clicked.");
         }
         const started = Date.now();
