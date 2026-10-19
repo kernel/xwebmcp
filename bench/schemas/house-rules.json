@@ -2,13 +2,13 @@
   "type": "object",
   "required": [
     "pets_allowed",
-    "smoking_allowed"
+    "cash_accepted"
   ],
   "properties": {
     "pets_allowed": {
       "type": "boolean"
     },
-    "smoking_allowed": {
+    "cash_accepted": {
       "type": "boolean"
     }
   }

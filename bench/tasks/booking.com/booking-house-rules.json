@@ -2,7 +2,7 @@
   "id": "booking-house-rules",
   "domain": "booking.com",
   "stage": "gap",
-  "prompt": "On booking.com, find whether {{hotel}} in {{city}} allows pets and whether it allows smoking, as its house rules say. Reply with JSON: {\"pets_allowed\": boolean, \"smoking_allowed\": boolean}.",
+  "prompt": "On booking.com, find whether {{hotel}} in {{city}} allows pets and whether it accepts cash, as its house rules say. Reply with JSON: {\"pets_allowed\": boolean, \"cash_accepted\": boolean}.",
   "fixture": {
     "hotel": "Palacio Ramalhete",
     "city": "Lisbon"
@@ -15,7 +15,7 @@
       "equals": false
     },
     {
-      "path": "smoking_allowed",
+      "path": "cash_accepted",
       "equals": false
     }
   ],
