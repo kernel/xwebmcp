@@ -1725,11 +1725,28 @@
         "https://www.google.com/travel/flights/booking*"
       ],
       "status": "qa_passed",
-      "last_verified": "2026-10-05",
-      "notes": "Reads Google Flights' booking options: every seller (airline or travel agency), including options collapsed behind 'N more booking options', with price, fare name where the seller lists fares, carry-on and checked-bag allowance (paid carry-ons are not included), features, separate-ticket flags, and itinerary-level bag_info. Independent QA: 133 of 133 options matched the page's Continue buttons in one pass and 94 of 94 in another, across fare-card airlines, airlines without fare cards, travel agencies, collapsed options, separate tickets (airline + airline and airline + agency) and an open separate-tickets dialog; bag_info matched the itinerary bag text on 14 pages including single-option pages. Known limitation: bag_info does not say which leg a line belongs to. Unverified: the not_ready path and non-English pages.",
+      "last_verified": "2026-10-19",
+      "notes": "Booking-option fields unchanged (every seller and fare with price, bags, features, separate-ticket flags, itinerary bag_info). Now also returns page, registered_tools, available_actions and next_steps, with a continue_to_airline input built from Google's first option (seller, fare_name, price as expected_price), and refuses unexpected input. Independent QA on the final source (three specialists: UI parity, contracts and available actions, selection safety; all PASS or PASS WITH NITS on b999e70 after earlier rounds) through registered WebMCP invocations on live public Google Flights, plus the repository's simulated-page tests. Live: booking pages after one-way and round-trip selections; the advertised continue_to_airline input matched Google's first option and validated against continue_to_airline's input schema (not invoked).",
       "url_patterns_reason": "Narrowed to Google Flights' booking page (www.google.com/travel/flights/booking*), the only page that lists booking options; google.com also serves unrelated products.",
       "provenance": {
-        "qa_agent": "agt_88e7fb0ff0ef77125202"
+        "qa_agent": "agt_aee03c0aa33d1275ba55"
+      }
+    },
+    {
+      "domain": "google.com",
+      "tool": "get_flight_details",
+      "file": "domains/google.com/get_flight_details.js",
+      "kind": "page",
+      "namespace": "google.com",
+      "url_patterns": [
+        "https://www.google.com/travel/flights/search*"
+      ],
+      "status": "qa_passed",
+      "last_verified": "2026-10-19",
+      "notes": "Opens Google's flight-details panel for the row named by a selection_ref (one click on the row's own toggle, none when already open), verifies each panel segment against the reference, and returns segments with aircraft, cabin, times and amenities; the panel stays open. Refuses malformed, foreign-search, wrong-leg and other-outbound references, rows not rendered now (not_visible, with show_more_flights as the recovery), ambiguous rows and disabled toggles without clicking; a changed price is reported with the current reference, not refused; a contradicting panel is detail_mismatch. Independent QA on the final source (three specialists: UI parity, contracts and available actions, selection safety; all PASS or PASS WITH NITS on b999e70 after earlier rounds) through registered WebMCP invocations on live public Google Flights, plus the repository's simulated-page tests. Live: nonstop and connecting rows on departing and returning lists matched the open panel; only the named panel opened. Fixture only: ambiguous, detail_mismatch, oversized panels.",
+      "url_patterns_reason": "Narrowed to Google Flights results (www.google.com/travel/flights/search*), the only page with these results controls; google.com also serves unrelated products.",
+      "provenance": {
+        "qa_agent": "agt_8abfe37527a669a800b1"
       }
     },
     {
@@ -1742,11 +1759,11 @@
         "https://www.google.com/travel/*"
       ],
       "status": "qa_passed",
-      "last_verified": "2026-10-16",
-      "notes": "Page type (home, departing/returning results, booking options), live tools, unsettled reasons, chosen flights, suggestions; suggestions point select_flight at selection_ref and expected_leg. Independent QA passed this exact source (byte-identical since) in the first pass, including the suggestion text and the booking-page context live; it was not re-exercised in the second pass. Known limitation: on returning results chosen_flights carries only Google's breadcrumb (list_flights' selected_outbound names the departing flight), and /travel/flights?q= results are reported as flights_home.",
+      "last_verified": "2026-10-19",
+      "notes": "Describes the current Google Travel page without changing it, using the common envelope: page type (including unsupported_results), settled state, search and leg, Google's view, sort and filters, rendered rows and 'View more flights', registered tools (known only when the page registry lists the calling tool or get_page_context) and available_actions with inputs valid for each tool's schema on that state, plus chosen_flights. Waits up to 5 s by default so lists under Google's missing or contradicting count settle. Breaking change: available_tools and suggested_next_steps were replaced. Independent QA on the final source (three specialists: UI parity, contracts and available actions, selection safety; all PASS or PASS WITH NITS on b999e70 after earlier rounds) through registered WebMCP invocations on live public Google Flights, plus the repository's simulated-page tests. Live: flights home, Hotels, departing and returning results (sorted, filtered, empty, expanded), unsupported city and query pages, and the booking page; every enabled advertised input validated against its tool's schema.",
       "url_patterns_reason": "Narrowed to Google Travel (www.google.com/travel/*): google.com also serves Search, Gmail, Maps and other unrelated products where this tool must not be listed.",
       "provenance": {
-        "qa_agent": "agt_994afecca05dbe35538a"
+        "qa_agent": "agt_aee03c0aa33d1275ba55"
       }
     },
     {
@@ -1759,11 +1776,11 @@
         "https://www.google.com/travel/flights/search*"
       ],
       "status": "qa_passed",
-      "last_verified": "2026-10-16",
-      "notes": "Reads the departing flights, or the returning flights Google offers for the departing flight recorded in the results URL, once Google's announced count matches the visible rows (not_ready while rows render, while the previous leg's rows remain or while the count disagrees; no_results for an explicit empty page). Expands 'View more flights' and returns per row a selection_ref, marketing carriers and flight numbers, ordered segments and layovers, ISO dates, airport-local times with day offset, and price scope and passenger count. Breaking changes from the previous version: departure_date and arrival_date are ISO dates and layovers are objects. Independent QA, two passes. Final source: live CVG-LAX returning list read immediately after choosing the outbound, announced and visible counts matching (29/29 departing, 30/30 returning). First pass (before a settle fix): a 71-row expansion matching Google's announcement, native stop filters on both legs and a limited list with has_more. Fixture-only: announced-count mismatch, settled no-results returns and unreadable rows. Known limitation: selected_outbound comes from the results URL because Google shows only a route breadcrumb for it.",
+      "last_verified": "2026-10-19",
+      "notes": "Read-only snapshot of the rows Google renders, in page order with section headings and positions; never expands, opens panels, filters or sorts. offset/limit bound serialization only; whole responses stay under 240 KiB with next_offset continuation. Settles a collapsed list whose count exceeds its rows while 'View more flights' is offered, and rows under Google's missing, smaller or contradicting count after a longer quiet period. Breaking change: sort_by, airline and max_stops removed (set_flight_sort, set_flight_filters), 24-hour departure_time/arrival_time with *_time_text, position replaces result_index, detail_level replaces details_read. Independent QA on the final source (three specialists: UI parity, contracts and available actions, selection safety; all PASS or PASS WITH NITS on b999e70 after earlier rounds) through registered WebMCP invocations on live public Google Flights, plus the repository's simulated-page tests. Live: initial and expanded lists (118-208 rows) matched Google's rows, order and sections; reads left view, sort, filters, expansion, panels and selection unchanged; city/place and /travel/flights?q= pages reported unsupported. Page-tool inputs reached execute (the runtime did not schema-validate them) and were refused as invalid_input without clicking.",
       "url_patterns_reason": "Narrowed to Google Flights results (www.google.com/travel/flights/search*), the only page with flight rows; google.com also serves unrelated products.",
       "provenance": {
-        "qa_agent": "agt_994afecca05dbe35538a"
+        "qa_agent": "agt_d0387db95c395d98b484"
       }
     },
     {
@@ -1778,10 +1795,10 @@
       ],
       "url_patterns_reason": "Narrowed to /travel/* on google.com and its subdomains: google.com also serves Search, Gmail, Maps, Docs and other unrelated products, where a flight search tool must not be listed. /travel/* covers Google Flights and the other Google Travel pages.",
       "status": "qa_passed",
-      "last_verified": "2026-10-16",
-      "notes": "Navigates to a Google Flights tfs deep link (hl=en, gl=US, curr) and reads outbound flight numbers, segments, layovers and total prices after navigation; each flight carries a selection_ref for select_flight. Rows are read by the parser shared verbatim with list_flights and select_flight; a row without Google's per-card itinerary data (marketing flights and local dates) is skipped with a warning, and an announced result count that disagrees with the rows read is warned about (hasMore is set when Google announced more). max_stops is encoded on each search leg so Google filters inventory before maxResults; omitted max_stops preserves unrestricted searches; returned flights exceeding the limit fail closed. Independent QA, two passes. Final source: live CVG-LAX round trip whose nonstop selection_ref selected the displayed outbound, CVG-ORD one-way and limited results with hasMore; all local suites pass. First pass (same parser before a settle fix): a one-stop CVG-PHX-LAX itinerary's segments and layover, and native max_stops 0 and 1 on both legs. Unverified live: an announced-count mismatch (fixture-only). Known limitation: Google can add itineraries after announcing results; counts describe the page when read, not guaranteed complete airline inventory.",
+      "last_verified": "2026-10-19",
+      "notes": "Navigates to a Google Flights tfs deep link (hl=en, gl=US, curr; max_stops sets Google's Stops filter, verified on its chip), confirms Google's Best or Cheapest tab (clicking the requested tab once when Google opened another; unavailable or unconfirmed otherwise, never ok) and returns the initial rows in page order without expanding 'View more flights' or opening panels; limit only bounds serialization. CDP because it navigates and returns the parsed results from the destination. Breaking change: snake_case inputs and outputs (depart_date, return_date, trip_type, limit replaces maxResults) and the common envelope. Independent QA on the final source (three specialists: UI parity, contracts and available actions, selection safety; all PASS or PASS WITH NITS on b999e70 after earlier rounds) through registered WebMCP invocations on live public Google Flights, plus the repository's simulated-page tests. Live: CVG-SFO one way returned Google's 10-12 initial rows including the last-row United nonstop with no expansion; limit 3 a prefix of limit 150 with the page unchanged; view cheapest; round trips; far-future no_results; invoked from Google Travel and Hotels pages. The transport validated this cdp tool's inputs against its schema before execute. Unverified live: consent page, blocked page, unknown airport (fixtures).",
       "provenance": {
-        "qa_agent": "agt_994afecca05dbe35538a"
+        "qa_agent": "agt_d0387db95c395d98b484"
       }
     },
     {
@@ -1794,11 +1811,79 @@
         "https://www.google.com/travel/flights/search*"
       ],
       "status": "qa_passed",
-      "last_verified": "2026-10-16",
-      "notes": "Chooses a departing or returning flight by selection_ref with an expected_leg assertion; result_index is no longer accepted. Before clicking it requires a settled list and refuses a malformed ref, another search, the wrong leg, a return listed for a different departing flight, an itinerary missing or duplicated on the page, or a changed price (with a fresh ref). It clicks once and reports selected only after Google's URL records exactly that itinerary and the returning list or booking page has settled; otherwise unconfirmed or selection_mismatch. Independent QA, two passes. Final source: live CVG-LAX nonstop outbound and return selections reached returning flights and Google's booking page; malformed, edited, other-search, contradicting expected_leg and other-outbound references were refused without clicking. First pass (before a settle fix): the selected flights confirmed with get_booking_options, a page marker showing both transitions are same-document, a reference reused on a fresh page for the same search, and legacy result_index refused. Fixture-only: price_changed, ambiguous, not_found, unconfirmed and selection_mismatch outcomes and slow or no-results transitions. Unverified: multi-city results.",
+      "last_verified": "2026-10-19",
+      "notes": "Chooses a departing or returning flight by selection_ref with an expected_leg assertion. Guards unchanged from the previous version (search, leg, chosen outbound, itinerary, price, ambiguity, one click, no blind retry); the hidden 'View more flights' expansion is removed: a reference not rendered now is not_found with show_more_flights as the next step. Every result carries registered_tools, available_actions and next_steps for the page it leaves. Independent QA on the final source (three specialists: UI parity, contracts and available actions, selection safety; all PASS or PASS WITH NITS on b999e70 after earlier rounds) through registered WebMCP invocations on live public Google Flights, plus the repository's simulated-page tests. Live: references survived sorts, filters, tab switches and expansion by identity; Best references on the Cheapest tab were price_changed without clicking; CVG-SFO round trips reached returning flights and Google's booking page, and a JFK-LAX one-way selection reached the booking page (nothing booked). Fixture only: unconfirmed, selection_mismatch, ambiguous, not_ready while loading.",
       "url_patterns_reason": "Narrowed to Google Flights results (www.google.com/travel/flights/search*), the only page with selectable flight rows; google.com also serves unrelated products.",
       "provenance": {
-        "qa_agent": "agt_994afecca05dbe35538a"
+        "qa_agent": "agt_8abfe37527a669a800b1"
+      }
+    },
+    {
+      "domain": "google.com",
+      "tool": "set_flight_filters",
+      "file": "domains/google.com/set_flight_filters.js",
+      "kind": "page",
+      "namespace": "google.com",
+      "url_patterns": [
+        "https://www.google.com/travel/flights/search*"
+      ],
+      "status": "qa_passed",
+      "last_verified": "2026-10-19",
+      "notes": "Sets Google's Stops and Airlines filters through their chips and dialogs: airline names are checked against Google's dialog before any change; '<first> only' is used only from the all-airlines state, otherwise options are ticked and unticked on their labels; each click waits until Google has processed it (new list or chip change, then a stable dialog). Stops before a click when the time left is shorter than Google took for the previous one, and reports partial with Google's current selection. Refuses disabled filters and unfiltered no-results pages without clicking. Independent QA on the final source (three specialists: UI parity, contracts and available actions, selection safety; all PASS or PASS WITH NITS on b999e70 after earlier rounds) through registered WebMCP invocations on live public Google Flights, plus the repository's simulated-page tests. Live: stops nonstop/one_or_fewer/any, one to twelve airlines in both directions including from single-airline states, combined stops and airlines, unknown airlines refused, returning-list filters including an emptied list and its recovery. Long transitions (about 12 airline changes) can end partial at the 40 s budget; a live run twice saw Google drop one late tick and reported it as partial truthfully.",
+      "url_patterns_reason": "Narrowed to Google Flights results (www.google.com/travel/flights/search*), the only page with these results controls; google.com also serves unrelated products.",
+      "provenance": {
+        "qa_agent": "agt_d0387db95c395d98b484"
+      }
+    },
+    {
+      "domain": "google.com",
+      "tool": "set_flight_sort",
+      "file": "domains/google.com/set_flight_sort.js",
+      "kind": "page",
+      "namespace": "google.com",
+      "url_patterns": [
+        "https://www.google.com/travel/flights/search*"
+      ],
+      "status": "qa_passed",
+      "last_verified": "2026-10-19",
+      "notes": "Opens Google's sort menu once and chooses the requested entry (top flights, price, departure or arrival time, duration, emissions), or closes it and refuses an entry Google does not offer or shows disabled; confirms by Google's sort label and rendered rows. A sort that leaves the rows in the same order stays unconfirmed (conservative). Independent QA on the final source (three specialists: UI parity, contracts and available actions, selection safety; all PASS or PASS WITH NITS on b999e70 after earlier rounds) through registered WebMCP invocations on live public Google Flights, plus the repository's simulated-page tests. Live: all six entries on departing lists and price/departure/top flights on returning lists matched Google's label and order. Unverified live: a menu without an entry (fixtures).",
+      "url_patterns_reason": "Narrowed to Google Flights results (www.google.com/travel/flights/search*), the only page with these results controls; google.com also serves unrelated products.",
+      "provenance": {
+        "qa_agent": "agt_d0387db95c395d98b484"
+      }
+    },
+    {
+      "domain": "google.com",
+      "tool": "set_results_view",
+      "file": "domains/google.com/set_results_view.js",
+      "kind": "page",
+      "namespace": "google.com",
+      "url_patterns": [
+        "https://www.google.com/travel/flights/search*"
+      ],
+      "status": "qa_passed",
+      "last_verified": "2026-10-19",
+      "notes": "Clicks Google's Best or Cheapest tab once and confirms it only when the rendered rows differ from those before the click and settle; an identical list stays unconfirmed (conservative), with the envelope re-read so its actions describe the settled page. Unavailable on returning lists (no tabs) and for disabled tabs, without clicking. Independent QA on the final source (three specialists: UI parity, contracts and available actions, selection safety; all PASS or PASS WITH NITS on b999e70 after earlier rounds) through registered WebMCP invocations on live public Google Flights, plus the repository's simulated-page tests. Live: Best and Cheapest both ways on one-way and round-trip departing lists, including after an expanded Best list (Google keeps the Best count above the Cheapest rows). Known QA limitation: one UI-parity run once saw all returned rows differ from its own page read right after a switch to Cheapest; not captured, and a deliberate repeat matched exactly.",
+      "url_patterns_reason": "Narrowed to Google Flights results (www.google.com/travel/flights/search*), the only page with these results controls; google.com also serves unrelated products.",
+      "provenance": {
+        "qa_agent": "agt_d0387db95c395d98b484"
+      }
+    },
+    {
+      "domain": "google.com",
+      "tool": "show_more_flights",
+      "file": "domains/google.com/show_more_flights.js",
+      "kind": "page",
+      "namespace": "google.com",
+      "url_patterns": [
+        "https://www.google.com/travel/flights/search*"
+      ],
+      "status": "qa_passed",
+      "last_verified": "2026-10-19",
+      "notes": "Clicks Google's 'View more flights' once and returns the expanded list; unavailable without clicking when Google shows no such control or shows it disabled. Rows may re-order; identity is the selection_ref. Independent QA on the final source (three specialists: UI parity, contracts and available actions, selection safety; all PASS or PASS WITH NITS on b999e70 after earlier rounds) through registered WebMCP invocations on live public Google Flights, plus the repository's simulated-page tests. Live: 10-12 rows to 118-208 on departing lists and 3 to 103-119 on returning lists, one click each, then unavailable; a pre-expansion reference opened and selected the same itinerary at its new position.",
+      "url_patterns_reason": "Narrowed to Google Flights results (www.google.com/travel/flights/search*), the only page with these results controls; google.com also serves unrelated products.",
+      "provenance": {
+        "qa_agent": "agt_d0387db95c395d98b484"
       }
     },
     {
