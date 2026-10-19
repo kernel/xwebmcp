@@ -13,6 +13,10 @@ const base = { date: "2026-11-12", from: "Cincinnati/Northern Kentucky Internati
 const connection = (n, price, airline = "Southwest", code = "WN", via = "BNA", dep = "6:40 PM", arr = "11:25 PM") => ({
   ...base, dep, arr, airline, duration: "7 hr 45 min", stops: 1, price: `$${price}`,
   layoverLabel: `Layover (1 of 1) is a 1 hr 30 min layover at ${via} Airport in ${via}. `, tim: `CVG-${via}-${code}-${n}-20261112,${via}-SFO-${code}-${n + 1}-20261112`,
+  segments: () => [
+    segment({ from: "CVG", fromName: "Cincinnati", dep, to: via, toName: `${via} Airport`, arr: "11:00 PM", travel: "2 hr", airline, number: `${code} ${n}`, aircraft: "Boeing 737", layover: `1 hr 30 min layover${via}` }),
+    segment({ from: via, fromName: `${via} Airport`, dep: "11:30 PM", to: "SFO", toName: "San Francisco International Airport", arr, travel: "4 hr", airline, number: `${code} ${n + 1}`, aircraft: "Airbus A320" }),
+  ],
 });
 const NONSTOP_A = { ...base, dep: "9:36 AM", arr: "12:01 PM", airline: "Breeze", duration: "5 hr 25 min", stops: 0, price: "$184", tim: "CVG-SFO-MX-811-20261112" };
 const NONSTOP_B = {
@@ -25,6 +29,8 @@ const INITIAL = [connection(1560, 142), NONSTOP_A, connection(1134, 244, "Delta"
   connection(3149, 244, "Delta", "DL", "ATL", "1:50 PM", "6:57 PM"), connection(2149, 244, "Delta", "DL", "SLC", "7:45 PM", "11:59 PM"), NONSTOP_B];
 const COLLAPSED = [TWO_STOP, ...Array.from({ length: 108 }, (_, i) => connection(2000 + i * 2, 250 + i, i % 2 ? "Delta" : "United", i % 2 ? "DL" : "UA", "ORD", "6:00 AM", "1:00 PM"))];
 // Google re-ranks when it expands: the initial nonstop drops far down the longer list.
+const RETURN_UA = { ...NONSTOP_B, date: "2026-11-19", tim: "SFO-CVG-UA-2391-20261119", from: base.to, to: base.from, arrivalDate: "2026-11-19",
+  segments: () => [segment({ from: "SFO", fromName: "San Francisco International Airport", dep: "7:00 AM", to: "CVG", toName: "Cincinnati", arr: "9:15 AM", travel: "5 hr 15 min", airline: "United", number: "UA 2391", aircraft: "Boeing 737" })] };
 const reorder = rows => { const rest = rows.filter(r => r !== NONSTOP_B); return [...rest.slice(0, 102), NONSTOP_B, ...rest.slice(102)]; };
 const cvgSfo = (options = {}) => new GooglePage({ route: ONE_WAY, departing: INITIAL, collapsed: COLLAPSED, reorderOnExpand: reorder, topCount: 3, ...options });
 
@@ -128,7 +134,7 @@ test("set_results_view switches Google's tab, waits for the new list and reports
 });
 
 test("set_results_view is unavailable on the returning list, where Google shows no tabs", async () => {
-  const p = new GooglePage({ route: ROUND_TRIP, departing: INITIAL, returning: () => [{ ...NONSTOP_B, date: "2026-11-19", tim: "SFO-CVG-UA-2391-20261119", from: base.to, to: base.from, arrivalDate: "2026-11-19" }] });
+  const p = new GooglePage({ route: ROUND_TRIP, departing: INITIAL, returning: () => [RETURN_UA] });
   const [first] = (await invoke(p, "list_flights")).flights;
   await invoke(p, "select_flight", { selection_ref: first.selection_ref, expected_leg: "departing" });
   const out = await invoke(p, "set_results_view", { view: "cheapest" });
@@ -316,7 +322,7 @@ async function checkActions(build) {
     validate(definition.tool.inputSchema, action.input);
     const { page } = await build();
     const out = await invoke(page, action.tool, action.input);
-    assert.ok(!["invalid_input", "unavailable", "wrong_page", "not_ready", "not_found", "not_visible", "wrong_leg", "wrong_search"].includes(out.status), `${action.tool} ${JSON.stringify(action.input)} -> ${out.status}`);
+    assert.ok(["ok", "changed", "selected"].includes(out.status), `${action.tool} ${JSON.stringify(action.input)} -> ${out.status}`);
   }
   const search = reference.out.available_actions.find(a => a.tool === "search_flights");
   if (search.input) validate(tool("search_flights").tool.inputSchema, search.input);
@@ -327,7 +333,7 @@ for (const [name, build] of [
   ["cheapest tab sorted by price", async () => { const page = cvgSfo(); await invoke(page, "set_results_view", { view: "cheapest" }); await invoke(page, "set_flight_sort", { sort_by: "price" }); return { page, out: await invoke(page, "get_page_context") }; }],
   ["expanded list with a stops filter", async () => { const page = cvgSfo(); await invoke(page, "set_flight_filters", { stops: "one_or_fewer" }); await invoke(page, "show_more_flights"); return { page, out: await invoke(page, "list_flights", { limit: 5 }) }; }],
   ["returning list", async () => {
-    const page = new GooglePage({ route: ROUND_TRIP, departing: INITIAL, returning: () => [{ ...NONSTOP_B, date: "2026-11-19", tim: "SFO-CVG-UA-2391-20261119", from: base.to, to: base.from, arrivalDate: "2026-11-19" }] });
+    const page = new GooglePage({ route: ROUND_TRIP, departing: INITIAL, returning: () => [RETURN_UA] });
     const [first] = (await invoke(page, "list_flights")).flights;
     return { page, out: await invoke(page, "select_flight", { selection_ref: first.selection_ref, expected_leg: "departing" }) };
   }],
@@ -345,4 +351,140 @@ test("an action tool refuses on a page that is still loading, without clicking",
     assert.equal(out.clicked, false);
   }
   assert.equal(pageState(p), before);
+});
+
+test("controls Google shows disabled are never advertised, and the tools refuse them without clicking", async () => {
+  const p = cvgSfo({ disabled: ["sort", "Cheapest", "Stops", "Airlines"] });
+  const list = await invoke(p, "list_flights");
+  const action = name => list.available_actions.find(a => a.tool === name);
+  assert.deepEqual([action("set_flight_sort").enabled, action("set_flight_sort").input], [false, null]);
+  assert.match(action("set_flight_sort").note, /disabled/);
+  assert.deepEqual([action("set_results_view").enabled, action("set_flight_filters").enabled], [false, false]);
+  assert.deepEqual([list.sort.enabled, list.view.choices.map(c => c.enabled), list.filters.chips.map(c => c.enabled)], [false, [true, false], [false, false, true]]);
+  const before = pageState(p);
+  for (const [name, input] of [["set_flight_sort", { sort_by: "price" }], ["set_results_view", { view: "cheapest" }], ["set_flight_filters", { stops: "nonstop" }], ["set_flight_filters", { airlines: ["United"] }]]) {
+    const out = await invoke(p, name, input);
+    assert.deepEqual([out.status, out.clicked], ["unavailable", false], name);
+  }
+  assert.equal(pageState(p), before);
+
+  const q = cvgSfo();
+  q.rows()[0].querySelector('button[aria-label^="Flight details"]').setAttribute("aria-disabled", "true");
+  const rows = await invoke(q, "list_flights");
+  const details = rows.available_actions.find(a => a.tool === "get_flight_details");
+  assert.deepEqual([details.enabled, details.input], [false, null]);
+  const refused = await invoke(q, "get_flight_details", { selection_ref: rows.flights[0].selection_ref });
+  assert.deepEqual([refused.status, refused.clicked], ["unavailable", false]);
+});
+
+// Google switches the tab and URL first and shows the new rows later; same route and row count, different price.
+const cheaperView = { initial: INITIAL.map(r => r === NONSTOP_A ? { ...NONSTOP_A, price: "$150" } : r), collapsed: COLLAPSED };
+for (const [name, options] of [
+  ["rows arrive 3 s later, no results request observed", { fetches: false, timing: { change: 100, rows: 3000, settleChange: 3200 } }],
+  ["results request completes before the rows render", { timing: { change: 100, fetch: 500, rows: 1300, settleChange: 1400 } }],
+  ["the stale announcement stays while the rows change", { cheapestAnnouncement: "10 results returned.", timing: { change: 100, fetch: 400, rows: 1200, settleChange: 50 } }],
+]) {
+  test(`set_results_view never reports the previous view's rows as the new view: ${name}`, async () => {
+    const p = cvgSfo({ cheapest: cheaperView, ...options });
+    const out = await invoke(p, "set_results_view", { view: "cheapest" });
+    assert.equal(out.status, "changed");
+    assert.equal(out.view.active, "cheapest");
+    assert.equal(out.flights.find(f => f.flight_numbers[0] === "MX 811").price.amount, 150);
+    assert.deepEqual(shown(out), p.visible());
+  });
+}
+
+test("a tab change with no sign of a new list (no request, identical rows) is unconfirmed, not changed", async () => {
+  const p = cvgSfo({ fetches: false });
+  const out = await invoke(p, "set_results_view", { view: "cheapest" });
+  assert.equal(out.status, "unconfirmed");
+  assert.equal(out.clicked, true);
+  assert.match(out.message, /did not settle|do not click again/);
+});
+
+test("set_flight_filters keeps the dialog open until Google's chip shows the change, so Google does not drop it", async () => {
+  const p = cvgSfo({ dropIfClosedEarly: true, timing: { change: 1500, settleChange: 1800 } });
+  const out = await invoke(p, "set_flight_filters", { stops: "nonstop", airlines: ["United", "Breeze"] });
+  assert.equal(out.status, "changed");
+  assert.equal(p.state.stops, "nonstop");
+  assert.deepEqual(p.state.airlines.sort(), ["Breeze", "United"]);
+  assert.deepEqual(out.flights.map(f => f.flight_numbers[0]), ["MX 811", "UA 1482"]);
+});
+
+test("the whole response stays within the API's 240 KiB in UTF-8 bytes, with a complete continuation", async () => {
+  const wide = "東京国際空港".repeat(40);
+  const rows = Array.from({ length: 150 }, (_, i) => ({ ...connection(4000 + i * 2, 300 + i, "Ålandsflyg", "AL", "ORD"), from: `Cincinnati ${wide}`, to: `San Francisco ${wide}` }));
+  const p = cvgSfo({ departing: rows, collapsed: [], topCount: 3 });
+  const pages = [await invoke(p, "list_flights", { limit: 150 })];
+  while (pages.at(-1).results.next_offset !== null) pages.push(await invoke(p, "list_flights", { offset: pages.at(-1).results.next_offset, limit: 150 }));
+  assert.ok(pages.length > 1);
+  for (const page of pages) assert.ok(Buffer.byteLength(JSON.stringify(page)) <= 240 * 1024, `${Buffer.byteLength(JSON.stringify(page))} bytes`);
+  assert.deepEqual(pages[0].results.truncated_by, "size_budget");
+  assert.deepEqual(pages.flatMap(x => x.flights).map(f => f.position), Array.from({ length: 150 }, (_, i) => i + 1));
+});
+
+test("a single row too large for any response is reported as skipped and the continuation moves past it", async () => {
+  const huge = { ...connection(5000, 300), from: "Cincinnati " + "x".repeat(260000) };
+  const p = cvgSfo({ departing: [INITIAL[0], huge, INITIAL[2]], collapsed: [] });
+  const out = await invoke(p, "list_flights");
+  assert.ok(Buffer.byteLength(JSON.stringify(out)) <= 240 * 1024);
+  assert.deepEqual(out.flights.map(f => f.position), [1, 3]);
+  assert.deepEqual(out.results.skipped_rows, [{ position: 2, missing: ["fits no response: larger than the response size budget"] }]);
+  assert.equal(out.results.next_offset, null);
+});
+
+test("a results page searched by city or another place is reported as unsupported, with a valid context and recovery", async () => {
+  for (const legs of [[["2026-11-12", "/m/01snm", "SFO"]], [["2026-11-12", "CVG", "/m/0d6lp"]], [["2026-11-1", "CVG", "SFO"]]]) {
+    const p = new GooglePage({ route: { trip: "one_way", legs }, departing: INITIAL });
+    const context = await invoke(p, "get_page_context");
+    assert.equal(context.status, "unsupported");
+    assert.equal(context.page.page_type, "unsupported_results");
+    assert.equal(context.page.search, null);
+    assert.deepEqual(context.available_actions.map(a => [a.tool, a.enabled, a.input]), [["search_flights", true, null]]);
+    assert.match(context.available_actions[0].requires, /^origin, destination, depart_date and trip_type/);
+    const list = await invoke(p, "list_flights");
+    assert.equal(list.status, "unsupported");
+    assert.deepEqual(list.flights, []);
+    const ref = (await invoke(cvgSfo(), "list_flights")).flights[0].selection_ref;
+    assert.deepEqual([(await invoke(p, "select_flight", { selection_ref: ref, expected_leg: "departing" })).status, p.clicks], ["wrong_page", []]);
+  }
+});
+
+test("an unsettled list reports what Google renders without claiming the rows were read", async () => {
+  const p = cvgSfo();
+  p.live.text = "12 results returned.";
+  p.more.hidden = true;
+  const out = await invoke(p, "list_flights");
+  assert.equal(out.status, "not_ready");
+  assert.deepEqual([out.results.rendered_rows, out.results.readable_rows, out.flights.length], [10, null, 0]);
+  assert.deepEqual(out.results.sections.map(s => s.rows), [3, 7]);
+});
+
+test("after expanding Best, the Cheapest tab under Google's stale smaller count is read (with a warning), not left unsettled", async () => {
+  const extra = Array.from({ length: 20 }, (_, i) => connection(7000 + i * 2, 400 + i, "Delta", "DL", "ATL"));
+  const p = cvgSfo({ cheapest: { initial: INITIAL, collapsed: [...COLLAPSED, ...extra] }, cheapestAnnouncement: "119 results returned." });
+  await invoke(p, "show_more_flights");
+  const out = await invoke(p, "set_results_view", { view: "cheapest", limit: 150 });
+  assert.equal(out.status, "changed");
+  assert.deepEqual([out.results.rendered_rows, out.results.announced_rows], [139, 119]);
+  assert.match(out.warnings[0], /contradicts the 139 rows/);
+  const list = await invoke(p, "list_flights");
+  assert.equal(list.status, "ok");
+  assert.ok(list.available_actions.find(a => a.tool === "set_results_view").enabled);
+});
+
+test("a returning list a filter leaves empty, shown by Google without a list heading, is no_results with a way back", async () => {
+  const p = new GooglePage({ route: ROUND_TRIP, departing: INITIAL, returning: () => [RETURN_UA], emptyHeading: false });
+  const [first] = (await invoke(p, "list_flights")).flights;
+  await invoke(p, "select_flight", { selection_ref: first.selection_ref, expected_leg: "departing" });
+  const out = await invoke(p, "set_flight_filters", { airlines: ["Delta"] });
+  assert.equal(out.status, "changed");
+  assert.deepEqual([out.page.leg, out.page.results_state, out.results.rendered_rows], ["returning", "no_results", 0]);
+  const context = await invoke(p, "get_page_context");
+  assert.deepEqual([context.status, context.page.settled], ["ok", true]);
+  const back = context.available_actions.find(a => a.tool === "set_flight_filters");
+  assert.deepEqual([back.enabled, back.input], [true, { airlines: "all" }]);
+  const restored = await invoke(p, "set_flight_filters", back.input);
+  assert.equal(restored.status, "changed");
+  assert.deepEqual(restored.flights.map(f => f.flight_numbers[0]), ["UA 2391"]);
 });

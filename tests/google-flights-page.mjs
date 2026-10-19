@@ -53,9 +53,15 @@ const STOP_CHIP = { nonstop: "Nonstop", one_or_fewer: "1 stop or fewer", two_or_
 export class GooglePage {
   constructor({
     route, departing = [], collapsed = [], cheapest = null, returning = () => [], returningCollapsed = [], pax = [1], timing = {}, onChoose = null,
-    cheapestAnnouncement = "No results returned.", tabs = true, sorts = Object.keys(SORTS), stops = STOPS.map(s => s[0]), reorderOnExpand = null, topCount = 2, alliances = ["Oneworld", "SkyTeam", "Star Alliance"]
+    cheapestAnnouncement = "No results returned.", tabs = true, sorts = Object.keys(SORTS), stops = STOPS.map(s => s[0]), reorderOnExpand = null, topCount = 2, alliances = ["Oneworld", "SkyTeam", "Star Alliance"],
+    fetches = true, disabled = [], dropIfClosedEarly = false, emptyHeading = true
   } = {}) {
-    Object.assign(this, { route, pax, returning, returningCollapsed, onChoose, cheapestAnnouncement, showTabs: tabs, sorts, stopChoices: stops, reorderOnExpand, topCount, alliances });
+    // fetches: Google requests new results for each change (false: served from its cache, with no request).
+    // disabled: controls Google shows disabled ("sort", "Cheapest", "Stops", "Airlines", "details").
+    // dropIfClosedEarly: a filter option takes effect only if its dialog is still open when Google processes it.
+    // emptyHeading: an empty list keeps its heading (false: Google's "No … flights found" page, with no list heading).
+    Object.assign(this, { route, pax, returning, returningCollapsed, onChoose, cheapestAnnouncement, showTabs: tabs, sorts, stopChoices: stops, reorderOnExpand, topCount, alliances, fetches, disabled, dropIfClosedEarly, emptyHeading });
+    this.observers = new Set();
     this.timing = { select: 150, firstRows: 400, allRows: 900, announce: 1300, booking: 500, change: 300, settleChange: 700, ...timing };
     this.lists = { best: { initial: departing, collapsed }, cheapest: cheapest || { initial: departing, collapsed } };
     this.state = { view: "best", sort: "top_flights", stops: "any", airlines: null, expanded: false };
@@ -98,48 +104,49 @@ export class GooglePage {
     li.hidden = false;
     return li;
   }
-  passes(spec) {
-    const s = this.state;
+  passes(spec, s = this.state) {
     const max = STOPS.find(x => x[0] === s.stops)[2];
     return (max === null || spec.stops <= max) && (!s.airlines || s.airlines.some(a => spec.airline.split(", ").includes(a)));
   }
-  rowSpecs() {
+  rowSpecs(s) {
     if (this.leg === "returning") {
       const rows = this.returningRows === "none" ? [] : this.returningRows || [];
-      const hidden = this.state.expanded ? [] : this.returningCollapsed;
-      return { initial: (this.state.expanded ? [...rows, ...this.returningCollapsed] : rows).filter(r => this.passes(r)), collapsed: hidden.filter(r => this.passes(r)) };
+      const hidden = s.expanded ? [] : this.returningCollapsed;
+      return { initial: (s.expanded ? [...rows, ...this.returningCollapsed] : rows).filter(r => this.passes(r, s)), collapsed: hidden.filter(r => this.passes(r, s)) };
     }
-    const list = this.lists[this.state.view];
-    let initial = list.initial.filter(r => this.passes(r)), collapsed = list.collapsed.filter(r => this.passes(r));
-    if (this.state.expanded) { initial = [...initial, ...collapsed]; collapsed = []; if (this.reorderOnExpand) initial = this.reorderOnExpand(initial); }
-    const key = { price: amount, departure_time: r => clockMinutes(r.dep), arrival_time: r => clockMinutes(r.arr), duration: r => r.duration.length, emissions: r => r.emissions?.length || 0 }[this.state.sort];
+    const list = this.lists[s.view];
+    let initial = list.initial.filter(r => this.passes(r, s)), collapsed = list.collapsed.filter(r => this.passes(r, s));
+    if (s.expanded) { initial = [...initial, ...collapsed]; collapsed = []; if (this.reorderOnExpand) initial = this.reorderOnExpand(initial); }
+    const key = { price: amount, departure_time: r => clockMinutes(r.dep), arrival_time: r => clockMinutes(r.arr), duration: r => r.duration.length, emissions: r => r.emissions?.length || 0 }[s.sort];
     if (key) initial = [...initial].sort((a, b) => key(a) - key(b));
     return { initial, collapsed };
   }
   offeredAirlines() { return [...new Set([...this.lists.best.initial, ...this.lists.best.collapsed].flatMap(r => r.airline.split(", ")))].sort(); }
-  render() {
+  // rows: the state whose rows are shown; Google can show the new controls above the previous rows for a while.
+  render(rows = this.state) {
     const s = this.state;
-    const { initial, collapsed } = this.rowSpecs();
+    this.rowsState = { ...rows };
+    const { initial, collapsed } = this.rowSpecs(rows);
     const prefix = this.leg === "returning" ? "returning" : this.route.trip === "one_way" ? "" : "departing";
     const heading = name => new El("h3", { text: `${name} ${prefix ? prefix + " " : ""}flights` });
     const sections = [];
     if (this.leg === "returning") sections.push([new El("h3", { text: "Returning flights" }), initial]);
-    else if (s.sort !== "top_flights" || s.stops !== "any" || s.airlines) sections.push([new El("h3", { text: "All flights" }), initial]);
+    else if (rows.sort !== "top_flights" || rows.stops !== "any" || rows.airlines) sections.push([new El("h3", { text: "All flights" }), initial]);
     else { sections.push([heading("Top"), initial.slice(0, this.topCount)]); sections.push([heading("Other"), initial.slice(this.topCount)]); }
     const hiddenCards = collapsed.map(spec => { const li = this.make(spec); li.hidden = true; return li; });
     this.more = new El("button", { attrs: { "aria-label": "View more flights" }, hidden: !collapsed.length });
     this.more.onclick = () => { this.moreClicks = (this.moreClicks || 0) + 1; this.change(() => { this.state.expanded = true; }); };
     // Empty sections are dropped, except that an empty list keeps its first heading (as Google's no-results pages do).
     const shown = sections.filter(([, rows]) => rows.length);
-    const results = new El("div", { children: (shown.length ? shown : sections.slice(0, 1)).map(([h, rows], i, all) => new El("div", { children: [h, new El("ul", { children: [...rows.map(spec => this.make(spec)), ...(i === all.length - 1 ? hiddenCards : [])] })] })) });
+    const results = new El("div", { children: (shown.length ? shown : this.emptyHeading ? sections.slice(0, 1) : []).map(([h, rows], i, all) => new El("div", { children: [h, new El("ul", { children: [...rows.map(spec => this.make(spec)), ...(i === all.length - 1 ? hiddenCards : [])] })] })) });
     results.append(this.more);
     const tabs = this.showTabs && this.leg === "departing" ? ["Best", "Cheapest"].map(name => {
-      const tab = new El("div", { attrs: { role: "tab", "aria-selected": String(s.view === name.toLowerCase()) }, text: name === "Best" ? "Best" : "Cheapest from $1" });
-      tab.onclick = () => { if (s.view !== name.toLowerCase()) this.change(() => { s.view = name.toLowerCase(); s.expanded = false; }); };
+      const tab = new El("div", { attrs: { role: "tab", "aria-selected": String(s.view === name.toLowerCase()), ...(this.disabled.includes(name) ? { "aria-disabled": "true" } : {}) }, text: name === "Best" ? "Best" : "Cheapest from $1" });
+      tab.onclick = () => { if (s.view !== name.toLowerCase()) this.change(() => { s.view = name.toLowerCase(); }); };
       return tab;
     }) : [];
     const chip = (name, value) => {
-      const b = new El("button", { attrs: { "aria-label": value ? `${value}, ${name}, Selected` : `${name}, Not selected` }, text: value || name });
+      const b = new El("button", { attrs: { "aria-label": value ? `${value}, ${name}, Selected` : `${name}, Not selected`, ...(this.disabled.includes(name) ? { disabled: "" } : {}) }, text: value || name });
       b.onclick = () => this.openDialog(name);
       return b;
     };
@@ -148,7 +155,7 @@ export class GooglePage {
       new El("button", { text: `All filters${(s.stops !== "any") + !!s.airlines ? ` (${(s.stops !== "any") + !!s.airlines})` : ""}` }),
       chip("Stops", STOP_CHIP[s.stops]), chip("Airlines", airlinesValue), chip("Bags", null),
     ] });
-    this.sortButton = new El("button", { attrs: { "aria-label": `Sorted by ${SORTS[s.sort].toLowerCase()}, Change sort order.` } });
+    this.sortButton = new El("button", { attrs: { "aria-label": `Sorted by ${SORTS[s.sort].toLowerCase()}, Change sort order.`, ...(this.disabled.includes("sort") ? { "aria-disabled": "true" } : {}) } });
     this.sortButton.onclick = () => this.openMenu();
     const keep = this.body.children.filter(c => c.attrs.role === "dialog" || c.attrs.role === "menu");
     this.body.children = [];
@@ -159,13 +166,19 @@ export class GooglePage {
     const n = this.rows().length;
     this.live.text = this.leg === "departing" && this.state.view === "cheapest" && this.cheapestAnnouncement ? this.cheapestAnnouncement : n ? `${n} result${n > 1 ? "s" : ""} returned.` : "No results returned.";
   }
-  // A control change: Google clears its announcement, re-renders the rows, then announces the new list.
+  // A control change: Google clears its announcement, requests new results (unless cached), re-renders the rows, then
+  // announces the new list.
   change(mutate) {
+    const startTime = this.clock.Date.now();
+    const shown = this.rowsState;
     mutate();
+    // Google updates its controls and URL first; the rows follow (timing.rows, if later than timing.change).
+    if (this.timing.rows) this.later(this.timing.change, () => this.render(shown));
     this.live.text = "";
     this.version = (this.version || 0) + 1;
     const version = this.version;
-    this.later(this.timing.change, () => { if (version === this.version) this.render(); });
+    if (this.fetches) this.later(this.timing.fetch ?? this.timing.change, () => this.fetched(startTime));
+    this.later(this.timing.rows ?? this.timing.change, () => { if (version === this.version) this.render(); });
     this.later(this.timing.settleChange, () => { if (version === this.version) this.announce(); });
   }
   openMenu() {
@@ -176,6 +189,11 @@ export class GooglePage {
       return item;
     }) });
     this.body.append(menu);
+  }
+  // Reports a completed results request to PerformanceObservers, as Chrome's resource timing does.
+  fetched(startTime) {
+    const entry = { name: "https://www.google.com/_/FlightsFrontendUi/data/travel.frontend.flights.FlightsFrontendService/GetShoppingResults?f.sid=1", startTime, responseEnd: this.clock.Date.now() };
+    for (const observer of this.observers) observer.callback({ getEntries: () => [entry] });
   }
   closeMenu() { for (const m of this.body.children.filter(c => c.attrs.role === "menu")) m.remove(); }
   dialog() { return this.body.children.find(c => c.attrs.role === "dialog") || null; }
@@ -196,8 +214,15 @@ export class GooglePage {
       const id = `c${++n}`;
       const input = new El("input", { attrs: { type, id, value: label } });
       input.checked = checked;
-      input.onchange = () => { input.checked = type === "radio" ? true : !input.checked; onchange(); this.later(this.timing.change, () => { if (dialog.isConnected) this.fillDialog(dialog, name); }); };
-      dialog.append(new El("div", { children: [input, new El("label", { attrs: { for: id }, text: label })] }));
+      input.onchange = () => {
+        input.checked = type === "radio" ? true : !input.checked;
+        if (this.dropIfClosedEarly) this.later(this.timing.change, () => { if (dialog.isConnected) onchange(); });
+        else onchange();
+        this.later(this.timing.change, () => { if (dialog.isConnected) this.fillDialog(dialog, name); });
+      };
+      const text = new El("label", { attrs: { for: id }, text: label });
+      text.onclick = () => input.click();
+      dialog.append(new El("div", { children: [input, text] }));
       return input;
     };
     if (name === "Stops") {
@@ -249,7 +274,13 @@ export class GooglePage {
     }
   }
   globals() {
-    return { document: this.document, location: this.location, navigator: {}, setTimeout: this.clock.setTimeout, Date: this.clock.Date, URL, atob, btoa, TextEncoder, TextDecoder, KeyboardEvent: class { constructor(type, init) { Object.assign(this, { type, ...init }); } } };
+    const page = this;
+    const PerformanceObserver = class { constructor(callback) { this.callback = callback; } observe() { page.observers.add(this); } disconnect() { page.observers.delete(this); } };
+    return {
+      document: this.document, location: this.location, navigator: {}, setTimeout: this.clock.setTimeout, Date: this.clock.Date, URL, atob, btoa, TextEncoder, TextDecoder,
+      KeyboardEvent: class { constructor(type, init) { Object.assign(this, { type, ...init }); } },
+      performance: { now: () => this.clock.Date.now() }, PerformanceObserver,
+    };
   }
   // What a person sees: rows in page order with their section heading, flight numbers and price.
   visible() {

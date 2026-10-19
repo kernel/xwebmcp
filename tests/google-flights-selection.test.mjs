@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
-import { El, segment } from "./google-flights-dom.mjs";
+import { El, segment, validate } from "./google-flights-dom.mjs";
 import { GooglePage, decode, invoke, tool } from "./google-flights-page.mjs";
 
 const ROUTE = { trip: "round_trip", legs: [["2026-12-30", "JFK", "LAX"], ["2027-01-03", "LAX", "JFK"]] };
@@ -100,10 +100,10 @@ test("round trip: list departing, choose the exact connecting outbound, list Goo
   assert.equal(p.path, "/travel/flights/booking");
   assert.deepEqual(booked.available_actions.map(a => [a.tool, a.enabled, a.input]), [
     ["get_booking_options", true, {}],
-    ["continue_to_airline", true, null],
+    ["continue_to_airline", true, { seller: "JetBlue", expected_price: 567 }],
     ["search_flights", true, { origin: "JFK", destination: "LAX", depart_date: "2026-12-30", trip_type: "round_trip", return_date: "2027-01-03" }],
   ]);
-  assert.match(booked.available_actions[1].requires, /^seller \(required\)/);
+  validate(tool("continue_to_airline").tool.inputSchema, booked.available_actions[1].input);
 });
 
 test("one-way: list keeps one-way prices and selection opens booking options", async () => {

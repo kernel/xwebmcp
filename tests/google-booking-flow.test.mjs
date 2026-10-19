@@ -4,18 +4,22 @@ import test from "node:test";
 import { runInNewContext } from "node:vm";
 import { Document } from "./etsy-dom.mjs";
 import { tfs } from "./google-flights-page.mjs";
+import { validate } from "./google-flights-dom.mjs";
 
 const load = name => readFileSync(new URL(`../domains/google.com/${name}.js`, import.meta.url), "utf8");
 const plain = v => JSON.parse(JSON.stringify(v));
 
-function run(name, html, input = {}, { url, onClick = () => {}, tools = [], definitionOnly = false } = {}) {
+function run(name, html, input = {}, { url, onClick = () => {}, tools = [], definitionOnly = false, fast = false } = {}) {
   const document = new Document(html);
   document.modelContext = { getTools: async () => tools.map(t => ({ name: `custom.ct_x.${t}` })) };
   const proto = Object.getPrototypeOf(document.body);
   proto.click = function () { onClick(this, document, location); };
   const u = new URL(url);
   const location = { href: u.href, pathname: u.pathname, search: u.search };
-  const context = { document, navigator: {}, URL, JSON, Number, Math, Date, Infinity, atob, location, setTimeout: fn => setImmediate(fn) };
+  // fast: each Date.now() reading advances 20 s, so waits for options that never appear end at once.
+  let skew = 0;
+  const clock = fast ? class extends Date { static now() { skew += 20000; return Date.now() + skew; } } : Date;
+  const context = { document, navigator: {}, URL, JSON, Number, Math, Date: clock, Infinity, atob, location, setTimeout: fn => setImmediate(fn), TextEncoder, TextDecoder };
   const [tool] = runInNewContext(`(${load(name)})`, context);
   if (definitionOnly) return Promise.resolve({ definition: tool });
   return tool.execute(input).then(out => ({ out: plain(out), document, location }));
@@ -47,16 +51,36 @@ test("google get_page_context: page types and booking-page actions that match th
   assert.deepEqual(b.out.page.selected_outbound.flight_numbers, ["UA 1"]);
   const actions = Object.fromEntries(b.out.available_actions.map(a => [a.tool, a]));
   assert.deepEqual([actions.get_booking_options.enabled, actions.get_booking_options.input], [true, {}]);
-  // continue_to_airline needs a seller from get_booking_options, so no input is invented for it.
-  assert.deepEqual([actions.continue_to_airline.enabled, actions.continue_to_airline.input, actions.continue_to_airline.registered], [true, null, true]);
-  assert.match(actions.continue_to_airline.requires, /^seller \(required\), fare_name and expected_price/);
+  // continue_to_airline's example is Google's first option, exactly as get_booking_options reads it.
+  assert.deepEqual([actions.continue_to_airline.enabled, actions.continue_to_airline.input, actions.continue_to_airline.registered, actions.continue_to_airline.requires], [true, { seller: "United", fare_name: "Basic Economy", expected_price: 512 }, true, null]);
   const schema = (await run("continue_to_airline", booking, null, { url: "https://www.google.com/travel/flights/booking?tfs=x", definitionOnly: true })).definition.tool.inputSchema;
   assert.deepEqual(Array.from(schema.required), ["seller"]);
+  validate(schema, actions.continue_to_airline.input);
   assert.ok(b.out.next_steps.some(s => s.startsWith("get_booking_options")));
-  assert.ok(b.out.next_steps.some(s => s.startsWith("continue_to_airline") && s.includes("Needs seller (required)")));
+  assert.ok(b.out.next_steps.some(s => s.startsWith('continue_to_airline {"seller":"United","fare_name":"Basic Economy","expected_price":512}')));
   const r = await run("get_page_context", departing.replace("Top departing", "Top returning"), {}, { url: "https://www.google.com/travel/flights/search?tfs=" + tfs({ trip: "round_trip", legs: [["2026-10-07", "CVG", "ORD"], ["2026-10-09", "ORD", "CVG"]], selected: [[["CVG", "2026-10-07", "ORD", "UA", "1"]]] }), tools: ["list_flights", "get_page_context"] });
   assert.equal(r.out.page.page_type, "returning_results");
   assert.equal(r.out.available_actions.find(a => a.tool === "select_flight").registered, false);
+});
+
+test("google get_booking_options: carries the page and actions, with a continue_to_airline input taken from the options it read", async () => {
+  const url = "https://www.google.com/travel/flights/booking?tfs=" + tfs({ trip: "one_way", legs: [["2026-10-07", "CVG", "ORD"]], selected: [[["CVG", "2026-10-07", "ORD", "UA", "1"]]] });
+  const tools = ["get_booking_options", "continue_to_airline", "get_page_context"];
+  const { out } = await run("get_booking_options", booking, {}, { url, tools });
+  const definition = (await run("get_booking_options", booking, null, { url, definitionOnly: true })).definition;
+  validate(definition.tool.outputSchema, out);
+  assert.equal(out.page.page_type, "booking_options");
+  const go = out.available_actions.find(a => a.tool === "continue_to_airline");
+  const first = out.options[0];
+  assert.deepEqual(go.input, { seller: first.seller, fare_name: first.fare_name, expected_price: first.price });
+  const refused = await run("get_booking_options", booking, { seller: "United" }, { url, tools });
+  validate(definition.tool.outputSchema, refused.out);
+  assert.equal(refused.out.status, "invalid_input");
+  assert.ok(refused.out.available_actions.some(a => a.tool === "get_booking_options" && a.enabled));
+  const empty = await run("get_booking_options", "<html><body><h2>Selected flights</h2></body></html>", {}, { url, tools, fast: true });
+  validate(definition.tool.outputSchema, empty.out);
+  assert.equal(empty.out.status, "not_ready");
+  assert.equal(empty.out.available_actions.find(a => a.tool === "continue_to_airline").enabled, false);
 });
 
 const option = (label, lines = [], hidden = false) => `<div${hidden ? " hidden" : ""}>${lines.map(l => `<span>${l}</span>`).join("")}<button aria-label="${label}">Continue</button></div>`;

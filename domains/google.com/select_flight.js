@@ -69,7 +69,7 @@
   
   const GF_PAGE_SCHEMA = gfObject({
     url: { type: "string" },
-    page_type: { enum: ["flights_home", "departing_results", "returning_results", "booking_options", "other"] },
+    page_type: { enum: ["flights_home", "departing_results", "returning_results", "unsupported_results", "booking_options", "other"], description: "unsupported_results: a results page these tools do not read (multi-city, or a city or other place instead of an airport)." },
     settled: { type: "boolean", description: "Google had stopped changing the page when it was read." },
     unsettled_reasons: GF_STRINGS,
     results_state: { enum: ["results", "no_results", "loading", "not_applicable"] },
@@ -98,17 +98,18 @@
   const GF_VIEW_SCHEMA = gfObject({
     available: { type: "boolean", description: "Google shows Best/Cheapest tabs on this page." },
     active: { enum: ["best", "cheapest", null], description: "The selected tab; null when Google shows no tabs." },
-    choices: { type: "array", items: gfObject({ view: { enum: ["best", "cheapest"] }, label: { type: "string" }, selected: { type: "boolean" } }) },
+    choices: { type: "array", items: gfObject({ view: { enum: ["best", "cheapest"] }, label: { type: "string" }, selected: { type: "boolean" }, enabled: { type: "boolean", description: "False when Google shows the tab disabled." } }) },
     note: { type: ["string", "null"] }
   }, ["available", "active", "choices", "note"]);
   const GF_SORT_SCHEMA = gfObject({
     available: { type: "boolean" },
+    enabled: { type: "boolean", description: "False when Google shows its sort control disabled." },
     active: { enum: ["top_flights", "price", "departure_time", "arrival_time", "duration", "emissions", "unknown", null], description: "Google's row order within the active view (Google's sort menu); independent of the Best/Cheapest tab." },
     label: { type: ["string", "null"], description: "Google's text, e.g. \"Sorted by top flights\"." }
   });
   const GF_FILTERS_SCHEMA = gfObject({
     available: { type: "boolean" },
-    chips: { type: "array", description: "Google's filter chips as labeled now.", items: gfObject({ name: { type: "string" }, selected: { type: "boolean" }, value: { type: ["string", "null"], description: "Google's summary of the selected value, e.g. \"Nonstop\", \"United\"." } }) },
+    chips: { type: "array", description: "Google's filter chips as labeled now.", items: gfObject({ name: { type: "string" }, selected: { type: "boolean" }, value: { type: ["string", "null"], description: "Google's summary of the selected value, e.g. \"Nonstop\", \"United\"." }, enabled: { type: "boolean" } }) },
     stops: { enum: ["any", "nonstop", "one_or_fewer", "two_or_fewer", "unknown", null] },
     airlines: { type: ["string", "null"], description: "\"all\", or Google's chip summary of the selected airlines; null when there is no Airlines filter." },
     active_count: { type: "integer", minimum: 0, description: "Google's 'All filters (N)' count." }
@@ -122,12 +123,12 @@
       announced_rows: { type: ["integer", "null"], description: "Google's own \"N results returned\" count, when announced." },
       announcement: { type: ["string", "null"] },
       sections: { type: "array", description: "Google's headings in page order with the rows under each.", items: gfObject({ heading: { type: ["string", "null"] }, first_position: { type: "integer", minimum: 1 }, rows: { type: "integer", minimum: 1 } }) },
-      readable_rows: { type: "integer", minimum: 0 },
-      skipped_rows: { type: "array", description: "Rendered rows that could not be read with a trustworthy identity (first 20); they are never returned.", items: gfObject({ position: { type: "integer", minimum: 1 }, missing: GF_STRINGS }) },
+      readable_rows: { type: ["integer", "null"], minimum: 0, description: "Null when the rows were not read because the list had not settled." },
+      skipped_rows: { type: "array", description: "Rendered rows not returned (first 20): rows without a trustworthy identity, or too large for any response. A continuation never returns them.", items: gfObject({ position: { type: "integer", minimum: 1 }, missing: GF_STRINGS }) },
       open_detail_panels: { type: "array", items: { type: "integer", minimum: 1 }, description: "Positions whose flight-details panel is open." },
       show_more: gfObject({ available: { type: "boolean", description: "Google shows an enabled 'View more flights' control now." }, reason: { enum: ["absent", "disabled", null] } }),
       offset: { type: "integer", minimum: 0, description: "Readable rows skipped before the first returned one." },
-      limit: { type: "integer", minimum: 0 },
+      limit: { type: "integer", minimum: 0, description: "0 when this tool does not return rows (read them with list_flights)." },
       returned_rows: { type: "integer", minimum: 0 },
       next_offset: { type: ["integer", "null"], description: "Pass as offset to list_flights for the rows not returned in this response; null when every readable row from offset on was returned." },
       truncated_by: { enum: ["limit", "size_budget", null], description: "Why this response stopped early. Serialization only: the page is unchanged." },
@@ -263,7 +264,6 @@
       const GF_STOP_CHIPS = { Nonstop: "nonstop", "1 stop or fewer": "one_or_fewer", "2 stops or fewer": "two_or_fewer" };
       const GF_FILTER_NAMES = ["Stops", "Airlines", "Bags", "Price", "Times", "Emissions", "Connecting airports", "Duration"];
       const GF_SUMMARY = /\b(?:Nonstop|\d+ stops?) flight with /;
-      const GF_BUDGET_BYTES = 180000;
       
       const gfSleep = ms => new Promise(resolve => setTimeout(resolve, ms));
       const gfVisible = e => !!e && e.getClientRects().length > 0;
@@ -320,8 +320,12 @@
           };
         } catch { return null; }
       };
+      // Airport-to-airport searches with well-formed chosen segments are read; Google also accepts cities and other places
+      // (e.g. "/m/01snm"), which these tools report as unsupported rather than as airports.
+      const gfAirportSearch = search => !!search && search.legs.every(l => /^\d{4}-\d{2}-\d{2}$/.test(l.date || "") && /^[A-Z]{3}$/.test(l.from || "") && /^[A-Z]{3}$/.test(l.to || "")
+        && l.selected.every(s => /^[A-Z]{3}$/.test(s[0] || "") && /^\d{4}-\d{2}-\d{2}$/.test(s[1] || "") && /^[A-Z]{3}$/.test(s[2] || "") && /^[A-Z0-9]{2}$/.test(s[3] || "") && /^\d{1,4}$/.test(s[4] || "")));
       const gfLegOf = search => {
-        if (!search || search.legs.some(l => !l.date || !l.from || !l.to || l.selected.some(s => s.some(v => !v)))) return null;
+        if (!gfAirportSearch(search)) return null;
         if (search.trip_type === "one_way" && search.legs.length === 1 && !search.legs[0].selected.length) return { leg: "departing", index: 0 };
         if (search.trip_type === "round_trip" && search.legs.length === 2 && !search.legs[1].selected.length) return search.legs[0].selected.length ? { leg: "returning", index: 1 } : { leg: "departing", index: 0 };
         return null;
@@ -377,15 +381,18 @@
         }
         return null;
       };
+      // What each rendered row says (itinerary, price, section): any change to the list changes this key.
+      const gfRowsKey = rows => rows.map(li => (gfSummaryOf(li)?.getAttribute("aria-label") || "") + "|" + (li.querySelector("[data-travelimpactmodelwebsiteurl]")?.getAttribute("data-travelimpactmodelwebsiteurl") || "") + "|" + gfSectionOf(li)).join("\n");
       const gfDetailToggle = li => li.querySelector('button[aria-label^="Flight details"]');
       const gfPanelOpen = li => gfDetailToggle(li)?.getAttribute("aria-expanded") === "true" && !!li.querySelector(".c257Jb");
       
       // Google's own controls on the results page, read without opening anything.
+      const gfDisabled = e => !!e && (e.disabled === true || e.getAttribute("aria-disabled") === "true");
       const gfControls = () => {
         const buttons = [...document.querySelectorAll("button")].filter(gfVisible);
         const tabs = [...document.querySelectorAll('[role="tab"]')].filter(gfVisible).map(e => {
           const name = gfText(e).match(/^(Best|Cheapest)/)?.[1];
-          return name ? { view: name.toLowerCase(), label: name, selected: e.getAttribute("aria-selected") === "true", node: e } : null;
+          return name ? { view: name.toLowerCase(), label: name, selected: e.getAttribute("aria-selected") === "true", disabled: gfDisabled(e), node: e } : null;
         }).filter(Boolean);
         const sortButton = buttons.find(b => /^Sorted by .+, Change sort order\.?$/.test(gfLabel(b))) || null;
         const sortLabel = sortButton ? gfLabel(sortButton).replace(/, Change sort order\.?$/, "") : null;
@@ -394,22 +401,22 @@
         for (const b of buttons) {
           const l = gfLabel(b);
           const off = l.match(/^(.+), Not selected$/);
-          if (off && GF_FILTER_NAMES.includes(off[1])) { chips.push({ name: off[1], selected: false, value: null, node: b }); continue; }
+          if (off && GF_FILTER_NAMES.includes(off[1])) { chips.push({ name: off[1], selected: false, value: null, disabled: gfDisabled(b), node: b }); continue; }
           const on = l.match(/^(.+), Selected$/);
           const name = on && GF_FILTER_NAMES.find(n => on[1] === n || on[1].endsWith(", " + n));
-          if (name && !chips.some(c => c.name === name)) chips.push({ name, selected: true, value: on[1] === name ? null : on[1].slice(0, -(name.length + 2)), node: b });
+          if (name && !chips.some(c => c.name === name)) chips.push({ name, selected: true, value: on[1] === name ? null : on[1].slice(0, -(name.length + 2)), disabled: gfDisabled(b), node: b });
         }
         const more = [...document.querySelectorAll('button[aria-label="View more flights"]')].find(gfVisible) || null;
         return {
-          tabs, sort_button: sortButton, sort_label: sortLabel,
+          tabs, sort_button: sortButton, sort_label: sortLabel, sort_disabled: gfDisabled(sortButton),
           sort: sortText ? Object.keys(GF_SORTS).find(k => GF_SORTS[k].toLowerCase() === sortText) || "unknown" : null,
-          chips, more, more_disabled: !!more && (more.disabled || more.getAttribute("aria-disabled") === "true"),
+          chips, more, more_disabled: gfDisabled(more),
           all_filters_count: Number(buttons.map(gfText).find(t => /^All filters \(\d+\)$/.test(t))?.match(/\d+/)[0] ?? 0)
         };
       };
       
       const gfPageType = (path, leg) => /^\/travel\/flights\/booking/.test(path) ? "booking_options"
-        : /^\/travel\/flights\/search/.test(path) ? (leg === "returning" ? "returning_results" : leg === "departing" ? "departing_results" : "other")
+        : /^\/travel\/flights\/search/.test(path) ? (leg === "returning" ? "returning_results" : leg === "departing" ? "departing_results" : "unsupported_results")
         : /^\/travel\/flights\/?$/.test(path) ? "flights_home" : "other";
       
       // One observation of the page. key changes whenever anything a reader depends on changes.
@@ -425,15 +432,19 @@
         }
         if (!/^\/travel\/flights\/search/.test(location.pathname)) return { ...base, state: "not_results_page", key: url };
         if (!search) return { ...base, state: "unsupported", reasons: ["no_search_in_url"], key: url };
-        if (!position) return { ...base, state: "unsupported", reasons: [search.trip_type === "multi_city" ? "multi_city" : "unrecognized_search"], key: url };
+        if (!position) return { ...base, state: "unsupported", reasons: [search.trip_type === "multi_city" ? "multi_city" : search.legs.some(l => l.from && l.to && !(/^[A-Z]{3}$/.test(l.from) && /^[A-Z]{3}$/.test(l.to))) ? "non_airport_place" : "unrecognized_search"], key: url };
         const headings = [...document.querySelectorAll("h2, h3")].filter(gfVisible).map(gfText);
         const live = [...document.querySelectorAll("[aria-live]")].map(gfText);
         const announcement = live.find(t => /^(\d+ results? returned|No results returned)/i.test(t)) || null;
         const announced = /^\d+/.test(announcement || "") ? Number(announcement.match(/^\d+/)[0]) : null;
         const rows = gfRowNodes();
         const ends = rows.map(li => { const it = gfItineraryOf(li).itinerary; return it ? it[0][0] + "-" + it[it.length - 1][2] : null; });
+        const content = gfRowsKey(rows);
         const reasons = [];
-        if (headings.some(h => /returning flights/i.test(h)) !== (position.leg === "returning")) reasons.push("leg_transition");
+        // Rows under the other leg's heading are a leg change in progress. Google's empty pages (e.g. "No Delta flights
+        // found" after a filter) show no list heading at all, which is not a transition.
+        const otherLeg = position.leg === "returning" ? /departing flights/i : /returning flights/i, ownLeg = position.leg === "returning" ? /returning flights/i : null;
+        if (headings.some(h => otherLeg.test(h)) || (rows.length && ownLeg && !headings.some(h => ownLeg.test(h)))) reasons.push("leg_transition");
         if ([...document.querySelectorAll('[role="progressbar"]')].some(e => gfVisible(e) && e.getAttribute("aria-hidden") !== "true")) reasons.push("progress_bar");
         const own = search.legs[position.index], other = search.legs[1 - position.index];
         if (other && rows.length && ends.every(e => e === other.from + "-" + other.to) && other.from + "-" + other.to !== own.from + "-" + own.to) reasons.push("previous_leg_rows");
@@ -444,25 +455,30 @@
           else reasons.push("no_rows_yet");
         }
         const controlKey = [controls.tabs.map(t => t.view + t.selected), controls.sort_label, controls.chips.map(c => c.name + c.selected + c.value), !!controls.more].join("|");
-        return { ...base, state, reasons, announced, announcement, rows, key: [url, state, announcement, ends.join(","), controlKey].join("#") };
+        return { ...base, state, reasons, announced, announcement, rows, content, key: [url, state, announcement, content, controlKey].join("#") };
       };
       
       // Waits until the page stops changing. Google announces "N results returned" for the rows it renders; a collapsed list
-      // may announce more rows than it shows while "View more flights" is offered. Rows shown under a contradicting or missing
-      // announcement (Google's Cheapest tab says "No results returned" above its rows) need a longer quiet period.
+      // may announce more rows than it shows while "View more flights" is offered. Rows shown under a missing, smaller or
+      // contradicting announcement (Google's Cheapest tab says "No results returned" above its rows, and keeps the previous
+      // view's count after an expanded list) are read after a longer quiet period. An announcement of more rows than are
+      // shown, with nothing collapsed, never settles: the list may still be rendering.
       const gfSettle = async ({ settle_by_ms, quiet_ms = 600, changed = null } = {}) => {
         const by = Number(settle_by_ms) || Date.now();
-        let s = gfSnapshot(), key = s.key, since = Date.now();
+        let s = gfSnapshot(), key = s.key, since = Date.now(), evidenceAt = null;
         for (;;) {
           if (["not_results_page", "unsupported", "booking"].includes(s.state)) return { ...s, settled: true };
-          const still = Date.now() - since;
-          const waiting = changed && !changed();
+          // After an action, the quiet period starts no earlier than Google's evidence of a new list.
+          if (changed && evidenceAt === null && changed()) evidenceAt = Date.now();
+          const waiting = !!changed && evidenceAt === null;
+          const still = Date.now() - Math.max(since, evidenceAt ?? 0);
           const counted = s.announced !== null && (s.announced === s.rows.length || (s.announced > s.rows.length && !!s.controls.more));
           if (!waiting && s.state === "no_results" && still >= quiet_ms) return { ...s, settled: true };
-          if (!waiting && s.state === "results" && (counted ? still >= quiet_ms : s.announced === null && still >= Math.max(quiet_ms, 4000))) return { ...s, settled: true };
+          const contradicted = s.announced === null || s.announced < s.rows.length;
+          if (!waiting && s.state === "results" && (counted ? still >= quiet_ms : contradicted && still >= Math.max(quiet_ms, 4000))) return { ...s, settled: true };
           if (Date.now() >= by) {
             const reasons = [...s.reasons];
-            if (s.state === "results" && s.announced !== null && !counted) reasons.push("announced_count_mismatch");
+            if (s.state === "results" && s.announced !== null && !counted && !contradicted) reasons.push("announced_count_mismatch");
             if (waiting) reasons.push("change_not_observed");
             return { ...s, settled: false, reasons: reasons.length ? reasons : ["still_changing"] };
           }
@@ -606,14 +622,14 @@
       };
       
       const gfPageOut = s => {
-        const search = s.search;
+        const search = gfAirportSearch(s.search) ? s.search : null;
         const route = search && s.index !== null ? search.legs[s.index] : null;
         const outbound = search && (s.leg === "returning" || s.page_type === "booking_options") ? search.legs[0].selected : [];
         return {
           url: s.url, page_type: s.page_type, settled: !!s.settled, unsettled_reasons: s.settled ? [] : s.reasons,
           results_state: s.page_type === "departing_results" || s.page_type === "returning_results" ? (s.state === "results" || s.state === "no_results" ? s.state : "loading") : "not_applicable",
-          trip_type: search && search.trip_type !== "unknown" ? search.trip_type : null,
-          search: search && search.legs.length && search.legs.every(l => l.date && l.from && l.to) ? {
+          trip_type: s.search && s.search.trip_type !== "unknown" ? s.search.trip_type : null,
+          search: search && search.legs.length ? {
             origin: search.legs[0].from, destination: search.legs[0].to, depart_date: search.legs[0].date, return_date: search.trip_type === "round_trip" ? search.legs[1]?.date ?? null : null,
             passengers: search.passengers.length || 1, cabin: GF_CABINS[search.cabin] || "unknown"
           } : null,
@@ -632,13 +648,13 @@
         return {
           view: {
             available: c.tabs.length > 0, active: c.tabs.find(t => t.selected)?.view ?? null,
-            choices: c.tabs.map(t => ({ view: t.view, label: t.label, selected: t.selected })),
+            choices: c.tabs.map(t => ({ view: t.view, label: t.label, selected: t.selected, enabled: !t.disabled })),
             note: c.tabs.length ? null : onResults ? "Google shows no Best/Cheapest tabs on this " + (s.leg === "returning" ? "returning list" : "page") + "." : "Not a results page."
           },
-          sort: { available: !!c.sort_button, active: c.sort, label: c.sort_label },
+          sort: { available: !!c.sort_button, enabled: !!c.sort_button && !c.sort_disabled, active: c.sort, label: c.sort_label },
           filters: {
             available: !!(stopsChip || airlinesChip),
-            chips: c.chips.map(x => ({ name: x.name, selected: x.selected, value: x.value })),
+            chips: c.chips.map(x => ({ name: x.name, selected: x.selected, value: x.value, enabled: !x.disabled })),
             stops: stopsChip ? (stopsChip.selected ? GF_STOP_CHIPS[stopsChip.value] || "unknown" : "any") : null,
             airlines: airlinesChip ? (airlinesChip.selected ? airlinesChip.value || "unknown" : "all") : null,
             active_count: c.all_filters_count
@@ -647,17 +663,38 @@
       };
       
       // Registered-tool knowledge comes from the page's WebMCP registry. It counts as known only when the registry lists the
-      // calling tool itself; otherwise introspection is unavailable or unreliable and stays unknown.
+      // calling tool or get_page_context (registered on every Google Travel page); otherwise it stays unknown.
       const gfRegisteredTools = async self => {
         try {
           const mc = document.modelContext || navigator.modelContext;
           if (!mc?.getTools) return { known: false, names: [] };
           const names = [...new Set((await mc.getTools()).map(t => String(t?.name ?? t).split(".").pop()))].sort();
-          return names.includes(self) ? { known: true, names } : { known: false, names: [] };
+          return names.includes(self) || names.includes("get_page_context") ? { known: true, names } : { known: false, names: [] };
         } catch { return { known: false, names: [] }; }
       };
       
       // The actions the caller can take on this exact state, with inputs that are valid for each tool's schema right now.
+      // Google's booking-page Continue buttons (those inside a dialog are per-ticket parts of a separate-ticket option) and
+      // their labels: "<seller>, <fare> for 512 US dollars", "<airline(s)> airline for 422 US dollars[. note]", "<agency> for 409 US dollars".
+      const gfContinueButtons = () => [...document.querySelectorAll('button[aria-label^="Continue to book with"]')].filter(b => !b.closest('[role="dialog"]'));
+      const gfBookingLabel = aria => {
+        const m = /^Continue to book with (.+?) for ([\d,]+(?:\.\d+)?) ([^.(]+?)(?: \(([^)]*)\))?(?:\.\s*(.*))?$/.exec(aria.replace(/\s+/g, " ").trim());
+        if (!m) return null;
+        const [, head, amount, currency, equivalent, rest] = m;
+        const note = [equivalent, rest].filter(Boolean).join(". ");
+        // "Southwest, AranGrant for 346 US dollars. The 2 tickets … booked individually" names two sellers, not a seller and a fare.
+        const individually = /booked individually/i.test(rest || "");
+        const direct = / airline$/.exec(head);
+        const comma = head.indexOf(", ");
+        const seller = direct ? head.slice(0, direct.index) : individually || comma < 0 ? head : head.slice(0, comma);
+        const fare = direct || individually || comma < 0 ? null : head.slice(comma + 2);
+        return {
+          seller, fare_name: fare, sold_by_airline: !!direct || fare !== null,
+          separate_tickets: individually || /separate tickets/i.test(note) || (!!direct && seller.includes(", ")),
+          price: Number(amount.replace(/,/g, "")), currency_label: currency, note: note || null
+        };
+      };
+      
       // example_key picks the row whose selection_ref the examples use (the row a caller is working with); default: the first readable row.
       const gfActions = (s, rows, registered, window, example_key = null) => {
         const out = [];
@@ -668,7 +705,7 @@
         const first = rows.find(r => r.key && r.key === example_key) || rows.find(r => r.key);
         const searchInput = (() => {
           const p = s.search;
-          if (!p || !["one_way", "round_trip"].includes(p.trip_type) || !p.legs[0]?.date || p.legs[0].date < new Date().toISOString().slice(0, 10)) return null;
+          if (!gfAirportSearch(p) || !["one_way", "round_trip"].includes(p.trip_type) || p.legs.length !== (p.trip_type === "round_trip" ? 2 : 1) || p.legs[0].date < new Date().toISOString().slice(0, 10)) return null;
           const input = { origin: p.legs[0].from, destination: p.legs[0].to, depart_date: p.legs[0].date, trip_type: p.trip_type };
           if (p.trip_type === "round_trip") input.return_date = p.legs[1].date;
           if ((p.passengers.length || 1) > 1) input.passengers = p.passengers.length;
@@ -679,27 +716,35 @@
           add("list_flights", true, false, window?.next_offset ? { offset: window.next_offset } : {}, settled ? (window?.next_offset ? "Read the rows after the ones returned; the page is unchanged." : "Re-read the rows on the page; never clicks.") : "The list is still changing; call again to read it once settled.");
           const moreReason = !c.more ? "Google shows no 'View more flights' control on this list (it is already expanded or has no hidden rows)." : c.more_disabled ? "Google's 'View more flights' control is disabled." : !settled ? "Wait for the list to settle first." : null;
           add("show_more_flights", !moreReason, true, {}, moreReason || "Clicks Google's 'View more flights' once and returns the longer list; hidden rows are not part of this list until then.");
-          const otherTab = c.tabs.find(t => !t.selected);
-          add("set_results_view", c.tabs.length > 0 && !!otherTab && settled, true, otherTab ? { view: otherTab.view } : null,
-            !c.tabs.length ? "Google shows no Best/Cheapest tabs here" + (s.leg === "returning" ? " (returning flights have none)." : ".") : !settled ? "Wait for the list to settle first." : "Switches Google's Best/Cheapest tab.",
-            c.tabs.length ? { view: c.tabs.map(t => t.view) } : null);
-          add("set_flight_sort", !!c.sort_button && settled, true, c.sort_button ? { sort_by: c.sort === "price" ? "top_flights" : "price" } : null,
-            !c.sort_button ? "Google shows no sort control here." : !settled ? "Wait for the list to settle first." : "Chooses an entry in Google's sort menu (currently " + (c.sort_label || "unknown") + "). The menu's entries are confirmed when it opens; an entry Google does not offer is refused.",
-            c.sort_button ? { sort_by: Object.keys(GF_SORTS) } : null);
-          const stopsChip = c.chips.find(x => x.name === "Stops"), airlinesChip = c.chips.find(x => x.name === "Airlines");
+          const otherTab = c.tabs.find(t => !t.selected && !t.disabled);
+          add("set_results_view", !!otherTab && settled, true, otherTab ? { view: otherTab.view } : null,
+            !c.tabs.length ? "Google shows no Best/Cheapest tabs here" + (s.leg === "returning" ? " (returning flights have none)." : ".") : !otherTab ? "Google offers no other enabled tab here." : !settled ? "Wait for the list to settle first." : "Switches Google's Best/Cheapest tab.",
+            c.tabs.length ? { view: c.tabs.filter(t => !t.disabled).map(t => t.view) } : null);
+          const sortable = !!c.sort_button && !c.sort_disabled;
+          add("set_flight_sort", sortable && settled, true, sortable ? { sort_by: c.sort === "price" ? "top_flights" : "price" } : null,
+            !c.sort_button ? "Google shows no sort control here." : c.sort_disabled ? "Google's sort control is disabled." : !settled ? "Wait for the list to settle first." : "Chooses an entry in Google's sort menu (currently " + (c.sort_label || "unknown") + "). The menu's entries are confirmed when it opens; an entry Google does not offer is refused.",
+            sortable ? { sort_by: Object.keys(GF_SORTS) } : null);
+          const stopsChip = c.chips.find(x => x.name === "Stops" && !x.disabled), airlinesChip = c.chips.find(x => x.name === "Airlines" && !x.disabled);
           const stopsNow = stopsChip ? (stopsChip.selected ? GF_STOP_CHIPS[stopsChip.value] || "unknown" : "any") : null;
           const seen = [...new Set(rows.flatMap(r => r.key ? r.airlines : []))].slice(0, 12);
-          add("set_flight_filters", !!(stopsChip || airlinesChip) && settled, true, stopsChip ? { stops: stopsNow === "nonstop" ? "any" : "nonstop" } : airlinesChip && seen.length ? { airlines: [seen[0]] } : null,
-            !(stopsChip || airlinesChip) ? "Google shows no Stops or Airlines filter here." : !settled ? "Wait for the list to settle first." : "Sets Google's Stops and/or Airlines filters. Airline names are Google's own labels; the names seen on the current rows are listed, and the Airlines filter offers the full list when it opens.",
+          // Example: clear a filter that is set (the way back from an empty list), otherwise ask Google for nonstops.
+          const filterExample = airlinesChip?.selected ? { airlines: "all" } : stopsChip ? { stops: stopsNow === "any" ? "nonstop" : "any" } : seen.length ? { airlines: [seen[0]] } : null;
+          add("set_flight_filters", !!(stopsChip || airlinesChip) && settled, true, filterExample,
+            !(stopsChip || airlinesChip) ? "Google shows no enabled Stops or Airlines filter here." : !settled ? "Wait for the list to settle first." : "Sets Google's Stops and/or Airlines filters. Airline names are Google's own labels; the names seen on the current rows are listed, and the Airlines filter offers the full list when it opens.",
             { stops: stopsChip ? Object.keys(GF_STOPS) : [], airlines: airlinesChip ? ["all", ...seen] : [] });
           const refNote = first ? "Uses the row's selection_ref from the results; refs from another search, leg or price are refused without clicking." : "No readable row with a selection_ref is on the page.";
-          add("get_flight_details", !!first && settled, true, first ? { selection_ref: first.selection_ref } : null, first ? "Opens Google's flight-details panel for one row and returns its segments, aircraft, cabin and amenities. " + refNote : refNote);
+          const openable = first && (first.panel_open || (gfDetailToggle(first.li) && !gfDisabled(gfDetailToggle(first.li))));
+          add("get_flight_details", !!openable && settled, true, first ? { selection_ref: first.selection_ref } : null, !first ? refNote : !openable ? "Google's flight-details control for this row is missing or disabled." : "Opens Google's flight-details panel for one row and returns its segments, aircraft, cabin and amenities. " + refNote);
           add("select_flight", !!first && settled, true, first ? { selection_ref: first.selection_ref, expected_leg: s.leg } : null, first ? "Chooses one row; Google then shows " + (s.search.trip_type === "round_trip" && s.leg === "departing" ? "returning flights for it." : "booking options. Books nothing.") + " " + refNote : refNote);
         }
         if (s.page_type === "booking_options") {
           add("get_booking_options", true, false, {}, s.state === "booking" ? "Read every seller's fares, prices and bag allowances for the chosen flights." : "Google is still loading booking options; read them once loaded.");
-          add("continue_to_airline", s.state === "booking", true, null, s.state === "booking" ? "Presses Continue for one booking option; it opens the seller's site in a new tab and books nothing." : "Google is still loading booking options.",
-            null, "seller (required), fare_name and expected_price exactly as one option from get_booking_options returns them (seller, fare_name, price)");
+          // The first option Google shows, as continue_to_airline expects it (get_booking_options lists them all).
+          const option = s.state === "booking" ? gfBookingLabel(gfLabel(gfContinueButtons().find(gfVisible))) : null;
+          const example = option && option.seller.length <= 80 && (option.fare_name ?? "").length <= 80
+            ? { seller: option.seller, ...(option.fare_name ? { fare_name: option.fare_name } : {}), expected_price: option.price } : null;
+          add("continue_to_airline", s.state === "booking", true, example, s.state === "booking" ? "Presses Continue for one booking option; it opens the seller's site in a new tab and books nothing." + (example ? " The example is Google's first option; get_booking_options lists every option's seller, fare_name and price (pass it as expected_price)." : "") : "Google is still loading booking options.",
+            null, example ? null : "seller (required), fare_name and expected_price exactly as one option from get_booking_options returns them (seller, fare_name, price)");
         }
         add("search_flights", true, true, searchInput, "Starts a new Google Flights search (navigates the tab)" + (searchInput ? "; the example repeats the current route, dates, travelers and cabin with Google's default filters." : "."), null, searchInput ? null : "origin, destination, depart_date and trip_type (plus return_date for round_trip)");
         return out;
@@ -719,36 +764,47 @@
           });
       };
       
-      // Serializes rows[offset..] in page order, bounded by limit and a byte budget, so a larger limit only ever adds rows.
-      const gfWindow = (s, rows, offset, limit) => {
-        const flights = [];
-        let bytes = 0, cut = null, index = offset;
+      const gfBytes = value => new TextEncoder().encode(JSON.stringify(value)).length;
+      
+      // Serializes readable rows from offset in page order within limit and a UTF-8 byte budget, so a larger limit only ever
+      // adds rows. A single row larger than the whole budget is omitted and reported rather than stalling the continuation.
+      const gfWindow = (s, rows, offset, limit, budget) => {
+        const flights = [], oversized = [];
+        let bytes = 2, cut = null, index = offset;
         const readable = rows.filter(r => r.key);
         for (; index < readable.length; index++) {
           if (flights.length >= limit) { cut = "limit"; break; }
           const flight = gfFlightOut(readable[index], readable[index].position, s);
-          const size = JSON.stringify(flight).length;
-          if (flights.length && bytes + size > GF_BUDGET_BYTES) { cut = "size_budget"; break; }
+          const size = gfBytes(flight) + 1;
+          if (size + 2 > budget) { oversized.push(readable[index].position); continue; }
+          if (bytes + size > budget) { cut = "size_budget"; break; }
           flights.push(flight);
           bytes += size;
         }
-        return { flights, offset, limit, returned_rows: flights.length, next_offset: cut ? index : null, truncated_by: cut };
+        return { flights, offset, limit, returned_rows: flights.length, next_offset: cut ? index : null, truncated_by: cut, oversized };
       };
       
+      // rows are the parsed rows when the list was read; otherwise only what the DOM shows is counted.
       const gfResultsOut = (s, rows, win) => {
+        const parsed = rows.length > 0 || !s.rows.length;
+        const items = parsed ? rows : s.rows.map((li, i) => ({ li, position: i + 1, section: gfSectionOf(li), panel_open: gfPanelOpen(li) }));
         const sections = [];
-        for (const row of rows) {
+        for (const row of items) {
           const last = sections[sections.length - 1];
           if (last && last.heading === row.section) last.rows++;
           else sections.push({ heading: row.section, first_position: row.position, rows: 1 });
         }
         const c = s.controls;
         const body = document.body?.innerText || "";
+        const skipped = [
+          ...rows.filter(r => !r.key).map(r => ({ position: r.position, missing: r.missing.length ? r.missing : ["required summary fields"] })),
+          ...win.oversized.map(position => ({ position, missing: ["fits no response: larger than the response size budget"] }))
+        ].sort((a, b) => a.position - b.position);
         return {
-          rendered_rows: rows.length, announced_rows: s.announced, announcement: s.announcement,
-          sections, readable_rows: rows.filter(r => r.key).length,
-          skipped_rows: rows.filter(r => !r.key).slice(0, 20).map(r => ({ position: r.position, missing: r.missing.length ? r.missing : ["required summary fields"] })),
-          open_detail_panels: rows.filter(r => r.panel_open).map(r => r.position),
+          rendered_rows: s.rows.length, announced_rows: s.announced, announcement: s.announcement,
+          sections, readable_rows: parsed ? rows.filter(r => r.key).length : null,
+          skipped_rows: skipped.slice(0, 20),
+          open_detail_panels: items.filter(r => r.panel_open).map(r => r.position),
           show_more: { available: !!c.more && !c.more_disabled, reason: c.more ? (c.more_disabled ? "disabled" : null) : "absent" },
           offset: win.offset, limit: win.limit, returned_rows: win.returned_rows, next_offset: win.next_offset, truncated_by: win.truncated_by,
           price_insight: body.match(/Prices are currently [a-z]+/i)?.[0] || null,
@@ -760,7 +816,7 @@
         const warnings = [];
         const skipped = rows.filter(r => !r.key);
         if (skipped.length) warnings.push(`Skipped ${skipped.length} row(s) without a readable itinerary: ${skipped.slice(0, 5).map(r => "position " + r.position + " (" + (r.missing.join(", ") || "required summary fields") + ")").join("; ")}.`.slice(0, 500));
-        if (s.state === "results" && s.announced === null) warnings.push(s.announcement ? `Google's announcement ("${s.announcement}") contradicts the ${rows.length} rows it shows; the rows were read after the page stayed unchanged.` : `Google announced no result count; the ${rows.length} rows were read after the page stayed unchanged.`);
+        if (s.state === "results" && (s.announced === null || s.announced < s.rows.length)) warnings.push(s.announcement ? `Google's announcement ("${s.announcement}") contradicts the ${s.rows.length} rows it shows; the rows were read after the page stayed unchanged.` : `Google announced no result count; the ${s.rows.length} rows were read after the page stayed unchanged.`);
         if (s.controls.more) warnings.push("Google collapses more rows behind 'View more flights'; they are not on the page yet. Never conclude an airline or itinerary is unavailable from this list; call show_more_flights to expand it.");
         const pax = (document.body?.innerText.match(/Prices include[^\n]*/) || [""])[0].match(/for (\d+) adult/);
         if (pax && s.search && Number(pax[1]) !== (s.search.passengers.length || 1)) warnings.push(`Google's pricing note mentions ${pax[1]} adult(s) but the search has ${s.search.passengers.length || 1} traveler(s).`);
@@ -769,23 +825,28 @@
         return warnings;
       };
       
-      // The common result envelope: what the page shows, Google's controls, the rows (windowed), and what to do next.
+      // The common result envelope: what the page shows, Google's controls, the rows (windowed), and what to do next. The whole
+      // response stays within GF_RESPONSE_BYTES of UTF-8 (the API rejects results above 240 KiB): rows get what the rest leaves.
+      const GF_RESPONSE_BYTES = 200000;
       const gfEnvelope = async (s, { self, status, message, offset = 0, limit = 50, flights = true, prefer = [], example_key = null }) => {
         const rows = s.settled && s.state === "results" ? gfReadRows(s) : [];
-        const win = gfWindow(s, rows, offset, flights ? limit : 0);
         const registered = await gfRegisteredTools(self);
-        const actions = gfActions(s, rows, registered, flights ? win : null, example_key);
         const onResults = s.page_type === "departing_results" || s.page_type === "returning_results";
-        return {
-          envelope: {
+        const build = win => {
+          const actions = gfActions(s, rows, registered, flights ? win : null, example_key);
+          return {
             status, message, page: gfPageOut(s), ...gfControlsOut(s),
             results: onResults ? gfResultsOut(s, rows, win) : null,
             ...(flights ? { flights: win.flights } : {}),
             warnings: onResults && s.settled ? gfWarnings(s, rows) : [],
             registered_tools: registered, available_actions: actions, next_steps: gfNextSteps(actions, prefer)
-          },
-          rows
+          };
         };
+        const empty = { flights: [], offset: flights ? offset : 0, limit: flights ? limit : 0, returned_rows: 0, next_offset: null, truncated_by: null, oversized: [] };
+        if (!flights) return { envelope: build(empty), rows };
+        // Room for the tool's own fields and for the continuation offset changing the size of the rest.
+        const budget = GF_RESPONSE_BYTES - gfBytes(build(empty)) - 4096;
+        return { envelope: build(gfWindow(s, rows, offset, limit, budget)), rows };
       };
       
       // Standard read used by every tool: settle, then classify. Returns the envelope and the parsed rows (with their nodes).
