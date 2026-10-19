@@ -590,3 +590,27 @@ test("controls are read only on Google Flights pages, and a truncated list sugge
   const list = await invoke(p, "list_flights", { limit: 3 });
   assert.ok(list.next_steps.some(step => step.startsWith('list_flights {"offset":3}')));
 });
+
+test("set_flight_filters refuses an unfiltered no-results page without clicking, as its action says", async () => {
+  const p = cvgSfo({ departing: [], collapsed: [] });
+  const before = pageState(p);
+  const out = await invoke(p, "set_flight_filters", { stops: "nonstop" });
+  assert.deepEqual([out.status, out.clicked], ["unavailable", false]);
+  assert.match(out.message, /nothing to filter/);
+  assert.equal(pageState(p), before);
+});
+
+test("an airline change that runs out of time stops before clicking and reports what Google shows", async () => {
+  const p = cvgSfo({ busyMs: 6000, timing: { change: 300, settleChange: 400 } });
+  p.state.airlines = p.offeredAirlines().filter(name => name !== "Alaska");
+  p.render();
+  p.announce();
+  const out = await invoke(p, "set_flight_filters", { airlines: ["Alaska"] });
+  assert.equal(out.status, "partial");
+  assert.match(out.message, /^Ran out of time before removing \w+ from the Airlines filter\. Google's Airlines filter now shows /);
+  assert.deepEqual(out.applied, [{ filter: "airlines", value: p.offeredAirlines().filter(name => p.state.airlines.includes(name)) }]);
+  const shown = [...p.state.airlines];
+  await p.wait(15000);
+  assert.deepEqual(p.state.airlines, shown);
+  assert.equal(p.dialog(), null);
+});

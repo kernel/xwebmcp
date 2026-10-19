@@ -175,7 +175,7 @@
       },
       outputSchema: gfEnvelopeSchema({
         statuses: ["ok", "not_ready", "unsupported", "invalid_input"], flights: false,
-        extra: { chosen_flights: { type: "array", items: { type: "string" }, description: "Google's descriptions of the flights already chosen, as shown on the page (booking page, or the departing flight above returning results)." } }
+        extra: { chosen_flights: { type: "array", items: { type: "string" }, description: "Google's descriptions of the flights already chosen, where the page shows them as flight summaries (the booking page). Google's returning list shows only a route breadcrumb, so this is usually empty there; page.selected_outbound names the chosen departing flight." } }
       }),
       annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true }
     },

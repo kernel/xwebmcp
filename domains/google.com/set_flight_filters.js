@@ -898,7 +898,9 @@
         const after = await gfRead({ quiet_ms: 1000, ...read, changed: () => reflected() && watch.refreshed() });
         if (after.snapshot.settled || !after.snapshot.reasons.includes("change_not_observed")) return { ...after, confirmed: after.snapshot.settled && reflected(), unchanged: false };
         const plain = await gfRead({ ...read, settle_by_ms: Date.now() + 5000 });
-        return { ...plain, confirmed: false, unchanged: plain.snapshot.settled };
+        // The new rows may have arrived during this re-read.
+        const confirmed = plain.snapshot.settled && reflected() && watch.refreshed();
+        return { ...plain, confirmed, unchanged: !confirmed && plain.snapshot.settled };
       };
       const gfClickAndRead = async (node, reflected, read) => {
         const watch = gfWatch();
@@ -975,8 +977,20 @@
         for (const [key, name] of [["airlines", "Airlines"], ["stops", "Stops"]]) {
           if (args[key] !== undefined && (!chip(name) || chip(name).disabled)) return finish(before.envelope, "unavailable", "Google shows " + (chip(name) ? "its " + name + " filter disabled" : "no " + name + " filter on this page") + ". Nothing was clicked.");
         }
+        // As advertised: an empty list with no filter set has nothing to narrow, and no change to it could be confirmed.
+        if (before.snapshot.state === "no_results" && !before.snapshot.controls.chips.some(c => c.selected)) return finish(before.envelope, "unavailable", "Google shows no results and no filter is set, so there is nothing to filter. Nothing was clicked; start another search instead.");
         const by = started + 40000;
         const within = ms => Math.max(0, Math.min(ms, by - Date.now()));
+        // A click needs time for Google to process it and for the dialog to settle: at least 3 s, or half again as long
+        // as the last processed click took. With less time left, stop before clicking rather than leave a change pending.
+        let stepMs = 2000;
+        const late = () => by - Date.now() < Math.max(3000, stepMs * 1.5);
+        const processed = async (node, chipName, test) => {
+          const start = Date.now();
+          const done = await gfClickProcessed(node, chipName, test, within(8000));
+          stepMs = Date.now() - start;
+          return done;
+        };
         const airlineOptions = () => {
           const d = gfDialog();
           const buttons = d ? [...d.querySelectorAll("button")] : [];
@@ -1002,22 +1016,29 @@
             if (args.airlines === "all") {
               const all = airlineOptions().all;
               if (!all) return ["unavailable", "Google's Airlines filter shows no 'Select all airlines' switch."];
-              if (!await gfClickProcessed(all, "Airlines", matches, within(8000))) return ["unconfirmed", "Google did not re-select every airline."];
+              if (late()) return ["unconfirmed", "Ran out of time before selecting every airline. Nothing was changed."];
+              if (!await processed(all, "Airlines", matches)) return ["unconfirmed", "Google had not confirmed selecting every airline in time."];
             } else {
               // From every airline, "<first> only" clears the rest in one click; from a partial selection, tick the
               // missing airlines and then untick the extra ones, one processed click at a time.
               const checked = name => !!airlineOptions().airlines.find(o => o.name === name)?.checked;
-              // Each confirmed step is recorded, so a later failure reports what Google already applied (status partial).
-              const progress = () => { applied.splice(0, applied.length, { filter: "airlines", value: airlineOptions().airlines.filter(o => o.checked).map(o => o.name) }); };
+              const now = () => airlineOptions().airlines.filter(o => o.checked).map(o => o.name);
+              const initial = now().join("|");
+              // After each step (and when a step is not confirmed in time) the dialog's current selection is recorded, so a
+              // stop reports what Google shows rather than what was requested (status partial).
+              const progress = () => { applied.splice(0, applied.length, ...(now().join("|") === initial ? [] : [{ filter: "airlines", value: now() }])); };
+              const halt = (message, pending = false) => { progress(); return ["unconfirmed", message + (pending ? " The change may still be applying; Google's Airlines dialog shows " : " Google's Airlines filter now shows ") + (now().join(", ") || "no airline") + "."]; };
               let toggles = wanted.filter(name => !checked(name)).map(name => [name, true]).concat(airlineOptions().airlines.filter(o => o.checked && !wanted.includes(o.name)).map(o => [o.name, false]));
               if (airlineOptions().airlines.every(o => o.checked)) {
-                if (!await gfClickProcessed(airlineOptions().only(wanted[0]), "Airlines", () => airlineOptions().airlines.every(o => o.checked === (o.name === wanted[0])), within(8000))) return ["unconfirmed", "Google did not apply '" + wanted[0] + " only'."];
+                if (late()) return halt("Ran out of time before choosing '" + wanted[0] + " only'.");
+                if (!await processed(airlineOptions().only(wanted[0]), "Airlines", () => airlineOptions().airlines.every(o => o.checked === (o.name === wanted[0])))) return halt("Google had not confirmed '" + wanted[0] + " only' in time.", true);
                 progress();
                 toggles = wanted.slice(1).map(name => [name, true]);
               }
               for (const [name, on] of toggles) {
-                if (!within(1)) return ["unconfirmed", "Ran out of time before " + (on ? "adding " : "removing ") + name + (on ? " to" : " from") + " the Airlines filter."];
-                if (!await gfClickProcessed(gfOptionTarget(airlineOptions().airlines.find(o => o.name === name).node), "Airlines", () => checked(name) === on, within(8000))) return ["unconfirmed", "Google did not " + (on ? "add " : "remove ") + name + (on ? " to" : " from") + " the Airlines filter."];
+                const step = (on ? "adding " : "removing ") + name + (on ? " to" : " from") + " the Airlines filter";
+                if (late()) return halt("Ran out of time before " + step + ".");
+                if (!await processed(gfOptionTarget(airlineOptions().airlines.find(o => o.name === name).node), "Airlines", () => checked(name) === on)) return halt("Google had not confirmed " + step + " in time.", true);
                 progress();
               }
             }
@@ -1032,8 +1053,9 @@
           if (!await gfOpenFilter("Stops")) return ["unconfirmed", "Clicked Google's Stops filter but its dialog did not open."];
           const radio = () => [...(gfDialog()?.querySelectorAll('input[type="radio"]') || [])].find(r => gfInputLabel(r) === GF_STOPS[args.stops]);
           if (!radio() || gfDisabled(radio())) return ["unavailable", "Google's Stops filter " + (radio() ? "shows '" + GF_STOPS[args.stops] + "' disabled" : "does not offer '" + GF_STOPS[args.stops] + "'") + "."];
+          if (late()) return ["unconfirmed", "Ran out of time before choosing '" + GF_STOPS[args.stops] + "'."];
           // Google applies the choice before its chip shows it; closing the dialog earlier can drop the change.
-          if (!await gfClickProcessed(gfOptionTarget(radio()), "Stops", () => radio()?.checked && stopsNow() === args.stops, within(8000))) return ["unconfirmed", "Google did not apply '" + GF_STOPS[args.stops] + "' (its Stops chip does not show it)."];
+          if (!await processed(gfOptionTarget(radio()), "Stops", () => radio()?.checked && stopsNow() === args.stops)) return ["unconfirmed", "Google had not confirmed '" + GF_STOPS[args.stops] + "' in time (its Stops chip shows " + stopsNow() + ")."];
           applied.push({ filter: "stops", value: args.stops });
           return await gfCloseDialog() ? null : ["unconfirmed", "Google's Stops dialog did not close."];
         };
@@ -1048,7 +1070,7 @@
           if (stop) {
             if (gfDialog()) await gfCloseDialog();
             const now = await gfRead({ self, settle_by_ms: Date.now() + 10000, limit });
-            return finish(now.envelope, applied.length ? "partial" : stop[0], stop[1] + (applied.length ? " Already applied: " + applied.map(a => a.filter).join(", ") + "." : ""));
+            return finish(now.envelope, applied.length ? "partial" : stop[0], stop[1] + (applied.length ? " Applied so far: " + applied.map(a => a.filter + " " + (Array.isArray(a.value) ? a.value.join(", ") : a.value)).join("; ") + "." : ""));
           }
         }
 
