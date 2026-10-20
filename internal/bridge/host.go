@@ -156,6 +156,11 @@ func (h *Host) Call(ctx context.Context, method string, params json.RawMessage) 
 
 func (h *Host) serveClient(ctx context.Context, conn net.Conn) {
 	defer conn.Close()
+	// Close client connections when the host stops, so clients notice and redial the next host.
+	go func() {
+		<-ctx.Done()
+		conn.Close()
+	}()
 	scanner := bufio.NewScanner(conn)
 	scanner.Buffer(make([]byte, 0, 64<<10), 16<<20)
 	var writeMu sync.Mutex

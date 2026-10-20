@@ -660,6 +660,7 @@
             id,
             `async function resolveBackendClickTarget() {
               const el = this;
+              if (document.hidden) return { status: 'page hidden (background tab or minimized window); trusted input cannot reach it' };
               const visible = (candidate) => {
                 if (!(candidate instanceof Element) || !candidate.isConnected || candidate.getClientRects().length === 0) return false;
                 if (typeof candidate.checkVisibility === 'function') {
@@ -672,7 +673,7 @@
               if (el.matches(':disabled') || el.getAttribute('aria-disabled') === 'true') return { status: 'disabled' };
               el.scrollIntoView({ block: 'center', inline: 'center', behavior: 'instant' });
               const before = el.getBoundingClientRect();
-              await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+              await new Promise(resolve => { let done = false; const finish = () => { if (!done) { done = true; resolve(); } }; requestAnimationFrame(() => requestAnimationFrame(finish)); setTimeout(finish, document.hidden ? 50 : 250); });
               if (!visible(el)) return { status: 'detached or hidden' };
               const after = el.getBoundingClientRect();
               const stable =
@@ -791,6 +792,7 @@
       for (;;) {
         const result = await this.#evaluateInPage(
           `(async function resolveClickTarget(selector) {
+            if (document.hidden) return { status: 'page hidden (background tab or minimized window); trusted input cannot reach it' };
             const visible = ${VISIBLE_SOURCE};
             const candidates = [...document.querySelectorAll(selector)].filter(visible);
             if (candidates.length === 0) return { status: 'not visible' };
@@ -801,7 +803,7 @@
             }
             el.scrollIntoView({ block: 'center', inline: 'center', behavior: 'instant' });
             const before = el.getBoundingClientRect();
-            await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+            await new Promise(resolve => { let done = false; const finish = () => { if (!done) { done = true; resolve(); } }; requestAnimationFrame(() => requestAnimationFrame(finish)); setTimeout(finish, document.hidden ? 50 : 250); });
             if (!el.isConnected || !visible(el)) return { status: 'detached or hidden' };
             const after = el.getBoundingClientRect();
             const stable =

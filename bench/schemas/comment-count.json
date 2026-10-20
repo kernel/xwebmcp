@@ -1,0 +1,12 @@
+{
+  "type": "object",
+  "required": [
+    "comments"
+  ],
+  "properties": {
+    "comments": {
+      "type": "integer",
+      "minimum": 0
+    }
+  }
+}

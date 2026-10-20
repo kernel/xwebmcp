@@ -1,0 +1,19 @@
+{
+  "type": "object",
+  "required": ["products"],
+  "properties": {
+    "products": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["rank", "product", "price", "asin"],
+        "properties": {
+          "rank": { "type": "integer", "minimum": 1 },
+          "product": { "type": "string", "minLength": 1 },
+          "price": { "type": "number", "exclusiveMinimum": 0 },
+          "asin": { "type": "string", "pattern": "^[A-Z0-9]{10}$" }
+        }
+      }
+    }
+  }
+}

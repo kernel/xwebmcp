@@ -1,0 +1,29 @@
+{
+  "type": "object",
+  "required": [
+    "videos"
+  ],
+  "properties": {
+    "videos": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": [
+          "title",
+          "video_id"
+        ],
+        "properties": {
+          "title": {
+            "type": "string",
+            "minLength": 1
+          },
+          "video_id": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_-]{11}$"
+          }
+        }
+      }
+    }
+  }
+}

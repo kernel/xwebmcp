@@ -1,0 +1,5 @@
+{
+  "needs_sign_in": {
+    "get_star_status": "reads the signed-in account's star state"
+  }
+}

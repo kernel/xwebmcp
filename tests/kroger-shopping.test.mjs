@@ -6,11 +6,20 @@ import { runInNewContext } from "node:vm";
 // Shared harness for the kroger.com search and cart tools. Every page and API interaction is stubbed;
 // nothing here contacts the live site, and the fixtures use fabricated addresses and cart contents.
 const fixture = name => JSON.parse(readFileSync(new URL(`./fixtures/kroger/${name}.json`, import.meta.url), "utf8"));
-const sources = Object.fromEntries(["search_products", "get_product", "get_cart", "add_to_cart", "update_cart_item"].map(name =>
+const sources = Object.fromEntries(["search_products", "get_product", "get_cart", "add_to_cart", "update_cart_item", "get_delivery_slots", "set_substitution_preference"].map(name =>
   [name, readFileSync(new URL(`../domains/kroger.com/${name}.js`, import.meta.url), "utf8")]));
 const plain = value => JSON.parse(JSON.stringify(value));
 const LAF = JSON.stringify(fixture("laf"));
 const HOME = "https://www.kroger.com/";
+// Shape observed from the site's Schedule step; ids, times and fees are fabricated.
+const TIMESLOTS = { data: { timeslots: { days: [
+  { dayLabel: "Today", date: 5, month: 1, year: 2030, times: [
+    { optionId: "opt-1", quoteId: "q-1", vendorName: "INSTACART", cost: "USD 9.95", window: { value: "2030-01-05T14:00:00Z/2030-01-05T16:00:00Z", timezone: "America/New_York" }, storeId: "01400001", displayString: "9:00 - 11:00 AM", type: "STANDARD" },
+    { optionId: "opt-2", quoteId: "q-2", vendorName: "OCADO", cost: "USD 0.95", window: { value: "2030-01-06T02:00:00Z/2030-01-06T03:00:00Z", timezone: "America/New_York" }, storeId: "540FC001", displayString: "9:00 - 10:00 PM", type: "STANDARD" }
+  ] },
+  { dayLabel: "Sat 1/6", date: 6, month: 1, year: 2030, times: [] },
+  { dayLabel: "Sun 1/7", date: 7, month: 1, year: 2030, times: [] }
+] } } };
 
 // Validate the JSON Schema keywords used by these tools without adding a dependency.
 function conforms(schema, value) {
@@ -70,10 +79,12 @@ function harness(name, options = {}) {
       return respond(200, { data: { products: products.data.products.filter(p => wanted.includes(p.id)) } });
     }
     if (path === "/atlas/v1/carts" && method === "GET") return respond(200, cart);
+    if (path === "/atlas/v1/promising/v4/timeslots" && method === "POST") return respond(200, options.timeslots ?? TIMESLOTS);
     if (path.startsWith("/atlas/v1/carts/") && method === "PUT") {
       const active = cart.data.carts[0];
       for (const line of JSON.parse(body).lineItems) {
         const index = active.lineItems.findIndex(l => l.id === line.id);
+        if (index >= 0 && line.substitutionPolicy && !options.ignoreUpdates) active.lineItems[index].substitutionPolicy = line.substitutionPolicy;
         if (index >= 0) { if (line.quantity === 0) active.lineItems.splice(index, 1); else active.lineItems[index].quantity = options.ignoreUpdates ? active.lineItems[index].quantity : line.quantity; }
         else if (line.quantity > 0) active.lineItems.push({ id: `line-${nextLine++}`, gtin13: line.gtin13, modalityType: line.modalityType, quantity: line.quantity, savedForLater: false });
       }
@@ -101,6 +112,7 @@ function harness(name, options = {}) {
     },
     js: async (fn, args) => {
       const text = fn.toString();
+      if (text.includes("Intl.DateTimeFormat")) return "America/New_York";
       if (text.includes("sessionStorage.getItem")) { const c = storage.get(args.arg.name); return c && c.key === args.arg.key ? c.laf : null; }
       if (text.includes("sessionStorage.setItem")) { storage.set(args.arg.name, { key: args.arg.key, laf: args.arg.laf }); return undefined; }
       if (text.includes("fetch(")) {
@@ -145,7 +157,7 @@ for (const name of Object.keys(sources)) {
 
 test("registry lists every kroger.com tool exactly once", () => {
   const names = registry.tools.filter(t => t.domain === "kroger.com").map(t => t.tool).sort();
-  assert.deepEqual(names, ["add_to_cart", "get_cart", "get_product", "login", "search_products", "update_cart_item"]);
+  assert.deepEqual(names, ["add_to_cart", "get_cart", "get_delivery_slots", "get_order", "get_page_context", "get_product", "list_orders", "login", "search_products", "set_substitution_preference", "update_cart_item"]);
 });
 
 // --- input validation happens before any page access -----------------------------------------------
@@ -155,6 +167,8 @@ const invalidInputs = {
   get_product: [undefined, {}, { upc: "" }, { upc: "12ab" }, { upc: 4011 }, { upc: "1234567" }, { upc: "123456789012345" }, { upc: "0000000004011", extra: 1 }],
   get_cart: [null, [], { extra: true }],
   add_to_cart: [undefined, {}, { upc: "abc" }, { upc: "0000000004011", quantity: 0 }, { upc: "0000000004011", quantity: 21 }, { upc: "0000000004011", quantity: "2" }, { upc: "0000000004011", extra: 1 }],
+  get_delivery_slots: [null, [], { max_days: 0 }, { max_days: 15 }, { max_days: 1.5 }, { max_days: "2" }, { extra: true }],
+  set_substitution_preference: [undefined, {}, { upc: "0001111041700" }, { allow_substitutions: true }, { upc: "abc", allow_substitutions: true }, { upc: "0001111041700", allow_substitutions: "yes" }, { upc: "0001111041700", allow_substitutions: true, extra: 1 }],
   update_cart_item: [undefined, {}, { upc: "0000000004011" }, { quantity: 1 }, { upc: "0000000004011", quantity: -1 }, { upc: "0000000004011", quantity: 21 }, { upc: "0000000004011", quantity: 1.5 }, { upc: "0000000004011", quantity: 1, extra: 1 }]
 };
 for (const [name, inputs] of Object.entries(invalidInputs)) {
@@ -580,5 +594,109 @@ test("update_cart_item: a write the site silently ignores is reported", async ()
 test("update_cart_item: requires a signed-in session", async () => {
   const h = harness("update_cart_item", { loggedIn: false });
   assert.equal((await h.run({ upc: "0001111041700", quantity: 1 })).error_kind, "not_authenticated");
+  assert.deepEqual(h.calls.requests, []);
+});
+
+// --- get_cart substitution policy -------------------------------------------------------------------
+
+test("get_cart: reports each line's substitution policy", async () => {
+  const cart = fixture("cart");
+  cart.data.carts[0].lineItems[0].substitutionPolicy = "NONE";
+  const result = await harness("get_cart", { cart }).run({});
+  assert.equal(result.items[0].substitution_policy, "NONE");
+  assert.equal(result.saved_for_later[0].substitution_policy, "SHOPPER_CHOICE");
+});
+
+// --- get_delivery_slots ------------------------------------------------------------------------------
+
+test("get_delivery_slots: quotes the active lines only and never writes to the cart", async () => {
+  const h = harness("get_delivery_slots");
+  const result = await h.run({});
+  assert.equal(result.status, "ok");
+  assert.equal(result.reserves_slot, false);
+  assert.equal(result.cart_line_count, 1);
+  const quote = h.calls.requests.find(r => r.path === "/atlas/v1/promising/v4/timeslots");
+  assert.deepEqual(JSON.parse(quote.body), { items: [{ gtin13: "0001111041700", quantity: 1 }] }, "saved-for-later lines are not quoted");
+  assert.equal(h.calls.requests.some(r => r.method === "PUT" || (r.method === "POST" && r.path !== "/atlas/v1/promising/v4/timeslots")), false);
+  assert.deepEqual(result.days.map(d => d.date), ["2030-01-05", "2030-01-06", "2030-01-07"]);
+  assert.deepEqual(result.days[0].slots[0], { option_id: "opt-1", start: "2030-01-05T14:00:00Z", end: "2030-01-05T16:00:00Z", display: "9:00 - 11:00 AM", provider: "INSTACART", fee_cents: 995, type: "STANDARD", store_id: "01400001" });
+  assert.equal(result.days[0].slots[1].provider, "KROGER_DELIVERY");
+  assert.equal(result.days[0].slots[1].fee_cents, 95);
+});
+
+test("get_delivery_slots: max_days limits the days returned", async () => {
+  const result = await harness("get_delivery_slots").run({ max_days: 1 });
+  assert.equal(result.day_count, 1);
+});
+
+test("get_delivery_slots: an empty cart is refused before quoting", async () => {
+  const cart = fixture("cart");
+  cart.data.carts[0].lineItems = cart.data.carts[0].lineItems.filter(l => l.savedForLater);
+  const h = harness("get_delivery_slots", { cart });
+  const result = await h.run({});
+  assert.equal(result.error_kind, "empty_cart");
+  assert.equal(h.calls.requests.some(r => r.path.includes("timeslots")), false);
+});
+
+test("get_delivery_slots: a pickup session is refused as not_delivery", async () => {
+  const h = harness("get_delivery_slots", { modality: "PICKUP" });
+  const result = await h.run({});
+  assert.equal(result.error_kind, "not_delivery");
+  assert.equal(h.calls.requests.some(r => r.path.includes("timeslots")), false);
+});
+
+test("get_delivery_slots: signed out is not_authenticated without navigation", async () => {
+  const h = harness("get_delivery_slots", { loggedIn: false });
+  assert.equal((await h.run({})).error_kind, "not_authenticated");
+  assert.deepEqual(h.calls.navigations, []);
+});
+
+test("get_delivery_slots: a response without days is site_error", async () => {
+  const result = await harness("get_delivery_slots", { timeslots: { data: {} } }).run({});
+  assert.equal(result.error_kind, "site_error");
+});
+
+// --- set_substitution_preference ------------------------------------------------------------------
+
+test("set_substitution_preference: turns substitutions off for one line, keeping its quantity", async () => {
+  const h = harness("set_substitution_preference");
+  const result = await h.run({ upc: "0001111041700", allow_substitutions: false });
+  assert.equal(result.status, "ok");
+  assert.equal(result.previous_policy, "SHOPPER_CHOICE");
+  assert.equal(result.substitution_policy, "NONE");
+  assert.equal(result.changed, true);
+  assert.equal(result.quantity, 1);
+  const put = h.calls.requests.find(r => r.method === "PUT");
+  const sent = JSON.parse(put.body).lineItems;
+  assert.equal(sent.length, 1);
+  assert.equal(sent[0].id, "line-milk");
+  assert.equal(sent[0].quantity, 1);
+  assert.equal(h.cart().lineItems.find(l => l.id === "line-saved").substitutionPolicy, "SHOPPER_CHOICE", "saved-for-later line untouched");
+});
+
+test("set_substitution_preference: a line already at the requested policy is not written", async () => {
+  const h = harness("set_substitution_preference");
+  const result = await h.run({ upc: "1111041700", allow_substitutions: true });
+  assert.equal(result.changed, false);
+  assert.equal(h.calls.requests.some(r => r.method === "PUT"), false);
+});
+
+test("set_substitution_preference: saved-for-later and absent lines are not_in_cart without writes", async () => {
+  for (const upc of ["0001299322120", "0000000004011"]) {
+    const h = harness("set_substitution_preference");
+    const result = await h.run({ upc, allow_substitutions: false });
+    assert.equal(result.error_kind, "not_in_cart");
+    assert.equal(h.calls.requests.some(r => r.method === "PUT"), false);
+  }
+});
+
+test("set_substitution_preference: an unconfirmed change is a site_error, not success", async () => {
+  const result = await harness("set_substitution_preference", { ignoreUpdates: true }).run({ upc: "0001111041700", allow_substitutions: false });
+  assert.equal(result.error_kind, "site_error");
+});
+
+test("set_substitution_preference: signed out is not_authenticated", async () => {
+  const h = harness("set_substitution_preference", { loggedIn: false });
+  assert.equal((await h.run({ upc: "0001111041700", allow_substitutions: false })).error_kind, "not_authenticated");
   assert.deepEqual(h.calls.requests, []);
 });

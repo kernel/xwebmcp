@@ -1,0 +1,17 @@
+{
+  "type": "object",
+  "required": [
+    "check_in_from",
+    "check_out_until"
+  ],
+  "properties": {
+    "check_in_from": {
+      "type": "string",
+      "pattern": "^[0-9]{2}:[0-9]{2}$"
+    },
+    "check_out_until": {
+      "type": "string",
+      "pattern": "^[0-9]{2}:[0-9]{2}$"
+    }
+  }
+}
