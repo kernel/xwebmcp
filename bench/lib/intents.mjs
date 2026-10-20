@@ -174,8 +174,8 @@ const isReasons = (value) => value !== null && typeof value === "object" && !Arr
 export function validateDomain(config) {
   const problems = [];
   const need = (cond, message) => { if (!cond) problems.push(message); };
-  for (const key of Object.keys(config)) need(["exclude", "needs_sign_in", "actions", "checkout_actions", "profile", "signed_in_check", "instructions"].includes(key), `unknown key ${key}`);
-  for (const key of ["exclude", "needs_sign_in", "actions", "checkout_actions"]) need(config[key] === undefined || isReasons(config[key]), `${key} must map tool names to reasons`);
+  for (const key of Object.keys(config)) need(["exclude", "needs_sign_in", "page_actions", "actions", "checkout_actions", "profile", "signed_in_check", "instructions"].includes(key), `unknown key ${key}`);
+  for (const key of ["exclude", "needs_sign_in", "page_actions", "actions", "checkout_actions"]) need(config[key] === undefined || isReasons(config[key]), `${key} must map tool names to reasons`);
   problems.push(...signInProblems(config.profile, config.signed_in_check));
   need(config.instructions === undefined || (typeof config.instructions === "string" && config.instructions.trim().length > 0), "instructions must be a non-empty string");
   return problems;
@@ -191,7 +191,7 @@ export function loadIntents(benchDir) {
     const domainConfig = existsSync(domainFile) ? JSON.parse(readFileSync(domainFile, "utf8")) : {};
     const domainProblems = validateDomain(domainConfig);
     if (domainProblems.length) throw new Error(`tasks/${domain}/domain.json: ${domainProblems.join("; ")}`);
-    const { exclude = {}, needs_sign_in: needsSignIn = {}, actions = {}, checkout_actions: checkoutActions = {}, profile = null, signed_in_check: signedInCheck = null, instructions = null } = domainConfig;
+    const { exclude = {}, needs_sign_in: needsSignIn = {}, page_actions: pageActions = {}, actions = {}, checkout_actions: checkoutActions = {}, profile = null, signed_in_check: signedInCheck = null, instructions = null } = domainConfig;
     for (const file of readdirSync(dir).filter(f => f.endsWith(".json") && f !== "domain.json").sort()) {
       const intent = JSON.parse(readFileSync(join(dir, file), "utf8"));
       const problems = validateIntent(intent, benchDir);
@@ -200,9 +200,10 @@ export function loadIntents(benchDir) {
       if (problems.length) throw new Error(`tasks/${domain}/${file}: ${problems.join("; ")}`);
       // An intent's own profile replaces the domain's.
       const intentProfile = intent.profile ?? profile;
-      // The domain's state-changing tools reach only intents that may change state, and its
-      // checkout tools only intents that may go through checkout.
-      const intentActions = intent.stage !== "prepare" ? [] : [...Object.keys(actions), ...(intent.allow?.includes("checkout") ? Object.keys(checkoutActions) : [])];
+      // Tools that change only what the page shows reach every intent; the domain's state-changing
+      // tools reach only intents that may change state, and its checkout tools only intents that
+      // may go through checkout.
+      const intentActions = [...Object.keys(pageActions), ...(intent.stage !== "prepare" ? [] : [...Object.keys(actions), ...(intent.allow?.includes("checkout") ? Object.keys(checkoutActions) : [])])];
       intents.push({
         ...intent, tools: intent.tools ?? [{ repo: "kernel/xwebmcp", ref: "main" }], actions: intentActions,
         exclude: intentProfile ? exclude : { ...exclude, ...needsSignIn }, profile: intentProfile,
