@@ -292,6 +292,48 @@
       }
     },
     {
+      "domain": "airbnb.com",
+      "tool": "get_listing",
+      "file": "domains/airbnb.com/get_listing.js",
+      "kind": "page",
+      "namespace": "airbnb.com",
+      "url_patterns": [
+        "https://www.airbnb.com/*"
+      ],
+      "url_patterns_reason": "Narrowed to www.airbnb.com, the Airbnb web app: the tools fetch its public search and listing pages same-origin and refuse to run on any other origin, so other airbnb.com hosts would only list tools that cannot work there.",
+      "status": "draft",
+      "last_verified": null,
+      "notes": "One anonymous public listing read; no dated prices, availability, host identities or account data. No navigation, redirects or retries. Automated access is restricted by site terms."
+    },
+    {
+      "domain": "airbnb.com",
+      "tool": "prepare_booking",
+      "file": "domains/airbnb.com/prepare_booking.js",
+      "kind": "page",
+      "namespace": "airbnb.com",
+      "url_patterns": [
+        "https://www.airbnb.com/*"
+      ],
+      "url_patterns_reason": "Narrowed to www.airbnb.com, the Airbnb web app: the tools fetch its public search and listing pages same-origin and refuse to run on any other origin, so other airbnb.com hosts would only list tools that cannot work there.",
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Page-local preliminary dated price and human listing-page handoff; requires matching loaded English listing, dates, adult guests and USD request. Does not reserve, hold, message, accept terms or open checkout. Full totals and terms require human review."
+    },
+    {
+      "domain": "airbnb.com",
+      "tool": "search_stays",
+      "file": "domains/airbnb.com/search_stays.js",
+      "kind": "page",
+      "namespace": "airbnb.com",
+      "url_patterns": [
+        "https://www.airbnb.com/*"
+      ],
+      "url_patterns_reason": "Narrowed to www.airbnb.com, the Airbnb web app: the tools fetch its public search and listing pages same-origin and refuse to run on any other origin, so other airbnb.com hosts would only list tools that cannot work there.",
+      "status": "draft",
+      "last_verified": null,
+      "notes": "One anonymous first-page stays search, at most 18 results; display-price text is not a dated quote. No navigation, pagination, redirects or retries. Automated access is restricted by site terms and robots.txt."
+    },
+    {
       "domain": "alaskaair.com",
       "tool": "continue_checkout",
       "file": "domains/alaskaair.com/continue_checkout.js",
@@ -1515,6 +1557,96 @@
       }
     },
     {
+      "domain": "exploretock.com",
+      "tool": "get_availability",
+      "file": "domains/exploretock.com/get_availability.js",
+      "kind": "cdp",
+      "namespace": "exploretock.com",
+      "url_patterns": [
+        "https://www.exploretock.com/*"
+      ],
+      "url_patterns_reason": "Narrowed to www.exploretock.com, Tock's guest reservation site: the tools read its city, venue and offering pages and same-origin endpoints and refuse other origins; other exploretock.com hosts are not the guest site.",
+      "status": "verified",
+      "last_verified": "2026-09-30",
+      "notes": "Opens the exact offering page and returns slots, Book versus Notify, seating areas, raw pricing and calendar dates. Table reservations only; pickup, delivery and events return unsupported_offering. Never clicks Book, Notify or a slot. Missing destination date/size fails closed. Final-source QA succeeded in Kernel and the local extension, but another public offering hit an unresponsive Kernel renderer and a local challenge; neither was retried or bypassed.",
+      "provenance": {
+        "qa_agent": "agt_a2f33be7abc004ba9dee",
+        "qa_commit": "a1534b8595b4d23590b7276f706fdce84bdb928c"
+      }
+    },
+    {
+      "domain": "exploretock.com",
+      "tool": "get_restaurant",
+      "file": "domains/exploretock.com/get_restaurant.js",
+      "kind": "page",
+      "namespace": "exploretock.com",
+      "url_patterns": [
+        "https://www.exploretock.com/*"
+      ],
+      "url_patterns_reason": "Narrowed to www.exploretock.com, Tock's guest reservation site: the tools read its city, venue and offering pages and same-origin endpoints and refuse other origins; other exploretock.com hosts are not the guest site.",
+      "status": "verified",
+      "last_verified": "2026-09-30",
+      "notes": "One public venue's profile, service hours, booking flags and offerings, including currency and bounded published event schedules. Same-origin SSR fetch without navigation; no session/account data or potentially signed external links returned. Published dates and recurrence flags are not ticket inventory; only table offerings support get_availability.",
+      "provenance": {
+        "qa_agent": "agt_a2f33be7abc004ba9dee",
+        "qa_commit": "a1534b8595b4d23590b7276f706fdce84bdb928c"
+      }
+    },
+    {
+      "domain": "exploretock.com",
+      "tool": "prepare_reservation",
+      "file": "domains/exploretock.com/prepare_reservation.js",
+      "kind": "page",
+      "namespace": "exploretock.com",
+      "url_patterns": [
+        "https://www.exploretock.com/*"
+      ],
+      "url_patterns_reason": "Narrowed to www.exploretock.com, Tock's guest reservation site: the tools read its city, venue and offering pages and same-origin endpoints and refuse other origins; other exploretock.com hosts are not the guest site.",
+      "status": "qa_passed",
+      "last_verified": "2026-09-30",
+      "notes": "Read-only exact-slot preparation on the already loaded offering page. Requires matching venue, offering, date and party size, a visible enabled Book time and unambiguous seating. Live preparation passed in both runtimes; off-entry-page success is intentionally unsupported. No holds, bookings, payments or Notify submission. Account, final total and terms need manual checks; final execution lacks a trusted human approval path. Invisible background content is refused.",
+      "provenance": {
+        "qa_agent": "agt_a2f33be7abc004ba9dee",
+        "qa_commit": "a1534b8595b4d23590b7276f706fdce84bdb928c"
+      }
+    },
+    {
+      "domain": "exploretock.com",
+      "tool": "search_events",
+      "file": "domains/exploretock.com/search_events.js",
+      "kind": "page",
+      "namespace": "exploretock.com",
+      "url_patterns": [
+        "https://www.exploretock.com/*"
+      ],
+      "url_patterns_reason": "Narrowed to www.exploretock.com, Tock's guest reservation site: the tools read its city, venue and offering pages and same-origin endpoints and refuse other origins; other exploretock.com hosts are not the guest site.",
+      "status": "verified",
+      "last_verified": "2026-09-30",
+      "notes": "Public ticketed-event search in a Tock city over at most 31 days, fetched same-origin without navigation. Venue pagination, event ids, descriptions, currency, raw prices and first ten chronological search times. No ticket purchase or inventory hold; search times do not guarantee remaining quantity.",
+      "provenance": {
+        "qa_agent": "agt_a2f33be7abc004ba9dee",
+        "qa_commit": "a1534b8595b4d23590b7276f706fdce84bdb928c"
+      }
+    },
+    {
+      "domain": "exploretock.com",
+      "tool": "search_restaurants",
+      "file": "domains/exploretock.com/search_restaurants.js",
+      "kind": "page",
+      "namespace": "exploretock.com",
+      "url_patterns": [
+        "https://www.exploretock.com/*"
+      ],
+      "url_patterns_reason": "Narrowed to www.exploretock.com, Tock's guest reservation site: the tools read its city, venue and offering pages and same-origin endpoints and refuse other origins; other exploretock.com hosts are not the guest site.",
+      "status": "verified",
+      "last_verified": "2026-09-30",
+      "notes": "Page tool on www.exploretock.com: dine-in or winery search in one Tock city for a date, party size and time via the site's server-rendered search page, fetched same-origin without navigating. Results follow the site's relevance order, which can change between calls, and can include venues outside the city; times are the ten nearest the request per offering, not the whole day.",
+      "provenance": {
+        "qa_agent": "agt_a2f33be7abc004ba9dee",
+        "qa_commit": "a1534b8595b4d23590b7276f706fdce84bdb928c"
+      }
+    },
+    {
       "domain": "flyfrontier.com",
       "tool": "login",
       "file": "domains/flyfrontier.com/login.js",
@@ -2310,6 +2442,129 @@
       "notes": "Independent QA verified setting an absolute quantity, removal with quantity 0, not_in_cart for absent lines and for saved-for-later lines (left untouched), and not_authenticated when signed out, on a real signed-in cart that was restored afterwards. quantity_limit is fixture-tested only.",
       "provenance": {
         "qa_agent": "agt_def5f2f10a89acbeeec4"
+      }
+    },
+    {
+      "domain": "myntra.com",
+      "tool": "add_to_cart",
+      "file": "domains/myntra.com/add_to_cart.js",
+      "kind": "page",
+      "namespace": "myntra.com",
+      "url_patterns": [
+        "https://myntra.com/*",
+        "https://*.myntra.com/*"
+      ],
+      "status": "qa_passed",
+      "last_verified": "2026-09-30",
+      "notes": "Guest-only add of one ordinary SKU with price, stock, duplicate and session guards. Mutation success is fixture-only; never automatically retry unknown outcomes.",
+      "provenance": {
+        "qa_agent": "agt_14295d5c1a9f9887b0e9",
+        "qa_commit": "645a1945ee3d937a87f5e962c837ab4e1f98148d"
+      }
+    },
+    {
+      "domain": "myntra.com",
+      "tool": "get_cart",
+      "file": "domains/myntra.com/get_cart.js",
+      "kind": "page",
+      "namespace": "myntra.com",
+      "url_patterns": [
+        "https://myntra.com/*",
+        "https://*.myntra.com/*"
+      ],
+      "status": "verified",
+      "last_verified": "2026-09-30",
+      "notes": "Read the default signed-out guest bag; at most 100 allowlisted lines. Signed-in bags and changed available guest identity are refused. Live empty-bag success; populated bags are fixture-only.",
+      "provenance": {
+        "qa_agent": "agt_14295d5c1a9f9887b0e9",
+        "qa_commit": "645a1945ee3d937a87f5e962c837ab4e1f98148d"
+      }
+    },
+    {
+      "domain": "myntra.com",
+      "tool": "get_product",
+      "file": "domains/myntra.com/get_product.js",
+      "kind": "page",
+      "namespace": "myntra.com",
+      "url_patterns": [
+        "https://myntra.com/*",
+        "https://*.myntra.com/*"
+      ],
+      "status": "verified",
+      "last_verified": "2026-09-30",
+      "notes": "Guest-session product page read by style_id: price and MRP in rupees, per-size SKU id, availability and stock count, seller, colour variants, attributes, description sections, images, return and cash-on-delivery flags. Unknown style ids return not_found. Prices are not pincode-specific. Signed-in behaviour not tested.",
+      "provenance": {
+        "qa_agent": "agt_14295d5c1a9f9887b0e9"
+      }
+    },
+    {
+      "domain": "myntra.com",
+      "tool": "get_product_reviews",
+      "file": "domains/myntra.com/get_product_reviews.js",
+      "kind": "page",
+      "namespace": "myntra.com",
+      "url_patterns": [
+        "https://myntra.com/*",
+        "https://*.myntra.com/*"
+      ],
+      "status": "verified",
+      "last_verified": "2026-09-30",
+      "notes": "Public reviews by style_id, 12 per page, most helpful or most recent, optional exact star filter; page 1 adds the rating summary. Reviewer names are not returned. A style with no reviews and an unknown style id both return no_results. Most-recent order and the star filter can return HTTP 400 on styles with many thousands of reviews.",
+      "provenance": {
+        "qa_agent": "agt_14295d5c1a9f9887b0e9"
+      }
+    },
+    {
+      "domain": "myntra.com",
+      "tool": "remove_cart_item",
+      "file": "domains/myntra.com/remove_cart_item.js",
+      "kind": "page",
+      "namespace": "myntra.com",
+      "url_patterns": [
+        "https://myntra.com/*",
+        "https://*.myntra.com/*"
+      ],
+      "status": "qa_passed",
+      "last_verified": "2026-09-30",
+      "notes": "Guest-only removal by exact item/style/SKU and expected quantity. Fresh absence and unrelated-line checks; fixture-only mutation success.",
+      "provenance": {
+        "qa_agent": "agt_14295d5c1a9f9887b0e9",
+        "qa_commit": "645a1945ee3d937a87f5e962c837ab4e1f98148d"
+      }
+    },
+    {
+      "domain": "myntra.com",
+      "tool": "search_products",
+      "file": "domains/myntra.com/search_products.js",
+      "kind": "page",
+      "namespace": "myntra.com",
+      "url_patterns": [
+        "https://myntra.com/*",
+        "https://*.myntra.com/*"
+      ],
+      "status": "verified",
+      "last_verified": "2026-09-30",
+      "notes": "Guest-session organic search with the site's sorts, Group:Value filters, a rupee price range and an opaque cursor; reports query_substituted when the site searches different words. Sponsored placements are not requested. CJK and emoji queries are rejected by the site. Prices are not pincode-specific. Signed-in behaviour not tested.",
+      "provenance": {
+        "qa_agent": "agt_14295d5c1a9f9887b0e9"
+      }
+    },
+    {
+      "domain": "myntra.com",
+      "tool": "update_cart_item",
+      "file": "domains/myntra.com/update_cart_item.js",
+      "kind": "page",
+      "namespace": "myntra.com",
+      "url_patterns": [
+        "https://myntra.com/*",
+        "https://*.myntra.com/*"
+      ],
+      "status": "qa_passed",
+      "last_verified": "2026-09-30",
+      "notes": "Guest-only absolute quantity 1–10 with stale-state, seller, stock and unrelated-line guards. Fixture-only mutation success.",
+      "provenance": {
+        "qa_agent": "agt_14295d5c1a9f9887b0e9",
+        "qa_commit": "645a1945ee3d937a87f5e962c837ab4e1f98148d"
       }
     },
     {
@@ -3162,6 +3417,146 @@
       "notes": "Adds or removes one venue on one custom list with expected-state guard; My Hit List refused (use set_favorite). Readback also checks the venue's other lists are unchanged. Builder live run 2026-10-01: add, no-op, remove; a wrong DELETE encoding was correctly reported as rejected before the fix. 2026-10-01: signed out with no account ref now returns login_required before input checks."
     },
     {
+      "domain": "sevenrooms.com",
+      "tool": "get_availability",
+      "file": "domains/sevenrooms.com/get_availability.js",
+      "kind": "page",
+      "namespace": "sevenrooms.com",
+      "url_patterns": [
+        "https://www.sevenrooms.com/reservations/*",
+        "https://www.sevenrooms.com/explore/*",
+        "https://www.sevenrooms.com/experiences/*",
+        "https://www.sevenrooms.com/events/*",
+        "https://fp.sevenrooms.com/reservations/*",
+        "https://fp.sevenrooms.com/explore/*",
+        "https://fp.sevenrooms.com/experiences/*",
+        "https://fp.sevenrooms.com/events/*",
+        "https://eu.sevenrooms.com/reservations/*",
+        "https://eu.sevenrooms.com/explore/*",
+        "https://eu.sevenrooms.com/experiences/*",
+        "https://eu.sevenrooms.com/events/*"
+      ],
+      "url_patterns_reason": "Narrowed to SevenRooms' guest booking pages (reservations, explore, experiences and events) on the www., fp. and eu. hosts, which serve the public booking widget and its /api-yoa endpoints the tools read; the rest of sevenrooms.com is the company's site and the venue-side product.",
+      "status": "verified",
+      "last_verified": "2026-09-30",
+      "notes": "Independent QA passed; live public reads verified in Kernel and the local extension. Page tool on the SevenRooms guest booking hosts (www, fp, eu): bookable times for one venue, date and party size as venue-local and UTC starts with the widget label, shift, card and payment fields and deduplicated plain-text venue policy text. Lists only the site's book entries (what the widget shows as time buttons); request entries are counted, not listed. Never selects, holds or books, and drops booking handles.",
+      "provenance": {
+        "qa_agent": "agt_9ef0b7c18f7120fe21ee"
+      }
+    },
+    {
+      "domain": "sevenrooms.com",
+      "tool": "get_restaurant",
+      "file": "domains/sevenrooms.com/get_restaurant.js",
+      "kind": "page",
+      "namespace": "sevenrooms.com",
+      "url_patterns": [
+        "https://www.sevenrooms.com/reservations/*",
+        "https://www.sevenrooms.com/explore/*",
+        "https://www.sevenrooms.com/experiences/*",
+        "https://www.sevenrooms.com/events/*",
+        "https://fp.sevenrooms.com/reservations/*",
+        "https://fp.sevenrooms.com/explore/*",
+        "https://fp.sevenrooms.com/experiences/*",
+        "https://fp.sevenrooms.com/events/*",
+        "https://eu.sevenrooms.com/reservations/*",
+        "https://eu.sevenrooms.com/explore/*",
+        "https://eu.sevenrooms.com/experiences/*",
+        "https://eu.sevenrooms.com/events/*"
+      ],
+      "url_patterns_reason": "Narrowed to SevenRooms' guest booking pages (reservations, explore, experiences and events) on the www., fp. and eu. hosts, which serve the public booking widget and its /api-yoa endpoints the tools read; the rest of sevenrooms.com is the company's site and the venue-side product.",
+      "status": "verified",
+      "last_verified": "2026-09-30",
+      "notes": "Independent QA passed; live public reads verified in Kernel and the local extension. Page tool on the SevenRooms guest booking hosts (www, fp, eu): one venue's public widget details by venue_url_key (address, party sizes, booking window, currency, languages); a venue is found only on the hosts that serve it. Read-only, signed out, no navigation; returns none of the site's payment, map or analytics keys.",
+      "provenance": {
+        "qa_agent": "agt_9ef0b7c18f7120fe21ee"
+      }
+    },
+    {
+      "domain": "sevenrooms.com",
+      "tool": "list_experiences",
+      "file": "domains/sevenrooms.com/list_experiences.js",
+      "kind": "page",
+      "namespace": "sevenrooms.com",
+      "url_patterns": [
+        "https://www.sevenrooms.com/reservations/*",
+        "https://www.sevenrooms.com/explore/*",
+        "https://www.sevenrooms.com/experiences/*",
+        "https://www.sevenrooms.com/events/*",
+        "https://fp.sevenrooms.com/reservations/*",
+        "https://fp.sevenrooms.com/explore/*",
+        "https://fp.sevenrooms.com/experiences/*",
+        "https://fp.sevenrooms.com/events/*",
+        "https://eu.sevenrooms.com/reservations/*",
+        "https://eu.sevenrooms.com/explore/*",
+        "https://eu.sevenrooms.com/experiences/*",
+        "https://eu.sevenrooms.com/events/*"
+      ],
+      "url_patterns_reason": "Narrowed to SevenRooms' guest booking pages (reservations, explore, experiences and events) on the www., fp. and eu. hosts, which serve the public booking widget and its /api-yoa endpoints the tools read; the rest of sevenrooms.com is the company's site and the venue-side product.",
+      "status": "verified",
+      "last_verified": "2026-09-30",
+      "notes": "Independent QA passed; public directory reads verified in Kernel and the local extension. Displayed price text is not a quote or availability.",
+      "provenance": {
+        "qa_agent": "agt_9ef0b7c18f7120fe21ee"
+      }
+    },
+    {
+      "domain": "sevenrooms.com",
+      "tool": "prepare_reservation",
+      "file": "domains/sevenrooms.com/prepare_reservation.js",
+      "kind": "page",
+      "namespace": "sevenrooms.com",
+      "url_patterns": [
+        "https://www.sevenrooms.com/reservations/*",
+        "https://www.sevenrooms.com/explore/*",
+        "https://www.sevenrooms.com/experiences/*",
+        "https://www.sevenrooms.com/events/*",
+        "https://fp.sevenrooms.com/reservations/*",
+        "https://fp.sevenrooms.com/explore/*",
+        "https://fp.sevenrooms.com/experiences/*",
+        "https://fp.sevenrooms.com/events/*",
+        "https://eu.sevenrooms.com/reservations/*",
+        "https://eu.sevenrooms.com/explore/*",
+        "https://eu.sevenrooms.com/experiences/*",
+        "https://eu.sevenrooms.com/events/*"
+      ],
+      "url_patterns_reason": "Narrowed to SevenRooms' guest booking pages (reservations, explore, experiences and events) on the www., fp. and eu. hosts, which serve the public booking widget and its /api-yoa endpoints the tools read; the rest of sevenrooms.com is the company's site and the venue-side product.",
+      "status": "verified",
+      "last_verified": "2026-09-30",
+      "notes": "Independent QA passed; exact read-only prepaid target preparation verified in Kernel and the local extension. Manual handoff only; no holds or execution approval path.",
+      "provenance": {
+        "qa_agent": "agt_9ef0b7c18f7120fe21ee"
+      }
+    },
+    {
+      "domain": "sevenrooms.com",
+      "tool": "search_events",
+      "file": "domains/sevenrooms.com/search_events.js",
+      "kind": "page",
+      "namespace": "sevenrooms.com",
+      "url_patterns": [
+        "https://www.sevenrooms.com/reservations/*",
+        "https://www.sevenrooms.com/explore/*",
+        "https://www.sevenrooms.com/experiences/*",
+        "https://www.sevenrooms.com/events/*",
+        "https://fp.sevenrooms.com/reservations/*",
+        "https://fp.sevenrooms.com/explore/*",
+        "https://fp.sevenrooms.com/experiences/*",
+        "https://fp.sevenrooms.com/events/*",
+        "https://eu.sevenrooms.com/reservations/*",
+        "https://eu.sevenrooms.com/explore/*",
+        "https://eu.sevenrooms.com/experiences/*",
+        "https://eu.sevenrooms.com/events/*"
+      ],
+      "url_patterns_reason": "Narrowed to SevenRooms' guest booking pages (reservations, explore, experiences and events) on the www., fp. and eu. hosts, which serve the public booking widget and its /api-yoa endpoints the tools read; the rest of sevenrooms.com is the company's site and the venue-side product.",
+      "status": "verified",
+      "last_verified": "2026-09-30",
+      "notes": "Independent QA passed; public schedule reads verified in Kernel and the local extension. Not ticket availability or prices. Pagination covers a bounded relative-day window.",
+      "provenance": {
+        "qa_agent": "agt_9ef0b7c18f7120fe21ee"
+      }
+    },
+    {
       "domain": "southwest.com",
       "tool": "continue_checkout",
       "file": "domains/southwest.com/continue_checkout.js",
@@ -3346,6 +3741,57 @@
       "notes": "Live: price/missing-price/unavailable refusals, $0 seat select, idempotent repeat, remove with exact restore of seat and totals, reselect. Independent final-source QA (southwest-qa) live on a signed-in DAL-HOU round trip through the payment page; nothing purchased, no card data typed. Not tested: paid seats, multiple passengers, one-way trips, signed-out flows, promo overlay dismissal.",
       "provenance": {
         "qa_agent": "herdr:southwest-qa:01a10c2e-4e9f-7357-9f67-b683b994a2bc"
+      }
+    },
+    {
+      "domain": "stubhub.com",
+      "tool": "get_ticket_offers",
+      "file": "domains/stubhub.com/get_ticket_offers.js",
+      "kind": "page",
+      "namespace": "stubhub.com",
+      "url_patterns": [
+        "https://www.stubhub.com/*"
+      ],
+      "url_patterns_reason": "Narrowed to www.stubhub.com, the StubHub marketplace: the tools fetch its event and search pages same-origin and refuse other origins; other stubhub.com hosts are separate products.",
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Independent final-source fixture and extension QA passed. First ten quantity-eligible listings and event details; fees-inclusive site quote, final taxes/delivery/payable total unknown. Final live Kernel request challenged and stopped; no retries, bypass, selection or holds. Was qa_passed; on 2026-10-20 the description gained a retry note for StubHub's bot check reloading the page on the first event request, so it needs independent re-QA.",
+      "provenance": {
+        "qa_agent": "agt_b9e333f8bafdb9dbb2fb"
+      }
+    },
+    {
+      "domain": "stubhub.com",
+      "tool": "prepare_ticket_choice",
+      "file": "domains/stubhub.com/prepare_ticket_choice.js",
+      "kind": "page",
+      "namespace": "stubhub.com",
+      "url_patterns": [
+        "https://www.stubhub.com/*"
+      ],
+      "url_patterns_reason": "Narrowed to www.stubhub.com, the StubHub marketplace: the tools fetch its event and search pages same-origin and refuse other origins; other stubhub.com hosts are separate products.",
+      "status": "qa_passed",
+      "last_verified": "2026-09-30",
+      "notes": "Independent final-source fixture and extension QA passed. Exact listing/quantity/price/currency recheck, first ten offers only; conflicts fail closed. Preview/handoff only, no reservation or execution. Final-source live success unverified; purchase/holds lack trusted per-action human approval enforcement.",
+      "provenance": {
+        "qa_agent": "agt_b9e333f8bafdb9dbb2fb"
+      }
+    },
+    {
+      "domain": "stubhub.com",
+      "tool": "search_events",
+      "file": "domains/stubhub.com/search_events.js",
+      "kind": "page",
+      "namespace": "stubhub.com",
+      "url_patterns": [
+        "https://www.stubhub.com/*"
+      ],
+      "url_patterns_reason": "Narrowed to www.stubhub.com, the StubHub marketplace: the tools fetch its event and search pages same-origin and refuse other origins; other stubhub.com hosts are separate products.",
+      "status": "verified",
+      "last_verified": "2026-09-29",
+      "notes": "Independent QA passed on the final source; live success from non-entry pages on Kernel and one extension run. First results page only (up to 20 events, relevance order); date window is in UTC, so check each result's local_date/local_time; events at exactly 00:00 UTC after end_date_utc are included. Local time is null when the site gives no usable offset. No prices or listings. Challenge, rate-limit and changed-page paths are covered by stubbed tests only; bot-protection pages are reported, not bypassed.",
+      "provenance": {
+        "qa_agent": "agt_b9e333f8bafdb9dbb2fb"
       }
     },
     {
