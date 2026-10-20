@@ -159,6 +159,16 @@ test("a call is tried at most three times", async () => {
   assert.deepEqual(await kernel.listCustomTools("b1"), []);
 });
 
+test("navigations are read past an empty page of events, up to the page whose next offset is 0", async () => {
+  const navigation = { event: { ts: 1_000_000, type: "page_navigation", data: { parent_frame_id: "", url: "https://example.com/landing" } } };
+  run({ "GET /browsers/b1/telemetry/events": [
+    { status: 200, body: [], headers: { "x-next-offset": "100" } },
+    { status: 200, body: [navigation], headers: { "x-next-offset": "0" } },
+  ] });
+  assert.deepEqual(await kernel.navigations("b1", 0), [{ at: 1000, url: "https://example.com/landing" }]);
+  assert.equal(hits["GET /browsers/b1/telemetry/events"], 2);
+});
+
 test("deleting a browser that is already gone succeeds", async () => {
   run({ "DELETE /browsers/b1": ["drop", 404] });
   await kernel.deleteBrowser("b1");
