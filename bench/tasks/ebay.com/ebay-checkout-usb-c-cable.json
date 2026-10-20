@@ -41,7 +41,7 @@
       },
       {
         "path": "text",
-        "matches": "Telegraph Hill"
+        "matches": "Ship to\\s+Select a shipping address\\s+webmcp-demo@example\\.com\\s+Alex Demo\\s+1 Telegraph Hill"
       },
       {
         "path": "text",

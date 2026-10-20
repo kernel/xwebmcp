@@ -304,16 +304,22 @@ booking and pay buttons. Booking.com renders that step only in stealth browsers,
 run it with `--intent booking-checkout-room --stealth`.
 
 The intents on bestbuy.com, apple.com, ebay.com, homedepot.com and nordstrom.com are guest
-purchases on the same pattern. Apple's payment step shows neither the address nor the product, so
-its check is the step's "How do you want to pay?" heading on a checkout URL, a step Apple shows
-only after the shipping and contact steps are saved. The other new intents on sites where buying
-needs an account, a seat map or a reservation hold read what a buyer would pay or book instead:
-reservation times on OpenTable, SevenRooms and Tock (never selecting one, which holds the table),
-ticket prices on StubHub and Vivid Seats, rates on Marriott, Expedia, Airbnb and Kayak, shipping
-quotes on UPS, FedEx and USPS, and published fees and prices elsewhere. SevenRooms only offers
-dates inside a venue's booking window, a week for Adda, so its date is five days out. OpenTable
-blocks stealth browsers ("Access Denied") and TicketWeb, eBay, UPS and Myntra block or break in
-plain ones, so run each domain in the mode that passed.
+purchases on the same pattern. Best Buy and eBay keep checkout on one URL, so their checks need
+the saved address block ("Shipping address" on Best Buy, "Ship to" on eBay): eBay's address
+confirmation pop-up shows the typed address on the same page before it is saved. Apple's payment
+step shows neither the address nor the product, so its check is the step's "How do you want to
+pay?" heading on a checkout URL, a step Apple shows only after the shipping and contact steps are
+saved. The other new intents on sites where buying needs an account, a seat map or a reservation
+hold read what a buyer would pay or book instead: reservation times on OpenTable, SevenRooms and
+Tock (never selecting one, which holds the table), ticket prices on StubHub and Vivid Seats, room
+rates on Marriott, Expedia and Airbnb, a fare on Kayak, shipping quotes on UPS, FedEx and USPS,
+and published fees and prices elsewhere. SevenRooms only offers dates inside a venue's booking
+window, so its date is five days out, at Zuma Miami, which has bookable dinner times every day;
+many SevenRooms venues offer only requests on most days, where an empty list is the right answer
+and any agent could give it. StubHub and Vivid Seats ask for an NBA home game in the next 45
+days, so from May to October, when there may be none, switch their fixtures to a team in season.
+OpenTable blocks stealth browsers ("Access Denied") and TicketWeb, eBay, UPS, Myntra and Apple
+block or break in plain ones, so run each domain in the mode that passed.
 
 ### Signed-in trials
 

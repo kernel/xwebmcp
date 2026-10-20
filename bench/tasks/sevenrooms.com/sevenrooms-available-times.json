@@ -2,28 +2,39 @@
   "id": "sevenrooms-available-times",
   "domain": "sevenrooms.com",
   "stage": "inspect",
-  "prompt": "On SevenRooms' reservation page for {{restaurant}} in {{city}}, find every dinner time it offers to book (not to request or join a waitlist) for a party of {{party}} on {{date}}. Do not select a time. Reply with JSON: {\"restaurant\": string, \"times\": [\"HH:MM\"]}, the times in 24-hour local time, and an empty list if there are none.",
+  "prompt": "On SevenRooms' reservation page for {{restaurant}} in {{city}}, find every dinner time it offers to book (not to request or join a waitlist) for a party of {{party}} on {{date}}. Do not select a time. Reply with JSON: {\"restaurant\": string, \"times\": [\"HH:MM\"]}, each time once, in 24-hour local time.",
   "fixture": {
-    "restaurant": "Adda",
-    "city": "New York",
+    "restaurant": "Zuma",
+    "city": "Miami",
     "party": 2,
     "date": {
       "days_from_start": 5
     }
   },
-  "start_url": "https://www.sevenrooms.com/reservations/adda",
+  "start_url": "https://www.sevenrooms.com/reservations/zumamiami",
   "answer_schema": "schemas/available-times.json",
   "rules": [
     {
       "path": "restaurant",
-      "matches": "adda"
+      "matches": "zuma"
     },
     {
       "path": "times",
       "count": [
-        0,
-        100
+        1,
+        30
       ]
+    },
+    {
+      "path": "times[]",
+      "range": [
+        "17:00",
+        "23:59"
+      ]
+    },
+    {
+      "path": "times[]",
+      "unique": true
     }
   ],
   "agreement": {

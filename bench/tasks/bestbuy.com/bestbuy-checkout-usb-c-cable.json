@@ -41,7 +41,7 @@
       },
       {
         "path": "text",
-        "matches": "Telegraph Hill"
+        "matches": "Shipping address\\s+Alex Demo\\s+1 Telegraph Hill"
       },
       {
         "path": "text",
