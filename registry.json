@@ -3239,9 +3239,9 @@
         "https://www.stubhub.com/*"
       ],
       "url_patterns_reason": "Narrowed to www.stubhub.com, the StubHub marketplace: the tools fetch its event and search pages same-origin and refuse other origins; other stubhub.com hosts are separate products.",
-      "status": "qa_passed",
-      "last_verified": "2026-09-30",
-      "notes": "Independent final-source fixture and extension QA passed. First ten quantity-eligible listings and event details; fees-inclusive site quote, final taxes/delivery/payable total unknown. Final live Kernel request challenged and stopped; no retries, bypass, selection or holds.",
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Independent final-source fixture and extension QA passed. First ten quantity-eligible listings and event details; fees-inclusive site quote, final taxes/delivery/payable total unknown. Final live Kernel request challenged and stopped; no retries, bypass, selection or holds. Was qa_passed; on 2026-10-20 the description gained a retry note for StubHub's bot check reloading the page on the first event request, so it needs independent re-QA.",
       "provenance": {
         "qa_agent": "agt_b9e333f8bafdb9dbb2fb"
       }
