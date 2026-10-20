@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
-import Kernel, { APIUserAbortError, NotFoundError, toFile } from "@onkernel/sdk";
+import { setTimeout as sleep } from "node:timers/promises";
+import Kernel, { APIError, APIUserAbortError, NotFoundError, toFile } from "@onkernel/sdk";
 import { VERSION } from "@onkernel/sdk/version";
 import { zipDirectory } from "./zip.mjs";
 
@@ -7,17 +8,26 @@ export const SDK_VERSION = `@onkernel/sdk ${VERSION}`;
 
 // Created on first use, so a local run needs no KERNEL_API_KEY.
 let kernel = null;
-const client = () => (kernel ??= new Kernel({ timeout: 120_000 }));
+const client = () => (kernel ??= new Kernel());
 
-// A request with no response may still have made a browser or run page code, which a retry would
-// repeat, so `ms` bounds every attempt together and only errors the API answered with are retried.
-// The per-attempt timeout is longer, so it never fires first.
-async function within(ms, request) {
-  try {
-    return await request({ timeout: ms + 5_000, signal: AbortSignal.timeout(ms) });
-  } catch (error) {
-    if (error instanceof APIUserAbortError) throw new Error(`no response in ${ms / 1000}s`);
-    throw error;
+// The statuses the SDK retries. A connection error has no status.
+const retryable = error => error instanceof APIError && (error.status >= 500 || [408, 409, 429].includes(error.status));
+
+// `retry` is "any" to retry every failure as the SDK does, "answered" to retry only errors the API
+// answered with, for a request whose lost response may hide a browser it made or page code it ran,
+// or "none". `ms` bounds every attempt and pause together, as the CLI's 120s execFile timeout did;
+// the per-attempt timeout is longer, so it never fires first.
+async function call(request, { ms = 120_000, retry = "any" } = {}) {
+  const signal = AbortSignal.timeout(ms);
+  for (let attempt = 1; ; attempt++) {
+    try {
+      return await request({ timeout: ms + 5_000, signal, maxRetries: retry === "any" ? 2 : 0 });
+    } catch (error) {
+      if (error instanceof APIUserAbortError) throw new Error(`timed out after ${ms / 1000}s`);
+      if (retry !== "answered" || attempt === 3 || !retryable(error)) throw error;
+      // Out of time before the next attempt, the API's error says more than a timeout would.
+      await sleep(500 * 2 ** attempt, undefined, { signal }).catch(() => { throw error; });
+    }
   }
 }
 
@@ -29,7 +39,7 @@ export const BROWSER = {
 // Captures exactly BROWSER.telemetry's categories, plus the ones the API always captures. The
 // profile is loaded without saving changes, so trials never change it.
 export async function createBrowser({ startUrl, timeoutSec, tags, stealth, profile, extension }) {
-  const browser = await within(120_000, options => client().browsers.create({
+  const browser = await call(options => client().browsers.create({
     start_url: startUrl,
     viewport: BROWSER.viewport,
     telemetry: { browser: Object.fromEntries(BROWSER.telemetry.map(category => [category, { enabled: true }])) },
@@ -38,12 +48,12 @@ export async function createBrowser({ startUrl, timeoutSec, tags, stealth, profi
     ...(profile ? { profile: { name: profile, save_changes: false } } : {}),
     ...(extension ? { extensions: [{ name: extension.name }] } : {}),
     tags,
-  }, options));
+  }, options), { retry: "answered" });
   return browser.session_id;
 }
 
 async function execute(id, code, timeoutSec) {
-  const response = await within((timeoutSec + 30) * 1000, options => client().browsers.playwright.execute(id, { code, timeout_sec: timeoutSec }, options));
+  const response = await call(options => client().browsers.playwright.execute(id, { code, timeout_sec: timeoutSec }, options), { ms: (timeoutSec + 30) * 1000, retry: "answered" });
   if (!response.success) throw new Error((response.error ?? "unknown error").split("\n")[0]);
   return response.result;
 }
@@ -90,7 +100,7 @@ export async function navigations(id, sinceMs) {
   const query = { category: ["page"], since: new Date(sinceMs).toISOString(), limit: 100 };
   const found = [];
   for (let offset = null, pages = 0; pages < 1000; pages++) {
-    const page = await client().browsers.telemetry.events(id, offset ? { ...query, offset } : query);
+    const page = await call(options => client().browsers.telemetry.events(id, offset ? { ...query, offset } : query, options));
     for (const { event } of page.getPaginatedItems()) {
       if (event.type === "page_navigation" && !event.data?.parent_frame_id) found.push({ at: event.ts / 1000, url: event.data.url });
     }
@@ -103,41 +113,43 @@ export async function navigations(id, sinceMs) {
 // Uploads an extension directory under its name unless Kernel already has it.
 export async function ensureExtension({ name, dir }) {
   try {
-    await client().extensions.get(name);
+    await call(options => client().extensions.get(name, options));
   } catch (error) {
     if (!(error instanceof NotFoundError)) throw error;
-    await client().extensions.upload({ file: await toFile(zipDirectory(dir), `${name}.zip`), name });
+    const file = await toFile(zipDirectory(dir), `${name}.zip`);
+    await call(options => client().extensions.upload({ file, name }, options));
   }
 }
 
+// A lost response may hide a change the API made, so adding and removing are never retried.
 export async function addCustomTools(id, namespace, sourceFile) {
   const source = readFileSync(sourceFile, "utf8");
-  return (await client().browsers.webmcp.customTools.add(id, { namespace, source, force_overwrite_namespace: true })).tools ?? [];
+  return (await call(options => client().browsers.webmcp.customTools.add(id, { namespace, source, force_overwrite_namespace: true }, options), { retry: "none" })).tools ?? [];
 }
 
 export async function listCustomTools(id) {
-  return (await client().browsers.webmcp.customTools.list(id)).tools ?? [];
+  return (await call(options => client().browsers.webmcp.customTools.list(id, options))).tools ?? [];
 }
 
 export async function removeCustomTool(id, toolId) {
-  await client().browsers.webmcp.customTools.remove(toolId, { id_or_name: id });
+  await call(options => client().browsers.webmcp.customTools.remove(toolId, { id_or_name: id }, options), { retry: "none" });
 }
 
 export async function listLiveTools(id) {
-  return (await client().browsers.webmcp.listTools(id)).tools ?? [];
+  return (await call(options => client().browsers.webmcp.listTools(id, {}, options))).tools ?? [];
 }
 
 // The tool's output. A lost response can hide completed side effects, so an invocation is never
 // retried.
 export async function invokeTool(id, toolRef, input) {
-  const result = await client().browsers.webmcp.invokeTool(id, { tool_ref: toolRef, input }, { maxRetries: 0 });
+  const result = await call(options => client().browsers.webmcp.invokeTool(id, { tool_ref: toolRef, input }, options), { retry: "none" });
   if (result.status !== "completed" && result.status !== "awaiting_submission") throw new Error(`${result.status}: ${result.error_text ?? ""}`);
   return result.output;
 }
 
 export async function profileId(name) {
   try {
-    return (await client().profiles.retrieve(name)).id;
+    return (await call(options => client().profiles.retrieve(name, options))).id;
   } catch (error) {
     if (error instanceof NotFoundError) return null;
     throw error;
@@ -145,5 +157,5 @@ export async function profileId(name) {
 }
 
 export async function deleteBrowser(id) {
-  await client().browsers.deleteByID(id);
+  await call(options => client().browsers.deleteByID(id, options));
 }

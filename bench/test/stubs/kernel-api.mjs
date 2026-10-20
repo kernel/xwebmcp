@@ -14,12 +14,15 @@ import { createServer } from "node:http";
 const stateFile = process.env.STUB_STATE;
 
 async function handle(request, url, body) {
+  const route = `${request.method} ${url.pathname}`;
+  // Read before the state, so no other request can change the state in between.
+  const form = route === "POST /extensions" ? await new Response(body, { headers: { "content-type": request.headers["content-type"] } }).formData() : null;
+  const zip = form && Buffer.from(await form.get("file").arrayBuffer());
   const state = JSON.parse(readFileSync(stateFile, "utf8"));
   const save = () => writeFileSync(stateFile, JSON.stringify(state));
   const log = (entry) => { state.log.push(entry); save(); };
   const env = state.env ?? {};
   const listed = (name, arm) => (env[name] ?? "").split(",").includes(arm);
-  const route = `${request.method} ${url.pathname}`;
   let m;
 
   if ((m = /^GET \/profiles\/([^/]+)$/.exec(route))) return [200, { id: `profile-${m[1]}`, name: m[1] }];
@@ -27,9 +30,7 @@ async function handle(request, url, body) {
     return state.extensions?.includes(m[1]) ? [200, { name: m[1] }] : [404, { code: "not_found", message: "extension not found" }];
   }
   if (route === "POST /extensions") {
-    const form = await new Response(body, { headers: { "content-type": request.headers["content-type"] } }).formData();
     const name = form.get("name");
-    const zip = Buffer.from(await form.get("file").arrayBuffer());
     if (zip.readUInt32LE(0) !== 0x04034b50 || !zip.includes("manifest.json")) return [400, { code: "bad_request", message: "not a ZIP with a manifest.json" }];
     state.extensions = [...(state.extensions ?? []), name];
     log(["upload", name]);
@@ -106,7 +107,9 @@ const server = createServer((request, response) => {
   request.on("data", chunk => chunks.push(chunk));
   request.on("end", async () => {
     const url = new URL(request.url, "http://stub");
-    const [status, json, headers = {}] = await handle(request, url, Buffer.concat(chunks));
+    // A request the stub cannot handle fails on its own, rather than taking the stub down and
+    // leaving the test to time out.
+    const [status, json, headers = {}] = await handle(request, url, Buffer.concat(chunks)).catch(error => [400, { code: "bad_request", message: `stub: ${error.stack}` }]);
     response.writeHead(status, json === undefined ? headers : { "content-type": "application/json", ...headers });
     response.end(json === undefined ? undefined : JSON.stringify(json));
   });
