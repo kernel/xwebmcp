@@ -8,7 +8,7 @@ import { crc32 } from "node:zlib";
 const DOS_DATE = (1 << 5) | 1; // 1980-01-01
 
 function files(dir, root = dir) {
-  return readdirSync(dir, { withFileTypes: true }).sort((a, b) => a.name.localeCompare(b.name)).flatMap(entry => {
+  return readdirSync(dir, { withFileTypes: true }).sort((a, b) => (a.name < b.name ? -1 : 1)).flatMap(entry => {
     const path = join(dir, entry.name);
     return entry.isDirectory() ? files(path, root) : [{ name: relative(root, path).split(sep).join("/"), data: readFileSync(path) }];
   });

@@ -1,5 +1,5 @@
 import { readFileSync } from "node:fs";
-import Kernel, { NotFoundError, toFile } from "@onkernel/sdk";
+import Kernel, { APIUserAbortError, NotFoundError, toFile } from "@onkernel/sdk";
 import { VERSION } from "@onkernel/sdk/version";
 import { zipDirectory } from "./zip.mjs";
 
@@ -9,6 +9,18 @@ export const SDK_VERSION = `@onkernel/sdk ${VERSION}`;
 let kernel = null;
 const client = () => (kernel ??= new Kernel({ timeout: 120_000 }));
 
+// A request with no response may still have made a browser or run page code, which a retry would
+// repeat, so `ms` bounds every attempt together and only errors the API answered with are retried.
+// The per-attempt timeout is longer, so it never fires first.
+async function within(ms, request) {
+  try {
+    return await request({ timeout: ms + 5_000, signal: AbortSignal.timeout(ms) });
+  } catch (error) {
+    if (error instanceof APIUserAbortError) throw new Error(`no response in ${ms / 1000}s`);
+    throw error;
+  }
+}
+
 export const BROWSER = {
   viewport: { width: 1920, height: 1080, refresh_rate: 25 },
   telemetry: ["network", "page", "interaction", "control", "captcha"],
@@ -17,7 +29,7 @@ export const BROWSER = {
 // Captures exactly BROWSER.telemetry's categories, plus the ones the API always captures. The
 // profile is loaded without saving changes, so trials never change it.
 export async function createBrowser({ startUrl, timeoutSec, tags, stealth, profile, extension }) {
-  const browser = await client().browsers.create({
+  const browser = await within(120_000, options => client().browsers.create({
     start_url: startUrl,
     viewport: BROWSER.viewport,
     telemetry: { browser: Object.fromEntries(BROWSER.telemetry.map(category => [category, { enabled: true }])) },
@@ -26,12 +38,12 @@ export async function createBrowser({ startUrl, timeoutSec, tags, stealth, profi
     ...(profile ? { profile: { name: profile, save_changes: false } } : {}),
     ...(extension ? { extensions: [{ name: extension.name }] } : {}),
     tags,
-  });
+  }, options));
   return browser.session_id;
 }
 
 async function execute(id, code, timeoutSec) {
-  const response = await client().browsers.playwright.execute(id, { code, timeout_sec: timeoutSec }, { timeout: (timeoutSec + 30) * 1000 });
+  const response = await within((timeoutSec + 30) * 1000, options => client().browsers.playwright.execute(id, { code, timeout_sec: timeoutSec }, options));
   if (!response.success) throw new Error((response.error ?? "unknown error").split("\n")[0]);
   return response.result;
 }

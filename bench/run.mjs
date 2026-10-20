@@ -336,6 +336,7 @@ async function smokeGate(plan, probe, signedIn) {
   if (plan.agent && plan.agent !== agent) fail(`run ${runId} started with ${plan.agent}, but this machine has ${agent}; install that version or start a new run`);
   plan.agent = agent;
   if (plan.backend === "kernel") {
+    if (plan.kernel_cli && !plan.kernel_sdk) log(`warning: run ${runId} started with ${plan.kernel_cli}, and this checkout drives Kernel through ${kernel.SDK_VERSION}`);
     if (plan.kernel_sdk && plan.kernel_sdk !== kernel.SDK_VERSION) log(`warning: run ${runId} started with ${plan.kernel_sdk}, and this checkout has ${kernel.SDK_VERSION}`);
     plan.kernel_sdk ??= kernel.SDK_VERSION;
   }
