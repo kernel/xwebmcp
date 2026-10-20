@@ -2318,11 +2318,17 @@
       "file": "domains/myntra.com/add_to_cart.js",
       "kind": "page",
       "namespace": "myntra.com",
-      "url_patterns": ["https://myntra.com/*", "https://*.myntra.com/*"],
+      "url_patterns": [
+        "https://myntra.com/*",
+        "https://*.myntra.com/*"
+      ],
       "status": "qa_passed",
       "last_verified": "2026-09-30",
       "notes": "Guest-only add of one ordinary SKU with price, stock, duplicate and session guards. Mutation success is fixture-only; never automatically retry unknown outcomes.",
-      "provenance": { "qa_agent": "agt_14295d5c1a9f9887b0e9", "qa_commit": "645a1945ee3d937a87f5e962c837ab4e1f98148d" }
+      "provenance": {
+        "qa_agent": "agt_14295d5c1a9f9887b0e9",
+        "qa_commit": "645a1945ee3d937a87f5e962c837ab4e1f98148d"
+      }
     },
     {
       "domain": "myntra.com",
@@ -2330,11 +2336,17 @@
       "file": "domains/myntra.com/get_cart.js",
       "kind": "page",
       "namespace": "myntra.com",
-      "url_patterns": ["https://myntra.com/*", "https://*.myntra.com/*"],
+      "url_patterns": [
+        "https://myntra.com/*",
+        "https://*.myntra.com/*"
+      ],
       "status": "verified",
       "last_verified": "2026-09-30",
       "notes": "Read the default signed-out guest bag; at most 100 allowlisted lines. Signed-in bags and changed available guest identity are refused. Live empty-bag success; populated bags are fixture-only.",
-      "provenance": { "qa_agent": "agt_14295d5c1a9f9887b0e9", "qa_commit": "645a1945ee3d937a87f5e962c837ab4e1f98148d" }
+      "provenance": {
+        "qa_agent": "agt_14295d5c1a9f9887b0e9",
+        "qa_commit": "645a1945ee3d937a87f5e962c837ab4e1f98148d"
+      }
     },
     {
       "domain": "myntra.com",
@@ -2376,11 +2388,17 @@
       "file": "domains/myntra.com/remove_cart_item.js",
       "kind": "page",
       "namespace": "myntra.com",
-      "url_patterns": ["https://myntra.com/*", "https://*.myntra.com/*"],
+      "url_patterns": [
+        "https://myntra.com/*",
+        "https://*.myntra.com/*"
+      ],
       "status": "qa_passed",
       "last_verified": "2026-09-30",
       "notes": "Guest-only removal by exact item/style/SKU and expected quantity. Fresh absence and unrelated-line checks; fixture-only mutation success.",
-      "provenance": { "qa_agent": "agt_14295d5c1a9f9887b0e9", "qa_commit": "645a1945ee3d937a87f5e962c837ab4e1f98148d" }
+      "provenance": {
+        "qa_agent": "agt_14295d5c1a9f9887b0e9",
+        "qa_commit": "645a1945ee3d937a87f5e962c837ab4e1f98148d"
+      }
     },
     {
       "domain": "myntra.com",
@@ -2405,11 +2423,17 @@
       "file": "domains/myntra.com/update_cart_item.js",
       "kind": "page",
       "namespace": "myntra.com",
-      "url_patterns": ["https://myntra.com/*", "https://*.myntra.com/*"],
+      "url_patterns": [
+        "https://myntra.com/*",
+        "https://*.myntra.com/*"
+      ],
       "status": "qa_passed",
       "last_verified": "2026-09-30",
       "notes": "Guest-only absolute quantity 1–10 with stale-state, seller, stock and unrelated-line guards. Fixture-only mutation success.",
-      "provenance": { "qa_agent": "agt_14295d5c1a9f9887b0e9", "qa_commit": "645a1945ee3d937a87f5e962c837ab4e1f98148d" }
+      "provenance": {
+        "qa_agent": "agt_14295d5c1a9f9887b0e9",
+        "qa_commit": "645a1945ee3d937a87f5e962c837ab4e1f98148d"
+      }
     },
     {
       "domain": "purelymail.com",
