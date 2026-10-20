@@ -149,6 +149,16 @@ test("waiting for a page to load is retried only after an error the API answered
   assert.equal(hits[route], 2);
 });
 
+test("a call is tried at most three times", async () => {
+  const retryNow = { status: 503, headers: { "retry-after-ms": "0" } };
+  run({ "GET /browsers/b1/webmcp/custom-tools": [retryNow, retryNow, retryNow, 200] });
+  await assert.rejects(kernel.listCustomTools("b1"), { status: 503 });
+  assert.equal(hits["GET /browsers/b1/webmcp/custom-tools"], 3);
+
+  run({ "GET /browsers/b1/webmcp/custom-tools": [retryNow, retryNow, 200] });
+  assert.deepEqual(await kernel.listCustomTools("b1"), []);
+});
+
 test("deleting a browser that is already gone succeeds", async () => {
   run({ "DELETE /browsers/b1": ["drop", 404] });
   await kernel.deleteBrowser("b1");
