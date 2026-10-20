@@ -1523,6 +1523,7 @@
       "url_patterns": [
         "https://www.exploretock.com/*"
       ],
+      "url_patterns_reason": "Narrowed to www.exploretock.com, Tock's guest reservation site: the tools read its city, venue and offering pages and same-origin endpoints and refuse other origins; other exploretock.com hosts are not the guest site.",
       "status": "verified",
       "last_verified": "2026-09-30",
       "notes": "Opens the exact offering page and returns slots, Book versus Notify, seating areas, raw pricing and calendar dates. Table reservations only; pickup, delivery and events return unsupported_offering. Never clicks Book, Notify or a slot. Missing destination date/size fails closed. Final-source QA succeeded in Kernel and the local extension, but another public offering hit an unresponsive Kernel renderer and a local challenge; neither was retried or bypassed.",
@@ -1540,6 +1541,7 @@
       "url_patterns": [
         "https://www.exploretock.com/*"
       ],
+      "url_patterns_reason": "Narrowed to www.exploretock.com, Tock's guest reservation site: the tools read its city, venue and offering pages and same-origin endpoints and refuse other origins; other exploretock.com hosts are not the guest site.",
       "status": "verified",
       "last_verified": "2026-09-30",
       "notes": "One public venue's profile, service hours, booking flags and offerings, including currency and bounded published event schedules. Same-origin SSR fetch without navigation; no session/account data or potentially signed external links returned. Published dates and recurrence flags are not ticket inventory; only table offerings support get_availability.",
@@ -1557,6 +1559,7 @@
       "url_patterns": [
         "https://www.exploretock.com/*"
       ],
+      "url_patterns_reason": "Narrowed to www.exploretock.com, Tock's guest reservation site: the tools read its city, venue and offering pages and same-origin endpoints and refuse other origins; other exploretock.com hosts are not the guest site.",
       "status": "qa_passed",
       "last_verified": "2026-09-30",
       "notes": "Read-only exact-slot preparation on the already loaded offering page. Requires matching venue, offering, date and party size, a visible enabled Book time and unambiguous seating. Live preparation passed in both runtimes; off-entry-page success is intentionally unsupported. No holds, bookings, payments or Notify submission. Account, final total and terms need manual checks; final execution lacks a trusted human approval path. Invisible background content is refused.",
@@ -1574,6 +1577,7 @@
       "url_patterns": [
         "https://www.exploretock.com/*"
       ],
+      "url_patterns_reason": "Narrowed to www.exploretock.com, Tock's guest reservation site: the tools read its city, venue and offering pages and same-origin endpoints and refuse other origins; other exploretock.com hosts are not the guest site.",
       "status": "verified",
       "last_verified": "2026-09-30",
       "notes": "Public ticketed-event search in a Tock city over at most 31 days, fetched same-origin without navigation. Venue pagination, event ids, descriptions, currency, raw prices and first ten chronological search times. No ticket purchase or inventory hold; search times do not guarantee remaining quantity.",
@@ -1591,6 +1595,7 @@
       "url_patterns": [
         "https://www.exploretock.com/*"
       ],
+      "url_patterns_reason": "Narrowed to www.exploretock.com, Tock's guest reservation site: the tools read its city, venue and offering pages and same-origin endpoints and refuse other origins; other exploretock.com hosts are not the guest site.",
       "status": "verified",
       "last_verified": "2026-09-30",
       "notes": "Page tool on www.exploretock.com: dine-in or winery search in one Tock city for a date, party size and time via the site's server-rendered search page, fetched same-origin without navigating. Results follow the site's relevance order, which can change between calls, and can include venues outside the city; times are the ten nearest the request per offering, not the whole day.",
