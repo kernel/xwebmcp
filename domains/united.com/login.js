@@ -3,7 +3,7 @@
   match: { url_patterns: ["https://united.com/*", "https://*.united.com/*"] },
   tool: {
     name: "login",
-    description: "Sign in to United using email or MileagePlus number and password. Performs at most one submission per stage, never retries, and stops at challenges. logged_in=true means a submission in this invocation reached authenticated or MFA UI, NOT necessarily completed MFA; inspect authentication_complete. Existing sessions without account binding are rejected. prefilled_password submits a password securely filled by the human or vault without reading it. otp continues an already visible code step. Does not select an MFA delivery method or resend codes.",
+    description: "Sign in to United using email or MileagePlus number and password. Performs at most one submission per stage, never retries, and stops at challenges. When United remembers an account (masked number and password field only), credentials mode signs in only if the masked suffix matches the identifier and never switches accounts. logged_in=true means a submission in this invocation reached authenticated or MFA UI, NOT necessarily completed MFA; inspect authentication_complete. Existing sessions without account binding are rejected. prefilled_password submits a password securely filled by the human or vault without reading it. otp continues an already visible code step. Does not select an MFA delivery method or resend codes.",
     inputSchema: {
       type: "object", additionalProperties: false,
       properties: {
@@ -71,7 +71,11 @@
       const visible = e => !!e && e.getClientRects().length > 0 && getComputedStyle(e).visibility !== "hidden";
       const id = document.querySelector("#MPIDEmailField");
       const pw = document.querySelector("#password");
-      const code = [...document.querySelectorAll('input[autocomplete="one-time-code"]')].filter(visible);
+      // One field (autocomplete=one-time-code) or one box per digit ("Enter digit 1 of 6").
+      const label = e => (e.getAttribute('aria-label') || e.labels?.[0]?.innerText || '').replace(/\s+/g, ' ');
+      const single = [...document.querySelectorAll('input[autocomplete="one-time-code"]')].filter(visible);
+      const digits = [...document.querySelectorAll('input')].filter(e => visible(e) && /digit \d+ of \d+/i.test(label(e)));
+      const code = single.length ? single : digits;
       const field = [pw, id, ...code].find(visible);
       const scope = field?.closest('[role="dialog"]') || field?.closest('form')?.parentElement || [...document.querySelectorAll('[role="dialog"]')].find(visible);
       const content = scope?.innerText || "";
@@ -82,9 +86,11 @@
       const challenge = [...headings, ...alerts].find(t => /verify (?:that )?you(?:'re| are) human|access denied|unusual traffic|security check|complete (?:the|this) captcha/i.test(t));
       const challengeFrame = [...document.querySelectorAll('iframe')].find(e => visible(e) && /(?:captcha|challenge)/i.test(e.title) && e.getBoundingClientRect().height > 70);
       const errors = uniqueAlerts.filter(t => /wrong|invalid|incorrect|unable|try again|locked|too many|expired|attempts? (?:left|remaining)|does not match|not recognized|not match/i.test(t));
-      const signout = controls.find(t => /^(?:sign out|log out)$/i.test(t));
-      const mfaText = [...headings, ...content.split('\n')].find(t => /we(?:'ve| have)? sent (?:you )?(?:a |an |the )?(?:verification |security |one.time )?code|enter (?:the |your )?(?:six.digit|6.digit|verification|one.time|security) (?:code|passcode)|choose (?:how|where) .*code|verify your identity/i.test(t));
-      return { url: location.href, origin: location.origin, idVisible: visible(id), pwVisible: visible(pw), pwFilled: visible(pw) && pw.value.length > 0, account: document.querySelector('input#username')?.value || null, codeCount: code.length, errors: [...new Set(errors)], challenge: challenge || (challengeFrame ? challengeFrame.title : null), signout, mfaText };
+      // United shows "Hi, <name>" in the header when signed in; Sign out sits in a closed menu.
+      const greeting = /\bHi,\s/.test(document.querySelector('header')?.innerText || '') ? 'header greeting (signed in)' : null;
+      const signout = controls.find(t => /^(?:sign out|log out)$/i.test(t)) || greeting;
+      const mfaText = [...headings, ...alerts, ...content.split('\n')].find(t => /we(?:'ve| have)? sent (?:you )?(?:a |an |the )?(?:verification |security |one.time )?code|enter (?:the |your )?(?:six.digit|6.digit|verification|one.time|security) (?:code|passcode)|enter code|choose (?:how|where) .*code|verify your identity/i.test(t));
+      return { url: location.href, origin: location.origin, idVisible: visible(id), pwVisible: visible(pw), pwFilled: visible(pw) && pw.value.length > 0, account: document.querySelector('input#username')?.value || null, maskedAccount: ([...document.querySelectorAll('main *, form *')].filter(e => !e.children.length && e.getClientRects().length).map(e => (e.textContent || '').trim()).find(t => /^[*•]{3,}[A-Za-z0-9]{2,4}$/.test(t)) || null), codeCount: code.length, digitBoxes: single.length ? 0 : digits.length, errors: [...new Set(errors)], challenge: challenge || (challengeFrame ? challengeFrame.title : null), signout, mfaText };
     });
     const outcome = s => {
       if (s.origin !== "https://www.united.com") return fail("unknown", "Navigation left the approved United origin; stopped.");
@@ -96,7 +102,7 @@
       }
       if ((s.signout || s.mfaText) && !s.pwVisible && !s.idVisible && !submittedPassword && !submittedOtp) return fail("unknown", "An existing authentication state is visible, but it is not bound to the requested account. No submission was made.");
       if (s.signout && !s.pwVisible && !s.idVisible && !s.codeCount && !s.mfaText) return { logged_in: true, authentication_complete: true, landing_url: s.url, account_name_or_hint: null, mfa_required: false, next_step: "done", evidence: s.signout };
-      if (s.mfaText && !s.pwVisible && !s.idVisible) return { logged_in: true, authentication_complete: false, landing_url: s.url, account_name_or_hint: null, mfa_required: true, next_step: s.codeCount === 1 ? "enter_otp" : /choose/i.test(s.mfaText) ? "choose_mfa_method" : "complete_additional_verification", evidence: s.mfaText };
+      if (s.mfaText && !s.pwVisible && !s.idVisible) return { logged_in: true, authentication_complete: false, landing_url: s.url, account_name_or_hint: null, mfa_required: true, next_step: s.codeCount === 1 || s.digitBoxes === 6 ? "enter_otp" : /choose/i.test(s.mfaText) ? "choose_mfa_method" : "complete_additional_verification", evidence: s.mfaText };
       return null;
     };
     const poll = async predicate => {
@@ -163,12 +169,21 @@
           const initial = outcome(s);
           if (initial) return initial;
         }
-        if (!s?.idVisible) {
+        if (!s?.idVisible && !(s?.pwVisible && s?.maskedAccount)) {
           await gotoUrl(entryUrl);
-          s = await poll(x => x.origin === "https://www.united.com" && (x.idVisible || !!outcome(x)));
+          s = await poll(x => x.origin === "https://www.united.com" && (x.idVisible || (x.pwVisible && !!x.maskedAccount) || !!outcome(x)));
         }
         if (!s) return fail("unknown", "Login form did not become ready. No credentials were submitted.");
         if (outcome(s)) return outcome(s);
+        // United may remember the last account and show only its masked number ("*****501") with a password field.
+        // Continue only when the visible suffix matches the requested identifier; never switch accounts.
+        const remembered = !s.idVisible && s.pwVisible && s.maskedAccount;
+        if (remembered) {
+          const suffix = s.maskedAccount.replace(/^[*•]+/, "").toLowerCase();
+          if (!identifier.trim().toLowerCase().endsWith(suffix)) return fail("invalid_input", "United remembers a different MileagePlus account on this sign-in page; the user must choose Switch accounts. No credentials were submitted.");
+          await js(() => { const e = document.querySelector('#password'); Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(e, ''); e.dispatchEvent(new Event('input', { bubbles: true })); });
+          await fillInput('#password', password);
+        } else {
         await fillInput('#MPIDEmailField', identifier);
         if (!await submit('#MPIDEmailField')) return fail("unknown", "Could not identify one enabled Continue button. No identifier submission was made.");
         if (networkFailure) return networkFailure;
@@ -176,12 +191,36 @@
         if (!s) return fail("unknown", "Identifier result timed out; do not automatically retry.");
         if (outcome(s)) return outcome(s);
         await fillInput('#password', password);
+        }
       } else if (mode === "otp") {
         s = await read();
         if (s.challenge) return outcome(s);
-        if (s.origin !== "https://www.united.com" || s.codeCount !== 1 || !s.mfaText || s.pwVisible || s.idVisible) return fail("unknown", "A supported single-field verification step is not visible; no code was submitted.");
-        await fillInput('input[autocomplete="one-time-code"]', otp);
-        if (!await submit('input[autocomplete="one-time-code"]')) return fail("unknown", "Could not identify one enabled verification button; no code was submitted.");
+        const singleField = s.codeCount === 1 && !s.digitBoxes;
+        if (s.origin !== "https://www.united.com" || !(singleField || s.digitBoxes === 6) || !s.mfaText || s.pwVisible || s.idVisible) return fail("unknown", "A supported verification step (one code field or six digit boxes) is not visible; no code was submitted.");
+        let codeSelector = 'input[autocomplete="one-time-code"]';
+        if (singleField) {
+          await fillInput(codeSelector, otp);
+        } else {
+          // Mark the six digit boxes in order, then type one digit into each.
+          const marked = await js(() => {
+            const boxes = [...document.querySelectorAll('input')].filter(e => e.getClientRects().length && /digit \d+ of 6/i.test(e.getAttribute('aria-label') || e.labels?.[0]?.innerText || ''));
+            boxes.forEach((b, i) => b.setAttribute('data-airline-otp-digit', String(i)));
+            return boxes.length;
+          });
+          if (marked !== 6) return fail("unknown", "The six verification digit boxes changed; no code was submitted.");
+          // United auto-advances focus box to box, so type the code like a person: clear the
+          // boxes, click the first one, press each digit, then check all six hold a digit.
+          await js(() => document.querySelectorAll('[data-airline-otp-digit]').forEach((b) => {
+            Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(b, '');
+            b.dispatchEvent(new Event('input', { bubbles: true }));
+          }));
+          await click('[data-airline-otp-digit="0"]');
+          for (const digit of otp) { await pressKey(digit); await waitMs(120); }
+          const filled = await js(() => [...document.querySelectorAll('[data-airline-otp-digit]')].map((b) => b.value).join(''));
+          if (filled.length !== 6) return fail("unknown", "Only " + filled.length + " of 6 verification digits were accepted; no code was submitted.");
+          codeSelector = '[data-airline-otp-digit="0"]';
+        }
+        if (!await submit(codeSelector)) return fail("unknown", "Could not identify one enabled verification button; no code was submitted.");
         if (networkFailure) return networkFailure;
         submittedOtp = true;
         s = await poll(x => !!outcome(x) && (!x.codeCount || x.errors.length > 0 || !!x.challenge));

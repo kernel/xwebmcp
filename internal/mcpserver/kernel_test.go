@@ -5,13 +5,12 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
-	"strings"
 	"testing"
 
 	"github.com/kernel/xwebmcp/internal/kernelapi"
 )
 
-func TestKernelTargetUsesRequestedTab(t *testing.T) {
+func TestKernelTargetInvokesByToolRef(t *testing.T) {
 	var invoked, replCode string
 	noTools := false
 	mux := http.NewServeMux()
@@ -49,19 +48,12 @@ func TestKernelTargetUsesRequestedTab(t *testing.T) {
 	defer srv.Close()
 	target := NewKernelTarget(&kernelapi.Client{BaseURL: srv.URL, APIKey: "test", HTTP: srv.Client()}, "b1")
 	ctx := context.Background()
-	params := InvokeParams{Namespace: "example.test", Name: "probe", TabID: 2, Input: json.RawMessage(`{}`)}
-	if _, err := target.Invoke(ctx, params); err != nil || invoked != "second" {
-		t.Fatalf("invoke tab 2: ref %q, error %v", invoked, err)
+	if _, err := target.Invoke(ctx, InvokeParams{ToolRef: "second", Input: json.RawMessage(`{}`)}); err != nil || invoked != "second" || replCode != "" {
+		t.Fatalf("invoke by tool_ref: ref %q, REPL %q, error %v", invoked, replCode, err)
 	}
-	params.TabID = 9
-	if _, err := target.Invoke(ctx, params); err == nil || !strings.Contains(err.Error(), "not available in tab 9") || replCode != "" {
-		t.Fatalf("missing tab: %v, REPL %q", err, replCode)
-	}
-	params.TabID = 0
-	noTools = true
-	// A new matching registration only appears after the REPL creates a tab.
-	if _, err := target.Invoke(ctx, params); err != nil || invoked != "after" || !strings.Contains(replCode, "newTab(") || strings.Contains(replCode, "ensureRealTab") {
-		t.Fatalf("invoke new tab: ref %q, REPL %q, error %v", invoked, replCode, err)
+	raw, err := target.ListTools(ctx, ListToolsParams{ExcludeCustom: true})
+	if err != nil || string(raw) != "[]" {
+		t.Fatalf("exclude_custom = %s, %v", raw, err)
 	}
 	if _, err := target.OpenTab(ctx, "https://example.test/"); err == nil {
 		t.Fatal("open_tab must not return a fabricated numeric tab ID")

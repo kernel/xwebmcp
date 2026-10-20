@@ -1,0 +1,19 @@
+{
+  "id": "amazon-product-details",
+  "domain": "amazon.com",
+  "stage": "inspect",
+  "prompt": "On amazon.com, look up the product with ASIN {{asin}}: its title as the product, its current price, who sells it, its average star rating and how many ratings it has. Reply with JSON: {\"product\": string, \"price\": number in US dollars, \"seller\": string, \"rating\": number, \"ratings\": integer}.",
+  "fixture": {"asin": "B088NRLMPV"},
+  "start_url": "https://www.amazon.com/",
+  "tools": [{"repo": "kernel/xwebmcp", "ref": "hypeship/amazon-search-product-bestsellers", "pr": 56}],
+  "answer_schema": "schemas/asin-product-details.json",
+  "rules": [
+    {"path": "product", "matches": "anker"},
+    {"path": "price", "range": [3, 40]},
+    {"path": "rating", "range": [3.5, 5]},
+    {"path": "ratings", "range": [1000, 10000000]}
+  ],
+  "pairs": 5,
+  "trial_timeout_sec": 600,
+  "max_turns": 40
+}

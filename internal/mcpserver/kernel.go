@@ -4,9 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"strings"
-	"time"
 
 	"github.com/kernel/xwebmcp/internal/kernelapi"
 )
@@ -30,7 +28,7 @@ func (t *KernelTarget) ListTools(ctx context.Context, params ListToolsParams) (j
 	if err != nil {
 		return nil, err
 	}
-	if params.TabID == 0 {
+	if !params.ExcludeCustom {
 		return raw, nil
 	}
 	var tools []map[string]json.RawMessage
@@ -40,9 +38,9 @@ func (t *KernelTarget) ListTools(ctx context.Context, params ListToolsParams) (j
 	filtered := make([]map[string]json.RawMessage, 0)
 	for _, tool := range tools {
 		var source struct {
-			TabID int `json:"tab_id"`
+			Custom json.RawMessage `json:"custom"`
 		}
-		if json.Unmarshal(tool["source"], &source) == nil && source.TabID == params.TabID {
+		if json.Unmarshal(tool["source"], &source) == nil && len(source.Custom) == 0 {
 			filtered = append(filtered, tool)
 		}
 	}
@@ -50,19 +48,11 @@ func (t *KernelTarget) ListTools(ctx context.Context, params ListToolsParams) (j
 }
 
 func (t *KernelTarget) Invoke(ctx context.Context, params InvokeParams) (*Invocation, error) {
-	toolRef := params.ToolRef
-	if toolRef == "" {
-		ref, err := t.liveRef(ctx, params.Namespace, params.Name, params.TabID)
-		if err != nil {
-			return nil, err
-		}
-		toolRef = ref
-	}
 	timeout := params.TimeoutSec
 	if timeout <= 0 || timeout > 120 {
 		timeout = 120
 	}
-	res, err := t.client.Invoke(ctx, t.browser, toolRef, params.Input, timeout)
+	res, err := t.client.Invoke(ctx, t.browser, params.ToolRef, params.Input, timeout)
 	if err != nil {
 		var apiErr *kernelapi.APIError
 		if errors.As(err, &apiErr) && apiErr.Code == "outcome_unknown" {
@@ -71,57 +61,6 @@ func (t *KernelTarget) Invoke(ctx context.Context, params InvokeParams) (*Invoca
 		return nil, err
 	}
 	return &Invocation{InvocationID: res.InvocationID, Status: res.Status, Output: res.Output, ErrorText: res.ErrorText}, nil
-}
-
-// liveRef finds the live registration of an installed tool, opening the
-// namespace's site in the browser when no tab exposes it yet.
-func (t *KernelTarget) liveRef(ctx context.Context, namespace, name string, tabID int) (string, error) {
-	definitions, err := t.client.ListCustomTools(ctx, t.browser)
-	if err != nil {
-		return "", err
-	}
-	var definition *kernelapi.CustomTool
-	for i := range definitions {
-		if definitions[i].Namespace == namespace && definitions[i].Tool.Name == name {
-			definition = &definitions[i]
-			break
-		}
-	}
-	if definition == nil {
-		return "", fmt.Errorf("custom tool %s/%s is not registered on %s", namespace, name, t.browser)
-	}
-	if ref := t.findRef(ctx, definition.ID, tabID); ref != "" {
-		return ref, nil
-	}
-	if tabID != 0 {
-		return "", fmt.Errorf("custom tool %s/%s is not available in tab %d; navigate that tab before invoking it", namespace, name, tabID)
-	}
-	entry := entryURL(definition.Match.URLPatterns, namespace)
-	code := fmt.Sprintf(`{ await newTab(%[1]s); await waitForLoad(15); }`, jsonString(entry))
-	if _, err := t.client.ExecuteRepl(ctx, t.browser, code, 30); err != nil {
-		return "", fmt.Errorf("open %s: %w", entry, err)
-	}
-	deadline := time.Now().Add(15 * time.Second)
-	for time.Now().Before(deadline) {
-		if ref := t.findRef(ctx, definition.ID, 0); ref != "" {
-			return ref, nil
-		}
-		time.Sleep(500 * time.Millisecond)
-	}
-	return "", fmt.Errorf("custom tool %s/%s did not appear on %s after opening %s", namespace, name, t.browser, entry)
-}
-
-func (t *KernelTarget) findRef(ctx context.Context, id string, tabID int) string {
-	live, err := t.client.ListTools(ctx, t.browser)
-	if err != nil {
-		return ""
-	}
-	for _, tool := range live {
-		if tool.Source.Custom != nil && tool.Source.Custom.ID == id && (tabID == 0 || tool.Source.TabID == tabID) {
-			return tool.ToolRef
-		}
-	}
-	return ""
 }
 
 func entryURL(patterns []string, namespace string) string {

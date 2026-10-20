@@ -1,0 +1,31 @@
+{
+  "id": "steam-game-price",
+  "domain": "steampowered.com",
+  "stage": "inspect",
+  "prompt": "On store.steampowered.com, find {{game}}'s current price in the US store and the overall user review summary Steam shows for it, such as \"Very Positive\". Reply with JSON: {\"game\": string, \"price\": number in US dollars, \"review_summary\": string}.",
+  "fixture": {
+    "game": "Stardew Valley"
+  },
+  "start_url": "https://store.steampowered.com/",
+  "answer_schema": "schemas/game-price.json",
+  "rules": [
+    {
+      "path": "game",
+      "matches": "stardew"
+    },
+    {
+      "path": "price",
+      "range": [
+        1,
+        14.99
+      ]
+    },
+    {
+      "path": "review_summary",
+      "matches": "positive"
+    }
+  ],
+  "pairs": 5,
+  "trial_timeout_sec": 600,
+  "max_turns": 40
+}

@@ -1,0 +1,47 @@
+{
+  "id": "stubhub-cheapest-pair",
+  "domain": "stubhub.com",
+  "stage": "compare",
+  "prompt": "On stubhub.com, find the {{team}}'s first home game at {{venue}} between {{start}} and {{end}}, and the cheapest price per ticket StubHub shows for {{quantity}} tickets together, with estimated fees included. Do not start checkout. Reply with JSON: {\"event\": string, \"date\": \"YYYY-MM-DD\", \"price\": number in US dollars}, the date the venue's local date.",
+  "fixture": {
+    "team": "Golden State Warriors",
+    "venue": "Chase Center",
+    "quantity": 2,
+    "start": {
+      "days_from_start": 2
+    },
+    "end": {
+      "days_from_start": 45
+    }
+  },
+  "start_url": "https://www.stubhub.com/",
+  "answer_schema": "schemas/ticket-price.json",
+  "rules": [
+    {
+      "path": "event",
+      "matches": "warriors"
+    },
+    {
+      "path": "date",
+      "range": [
+        "{{start}}",
+        "{{end}}"
+      ]
+    },
+    {
+      "path": "price",
+      "range": [
+        5,
+        5000
+      ]
+    }
+  ],
+  "agreement": {
+    "path": "price",
+    "better": "lower",
+    "tolerance": 5
+  },
+  "pairs": 5,
+  "trial_timeout_sec": 600,
+  "max_turns": 40
+}

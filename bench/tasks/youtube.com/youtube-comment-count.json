@@ -1,0 +1,23 @@
+{
+  "id": "youtube-comment-count",
+  "domain": "youtube.com",
+  "stage": "gap",
+  "prompt": "On youtube.com, find how many comments the video with id {{video_id}} has, as the count shown above its comments. Reply with JSON: {\"comments\": integer}.",
+  "fixture": {
+    "video_id": "dQw4w9WgXcQ"
+  },
+  "start_url": "https://www.youtube.com/",
+  "answer_schema": "schemas/comment-count.json",
+  "rules": [
+    {
+      "path": "comments",
+      "range": [
+        2000000,
+        4000000
+      ]
+    }
+  ],
+  "pairs": 5,
+  "trial_timeout_sec": 600,
+  "max_turns": 40
+}

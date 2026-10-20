@@ -1,0 +1,22 @@
+{
+  "type": "object",
+  "required": [
+    "property",
+    "review_score",
+    "total"
+  ],
+  "properties": {
+    "property": {
+      "type": "string",
+      "minLength": 1
+    },
+    "review_score": {
+      "type": "number",
+      "minimum": 0
+    },
+    "total": {
+      "type": "number",
+      "exclusiveMinimum": 0
+    }
+  }
+}

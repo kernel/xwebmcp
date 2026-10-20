@@ -1,0 +1,42 @@
+{
+  "id": "airbnb-cheapest-well-rated",
+  "domain": "airbnb.com",
+  "stage": "compare",
+  "prompt": "On airbnb.com, find the cheapest entire place in {{city}} from {{check_in}} to {{check_out}} for 2 adults among listings rated {{min_rating}} or higher. Report the listing's title as the property, its rating and the total price the site shows for the whole stay in US dollars. Reply with JSON: {\"property\": string, \"review_score\": number, \"total\": number}.",
+  "fixture": {
+    "city": "Lisbon, Portugal",
+    "check_in": {
+      "days_from_start": 30
+    },
+    "check_out": {
+      "days_from_start": 32
+    },
+    "min_rating": 4.8
+  },
+  "start_url": "https://www.airbnb.com/",
+  "answer_schema": "schemas/stay-price.json",
+  "rules": [
+    {
+      "path": "review_score",
+      "range": [
+        4.8,
+        5
+      ]
+    },
+    {
+      "path": "total",
+      "range": [
+        20,
+        5000
+      ]
+    }
+  ],
+  "agreement": {
+    "path": "total",
+    "better": "lower",
+    "tolerance": 5
+  },
+  "pairs": 5,
+  "trial_timeout_sec": 600,
+  "max_turns": 40
+}

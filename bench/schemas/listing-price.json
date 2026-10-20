@@ -1,0 +1,22 @@
+{
+  "type": "object",
+  "required": [
+    "title",
+    "price",
+    "seller"
+  ],
+  "properties": {
+    "title": {
+      "type": "string",
+      "minLength": 1
+    },
+    "price": {
+      "type": "number",
+      "exclusiveMinimum": 0
+    },
+    "seller": {
+      "type": "string",
+      "minLength": 1
+    }
+  }
+}

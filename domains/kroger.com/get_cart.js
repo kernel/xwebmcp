@@ -3,7 +3,7 @@
   match: { url_patterns: ["https://kroger.com/*", "https://*.kroger.com/*"] },
   tool: {
     name: "get_cart",
-    description: "Read the signed-in Kroger account's active cart: the store and fulfillment method it is tied to, every line with its UPC, quantity, current price in cents and availability, the items the shopper has saved for later, and the estimated subtotal. If the product lookup that adds descriptions and prices fails, the cart lines are still returned with product_details set to unavailable. Requires a signed-in session (use the login tool first). Never checks out, changes the address or applies coupons. Read-only.",
+    description: "Read the signed-in Kroger account's active cart: the store and fulfillment method it is tied to, every line with its UPC, quantity, current price in cents and availability, each line's substitution policy, the items the shopper has saved for later, and the estimated subtotal. If the product lookup that adds descriptions and prices fails, the cart lines are still returned with product_details set to unavailable. Requires a signed-in session (use the login tool first). Never checks out, changes the address or applies coupons. Read-only.",
     inputSchema: { type: "object", additionalProperties: false, properties: {} },
     outputSchema: {
       type: "object",
@@ -22,24 +22,26 @@
             subtotal_cents: { type: ["integer", "null"], description: "Sum of quantity times current price over active lines, in US cents; null when any line has no price. An estimate, not the checkout total." },
             items: { type: "array", items: {
             type: "object", additionalProperties: false,
-            required: ["line_item_id", "upc", "quantity", "description", "brand", "size", "price_cents", "promo_price_cents", "line_total_cents", "available", "url"],
+            required: ["line_item_id", "upc", "quantity", "description", "brand", "size", "price_cents", "promo_price_cents", "line_total_cents", "available", "url", "substitution_policy"],
             properties: {
               line_item_id: { type: "string", minLength: 1 }, upc: { type: "string", pattern: "^[0-9]{13}$" }, quantity: { type: "integer", minimum: 1 },
               description: { type: ["string", "null"] }, brand: { type: ["string", "null"] }, size: { type: ["string", "null"] },
               price_cents: { type: ["integer", "null"] }, promo_price_cents: { type: ["integer", "null"] },
               line_total_cents: { type: ["integer", "null"], description: "quantity times the current (promotional when applicable) price, in US cents." },
-              available: { type: "boolean" }, url: { type: ["string", "null"] }
+              available: { type: "boolean" }, url: { type: ["string", "null"] },
+              substitution_policy: { type: ["string", "null"], description: "SHOPPER_CHOICE (Best available substitutions allowed) or NONE; change it with set_substitution_preference." }
             }
           } },
             saved_for_later: { type: "array", items: {
             type: "object", additionalProperties: false,
-            required: ["line_item_id", "upc", "quantity", "description", "brand", "size", "price_cents", "promo_price_cents", "line_total_cents", "available", "url"],
+            required: ["line_item_id", "upc", "quantity", "description", "brand", "size", "price_cents", "promo_price_cents", "line_total_cents", "available", "url", "substitution_policy"],
             properties: {
               line_item_id: { type: "string", minLength: 1 }, upc: { type: "string", pattern: "^[0-9]{13}$" }, quantity: { type: "integer", minimum: 1 },
               description: { type: ["string", "null"] }, brand: { type: ["string", "null"] }, size: { type: ["string", "null"] },
               price_cents: { type: ["integer", "null"] }, promo_price_cents: { type: ["integer", "null"] },
               line_total_cents: { type: ["integer", "null"], description: "quantity times the current (promotional when applicable) price, in US cents." },
-              available: { type: "boolean" }, url: { type: ["string", "null"] }
+              available: { type: "boolean" }, url: { type: ["string", "null"] },
+              substitution_policy: { type: ["string", "null"], description: "SHOPPER_CHOICE (Best available substitutions allowed) or NONE; change it with set_substitution_preference." }
             }
           }, description: "Lines the shopper parked; they are not part of the order and the cart tools never change them." },
             product_details: { enum: ["complete", "unavailable"], description: "unavailable when the cart was read but the product lookup failed; descriptions and prices are then null and subtotal_cents is null." },
@@ -177,7 +179,7 @@
         return {
           line_item_id: line.id, upc: line.gtin13, quantity: line.quantity, description: product?.description ?? null, brand: product?.brand ?? null, size: product?.size ?? null,
           price_cents: product?.price_cents ?? null, promo_price_cents: product?.promo_price_cents ?? null, line_total_cents: unit === null ? null : unit * line.quantity,
-          available: product ? product.available : false, url: product?.url ?? null
+          available: product ? product.available : false, url: product?.url ?? null, substitution_policy: line.substitutionPolicy ?? null
         };
       };
       const items = lines.filter(l => !l.savedForLater).map(describe);
