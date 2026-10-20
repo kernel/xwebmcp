@@ -3238,6 +3238,7 @@
       "url_patterns": [
         "https://www.stubhub.com/*"
       ],
+      "url_patterns_reason": "Narrowed to www.stubhub.com, the StubHub marketplace: the tools fetch its event and search pages same-origin and refuse other origins; other stubhub.com hosts are separate products.",
       "status": "qa_passed",
       "last_verified": "2026-09-30",
       "notes": "Independent final-source fixture and extension QA passed. First ten quantity-eligible listings and event details; fees-inclusive site quote, final taxes/delivery/payable total unknown. Final live Kernel request challenged and stopped; no retries, bypass, selection or holds.",
@@ -3254,6 +3255,7 @@
       "url_patterns": [
         "https://www.stubhub.com/*"
       ],
+      "url_patterns_reason": "Narrowed to www.stubhub.com, the StubHub marketplace: the tools fetch its event and search pages same-origin and refuse other origins; other stubhub.com hosts are separate products.",
       "status": "qa_passed",
       "last_verified": "2026-09-30",
       "notes": "Independent final-source fixture and extension QA passed. Exact listing/quantity/price/currency recheck, first ten offers only; conflicts fail closed. Preview/handoff only, no reservation or execution. Final-source live success unverified; purchase/holds lack trusted per-action human approval enforcement.",
@@ -3270,6 +3272,7 @@
       "url_patterns": [
         "https://www.stubhub.com/*"
       ],
+      "url_patterns_reason": "Narrowed to www.stubhub.com, the StubHub marketplace: the tools fetch its event and search pages same-origin and refuse other origins; other stubhub.com hosts are separate products.",
       "status": "verified",
       "last_verified": "2026-09-29",
       "notes": "Independent QA passed on the final source; live success from non-entry pages on Kernel and one extension run. First results page only (up to 20 events, relevance order); date window is in UTC, so check each result's local_date/local_time; events at exactly 00:00 UTC after end_date_utc are included. Local time is null when the site gives no usable offset. No prices or listings. Challenge, rate-limit and changed-page paths are covered by stubbed tests only; bot-protection pages are reported, not bypassed.",
