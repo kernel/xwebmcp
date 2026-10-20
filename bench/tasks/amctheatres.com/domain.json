@@ -1,0 +1,7 @@
+{
+  "needs_sign_in": {
+    "get_favorite_theatres": "reads the signed-in account's data",
+    "get_rewards": "reads the signed-in account's data"
+  },
+  "instructions": "On amctheatres.com, do not add tickets to a cart: never press Continue on a showtime's ticket page. That creates an order that holds the seats against other buyers, and AMC rate-limits the ticket flow after a few carts. Picking seats and ticket types to read prices is fine."
+}

@@ -1,0 +1,34 @@
+{
+  "id": "marriott-cheapest-rate",
+  "domain": "marriott.com",
+  "stage": "inspect",
+  "prompt": "On marriott.com, find the cheapest cash rate at {{hotel}} from {{check_in}} to {{check_out}} for 1 room and 2 adults, without member-only or points rates: the room's name and its price per night in US dollars, before taxes and fees. Reply with JSON: {\"room\": string, \"nightly_rate\": number}.",
+  "fixture": {
+    "hotel": "New York Marriott Marquis",
+    "check_in": {
+      "days_from_start": 30
+    },
+    "check_out": {
+      "days_from_start": 32
+    }
+  },
+  "start_url": "https://www.marriott.com/",
+  "answer_schema": "schemas/nightly-rate.json",
+  "rules": [
+    {
+      "path": "nightly_rate",
+      "range": [
+        100,
+        3000
+      ]
+    }
+  ],
+  "agreement": {
+    "path": "nightly_rate",
+    "better": "lower",
+    "tolerance": 2
+  },
+  "pairs": 5,
+  "trial_timeout_sec": 600,
+  "max_turns": 40
+}

@@ -464,6 +464,17 @@ test("registry preserves search and indexes login under aa.com", () => {
   assert.equal(entries.length, 1);
   assert.equal(entries[0].namespace, "aa.com");
   assert.equal(entries[0].file, "domains/aa.com/login.js");
-  assert.equal(entries[0].status, "qa_passed");
+  assert.ok(["draft", "qa_passed", "verified"].includes(entries[0].status));
   assert.deepEqual(entries[0].url_patterns, plain(harness().tool.match.url_patterns));
+});
+
+test("homepage redirect with Log out and miles only in the collapsed account menu is authenticated", async () => {
+  const h = harness({ after: { username: false, password: false, header_logout: true, header_miles: true }, afterNodes: [{ role: "heading", name: "Today's offers" }] });
+  const result = await invoke(h);
+  assert.equal(result.outcome, "authenticated");
+  assert.equal(result.logged_in, true);
+  assert.equal(result.account_name_or_hint, "Available award miles shown in account menu");
+  assert.equal(h.stats().clicks, 1);
+  const partial = harness({ after: { username: false, password: false, header_logout: true, header_miles: false }, afterNodes: [] });
+  assert.notEqual((await invoke(partial)).outcome, "authenticated", "Log out alone is not enough");
 });

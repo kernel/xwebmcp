@@ -1,0 +1,47 @@
+{
+  "id": "sevenrooms-available-times",
+  "domain": "sevenrooms.com",
+  "stage": "inspect",
+  "prompt": "On SevenRooms' reservation page for {{restaurant}} in {{city}}, find every dinner time it offers to book (not to request or join a waitlist) for a party of {{party}} on {{date}}. Do not select a time. Reply with JSON: {\"restaurant\": string, \"times\": [\"HH:MM\"]}, each time once, in 24-hour local time.",
+  "fixture": {
+    "restaurant": "Zuma",
+    "city": "Miami",
+    "party": 2,
+    "date": {
+      "days_from_start": 5
+    }
+  },
+  "start_url": "https://www.sevenrooms.com/reservations/zumamiami",
+  "answer_schema": "schemas/available-times.json",
+  "rules": [
+    {
+      "path": "restaurant",
+      "matches": "zuma"
+    },
+    {
+      "path": "times",
+      "count": [
+        1,
+        30
+      ]
+    },
+    {
+      "path": "times[]",
+      "range": [
+        "17:00",
+        "23:59"
+      ]
+    },
+    {
+      "path": "times[]",
+      "unique": true
+    }
+  ],
+  "agreement": {
+    "path": "times[]",
+    "same": true
+  },
+  "pairs": 5,
+  "trial_timeout_sec": 600,
+  "max_turns": 40
+}

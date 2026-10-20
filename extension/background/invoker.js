@@ -136,7 +136,7 @@ export async function registerPageTool(tabId, url, definition) {
   await attachTarget(targetId, registrationId);
   try {
     const script = `async () => {
-      if (location.href !== ${JSON.stringify(url)} || !globalThis.__xwebmcpPageTools) {
+      if (location.href.split('#')[0] !== ${JSON.stringify(url)} || !globalThis.__xwebmcpPageTools) {
         throw new Error('page tool document changed before registration');
       }
       const execute = (${definition.pageExecuteSource});
@@ -431,6 +431,13 @@ async function execute(entry, definition, input, tab, created, seconds) {
   let targetId;
   try {
     targetId = await targetForTab(tab.id);
+    // Chrome does not render hidden tabs or deliver synthetic input to them, so a cdp tool in a
+    // background tab stalls on animation frames or clicks nothing. Make it the active tab of its
+    // own window (without focusing the window) before running.
+    const current = await chrome.tabs.get(tab.id).catch(() => null);
+    if (current && current.active === false) {
+      try { await chrome.tabs.update(tab.id, {active: true}); } catch {}
+    }
     await attachTarget(targetId, entry.id);
     let matches = await frameMatches(targetId, definition);
     if (!matches.length && created) {
