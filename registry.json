@@ -1515,6 +1515,86 @@
       }
     },
     {
+      "domain": "familysearch.org",
+      "tool": "get_collection",
+      "file": "domains/familysearch.org/get_collection.js",
+      "kind": "page",
+      "namespace": "familysearch.org",
+      "url_patterns": [
+        "https://www.familysearch.org/*"
+      ],
+      "status": "verified",
+      "last_verified": "2026-09-30",
+      "notes": "Read-only collection details, coverage, counts, citation and a research guide navigation handoff. No images or navigation. Independently verified on public pages in Kernel and Chromium.",
+      "provenance": {
+        "qa_agent": "agt_3c46f73a3268da8f5354"
+      }
+    },
+    {
+      "domain": "familysearch.org",
+      "tool": "get_record",
+      "file": "domains/familysearch.org/get_record.js",
+      "kind": "page",
+      "namespace": "familysearch.org",
+      "url_patterns": [
+        "https://www.familysearch.org/*"
+      ],
+      "status": "verified",
+      "last_verified": "2026-09-30",
+      "notes": "Read-only historical record people, facts, links and citation by 1:1: or 1:2: ark. Independently verified for public persona and whole records in Kernel and Chromium. Restricted access remains unverified.",
+      "provenance": {
+        "qa_agent": "agt_3c46f73a3268da8f5354"
+      }
+    },
+    {
+      "domain": "familysearch.org",
+      "tool": "list_collections",
+      "file": "domains/familysearch.org/list_collections.js",
+      "kind": "page",
+      "namespace": "familysearch.org",
+      "url_patterns": [
+        "https://www.familysearch.org/*"
+      ],
+      "status": "verified",
+      "last_verified": "2026-09-30",
+      "notes": "Read-only public collection discovery by title words, place, type, years, size and images. Independently verified on public pages in Kernel and Chromium.",
+      "provenance": {
+        "qa_agent": "agt_3c46f73a3268da8f5354"
+      }
+    },
+    {
+      "domain": "familysearch.org",
+      "tool": "prepare_source",
+      "file": "domains/familysearch.org/prepare_source.js",
+      "kind": "page",
+      "namespace": "familysearch.org",
+      "url_patterns": [
+        "https://www.familysearch.org/*"
+      ],
+      "status": "verified",
+      "last_verified": "2026-09-30",
+      "notes": "Unsaved source/note preparation from observed record evidence; independently verified for public persona and whole records in Kernel and Chromium. No tree target, save, attachment or memory write. Requires manual review.",
+      "provenance": {
+        "qa_agent": "agt_3c46f73a3268da8f5354"
+      }
+    },
+    {
+      "domain": "familysearch.org",
+      "tool": "search_records",
+      "file": "domains/familysearch.org/search_records.js",
+      "kind": "page",
+      "namespace": "familysearch.org",
+      "url_patterns": [
+        "https://www.familysearch.org/*"
+      ],
+      "status": "verified",
+      "last_verified": "2026-09-30",
+      "notes": "Read-only indexed record search by name, birth place/years, keyword and collection. Independently verified for public collection-scoped searches in Kernel and Chromium. Signed-in/restricted behavior remains unverified.",
+      "provenance": {
+        "qa_agent": "agt_3c46f73a3268da8f5354"
+      }
+    },
+    {
       "domain": "flyfrontier.com",
       "tool": "login",
       "file": "domains/flyfrontier.com/login.js",
