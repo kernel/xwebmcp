@@ -9,7 +9,8 @@ import Kernel from "@onkernel/sdk";
 import * as kernel from "../lib/kernel.mjs";
 
 // Answers each request with the next reply scripted for its route: "drop" closes the connection
-// without answering, "stall" sends the headers and part of the body and stops, a number answers
+// without answering, "stall" sends the headers and part of the body and stops, "cut" does the same
+// and then closes the connection, a number answers
 // with that status, and { status, headers, body } adds headers or replaces the body.
 let script = {};
 const hits = {};
@@ -20,9 +21,11 @@ const server = createServer((request, response) => {
     hits[route] = (hits[route] ?? 0) + 1;
     const reply = script[route]?.shift() ?? 404;
     if (reply === "drop") return request.socket.destroy();
-    if (reply === "stall") {
+    if (reply === "stall" || reply === "cut") {
       response.writeHead(200, { "content-type": "application/json" });
-      return response.write("{");
+      response.write("{");
+      if (reply === "cut") setTimeout(() => request.socket.destroy(), 20);
+      return;
     }
     const { status, headers, body } = typeof reply === "number" ? { status: reply } : reply;
     response.writeHead(status, { "content-type": "application/json", ...headers });
@@ -55,6 +58,10 @@ test("a browser create is retried after an error the API answered with, but not 
   assert.equal(hits["POST /browsers"], 2);
 
   run({ "POST /browsers": ["drop", 200] });
+  await assert.rejects(create());
+  assert.equal(hits["POST /browsers"], 1);
+
+  run({ "POST /browsers": ["cut", 200] });
   await assert.rejects(create());
   assert.equal(hits["POST /browsers"], 1);
 });
@@ -110,8 +117,12 @@ test("an invocation that did not complete throws, one awaiting submission return
   assert.equal(await kernel.invokeTool("b1", "wmcp_1", {}), null);
 });
 
-test("reading cookies is retried after a dropped connection", async () => {
+test("reading cookies is retried after a dropped connection, before or during the response", async () => {
   run({ "POST /browsers/b1/playwright/execute": ["drop", 200] });
+  assert.deepEqual(await kernel.cookies("b1"), []);
+  assert.equal(hits["POST /browsers/b1/playwright/execute"], 2);
+
+  run({ "POST /browsers/b1/playwright/execute": ["cut", 200] });
   assert.deepEqual(await kernel.cookies("b1"), []);
   assert.equal(hits["POST /browsers/b1/playwright/execute"], 2);
 });

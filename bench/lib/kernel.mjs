@@ -12,10 +12,11 @@ const client = () => (kernel ??= new Kernel());
 
 // Whether to send a failed request again, as the SDK decides, except that a 409 is final: every
 // conflict these calls can get is a name already taken or a limit reached, which a retry cannot
-// change. A connection error has no response, and is retried only under "any".
+// change. A connection error has no response, or lost the rest of one (which fetch reports as a
+// TypeError), and is retried only under "any".
 function retryable(error, retry) {
   if (retry === "none") return false;
-  if (error instanceof APIConnectionError) return retry === "any";
+  if (error instanceof APIConnectionError || error instanceof TypeError) return retry === "any";
   if (!(error instanceof APIError) || error.status === undefined || error.status === 409) return false;
   const header = error.headers?.get("x-should-retry");
   if (header === "true" || header === "false") return header === "true";
