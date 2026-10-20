@@ -64,6 +64,7 @@ const PLACES = {
   ChIJExampleRegion0001: { description: "Exampleland", destinationType: "State_Province_Region", location: { latitude: null, longitude: null, city: null, state: "EL", country: "US" } },
   ChIJExamplePoi0000001: { description: "Example Tower", destinationType: "Point of Interest", location: { latitude: 10.6, longitude: -20.3, city: "Exampleville", state: "ZZ", country: "US" } },
   ChIJExampleRegion0002: { description: "Exampleprefecture", destinationType: "State_Province_Region", location: { latitude: 11.5, longitude: -21.25, city: null, state: "EP", country: "JP" } },
+  ChIJExampleHotel00001: { description: "Example Marriott Hotel", destinationType: "Hotel Name", location: { latitude: 10.55, longitude: -20.35, city: "Exampleville", state: "ZZ", country: "US" } },
   ChIJExampleCountry001: { description: "Examplestan", destinationType: "Country", location: { latitude: 12.5, longitude: -22.25, city: null, state: null, country: "XX" } }
 };
 const SUGGESTIONS = {
@@ -194,7 +195,7 @@ for (const name of NAMES) {
 }
 
 test("registry lists every marriott.com tool exactly once", () => {
-  assert.deepEqual(registry.tools.filter(t => t.domain === "marriott.com").map(t => t.tool).sort(), [...NAMES].sort());
+  assert.deepEqual(registry.tools.filter(t => t.domain === "marriott.com").map(t => t.tool).sort(), [...NAMES, "get_room_rates"].sort());
 });
 
 // --- search_hotels: input validation happens before any network call ---------------------------------------
@@ -316,6 +317,10 @@ test("search_hotels: rooms, adults, radius, paging and point-of-interest type ma
   const poi = harness("search_hotels");
   await poi.run({ place_id: "ChIJExamplePoi0000001", check_in: "2026-10-20", check_out: "2026-10-22" });
   assert.equal(searchOf(poi.calls).body.variables.search.sooOptions.searchDestinationType, "POINT_OF_INTEREST");
+  const hotel = harness("search_hotels");
+  await hotel.run({ place_id: "ChIJExampleHotel00001", check_in: "2026-10-20", check_out: "2026-10-22" });
+  const hotelSearch = searchOf(hotel.calls).body.variables.search;
+  assert.deepEqual([hotelSearch.sooOptions.searchDestinationType, hotelSearch.latitude, hotelSearch.longitude], ["HOTEL_NAME", 10.55, -20.35], "a hotel name is searched as the site does, at the hotel's coordinates");
   const airport = harness("search_hotels");
   const airportResult = await airport.run({ place_id: "ChIJExampleAirport001", check_in: "2026-10-20", check_out: "2026-10-22" });
   assert.equal(searchOf(airport.calls).body.variables.search.sooOptions.searchDestinationType, "AIRPORT");

@@ -2331,6 +2331,20 @@
     },
     {
       "domain": "marriott.com",
+      "tool": "get_room_rates",
+      "file": "domains/marriott.com/get_room_rates.js",
+      "kind": "page",
+      "namespace": "marriott.com",
+      "url_patterns": [
+        "https://www.marriott.com/*"
+      ],
+      "url_patterns_reason": "Narrowed to www.marriott.com, Marriott's booking site: the tools call its same-origin search and property endpoints and refuse other origins; other marriott.com hosts are separate products.",
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Reads one hotel's rooms and rates for a stay from the site's own rate request (the 'Select a Room and Rate' page), signed out, in the site's order. Author's live check on 2026-10-20 (not independent QA): New York Marriott Marquis for 2 adults, 2 nights returned 114 rates matching the site's page; an unknown property code returns invalid_input."
+    },
+    {
+      "domain": "marriott.com",
       "tool": "prepare_reservation",
       "file": "domains/marriott.com/prepare_reservation.js",
       "kind": "page",
@@ -2356,9 +2370,9 @@
         "https://www.marriott.com/*"
       ],
       "url_patterns_reason": "Narrowed to www.marriott.com, Marriott's booking site: the tools call its same-origin search and property endpoints and refuse other origins; other marriott.com hosts are separate products.",
-      "status": "qa_passed",
-      "last_verified": "2026-09-30",
-      "notes": "Independent final-source QA is fixture-only (840f6d97); historical live search returned HTTP429. Page-only same-currency comparison and exact representable stay estimates, not final prices or holds. No final-source live success. Embedded public query signatures can change; lower consumer payload caps may reject large pages.",
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Independent final-source QA is fixture-only (840f6d97); historical live search returned HTTP429. Page-only same-currency comparison and exact representable stay estimates, not final prices or holds. No final-source live success. Embedded public query signatures can change; lower consumer payload caps may reject large pages. Was qa_passed; on 2026-10-20 hotel-name destinations were added (searched as the site does, HOTEL_NAME at the hotel's coordinates), so it needs independent re-QA.",
       "provenance": {
         "qa_agent": "agt_969930ee72c8218556a6"
       }

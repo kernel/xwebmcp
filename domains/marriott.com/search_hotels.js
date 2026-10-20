@@ -3,11 +3,11 @@
   match: { url_patterns: ["https://www.marriott.com/*"] },
   tool: {
     name: "search_hotels",
-    description: "Search Marriott hotels near a destination for a stay: name, brand, distance, rating, review count, and the lowest displayed cash rate per night (or points per room for the stay when use_points is true). Give either destination (free text, resolved to the first suggestion the site's destination box offers) or place_id (from a previous result's resolved_destination or other_destinations, to pick a different match). Only city, airport and point-of-interest destinations are supported. Rates are quotes for the signed-out public search: amounts are average per night per room in the reported currency, before or after mandatory daily fees and taxes as labelled, and a hotel with available false has no bookable rate for that party and dates. It does not select a room or rate, and it does not prove a room can be booked. Results are ordered by distance and paged with limit/offset (an offset past the last hotel returns an empty page). cash_comparison ranks available, bookable cash quotes on this page only, separately by currency, with an estimated total for all requested rooms and nights. It never mixes currencies; member-only prices remain labelled and do not establish eligibility. Estimates are not checkout totals or held inventory. Runs inside the current www.marriott.com page without navigating; read-only.",
+    description: "Search Marriott hotels near a destination for a stay: name, brand, distance, rating, review count, and the lowest displayed cash rate per night (or points per room for the stay when use_points is true). Give either destination (free text, resolved to the first suggestion the site's destination box offers) or place_id (from a previous result's resolved_destination or other_destinations, to pick a different match). City, airport, point-of-interest and hotel-name destinations are supported; for a hotel name the site lists that hotel first (about 0 miles) with others nearby, and get_room_rates lists its rooms and rates by property_id. Rates are quotes for the signed-out public search: amounts are average per night per room in the reported currency, before or after mandatory daily fees and taxes as labelled, and a hotel with available false has no bookable rate for that party and dates. It does not select a room or rate, and it does not prove a room can be booked. Results are ordered by distance and paged with limit/offset (an offset past the last hotel returns an empty page). cash_comparison ranks available, bookable cash quotes on this page only, separately by currency, with an estimated total for all requested rooms and nights. It never mixes currencies; member-only prices remain labelled and do not establish eligibility. Estimates are not checkout totals or held inventory. Runs inside the current www.marriott.com page without navigating; read-only.",
     inputSchema: {
       type: "object", additionalProperties: false, required: ["check_in", "check_out"],
       properties: {
-        destination: { type: "string", minLength: 2, maxLength: 120, description: "City, airport or landmark, e.g. 'Portland, OR' or 'JFK airport'. The first suggestion the site offers is used; check resolved_destination in the result." },
+        destination: { type: "string", minLength: 2, maxLength: 120, description: "City, airport, landmark or hotel name, e.g. 'Portland, OR', 'JFK airport' or 'New York Marriott Marquis'. The first suggestion the site offers is used; check resolved_destination in the result." },
         place_id: { type: "string", pattern: "^[A-Za-z0-9_-]{10,200}$", description: "A place_id returned by an earlier search_hotels call. Use instead of destination to choose a specific match." },
         check_in: { type: "string", pattern: "^\\d{4}-\\d{2}-\\d{2}$", description: "Check-in date, YYYY-MM-DD. Dates before yesterday (browser time) are rejected." },
         check_out: { type: "string", pattern: "^\\d{4}-\\d{2}-\\d{2}$", description: "Check-out date, YYYY-MM-DD, after check_in. Stays are limited to 30 nights." },
@@ -31,7 +31,7 @@
             resolved_destination: {
               type: "object", additionalProperties: false, required: ["place_id", "description", "type", "latitude", "longitude", "city", "state", "country"],
               properties: {
-                place_id: { type: "string" }, description: { type: "string" }, type: { enum: ["airport", "city", "point_of_interest"] },
+                place_id: { type: "string" }, description: { type: "string" }, type: { enum: ["airport", "city", "point_of_interest", "hotel_name"] },
                 latitude: { type: "number" }, longitude: { type: "number" }, city: { type: ["string", "null"] }, state: { type: ["string", "null"] }, country: { type: ["string", "null"] }
               }
             },
@@ -124,7 +124,7 @@
       phoenixShopSuggestedPlacesDetailsQuery: "0b89c8ea7a6a6408eaee651983d6c7ee168670b727cc5beea980b2d2edfdbe2b",
       phoenixShopDatedSearchByGeoQuery: "46b57113564cd372d3105f7f86be3efdb1549f31a86028977a9b46e251966acd"
     };
-    const DESTINATION_TYPES = { "Airport": "AIRPORT", "City": "CITY", "Point of Interest": "POINT_OF_INTEREST" };
+    const DESTINATION_TYPES = { "Airport": "AIRPORT", "City": "CITY", "Point of Interest": "POINT_OF_INTEREST", "Hotel Name": "HOTEL_NAME" };
     const FEE_TYPES = ["RESORT_FEE_DESCRIPTION", "DESTINATION_FEE_DESCRIPTION", "TOURISM_MARKETING_FEE_DESCRIPTION", "SURCHARGE_ORDINANCE_COST_DESCRIPTION"];
     const DESCRIPTION_FILTER = ["HOTEL_MARKETING_CAPTION", ...FEE_TYPES];
     const DAY = 86400000;
@@ -234,7 +234,7 @@
       if (!place) return fail("destination_not_found", "Marriott has no destination for that place_id.");
       const searchType = DESTINATION_TYPES[place.destinationType];
       const lat = num(place.location?.latitude), lon = num(place.location?.longitude);
-      if (!searchType || lat === null || lon === null) return fail("destination_not_supported", "'" + (description || cut(place.description, 200) || placeId) + "' is a " + (cut(place.destinationType, 64) || "region-level") + " destination; only city, airport and point-of-interest destinations can be searched. Use a more specific place" + (alternatives.length ? " or one of the suggestions." : "."), alternatives);
+      if (!searchType || lat === null || lon === null) return fail("destination_not_supported", "'" + (description || cut(place.description, 200) || placeId) + "' is a " + (cut(place.destinationType, 64) || "region-level") + " destination; only city, airport, point-of-interest and hotel-name destinations can be searched. Use a more specific place" + (alternatives.length ? " or one of the suggestions." : "."), alternatives);
 
       const found = await gql("phoenixShopDatedSearchByGeoQuery", {
         search: {
