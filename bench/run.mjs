@@ -569,7 +569,8 @@ async function runTrial(plan, intentPlan, arm, key) {
     }
     browser = setup.browser;
     [row.browser_id, row.image_version, row.start_renavigated, row.native_tools] = [browser, setup.page.version, setup.page.renavigated, setup.nativeTools];
-    await sleep(Math.max(0, setup.loadedAt + START_DELAY_MS - performance.now()));
+    // A timer counts from the event loop's cached clock, so it can fire a little early; wait out the rest.
+    while (performance.now() - setup.loadedAt < START_DELAY_MS) await sleep(setup.loadedAt + START_DELAY_MS - performance.now());
     row.start_delay_ms = Math.round(performance.now() - setup.loadedAt);
     row.setup_ms = Math.round(performance.now() - setupStart);
     if (stopping) return null;
