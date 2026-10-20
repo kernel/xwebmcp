@@ -213,13 +213,26 @@ test("a prepare intent's actions are registered, and must exist", async () => {
   assert.deepEqual(await registeredTools({ ...base, domain: "other.com", exclude: {}, actions: [], entry_tool: undefined, tools: [{ ref: "main" }] }, ["main"], show), []);
 });
 
-test("a domain's actions reach its prepare intents, its checkout actions only those that allow checkout, and intents default to main", () => {
+test("a domain's page actions reach every intent, its actions its prepare intents, its checkout actions only those that allow checkout, and intents default to main", () => {
   const intents = loadIntents(benchDir);
   const actions = (id) => intents.find(i => i.id === id).actions;
   assert.deepEqual(actions("delta-cheapest-fare"), []);
+  assert.ok(actions("google-flights-cheapest-fare").includes("search_flights"));
+  assert.ok(!actions("google-flights-cheapest-fare").includes("select_flight"));
   assert.deepEqual(actions("delta-cart-main-classic"), ["select_fare", "select_fare_experience"]);
   assert.ok(actions("delta-checkout-signed-in").includes("continue_checkout"));
   assert.deepEqual(intents.find(i => i.id === "delta-cart-main-classic").tools, [{ repo: "kernel/xwebmcp", ref: "main" }]);
+});
+
+// What run.mjs registers at startup, from the tools in this checkout, so that a tool change that
+// would make an intent refuse to start (a named tool that is no longer read-only) fails here first.
+test("every intent on main registers its named tools and entry tool from this checkout", async () => {
+  const repoDir = join(benchDir, "..");
+  const show = (_sha, path) => readFileSync(join(repoDir, path), "utf8");
+  for (const intent of loadIntents(benchDir).filter(i => i.tools.every(t => t.ref === "main"))) {
+    const names = (await registeredTools(intent, intent.tools.map(() => "HEAD"), show)).map(t => t.name);
+    for (const name of [...intent.tools.flatMap(t => t.names ?? []), ...(intent.entry_tool ? [intent.entry_tool] : [])]) assert.ok(names.includes(name), `${intent.id}: ${name}`);
+  }
 });
 
 test("local browsers load the extension under the id Chrome gives it, and their MCP config fills in per browser", async () => {
