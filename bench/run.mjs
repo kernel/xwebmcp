@@ -14,7 +14,6 @@ import { setTimeout as sleep } from "node:timers/promises";
 import { parseArgs } from "node:util";
 import { agentEnv, classifyTrial, piArgs, runAgent, runningAgents, summarize } from "./lib/agent.mjs";
 import { fill, loadIntents, loadSchema, pastDates, resolveFixture, trialPrompt } from "./lib/intents.mjs";
-import * as kernel from "./lib/kernel.mjs";
 import * as local from "./lib/local.mjs";
 import { latestRows, readRows, rowKey } from "./lib/rows.mjs";
 import { adoptionVerdicts, balancedOrders, holdNeededSec, pairArms, planJobs, runPairAttempts, runQueue } from "./lib/schedule.mjs";
@@ -102,7 +101,9 @@ const experimentFor = (backend) => {
   };
 };
 let experiment = experimentFor(opts.browser);
-let browsers = opts.browser === "local" ? local : kernel;
+// Only Kernel browsers need the SDK, so a local run works without bench's npm dependencies.
+const backend = async (name) => (name === "local" ? local : import("./lib/kernel.mjs"));
+let browsers;
 
 // --- run plan -----------------------------------------------------------------------------
 
@@ -113,7 +114,7 @@ async function planRun() {
     const plan = JSON.parse(readFileSync(planFile, "utf8"));
     plan.backend ??= "kernel";
     experiment = experimentFor(plan.backend);
-    browsers = plan.backend === "local" ? local : kernel;
+    browsers = await backend(plan.backend);
     const { files } = experiment;
     if (JSON.stringify(plan.allowlist) !== JSON.stringify(experiment.allowlist)) fail(`${files.allowlist} changed since run ${runId} started; start a new run`);
     if (JSON.stringify(plan.mcp_config) !== JSON.stringify(experiment.mcp)) fail(`${files.mcp} changed since run ${runId} started; start a new run`);
@@ -130,6 +131,7 @@ async function planRun() {
   }
   if (existsSync(rowsFile)) fail(`${rowsFile} exists without run.json; restore run.json or start a new run id`);
   if (!/^[\w.-]+\/\S+$/.test(opts.model ?? "")) fail("--model <provider/model> is required for a new run, for example openai/gpt-5.4 or anthropic/claude-sonnet-5-5");
+  browsers = await backend(opts.browser);
   const createdAt = new Date();
   let intents = loadIntents(benchDir).map(intent => ({ ...intent, fixture: resolveFixture(intent.fixture, createdAt) }));
   const unknown = [
@@ -172,7 +174,7 @@ async function planRun() {
     system_prompt_sha256: sha256(experiment.system_prompt),
     mcp_config: experiment.mcp,
     backend: opts.browser,
-    browser: opts.browser === "local" ? useLocal(localOptions()) : { ...kernel.BROWSER, stealth: opts.stealth },
+    browser: opts.browser === "local" ? useLocal(localOptions()) : { ...browsers.BROWSER, stealth: opts.stealth },
     intents: {},
   };
   mkdirSync(join(runDir, "sources"), { recursive: true });
@@ -336,9 +338,9 @@ async function smokeGate(plan, probe, signedIn) {
   if (plan.agent && plan.agent !== agent) fail(`run ${runId} started with ${plan.agent}, but this machine has ${agent}; install that version or start a new run`);
   plan.agent = agent;
   if (plan.backend === "kernel") {
-    if (plan.kernel_cli && !plan.kernel_sdk) log(`warning: run ${runId} started with ${plan.kernel_cli}, and this checkout drives Kernel through ${kernel.SDK_VERSION}`);
-    if (plan.kernel_sdk && plan.kernel_sdk !== kernel.SDK_VERSION) log(`warning: run ${runId} started with ${plan.kernel_sdk}, and this checkout has ${kernel.SDK_VERSION}`);
-    plan.kernel_sdk ??= kernel.SDK_VERSION;
+    if (plan.kernel_cli && !plan.kernel_sdk) log(`warning: run ${runId} started with ${plan.kernel_cli}, and this checkout drives Kernel through ${browsers.SDK_VERSION}`);
+    if (plan.kernel_sdk && plan.kernel_sdk !== browsers.SDK_VERSION) log(`warning: run ${runId} started with ${plan.kernel_sdk}, and this checkout has ${browsers.SDK_VERSION}`);
+    plan.kernel_sdk ??= browsers.SDK_VERSION;
   }
 
   if (plan.allowlist.some(tool => !tool.startsWith("mcp__"))) checkSandbox(agent);

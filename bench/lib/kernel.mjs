@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { setTimeout as sleep } from "node:timers/promises";
-import Kernel, { APIError, APIUserAbortError, NotFoundError, toFile } from "@onkernel/sdk";
+import Kernel, { APIError, APIUserAbortError, ConflictError, NotFoundError, toFile } from "@onkernel/sdk";
 import { VERSION } from "@onkernel/sdk/version";
 import { zipDirectory } from "./zip.mjs";
 
@@ -39,7 +39,8 @@ async function call(request, { ms = 120_000, retry = "any" } = {}) {
     try {
       return await request({ timeout: ms + 5_000, signal, maxRetries: retry === "any" ? 2 : 0 });
     } catch (error) {
-      if (error instanceof APIUserAbortError) throw new Error(`timed out after ${ms / 1000}s`);
+      // The SDK raises its own abort error only before the response headers arrive.
+      if (error instanceof APIUserAbortError || signal.aborted) throw new Error(`timed out after ${ms / 1000}s`);
       if (retry !== "answered" || attempt === 3 || !retryable(error)) throw error;
       // Out of time before the next attempt, the API's error says more than a timeout would.
       await sleep(retryDelay(error, attempt), undefined, { signal }).catch(() => { throw error; });
@@ -127,14 +128,20 @@ export async function navigations(id, sinceMs) {
   return found;
 }
 
-// Uploads an extension directory under its name unless Kernel already has it.
+// Uploads an extension directory under its name unless Kernel already has it. The name comes from
+// the extension's contents, so a conflict on upload means another run, or an upload whose response
+// was lost, already put the same extension there.
 export async function ensureExtension({ name, dir }) {
   try {
     await call(options => client().extensions.get(name, options));
   } catch (error) {
     if (!(error instanceof NotFoundError)) throw error;
     const file = await toFile(zipDirectory(dir), `${name}.zip`);
-    await call(options => client().extensions.upload({ file, name }, options));
+    try {
+      await call(options => client().extensions.upload({ file, name }, options));
+    } catch (error) {
+      if (!(error instanceof ConflictError)) throw error;
+    }
   }
 }
 

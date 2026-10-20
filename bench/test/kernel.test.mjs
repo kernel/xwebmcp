@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
 import { once } from "node:events";
+import { mkdtempSync, writeFileSync } from "node:fs";
 import { createServer } from "node:http";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import test, { after, before } from "node:test";
 import * as kernel from "../lib/kernel.mjs";
 
@@ -77,4 +80,13 @@ test("adding and removing custom tools are never retried, and reading them is", 
   run({ "GET /browsers/b1/webmcp/custom-tools": ["drop", 200] });
   assert.deepEqual(await kernel.listCustomTools("b1"), []);
   assert.equal(hits["GET /browsers/b1/webmcp/custom-tools"], 2);
+});
+
+test("an extension upload that conflicts with one already under its name succeeds", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "bench-extension-"));
+  writeFileSync(join(dir, "manifest.json"), "{}\n");
+  // The SDK retries a 409 twice.
+  run({ "GET /extensions/bench-guard-x/metadata": [404], "POST /extensions": [409, 409, 409] });
+  await kernel.ensureExtension({ name: "bench-guard-x", dir });
+  assert.equal(hits["POST /extensions"], 3);
 });
