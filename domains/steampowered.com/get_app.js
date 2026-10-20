@@ -113,6 +113,11 @@
         const value = (node?.textContent ?? "").replace(/\s+/g, " ").trim();
         return value ? value.slice(0, max) : null;
       };
+      // A shown price without the "Your Price:" label Steam puts inside discounted bundle prices.
+      const steamPriceText = node => {
+        const value = node ? [...node.childNodes].filter(n => !(n.nodeType === 1 && n.matches(".your_price_label"))).map(n => n.textContent).join(" ").replace(/\s+/g, " ").trim() : "";
+        return value || null;
+      };
       const steamVisible = node => !!node && (typeof node.checkVisibility === "function" ? node.checkVisibility() : true);
       // "$1,299.99", "14,99€", "¥ 1,480", "R$ 32,99" -> a number; "Free To Play" and other words -> null.
       const steamAmount = value => {
@@ -184,7 +189,7 @@
         const bundle = block.querySelector('input[name="bundleid"]')?.getAttribute("value") || null;
         const pkg = block.querySelector('input[name="subid"]')?.getAttribute("value") || null;
         const discounted = block.querySelector(".discount_final_price");
-        const priceText = steamText(discounted || block.querySelector(".game_purchase_price"));
+        const priceText = steamPriceText(discounted || block.querySelector(".game_purchase_price"));
         const pct = steamText(block.querySelector(".discount_pct"));
         return {
           title: title || "",

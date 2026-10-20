@@ -95,7 +95,7 @@ const APP = page(`
       <form name="add_bundle_to_cart_77" action="https://store.steampowered.com/cart/" method="POST"><input type="hidden" name="bundleid" value="77"></form>
       <h2 class="title"> Buy Fabricated Farm + Soundtrack <span class="bundle_label">BUNDLE <span class="bundle_label_tooltip">(?)</span></span></h2>
       <div class="game_purchase_action"><div class="btn_addtocart btn_packageinfo"><a href="https://store.steampowered.com/bundle/77/">Bundle info</a></div>
-      <div class="discount_block game_purchase_discount"><div class="discount_pct">-15%</div><div class="discount_prices"><div class="discount_original_price">$19.98</div><div class="discount_final_price">$16.98</div></div></div></div></div></div>
+      <div class="discount_block game_purchase_discount"><div class="discount_pct">-15%</div><div class="discount_prices"><div class="discount_original_price">$19.98</div><div class="discount_final_price your_price"><div class="your_price_label">Your Price:</div><div>$16.98</div></div></div></div></div></div></div>
     <div class="game_area_purchase_game" style="display: none"><h2 class="title">Buy Hidden Package</h2><div class="game_purchase_price price">$1.00</div></div>
     <div class="game_area_dlc_section"><div class="game_area_dlc_row">Fabricated DLC $2.99</div></div>
   </div>`, `<link rel="canonical" href="https://store.steampowered.com/app/4242/Fabricated_Farm/"><meta itemprop="priceCurrency" content="USD">`);

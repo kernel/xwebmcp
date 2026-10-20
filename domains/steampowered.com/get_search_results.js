@@ -116,6 +116,11 @@
         const value = (node?.textContent ?? "").replace(/\s+/g, " ").trim();
         return value ? value.slice(0, max) : null;
       };
+      // A shown price without the "Your Price:" label Steam puts inside discounted bundle prices.
+      const steamPriceText = node => {
+        const value = node ? [...node.childNodes].filter(n => !(n.nodeType === 1 && n.matches(".your_price_label"))).map(n => n.textContent).join(" ").replace(/\s+/g, " ").trim() : "";
+        return value || null;
+      };
       const steamVisible = node => !!node && (typeof node.checkVisibility === "function" ? node.checkVisibility() : true);
       // "$1,299.99", "14,99€", "¥ 1,480", "R$ 32,99" -> a number; "Free To Play" and other words -> null.
       const steamAmount = value => {
@@ -184,7 +189,7 @@
         const tip = row.querySelector(".search_review_summary")?.getAttribute("data-tooltip-html") || "";
         const [summary, detail = ""] = tip.split(/<br\s*\/?>/i);
         const percent = /(\d{1,3})%/.exec(detail);
-        const final = steamText(row.querySelector(".discount_final_price"));
+        const final = steamPriceText(row.querySelector(".discount_final_price"));
         const pct = steamText(row.querySelector(".discount_pct"));
         let url = row.getAttribute("href") || "";
         try { const u = new URL(url, STEAM_ORIGIN); u.search = ""; url = u.href; } catch { url = ""; }
