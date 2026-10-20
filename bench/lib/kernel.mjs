@@ -16,7 +16,7 @@ const client = () => (kernel ??= new Kernel());
 function retryable(error, retry) {
   if (retry === "none") return false;
   if (error instanceof APIConnectionError) return retry === "any";
-  if (!(error instanceof APIError) || error.status === undefined) return false;
+  if (!(error instanceof APIError) || error.status === undefined || error.status === 409) return false;
   const header = error.headers?.get("x-should-retry");
   if (header === "true" || header === "false") return header === "true";
   return error.status >= 500 || [408, 429].includes(error.status);
@@ -40,15 +40,20 @@ function retryDelay(error, attempt) {
 // retries, since its pause between attempts would outlast `ms` when the API asks for a long wait.
 export async function call(request, { ms = 120_000, retry = "any" } = {}) {
   const signal = AbortSignal.timeout(ms);
+  const deadline = performance.now() + ms;
+  let last = null;
   for (let attempt = 1; ; attempt++) {
     try {
       return await request({ timeout: ms + 5_000, signal, maxRetries: 0 });
     } catch (error) {
       // The SDK raises its own abort error only before the response headers arrive.
-      if (error instanceof APIUserAbortError || signal.aborted) throw new Error(`timed out after ${ms / 1000}s`);
+      if (error instanceof APIUserAbortError || signal.aborted) throw new Error(`timed out after ${ms / 1000}s${last ? `, retrying after ${last.message}` : ""}`);
       if (attempt === 3 || !retryable(error, retry)) throw error;
       // Out of time before the next attempt, the API's error says more than a timeout would.
-      await sleep(retryDelay(error, attempt), undefined, { signal }).catch(() => { throw error; });
+      const delay = retryDelay(error, attempt);
+      if (delay >= deadline - performance.now()) throw error;
+      await sleep(delay, undefined, { signal }).catch(() => { throw error; });
+      last = error;
     }
   }
 }
@@ -168,12 +173,12 @@ export async function listLiveTools(id) {
   return (await call(options => client().browsers.webmcp.listTools(id, {}, options))).tools ?? [];
 }
 
-// The tool's output. A lost response can hide completed side effects, so an invocation is never
-// retried.
+// The tool's output, or null for none, as the CLI printed it. A lost response can hide completed
+// side effects, so an invocation is never retried.
 export async function invokeTool(id, toolRef, input) {
   const result = await call(options => client().browsers.webmcp.invokeTool(id, { tool_ref: toolRef, input }, options), { retry: "none" });
   if (result.status !== "completed" && result.status !== "awaiting_submission") throw new Error(`invocation ${result.invocation_id}: ${result.status}: ${result.error_text ?? ""}`);
-  return result.output;
+  return result.output ?? null;
 }
 
 export async function profileId(name) {

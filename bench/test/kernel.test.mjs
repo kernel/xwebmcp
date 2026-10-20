@@ -78,24 +78,36 @@ test("a read waits as long as the API asks in milliseconds", async () => {
   assert.equal(hits["GET /browsers/b1/webmcp/custom-tools"], 2);
 });
 
-test("the deadline cuts short a pause the API asks for, and a response body still arriving", async () => {
+test("a pause the API asks for that outlasts the deadline fails at once, and the deadline cuts short a response body still arriving", async () => {
   const list = () => kernel.call(options => new Kernel().browsers.webmcp.customTools.list("b1", options), { ms: 500 });
   run({ "GET /browsers/b1/webmcp/custom-tools": [{ status: 429, headers: { "retry-after": "5" } }, 200] });
   const start = performance.now();
   await assert.rejects(list(), { status: 429 });
-  assert.ok(performance.now() - start < 2000);
+  assert.ok(performance.now() - start < 250);
   assert.equal(hits["GET /browsers/b1/webmcp/custom-tools"], 1);
 
   run({ "GET /browsers/b1/webmcp/custom-tools": ["stall"] });
   await assert.rejects(list(), { message: "timed out after 0.5s" });
+
+  run({ "GET /browsers/b1/webmcp/custom-tools": [{ status: 503, headers: { "retry-after-ms": "0" } }, "stall"] });
+  await assert.rejects(list(), { message: "timed out after 0.5s, retrying after 503 status 503" });
 });
 
-test("an invocation that did not complete throws, and one awaiting submission returns its output", async () => {
+test("a conflict is not retried, even when the API says to", async () => {
+  run({ "GET /browsers/b1/webmcp/custom-tools": [{ status: 409, headers: { "x-should-retry": "true" } }, 200] });
+  await assert.rejects(kernel.listCustomTools("b1"), { status: 409 });
+  assert.equal(hits["GET /browsers/b1/webmcp/custom-tools"], 1);
+});
+
+test("an invocation that did not complete throws, one awaiting submission returns its output, and one with no output returns null", async () => {
   run({ "POST /browsers/b1/webmcp/invoke": [{ status: 200, body: { invocation_id: "inv_1", status: "error", error_text: "boom" } }] });
   await assert.rejects(kernel.invokeTool("b1", "wmcp_1", {}), { message: "invocation inv_1: error: boom" });
 
   run({ "POST /browsers/b1/webmcp/invoke": [{ status: 200, body: { invocation_id: "inv_2", status: "awaiting_submission", output: { filled: true } } }] });
   assert.deepEqual(await kernel.invokeTool("b1", "wmcp_1", {}), { filled: true });
+
+  run({ "POST /browsers/b1/webmcp/invoke": [{ status: 200, body: { invocation_id: "inv_3", status: "completed" } }] });
+  assert.equal(await kernel.invokeTool("b1", "wmcp_1", {}), null);
 });
 
 test("reading cookies is retried after a dropped connection", async () => {
