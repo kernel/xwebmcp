@@ -1,0 +1,8 @@
+{
+  "actions": {
+    "add_to_cart": "adds a product to the guest cart"
+  },
+  "checkout_actions": {
+    "continue_to_checkout": "opens checkout from the cart; submits nothing"
+  }
+}

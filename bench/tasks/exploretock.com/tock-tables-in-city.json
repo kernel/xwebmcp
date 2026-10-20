@@ -1,0 +1,44 @@
+{
+  "id": "tock-tables-in-city",
+  "domain": "exploretock.com",
+  "stage": "find",
+  "prompt": "On exploretock.com, find three {{city}} restaurants that offer a dine-in table for {{party}} on {{date}} between {{from}} and {{to}}, and one time each offers in that window. Do not select a time. Reply with JSON: {\"places\": [{\"name\": string, \"detail\": the time in 24-hour HH:MM}]}.",
+  "fixture": {
+    "city": "Chicago",
+    "party": 2,
+    "date": {
+      "days_from_start": 14
+    },
+    "from": "18:00",
+    "to": "21:00"
+  },
+  "start_url": "https://www.exploretock.com/",
+  "answer_schema": "schemas/named-places.json",
+  "rules": [
+    {
+      "path": "places",
+      "count": [
+        3,
+        3
+      ]
+    },
+    {
+      "path": "places[].name",
+      "unique": true
+    },
+    {
+      "path": "places[].detail",
+      "time": true
+    },
+    {
+      "path": "places[].detail",
+      "range": [
+        "{{from}}",
+        "{{to}}"
+      ]
+    }
+  ],
+  "pairs": 5,
+  "trial_timeout_sec": 600,
+  "max_turns": 40
+}

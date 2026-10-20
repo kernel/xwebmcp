@@ -6,7 +6,7 @@ with one tool per file and a `README.md` per domain.
 ```
 domains/
   delta.com/
-    README.md           # status table, known limitations, site quirks, QA summary
+    README.md           # "# delta.com" plus one | tool | description | table
     search_flights.js   # one tool per file, named after the tool
     login.js
 ```

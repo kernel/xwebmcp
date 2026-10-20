@@ -1,0 +1,36 @@
+{
+  "id": "uber-fare-estimate",
+  "domain": "uber.com",
+  "stage": "inspect",
+  "prompt": "On uber.com, get Uber's price estimate for an UberX ride from {{pickup}} to {{dropoff}}. Do not request a ride. Reply with JSON: {\"ride\": string, \"price_low\": number, \"price_high\": number}, the low and high ends of the estimate in US dollars (the same number twice if the site shows one price).",
+  "fixture": {
+    "pickup": "San Francisco International Airport (SFO)",
+    "dropoff": "Ferry Building, San Francisco"
+  },
+  "start_url": "https://www.uber.com/global/en/price-estimate/",
+  "answer_schema": "schemas/fare-estimate.json",
+  "opt_in": "the ride options page asked for a login before showing fares in 2 of 3 rehearsal trials (2026-10-20)",
+  "rules": [
+    {
+      "path": "ride",
+      "matches": "uberx"
+    },
+    {
+      "path": "price_low",
+      "range": [
+        10,
+        300
+      ]
+    },
+    {
+      "path": "price_high",
+      "range": [
+        10,
+        400
+      ]
+    }
+  ],
+  "pairs": 5,
+  "trial_timeout_sec": 600,
+  "max_turns": 40
+}

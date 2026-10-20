@@ -1,0 +1,21 @@
+{
+  "id": "ipwho-country-asn",
+  "domain": "ipwho.is",
+  "stage": "inspect",
+  "prompt": "On ipwho.is, find the country and the autonomous system number (ASN) of the IP address {{ip}}. Reply with JSON: {\"ip\": string, \"country_code\": two-letter ISO 3166 code, \"asn\": \"AS\" followed by the number}.",
+  "fixture": {"ip": "41.203.18.200"},
+  "start_url": "https://ipwho.is/",
+  "tools": [
+    {"repo": "kernel/xwebmcp", "ref": "hypeship/ipwho-lookup-ip", "pr": 69, "names": ["lookup_ip"]}
+  ],
+  "entry_tool": "lookup_ip",
+  "answer_schema": "schemas/ip-lookup.json",
+  "rules": [
+    {"path": "ip", "equals": "{{ip}}"},
+    {"path": "country_code", "equals": "ZA"},
+    {"path": "asn", "equals": "AS37153"}
+  ],
+  "pairs": 5,
+  "trial_timeout_sec": 600,
+  "max_turns": 40
+}
