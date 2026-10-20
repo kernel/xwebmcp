@@ -133,6 +133,22 @@ test("reading cookies is retried after a dropped connection, before or during th
   assert.equal(hits["POST /browsers/b1/playwright/execute"], 2);
 });
 
+test("waiting for a page to load is retried only after an error the API answered with, and evaluating in it after a dropped connection too", async () => {
+  const route = "POST /browsers/b1/playwright/execute";
+  const retryNow = { status: 503, headers: { "retry-after-ms": "0" } };
+  run({ [route]: [retryNow, 200] });
+  assert.deepEqual(await kernel.waitForLoad("b1", "https://example.com/"), []);
+  assert.equal(hits[route], 2);
+
+  run({ [route]: ["drop", 200] });
+  await assert.rejects(kernel.waitForLoad("b1", "https://example.com/"), /page did not load/);
+  assert.equal(hits[route], 1);
+
+  run({ [route]: ["drop", 200] });
+  assert.deepEqual(await kernel.evaluate("b1", "() => 1", null), []);
+  assert.equal(hits[route], 2);
+});
+
 test("deleting a browser that is already gone succeeds", async () => {
   run({ "DELETE /browsers/b1": ["drop", 404] });
   await kernel.deleteBrowser("b1");
