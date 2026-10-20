@@ -2321,6 +2321,7 @@
       "url_patterns": [
         "https://www.marriott.com/*"
       ],
+      "url_patterns_reason": "Narrowed to www.marriott.com, Marriott's booking site: the tools call its same-origin search and property endpoints and refuse other origins; other marriott.com hosts are separate products.",
       "status": "qa_passed",
       "last_verified": "2026-09-30",
       "notes": "Independent final-source success/failure QA is fixture-only (840f6d97). Historical public overview GETs were blocked by HTTP-200 Akamai. No final-source live success, account, booking, hold or payment operations.",
@@ -2337,6 +2338,7 @@
       "url_patterns": [
         "https://www.marriott.com/*"
       ],
+      "url_patterns_reason": "Narrowed to www.marriott.com, Marriott's booking site: the tools call its same-origin search and property endpoints and refuse other origins; other marriott.com hosts are separate products.",
       "status": "qa_passed",
       "last_verified": "2026-09-30",
       "notes": "Independent final-source QA is fixture-only (840f6d97); historical live overview reads were challenged. Property-validated unsaved itinerary, not a quote or reservation. Manual handoff does not populate dates/guests. No execution or account save; trusted human approval is unavailable.",
@@ -2353,6 +2355,7 @@
       "url_patterns": [
         "https://www.marriott.com/*"
       ],
+      "url_patterns_reason": "Narrowed to www.marriott.com, Marriott's booking site: the tools call its same-origin search and property endpoints and refuse other origins; other marriott.com hosts are separate products.",
       "status": "qa_passed",
       "last_verified": "2026-09-30",
       "notes": "Independent final-source QA is fixture-only (840f6d97); historical live search returned HTTP429. Page-only same-currency comparison and exact representable stay estimates, not final prices or holds. No final-source live success. Embedded public query signatures can change; lower consumer payload caps may reject large pages.",
