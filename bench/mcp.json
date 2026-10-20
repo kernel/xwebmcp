@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "kernel": {
+      "type": "http",
+      "url": "https://mcp.onkernel.com/mcp",
+      "headers": { "Authorization": "Bearer ${KERNEL_API_KEY}" },
+      "exposure": "direct"
+    }
+  }
+}

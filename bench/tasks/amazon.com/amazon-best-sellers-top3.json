@@ -1,0 +1,21 @@
+{
+  "id": "amazon-best-sellers-top3",
+  "domain": "amazon.com",
+  "stage": "find",
+  "prompt": "On amazon.com, open the Best Sellers ranking for the {{department}} department and report its top three products: each one's rank, title as the product, price and ASIN. Reply with JSON: {\"products\": [{\"rank\": integer, \"product\": string, \"price\": number in US dollars, \"asin\": string}]}.",
+  "fixture": {"department": "Kitchen & Dining"},
+  "start_url": "https://www.amazon.com/",
+  "tools": [{"repo": "kernel/xwebmcp", "ref": "hypeship/amazon-search-product-bestsellers", "pr": 56}],
+  "answer_schema": "schemas/best-sellers.json",
+  "rules": [
+    {"path": "products", "count": [3, 3]},
+    {"path": "products[].rank", "range": [1, 3]},
+    {"path": "products[].rank", "unique": true},
+    {"path": "products[].asin", "unique": true},
+    {"path": "products[].price", "range": [1, 1000]}
+  ],
+  "agreement": {"path": "products[].asin", "same": true},
+  "pairs": 5,
+  "trial_timeout_sec": 600,
+  "max_turns": 40
+}

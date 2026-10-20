@@ -1,0 +1,6 @@
+{
+  "private": true,
+  "dependencies": {
+    "@onkernel/sdk": "^0.128.0"
+  }
+}
