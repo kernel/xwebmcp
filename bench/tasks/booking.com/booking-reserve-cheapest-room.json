@@ -1,0 +1,90 @@
+{
+  "id": "booking-reserve-cheapest-room",
+  "domain": "booking.com",
+  "stage": "prepare",
+  "prompt": "On booking.com, start a reservation of the cheapest room option at {{hotel}} in {{city}} from {{check_in}} to {{check_out}} for 2 adults in one room: select one of that room and continue to Booking.com's \"Your details\" step, then stop there without entering any details. You may select the room; do not fill in guest details or go further. Reply with JSON: {\"room\": string, \"total\": number in US dollars, the total the \"Your details\" page shows in its price summary}.",
+  "fixture": {
+    "hotel": "Palacio Ramalhete",
+    "city": "Lisbon",
+    "check_in": {
+      "days_from_start": 30
+    },
+    "check_out": {
+      "days_from_start": 32
+    }
+  },
+  "start_url": "https://www.booking.com/",
+  "steps": [
+    {
+      "name": "search",
+      "url_patterns": [
+        "https://www.booking.com/",
+        "https://www.booking.com/index.html*",
+        "https://www.booking.com/searchresults*"
+      ]
+    },
+    {
+      "name": "property",
+      "url_patterns": [
+        "https://www.booking.com/hotel/*"
+      ]
+    },
+    {
+      "name": "your details",
+      "url_patterns": [
+        "https://secure.booking.com/book.html*",
+        "https://secure.booking.com/tpi_book*"
+      ]
+    }
+  ],
+  "answer_schema": "schemas/room-rate.json",
+  "rules": [
+    {
+      "path": "total",
+      "range": [
+        50,
+        10000
+      ]
+    }
+  ],
+  "check": {
+    "extract": {
+      "total": "\\b(?:Total(?: price)?|Price)\\s*\\n\\s*(?:US)?\\$\\s*([\\d,]+(?:\\.\\d{2})?)\\s*\\n\\s*(?:\\(for [^)\\n]*\\)\\s*\\n\\s*)?(?:Includes taxes|Additional charges may apply)"
+    },
+    "rules": [
+      {
+        "path": "url",
+        "matches": "^https://secure\\.booking\\.com/(?:tpi_)?book(?:\\.[a-z-]+)?\\.html"
+      },
+      {
+        "path": "text",
+        "matches": "Palacio Ramalhete"
+      },
+      {
+        "path": "text",
+        "matches": "Your details"
+      },
+      {
+        "path": "extracted.total",
+        "range": [
+          50,
+          10000
+        ]
+      }
+    ],
+    "same_as_answer": [
+      {
+        "answer": "total",
+        "end_state": "extracted.total"
+      }
+    ]
+  },
+  "agreement": {
+    "path": "total",
+    "better": "lower",
+    "tolerance": 1
+  },
+  "pairs": 5,
+  "trial_timeout_sec": 900,
+  "max_turns": 60
+}

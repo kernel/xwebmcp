@@ -1,0 +1,20 @@
+{
+  "id": "google-flights-cheapest-fare",
+  "domain": "google.com",
+  "stage": "find",
+  "prompt": "On Google Flights, find the cheapest one-way fare for 1 adult from {{origin}} to {{destination}} on {{date}}, in any cabin or fare type the site offers. Reply with JSON: {\"flight_numbers\": [string], \"departure_time\": \"HH:MM\", \"price\": number in US dollars}, the time in 24-hour local time at the origin.",
+  "fixture": {
+    "origin": "New York (JFK)",
+    "destination": "Los Angeles (LAX)",
+    "date": {"days_from_start": 28}
+  },
+  "start_url": "https://www.google.com/travel/flights",
+  "tools": [{"repo": "kernel/xwebmcp", "ref": "main", "names": ["search_flights"]}],
+  "entry_tool": "search_flights",
+  "answer_schema": "schemas/cheapest-flight.json",
+  "rules": [{"path": "departure_time", "time": true}, {"path": "price", "range": [1, 3000]}],
+  "agreement": {"path": "price", "better": "lower", "tolerance": 1},
+  "pairs": 5,
+  "trial_timeout_sec": 600,
+  "max_turns": 40
+}

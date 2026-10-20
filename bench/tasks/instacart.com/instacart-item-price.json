@@ -1,0 +1,15 @@
+{
+  "id": "instacart-item-price",
+  "domain": "instacart.com",
+  "stage": "inspect",
+  "prompt": "On instacart.com, shopping for delivery to ZIP code {{zip}}, find the price of {{item}} at {{store}}. Reply with JSON: {\"product\": string, \"price\": number in US dollars}.",
+  "fixture": {"zip": "94103", "item": "organic bananas", "store": "Safeway"},
+  "start_url": "https://www.instacart.com/",
+  "tools": [{"repo": "kernel/xwebmcp", "ref": "main", "names": ["list_stores", "search"]}],
+  "entry_tool": "search",
+  "answer_schema": "schemas/product-price.json",
+  "rules": [{"path": "product", "matches": "banana"}, {"path": "price", "range": [0.1, 50]}],
+  "pairs": 5,
+  "trial_timeout_sec": 600,
+  "max_turns": 40
+}

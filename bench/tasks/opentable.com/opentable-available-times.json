@@ -1,0 +1,49 @@
+{
+  "id": "opentable-available-times",
+  "domain": "opentable.com",
+  "stage": "inspect",
+  "prompt": "On opentable.com, find every time OpenTable offers for a standard table for {{party}} at {{restaurant}} in {{city}} on {{date}} from {{from}} to {{to}}. Do not select a time, since that holds the table. Reply with JSON: {\"restaurant\": string, \"times\": [\"HH:MM\"]}, the times in 24-hour local time.",
+  "fixture": {
+    "party": 2,
+    "restaurant": "Kokkari Estiatorio",
+    "city": "San Francisco",
+    "date": {
+      "days_from_start": 14
+    },
+    "from": "18:00",
+    "to": "21:00"
+  },
+  "start_url": "https://www.opentable.com/",
+  "answer_schema": "schemas/available-times.json",
+  "rules": [
+    {
+      "path": "restaurant",
+      "matches": "kokkari"
+    },
+    {
+      "path": "times",
+      "count": [
+        1,
+        30
+      ]
+    },
+    {
+      "path": "times[]",
+      "range": [
+        "{{from}}",
+        "{{to}}"
+      ]
+    },
+    {
+      "path": "times[]",
+      "unique": true
+    }
+  ],
+  "agreement": {
+    "path": "times[]",
+    "same": true
+  },
+  "pairs": 5,
+  "trial_timeout_sec": 600,
+  "max_turns": 40
+}

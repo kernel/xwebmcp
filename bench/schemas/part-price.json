@@ -1,0 +1,22 @@
+{
+  "type": "object",
+  "required": [
+    "part_number",
+    "pack_quantity",
+    "price"
+  ],
+  "properties": {
+    "part_number": {
+      "type": "string",
+      "minLength": 1
+    },
+    "pack_quantity": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "price": {
+      "type": "number",
+      "exclusiveMinimum": 0
+    }
+  }
+}

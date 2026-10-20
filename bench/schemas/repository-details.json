@@ -1,0 +1,11 @@
+{
+  "type": "object",
+  "required": ["repository", "default_branch", "license", "stars", "releases"],
+  "properties": {
+    "repository": { "type": "string", "pattern": "^[A-Za-z0-9-]+/[A-Za-z0-9._-]+$" },
+    "default_branch": { "type": "string", "minLength": 1 },
+    "license": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9.+-]*$" },
+    "stars": { "type": "integer", "minimum": 0 },
+    "releases": { "type": "integer", "minimum": 0 }
+  }
+}

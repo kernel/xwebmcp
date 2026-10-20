@@ -1,0 +1,41 @@
+{
+  "id": "booking-cheapest-well-rated",
+  "domain": "booking.com",
+  "stage": "compare",
+  "prompt": "On booking.com, find the cheapest stay in {{city}} from {{check_in}} to {{check_out}} for 2 adults in one room among properties with a guest review score of 9 or higher. Report the property, its review score and the price the site lists for the whole stay in US dollars, before the taxes and charges it lists as excluded. Reply with JSON: {\"property\": string, \"review_score\": number, \"total\": number}.",
+  "fixture": {
+    "city": "Lisbon",
+    "check_in": {
+      "days_from_start": 30
+    },
+    "check_out": {
+      "days_from_start": 32
+    }
+  },
+  "start_url": "https://www.booking.com/",
+  "answer_schema": "schemas/stay-price.json",
+  "rules": [
+    {
+      "path": "review_score",
+      "range": [
+        9,
+        10
+      ]
+    },
+    {
+      "path": "total",
+      "range": [
+        20,
+        5000
+      ]
+    }
+  ],
+  "agreement": {
+    "path": "total",
+    "better": "lower",
+    "tolerance": 5
+  },
+  "pairs": 5,
+  "trial_timeout_sec": 600,
+  "max_turns": 40
+}

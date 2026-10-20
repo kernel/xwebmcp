@@ -1,0 +1,31 @@
+{
+  "id": "doordash-pizza-near-address",
+  "domain": "doordash.com",
+  "stage": "find",
+  "prompt": "On doordash.com, with the delivery address set to {{address}}, find three pizza restaurants that deliver there and the delivery fee the site shows for each. Reply with JSON: {\"places\": [{\"name\": string, \"detail\": the delivery fee as shown}]}.",
+  "fixture": {
+    "address": "Times Square, New York, NY 10036"
+  },
+  "start_url": "https://www.doordash.com/",
+  "answer_schema": "schemas/named-places.json",
+  "rules": [
+    {
+      "path": "places",
+      "count": [
+        3,
+        3
+      ]
+    },
+    {
+      "path": "places[].name",
+      "unique": true
+    },
+    {
+      "path": "places[].detail",
+      "matches": "\\$\\s*\\d|free"
+    }
+  ],
+  "pairs": 5,
+  "trial_timeout_sec": 600,
+  "max_turns": 40
+}
