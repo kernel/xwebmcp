@@ -1,0 +1,27 @@
+{
+  "id": "amazon-in-search-first-result",
+  "domain": "amazon.in",
+  "stage": "find",
+  "prompt": "On amazon.in, search for \"{{query}}\" and report the first result that is not sponsored and shows a price: its title as the product, its price in Indian rupees and its ASIN. Reply with JSON: {\"product\": string, \"price\": number, \"asin\": string}.",
+  "fixture": {
+    "query": "usb c cable"
+  },
+  "start_url": "https://www.amazon.in/",
+  "answer_schema": "schemas/asin-search-result.json",
+  "rules": [
+    {
+      "path": "product",
+      "matches": "usb|type.?c"
+    },
+    {
+      "path": "price",
+      "range": [
+        50,
+        5000
+      ]
+    }
+  ],
+  "pairs": 5,
+  "trial_timeout_sec": 600,
+  "max_turns": 40
+}

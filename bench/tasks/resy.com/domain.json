@@ -1,0 +1,11 @@
+{
+  "needs_sign_in": {
+    "get_account_status": "needs the signed-in account's account_ref",
+    "get_booking_quote": "needs the signed-in account's account_ref",
+    "get_list": "needs the signed-in account's account_ref",
+    "get_reservation": "needs the signed-in account's account_ref",
+    "list_lists": "needs the signed-in account's account_ref",
+    "list_notify_requests": "needs the signed-in account's account_ref",
+    "list_reservations": "needs the signed-in account's account_ref"
+  }
+}

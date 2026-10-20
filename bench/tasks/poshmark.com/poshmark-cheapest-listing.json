@@ -1,0 +1,33 @@
+{
+  "id": "poshmark-cheapest-listing",
+  "domain": "poshmark.com",
+  "stage": "compare",
+  "prompt": "On poshmark.com, search for \"{{query}}\" in women's size {{size}}, available listings only, and find the cheapest one. Report its title, price and the seller's username. Reply with JSON: {\"title\": string, \"price\": number in US dollars, \"seller\": string}.",
+  "fixture": {
+    "query": "lululemon define jacket",
+    "size": "6"
+  },
+  "start_url": "https://poshmark.com/",
+  "answer_schema": "schemas/listing-price.json",
+  "rules": [
+    {
+      "path": "title",
+      "matches": "define"
+    },
+    {
+      "path": "price",
+      "range": [
+        3,
+        500
+      ]
+    }
+  ],
+  "agreement": {
+    "path": "price",
+    "better": "lower",
+    "tolerance": 1
+  },
+  "pairs": 5,
+  "trial_timeout_sec": 600,
+  "max_turns": 40
+}

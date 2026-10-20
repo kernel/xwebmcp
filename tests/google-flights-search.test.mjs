@@ -2,123 +2,20 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 import vm from "node:vm";
+import { El, card as makeCard, segment, plusDays, longDate, validate } from "./google-flights-dom.mjs";
 
 const source = readFileSync(new URL("../domains/google.com/search_flights.js", import.meta.url), "utf8");
 const departDate = new Date(Date.now() + 21 * 86400000).toISOString().slice(0, 10);
 const returnDate = new Date(Date.now() + 28 * 86400000).toISOString().slice(0, 10);
-const oneWay = { origin: "CVG", destination: "SFO", departDate, tripType: "one_way" };
-const roundTrip = { ...oneWay, returnDate, tripType: "round_trip" };
-const plusDays = (iso, days) => new Date(Date.parse(iso) + days * 86400000).toISOString().slice(0, 10);
-const longDate = iso => new Date(iso).toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric", timeZone: "UTC" });
+const oneWay = { origin: "CVG", destination: "SFO", depart_date: departDate, trip_type: "one_way" };
+const roundTrip = { ...oneWay, return_date: returnDate, trip_type: "round_trip" };
+const TOOLS = ["get_page_context", "search_flights", "list_flights", "select_flight", "show_more_flights", "set_results_view", "set_flight_sort", "set_flight_filters", "get_flight_details"];
 
-// Minimal DOM: only what the tool's page functions use.
-class El {
-  constructor(tag, { cls = "", attrs = {}, text = "", hidden = false, children = [] } = {}) {
-    this.tagName = tag.toUpperCase();
-    this.className = cls;
-    this.attrs = { ...attrs };
-    this.text = text;
-    this.hidden = hidden;
-    this.parentElement = null;
-    this.children = [];
-    this.clicks = 0;
-    for (const child of children) this.append(child);
-  }
-  append(child) { child.parentElement = this; this.children.push(child); return child; }
-  get textContent() { return this.text + this.children.map(c => c.textContent).join(""); }
-  get innerText() { return this.text + this.children.map(c => c.innerText).join("\n"); }
-  get classes() { return this.className.split(" ").filter(Boolean); }
-  isVisible() { return !this.hidden && (!this.parentElement || this.parentElement.isVisible()); }
-  getClientRects() { return this.isVisible() ? [{}] : []; }
-  getAttribute(name) { return name in this.attrs ? this.attrs[name] : null; }
-  setAttribute(name, value) { this.attrs[name] = String(value); }
-  click() { this.clicks++; this.onclick?.(); }
-  descendants() { return this.children.flatMap(c => [c, ...c.descendants()]); }
-  matches(compound) {
-    const tag = compound.match(/^[a-z0-9]+/i)?.[0];
-    if (tag && this.tagName !== tag.toUpperCase()) return false;
-    for (const [, cls] of compound.matchAll(/\.([\w-]+)/g)) if (!this.classes.includes(cls)) return false;
-    for (const [, name, op, value] of compound.matchAll(/\[([\w-]+)(?:([\^$]?=)["']([^"']*)["'])?\]/g)) {
-      const actual = this.getAttribute(name);
-      if (actual === null) return false;
-      if (op === "=" && actual !== value) return false;
-      if (op === "^=" && !actual.startsWith(value)) return false;
-      if (op === "$=" && !actual.endsWith(value)) return false;
-    }
-    return true;
-  }
-  querySelectorAll(selector) {
-    const out = [];
-    for (const part of selector.split(",").map(s => s.trim())) {
-      const steps = part.replace(/^:scope\s*/, "").split(/\s+(?=[^\]]*(?:\[|$))/).filter(Boolean);
-      let candidates = [this];
-      let childOnly = false;
-      for (const step of steps) {
-        if (step === ">") { childOnly = true; continue; }
-        const next = [];
-        for (const node of candidates) for (const el of childOnly ? node.children : node.descendants()) if (el.matches(step) && !next.includes(el)) next.push(el);
-        candidates = next;
-        childOnly = false;
-      }
-      for (const el of candidates) if (!out.includes(el)) out.push(el);
-    }
-    return out;
-  }
-  querySelector(selector) { return this.querySelectorAll(selector)[0] ?? null; }
-}
+const card = options => makeCard({ date: departDate, ...options });
 
-function segment({ from, fromName, dep, to, toName, arr, plus = "", travel, airline, number, aircraft, cabin = "Economy", operator = null, layover = null }) {
-  const block = new El("div", { cls: "c257Jb", children: [
-    new El("span", { cls: "b0EVyb", text: dep }),
-    new El("span", { cls: "ZHa2lc", text: `${fromName} (${from})` }),
-    new El("span", { cls: "P102Lb", text: `Travel time: ${travel}` }),
-    new El("span", { cls: "OJg28c", text: arr, children: plus ? [new El("span", { cls: "bOzv6", text: plus })] : [] }),
-    new El("span", { cls: "FY5t7d", text: `${toName} (${to})` }),
-    new El("span", { cls: "Xsgmwe", text: airline }),
-    new El("span", { cls: "Xsgmwe", text: number }),
-    new El("span", { cls: "Xsgmwe", text: cabin }),
-    new El("span", { cls: "Xsgmwe", text: aircraft }),
-    new El("span", { cls: "Xsgmwe", text: number }),
-    new El("span", { cls: "h6GTp", text: "Emissions estimate: 100 kg CO2e" }),
-  ] });
-  if (operator) block.append(new El("span", { cls: "CoZk4", text: `Plane and crew by ${operator}` }));
-  if (layover) block.append(new El("span", { cls: "tvtJdb", text: layover }));
-  return block;
-}
-
-function card({ dep, arr, plus = "", arrivalDate, airline, partners = null, operatedBy = null, duration, from, to, stops, layoverSummary = "", price, currencyName = "US dollars", roundTrip = false, emissions, comparison, segments, hidden = false, priceless = false }) {
-  const arrivalDay = arrivalDate ? ` on  ${longDate(arrivalDate)}` : "";
-  const summary = `From ${price.replace(/[^\d]/g, "")} ${currencyName}${roundTrip ? " round trip total" : ""}. ${stops ? `${stops} stop` : "Nonstop"} flight with ${airline}. ${operatedBy ? `Operated by ${operatedBy}. ` : ""}Leaves ${from} at ${dep} and arrives at ${to} at ${arr}${arrivalDay}. Total duration ${duration}.  Select flight`;
-  const carrierRow = new El("div", { cls: "sSHqwe", children: [new El("span", { text: airline }), new El("span", { cls: "qeoz6e", text: "" })] });
-  if (operatedBy) carrierRow.append(new El("span", { text: `Operated by ${operatedBy}` }));
-  if (partners) carrierRow.append(new El("span", { text: partners }));
-  const details = new El("button", { attrs: { "aria-label": `Flight details. Leaves ${from} at ${dep}.`, "aria-expanded": "false" } });
-  const li = new El("li", { cls: "pIav2d", hidden, children: [
-    new El("div", { attrs: { "aria-label": summary }, children: [
-      new El("div", { cls: "mv1WYe", children: [
-        new El("span", { attrs: { "aria-label": `Departure time: ${dep}.` }, text: dep }),
-        new El("span", { attrs: { "aria-label": `Arrival time: ${arr}${arrivalDay}.` }, text: arr, children: plus ? [new El("span", { cls: "bOzv6", text: plus })] : [] }),
-      ] }),
-      carrierRow,
-      new El("div", { cls: "gvkrdb", attrs: { "aria-label": `Total duration ${duration}.` }, text: duration }),
-      new El("div", { cls: "QylvBf", text: from.slice(0, 3), children: [new El("span", { cls: "eoY5cb", text: from.slice(4) })] }),
-      new El("div", { cls: "QylvBf", text: to.slice(0, 3), children: [new El("span", { cls: "eoY5cb", text: to.slice(4) })] }),
-      new El("div", { cls: "EfT7Ae", text: stops ? `${stops} stop${stops > 1 ? "s" : ""}${layoverSummary}` : "Nonstop" }),
-      new El("div", { cls: "AdWm1c", text: emissions }),
-      new El("div", { cls: "rRrlfc", text: comparison }),
-      new El("div", { cls: "YMlIz", children: priceless ? [new El("span", { text: "Price unavailable" })] : [new El("span", { attrs: { "aria-label": `${price.replace(/[^\d]/g, "")} ${currencyName}` }, text: price })] }),
-      ...(roundTrip ? [new El("span", { text: "round trip" })] : []),
-      details,
-    ] }),
-  ] });
-  details.onclick = () => {
-    details.setAttribute("aria-expanded", "true");
-    for (const block of segments) li.append(block);
-  };
-  return li;
-}
-
-function resultsPage({ live = "2 results returned.", roundTripCards = false, extraCard = null, currencyName = "US dollars", firstCard = null } = {}) {
+// A static Google Flights results page with Google's controls: Best/Cheapest tabs, the sort button, filter chips and
+// 'View more flights'. Clicking a tab selects it, shows that view's rows and re-announces the list.
+function resultsPage({ live = "2 results returned.", roundTripCards = false, extraCard = null, currencyName = "US dollars", firstCard = null, selectedView = "best", tabs = true, stopsChip = null } = {}) {
   const cardA = firstCard ?? card({ currencyName,
     dep: "6:08 PM", arr: "8:45 PM", airline: "Delta", duration: "5 hr 37 min",
     from: "CVG Cincinnati/Northern Kentucky International Airport", to: "SFO San Francisco International Airport",
@@ -129,7 +26,7 @@ function resultsPage({ live = "2 results returned.", roundTripCards = false, ext
     dep: "4:32 PM", arr: "12:15 AM", plus: "+1", arrivalDate: plusDays(departDate, 1), airline: "United", operatedBy: "SkyWest DBA United Express",
     partners: "Lufthansa, Air Canada", duration: "10 hr 43 min", currencyName,
     from: "CVG Cincinnati/Northern Kentucky International Airport", to: "SFO San Francisco International Airport",
-    stops: 1, layoverSummary: "4 hr 42 min layoverLong layover", price: "$1,245", roundTrip: roundTripCards, emissions: "1,416 kg CO2e", comparison: "Avg emissions",
+    stops: 1, layoverLabel: "Layover (1 of 1) is a 4 hr 42 min layover at Denver International Airport in Denver. ", layoverSummary: "4 hr 42 min layoverLong layover", price: "$1,245", roundTrip: roundTripCards, emissions: "1,416 kg CO2e", comparison: "Avg emissions",
     segments: [
       segment({ from: "CVG", fromName: "Cincinnati/Northern Kentucky International Airport", dep: "4:32 PM", to: "DEN", toName: "Denver International Airport", arr: "5:47 PM", travel: "3 hr 15 min", airline: "United", number: "UA 5595", aircraft: "Embraer 175", operator: "SkyWest DBA United Express", layover: "4 hr 42 min layoverDenver (DEN)" }),
       segment({ from: "DEN", fromName: "Denver International Airport", dep: "10:29 PM", to: "SFO", toName: "San Francisco International Airport", arr: "12:15 AM", plus: "+1", travel: "2 hr 46 min", airline: "United", number: "UA 2106", aircraft: "Airbus A321neo" }),
@@ -144,8 +41,24 @@ function resultsPage({ live = "2 results returned.", roundTripCards = false, ext
     otherList.append(extraCard);
     moreButton.onclick = () => { extraCard.hidden = false; moreButton.hidden = true; liveRegion.text = "3 results returned."; };
   } else moreButton.hidden = true;
+  const tabNodes = tabs ? ["Best", "Cheapest"].map(name => new El("div", { attrs: { role: "tab", "aria-selected": String(name.toLowerCase() === selectedView) }, text: name })) : [];
+  // Each view prices the first row differently, as Google's tabs do.
+  const firstPrice = cardA.querySelector("span[aria-label$='dollars'], span[aria-label$='pounds'], span[aria-label$='krónur'], span[aria-label$='credits']");
+  for (const tab of tabNodes) tab.onclick = () => {
+    for (const t of tabNodes) t.setAttribute("aria-selected", String(t === tab));
+    liveRegion.text = "";
+    const shift = n => String(Number(n) + (tab.text === "Cheapest" ? -1 : 1));
+    setTimeout(() => {
+      firstPrice?.setAttribute("aria-label", firstPrice.getAttribute("aria-label").replace(/^\d+/, shift));
+      cardA.link.setAttribute("aria-label", cardA.link.getAttribute("aria-label").replace(/^From (\d+)/, (_, n) => "From " + shift(n)));
+      liveRegion.text = live;
+    }, 50);
+  };
   const body = new El("body", { children: [
     liveRegion,
+    new El("div", { children: tabNodes }),
+    new El("div", { children: [new El("button", { attrs: { "aria-label": stopsChip ? `${stopsChip}, Stops, Selected` : "Stops, Not selected" } }), new El("button", { attrs: { "aria-label": "Airlines, Not selected" } })] }),
+    new El("button", { attrs: { "aria-label": "Sorted by top flights, Change sort order." } }),
     new El("div", { children: [new El("h3", { text: roundTripCards ? "Top departing flights" : "Top flights" }), new El("ul", { children: [cardA] })] }),
     new El("div", { children: [new El("h3", { text: "Price insights" }), new El("span", { text: "Prices are currently typical" })] }),
     new El("div", { children: [new El("h3", { text: roundTripCards ? "Other departing flights" : "Other flights" }), otherList, moreButton] }),
@@ -153,10 +66,14 @@ function resultsPage({ live = "2 results returned.", roundTripCards = false, ext
     new El("p", { text: "Prices include required taxes + fees for 1 adult. Optional charges and bag fees may apply." }),
   ] });
   const documentElement = new El("html", { children: [body] });
-  return { documentElement, body, querySelector: s => documentElement.querySelector(s), querySelectorAll: s => documentElement.querySelectorAll(s), cards: { a: cardA, b: cardB }, moreButton };
+  return {
+    documentElement, body, querySelector: s => documentElement.querySelector(s), querySelectorAll: s => documentElement.querySelectorAll(s),
+    modelContext: { getTools: async () => TOOLS.map(name => ({ name: `custom.ct_x.${name}` })) },
+    cards: { a: cardA, b: cardB }, moreButton, tabs: tabNodes,
+  };
 }
 
-function harness({ startUrl = "https://www.google.com/travel/flights?hl=en", document = resultsPage(), consent = false, sorry = false, matches, timeoutClock = false } = {}) {
+function harness({ startUrl = "https://www.google.com/travel/flights?hl=en", document = resultsPage(), consent = false, sorry = false, matches, fastClock = false, onNavigate = () => {} } = {}) {
   const calls = [];
   let url = startUrl;
   let tabId = "target-a";
@@ -164,8 +81,9 @@ function harness({ startUrl = "https://www.google.com/travel/flights?hl=en", doc
   const pageGlobals = () => {
     const location = new URL(url);
     let offset = 0;
-    const globals = { document, location, setTimeout, Date };
-    if (timeoutClock) globals.Date = class extends Date { static now() { offset += 30000; return Date.now() + offset; } };
+    const globals = { document, location, navigator: {}, setTimeout, Date, URL, atob, btoa, TextEncoder, TextDecoder };
+    // Advances 30 s per reading so quiet periods and timeouts pass instantly.
+    if (fastClock) globals.Date = class extends Date { static now() { offset += 30000; return Date.now() + offset; } };
     return globals;
   };
   const tools = vm.runInNewContext(`(${source}\n)`, {
@@ -176,6 +94,7 @@ function harness({ startUrl = "https://www.google.com/travel/flights?hl=en", doc
     gotoUrl: async next => {
       calls.push(`goto:${next}`);
       url = consent ? `https://consent.google.com/m?continue=${encodeURIComponent(next)}` : resultsHost ?? next;
+      onNavigate(next);
     },
     waitForElement: async (selector, options) => { calls.push(`wait:${selector}:${options.state}`); return true; },
     waitForNetworkIdle: async () => { calls.push("idle"); return true; },
@@ -187,92 +106,111 @@ function harness({ startUrl = "https://www.google.com/travel/flights?hl=en", doc
     },
   });
   // JSON round-trip: results come from another vm realm, whose arrays fail deepEqual.
-  const execute = async (input, context) => JSON.parse(JSON.stringify(await tools[0].execute(input, context)));
+  const execute = async (input, context) => {
+    const out = JSON.parse(JSON.stringify(await tools[0].execute(input, context)));
+    validate(tools[0].tool.outputSchema, out);
+    return out;
+  };
   return { tools, execute, calls, currentUrl: () => url };
 }
+const emptyPage = () => { const doc = resultsPage({ live: "No results returned." }); for (const list of doc.querySelectorAll("ul")) list.hidden = true; return doc; };
+const clicked = document => document.querySelectorAll("*").filter(e => e.clicks).length;
 
-// Small JSON Schema walker so fixture results are checked against the tool's own outputSchema.
-function validate(schema, value, path = "$") {
-  const type = Array.isArray(schema.type) ? schema.type : schema.type ? [schema.type] : [];
-  const actual = value === null ? "null" : Array.isArray(value) ? "array" : Number.isInteger(value) ? "integer" : typeof value;
-  if (type.length) assert.ok(type.includes(actual) || (actual === "integer" && type.includes("number")), `${path}: type ${actual} not in ${type}`);
-  if (schema.enum) assert.ok(schema.enum.includes(value), `${path}: ${JSON.stringify(value)} not in enum`);
-  if ("const" in schema) assert.equal(value, schema.const, `${path}: const`);
-  if (schema.pattern && typeof value === "string") assert.match(value, new RegExp(schema.pattern), `${path}: pattern`);
-  if (schema.minLength !== undefined && typeof value === "string") assert.ok(value.length >= schema.minLength, `${path}: minLength`);
-  if (schema.minimum !== undefined && typeof value === "number") assert.ok(value >= schema.minimum, `${path}: minimum`);
-  if (schema.maximum !== undefined && typeof value === "number") assert.ok(value <= schema.maximum, `${path}: maximum`);
-  if (schema.exclusiveMinimum !== undefined && typeof value === "number") assert.ok(value > schema.exclusiveMinimum, `${path}: exclusiveMinimum`);
-  if (actual === "array") {
-    if (schema.minItems !== undefined) assert.ok(value.length >= schema.minItems, `${path}: minItems`);
-    if (schema.items) value.forEach((item, i) => validate(schema.items, item, `${path}[${i}]`));
-  }
-  if (actual === "object") {
-    for (const key of schema.required ?? []) assert.ok(key in value, `${path}: missing ${key}`);
-    for (const [key, item] of Object.entries(value)) {
-      if (schema.properties?.[key]) validate(schema.properties[key], item, `${path}.${key}`);
-      else if (schema.additionalProperties === false) assert.fail(`${path}: unexpected property ${key}`);
-    }
-  }
-}
-
-test("source is a self-contained expression with narrow Google Travel matching and typed schemas", () => {
+test("source is a self-contained expression with narrow Google Travel matching and typed snake_case schemas", () => {
   const { tools } = harness();
   assert.equal(tools.length, 1);
   const [definition] = tools;
   assert.equal(definition.kind, "cdp");
   assert.deepEqual(Array.from(definition.match.url_patterns), ["https://google.com/travel/*", "https://*.google.com/travel/*"]);
   assert.equal(definition.tool.name, "search_flights");
-  assert.equal(definition.tool.inputSchema.type, "object");
-  assert.deepEqual(Array.from(definition.tool.inputSchema.required), ["origin", "destination", "departDate", "tripType"]);
-  assert.deepEqual(Array.from(definition.tool.inputSchema.properties.tripType.enum), ["one_way", "round_trip"]);
-  assert.equal(definition.tool.inputSchema.properties.passengers.maximum, 9);
-  assert.deepEqual(Array.from(definition.tool.inputSchema.properties.cabin.enum), ["economy", "premium_economy", "business", "first"]);
+  const input = definition.tool.inputSchema;
+  assert.deepEqual(Array.from(input.required), ["origin", "destination", "depart_date", "trip_type"]);
+  assert.deepEqual(Array.from(input.properties.view.enum), ["best", "cheapest"]);
+  assert.deepEqual([input.properties.max_stops.minimum, input.properties.max_stops.maximum, input.properties.passengers.maximum], [0, 2, 9]);
+  assert.equal(input.properties.maxResults, undefined);
+  assert.deepEqual(Array.from(input.properties.cabin.enum), ["economy", "premium_economy", "business", "first"]);
   assert.equal(definition.tool.outputSchema.properties.flights.items.properties.price.properties.amount.type, "number");
-  assert.equal(definition.tool.annotations.readOnlyHint, true);
-  assert.equal(typeof definition.execute, "function");
 });
 
 for (const [name, input, pattern] of [
   ["lowercase airport code", { ...oneWay, origin: "cvg" }, /IATA/],
   ["identical airports", { ...oneWay, destination: "CVG" }, /must differ/],
-  ["past departure", { ...oneWay, departDate: "2020-01-01" }, /in the past/],
-  ["impossible date", { ...oneWay, departDate: `${departDate.slice(0, 4)}-02-30` }, /real YYYY-MM-DD/],
-  ["return before departure", { ...roundTrip, returnDate: plusDays(departDate, -1) }, /on or after departDate/],
-  ["round trip without return", { ...oneWay, tripType: "round_trip" }, /requires a real YYYY-MM-DD returnDate/],
-  ["one way with return", { ...oneWay, returnDate }, /must omit returnDate/],
+  ["past departure", { ...oneWay, depart_date: "2020-01-01" }, /in the past/],
+  ["impossible date", { ...oneWay, depart_date: `${departDate.slice(0, 4)}-02-30` }, /real YYYY-MM-DD/],
+  ["return before departure", { ...roundTrip, return_date: plusDays(departDate, -1) }, /on or after depart_date/],
+  ["round trip without return", { ...oneWay, trip_type: "round_trip" }, /requires a real YYYY-MM-DD return_date/],
+  ["one way with return", { ...oneWay, return_date: returnDate }, /must omit return_date/],
   ["too many passengers", { ...oneWay, passengers: 10 }, /1–9 adults/],
   ["unknown cabin", { ...oneWay, cabin: "coach" }, /cabin must be/],
   ["bad currency", { ...oneWay, currency: "us$" }, /currency must be/],
+  ["unknown view", { ...oneWay, view: "fastest" }, /view must be best or cheapest/],
+  ["zero limit", { ...oneWay, limit: 0 }, /limit must be/],
+  ["legacy camelCase input", { origin: "CVG", destination: "SFO", departDate, tripType: "one_way" }, /snake_case/],
+  ["legacy maxResults", { ...oneWay, maxResults: 5 }, /unexpected input maxResults/],
+  ["negative stop limit", { ...oneWay, max_stops: -1 }, /max_stops must be/],
+  ["unsupported stop limit", { ...oneWay, max_stops: 3 }, /max_stops must be/],
+  ["fractional stop limit", { ...oneWay, max_stops: 0.5 }, /max_stops must be/],
+  ["string stop limit", { ...oneWay, max_stops: "0" }, /max_stops must be/],
+  ["null stop limit", { ...oneWay, max_stops: null }, /max_stops must be/],
 ]) {
-  test(`invalid input (${name}) fails before touching the page`, async () => {
-    const h = harness();
+  test(`invalid input (${name}) is refused before navigating or clicking, with the current page's actions`, async () => {
+    const doc = resultsPage();
+    const h = harness({ document: doc, startUrl: "https://www.google.com/travel/flights/search?tfs=x", fastClock: true });
     const result = await h.execute(input);
-    assert.equal(result.status, "error");
+    assert.equal(result.status, "invalid_input");
     assert.match(result.message, /^INVALID_INPUT: /);
     assert.match(result.message, pattern);
-    assert.equal(result.resultsUrl, "");
-    assert.deepEqual(h.calls, []);
-    validate(h.tools[0].tool.outputSchema, result);
+    assert.equal(result.results_url, "");
+    assert.ok(!h.calls.some(c => c.startsWith("goto:")));
+    assert.equal(clicked(doc), 0);
+    assert.ok(result.available_actions.some(a => a.tool === "search_flights"));
   });
 }
 
+test("invalid input on a page that cannot be read reports its controls as unknown and suggests only a new search", async () => {
+  const h = harness({ startUrl: "https://example.com/" });
+  const result = await h.execute({ ...oneWay, origin: "cvg" });
+  assert.equal(result.status, "invalid_input");
+  assert.deepEqual([result.page, result.view, result.sort, result.filters, result.results], [null, null, null, null, null]);
+  assert.deepEqual(result.registered_tools, { known: false, names: [] });
+  assert.deepEqual(result.available_actions.map(a => [a.tool, a.registered, a.input]), [["search_flights", null, null]]);
+  assert.deepEqual(h.calls, []);
+});
+
 test("deep link encodes the query as Google's tfs protobuf with locale and currency", async () => {
-  const h = harness({ document: resultsPage({ live: "No results returned." }) });
-  await h.execute({ origin: "CVG", destination: "SFO", departDate, tripType: "one_way", passengers: 2, cabin: "business", currency: "EUR" });
+  const h = harness({ document: emptyPage() });
+  await h.execute({ origin: "CVG", destination: "SFO", depart_date: departDate, trip_type: "one_way", passengers: 2, cabin: "business", currency: "EUR" });
   const target = new URL(h.calls.find(c => c.startsWith("goto:")).slice(5));
   assert.equal(target.origin + target.pathname, "https://www.google.com/travel/flights/search");
   assert.equal(target.searchParams.get("hl"), "en");
   assert.equal(target.searchParams.get("gl"), "US");
   assert.equal(target.searchParams.get("curr"), "EUR");
+  assert.equal(target.searchParams.get("tfu"), null);
   const tfs = Buffer.from(target.searchParams.get("tfs"), "base64url");
   // Live-verified layout: one leg (field 3), two adult passengers (field 8), business seat (field 9), one-way trip (field 19).
   const leg = Buffer.concat([Buffer.from([0x12, 10]), Buffer.from(departDate), Buffer.from([0x6a, 7, 0x08, 1, 0x12, 3]), Buffer.from("CVG"), Buffer.from([0x72, 7, 0x08, 1, 0x12, 3]), Buffer.from("SFO")]);
   assert.deepEqual(tfs, Buffer.concat([Buffer.from([0x1a, leg.length]), leg, Buffer.from([0x40, 1, 0x40, 1, 0x48, 3, 0x98, 1, 2])]));
 });
 
+for (const max_stops of [0, 1, 2]) {
+  for (const input of [oneWay, roundTrip]) {
+    test(`${input.trip_type} encodes max_stops=${max_stops} (Google's Stops filter) on every leg before navigation`, async () => {
+      const h = harness({ document: emptyPage() });
+      await h.execute({ ...input, max_stops });
+      const tfs = Buffer.from(new URL(h.calls.find(c => c.startsWith("goto:")).slice(5)).searchParams.get("tfs"), "base64url");
+      const leg = (day, from, to) => {
+        const payload = Buffer.concat([Buffer.from([0x12, 10]), Buffer.from(day), Buffer.from([0x28, max_stops, 0x6a, 7, 0x08, 1, 0x12, 3]), Buffer.from(from), Buffer.from([0x72, 7, 0x08, 1, 0x12, 3]), Buffer.from(to)]);
+        return Buffer.concat([Buffer.from([0x1a, payload.length]), payload]);
+      };
+      const legs = [leg(departDate, "CVG", "SFO")];
+      if (input.trip_type === "round_trip") legs.push(leg(returnDate, "SFO", "CVG"));
+      assert.deepEqual(tfs, Buffer.concat([...legs, Buffer.from([0x40, 1, 0x48, 1, 0x98, 1, input.trip_type === "round_trip" ? 1 : 2])]));
+    });
+  }
+}
+
 test("round trips encode a reversed second leg and the round-trip marker", async () => {
-  const h = harness({ document: resultsPage({ live: "No results returned." }) });
+  const h = harness({ document: emptyPage() });
   await h.execute(roundTrip);
   const tfs = Buffer.from(new URL(h.calls.find(c => c.startsWith("goto:")).slice(5)).searchParams.get("tfs"), "base64url");
   const legs = [...tfs.toString("latin1").matchAll(/\x1a\x1e\x12\x0a(\d{4}-\d{2}-\d{2})j\x07\x08\x01\x12\x03([A-Z]{3})r\x07\x08\x01\x12\x03([A-Z]{3})/g)].map(m => m.slice(1));
@@ -288,7 +226,7 @@ for (const startUrl of ["https://www.google.com/travel/flights?hl=en", "https://
     assert.equal(h.calls.filter(c => c.startsWith("goto:")).length, 1);
     assert.equal(h.calls.indexOf("js"), 0);
     assert.ok(h.calls.indexOf("wait:html:not([data-xwebmcp-stale]):attached") > h.calls.findIndex(c => c.startsWith("goto:")));
-    assert.ok(h.calls.includes("idle"));
+    assert.ok(!h.calls.includes("idle"));
   });
 }
 
@@ -302,99 +240,123 @@ test("switches to the matched tab when the REPL is attached elsewhere", async ()
   assert.ok(!same.calls.some(c => c.startsWith("switchTab")));
 });
 
-test("parses best and other sections, segments, layovers, prices and overnight arrivals from the results DOM", async () => {
-  const h = harness();
+test("returns Google's initial rows in page order with sections, prices, layovers and overnight arrivals, opening nothing", async () => {
+  const doc = resultsPage();
+  const h = harness({ document: doc });
   const result = await h.execute(oneWay);
-  validate(h.tools[0].tool.outputSchema, result);
   assert.equal(result.status, "ok");
-  assert.equal(result.resultCount, 2);
-  assert.equal(result.totalResults, 2);
-  assert.equal(result.hasMore, false);
-  assert.equal(result.priceInsight, "Prices are currently typical");
-  assert.match(result.pricingNote, /^Prices include required taxes \+ fees for 1 adult/);
+  assert.equal(clicked(doc), 0);
+  assert.deepEqual(result.view.active, "best");
+  assert.equal(result.view_clicked, false);
+  assert.deepEqual(result.results.sections, [{ heading: "Top flights", first_position: 1, rows: 1 }, { heading: "Other flights", first_position: 2, rows: 1 }]);
+  assert.deepEqual([result.results.rendered_rows, result.results.returned_rows, result.results.next_offset], [2, 2, null]);
+  assert.equal(result.results.price_insight, "Prices are currently typical");
+  assert.match(result.results.pricing_note, /^Prices include required taxes \+ fees for 1 adult/);
   assert.deepEqual(result.warnings, []);
-  assert.equal(h.currentUrl(), result.resultsUrl);
+  assert.equal(h.currentUrl(), result.results_url);
   const [a, b] = result.flights;
-  assert.deepEqual(a, {
-    section: "best", airline: "Delta", airlines: ["Delta"], partnerAirlines: [], operatedBy: null, flightNumbers: ["DL 1234"],
-    departureAirport: "CVG", arrivalAirport: "SFO", departureDate: departDate, departureTime: "18:08", arrivalDate: departDate, arrivalTime: "20:45", arrivalDayOffset: 0,
-    durationMinutes: 337, stops: 0, layovers: [], emissionsKgCo2e: 245, emissionsVsTypicalPercent: -19,
-    price: { amount: 314, currency: "USD", currencyLabel: "US dollars", displayText: "$314", scope: "one_way", passengersIncluded: 1 },
-    segments: [{ airline: "Delta", flightNumber: "DL 1234", operatedBy: null, aircraft: "Boeing 737", departureAirport: "CVG", departureTime: "18:08", arrivalAirport: "SFO", arrivalTime: "20:45", durationMinutes: 337 }],
+  assert.deepEqual(JSON.parse(Buffer.from(a.selection_ref.split(".")[1], "base64url").toString("utf8")), {
+    v: 1, search: { trip: "one_way", legs: [[departDate, "CVG", "SFO"]], pax: [1], cabin: 1 }, leg: "departing", outbound: null,
+    itinerary: [["CVG", departDate, "SFO", "DL", "1234"]], departure: `${departDate}T18:08`, arrival: `${departDate}T20:45`, price: [314, "US dollars"],
   });
-  assert.equal(b.section, "other");
-  assert.equal(b.airline, "United");
-  assert.deepEqual(b.partnerAirlines, ["Lufthansa", "Air Canada"]);
-  assert.equal(b.operatedBy, "SkyWest DBA United Express");
-  assert.deepEqual(b.flightNumbers, ["UA 5595", "UA 2106"]);
-  assert.equal(b.arrivalDate, plusDays(departDate, 1));
-  assert.equal(b.arrivalDayOffset, 1);
-  assert.equal(b.arrivalTime, "00:15");
-  assert.equal(b.stops, 1);
-  assert.deepEqual(b.layovers, [{ airport: "DEN", durationMinutes: 282 }]);
-  assert.equal(b.price.amount, 1245);
-  assert.equal(b.emissionsKgCo2e, 1416);
-  assert.equal(b.emissionsVsTypicalPercent, 0);
-  assert.equal(b.segments[0].operatedBy, "SkyWest DBA United Express");
-  assert.equal(b.segments[1].arrivalTime, "00:15");
-  assert.equal(h.tools[0].tool.outputSchema.required.length, Object.keys(result).length);
+  assert.deepEqual([a.position, a.section, a.detail_level, a.airlines, a.flight_numbers, a.departure_time, a.arrival_time, a.arrival_day_offset, a.duration_minutes, a.stops, a.emissions_kg_co2e, a.emissions_vs_typical_percent],
+    [1, "Top flights", "summary", ["Delta"], ["DL 1234"], "18:08", "20:45", 0, 337, 0, 245, -19]);
+  assert.deepEqual(a.price, { amount: 314, currency: "USD", currency_label: "US dollars", display_text: "$314", scope: "one_way", basis: "one_way_total", passengers_included: 1 });
+  assert.deepEqual(a.segments[0], { marketing_carrier_code: "DL", flight_number: "DL 1234", airline: null, operated_by: null, aircraft: null, cabin: null, features: null, departure_airport: "CVG", departure_date: departDate, departure_time: "18:08", arrival_airport: "SFO", arrival_date: departDate, arrival_time: "20:45", duration_minutes: 337 });
+  assert.deepEqual([b.position, b.section, b.partner_airlines, b.operated_by, b.flight_numbers, b.arrival_date, b.arrival_day_offset, b.arrival_time, b.price.amount, b.emissions_kg_co2e, b.emissions_vs_typical_percent],
+    [2, "Other flights", ["Lufthansa", "Air Canada"], "SkyWest DBA United Express", ["UA 5595", "UA 2106"], plusDays(departDate, 1), 1, "00:15", 1245, 1416, 0]);
+  assert.deepEqual(b.layovers, [{ airport: "DEN", airport_name: "Denver International Airport", city: "Denver", duration_minutes: 282, change_of_airport_to: null }]);
+  assert.deepEqual(b.segments.map(s => [s.flight_number, s.departure_time, s.arrival_time]), [["UA 5595", "16:32", null], ["UA 2106", null, "00:15"]]);
+  assert.deepEqual(result.available_actions.find(a => a.tool === "get_flight_details").input, { selection_ref: a.selection_ref });
 });
 
 test("round-trip searches report whole-trip totals and the departing-flight sections", async () => {
   const h = harness({ document: resultsPage({ roundTripCards: true }) });
   const result = await h.execute({ ...roundTrip, passengers: 2 });
-  validate(h.tools[0].tool.outputSchema, result);
   assert.equal(result.status, "ok");
-  assert.equal(result.tripType, "round_trip");
-  assert.deepEqual(result.flights.map(f => f.section), ["best", "other"]);
-  assert.deepEqual(result.flights.map(f => f.price.scope), ["round_trip", "round_trip"]);
-  assert.deepEqual(result.flights.map(f => f.price.passengersIncluded), [2, 2]);
-  assert.deepEqual(result.warnings, ["Google priced the page for 1 adult(s), not the requested 2."]);
+  assert.equal(result.page.trip_type, "round_trip");
+  assert.deepEqual(result.flights.map(f => f.section), ["Top departing flights", "Other departing flights"]);
+  assert.deepEqual(result.flights.map(f => [f.price.scope, f.price.basis, f.price.passengers_included]), Array(2).fill(["round_trip_total", "round_trip_total_from_this_departing_flight", 2]));
+  assert.deepEqual(result.warnings, ["Google's pricing note mentions 1 adult(s) but the search has 2 traveler(s)."]);
+  // Round trips return departing choices only; each reference is for the departing leg of this search.
+  const refs = result.flights.map(f => JSON.parse(Buffer.from(f.selection_ref.split(".")[1], "base64url").toString("utf8")));
+  assert.deepEqual(refs.map(r => [r.leg, r.outbound, r.search.trip, r.search.legs, r.search.pax]), Array(2).fill(["departing", null, "round_trip", [[departDate, "CVG", "SFO"], [returnDate, "SFO", "CVG"]], [1, 1]]));
 });
 
-test("expands the collapsed View more flights set only when more results are wanted", async () => {
-  const extra = card({ dep: "7:00 AM", arr: "9:30 AM", airline: "Alaska", duration: "5 hr 30 min", from: "CVG X", to: "SFO Y", stops: 0, price: "$400", emissions: "300 kg CO2e", comparison: "+5% emissions", segments: [segment({ from: "CVG", fromName: "X", dep: "7:00 AM", to: "SFO", toName: "Y", arr: "9:30 AM", travel: "5 hr 30 min", airline: "Alaska", number: "AS 100", aircraft: "Boeing 737" })] });
-  const page = resultsPage({ extraCard: extra });
-  const h = harness({ document: page });
-  const result = await h.execute(oneWay);
-  assert.equal(page.moreButton.clicks, 1);
-  assert.equal(result.resultCount, 3);
-  assert.equal(result.totalResults, 3);
-  assert.equal(result.hasMore, false);
-  assert.deepEqual(result.flights.map(f => f.airline), ["Delta", "United", "Alaska"]);
-
-  const capped = resultsPage({ extraCard: card({ ...{ dep: "7:00 AM", arr: "9:30 AM", airline: "Alaska", duration: "5 hr 30 min", from: "CVG X", to: "SFO Y", stops: 0, price: "$400", emissions: "300 kg CO2e", comparison: "+5% emissions", segments: [] } }) });
-  const limited = await harness({ document: capped }).execute({ ...oneWay, maxResults: 1 });
-  assert.equal(capped.moreButton.clicks, 0);
-  assert.equal(limited.resultCount, 1);
-  assert.equal(limited.flights[0].airline, "Delta");
-  assert.equal(limited.hasMore, true);
-  assert.equal(capped.cards.b.querySelector("button[aria-label^='Flight details']").getAttribute("aria-expanded"), "false");
+test("regression: rows behind 'View more flights' are never expanded, whatever the limit, and their existence is disclosed", async () => {
+  const extra = card({ dep: "7:00 AM", arr: "9:30 AM", airline: "Alaska", duration: "5 hr 30 min", from: "CVG X", to: "SFO Y", stops: 0, price: "$400", emissions: "300 kg CO2e", comparison: "+5% emissions", segments: [] });
+  for (const limit of [1, 2, 150]) {
+    const page = resultsPage({ extraCard: extra });
+    const result = await harness({ document: page }).execute({ ...oneWay, limit });
+    assert.equal(page.moreButton.clicks, 0);
+    assert.equal(clicked(page), 0);
+    assert.equal(result.status, "ok");
+    assert.equal(result.results.rendered_rows, 2);
+    assert.equal(result.results.returned_rows, Math.min(limit, 2));
+    assert.deepEqual(result.flights.map(f => f.airlines[0]), ["Delta", "United"].slice(0, limit));
+    assert.deepEqual(result.results.show_more, { available: true, reason: null });
+    assert.equal(result.available_actions.find(a => a.tool === "show_more_flights").enabled, true);
+    assert.match(result.warnings.at(-1), /behind 'View more flights'/);
+    extra.hidden = true;
+  }
 });
 
-test("missing segment details leave flightNumbers empty with a warning instead of failing", async () => {
+test("Google's Stops filter sent with the search must show on the page, or the search fails rather than returning an unfiltered list", async () => {
+  const page = resultsPage({ stopsChip: "Nonstop" });
+  page.cards.b.hidden = true;
+  page.querySelector("[aria-live]").text = "1 result returned.";
+  const ok = await harness({ document: page }).execute({ ...oneWay, max_stops: 0 });
+  assert.equal(ok.status, "ok");
+  assert.equal(ok.filters.stops, "nonstop");
+  const unfiltered = await harness().execute({ ...oneWay, max_stops: 0 });
+  assert.equal(unfiltered.status, "error");
+  assert.match(unfiltered.message, /^FILTER_NOT_APPLIED:/);
+  const wrongChip = await harness({ document: resultsPage({ stopsChip: "1 stop or fewer" }) }).execute({ ...oneWay, max_stops: 0 });
+  assert.match(wrongChip.message, /^FILTER_NOT_APPLIED: Google's Stops filter shows one_or_fewer/);
+});
+
+test("the requested tab is confirmed: a search Google opens on Cheapest clicks Best once; Cheapest is clicked when asked", async () => {
+  const onCheapest = resultsPage({ selectedView: "cheapest" });
+  const best = await harness({ document: onCheapest }).execute(oneWay);
+  assert.equal(best.status, "ok");
+  assert.equal(best.view_clicked, true);
+  assert.equal(best.view.active, "best");
+  assert.deepEqual(onCheapest.tabs.map(t => t.clicks), [1, 0]);
+
   const page = resultsPage();
-  page.cards.a.querySelector("button[aria-label^='Flight details']").onclick = null;
-  const h = harness({ document: page, timeoutClock: true });
-  const result = await h.execute(oneWay);
-  validate(h.tools[0].tool.outputSchema, result);
-  assert.equal(result.status, "ok");
-  assert.deepEqual(result.flights[0].flightNumbers, []);
-  assert.deepEqual(result.flights[0].segments, []);
-  assert.deepEqual(result.flights[1].flightNumbers, ["UA 5595", "UA 2106"]);
-  assert.deepEqual(result.warnings, ["1 itinerary detail panel(s) could not be read; their flightNumbers and segments are empty."]);
-  assert.deepEqual(result.flights[1].layovers, [{ airport: "DEN", durationMinutes: 282 }]);
+  const cheapest = await harness({ document: page }).execute({ ...oneWay, view: "cheapest" });
+  assert.deepEqual([cheapest.status, cheapest.view.active, cheapest.view_clicked], ["ok", "cheapest", true]);
+  assert.deepEqual(page.tabs.map(t => t.clicks), [0, 1]);
 });
 
-test("explicit no-results announcements are reported, never as an error", async () => {
-  const h = harness({ document: resultsPage({ live: "No results returned, alternative suggestions found." }) });
-  const result = await h.execute(oneWay);
-  validate(h.tools[0].tool.outputSchema, result);
+test("a requested tab Google does not offer, or does not select, is never reported as ok", async () => {
+  const none = await harness({ document: resultsPage({ tabs: false }) }).execute({ ...oneWay, view: "cheapest" });
+  assert.equal(none.status, "unavailable");
+  assert.match(none.message, /does not offer a cheapest tab/);
+  const stuck = resultsPage();
+  stuck.tabs[1].onclick = () => {};
+  const unconfirmed = await harness({ document: stuck, fastClock: true }).execute({ ...oneWay, view: "cheapest" });
+  assert.equal(unconfirmed.status, "unconfirmed");
+  assert.equal(unconfirmed.view.active, "best");
+  assert.equal(stuck.tabs[1].clicks, 1);
+});
+
+test("explicit no-results announcements are reported as no_results, with Google's reason", async () => {
+  const doc = resultsPage({ live: "No results returned, alternative suggestions found." });
+  for (const list of doc.querySelectorAll("ul")) list.hidden = true;
+  const h = harness({ document: doc });
+  const result = await h.execute({ ...oneWay, max_stops: 0 });
   assert.equal(result.status, "no_results");
-  assert.equal(result.totalResults, 0);
-  assert.equal(result.resultCount, 0);
   assert.equal(result.message, "No results returned, alternative suggestions found.");
-  assert.match(result.resultsUrl, /^https:\/\/www\.google\.com\/travel\/flights\/search\?tfs=/);
+  assert.deepEqual(result.flights, []);
+  assert.match(result.results_url, /^https:\/\/www\.google\.com\/travel\/flights\/search\?tfs=/);
+});
+
+test("rows under a contradicting 'No results returned' announcement are read once stable, with a warning", async () => {
+  const result = await harness({ document: resultsPage({ live: "No results returned." }), fastClock: true }).execute(oneWay);
+  assert.equal(result.status, "ok");
+  assert.equal(result.flights.length, 2);
+  assert.match(result.warnings[0], /contradicts the 2 rows/);
 });
 
 test("the consent interstitial is dismissed before reading results", async () => {
@@ -410,92 +372,107 @@ test("the consent interstitial is dismissed before reading results", async () =>
   assert.equal(h.calls.filter(c => c === "wait:html:not([data-xwebmcp-stale]):attached").length, 2);
 });
 
-test("a consent page without a recognizable button is an explicit error", async () => {
-  const h = harness({ consent: true });
-  const result = await h.execute(oneWay);
+test("a consent page without a recognizable button is an explicit error with unknown controls", async () => {
+  const result = await harness({ consent: true }).execute(oneWay);
   assert.equal(result.status, "error");
   assert.match(result.message, /^CONSENT_BLOCKED/);
+  assert.equal(result.page, null);
 });
 
 test("Google's automated-traffic challenge is reported as blocked", async () => {
-  const h = harness({ sorry: true });
-  const result = await h.execute(oneWay);
+  const result = await harness({ sorry: true }).execute(oneWay);
   assert.equal(result.status, "error");
   assert.match(result.message, /^BLOCKED/);
   assert.equal(result.flights.length, 0);
 });
 
-test("a page that never announces results or cards times out explicitly", async () => {
+test("a page that never announces results or rows times out explicitly", async () => {
   const empty = resultsPage({ live: "" });
   for (const list of empty.querySelectorAll("ul")) list.hidden = true;
-  const h = harness({ document: empty, timeoutClock: true });
-  const result = await h.execute(oneWay);
+  const result = await harness({ document: empty, fastClock: true }).execute(oneWay);
   assert.equal(result.status, "error");
   assert.match(result.message, /^RESULTS_TIMEOUT/);
+  assert.equal(result.page.page_type, "departing_results");
+  assert.equal(result.page.settled, false);
+});
+
+test("an airport code Google drops from the search box is reported as unknown, not as a timeout", async () => {
+  const page = resultsPage({ live: "" });
+  for (const list of page.querySelectorAll("ul")) list.hidden = true;
+  const from = page.body.append(new El("input", { attrs: { "aria-label": "Where from? " } }));
+  from.value = "";
+  page.body.append(new El("input", { attrs: { "aria-label": "Where to? Los Angeles LAX" } })).value = "Los Angeles";
+  const result = await harness({ document: page, fastClock: true }).execute({ ...oneWay, origin: "QQQ" });
+  assert.equal(result.status, "error");
+  assert.equal(result.message, "UNKNOWN_AIRPORT: Google Flights did not recognize the origin code QQQ.");
 });
 
 test("an arrival the day before departure (eastbound date-line crossing) is kept with offset -1", async () => {
   const early = card({ dep: "7:10 AM", arr: "6:30 PM", arrivalDate: plusDays(departDate, -1), airline: "United", duration: "7 hr 20 min", from: "GUM Guam", to: "HNL Honolulu", stops: 0, price: "$900", emissions: "500 kg CO2e", comparison: "Avg emissions",
     segments: [segment({ from: "GUM", fromName: "Guam", dep: "7:10 AM", to: "HNL", toName: "Honolulu", arr: "6:30 PM", travel: "7 hr 20 min", airline: "United", number: "UA 200", aircraft: "Boeing 777" })] });
-  const h = harness({ document: resultsPage({ firstCard: early }) });
-  const result = await h.execute({ ...oneWay, origin: "GUM", destination: "HNL" });
-  validate(h.tools[0].tool.outputSchema, result);
+  const result = await harness({ document: resultsPage({ firstCard: early }) }).execute({ ...oneWay, origin: "GUM", destination: "HNL" });
   assert.equal(result.status, "ok");
-  assert.equal(result.flights[0].arrivalDayOffset, -1);
-  assert.equal(result.flights[0].arrivalDate, plusDays(departDate, -1));
+  assert.equal(result.flights[0].arrival_day_offset, -1);
+  assert.equal(result.flights[0].arrival_date, plusDays(departDate, -1));
 });
 
-test("an unreadable card is skipped with a warning instead of failing the whole search", async () => {
-  const broken = card({ dep: "7:10 AM", arr: "9:30 AM", airline: "Spirit", duration: "5 hr", from: "CVG X", to: "SFO Y", stops: 0, price: "$0", priceless: true, emissions: "1 kg CO2e", comparison: "Avg emissions", segments: [] });
-  const h = harness({ document: resultsPage({ firstCard: broken }), timeoutClock: true });
-  const result = await h.execute(oneWay);
-  validate(h.tools[0].tool.outputSchema, result);
-  assert.equal(result.status, "ok");
-  assert.equal(result.resultCount, 1);
-  assert.equal(result.totalResults, 2);
-  assert.equal(result.flights[0].airline, "United");
-  assert.match(result.warnings[0], /^Skipped 1 unreadable itinerary card\(s\): itinerary 1/);
+test("a connection departing after midnight does not move a same-day final arrival to the next day", async () => {
+  // SIN 8:35 AM -> HKG 12:35 AM+1, HKG 1:30 AM -> LAX 9:05 PM, back on the departure date.
+  const crossing = () => card({ dep: "8:35 AM", arr: "9:05 PM", airline: "Cathay Pacific", duration: "29 hr 30 min", from: "SIN Singapore Changi Airport", to: "LAX Los Angeles International Airport",
+    stops: 1, price: "$900", emissions: "900 kg CO2e", comparison: "Avg emissions", tim: `SIN-HKG-CX-710-${departDate.replace(/-/g, "")},HKG-LAX-CX-880-${plusDays(departDate, 1).replace(/-/g, "")}` });
+  for (const summaryDated of [true, false]) {
+    const first = crossing();
+    const summary = first.children[0];
+    summary.setAttribute("aria-label", summary.attrs["aria-label"].replace(/ at 9:05 PM\. /, summaryDated ? ` at 9:05 PM on ${longDate(departDate)}. ` : " at 9:05 PM. "));
+    const result = await harness({ document: resultsPage({ firstCard: first }) }).execute({ ...oneWay, origin: "SIN", destination: "LAX" });
+    assert.equal(result.flights[0].arrival_date, departDate);
+    assert.equal(result.flights[0].arrival_day_offset, 0);
+  }
 });
 
-test("all cards unreadable is an explicit parse error", async () => {
+test("an unreadable row is skipped and disclosed instead of failing the whole search", async () => {
+  const broken = card({ dep: "7:10 AM", arr: "9:30 AM", airline: "Spirit", duration: "5 hr", from: "CVG X", to: "SFO Y", stops: 0, price: "$0", priceless: true, emissions: "1 kg CO2e", comparison: "Avg emissions", segments: [], tim: null });
+  const result = await harness({ document: resultsPage({ firstCard: broken }) }).execute(oneWay);
+  assert.equal(result.status, "ok");
+  assert.equal(result.flights.length, 1);
+  assert.equal(result.results.rendered_rows, 2);
+  assert.deepEqual(result.results.skipped_rows, [{ position: 1, missing: ["itinerary data"] }]);
+  assert.equal(result.flights[0].airlines[0], "United");
+  assert.match(result.warnings[0], /^Skipped 1 row\(s\) without a readable itinerary: position 1/);
+});
+
+test("an announced count above the rendered rows with no 'View more flights' is not_ready, never a complete list", async () => {
+  const result = await harness({ document: resultsPage({ live: "3 results returned." }), fastClock: true }).execute(oneWay);
+  assert.equal(result.status, "not_ready");
+  assert.ok(result.page.unsettled_reasons.includes("announced_count_mismatch"));
+  assert.deepEqual(result.flights, []);
+});
+
+test("all rows unreadable is an explicit parse error", async () => {
   const page = resultsPage();
-  for (const span of page.querySelectorAll("span[aria-label$='dollars']")) span.attrs["aria-label"] = "";
+  for (const el of page.querySelectorAll("[data-travelimpactmodelwebsiteurl]")) el.attrs["data-travelimpactmodelwebsiteurl"] = "";
   const result = await harness({ document: page }).execute(oneWay);
   assert.equal(result.status, "error");
-  assert.match(result.message, /^PARSE_ERROR: Google announced results but no itinerary card was readable/);
+  assert.match(result.message, /^PARSE_ERROR: Google shows 2 row\(s\)/);
 });
 
 test("price.currency comes from Google's label, and mismatches with the request are flagged", async () => {
   const gbp = await harness({ document: resultsPage({ currencyName: "British pounds" }) }).execute({ ...oneWay, currency: "GBP" });
   assert.deepEqual(gbp.flights.map(f => f.price.currency), ["GBP", "GBP"]);
   assert.deepEqual(gbp.warnings, []);
-
   const fallback = await harness({ document: resultsPage() }).execute({ ...oneWay, currency: "XYZ" });
   assert.deepEqual(fallback.flights.map(f => f.price.currency), ["USD", "USD"]);
-  assert.deepEqual(fallback.warnings, ["Google labeled prices as US dollars (USD), not the requested XYZ; price.currency reports USD."]);
-
+  assert.match(fallback.warnings.at(-1), /Google labeled prices as USD, not the requested XYZ/);
   const unknown = await harness({ document: resultsPage({ currencyName: "Martian credits" }) }).execute({ ...oneWay, currency: "MCR" });
-  assert.deepEqual(unknown.flights.map(f => f.price.currency), ["MCR", "MCR"]);
-  assert.match(unknown.warnings[0], /not a recognized currency name; price.currency repeats the requested MCR unverified/);
+  assert.deepEqual(unknown.flights.map(f => f.price.currency), [null, null]);
+  assert.match(unknown.warnings.at(-1), /Unrecognized currency label\(s\): Martian credits/);
 });
 
 test("non-ASCII currency labels are parsed", async () => {
-  const h = harness({ document: resultsPage({ currencyName: "Icelandic krónur" }) });
-  const result = await h.execute({ ...oneWay, currency: "ISK" });
+  const result = await harness({ document: resultsPage({ currencyName: "Icelandic krónur" }) }).execute({ ...oneWay, currency: "ISK" });
   assert.equal(result.status, "ok");
   assert.deepEqual(result.flights.map(f => f.price.currency), ["ISK", "ISK"]);
-  assert.equal(result.flights[0].price.currencyLabel, "Icelandic krónur");
-  assert.deepEqual(result.warnings, []);
-});
-
-test("a card that never opens its details is not waited on for the whole budget", async () => {
-  const page = resultsPage();
-  page.cards.a.querySelector("button[aria-label^='Flight details']").onclick = null;
-  const started = Date.now();
-  const result = await harness({ document: page, timeoutClock: true }).execute(oneWay);
-  assert.ok(Date.now() - started < 5000);
-  assert.deepEqual(result.flights[0].flightNumbers, []);
-  assert.deepEqual(result.warnings, ["1 itinerary detail panel(s) could not be read; their flightNumbers and segments are empty."]);
+  assert.equal(result.flights[0].price.currency_label, "Icelandic krónur");
 });
 
 test("registry entry matches the file, namespace, and url patterns", () => {

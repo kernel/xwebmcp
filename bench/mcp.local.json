@@ -1,0 +1,16 @@
+{
+  "mcpServers": {
+    "xwebmcp": {
+      "command": "{{xwebmcp}}",
+      "args": ["mcp", "--all-tabs"],
+      "env": { "XWEBMCP_HOME": "{{xwebmcp_home}}" },
+      "timeout": 150,
+      "exposure": "direct"
+    },
+    "chrome": {
+      "command": "npx",
+      "args": ["-y", "chrome-devtools-mcp@1.10.1", "--browserUrl", "{{browser_url}}", "--no-usage-statistics"],
+      "exposure": "direct"
+    }
+  }
+}

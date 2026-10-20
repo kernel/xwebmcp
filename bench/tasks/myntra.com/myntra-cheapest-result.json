@@ -1,0 +1,32 @@
+{
+  "id": "myntra-cheapest-result",
+  "domain": "myntra.com",
+  "stage": "compare",
+  "prompt": "On myntra.com, search for \"{{query}}\" and find the cheapest product in the results, sorted by price from low to high. Report its name as the product (brand and title) and its price in Indian rupees. Reply with JSON: {\"product\": string, \"price\": number}.",
+  "fixture": {
+    "query": "men white sneakers"
+  },
+  "start_url": "https://www.myntra.com/",
+  "answer_schema": "schemas/product-price.json",
+  "rules": [
+    {
+      "path": "product",
+      "matches": "sneaker|shoe"
+    },
+    {
+      "path": "price",
+      "range": [
+        50,
+        20000
+      ]
+    }
+  ],
+  "agreement": {
+    "path": "price",
+    "better": "lower",
+    "tolerance": 1
+  },
+  "pairs": 5,
+  "trial_timeout_sec": 600,
+  "max_turns": 40
+}

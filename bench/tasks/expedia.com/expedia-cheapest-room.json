@@ -1,0 +1,35 @@
+{
+  "id": "expedia-cheapest-room",
+  "domain": "expedia.com",
+  "stage": "inspect",
+  "prompt": "On expedia.com, find the cheapest room option at {{hotel}} from {{check_in}} to {{check_out}} for 2 adults in one room: the room's name and the total price the site shows for the whole stay in US dollars, including taxes and fees. Reply with JSON: {\"room\": string, \"total\": number}.",
+  "fixture": {
+    "hotel": "Hilton San Francisco Union Square",
+    "check_in": {
+      "days_from_start": 30
+    },
+    "check_out": {
+      "days_from_start": 32
+    }
+  },
+  "start_url": "https://www.expedia.com/",
+  "answer_schema": "schemas/room-rate.json",
+  "opt_in": "Expedia's \"Bot or Not?\" check replaces search results in plain and stealth Kernel browsers (rehearsal 2026-10-20)",
+  "rules": [
+    {
+      "path": "total",
+      "range": [
+        100,
+        5000
+      ]
+    }
+  ],
+  "agreement": {
+    "path": "total",
+    "better": "lower",
+    "tolerance": 2
+  },
+  "pairs": 5,
+  "trial_timeout_sec": 600,
+  "max_turns": 40
+}

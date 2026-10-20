@@ -1,0 +1,9 @@
+{
+  "actions": {
+    "select_room": "selects one room of a rate and opens Booking.com's details step; enters no details and never books"
+  },
+  "checkout_actions": {
+    "fill_guest_details": "types the guest details the task gives into Booking.com's details step; presses nothing",
+    "continue_checkout": "moves from the details step to the payment step; never presses Complete booking"
+  }
+}

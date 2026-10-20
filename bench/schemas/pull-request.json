@@ -1,0 +1,9 @@
+{
+  "type": "object",
+  "required": ["state", "merged_by", "commits"],
+  "properties": {
+    "state": { "type": "string" },
+    "merged_by": { "type": ["string", "null"], "pattern": "^[A-Za-z0-9-]+(\\[bot\\])?$" },
+    "commits": { "type": "integer", "minimum": 1 }
+  }
+}

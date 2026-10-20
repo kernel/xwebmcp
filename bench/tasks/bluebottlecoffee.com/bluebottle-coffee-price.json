@@ -1,0 +1,15 @@
+{
+  "id": "bluebottle-coffee-price",
+  "domain": "bluebottlecoffee.com",
+  "stage": "inspect",
+  "prompt": "On bluebottlecoffee.com, find the price of one bag of {{coffee}} coffee. Reply with JSON: {\"product\": string, \"price\": number in US dollars}.",
+  "fixture": {"coffee": "Hayes Valley Espresso"},
+  "start_url": "https://bluebottlecoffee.com/us/eng/shop/coffee",
+  "tools": [{"repo": "kernel/xwebmcp", "ref": "main", "names": ["find_product", "get_product"]}],
+  "entry_tool": "find_product",
+  "answer_schema": "schemas/product-price.json",
+  "rules": [{"path": "product", "matches": "hayes valley"}, {"path": "price", "range": [5, 100]}],
+  "pairs": 5,
+  "trial_timeout_sec": 600,
+  "max_turns": 40
+}
