@@ -16,6 +16,7 @@
     "storage",
     "tabGroups",
     "tabs",
+    "unlimitedStorage",
     "webNavigation"
   ],
   "host_permissions": ["https://openrouter.ai/*"],

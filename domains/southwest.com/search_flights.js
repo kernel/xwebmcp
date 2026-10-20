@@ -394,11 +394,14 @@
                   )
                   .map((b) => {
                     const label = b.getAttribute("aria-label") ?? "";
-                    const m = label.match(
-                      /^(.+?) fare \$([\d,]+(?:\.\d{1,2})?)/,
-                    );
-                    return m
-                      ? { name: m[1], price: Number(m[2].replace(/,/g, "")) }
+                    // Sale fares read "Choice, original fare was dollars 214, but now is  fare $153, …".
+                    const name = label.match(/^(.+?)(?:,| fare \$)/);
+                    const m = label.match(/ fare \$([\d,]+(?:\.\d{1,2})?)/);
+                    return name && m
+                      ? {
+                          name: name[1].trim(),
+                          price: Number(m[1].replace(/,/g, "")),
+                        }
                       : null;
                   })
                   .filter(Boolean)

@@ -1,0 +1,15 @@
+{
+  "type": "object",
+  "required": [
+    "pets_allowed",
+    "cash_accepted"
+  ],
+  "properties": {
+    "pets_allowed": {
+      "type": "boolean"
+    },
+    "cash_accepted": {
+      "type": "boolean"
+    }
+  }
+}
