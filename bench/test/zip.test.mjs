@@ -35,9 +35,10 @@ test("a directory zips to its files, sorted by path, the same bytes every time",
   mkdirSync(join(dir, "lib/é"), { recursive: true });
   writeFileSync(join(dir, "manifest.json"), "{}\n");
   writeFileSync(join(dir, "lib/guard.js"), "guard();\n");
+  writeFileSync(join(dir, "lib.js"), "lib();\n");
   writeFileSync(join(dir, "lib/é/rules.json"), "[]\n");
   writeFileSync(join(dir, "Empty"), "");
   const zip = zipDirectory(dir);
-  assert.deepEqual(unzip(zip), [["Empty", ""], ["lib/guard.js", "guard();\n"], ["lib/é/rules.json", "[]\n"], ["manifest.json", "{}\n"]]);
+  assert.deepEqual(unzip(zip), [["Empty", ""], ["lib.js", "lib();\n"], ["lib/guard.js", "guard();\n"], ["lib/é/rules.json", "[]\n"], ["manifest.json", "{}\n"]]);
   assert.ok(zipDirectory(dir).equals(zip));
 });

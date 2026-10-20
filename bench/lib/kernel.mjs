@@ -10,13 +10,29 @@ export const SDK_VERSION = `@onkernel/sdk ${VERSION}`;
 let kernel = null;
 const client = () => (kernel ??= new Kernel());
 
-// The statuses the SDK retries. A connection error has no status.
-const retryable = error => error instanceof APIError && (error.status >= 500 || [408, 409, 429].includes(error.status));
+// Whether the SDK would retry an error that came with a response. A connection error has none.
+function retryable(error) {
+  if (!(error instanceof APIError) || error.status === undefined) return false;
+  const header = error.headers?.get("x-should-retry");
+  if (header === "true" || header === "false") return header === "true";
+  return error.status >= 500 || [408, 409, 429].includes(error.status);
+}
 
-// `retry` is "any" to retry every failure as the SDK does, "answered" to retry only errors the API
-// answered with, for a request whose lost response may hide a browser it made or page code it ran,
-// or "none". `ms` bounds every attempt and pause together, as the CLI's 120s execFile timeout did;
-// the per-attempt timeout is longer, so it never fires first.
+// The wait the response asks for, as the SDK reads it, or else exponential backoff.
+function retryDelay(error, attempt) {
+  const ms = parseFloat(error.headers?.get("retry-after-ms"));
+  if (!Number.isNaN(ms)) return Math.max(0, ms);
+  // Retry-After is in seconds or an HTTP date.
+  const after = error.headers?.get("retry-after") ?? "";
+  const asked = Number.isNaN(parseFloat(after)) ? Date.parse(after) - Date.now() : parseFloat(after) * 1000;
+  return Number.isNaN(asked) ? 500 * 2 ** attempt : Math.max(0, asked);
+}
+
+// `retry` is "any" to retry every failure as the SDK does, "answered" to retry only errors that came
+// with a response, for a request whose lost response may hide a browser it made or page code it ran,
+// or "none". A proxy's 502 or 504 can still follow a request the API carried out; a browser made
+// that way is deleted at its timeout. `ms` bounds every attempt and pause together, as the CLI's
+// 120s execFile timeout did; the per-attempt timeout is longer, so it never fires first.
 async function call(request, { ms = 120_000, retry = "any" } = {}) {
   const signal = AbortSignal.timeout(ms);
   for (let attempt = 1; ; attempt++) {
@@ -26,7 +42,7 @@ async function call(request, { ms = 120_000, retry = "any" } = {}) {
       if (error instanceof APIUserAbortError) throw new Error(`timed out after ${ms / 1000}s`);
       if (retry !== "answered" || attempt === 3 || !retryable(error)) throw error;
       // Out of time before the next attempt, the API's error says more than a timeout would.
-      await sleep(500 * 2 ** attempt, undefined, { signal }).catch(() => { throw error; });
+      await sleep(retryDelay(error, attempt), undefined, { signal }).catch(() => { throw error; });
     }
   }
 }
@@ -52,8 +68,8 @@ export async function createBrowser({ startUrl, timeoutSec, tags, stealth, profi
   return browser.session_id;
 }
 
-async function execute(id, code, timeoutSec) {
-  const response = await call(options => client().browsers.playwright.execute(id, { code, timeout_sec: timeoutSec }, options), { ms: (timeoutSec + 30) * 1000, retry: "answered" });
+async function execute(id, code, timeoutSec, retry = "answered") {
+  const response = await call(options => client().browsers.playwright.execute(id, { code, timeout_sec: timeoutSec }, options), { ms: (timeoutSec + 30) * 1000, retry });
   if (!response.success) throw new Error((response.error ?? "unknown error").split("\n")[0]);
   return response.result;
 }
@@ -75,10 +91,11 @@ export async function waitForLoad(id, startUrl) {
   }
 }
 
-// Runs a function of one JSON argument in the current page and returns its result.
+// Runs a function of one JSON argument in the current page and returns its result. The function
+// must not change the page, since a call whose response is lost runs it again.
 export async function evaluate(id, fn, arg) {
   try {
-    return await execute(id, `return await page.evaluate(${fn}, ${JSON.stringify(arg)});`, 30);
+    return await execute(id, `return await page.evaluate(${fn}, ${JSON.stringify(arg)});`, 30, "any");
   } catch (error) {
     throw new Error(`evaluate: ${error.message}`);
   }
@@ -87,7 +104,7 @@ export async function evaluate(id, fn, arg) {
 // Every cookie in the browser, whatever page it is on.
 export async function cookies(id) {
   try {
-    return await execute(id, "return await context.cookies();", 30);
+    return await execute(id, "return await context.cookies();", 30, "any");
   } catch (error) {
     throw new Error(`cookies: ${error.message}`);
   }
@@ -143,7 +160,7 @@ export async function listLiveTools(id) {
 // retried.
 export async function invokeTool(id, toolRef, input) {
   const result = await call(options => client().browsers.webmcp.invokeTool(id, { tool_ref: toolRef, input }, options), { retry: "none" });
-  if (result.status !== "completed" && result.status !== "awaiting_submission") throw new Error(`${result.status}: ${result.error_text ?? ""}`);
+  if (result.status !== "completed" && result.status !== "awaiting_submission") throw new Error(`invocation ${result.invocation_id}: ${result.status}: ${result.error_text ?? ""}`);
   return result.output;
 }
 
@@ -156,6 +173,12 @@ export async function profileId(name) {
   }
 }
 
+// A browser that is already gone counts as deleted, as when a delete whose response was lost is
+// retried.
 export async function deleteBrowser(id) {
-  await call(options => client().browsers.deleteByID(id, options));
+  try {
+    await call(options => client().browsers.deleteByID(id, options));
+  } catch (error) {
+    if (!(error instanceof NotFoundError)) throw error;
+  }
 }

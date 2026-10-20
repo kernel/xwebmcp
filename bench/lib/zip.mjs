@@ -1,5 +1,6 @@
 // A ZIP archive of a directory's files, stored uncompressed, for uploading a guard extension. The
-// timestamps are fixed, so the same files always make the same archive.
+// files are sorted by path and the timestamps are fixed, so the same files always make the same
+// archive.
 
 import { readdirSync, readFileSync } from "node:fs";
 import { join, relative, sep } from "node:path";
@@ -8,7 +9,7 @@ import { crc32 } from "node:zlib";
 const DOS_DATE = (1 << 5) | 1; // 1980-01-01
 
 function files(dir, root = dir) {
-  return readdirSync(dir, { withFileTypes: true }).sort((a, b) => (a.name < b.name ? -1 : 1)).flatMap(entry => {
+  return readdirSync(dir, { withFileTypes: true }).flatMap(entry => {
     const path = join(dir, entry.name);
     return entry.isDirectory() ? files(path, root) : [{ name: relative(root, path).split(sep).join("/"), data: readFileSync(path) }];
   });
@@ -18,7 +19,7 @@ export function zipDirectory(dir) {
   const local = [];
   const central = [];
   let offset = 0;
-  for (const { name, data } of files(dir)) {
+  for (const { name, data } of files(dir).sort((a, b) => (a.name < b.name ? -1 : 1))) {
     const nameBytes = Buffer.from(name, "utf8");
     const crc = crc32(data);
     const header = Buffer.alloc(30);

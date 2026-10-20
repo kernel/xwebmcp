@@ -5,7 +5,7 @@ import test, { after, before } from "node:test";
 import * as kernel from "../lib/kernel.mjs";
 
 // Answers each request with the next reply scripted for its route: "drop" closes the connection
-// without answering, and a number answers with that status.
+// without answering, a number answers with that status, and { status, headers } adds headers.
 let script = {};
 const hits = {};
 const server = createServer((request, response) => {
@@ -15,8 +15,9 @@ const server = createServer((request, response) => {
     hits[route] = (hits[route] ?? 0) + 1;
     const reply = script[route]?.shift() ?? 404;
     if (reply === "drop") return request.socket.destroy();
-    response.writeHead(reply, { "content-type": "application/json" });
-    response.end(JSON.stringify(reply === 200 ? { session_id: "b1", tools: [] } : { code: "error", message: `status ${reply}` }));
+    const { status, headers } = typeof reply === "number" ? { status: reply } : reply;
+    response.writeHead(status, { "content-type": "application/json", ...headers });
+    response.end(JSON.stringify(status === 200 ? { session_id: "b1", tools: [], success: true, result: [] } : { code: "error", message: `status ${status}` }));
   });
 });
 
@@ -43,6 +44,29 @@ test("a browser create is retried after an error the API answered with, but not 
   run({ "POST /browsers": ["drop", 200] });
   await assert.rejects(create());
   assert.equal(hits["POST /browsers"], 1);
+});
+
+test("a browser create waits as long as the API asks, and is not retried when the API says not to", async () => {
+  run({ "POST /browsers": [{ status: 429, headers: { "retry-after": "2" } }, 200] });
+  const start = performance.now();
+  assert.equal(await create(), "b1");
+  assert.ok(performance.now() - start >= 2000);
+
+  run({ "POST /browsers": [{ status: 503, headers: { "x-should-retry": "false" } }, 200] });
+  await assert.rejects(create());
+  assert.equal(hits["POST /browsers"], 1);
+});
+
+test("reading cookies is retried after a dropped connection", async () => {
+  run({ "POST /browsers/b1/playwright/execute": ["drop", 200] });
+  assert.deepEqual(await kernel.cookies("b1"), []);
+  assert.equal(hits["POST /browsers/b1/playwright/execute"], 2);
+});
+
+test("deleting a browser that is already gone succeeds", async () => {
+  run({ "DELETE /browsers/b1": ["drop", 404] });
+  await kernel.deleteBrowser("b1");
+  assert.equal(hits["DELETE /browsers/b1"], 2);
 });
 
 test("adding and removing custom tools are never retried, and reading them is", async () => {
