@@ -10,8 +10,8 @@ import * as kernel from "../lib/kernel.mjs";
 
 // Answers each request with the next reply scripted for its route: "drop" closes the connection
 // without answering, "stall" sends the headers and part of the body and stops, "cut" does the same
-// and then closes the connection, a number answers
-// with that status, and { status, headers, body } adds headers or replaces the body.
+// and then closes the connection, a number answers with that status, and { status, headers, body }
+// adds headers or replaces the body.
 let script = {};
 const hits = {};
 const bodies = {};
