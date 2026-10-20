@@ -4,10 +4,10 @@ import test from "node:test";
 import { runInNewContext } from "node:vm";
 
 const source = readFileSync(new URL("../domains/united.com/search_flights.js", import.meta.url), "utf8");
-const departDate = new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 10);
-const input = { origin: "SFO", destination: "LAX", departDate, tripType: "one_way", passengers: 1 };
+const depart_date = new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 10);
+const input = { origin: "SFO", destination: "LAX", depart_date, trip_type: "one_way", passengers: 1 };
 const target = "https://www.united.com/en/us/fsr/choose-flights?" + new URLSearchParams({
-  f: "SFO", t: "LAX", d: departDate, sc: "7", px: "1,0,0,0,0,0,0,0",
+  f: "SFO", t: "LAX", d: depart_date, sc: "7", px: "1,0,0,0,0,0,0,0",
   taxng: "1", newHP: "True", clm: "7", st: "bestmatches", tqp: "R", tt: "1"
 });
 
@@ -49,8 +49,8 @@ for (const url of [
     assert.deepEqual(h.navigation, [target]);
     assert.equal(result.status, "error");
     assert.equal(result.error, "TIMEOUT: no results document");
-    assert.equal(result.resultsUrl, target);
-    assert.equal(result.resultCount, 0);
+    assert.equal(result.results_url, target);
+    assert.equal(result.result_count, 0);
     assert.equal(result.flights.length, 0);
     assert.deepEqual(Object.keys(result).sort(), Array.from(h.tools[0].tool.outputSchema.required).sort());
   });
@@ -72,7 +72,7 @@ test("invalid input fails before reading or navigating the page", async () => {
   assert.deepEqual(h.navigation, []);
   assert.equal(result.status, "error");
   assert.match(result.error, /^INVALID_INPUT:/);
-  assert.equal(result.resultsUrl, "");
+  assert.equal(result.results_url, "");
 });
 
 test("registry matches the file and domain namespace", () => {

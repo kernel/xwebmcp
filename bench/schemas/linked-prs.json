@@ -1,0 +1,17 @@
+{
+  "type": "object",
+  "required": ["issues"],
+  "properties": {
+    "issues": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["number", "has_linked_pr"],
+        "properties": {
+          "number": { "type": "integer", "minimum": 1 },
+          "has_linked_pr": { "type": "boolean" }
+        }
+      }
+    }
+  }
+}

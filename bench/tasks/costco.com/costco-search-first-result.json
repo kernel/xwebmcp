@@ -1,0 +1,27 @@
+{
+  "id": "costco-search-first-result",
+  "domain": "costco.com",
+  "stage": "find",
+  "prompt": "On costco.com, search for \"{{query}}\" and report the first result's name as the product and the price the site shows for it, signed out. Reply with JSON: {\"product\": string, \"price\": number in US dollars}.",
+  "fixture": {
+    "query": "kirkland paper towels"
+  },
+  "start_url": "https://www.costco.com/",
+  "answer_schema": "schemas/product-price.json",
+  "rules": [
+    {
+      "path": "product",
+      "matches": "paper towel"
+    },
+    {
+      "path": "price",
+      "range": [
+        5,
+        100
+      ]
+    }
+  ],
+  "pairs": 5,
+  "trial_timeout_sec": 600,
+  "max_turns": 40
+}

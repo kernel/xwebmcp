@@ -1,0 +1,27 @@
+{
+  "id": "github-bug-issues-with-prs",
+  "domain": "github.com",
+  "stage": "compare",
+  "prompt": "On github.com, take the 10 most recently opened issues in {{repo}} that are open and labelled \"{{label}}\", and say for each whether it has a linked pull request. Reply with JSON: {\"issues\": [{\"number\": integer, \"has_linked_pr\": boolean}]}, newest first.",
+  "fixture": {"repo": "denoland/deno", "label": "bug"},
+  "start_url": "https://github.com/explore",
+  "tools": [
+    {
+      "repo": "kernel/xwebmcp",
+      "ref": "hypeship/github-read-tools",
+      "pr": 55,
+      "names": ["search_issues", "get_issue"]
+    }
+  ],
+  "entry_tool": "search_issues",
+  "answer_schema": "schemas/linked-prs.json",
+  "rules": [
+    {"path": "issues", "count": [10, 10]},
+    {"path": "issues[].number", "unique": true},
+    {"path": "issues[].number", "range": [36000, 1000000]}
+  ],
+  "agreement": {"path": "issues[]", "same": true},
+  "pairs": 5,
+  "trial_timeout_sec": 600,
+  "max_turns": 40
+}

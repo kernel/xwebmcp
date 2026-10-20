@@ -1,0 +1,38 @@
+{
+  "id": "delta-cart-main-classic",
+  "domain": "delta.com",
+  "stage": "prepare",
+  "prompt": "On delta.com, put the cheapest Delta Main Classic one-way fare for 1 adult from {{origin}} to {{destination}} on {{date}} in the cart, and stop on Delta's Trip Summary page with that flight in the cart. You may select the flight and its fare; do not go on to passenger details, seats or payment. Reply with JSON: {\"flight_numbers\": [string], \"amount_due\": number in US dollars, the total Delta shows on the Trip Summary page}.",
+  "fixture": {
+    "origin": "Atlanta (ATL)",
+    "destination": "Orlando (MCO)",
+    "date": {"days_from_start": 28}
+  },
+  "start_url": "https://www.delta.com/",
+  "steps": [
+    {"name": "search", "url_patterns": ["https://www.delta.com/", "https://www.delta.com/flightsearch/book-a-flight*"]},
+    {"name": "results", "url_patterns": ["https://www.delta.com/flightsearch/search-results*"]},
+    {"name": "trip summary", "url_patterns": ["https://www.delta.com/*/trip-summary*"]}
+  ],
+  "answer_schema": "schemas/cart-flight.json",
+  "rules": [{"path": "amount_due", "range": [1, 3000]}],
+  "check": {
+    "extract": {
+      "amount_due": "Amount Due[^$]{0,40}\\$\\s*([\\d,]+\\.\\d{2})",
+      "cabin": "Cabin (?:class|name)\\s*\\n\\s*([^\\n]+)",
+      "passengers": "(\\d+) Passengers?\\b"
+    },
+    "rules": [
+      {"path": "url", "matches": "^https://www\\.delta\\.com/(purchase/flights|completepurchase)/trip-summary"},
+      {"path": "text", "matches": "\\bATL - MCO\\s*\\n\\s*One Way\\b"},
+      {"path": "extracted.cabin", "equals": "Main Classic"},
+      {"path": "extracted.passengers", "equals": 1},
+      {"path": "extracted.amount_due", "range": [1, 3000]}
+    ],
+    "same_as_answer": [{"answer": "amount_due", "end_state": "extracted.amount_due"}]
+  },
+  "agreement": {"path": "amount_due", "better": "lower", "tolerance": 1},
+  "pairs": 5,
+  "trial_timeout_sec": 900,
+  "max_turns": 60
+}

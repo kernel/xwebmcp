@@ -1,0 +1,13 @@
+{
+  "id": "amazon-return-window",
+  "domain": "amazon.com",
+  "stage": "gap",
+  "prompt": "On amazon.com, find how many days Amazon's standard return window is for most items sold and shipped by Amazon.com, from Amazon's own returns policy. Reply with JSON: {\"days\": integer}.",
+  "start_url": "https://www.amazon.com/",
+  "tools": [{"repo": "kernel/xwebmcp", "ref": "hypeship/amazon-search-product-bestsellers", "pr": 56}],
+  "answer_schema": "schemas/return-window.json",
+  "rules": [{"path": "days", "equals": 30}],
+  "pairs": 5,
+  "trial_timeout_sec": 600,
+  "max_turns": 40
+}
