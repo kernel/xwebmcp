@@ -14,11 +14,14 @@ import * as kernel from "../lib/kernel.mjs";
 // with that status, and { status, headers, body } adds headers or replaces the body.
 let script = {};
 const hits = {};
+const bodies = {};
 const server = createServer((request, response) => {
-  request.resume();
+  const chunks = [];
+  request.on("data", chunk => chunks.push(chunk));
   request.on("end", () => {
     const route = `${request.method} ${request.url.split("?")[0]}`;
     hits[route] = (hits[route] ?? 0) + 1;
+    bodies[route] = Buffer.concat(chunks).toString();
     const reply = script[route]?.shift() ?? 404;
     if (reply === "drop") return request.socket.destroy();
     if (reply === "stall" || reply === "cut") {
@@ -51,6 +54,21 @@ function run(replies) {
 }
 
 const create = () => kernel.createBrowser({ startUrl: "https://example.com/", timeoutSec: 60, tags: {} });
+
+test("a browser create sends what the kernel CLI sent", async () => {
+  run({ "POST /browsers": [200] });
+  await kernel.createBrowser({ startUrl: "https://example.com/", timeoutSec: 60, tags: { bench: "r1" }, stealth: true, profile: "bench-x", extension: { name: "bench-guard-x" } });
+  assert.deepEqual(JSON.parse(bodies["POST /browsers"]), {
+    start_url: "https://example.com/",
+    viewport: { width: 1920, height: 1080, refresh_rate: 25 },
+    telemetry: { browser: { network: { enabled: true }, page: { enabled: true }, interaction: { enabled: true }, control: { enabled: true }, captcha: { enabled: true } } },
+    timeout_seconds: 60,
+    stealth: true,
+    profile: { name: "bench-x", save_changes: false },
+    extensions: [{ name: "bench-guard-x" }],
+    tags: { bench: "r1" },
+  });
+});
 
 test("a browser create is retried after an error the API answered with, but not after a dropped connection", async () => {
   run({ "POST /browsers": [503, 200] });
