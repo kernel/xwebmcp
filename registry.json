@@ -2318,11 +2318,16 @@
       "file": "domains/opentable.com/get_account_summary.js",
       "kind": "page",
       "namespace": "opentable.com",
-      "url_patterns": ["https://www.opentable.com/*"],
+      "url_patterns": [
+        "https://www.opentable.com/*"
+      ],
+      "url_patterns_reason": "Narrowed to www.opentable.com, OpenTable's US diner site: the tools fetch its restaurant pages and same-origin GraphQL endpoint and refuse other origins; other opentable.com hosts serve restaurants and other regions.",
       "status": "qa_passed",
       "last_verified": "2026-09-30",
       "notes": "Authorized dining points and current-page reservation/invitation counts; fresh expected-account check. Independent success/failure QA is Node-fixture-only; final-source live runtime unverified. No private item details or writes.",
-      "provenance": { "qa_agent": "agt_af9a78c90e1647b33555" }
+      "provenance": {
+        "qa_agent": "agt_af9a78c90e1647b33555"
+      }
     },
     {
       "domain": "opentable.com",
@@ -2330,11 +2335,16 @@
       "file": "domains/opentable.com/get_availability.js",
       "kind": "page",
       "namespace": "opentable.com",
-      "url_patterns": ["https://www.opentable.com/*"],
+      "url_patterns": [
+        "https://www.opentable.com/*"
+      ],
+      "url_patterns_reason": "Narrowed to www.opentable.com, OpenTable's US diner site: the tools fetch its restaurant pages and same-origin GraphQL endpoint and refuse other origins; other opentable.com hosts serve restaurants and other regions.",
       "status": "qa_passed",
       "last_verified": "2026-09-30",
       "notes": "Public standard inventory within 120 minutes of restaurant-local time; read query, no slot selection or hold. Independent source QA passed; final-source live runtime unverified. Excludes experience-only and privileged inventory.",
-      "provenance": { "qa_agent": "agt_af9a78c90e1647b33555" }
+      "provenance": {
+        "qa_agent": "agt_af9a78c90e1647b33555"
+      }
     },
     {
       "domain": "opentable.com",
@@ -2345,10 +2355,13 @@
       "url_patterns": [
         "https://www.opentable.com/*"
       ],
+      "url_patterns_reason": "Narrowed to www.opentable.com, OpenTable's US diner site: the tools fetch its restaurant pages and same-origin GraphQL endpoint and refuse other origins; other opentable.com hosts serve restaurants and other regions.",
       "status": "qa_passed",
       "last_verified": "2026-09-30",
       "notes": "Public profile by id or allowlisted URL. Arrays capped at 50, menus at 100 items, total output at 200 KB. Independent source QA passed; final-source live runtime unverified.",
-      "provenance": { "qa_agent": "agt_af9a78c90e1647b33555" }
+      "provenance": {
+        "qa_agent": "agt_af9a78c90e1647b33555"
+      }
     },
     {
       "domain": "opentable.com",
@@ -2359,10 +2372,13 @@
       "url_patterns": [
         "https://www.opentable.com/*"
       ],
+      "url_patterns_reason": "Narrowed to www.opentable.com, OpenTable's US diner site: the tools fetch its restaurant pages and same-origin GraphQL endpoint and refuse other origins; other opentable.com hosts serve restaurants and other regions.",
       "status": "qa_passed",
       "last_verified": "2026-09-30",
       "notes": "Public reviews, 10 per page in newest dining-date order, no diner identities. Out-of-range pages return no_results. Independent source QA passed; final-source live runtime unverified.",
-      "provenance": { "qa_agent": "agt_af9a78c90e1647b33555" }
+      "provenance": {
+        "qa_agent": "agt_af9a78c90e1647b33555"
+      }
     },
     {
       "domain": "opentable.com",
@@ -2370,11 +2386,16 @@
       "file": "domains/opentable.com/list_saved_restaurants.js",
       "kind": "page",
       "namespace": "opentable.com",
-      "url_patterns": ["https://www.opentable.com/*"],
+      "url_patterns": [
+        "https://www.opentable.com/*"
+      ],
+      "url_patterns_reason": "Narrowed to www.opentable.com, OpenTable's US diner site: the tools fetch its restaurant pages and same-origin GraphQL endpoint and refuse other origins; other opentable.com hosts serve restaurants and other regions.",
       "status": "qa_passed",
       "last_verified": "2026-09-30",
       "notes": "Authorized Favorites IDs, 50 per page; identity checked before and after read. Independent success/populated/wrong-account QA is Node-fixture-only; final-source live runtime unverified. No save/unsave.",
-      "provenance": { "qa_agent": "agt_af9a78c90e1647b33555" }
+      "provenance": {
+        "qa_agent": "agt_af9a78c90e1647b33555"
+      }
     },
     {
       "domain": "opentable.com",
@@ -2382,11 +2403,16 @@
       "file": "domains/opentable.com/prepare_reservation.js",
       "kind": "page",
       "namespace": "opentable.com",
-      "url_patterns": ["https://www.opentable.com/*"],
+      "url_patterns": [
+        "https://www.opentable.com/*"
+      ],
+      "url_patterns_reason": "Narrowed to www.opentable.com, OpenTable's US diner site: the tools fetch its restaurant pages and same-origin GraphQL endpoint and refuse other origins; other opentable.com hosts serve restaurants and other regions.",
       "status": "qa_passed",
       "last_verified": "2026-09-30",
       "notes": "Exact standard date/time/party/seating preparation, no substitution or hold/booking. Account and fees not verified; trusted approval execution unavailable. Independent source QA passed; final-source live runtime unverified.",
-      "provenance": { "qa_agent": "agt_af9a78c90e1647b33555" }
+      "provenance": {
+        "qa_agent": "agt_af9a78c90e1647b33555"
+      }
     },
     {
       "domain": "opentable.com",
@@ -2397,10 +2423,13 @@
       "url_patterns": [
         "https://www.opentable.com/*"
       ],
+      "url_patterns_reason": "Narrowed to www.opentable.com, OpenTable's US diner site: the tools fetch its restaurant pages and same-origin GraphQL endpoint and refuse other origins; other opentable.com hosts serve restaurants and other regions.",
       "status": "qa_passed",
       "last_verified": "2026-09-30",
       "notes": "Public free-text search, up to 50 per page, optional date/time/party. Does not prove availability. Independent source QA passed; final-source live runtime unverified.",
-      "provenance": { "qa_agent": "agt_af9a78c90e1647b33555" }
+      "provenance": {
+        "qa_agent": "agt_af9a78c90e1647b33555"
+      }
     },
     {
       "domain": "purelymail.com",
