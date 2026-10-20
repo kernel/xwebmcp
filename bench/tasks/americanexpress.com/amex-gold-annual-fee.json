@@ -1,0 +1,21 @@
+{
+  "id": "amex-gold-annual-fee",
+  "domain": "americanexpress.com",
+  "stage": "inspect",
+  "prompt": "On americanexpress.com, find the annual fee of the American Express Gold Card for the basic card member. Reply with JSON: {\"card\": string, \"annual_fee\": number in US dollars}.",
+  "start_url": "https://www.americanexpress.com/",
+  "answer_schema": "schemas/card-fee.json",
+  "rules": [
+    {
+      "path": "card",
+      "matches": "gold"
+    },
+    {
+      "path": "annual_fee",
+      "equals": 325
+    }
+  ],
+  "pairs": 5,
+  "trial_timeout_sec": 600,
+  "max_turns": 40
+}

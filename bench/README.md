@@ -303,6 +303,27 @@ that page's URL, hotel and price-summary total. Its guard blocks Complete bookin
 booking and pay buttons. Booking.com renders that step only in stealth browsers, so it is `opt_in`:
 run it with `--intent booking-checkout-room --stealth`.
 
+The intents on bestbuy.com, apple.com, ebay.com, homedepot.com and nordstrom.com are guest
+purchases on the same pattern. Best Buy and eBay keep checkout on one URL, so their checks need
+the saved address block ("Shipping address" on Best Buy; "Ship to" or "Contact and Shipping"
+on eBay, which renders both): eBay's address confirmation pop-up shows the typed address on the
+same page before it is saved. Apple's payment step shows neither the address nor the product, and
+store pickup reaches the same step, so its check (the "How do you want to pay?" heading on a
+checkout URL) cannot tell a shipped order from a pickup, and it is `opt_in`. The other new intents
+on sites where buying needs an account, a seat map or a reservation hold read what a buyer would
+pay or book instead: reservation times on OpenTable, SevenRooms and Tock (never selecting one,
+which holds the table), ticket prices on StubHub and Vivid Seats, room rates on Marriott, Expedia
+and Airbnb, a fare on Kayak, shipping quotes on UPS, FedEx and USPS, and published fees and
+prices elsewhere. SevenRooms only offers dates inside a venue's booking
+window, so its date is five days out, at Zuma Miami, which has bookable dinner times every day;
+many SevenRooms venues offer only requests on most days, where an empty list is the right answer
+and any agent could give it. StubHub and Vivid Seats ask for an NBA home game in the next 45
+days, so from May to October, when there may be none, switch their fixtures to a team in season.
+OpenTable blocks stealth browsers ("Access Denied") and TicketWeb, eBay, UPS, Myntra and Apple
+block or break in plain ones, so no one run passes them all: run `--domain opentable.com` without
+`--stealth`, and `--domain ticketweb.com --domain ebay.com --domain ups.com --domain myntra.com`
+with it.
+
 ### Signed-in trials
 
 A domain with a Kernel `profile` loads it in every browser, in both arms, without saving

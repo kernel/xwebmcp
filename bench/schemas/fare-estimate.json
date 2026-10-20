@@ -1,0 +1,22 @@
+{
+  "type": "object",
+  "required": [
+    "ride",
+    "price_low",
+    "price_high"
+  ],
+  "properties": {
+    "ride": {
+      "type": "string",
+      "minLength": 1
+    },
+    "price_low": {
+      "type": "number",
+      "exclusiveMinimum": 0
+    },
+    "price_high": {
+      "type": "number",
+      "exclusiveMinimum": 0
+    }
+  }
+}
