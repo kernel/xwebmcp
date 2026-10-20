@@ -26,7 +26,7 @@
   "rules": [
     {
       "path": "product",
-      "matches": "usb.?c|type.?c"
+      "matches": "(usb.?c|type.?c)\\b"
     },
     {
       "path": "quantity",
@@ -45,7 +45,7 @@
       },
       {
         "path": "text",
-        "matches": "usb"
+        "matches": "(usb.?c|type.?c)\\b"
       }
     ]
   },
