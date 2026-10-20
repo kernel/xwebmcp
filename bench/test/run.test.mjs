@@ -1,14 +1,14 @@
 import assert from "node:assert/strict";
-import { execFileSync, spawnSync } from "node:child_process";
-import { cpSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { execFileSync, spawn, spawnSync } from "node:child_process";
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { delimiter, dirname, join } from "node:path";
-import test from "node:test";
+import test, { after } from "node:test";
 import { fileURLToPath } from "node:url";
 
-// Runs run.mjs end to end against stub pi, kernel and hypeship commands, on one intent whose tools
-// come from a local repository standing in for kernel/xwebmcp. Each trial that reaches its agent
-// waits 10s after load, so a pair takes about 20s.
+// Runs run.mjs end to end against a stub Kernel API and stub pi and hypeship commands, on one
+// intent whose tools come from a local repository standing in for kernel/xwebmcp. Each trial that
+// reaches its agent waits 10s after load, so a pair takes about 20s.
 
 const benchDir = join(dirname(fileURLToPath(import.meta.url)), "..");
 const START_DELAY_MS = 1000;
@@ -38,10 +38,26 @@ const taskIntent = {
   rules: [{ path: "asn", equals: "AS15169" }], pairs: 1, trial_timeout_sec: 60, max_turns: 5,
 };
 
+// run.mjs runs synchronously, so the stub API is a process of its own.
+const apis = [];
+after(() => { for (const api of apis) api.kill(); });
+
+function startKernelApi(dir, state) {
+  const portFile = join(dir, "api-port");
+  apis.push(spawn(process.execPath, [join(benchDir, "test/stubs/kernel-api.mjs")], { env: { STUB_STATE: state, STUB_PORT_FILE: portFile }, stdio: "inherit" }));
+  const deadline = Date.now() + 10_000;
+  while (!existsSync(portFile) || !readFileSync(portFile, "utf8")) {
+    if (Date.now() > deadline) throw new Error("the stub Kernel API did not start");
+    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 20);
+  }
+  return `http://127.0.0.1:${readFileSync(portFile, "utf8")}`;
+}
+
 function workspace({ domain = { profile: "bench-example", signed_in_check: { tool: "lookup" } }, intent = lookupIntent, sourceTools = ["lookup", "add"] } = {}) {
   const dir = mkdtempSync(join(tmpdir(), "bench-run-"));
   const bench = join(dir, "bench");
   for (const path of ["run.mjs", "grade.mjs", "lib", "prompts", "allowlist.txt", "mcp.json", "allowlist.local.txt", "mcp.local.json", "schemas"]) cpSync(join(benchDir, path), join(bench, path), { recursive: true });
+  symlinkSync(join(benchDir, "node_modules"), join(bench, "node_modules"));
   cpSync(join(benchDir, "../extension/lib/url-pattern.js"), join(dir, "extension/lib/url-pattern.js"));
   mkdirSync(join(bench, "tasks/example.com"), { recursive: true });
   writeFileSync(join(bench, "tasks/example.com/domain.json"), JSON.stringify(domain));
@@ -65,20 +81,26 @@ function workspace({ domain = { profile: "bench-example", signed_in_check: { too
 
   const state = join(dir, "state.json");
   writeFileSync(state, JSON.stringify({ next: 0, browsers: {}, log: [] }));
-  const run = (runId, env = {}, args = []) => spawnSync(process.execPath, [join(bench, "run.mjs"), "--run-id", runId, "--model", "stub/model", ...args], {
-    encoding: "utf8",
-    env: {
-      PATH: [join(benchDir, "test/stubs"), dirname(process.execPath), process.env.PATH].join(delimiter),
-      HOME: dir,
-      KERNEL_API_KEY: "stub",
-      BENCH_START_DELAY_MS: String(START_DELAY_MS),
-      STUB_STATE: state,
-      GIT_CONFIG_COUNT: "1",
-      GIT_CONFIG_KEY_0: `url.file://${source}.insteadOf`,
-      GIT_CONFIG_VALUE_0: "https://github.com/kernel/xwebmcp.git",
-      ...env,
-    },
-  });
+  const baseURL = startKernelApi(dir, state);
+  const run = (runId, env = {}, args = []) => {
+    // The stub API reads the run's STUB_* switches from the state file.
+    const current = JSON.parse(readFileSync(state, "utf8"));
+    writeFileSync(state, JSON.stringify({ ...current, env: Object.fromEntries(Object.entries(env).filter(([key]) => key.startsWith("STUB_"))) }));
+    return spawnSync(process.execPath, [join(bench, "run.mjs"), "--run-id", runId, "--model", "stub/model", ...args], {
+      encoding: "utf8",
+      env: {
+        PATH: [join(benchDir, "test/stubs"), dirname(process.execPath), process.env.PATH].join(delimiter),
+        HOME: dir,
+        KERNEL_API_KEY: "stub",
+        KERNEL_BASE_URL: baseURL,
+        BENCH_START_DELAY_MS: String(START_DELAY_MS),
+        GIT_CONFIG_COUNT: "1",
+        GIT_CONFIG_KEY_0: `url.file://${source}.insteadOf`,
+        GIT_CONFIG_VALUE_0: "https://github.com/kernel/xwebmcp.git",
+        ...env,
+      },
+    });
+  };
   const rows = (runId) => readFileSync(join(bench, "results", runId, "rows.jsonl"), "utf8").trim().split("\n").map(line => JSON.parse(line));
   const log = () => JSON.parse(readFileSync(state, "utf8")).log;
   return { run, rows, log, bench };
@@ -227,8 +249,8 @@ test("a task that names no tools gets every tool its domain has, and its trials 
   // Treatment registered the domain's read-only tool; control registered nothing.
   const treatment = log().find(entry => entry[0] === "create" && entry[2] === "treatment")[1];
   assert.ok(log().some(entry => entry[0] === "add" && entry[1] === treatment));
-  // The stub's browsers navigate to example.com before the agent starts, so all its time is on that step.
-  for (const row of rows("task")) assert.deepEqual(row.steps.map(s => [s.step, s.calls, s.invocations]), [["example.com", 0, []]]);
+  // The stub's browsers navigate to example.com/landing before the agent starts, so all its time is on that step.
+  for (const row of rows("task")) assert.deepEqual(row.steps.map(s => [s.step, s.calls, s.invocations]), [["example.com/landing", 0, []]]);
 });
 
 test("a task on a domain with no tools runs control alone", { timeout: 120_000 }, () => {

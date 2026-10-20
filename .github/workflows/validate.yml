@@ -33,5 +33,7 @@ jobs:
         env:
           XWEBMCP_SYNTHETIC_CI: '1'
         run: node --test "extension/**/*.test.mjs"
+      - name: Install bench dependencies
+        run: npm ci --prefix bench
       - name: Run bench tests
         run: node --test "bench/**/*.test.mjs"

@@ -14,7 +14,6 @@ import { setTimeout as sleep } from "node:timers/promises";
 import { parseArgs } from "node:util";
 import { agentEnv, classifyTrial, piArgs, runAgent, runningAgents, summarize } from "./lib/agent.mjs";
 import { fill, loadIntents, loadSchema, pastDates, resolveFixture, trialPrompt } from "./lib/intents.mjs";
-import * as kernel from "./lib/kernel.mjs";
 import * as local from "./lib/local.mjs";
 import { latestRows, readRows, rowKey } from "./lib/rows.mjs";
 import { adoptionVerdicts, balancedOrders, holdNeededSec, pairArms, planJobs, runPairAttempts, runQueue } from "./lib/schedule.mjs";
@@ -102,7 +101,17 @@ const experimentFor = (backend) => {
   };
 };
 let experiment = experimentFor(opts.browser);
-let browsers = opts.browser === "local" ? local : kernel;
+// Only Kernel browsers need the SDK, so a local run works without bench's npm dependencies.
+const backend = async (name) => {
+  if (name === "local") return local;
+  try {
+    return await import("./lib/kernel.mjs");
+  } catch (error) {
+    if (error.code === "ERR_MODULE_NOT_FOUND") fail(`${error.message}; run npm ci --prefix bench`);
+    throw error;
+  }
+};
+let browsers;
 
 // --- run plan -----------------------------------------------------------------------------
 
@@ -113,7 +122,7 @@ async function planRun() {
     const plan = JSON.parse(readFileSync(planFile, "utf8"));
     plan.backend ??= "kernel";
     experiment = experimentFor(plan.backend);
-    browsers = plan.backend === "local" ? local : kernel;
+    browsers = await backend(plan.backend);
     const { files } = experiment;
     if (JSON.stringify(plan.allowlist) !== JSON.stringify(experiment.allowlist)) fail(`${files.allowlist} changed since run ${runId} started; start a new run`);
     if (JSON.stringify(plan.mcp_config) !== JSON.stringify(experiment.mcp)) fail(`${files.mcp} changed since run ${runId} started; start a new run`);
@@ -130,6 +139,7 @@ async function planRun() {
   }
   if (existsSync(rowsFile)) fail(`${rowsFile} exists without run.json; restore run.json or start a new run id`);
   if (!/^[\w.-]+\/\S+$/.test(opts.model ?? "")) fail("--model <provider/model> is required for a new run, for example openai/gpt-5.4 or anthropic/claude-sonnet-5-5");
+  browsers = await backend(opts.browser);
   const createdAt = new Date();
   let intents = loadIntents(benchDir).map(intent => ({ ...intent, fixture: resolveFixture(intent.fixture, createdAt) }));
   const unknown = [
@@ -172,7 +182,7 @@ async function planRun() {
     system_prompt_sha256: sha256(experiment.system_prompt),
     mcp_config: experiment.mcp,
     backend: opts.browser,
-    browser: opts.browser === "local" ? useLocal(localOptions()) : { ...kernel.BROWSER, stealth: opts.stealth },
+    browser: opts.browser === "local" ? useLocal(localOptions()) : { ...browsers.BROWSER, stealth: opts.stealth },
     intents: {},
   };
   mkdirSync(join(runDir, "sources"), { recursive: true });
@@ -336,9 +346,9 @@ async function smokeGate(plan, probe, signedIn) {
   if (plan.agent && plan.agent !== agent) fail(`run ${runId} started with ${plan.agent}, but this machine has ${agent}; install that version or start a new run`);
   plan.agent = agent;
   if (plan.backend === "kernel") {
-    const kernelCli = execFileSync("kernel", ["--version"], { encoding: "utf8" }).trim().split(" ").slice(0, 2).join(" ");
-    if (plan.kernel_cli && plan.kernel_cli !== kernelCli) log(`warning: run ${runId} started with ${plan.kernel_cli}, and this machine has ${kernelCli}`);
-    plan.kernel_cli ??= kernelCli;
+    if (plan.kernel_cli && !plan.kernel_sdk) log(`warning: run ${runId} started with ${plan.kernel_cli}, and this checkout drives Kernel through ${browsers.SDK_VERSION}`);
+    if (plan.kernel_sdk && plan.kernel_sdk !== browsers.SDK_VERSION) log(`warning: run ${runId} started with ${plan.kernel_sdk}, and this checkout has ${browsers.SDK_VERSION}`);
+    plan.kernel_sdk ??= browsers.SDK_VERSION;
   }
 
   if (plan.allowlist.some(tool => !tool.startsWith("mcp__"))) checkSandbox(agent);
@@ -570,7 +580,8 @@ async function runTrial(plan, intentPlan, arm, key) {
     }
     browser = setup.browser;
     [row.browser_id, row.image_version, row.start_renavigated, row.native_tools] = [browser, setup.page.version, setup.page.renavigated, setup.nativeTools];
-    await sleep(Math.max(0, setup.loadedAt + START_DELAY_MS - performance.now()));
+    // A timer counts from the event loop's cached clock, so it can fire a little early; wait out the rest.
+    while (performance.now() - setup.loadedAt < START_DELAY_MS) await sleep(setup.loadedAt + START_DELAY_MS - performance.now());
     row.start_delay_ms = Math.round(performance.now() - setup.loadedAt);
     row.setup_ms = Math.round(performance.now() - setupStart);
     if (stopping) return null;
