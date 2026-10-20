@@ -102,7 +102,15 @@ const experimentFor = (backend) => {
 };
 let experiment = experimentFor(opts.browser);
 // Only Kernel browsers need the SDK, so a local run works without bench's npm dependencies.
-const backend = async (name) => (name === "local" ? local : import("./lib/kernel.mjs"));
+const backend = async (name) => {
+  if (name === "local") return local;
+  try {
+    return await import("./lib/kernel.mjs");
+  } catch (error) {
+    if (error.code === "ERR_MODULE_NOT_FOUND") fail(`${error.message}; run npm ci --prefix bench`);
+    throw error;
+  }
+};
 let browsers;
 
 // --- run plan -----------------------------------------------------------------------------

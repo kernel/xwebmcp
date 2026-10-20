@@ -5,10 +5,12 @@ import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test, { after, before } from "node:test";
+import Kernel from "@onkernel/sdk";
 import * as kernel from "../lib/kernel.mjs";
 
 // Answers each request with the next reply scripted for its route: "drop" closes the connection
-// without answering, a number answers with that status, and { status, headers } adds headers.
+// without answering, "stall" sends the headers and part of the body and stops, a number answers
+// with that status, and { status, headers, body } adds headers or replaces the body.
 let script = {};
 const hits = {};
 const server = createServer((request, response) => {
@@ -18,9 +20,13 @@ const server = createServer((request, response) => {
     hits[route] = (hits[route] ?? 0) + 1;
     const reply = script[route]?.shift() ?? 404;
     if (reply === "drop") return request.socket.destroy();
-    const { status, headers } = typeof reply === "number" ? { status: reply } : reply;
+    if (reply === "stall") {
+      response.writeHead(200, { "content-type": "application/json" });
+      return response.write("{");
+    }
+    const { status, headers, body } = typeof reply === "number" ? { status: reply } : reply;
     response.writeHead(status, { "content-type": "application/json", ...headers });
-    response.end(JSON.stringify(status === 200 ? { session_id: "b1", tools: [], success: true, result: [] } : { code: "error", message: `status ${status}` }));
+    response.end(JSON.stringify(body ?? (status === 200 ? { session_id: "b1", tools: [], success: true, result: [] } : { code: "error", message: `status ${status}` })));
   });
 });
 
@@ -30,7 +36,11 @@ before(async () => {
   process.env.KERNEL_API_KEY = "stub";
   process.env.KERNEL_BASE_URL = `http://127.0.0.1:${server.address().port}`;
 });
-after(() => server.close());
+// A stalled response keeps its connection open.
+after(() => {
+  server.closeAllConnections();
+  server.close();
+});
 
 function run(replies) {
   script = replies;
@@ -60,6 +70,34 @@ test("a browser create waits as long as the API asks, and is not retried when th
   assert.equal(hits["POST /browsers"], 1);
 });
 
+test("a read waits as long as the API asks in milliseconds", async () => {
+  run({ "GET /browsers/b1/webmcp/custom-tools": [{ status: 503, headers: { "retry-after-ms": "300" } }, 200] });
+  const start = performance.now();
+  assert.deepEqual(await kernel.listCustomTools("b1"), []);
+  assert.ok(performance.now() - start >= 300);
+  assert.equal(hits["GET /browsers/b1/webmcp/custom-tools"], 2);
+});
+
+test("the deadline cuts short a pause the API asks for, and a response body still arriving", async () => {
+  const list = () => kernel.call(options => new Kernel().browsers.webmcp.customTools.list("b1", options), { ms: 500 });
+  run({ "GET /browsers/b1/webmcp/custom-tools": [{ status: 429, headers: { "retry-after": "5" } }, 200] });
+  const start = performance.now();
+  await assert.rejects(list(), { status: 429 });
+  assert.ok(performance.now() - start < 2000);
+  assert.equal(hits["GET /browsers/b1/webmcp/custom-tools"], 1);
+
+  run({ "GET /browsers/b1/webmcp/custom-tools": ["stall"] });
+  await assert.rejects(list(), { message: "timed out after 0.5s" });
+});
+
+test("an invocation that did not complete throws, and one awaiting submission returns its output", async () => {
+  run({ "POST /browsers/b1/webmcp/invoke": [{ status: 200, body: { invocation_id: "inv_1", status: "error", error_text: "boom" } }] });
+  await assert.rejects(kernel.invokeTool("b1", "wmcp_1", {}), { message: "invocation inv_1: error: boom" });
+
+  run({ "POST /browsers/b1/webmcp/invoke": [{ status: 200, body: { invocation_id: "inv_2", status: "awaiting_submission", output: { filled: true } } }] });
+  assert.deepEqual(await kernel.invokeTool("b1", "wmcp_1", {}), { filled: true });
+});
+
 test("reading cookies is retried after a dropped connection", async () => {
   run({ "POST /browsers/b1/playwright/execute": ["drop", 200] });
   assert.deepEqual(await kernel.cookies("b1"), []);
@@ -85,8 +123,7 @@ test("adding and removing custom tools are never retried, and reading them is", 
 test("an extension upload that conflicts with one already under its name succeeds", async () => {
   const dir = mkdtempSync(join(tmpdir(), "bench-extension-"));
   writeFileSync(join(dir, "manifest.json"), "{}\n");
-  // The SDK retries a 409 twice.
-  run({ "GET /extensions/bench-guard-x/metadata": [404], "POST /extensions": [409, 409, 409] });
+  run({ "GET /extensions/bench-guard-x/metadata": [404], "POST /extensions": [409] });
   await kernel.ensureExtension({ name: "bench-guard-x", dir });
-  assert.equal(hits["POST /extensions"], 3);
+  assert.equal(hits["POST /extensions"], 1);
 });

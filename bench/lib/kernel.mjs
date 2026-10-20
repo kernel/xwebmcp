@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { setTimeout as sleep } from "node:timers/promises";
-import Kernel, { APIError, APIUserAbortError, ConflictError, NotFoundError, toFile } from "@onkernel/sdk";
+import Kernel, { APIConnectionError, APIError, APIUserAbortError, ConflictError, NotFoundError, toFile } from "@onkernel/sdk";
 import { VERSION } from "@onkernel/sdk/version";
 import { zipDirectory } from "./zip.mjs";
 
@@ -10,12 +10,16 @@ export const SDK_VERSION = `@onkernel/sdk ${VERSION}`;
 let kernel = null;
 const client = () => (kernel ??= new Kernel());
 
-// Whether the SDK would retry an error that came with a response. A connection error has none.
-function retryable(error) {
+// Whether to send a failed request again, as the SDK decides, except that a 409 is final: every
+// conflict these calls can get is a name already taken or a limit reached, which a retry cannot
+// change. A connection error has no response, and is retried only under "any".
+function retryable(error, retry) {
+  if (retry === "none") return false;
+  if (error instanceof APIConnectionError) return retry === "any";
   if (!(error instanceof APIError) || error.status === undefined) return false;
   const header = error.headers?.get("x-should-retry");
   if (header === "true" || header === "false") return header === "true";
-  return error.status >= 500 || [408, 409, 429].includes(error.status);
+  return error.status >= 500 || [408, 429].includes(error.status);
 }
 
 // The wait the response asks for, as the SDK reads it, or else exponential backoff.
@@ -28,20 +32,21 @@ function retryDelay(error, attempt) {
   return Number.isNaN(asked) ? 500 * 2 ** attempt : Math.max(0, asked);
 }
 
-// `retry` is "any" to retry every failure as the SDK does, "answered" to retry only errors that came
-// with a response, for a request whose lost response may hide a browser it made or page code it ran,
-// or "none". A proxy's 502 or 504 can still follow a request the API carried out; a browser made
-// that way is deleted at its timeout. `ms` bounds every attempt and pause together, as the CLI's
-// 120s execFile timeout did; the per-attempt timeout is longer, so it never fires first.
-async function call(request, { ms = 120_000, retry = "any" } = {}) {
+// `retry` is "any" to retry dropped connections too, "answered" to retry only errors that came with
+// a response, for a request whose lost response may hide a browser it made or page code it ran, or
+// "none". A proxy's 502 or 504 can still follow a request the API carried out; a browser made that
+// way is deleted at its timeout. `ms` bounds every attempt and pause together, as the CLI's 120s
+// execFile timeout did; the per-attempt timeout is longer, so it never fires first. The SDK never
+// retries, since its pause between attempts would outlast `ms` when the API asks for a long wait.
+export async function call(request, { ms = 120_000, retry = "any" } = {}) {
   const signal = AbortSignal.timeout(ms);
   for (let attempt = 1; ; attempt++) {
     try {
-      return await request({ timeout: ms + 5_000, signal, maxRetries: retry === "any" ? 2 : 0 });
+      return await request({ timeout: ms + 5_000, signal, maxRetries: 0 });
     } catch (error) {
       // The SDK raises its own abort error only before the response headers arrive.
       if (error instanceof APIUserAbortError || signal.aborted) throw new Error(`timed out after ${ms / 1000}s`);
-      if (retry !== "answered" || attempt === 3 || !retryable(error)) throw error;
+      if (attempt === 3 || !retryable(error, retry)) throw error;
       // Out of time before the next attempt, the API's error says more than a timeout would.
       await sleep(retryDelay(error, attempt), undefined, { signal }).catch(() => { throw error; });
     }
