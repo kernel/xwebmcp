@@ -38,6 +38,7 @@
     const final = new URL(res.url);
     if (final.origin !== ORIGIN) return fail("site_error", "The cart redirected off the storefront.");
     if (final.pathname.startsWith("/ap/")) return fail("login_required", "Amazon requested login. Login remains a manual, separate task.");
+    if (res.ok && /^\s*503 - Service Unavailable Error\s*$/.test(doc.title || "")) return fail("challenge", "Amazon answered with its automated-access page (\"503 - Service Unavailable Error\", HTTP 200) instead of the page: it is refusing this browser. Nothing was changed; do not retry automatically.");
     if (res.status === 202 || res.headers.get("x-amzn-waf-action") || doc.querySelector("#captchacharacters, form[action*='validateCaptcha']")) return fail("challenge", "Amazon returned a challenge. Do not retry automatically.");
     if ([429, 503].includes(res.status)) return fail("rate_limited", "Amazon is throttling or temporarily unavailable. Do not retry automatically.");
     if (!res.ok) return fail("site_error", "Amazon did not return the cart.");

@@ -313,6 +313,7 @@ test("search_products distinguishes an empty search from a changed page", async 
 const GATES = [
   ["a robot check page", page(CAPTCHA), "challenge"],
   ["an HTTP 202 challenge", status(202, ""), "challenge"],
+  ["Amazon's automated-access page served with HTTP 200", status(200, "<html><head><title>503 - Service Unavailable Error</title></head><body></body></html>"), "challenge"],
   ["a WAF challenge header", status(200, "<html></html>", { headers: { "x-amzn-waf-action": "challenge" } }), "challenge"],
   ["HTTP 503", status(503), "rate_limited"],
   ["HTTP 429", status(429), "rate_limited"],

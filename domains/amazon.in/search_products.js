@@ -146,6 +146,7 @@
     const finalUrl = new URL(res.url);
     if (finalUrl.origin !== ORIGIN) return fail("site_error", "amazon.in redirected the search to another host, so it was not read.");
     if (finalUrl.pathname.indexOf("/ap/") === 0) return fail("login_required", "amazon.in asked for sign-in instead of showing search results. Sign in yourself in this browser, then call again.");
+    if (res.ok && /^\s*503 - Service Unavailable Error\s*$/.test(doc.title || "")) return fail("challenge", "Amazon answered with its automated-access page (\"503 - Service Unavailable Error\", HTTP 200) instead of the page: it is refusing this browser. Nothing was changed; do not retry automatically.");
     if (res.status === 202 || res.headers.get("x-amzn-waf-action") || doc.querySelector("form[action*='validateCaptcha'], #captchacharacters")) return fail("challenge", "Amazon is showing a robot check or bot-protection challenge. A person has to complete it in this browser; wait and do not retry automatically.");
     if (res.status === 429 || res.status === 503) return fail("rate_limited", "Amazon answered HTTP " + res.status + " (too many requests or temporarily unavailable). Wait a few minutes before calling again; the tool does not retry.");
     if (!res.ok) return fail("site_error", "Amazon answered HTTP " + res.status + " for the search.");

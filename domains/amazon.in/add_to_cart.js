@@ -33,7 +33,7 @@
       const final = new URL(res.url);
       if (final.origin !== ORIGIN) return { error: "site_error" };
       if (final.pathname.startsWith("/ap/")) return { error: "login_required" };
-      if (res.status === 202 || res.headers.get("x-amzn-waf-action") || doc.querySelector("#captchacharacters, form[action*='validateCaptcha']")) return { error: "challenge" };
+      if (res.status === 202 || (res.ok && /^\s*503 - Service Unavailable Error\s*$/.test(doc.title || "")) || res.headers.get("x-amzn-waf-action") || doc.querySelector("#captchacharacters, form[action*='validateCaptcha']")) return { error: "challenge" };
       if ([429, 503].includes(res.status)) return { error: "rate_limited" };
       if (!res.ok) return { error: "site_error" };
       if (!/^\/gp\/cart\/view\.html$|^\/cart\/?$/.test(final.pathname)) return { error: "site_changed" };

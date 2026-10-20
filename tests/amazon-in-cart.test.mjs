@@ -100,6 +100,7 @@ test("missing/signed-in account state, redirects, challenges and HTTP failures f
     [empty, 200, "https://example.test/cart", "site_error"],
     [empty, 200, ORIGIN + "/dp/" + asin, "site_changed"],
     ['<form action="/errors/validateCaptcha"></form>', 200, undefined, "challenge"],
+    ['<html><head><title>503 - Service Unavailable Error</title></head><body></body></html>', 200, undefined, "challenge"],
     [empty, 429, undefined, "rate_limited"], [empty, 503, undefined, "rate_limited"], [empty, 202, undefined, "challenge"], [empty, 500, undefined, "site_error"]
   ];
   for (const name of names) for (const [body, status, url, kind] of cases) {
