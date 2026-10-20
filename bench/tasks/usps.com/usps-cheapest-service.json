@@ -1,0 +1,31 @@
+{
+  "id": "usps-cheapest-service",
+  "domain": "usps.com",
+  "stage": "compare",
+  "prompt": "On usps.com, find the cheapest USPS service for shipping one {{weight}} package measuring {{size}} from ZIP code {{from_zip}} to ZIP code {{to_zip}}, dropped off at a USPS location, and the retail price the site quotes for it. Do not buy a label. Reply with JSON: {\"service\": string, \"price\": number in US dollars}.",
+  "fixture": {
+    "from_zip": "94133",
+    "to_zip": "10001",
+    "weight": "2 lb",
+    "size": "12 x 9 x 4 in"
+  },
+  "start_url": "https://www.usps.com/",
+  "answer_schema": "schemas/shipping-rate.json",
+  "rules": [
+    {
+      "path": "price",
+      "range": [
+        3,
+        200
+      ]
+    }
+  ],
+  "agreement": {
+    "path": "price",
+    "better": "lower",
+    "tolerance": 0.5
+  },
+  "pairs": 5,
+  "trial_timeout_sec": 600,
+  "max_turns": 40
+}

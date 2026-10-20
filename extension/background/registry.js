@@ -132,8 +132,8 @@ export async function list() {
 // every granted origin, so only granted patterns are used here as well.
 export async function syncContentScripts(definitions) {
   if (!definitions) ({definitions} = await readDefinitions());
+  // Every custom tool (page and cdp) is registered by the MAIN-world script.
   const pagePatterns = await grantedSubset(chromeMatchPatterns(definitions
-    .filter((definition) => definition.kind === 'page')
     .flatMap((definition) => definition.match.url_patterns)));
 
   const existing = await chrome.scripting.getRegisteredContentScripts({ids: [PAGE_TOOLS_SCRIPT_ID]});
