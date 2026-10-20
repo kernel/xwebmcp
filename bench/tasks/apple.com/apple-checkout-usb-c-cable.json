@@ -26,7 +26,7 @@
   "rules": [
     {
       "path": "product",
-      "matches": "usb-c"
+      "matches": "usb.?c"
     },
     {
       "path": "quantity",
@@ -45,6 +45,7 @@
       }
     ]
   },
+  "opt_in": "its payment step shows neither the address nor the product, and store pickup reaches the same step, so the check cannot tell a shipped order from a pickup (2026-10-20)",
   "pairs": 5,
   "trial_timeout_sec": 1200,
   "max_turns": 100

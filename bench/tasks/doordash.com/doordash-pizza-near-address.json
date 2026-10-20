@@ -22,7 +22,7 @@
     },
     {
       "path": "places[].detail",
-      "matches": "\\$|free"
+      "matches": "\\$\\s*\\d|free"
     }
   ],
   "pairs": 5,

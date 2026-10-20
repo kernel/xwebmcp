@@ -26,7 +26,7 @@
   "rules": [
     {
       "path": "product",
-      "matches": "usb"
+      "matches": "usb.?c|type.?c"
     },
     {
       "path": "quantity",
@@ -41,7 +41,7 @@
       },
       {
         "path": "text",
-        "matches": "Ship to\\s+Select a shipping address\\s+webmcp-demo@example\\.com\\s+Alex Demo\\s+1 Telegraph Hill"
+        "matches": "(Ship to\\s+Select a shipping address|Contact and Shipping)\\s+webmcp-demo@example\\.com\\s+Alex Demo\\s+1 Telegraph Hill"
       },
       {
         "path": "text",

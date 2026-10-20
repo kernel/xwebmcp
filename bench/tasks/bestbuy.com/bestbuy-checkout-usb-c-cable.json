@@ -26,7 +26,7 @@
   "rules": [
     {
       "path": "product",
-      "matches": "usb"
+      "matches": "^(?!.*\\b(usb.?a|lightning|micro.?usb)\\b).*(usb.?c|type.?c)"
     },
     {
       "path": "quantity",
