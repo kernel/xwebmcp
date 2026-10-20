@@ -3,7 +3,7 @@
   match: { url_patterns: ["https://store.steampowered.com/*"] },
   tool: {
     name: "search_store",
-    description: "Search the Steam Store for a term with the header's own \"Search the store\" box, as a person would: types the term into it and submits it once. The tab then navigates to the store's search results page, so this returns only navigation_scheduled; it cannot confirm the results. After the page loads, list the tools again and call get_search_results to read them, then open a result's url and call get_app for its prices and reviews. Uses Steam's default sort and filters; change those on the results page itself. Fails with no_search_box on a page without the header (such as an age check), without typing anything.",
+    description: "Search the Steam Store for a term with the header's own \"Search the store\" box, as a person would. When you already know the app's store page (store.steampowered.com/app/<id>/), open it and call get_app instead; a search adds a page load. It types the term into the box and submits it once. The tab then navigates to the store's search results page, so this returns only navigation_scheduled; it cannot confirm the results. After the page loads, list the tools again and call get_search_results to read them; each row already shows its price and review summary. Uses Steam's default sort and filters; change those on the results page itself. Fails with no_search_box on a page without the header (such as an age check), without typing anything.",
     inputSchema: {
       type: "object", additionalProperties: false, required: ["term"],
       properties: { term: { type: "string", minLength: 1, maxLength: 200, description: "What to search for, for example a game's name." } }
