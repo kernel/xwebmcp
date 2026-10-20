@@ -117,6 +117,12 @@ test("an invocation that did not complete throws, one awaiting submission return
   assert.equal(await kernel.invokeTool("b1", "wmcp_1", {}), null);
 });
 
+test("an invocation is never retried", async () => {
+  run({ "POST /browsers/b1/webmcp/invoke": [503, { status: 200, body: { invocation_id: "inv_1", status: "completed", output: {} } }] });
+  await assert.rejects(kernel.invokeTool("b1", "wmcp_1", {}), { status: 503 });
+  assert.equal(hits["POST /browsers/b1/webmcp/invoke"], 1);
+});
+
 test("reading cookies is retried after a dropped connection, before or during the response", async () => {
   run({ "POST /browsers/b1/playwright/execute": ["drop", 200] });
   assert.deepEqual(await kernel.cookies("b1"), []);
@@ -134,6 +140,12 @@ test("deleting a browser that is already gone succeeds", async () => {
 });
 
 test("adding and removing custom tools are never retried, and reading them is", async () => {
+  const source = join(mkdtempSync(join(tmpdir(), "bench-tools-")), "tools.js");
+  writeFileSync(source, "");
+  run({ "POST /browsers/b1/webmcp/custom-tools": [503, 200] });
+  await assert.rejects(kernel.addCustomTools("b1", "example.com", source), { status: 503 });
+  assert.equal(hits["POST /browsers/b1/webmcp/custom-tools"], 1);
+
   run({ "DELETE /browsers/b1/webmcp/custom-tools/ct_1": ["drop", 200] });
   await assert.rejects(kernel.removeCustomTool("b1", "ct_1"));
   assert.equal(hits["DELETE /browsers/b1/webmcp/custom-tools/ct_1"], 1);
