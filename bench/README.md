@@ -31,15 +31,17 @@ bench/
   allowlist.txt                   the tools the agent gets, and no others: the kernel MCP tools and pi's read
   mcp.json                        the kernel MCP server; reads KERNEL_API_KEY
   .env.example                    keys run.mjs loads from bench/.env
+  package.json                    the Kernel SDK the runner drives Kernel browsers with
   run.mjs  grade.mjs  report.mjs  lib/  test/
   results/<run_id>/               gitignored: run.json, rows.jsonl, transcripts
 ```
 
 ## Running
 
-Needs the `kernel` and `pi` CLIs, Node 22.13+, git, `KERNEL_API_KEY` and the model provider's
-key (such as `ANTHROPIC_API_KEY`), from the environment or `bench/.env`. Each agent gets its own
-`PI_CODING_AGENT_DIR`, so stored pi logins and MCP servers are not used.
+Needs the `pi` CLI, Node 22.13+, git, `KERNEL_API_KEY` and the model provider's key (such as
+`ANTHROPIC_API_KEY`), from the environment or `bench/.env`, and the Kernel SDK: run
+`npm ci --prefix bench` once. Each agent gets its own `PI_CODING_AGENT_DIR`, so stored pi logins
+and MCP servers are not used.
 
 ### Sandbox
 
@@ -83,7 +85,7 @@ node bench/report.mjs bench/results/pilot-1 > pilot-1.md
 | `--stealth` | stealth browsers for every trial |
 
 Once the smoke gate passes, a new run writes `run.json`: intents with fixtures resolved, schemas,
-tool commits, the MCP config, the pi and kernel CLI versions, and each pair's order (`AB` runs
+tool commits, the MCP config, the pi and Kernel SDK versions, and each pair's order (`AB` runs
 control first, `BA` treatment first, split evenly within each intent and shuffled). On resume
 `run.json` is authoritative, and the run refuses to continue if the allowlist, `mcp.json`, the
 system prompt or the pi version changed. A resume reruns aborted or missing treatment-only

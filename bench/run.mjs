@@ -336,9 +336,8 @@ async function smokeGate(plan, probe, signedIn) {
   if (plan.agent && plan.agent !== agent) fail(`run ${runId} started with ${plan.agent}, but this machine has ${agent}; install that version or start a new run`);
   plan.agent = agent;
   if (plan.backend === "kernel") {
-    const kernelCli = execFileSync("kernel", ["--version"], { encoding: "utf8" }).trim().split(" ").slice(0, 2).join(" ");
-    if (plan.kernel_cli && plan.kernel_cli !== kernelCli) log(`warning: run ${runId} started with ${plan.kernel_cli}, and this machine has ${kernelCli}`);
-    plan.kernel_cli ??= kernelCli;
+    if (plan.kernel_sdk && plan.kernel_sdk !== kernel.SDK_VERSION) log(`warning: run ${runId} started with ${plan.kernel_sdk}, and this checkout has ${kernel.SDK_VERSION}`);
+    plan.kernel_sdk ??= kernel.SDK_VERSION;
   }
 
   if (plan.allowlist.some(tool => !tool.startsWith("mcp__"))) checkSandbox(agent);
