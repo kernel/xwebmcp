@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { setTimeout as sleep } from "node:timers/promises";
-import Kernel, { APIConnectionError, APIError, APIUserAbortError, ConflictError, NotFoundError, toFile } from "@onkernel/sdk";
+import Kernel, { APIConnectionError, APIError, ConflictError, NotFoundError, toFile } from "@onkernel/sdk";
 import { VERSION } from "@onkernel/sdk/version";
 import { zipDirectory } from "./zip.mjs";
 
@@ -17,8 +17,8 @@ const client = () => (kernel ??= new Kernel());
 function retryable(error, retry) {
   if (retry === "none") return false;
   if (error instanceof APIConnectionError || error instanceof TypeError) return retry === "any";
-  if (!(error instanceof APIError) || error.status === undefined || error.status === 409) return false;
-  const header = error.headers?.get("x-should-retry");
+  if (!(error instanceof APIError) || error.status === 409) return false;
+  const header = error.headers.get("x-should-retry");
   if (header === "true" || header === "false") return header === "true";
   return error.status >= 500 || [408, 429].includes(error.status);
 }
@@ -47,8 +47,8 @@ export async function call(request, { ms = 120_000, retry = "any" } = {}) {
     try {
       return await request({ timeout: ms + 5_000, signal, maxRetries: 0 });
     } catch (error) {
-      // The SDK raises its own abort error only before the response headers arrive.
-      if (error instanceof APIUserAbortError || signal.aborted) throw new Error(`timed out after ${ms / 1000}s${last ? `, retrying after ${last.message}` : ""}`);
+      // An abort surfaces as the SDK's own error before the response headers arrive, and as fetch's after.
+      if (signal.aborted) throw new Error(`timed out after ${ms / 1000}s${last ? `, retrying after ${last.message}` : ""}`);
       if (attempt === 3 || !retryable(error, retry)) throw error;
       // Out of time before the next attempt, the API's error says more than a timeout would.
       const delay = retryDelay(error, attempt);

@@ -96,8 +96,8 @@ async function handle(request, url, body) {
   if (route.endsWith("/telemetry/events")) {
     // One top-frame navigation to a landing page, as the browser is created, on the second of two
     // pages of events: the first is empty, as the API's can be when it filters after paging.
-    const navigation = { seq: 1, event: { ts: (browser.created + 100) * 1000, type: "page_navigation", category: "page", data: { parent_frame_id: "", url: "https://example.com/landing" } } };
-    return url.searchParams.has("offset") ? [200, [navigation], { "x-next-offset": "0", "x-has-more": "false" }] : [200, [], { "x-next-offset": "100", "x-has-more": "true" }];
+    const navigation = { event: { ts: (browser.created + 100) * 1000, type: "page_navigation", data: { parent_frame_id: "", url: "https://example.com/landing" } } };
+    return url.searchParams.has("offset") ? [200, [navigation], { "x-next-offset": "0" }] : [200, [], { "x-next-offset": "100" }];
   }
   return [404, { code: "not_found", message: `no route for ${route}` }];
 }
