@@ -3298,6 +3298,146 @@
       "notes": "Adds or removes one venue on one custom list with expected-state guard; My Hit List refused (use set_favorite). Readback also checks the venue's other lists are unchanged. Builder live run 2026-10-01: add, no-op, remove; a wrong DELETE encoding was correctly reported as rejected before the fix. 2026-10-01: signed out with no account ref now returns login_required before input checks."
     },
     {
+      "domain": "sevenrooms.com",
+      "tool": "get_availability",
+      "file": "domains/sevenrooms.com/get_availability.js",
+      "kind": "page",
+      "namespace": "sevenrooms.com",
+      "url_patterns": [
+        "https://www.sevenrooms.com/reservations/*",
+        "https://www.sevenrooms.com/explore/*",
+        "https://www.sevenrooms.com/experiences/*",
+        "https://www.sevenrooms.com/events/*",
+        "https://fp.sevenrooms.com/reservations/*",
+        "https://fp.sevenrooms.com/explore/*",
+        "https://fp.sevenrooms.com/experiences/*",
+        "https://fp.sevenrooms.com/events/*",
+        "https://eu.sevenrooms.com/reservations/*",
+        "https://eu.sevenrooms.com/explore/*",
+        "https://eu.sevenrooms.com/experiences/*",
+        "https://eu.sevenrooms.com/events/*"
+      ],
+      "url_patterns_reason": "Narrowed to SevenRooms' guest booking pages (reservations, explore, experiences and events) on the www., fp. and eu. hosts, which serve the public booking widget and its /api-yoa endpoints the tools read; the rest of sevenrooms.com is the company's site and the venue-side product.",
+      "status": "verified",
+      "last_verified": "2026-09-30",
+      "notes": "Independent QA passed; live public reads verified in Kernel and the local extension. Page tool on the SevenRooms guest booking hosts (www, fp, eu): bookable times for one venue, date and party size as venue-local and UTC starts with the widget label, shift, card and payment fields and deduplicated plain-text venue policy text. Lists only the site's book entries (what the widget shows as time buttons); request entries are counted, not listed. Never selects, holds or books, and drops booking handles.",
+      "provenance": {
+        "qa_agent": "agt_9ef0b7c18f7120fe21ee"
+      }
+    },
+    {
+      "domain": "sevenrooms.com",
+      "tool": "get_restaurant",
+      "file": "domains/sevenrooms.com/get_restaurant.js",
+      "kind": "page",
+      "namespace": "sevenrooms.com",
+      "url_patterns": [
+        "https://www.sevenrooms.com/reservations/*",
+        "https://www.sevenrooms.com/explore/*",
+        "https://www.sevenrooms.com/experiences/*",
+        "https://www.sevenrooms.com/events/*",
+        "https://fp.sevenrooms.com/reservations/*",
+        "https://fp.sevenrooms.com/explore/*",
+        "https://fp.sevenrooms.com/experiences/*",
+        "https://fp.sevenrooms.com/events/*",
+        "https://eu.sevenrooms.com/reservations/*",
+        "https://eu.sevenrooms.com/explore/*",
+        "https://eu.sevenrooms.com/experiences/*",
+        "https://eu.sevenrooms.com/events/*"
+      ],
+      "url_patterns_reason": "Narrowed to SevenRooms' guest booking pages (reservations, explore, experiences and events) on the www., fp. and eu. hosts, which serve the public booking widget and its /api-yoa endpoints the tools read; the rest of sevenrooms.com is the company's site and the venue-side product.",
+      "status": "verified",
+      "last_verified": "2026-09-30",
+      "notes": "Independent QA passed; live public reads verified in Kernel and the local extension. Page tool on the SevenRooms guest booking hosts (www, fp, eu): one venue's public widget details by venue_url_key (address, party sizes, booking window, currency, languages); a venue is found only on the hosts that serve it. Read-only, signed out, no navigation; returns none of the site's payment, map or analytics keys.",
+      "provenance": {
+        "qa_agent": "agt_9ef0b7c18f7120fe21ee"
+      }
+    },
+    {
+      "domain": "sevenrooms.com",
+      "tool": "list_experiences",
+      "file": "domains/sevenrooms.com/list_experiences.js",
+      "kind": "page",
+      "namespace": "sevenrooms.com",
+      "url_patterns": [
+        "https://www.sevenrooms.com/reservations/*",
+        "https://www.sevenrooms.com/explore/*",
+        "https://www.sevenrooms.com/experiences/*",
+        "https://www.sevenrooms.com/events/*",
+        "https://fp.sevenrooms.com/reservations/*",
+        "https://fp.sevenrooms.com/explore/*",
+        "https://fp.sevenrooms.com/experiences/*",
+        "https://fp.sevenrooms.com/events/*",
+        "https://eu.sevenrooms.com/reservations/*",
+        "https://eu.sevenrooms.com/explore/*",
+        "https://eu.sevenrooms.com/experiences/*",
+        "https://eu.sevenrooms.com/events/*"
+      ],
+      "url_patterns_reason": "Narrowed to SevenRooms' guest booking pages (reservations, explore, experiences and events) on the www., fp. and eu. hosts, which serve the public booking widget and its /api-yoa endpoints the tools read; the rest of sevenrooms.com is the company's site and the venue-side product.",
+      "status": "verified",
+      "last_verified": "2026-09-30",
+      "notes": "Independent QA passed; public directory reads verified in Kernel and the local extension. Displayed price text is not a quote or availability.",
+      "provenance": {
+        "qa_agent": "agt_9ef0b7c18f7120fe21ee"
+      }
+    },
+    {
+      "domain": "sevenrooms.com",
+      "tool": "prepare_reservation",
+      "file": "domains/sevenrooms.com/prepare_reservation.js",
+      "kind": "page",
+      "namespace": "sevenrooms.com",
+      "url_patterns": [
+        "https://www.sevenrooms.com/reservations/*",
+        "https://www.sevenrooms.com/explore/*",
+        "https://www.sevenrooms.com/experiences/*",
+        "https://www.sevenrooms.com/events/*",
+        "https://fp.sevenrooms.com/reservations/*",
+        "https://fp.sevenrooms.com/explore/*",
+        "https://fp.sevenrooms.com/experiences/*",
+        "https://fp.sevenrooms.com/events/*",
+        "https://eu.sevenrooms.com/reservations/*",
+        "https://eu.sevenrooms.com/explore/*",
+        "https://eu.sevenrooms.com/experiences/*",
+        "https://eu.sevenrooms.com/events/*"
+      ],
+      "url_patterns_reason": "Narrowed to SevenRooms' guest booking pages (reservations, explore, experiences and events) on the www., fp. and eu. hosts, which serve the public booking widget and its /api-yoa endpoints the tools read; the rest of sevenrooms.com is the company's site and the venue-side product.",
+      "status": "verified",
+      "last_verified": "2026-09-30",
+      "notes": "Independent QA passed; exact read-only prepaid target preparation verified in Kernel and the local extension. Manual handoff only; no holds or execution approval path.",
+      "provenance": {
+        "qa_agent": "agt_9ef0b7c18f7120fe21ee"
+      }
+    },
+    {
+      "domain": "sevenrooms.com",
+      "tool": "search_events",
+      "file": "domains/sevenrooms.com/search_events.js",
+      "kind": "page",
+      "namespace": "sevenrooms.com",
+      "url_patterns": [
+        "https://www.sevenrooms.com/reservations/*",
+        "https://www.sevenrooms.com/explore/*",
+        "https://www.sevenrooms.com/experiences/*",
+        "https://www.sevenrooms.com/events/*",
+        "https://fp.sevenrooms.com/reservations/*",
+        "https://fp.sevenrooms.com/explore/*",
+        "https://fp.sevenrooms.com/experiences/*",
+        "https://fp.sevenrooms.com/events/*",
+        "https://eu.sevenrooms.com/reservations/*",
+        "https://eu.sevenrooms.com/explore/*",
+        "https://eu.sevenrooms.com/experiences/*",
+        "https://eu.sevenrooms.com/events/*"
+      ],
+      "url_patterns_reason": "Narrowed to SevenRooms' guest booking pages (reservations, explore, experiences and events) on the www., fp. and eu. hosts, which serve the public booking widget and its /api-yoa endpoints the tools read; the rest of sevenrooms.com is the company's site and the venue-side product.",
+      "status": "verified",
+      "last_verified": "2026-09-30",
+      "notes": "Independent QA passed; public schedule reads verified in Kernel and the local extension. Not ticket availability or prices. Pagination covers a bounded relative-day window.",
+      "provenance": {
+        "qa_agent": "agt_9ef0b7c18f7120fe21ee"
+      }
+    },
+    {
       "domain": "southwest.com",
       "tool": "continue_checkout",
       "file": "domains/southwest.com/continue_checkout.js",
