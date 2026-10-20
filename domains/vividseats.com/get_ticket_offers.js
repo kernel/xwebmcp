@@ -157,6 +157,8 @@
       const text = await res.text();
       let body = null;
       try { body = JSON.parse(text); } catch { /* not JSON */ }
+      // Vivid Seats' API proxy answers this generic 404 for unknown events and, intermittently, for every request from a browser.
+      if (res.status === 404 && body && /^Request failed with status code 404$/.test(body.error)) return fail("site_error", "Vivid Seats' listings service answered a generic 404 for production_id " + productionId + ". It answers this way for unknown events and, at times, for every request from this browser, so this does not show the event is missing: if its event page opens, read the listings there or call again in a minute.");
       if (res.status === 404) return fail("not_found", "Vivid Seats has no event with production_id " + productionId + ".");
       if (res.status === 403) return fail("challenge", "Vivid Seats' bot protection refused the request (HTTP 403); resolve access normally before trying again.");
       if (res.status === 429) return fail("rate_limited", "Vivid Seats rate-limited the request (HTTP 429); wait before asking again.");

@@ -161,6 +161,7 @@
     const checked = (response, what) => {
       if (response.status === 403) return { error: fail("challenge", "Vivid Seats' bot protection refused the request (HTTP 403); resolve access normally before trying again.") };
       if (response.status === 429) return { error: fail("rate_limited", "Vivid Seats rate-limited the request (HTTP 429); wait before searching again.") };
+      if (response.status === 404 && /^Request failed with status code 404$/.test(response.body?.error)) return { error: fail("site_error", what + " answered a generic 404, which Vivid Seats' API proxy returns at times for every request from a browser. Call again in a minute, or use the site's own search page.") };
       if (response.status >= 400 || !response.body || typeof response.body !== "object") return { error: fail("site_error", what + " returned HTTP " + response.status + (response.body ? "." : " without JSON.")) };
       return { body: response.body };
     };

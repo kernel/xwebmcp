@@ -356,6 +356,8 @@ test("search_events returns no_results for empty pages and for dates that have p
   assert.equal(JSON.stringify(gone).includes("script"), false, "site text is not echoed");
   const other404 = harness("search_events", { route: p => (p.startsWith("/hermes/api/v1/productions?") ? { status: 404, body: { message: "Something else" } } : null) });
   assert.equal((await other404.run({ query: "band" })).error_kind, "site_error", "only the observed past-date 404 is a normal empty result");
+  const proxy404 = await harness("search_events", { route: p => (p.startsWith("/hermes/api/v1/productions?") ? { status: 404, body: { error: "Request failed with status code 404" } } : null) }).run({ query: "band" });
+  assert.deepEqual([proxy404.error_kind, /at times for every request/.test(proxy404.error_message)], ["site_error", true], "the proxy's generic 404 says it may be transient");
 });
 
 test("search_events never turns blocks or drift into empty results", async () => {
@@ -559,7 +561,7 @@ test("get_ticket_offers skips malformed listings with a warning and refuses a fu
 
 test("get_ticket_offers never turns blocks or drift into empty results", async () => {
   const cases = [
-    [{ status: 404, body: { error: "x" } }, "not_found"], [{ status: 403, body: undefined }, "challenge"], [{ status: 429, body: {} }, "rate_limited"], [{ status: 500, body: {} }, "site_error"],
+    [{ status: 404, body: { error: "x" } }, "not_found"], [{ status: 404, body: { error: "Request failed with status code 404" } }, "site_error"], [{ status: 403, body: undefined }, "challenge"], [{ status: 429, body: {} }, "rate_limited"], [{ status: 500, body: {} }, "site_error"],
     [{ status: 200, body: undefined }, "site_error"], [{ status: 200, body: { tickets: [] } }, "site_changed"], [{ status: 200, body: listings(TICKETS, { groups: undefined }) }, "site_changed"],
     [{ status: 200, body: listings(TICKETS, { global: [] }) }, "site_changed"], [{ status: 200, body: listings(TICKETS, { i18n: { from: "USD", to: "GBP", rate: 0.8, applyCurrencyConversion: true } }) }, "site_changed"],
     [{ status: 200, body: listings(TICKETS, { i18n: undefined }) }, "site_changed"]

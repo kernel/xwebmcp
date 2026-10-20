@@ -3907,9 +3907,9 @@
         "https://www.vividseats.com/*"
       ],
       "url_patterns_reason": "Narrowed to www.vividseats.com, the Vivid Seats marketplace: the tools call its same-origin event and listing endpoints and refuse other origins; other vividseats.com hosts are separate products.",
-      "status": "verified",
-      "last_verified": "2026-09-30",
-      "notes": "Public, read-only listings with all-in USD prices, exact quantity splits, price/zone/section filters and grouping. Independent live success from Explore in Kernel and the extension. Unknown fee/VAT basis fails closed; page GA rows may collapse multiple listings. Never selects, carts or buys.",
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Public, read-only listings with all-in USD prices, exact quantity splits, price/zone/section filters and grouping. Independent live success from Explore in Kernel and the extension. Unknown fee/VAT basis fails closed; page GA rows may collapse multiple listings. Never selects, carts or buys. Was verified; on 2026-10-20 the source changed so Vivid Seats' generic proxy 404 is reported as a possibly transient site_error rather than a missing event or a bare HTTP 404, so it needs independent re-QA.",
       "provenance": {
         "qa_agent": "agt_0257fb751e04553b9365"
       }
@@ -3958,9 +3958,9 @@
         "https://www.vividseats.com/*"
       ],
       "url_patterns_reason": "Narrowed to www.vividseats.com, the Vivid Seats marketplace: the tools call its same-origin event and listing endpoints and refuse other origins; other vividseats.com hosts are separate products.",
-      "status": "verified",
-      "last_verified": "2026-09-30",
-      "notes": "Public read-only events by text, location, local dates, category, performer, venue and price ceiling, within the site's 1000-match window. Independent live success from Explore in Kernel and the extension. Search-index prices/counts can be stale; radius is approximate and warns; USD only.",
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Public read-only events by text, location, local dates, category, performer, venue and price ceiling, within the site's 1000-match window. Independent live success from Explore in Kernel and the extension. Search-index prices/counts can be stale; radius is approximate and warns; USD only. Was verified; on 2026-10-20 the source changed so Vivid Seats' generic proxy 404 is reported as a possibly transient site_error rather than a missing event or a bare HTTP 404, so it needs independent re-QA.",
       "provenance": {
         "qa_agent": "agt_0257fb751e04553b9365"
       }
