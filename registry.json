@@ -1515,6 +1515,45 @@
       }
     },
     {
+      "domain": "facebook.com",
+      "tool": "get_listing",
+      "file": "domains/facebook.com/get_listing.js",
+      "kind": "cdp",
+      "namespace": "facebook.com",
+      "url_patterns": [
+        "https://www.facebook.com/marketplace/*"
+      ],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Public Marketplace read through one navigation; no login gate dismissal, seller identities, media URLs, messages or account changes. Initial results only; normal access required."
+    },
+    {
+      "domain": "facebook.com",
+      "tool": "search_ads",
+      "file": "domains/facebook.com/search_ads.js",
+      "kind": "page",
+      "namespace": "facebook.com",
+      "url_patterns": [
+        "https://www.facebook.com/ads/library/*"
+      ],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Public Ad Library keyword search; one credential-free first-page GET, at most 30 ads, bounded creative text. No pagination, media URLs, profile or account data. Meta automated-access terms remain a deployment consideration."
+    },
+    {
+      "domain": "facebook.com",
+      "tool": "search_marketplace",
+      "file": "domains/facebook.com/search_marketplace.js",
+      "kind": "cdp",
+      "namespace": "facebook.com",
+      "url_patterns": [
+        "https://www.facebook.com/marketplace/*"
+      ],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Public Marketplace read through one navigation; no login gate dismissal, seller identities, media URLs, messages or account changes. Initial results only; normal access required."
+    },
+    {
       "domain": "flyfrontier.com",
       "tool": "login",
       "file": "domains/flyfrontier.com/login.js",
