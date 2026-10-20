@@ -1,12 +1,14 @@
 module github.com/kernel/xwebmcp
 
-go 1.25.0
+go 1.27.2
 
-require github.com/urfave/cli/v3 v3.13.0
+require (
+	github.com/modelcontextprotocol/go-sdk v1.8.0
+	github.com/urfave/cli/v3 v3.13.0
+)
 
 require (
 	github.com/google/jsonschema-go v0.4.3 // indirect
-	github.com/modelcontextprotocol/go-sdk v1.8.0
 	github.com/segmentio/asm v1.1.3 // indirect
 	github.com/segmentio/encoding v0.5.4 // indirect
 	github.com/yosida95/uritemplate/v3 v3.0.2 // indirect

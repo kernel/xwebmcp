@@ -1,0 +1,25 @@
+{
+  "id": "booking-house-rules",
+  "domain": "booking.com",
+  "stage": "gap",
+  "prompt": "On booking.com, find whether {{hotel}} in {{city}} allows pets and whether it accepts cash, as its house rules say. Reply with JSON: {\"pets_allowed\": boolean, \"cash_accepted\": boolean}.",
+  "fixture": {
+    "hotel": "Palacio Ramalhete",
+    "city": "Lisbon"
+  },
+  "start_url": "https://www.booking.com/",
+  "answer_schema": "schemas/house-rules.json",
+  "rules": [
+    {
+      "path": "pets_allowed",
+      "equals": false
+    },
+    {
+      "path": "cash_accepted",
+      "equals": false
+    }
+  ],
+  "pairs": 5,
+  "trial_timeout_sec": 600,
+  "max_turns": 40
+}

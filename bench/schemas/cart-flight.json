@@ -1,0 +1,8 @@
+{
+  "type": "object",
+  "required": ["flight_numbers", "amount_due"],
+  "properties": {
+    "flight_numbers": { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 1 } },
+    "amount_due": { "type": "number", "exclusiveMinimum": 0 }
+  }
+}

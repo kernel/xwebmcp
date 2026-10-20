@@ -1,0 +1,15 @@
+{
+  "id": "resy-restaurants-by-cuisine",
+  "domain": "resy.com",
+  "stage": "find",
+  "prompt": "On resy.com, find three {{cuisine}} restaurants in {{city}} that Resy lists. Reply with JSON: {\"places\": [{\"name\": string, \"detail\": the restaurant's neighborhood}]}.",
+  "fixture": {"cuisine": "Italian", "city": "New York"},
+  "start_url": "https://resy.com/cities/new-york-ny",
+  "tools": [{"repo": "kernel/xwebmcp", "ref": "main", "names": ["search_restaurants"]}],
+  "entry_tool": "search_restaurants",
+  "answer_schema": "schemas/named-places.json",
+  "rules": [{"path": "places", "count": [3, 3]}, {"path": "places[].name", "unique": true}],
+  "pairs": 5,
+  "trial_timeout_sec": 600,
+  "max_turns": 40
+}

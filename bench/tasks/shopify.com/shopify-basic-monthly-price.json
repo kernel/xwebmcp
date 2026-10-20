@@ -1,0 +1,21 @@
+{
+  "id": "shopify-basic-monthly-price",
+  "domain": "shopify.com",
+  "stage": "inspect",
+  "prompt": "On shopify.com, find the monthly price of Shopify's Basic plan in US dollars when it is paid monthly rather than yearly. Do not start a trial. Reply with JSON: {\"plan\": string, \"monthly_price\": number}.",
+  "start_url": "https://www.shopify.com/",
+  "answer_schema": "schemas/plan-price.json",
+  "rules": [
+    {
+      "path": "plan",
+      "matches": "basic"
+    },
+    {
+      "path": "monthly_price",
+      "equals": 39
+    }
+  ],
+  "pairs": 5,
+  "trial_timeout_sec": 600,
+  "max_turns": 40
+}

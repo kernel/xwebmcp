@@ -1,0 +1,15 @@
+{
+  "id": "etsy-search-listings",
+  "domain": "etsy.com",
+  "stage": "find",
+  "prompt": "On etsy.com, search for \"{{query}}\" and report the first three listings in the results with each one's title, price and shop name. Reply with JSON: {\"listings\": [{\"title\": string, \"price\": number in US dollars, \"shop\": string}]}.",
+  "fixture": {"query": "handmade ceramic mug"},
+  "start_url": "https://www.etsy.com/",
+  "tools": [{"repo": "kernel/xwebmcp", "ref": "main", "names": ["search"]}],
+  "entry_tool": "search",
+  "answer_schema": "schemas/listings.json",
+  "rules": [{"path": "listings", "count": [3, 3]}, {"path": "listings[].price", "range": [1, 1000]}],
+  "pairs": 5,
+  "trial_timeout_sec": 600,
+  "max_turns": 40
+}

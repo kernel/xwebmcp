@@ -13,6 +13,7 @@ const escape = s => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g,
 
 class Text {
   constructor(text, doc) { this.nodeType = 3; this.data = text; this.ownerDocument = doc; this.parentNode = null; }
+  get nextSibling() { const siblings = this.parentNode ? this.parentNode.childNodes : []; return siblings[siblings.indexOf(this) + 1] || null; }
   get textContent() { return this.data; }
 }
 
@@ -27,6 +28,8 @@ class Element {
   }
   get parentElement() { return this.parentNode instanceof Element ? this.parentNode : null; }
   get children() { return this.childNodes.filter(n => n instanceof Element); }
+  get nextSibling() { const siblings = this.parentNode ? this.parentNode.childNodes : []; return siblings[siblings.indexOf(this) + 1] || null; }
+  get nextElementSibling() { const siblings = this.parentElement ? this.parentElement.children : []; return siblings[siblings.indexOf(this) + 1] || null; }
   getAttribute(name) { return this.attrs.has(name) ? this.attrs.get(name) : null; }
   hasAttribute(name) { return this.attrs.has(name); }
   setAttribute(name, value) { this.attrs.set(name, String(value)); }
@@ -46,6 +49,12 @@ class Element {
   }
   get outerHTML() { return serialize(this); }
   get disabled() { return this.hasAttribute("disabled"); }
+  get name() { return this.getAttribute("name") ?? ""; }
+  get id() { return this.getAttribute("id") ?? ""; }
+  get type() { return (this.getAttribute("type") || (this.localName === "select" ? "select-one" : this.localName === "textarea" ? "textarea" : this.localName === "button" ? "submit" : "text")).toLowerCase(); }
+  get required() { return this.hasAttribute("required"); }
+  get checked() { return this._checked ?? this.hasAttribute("checked"); }
+  set checked(v) { this._checked = !!v; }
   get maxLength() { return this.hasAttribute("maxlength") ? Number(this.getAttribute("maxlength")) : -1; }
   get options() { return this.querySelectorAll("option"); }
   get value() {
@@ -75,7 +84,7 @@ class Element {
     for (const fn of (doc.listeners && doc.listeners[event.type]) || []) fn.call(doc, { ...event, target: this });
     return true;
   }
-  click() { this.dispatchEvent({ type: "click" }); }
+  click() { if (this.localName === "input" && /^(checkbox|radio)$/.test(this.type)) this.checked = this.type === "radio" || !this.checked; this.dispatchEvent({ type: "click" }); }
 }
 
 function walk(root, fn) { for (const child of root.childNodes) if (child instanceof Element) { fn(child); walk(child, fn); } }

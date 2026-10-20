@@ -32,6 +32,30 @@ function originPattern(url) {
   }
 }
 
+const ALL_SITE_ORIGINS = ['http://*/*', 'https://*/*'];
+
+async function renderSiteAccess() {
+  const granted = await chrome.permissions.contains({origins: ALL_SITE_ORIGINS});
+  $('all-sites-status').textContent = granted
+    ? 'Access granted to all HTTP/HTTPS sites.'
+    : 'Grant once to discover tools on all HTTP/HTTPS sites, including future installations.';
+  $('grant-all-sites').hidden = granted;
+}
+
+async function grantAllSites() {
+  const button = $('grant-all-sites');
+  button.disabled = true;
+  try {
+    const granted = await chrome.permissions.request({origins: ALL_SITE_ORIGINS});
+    await renderSiteAccess();
+    if (granted) await render();
+  } catch {
+    $('all-sites-status').textContent = 'Access could not be granted. Try again in the extension popup.';
+  } finally {
+    button.disabled = false;
+  }
+}
+
 async function renderBridge() {
   const {bridge} = await chrome.storage.session.get('bridge');
   const node = $('bridge');
@@ -133,8 +157,10 @@ async function renderInstalled() {
 }
 
 async function render() {
-  await Promise.all([renderBridge(), renderTab(), renderInstalled()]);
+  await Promise.all([renderBridge(), renderTab(), renderInstalled(), renderSiteAccess()]);
 }
+
+$('grant-all-sites').onclick = grantAllSites;
 
 $('open-panel').onclick = async () => {
   const tab = await currentTab();
