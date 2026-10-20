@@ -1,0 +1,17 @@
+{
+  "type": "object",
+  "required": [
+    "card",
+    "annual_fee"
+  ],
+  "properties": {
+    "card": {
+      "type": "string",
+      "minLength": 1
+    },
+    "annual_fee": {
+      "type": "number",
+      "minimum": 0
+    }
+  }
+}

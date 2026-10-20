@@ -1,0 +1,36 @@
+{
+  "id": "sevenrooms-available-times",
+  "domain": "sevenrooms.com",
+  "stage": "inspect",
+  "prompt": "On SevenRooms' reservation page for {{restaurant}} in {{city}}, find every dinner time it offers to book (not to request or join a waitlist) for a party of {{party}} on {{date}}. Do not select a time. Reply with JSON: {\"restaurant\": string, \"times\": [\"HH:MM\"]}, the times in 24-hour local time, and an empty list if there are none.",
+  "fixture": {
+    "restaurant": "Adda",
+    "city": "New York",
+    "party": 2,
+    "date": {
+      "days_from_start": 5
+    }
+  },
+  "start_url": "https://www.sevenrooms.com/reservations/adda",
+  "answer_schema": "schemas/available-times.json",
+  "rules": [
+    {
+      "path": "restaurant",
+      "matches": "adda"
+    },
+    {
+      "path": "times",
+      "count": [
+        0,
+        100
+      ]
+    }
+  ],
+  "agreement": {
+    "path": "times[]",
+    "same": true
+  },
+  "pairs": 5,
+  "trial_timeout_sec": 600,
+  "max_turns": 40
+}

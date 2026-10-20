@@ -303,6 +303,18 @@ that page's URL, hotel and price-summary total. Its guard blocks Complete bookin
 booking and pay buttons. Booking.com renders that step only in stealth browsers, so it is `opt_in`:
 run it with `--intent booking-checkout-room --stealth`.
 
+The intents on bestbuy.com, apple.com, ebay.com, homedepot.com and nordstrom.com are guest
+purchases on the same pattern. Apple's payment step shows neither the address nor the product, so
+its check is the step's "How do you want to pay?" heading on a checkout URL, a step Apple shows
+only after the shipping and contact steps are saved. The other new intents on sites where buying
+needs an account, a seat map or a reservation hold read what a buyer would pay or book instead:
+reservation times on OpenTable, SevenRooms and Tock (never selecting one, which holds the table),
+ticket prices on StubHub and Vivid Seats, rates on Marriott, Expedia, Airbnb and Kayak, shipping
+quotes on UPS, FedEx and USPS, and published fees and prices elsewhere. SevenRooms only offers
+dates inside a venue's booking window, a week for Adda, so its date is five days out. OpenTable
+blocks stealth browsers ("Access Denied") and TicketWeb, eBay, UPS and Myntra block or break in
+plain ones, so run each domain in the mode that passed.
+
 ### Signed-in trials
 
 A domain with a Kernel `profile` loads it in every browser, in both arms, without saving

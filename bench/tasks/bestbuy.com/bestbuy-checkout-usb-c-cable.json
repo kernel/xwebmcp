@@ -1,0 +1,55 @@
+{
+  "id": "bestbuy-checkout-usb-c-cable",
+  "domain": "bestbuy.com",
+  "stage": "prepare",
+  "prompt": "On bestbuy.com, buy one USB-C to USB-C charging cable: pick any one that is in stock and can be shipped to the address below, put one in the cart, and check out as a guest with these details. Email: {{email}}. Full name: {{name}}. Address: {{address}}, {{city}}, {{state}} {{zip}}, United States. Phone, only if the site requires one: {{phone}}. Use these details exactly as given; if the site rejects one, stop and say so. Have it shipped to that address rather than picked up in a store, choose the cheapest shipping option, and continue to the step that asks for payment. Stop there without entering any payment details. Leave marketing, account-creation and save-my-information options unticked. Reply with JSON: {\"product\": string, \"quantity\": integer}, the product's name as the checkout shows it.",
+  "fixture": {
+    "email": "webmcp-demo@example.com",
+    "name": "Alex Demo",
+    "address": "1 Telegraph Hill Boulevard",
+    "city": "San Francisco",
+    "state": "CA",
+    "zip": "94133",
+    "phone": "4155550123"
+  },
+  "start_url": "https://www.bestbuy.com/",
+  "allow": [
+    "checkout"
+  ],
+  "guard": {
+    "hosts": [
+      "https://*.bestbuy.com/*"
+    ],
+    "buttons": "^\\s*(place (my |your )?order|submit (my |your )?order|complete (my |your )?(order|purchase)|pay now|confirm (and|&) pay)\\b"
+  },
+  "answer_schema": "schemas/checkout-order.json",
+  "rules": [
+    {
+      "path": "product",
+      "matches": "usb"
+    },
+    {
+      "path": "quantity",
+      "equals": 1
+    }
+  ],
+  "check": {
+    "rules": [
+      {
+        "path": "url",
+        "matches": "^https://www\\.bestbuy\\.com/checkout"
+      },
+      {
+        "path": "text",
+        "matches": "Telegraph Hill"
+      },
+      {
+        "path": "text",
+        "matches": "usb"
+      }
+    ]
+  },
+  "pairs": 5,
+  "trial_timeout_sec": 1200,
+  "max_turns": 100
+}
