@@ -1,0 +1,17 @@
+{
+  "type": "object",
+  "required": [
+    "room",
+    "nightly_rate"
+  ],
+  "properties": {
+    "room": {
+      "type": "string",
+      "minLength": 1
+    },
+    "nightly_rate": {
+      "type": "number",
+      "exclusiveMinimum": 0
+    }
+  }
+}

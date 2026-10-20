@@ -1,0 +1,29 @@
+{
+  "id": "amc-film-showtimes",
+  "domain": "amctheatres.com",
+  "stage": "inspect",
+  "prompt": "On amctheatres.com, list every showtime of {{film}} at {{theatre}} in {{city}} on {{date}}. Reply with JSON: {\"film\": string, \"theatre\": string, \"date\": \"YYYY-MM-DD\", \"showtimes\": [\"HH:MM\"]}, times in 24-hour local time.",
+  "fixture": {
+    "film": "Verity",
+    "theatre": "AMC 34th Street 14",
+    "city": "New York, NY",
+    "date": "2026-10-13"
+  },
+  "start_url": "https://www.amctheatres.com/",
+  "tools": [
+    {"repo": "kernel/xwebmcp", "ref": "main", "names": ["search_theatres", "get_showtimes"]}
+  ],
+  "entry_tool": "search_theatres",
+  "answer_schema": "schemas/film-showtimes.json",
+  "rules": [
+    {"path": "film", "matches": "{{film}}"},
+    {"path": "date", "equals": "{{date}}"},
+    {"path": "theatre", "matches": "34th"},
+    {"path": "showtimes", "count": [1, 40]},
+    {"path": "showtimes[]", "unique": true}
+  ],
+  "agreement": {"path": "showtimes[]", "same": true},
+  "pairs": 5,
+  "trial_timeout_sec": 600,
+  "max_turns": 40
+}

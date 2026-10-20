@@ -1,0 +1,19 @@
+{
+  "id": "fandango-gift-card-amounts",
+  "domain": "fandango.com",
+  "stage": "gap",
+  "prompt": "On fandango.com, find the gift card amounts Fandango sells. Reply with JSON: {\"amounts\": [number in US dollars]}.",
+  "fixture": {},
+  "start_url": "https://www.fandango.com/",
+  "tools": [{"repo": "kernel/xwebmcp", "ref": "hypeship/fandango-showtimes", "pr": 58, "names": []}],
+  "entry_tool": "search",
+  "answer_schema": "schemas/gift-card-amounts.json",
+  "rules": [
+    {"path": "amounts", "count": [1, 50]},
+    {"path": "amounts[]", "unique": true},
+    {"path": "amounts[]", "range": [1, 1000]}
+  ],
+  "pairs": 5,
+  "trial_timeout_sec": 600,
+  "max_turns": 40
+}

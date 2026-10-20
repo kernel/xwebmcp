@@ -1,0 +1,21 @@
+{
+  "id": "chase-sapphire-preferred-annual-fee",
+  "domain": "chase.com",
+  "stage": "inspect",
+  "prompt": "On chase.com, find the annual fee of the Chase Sapphire Preferred credit card. Reply with JSON: {\"card\": string, \"annual_fee\": number in US dollars}.",
+  "start_url": "https://www.chase.com/",
+  "answer_schema": "schemas/card-fee.json",
+  "rules": [
+    {
+      "path": "card",
+      "matches": "sapphire preferred"
+    },
+    {
+      "path": "annual_fee",
+      "equals": 95
+    }
+  ],
+  "pairs": 5,
+  "trial_timeout_sec": 600,
+  "max_turns": 40
+}

@@ -1,0 +1,19 @@
+{
+  "id": "amazon-cheapest-well-rated",
+  "domain": "amazon.com",
+  "stage": "compare",
+  "prompt": "On amazon.com, search for \"{{query}}\". Among the first 10 results that are not sponsored, find the cheapest one rated at least {{min_rating}} stars, and report its title as the product, its price, its star rating and its ASIN. Reply with JSON: {\"product\": string, \"price\": number in US dollars, \"rating\": number, \"asin\": string}.",
+  "fixture": {"query": "stainless steel water bottle 32 oz", "min_rating": 4.5},
+  "start_url": "https://www.amazon.com/",
+  "tools": [{"repo": "kernel/xwebmcp", "ref": "hypeship/amazon-search-product-bestsellers", "pr": 56}],
+  "answer_schema": "schemas/rated-search-result.json",
+  "rules": [
+    {"path": "product", "matches": "bottle"},
+    {"path": "price", "range": [1, 200]},
+    {"path": "rating", "range": [4.5, 5]}
+  ],
+  "agreement": {"path": "price", "better": "lower", "tolerance": 0.5},
+  "pairs": 5,
+  "trial_timeout_sec": 600,
+  "max_turns": 40
+}

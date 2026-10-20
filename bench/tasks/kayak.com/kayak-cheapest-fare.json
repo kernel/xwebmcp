@@ -1,0 +1,36 @@
+{
+  "id": "kayak-cheapest-fare",
+  "domain": "kayak.com",
+  "stage": "find",
+  "prompt": "On kayak.com, find the cheapest one-way fare for 1 adult from {{origin}} to {{destination}} on {{date}}, nonstop or not, in economy. Reply with JSON: {\"flight_numbers\": [string], \"departure_time\": \"HH:MM\", \"price\": number in US dollars}, the time in 24-hour local time at the origin.",
+  "fixture": {
+    "origin": "New York (JFK)",
+    "destination": "Los Angeles (LAX)",
+    "date": {
+      "days_from_start": 28
+    }
+  },
+  "start_url": "https://www.kayak.com/",
+  "answer_schema": "schemas/cheapest-flight.json",
+  "rules": [
+    {
+      "path": "departure_time",
+      "time": true
+    },
+    {
+      "path": "price",
+      "range": [
+        1,
+        3000
+      ]
+    }
+  ],
+  "agreement": {
+    "path": "price",
+    "better": "lower",
+    "tolerance": 2
+  },
+  "pairs": 5,
+  "trial_timeout_sec": 600,
+  "max_turns": 40
+}

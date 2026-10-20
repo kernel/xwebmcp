@@ -1,0 +1,38 @@
+{
+  "id": "mcmaster-socket-head-screws",
+  "domain": "mcmaster.com",
+  "stage": "inspect",
+  "prompt": "On mcmaster.com, find {{part}}, and report its McMaster-Carr part number, how many come in a pack and the price per pack. Reply with JSON: {\"part_number\": string, \"pack_quantity\": integer, \"price\": number in US dollars}.",
+  "fixture": {
+    "part": "18-8 stainless steel socket head screws, 1/4\"-20 thread size, 1\" long, fully threaded"
+  },
+  "start_url": "https://www.mcmaster.com/",
+  "answer_schema": "schemas/part-price.json",
+  "rules": [
+    {
+      "path": "part_number",
+      "matches": "^[0-9]{4,5}[A-Z][0-9]{1,4}$"
+    },
+    {
+      "path": "pack_quantity",
+      "range": [
+        1,
+        1000
+      ]
+    },
+    {
+      "path": "price",
+      "range": [
+        1,
+        500
+      ]
+    }
+  ],
+  "agreement": {
+    "path": "part_number",
+    "same": true
+  },
+  "pairs": 5,
+  "trial_timeout_sec": 600,
+  "max_turns": 40
+}

@@ -1,0 +1,9 @@
+{
+  "needs_sign_in": {
+    "get_favorite_status": "reads the signed-in account's data"
+  },
+  "actions": {
+    "add_to_cart": "adds a listing to the guest cart",
+    "update_cart_item": "changes the quantity of a line in the guest cart"
+  }
+}
