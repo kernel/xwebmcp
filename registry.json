@@ -3636,7 +3636,7 @@
       "url_patterns_reason": "Narrowed to store.steampowered.com, the Steam Store whose app, search and header markup the tools read; other steampowered.com hosts are separate products (help., partner., checkout., login.) with different pages.",
       "status": "draft",
       "last_verified": null,
-      "notes": "Reads the open store.steampowered.com/app page only: visible Buy-area options (packages, bundles, free-to-play) and the header's review summaries; never clicks. Author's live check on 2026-10-20 (not independent QA): Stardew Valley, Palworld (discount and three bundles), Dota 2 (free to play), ELDEN RING (age_check) and the home page (wrong_page). Unverified: non-USD stores, delisted and pre-purchase pages."
+      "notes": "Reads the open store.steampowered.com/app page only: visible Buy-area options (packages, bundles, free-to-play) and the header's review summaries; never clicks. Author's live check on 2026-10-20 (not independent QA): Stardew Valley, Palworld (discount and three bundles), Dota 2 (free to play), ELDEN RING (age_check) and the home page (wrong_page). Unverified: non-USD stores, delisted and pre-purchase pages. Since 2026-10-21 it also takes app (an id or store URL) and reads that app's page markup from any store page without navigating; live: 413150 from the home page in under half a second, 292030 returned age_check, 1 returned not_found."
     },
     {
       "domain": "steampowered.com",
@@ -3650,7 +3650,7 @@
       "url_patterns_reason": "Narrowed to store.steampowered.com, the Steam Store whose app, search and header markup the tools read; other steampowered.com hosts are separate products (help., partner., checkout., login.) with different pages.",
       "status": "draft",
       "last_verified": null,
-      "notes": "Reads the rendered rows of the open store search page only; offset/limit bound the response and never load more rows. Author's live check on 2026-10-20 (not independent QA): 'stardew valley' read 50 of 83 rows with the page's sort, English filter and next-page link. Unverified: infinite-scroll pages with more than one batch loaded, bundle and package rows on the live site."
+      "notes": "Reads the rendered rows of the open store search page only; offset/limit bound the response and never load more rows. Author's live check on 2026-10-20 (not independent QA): 'stardew valley' read 50 of 83 rows with the page's sort, English filter and next-page link. Unverified: infinite-scroll pages with more than one batch loaded, bundle and package rows on the live site. Since 2026-10-21 it also takes term and reads the search page's server-rendered rows from any store page without navigating; live: 'stardew valley' from the home page returned 50 of 83 rows in under half a second."
     },
     {
       "domain": "steampowered.com",
@@ -3664,7 +3664,7 @@
       "url_patterns_reason": "Narrowed to store.steampowered.com, the Steam Store whose app, search and header markup the tools read; other steampowered.com hosts are separate products (help., partner., checkout., login.) with different pages.",
       "status": "draft",
       "last_verified": null,
-      "notes": "Types into the header's Search the store box (a React input, set through the native value setter) and clicks its submit button 100 ms after returning navigation_scheduled. Author's live check on 2026-10-20 (not independent QA): from the home page it reached /search/?term=stardew+valley, read by get_search_results. readOnlyHint is true because it only searches the catalog, like delta.com's navigate_to_page; it does change the tab's page."
+      "notes": "Types into the header's Search the store box (a React input, set through the native value setter) and clicks its submit button 100 ms after returning navigation_scheduled. Author's live check on 2026-10-20 (not independent QA): from the home page it reached /search/?term=stardew+valley, read by get_search_results. readOnlyHint is true because it only searches the catalog, like delta.com's navigate_to_page; it does change the tab's page. Description now points callers at get_search_results with term and get_app with app when the tab need not show the search."
     },
     {
       "domain": "stubhub.com",

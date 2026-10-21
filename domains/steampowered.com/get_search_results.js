@@ -20,10 +20,11 @@
     match: { url_patterns: ["https://store.steampowered.com/*"] },
     tool: {
       name: "get_search_results",
-      description: "Read the Steam Store search results page open in this tab (store.steampowered.com/search/), as the page shows it: the search term, the sort and filters Steam has applied, how many results it reports, and the rendered rows in page order, each with its type (app, package or bundle), id, store url, title, release date, platforms, review summary (\"Very Positive\", percent positive and review count, from the row's review icon) and shown price with any discount. Read-only: never clicks, scrolls to load more rows, changes the sort or filters, or follows a page link; offset and limit only bound this response (next_offset continues it). When Steam reports more results than the page has rendered, more_results says so and gives the page's own next-page url. Each row's price and review summary are the ones the store shows for that product (prices for this browser's region, before tax), so a row answers a price or rating question by itself; open its url and call get_app only for editions, bundles or the recent-reviews summary. On any other page it returns wrong_page with the actions available there, such as search_store.",
+      description: "Read Steam Store search results: the search page open in this tab (pass {}), or the results for a term (pass term) from any store page without leaving it, read from the search page's markup as the store serves it to this browser with its default sort and filters. Returns, as the page shows it: the search term, the sort and filters Steam has applied, how many results it reports, and the rendered rows in page order, each with its type (app, package or bundle), id, store url, title, release date, platforms, review summary (\"Very Positive\", percent positive and review count, from the row's review icon) and shown price with any discount. Read-only: never clicks, scrolls to load more rows, changes the sort or filters, or follows a page link; offset and limit only bound this response (next_offset continues it). When Steam reports more results than the page has rendered, more_results says so and gives the page's own next-page url. Each row's price and review summary are the ones the store shows for that product (prices for this browser's region, before tax), so a row answers a price or rating question by itself; call get_app with its id only for editions, bundles or the recent-reviews summary. Without term on a page that is not a search page it returns wrong_page with the actions available there.",
       inputSchema: {
         type: "object", additionalProperties: false,
         properties: {
+          term: { type: "string", minLength: 1, maxLength: 200, description: "Read the store's search results for this term from any store page, without leaving it. Omit to read the search page open in this tab." },
           offset: { type: "integer", minimum: 0, default: 0, description: "First rendered row to return (0-based); from next_offset." },
           limit: { type: "integer", minimum: 1, maximum: 100, default: 25, description: "At most this many rows in this response." }
         }
@@ -135,14 +136,27 @@
         const digits = typeof value === "string" ? value.replace(/[^\d]/g, "") : "";
         return digits ? Number(digits) : null;
       };
-      const steamPage = () => {
-        if (location.origin !== STEAM_ORIGIN) return { type: "other", app_id: null };
-        const app = /^\/app\/(\d+)(?:\/|$)/.exec(location.pathname);
+      // Which store page a URL (or this tab's location) is.
+      const steamPage = (at = location) => {
+        if (at.origin !== STEAM_ORIGIN) return { type: "other", app_id: null };
+        const app = /^\/app\/(\d+)(?:\/|$)/.exec(at.pathname);
         if (app) return { type: "app", app_id: app[1] };
-        const gate = /^\/agecheck\/app\/(\d+)(?:\/|$)/.exec(location.pathname);
+        const gate = /^\/agecheck\/app\/(\d+)(?:\/|$)/.exec(at.pathname);
         if (gate) return { type: "age_check", app_id: gate[1] };
-        if (/^\/search\/?$/.test(location.pathname)) return { type: "search", app_id: null };
-        return { type: location.pathname === "/" ? "home" : "other", app_id: null };
+        if (/^\/search\/?$/.test(at.pathname)) return { type: "search", app_id: null };
+        return { type: at.pathname === "/" ? "home" : "other", app_id: null };
+      };
+      // Loads another store page's markup from this one, with this tab's session, as opening it would: the store renders
+      // app pages and the first search results on the server. Nothing in it runs, so visibility comes from the markup.
+      const steamFetchPage = async path => {
+        const res = await fetch(path, { credentials: "same-origin", headers: { accept: "text/html" } });
+        const url = new URL(res.url || path, STEAM_ORIGIN);
+        const doc = res.ok ? new DOMParser().parseFromString(await res.text(), "text/html") : null;
+        return { status: res.status, url, doc };
+      };
+      const steamShownInMarkup = node => {
+        for (let e = node; e; e = e.parentElement) if (e.hasAttribute("hidden") || /display:\s*none/i.test(e.getAttribute("style") || "")) return false;
+        return true;
       };
       // The header's "Search the store" box, present on every store page.
       const steamSearchBox = () => {
@@ -163,8 +177,8 @@
         const add = (tool, enabled, changes_page, input, note) => ({ tool, enabled, registered: registered.known ? registered.names.includes(tool) : null, changes_page, input: enabled ? input : null, note });
         const box = steamSearchBox();
         return [
-          add("get_app", page.type === "app", false, {}, page.type === "app" ? "Read this app's prices and review summaries." : page.type === "age_check" ? "Steam asks for a birth date first; enter it in the page's own form and press View Page, then call get_app." : "Open an app page (store.steampowered.com/app/<id>/), for example a result url from get_search_results."),
-          add("get_search_results", page.type === "search", false, {}, page.type === "search" ? "Read the results this search page shows." : "Only on the store's search results page; search_store opens it."),
+          add("get_app", page.type !== "other", false, page.type === "app" ? {} : null, page.type === "app" ? "Read this app's prices and review summaries." : page.type === "age_check" ? "Steam asks for a birth date first; enter it in the page's own form and press View Page, then call get_app." : "Pass app, an app id or store URL (for example a result's id from get_search_results), to read that app's page without leaving this one."),
+          add("get_search_results", page.type !== "other", false, page.type === "search" ? {} : example_term ? { term: example_term } : null, page.type === "search" ? "Read the results this search page shows, or pass term to read another search's results." : "Pass term to read the store's search results for it without leaving this page."),
           add("search_store", !!box, true, example_term ? { term: example_term } : null, box ? "Type a term into the header's Search the store box and submit it; the tab navigates to the results page." + (example_term ? "" : " Needs the term to search for.") : "This page has no store search box.")
         ];
       };
@@ -173,16 +187,26 @@
       // @xwebmcp-end
       const page = steamPage();
       const registered = await steamRegistered("get_search_results");
-      const term = page.type === "search" ? (document.querySelector("#term")?.value ?? new URLSearchParams(location.search).get("term")) || null : null;
-      const actions = steamActions(page, registered, term);
+      const shownTerm = page.type === "search" ? (document.querySelector("#term")?.value ?? new URLSearchParams(location.search).get("term")) || null : null;
+      const actions = steamActions(page, registered, shownTerm);
       const notOk = (status, message) => ({ status, message, page_type: page.type, registered_tools: registered, available_actions: actions, next_steps: steamNextSteps(actions, "get_search_results") });
       const offset = input?.offset ?? 0, limit = input?.limit ?? 25;
-      if (!Number.isInteger(offset) || offset < 0 || !Number.isInteger(limit) || limit < 1 || limit > 100 || Object.keys(input ?? {}).some(k => k !== "offset" && k !== "limit")) return notOk("invalid_input", "offset must be an integer of at least 0 and limit an integer from 1 to 100.");
-      if (page.type !== "search") return notOk("wrong_page", "This is not the Steam Store search results page.");
-      const container = document.querySelector("#search_resultsRows");
-      if (steamVisible(document.querySelector("#search_results_loading")) || !container && !document.querySelector("#search_result_container")) return notOk("not_ready", "Steam is still loading search results; call get_search_results again once they show.");
+      if (!Number.isInteger(offset) || offset < 0 || !Number.isInteger(limit) || limit < 1 || limit > 100 || Object.keys(input ?? {}).some(k => !["term", "offset", "limit"].includes(k))) return notOk("invalid_input", "term must be text, offset an integer of at least 0 and limit an integer from 1 to 100.");
+      if (input?.term !== undefined && (typeof input.term !== "string" || !input.term.trim() || input.term.length > 200)) return notOk("invalid_input", "term must be 1 to 200 characters of text.");
 
-      const rows = [...(container?.querySelectorAll("a.search_result_row") ?? [])].filter(steamVisible);
+      // A term is searched from the search page's markup, as opening store.steampowered.com/search/?term=... would show it.
+      let doc = document, visible = steamVisible, term = shownTerm, source = null;
+      if (input?.term !== undefined) {
+        if (location.origin !== STEAM_ORIGIN) return notOk("wrong_page", "Open any store.steampowered.com page first; get_search_results reads the search page from there.");
+        const fetched = await steamFetchPage("/search/?term=" + encodeURIComponent(input.term.trim()));
+        if (fetched.status === 429) return notOk("not_ready", "Steam answered 429 Too Many Requests; wait before searching again.");
+        if (!fetched.doc || steamPage(fetched.url).type !== "search") return notOk("not_ready", "Steam did not return its search page (HTTP " + fetched.status + "); try again.");
+        doc = fetched.doc; visible = steamShownInMarkup; term = input.term.trim(); source = fetched.url.href;
+      } else if (page.type !== "search") return notOk("wrong_page", "This is not the Steam Store search results page; pass term to read a search from here.");
+      const container = doc.querySelector("#search_resultsRows");
+      if (!source && steamVisible(document.querySelector("#search_results_loading")) || !container && !doc.querySelector("#search_result_container")) return notOk("not_ready", "Steam is still loading search results; call get_search_results again once they show.");
+
+      const rows = [...(container?.querySelectorAll("a.search_result_row") ?? [])].filter(visible);
       const read = (row, index) => {
         const bundle = row.getAttribute("data-ds-bundleid"), pkg = row.getAttribute("data-ds-packageid"), app = row.getAttribute("data-ds-appid");
         const [type, id] = bundle ? ["bundle", bundle] : pkg ? ["package", pkg] : ["app", (app || "").split(",")[0]];
@@ -203,19 +227,19 @@
         };
       };
       const all = rows.map(read).filter(r => /^[0-9]+$/.test(r.id) && r.title && r.url);
-      const countText = steamText(document.querySelector(".search_results_count")) || steamText(document.querySelector(".search_pagination_left")) || "";
+      const countText = steamText(doc.querySelector(".search_results_count")) || steamText(doc.querySelector(".search_pagination_left")) || "";
       const total = steamInteger(/of\s+([\d,.]+)\s*$/.exec(countText)?.[1] || /^([\d,.]+)\s+results?/.exec(countText)?.[1] || "");
-      const nextLink = [...document.querySelectorAll(".search_pagination_right a.pagebtn")].find(a => steamText(a) === ">");
+      const nextLink = [...doc.querySelectorAll(".search_pagination_right a.pagebtn")].find(a => steamText(a) === ">");
       const nextUrl = nextLink ? new URL(nextLink.getAttribute("href"), STEAM_ORIGIN).href : null;
       const shown = all.slice(offset, offset + limit);
-      const checked = [...new Set([...document.querySelectorAll(".tab_filter_control_row.checked, .tab_filter_control_include.checked")].map(f => steamText(f.querySelector(".tab_filter_control_label")) || steamText(f)).filter(Boolean))];
-      const search = { term, sort: steamText(document.querySelector("#sort_by_trigger")), active_filters: checked, total_results: total };
+      const checked = [...new Set([...doc.querySelectorAll(".tab_filter_control_row.checked, .tab_filter_control_include.checked")].map(f => steamText(f.querySelector(".tab_filter_control_label")) || steamText(f)).filter(Boolean))];
+      const search = { term, sort: steamText(doc.querySelector("#sort_by_trigger")), active_filters: checked, total_results: total };
       const more = { available: total !== null ? total > all.length : !!nextUrl, next_page_url: nextUrl };
       const nextOffset = offset + limit < all.length ? offset + limit : null;
       return {
         status: all.length ? "ok" : "no_results",
         message: all.length
-          ? "Steam shows " + all.length + " row(s) for " + JSON.stringify(term) + (total !== null ? " of " + total + " result(s)" : "") + ", sorted by " + (search.sort || "the page's default") + "; returned " + shown.length + " from offset " + offset + (nextOffset !== null ? " (next_offset " + nextOffset + ")" : "") + "."
+          ? (source ? "Read from " + source + " without leaving this page. " : "") + "Steam shows " + all.length + " row(s) for " + JSON.stringify(term) + (total !== null ? " of " + total + " result(s)" : "") + ", sorted by " + (search.sort || "the page's default") + "; returned " + shown.length + " from offset " + offset + (nextOffset !== null ? " (next_offset " + nextOffset + ")" : "") + "."
           : "Steam shows no results for " + JSON.stringify(term) + (checked.length ? " with filters " + checked.join(", ") : "") + ".",
         search, rendered_rows: all.length, offset, next_offset: nextOffset, more_results: more, results: shown,
         registered_tools: registered, available_actions: actions, next_steps: steamNextSteps(actions, "get_search_results")

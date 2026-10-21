@@ -20,8 +20,11 @@
     match: { url_patterns: ["https://store.steampowered.com/*"] },
     tool: {
       name: "get_app",
-      description: "Takes no arguments (pass {}). Read the Steam Store app page open in this tab (store.steampowered.com/app/<id>/), as the page shows it: the app's name, release date, developers, publishers and genres; every purchase option in the Buy area (the game itself, editions and bundles) with its title, shown price, original price and discount; the store currency; and the review summaries Steam shows next to the header, such as Recent Reviews and All or English Reviews, each with its summary (\"Very Positive\"), percent positive and review count. Read-only: never clicks, scrolls, opens a bundle or changes the review language. Prices are the store's prices for this browser's region, before tax, and are not a quote for checkout. An age-gated app returns status age_check: Steam wants a birth date entered in its own form first, which this tool does not do. On any other page it returns wrong_page with the actions available there (open a result url from get_search_results, or search_store).",
-      inputSchema: { type: "object", additionalProperties: false, properties: {} },
+      description: "Read a Steam Store app page: the one open in this tab (pass {}), or any app by id or store URL (pass app) from any store page without leaving it, read from that page's markup as the store serves it to this browser. Returns, as the page shows it: the app's name, release date, developers, publishers and genres; every purchase option in the Buy area (the game itself, editions and bundles) with its title, shown price, original price and discount; the store currency; and the review summaries Steam shows next to the header, such as Recent Reviews and All or English Reviews, each with its summary (\"Very Positive\"), percent positive and review count. Read-only: never clicks, scrolls, opens a bundle or changes the review language. Prices are the store's prices for this browser's region, before tax, and are not a quote for checkout. An age-gated app returns status age_check: Steam wants a birth date entered in its own form first, which this tool does not do. An unknown app id returns not_found. Without app on a page that is not an app page it returns wrong_page with the actions available there.",
+      inputSchema: {
+        type: "object", additionalProperties: false,
+        properties: { app: { type: "string", minLength: 1, maxLength: 300, description: "An app id such as '413150' or a store.steampowered.com/app/<id>/ URL, to read that app's page from any store page without leaving it. Omit to read the app page open in this tab." } }
+      },
       outputSchema: {
         type: "object",
         oneOf: [
@@ -90,7 +93,7 @@
             type: "object", additionalProperties: false,
             required: ["status", "message", "page_type", "app_id", "registered_tools", "available_actions", "next_steps"],
             properties: {
-              status: { enum: ["age_check", "wrong_page", "not_ready"] },
+              status: { enum: ["age_check", "wrong_page", "not_ready", "not_found", "invalid_input"] },
               message: { type: "string" },
               page_type: { enum: ["app", "age_check", "search", "home", "other"] },
               app_id: { type: ["string", "null"] },
@@ -103,7 +106,7 @@
       },
       annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true }
     },
-    execute: async () => {
+    execute: async (input = {}) => {
       // @xwebmcp-inline lib/steam-store.js
       // Steam Store page model shared by the steampowered.com tools: which store page this is, the shown prices and
       // review summaries, the header search box, and the actions the caller can take next. Reading never clicks anything.
@@ -132,14 +135,27 @@
         const digits = typeof value === "string" ? value.replace(/[^\d]/g, "") : "";
         return digits ? Number(digits) : null;
       };
-      const steamPage = () => {
-        if (location.origin !== STEAM_ORIGIN) return { type: "other", app_id: null };
-        const app = /^\/app\/(\d+)(?:\/|$)/.exec(location.pathname);
+      // Which store page a URL (or this tab's location) is.
+      const steamPage = (at = location) => {
+        if (at.origin !== STEAM_ORIGIN) return { type: "other", app_id: null };
+        const app = /^\/app\/(\d+)(?:\/|$)/.exec(at.pathname);
         if (app) return { type: "app", app_id: app[1] };
-        const gate = /^\/agecheck\/app\/(\d+)(?:\/|$)/.exec(location.pathname);
+        const gate = /^\/agecheck\/app\/(\d+)(?:\/|$)/.exec(at.pathname);
         if (gate) return { type: "age_check", app_id: gate[1] };
-        if (/^\/search\/?$/.test(location.pathname)) return { type: "search", app_id: null };
-        return { type: location.pathname === "/" ? "home" : "other", app_id: null };
+        if (/^\/search\/?$/.test(at.pathname)) return { type: "search", app_id: null };
+        return { type: at.pathname === "/" ? "home" : "other", app_id: null };
+      };
+      // Loads another store page's markup from this one, with this tab's session, as opening it would: the store renders
+      // app pages and the first search results on the server. Nothing in it runs, so visibility comes from the markup.
+      const steamFetchPage = async path => {
+        const res = await fetch(path, { credentials: "same-origin", headers: { accept: "text/html" } });
+        const url = new URL(res.url || path, STEAM_ORIGIN);
+        const doc = res.ok ? new DOMParser().parseFromString(await res.text(), "text/html") : null;
+        return { status: res.status, url, doc };
+      };
+      const steamShownInMarkup = node => {
+        for (let e = node; e; e = e.parentElement) if (e.hasAttribute("hidden") || /display:\s*none/i.test(e.getAttribute("style") || "")) return false;
+        return true;
       };
       // The header's "Search the store" box, present on every store page.
       const steamSearchBox = () => {
@@ -160,8 +176,8 @@
         const add = (tool, enabled, changes_page, input, note) => ({ tool, enabled, registered: registered.known ? registered.names.includes(tool) : null, changes_page, input: enabled ? input : null, note });
         const box = steamSearchBox();
         return [
-          add("get_app", page.type === "app", false, {}, page.type === "app" ? "Read this app's prices and review summaries." : page.type === "age_check" ? "Steam asks for a birth date first; enter it in the page's own form and press View Page, then call get_app." : "Open an app page (store.steampowered.com/app/<id>/), for example a result url from get_search_results."),
-          add("get_search_results", page.type === "search", false, {}, page.type === "search" ? "Read the results this search page shows." : "Only on the store's search results page; search_store opens it."),
+          add("get_app", page.type !== "other", false, page.type === "app" ? {} : null, page.type === "app" ? "Read this app's prices and review summaries." : page.type === "age_check" ? "Steam asks for a birth date first; enter it in the page's own form and press View Page, then call get_app." : "Pass app, an app id or store URL (for example a result's id from get_search_results), to read that app's page without leaving this one."),
+          add("get_search_results", page.type !== "other", false, page.type === "search" ? {} : example_term ? { term: example_term } : null, page.type === "search" ? "Read the results this search page shows, or pass term to read another search's results." : "Pass term to read the store's search results for it without leaving this page."),
           add("search_store", !!box, true, example_term ? { term: example_term } : null, box ? "Type a term into the header's Search the store box and submit it; the tab navigates to the results page." + (example_term ? "" : " Needs the term to search for.") : "This page has no store search box.")
         ];
       };
@@ -171,19 +187,41 @@
       const page = steamPage();
       const registered = await steamRegistered("get_app");
       const actions = steamActions(page, registered, steamText(document.querySelector(page.type === "age_check" ? "title" : "#appHubAppName")));
-      const notOk = (status, message) => ({ status, message, page_type: page.type, app_id: page.app_id, registered_tools: registered, available_actions: actions, next_steps: steamNextSteps(actions, "get_app") });
-      if (page.type === "age_check") return notOk("age_check", "Steam shows an age check for app " + page.app_id + " instead of its store page. Enter a birth date in the page's own form and press View Page, then call get_app again.");
-      if (page.type !== "app") return notOk("wrong_page", "This is not a Steam Store app page.");
-      const name = steamText(document.querySelector("#appHubAppName"));
-      if (!name) return notOk("not_ready", "The app page has not rendered its name yet; wait for the page to load and call get_app again.");
+      const notOk = (status, message, appId = page.app_id) => ({ status, message, page_type: page.type, app_id: appId, registered_tools: registered, available_actions: actions, next_steps: steamNextSteps(actions, "get_app") });
+      if (input === null || typeof input !== "object" || Array.isArray(input) || Object.keys(input).some(k => k !== "app")) return notOk("invalid_input", "The only input is app, an app id or store URL; pass {} to read the app page open in this tab.");
+      let wanted = null;
+      if (input.app !== undefined) {
+        const given = typeof input.app === "string" ? input.app.trim() : "";
+        let url = null;
+        try { url = /^\d+$/.test(given) ? null : new URL(given, STEAM_ORIGIN); } catch { url = null; }
+        wanted = /^\d{1,10}$/.test(given) ? given : url && url.origin === STEAM_ORIGIN ? (/^\/app\/(\d{1,10})(?:\/|$)/.exec(url.pathname) || [])[1] ?? null : null;
+        if (!wanted) return notOk("invalid_input", "app must be a Steam app id such as '413150' or a store.steampowered.com/app/<id>/ URL.", null);
+      }
 
-      const details = document.querySelector("#genresAndManufacturer");
+      // The open app page is read as shown; another app is read from its page's markup without leaving this one.
+      let doc = document, visible = steamVisible, appId = page.app_id, source = null;
+      if (wanted && wanted !== page.app_id) {
+        if (location.origin !== STEAM_ORIGIN) return notOk("wrong_page", "Open any store.steampowered.com page first; get_app reads the app's page from there.", wanted);
+        const fetched = await steamFetchPage("/app/" + wanted + "/");
+        const landed = steamPage(fetched.url);
+        if (landed.type === "age_check") return notOk("age_check", "Steam asks for a birth date before showing app " + wanted + ". Open store.steampowered.com/app/" + wanted + "/, enter the date in the page's own form and press View Page, then call get_app with {} there.", wanted);
+        if (fetched.status === 429) return notOk("not_ready", "Steam answered 429 Too Many Requests for app " + wanted + "; wait before calling again.", wanted);
+        if (!fetched.doc || landed.type !== "app" || landed.app_id !== wanted) return notOk("not_found", "Steam has no store page for app " + wanted + " (it answered HTTP " + fetched.status + " at " + fetched.url.pathname + ").", wanted);
+        doc = fetched.doc; visible = steamShownInMarkup; appId = wanted; source = fetched.url.href;
+      } else {
+        if (page.type === "age_check") return notOk("age_check", "Steam shows an age check for app " + page.app_id + " instead of its store page. Enter a birth date in the page's own form and press View Page, then call get_app again.");
+        if (page.type !== "app") return notOk("wrong_page", "This is not a Steam Store app page; pass app (an id or store URL) to read one from here.");
+      }
+      const name = steamText(doc.querySelector("#appHubAppName"));
+      if (!name) return source ? notOk("not_found", "The page for app " + appId + " has no app name; Steam may have changed it.", appId) : notOk("not_ready", "The app page has not rendered its name yet; wait for the page to load and call get_app again.");
+
+      const details = doc.querySelector("#genresAndManufacturer");
       const rowLinks = label => [...(details?.querySelectorAll(".dev_row") ?? [])].filter(row => new RegExp("^\\s*" + label, "i").test(row.textContent || "")).flatMap(row => [...row.querySelectorAll("a")].map(a => steamText(a))).filter(Boolean);
       const genres = [...(details?.querySelectorAll('a[href*="/genre/"]') ?? [])].map(a => steamText(a)).filter(Boolean);
-      const release = steamText(document.querySelector(".release_date .date"));
-      const canonical = document.querySelector('link[rel="canonical"]')?.getAttribute("href") || document.querySelector('meta[property="og:url"]')?.getAttribute("content");
+      const release = steamText(doc.querySelector(".release_date .date"));
+      const canonical = doc.querySelector('link[rel="canonical"]')?.getAttribute("href") || doc.querySelector('meta[property="og:url"]')?.getAttribute("content");
 
-      const options = [...document.querySelectorAll("#game_area_purchase .game_area_purchase_game")].filter(steamVisible).slice(0, 30).map(block => {
+      const options = [...doc.querySelectorAll("#game_area_purchase .game_area_purchase_game")].filter(visible).slice(0, 30).map(block => {
         const heading = block.querySelector("h1, h2");
         const title = heading ? [...heading.childNodes].filter(n => !(n.nodeType === 1 && n.matches(".bundle_label"))).map(n => n.textContent).join(" ").replace(/\s+/g, " ").trim() : null;
         const bundle = block.querySelector('input[name="bundleid"]')?.getAttribute("value") || null;
@@ -203,7 +241,7 @@
         };
       }).filter(option => option.title);
 
-      const reviews = [...document.querySelectorAll("#userReviews .user_reviews_summary_row")].filter(steamVisible).slice(0, 4).map(row => {
+      const reviews = [...doc.querySelectorAll("#userReviews .user_reviews_summary_row")].filter(visible).slice(0, 4).map(row => {
         const description = steamText(row.querySelector(".responsive_reviewdesc"))?.replace(/^-\s*/, "") || row.getAttribute("data-tooltip-html") || null;
         const percent = /(\d{1,3})%/.exec(description || "");
         return {
@@ -216,17 +254,17 @@
       }).filter(review => review.label);
 
       const app = {
-        app_id: page.app_id, name,
-        url: canonical && canonical.startsWith(STEAM_ORIGIN + "/app/") ? canonical : STEAM_ORIGIN + "/app/" + page.app_id + "/",
+        app_id: appId, name,
+        url: canonical && canonical.startsWith(STEAM_ORIGIN + "/app/") ? canonical : STEAM_ORIGIN + "/app/" + appId + "/",
         release_date: release,
-        coming_soon: !!document.querySelector(".game_area_comingsoon") || /coming soon|to be announced/i.test(release || ""),
+        coming_soon: !!doc.querySelector(".game_area_comingsoon") || /coming soon|to be announced/i.test(release || ""),
         developers: rowLinks("developer"), publishers: rowLinks("publisher"), genres
       };
       const first = options.find(o => o.price !== null);
       return {
         status: "ok",
-        message: name + ": " + (options.length ? options.length + " purchase option(s)" + (first ? ", first " + first.title + " at " + first.price_text : "") : "no purchase options shown") + "; " + (reviews.length ? reviews.map(r => r.label + " " + (r.summary || "none")).join(", ") : "no review summary shown") + ".",
-        app, currency: document.querySelector('meta[itemprop="priceCurrency"]')?.getAttribute("content") || null,
+        message: (source ? "Read from " + source + " without leaving this page. " : "") + name + ": " + (options.length ? options.length + " purchase option(s)" + (first ? ", first " + first.title + " at " + first.price_text : "") : "no purchase options shown") + "; " + (reviews.length ? reviews.map(r => r.label + " " + (r.summary || "none")).join(", ") : "no review summary shown") + ".",
+        app, currency: doc.querySelector('meta[itemprop="priceCurrency"]')?.getAttribute("content") || null,
         purchase_options: options, reviews,
         registered_tools: registered, available_actions: actions, next_steps: steamNextSteps(actions, "get_app")
       };
