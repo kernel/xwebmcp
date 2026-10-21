@@ -20,7 +20,7 @@
     match: { url_patterns: ["https://store.steampowered.com/*"] },
     tool: {
       name: "get_search_results",
-      description: "Read Steam Store search results: the search page open in this tab (pass {}), or the results for a term (pass term) from any store page without leaving it, read from the search page's markup as the store serves it to this browser with its default sort and filters. Returns, as the page shows it: the search term, the sort and filters Steam has applied, how many results it reports, and the rendered rows in page order, each with its type (app, package or bundle), id, store url, title, release date, platforms, review summary (\"Very Positive\", percent positive and review count, from the row's review icon) and shown price with any discount. Read-only: never clicks, scrolls to load more rows, changes the sort or filters, or follows a page link; offset and limit only bound this response (next_offset continues it). When Steam reports more results than the page has rendered, more_results says so and gives the page's own next-page url. Each row's price and review summary are the ones the search shows for that product (prices for this browser's region, before tax). A row's price is not always the base game's: when an edition is on sale the search can show that edition's lower price, so call get_app with the row's id when you need the base game's own price, the editions or the recent-reviews summary. Without term on a page that is not a search page it returns wrong_page with the actions available there.",
+      description: "Read Steam Store search results: the search page open in this tab (pass {}), or the results for a term (pass term) from any store page without leaving it, read from the search page's markup as the store serves it to this browser with its default sort and filters. Returns, as the page shows it: the search term, the sort and filters Steam has applied, how many results it reports, and the rendered rows in page order, each with its type (app, package or bundle), id, store url, title, release date, platforms, review summary (\"Very Positive\", percent positive and review count, from the row's review icon) and shown price with any discount. Read-only: never clicks, scrolls to load more rows, changes the sort or filters, or follows a page link; offset and limit only bound this response (next_offset continues it). When more results follow the rendered range, more_results says so and gives the page's own next-page url. Each row's price and review summary are the ones the search shows for that product (prices for this browser's region, before tax). A row's price is not always the base game's: when an edition is on sale the search can show that edition's lower price, so call get_app with the row's id when you need the base game's own price, the editions or the recent-reviews summary. Without term on a page that is not a search page it returns wrong_page with the actions available there.",
       inputSchema: {
         type: "object", additionalProperties: false,
         properties: {
@@ -53,8 +53,8 @@
               more_results: {
                 type: "object", additionalProperties: false, required: ["available", "next_page_url"],
                 properties: {
-                  available: { type: "boolean", description: "Steam has results beyond the rendered rows." },
-                  next_page_url: { type: ["string", "null"], description: "The page's own link to the next results page, when it shows one." }
+                  available: { type: "boolean", description: "Steam has results after the currently rendered range." },
+                  next_page_url: { type: ["string", "null"], description: "The page's own link to the next results page, when it shows one and more results remain." }
                 }
               },
               results: {
@@ -231,14 +231,19 @@
         };
       };
       const all = rows.map(read).filter(r => /^[0-9]+$/.test(r.id) && r.title && r.url);
-      const countText = steamText(doc.querySelector(".search_results_count")) || steamText(doc.querySelector(".search_pagination_left")) || "";
+      const pagination = steamText(doc.querySelector(".search_pagination_left")) || "";
+      const countText = steamText(doc.querySelector(".search_results_count")) || pagination;
       const total = steamInteger(/of\s+([\d,.]+)\s*$/.exec(countText)?.[1] || /^([\d,.]+)\s+results?/.exec(countText)?.[1] || "");
+      const range = /showing\s+([\d,.]+)\s*-\s*([\d,.]+)\s+of/i.exec(pagination);
+      // Infinite scrolling can append rows without updating the original pagination range.
+      const renderedEnd = range ? Math.max(steamInteger(range[2]), steamInteger(range[1]) - 1 + all.length) : all.length;
       const nextLink = [...doc.querySelectorAll(".search_pagination_right a.pagebtn")].find(a => steamText(a) === ">");
       const nextUrl = nextLink ? new URL(nextLink.getAttribute("href"), STEAM_ORIGIN).href : null;
       const shown = all.slice(offset, offset + limit);
       const checked = [...new Set([...doc.querySelectorAll(".tab_filter_control_row.checked, .tab_filter_control_include.checked")].map(f => steamText(f.querySelector(".tab_filter_control_label")) || steamText(f)).filter(Boolean))];
       const search = { term, sort: steamText(doc.querySelector("#sort_by_trigger")), active_filters: checked, total_results: total };
-      const more = { available: total !== null ? total > all.length : !!nextUrl, next_page_url: nextUrl };
+      const hasMore = total !== null ? total > renderedEnd : !!nextUrl;
+      const more = { available: hasMore, next_page_url: hasMore ? nextUrl : null };
       const nextOffset = offset + limit < all.length ? offset + limit : null;
       return {
         status: all.length ? "ok" : "no_results",

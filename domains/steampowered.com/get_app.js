@@ -207,9 +207,10 @@
         if (location.origin !== STEAM_ORIGIN) return notOk("wrong_page", "Open any store.steampowered.com page first; get_app reads the app's page from there.", wanted);
         const fetched = await steamFetchPage("/app/" + wanted + "/");
         if (fetched.status === 0) return notOk("not_ready", "The request for app " + wanted + "'s page failed; check the connection and call get_app again.", wanted);
-        const landed = steamPage(fetched.url);
-        if (landed.type === "age_check") return notOk("age_check", "Steam asks for a birth date before showing app " + wanted + ". Open store.steampowered.com/app/" + wanted + "/, enter the date in the page's own form and press View Page, then call get_app with {} there.", wanted);
         if (fetched.status === 429) return notOk("not_ready", "Steam answered 429 Too Many Requests for app " + wanted + "; wait before calling again.", wanted);
+        if (!fetched.doc && ![404, 410].includes(fetched.status)) return notOk("not_ready", "Steam did not return app " + wanted + "'s page (HTTP " + fetched.status + "); try again later.", wanted);
+        const landed = steamPage(fetched.url);
+        if (fetched.doc && landed.type === "age_check") return notOk("age_check", "Steam asks for a birth date before showing app " + wanted + ". Open store.steampowered.com/app/" + wanted + "/, enter the date in the page's own form and press View Page, then call get_app with {} there.", wanted);
         if (!fetched.doc || landed.type !== "app" || landed.app_id !== wanted) return notOk("not_found", "Steam has no store page for app " + wanted + " (it answered HTTP " + fetched.status + " at " + fetched.url.pathname + ").", wanted);
         doc = fetched.doc; visible = steamShownInMarkup; appId = wanted; source = fetched.url.href;
       } else {

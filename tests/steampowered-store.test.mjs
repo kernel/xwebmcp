@@ -214,6 +214,30 @@ test("get_search_results reads the rendered rows, the applied sort and filters, 
   assert.equal(rest.output.next_offset, null);
 });
 
+test("get_search_results stops pagination at the last page even when the response is limited", async () => {
+  const last = SEARCH.replace("showing 1 - 3 of 120", "showing 118 - 120 of 120")
+    .replace(/<a class="pagebtn"[^>]*>.*?<\/a>/, "")
+    .replace('<div class="search_pagination">', '<div class="search_results_count">120 results match your search.</div><div class="search_pagination">');
+  const { output } = await run("get_search_results", { limit: 1 }, { url: ORIGIN + "/search/?term=farm&page=40", html: last });
+  assert.deepEqual(output.more_results, { available: false, next_page_url: null });
+  assert.deepEqual([output.rendered_rows, output.results.length, output.next_offset], [3, 1, 1]);
+});
+
+test("get_search_results accounts for appended rows and falls back to the next-page link without a total", async () => {
+  for (const [pagination, keepLink, more] of [
+    ["showing 26 - 28 of 120", true, true],
+    ["showing 1 - 2 of 3", true, false],
+    ["showing 26 - 27 of 28", true, false],
+    ["", true, true],
+    ["", false, false],
+  ]) {
+    let html = SEARCH.replace("showing 1 - 3 of 120", pagination);
+    if (!keepLink) html = html.replace(/<a class="pagebtn"[^>]*>.*?<\/a>/, "");
+    const { output } = await run("get_search_results", {}, { url: ORIGIN + "/search/?term=farm", html });
+    assert.deepEqual(output.more_results, { available: more, next_page_url: more ? ORIGIN + "/search/?term=farm&page=2" : null }, pagination);
+  }
+});
+
 test("get_search_results reports no results, loading, wrong pages and bad input", async () => {
   let { output } = await run("get_search_results", {}, { url: ORIGIN + "/search/?term=zzzz", html: page(`<input id="term" value="zzzz"><div id="search_result_container"><div id="search_resultsRows"></div><div class="search_results_count">0 results match your search.</div></div>`) });
   assert.deepEqual([output.status, output.rendered_rows, output.search.total_results, output.more_results.available], ["no_results", 0, 0, false]);
@@ -285,6 +309,15 @@ test("get_app by id reports age checks, unknown apps and bad input", async () =>
   }
   ({ output } = await run("get_app", { app: "1", extra: true }, { url: ORIGIN + "/", html: page("") }));
   assert.equal(output.status, "invalid_input");
+});
+
+test("get_app distinguishes failed HTTP requests from missing apps", async () => {
+  for (const [status, expected] of [[403, "not_ready"], [500, "not_ready"], [503, "not_ready"], [429, "not_ready"], [404, "not_found"], [410, "not_found"]]) {
+    const { output } = await run("get_app", { app: "4242" }, {
+      url: ORIGIN + "/", html: page(""), pages: { "/app/4242/": { status, html: "" } }
+    });
+    assert.deepEqual([output.status, output.app_id], [expected, "4242"], "HTTP " + status);
+  }
 });
 
 test("get_search_results reads a term's results from any store page without leaving it", async () => {
