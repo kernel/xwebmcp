@@ -59,7 +59,7 @@ async function handle(request, url, body) {
   if (route.endsWith("/playwright/execute")) {
     const { code } = JSON.parse(body);
     if (code.includes("context.cookies") && listed("STUB_COOKIES_FAIL_ARMS", arm)) return [200, { success: false, error: "Target page, context or browser has been closed" }];
-    if (code.includes("fields") && listed("STUB_PAGE_FAIL_ARMS", arm)) return [200, { success: false, error: "Execution context was destroyed" }];
+    if (code.includes("fields") && listed("STUB_PAGE_FAIL_ARMS", arm)) return [200, { success: false, error: "Target page, context or browser has been closed" }];
     if (code.includes("fields") && listed("STUB_PAGE_NAVIGATING_ARMS", arm) && !browser.pageRead) {
       browser.pageRead = true;
       save();
