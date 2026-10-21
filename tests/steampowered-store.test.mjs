@@ -65,6 +65,7 @@ async function run(name, input, { url, html, tools = NAMES, timers = [], pages =
     fetch: async (path, init) => {
       fetched.push({ path, init });
       const reply = pages[path] ?? { status: 404, html: "" };
+      if (reply.error) throw new TypeError(reply.error);
       const status = reply.status ?? 200;
       return { status, ok: status >= 200 && status < 300, url: new URL(reply.url ?? path, ORIGIN).href, text: async () => reply.html };
     }
@@ -116,7 +117,7 @@ test("registry entries match the tool files", () => {
     assert.equal(entry.kind, "page");
     assert.equal(definition.kind, "page");
     assert.deepEqual([...definition.match.url_patterns], entry.url_patterns);
-    assert.equal(definition.tool.annotations.readOnlyHint, true);
+    assert.equal(definition.tool.annotations.readOnlyHint, entry.tool !== "search_store", entry.tool);
   }
 });
 
@@ -140,6 +141,10 @@ test("get_app reads the purchase options and the visible review summaries", asyn
   assert.deepEqual(output.registered_tools, { known: true, names: NAMES });
   assert.deepEqual(output.available_actions.map(a => [a.tool, a.enabled, a.input]), [["get_app", true, {}], ["get_search_results", true, { term: "Fabricated Farm" }], ["search_store", true, { term: "Fabricated Farm" }]]);
   assert.ok(output.next_steps.every(step => !step.startsWith("get_app")));
+  // Steam can list a discounted edition first, so the message names no option's price.
+  const editionFirst = APP.replace("Buy Fabricated Farm</h2>", "Buy Fabricated Farm Ultimate Edition</h2>");
+  const edition = await run("get_app", {}, { url: ORIGIN + "/app/4242/Fabricated_Farm/", html: editionFirst });
+  assert.equal(edition.output.message, "Fabricated Farm: 3 purchase option(s); Recent Reviews Very Positive, All Reviews Overwhelmingly Positive.");
 });
 
 test("get_app reads a free-to-play option and a page without reviews or prices", async () => {
@@ -164,6 +169,10 @@ test("get_app reports the age check, other pages and an unrendered app page with
   assert.equal(output.status, "wrong_page");
   assert.equal(output.page_type, "home");
   assert.deepEqual(output.available_actions.find(a => a.tool === "search_store"), { tool: "search_store", enabled: true, registered: true, changes_page: true, input: null, note: "Type a term into the header's Search the store box and submit it; the tab navigates to the results page. Needs the term to search for." });
+  ({ output } = await run("get_app", {}, { url: ORIGIN + "/bundle/77/", html: page("<div>Bundle</div>") }));
+  assert.deepEqual([output.status, output.page_type], ["wrong_page", "other"]);
+  assert.deepEqual(output.available_actions.map(a => [a.tool, a.enabled, a.input]), [["get_app", true, null], ["get_search_results", true, null], ["search_store", true, null]]);
+  assert.deepEqual(output.next_steps.map(step => step.split(":")[0]), ["get_search_results", "search_store"]);
   ({ output } = await run("get_app", {}, { url: ORIGIN + "/app/5/", html: page("<div>Loading</div>"), tools: null }));
   assert.equal(output.status, "not_ready");
   assert.deepEqual(output.registered_tools, { known: false, names: [] });
@@ -264,6 +273,8 @@ test("get_app reads another app's page from any store page without leaving it", 
 test("get_app by id reports age checks, unknown apps and bad input", async () => {
   let { output } = await run("get_app", { app: "77" }, { url: ORIGIN + "/", html: page(""), pages: { "/app/77/": { html: page("<form></form>"), url: "/agecheck/app/77/" } } });
   assert.deepEqual([output.status, output.app_id], ["age_check", "77"]);
+  ({ output } = await run("get_app", { app: "4242" }, { url: ORIGIN + "/", html: page(""), pages: { "/app/4242/": { error: "Failed to fetch" } } }));
+  assert.deepEqual([output.status, output.app_id], ["not_ready", "4242"]);
   ({ output } = await run("get_app", { app: "99999999" }, { url: ORIGIN + "/", html: page(""), pages: { "/app/99999999/": { html: page("<div>Welcome</div>"), url: "/" } } }));
   assert.deepEqual([output.status, output.app_id], ["not_found", "99999999"]);
   for (const app of ["", "abc", "https://evil.example/app/1/", "https://store.steampowered.com/sub/1/", 7]) {
@@ -288,5 +299,7 @@ test("get_search_results reads a term's results from any store page without leav
   assert.deepEqual([output.rendered_rows, output.results.map(r => r.id)], [2, ["77", "9"]], "a row the markup hides stays out");
   const failed = await run("get_search_results", { term: "farm" }, { url: ORIGIN + "/", html: page(""), pages: { "/search/?term=farm": { status: 429, html: "" } } });
   assert.equal(failed.output.status, "not_ready");
+  const offline = await run("get_search_results", { term: "farm" }, { url: ORIGIN + "/", html: page(""), pages: { "/search/?term=farm": { error: "Failed to fetch" } } });
+  assert.equal(offline.output.status, "not_ready");
   for (const term of ["", "   ", "x".repeat(201), 3]) assert.equal((await run("get_search_results", { term }, { url: ORIGIN + "/", html: page("") })).output.status, "invalid_input");
 });

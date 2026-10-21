@@ -147,8 +147,10 @@
       };
       // Loads another store page's markup from this one, with this tab's session, as opening it would: the store renders
       // app pages and the first search results on the server. Nothing in it runs, so visibility comes from the markup.
+      // status is 0 when the request itself failed.
       const steamFetchPage = async path => {
-        const res = await fetch(path, { credentials: "same-origin", headers: { accept: "text/html" } });
+        let res;
+        try { res = await fetch(path, { credentials: "same-origin", headers: { accept: "text/html" } }); } catch { return { status: 0, url: new URL(path, STEAM_ORIGIN), doc: null }; }
         const url = new URL(res.url || path, STEAM_ORIGIN);
         const doc = res.ok ? new DOMParser().parseFromString(await res.text(), "text/html") : null;
         return { status: res.status, url, doc };
@@ -175,9 +177,10 @@
       const steamActions = (page, registered, example_term) => {
         const add = (tool, enabled, changes_page, input, note) => ({ tool, enabled, registered: registered.known ? registered.names.includes(tool) : null, changes_page, input: enabled ? input : null, note });
         const box = steamSearchBox();
+        const store = location.origin === STEAM_ORIGIN;
         return [
-          add("get_app", page.type !== "other", false, page.type === "app" ? {} : null, page.type === "app" ? "Read this app's prices and review summaries." : page.type === "age_check" ? "Steam asks for a birth date first; enter it in the page's own form and press View Page, then call get_app." : "Pass app, an app id or store URL (for example a result's id from get_search_results), to read that app's page without leaving this one."),
-          add("get_search_results", page.type !== "other", false, page.type === "search" ? {} : example_term ? { term: example_term } : null, page.type === "search" ? "Read the results this search page shows, or pass term to read another search's results." : "Pass term to read the store's search results for it without leaving this page."),
+          add("get_app", store, false, page.type === "app" ? {} : null, page.type === "app" ? "Read this app's prices and review summaries." : page.type === "age_check" ? "Steam asks for a birth date first; enter it in the page's own form and press View Page, then call get_app." : "Pass app, an app id or store URL (for example a result's id from get_search_results), to read that app's page without leaving this one."),
+          add("get_search_results", store, false, page.type === "search" ? {} : example_term ? { term: example_term } : null, page.type === "search" ? "Read the results this search page shows, or pass term to read another search's results." : "Pass term to read the store's search results for it without leaving this page."),
           add("search_store", !!box, true, example_term ? { term: example_term } : null, box ? "Type a term into the header's Search the store box and submit it; the tab navigates to the results page." + (example_term ? "" : " Needs the term to search for.") : "This page has no store search box.")
         ];
       };
@@ -203,6 +206,7 @@
       if (wanted && wanted !== page.app_id) {
         if (location.origin !== STEAM_ORIGIN) return notOk("wrong_page", "Open any store.steampowered.com page first; get_app reads the app's page from there.", wanted);
         const fetched = await steamFetchPage("/app/" + wanted + "/");
+        if (fetched.status === 0) return notOk("not_ready", "The request for app " + wanted + "'s page failed; check the connection and call get_app again.", wanted);
         const landed = steamPage(fetched.url);
         if (landed.type === "age_check") return notOk("age_check", "Steam asks for a birth date before showing app " + wanted + ". Open store.steampowered.com/app/" + wanted + "/, enter the date in the page's own form and press View Page, then call get_app with {} there.", wanted);
         if (fetched.status === 429) return notOk("not_ready", "Steam answered 429 Too Many Requests for app " + wanted + "; wait before calling again.", wanted);
@@ -260,10 +264,9 @@
         coming_soon: !!doc.querySelector(".game_area_comingsoon") || /coming soon|to be announced/i.test(release || ""),
         developers: rowLinks("developer"), publishers: rowLinks("publisher"), genres
       };
-      const first = options.find(o => o.price !== null);
       return {
         status: "ok",
-        message: (source ? "Read from " + source + " without leaving this page. " : "") + name + ": " + (options.length ? options.length + " purchase option(s)" + (first ? ", first " + first.title + " at " + first.price_text : "") : "no purchase options shown") + "; " + (reviews.length ? reviews.map(r => r.label + " " + (r.summary || "none")).join(", ") : "no review summary shown") + ".",
+        message: (source ? "Read from " + source + " without leaving this page. " : "") + name + ": " + (options.length ? options.length + " purchase option(s)" : "no purchase options shown") + "; " + (reviews.length ? reviews.map(r => r.label + " " + (r.summary || "none")).join(", ") : "no review summary shown") + ".",
         app, currency: doc.querySelector('meta[itemprop="priceCurrency"]')?.getAttribute("content") || null,
         purchase_options: options, reviews,
         registered_tools: registered, available_actions: actions, next_steps: steamNextSteps(actions, "get_app")
