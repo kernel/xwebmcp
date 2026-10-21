@@ -20,7 +20,7 @@
     match: { url_patterns: ["https://store.steampowered.com/*"] },
     tool: {
       name: "get_search_results",
-      description: "Read Steam Store search results: the search page open in this tab (pass {}), or the results for a term (pass term) from any store page without leaving it, read from the search page's markup as the store serves it to this browser with its default sort and filters. Returns, as the page shows it: the search term, the sort and filters Steam has applied, how many results it reports, and the rendered rows in page order, each with its type (app, package or bundle), id, store url, title, release date, platforms, review summary (\"Very Positive\", percent positive and review count, from the row's review icon) and shown price with any discount. Read-only: never clicks, scrolls to load more rows, changes the sort or filters, or follows a page link; offset and limit only bound this response (next_offset continues it). When more results follow the rendered range, more_results says so and gives the page's own next-page url. Each row's price and review summary are the ones the search shows for that product (prices for this browser's region, before tax). A row's price is not always the base game's: when an edition is on sale the search can show that edition's lower price, so call get_app with the row's id when you need the base game's own price, the editions or the recent-reviews summary. Without term on a page that is not a search page it returns wrong_page with the actions available there.",
+      description: "Read Steam Store search results: the search page open in this tab (pass {}), or the results for a term (pass term) from any store page without leaving it, read from the search page's markup as the store serves it to this browser with its default sort and filters. Returns, as the page shows it: the search term, the sort and filters Steam has applied, how many results it reports, and the rendered rows in page order, each with its type (app, package or bundle), id, store url, title, release date, platforms, review summary (\"Very Positive\", percent positive and review count, from the row's review icon) and shown price with any discount. Read-only: never clicks, scrolls to load more rows, changes the sort or filters, or follows a page link; offset and limit only bound this response (next_offset continues it). When more results follow the rendered range, more_results says so and gives a visible next-page link on the open page when available. Fetched pages and infinite-scroll pages have no reliable next-page url; next_steps explains how to continue. Each row's price and review summary are the ones the search shows for that product (prices for this browser's region, before tax). A row's price is not always the base game's: when an edition is on sale the search can show that edition's lower price, so call get_app with the row's id when you need the base game's own price, the editions or the recent-reviews summary. Without term on a page that is not a search page it returns wrong_page with the actions available there.",
       inputSchema: {
         type: "object", additionalProperties: false,
         properties: {
@@ -54,7 +54,7 @@
                 type: "object", additionalProperties: false, required: ["available", "next_page_url"],
                 properties: {
                   available: { type: "boolean", description: "Steam has results after the currently rendered range." },
-                  next_page_url: { type: ["string", "null"], description: "The page's own link to the next results page, when it shows one and more results remain." }
+                  next_page_url: { type: ["string", "null"], description: "A visible next-page link on the open page when more results remain. Null for fetched pages and infinite scrolling; see next_steps." }
                 }
               },
               results: {
@@ -238,20 +238,25 @@
       // Infinite scrolling can append rows without updating the original pagination range.
       const renderedEnd = range ? Math.max(steamInteger(range[2]), steamInteger(range[1]) - 1 + all.length) : all.length;
       const nextLink = [...doc.querySelectorAll(".search_pagination_right a.pagebtn")].find(a => steamText(a) === ">");
-      const nextUrl = nextLink ? new URL(nextLink.getAttribute("href"), STEAM_ORIGIN).href : null;
+      // Steam's hidden pagination can overlap the rows loaded by infinite scrolling.
+      const nextUrl = !source && steamVisible(nextLink) ? new URL(nextLink.getAttribute("href"), STEAM_ORIGIN).href : null;
       const shown = all.slice(offset, offset + limit);
       const checked = [...new Set([...doc.querySelectorAll(".tab_filter_control_row.checked, .tab_filter_control_include.checked")].map(f => steamText(f.querySelector(".tab_filter_control_label")) || steamText(f)).filter(Boolean))];
       const search = { term, sort: steamText(doc.querySelector("#sort_by_trigger")), active_filters: checked, total_results: total };
-      const hasMore = total !== null ? total > renderedEnd : !!nextUrl;
+      const hasMore = total !== null ? total > renderedEnd : !!nextLink;
       const more = { available: hasMore, next_page_url: hasMore ? nextUrl : null };
       const nextOffset = offset + limit < all.length ? offset + limit : null;
+      const nextSteps = steamNextSteps(actions, "get_search_results");
+      if (hasMore && !nextUrl) nextSteps.push(source
+        ? "Open " + source + ", list the tools again, then call get_search_results with {} (omit term) to read the live page and its continuation controls."
+        : "After reading the remaining rendered rows, scroll down to load more results, then call get_search_results with " + JSON.stringify({ offset: all.length }) + " (omit term) to read the appended rows.");
       return {
         status: all.length ? "ok" : "no_results",
         message: all.length
           ? (source ? "Read from " + source + " without leaving this page. " : "") + "Steam shows " + all.length + " row(s) for " + JSON.stringify(term) + (total !== null ? " of " + total + " result(s)" : "") + ", sorted by " + (search.sort || "the page's default") + "; returned " + shown.length + " from offset " + offset + (nextOffset !== null ? " (next_offset " + nextOffset + ")" : "") + "."
           : "Steam shows no results for " + JSON.stringify(term) + (checked.length ? " with filters " + checked.join(", ") : "") + ".",
         search, rendered_rows: all.length, offset, next_offset: nextOffset, more_results: more, results: shown,
-        registered_tools: registered, available_actions: actions, next_steps: steamNextSteps(actions, "get_search_results")
+        registered_tools: registered, available_actions: actions, next_steps: nextSteps
       };
     }
   }];

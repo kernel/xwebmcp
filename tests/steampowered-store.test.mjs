@@ -238,6 +238,29 @@ test("get_search_results accounts for appended rows and falls back to the next-p
   }
 });
 
+test("get_search_results does not offer hidden pagination links on infinite-scroll pages", async () => {
+  const html = SEARCH.replace('<div class="search_pagination">', '<div class="search_pagination" style="display: none">');
+  const { output } = await run("get_search_results", { limit: 1 }, { url: ORIGIN + "/search/?term=farm", html });
+  assert.deepEqual(output.more_results, { available: true, next_page_url: null });
+  assert.equal(output.next_offset, 1, "unreturned rendered rows still come first");
+  assert.ok(output.next_steps.some(step => /scroll/i.test(step) && step.includes('{"offset":3}') && step.includes("omit term")));
+
+  const complete = await run("get_search_results", {}, { url: ORIGIN + "/search/?term=farm", html: html.replace("of 120", "of 3") });
+  assert.deepEqual(complete.output.more_results, { available: false, next_page_url: null });
+  assert.ok(complete.output.next_steps.every(step => !/scroll/i.test(step)));
+});
+
+test("get_search_results does not offer unverified pagination links from fetched markup", async () => {
+  const fetched = [];
+  const { output } = await run("get_search_results", { term: "farm", limit: 100 }, {
+    url: ORIGIN + "/", html: page(""), pages: { "/search/?term=farm": { html: SEARCH } }, fetched
+  });
+  assert.deepEqual(output.more_results, { available: true, next_page_url: null });
+  assert.equal(output.next_offset, null);
+  assert.equal(fetched.length, 1, "reading does not fetch another results page");
+  assert.ok(output.next_steps.some(step => step.includes("Open " + ORIGIN + "/search/?term=farm") && step.includes("get_search_results with {}") && step.includes("omit term")));
+});
+
 test("get_search_results reports no results, loading, wrong pages and bad input", async () => {
   let { output } = await run("get_search_results", {}, { url: ORIGIN + "/search/?term=zzzz", html: page(`<input id="term" value="zzzz"><div id="search_result_container"><div id="search_resultsRows"></div><div class="search_results_count">0 results match your search.</div></div>`) });
   assert.deepEqual([output.status, output.rendered_rows, output.search.total_results, output.more_results.available], ["no_results", 0, 0, false]);
