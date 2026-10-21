@@ -93,8 +93,8 @@ const TICKETS = [
 function harness(name, o = {}) {
   const calls = { fetches: [] };
   const pageOrigin = o.origin ?? HOME;
-  const respond = path => {
-    if (o.route) { const forced = o.route(path); if (forced) return forced; }
+  const respond = (path, n) => {
+    if (o.route) { const forced = o.route(path, n); if (forced) return forced; }
     if (path.startsWith("/hermes/api/v1/productions?")) return { status: 200, body: productions([production(6001, "Example Band")]) };
     if (path.startsWith("/hermes/api/v1/listings?")) return { status: 200, body: listings(TICKETS) };
     if (path === "/hermes/api/v1/location/search/token") return { status: 200, body: { uuid: FAKE_TOKEN } };
@@ -104,15 +104,21 @@ function harness(name, o = {}) {
   };
   const context = {
     JSON, URL, URLSearchParams, Promise, Date, Math, Number, Object, Array, String, RegExp, Map, Set, Infinity, NaN, isFinite, encodeURIComponent,
+    setTimeout: fn => { calls.waits = (calls.waits ?? 0) + 1; fn(); },
     document: { title: o.title ?? "Vivid Seats", cookie: o.cookie ?? "locale=en-US; pgid=416; other=1" },
     window: { location: new URL(pageOrigin) },
     fetch: async (path, init) => {
       calls.fetches.push({ path, init });
       assert.equal(init.method, undefined, "only GET requests are allowed");
-      assert.equal(init.headers.accept, "application/json");
       assert.equal(init.credentials, undefined);
       if (o.throws) throw new Error(o.throws);
-      const r = respond(path);
+      if (init.headers.accept === "text/html") {
+        const page = o.pages?.(path);
+        assert.ok(page, "unexpected page request " + path);
+        return { status: page.status ?? 200, url: new URL(page.url ?? path, HOME).href, text: async () => page.html };
+      }
+      assert.equal(init.headers.accept, "application/json");
+      const r = respond(path, calls.fetches.length);
       return { status: r.status, text: async () => (r.body === undefined ? "<html>blocked</html>" : JSON.stringify(r.body)) };
     }
   };
@@ -356,7 +362,7 @@ test("search_events returns no_results for empty pages and for dates that have p
   assert.equal(JSON.stringify(gone).includes("script"), false, "site text is not echoed");
   const other404 = harness("search_events", { route: p => (p.startsWith("/hermes/api/v1/productions?") ? { status: 404, body: { message: "Something else" } } : null) });
   assert.equal((await other404.run({ query: "band" })).error_kind, "site_error", "only the observed past-date 404 is a normal empty result");
-  const proxy404 = await harness("search_events", { route: p => (p.startsWith("/hermes/api/v1/productions?") ? { status: 404, body: { error: "Request failed with status code 404" } } : null) }).run({ query: "band" });
+  const proxy404 = await harness("search_events", { route: p => (p.startsWith("/hermes/api/v1/productions?") ? { status: 404, body: { error: "Request failed with status code 404" } } : null), pages: () => ({ status: 503, html: "" }) }).run({ query: "band" });
   assert.deepEqual([proxy404.error_kind, /at times for every request/.test(proxy404.error_message)], ["site_error", true], "the proxy's generic 404 says it may be transient");
 });
 
@@ -660,4 +666,53 @@ test("get_ticket_offers keeps the full list of quantities a listing can be bough
   const result = await harness("get_ticket_offers", { route: p => (p.startsWith("/hermes/api/v1/listings?") ? { status: 200, body: listings([wide]) } : null) }).run({ event: "6001", quantity: 8 });
   assert.equal(result.offers[0].purchasable_quantities.length, 30);
   assert.equal(result.offers[0].purchasable_quantities[29], 30);
+});
+
+const nextData = props => `<html><script id="__NEXT_DATA__" type="application/json">${JSON.stringify({ props: { pageProps: props } })}</script></html>`;
+const proxy404 = p => (p.startsWith("/hermes/api/v1/productions?") ? { status: 404, body: { error: "Request failed with status code 404" } } : null);
+
+test("search_events reads the site's search page when the JSON search answers its generic 404", async () => {
+  const performer = "/example-band-tickets--concerts-rock/performer/9001";
+  const all = [production(6001, "Example Band"), production(6002, "Example Band", { localDate: "2099-11-01T20:00:00-05:00[America/Chicago]" })];
+  const h = harness("search_events", {
+    route: proxy404,
+    pages: p => {
+      if (p === "/search?searchTerm=Example%20Band") return { url: performer, html: nextData({ initialProductionListParams: { performerId: 9001 }, initialProductionListData: productions(all) }) };
+      if (p === performer + "?startDate=2099-10-01&endDate=2099-10-31") return { url: p, html: nextData({ initialProductionListParams: { performerId: 9001, startDate: "2099-10-01", endDate: "2099-10-31" }, initialProductionListData: productions(all.slice(0, 1)) }) };
+      return null;
+    }
+  });
+  const result = await h.run({ query: "Example Band", start_date: "2099-10-01", end_date: "2099-10-31", category: "concerts" });
+  assert.equal(result.status, "ok");
+  assert.deepEqual(result.events.map(e => e.production_id), [6001]);
+  assert.ok(result.warnings.some(w => w.includes(performer)), "the warning names the page the results came from");
+  assert.ok(result.warnings.some(w => /did not apply category/.test(w)), "filters the page did not apply are named");
+  assert.ok(!result.warnings.some(w => /start_date/.test(w)), "the performer page applied the dates");
+  assert.deepEqual(h.calls.fetches.filter(c => c.init.headers.accept === "text/html").map(c => c.path), ["/search?searchTerm=Example%20Band", performer + "?startDate=2099-10-01&endDate=2099-10-31"]);
+});
+
+test("search_events says when the search page did not apply the dates, and does not use it for place, later-page or popularity searches", async () => {
+  const h = harness("search_events", { route: proxy404, pages: () => ({ html: nextData({ initialAllProductionListParams: { query: "band" }, initialAllProductionListData: productions([production(6001, "Example Band")]) }) }) });
+  const result = await h.run({ query: "band", start_date: "2099-10-01" });
+  assert.ok(result.warnings.some(w => /did not apply start_date\/end_date/.test(w)));
+  for (const input of [{ query: "band", location: "Springfield, IL" }, { query: "band", latitude: 39.8, longitude: -89.65 }, { query: "band", page: 2 }, { query: "band", sort: "popular" }, { start_date: "2099-10-01" }]) {
+    const other = harness("search_events", { route: proxy404, pages: () => { throw new Error("the search page must not be read for " + JSON.stringify(input)); } });
+    assert.equal((await other.run(input)).error_kind, "site_error", JSON.stringify(input));
+  }
+});
+
+test("get_ticket_offers keeps asking while the listings service answers its generic 404, then reports it", async () => {
+  const late = harness("get_ticket_offers", { route: (p, n) => (p.startsWith("/hermes/api/v1/listings?") && n < 3 ? { status: 404, body: { error: "Request failed with status code 404" } } : null) });
+  const ok = await late.run({ event: "6001", quantity: 2 });
+  assert.equal(ok.currency, "USD");
+  assert.equal(late.calls.fetches.length, 3);
+  assert.equal(late.calls.waits, 2);
+  const never = harness("get_ticket_offers", { route: p => (p.startsWith("/hermes/api/v1/listings?") ? { status: 404, body: { error: "Request failed with status code 404" } } : null) });
+  const failed = await never.run({ event: "6001" });
+  assert.equal(failed.error_kind, "site_error");
+  assert.match(failed.error_message, /for 40 seconds.*Call this tool again/);
+  assert.equal(never.calls.fetches.length, 9, "one request plus eight retries five seconds apart");
+  const missing = harness("get_ticket_offers", { route: p => (p.startsWith("/hermes/api/v1/listings?") ? { status: 404, body: { error: "x" } } : null) });
+  assert.equal((await missing.run({ event: "6001" })).error_kind, "not_found");
+  assert.equal(missing.calls.fetches.length, 1, "a specific 404 is not retried");
 });

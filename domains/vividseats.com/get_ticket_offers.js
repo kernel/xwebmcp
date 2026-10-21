@@ -3,7 +3,7 @@
   match: { url_patterns: ["https://www.vividseats.com/*"] },
   tool: {
     name: "get_ticket_offers",
-    description: "List the ticket listings Vivid Seats currently shows for one event (production_id from search_events, or an event page URL): section, row, zone, tickets in the listing, the quantities it can be bought in, and the all-in price per ticket, cheapest first. Optionally keep only listings that can be bought in a given quantity, within a per-ticket all-in price range, or in one zone or section, and summarize the matches by zone or section. price_basis states what the site's all-in price includes for this event (for example fees and, for some venues, VAT); taxes and delivery charges it does not list may still be added at checkout, and this tool does not open checkout. Prices and availability change by the minute, so treat results as quotes observed at observed_at. Returns no_tickets when the event has no listings or none match the filters. Runs inside the current www.vividseats.com page without navigating and reads only; it never selects a listing, adds to a cart or buys, and it does not read the event's date (use search_events for that).",
+    description: "List the ticket listings Vivid Seats currently shows for one event (production_id from search_events, or an event page URL): section, row, zone, tickets in the listing, the quantities it can be bought in, and the all-in price per ticket, cheapest first. Optionally keep only listings that can be bought in a given quantity, within a per-ticket all-in price range, or in one zone or section, and summarize the matches by zone or section. price_basis states what the site's all-in price includes for this event (for example fees and, for some venues, VAT); taxes and delivery charges it does not list may still be added at checkout, and this tool does not open checkout. Prices and availability change by the minute, so treat results as quotes observed at observed_at. Returns no_tickets when the event has no listings or none match the filters. For the first few minutes of a browser session Vivid Seats refuses every listings request, its event page's included, with a generic 404; this tool then keeps asking for up to 40 seconds before it reports that, so call it again if it does. Runs inside the current www.vividseats.com page without navigating and reads only; it never selects a listing, adds to a cart or buys, and it does not read the event's date (use search_events for that).",
     inputSchema: {
       type: "object", additionalProperties: false, required: ["event"],
       properties: {
@@ -95,8 +95,9 @@
     },
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true }
   },
-  execute: async (input) => {
+  execute: async (input, { signal } = {}) => {
     const ORIGIN = "https://www.vividseats.com";
+    const RETRY_FOR_MS = 40000, RETRY_EVERY_MS = 5000;
     const fail = (kind, message) => ({ status: "error", error_kind: kind, error_message: message });
     const allowed = ["event", "quantity", "min_price_per_ticket", "max_price_per_ticket", "zone", "section", "group_by", "limit"];
     if (!input || typeof input !== "object" || Array.isArray(input) || Object.keys(input).some(k => !allowed.includes(k))) return fail("invalid_input", "Unknown or missing input; allowed fields are " + allowed.join(", ") + ".");
@@ -153,12 +154,22 @@
       // The site prices listings per browser session; the page sends its price group with the request, so this does too.
       const priceGroup = (/(?:^|;\s*)pgid=(\d{1,6})(?:;|$)/.exec(document.cookie) || [])[1] ?? null;
       const path = "/hermes/api/v1/listings?productionId=" + productionId + "&currency=USD&localizeCurrency=true" + (priceGroup ? "&priceGroupId=" + priceGroup : "");
-      const res = await fetch(path, { headers: { accept: "application/json" } });
-      const text = await res.text();
-      let body = null;
-      try { body = JSON.parse(text); } catch { /* not JSON */ }
-      // Vivid Seats' API proxy answers this generic 404 for unknown events and, intermittently, for every request from a browser.
-      if (res.status === 404 && body && /^Request failed with status code 404$/.test(body.error)) return fail("site_error", "Vivid Seats' listings service answered a generic 404 for production_id " + productionId + ". It answers this way for unknown events and, at times, for every request from this browser, so this does not show the event is missing: if its event page opens, read the listings there or call again in a minute.");
+      // Vivid Seats' API proxy answers a generic 404 for unknown events and, for the first few minutes of a
+      // browser session, for every listings request, including the event page's own. This read is safe to repeat,
+      // so it waits for the site to start answering before giving up.
+      const generic = (res, body) => res.status === 404 && body && /^Request failed with status code 404$/.test(body.error);
+      let res, body, waited = 0;
+      for (;;) {
+        res = await fetch(path, { headers: { accept: "application/json" }, signal });
+        const text = await res.text();
+        body = null;
+        try { body = JSON.parse(text); } catch { /* not JSON */ }
+        if (!generic(res, body) || waited >= RETRY_FOR_MS) break;
+        await new Promise(resolve => setTimeout(resolve, RETRY_EVERY_MS));
+        waited += RETRY_EVERY_MS;
+        if (signal?.aborted) return fail("canceled", "The read was canceled while waiting for Vivid Seats' listings.");
+      }
+      if (generic(res, body)) return fail("site_error", "Vivid Seats' listings service kept answering a generic 404 for production_id " + productionId + " for " + Math.round(waited / 1000) + " seconds. It answers every listings request this way for the first few minutes of a browser session (the event page's own listings panel then shows 'Sorry, there was an error'), and also for unknown events, so this does not show the event is missing. Call this tool again: in tests the listings started loading two to three minutes after the browser opened.");
       if (res.status === 404) return fail("not_found", "Vivid Seats has no event with production_id " + productionId + ".");
       if (res.status === 403) return fail("challenge", "Vivid Seats' bot protection refused the request (HTTP 403); resolve access normally before trying again.");
       if (res.status === 429) return fail("rate_limited", "Vivid Seats rate-limited the request (HTTP 429); wait before asking again.");
