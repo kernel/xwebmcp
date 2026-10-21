@@ -1,0 +1,22 @@
+{
+  "id": "shopify-app-store-compare",
+  "domain": "shopify.com",
+  "stage": "compare",
+  "prompt": "On the Shopify App Store (apps.shopify.com), search for \"{{query}}\" and, for each of the first three apps in the results that are not ads, report the app's name, its average rating, how many reviews it has, and the monthly price in US dollars of its cheapest paid plan (0 if it has no paid plan). Do not install anything. Reply with JSON: {\"apps\": [{\"app\": string, \"rating\": number, \"review_count\": integer, \"cheapest_paid_monthly_price\": number}]}, in the order the results show them.",
+  "fixture": {
+    "query": "subscriptions"
+  },
+  "start_url": "https://apps.shopify.com/",
+  "answer_schema": "schemas/app-listings.json",
+  "rules": [
+    { "path": "apps", "count": [3, 3] },
+    { "path": "apps[].app", "unique": true },
+    { "path": "apps[].rating", "range": [0, 5] },
+    { "path": "apps[].review_count", "range": [0, 10000000] },
+    { "path": "apps[].cheapest_paid_monthly_price", "range": [0, 10000] }
+  ],
+  "agreement": { "path": "apps[].app", "same": true },
+  "pairs": 5,
+  "trial_timeout_sec": 600,
+  "max_turns": 40
+}

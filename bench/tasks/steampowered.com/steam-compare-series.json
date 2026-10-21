@@ -1,0 +1,23 @@
+{
+  "id": "steam-compare-series",
+  "domain": "steampowered.com",
+  "stage": "compare",
+  "prompt": "On store.steampowered.com, compare the {{series}} games {{games}}: for each, find its current price in the US store (the base game, not an edition or bundle) and the user review summary Steam shows for it, such as \"Very Positive\". Reply with JSON: {\"games\": [{\"game\": string, \"price\": number in US dollars, \"review_summary\": string}]}, one entry per game in the order given.",
+  "fixture": {
+    "series": "Sid Meier's Civilization",
+    "games": "Civilization V, Civilization VI and Civilization VII"
+  },
+  "start_url": "https://store.steampowered.com/",
+  "answer_schema": "schemas/game-prices.json",
+  "rules": [
+    { "path": "games", "count": [3, 3] },
+    { "path": "games[].game", "matches": "civilization" },
+    { "path": "games[].game", "unique": true },
+    { "path": "games[].price", "range": [1, 100] },
+    { "path": "games[].review_summary", "matches": "positive|mixed|negative" }
+  ],
+  "agreement": { "path": "games[].price", "same": true },
+  "pairs": 5,
+  "trial_timeout_sec": 600,
+  "max_turns": 40
+}
