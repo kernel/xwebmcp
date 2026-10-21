@@ -311,6 +311,10 @@ test("get_app reads another app's page from any store page without leaving it", 
   assert.match(output.message, /^Read from https:\/\/store\.steampowered\.com\/app\/4242\/Fabricated_Farm\/ without leaving this page\./);
   assert.deepEqual(output.reviews.map(r => r.label), ["Recent Reviews", "All Reviews"], "a row the markup hides stays out");
   assert.equal(output.purchase_options.length, 3);
+  for (const app of ["store.steampowered.com/app/4242/Fabricated_Farm/", "http://store.steampowered.com/app/4242/"]) {
+    const other = await run("get_app", { app }, { url: ORIGIN + "/", html: page(""), pages: { "/app/4242/": { html: APP, url: "/app/4242/Fabricated_Farm/" } } });
+    assert.deepEqual([other.output.status, other.output.app.app_id], ["ok", "4242"], app);
+  }
   const here = [];
   const same = await run("get_app", { app: "4242" }, { url: ORIGIN + "/app/4242/Fabricated_Farm/", html: APP, fetched: here });
   assert.equal(same.output.status, "ok");
@@ -324,7 +328,7 @@ test("get_app by id reports age checks, unknown apps and bad input", async () =>
   assert.deepEqual([output.status, output.app_id], ["not_ready", "4242"]);
   ({ output } = await run("get_app", { app: "99999999" }, { url: ORIGIN + "/", html: page(""), pages: { "/app/99999999/": { html: page("<div>Welcome</div>"), url: "/" } } }));
   assert.deepEqual([output.status, output.app_id], ["not_found", "99999999"]);
-  for (const app of ["", "abc", "https://evil.example/app/1/", "https://store.steampowered.com/sub/1/", 7]) {
+  for (const app of ["", "abc", "https://evil.example/app/1/", "evil.example/store.steampowered.com/app/1/", "ftp://store.steampowered.com/app/1/", "https://store.steampowered.com/sub/1/", 7]) {
     const fetched = [];
     ({ output } = await run("get_app", { app }, { url: ORIGIN + "/", html: page(""), fetched }));
     assert.equal(output.status, "invalid_input", JSON.stringify(app));

@@ -196,8 +196,8 @@
       if (input.app !== undefined) {
         const given = typeof input.app === "string" ? input.app.trim() : "";
         let url = null;
-        try { url = /^\d+$/.test(given) ? null : new URL(given, STEAM_ORIGIN); } catch { url = null; }
-        wanted = /^\d{1,10}$/.test(given) ? given : url && url.origin === STEAM_ORIGIN ? (/^\/app\/(\d{1,10})(?:\/|$)/.exec(url.pathname) || [])[1] ?? null : null;
+        try { url = /^\d+$/.test(given) ? null : new URL(/^store\.steampowered\.com\//i.test(given) ? "https://" + given : given, STEAM_ORIGIN); } catch { url = null; }
+        wanted = /^\d{1,10}$/.test(given) ? given : url && /^https?:$/.test(url.protocol) && url.hostname === "store.steampowered.com" ? (/^\/app\/(\d{1,10})(?:\/|$)/.exec(url.pathname) || [])[1] ?? null : null;
         if (!wanted) return notOk("invalid_input", "app must be a Steam app id such as '413150' or a store.steampowered.com/app/<id>/ URL.", null);
       }
 

@@ -208,7 +208,7 @@
         doc = fetched.doc; visible = steamShownInMarkup; term = input.term.trim(); source = fetched.url.href;
       } else if (page.type !== "search") return notOk("wrong_page", "This is not the Steam Store search results page; pass term to read a search from here.");
       const container = doc.querySelector("#search_resultsRows");
-      if (!source && steamVisible(document.querySelector("#search_results_loading")) || !container && !doc.querySelector("#search_result_container")) return notOk("not_ready", "Steam is still loading search results; call get_search_results again once they show.");
+      if ((!source && steamVisible(document.querySelector("#search_results_loading"))) || (!container && !doc.querySelector("#search_result_container"))) return notOk("not_ready", "Steam is still loading search results; call get_search_results again once they show.");
 
       const rows = [...(container?.querySelectorAll("a.search_result_row") ?? [])].filter(visible);
       const read = (row, index) => {
