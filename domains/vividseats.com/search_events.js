@@ -204,7 +204,7 @@
       const datesApplied = (!startDate || found.params.startDate === startDate) && (!endDate || found.params.endDate === endDate);
       const ignored = [
         !datesApplied && "start_date/end_date", category && "category", checks.performer.value && "performer_id", checks.venue.value && "venue_id",
-        checks.ceiling.value && "max_lowest_all_in_price"
+        checks.ceiling.value && "max_lowest_all_in_price", excludeParking && !/\/performer\//.test(found.url.pathname) && "exclude_parking"
       ].filter(Boolean);
       const pages = Math.ceil(found.data.total / pageSize);
       const notes = ["Vivid Seats' JSON search answered a generic 404, as it does early in a browser session, so these results come from the site's own page " + found.url.pathname + ", in its order."];

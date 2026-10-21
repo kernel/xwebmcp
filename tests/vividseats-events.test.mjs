@@ -694,7 +694,7 @@ test("search_events reads the site's search page when the JSON search answers it
 test("search_events says when the search page did not apply the dates, and does not use it for place, later-page or popularity searches", async () => {
   const h = harness("search_events", { route: proxy404, pages: () => ({ html: nextData({ initialAllProductionListParams: { query: "band" }, initialAllProductionListData: productions([production(6001, "Example Band")]) }) }) });
   const result = await h.run({ query: "band", start_date: "2099-10-01" });
-  assert.ok(result.warnings.some(w => /did not apply start_date\/end_date/.test(w)));
+  assert.ok(result.warnings.some(w => /did not apply start_date\/end_date, exclude_parking/.test(w)), "the search page lists parking passes");
   for (const input of [{ query: "band", location: "Springfield, IL" }, { query: "band", latitude: 39.8, longitude: -89.65 }, { query: "band", page: 2 }, { query: "band", sort: "popular" }, { start_date: "2099-10-01" }]) {
     const other = harness("search_events", { route: proxy404, pages: () => { throw new Error("the search page must not be read for " + JSON.stringify(input)); } });
     assert.equal((await other.run(input)).error_kind, "site_error", JSON.stringify(input));
