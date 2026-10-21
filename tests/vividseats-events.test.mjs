@@ -125,8 +125,8 @@ function harness(name, o = {}) {
   const [definition] = runInNewContext(`(${sources[name]})`, context);
   return {
     definition, calls,
-    run: async input => {
-      const result = plain(await definition.execute(input));
+    run: async (input, options) => {
+      const result = plain(await definition.execute(input, options));
       assert.ok(conforms(definition.tool.outputSchema, result), `${name} output violates its schema (${conforms.last}): ${JSON.stringify(result).slice(0, 400)}`);
       const text = JSON.stringify(result);
       assert.ok(!text.includes(FAKE_TOKEN), "the place-lookup session token must never be returned");
@@ -567,7 +567,7 @@ test("get_ticket_offers skips malformed listings with a warning and refuses a fu
 
 test("get_ticket_offers never turns blocks or drift into empty results", async () => {
   const cases = [
-    [{ status: 404, body: { error: "x" } }, "not_found"], [{ status: 404, body: { error: "Request failed with status code 404" } }, "site_error"], [{ status: 403, body: undefined }, "challenge"], [{ status: 429, body: {} }, "rate_limited"], [{ status: 500, body: {} }, "site_error"],
+    [{ status: 404, body: { error: "x" } }, "not_found"], [{ status: 403, body: undefined }, "challenge"], [{ status: 429, body: {} }, "rate_limited"], [{ status: 500, body: {} }, "site_error"],
     [{ status: 200, body: undefined }, "site_error"], [{ status: 200, body: { tickets: [] } }, "site_changed"], [{ status: 200, body: listings(TICKETS, { groups: undefined }) }, "site_changed"],
     [{ status: 200, body: listings(TICKETS, { global: [] }) }, "site_changed"], [{ status: 200, body: listings(TICKETS, { i18n: { from: "USD", to: "GBP", rate: 0.8, applyCurrencyConversion: true } }) }, "site_changed"],
     [{ status: 200, body: listings(TICKETS, { i18n: undefined }) }, "site_changed"]
@@ -708,10 +708,13 @@ test("get_ticket_offers keeps asking while the listings service answers its gene
   assert.equal(late.calls.fetches.length, 3);
   assert.equal(late.calls.waits, 2);
   const never = harness("get_ticket_offers", { route: p => (p.startsWith("/hermes/api/v1/listings?") ? { status: 404, body: { error: "Request failed with status code 404" } } : null) });
-  const failed = await never.run({ event: "6001" });
-  assert.equal(failed.error_kind, "site_error");
-  assert.match(failed.error_message, /for 20 seconds.*for any quantity/);
-  assert.equal(never.calls.fetches.length, 5, "one request plus four retries five seconds apart");
+  const waiting = await never.run({ event: "6001" });
+  assert.deepEqual([waiting.status, waiting.production_id, waiting.waited_seconds, waiting.retry_after_seconds], ["not_ready", 6001, 45, 0]);
+  assert.match(waiting.message, /Call this tool again now.*for any quantity/);
+  assert.equal(never.calls.fetches.length, 10, "one request plus nine retries five seconds apart");
+  const controller = new AbortController();
+  const canceled = harness("get_ticket_offers", { route: p => { controller.abort(); return p.startsWith("/hermes/api/v1/listings?") ? { status: 404, body: { error: "Request failed with status code 404" } } : null; } });
+  assert.equal((await canceled.run({ event: "6001" }, { signal: controller.signal })).error_kind, "canceled", "a canceled wait stops and conforms to the schema");
   const missing = harness("get_ticket_offers", { route: p => (p.startsWith("/hermes/api/v1/listings?") ? { status: 404, body: { error: "x" } } : null) });
   assert.equal((await missing.run({ event: "6001" })).error_kind, "not_found");
   assert.equal(missing.calls.fetches.length, 1, "a specific 404 is not retried");

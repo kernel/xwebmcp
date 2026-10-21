@@ -3,7 +3,7 @@
   match: { url_patterns: ["https://www.vividseats.com/*"] },
   tool: {
     name: "get_ticket_offers",
-    description: "List the ticket listings Vivid Seats currently shows for one event (production_id from search_events, or an event page URL): section, row, zone, tickets in the listing, the quantities it can be bought in, and the all-in price per ticket, cheapest first. Optionally keep only listings that can be bought in a given quantity, within a per-ticket all-in price range, or in one zone or section, and summarize the matches by zone or section. price_basis states what the site's all-in price includes for this event (for example fees and, for some venues, VAT); taxes and delivery charges it does not list may still be added at checkout, and this tool does not open checkout. Prices and availability change by the minute, so treat results as quotes observed at observed_at. Returns no_tickets when the event has no listings or none match the filters. For the first few minutes of a browser session Vivid Seats refuses every listings request, its event page's included, with a generic 404; this tool then keeps asking for up to 20 seconds before it reports that. Runs inside the current www.vividseats.com page without navigating and reads only; it never selects a listing, adds to a cart or buys, and it does not read the event's date (use search_events for that).",
+    description: "List the ticket listings Vivid Seats currently shows for one event (production_id from search_events, or an event page URL): section, row, zone, tickets in the listing, the quantities it can be bought in, and the all-in price per ticket, cheapest first. Optionally keep only listings that can be bought in a given quantity, within a per-ticket all-in price range, or in one zone or section, and summarize the matches by zone or section. price_basis states what the site's all-in price includes for this event (for example fees and, for some venues, VAT); taxes and delivery charges it does not list may still be added at checkout, and this tool does not open checkout. Prices and availability change by the minute, so treat results as quotes observed at observed_at. Returns no_tickets when the event has no listings or none match the filters. For the first few minutes of a browser session Vivid Seats refuses every listings request, its event page's included, with a generic 404; this tool then keeps asking for up to 45 seconds and, if they still do not load, returns not_ready: call it again, since listings usually load two to three minutes into a session. Runs inside the current www.vividseats.com page without navigating and reads only; it never selects a listing, adds to a cart or buys, and it does not read the event's date (use search_events for that).",
     inputSchema: {
       type: "object", additionalProperties: false, required: ["event"],
       properties: {
@@ -88,8 +88,13 @@
           properties: { status: { const: "no_tickets" }, production_id: { type: "integer" }, quantity: { type: ["integer", "null"] }, total_listings: { type: "integer", minimum: 0 }, reason: { type: "string" }, observed_at: { type: "string" } }
         },
         {
+          type: "object", additionalProperties: false, required: ["status", "production_id", "waited_seconds", "retry_after_seconds", "message"],
+          description: "Vivid Seats is not serving listings to this browser yet; call again after retry_after_seconds.",
+          properties: { status: { const: "not_ready" }, production_id: { type: "integer" }, waited_seconds: { type: "integer", minimum: 0 }, retry_after_seconds: { type: "integer", minimum: 0 }, message: { type: "string", minLength: 1 } }
+        },
+        {
           type: "object", additionalProperties: false, required: ["status", "error_kind", "error_message"],
-          properties: { status: { const: "error" }, error_kind: { enum: ["invalid_input", "unsupported_host", "not_found", "wrong_page", "challenge", "rate_limited", "price_basis_unavailable", "site_changed", "site_error"] }, error_message: { type: "string", minLength: 1 } }
+          properties: { status: { const: "error" }, error_kind: { enum: ["invalid_input", "unsupported_host", "not_found", "wrong_page", "challenge", "rate_limited", "price_basis_unavailable", "site_changed", "site_error", "canceled"] }, error_message: { type: "string", minLength: 1 } }
         }
       ]
     },
@@ -97,7 +102,7 @@
   },
   execute: async (input, { signal } = {}) => {
     const ORIGIN = "https://www.vividseats.com";
-    const RETRY_FOR_MS = 20000, RETRY_EVERY_MS = 5000;
+    const RETRY_FOR_MS = 45000, RETRY_EVERY_MS = 5000;
     const fail = (kind, message) => ({ status: "error", error_kind: kind, error_message: message });
     const allowed = ["event", "quantity", "min_price_per_ticket", "max_price_per_ticket", "zone", "section", "group_by", "limit"];
     if (!input || typeof input !== "object" || Array.isArray(input) || Object.keys(input).some(k => !allowed.includes(k))) return fail("invalid_input", "Unknown or missing input; allowed fields are " + allowed.join(", ") + ".");
@@ -169,7 +174,10 @@
         waited += RETRY_EVERY_MS;
         if (signal?.aborted) return fail("canceled", "The read was canceled while waiting for Vivid Seats' listings.");
       }
-      if (generic(res, body)) return fail("site_error", "Vivid Seats' listings service kept answering a generic 404 for production_id " + productionId + " for " + Math.round(waited / 1000) + " seconds. It answers every listings request this way for the first few minutes of a browser session (the event page's own listings panel then shows 'Sorry, there was an error'), and also for unknown events, so this does not show the event is missing. In tests they usually started loading two to three minutes after the browser opened, so calling again once or twice can help; some sessions never got them. Until they load there is no quantity-filtered price to read: the event page's preview rows and its 'from' price are for any quantity.");
+      if (generic(res, body)) return {
+        status: "not_ready", production_id: productionId, waited_seconds: Math.round(waited / 1000), retry_after_seconds: 0,
+        message: "Vivid Seats has not served listings to this browser yet: for the first few minutes of a browser session it answers every listings request, the event page's own included, with a generic 404 (the event page's listings panel then shows 'Sorry, there was an error'). This does not show the event is missing. Call this tool again now; listings usually load two to three minutes after the browser opened, and some sessions never get them. Until they load there is no quantity-filtered price to read: the event page's preview rows and its 'from' price are for any quantity."
+      };
       if (res.status === 404) return fail("not_found", "Vivid Seats has no event with production_id " + productionId + ".");
       if (res.status === 403) return fail("challenge", "Vivid Seats' bot protection refused the request (HTTP 403); resolve access normally before trying again.");
       if (res.status === 429) return fail("rate_limited", "Vivid Seats rate-limited the request (HTTP 429); wait before asking again.");
