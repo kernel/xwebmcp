@@ -15,7 +15,7 @@
     { "path": "apps[].review_count", "range": [0, 10000000] },
     { "path": "apps[].cheapest_paid_monthly_price", "range": [0, 10000] }
   ],
-  "agreement": { "path": "apps[].app", "same": true },
+  "agreement": { "path": "apps", "same": true },
   "pairs": 5,
   "trial_timeout_sec": 600,
   "max_turns": 40

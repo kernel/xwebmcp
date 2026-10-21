@@ -16,7 +16,7 @@
     { "path": "games[].price", "range": [1, 100] },
     { "path": "games[].review_summary", "matches": "positive|mixed|negative" }
   ],
-  "agreement": { "path": "games[].price", "same": true },
+  "agreement": { "path": "games", "same": true },
   "pairs": 5,
   "trial_timeout_sec": 600,
   "max_turns": 40
