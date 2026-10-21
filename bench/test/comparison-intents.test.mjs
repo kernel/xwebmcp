@@ -3,8 +3,8 @@ import { dirname, join } from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 import { gradeAnswer } from "../grade.mjs";
-import { loadIntents, loadSchema } from "../lib/intents.mjs";
-import { pairStats } from "../report.mjs";
+import { loadIntents, loadSchema, trialPrompt } from "../lib/intents.mjs";
+import { answerCheck, pairStats } from "../report.mjs";
 
 const benchDir = join(dirname(fileURLToPath(import.meta.url)), "..");
 const intents = loadIntents(benchDir);
@@ -41,4 +41,21 @@ test("Steam comparison agreement keeps prices and review summaries attached to t
   check(games.map((g, i) => ({ ...g, price: games[(i + 1) % games.length].price })), 1);
   check([{ ...games[0], review_summary: "Mixed" }, ...games.slice(1)], 1);
   check(games.toReversed(), 1);
+});
+
+test("Steam comparison requires canonical game labels instead of ambiguous title variants", () => {
+  const intent = intents.find(i => i.id === "steam-compare-series");
+  const schema = loadSchema(benchDir, intent);
+  const games = ["Civilization V", "Civilization VI", "Civilization VII"].map(game => ({
+    game, price: 29.99, review_summary: "Very Positive"
+  }));
+  const grade = value => gradeAnswer(intent, schema, JSON.stringify({ games: value }));
+  assert.equal(grade(games).outcome, "correct");
+  for (const game of ["Sid Meier's Civilization® V", "Civilization IV", "Civilization VI"]) {
+    assert.equal(grade([{ ...games[0], game }, ...games.slice(1)]).outcome, "wrong", game);
+  }
+  const prompt = trialPrompt(intent, null);
+  assert.match(prompt, /Use exactly "Civilization V", "Civilization VI" and "Civilization VII" as the game values/);
+  assert.match(prompt, /English Reviews \(not Recent Reviews\)/);
+  assert.equal(answerCheck(intent), "agreement", "fixed game labels do not pin the prices or reviews");
 });
