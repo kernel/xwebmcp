@@ -1,0 +1,5 @@
+{
+  "actions": {
+    "set_delivery_address": "sets a signed-out visit's delivery address, as the header's address picker does"
+  }
+}

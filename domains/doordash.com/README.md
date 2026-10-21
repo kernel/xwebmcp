@@ -10,3 +10,4 @@
 | register | Creates a DoorDash consumer account from the email sign-up form, or submits a visible six-digit sign-up verification code; refuses when already signed in. |
 | remove_cart_item | Remove exactly one existing line from an ordinary personal DoorDash cart using the site's removeCartItem operation. |
 | save_address | Makes a delivery address the account's current default: selects it if already saved, otherwise adds it from DoorDash's autocomplete with optional details. |
+| set_delivery_address | Sets a signed-out visit's delivery address from DoorDash's address autocomplete, as the header's address picker does, and confirms it from the site's answer. |

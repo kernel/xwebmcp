@@ -1512,6 +1512,20 @@
       }
     },
     {
+      "domain": "doordash.com",
+      "tool": "set_delivery_address",
+      "file": "domains/doordash.com/set_delivery_address.js",
+      "kind": "page",
+      "namespace": "doordash.com",
+      "url_patterns": [
+        "https://www.doordash.com/*"
+      ],
+      "url_patterns_reason": "Narrowed to www.doordash.com, the consumer marketplace: these tools call its same-origin GraphQL endpoint with the page's session; other doordash.com hosts are separate products such as the merchant portal and help center.",
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Signed-out visits only; refuses when the dd_cx_logged_in cookie is set (save_address covers accounts). Sends the address picker's own three requests (autocomplete, get-or-create, addConsumerAddressV2) and confirms the address from DoorDash's answer; does not navigate. Draft, no independent QA. Live on 2026-10-21 in a signed-out Kernel browser: 'Times Square, New York, NY 10036' set 4 Times Sq in under a second and the header showed it after loading /home; an address with no suggestions returned address_not_found."
+    },
+    {
       "domain": "etsy.com",
       "tool": "add_to_cart",
       "file": "domains/etsy.com/add_to_cart.js",
