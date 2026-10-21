@@ -710,8 +710,8 @@ test("get_ticket_offers keeps asking while the listings service answers its gene
   const never = harness("get_ticket_offers", { route: p => (p.startsWith("/hermes/api/v1/listings?") ? { status: 404, body: { error: "Request failed with status code 404" } } : null) });
   const failed = await never.run({ event: "6001" });
   assert.equal(failed.error_kind, "site_error");
-  assert.match(failed.error_message, /for 40 seconds.*Call this tool again/);
-  assert.equal(never.calls.fetches.length, 9, "one request plus eight retries five seconds apart");
+  assert.match(failed.error_message, /for 20 seconds.*for any quantity/);
+  assert.equal(never.calls.fetches.length, 5, "one request plus four retries five seconds apart");
   const missing = harness("get_ticket_offers", { route: p => (p.startsWith("/hermes/api/v1/listings?") ? { status: 404, body: { error: "x" } } : null) });
   assert.equal((await missing.run({ event: "6001" })).error_kind, "not_found");
   assert.equal(missing.calls.fetches.length, 1, "a specific 404 is not retried");
