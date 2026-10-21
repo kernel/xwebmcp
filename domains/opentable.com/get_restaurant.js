@@ -8,7 +8,7 @@
       type: "object", additionalProperties: false,
       properties: {
         restaurant_id: { type: "integer", minimum: 1, maximum: 2147483647, description: "OpenTable's numeric restaurant id, e.g. restaurant_id from search_restaurants. Give this or url." },
-        url: { type: "string", minLength: 1, maxLength: 300, description: "A restaurant page URL on www.opentable.com, https://www.opentable.com/r/<slug> or /restaurant/profile/<id>, or just that path. Query string and fragment are ignored. Older /<slug> links are not accepted; use restaurant_id for those. Give this or restaurant_id." },
+        url: { type: "string", minLength: 1, maxLength: 300, description: "A restaurant page URL on www.opentable.com, https://www.opentable.com/r/<slug>, /<slug> (the short address, e.g. /kokkari-estiatorio) or /restaurant/profile/<id>, or just that path. Query string and fragment are ignored. A path that is not a restaurant page returns not_found. Give this or restaurant_id." },
         include_menus: { type: "boolean", default: false, description: "Also return the menus published on OpenTable." }
       },
       oneOf: [{ required: ["restaurant_id"] }, { required: ["url"] }]
@@ -145,7 +145,9 @@
       if (u.hostname.toLowerCase() !== "www.opentable.com") return fail("unsupported_host", "Only https://www.opentable.com restaurant pages are supported; " + u.hostname + " is a different site.");
       if (u.username || u.password || u.port) return fail("invalid_input", "url must not include credentials or a port.");
       const byId = /^\/restaurant\/profile\/(\d{1,10})\/?$/.exec(u.pathname);
-      if (!/^\/r\/[A-Za-z0-9][A-Za-z0-9_-]{0,119}\/?$/.test(u.pathname) && !(byId && Number(byId[1]) >= 1 && Number(byId[1]) <= 2147483647)) return fail("invalid_input", "url must be /r/<slug> or /restaurant/profile/<id> on www.opentable.com. Older /<slug> profile links are not accepted because they look like any other site page; pass restaurant_id (from search_restaurants) instead.");
+      // A short /<slug> address must look like a restaurant name, so account paths such as /logout are never requested.
+      const short = /^\/[A-Za-z0-9]+(?:-[A-Za-z0-9]+)+\/?$/.test(u.pathname) && u.pathname.length <= 121 && !/(?:^|[\/-])(?:log|sign|logout|signout|auth|account|user|my|profile|booking|reservation|cancel|delete|unsubscribe)(?:-|\/|$)/i.test(u.pathname);
+      if (!/^\/r\/[A-Za-z0-9][A-Za-z0-9_-]{0,119}\/?$/.test(u.pathname) && !short && !(byId && Number(byId[1]) >= 1 && Number(byId[1]) <= 2147483647)) return fail("invalid_input", "url must be /r/<slug>, a short /<name-slug> restaurant address or /restaurant/profile/<id> on www.opentable.com.");
       path = u.pathname.replace(/\/$/, "");
     }
 
@@ -164,7 +166,6 @@
     try {
       if (signal?.aborted) return fail("canceled", "The profile read was canceled before any request.");
       if (window.location.origin !== ORIGIN) return fail("wrong_page", "Open any https://www.opentable.com page first; this tool reads the restaurant page from that page.");
-      if (/access denied/i.test(document.title || "")) return fail("challenge", "OpenTable's bot protection is showing 'Access Denied' to this browser; wait or use a different browser session.");
 
       const res = await fetch(path, { credentials: "same-origin", headers: { accept: "text/html" }, signal });
       const html = await res.text();

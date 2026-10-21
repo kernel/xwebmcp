@@ -272,11 +272,11 @@ test("search_restaurants reports wrong pages, bot protection, rate limits and si
   const wrong = await run("search_restaurants", input, { origin: "https://help.opentable.com", ...ok(pageHtml(state)) });
   assert.equal(wrong.output.error_kind, "wrong_page");
   assert.equal(wrong.calls.fetch.length, 0);
-  const paused = await run("search_restaurants", input, { title: "Access Denied", ...ok(pageHtml(state)) });
-  assert.equal(paused.output.error_kind, "challenge");
-  assert.equal(paused.calls.fetch.length, 0);
+  const fromDenied = await run("search_restaurants", input, { title: "Access Denied", ...ok(pageHtml(state)) });
+  assert.equal(fromDenied.output.status, "ok", "the search page is requested even when the current document was refused");
   const denied = await run("search_restaurants", input, { respond: () => ({ status: 403, html: "<HTML><HEAD><TITLE>Access Denied</TITLE></HEAD><BODY>Reference #18.abc</BODY></HTML>" }) });
   assert.equal(denied.output.error_kind, "challenge");
+  assert.match(denied.output.error_message, /get_restaurant with url '\/<name-as-slug>'/);
   const deniedWith200 = await run("search_restaurants", input, { respond: () => ({ html: "<html><head><title>Access Denied</title></head><body></body></html>" }) });
   assert.equal(deniedWith200.output.error_kind, "challenge");
   const limited = await run("search_restaurants", input, { respond: () => ({ status: 429, html: "" }) });
@@ -294,7 +294,7 @@ test("search_restaurants reports wrong pages, bot protection, rate limits and si
   const thrown = await run("search_restaurants", input, { respond: () => new Error("network down") });
   assert.equal(thrown.output.error_kind, "site_error");
   assert.match(thrown.output.error_message, /network down/);
-  for (const r of [wrong, paused, denied, deniedWith200, limited, broken, noScript, badJson, noSearch, serverError, thrown]) {
+  for (const r of [wrong, denied, deniedWith200, limited, broken, noScript, badJson, noSearch, serverError, thrown]) {
     assert.equal(r.output.status, "error");
     assertConforms("search_restaurants", r.output);
   }
@@ -342,14 +342,16 @@ test("get_restaurant reads the profile by id and maps an allowlist of fields", a
   assertConforms("get_restaurant", output);
 });
 
-test("get_restaurant accepts only /r/<slug> and /restaurant/profile/<id> pages and rejects every other path before fetching", async () => {
+test("get_restaurant accepts only /r/<slug>, /<slug> and /restaurant/profile/<id> pages and rejects every other path before fetching", async () => {
   const html = ok(pageHtml(profileState(555)));
   const accepted = [
     ["https://www.opentable.com/r/fake-bistro-fakeville?covers=2&dateTime=x#reviews", "/r/fake-bistro-fakeville"],
     ["/r/fake-bistro/", "/r/fake-bistro"],
     ["  /r/fake_bistro-2  ", "/r/fake_bistro-2"],
     ["https://www.opentable.com/restaurant/profile/555", "/restaurant/profile/555"],
-    ["/restaurant/profile/2147483647/", "/restaurant/profile/2147483647"]
+    ["/restaurant/profile/2147483647/", "/restaurant/profile/2147483647"],
+    ["https://www.opentable.com/the-hamilton", "/the-hamilton"],
+    ["/the-hamilton/", "/the-hamilton"]
   ];
   for (const [url, path] of accepted) {
     const { output, calls } = await run("get_restaurant", { url }, html);
@@ -357,10 +359,11 @@ test("get_restaurant accepts only /r/<slug> and /restaurant/profile/<id> pages a
     assert.equal(calls.fetch[0].path, path, url);
     assert.equal(output.status, "ok", url);
   }
-  // Site pages that are not restaurant profiles must never be fetched, including account and booking paths and legacy /<slug> links.
+  // Account, sign-out and booking paths are never fetched, nor are single words that cannot be a restaurant's short address.
   const notProfiles = [
-    "/private-dining", "/s", "/logout", "/user/favorites", "/restref", "/restref/client/?rid=1", "/booking/details", "/authenticate/start", "/dapi/v1/session", "/nearby",
-    "/the-hamilton", "https://www.opentable.com/the-hamilton", "/r", "/r/", "/r/a/b", "/r/../s", "/r/..%2Fuser", "/r/caf%C3%A9", "/private-dining/profile/x", "/restaurant/profile/", "/restaurant/profile/abc",
+    "/s", "/logout", "/restref", "/nearby", "/log-out", "/sign-out", "/user-profile", "/cancel-reservation", "/my-account", "/the-hamilton/reviews",
+    "/user/favorites", "/restref/client/?rid=1", "/booking/details", "/authenticate/start", "/dapi/v1/session",
+    "/r/", "/r/a/b", "/r/../s", "/r/..%2Fuser", "/r/caf%C3%A9", "/private-dining/profile/x", "/restaurant/profile/", "/restaurant/profile/abc",
     "/restaurant/profile/0", "/restaurant/profile/2147483648", "/restaurant/profile/99999999999", "/restaurant/profile/5/extra", "/",
     "/foo/r/x", "/private-dining/r/x", "/x/restaurant/profile/5", "/r/" + "a".repeat(121), "/r/-leading-dash", "/r/_x"
   ];
@@ -378,7 +381,6 @@ test("get_restaurant accepts only /r/<slug> and /restaurant/profile/<id> pages a
     assert.ok(["invalid_input", "unsupported_host"].includes(r.output.error_kind), url);
   }
   assert.equal((await run("get_restaurant", { url: "https://www.opentable.com:443/r/fake" }, html)).calls.fetch[0].path, "/r/fake", "the default port is fine");
-  assert.match((await run("get_restaurant", { url: "/the-hamilton" }, html)).output.error_message, /restaurant_id/, "the message points legacy links to restaurant_id");
   const bad = [
     [{}, "invalid_input"], [{ restaurant_id: 5, url: "/r/x" }, "invalid_input"], [{ restaurant_id: 0 }, "invalid_input"], [{ restaurant_id: 1.5 }, "invalid_input"], [{ restaurant_id: "7" }, "invalid_input"],
     [{ restaurant_id: 2147483648 }, "invalid_input"], [{ url: "" }, "invalid_input"], [{ url: 5 }, "invalid_input"], [{ url: "x".repeat(301) }, "invalid_input"],
@@ -483,9 +485,10 @@ test("get_restaurant reports missing pages, wrong pages, id mismatches and bot p
   const wrong = await run("get_restaurant", { restaurant_id: 555 }, { origin: "https://www.opentable.ca", ...ok(pageHtml(state)) });
   assert.equal(wrong.output.error_kind, "wrong_page");
   assert.equal(wrong.calls.fetch.length, 0);
-  const paused = await run("get_restaurant", { restaurant_id: 555 }, { title: "Access Denied", ...ok(pageHtml(state)) });
-  assert.equal(paused.output.error_kind, "challenge");
-  assert.equal(paused.calls.fetch.length, 0);
+  const fromDenied = await run("get_restaurant", { restaurant_id: 555 }, { title: "Access Denied", ...ok(pageHtml(state)) });
+  assert.equal(fromDenied.output.status, "ok", "restaurant pages are read even when the current document was refused");
+  const notRestaurant = await run("get_restaurant", { url: "/private-dining" }, ok(pageHtml(searchState([]))));
+  assert.equal(notRestaurant.output.error_kind, "not_found");
   const denied = await run("get_restaurant", { restaurant_id: 555 }, { respond: () => ({ status: 403, html: "<title>Access Denied</title>" }) });
   assert.equal(denied.output.error_kind, "challenge");
   const limited = await run("get_restaurant", { restaurant_id: 555 }, { respond: () => ({ status: 429, html: "" }) });
@@ -494,7 +497,7 @@ test("get_restaurant reports missing pages, wrong pages, id mismatches and bot p
   assert.equal(noScript.output.error_kind, "site_changed");
   const thrown = await run("get_restaurant", { restaurant_id: 555 }, { respond: () => new Error("boom") });
   assert.equal(thrown.output.error_kind, "site_error");
-  for (const r of [missing, notProfile, mismatch, changed, wrong, paused, denied, limited, noScript, thrown]) assertConforms("get_restaurant", r.output);
+  for (const r of [missing, notProfile, mismatch, changed, wrong, fromDenied, notRestaurant, denied, limited, noScript, thrown]) assertConforms("get_restaurant", r.output);
 });
 
 // --- get_reviews -----------------------------------------------------------------------------------
@@ -555,7 +558,7 @@ test("get_reviews rejects malformed input and reports site problems explicitly",
     [{}, "invalid_input"], [{ restaurant_id: 5, url: "/r/x" }, "invalid_input"], [{ restaurant_id: 0 }, "invalid_input"], [{ restaurant_id: 555, page: 0 }, "invalid_input"], [{ restaurant_id: 555, page: 5001 }, "invalid_input"],
     [{ restaurant_id: 555, page: "2" }, "invalid_input"], [{ restaurant_id: 555, page: 1.5 }, "invalid_input"], [{ restaurant_id: 555, sort: "oldest" }, "invalid_input"],
     [{ url: "https://evil.example.test/r/x" }, "unsupported_host"], [{ url: "/private-dining/profile/x" }, "invalid_input"], [{ url: "http://www.opentable.com/r/x" }, "invalid_input"],
-    [{ url: "/private-dining" }, "invalid_input"], [{ url: "/s" }, "invalid_input"], [{ url: "/logout" }, "invalid_input"], [{ url: "/restref" }, "invalid_input"], [{ url: "/the-hamilton" }, "invalid_input"],
+    [{ url: "/my-account" }, "invalid_input"], [{ url: "/s" }, "invalid_input"], [{ url: "/logout" }, "invalid_input"], [{ url: "/restref" }, "invalid_input"], [{ url: "/sign-out" }, "invalid_input"],
     [{ url: "https://www.opentable.com/user/favorites", page: 2 }, "invalid_input"], [{ url: "/r/../s" }, "invalid_input"], [{ url: "javascript:alert(1)" }, "invalid_input"], [{ url: "/restaurant/profile/2147483648" }, "invalid_input"],
     [{ url: "/restaurant/profile/0" }, "invalid_input"], [{ url: "/foo/r/x" }, "invalid_input"], [{ url: "/r/" + "a".repeat(121) }, "invalid_input"], [{ url: "https://user:pw@www.opentable.com/r/x" }, "invalid_input"],
     [{ url: "https://www.opentable.com:8443/r/x" }, "invalid_input"]
@@ -568,7 +571,6 @@ test("get_reviews rejects malformed input and reports site problems explicitly",
   }
   const cases = [
     [{ origin: "https://help.opentable.com", ...html }, "wrong_page"],
-    [{ title: "Access Denied", ...html }, "challenge"],
     [{ respond: () => ({ status: 403, html: "<title>Access Denied</title>" }) }, "challenge"],
     [{ respond: () => ({ status: 429, html: "" }) }, "rate_limited"],
     [{ respond: () => ({ status: 404, html: "" }) }, "not_found"],

@@ -46,7 +46,7 @@
                   rank: { type: "integer", minimum: 1, description: "Position in the site's ordering across pages." },
                   restaurant_id: { type: "integer", description: "OpenTable's numeric restaurant id." },
                   name: { type: "string", maxLength: 200 },
-                  url: { type: "string", format: "uri", maxLength: 400, description: "Profile page on www.opentable.com. Older restaurants use /<slug> links, which the other tools do not accept; pass restaurant_id to them." },
+                  url: { type: "string", format: "uri", maxLength: 400, description: "Profile page on www.opentable.com." },
                   cuisine: { type: ["string", "null"] },
                   price_level: { type: ["integer", "null"], description: "The site's price band id; higher is more expensive." },
                   price_label: { type: ["string", "null"], description: "The site's price band text, e.g. '$31 to $50'." },
@@ -125,7 +125,6 @@
     try {
       if (signal?.aborted) return fail("canceled", "The search was canceled before any request.");
       if (window.location.origin !== ORIGIN) return fail("wrong_page", "Open any https://www.opentable.com page first; this tool reads the site's search page from that page.");
-      if (/access denied/i.test(document.title || "")) return fail("challenge", "OpenTable's bot protection is showing 'Access Denied' to this browser; wait or use a different browser session.");
 
       const params = new URLSearchParams();
       if (date) params.set("dateTime", date + "T" + time + ":00");
@@ -136,7 +135,7 @@
       const html = await res.text();
       const title = /<title[^>]*>([^<]*)/i.exec(html)?.[1] ?? "";
       if (res.status === 429) return fail("rate_limited", "OpenTable answered HTTP 429; wait a few minutes before searching again.");
-      if (res.status === 403 || /access denied/i.test(title)) return fail("challenge", "OpenTable's bot protection refused the request (HTTP " + res.status + ", 'Access Denied'); wait a few minutes and avoid rapid repeated calls.");
+      if (res.status === 403 || /access denied/i.test(title)) return fail("challenge", "OpenTable refused its search page to this browser (HTTP " + res.status + ", 'Access Denied'), and searching again soon is unlikely to help. Its restaurant pages usually still load, and get_restaurant, get_reviews and get_availability read them from any www.opentable.com page, including an 'Access Denied' one: for a restaurant you can name, call get_restaurant with url '/<name-as-slug>', OpenTable's short restaurant address (for example '/kokkari-estiatorio' for Kokkari Estiatorio), to get its restaurant_id.");
       if (res.status >= 400) return fail("site_error", "OpenTable search returned HTTP " + res.status + ".");
       const tag = /<script\b[^>]*\bid="primary-window-vars"[^>]*>([\s\S]*?)<\/script>/.exec(html);
       if (!tag) {

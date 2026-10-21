@@ -217,7 +217,6 @@
     if (input.window_minutes !== undefined && (!Number.isInteger(input.window_minutes) || input.window_minutes < 0 || input.window_minutes > 120)) return fail("invalid_input", "window_minutes must be an integer from 0 to 120.");
     if (signal?.aborted) return fail("canceled", "The read was canceled before any request.");
     if (window.location.origin !== ORIGIN) return fail("wrong_page", "Open a https://www.opentable.com page first.");
-    if (/access denied/i.test(document.title || "") || document.querySelector("#sec-if-cpt-container, #sec-bc-tile-parent")) return fail("challenge", "OpenTable is challenging this browser; no request was sent.");
     const check = (res, text) => {
       if (res.status === 429) return fail("rate_limited", "OpenTable rate limited the request; nothing was retried.");
       const hasState = /<script\b[^>]*\bid="primary-window-vars"/.test(text);

@@ -92,10 +92,17 @@ test("wrong host, challenge and cancellation guards issue zero requests", async 
   for (const name of names) {
     const valid = name.includes("account") || name.includes("saved") ? account : query;
     await failure(name, valid, "wrong_page", { origin: "https://example.test" }, 0);
-    await failure(name, valid, "challenge", { title: "Access Denied" }, 0);
-    await failure(name, valid, "challenge", { challenge: true }, 0);
+    if (name !== "get_availability") {
+      await failure(name, valid, "challenge", { title: "Access Denied" }, 0);
+      await failure(name, valid, "challenge", { challenge: true }, 0);
+    }
     await failure(name, valid, "canceled", { signal: { aborted: true } }, 0);
   }
+});
+
+test("get_availability still reads from a document OpenTable answered with 'Access Denied'", async () => {
+  const out = await run("get_availability", query, { title: "Access Denied", challenge: true });
+  assert.equal(out.result.status, "ok");
 });
 
 test("availability only sends the observed read query and never returns credentials or raw state", async () => {
