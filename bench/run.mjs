@@ -540,13 +540,20 @@ async function setUpBrowser(plan, intentPlan, arm, label) {
 }
 
 // Reads where a prepare intent's agent left the browser from the page itself, the same way in both
-// arms, so the grade does not depend on the tools under test. A page that cannot be read aborts the
-// trial rather than grading it wrong.
+// arms, so the grade does not depend on the tools under test. An agent can finish while its last
+// action is still loading a page, so a read the navigation interrupts is tried again on the new page.
+// A page that cannot be read aborts the trial rather than grading it wrong.
 async function readEndState(browser, intent) {
-  try {
-    return { output: await browsers.evaluate(browser, readPage, readPageArg(intent.check.fields)) };
-  } catch (error) {
-    throw new Error(`could not read the end state: ${error.message}`);
+  for (let attempt = 1; ; attempt++) {
+    try {
+      return { output: await browsers.evaluate(browser, readPage, readPageArg(intent.check.fields)) };
+    } catch (error) {
+      if (attempt < 3 && /Execution context was destroyed/.test(error.message)) {
+        await new Promise(resolve => setTimeout(resolve, 3000));
+        continue;
+      }
+      throw new Error(`could not read the end state: ${error.message}`);
+    }
   }
 }
 
