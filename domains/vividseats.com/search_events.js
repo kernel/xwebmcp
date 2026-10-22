@@ -3,7 +3,7 @@
   match: { url_patterns: ["https://www.vividseats.com/*"] },
   tool: {
     name: "search_events",
-    description: "Search Vivid Seats (US marketplace, USD) for events by text, place, dates, category, performer, venue or a lowest-price ceiling, using the same JSON search the site's Explore and results pages call. For the first few minutes of a browser session Vivid Seats answers that search with a generic 404; a text search then reads the site's own search page instead (a team, artist or show name opens its page of upcoming events), and warnings name any filter that page did not apply. Returns the production_id (pass it to get_ticket_offers), name, local date and time at the venue, venue, performers, distance from the searched place, listing and ticket counts, and the lowest and highest all-in ticket price the site shows for the event. Prices and counts come from the site's search index, which lags live inventory: an event can show tickets here and none on its page, so treat them as a rough guide and confirm with get_ticket_offers. Results are one page at a time (page, page_size); the site never reports more than 1000 matches. Parking passes are excluded unless exclude_parking is false. Runs inside the current www.vividseats.com page without navigating and reads only; it does not sign in, add to a cart or buy.",
+    description: "Search Vivid Seats (US marketplace, USD) for events by text, place, dates, category, performer, venue or a lowest-price ceiling, using the same JSON search the site's Explore and results pages call. For the first few minutes of a browser session Vivid Seats answers that search with a generic 404; a text search then reads the site's own search page instead (a team, artist or show name opens its page of upcoming events), unless that page cannot apply a requested date, category, performer, venue or price filter, when it returns site_error rather than unfiltered results. Returns the production_id (pass it to get_ticket_offers), name, local date and time at the venue, venue, performers, distance from the searched place, listing and ticket counts, and the lowest and highest all-in ticket price the site shows for the event. Prices and counts come from the site's search index, which lags live inventory: an event can show tickets here and none on its page, so treat them as a rough guide and confirm with get_ticket_offers. Results are one page at a time (page, page_size); the site never reports more than 1000 matches. Parking passes are excluded unless exclude_parking is false. Runs inside the current www.vividseats.com page without navigating and reads only; it does not sign in, add to a cart or buy.",
     inputSchema: {
       type: "object", additionalProperties: false,
       properties: {
@@ -202,13 +202,15 @@
       }
       if (!found || (found.data.i18n && found.data.i18n.to !== "USD")) return null;
       const datesApplied = (!startDate || found.params.startDate === startDate) && (!endDate || found.params.endDate === endDate);
+      // Results the caller narrowed are never returned unnarrowed; only the default parking exclusion is reported instead.
       const ignored = [
         !datesApplied && "start_date/end_date", category && "category", checks.performer.value && "performer_id", checks.venue.value && "venue_id",
-        checks.ceiling.value && "max_lowest_all_in_price", excludeParking && !/\/performer\//.test(found.url.pathname) && "exclude_parking"
+        checks.ceiling.value && "max_lowest_all_in_price"
       ].filter(Boolean);
+      if (ignored.length) return { ignored };
       const pages = Math.ceil(found.data.total / pageSize);
       const notes = ["Vivid Seats' JSON search answered a generic 404, as it does early in a browser session, so these results come from the site's own page " + found.url.pathname + ", in its order."];
-      if (ignored.length) notes.push("That page did not apply " + ignored.join(", ") + "; check those fields on each event.");
+      if (excludeParking && !/\/performer\//.test(found.url.pathname)) notes.push("That page did not apply exclude_parking; parking passes may be listed as events.");
       if (found.data.total > pageSize) notes.push("Later pages need the JSON search; call again with page 2 in a minute.");
       return { body: { items: found.data.items, total: found.data.total, numberOfPages: pages, page: 1, i18n: { to: "USD" } }, notes };
     };
@@ -253,6 +255,7 @@
       if (response.status === 404 && response.body && typeof response.body.message === "string" && /date has passed/i.test(response.body.message)) return { status: "no_results", query: echo(), resolved_location: resolved, observed_at: observedAt, message: "Vivid Seats lists only upcoming events; the requested dates are before today." };
       const generic = response.status === 404 && /^Request failed with status code 404$/.test(response.body?.error);
       const fallback = generic && query && !place && page === 1 && sort === "date" ? await fromSearchPage() : null;
+      if (fallback?.ignored) return fail("site_error", "Vivid Seats' JSON search answered a generic 404, as it does early in a browser session, and the site's own search page cannot apply " + fallback.ignored.join(", ") + ", so no unfiltered results are returned. Call again in a minute, or search without those filters.");
       const result = fallback ? { body: fallback.body } : checked(response, "Vivid Seats search");
       if (result.error) return result.error;
       const body = result.body;

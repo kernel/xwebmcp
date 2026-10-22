@@ -217,7 +217,13 @@
       if (signal?.aborted) return { error: fail("canceled", "The read was canceled; no selection or reservation was made.") };
       if (response.status === 403) return { error: fail("challenge", "The site refused the read (HTTP 403); resolve access normally.") };
       if (response.status === 429) return { error: fail("rate_limited", "The site rate-limited the read; wait before trying again.") };
-      if (response.status === 404) return { error: fail("not_found", "The requested public page or inventory was not found.") };
+      if (response.status === 404) {
+        // Early in a browser session the listings proxy answers this generic 404 even for an event whose page just loaded.
+        let generic = false;
+        try { generic = json && JSON.parse(await response.text()).error === "Request failed with status code 404"; } catch { /* not JSON */ }
+        if (generic) return { error: fail("site_error", "Vivid Seats is not serving listings to this browser yet, as early in a session; the listing may still exist. Call get_ticket_offers, which waits for listings, then prepare again.") };
+        return { error: fail("not_found", "The requested public page or inventory was not found.") };
+      }
       if (!response.ok) return { error: fail("site_error", "The site returned HTTP " + response.status + ".") };
       const text = await response.text();
       let data;

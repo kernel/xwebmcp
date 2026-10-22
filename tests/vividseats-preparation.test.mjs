@@ -82,6 +82,7 @@ function harness(name, options = {}) {
       const json = path.startsWith("/hermes/api/v1/listings?");
       const data = json ? inventory : path === eventPath ? (options.eventData ?? eventData) : path === venuePath ? (options.venueData ?? venueData) : null;
       assert.ok(data, "unexpected request: " + path);
+      if (json && options.listingsError) return { status: 404, ok: false, text: async () => JSON.stringify({ error: options.listingsError }) };
       const status = options.http ?? 200;
       return { status, ok: status >= 200 && status < 300, text: async () => options.raw ?? (json ? JSON.stringify(data) : `<script id="__NEXT_DATA__">${JSON.stringify(data)}</script>`) };
     }
@@ -332,4 +333,13 @@ test("prepare_ticket_selection: no duplicate write or state cache on repeat", as
   assert.equal((await h.run(preparedInput)).status, "prepared");
   assert.equal((await h.run(preparedInput)).status, "prepared");
   assert.equal(h.calls.length, 4);
+});
+
+test("prepare_ticket_selection: the listings proxy's early-session generic 404 is not a missing listing", async () => {
+  const early = harness("prepare_ticket_selection", { listingsError: "Request failed with status code 404" });
+  const result = await early.run(preparedInput);
+  assert.equal(result.error_kind, "site_error");
+  assert.match(result.error_message, /not serving listings.*get_ticket_offers/);
+  assert.equal(early.calls.length, 2, "one read of the event page and one of the listings, no retry");
+  assert.equal((await harness("prepare_ticket_selection", { listingsError: "No production" }).run(preparedInput)).error_kind, "not_found");
 });
