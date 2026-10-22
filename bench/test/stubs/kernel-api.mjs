@@ -7,7 +7,8 @@
 // STUB_LIVE_CUSTOM_ARMS a custom tool is live without being registered, and in those tagged with an
 // arm listed in STUB_OFF_PAGE_ARMS registered tools are listed without a page. Reading cookies fails
 // in browsers tagged with an arm listed in STUB_COOKIES_FAIL_ARMS, and reading the page in those
-// listed in STUB_PAGE_FAIL_ARMS.
+// listed in STUB_PAGE_FAIL_ARMS; in those listed in STUB_PAGE_NAVIGATING_ARMS the first read fails as
+// if the page were navigating.
 import { readFileSync, writeFileSync } from "node:fs";
 import { createServer } from "node:http";
 
@@ -58,7 +59,12 @@ async function handle(request, url, body) {
   if (route.endsWith("/playwright/execute")) {
     const { code } = JSON.parse(body);
     if (code.includes("context.cookies") && listed("STUB_COOKIES_FAIL_ARMS", arm)) return [200, { success: false, error: "Target page, context or browser has been closed" }];
-    if (code.includes("fields") && listed("STUB_PAGE_FAIL_ARMS", arm)) return [200, { success: false, error: "Execution context was destroyed" }];
+    if (code.includes("fields") && listed("STUB_PAGE_FAIL_ARMS", arm)) return [200, { success: false, error: "Target page, context or browser has been closed" }];
+    if (code.includes("fields") && listed("STUB_PAGE_NAVIGATING_ARMS", arm) && !browser.pageRead) {
+      browser.pageRead = true;
+      save();
+      return [200, { success: false, error: "Execution context was destroyed, most likely because of a navigation" }];
+    }
     if (code.includes("context.cookies")) {
       // The guard's cookie sits on the checkout host, not on the page the agent ended on.
       const blocked = listed("STUB_SUBMIT_ARMS", arm) ? [{ name: "bench_submit_blocked", value: "1", domain: "checkout.example.com" }] : [];

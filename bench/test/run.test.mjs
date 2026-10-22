@@ -231,6 +231,13 @@ test("a checkout trial whose guard count or end state cannot be read aborts", { 
   }
 });
 
+test("an end state read that a navigation interrupts is read again from the new page", { timeout: 120_000 }, () => {
+  const { run, rows } = workspace({ domain: { actions: { add: "adds to the cart" } }, intent: checkoutIntent });
+  const result = run("navigating", { STUB_PAGE_NAVIGATING_ARMS: "treatment" });
+  assert.equal(result.status, 0, result.stderr + result.stdout);
+  assert.deepEqual(rows("navigating").map(r => [r.arm, r.outcome]).sort(), [["control", "correct"], ["treatment", "correct"]]);
+});
+
 test("an opt_in intent runs only when named with --intent", { timeout: 120_000 }, () => {
   const { run } = workspace({ intent: { ...lookupIntent, opt_in: "not rehearsed" } });
   const unnamed = run("opt-in");

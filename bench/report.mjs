@@ -53,9 +53,10 @@ export function armStats(rows) {
   };
 }
 
-// Strings compare case- and whitespace-insensitively, and objects regardless of key order.
+// Strings compare case- and whitespace-insensitively and without the trademark symbols agents copy
+// inconsistently from names, and objects regardless of key order.
 const canonical = (value) => JSON.stringify(value, (key, v) => {
-  if (typeof v === "string") return v.trim().toLowerCase().replace(/\s+/g, " ");
+  if (typeof v === "string") return v.replace(/[™®℠©]/g, "").trim().toLowerCase().replace(/\s+/g, " ");
   if (v && typeof v === "object" && !Array.isArray(v)) return Object.fromEntries(Object.entries(v).sort(([a], [b]) => a.localeCompare(b)));
   return v;
 });
