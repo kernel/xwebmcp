@@ -143,7 +143,8 @@
     if (input.sort !== undefined && !["popular", "date"].includes(input.sort)) return fail("invalid_input", "sort must be popular or date.");
     if (input.exclude_parking !== undefined && typeof input.exclude_parking !== "boolean") return fail("invalid_input", "exclude_parking must be true or false.");
     const sort = input.sort ?? "date", excludeParking = input.exclude_parking ?? true, category = input.category ?? null;
-    const page = checks.page.value, pageSize = checks.pageSize.value;
+    const page = checks.page.value;
+    let pageSize = checks.pageSize.value;
     if ((page - 1) * pageSize >= 1000) return fail("invalid_input", "The site serves only the first 1000 matches; (page - 1) * page_size must be below 1000, so with page_size " + pageSize + " the last page is " + Math.ceil(1000 / pageSize) + ".");
     const observedAt = new Date().toISOString();
     const echo = () => ({
@@ -208,11 +209,13 @@
         checks.ceiling.value && "max_lowest_all_in_price"
       ].filter(Boolean);
       if (ignored.length) return { ignored };
-      const pages = Math.ceil(found.data.total / pageSize);
+      // A page holding fewer events than page_size sets the page size, so page 2 continues where it ends.
+      const size = found.data.total > found.data.items.length ? Math.max(1, Math.min(pageSize, found.data.items.length)) : pageSize;
       const notes = ["Vivid Seats' JSON search answered a generic 404, as it does early in a browser session, so these results come from the site's own page " + found.url.pathname + ", in its order."];
       if (excludeParking && !/\/performer\//.test(found.url.pathname)) notes.push("That page did not apply exclude_parking; parking passes may be listed as events.");
-      if (found.data.total > pageSize) notes.push("Later pages need the JSON search; call again with page 2 in a minute.");
-      return { body: { items: found.data.items, total: found.data.total, numberOfPages: pages, page: 1, i18n: { to: "USD" } }, notes };
+      if (size < pageSize) notes.push("That page holds " + size + " events, fewer than page_size; later pages need the JSON search, so call again in a minute with page 2 with page_size " + size + " to continue without a gap.");
+      else if (found.data.total > pageSize) notes.push("Later pages need the JSON search; call again with page 2 in a minute.");
+      return { body: { items: found.data.items, total: found.data.total, numberOfPages: Math.ceil(found.data.total / size), page: 1, i18n: { to: "USD" } }, notes, pageSize: size };
     };
 
     try {
@@ -256,6 +259,7 @@
       const generic = response.status === 404 && /^Request failed with status code 404$/.test(response.body?.error);
       const fallback = generic && query && !place && page === 1 && sort === "date" ? await fromSearchPage() : null;
       if (fallback?.ignored) return fail("site_error", "Vivid Seats' JSON search answered a generic 404, as it does early in a browser session, and the site's own search page cannot apply " + fallback.ignored.join(", ") + ", so no unfiltered results are returned. Call again in a minute, or search without those filters.");
+      if (fallback) pageSize = fallback.pageSize;
       const result = fallback ? { body: fallback.body } : checked(response, "Vivid Seats search");
       if (result.error) return result.error;
       const body = result.body;

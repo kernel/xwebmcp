@@ -119,6 +119,8 @@ function harness(name, o = {}) {
       }
       assert.equal(init.headers.accept, "application/json");
       const r = respond(path, calls.fetches.length);
+      // A real fetch rejects when its signal is aborted while the request is in flight.
+      if (init.signal?.aborted) throw Object.assign(new Error("The operation was aborted."), { name: "AbortError" });
       return { status: r.status, text: async () => (r.body === undefined ? "<html>blocked</html>" : JSON.stringify(r.body)) };
     }
   };
@@ -736,4 +738,18 @@ test("get_ticket_offers reports an unknown event as not_found at once, though th
   assert.equal(result.error_kind, "not_found");
   assert.equal(h.calls.fetches.length, 2);
   assert.equal(h.calls.waits, undefined, "nothing is waited for");
+});
+
+test("search_events pages by the number of events the site's search page holds when it holds fewer than page_size", async () => {
+  const performer = "/example-band-tickets--concerts-rock/performer/9001";
+  const held = [6001, 6002, 6003].map(id => production(id, "Example Band"));
+  const h = harness("search_events", {
+    route: proxy404,
+    pages: p => (p === "/search?searchTerm=Example%20Band" ? { url: performer, html: nextData({ initialProductionListParams: { performerId: 9001 }, initialProductionListData: productions(held, { total: 30 }) }) } : null)
+  });
+  const result = await h.run({ query: "Example Band", page_size: 20 });
+  assert.equal(result.status, "ok");
+  assert.equal(result.events.length, 3);
+  assert.deepEqual([result.page_size, result.number_of_pages, result.has_more, result.query.page_size], [3, 10, true, 3]);
+  assert.ok(result.warnings.some(w => /page 2 with page_size 3/.test(w)), "page 2 continues where this page ends");
 });
