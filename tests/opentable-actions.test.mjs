@@ -49,7 +49,9 @@ async function run(name, input, options = {}) {
     if (options.onRequest) options.onRequest(path, signal);
     return { status, ok: status >= 200 && status < 300, text: async () => body };
   };
-  const execute = runInNewContext(`(${definitions[name].execute.toString()})`, { window: { location: { origin: options.origin ?? origin } }, document: { title: options.title ?? "OpenTable", querySelector: () => options.challenge ? {} : null }, URL, URLSearchParams, fetch });
+  const now = options.now === undefined ? null : Date.parse(options.now);
+  const clock = now === null ? Date : class extends Date { constructor(...args) { super(...(args.length ? args : [now])); } static now() { return now; } };
+  const execute = runInNewContext(`(${definitions[name].execute.toString()})`, { window: { location: { origin: options.origin ?? origin } }, document: { title: options.title ?? "OpenTable", querySelector: () => options.challenge ? {} : null }, URL, URLSearchParams, fetch, Date: clock });
   const result = plain(await execute(input, { signal }));
   assert.ok(conforms(definitions[name].tool.outputSchema, result), JSON.stringify(result));
   return { result, requests };
@@ -250,5 +252,21 @@ test("network failures, challenges and aborts are explicit, with no automatic re
     await failure(name, valid, "site_error", { respond: () => { throw new Error("https://secret.example/PRIVATE"); } }, 1);
     const signal = { aborted: false };
     await failure(name, valid, "canceled", { signal, respond: () => { signal.aborted = true; throw new Error("Abort"); } }, 1);
+  }
+});
+
+test("a restaurant-local date is not judged past by the UTC calendar", async () => {
+  // 02:00 UTC on Oct 23 is still the evening of Oct 22 across the Americas.
+  const evening = { now: "2026-10-23T02:00:00Z" };
+  for (const name of ["get_availability", "prepare_reservation"]) {
+    const tonight = await run(name, { ...query, date: "2026-10-22", time: "20:00" }, evening);
+    assert.notEqual(tonight.result.error_kind, "invalid_input", name);
+    assert.ok(tonight.requests.length > 0, name + " asks OpenTable about tonight");
+    await failure(name, { ...query, date: "2026-10-21", time: "20:00" }, "invalid_input", evening, 0);
+    const pacific = { ...evening, profile: { restaurantProfile: { ...profile.restaurantProfile, restaurant: { ...profile.restaurantProfile.restaurant, timeZone: { code: "PST", offsetInMinutes: -420 } } } } };
+    assert.notEqual((await run(name, { ...query, date: "2026-10-22", time: "20:00" }, pacific)).result.error_kind, "invalid_input", name);
+    // The restaurant's own offset decides when the day before UTC's is already past there.
+    const tokyo = { ...evening, profile: { restaurantProfile: { ...profile.restaurantProfile, restaurant: { ...profile.restaurantProfile.restaurant, timeZone: { code: "JST", offsetInMinutes: 540 } } } } };
+    await failure(name, { ...query, date: "2026-10-22", time: "20:00" }, "invalid_input", tokyo, 1);
   }
 });

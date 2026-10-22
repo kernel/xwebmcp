@@ -352,7 +352,10 @@ test("get_restaurant accepts only /r/<slug>, /<slug> and /restaurant/profile/<id
     ["https://www.opentable.com/restaurant/profile/555", "/restaurant/profile/555"],
     ["/restaurant/profile/2147483647/", "/restaurant/profile/2147483647"],
     ["https://www.opentable.com/the-hamilton", "/the-hamilton"],
-    ["/the-hamilton/", "/the-hamilton"]
+    ["/the-hamilton/", "/the-hamilton"],
+    ["/log-haven", "/log-haven"],
+    ["/my-thai-place", "/my-thai-place"],
+    ["/sign-of-the-whale", "/sign-of-the-whale"]
   ];
   for (const [url, path] of accepted) {
     const { output, calls } = await run("get_restaurant", { url }, html);
@@ -362,7 +365,7 @@ test("get_restaurant accepts only /r/<slug>, /<slug> and /restaurant/profile/<id
   }
   // Account, sign-out and booking paths are never fetched, nor are single words that cannot be a restaurant's short address.
   const notProfiles = [
-    "/s", "/logout", "/restref", "/nearby", "/log-out", "/sign-out", "/user-profile", "/cancel-reservation", "/my-account", "/the-hamilton/reviews",
+    "/s", "/logout", "/restref", "/nearby", "/log-out", "/sign-out", "/log-in", "/sign-up", "/login-help", "/user-profile", "/cancel-reservation", "/my-account", "/the-hamilton/reviews",
     "/user/favorites", "/restref/client/?rid=1", "/booking/details", "/authenticate/start", "/dapi/v1/session",
     "/r/", "/r/a/b", "/r/../s", "/r/..%2Fuser", "/r/caf%C3%A9", "/private-dining/profile/x", "/restaurant/profile/", "/restaurant/profile/abc",
     "/restaurant/profile/0", "/restaurant/profile/2147483648", "/restaurant/profile/99999999999", "/restaurant/profile/5/extra", "/",

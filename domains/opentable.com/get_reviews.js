@@ -102,7 +102,7 @@
       if (u.username || u.password || u.port) return fail("invalid_input", "url must not include credentials or a port.");
       const byId = /^\/restaurant\/profile\/(\d{1,10})\/?$/.exec(u.pathname);
       // A short /<slug> address must look like a restaurant name, so account paths such as /logout are never requested.
-      const short = /^\/[A-Za-z0-9]+(?:-[A-Za-z0-9]+)+\/?$/.test(u.pathname) && u.pathname.length <= 121 && !/(?:^|[\/-])(?:log|sign|logout|signout|auth|account|user|my|profile|booking|reservation|cancel|delete|unsubscribe)(?:-|\/|$)/i.test(u.pathname);
+      const short = /^\/[A-Za-z0-9]+(?:-[A-Za-z0-9]+)+\/?$/.test(u.pathname) && u.pathname.length <= 121 && !/(?:^|[\/-])(?:(?:log|sign)-(?:in|out|off|up)|login|logout|signin|signout|signup|auth|account|user|profile|booking|reservation|cancel|delete|unsubscribe)(?:-|\/|$)/i.test(u.pathname);
       if (!/^\/r\/[A-Za-z0-9][A-Za-z0-9_-]{0,119}\/?$/.test(u.pathname) && !short && !(byId && Number(byId[1]) >= 1 && Number(byId[1]) <= 2147483647)) return fail("invalid_input", "url must be /r/<slug>, a short /<name-slug> restaurant address or /restaurant/profile/<id> on www.opentable.com.");
       path = u.pathname.replace(/\/$/, "");
     }

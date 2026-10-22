@@ -237,7 +237,8 @@
     if (!Number.isInteger(input.restaurant_id) || input.restaurant_id < 1 || input.restaurant_id > 2147483647) return fail("invalid_input", "restaurant_id must be an integer from 1 to 2147483647.");
     const date = input.date;
     const stamp = typeof date === "string" && /^\d{4}-\d{2}-\d{2}$/.test(date) ? Date.parse(date + "T00:00:00Z") : NaN;
-    if (!Number.isFinite(stamp) || new Date(stamp).toISOString().slice(0, 10) !== date || date < new Date().toISOString().slice(0, 10)) return fail("invalid_input", "date must be a real, non-past calendar date, YYYY-MM-DD.");
+    // date is the restaurant's; no restaurant's calendar is more than a day behind UTC's.
+    if (!Number.isFinite(stamp) || new Date(stamp).toISOString().slice(0, 10) !== date || date < new Date(Date.now() - 86400000).toISOString().slice(0, 10)) return fail("invalid_input", "date must be a real, non-past calendar date, YYYY-MM-DD.");
     if (typeof input.time !== "string" || !/^([01]\d|2[0-3]):[0-5]\d$/.test(input.time)) return fail("invalid_input", "time must be HH:MM in 24-hour time.");
     if (!Number.isInteger(input.party_size) || input.party_size < 1 || input.party_size > 20) return fail("invalid_input", "party_size must be an integer from 1 to 20.");
     if (input.seating_type !== undefined && !["default", "bar", "counter", "highTop", "outdoor"].includes(input.seating_type)) return fail("invalid_input", "Unsupported seating_type.");
@@ -265,6 +266,8 @@
       const profile = vars?.__INITIAL_STATE__?.restaurantProfile;
       const restaurant = profile?.restaurant;
       if (restaurant?.restaurantId !== input.restaurant_id || typeof restaurant.name !== "string" || !restaurant.name.trim()) return fail("site_changed", "The profile did not identify the requested restaurant.");
+      const offset = restaurant.timeZone?.offsetInMinutes;
+      if (Number.isInteger(offset) && Math.abs(offset) <= 840 && date < new Date(Date.now() + offset * 60000).toISOString().slice(0, 10)) return fail("invalid_input", "date is before today at the restaurant; ask for a date from today on.");
       const csrf = vars.__CSRF_TOKEN__;
       if (typeof csrf !== "string" || !csrf || csrf.length > 300) return fail("site_changed", "The restaurant document did not supply its query credential.");
       const entry = [...html.matchAll(/<script\b[^>]*\bsrc="([^"]+)"/g)].map(m => new URL(m[1], ORIGIN)).find(u => u.origin === ORIGIN && /^\/static\/cfe\/\d+\/js\/restprofilepage-[A-Z0-9]+\.js$/.test(u.pathname) && !u.search && !u.hash);
