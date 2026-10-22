@@ -20,7 +20,7 @@
     match: { url_patterns: ["https://store.steampowered.com/*"] },
     tool: {
       name: "get_app",
-      description: "Read a Steam Store app page: the one open in this tab (pass {}), or any app by id or store URL (pass app) from any store page without leaving it, read from that page's markup as the store serves it to this browser. Returns, as the page shows it: the app's name, release date, developers, publishers and genres; every purchase option in the Buy area (the game itself, editions and bundles) with its title, shown price, original price and discount; the store currency; and the review summaries Steam shows next to the header, such as Recent Reviews and All or English Reviews, each with its summary (\"Very Positive\"), percent positive and review count. Read-only: never clicks, scrolls, opens a bundle or changes the review language. Prices are the store's prices for this browser's region, before tax, and are not a quote for checkout. An age-gated app returns status age_check: Steam wants a birth date entered in its own form first, which this tool does not do. An unknown app id returns not_found. Without app on a page that is not an app page it returns wrong_page with the actions available there.",
+      description: "Read a Steam Store app page: the one open in this tab (pass {}), or any app by id or store URL (pass app) from any store page without leaving it, read from that page's markup as the store serves it to this browser. Returns, as the page shows it: the app's name, release date, developers, publishers and genres; every purchase option in the Buy area (the game itself, editions and bundles) with its title, shown price, original price and discount; the store currency; and the review summaries Steam shows next to the header, such as Recent Reviews and All or English Reviews, each with its summary (\"Very Positive\"), percent positive and review count. Read-only: never clicks, scrolls, opens a bundle or changes the review language. Prices are the store's prices for this browser's region, before tax, and are not a quote for checkout. An age-gated app returns status age_check: Steam wants a birth date entered in its own form first, which this tool does not do. An app Steam shows only to signed-in accounts (adult-only content) returns sign_in_required. An unknown app id returns not_found. Without app on a page that is not an app page it returns wrong_page with the actions available there.",
       inputSchema: {
         type: "object", additionalProperties: false,
         properties: { app: { type: "string", minLength: 1, maxLength: 300, description: "An app id such as '413150' or a store.steampowered.com/app/<id>/ URL, to read that app's page from any store page without leaving it. Omit to read the app page open in this tab." } }
@@ -93,7 +93,7 @@
             type: "object", additionalProperties: false,
             required: ["status", "message", "page_type", "app_id", "registered_tools", "available_actions", "next_steps"],
             properties: {
-              status: { enum: ["age_check", "wrong_page", "not_ready", "not_found", "invalid_input"] },
+              status: { enum: ["age_check", "sign_in_required", "wrong_page", "not_ready", "not_found", "invalid_input"] },
               message: { type: "string" },
               page_type: { enum: ["app", "age_check", "search", "home", "other"] },
               app_id: { type: ["string", "null"] },
@@ -210,6 +210,9 @@
         if (fetched.status === 429) return notOk("not_ready", "Steam answered 429 Too Many Requests for app " + wanted + "; wait before calling again.", wanted);
         if (!fetched.doc && ![404, 410].includes(fetched.status)) return notOk("not_ready", "Steam did not return app " + wanted + "'s page (HTTP " + fetched.status + "); try again later.", wanted);
         const landed = steamPage(fetched.url);
+        // Adult-only apps send signed-out visitors to the sign-in page, which returns to the app's age check.
+        const signIn = landed.type === "other" && /^\/login\/?$/.test(fetched.url.pathname) ? new URL(fetched.url.searchParams.get("redir") || "/", STEAM_ORIGIN) : null;
+        if (fetched.doc && signIn?.origin === STEAM_ORIGIN && /^\/(?:agecheck\/)?app\/(\d+)(?:\/|$)/.exec(signIn.pathname)?.[1] === wanted) return notOk("sign_in_required", "Steam shows app " + wanted + " only to signed-in accounts and sent this request to its sign-in page. This tool does not sign in; once the tab is signed in to an account allowed to see it, call get_app again.", wanted);
         if (fetched.doc && landed.type === "age_check") return notOk("age_check", "Steam asks for a birth date before showing app " + wanted + ". Open store.steampowered.com/app/" + wanted + "/, enter the date in the page's own form and press View Page, then call get_app with {} there.", wanted);
         if (!fetched.doc || landed.type !== "app" || landed.app_id !== wanted) return notOk("not_found", "Steam has no store page for app " + wanted + " (it answered HTTP " + fetched.status + " at " + fetched.url.pathname + ").", wanted);
         doc = fetched.doc; visible = steamShownInMarkup; appId = wanted; source = fetched.url.href;

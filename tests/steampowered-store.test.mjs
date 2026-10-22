@@ -324,6 +324,11 @@ test("get_app reads another app's page from any store page without leaving it", 
 test("get_app by id reports age checks, unknown apps and bad input", async () => {
   let { output } = await run("get_app", { app: "77" }, { url: ORIGIN + "/", html: page(""), pages: { "/app/77/": { html: page("<form></form>"), url: "/agecheck/app/77/" } } });
   assert.deepEqual([output.status, output.app_id], ["age_check", "77"]);
+  const login = "/login/?redir=" + encodeURIComponent(ORIGIN + "/agecheck/app/88/");
+  ({ output } = await run("get_app", { app: "88" }, { url: ORIGIN + "/", html: page(""), pages: { "/app/88/": { html: page("<form></form>"), url: login } } }));
+  assert.deepEqual([output.status, output.app_id], ["sign_in_required", "88"]);
+  ({ output } = await run("get_app", { app: "89" }, { url: ORIGIN + "/", html: page(""), pages: { "/app/89/": { html: page("<form></form>"), url: login } } }));
+  assert.deepEqual([output.status, output.app_id], ["not_found", "89"], "a sign-in page for another app");
   ({ output } = await run("get_app", { app: "4242" }, { url: ORIGIN + "/", html: page(""), pages: { "/app/4242/": { error: "Failed to fetch" } } }));
   assert.deepEqual([output.status, output.app_id], ["not_ready", "4242"]);
   ({ output } = await run("get_app", { app: "99999999" }, { url: ORIGIN + "/", html: page(""), pages: { "/app/99999999/": { html: page("<div>Welcome</div>"), url: "/" } } }));
@@ -362,4 +367,19 @@ test("get_search_results reads a term's results from any store page without leav
   const offline = await run("get_search_results", { term: "farm" }, { url: ORIGIN + "/", html: page(""), pages: { "/search/?term=farm": { error: "Failed to fetch" } } });
   assert.equal(offline.output.status, "not_ready");
   for (const term of ["", "   ", "x".repeat(201), 3]) assert.equal((await run("get_search_results", { term }, { url: ORIGIN + "/", html: page("") })).output.status, "invalid_input");
+});
+
+test("get_search_results says a signed-in account's hide preferences are not applied to a term's fetched rows", async () => {
+  const config = signedIn => `<div id="application_config" style="display: none;" data-userinfo="{&quot;logged_in&quot;:${signedIn},&quot;country_code&quot;:&quot;US&quot;}"></div>`;
+  const read = async (signedIn, html = SEARCH) => (await run("get_search_results", { term: "farm" }, { url: ORIGIN + "/", html: page(config(signedIn)), pages: { "/search/?term=farm": { html } } })).output;
+  let output = await read(true);
+  assert.equal(output.status, "ok");
+  assert.match(output.message, /signed in, and Steam applies its hide owned, ignored and wishlisted preferences only on the open search page/);
+  assert.ok(output.next_steps.some(step => step.startsWith("Open https://store.steampowered.com/search/?term=farm") && step.endsWith("The open page also applies this account's hide preferences.")), output.next_steps.join("\n"));
+  const last = await read(true, SEARCH.replace("showing 1 - 3 of 120", "showing 1 - 3 of 3"));
+  assert.equal(last.more_results.available, false);
+  assert.ok(last.next_steps.some(step => step.startsWith("To see the rows with this account's hide preferences applied, open https://store.steampowered.com/search/?term=farm")), last.next_steps.join("\n"));
+  output = await read(false);
+  assert.doesNotMatch(output.message, /signed in/);
+  assert.ok(!output.next_steps.some(step => step.includes("hide preferences")));
 });
