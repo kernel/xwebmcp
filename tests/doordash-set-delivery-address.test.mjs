@@ -12,6 +12,7 @@ const HOME = "https://www.doordash.com";
 const AUTOCOMPLETE = "/unified-gateway/geo-intelligence/v2/address/autocomplete?input_address=";
 const CREATE = "/unified-gateway/geo-intelligence/v2/address/get-or-create";
 const MUTATION = "/graphql/addConsumerAddressV2?operation=addConsumerAddressV2";
+const BUCKETING = "/graphql/consumerBucketing?operation=consumerBucketing";
 
 function conforms(schema, value) {
   if (schema.oneOf && schema.oneOf.filter(s => conforms(s, value)).length !== 1) return false;
@@ -55,6 +56,7 @@ const saved = (n, extra = {}) => ({
 function harness(options = {}) {
   const calls = [];
   const replies = {
+    [BUCKETING]: () => ({ status: 200, json: { data: { consumer: { isGuest: true } } } }),
     [AUTOCOMPLETE]: () => ({ status: 200, json: { predictions: [prediction(1), prediction(2), prediction(3)] } }),
     [CREATE]: init => ({ status: 200, json: { address: place(Number(/\d+$/.exec(JSON.parse(init.body).address_identifier.source_place_id)[0])) } }),
     [MUTATION]: init => ({ status: 200, json: saved(Number(JSON.parse(init.body).variables.addressId) - 900) }),
@@ -98,17 +100,18 @@ test("single page definition, narrowed to www, not read-only, and agrees with th
   assert.deepEqual(entry.url_patterns, ["https://www.doordash.com/*"]);
 });
 
-test("sets the first suggestion with the picker's three requests and reports DoorDash's confirmed address", async () => {
+test("checks the visit is signed out, sets the first suggestion with the picker's three requests and reports DoorDash's confirmed address", async () => {
   const h = harness();
   const result = await h.run({ address: "  1 Fabricated   Plaza, Testville " });
   assert.equal(result.status, "ok");
   assert.deepEqual(result.address, { printable: "1 Fabricated Plaza, Testville, NY 10001, USA", street: "1 Fabricated Plaza", city: "Testville", state: "NY", zip_code: "10001", submarket: "Testville" });
   assert.equal(result.suggestions.length, 3);
   assert.match(result.next_step, /list the tools again/);
-  assert.deepEqual(h.calls.map(c => c.url), [AUTOCOMPLETE + "1%20Fabricated%20Plaza%2C%20Testville", CREATE, MUTATION]);
-  assert.equal(h.calls[0].init.method, undefined, "the lookup is a GET");
-  assert.deepEqual(h.calls[1].init.body, { address_identifier: { _type: "source_place_id_request", source_place_id: "fabricated-source-place-1" } });
-  const mutation = h.calls[2].init;
+  assert.deepEqual(h.calls.map(c => c.url), [BUCKETING, AUTOCOMPLETE + "1%20Fabricated%20Plaza%2C%20Testville", CREATE, MUTATION]);
+  assert.equal(h.calls[0].init.body.query, "query consumerBucketing { consumer { isGuest } }");
+  assert.equal(h.calls[1].init.method, undefined, "the lookup is a GET");
+  assert.deepEqual(h.calls[2].init.body, { address_identifier: { _type: "source_place_id_request", source_place_id: "fabricated-source-place-1" } });
+  const mutation = h.calls[3].init;
   assert.equal(mutation.headers["x-csrftoken"], "fabricated-csrf");
   assert.equal(mutation.body.operationName, "addConsumerAddressV2");
   assert.deepEqual(mutation.body.variables, { googlePlaceId: "P000FAKE1", printableAddress: "Testville, NY 10001, USA", lat: 40.101, lng: -73.1, city: "Testville", state: "NY", zipCode: "10001", shortname: "1 Fabricated Plaza", addressId: "901" });
@@ -122,7 +125,7 @@ test("chooses the numbered suggestion, and returns the suggestions when that num
   const result = await beyond.run({ address: "Fabricated Plaza", suggestion: 4 });
   assert.equal(result.error_kind, "address_not_found");
   assert.equal(result.suggestions.length, 3);
-  assert.equal(beyond.calls.length, 1, "nothing is created or set");
+  assert.equal(beyond.calls.length, 2, "nothing is created or set");
 });
 
 test("refuses bad input, other origins and signed-in visits before any request", async () => {
@@ -143,7 +146,7 @@ test("refuses bad input, other origins and signed-in visits before any request",
 test("an address with no suggestion is address_not_found and changes nothing", async () => {
   const h = harness({ replies: { [AUTOCOMPLETE]: () => ({ status: 200, json: { predictions: [] } }) } });
   assert.equal((await h.run({ address: "Nowhere Fabricated" })).error_kind, "address_not_found");
-  assert.equal(h.calls.length, 1);
+  assert.equal(h.calls.length, 2);
 });
 
 test("site problems are reported, and an unconfirmed mutation says to check the page", async () => {
@@ -153,7 +156,7 @@ test("site problems are reported, and an unconfirmed mutation says to check the 
   assert.equal((await drifted.run({ address: "1 Plaza" })).error_kind, "site_changed");
   const unresolved = harness({ replies: { [CREATE]: () => ({ status: 200, json: { address: place(1, { postal_code: "" }) } }) } });
   assert.equal((await unresolved.run({ address: "1 Plaza" })).error_kind, "site_changed");
-  assert.equal(unresolved.calls.length, 2, "the mutation is not sent for an incomplete address");
+  assert.equal(unresolved.calls.length, 3, "the mutation is not sent for an incomplete address");
   const rejected = harness({ replies: { [MUTATION]: () => ({ status: 200, json: { errors: [{ message: "nope" }], data: null } }) } });
   const failed = await rejected.run({ address: "1 Plaza" });
   assert.equal(failed.error_kind, "site_error");
@@ -162,4 +165,31 @@ test("site problems are reported, and an unconfirmed mutation says to check the 
   assert.equal((await thrown.run({ address: "1 Plaza" })).error_kind, "site_error");
   const account = harness({ replies: { [MUTATION]: () => ({ status: 200, json: saved(1, { isGuest: false }) }) } });
   assert.equal((await account.run({ address: "1 Plaza" })).error_kind, "signed_in");
+});
+
+test("a signed-in visit without the cookie is refused before any address request", async () => {
+  const account = harness({ replies: { [BUCKETING]: () => ({ status: 200, json: { data: { consumer: { isGuest: false } } } }) } });
+  const refused = await account.run({ address: "1 Plaza" });
+  assert.equal(refused.error_kind, "signed_in");
+  assert.match(refused.error_message, /save_address/);
+  assert.deepEqual(account.calls.map(c => c.url), [BUCKETING]);
+  for (const reply of [{ status: 200, json: { data: { consumer: null } } }, { status: 200, json: { errors: [{ message: "x" }] } }, { status: 500, json: {} }]) {
+    const unclear = harness({ replies: { [BUCKETING]: () => reply } });
+    assert.equal((await unclear.run({ address: "1 Plaza" })).error_kind, "site_changed", JSON.stringify(reply));
+    assert.equal(unclear.calls.length, 1);
+  }
+  const limited = harness({ replies: { [BUCKETING]: () => ({ status: 429, json: {} }) } });
+  assert.equal((await limited.run({ address: "1 Plaza" })).error_kind, "rate_limited");
+});
+
+test("an answer naming a different address than the chosen suggestion is not success", async () => {
+  for (const changed of [{ zipCode: "10002" }, { city: "Elsewhere" }, { zipCode: null }]) {
+    const h = harness({ replies: { [MUTATION]: () => { const reply = saved(1); Object.assign(reply.data.addConsumerAddressV2.defaultAddress, changed); return { status: 200, json: reply }; } } });
+    const result = await h.run({ address: "1 Plaza" });
+    assert.equal(result.error_kind, "address_mismatch", JSON.stringify(changed));
+    assert.match(result.error_message, /check the header/);
+    assert.equal(result.suggestions.length, 3);
+  }
+  const caseOnly = harness({ replies: { [MUTATION]: () => { const reply = saved(1); reply.data.addConsumerAddressV2.defaultAddress.city = "TESTVILLE "; return { status: 200, json: reply }; } } });
+  assert.equal((await caseOnly.run({ address: "1 Plaza" })).status, "ok");
 });

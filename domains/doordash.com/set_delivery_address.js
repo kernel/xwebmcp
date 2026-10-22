@@ -3,7 +3,7 @@
   match: { url_patterns: ["https://www.doordash.com/*"] },
   tool: {
     name: "set_delivery_address",
-    description: "Set the delivery address of a signed-out DoorDash visit, as the header's address picker does: it looks the address up in DoorDash's address autocomplete, chooses the suggestion you name (the first by default, as the picker lists them) and makes it the visit's delivery address with the same requests the picker sends. Success is confirmed by DoorDash's answer, which states the address it now delivers to. Store fees, delivery estimates, search results and get_store then use that address, but pages already open keep showing the old one until they load again: the site itself opens /home after an address is chosen, so navigate before reading, then list the tools again. Returns the suggestions when none matches the request or the chosen number is out of range; never edits saved account addresses and refuses when signed in (use save_address then). Only call it with an address the user gave.",
+    description: "Set the delivery address of a signed-out DoorDash visit, as the header's address picker does: it looks the address up in DoorDash's address autocomplete, chooses the suggestion you name (the first by default, as the picker lists them) and makes it the visit's delivery address with the same requests the picker sends. Success is confirmed by DoorDash's answer, which states the address it now delivers to and must have the chosen suggestion's city and ZIP code. Store fees, delivery estimates, search results and get_store then use that address, but pages already open keep showing the old one until they load again: the site itself opens /home after an address is chosen, so navigate before reading, then list the tools again. Returns the suggestions when none matches the request or the chosen number is out of range; never edits saved account addresses: it asks DoorDash whether the visit is signed out before changing anything and refuses when it is not (use save_address then). Only call it with an address the user gave.",
     inputSchema: {
       type: "object", additionalProperties: false, required: ["address"],
       properties: {
@@ -22,26 +22,26 @@
               type: "object", additionalProperties: false, required: ["printable", "street", "city", "state", "zip_code", "submarket"],
               description: "The delivery address as DoorDash now reports it for this visit.",
               properties: {
-                printable: { type: "string" }, street: { type: ["string", "null"] }, city: { type: ["string", "null"] }, state: { type: ["string", "null"] },
-                zip_code: { type: ["string", "null"] }, submarket: { type: ["string", "null"] }
+                printable: { type: "string", maxLength: 200 }, street: { type: ["string", "null"], maxLength: 200 }, city: { type: ["string", "null"], maxLength: 200 }, state: { type: ["string", "null"], maxLength: 20 },
+                zip_code: { type: ["string", "null"], maxLength: 20 }, submarket: { type: ["string", "null"], maxLength: 200 }
               }
             },
-            suggestions: { type: "array", maxItems: 10, items: { type: "string" }, description: "Every suggestion the autocomplete offered, in its order." },
-            next_step: { type: "string" }
+            suggestions: { type: "array", maxItems: 10, items: { type: "string", maxLength: 200 }, description: "Every suggestion the autocomplete offered, in its order." },
+            next_step: { type: "string", maxLength: 500 }
           }
         },
         {
           type: "object", additionalProperties: false, required: ["status", "error_kind", "error_message", "suggestions"],
           properties: {
             status: { const: "error" },
-            error_kind: { enum: ["invalid_input", "wrong_page", "signed_in", "address_not_found", "rate_limited", "site_changed", "site_error"] },
-            error_message: { type: "string" },
-            suggestions: { type: "array", maxItems: 10, items: { type: "string" } }
+            error_kind: { enum: ["invalid_input", "wrong_page", "signed_in", "address_not_found", "address_mismatch", "rate_limited", "site_changed", "site_error"] },
+            error_message: { type: "string", maxLength: 500 },
+            suggestions: { type: "array", maxItems: 10, items: { type: "string", maxLength: 200 } }
           }
         }
       ]
     },
-    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false }
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, untrustedContentHint: true }
   },
   execute: async (input, context) => {
     const ORIGIN = "https://www.doordash.com";
@@ -60,6 +60,8 @@
     const signals = [AbortSignal.timeout(25000)];
     if (context && context.signal) signals.push(context.signal);
     const signal = AbortSignal.any(signals);
+    const csrf = (document.cookie.split(";").map(c => c.trim()).find(c => c.startsWith("csrf_token=")) || "").slice("csrf_token=".length);
+    const graphql = { "content-type": "application/json", accept: "*/*", "x-csrftoken": csrf, "x-channel-id": "marketplace", "x-experience-id": "doordash" };
     const gateway = { accept: "application/json", "x-experience-id": "doordash", "x-unified-gateway-generated-source": "v1" };
     const call = async (path, init) => {
       let response, body;
@@ -74,6 +76,17 @@
       try { json = JSON.parse(body); } catch { /* not JSON */ }
       return { status: response.status, json };
     };
+
+    // The cookie can be missing on a signed-in visit, and for an account the mutation below saves the address there.
+    const visitor = await call("/graphql/consumerBucketing?operation=consumerBucketing", {
+      method: "POST", headers: graphql,
+      body: JSON.stringify({ operationName: "consumerBucketing", variables: {}, query: "query consumerBucketing { consumer { isGuest } }" })
+    });
+    if (visitor.error) return fail("site_error", visitor.error + " Nothing was changed.");
+    if (visitor.status === 429) return fail("rate_limited", "DoorDash is rate limiting requests from this browser; wait before calling again. Nothing was changed.");
+    const isGuest = visitor.json && visitor.json.data && visitor.json.data.consumer ? visitor.json.data.consumer.isGuest : undefined;
+    if (isGuest === false) return fail("signed_in", "This browser is signed in to DoorDash, where choosing an address saves it to the account; use save_address instead. Nothing was changed.");
+    if (visitor.status !== 200 || isGuest !== true) return fail("site_changed", "DoorDash did not confirm this is a signed-out visit (HTTP " + visitor.status + "). Nothing was changed.");
 
     const found = await call("/unified-gateway/geo-intelligence/v2/address/autocomplete?input_address=" + encodeURIComponent(address), { headers: gateway });
     if (found.error) return fail("site_error", found.error + " Nothing was changed.");
@@ -100,10 +113,9 @@
     const shortname = text(place.formatted_address_short) || text(place.street_address) || text(segments[0]);
     const printable = text(segments[1]) || text(place.formatted_address);
 
-    const csrf = (document.cookie.split(";").map(c => c.trim()).find(c => c.startsWith("csrf_token=")) || "").slice("csrf_token=".length);
     const saved = await call("/graphql/addConsumerAddressV2?operation=addConsumerAddressV2", {
       method: "POST",
-      headers: { "content-type": "application/json", accept: "*/*", "x-csrftoken": csrf, "x-channel-id": "marketplace", "x-experience-id": "doordash" },
+      headers: graphql,
       body: JSON.stringify({
         operationName: "addConsumerAddressV2",
         variables: { googlePlaceId: place.source_place_id, printableAddress: printable, lat, lng, city: place.locality, state: place.administrative_area_level1, zipCode: place.postal_code, shortname, addressId: String(place.id) },
@@ -118,6 +130,10 @@
       return fail("site_error", "DoorDash did not confirm the address (HTTP " + saved.status + "). Reload the page and check the header before calling again.", suggestions);
     }
     if (result.isGuest === false) return fail("signed_in", "DoorDash answered for a signed-in account, so the address may now be saved there; check the account's addresses. Use save_address for signed-in visits.", suggestions);
+    const same = (a, b) => typeof a === "string" && typeof b === "string" && a.trim().toLowerCase() === b.trim().toLowerCase();
+    if (!same(current.zipCode, place.postal_code) || !same(current.city, place.locality)) {
+      return fail("address_mismatch", "DoorDash now reports '" + text(current.printableAddress, 120) + "' as the delivery address, not the chosen suggestion. Reload the page and check the header before calling again.", suggestions);
+    }
     return {
       status: "ok",
       address: { printable: text(current.printableAddress), street: text(current.street), city: text(current.city), state: text(current.state, 20), zip_code: text(current.zipCode, 20), submarket: text(current.submarket) },

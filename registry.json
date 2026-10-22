@@ -1523,7 +1523,7 @@
       "url_patterns_reason": "Narrowed to www.doordash.com, the consumer marketplace: these tools call its same-origin GraphQL endpoint with the page's session; other doordash.com hosts are separate products such as the merchant portal and help center.",
       "status": "draft",
       "last_verified": null,
-      "notes": "Signed-out visits only; refuses when the dd_cx_logged_in cookie is set (save_address covers accounts). Sends the address picker's own three requests (autocomplete, get-or-create, addConsumerAddressV2) and confirms the address from DoorDash's answer; does not navigate. Draft, no independent QA. Live on 2026-10-21 in a signed-out Kernel browser: 'Times Square, New York, NY 10036' set 4 Times Sq in under a second and the header showed it after loading /home; an address with no suggestions returned address_not_found."
+      "notes": "Signed-out visits only: refuses when the dd_cx_logged_in cookie is set or DoorDash's consumer query reports a non-guest visitor, before any address request (save_address covers accounts). Sends the address picker's own three requests (autocomplete, get-or-create, addConsumerAddressV2) and reports success only when DoorDash's answer has the chosen suggestion's city and ZIP code; does not navigate. Draft, no independent QA. Live in a signed-out Kernel browser: on 2026-10-21 'Times Square, New York, NY 10036' set 4 Times Sq and the header showed it after loading /home, and an address with no suggestions returned address_not_found; on 2026-10-22 the source with the guest check and city/ZIP confirmation set the same address."
     },
     {
       "domain": "etsy.com",
