@@ -30,6 +30,7 @@ test("Shopify comparison agreement includes all listing fields and result order"
     check([{ ...apps[0], ...change }, ...apps.slice(1)], 1);
   }
   check(apps.toReversed(), 1);
+  check([{ ...apps[0], app: "First℠ Subscriptions™" }, ...apps.slice(1)], 0);
 });
 
 test("Steam comparison agreement keeps prices and review summaries attached to their games in order", () => {

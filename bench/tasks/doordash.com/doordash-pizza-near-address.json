@@ -29,7 +29,7 @@
     "rules": [
       {
         "path": "text",
-        "matches": "DoorDash[ \\t]*\\n[^\\n]*Times Sq\\b"
+        "matches": "DoorDash[ \\t]*\\n[ \\t]*(?:\\d+[ \\t]+)?Times Sq(?:uare)?[ \\t]*(?:\\n|$)"
       }
     ]
   },
