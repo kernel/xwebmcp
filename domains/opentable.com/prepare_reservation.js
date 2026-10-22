@@ -243,7 +243,6 @@
     if (input.seating_type !== undefined && !["default", "bar", "counter", "highTop", "outdoor"].includes(input.seating_type)) return fail("invalid_input", "Unsupported seating_type.");
     if (signal?.aborted) return fail("canceled", "The read was canceled before any request.");
     if (window.location.origin !== ORIGIN) return fail("wrong_page", "Open a https://www.opentable.com page first.");
-    if (/access denied/i.test(document.title || "") || document.querySelector("#sec-if-cpt-container, #sec-bc-tile-parent")) return fail("challenge", "OpenTable is challenging this browser; no request was sent.");
     const check = (res, text) => {
       if (res.status === 429) return fail("rate_limited", "OpenTable rate limited the request; nothing was retried.");
       const hasState = /<script\b[^>]*\bid="primary-window-vars"/.test(text);

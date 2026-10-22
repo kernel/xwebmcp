@@ -277,6 +277,7 @@ test("search_restaurants reports wrong pages, bot protection, rate limits and si
   const denied = await run("search_restaurants", input, { respond: () => ({ status: 403, html: "<HTML><HEAD><TITLE>Access Denied</TITLE></HEAD><BODY>Reference #18.abc</BODY></HTML>" }) });
   assert.equal(denied.output.error_kind, "challenge");
   assert.match(denied.output.error_message, /get_restaurant with url '\/<name-as-slug>'/);
+  assert.match(denied.output.error_message, /check the returned name and address/);
   const deniedWith200 = await run("search_restaurants", input, { respond: () => ({ html: "<html><head><title>Access Denied</title></head><body></body></html>" }) });
   assert.equal(deniedWith200.output.error_kind, "challenge");
   const limited = await run("search_restaurants", input, { respond: () => ({ status: 429, html: "" }) });

@@ -2653,12 +2653,9 @@
         "https://www.opentable.com/*"
       ],
       "url_patterns_reason": "Narrowed to www.opentable.com, OpenTable's US diner site: the tools fetch its restaurant pages and same-origin GraphQL endpoint and refuse other origins; other opentable.com hosts serve restaurants and other regions.",
-      "status": "qa_passed",
-      "last_verified": "2026-09-30",
-      "notes": "Exact standard date/time/party/seating preparation, no substitution or hold/booking. Account and fees not verified; trusted approval execution unavailable. Independent source QA passed; final-source live runtime unverified.",
-      "provenance": {
-        "qa_agent": "agt_af9a78c90e1647b33555"
-      }
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Exact standard date/time/party/seating preparation, no substitution or hold/booking. Account and fees not verified; trusted approval execution unavailable. Reads proceed from a page OpenTable answered with 'Access Denied' and judge OpenTable's actual responses. Independent source QA passed on earlier source; the source has changed since and needs fresh independent QA. Author live check on 2026-10-22 in a Kernel browser whose home page showed 'Access Denied': get_restaurant by short address, get_availability and prepare_reservation returned prepared with no hold."
     },
     {
       "domain": "opentable.com",
@@ -2672,7 +2669,7 @@
       "url_patterns_reason": "Narrowed to www.opentable.com, OpenTable's US diner site: the tools fetch its restaurant pages and same-origin GraphQL endpoint and refuse other origins; other opentable.com hosts serve restaurants and other regions.",
       "status": "draft",
       "last_verified": null,
-      "notes": "Public free-text search, up to 50 per page, optional date/time/party. Does not prove availability. Independent source QA passed; final-source live runtime unverified. Source changed after that QA (reads now proceed from a page OpenTable answered with 'Access Denied', short /<name-slug> addresses are accepted, and a refused search names the next step), so it needs fresh independent QA."
+      "notes": "Public free-text search, up to 50 per page, optional date/time/party. Does not prove availability. Independent source QA passed; final-source live runtime unverified. Source changed after that QA (reads now proceed from a page OpenTable answered with 'Access Denied', short /<name-slug> addresses are accepted, and a refused search names the next step and asks to check the returned name and address), so it needs fresh independent QA."
     },
     {
       "domain": "purelymail.com",
