@@ -4551,6 +4551,70 @@
       "provenance": {
         "qa_agent": "agt_3f71312cec739d8ec9a3"
       }
+    },
+    {
+      "domain": "whatsapp.com",
+      "tool": "get_session_status",
+      "file": "domains/whatsapp.com/get_session_status.js",
+      "kind": "page",
+      "namespace": "whatsapp.com",
+      "url_patterns": [
+        "https://web.whatsapp.com/*"
+      ],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "WhatsApp Web only. Reports logged_in, logged_out (QR / linking screen) or unknown from the page's own markup; never links a device or reads the QR code. Read-only. Fresh independent final-source QA passed on fixtures and logged-out Kernel execution; no independent authenticated run. Status remains draft; see README for reviewed source identity.",
+      "provenance": {
+        "qa_agent": "agt_739c76521225a0c3ead9"
+      }
+    },
+    {
+      "domain": "whatsapp.com",
+      "tool": "list_chats",
+      "file": "domains/whatsapp.com/list_chats.js",
+      "kind": "page",
+      "namespace": "whatsapp.com",
+      "url_patterns": [
+        "https://web.whatsapp.com/*"
+      ],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "WhatsApp Web only. Chat titles and the sidebar's time text for the rendered rows, in sidebar order. Never opens a chat and does not read previews, message text, unread counts or read state. The selected sidebar filter chip is not detectable. Fresh independent final-source QA passed on fixtures and logged-out Kernel execution; authenticated sidebar success is unverified. Status remains draft; see README for reviewed source identity.",
+      "provenance": {
+        "qa_agent": "agt_739c76521225a0c3ead9"
+      }
+    },
+    {
+      "domain": "whatsapp.com",
+      "tool": "prepare_message",
+      "file": "domains/whatsapp.com/prepare_message.js",
+      "kind": "page",
+      "namespace": "whatsapp.com",
+      "url_patterns": [
+        "https://web.whatsapp.com/*"
+      ],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "WhatsApp Web only. Prepares one exact recipient and message as an unopened click-to-chat handoff; never opens, fills, saves or sends. Sender identity and recipient existence are unverified. The private URL contains the supplied phone and text. Owner approval is required before opening a chat (read receipts possible); sending is manual. Independent final-source QA passed on fixture/fabricated-extension handoffs and logged-out Kernel failures, not live composer or identity checks. Status remains draft; see README for reviewed source identity.",
+      "provenance": {
+        "qa_agent": "agt_739c76521225a0c3ead9"
+      }
+    },
+    {
+      "domain": "whatsapp.com",
+      "tool": "search_chats",
+      "file": "domains/whatsapp.com/search_chats.js",
+      "kind": "page",
+      "namespace": "whatsapp.com",
+      "url_patterns": [
+        "https://web.whatsapp.com/*"
+      ],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "WhatsApp Web only. Types a query into the sidebar search box (synthetic input, never Enter), reads chat titles that match, and empties the box again. Address-book contacts and message hits are skipped without being read. Never opens a chat. readOnlyHint is false because the search UI is edited. Can return a partial rendered frame; total is not an account-wide count. Fresh independent final-source QA passed on fixtures and logged-out Kernel execution; the pre-cancel guard was independently rechecked before page access. Cleanup can fail; do not infer restoration or automatically retry an execution error. Authenticated success remains unverified. Status remains draft; see README for reviewed source identity.",
+      "provenance": {
+        "qa_agent": "agt_739c76521225a0c3ead9"
+      }
     }
   ]
 }
