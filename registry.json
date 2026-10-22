@@ -2019,6 +2019,86 @@
       }
     },
     {
+      "domain": "greenhouse.io",
+      "tool": "fill_application_form",
+      "file": "domains/greenhouse.io/fill_application_form.js",
+      "kind": "page",
+      "namespace": "greenhouse.io",
+      "url_patterns": [
+        "https://job-boards.greenhouse.io/*"
+      ],
+      "status": "qa_passed",
+      "last_verified": "2026-09-30",
+      "notes": "Independent Kernel and extension QA passed; success is isolated/mock-only, not live-verified. Visual-only native text staging on the exact public job page, with whole-batch validation and expected-value checks. No events, uploads or submission; React application state is not synchronized. Unknown outcomes require inspection, not retries.",
+      "provenance": {
+        "qa_agent": "agt_44a0ce2113eb6cf4db13"
+      }
+    },
+    {
+      "domain": "greenhouse.io",
+      "tool": "get_application_form",
+      "file": "domains/greenhouse.io/get_application_form.js",
+      "kind": "page",
+      "namespace": "greenhouse.io",
+      "url_patterns": [
+        "https://job-boards.greenhouse.io/*"
+      ],
+      "status": "verified",
+      "last_verified": "2026-09-29",
+      "notes": "Independent QA passed on the final source; live successes from unrelated starting pages. Page tool on job-boards.greenhouse.io: the questions one job application asks (labels, help text, required flag, field names and types, choices), education fields, self-identification section titles and sizes (an EEOC title is the first line of its intro text) and consent settings. Never opens, fills, uploads or submits the form. Employer text is untrusted. Chrome extension runtime only partly exercised.",
+      "provenance": {
+        "qa_agent": "agt_44a0ce2113eb6cf4db13"
+      }
+    },
+    {
+      "domain": "greenhouse.io",
+      "tool": "get_job",
+      "file": "domains/greenhouse.io/get_job.js",
+      "kind": "page",
+      "namespace": "greenhouse.io",
+      "url_patterns": [
+        "https://job-boards.greenhouse.io/*"
+      ],
+      "status": "verified",
+      "last_verified": "2026-09-29",
+      "notes": "Independent QA passed on the final source; live successes from unrelated starting pages. Page tool on job-boards.greenhouse.io: one posting as plain text (at most 30000 characters) with published pay ranges and deadline. A closed job, a missing board and a board served elsewhere give the same site redirect and return job_not_found. Text conversion is imperfect on malformed markup (see the README). Employer text is untrusted. Chrome extension runtime only partly exercised.",
+      "provenance": {
+        "qa_agent": "agt_44a0ce2113eb6cf4db13"
+      }
+    },
+    {
+      "domain": "greenhouse.io",
+      "tool": "prepare_application_draft",
+      "file": "domains/greenhouse.io/prepare_application_draft.js",
+      "kind": "page",
+      "namespace": "greenhouse.io",
+      "url_patterns": [
+        "https://job-boards.greenhouse.io/*"
+      ],
+      "status": "qa_passed",
+      "last_verified": "2026-09-30",
+      "notes": "Independent Kernel and extension QA passed. Checks supplied answers against visible native text controls on the exact public job page; required-page-only, not verified from an unrelated starting page. No field changes, no values echoed; never uploads or submits.",
+      "provenance": {
+        "qa_agent": "agt_44a0ce2113eb6cf4db13"
+      }
+    },
+    {
+      "domain": "greenhouse.io",
+      "tool": "search_jobs",
+      "file": "domains/greenhouse.io/search_jobs.js",
+      "kind": "page",
+      "namespace": "greenhouse.io",
+      "url_patterns": [
+        "https://job-boards.greenhouse.io/*"
+      ],
+      "status": "verified",
+      "last_verified": "2026-09-29",
+      "notes": "Independent QA passed on the final source; live successes from unrelated starting pages (other employers' boards, a job page, the embed page). Page tool on job-boards.greenhouse.io: one page (50) of a board by keyword, department and office ids, with an optional filter list. Reports board_not_found, board_redirects (employer serves its careers page elsewhere; not followed), empty-result reasons and output_too_large. Employer text is untrusted. Chrome extension runtime only partly exercised.",
+      "provenance": {
+        "qa_agent": "agt_44a0ce2113eb6cf4db13"
+      }
+    },
+    {
       "domain": "instacart.com",
       "tool": "add_to_cart",
       "file": "domains/instacart.com/add_to_cart.js",
