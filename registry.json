@@ -4551,6 +4551,54 @@
       "provenance": {
         "qa_agent": "agt_3f71312cec739d8ec9a3"
       }
+    },
+    {
+      "domain": "yahoo.com",
+      "tool": "get_price_history",
+      "file": "domains/yahoo.com/get_price_history.js",
+      "kind": "page",
+      "namespace": "yahoo.com",
+      "url_patterns": ["https://finance.yahoo.com/*"],
+      "status": "qa_passed",
+      "last_verified": "2026-09-30",
+      "notes": "Public daily OHLCV; one request, range at most one year, at most 300 candles. Independent fixture QA passed; live success is author-only, local live success unverified. Gates stop without retries.",
+      "provenance": { "qa_agent": "agt_0ca59ace1c7b83f00ed4" }
+    },
+    {
+      "domain": "yahoo.com",
+      "tool": "get_quote",
+      "file": "domains/yahoo.com/get_quote.js",
+      "kind": "page",
+      "namespace": "yahoo.com",
+      "url_patterns": ["https://finance.yahoo.com/*"],
+      "status": "qa_passed",
+      "last_verified": "2026-09-30",
+      "notes": "Public regular-session price with currency/source time; no cookies, account APIs or retries. Independent fixture QA passed; live success is author-only, local live success unverified. Prices may be delayed.",
+      "provenance": { "qa_agent": "agt_0ca59ace1c7b83f00ed4" }
+    },
+    {
+      "domain": "yahoo.com",
+      "tool": "get_watchlist",
+      "file": "domains/yahoo.com/get_watchlist.js",
+      "kind": "page",
+      "namespace": "yahoo.com",
+      "url_patterns": ["https://finance.yahoo.com/*"],
+      "status": "qa_passed",
+      "last_verified": "2026-09-30",
+      "notes": "Authorized current-document My Watchlist p_0 read, up to 50 rows; no account identity assertion, holdings or mutations. Independent success is fixture-only; authorized live success is author-only.",
+      "provenance": { "qa_agent": "agt_0ca59ace1c7b83f00ed4" }
+    },
+    {
+      "domain": "yahoo.com",
+      "tool": "search_symbols",
+      "file": "domains/yahoo.com/search_symbols.js",
+      "kind": "page",
+      "namespace": "yahoo.com",
+      "url_patterns": ["https://finance.yahoo.com/*"],
+      "status": "qa_passed",
+      "last_verified": "2026-09-30",
+      "notes": "Public symbol directory, one request and at most ten results; no news/private data, cookies or retries. Independent fixture QA passed; live success is author-only, local live success unverified.",
+      "provenance": { "qa_agent": "agt_0ca59ace1c7b83f00ed4" }
     }
   ]
 }
