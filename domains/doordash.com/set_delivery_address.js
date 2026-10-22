@@ -3,7 +3,7 @@
   match: { url_patterns: ["https://www.doordash.com/*"] },
   tool: {
     name: "set_delivery_address",
-    description: "Set the delivery address of a signed-out DoorDash visit, as the header's address picker does: it looks the address up in DoorDash's address autocomplete, chooses the suggestion you name (the first by default, as the picker lists them) and makes it the visit's delivery address with the same requests the picker sends. Success is confirmed by DoorDash's answer, which states the address it now delivers to and must have the chosen suggestion's city and ZIP code. Store fees, delivery estimates, search results and get_store then use that address, but pages already open keep showing the old one until they load again: the site itself opens /home after an address is chosen, so navigate before reading, then list the tools again. Returns the suggestions when none matches the request or the chosen number is out of range; never edits saved account addresses: it asks DoorDash whether the visit is signed out before changing anything and refuses when it is not (use save_address then). Only call it with an address the user gave.",
+    description: "Set the delivery address of a signed-out DoorDash visit, as the header's address picker does: it looks the address up in DoorDash's address autocomplete, chooses the suggestion you name (the first by default, as the picker lists them) and makes it the visit's delivery address with the same requests the picker sends. Success is confirmed by DoorDash's answer, which states the address it now delivers to and must have the chosen suggestion's street, city and ZIP code. Store fees, delivery estimates, search results and get_store then use that address, but pages already open keep showing the old one until they load again: the site itself opens /home after an address is chosen, so navigate before reading, then list the tools again. Returns the suggestions when none matches the request or the chosen number is out of range; never edits saved account addresses: it asks DoorDash whether the visit is signed out before changing anything and refuses when it is not (use save_address then). Only call it with an address the user gave.",
     inputSchema: {
       type: "object", additionalProperties: false, required: ["address"],
       properties: {
@@ -131,7 +131,7 @@
     }
     if (result.isGuest === false) return fail("signed_in", "DoorDash answered for a signed-in account, so the address may now be saved there; check the account's addresses. Use save_address for signed-in visits.", suggestions);
     const same = (a, b) => typeof a === "string" && typeof b === "string" && a.trim().toLowerCase() === b.trim().toLowerCase();
-    if (!same(current.zipCode, place.postal_code) || !same(current.city, place.locality)) {
+    if (!same(current.zipCode, place.postal_code) || !same(current.city, place.locality) || (text(place.street_address) && !same(current.street, place.street_address))) {
       return fail("address_mismatch", "DoorDash now reports '" + text(current.printableAddress, 120) + "' as the delivery address, not the chosen suggestion. Reload the page and check the header before calling again.", suggestions);
     }
     return {

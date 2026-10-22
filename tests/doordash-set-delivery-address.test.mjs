@@ -183,7 +183,7 @@ test("a signed-in visit without the cookie is refused before any address request
 });
 
 test("an answer naming a different address than the chosen suggestion is not success", async () => {
-  for (const changed of [{ zipCode: "10002" }, { city: "Elsewhere" }, { zipCode: null }]) {
+  for (const changed of [{ zipCode: "10002" }, { city: "Elsewhere" }, { zipCode: null }, { street: "2 Fabricated Plaza" }, { street: null }]) {
     const h = harness({ replies: { [MUTATION]: () => { const reply = saved(1); Object.assign(reply.data.addConsumerAddressV2.defaultAddress, changed); return { status: 200, json: reply }; } } });
     const result = await h.run({ address: "1 Plaza" });
     assert.equal(result.error_kind, "address_mismatch", JSON.stringify(changed));

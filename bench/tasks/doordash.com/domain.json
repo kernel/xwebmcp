@@ -1,4 +1,8 @@
 {
+  "needs_sign_in": {
+    "get_cart": "reads the signed-in account's carts",
+    "get_checkout_summary": "reads the signed-in account's carts"
+  },
   "actions": {
     "set_delivery_address": "sets a signed-out visit's delivery address, as the header's address picker does"
   }
