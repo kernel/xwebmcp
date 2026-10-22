@@ -1,0 +1,20 @@
+<html><head><title>Shopping Cart</title></head><body>
+<nav><span id="nav-link-accountList-nav-line-1">Hello, sign in</span><span id="glow-ingress-line2">Test Person, Testville 400001</span></nav>
+<div id="sc-active-cart">{{ITEMS}}</div>
+<div id="sc-saved-cart"><div class="sc-list-item" data-asin="B0TESTSAV1" data-quantity="8"><span class="sc-product-title">Private saved item</span></div></div>
+<div class="a-fixed-left-grid-inner">
+<a href="/Example/dp/B0TESTAAA1/ref=example/000-0000000-0000000">Acme bottle</a>
+<span class="a-price"><span class="a-offscreen">₹299.50</span></span>
+<span class="a-price" data-a-strike="true"><span class="a-offscreen">₹430.00</span></span>
+<form class="add-to-cart-data" method="post" action="/cart/add-to-cart/ref=example?_encoding=UTF8&amp;pd_rd_i=B0TESTAAA1">
+<input type="hidden" name="anti-csrftoken-a2z" value="FAKE-CSRF">
+<input type="hidden" name="clientName" value="CartRecommendations">
+<input type="hidden" name="isNeoAddToCart" value="1">
+<input type="hidden" name="customizers" value="">
+<input type="hidden" name="items[0.base][asin]" value="B0TESTAAA1">
+<input type="hidden" name="items[0.base][offerListingId]" value="FAKE-OFFER">
+<input type="hidden" name="items[0.base][quantity]" value="1">
+<input type="submit" name="submit.addToCart" value="">
+</form></div>
+<script>{"sessionId":"000-0000000-0000000","account":"Test Person","checkoutUrl":"https://example.test?token=FAKE"}</script>
+</body></html>
