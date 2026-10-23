@@ -139,7 +139,13 @@ test("availability time offsets, unsupported inventory, no results and response 
   assert.equal(bounded.result.no_times_reasons.length, 10);
   assert.equal(bounded.result.no_times_reasons[0].length, 100);
   assert.equal(bounded.result.truncated, true);
-  for (const bad of [{ timeOffsetMinutes: 121 }, { attributes: null }, { isMandatory: undefined }]) await failure("get_availability", query, "site_changed", { availability: availability([slot(bad)]) });
+  for (const bad of [{ timeOffsetMinutes: 1.5 }, { attributes: null }, { isMandatory: undefined }]) await failure("get_availability", query, "site_changed", { availability: availability([slot(bad)]) });
+  const narrow = await run("get_availability", { ...query, window_minutes: 30 }, { availability: availability([slot(), slot({ timeOffsetMinutes: 60 }), slot({ timeOffsetMinutes: -121 })]) });
+  assert.equal(narrow.result.status, "ok");
+  assert.deepEqual(narrow.result.slots.map(s => s.time), ["19:00"]);
+  assert.equal(JSON.parse(narrow.requests.at(-1).body).variables.forwardMinutes, 30);
+  const wide = await run("prepare_reservation", query, { availability: availability([slot(), slot({ timeOffsetMinutes: 150 })]) });
+  assert.equal(wide.result.status, "prepared");
   const wrong = availability(); wrong.data.availability[0].restaurantId = 666;
   await failure("get_availability", query, "site_changed", { availability: wrong });
   await failure("get_availability", query, "site_error", { availability: { errors: [{ message: "PRIVATE" }], data: availability().data } });
@@ -268,5 +274,7 @@ test("a restaurant-local date is not judged past by the UTC calendar", async () 
     // The restaurant's own offset decides when the day before UTC's is already past there.
     const tokyo = { ...evening, profile: { restaurantProfile: { ...profile.restaurantProfile, restaurant: { ...profile.restaurantProfile.restaurant, timeZone: { code: "JST", offsetInMinutes: 540 } } } } };
     await failure(name, { ...query, date: "2026-10-22", time: "20:00" }, "invalid_input", tokyo, 1);
+    // Without an offset, the day before UTC's is past once it has ended at UTC-12.
+    await failure(name, { ...query, date: "2026-10-22", time: "20:00" }, "invalid_input", { now: "2026-10-23T13:00:00Z" }, 1);
   }
 });

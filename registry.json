@@ -2661,7 +2661,7 @@
       "url_patterns_reason": "Narrowed to www.opentable.com, OpenTable's US diner site: the tools fetch its restaurant pages and same-origin GraphQL endpoint and refuse other origins; other opentable.com hosts serve restaurants and other regions.",
       "status": "draft",
       "last_verified": null,
-      "notes": "Public standard inventory within 120 minutes of restaurant-local time; read query, no slot selection or hold. Independent source QA passed; final-source live runtime unverified. Excludes experience-only and privileged inventory. Dates are judged by the restaurant's own UTC offset, so tonight stays searchable while UTC is already on the next day. Source changed after that QA (reads now proceed from a page OpenTable answered with 'Access Denied', short /<name-slug> addresses are accepted, and a refused search names the next step), so it needs fresh independent QA. Author live check on 2026-10-22 in a Kernel browser with the page clock at 7pm Pacific: a same-day search for a San Francisco restaurant returned slots."
+      "notes": "Public standard inventory within 120 minutes of restaurant-local time; read query, no slot selection or hold. Slots the site returns outside the requested window are left out; without the restaurant's offset, dates are judged by UTC-12. Shares lib/opentable-availability.js with prepare_reservation. Independent source QA passed; final-source live runtime unverified. Excludes experience-only and privileged inventory. Dates are judged by the restaurant's own UTC offset, so tonight stays searchable while UTC is already on the next day. Source changed after that QA (reads now proceed from a page OpenTable answered with 'Access Denied', short /<name-slug> addresses are accepted, and a refused search names the next step), so it needs fresh independent QA. Author live check on 2026-10-22 in a Kernel browser with the page clock at 7pm Pacific: a same-day search for a San Francisco restaurant returned slots."
     },
     {
       "domain": "opentable.com",
@@ -2675,7 +2675,7 @@
       "url_patterns_reason": "Narrowed to www.opentable.com, OpenTable's US diner site: the tools fetch its restaurant pages and same-origin GraphQL endpoint and refuse other origins; other opentable.com hosts serve restaurants and other regions.",
       "status": "draft",
       "last_verified": null,
-      "notes": "Public profile by id or allowlisted URL. Arrays capped at 50, menus at 100 items, total output at 200 KB. Independent source QA passed; final-source live runtime unverified. Source changed after that QA (reads now proceed from a page OpenTable answered with 'Access Denied', short /<name-slug> addresses are accepted unless they name a sign-in, account or booking path, and a refused search names the next step), so it needs fresh independent QA. Author live check on 2026-10-22: /log-haven returned that restaurant."
+      "notes": "Public profile by id or allowlisted URL. Arrays capped at 50, menus at 100 items, total output at 200 KB. Shares lib/opentable-restaurant-page.js with get_reviews. Independent source QA passed; final-source live runtime unverified. Source changed after that QA (reads now proceed from a page OpenTable answered with 'Access Denied', short /<name-slug> addresses are accepted unless they name a sign-in, account or booking path, and a refused search names the next step), so it needs fresh independent QA. Author live check on 2026-10-22: /log-haven returned that restaurant."
     },
     {
       "domain": "opentable.com",
@@ -2689,7 +2689,7 @@
       "url_patterns_reason": "Narrowed to www.opentable.com, OpenTable's US diner site: the tools fetch its restaurant pages and same-origin GraphQL endpoint and refuse other origins; other opentable.com hosts serve restaurants and other regions.",
       "status": "draft",
       "last_verified": null,
-      "notes": "Public reviews, 10 per page in newest dining-date order, no diner identities. Out-of-range pages return no_results. Independent source QA passed; final-source live runtime unverified. Source changed after that QA (reads now proceed from a page OpenTable answered with 'Access Denied', short /<name-slug> addresses are accepted unless they name a sign-in, account or booking path, and a refused search names the next step), so it needs fresh independent QA."
+      "notes": "Public reviews, 10 per page in newest dining-date order, no diner identities. Out-of-range pages return no_results. Shares lib/opentable-restaurant-page.js with get_restaurant. Independent source QA passed; final-source live runtime unverified. Source changed after that QA (reads now proceed from a page OpenTable answered with 'Access Denied', short /<name-slug> addresses are accepted unless they name a sign-in, account or booking path, and a refused search names the next step), so it needs fresh independent QA."
     },
     {
       "domain": "opentable.com",
@@ -2720,7 +2720,7 @@
       "url_patterns_reason": "Narrowed to www.opentable.com, OpenTable's US diner site: the tools fetch its restaurant pages and same-origin GraphQL endpoint and refuse other origins; other opentable.com hosts serve restaurants and other regions.",
       "status": "draft",
       "last_verified": null,
-      "notes": "Exact standard date/time/party/seating preparation, no substitution or hold/booking. Dates are judged by the restaurant's own UTC offset. Account and fees not verified; trusted approval execution unavailable. Reads proceed from a page OpenTable answered with 'Access Denied' and judge OpenTable's actual responses. Independent source QA passed on earlier source; the source has changed since and needs fresh independent QA. Author live check on 2026-10-22 in a Kernel browser whose home page showed 'Access Denied': get_restaurant by short address, get_availability and prepare_reservation returned prepared with no hold."
+      "notes": "Exact standard date/time/party/seating preparation, no substitution or hold/booking. Dates are judged by the restaurant's own UTC offset. Account and fees not verified; trusted approval execution unavailable. Reads proceed from a page OpenTable answered with 'Access Denied' and judge OpenTable's actual responses. Without the restaurant's offset, dates are judged by UTC-12. Shares lib/opentable-availability.js with get_availability. Independent source QA passed on earlier source; the source has changed since and needs fresh independent QA. Author live check on 2026-10-22 in a Kernel browser whose home page showed 'Access Denied': get_restaurant by short address, get_availability and prepare_reservation returned prepared with no hold."
     },
     {
       "domain": "opentable.com",
