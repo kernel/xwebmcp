@@ -94,13 +94,13 @@
         },
         {
           type: "object", additionalProperties: false, required: ["status", "error_kind", "error_message"],
-          properties: { status: { const: "error" }, error_kind: { enum: ["invalid_input", "location_not_found", "wrong_page", "challenge", "rate_limited", "site_changed", "site_error"] }, error_message: { type: "string", minLength: 1 } }
+          properties: { status: { const: "error" }, error_kind: { enum: ["invalid_input", "location_not_found", "wrong_page", "challenge", "rate_limited", "site_changed", "site_error", "canceled"] }, error_message: { type: "string", minLength: 1 } }
         }
       ]
     },
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true }
   },
-  execute: async (input) => {
+  execute: async (input, { signal } = {}) => {
     const ORIGIN = "https://www.vividseats.com";
     const fail = (kind, message) => ({ status: "error", error_kind: kind, error_message: message });
     const allowed = ["query", "location", "latitude", "longitude", "radius_miles", "start_date", "end_date", "category", "performer_id", "venue_id", "max_lowest_all_in_price", "sort", "exclude_parking", "page", "page_size"];
@@ -153,7 +153,7 @@
     });
 
     const api = async (path, headers) => {
-      const res = await fetch(path, { headers: { accept: "application/json", ...headers } });
+      const res = await fetch(path, { headers: { accept: "application/json", ...headers }, signal });
       const body = await res.text();
       let parsed = null;
       try { parsed = JSON.parse(body); } catch { /* not JSON */ }
@@ -182,7 +182,7 @@
     // A name that matches a performer redirects to that performer's page, which also takes the date range.
     const fromSearchPage = async () => {
       const read = async path => {
-        const res = await fetch(path, { headers: { accept: "text/html" } });
+        const res = await fetch(path, { headers: { accept: "text/html" }, signal });
         if (res.status !== 200) return null;
         const html = await res.text();
         const tag = /<script id="__NEXT_DATA__" type="application\/json"[^>]*>([\s\S]*?)<\/script>/.exec(html);
@@ -212,10 +212,12 @@
       // A page holding fewer events than page_size sets the page size, so page 2 continues where it ends.
       const size = found.data.total > found.data.items.length ? Math.max(1, Math.min(pageSize, found.data.items.length)) : pageSize;
       const notes = ["Vivid Seats' JSON search answered a generic 404, as it does early in a browser session, so these results come from the site's own page " + found.url.pathname + ", in its order."];
-      if (excludeParking && !/\/performer\//.test(found.url.pathname)) notes.push("That page did not apply exclude_parking; parking passes may be listed as events.");
+      // The search page is the JSON search by date without the parking exclusion, so it continues only with exclude_parking false.
+      const withParking = excludeParking && !/\/performer\//.test(found.url.pathname);
+      if (withParking) notes.push("That page did not apply exclude_parking; parking passes may be listed as events.");
       // A performer page lists that performer's events, which the JSON search returns for performerId, not for the text.
       const performer = /\/performer\/\d{1,12}$/.test(found.url.pathname) && Number.isInteger(found.params.performerId) ? found.params.performerId : null;
-      const next = "page 2" + (size < pageSize ? ", page_size " + size : "") + (performer ? ", performer_id " + performer + " and no query, since that page lists the performer's events rather than the text search's," : "");
+      const next = "page 2" + (size < pageSize ? ", page_size " + size : "") + (performer ? ", performer_id " + performer + " and no query, since that page lists the performer's events rather than the text search's," : "") + (withParking ? " and exclude_parking false, since that page includes parking passes," : "");
       if (size < pageSize) notes.push("That page holds " + size + " events, fewer than page_size; later pages need the JSON search, so call again in a minute with " + next + " to continue without a gap.");
       else if (found.data.total > pageSize) notes.push("Later pages need the JSON search; call again in a minute with " + next + " to continue.");
       return { body: { items: found.data.items, total: found.data.total, numberOfPages: Math.ceil(found.data.total / size), page: 1, i18n: { to: "USD" } }, notes, pageSize: size };
@@ -315,6 +317,7 @@
         page, page_size: pageSize, total: body.total, number_of_pages: body.numberOfPages, has_more: page < body.numberOfPages, observed_at: observedAt, warnings, events
       };
     } catch {
+      if (signal?.aborted) return fail("canceled", "The search was canceled.");
       return fail("site_error", "The request from the page failed; no automatic retry was attempted.");
     }
   }

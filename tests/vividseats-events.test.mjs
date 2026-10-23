@@ -777,5 +777,15 @@ test("search_events pages by the number of events the site's search page holds w
     pages: p => (p === "/search?searchTerm=band" ? { html: nextData({ initialAllProductionListParams: { query: "band" }, initialAllProductionListData: productions(held, { total: 30 }) }) } : null)
   });
   const text = await searchPage.run({ query: "band", page_size: 20 });
-  assert.ok(text.warnings.some(w => /with page 2, page_size 3 to continue without a gap/.test(w)), "a search page continues with the same text search");
+  assert.ok(text.warnings.some(w => /with page 2, page_size 3 and exclude_parking false, since that page includes parking passes, to continue without a gap/.test(w)), "a search page continues with the same text search, parking passes included as on that page");
+  const withParking = await searchPage.run({ query: "band", page_size: 20, exclude_parking: false });
+  assert.ok(withParking.warnings.some(w => /with page 2, page_size 3 to continue without a gap/.test(w)), "nothing to add when parking passes were asked for");
+});
+
+test("search_events passes the caller's signal to its requests and reports a canceled search as canceled", async () => {
+  const controller = new AbortController();
+  const h = harness("search_events");
+  controller.abort();
+  assert.equal((await h.run({ query: "band" }, { signal: controller.signal })).error_kind, "canceled");
+  assert.equal(h.calls.fetches[0].init.signal, controller.signal);
 });
