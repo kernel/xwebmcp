@@ -4493,7 +4493,7 @@
       "url_patterns_reason": "Narrowed to www.vividseats.com, the Vivid Seats marketplace: the tools call its same-origin event and listing endpoints and refuse other origins; other vividseats.com hosts are separate products.",
       "status": "draft",
       "last_verified": null,
-      "notes": "GET-only quote preparation: revalidates exact event/listing/quantity/price/group and fee basis, and returns an ordinary event-page handoff; no site selection, checkout, hold, approval or payment execution. The listings proxy's early-session generic 404 is a site_error pointing at get_ticket_offers, not not_found. Independent live QA passed from Explore in Kernel and the extension on 2026-09-30 for earlier source; the source has changed since and needs fresh independent QA."
+      "notes": "GET-only quote preparation: revalidates exact event/listing/quantity/price/group and fee basis, and returns an ordinary event-page handoff; no site selection, checkout, hold, approval or payment execution. The listings proxy's early-session generic 404 is a site_error pointing at get_ticket_offers, not not_found; an event page that redirects, as an unknown event does to /404, is not_found and the redirect is not followed. Independent live QA passed from Explore in Kernel and the extension on 2026-09-30 for earlier source; the source has changed since and needs fresh independent QA."
     },
     {
       "domain": "vividseats.com",

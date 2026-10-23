@@ -73,11 +73,13 @@ function harness(name, options = {}) {
       calls.push({ path, init });
       options.onRead?.(calls.length);
       assert.equal(init.method, undefined, "only GET");
-      assert.equal(init.redirect, "error", "no redirects to account/checkout hosts");
+      const page = name === "prepare_ticket_selection" && !path.startsWith("/hermes/");
+      assert.equal(init.redirect, page ? "manual" : "error", "redirects are never followed to account/checkout pages");
       assert.equal(init.signal, signal);
       assert.deepEqual(Object.keys(init.headers), ["accept"]);
       if (options.throws) throw new Error("private token=secret");
       if (options.cancelDuringRead) signal.aborted = true;
+      if (page && options.redirected) return { type: "opaqueredirect", status: 0, ok: false, text: async () => "" };
       if (options.changeGroup && calls.length === 2) document.cookie = "pgid=21";
       const json = path.startsWith("/hermes/api/v1/listings?");
       const data = json ? inventory : path === eventPath ? (options.eventData ?? eventData) : path === venuePath ? (options.venueData ?? venueData) : null;
@@ -342,4 +344,11 @@ test("prepare_ticket_selection: the listings proxy's early-session generic 404 i
   assert.match(result.error_message, /not serving listings.*get_ticket_offers/);
   assert.equal(early.calls.length, 2, "one read of the event page and one of the listings, no retry");
   assert.equal((await harness("prepare_ticket_selection", { listingsError: "No production" }).run(preparedInput)).error_kind, "not_found");
+});
+
+test("prepare_ticket_selection: an event page that redirects, as an unknown event does to /404, is not_found without following it", async () => {
+  const h = harness("prepare_ticket_selection", { redirected: true });
+  const result = await h.run(preparedInput);
+  assert.equal(result.error_kind, "not_found");
+  assert.equal(h.calls.length, 1, "neither the redirect target nor the listings are read");
 });

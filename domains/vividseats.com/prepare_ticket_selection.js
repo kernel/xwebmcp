@@ -213,8 +213,10 @@
       return { id, path: url.pathname.replace(/\/$/, "") };
     };
     const read = async (path, json) => {
-      const response = await fetch(path, { headers: { accept: json ? "application/json" : "text/html" }, redirect: "error", signal });
+      // Redirects are never followed; the event page of an unknown event redirects to /404, which is reported as not_found.
+      const response = await fetch(path, { headers: { accept: json ? "application/json" : "text/html" }, redirect: json ? "error" : "manual", signal });
       if (signal?.aborted) return { error: fail("canceled", "The read was canceled; no selection or reservation was made.") };
+      if (response.type === "opaqueredirect") return { error: fail("not_found", "The event page redirected instead of loading, as it does for an unknown or removed event; the redirect was not followed. Check the event URL with get_event.") };
       if (response.status === 403) return { error: fail("challenge", "The site refused the read (HTTP 403); resolve access normally.") };
       if (response.status === 429) return { error: fail("rate_limited", "The site rate-limited the read; wait before trying again.") };
       if (response.status === 404) {
