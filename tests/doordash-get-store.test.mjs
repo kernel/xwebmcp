@@ -203,13 +203,12 @@ test("no address selected: the placeholder-location delivery figures are withhel
   assert.ok(validOutput(definition, out), JSON.stringify(out));
   assert.equal(out.delivery_context.basis, "no_address_selected");
   assert.equal(out.delivery_context.address_selected, false);
-  assert.deepEqual(out.delivery, { available: null, unavailable_reason: null, unavailable_message: null, estimate_minutes: null, fee_display: out.delivery.fee_display });
+  assert.deepEqual(out.delivery, { available: null, unavailable_reason: null, unavailable_message: null, estimate_minutes: null, fee_display: { title: null, subtitle: null, text: null, is_surging: null } });
   assert.equal(out.delivery_context.too_far_from_consumer, null);
   assert.equal(out.name, "Fabricated Noodle House");
   assert.equal(out.operation_status, "OPEN");
   assert.equal(out.hours.store.length, 7);
-  assert.equal(out.delivery.fee_display.text, "$0 delivery fee over $12");
-  assert.doesNotMatch(JSON.stringify(out), /Too far away/);
+  assert.doesNotMatch(JSON.stringify(out), /Too far away|delivery fee/, "the fee strings change with the address, so they are withheld too");
   assert.match(out.delivery_context.note, /withheld/);
 
   const available = harness({ button: { innerText: "Your Address" } });
@@ -227,6 +226,7 @@ test("unknown basis: delivery figures are withheld like the no-address case, not
   assert.equal(out.delivery_context.address_selected, null);
   assert.equal(out.delivery.available, null);
   assert.equal(out.delivery.unavailable_reason, null);
+  assert.equal(out.delivery.fee_display.text, null);
   assert.equal(out.delivery_context.too_far_from_consumer, null);
   assert.equal(out.pickup.available, false);
   assert.doesNotMatch(JSON.stringify(out), /Too far away/);
