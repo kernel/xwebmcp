@@ -1,0 +1,41 @@
+{
+  "id": "shopify-app-store-listing",
+  "domain": "shopify.com",
+  "stage": "inspect",
+  "prompt": "On the Shopify App Store (apps.shopify.com), find the listing for {{app}} and report its average rating, how many reviews it has, and the monthly price in US dollars of its cheapest paid plan. Do not install the app. Reply with JSON: {\"app\": string, \"rating\": number, \"review_count\": integer, \"cheapest_paid_monthly_price\": number}.",
+  "fixture": {
+    "app": "Judge.me Product Reviews"
+  },
+  "start_url": "https://apps.shopify.com/",
+  "answer_schema": "schemas/app-listing.json",
+  "rules": [
+    {
+      "path": "app",
+      "matches": "judge"
+    },
+    {
+      "path": "rating",
+      "range": [
+        1,
+        5
+      ]
+    },
+    {
+      "path": "review_count",
+      "range": [
+        100,
+        10000000
+      ]
+    },
+    {
+      "path": "cheapest_paid_monthly_price",
+      "range": [
+        1,
+        1000
+      ]
+    }
+  ],
+  "pairs": 5,
+  "trial_timeout_sec": 600,
+  "max_turns": 40
+}

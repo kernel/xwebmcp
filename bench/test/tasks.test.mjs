@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
+import { gradeAnswer } from "../grade.mjs";
 import { ALLOW, fill, loadIntents, loadSchema, pastDates, resolveFixture, trialPrompt, validateDomain, validateIntent } from "../lib/intents.mjs";
 import { checkSchema } from "../lib/schema.mjs";
 import { composeBatch, evaluateDefinitions, matchesUrlPattern, normalize, registeredTools, resolveSource } from "../lib/tools.mjs";
@@ -355,4 +356,14 @@ test("the guard extension runs the guard on its hosts and is named by its conten
   assert.equal(writeGuardExtension(join(dir, "b"), guard).name, first.name);
   assert.notEqual(writeGuardExtension(join(dir, "c"), { ...guard, buttons: "^buy$" }).name, first.name);
   assert.notEqual(writeGuardExtension(join(dir, "d"), { ...guard, selectors: "#buy" }).name, first.name);
+});
+
+test("the DoorDash address check reads the header's address line, not a store or place named after the address", () => {
+  const intent = loadIntents(benchDir).find(i => i.id === "doordash-pizza-near-address");
+  const answer = JSON.stringify({ places: [1, 2, 3].map(n => ({ name: `Pizza ${n}`, detail: "$0 delivery fee" })) });
+  const grade = text => gradeAnswer(intent, loadSchema(benchDir, intent), answer, { output: { url: "https://www.doordash.com/", title: "DoorDash", text, fields: {}, missing: [], invalid: [] } });
+  for (const text of ["DoorDash\n4 Times Sq\nSign In", "DoorDash\nTimes Square\nDelivery"]) assert.equal(grade(text).outcome, "correct", text);
+  for (const text of ["DoorDash\nYour Address\nJohn's of Times Square", "DoorDash\nJohn's of Times Square", "4 Times Sq, New York, NY 10036", "DoorDash\nTimes Square Kitchen\nDelivery", "DoorDash\nTimes Squares Square Dance Club\nDelivery", "DoorDash\nCrowne Plaza Manhattan Times Square\nDelivery"]) {
+    assert.equal(grade(text).outcome, "wrong", text);
+  }
 });

@@ -228,8 +228,9 @@ and deletes every browser.
 - `agreement` (optional) compares the arms' answers within a pair. `{"path": "price", "better":
   "lower", "tolerance": 1}` counts pairs where one arm missed the cheapest fare. `{"path":
   "issues[]", "same": true}` is for one right answer that changes too often to pin in rules, and
-  counts both-correct pairs whose answers differ as sets. Leave it off intents with many right
-  answers.
+  counts both-correct pairs whose answers differ as sets. A path without `[]` compares the whole
+  value, so `{"path": "games", "same": true}` also counts a reordered array as differing. Leave it
+  off intents with many right answers.
 - `opt_in` (optional) is a reason the intent runs only when named with `--intent`, such as a
   checkout intent not yet rehearsed on the live site.
 
