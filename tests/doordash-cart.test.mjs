@@ -238,6 +238,13 @@ test("remaining lines repriced by the site still confirm the removal", async () 
   assert.equal(out.status, "ok"); assert.equal(out.remaining_cart.lines[0].total_minor, 600); assert.equal(h.store.size, 0);
 });
 
+test("remaining lines listed in another order still confirm the removal", async () => {
+  const three = cart(); three.orders[0].orderItems.push(item("line-3"));
+  const h = harness({ carts: [three], afterWrite: c => { c.orders[0].orderItems.reverse(); } });
+  const out = await h.run("remove_cart_item", await removalInput(h));
+  assert.equal(out.status, "ok"); assert.deepEqual(out.remaining_cart.lines.map(l => l.line_id), ["line-3", "line-2"]); assert.equal(h.store.size, 0);
+});
+
 test("an uncertain write blocks the unchanged cart but not a fresh revision of a changed one", async () => {
   const h = harness({ noRemoval: true }); const input = await removalInput(h);
   assert.equal((await h.run("remove_cart_item", input)).error_kind, "outcome_unknown"); assert.equal(h.store.size, 1);
