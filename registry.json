@@ -1394,6 +1394,57 @@
     },
     {
       "domain": "doordash.com",
+      "tool": "get_cart",
+      "file": "domains/doordash.com/get_cart.js",
+      "kind": "page",
+      "namespace": "doordash.com",
+      "url_patterns": [
+        "https://www.doordash.com/*"
+      ],
+      "url_patterns_reason": "Narrowed to www.doordash.com, the consumer marketplace: these tools call its same-origin GraphQL endpoint with the page's session; other doordash.com hosts are separate products such as the merchant portal and help center.",
+      "status": "qa_passed",
+      "last_verified": "2026-09-30",
+      "notes": "Account-checked open-cart read with bounded lines/options, provisional currency/fee/totals, queried revision and explicit header/default-region context. Independent Kernel and local-extension success/failure QA passed on final source; populated success is fixture-only. Earlier source read an authorized empty live cart. No address, payment or checkout changes.",
+      "provenance": {
+        "qa_agent": "agt_e3cd254315c78d609b12"
+      }
+    },
+    {
+      "domain": "doordash.com",
+      "tool": "get_checkout_summary",
+      "file": "domains/doordash.com/get_checkout_summary.js",
+      "kind": "page",
+      "namespace": "doordash.com",
+      "url_patterns": [
+        "https://www.doordash.com/*"
+      ],
+      "url_patterns_reason": "Narrowed to www.doordash.com, the consumer marketplace: these tools call its same-origin GraphQL endpoint with the page's session; other doordash.com hosts are separate products such as the merchant portal and help center.",
+      "status": "qa_passed",
+      "last_verified": "2026-09-30",
+      "notes": "Read-only exact-cart preparation with provisional fees/totals, explicit address-context limitations and a manual checkout URL. Does not load checkout or execute orders/payment; ready_for_order is always false because no trusted approval enforcement exists. Independent Kernel/local-extension success/failure QA passed; populated success is fixture-only.",
+      "provenance": {
+        "qa_agent": "agt_e3cd254315c78d609b12"
+      }
+    },
+    {
+      "domain": "doordash.com",
+      "tool": "get_store",
+      "file": "domains/doordash.com/get_store.js",
+      "kind": "page",
+      "namespace": "doordash.com",
+      "url_patterns": [
+        "https://www.doordash.com/*"
+      ],
+      "url_patterns_reason": "Narrowed to www.doordash.com, the consumer marketplace: these tools call its same-origin GraphQL endpoint with the page's session; other doordash.com hosts are separate products such as the merchant portal and help center.",
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Page tool. Store details the site's native menu tools lack: hours, address, service modes, open status, and delivery and pickup availability with estimate range and the site's own fee strings, plus the menus with the menu_id the native add_to_cart needs. Delivery figures are meaningful only for a selected address, so the output states its basis (selected address, none selected, or unknown) and returns delivery availability, estimate and fee strings only when an address is positively recognised; it never selects or changes an address and returns neither address text nor customer distance. One same-origin read of the site's storepageFeed query, no navigation; works signed out. Independent QA (two rounds, 2026-09-29) signed off on earlier source on the Kernel runtime and a local Chromium extension; the fee strings have since been withheld without a recognised address too, since they change with it (live on 2026-10-23, signed out, a store read '$0 delivery fee, first order' with no address and '--' once a distant address was set), so it needs fresh independent QA. The selected-address path was live-checked only by the author, and the 401, 429, challenge and site-changed branches are stub-driven only.",
+      "provenance": {
+        "qa_agent": null
+      }
+    },
+    {
+      "domain": "doordash.com",
       "tool": "login",
       "file": "domains/doordash.com/login.js",
       "kind": "cdp",
@@ -1428,6 +1479,20 @@
     },
     {
       "domain": "doordash.com",
+      "tool": "remove_cart_item",
+      "file": "domains/doordash.com/remove_cart_item.js",
+      "kind": "page",
+      "namespace": "doordash.com",
+      "url_patterns": [
+        "https://www.doordash.com/*"
+      ],
+      "url_patterns_reason": "Narrowed to www.doordash.com, the consumer marketplace: these tools call its same-origin GraphQL endpoint with the page's session; other doordash.com hosts are separate products such as the merchant portal and help center.",
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Exact non-last ordinary personal cart-line removal with account/store/revision, complete non-prescription line checks, an uncertain-write guard and observed postconditions. One attempt, no automatic retries. The guard refuses further removals from the cart until a fresh get_cart revision shows the cart changed; the postcondition lets the site reprice or reorder the remaining lines but not change their identity, quantity or options. Independent Kernel/local-extension QA passed on 2026-09-30 for earlier source; the guard and postcondition changed since and need fresh independent QA. All mutation success is fixture-only, never live-verified. Cross-tab races are not atomically excluded; final order/payment execution is absent."
+    },
+    {
+      "domain": "doordash.com",
       "tool": "save_address",
       "file": "domains/doordash.com/save_address.js",
       "kind": "cdp",
@@ -1442,6 +1507,20 @@
       "provenance": {
         "qa_agent": null
       }
+    },
+    {
+      "domain": "doordash.com",
+      "tool": "set_delivery_address",
+      "file": "domains/doordash.com/set_delivery_address.js",
+      "kind": "page",
+      "namespace": "doordash.com",
+      "url_patterns": [
+        "https://www.doordash.com/*"
+      ],
+      "url_patterns_reason": "Narrowed to www.doordash.com, the consumer marketplace: these tools call its same-origin GraphQL endpoint with the page's session; other doordash.com hosts are separate products such as the merchant portal and help center.",
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Signed-out visits only: refuses when the dd_cx_logged_in cookie is set or DoorDash's consumer query reports a non-guest visitor, before any address request (save_address covers accounts). Sends the address picker's own three requests (autocomplete, get-or-create, addConsumerAddressV2) and reports success only when DoorDash's answer has the chosen suggestion's street, city and ZIP code; does not navigate. Draft, no independent QA. Live in a signed-out Kernel browser: on 2026-10-21 'Times Square, New York, NY 10036' set 4 Times Sq and the header showed it after loading /home, and an address with no suggestions returned address_not_found; on 2026-10-22 the source with the guest check and street/city/ZIP confirmation set the same address, 350 5th Ave, 1600 Amphitheatre Pkwy and 233 S Wacker Dr, each confirmed by DoorDash's answer."
     },
     {
       "domain": "etsy.com",
