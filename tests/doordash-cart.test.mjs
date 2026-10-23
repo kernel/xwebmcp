@@ -101,6 +101,21 @@ for (const name of Object.keys(sources)) {
   });
 }
 
+// remove_cart_item accepts a get_cart revision, so the code that reads and hashes a cart must not drift between the tools.
+test("cart query, projection and revision code is identical in every cart tool", () => {
+  const block = (source, name) => {
+    const lines = source.split("\n"), start = lines.findIndex(l => l.startsWith(`    const ${name} = `));
+    assert.notEqual(start, -1, name);
+    let end = start + 1;
+    while (end < lines.length && !/^    \S/.test(lines[end])) end++;
+    return lines.slice(start, /^    \}/.test(lines[end]) ? end + 1 : end).join("\n");
+  };
+  for (const name of ["cartQuery", "text", "ident", "integer", "bool", "canonical", "revision", "readCarts", "project"]) {
+    assert.equal(block(sources.get_checkout_summary, name), block(sources.get_cart, name), "get_checkout_summary " + name);
+    assert.equal(block(sources.remove_cart_item, name), block(sources.get_cart, name), "remove_cart_item " + name);
+  }
+});
+
 test("cart read exposes only allowlisted fields, minor amounts, options and revision", async () => {
   const c = cart(); c.password = "private-password"; c.orders[0].paymentCard = { stripeId: "private-stripe" }; c.orders[0].orderItems[0].specialInstructions = "private-instruction";
   const h = harness({ carts: [c] }); const out = await h.run("get_cart", read);
@@ -216,6 +231,20 @@ for (const options of [{ writeError: true }, { noRemoval: true }, { nullAck: tru
     await h.run("remove_cart_item", input); assert.equal(writes(h).length, 1);
   });
 }
+
+test("remaining lines repriced by the site still confirm the removal", async () => {
+  const h = harness({ afterWrite: c => { Object.assign(c.orders[0].orderItems[0], { singlePrice: 600, priceOfTotalQuantity: 600, priceDisplayString: "$6.00" }); } });
+  const out = await h.run("remove_cart_item", await removalInput(h));
+  assert.equal(out.status, "ok"); assert.equal(out.remaining_cart.lines[0].total_minor, 600); assert.equal(h.store.size, 0);
+});
+
+test("an uncertain write blocks the unchanged cart but not a fresh revision of a changed one", async () => {
+  const h = harness({ noRemoval: true }); const input = await removalInput(h);
+  assert.equal((await h.run("remove_cart_item", input)).error_kind, "outcome_unknown"); assert.equal(h.store.size, 1);
+  assert.equal((await h.run("remove_cart_item", await removalInput(h))).error_kind, "busy"); assert.equal(writes(h).length, 1);
+  h.getCarts()[0].orders[0].orderItems.push(item("line-3"));
+  assert.equal((await h.run("remove_cart_item", await removalInput(h))).error_kind, "outcome_unknown"); assert.equal(writes(h).length, 2);
+});
 
 test("concurrent removals share a per-cart guard, at most one write", async () => {
   const h = harness({ writeError: true }); const input = await removalInput(h);

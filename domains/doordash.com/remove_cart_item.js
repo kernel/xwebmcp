@@ -3,7 +3,7 @@
   match: { url_patterns: ["https://www.doordash.com/*"] },
   tool: {
     name: "remove_cart_item",
-    description: "Remove exactly one existing line from an ordinary personal DoorDash cart using the site's removeCartItem operation. Requires the user's intended expected_account_email, cart_id, line_id (NOT menu item id), expected_store_id and a fresh get_cart expected_revision. Checks the current account, queried cart revision and store immediately before one write; refuses group, bundle, catering, shipping, finalized/unsupported carts and last-line removal. Does not change address, payment, quantity/options of other lines, or place an order. Returns removed only after rereading the open carts proves this line absent and all other queried cart identity/line fields unchanged. Never retries writes: an uncertain outcome leaves a sessionStorage guard; inspect the cart manually rather than reinvoking. No live mutation QA has been authorized; mutation evidence is fabricated fixtures only. Call serially; server provides no atomic compare-and-swap, so cross-tab changes remain a race.",
+    description: "Remove exactly one existing line from an ordinary personal DoorDash cart using the site's removeCartItem operation. Requires the user's intended expected_account_email, cart_id, line_id (NOT menu item id), expected_store_id and a fresh get_cart expected_revision. Checks the current account, queried cart revision and store immediately before one write; refuses group, bundle, catering, shipping, finalized/unsupported carts and last-line removal. Does not change address, payment, quantity/options of other lines, or place an order. Returns removed only after rereading the open carts proves this line absent and the other lines' identity, quantity and options unchanged (the site may reprice them). Never retries writes: an uncertain outcome leaves a sessionStorage guard that refuses further removals from this cart until a fresh get_cart revision shows the cart has changed; inspect the cart on the site rather than reinvoking. No live mutation QA has been authorized; mutation evidence is fabricated fixtures only. Call serially; server provides no atomic compare-and-swap, so cross-tab changes remain a race.",
     inputSchema: {
       type: "object",
       additionalProperties: false,
@@ -194,11 +194,20 @@
       if (signal.aborted) return fail("cancelled", "Cancelled before the cart write.");
       const key = "doordash.com.remove_cart_item.pending.v1:" + input.cart_id;
       let lock;
+      const owned = () => { try { return JSON.parse(sessionStorage.getItem(key))?.lock === lock; } catch { return false; } };
       try {
-        if (sessionStorage.getItem(key)) return fail("busy", "A previous cart write has an uncertain or in-flight outcome. Inspect manually; do not retry.");
+        const pending = sessionStorage.getItem(key);
+        if (pending) {
+          // The guard records the cart revision the earlier write started from. A fresh expected_revision that differs
+          // shows the caller re-read the cart after that write's outcome became visible, so the guard is spent.
+          let started = null;
+          try { started = JSON.parse(pending).revision; } catch { /* unreadable guard stays in force */ }
+          if (typeof started !== "string" || started === input.expected_revision) return fail("busy", "A previous write to this cart has an uncertain or in-flight outcome and the cart has not changed since. Check the cart on the site; do not retry.");
+          sessionStorage.removeItem(key);
+        }
         lock = crypto.randomUUID();
-        sessionStorage.setItem(key, lock);
-        if (sessionStorage.getItem(key) !== lock) return fail("busy", "Another cart write is in progress.");
+        sessionStorage.setItem(key, JSON.stringify({ lock, revision: input.expected_revision }));
+        if (!owned()) return fail("busy", "Another cart write is in progress.");
       } catch { return fail("blocked", "The duplicate-write guard is unavailable; no write was sent."); }
       if (signal.aborted) { sessionStorage.removeItem(key); return fail("cancelled", "Cancelled before the cart write."); }
       writeAttempted = true;
@@ -209,12 +218,15 @@
       const afterMatches = afterList.filter(c => c?.id === input.cart_id);
       if (afterMatches.length !== 1) return fail("outcome_unknown", "The cart could not be observed after the write. Inspect manually; do not retry.", true);
       const after = afterMatches[0];
-      const expected = { ...before, subtotal: after.subtotal, total: after.total, orders: before.orders.map(o => ({ ...o, orderItems: o.orderItems.filter(l => String(l.id) !== input.line_id), lineItems: after.orders?.[0]?.lineItems })) };
+      // The site may reprice the remaining lines (promotions, bundles); their identity, quantity and options must not change.
+      const repriced = new Map((Array.isArray(after.orders?.[0]?.orderItems) ? after.orders[0].orderItems : []).map(l => [String(l?.id), l]));
+      const kept = l => { const now = repriced.get(String(l.id)); return { ...l, singlePrice: now?.singlePrice, priceOfTotalQuantity: now?.priceOfTotalQuantity, priceDisplayString: now?.priceDisplayString }; };
+      const expected = { ...before, subtotal: after.subtotal, total: after.total, orders: before.orders.map(o => ({ ...o, orderItems: o.orderItems.filter(l => String(l.id) !== input.line_id).map(kept), lineItems: after.orders?.[0]?.lineItems })) };
       if (JSON.stringify(canonical(expected)) !== JSON.stringify(canonical(after))) return fail("outcome_unknown", "The exact removal with unchanged other lines was not confirmed. Inspect manually; do not retry.", true);
       const remaining = await project(after);
       if (signal.aborted) return fail("outcome_unknown", "Cancelled before the final cart result was returned. Inspect manually; do not retry.", true);
       if (remaining.truncated || new TextEncoder().encode(JSON.stringify(remaining)).byteLength > 170000) return fail("outcome_unknown", "The remaining cart exceeds safe observation bounds. Inspect manually; do not retry.", true);
-      if (sessionStorage.getItem(key) === lock) sessionStorage.removeItem(key);
+      if (owned()) sessionStorage.removeItem(key);
       return { status: "ok", account_matched: true, removed: true, cart_id: input.cart_id, line_id: input.line_id, write_attempted: true, remaining_cart: remaining };
     } catch (error) {
       if (writeAttempted) return fail("outcome_unknown", "The exact cart write postcondition was not observed. Inspect manually; do not retry automatically.", true);
