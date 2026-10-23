@@ -103,7 +103,7 @@ function harness(name, o = {}) {
     return { status: 404, body: {} };
   };
   const context = {
-    JSON, URL, URLSearchParams, Promise, Date, Math, Number, Object, Array, String, RegExp, Map, Set, Infinity, NaN, isFinite, encodeURIComponent,
+    JSON, URL, URLSearchParams, Promise, Date: o.Date ?? Date, AbortSignal, Math, Number, Object, Array, String, RegExp, Map, Set, Infinity, NaN, isFinite, encodeURIComponent,
     setTimeout: o.realTimers ? setTimeout : fn => { calls.waits = (calls.waits ?? 0) + 1; fn(); }, clearTimeout,
     document: { title: o.title ?? "Vivid Seats", cookie: o.cookie ?? "locale=en-US; pgid=416; other=1" },
     window: { location: new URL(pageOrigin) },
@@ -730,6 +730,17 @@ test("get_ticket_offers keeps asking while the listings service answers its gene
   const missing = harness("get_ticket_offers", { route: p => (p.startsWith("/hermes/api/v1/listings?") ? { status: 404, body: { error: "x" } } : null) });
   assert.equal((await missing.run({ event: "6001" })).error_kind, "not_found");
   assert.equal(missing.calls.fetches.length, 1, "a specific 404 is not retried");
+});
+
+test("get_ticket_offers counts the requests' own time in its 45-second wait and bounds each request", async () => {
+  let clock = 0;
+  const SlowClock = class extends Date { static now() { return clock; } };
+  const h = harness("get_ticket_offers", { Date: SlowClock, pages: eventPage, route: p => { clock += 6500; /* a five-second wait plus a 1.5-second request */ return p.startsWith("/hermes/api/v1/listings?") ? { status: 404, body: { error: "Request failed with status code 404" } } : null; } });
+  const result = await h.run({ event: "6001" });
+  assert.equal(result.status, "not_ready");
+  assert.match(result.message, /after three not_ready answers in a row, stop/);
+  assert.ok(h.calls.waits < 9, "fewer five-second waits when the requests themselves take time");
+  assert.ok(h.calls.fetches.every(c => c.init.signal), "every request has a timeout");
 });
 
 test("get_ticket_offers stops waiting as soon as the read is canceled", async () => {
