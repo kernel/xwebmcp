@@ -176,7 +176,10 @@
         try { body = JSON.parse(text); } catch { /* not JSON */ }
         if (!generic(res, body) || waited >= RETRY_FOR_MS) break;
         if (waited === 0 && await eventMissing()) return fail("not_found", "Vivid Seats has no event with production_id " + productionId + ".");
-        await new Promise(resolve => setTimeout(resolve, RETRY_EVERY_MS));
+        await new Promise(resolve => {
+          const timer = setTimeout(resolve, RETRY_EVERY_MS);
+          signal?.addEventListener("abort", () => { clearTimeout(timer); resolve(); }, { once: true });
+        });
         waited += RETRY_EVERY_MS;
         if (signal?.aborted) return fail("canceled", "The read was canceled while waiting for Vivid Seats' listings.");
       }

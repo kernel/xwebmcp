@@ -213,8 +213,11 @@
       const size = found.data.total > found.data.items.length ? Math.max(1, Math.min(pageSize, found.data.items.length)) : pageSize;
       const notes = ["Vivid Seats' JSON search answered a generic 404, as it does early in a browser session, so these results come from the site's own page " + found.url.pathname + ", in its order."];
       if (excludeParking && !/\/performer\//.test(found.url.pathname)) notes.push("That page did not apply exclude_parking; parking passes may be listed as events.");
-      if (size < pageSize) notes.push("That page holds " + size + " events, fewer than page_size; later pages need the JSON search, so call again in a minute with page 2 with page_size " + size + " to continue without a gap.");
-      else if (found.data.total > pageSize) notes.push("Later pages need the JSON search; call again with page 2 in a minute.");
+      // A performer page lists that performer's events, which the JSON search returns for performerId, not for the text.
+      const performer = /\/performer\/\d{1,12}$/.test(found.url.pathname) && Number.isInteger(found.params.performerId) ? found.params.performerId : null;
+      const next = "page 2" + (size < pageSize ? ", page_size " + size : "") + (performer ? ", performer_id " + performer + " and no query, since that page lists the performer's events rather than the text search's," : "");
+      if (size < pageSize) notes.push("That page holds " + size + " events, fewer than page_size; later pages need the JSON search, so call again in a minute with " + next + " to continue without a gap.");
+      else if (found.data.total > pageSize) notes.push("Later pages need the JSON search; call again in a minute with " + next + " to continue.");
       return { body: { items: found.data.items, total: found.data.total, numberOfPages: Math.ceil(found.data.total / size), page: 1, i18n: { to: "USD" } }, notes, pageSize: size };
     };
 

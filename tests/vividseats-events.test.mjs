@@ -104,7 +104,7 @@ function harness(name, o = {}) {
   };
   const context = {
     JSON, URL, URLSearchParams, Promise, Date, Math, Number, Object, Array, String, RegExp, Map, Set, Infinity, NaN, isFinite, encodeURIComponent,
-    setTimeout: fn => { calls.waits = (calls.waits ?? 0) + 1; fn(); },
+    setTimeout: o.realTimers ? setTimeout : fn => { calls.waits = (calls.waits ?? 0) + 1; fn(); }, clearTimeout,
     document: { title: o.title ?? "Vivid Seats", cookie: o.cookie ?? "locale=en-US; pgid=416; other=1" },
     window: { location: new URL(pageOrigin) },
     fetch: async (path, init) => {
@@ -732,6 +732,15 @@ test("get_ticket_offers keeps asking while the listings service answers its gene
   assert.equal(missing.calls.fetches.length, 1, "a specific 404 is not retried");
 });
 
+test("get_ticket_offers stops waiting as soon as the read is canceled", async () => {
+  const controller = new AbortController();
+  const h = harness("get_ticket_offers", { realTimers: true, pages: eventPage, route: p => (p.startsWith("/hermes/api/v1/listings?") ? { status: 404, body: { error: "Request failed with status code 404" } } : null) });
+  setTimeout(() => controller.abort(), 50);
+  const started = Date.now();
+  assert.equal((await h.run({ event: "6001" }, { signal: controller.signal })).error_kind, "canceled");
+  assert.ok(Date.now() - started < 1000, "the five-second wait is cut short");
+});
+
 test("get_ticket_offers reports an unknown event as not_found at once, though the listings service answers its generic 404", async () => {
   const h = harness("get_ticket_offers", { pages: unknownEvent, route: p => (p.startsWith("/hermes/api/v1/listings?") ? { status: 404, body: { error: "Request failed with status code 404" } } : null) });
   const result = await h.run({ event: "6001" });
@@ -751,5 +760,11 @@ test("search_events pages by the number of events the site's search page holds w
   assert.equal(result.status, "ok");
   assert.equal(result.events.length, 3);
   assert.deepEqual([result.page_size, result.number_of_pages, result.has_more, result.query.page_size], [3, 10, true, 3]);
-  assert.ok(result.warnings.some(w => /page 2 with page_size 3/.test(w)), "page 2 continues where this page ends");
+  assert.ok(result.warnings.some(w => /page 2, page_size 3, performer_id 9001 and no query/.test(w)), "page 2 continues the performer page's list where it ends");
+  const searchPage = harness("search_events", {
+    route: proxy404,
+    pages: p => (p === "/search?searchTerm=band" ? { html: nextData({ initialAllProductionListParams: { query: "band" }, initialAllProductionListData: productions(held, { total: 30 }) }) } : null)
+  });
+  const text = await searchPage.run({ query: "band", page_size: 20 });
+  assert.ok(text.warnings.some(w => /with page 2, page_size 3 to continue without a gap/.test(w)), "a search page continues with the same text search");
 });
