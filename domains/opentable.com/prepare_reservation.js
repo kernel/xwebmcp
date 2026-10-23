@@ -285,9 +285,14 @@
         if (typeof csrf !== "string" || !csrf || csrf.length > 300) return otFail("site_changed", "The restaurant document did not supply its query credential.");
         const entry = [...html.matchAll(/<script\b[^>]*\bsrc="([^"]+)"/g)].map(m => new URL(m[1], OT_ORIGIN)).find(u => u.origin === OT_ORIGIN && /^\/static\/cfe\/\d+\/js\/restprofilepage-[A-Z0-9]+\.js$/.test(u.pathname) && !u.search && !u.hash);
         if (!entry) return otFail("site_changed", "The profile's first-party module entry was not found.");
-        const queue = [entry.pathname];
+        // The query id changes only with the site's build, which names the entry module, so this tab keeps it for later reads.
+        const cacheKey = "opentable.com.restaurants-availability-document.v1:" + entry.pathname;
+        let cached = null;
+        try { cached = sessionStorage.getItem(cacheKey); } catch { /* no storage: read the modules */ }
+        let hash = typeof cached === "string" && /^[0-9a-f]{64}$/.test(cached) ? cached : null;
+        const fromCache = hash !== null;
+        const queue = fromCache ? [] : [entry.pathname];
         const seen = new Set();
-        let hash = null;
         let totalBytes = 0;
         for (let i = 0; i < queue.length && seen.size < 260; i++) {
           if (signal?.aborted) return otFail("canceled", "The read was canceled.");
@@ -307,6 +312,7 @@
           }
         }
         if (!hash) return otFail("site_changed", "The current read-only RestaurantsAvailability query was not found within the module bound.");
+        if (!fromCache) try { sessionStorage.setItem(cacheKey, hash); } catch { /* no storage: read the modules next time */ }
         const body = {
           operationName: "RestaurantsAvailability",
           variables: { restaurantIds: [input.restaurant_id], date, time: input.time, partySize: input.party_size, databaseRegion: "NA", onlyPop: false, forwardDays: 0, requireTimes: false, requireTypes: ["Standard"], privilegedAccess: [], includeAvailableSpaces: false, restaurantAvailabilityTokens: [profile.availabilityToken ?? null], loyaltyRedemptionTiers: [], forwardMinutes: windowMinutes, backwardMinutes: windowMinutes },
@@ -318,7 +324,10 @@
         if (queryError) return queryError;
         if (text.length > 1000000) return otFail("site_changed", "The availability response exceeded the supported read bound.");
         const json = JSON.parse(text);
-        if (Array.isArray(json.errors) && json.errors.length) return otFail("site_error", "The read-only availability query reported an error; no slots were returned.");
+        if (Array.isArray(json.errors) && json.errors.length) {
+          if (fromCache) try { sessionStorage.removeItem(cacheKey); } catch { /* nothing kept */ }
+          return otFail("site_error", "The read-only availability query reported an error; no slots were returned.");
+        }
         const records = json.data?.availability;
         if (!Array.isArray(records) || records.length !== 1 || records[0]?.restaurantId !== input.restaurant_id || !Array.isArray(records[0].availabilityDays)) return otFail("site_changed", "The availability response did not identify the requested restaurant.");
         const day = records[0].availabilityDays.find(d => d?.dayOffset === 0);
@@ -327,9 +336,9 @@
         const slots = [];
         for (const s of day.slots.slice(0, 200)) {
           if (s?.isAvailable !== true || s.type !== "Standard") continue;
+          // The site can answer with slots beyond the requested window; they are left out, whatever their shape.
+          if (Number.isInteger(s?.timeOffsetMinutes) && Math.abs(s.timeOffsetMinutes) > windowMinutes) continue;
           if (!Number.isInteger(s.timeOffsetMinutes) || !Array.isArray(s.attributes) || typeof s.isMandatory !== "boolean" || !Array.isArray(s.isMandatoryBySeating) || s.isMandatoryBySeating.some(x => !x || typeof x.isMandatory !== "boolean")) return otFail("site_changed", "An available slot did not have the supported fields.");
-          // The site can answer with slots beyond the requested window; they are left out, not treated as a shape change.
-          if (Math.abs(s.timeOffsetMinutes) > windowMinutes) continue;
           const minutes = startMinutes + s.timeOffsetMinutes;
           if (minutes < 0 || minutes >= 1440) continue;
           const seatingTypes = s.attributes.filter(x => typeof x === "string" && /^[a-zA-Z][a-zA-Z0-9_]{0,39}$/.test(x)).slice(0, 10);

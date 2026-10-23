@@ -51,7 +51,7 @@ async function run(name, input, options = {}) {
   };
   const now = options.now === undefined ? null : Date.parse(options.now);
   const clock = now === null ? Date : class extends Date { constructor(...args) { super(...(args.length ? args : [now])); } static now() { return now; } };
-  const execute = runInNewContext(`(${definitions[name].execute.toString()})`, { window: { location: { origin: options.origin ?? origin } }, document: { title: options.title ?? "OpenTable", querySelector: () => options.challenge ? {} : null }, URL, URLSearchParams, fetch, Date: clock });
+  const execute = runInNewContext(`(${definitions[name].execute.toString()})`, { window: { location: { origin: options.origin ?? origin } }, document: { title: options.title ?? "OpenTable", querySelector: () => options.challenge ? {} : null }, URL, URLSearchParams, fetch, Date: clock, sessionStorage: options.storage });
   const result = plain(await execute(input, { signal }));
   assert.ok(conforms(definitions[name].tool.outputSchema, result), JSON.stringify(result));
   return { result, requests };
@@ -277,4 +277,30 @@ test("a restaurant-local date is not judged past by the UTC calendar", async () 
     // Without an offset, the day before UTC's is past once it has ended at UTC-12.
     await failure(name, { ...query, date: "2026-10-22", time: "20:00" }, "invalid_input", { now: "2026-10-23T13:00:00Z" }, 1);
   }
+});
+
+const memoryStorage = () => { const m = new Map(); return { map: m, getItem: k => m.get(k) ?? null, setItem: (k, v) => m.set(k, String(v)), removeItem: k => m.delete(k) }; };
+
+test("availability keeps the query id for the entry module, so a later read skips the modules, and drops it when the query fails", async () => {
+  const storage = memoryStorage();
+  const modules = r => r.requests.filter(q => q.path.startsWith("/static/")).length;
+  const first = await run("get_availability", query, { storage });
+  assert.equal(first.result.status, "ok"); assert.equal(modules(first), 1);
+  assert.deepEqual([...storage.map.values()], [hash]);
+  const second = await run("prepare_reservation", query, { storage });
+  assert.equal(second.result.status, "prepared"); assert.equal(modules(second), 0);
+  assert.equal(JSON.parse(second.requests.at(-1).body).extensions.persistedQuery.sha256Hash, hash);
+  await failure("get_availability", query, "site_error", { storage, availability: { errors: [{ message: "PersistedQueryNotFound" }] } });
+  assert.equal(storage.map.size, 0, "a failed query does not keep the id");
+  storage.setItem("opentable.com.restaurants-availability-document.v1:/static/cfe/15/js/restprofilepage-FAKE.js", "not-a-hash");
+  assert.equal(modules(await run("get_availability", query, { storage })), 1, "a malformed kept id is ignored");
+  const newBuild = await run("get_availability", query, { storage, profileHtml: html(profile, "restprofilepage-NEWER") });
+  assert.equal(modules(newBuild), 1, "another build's entry module is read again");
+});
+
+test("availability leaves out slots beyond the window before checking their shape, and is not truncated at exactly 50 slots", async () => {
+  const out = await run("get_availability", { ...query, window_minutes: 30 }, { availability: availability([slot(), slot({ timeOffsetMinutes: 90, attributes: null })]) });
+  assert.equal(out.result.status, "ok"); assert.deepEqual(out.result.slots.map(s => s.time), ["19:00"]);
+  const fifty = await run("get_availability", query, { availability: availability(Array.from({ length: 50 }, () => slot())) });
+  assert.equal(fifty.result.slots.length, 50); assert.equal(fifty.result.truncated, false);
 });
