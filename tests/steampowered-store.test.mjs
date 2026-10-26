@@ -126,7 +126,7 @@ test("get_app reads the purchase options and the visible review summaries", asyn
   assert.equal(output.status, "ok");
   assert.deepEqual(output.app, {
     app_id: "4242", name: "Fabricated Farm", url: "https://store.steampowered.com/app/4242/Fabricated_Farm/", release_date: "Mar 3, 2021",
-    coming_soon: false, developers: ["Studio One", "Studio Two"], publishers: ["Example Publishing"], genres: ["Indie", "RPG"]
+    coming_soon: false, developers: ["Studio One", "Studio Two"], publishers: ["Example Publishing"], genres: ["Indie", "RPG"], tags: []
   });
   assert.equal(output.currency, "USD");
   assert.deepEqual(output.purchase_options, [
@@ -145,6 +145,28 @@ test("get_app reads the purchase options and the visible review summaries", asyn
   const editionFirst = APP.replace("Buy Fabricated Farm</h2>", "Buy Fabricated Farm Ultimate Edition</h2>");
   const edition = await run("get_app", {}, { url: ORIGIN + "/app/4242/Fabricated_Farm/", html: editionFirst });
   assert.equal(edition.output.message, "Fabricated Farm: 3 purchase option(s); Recent Reviews Very Positive, All Reviews Overwhelmingly Positive.");
+});
+
+test("get_app reads the user tags and the all-languages total the header leaves out", async () => {
+  const props = JSON.stringify({ summary_options: { summaryGlobalNoOutliers: { nReviews: 9000, nReviewsPositive: 7985, eReviewScore: 6 } } }).replace(/"/g, "&quot;");
+  const extras = `<div class="glance_tags popular_tags"><a class="app_tag" href="/tags/en/Farming/">Farming</a><a class="app_tag" href="/tags/en/Cozy/">Cozy</a><a class="app_tag" style="display: none;" href="/tags/en/Indie/">Indie</a><div class="app_tag add_button">+</div></div><div data-props="${props}"></div>`;
+  const english = APP.replace("All Reviews", "English Reviews").replace('<div class="release_date">', extras + '<div class="release_date">');
+  let { output } = await run("get_app", {}, { url: ORIGIN + "/app/4242/", html: english });
+  assert.deepEqual(output.app.tags, ["Farming", "Cozy", "Indie"]);
+  assert.deepEqual(output.reviews.map(r => [r.label, r.summary, r.percent_positive, r.review_count]), [["Recent Reviews", "Very Positive", 91, 1204], ["English Reviews", "Overwhelmingly Positive", 96, 52310], ["Total reviews in all languages", "Mostly Positive", 88, 9000]]);
+  // A header that already shows All Reviews gets no second total.
+  ({ output } = await run("get_app", {}, { url: ORIGIN + "/app/4242/", html: APP.replace('<div class="release_date">', extras + '<div class="release_date">') }));
+  assert.deepEqual(output.reviews.map(r => r.label), ["Recent Reviews", "All Reviews"]);
+});
+
+test("get_app reads several apps in one call, in input order", async () => {
+  const fetched = [];
+  const { output } = await run("get_app", { apps: ["4242", "https://store.steampowered.com/app/1/", "x"] }, { url: ORIGIN + "/", html: page("<div>Welcome</div>"), fetched, pages: { "/app/4242/": { html: APP, url: "/app/4242/Fabricated_Farm/" } } });
+  assert.equal(output.status, "ok");
+  assert.deepEqual(output.results.map(r => [r.status, r.app?.name ?? r.app_id]), [["ok", "Fabricated Farm"], ["not_found", "1"], ["invalid_input", null]]);
+  assert.ok(output.results.every(r => !("available_actions" in r)));
+  assert.deepEqual(fetched.map(f => f.path), ["/app/4242/", "/app/1/"]);
+  for (const input of [{ apps: [] }, { apps: ["1", "2", "3", "4", "5", "6"] }, { app: "1", apps: ["2"] }]) assert.equal((await run("get_app", input, { url: ORIGIN + "/", html: page("") })).output.status, "invalid_input");
 });
 
 test("get_app reads a free-to-play option and a page without reviews or prices", async () => {
