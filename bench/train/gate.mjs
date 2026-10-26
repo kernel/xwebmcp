@@ -10,7 +10,7 @@
 //    always got right drops to a third of its trials or fewer;
 // 2. it is not slower: the median over tasks of (candidate / incumbent) median calls and median
 //    seconds, over correct trials on train and validation, are not both 1.2 or more;
-// 3. at most --max-changed-lines lines change in the domain's tools and lib/ snippets, counting
+// 3. at most --max-changed-lines lines change, since the merge base, in the domain's tools and lib/ snippets, counting
 //    max(added, deleted) per file;
 // 4. tokens and selector brittleness do not grow, except in the repair phase when success on
 //    train and validation went up or the candidate is faster (calls ratio 0.85 or less, or
@@ -47,7 +47,7 @@ function atCommit(ref, domains) {
 }
 
 function changedLines(base, head, domain) {
-  const files = git("diff", "--numstat", base, head, "--", `domains/${domain}`, "lib").split("\n").filter(Boolean);
+  const files = git("diff", "--numstat", `${base}...${head}`, "--", `domains/${domain}`, "lib").split("\n").filter(Boolean);
   return files.reduce((sum, line) => {
     const [added, deleted] = line.split("\t").map(Number);
     return sum + Math.max(added || 0, deleted || 0);

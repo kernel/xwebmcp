@@ -84,6 +84,10 @@ node bench/report.mjs bench/results/pilot-1 > pilot-1.md
 | `--cap-sec` | per-trial time cap; default is the intent's `trial_timeout_sec` |
 | `--max-budget-usd` | per-trial spend cap, default 2 |
 | `--stealth` | stealth browsers for every trial |
+| `--split` | select intents of a split (repeatable): `train`, `validation` or `test` |
+| `--tools-ref` | register every intent's tools from this kernel/xwebmcp ref, such as a candidate branch |
+| `--treatment-only` | run each pair's treatment trial and no control |
+| `--feedback` | ask treatment agents to rate the tools they invoked; saved as the row's `tool_feedback` |
 
 Once the smoke gate passes, a new run writes `run.json`: intents with fixtures resolved, schemas,
 tool commits, the MCP config, the pi and Kernel SDK versions, and each pair's order (`AB` runs
@@ -191,6 +195,7 @@ and deletes every browser.
 }
 ```
 
+- `split` (optional) is `train`, `validation` or `test`, for [tool training](train/README.md).
 - `stage` is `find`, `inspect`, `compare`, `prepare` or `gap`. A `gap` intent is one no tool
   covers; it names no tools and serves as the placebo check.
 - A `prepare` intent walks a site's flow part way, such as putting a fare in Delta's cart and
