@@ -66,7 +66,8 @@ function NavItem({ href, label, description, locked }: NavItemProps) {
 }
 ```
 
-If the same path is declared twice (a desktop and a mobile nav, say), it is listed once.
+If the same path is declared twice (a desktop and a mobile nav, say), it is listed once, with
+the description of the most recently mounted declaration.
 
 ### 3. Page context
 
@@ -94,7 +95,7 @@ export default async function Page({ params }) {
 
 - `id` is the key the entry appears under in `get_page_context`'s `context`. Name it after
   what the component shows (`"session"`, `"invoice"`). If two mounted elements share an
-  `id`, the last one mounted wins.
+  `id`, the most recently mounted one is used; a re-render of the older one doesn't change that.
 - `value` is any JSON-serializable data, passed to the agent unchanged. Include what an
   agent needs to act: the ids its tools take, the state the user sees.
 - `suggestedNextSteps` are sentences appended to the page's `suggested_next_steps`.
@@ -162,10 +163,14 @@ the document before the result is returned. Use the router, or return and let th
 call `navigate_to_page`.
 
 `useWebMCPTool` registers while the component is mounted. `execute` always sees the
-latest render. Changing the name, description, schemas, or annotations re-registers the
-tool. Pass `enabled: false` to unregister it without unmounting. When two mounted
-components register the same name, the most recently mounted one is exposed and the
-other takes over when it unmounts. React StrictMode's double mount is handled.
+latest render. Changing the description, schemas, or annotations updates the tool in place;
+changing the name registers a new one. Pass `enabled: false` to unregister it without
+unmounting.
+
+One rule covers tools, routes and page context entries: when several mounted components
+register the same name, path or id, the most recently mounted one is exposed, an update to
+an older one doesn't reorder them, and when the newest unmounts the previous one takes
+over. React StrictMode's double mount is handled.
 
 ## Patterns
 
@@ -207,7 +212,7 @@ From wiring a production dashboard:
 {
   "current_url": "https://example.com/browsers/abc",
   "current_path": "/browsers/abc",
-  "title": "Session abc",
+  "page_title": "Session abc",
   "available_tools": ["get_page_context", "kill_session", "navigate_to_page"],
   "context": { "session": { "sessionId": "abc", "status": "running" } },
   "suggested_next_steps": ["Use kill_session to end this session"]
@@ -216,18 +221,20 @@ From wiring a production dashboard:
 
 `context` is keyed by each `<WebMCPPageContext>` `id`. `available_tools` also includes tools
 registered outside this package (declarative forms, extensions) when the browser supports
-`getTools()`.
+`getTools()`. Both built-in tools publish an `outputSchema` for this shape.
 
 `navigate_to_page({ url })` takes a path or a same-origin URL. Its description lists the
 mounted routes. It navigates client-side, waits for the URL to change and for the new
 page's registrations to settle, and returns the same shape plus `status`:
 
 - `navigated`: the new page's context and tools.
-- `timeout`: the URL did not change within `navigationTimeoutMs` (default 10s).
+- `timeout`: the URL did not change within `navigationTimeoutMs` (default 10s). The rest of
+  the result still describes the page that is showing.
 - `error`: the URL was invalid or on another origin.
 
-It waits for any URL change, so a redirect counts as arrival. A full page load ends the
-call before it can return.
+It waits for any URL change, so a redirect counts as arrival. A redirect that lands back on
+the page it started from is reported as `timeout`, since nothing changed from the agent's
+point of view. A full page load ends the call before it can return.
 
 ## Reference
 
@@ -235,7 +242,7 @@ call before it can return.
 | --- | --- |
 | `xwebmcp/nextjs` | `<WebMCPProvider site? navigationTimeoutMs?>`, `useWebMCPTool`, `useWebMCPRoute`, `<WebMCPPageContext>`, `refresh` |
 | `xwebmcp/react` | `useWebMCPTool`, `useWebMCPRoute`, `<WebMCPPageContext>`, `<WebMCPPageProvider navigate>` for other routers |
-| `xwebmcp` | `registerTool(tool, { signal })`, `refresh()`, `getModelContext()`, `availableToolNames()`, `subscribe(listener)`; no React |
+| `xwebmcp` | `registerTool(tool, { signal })`, `refresh()`, `getModelContext()`, `availableToolNames()`, `subscribe(listener)`, `Registry`; no React |
 
 `useWebMCPTool({ name, description, inputSchema?, outputSchema?, annotations?, title?, execute, enabled? })`
 takes the fields of a WebMCP tool plus `enabled`.
@@ -246,6 +253,10 @@ takes the fields of a WebMCP tool plus `enabled`.
 
 For a React app that isn't on Next, render `<WebMCPPageProvider navigate={(href) => ...}>`
 from `xwebmcp/react` with your router's client-side navigation.
+
+Without React, `registerTool(tool, { signal })` registers until the signal aborts and returns
+`{ update(tool) }` to change the definition in place. `Registry<T>` is the keyed,
+newest-wins store the hooks are built on, for anything else that needs the same rule.
 
 ## Trying it out
 

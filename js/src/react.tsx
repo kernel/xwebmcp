@@ -2,13 +2,20 @@ import {
   createContext,
   useContext,
   useEffect,
-  useId,
-  useMemo,
+  useInsertionEffect,
   useRef,
+  useState,
   useSyncExternalStore,
   type ReactNode,
 } from 'react';
-import { availableToolNames, registerTool, subscribe as subscribeToTools, type WebMCPTool } from 'xwebmcp';
+import {
+  Registry,
+  availableToolNames,
+  registerTool,
+  subscribe as subscribeToTools,
+  type Registration,
+  type WebMCPTool,
+} from 'xwebmcp';
 
 export type { WebMCPTool, ToolAnnotations, JSONSchema } from 'xwebmcp';
 
@@ -18,25 +25,57 @@ export interface UseWebMCPToolOptions<Input, Output> extends WebMCPTool<Input, O
 }
 
 /**
+ * Keeps one registration under `key` for as long as the calling component is
+ * mounted and `enabled`, updating it in place when `serialized` changes. So
+ * the most recently mounted registration of a key wins, and an update never
+ * reorders.
+ */
+function useRegistration<T>(
+  add: ((value: T, signal: AbortSignal) => Registration<T>) | null,
+  key: string,
+  serialized: string,
+  enabled: boolean,
+) {
+  const current = useRef<{ registration: Registration<T>; serialized: string } | null>(null);
+  useEffect(() => {
+    if (!add || !enabled) return;
+    const controller = new AbortController();
+    current.current = { registration: add(JSON.parse(serialized) as T, controller.signal), serialized };
+    return () => {
+      current.current = null;
+      controller.abort();
+    };
+    // A change to `serialized` alone is applied in place by the next effect.
+  }, [add, key, enabled]);
+  useEffect(() => {
+    if (!current.current || current.current.serialized === serialized) return;
+    current.current.serialized = serialized;
+    current.current.registration.update(JSON.parse(serialized) as T);
+  }, [serialized]);
+}
+
+/**
  * Register a WebMCP tool while the calling component is mounted. `execute`
- * always sees the latest render's closure; changing the name, description,
- * schemas, or annotations re-registers the tool.
+ * always sees the latest render's closure; changing the description,
+ * schemas, or annotations updates the tool in place.
  */
 export function useWebMCPTool<Input = any, Output = unknown>(options: UseWebMCPToolOptions<Input, Output>): void {
   const { enabled = true, execute, ...definition } = options;
   const executeRef = useRef(execute);
-  executeRef.current = execute;
-  const key = JSON.stringify(definition);
-
-  useEffect(() => {
-    if (!enabled) return;
-    const controller = new AbortController();
-    registerTool(
-      { ...(JSON.parse(key) as Omit<WebMCPTool, 'execute'>), execute: (input, client) => executeRef.current(input, client) },
-      { signal: controller.signal },
-    );
-    return () => controller.abort();
-  }, [enabled, key]);
+  useInsertionEffect(() => {
+    executeRef.current = execute;
+  });
+  const [add] = useState(() => {
+    const withExecute = (tool: Omit<WebMCPTool, 'execute'>): WebMCPTool => ({
+      ...tool,
+      execute: (input, client) => executeRef.current(input, client),
+    });
+    return (tool: Omit<WebMCPTool, 'execute'>, signal: AbortSignal): Registration<Omit<WebMCPTool, 'execute'>> => {
+      const registration = registerTool(withExecute(tool), { signal });
+      return { update: (next) => registration.update(withExecute(next)) };
+    };
+  });
+  useRegistration(add, definition.name, JSON.stringify(definition), enabled);
 }
 
 export interface Route {
@@ -60,40 +99,9 @@ export interface PageContextEntry {
   suggestedNextSteps?: string[];
 }
 
-class PageStore {
-  routes = new Map<string, Route>();
-  contexts = new Map<string, PageContextEntry>();
-  private routeSnapshot: Route[] = [];
-  private listeners = new Set<() => void>();
-
-  subscribe = (listener: () => void) => {
-    this.listeners.add(listener);
-    return () => {
-      this.listeners.delete(listener);
-    };
-  };
-
-  getRoutes = () => this.routeSnapshot;
-
-  setRoute(key: string, route: Route | null) {
-    if (route) this.routes.set(key, route);
-    else this.routes.delete(key);
-    // First declaration of a path wins; later duplicates add nothing.
-    const byPath = new Map<string, Route>();
-    for (const r of this.routes.values()) if (!byPath.has(r.path)) byPath.set(r.path, r);
-    this.routeSnapshot = [...byPath.values()];
-    this.emit();
-  }
-
-  setContext(key: string, entry: PageContextEntry | null) {
-    if (entry) this.contexts.set(key, entry);
-    else this.contexts.delete(key);
-    this.emit();
-  }
-
-  private emit() {
-    for (const listener of this.listeners) listener();
-  }
+interface PageStore {
+  routes: Registry<Route>;
+  contexts: Registry<PageContextEntry>;
 }
 
 const PageStoreContext = createContext<PageStore | null>(null);
@@ -116,33 +124,32 @@ function usePageStore(hook: string): PageStore | null {
   return store;
 }
 
-/** Add a page to navigate_to_page's site map while the calling component is mounted. */
+/**
+ * Add a page to navigate_to_page's site map while the calling component is
+ * mounted. A path declared by several components is listed once, with the
+ * most recently mounted description.
+ */
 export function useWebMCPRoute({ path, description, enabled = true }: UseWebMCPRouteOptions): void {
   const store = usePageStore('useWebMCPRoute');
-  const key = useId();
-  useEffect(() => {
-    if (!store || !enabled) return;
-    store.setRoute(key, { path, description });
-    return () => store.setRoute(key, null);
-  }, [store, key, path, description, enabled]);
+  const [add] = useState(() =>
+    store ? (route: Route, signal: AbortSignal) => store.routes.add(route.path, route, signal) : null,
+  );
+  useRegistration(add, path, JSON.stringify({ path, description }), enabled);
 }
 
 export type WebMCPPageContextProps = PageContextEntry;
 
 /**
  * Contribute to get_page_context while mounted. Props must be serializable,
- * so server components can render it directly. Entries with the same id are
- * merged, the last mounted one winning.
+ * so server components can render it directly. When several mounted
+ * elements share an id, the most recently mounted one is used.
  */
 export function WebMCPPageContext({ id, value, suggestedNextSteps }: WebMCPPageContextProps): null {
   const store = usePageStore('WebMCPPageContext');
-  const key = useId();
-  const serialized = JSON.stringify({ id, value, suggestedNextSteps });
-  useEffect(() => {
-    if (!store) return;
-    store.setContext(key, JSON.parse(serialized) as PageContextEntry);
-    return () => store.setContext(key, null);
-  }, [store, key, serialized]);
+  const [add] = useState(() =>
+    store ? (entry: PageContextEntry, signal: AbortSignal) => store.contexts.add(entry.id, entry, signal) : null,
+  );
+  useRegistration(add, id, JSON.stringify({ id, value, suggestedNextSteps }), true);
   return null;
 }
 
@@ -159,11 +166,49 @@ export interface WebMCPPageProviderProps {
 export interface PageContextResult {
   current_url: string;
   current_path: string;
-  title: string;
+  page_title: string;
   available_tools: string[];
   context: Record<string, unknown>;
   suggested_next_steps: string[];
 }
+
+export type NavigateResult =
+  | ({ status: 'navigated' | 'timeout' } & PageContextResult)
+  | { status: 'error'; error: string };
+
+const PAGE_CONTEXT_SCHEMA = {
+  type: 'object',
+  required: ['current_url', 'current_path', 'page_title', 'available_tools', 'context', 'suggested_next_steps'],
+  properties: {
+    current_url: { type: 'string' },
+    current_path: { type: 'string' },
+    page_title: { type: 'string' },
+    available_tools: { type: 'array', items: { type: 'string' }, description: 'Tool names registered on this page.' },
+    context: { type: 'object', description: 'Page-specific data, keyed by what it describes.' },
+    suggested_next_steps: { type: 'array', items: { type: 'string' } },
+  },
+};
+
+const NAVIGATE_OUTPUT_SCHEMA = {
+  oneOf: [
+    {
+      ...PAGE_CONTEXT_SCHEMA,
+      required: ['status', ...PAGE_CONTEXT_SCHEMA.required],
+      properties: {
+        status: {
+          enum: ['navigated', 'timeout'],
+          description: 'timeout: the URL did not change in time; the rest describes the page that is showing.',
+        },
+        ...PAGE_CONTEXT_SCHEMA.properties,
+      },
+    },
+    {
+      type: 'object',
+      required: ['status', 'error'],
+      properties: { status: { const: 'error' }, error: { type: 'string' } },
+    },
+  ],
+};
 
 const SETTLE_QUIET_MS = 150;
 const SETTLE_MAX_MS = 3000;
@@ -181,7 +226,7 @@ async function readPageContext(store: PageStore): Promise<PageContextResult> {
   return {
     current_url: location.href,
     current_path: location.pathname,
-    title: document.title,
+    page_title: document.title,
     available_tools: await availableToolNames(),
     context,
     suggested_next_steps: steps,
@@ -196,8 +241,7 @@ function settle(store: PageStore): Promise<void> {
     const done = () => {
       clearTimeout(quiet);
       clearTimeout(max);
-      unsubscribeStore();
-      unsubscribeTools();
+      for (const unsubscribe of unsubscribes) unsubscribe();
       resolve();
     };
     const bump = () => {
@@ -205,10 +249,45 @@ function settle(store: PageStore): Promise<void> {
       quiet = setTimeout(done, SETTLE_QUIET_MS);
     };
     const max = setTimeout(done, SETTLE_MAX_MS);
-    const unsubscribeStore = store.subscribe(bump);
-    const unsubscribeTools = subscribeToTools(bump);
+    const unsubscribes = [store.routes.subscribe(bump), store.contexts.subscribe(bump), subscribeToTools(bump)];
     bump();
   });
+}
+
+async function navigateToPage(
+  store: PageStore,
+  navigate: (href: string) => void,
+  timeoutMs: number,
+  url: string,
+): Promise<NavigateResult> {
+  let target: URL;
+  try {
+    target = new URL(url, location.href);
+  } catch {
+    return { status: 'error', error: `not a valid URL or path: ${url}` };
+  }
+  if (target.origin !== location.origin) {
+    return { status: 'error', error: `navigate_to_page only navigates within ${location.origin}` };
+  }
+  const href = target.pathname + target.search + target.hash;
+  const before = location.pathname + location.search;
+  if (target.pathname + target.search === before) {
+    // Same page: at most the hash changes, which doesn't remount anything.
+    if (href !== location.pathname + location.search + location.hash) navigate(href);
+    return { status: 'navigated', ...(await readPageContext(store)) };
+  }
+  navigate(href);
+  const deadline = Date.now() + timeoutMs;
+  // Wait for any URL change rather than the exact target so redirects count as arrival.
+  while (location.pathname + location.search === before) {
+    if (Date.now() > deadline) {
+      await settle(store);
+      return { status: 'timeout', ...(await readPageContext(store)) };
+    }
+    await sleep(POLL_MS);
+  }
+  await settle(store);
+  return { status: 'navigated', ...(await readPageContext(store)) };
 }
 
 function navigateDescription(site: string, routes: Route[]): string {
@@ -229,8 +308,8 @@ function navigateDescription(site: string, routes: Route[]): string {
  * WebMCPPageContext and useWebMCPRoute calls mounted below it.
  */
 export function WebMCPPageProvider({ site, navigate, navigationTimeoutMs = 10_000, children }: WebMCPPageProviderProps) {
-  const store = useMemo(() => new PageStore(), []);
-  const routes = useSyncExternalStore(store.subscribe, store.getRoutes, store.getRoutes);
+  const [store] = useState<PageStore>(() => ({ routes: new Registry(), contexts: new Registry() }));
+  const routes = useSyncExternalStore(store.routes.subscribe, store.routes.values, store.routes.values);
   const siteName = site ?? (typeof location === 'undefined' ? 'this site' : location.host);
 
   useWebMCPTool({
@@ -238,6 +317,7 @@ export function WebMCPPageProvider({ site, navigate, navigationTimeoutMs = 10_00
     description:
       'Describe the current page: its URL, title, the tools available on it, page-specific context, and suggested next steps.',
     inputSchema: { type: 'object', properties: {}, additionalProperties: false },
+    outputSchema: PAGE_CONTEXT_SCHEMA,
     annotations: { readOnlyHint: true },
     execute: () => readPageContext(store),
   });
@@ -253,33 +333,8 @@ export function WebMCPPageProvider({ site, navigate, navigationTimeoutMs = 10_00
       required: ['url'],
       additionalProperties: false,
     },
-    execute: async ({ url }: { url: string }) => {
-      let target: URL;
-      try {
-        target = new URL(url, location.href);
-      } catch {
-        return { status: 'error', error: `not a valid URL or path: ${url}` };
-      }
-      if (target.origin !== location.origin) {
-        return { status: 'error', error: `navigate_to_page only navigates within ${location.origin}` };
-      }
-      const href = target.pathname + target.search + target.hash;
-      const before = location.pathname + location.search;
-      if (target.pathname + target.search === before) {
-        // Same page: at most the hash changes, which doesn't remount anything.
-        if (href !== location.pathname + location.search + location.hash) navigate(href);
-        return { status: 'navigated', ...(await readPageContext(store)) };
-      }
-      navigate(href);
-      const deadline = Date.now() + navigationTimeoutMs;
-      // Wait for any URL change rather than the exact target so redirects count as arrival.
-      while (location.pathname + location.search === before) {
-        if (Date.now() > deadline) return { status: 'timeout', ...(await readPageContext(store)) };
-        await sleep(POLL_MS);
-      }
-      await settle(store);
-      return { status: 'navigated', ...(await readPageContext(store)) };
-    },
+    outputSchema: NAVIGATE_OUTPUT_SCHEMA,
+    execute: ({ url }: { url: string }) => navigateToPage(store, navigate, navigationTimeoutMs, url),
   });
 
   return <PageStoreContext.Provider value={store}>{children}</PageStoreContext.Provider>;

@@ -33,27 +33,93 @@ export function getModelContext(): ModelContext | null {
   return doc.modelContext ?? nav.modelContext ?? null;
 }
 
-// Every live registration for a name, oldest first. The newest one is the one
-// registered with the browser; when it goes away the previous one takes over.
-const stacks = new Map<string, WebMCPTool[]>();
+export interface Registration<T> {
+  /** Replace the value, keeping this registration's place in the order. */
+  update(value: T): void;
+}
+
+/**
+ * Live values keyed by name, each key holding every registration in the
+ * order it was added. The newest registration of a key is its value; when
+ * it goes away the previous one takes over. Updating a registration keeps
+ * its place, so an entry that merely changed does not jump ahead of one
+ * that was added after it.
+ */
+export class Registry<T> {
+  private stacks = new Map<string, Array<{ value: T }>>();
+  private listeners = new Set<(key: string) => void>();
+  private snapshot: T[] = [];
+
+  add(key: string, value: T, signal: AbortSignal): Registration<T> {
+    if (signal.aborted) return { update() {} };
+    const entry = { value };
+    this.stacks.set(key, [...(this.stacks.get(key) ?? []), entry]);
+    signal.addEventListener(
+      'abort',
+      () => {
+        const rest = this.stacks.get(key)?.filter((e) => e !== entry) ?? [];
+        if (rest.length) this.stacks.set(key, rest);
+        else this.stacks.delete(key);
+        this.emit(key);
+      },
+      { once: true },
+    );
+    this.emit(key);
+    return {
+      update: (next) => {
+        if (signal.aborted) return;
+        entry.value = next;
+        this.emit(key);
+      },
+    };
+  }
+
+  top(key: string): T | undefined {
+    return this.stacks.get(key)?.at(-1)?.value;
+  }
+
+  /** The current value of every key, in the order the keys first appeared. */
+  values = (): T[] => this.snapshot;
+
+  subscribe = (listener: (key: string) => void): (() => void) => {
+    this.listeners.add(listener);
+    return () => {
+      this.listeners.delete(listener);
+    };
+  };
+
+  private emit(key: string) {
+    this.snapshot = [...this.stacks.values()].map((stack) => stack.at(-1)!.value);
+    for (const listener of this.listeners) listener(key);
+  }
+}
+
+const tools = new Registry<WebMCPTool>();
+// What the browser currently has for each name.
 const active = new Map<string, { tool: WebMCPTool; controller: AbortController }>();
 const listeners = new Set<() => void>();
 
-let context: ModelContext | null = null;
-let detecting = false;
+// Before the first registration nothing has been checked. 'polling' lasts
+// DETECT_FOR_MS after that; 'absent' is final until refresh() finds it.
+let state: 'unchecked' | 'polling' | 'absent' | ModelContext = 'unchecked';
 
 const DETECT_POLL_MS = 250;
 const DETECT_FOR_MS = 5000;
 
 declare const process: { env: { NODE_ENV?: string } };
 
+function context(): ModelContext | null {
+  return typeof state === 'object' ? state : null;
+}
+
 function notify() {
   for (const listener of listeners) listener();
 }
 
 function sync(name: string) {
-  if (!context) return;
-  const top = stacks.get(name)?.at(-1);
+  const ctx = context();
+  if (!ctx) return;
+  const top = tools.top(name);
   const current = active.get(name);
   if (current?.tool === top) return;
   if (current) {
@@ -64,7 +130,6 @@ function sync(name: string) {
     const controller = new AbortController();
     active.set(name, { tool: top, controller });
     const { execute, ...definition } = top;
-    const ctx = context;
     // Deferred so that replacing a registration within one task only
     // registers the final one with the browser.
     Promise.resolve()
@@ -85,66 +150,65 @@ function sync(name: string) {
   notify();
 }
 
+tools.subscribe(sync);
+
 function check(): boolean {
   const found = getModelContext();
   if (!found) return false;
-  context = found;
-  for (const name of stacks.keys()) sync(name);
+  state = found;
+  for (const tool of tools.values()) sync(tool.name);
   return true;
 }
 
 // An extension or polyfill can install modelContext after hydration, so keep
-// looking for a few seconds before staying inert.
+// looking for a few seconds after the first registration before staying inert.
 function detect() {
-  if (context || detecting || typeof window === 'undefined') return;
+  if (state !== 'unchecked' || typeof window === 'undefined') return;
   if (check()) return;
-  detecting = true;
+  state = 'polling';
   const deadline = Date.now() + DETECT_FOR_MS;
   const timer = setInterval(() => {
-    if (!check() && Date.now() < deadline) return;
-    clearInterval(timer);
-    detecting = false;
-    if (!context && typeof process !== 'undefined' && process.env.NODE_ENV !== 'production') {
-      console.info('xwebmcp: WebMCP not detected, tools are not registered. Call refresh() after loading a polyfill.');
+    if (state !== 'polling') {
+      clearInterval(timer);
+      return;
+    }
+    if (check()) {
+      clearInterval(timer);
+    } else if (Date.now() >= deadline) {
+      clearInterval(timer);
+      state = 'absent';
+      if (typeof process !== 'undefined' && process.env.NODE_ENV !== 'production') {
+        console.info(
+          'xwebmcp: WebMCP not detected, tools are not registered. Call refresh() after loading a polyfill.',
+        );
+      }
     }
   }, DETECT_POLL_MS);
 }
 
 /**
  * Register a tool until `signal` aborts. Does nothing on pages without
- * WebMCP. When several live registrations share a name, the most recent one
- * is exposed.
+ * WebMCP. When several live registrations share a name, the most recently
+ * added one is exposed; `update` changes a registration in place.
  */
-export function registerTool(tool: WebMCPTool, { signal }: { signal: AbortSignal }): void {
-  if (signal.aborted) return;
-  const stack = stacks.get(tool.name) ?? [];
-  stack.push(tool);
-  stacks.set(tool.name, stack);
-  signal.addEventListener(
-    'abort',
-    () => {
-      const remaining = stacks.get(tool.name)?.filter((entry) => entry !== tool) ?? [];
-      if (remaining.length) stacks.set(tool.name, remaining);
-      else stacks.delete(tool.name);
-      sync(tool.name);
-    },
-    { once: true },
-  );
-  if (context) sync(tool.name);
-  else detect();
+export function registerTool(tool: WebMCPTool, { signal }: { signal: AbortSignal }): Registration<WebMCPTool> {
+  const registration = tools.add(tool.name, tool, signal);
+  detect();
+  return registration;
 }
 
 /** Check for WebMCP again, e.g. after loading a polyfill. */
 export function refresh(): void {
-  if (!context) check();
+  if (!context()) check();
 }
 
 /** Names of every tool this document exposes, including ones registered outside this package. */
 export async function availableToolNames(): Promise<string[]> {
   const names = new Set(active.keys());
-  if (context?.getTools) {
+  const ctx = context();
+  if (ctx?.getTools) {
     try {
-      for (const tool of await context.getTools()) {
+      for (const tool of await ctx.getTools()) {
         if (tool.window === undefined || tool.window === window) names.add(tool.name);
       }
     } catch {

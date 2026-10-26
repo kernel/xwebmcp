@@ -48,6 +48,23 @@ describe('without WebMCP', () => {
     await vi.advanceTimersByTimeAsync(0);
     expect([...ctx.tools.keys()]).toEqual(['a']);
   });
+
+  it('stops looking after the detection window, until refresh()', async () => {
+    vi.useFakeTimers();
+    const info = vi.spyOn(console, 'info').mockImplementation(() => {});
+    core.registerTool(tool('a'), { signal: new AbortController().signal });
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(info).toHaveBeenCalledTimes(1);
+    // Later registrations don't start another poll or log again.
+    core.registerTool(tool('b'), { signal: new AbortController().signal });
+    const ctx = installFakeModelContext();
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(ctx.tools.size).toBe(0);
+    expect(info).toHaveBeenCalledTimes(1);
+    core.refresh();
+    await vi.advanceTimersByTimeAsync(0);
+    expect([...ctx.tools.keys()].sort()).toEqual(['a', 'b']);
+  });
 });
 
 describe('with WebMCP', () => {
@@ -73,6 +90,28 @@ describe('with WebMCP', () => {
     second.abort();
     await flush();
     expect(await ctx.executeTool('a')).toBe('first');
+  });
+
+  it('keeps a registration in place when it is updated', async () => {
+    const ctx = installFakeModelContext();
+    const first = core.registerTool(tool('a', 'first'), { signal: new AbortController().signal });
+    core.registerTool(tool('a', 'second'), { signal: new AbortController().signal });
+    await flush();
+    first.update(tool('a', 'first, updated'));
+    await flush();
+    expect(await ctx.executeTool('a')).toBe('second');
+  });
+
+  it('tracks registrations, not tool objects', async () => {
+    const ctx = installFakeModelContext();
+    const shared = tool('a');
+    const one = new AbortController();
+    core.registerTool(shared, { signal: one.signal });
+    core.registerTool(shared, { signal: new AbortController().signal });
+    await flush();
+    one.abort();
+    await flush();
+    expect(ctx.tools.has('a')).toBe(true);
   });
 
   it('lists tools registered outside this package', async () => {

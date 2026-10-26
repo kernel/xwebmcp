@@ -61,6 +61,31 @@ describe('useWebMCPTool', () => {
     await waitFor(() => expect(ctx.tools.has('increment')).toBe(true));
     expect(await act(() => ctx.executeTool('increment'))).toBe(1);
   });
+
+  it('exposes the most recently mounted of two same-named tools, even after the older one changes', async () => {
+    function Named({ description, result }: { description: string; result: string }) {
+      x.useWebMCPTool({ name: 'shared', description, execute: () => result });
+      return null;
+    }
+    const { rerender } = render(
+      <>
+        <Named description="first" result="first" />
+        <Named description="second" result="second" />
+      </>,
+    );
+    await waitFor(() => expect(ctx.tools.get('shared')?.description).toBe('second'));
+    rerender(
+      <>
+        <Named description="first, changed" result="first" />
+        <Named description="second" result="second" />
+      </>,
+    );
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(ctx.tools.get('shared')?.description).toBe('second');
+    rerender(<Named description="first, changed" result="first" />);
+    await waitFor(() => expect(ctx.tools.get('shared')?.description).toBe('first, changed'));
+    expect(await ctx.executeTool('shared')).toBe('first');
+  });
 });
 
 describe('WebMCPPageProvider', () => {
@@ -76,7 +101,7 @@ describe('WebMCPPageProvider', () => {
     expect(await ctx.executeTool('get_page_context')).toEqual({
       current_url: 'http://localhost:3000/',
       current_path: '/',
-      title: 'Browsers',
+      page_title: 'Browsers',
       available_tools: ['get_page_context', 'navigate_to_page'],
       context: { page: { pageType: 'browsers' }, org: { slug: 'acme' } },
       suggested_next_steps: ['Use list_browsers'],
@@ -108,25 +133,43 @@ describe('WebMCPPageProvider', () => {
     await waitFor(() => expect(ctx.tools.get('navigate_to_page')?.description).not.toContain('/b'));
   });
 
-  it('lists a path declared by several mounted components once, until the last one unmounts', async () => {
-    function NavItem({ path }: { path: string }) {
-      x.useWebMCPRoute({ path, description: `the ${path} page` });
+  it('lists a path declared by several mounted components once, with the newest description, until the last one unmounts', async () => {
+    function NavItem({ path, description }: { path: string; description: string }) {
+      x.useWebMCPRoute({ path, description });
       return null;
     }
-    function Sidebars({ mobile }: { mobile: boolean }) {
+    function Sidebars({ mobile, desktop = 'desktop' }: { mobile: boolean; desktop?: string }) {
       return (
         <x.WebMCPPageProvider site="Example" navigate={() => {}}>
-          <NavItem path="/a" />
-          {mobile && <NavItem path="/a" />}
+          <NavItem path="/a" description={desktop} />
+          {mobile && <NavItem path="/a" description="mobile" />}
         </x.WebMCPPageProvider>
       );
     }
     const pages = () => ctx.tools.get('navigate_to_page')?.description.split('\n').filter((l) => l.startsWith('- '));
     const { rerender } = render(<Sidebars mobile />);
-    await waitFor(() => expect(pages()).toEqual(['- /a: the /a page']));
-    rerender(<Sidebars mobile={false} />);
+    await waitFor(() => expect(pages()).toEqual(['- /a: mobile']));
+    rerender(<Sidebars mobile desktop="desktop, changed" />);
     await new Promise((resolve) => setTimeout(resolve, 20));
-    expect(pages()).toEqual(['- /a: the /a page']);
+    expect(pages()).toEqual(['- /a: mobile']);
+    rerender(<Sidebars mobile={false} desktop="desktop, changed" />);
+    await waitFor(() => expect(pages()).toEqual(['- /a: desktop, changed']));
+  });
+
+  it('uses the most recently mounted page context for an id, even after the older one changes', async () => {
+    function Page({ n }: { n: number }) {
+      return (
+        <x.WebMCPPageProvider navigate={() => {}}>
+          <x.WebMCPPageContext id="page" value={{ from: 'layout', n }} />
+          <x.WebMCPPageContext id="page" value={{ from: 'page' }} />
+        </x.WebMCPPageProvider>
+      );
+    }
+    const { rerender } = render(<Page n={1} />);
+    await waitFor(() => expect(ctx.tools.has('get_page_context')).toBe(true));
+    rerender(<Page n={2} />);
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(await ctx.executeTool('get_page_context')).toMatchObject({ context: { page: { from: 'page' } } });
   });
 
   it('navigates and returns the new page context and tools', async () => {
