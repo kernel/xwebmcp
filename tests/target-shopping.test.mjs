@@ -175,7 +175,7 @@ function harness(name, options = {}) {
     atob: value => Buffer.from(value, "base64").toString("binary"),
     setTimeout: done => setTimeout(done, 0),
     location: { origin: page.origin, pathname: page.pathname, href: page.href },
-    document: { title: options.blockedPage ? "Access to this page has been denied" : "Target", cookie, querySelector: selector => (options.captcha && selector.includes("px-captcha") ? {} : null) },
+    document: { title: options.blockedPage ? "Access to this page has been denied" : "Target", cookie, getElementById: id => (options.captcha && id === "px-captcha-modal" ? {} : null) },
     window: { __CONFIG__: options.noKey ? {} : { defaultServicesApiKey: "fabricated-key" }, __TGT_DATA__: { serverLocationVariables: { store_ids: options.storeIds === undefined ? "1234,5678,abc" : options.storeIds } } },
     fetch: async (url, init = {}) => {
       assert.equal(init.credentials, "include");
@@ -411,7 +411,7 @@ for (const status of [435, 429, 403]) {
     const h = harness("search_products", { responses: () => ({ status, json: null, challenge: status === 403 }) });
     const result = await h.run({ query: "mug cup" });
     assert.equal(result.error_kind, "challenge");
-    assert.match(result.error_message, /searchTerm=mug%20cup/);
+    assert.match(result.error_message, /Press & hold.*stop and report it/);
     assert.equal(h.calls.requests.length, 2);
   });
 }
