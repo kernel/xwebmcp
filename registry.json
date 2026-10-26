@@ -4438,10 +4438,10 @@
       ],
       "url_patterns_reason": "Narrowed to www.youtube.com: it serves the main YouTube web app whose same-origin youtubei endpoints and page layout the tools use; other youtube.com hosts are separate products (music., studio., tv., m.) with different clients and layouts.",
       "status": "verified",
-      "last_verified": "2026-10-16",
-      "notes": "Anonymous public channel profile by channel id (handles and URLs are not accepted); English count text, bounded description; no navigation or playback. Independent QA on 2026-10-16 verified two channels live from the home page, plus not_found for an unknown id, handle input and an extra key, all schema-valid.",
+      "last_verified": "2026-10-26",
+      "notes": "Anonymous public channel profile by channel id or @handle (ASCII handles of 3 to 30 characters, resolved through the site's URL resolver; non-Latin handles are rejected as invalid_input): title, bounded description, rounded English subscriber/video count text and tab titles; no navigation or playback. Independent QA on 2026-10-26 of the final source ran it live from the home, watch, channel and robots.txt pages (the last without the web app config, using the built-in client fallback): five channels by id and by handle, case-insensitive handles, an unknown handle and id (not_found), and malformed, short and extra-key input, all schema-valid with no navigation. With identical site responses replayed to both, output matched the original byte for byte on four channels; simulated HTTP 400/403/404/429/500, bot-check HTML and non-object bodies mapped to schema-valid errors. Cancellation was not exercised live.",
       "provenance": {
-        "qa_agent": "agt_e60b2859388bf2b2daea"
+        "qa_agent": "agt_9b27fa655db5db7b22ac"
       }
     },
     {
@@ -4455,10 +4455,10 @@
       ],
       "url_patterns_reason": "Narrowed to www.youtube.com: it serves the main YouTube web app whose same-origin youtubei endpoints and page layout the tools use; other youtube.com hosts are separate products (music., studio., tv., m.) with different clients and layouts.",
       "status": "verified",
-      "last_verified": "2026-10-16",
-      "notes": "Anonymous public or unlisted playlist pages (PL, UU and OLAK5uy_ ids) in site order, repeats kept; private, Watch later, Liked and Mix lists unsupported. Pages like list_channel_videos, including the continuation-only handling. Independent QA on 2026-10-16 read two complete playlists live from the home page with counts matching the page, paged ARTE's uploads playlist, and checked invalid_page_token, not_found and invalid input; the 10-page bound and repeated tokens by fixture.",
+      "last_verified": "2026-10-26",
+      "notes": "Anonymous public or unlisted playlist pages (PL, UU and OLAK5uy_ ids) in site order, repeats kept; private, Watch later, Liked and Mix lists unsupported. Pages like list_channel_videos, including the continuation-only handling. Independent QA on 2026-10-26 of the final source walked three playlists live from the home and channel pages (89 of a 99-video list, the same 89 as the original tool; 933 rows over 10 pages of a 960-video list; 1858 uploads over 19 pages of a UU list) and checked not_found, invalid_page_token, Mix, WL, malformed and extra-key input, all schema-valid with no navigation. Replayed identical responses gave byte-identical output to the original for first and continuation pages; simulated HTTP errors and bot-check bodies mapped to schema-valid errors. No OLAK5uy_ album list was read live; the 10-page bound and repeated tokens rely on the unit tests.",
       "provenance": {
-        "qa_agent": "agt_d56b243501c98c16f369"
+        "qa_agent": "agt_9b27fa655db5db7b22ac"
       }
     },
     {
@@ -4472,10 +4472,10 @@
       ],
       "url_patterns_reason": "Narrowed to www.youtube.com: it serves the main YouTube web app whose same-origin youtubei endpoints and page layout the tools use; other youtube.com hosts are separate products (music., studio., tv., m.) with different clients and layouts.",
       "status": "qa_passed",
-      "last_verified": "2026-10-16",
-      "notes": "Reads an already-open transcript on the matching paused watch page, from YouTube's older ytd-transcript-renderer panel or its newer engagement panel; every row must name the video; a panel still loading is transcript_loading. Never opens the panel, plays or changes language. Independent QA on 2026-10-16 read a 602-row older panel live (first page, offset continuity, last page, past-end offset) and checked playing_media, wrong_video, transcript_not_open, wrong_page and malformed input. The newer panel, transcript_loading and site_changed were not reached live.",
+      "last_verified": "2026-10-26",
+      "notes": "Reads an already-open transcript on the matching paused watch page, from YouTube's older ytd-transcript-renderer panel or its newer engagement panel; every row must name the video. The newer panel's rows are now matched to the panel data by count and video id only (the original also compared each rendered timestamp). Never opens the panel, plays or changes language. Independent QA on 2026-10-26 of the final source read a 284-row newer panel live on a watch page opened by hand: all rows paged with limit 100, every time_text and text equal to the rendered row, start_ms equal to the timestamp, plus a 4-row last page, past-end offset, out-of-range limit, fractional offset, wrong_video, playing_media, transcript_not_open before opening, wrong_page on other pages and malformed input, all schema-valid. The older panel, transcript_loading and site_changed were not reached live.",
       "provenance": {
-        "qa_agent": "agt_e60b2859388bf2b2daea"
+        "qa_agent": "agt_9b27fa655db5db7b22ac"
       }
     },
     {
@@ -4489,10 +4489,10 @@
       ],
       "url_patterns_reason": "Narrowed to www.youtube.com: it serves the main YouTube web app whose same-origin youtubei endpoints and page layout the tools use; other youtube.com hosts are separate products (music., studio., tv., m.) with different clients and layouts.",
       "status": "verified",
-      "last_verified": "2026-10-16",
-      "notes": "Public metadata for one video or Short by id or URL: title, description, uploader, publish date, duration, counts, chapters, live flags. Anonymous requests to the site's player and next endpoints; never plays and returns no media or caption URLs. A past live stream whose recording is gone has a null duration and a warning. Independent QA on 2026-10-16 ran it live from the home page on a normal video, a Short, live and past live streams, a video with 23 chapters, youtu.be and /shorts/ URLs, unknown ids and malformed input, all schema-valid. The anonymous player request sometimes meets YouTube's bot check (challenge): 4 of about 15 calls in one QA browser and 3 of 17 in a benchmark run; age-restricted and gated videos were not reached live.",
+      "last_verified": "2026-10-26",
+      "notes": "Public metadata for one video or Short by id or URL: title, description, uploader, publish date, duration, view, like and exact comment counts, chapters, live flags. Anonymous requests to the site's player and next endpoints plus one comments continuation for the count; never plays and returns no media or caption URLs or comment text. If only the player data meets YouTube's bot check it falls back to the watch-page data (category, keywords, likes and flags null, date-only published_at, duration from the search card, with a warning); challenge only when the watch-page data fails too. Independent QA on 2026-10-26 of the final source ran it live from the home, watch, channel and robots.txt pages on a normal video, a Short, a past live stream, a 3-chapter video, youtu.be, /shorts/ and /live/ URLs, comments-off videos (null count with a warning), an unknown id and malformed input, all schema-valid; the comment count equalled the count shown above the comments (14,919). Replayed identical responses matched the original on six videos apart from the new comment fields. The bot-check fallback was exercised only by simulating the player response; its search-card duration was 1 s above lengthSeconds on two videos and its description is the watch page's shorter text. Age-restricted, gated and upcoming videos were not reached live.",
       "provenance": {
-        "qa_agent": "agt_5560491177f6bb4d3b42"
+        "qa_agent": "agt_9b27fa655db5db7b22ac"
       }
     },
     {
@@ -4506,10 +4506,10 @@
       ],
       "url_patterns_reason": "Narrowed to www.youtube.com: it serves the main YouTube web app whose same-origin youtubei endpoints and page layout the tools use; other youtube.com hosts are separate products (music., studio., tv., m.) with different clients and layouts.",
       "status": "verified",
-      "last_verified": "2026-10-16",
-      "notes": "Anonymous Videos or Shorts tab pages with the site's own browse tokens; no navigation or playback. While paging it follows up to 10 continuation pages that hold only the next continuation, refuses a token served twice, and returns no_results only with a null token. Independent QA on 2026-10-16 walked ARTE's Shorts tab to its end live from the home page (14 pages, 103 unique Shorts, matching an independent crawl of the continuation chain), ARTE's Videos tab for several pages, and the error paths (invalid input, invalid_page_token, not_found, tab_unavailable); the 10-page bound, a mid-chain HTTP 400 and repeated tokens by fixture.",
+      "last_verified": "2026-10-26",
+      "notes": "Anonymous Videos or Shorts tab pages by channel id or @handle, with the site's own tab browse tokens and, optionally, the tab's own Latest, Popular or Oldest chip; no navigation or playback. While paging it follows up to 10 continuation pages that hold only the next continuation, refuses a token served twice, and returns no_results only with a null token. Independent QA on 2026-10-26 of the final source ran it live from the home, watch, channel and robots.txt pages: Videos and Shorts in all three orders on four channels, five Oldest pages (150 unique, still oldest-first) and second pages of Popular that kept the order, item counts equal to the site's own sorted list, sort_unavailable on a one-video channel, tab_unavailable, not_found for a handle and an id, invalid_page_token, and malformed, sort-with-token and extra-key input, all schema-valid with no navigation. Replayed identical responses gave output byte-identical to the original for unsorted first and continuation pages; simulated HTTP errors mapped to schema-valid errors. The 10-page bound and repeated tokens rely on the unit tests.",
       "provenance": {
-        "qa_agent": "agt_d56b243501c98c16f369"
+        "qa_agent": "agt_9b27fa655db5db7b22ac"
       }
     },
     {
@@ -4523,10 +4523,10 @@
       ],
       "url_patterns_reason": "Narrowed to www.youtube.com: it serves the main YouTube web app whose same-origin youtubei endpoints and page layout the tools use; other youtube.com hosts are separate products (music., studio., tv., m.) with different clients and layouts.",
       "status": "verified",
-      "last_verified": "2026-10-16",
-      "notes": "One page of typed video, Short, channel and playlist results with the site's type, duration, upload-date and sort filters and an opaque page token. Anonymous requests to the site's search endpoint; sponsored results are omitted and counted. Independent QA on 2026-10-16 ran about 27 live calls from the home and results pages: every type, duration, upload date and sort, pages 2 and 3 with filters kept, filter_unavailable, no_results, invalid_page_token and malformed input, all schema-valid.",
+      "last_verified": "2026-10-26",
+      "notes": "One page of typed video, Short, channel and playlist results with the site's type, duration, upload-date and sort filters and an opaque page token. Anonymous requests to the site's search endpoint; sponsored results are omitted and counted. Independent QA on 2026-10-26 of the final source ran about 25 live calls from the home, results, channel and robots.txt pages: every type, duration, upload date and sort, pages 2 and 3 with filters kept, a corrected query, filter_unavailable, no_results, invalid_page_token and malformed input, all schema-valid with no navigation. Replaying identical responses gave byte-identical output to the original for seven searches and their second pages; simulated HTTP errors and bot-check bodies mapped to schema-valid errors (HTTP 404 is now not_found instead of site_error).",
       "provenance": {
-        "qa_agent": "agt_e60b2859388bf2b2daea"
+        "qa_agent": "agt_9b27fa655db5db7b22ac"
       }
     },
     {
