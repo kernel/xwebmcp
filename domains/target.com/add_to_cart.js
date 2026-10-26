@@ -3,7 +3,7 @@
   match: { url_patterns: ["https://target.com/*", "https://*.target.com/*"] },
   tool: {
     name: "add_to_cart",
-    description: "Add an orderable Target (target.com) item to this browser session's cart by tcin, for shipping (default) or for order pickup at the store the session has already selected. Before writing it checks that the tcin exists, is one orderable variation (not an item family), is available for the chosen method, and that the cart would stay within the item's purchase limit; nothing is added otherwise. Calling it twice adds twice. Works as a guest (the cart belongs to this browser) or signed in. It never changes the store, address or account, and never opens checkout or pays; undo with remove_cart_item or update_cart_item using the returned cart_item_id.",
+    description: "Add an orderable Target (target.com) item to this browser session's cart by tcin, for shipping (default) or for order pickup at the store the session has already selected. Before writing it checks that the tcin exists, is one orderable variation (not an item family), is available for the chosen method, and that the cart would stay within the item's purchase limit; nothing is added otherwise. Returns the confirmed line and the cart's product subtotal; a get_cart issued in parallel may still show the cart from before the add. Calling it twice adds twice. Works as a guest (the cart belongs to this browser) or signed in. It never changes the store, address or account, and never opens checkout or pays; undo with remove_cart_item or update_cart_item using the returned cart_item_id.",
     inputSchema: {
       type: "object", additionalProperties: false, required: ["tcin"],
       properties: {
@@ -17,7 +17,7 @@
       oneOf: [
         {
           type: "object", additionalProperties: false,
-          required: ["status", "cart_id", "cart_item_id", "tcin", "title", "fulfillment", "store_id", "previous_quantity", "quantity", "unit_price_cents", "items_quantity"],
+          required: ["status", "cart_id", "cart_item_id", "tcin", "title", "fulfillment", "store_id", "previous_quantity", "quantity", "unit_price_cents", "items_quantity", "cart_product_total_cents"],
           properties: {
             status: { const: "ok" }, cart_id: { type: "string", minLength: 1 },
             cart_item_id: { type: "string", minLength: 1, description: "The cart line; pass it to remove_cart_item to undo." },
@@ -25,7 +25,8 @@
             store_id: { type: ["string", "null"], description: "Pickup store, or null for shipping." },
             previous_quantity: { type: "integer", minimum: 0, description: "Units of this item with this fulfillment in the cart before the call." },
             quantity: { type: "integer", minimum: 1, description: "Units on the line after the call, as confirmed by the site." },
-            unit_price_cents: { type: ["integer", "null"] }, items_quantity: { type: "integer", minimum: 1, description: "Total units in the cart after the call." }
+            unit_price_cents: { type: ["integer", "null"] }, items_quantity: { type: "integer", minimum: 1, description: "Total units in the cart after the call." },
+            cart_product_total_cents: { type: ["integer", "null"], description: "The cart's product subtotal after the call, as the site's cart page shows it; no get_cart call is needed to read it." }
           }
         },
         {
@@ -276,7 +277,8 @@
       const target = lines.find(l => !existing.some(e => e.cart_item_id === l.cart_item_id && e.quantity === l.quantity)) || lines[0];
       return {
         status: "ok", cart_id: after.id || before.cart.id || "unknown", cart_item_id: target.cart_item_id, tcin, title: target.title || product.title, fulfillment: method,
-        store_id: method === "pickup" ? ctx.store.store_id : null, previous_quantity: previous, quantity: target.quantity, unit_price_cents: target.unit_price_cents, items_quantity: units(after)
+        store_id: method === "pickup" ? ctx.store.store_id : null, previous_quantity: previous, quantity: target.quantity, unit_price_cents: target.unit_price_cents, items_quantity: units(after),
+        cart_product_total_cents: cents((after.summary || {}).total_product_amount)
       };
     } catch (error) {
       return fail("site_error", "Request failed: " + (error && error.message ? error.message : String(error)) + ". Read the cart with get_cart before retrying.");
