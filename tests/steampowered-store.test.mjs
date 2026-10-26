@@ -6,7 +6,7 @@ import { Document } from "./etsy-dom.mjs";
 
 // Harness for the steampowered.com tools. Each page tool is re-created from execute.toString(), as the runtime does
 // inside the page, and run against fabricated Steam Store markup; nothing here contacts the live site.
-const NAMES = ["get_app", "get_search_results", "search_store"];
+const NAMES = ["get_app", "get_search_results"];
 const sources = Object.fromEntries(NAMES.map(name => [name, readFileSync(new URL(`../domains/steampowered.com/${name}.js`, import.meta.url), "utf8")]));
 const registry = JSON.parse(readFileSync(new URL("../registry.json", import.meta.url), "utf8"));
 const ORIGIN = "https://store.steampowered.com";
@@ -117,7 +117,7 @@ test("registry entries match the tool files", () => {
     assert.equal(entry.kind, "page");
     assert.equal(definition.kind, "page");
     assert.deepEqual([...definition.match.url_patterns], entry.url_patterns);
-    assert.equal(definition.tool.annotations.readOnlyHint, entry.tool !== "search_store", entry.tool);
+    assert.equal(definition.tool.annotations.readOnlyHint, true, entry.tool);
   }
 });
 
@@ -138,9 +138,7 @@ test("get_app reads the purchase options and the visible review summaries", asyn
     { label: "Recent Reviews", summary: "Very Positive", percent_positive: 91, review_count: 1204, description: "91% of the 1,204 user reviews in the last 30 days are positive." },
     { label: "All Reviews", summary: "Overwhelmingly Positive", percent_positive: 96, review_count: 52310, description: "96% of the 52,310 user reviews for this game are positive." }
   ]);
-  assert.deepEqual(output.registered_tools, { known: true, names: NAMES });
-  assert.deepEqual(output.available_actions.map(a => [a.tool, a.enabled, a.input]), [["get_app", true, {}], ["get_search_results", true, { term: "Fabricated Farm" }], ["search_store", true, { term: "Fabricated Farm" }]]);
-  assert.ok(output.next_steps.every(step => !step.startsWith("get_app")));
+  assert.deepEqual(output.available_actions.map(a => [a.tool, a.registered, a.input]), [["get_app", true, {}], ["get_search_results", true, { term: "Fabricated Farm" }]]);
   // Steam can list a discounted edition first, so the message names no option's price.
   const editionFirst = APP.replace("Buy Fabricated Farm</h2>", "Buy Fabricated Farm Ultimate Edition</h2>");
   const edition = await run("get_app", {}, { url: ORIGIN + "/app/4242/Fabricated_Farm/", html: editionFirst });
@@ -186,38 +184,36 @@ test("get_app reports the age check, other pages and an unrendered app page with
   let { output } = await run("get_app", {}, { url: ORIGIN + "/agecheck/app/77/", html: `<html><head><title>Mature Game</title></head><body>${header}<form method="dialog"><select name="ageYear"></select></form></body></html>` });
   assert.equal(output.status, "age_check");
   assert.equal(output.app_id, "77");
-  assert.deepEqual(output.available_actions.find(a => a.tool === "search_store").input, { term: "Mature Game" });
+  assert.deepEqual(output.available_actions.find(a => a.tool === "get_search_results").input, { term: "Mature Game" });
   ({ output } = await run("get_app", {}, { url: ORIGIN + "/", html: page("<div>Welcome</div>") }));
   assert.equal(output.status, "wrong_page");
   assert.equal(output.page_type, "home");
-  assert.deepEqual(output.available_actions.find(a => a.tool === "search_store"), { tool: "search_store", enabled: true, registered: true, changes_page: true, input: null, note: "Type a term into the header's Search the store box and submit it; the tab navigates to the results page. Needs the term to search for." });
+  assert.deepEqual(output.available_actions.find(a => a.tool === "get_search_results"), { tool: "get_search_results", registered: true, input: null, note: "Pass term to read the store's search results for it without leaving this page." });
   ({ output } = await run("get_app", {}, { url: ORIGIN + "/bundle/77/", html: page("<div>Bundle</div>") }));
   assert.deepEqual([output.status, output.page_type], ["wrong_page", "other"]);
-  assert.deepEqual(output.available_actions.map(a => [a.tool, a.enabled, a.input]), [["get_app", true, null], ["get_search_results", true, null], ["search_store", true, null]]);
-  assert.deepEqual(output.next_steps.map(step => step.split(":")[0]), ["get_search_results", "search_store"]);
+  assert.deepEqual(output.available_actions.map(a => [a.tool, a.input]), [["get_app", null], ["get_search_results", null]]);
   ({ output } = await run("get_app", {}, { url: ORIGIN + "/app/5/", html: page("<div>Loading</div>"), tools: null }));
   assert.equal(output.status, "not_ready");
-  assert.deepEqual(output.registered_tools, { known: false, names: [] });
   assert.ok(output.available_actions.every(a => a.registered === null));
   ({ output } = await run("get_app", {}, { url: "https://help.steampowered.com/app/5/", html: page("") }));
   assert.equal(output.status, "wrong_page");
   assert.equal(output.page_type, "other");
 });
 
-const searchRow = ({ id, kind = "appid", title, released, review, final, original, pct, platforms = ["win"] }) => `<a href="https://store.steampowered.com/${kind === "bundleid" ? "bundle" : kind === "packageid" ? "sub" : "app"}/${id}/X/?snr=1_7_7_151_150_1" data-ds-${kind}="${id}" class="search_result_row ds_collapse_flag">
+const searchRow = ({ id, kind = "appid", title, released, review, final, cents, original, pct, platforms = ["win"] }) => `<a href="https://store.steampowered.com/${kind === "bundleid" ? "bundle" : kind === "packageid" ? "sub" : "app"}/${id}/X/?snr=1_7_7_151_150_1" data-ds-${kind}="${id}" class="search_result_row ds_collapse_flag">
   <div class="responsive_search_name_combined"><div class="search_name ellipsis"><span class="title">${title}</span></div>
   <div class="search_platforms">${platforms.map(p => `<span class="platform_img ${p}"></span>`).join("")}</div>
   <div class="search_released responsive_secondrow">${released}</div>
   <div class="search_reviewscore responsive_secondrow">${review ? `<span class="search_review_summary positive" data-tooltip-html="${review}"></span>` : ""}</div>
-  <div class="search_price_discount_combined"><div class="discount_block search_discount_block">${pct ? `<div class="discount_pct">${pct}</div>` : ""}<div class="discount_prices">${original ? `<div class="discount_original_price">${original}</div>` : ""}${final ? `<div class="discount_final_price">${final}</div>` : ""}</div></div></div></div></a>`;
-const SEARCH = page(`<form id="advsearchform" action="https://store.steampowered.com/search/"><input type="text" id="term" name="term" value="farm"></form>
+  <div class="search_price_discount_combined"${cents === undefined ? "" : ` data-price-final="${cents}"`}><div class="discount_block search_discount_block"${pct ? ` data-discount="${pct.replace(/\D/g, "")}"` : ""}>${pct ? `<div class="discount_pct">${pct}</div>` : ""}<div class="discount_prices">${original ? `<div class="discount_original_price">${original}</div>` : ""}${final ? `<div class="discount_final_price">${final}</div>` : ""}</div></div></div></div></a>`;
+const SEARCH = page(`<form id="advsearchform" action="https://store.steampowered.com/search/"><input type="text" id="term" name="displayterm" value="enter search term or tag"><input type="hidden" id="realterm" name="term" value="farm"></form>
   <div id="sort_by_trigger">Lowest Price</div>
   <div class="tab_filter_control_row checked" data-param="supportedlang" data-value="english"><span class="tab_filter_control_label">English</span></div>
   <div class="tab_filter_control_row checked" data-param="supportedlang" data-value="english"><span class="tab_filter_control_label">English</span></div>
   <div id="search_result_container"><div id="search_resultsRows">
-    ${searchRow({ id: "4242", title: "Fabricated Farm", released: "Mar 3, 2021", review: "Overwhelmingly Positive&lt;br&gt;96% of the 52,310 user reviews for this game are positive.", final: "$10.49", original: "$14.99", pct: "-30%", platforms: ["win", "mac"] })}
-    ${searchRow({ id: "77", kind: "bundleid", title: "Fabricated Farm + Soundtrack", released: "", final: "$16.98" })}
-    ${searchRow({ id: "9", title: "Free Farm", released: "Coming soon", review: "Mixed&lt;br&gt;0% of the 2 user reviews for this game are positive.", final: "Free" })}
+    ${searchRow({ id: "4242", title: "Fabricated Farm", released: "Mar 3, 2021", review: "Overwhelmingly Positive&lt;br&gt;96% of the 52,310 user reviews for this game are positive.", final: "$10.49", cents: 1049, original: "$14.99", pct: "-30%", platforms: ["win", "mac"] })}
+    ${searchRow({ id: "77", kind: "bundleid", title: "Fabricated Farm + Soundtrack", released: "", final: "$16.98", cents: 1698 })}
+    ${searchRow({ id: "9", title: "Free Farm", released: "Coming soon", review: "Mixed&lt;br&gt;0% of the 2 user reviews for this game are positive.", final: "Free", cents: 0 })}
   </div><div id="search_results_loading" style="display: none">Loading</div>
   <div class="search_pagination"><div class="search_pagination_left">showing 1 - 3 of 120</div><div class="search_pagination_right"><a href="https://store.steampowered.com/search/?term=farm&amp;page=2">2</a><a class="pagebtn" href="https://store.steampowered.com/search/?term=farm&amp;page=2">&gt;</a></div></div></div>`);
 
@@ -226,14 +222,18 @@ test("get_search_results reads the rendered rows, the applied sort and filters, 
   assert.equal(output.status, "ok");
   assert.deepEqual(output.search, { term: "farm", sort: "Lowest Price", active_filters: ["English"], total_results: 120 });
   assert.deepEqual([output.rendered_rows, output.offset, output.next_offset], [3, 0, 2]);
-  assert.deepEqual(output.more_results, { available: true, next_page_url: "https://store.steampowered.com/search/?term=farm&page=2" });
+  assert.equal(output.more_results, true);
+  assert.match(output.message, /scroll down to load them .* \{offset: 3\} skips the rows already read/);
   assert.deepEqual(output.results, [
     { position: 1, type: "app", id: "4242", url: "https://store.steampowered.com/app/4242/X/", title: "Fabricated Farm", release_date: "Mar 3, 2021", platforms: ["win", "mac"], review: { summary: "Overwhelmingly Positive", percent_positive: 96, review_count: 52310 }, price: { text: "$10.49", amount: 10.49, original_amount: 14.99, discount_percent: 30 } },
     { position: 2, type: "bundle", id: "77", url: "https://store.steampowered.com/bundle/77/X/", title: "Fabricated Farm + Soundtrack", release_date: null, platforms: ["win"], review: null, price: { text: "$16.98", amount: 16.98, original_amount: null, discount_percent: null } }
   ]);
   const rest = await run("get_search_results", { offset: 2 }, { url: ORIGIN + "/search/?term=farm", html: SEARCH });
-  assert.deepEqual(rest.output.results.map(r => [r.position, r.review, r.price.amount]), [[3, { summary: "Mixed", percent_positive: 0, review_count: 2 }, null]]);
+  assert.deepEqual(rest.output.results.map(r => [r.position, r.review, r.price.amount]), [[3, { summary: "Mixed", percent_positive: 0, review_count: 2 }, 0]], "Free reads as 0");
   assert.equal(rest.output.next_offset, null);
+  const browse = await run("get_search_results", {}, { url: ORIGIN + "/search/?specials=1", html: SEARCH.replace('id="realterm" name="term" value="farm"', 'id="realterm" name="term" value=""') });
+  assert.equal(browse.output.search.term, null, "the box's placeholder is not a term");
+  assert.match(browse.output.message, /^Steam shows 3 row\(s\) for this search of 120/);
 });
 
 test("get_search_results stops pagination at the last page even when the response is limited", async () => {
@@ -241,51 +241,37 @@ test("get_search_results stops pagination at the last page even when the respons
     .replace(/<a class="pagebtn"[^>]*>.*?<\/a>/, "")
     .replace('<div class="search_pagination">', '<div class="search_results_count">120 results match your search.</div><div class="search_pagination">');
   const { output } = await run("get_search_results", { limit: 1 }, { url: ORIGIN + "/search/?term=farm&page=40", html: last });
-  assert.deepEqual(output.more_results, { available: false, next_page_url: null });
+  assert.equal(output.more_results, false);
+  assert.doesNotMatch(output.message, /later results/);
   assert.deepEqual([output.rendered_rows, output.results.length, output.next_offset], [3, 1, 1]);
 });
 
-test("get_search_results accounts for appended rows and falls back to the next-page link without a total", async () => {
-  for (const [pagination, keepLink, more] of [
-    ["showing 26 - 28 of 120", true, true],
-    ["showing 1 - 2 of 3", true, false],
-    ["showing 26 - 27 of 28", true, false],
-    ["", true, true],
-    ["", false, false],
+test("get_search_results accounts for rows appended by infinite scrolling", async () => {
+  for (const [pagination, more] of [
+    ["showing 26 - 28 of 120", true],
+    ["showing 1 - 2 of 3", false],
+    ["showing 26 - 27 of 28", false],
+    ["", false],
   ]) {
-    let html = SEARCH.replace("showing 1 - 3 of 120", pagination);
-    if (!keepLink) html = html.replace(/<a class="pagebtn"[^>]*>.*?<\/a>/, "");
-    const { output } = await run("get_search_results", {}, { url: ORIGIN + "/search/?term=farm", html });
-    assert.deepEqual(output.more_results, { available: more, next_page_url: more ? ORIGIN + "/search/?term=farm&page=2" : null }, pagination);
+    const { output } = await run("get_search_results", {}, { url: ORIGIN + "/search/?term=farm", html: SEARCH.replace("showing 1 - 3 of 120", pagination) });
+    assert.equal(output.more_results, more, pagination);
   }
 });
 
-test("get_search_results does not offer hidden pagination links on infinite-scroll pages", async () => {
-  const html = SEARCH.replace('<div class="search_pagination">', '<div class="search_pagination" style="display: none">');
-  const { output } = await run("get_search_results", { limit: 1 }, { url: ORIGIN + "/search/?term=farm", html });
-  assert.deepEqual(output.more_results, { available: true, next_page_url: null });
-  assert.equal(output.next_offset, 1, "unreturned rendered rows still come first");
-  assert.ok(output.next_steps.some(step => /scroll/i.test(step) && step.includes('{"offset":3}') && step.includes("omit term")));
-
-  const complete = await run("get_search_results", {}, { url: ORIGIN + "/search/?term=farm", html: html.replace("of 120", "of 3") });
-  assert.deepEqual(complete.output.more_results, { available: false, next_page_url: null });
-  assert.ok(complete.output.next_steps.every(step => !/scroll/i.test(step)));
-});
-
-test("get_search_results does not offer unverified pagination links from fetched markup", async () => {
+test("get_search_results tells a fetched term's reader to open the search for later results", async () => {
   const fetched = [];
   const { output } = await run("get_search_results", { term: "farm", limit: 100 }, {
     url: ORIGIN + "/", html: page(""), pages: { "/search/?term=farm": { html: SEARCH } }, fetched
   });
-  assert.deepEqual(output.more_results, { available: true, next_page_url: null });
+  assert.equal(output.more_results, true);
   assert.equal(output.next_offset, null);
   assert.equal(fetched.length, 1, "reading does not fetch another results page");
-  assert.ok(output.next_steps.some(step => step.includes("Open " + ORIGIN + "/search/?term=farm") && step.includes("get_search_results with {}") && step.includes("omit term")));
+  assert.ok(output.message.includes("open " + ORIGIN + "/search/?term=farm, scroll down") && output.message.includes("(omit term)"), output.message);
 });
 
 test("get_search_results reports no results, loading, wrong pages and bad input", async () => {
-  let { output } = await run("get_search_results", {}, { url: ORIGIN + "/search/?term=zzzz", html: page(`<input id="term" value="zzzz"><div id="search_result_container"><div id="search_resultsRows"></div><div class="search_results_count">0 results match your search.</div></div>`) });
-  assert.deepEqual([output.status, output.rendered_rows, output.search.total_results, output.more_results.available], ["no_results", 0, 0, false]);
+  let { output } = await run("get_search_results", {}, { url: ORIGIN + "/search/?term=zzzz", html: page(`<input id="realterm" value="zzzz"><div id="search_result_container"><div id="search_resultsRows"></div><div class="search_results_count">0 results match your search.</div></div>`) });
+  assert.deepEqual([output.status, output.rendered_rows, output.search.total_results, output.more_results], ["no_results", 0, 0, false]);
   ({ output } = await run("get_search_results", {}, { url: ORIGIN + "/search/?term=farm", html: page(`<div id="search_result_container"><div id="search_results_loading">Loading</div></div>`) }));
   assert.equal(output.status, "not_ready");
   ({ output } = await run("get_search_results", {}, { url: ORIGIN + "/app/4242/", html: APP }));
@@ -295,33 +281,6 @@ test("get_search_results reports no results, loading, wrong pages and bad input"
     ({ output } = await run("get_search_results", input, { url: ORIGIN + "/search/?term=farm", html: SEARCH }));
     assert.equal(output.status, "invalid_input", JSON.stringify(input));
   }
-});
-
-test("search_store types into the header box and submits it once, after settling", async () => {
-  const timers = [];
-  const { output, document } = await run("search_store", { term: "  fabricated   farm " }, { url: ORIGIN + "/app/4242/", html: APP, timers });
-  assert.deepEqual(output, { status: "navigation_scheduled", term: "fabricated farm", from_url: ORIGIN + "/app/4242/", next_step: "Wait for the search results page to load, list the tools again, then call get_search_results." });
-  const box = document.querySelector('form[role="search"] input[name="term"]');
-  assert.equal(box.value, "fabricated farm");
-  const clicks = [];
-  document.querySelector('form[role="search"] button').addEventListener("click", () => clicks.push(1));
-  assert.equal(timers.length, 1);
-  assert.equal(clicks.length, 0);
-  timers[0].fn();
-  assert.equal(clicks.length, 1);
-});
-
-test("search_store refuses bad input, other hosts and pages without the search box", async () => {
-  for (const input of [{}, { term: "   " }, { term: "x".repeat(201) }, { term: "farm", sort: "price" }]) {
-    const { output } = await run("search_store", input, { url: ORIGIN + "/", html: APP });
-    assert.equal(output.status, "invalid_input", JSON.stringify(input));
-  }
-  let timers = [];
-  let { output } = await run("search_store", { term: "farm" }, { url: "https://help.steampowered.com/", html: APP, timers });
-  assert.equal(output.status, "wrong_page");
-  ({ output } = await run("search_store", { term: "farm" }, { url: ORIGIN + "/agecheck/app/77/", html: "<html><body><form method=\"dialog\"></form></body></html>", timers }));
-  assert.equal(output.status, "no_search_box");
-  assert.equal(timers.length, 0);
 });
 
 test("get_app reads another app's page from any store page without leaving it", async () => {
@@ -397,11 +356,6 @@ test("get_search_results says a signed-in account's hide preferences are not app
   let output = await read(true);
   assert.equal(output.status, "ok");
   assert.match(output.message, /signed in, and Steam applies its hide owned, ignored and wishlisted preferences only on the open search page/);
-  assert.ok(output.next_steps.some(step => step.startsWith("Open https://store.steampowered.com/search/?term=farm") && step.endsWith("The open page also applies this account's hide preferences.")), output.next_steps.join("\n"));
-  const last = await read(true, SEARCH.replace("showing 1 - 3 of 120", "showing 1 - 3 of 3"));
-  assert.equal(last.more_results.available, false);
-  assert.ok(last.next_steps.some(step => step.startsWith("To see the rows with this account's hide preferences applied, open https://store.steampowered.com/search/?term=farm")), last.next_steps.join("\n"));
   output = await read(false);
   assert.doesNotMatch(output.message, /signed in/);
-  assert.ok(!output.next_steps.some(step => step.includes("hide preferences")));
 });
