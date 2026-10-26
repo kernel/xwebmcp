@@ -70,7 +70,7 @@
       return null;
     };
     const get = async (path, content, missing) => {
-      const res = await fetch(path, { method: "GET", credentials: "include", headers: { accept: "text/html" }, signal, redirect: "follow" });
+      const res = await fetch(path, { method: "GET", credentials: "include", headers: { accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8" }, signal, redirect: "follow" });
       const doc = new DOMParser().parseFromString(await res.text(), "text/html");
       return { res, doc, error: blocked(doc, res, content, missing) };
     };
