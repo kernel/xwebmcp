@@ -137,7 +137,8 @@ function propertyPage({ rows = null, signedIn = false, currency = "USD", occupan
     `<div data-testid="review-score-right-component"><div>8.4</div><div>Rated: Very Good 8.4 – based on 1,234 reviews Expand ratings and reviews section</div><div><div>Very Good </div><div>1,234 reviews</div></div></div>` +
     `<div data-testid="ReviewSubscoresDesktop"><div data-testid="review-subscore">Staff, 9.1, Average rating out of 10 Staff 9.1</div><div data-testid="review-subscore">Value for money, 7.9, Average rating out of 10 Value for money 7.9</div></div>` +
     `<div data-testid="property-most-popular-facilities-wrapper"><h3><div>Most popular amenities</div></h3><ul><li><div><span data-testid="facility-icon"></span><div><span><div><span>Free Wifi</span> </div></span></div></div></li><li><div><span data-testid="facility-icon"></span><div><span><div><span>Air conditioning</span> </div></span></div></div></li></ul></div>` +
-    `<div data-testid="HouseRules-wrapper" id="hp_policies_box"><section><div><h2><div>House rules</div></h2></div><div data-testid="property-section--content"><div><div><div><span></span><div>Check-in</div></div></div><div><div>From 2:00 PM</div><div>Guests are required to show a photo ID.</div></div></div><hr><div><div><div><span></span><div>Check-out</div></div></div><div><div>Until 11:00 AM</div></div></div></div></section></div>` +
+    `<div data-testid="HouseRules-wrapper" id="hp_policies_box"><section><div><h2><div>House rules</div></h2></div><div data-testid="property-section--content"><div><div><div><span></span><div>Check-in</div></div></div><div><div>From 2:00 PM</div><div>Guests are required to show a photo ID.</div></div></div><hr><div><div><div><span></span><div>Check-out</div></div></div><div><div>Until 11:00 AM</div></div></div><hr><div><div><div><span></span><div>Pets</div></div></div><div><div>Pets are allowed on request.</div><div>Charges may apply.</div></div></div><hr><div><div><div><span></span><div>Accepted payment methods</div></div></div><div><div>Cash <img alt="Visa"><img alt="Mastercard"></div></div></div></div></section></div>` +
+    `<div data-testid="PropertyHighlightList-wrapper"><ul><li><div><div>Outdoor swimming pool</div></div></li><li><div><div>Wellness</div><div>Fitness center, Sauna</div></div></li></ul></div><p data-testid="property-description">A quiet harbor-side stay.</p>` +
     `${availability}${extraBody}`;
   const ldScript = ld ? `<script type="application/ld+json">${JSON.stringify(ld)}</script>` : "";
   return shell({ body: body + ldScript, currency, signedIn, occupancy, cfg });
@@ -231,7 +232,7 @@ const invalidSearch = [
   ["missing destination", { ...SEARCH, destination: undefined }],
   ["one-character destination", { ...SEARCH, destination: "L" }],
   ["control character in destination", { ...SEARCH, destination: "Lis\u0000bon" }],
-  ["missing currency", { ...SEARCH, currency: undefined }],
+  ["check_in without check_out", { ...SEARCH, check_out: undefined }],
   ["lowercase currency", { ...SEARCH, currency: "usd" }],
   ["bad check_in", { ...SEARCH, check_in: "2026-02-30" }],
   ["past check_in", { ...SEARCH, check_in: "2026-09-20", check_out: "2026-09-22" }],
@@ -570,7 +571,7 @@ const invalidProperty = [
   ["bad dates", { ...PROPERTY, check_in: "next week" }],
   ["past check_in", { ...PROPERTY, check_in: "2026-09-01", check_out: "2026-09-03" }],
   ["31 nights", { ...PROPERTY, check_out: "2026-12-11" }],
-  ["missing currency", { ...PROPERTY, currency: undefined }],
+  ["check_out without check_in", { ...PROPERTY, check_in: undefined }],
   ["zero adults", { ...PROPERTY, adults: 0 }],
   ["max_rates 41", { ...PROPERTY, max_rates: 41 }],
   ["max_rates 0", { ...PROPERTY, max_rates: 0 }]
@@ -601,6 +602,8 @@ test("get_property reads rooms, rates, cancellation, meal, taxes and the page's 
     page_url: "https://www.booking.com/hotel/xx/harbor-view-studios.html?checkin=2026-11-10&checkout=2026-11-12&group_adults=2&no_rooms=1&group_children=0",
     address: "1 Example Quay, Old Quarter, 1000-000 Example Harbor, Examplia", review: { score: 8.4, label: "Very Good", count: 1234 },
     review_categories: [{ category: "Staff", score: 9.1 }, { category: "Value for money", score: 7.9 }], popular_facilities: ["Free Wifi", "Air conditioning"],
+    highlights: ["Outdoor swimming pool", "Wellness: Fitness center, Sauna"], description: "A quiet harbor-side stay.",
+    house_rules: [{ rule: "Check-in", text: "From 2:00 PM Guests are required to show a photo ID." }, { rule: "Check-out", text: "Until 11:00 AM" }, { rule: "Pets", text: "Pets are allowed on request. Charges may apply." }, { rule: "Accepted payment methods", text: "Cash; cards shown: Visa, Mastercard" }],
     check_in_time: "From 2:00 PM", check_out_time: "Until 11:00 AM"
   });
   assert.equal(output.rates_total, 3);
@@ -628,6 +631,27 @@ test("get_property reads rooms, rates, cancellation, meal, taxes and the page's 
   assert.equal(suite.rates[0].price.taxes_and_fees_excluded, null);
   assert.equal(suite.rates[0].meal_plan, null);
   assert.doesNotMatch(JSON.stringify(output), /fake-tracking|label=|secure\.booking\.com|book\.html/, "no tracking or booking-form data may be returned");
+});
+
+test("without dates or currency the tools read undated pages in the site's currency", async () => {
+  let r = await run("get_property", { property_url: PROPERTY.property_url }, { routes: [propertyRoute({ body: propertyPage({ cfg: "<script>window.booking = { b_hotel_id: '1000001', b_selected_currency: 'USD' };</script>" }) })] });
+  assert.equal(r.output.status, "property_only");
+  assert.equal(r.calls.length, 1);
+  assert.equal(r.calls[0].params.get("checkin"), null);
+  assert.equal(r.output.property.page_url, PROPERTY.property_url);
+  assert.equal(r.output.property.house_rules[2].text, "Pets are allowed on request. Charges may apply.");
+  r = await run("get_property", { ...PROPERTY, currency: undefined }, { routes: [propertyRoute({ body: propertyPage() })] });
+  assert.equal(r.output.status, "ok");
+  assert.equal(r.output.query.currency, null);
+  assert.equal(r.output.effective.currency, "USD");
+  const undated = searchPage({ cfg: "<script>window.booking = { b_selected_currency: 'USD', b_dest_id: '-1000001' };</script>" });
+  r = await run("search_stays", { destination: "Example Harbor" }, { routes: [searchRoute({ body: undated })] });
+  assert.equal(r.output.status, "ok");
+  assert.equal(r.calls[0].params.get("checkin"), null);
+  assert.equal(r.calls[0].params.get("group_adults"), "2");
+  assert.deepEqual([r.output.effective.check_in, r.output.effective.nights, r.output.effective.currency], [null, null, "USD"]);
+  r = await run("search_stays", { destination: "Example Harbor" }, { routes: [searchRoute({ body: searchPage() })] });
+  assert.match(r.output.warnings.join(" "), /applied the dates this session last searched/);
 });
 
 test("get_property keeps an unreadable price as text and warns instead of guessing", async () => {

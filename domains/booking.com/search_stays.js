@@ -3,8 +3,8 @@
     type: "object", additionalProperties: false,
     required: ["destination", "check_in", "check_out", "adults", "children_ages", "currency", "sort", "star_ratings", "min_review_score", "free_cancellation_only", "breakfast_included", "limit"],
     properties: {
-      destination: { type: "string" }, check_in: { type: "string" }, check_out: { type: "string" }, adults: { type: "integer" }, children_ages: { type: "array", items: { type: "integer" } },
-      currency: { type: "string" }, sort: { type: "string" }, star_ratings: { type: "array", items: { type: "integer" } }, min_review_score: { type: ["integer", "null"] },
+      destination: { type: "string" }, check_in: { type: ["string", "null"] }, check_out: { type: ["string", "null"] }, adults: { type: "integer" }, children_ages: { type: "array", items: { type: "integer" } },
+      currency: { type: ["string", "null"], description: "null when the caller left it to the site's currency." }, sort: { type: "string" }, star_ratings: { type: "array", items: { type: "integer" } }, min_review_score: { type: ["integer", "null"] },
       free_cancellation_only: { type: "boolean" }, breakfast_included: { type: "boolean" }, limit: { type: "integer" }
     },
     description: "The normalized search that was sent."
@@ -13,7 +13,7 @@
     type: "object", additionalProperties: false,
     required: ["check_in", "check_out", "nights", "adults", "children", "rooms", "currency", "signed_in"],
     properties: {
-      check_in: { type: "string" }, check_out: { type: "string" }, nights: { type: "integer", minimum: 1 },
+      check_in: { type: ["string", "null"] }, check_out: { type: ["string", "null"] }, nights: { type: ["integer", "null"], minimum: 1, description: "Dates are null for an undated search." },
       adults: { type: "integer" }, children: { type: "integer" }, rooms: { type: "integer" },
       currency: { type: "string", description: "Currency of every price in properties[]." },
       signed_in: { type: ["boolean", "null"], description: "Whether the browser session is signed in to Booking.com; null when the page shows neither state or conflicting state markers." }
@@ -33,17 +33,17 @@
     match: { url_patterns: ["https://www.booking.com/*"] },
     tool: {
       name: "search_stays",
-      description: "Search Booking.com stays (hotels, apartments and other properties) for a destination, dates and party, and read the first results page. Requires explicit check_in, check_out, adults and currency; runs the same search as the site's results page for one room and returns each property with its canonical URL, review score, the recommended unit and the site's displayed total for the whole stay. Use property_url with get_property for room-by-room rates. currency must be the currency the site is already showing (its header currency picker): the tool never changes the site's currency and fails with currency_mismatch, naming what the site shows, when they differ. The output echoes the effective dates, guests and currency the site applied and a price_basis; a search the site did not apply as asked is an error, not a result. Read-only: it never selects a room or rate, saves to a list, reserves or opens checkout, and changes no browser or account setting; Booking.com records the search like any search. Prices can differ by session (member discounts when signed in), and a result page does not prove availability at booking time. Run it on any https://www.booking.com page in an English-language session and do not navigate the tab while it runs. Returns at most one page of up to 25 properties; total_found is the site's full match count.",
+      description: "Search Booking.com stays (hotels, apartments and other properties) for a destination, dates and party, and read the first results page. Runs the same search as the site's results page for one room and returns each property with its canonical URL, area, review score, the recommended unit and the site's displayed total for the whole stay. To find one property, pass its name and city as destination; omit both dates to look properties up without prices (the site shows none undated). Use property_url with get_property for its address, house rules, facilities and room-by-room rates. Prices are in the currency the site already shows (effective.currency); the tool never changes it, and a currency you pass that differs fails with currency_mismatch. The output echoes the effective dates, guests and currency the site applied and a price_basis; a search the site did not apply as asked is an error, not a result. Read-only: it never selects a room or rate, saves to a list, reserves or opens checkout, and changes no browser or account setting; Booking.com records the search like any search. Prices can differ by session (member discounts when signed in), and a result page does not prove availability at booking time. Run it on any https://www.booking.com page in an English-language session and do not navigate the tab while it runs. Returns at most one page of up to 25 properties; total_found is the site's full match count.",
       inputSchema: {
         type: "object", additionalProperties: false,
-        required: ["destination", "check_in", "check_out", "adults", "currency"],
+        required: ["destination"],
         properties: {
-          destination: { type: "string", minLength: 2, maxLength: 100, description: "City, region, landmark or address as you would type it in the site's search box, for example 'Lisbon' or 'Springfield, Illinois'. The site picks the best match; check destination in the output, and add a region or country to disambiguate." },
-          check_in: { type: "string", pattern: "^\\d{4}-\\d{2}-\\d{2}$", description: "Check-in date, YYYY-MM-DD. Not earlier than yesterday (UTC); the site only accepts dates within its bookable window (observed to end about 16 months ahead)." },
+          destination: { type: "string", minLength: 2, maxLength: 100, description: "City, region, landmark, address or property name as you would type it in the site's search box, for example 'Lisbon' or 'Springfield, Illinois'. The site picks the best match; check destination in the output, and add a region or country to disambiguate." },
+          check_in: { type: "string", pattern: "^\\d{4}-\\d{2}-\\d{2}$", description: "Check-in date, YYYY-MM-DD; give both dates or neither. Not earlier than yesterday (UTC); the site only accepts dates within its bookable window (observed to end about 16 months ahead)." },
           check_out: { type: "string", pattern: "^\\d{4}-\\d{2}-\\d{2}$", description: "Check-out date, YYYY-MM-DD, after check_in, at most 30 nights later." },
-          adults: { type: "integer", minimum: 1, maximum: 30, description: "Number of adults in the single room searched." },
+          adults: { type: "integer", minimum: 1, maximum: 30, default: 2, description: "Number of adults in the single room searched." },
           children_ages: { type: "array", maxItems: 10, items: { type: "integer", minimum: 0, maximum: 17 }, description: "Age of each child at check-out, 0 to 17. Omit or leave empty for no children. The results page echoes only the number of children." },
-          currency: { type: "string", pattern: "^[A-Z]{3}$", description: "ISO 4217 code of the currency the site is currently showing, for example USD. All prices in the output are in this currency. If the site shows another currency the call fails with currency_mismatch and says which." },
+          currency: { type: "string", pattern: "^[A-Z]{3}$", description: "Optional ISO 4217 code you expect prices in, for example USD; omit it to use whatever the site shows. If the site shows another currency the call fails with currency_mismatch and says which." },
           sort: { type: "string", enum: ["recommended", "price_low_to_high", "review_score", "star_rating", "distance_from_center"], default: "recommended", description: "The site's ordering: 'Our top picks', 'Price (lowest first)', 'Best reviewed & lowest price', 'Property rating (high to low)' or 'Distance from downtown'." },
           star_ratings: { type: "array", maxItems: 5, uniqueItems: true, items: { type: "integer", minimum: 1, maximum: 5 }, description: "Keep only properties with these ratings (1 to 5 stars or squares)." },
           min_review_score: { type: "integer", enum: [6, 7, 8, 9], description: "Keep only properties scored at least this on the site's 10-point scale (6 Pleasant, 7 Good, 8 Very good, 9 Wonderful)." },
@@ -68,7 +68,7 @@
                 required: ["scope", "nights", "adults", "children", "currency", "taxes_and_fees"],
                 properties: {
                   scope: { const: "stay_total", description: "price.total covers every night, for the whole party, on the recommended unit." },
-                  nights: { type: "integer" }, adults: { type: "integer" }, children: { type: "integer" }, currency: { type: "string" },
+                  nights: { type: ["integer", "null"] }, adults: { type: "integer" }, children: { type: "integer" }, currency: { type: "string" },
                   taxes_and_fees: { const: "not_itemized_on_results_card", description: "Results cards do not say what taxes and fees are excluded; get_property shows the excluded charges per rate." }
                 }
               },
@@ -154,17 +154,19 @@
       const destination = typeof input.destination === "string" ? input.destination.trim().replace(/\s+/g, " ") : "";
       if (destination.length < 2 || destination.length > 100 || /[\u0000-\u001f\u007f]/.test(destination)) return fail("invalid_input", "destination must be 2 to 100 characters of text.");
       const isDate = v => typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v) && Number.isFinite(Date.parse(v + "T00:00:00Z")) && new Date(v + "T00:00:00Z").toISOString().slice(0, 10) === v;
-      if (!isDate(input.check_in)) return fail("invalid_input", "check_in must be a real calendar date, YYYY-MM-DD.");
-      if (!isDate(input.check_out)) return fail("invalid_input", "check_out must be a real calendar date, YYYY-MM-DD.");
+      const dated = input.check_in !== undefined || input.check_out !== undefined;
+      if (dated && !isDate(input.check_in)) return fail("invalid_input", "check_in must be a real calendar date, YYYY-MM-DD; give both dates or neither.");
+      if (dated && !isDate(input.check_out)) return fail("invalid_input", "check_out must be a real calendar date, YYYY-MM-DD; give both dates or neither.");
       const dayMs = 86400000;
-      const nights = Math.round((Date.parse(input.check_out) - Date.parse(input.check_in)) / dayMs);
-      if (Date.parse(input.check_in) < Math.floor(Date.now() / dayMs) * dayMs - dayMs) return fail("invalid_input", "check_in " + input.check_in + " is in the past; today is " + new Date().toISOString().slice(0, 10) + " (UTC).");
-      if (nights < 1) return fail("invalid_input", "check_out must be after check_in.");
+      const nights = dated ? Math.round((Date.parse(input.check_out) - Date.parse(input.check_in)) / dayMs) : null;
+      if (dated && Date.parse(input.check_in) < Math.floor(Date.now() / dayMs) * dayMs - dayMs) return fail("invalid_input", "check_in " + input.check_in + " is in the past; today is " + new Date().toISOString().slice(0, 10) + " (UTC).");
+      if (dated && nights < 1) return fail("invalid_input", "check_out must be after check_in.");
       if (nights > 30) return fail("invalid_input", "The stay may be at most 30 nights.");
-      if (!Number.isInteger(input.adults) || input.adults < 1 || input.adults > 30) return fail("invalid_input", "adults must be an integer from 1 to 30.");
+      const adults = input.adults ?? 2;
+      if (!Number.isInteger(adults) || adults < 1 || adults > 30) return fail("invalid_input", "adults must be an integer from 1 to 30.");
       const ages = input.children_ages === undefined ? [] : input.children_ages;
       if (!Array.isArray(ages) || ages.length > 10 || ages.some(a => !Number.isInteger(a) || a < 0 || a > 17)) return fail("invalid_input", "children_ages must be at most 10 integers from 0 to 17.");
-      if (typeof input.currency !== "string" || !/^[A-Z]{3}$/.test(input.currency)) return fail("invalid_input", "currency must be a three-letter uppercase ISO 4217 code such as USD.");
+      if (input.currency !== undefined && (typeof input.currency !== "string" || !/^[A-Z]{3}$/.test(input.currency))) return fail("invalid_input", "currency must be a three-letter uppercase ISO 4217 code such as USD, or omitted.");
       const sortModes = { recommended: null, price_low_to_high: "price", review_score: "review_score_and_price", star_rating: "class", distance_from_center: "distance_from_search" };
       const sort = input.sort === undefined ? "recommended" : input.sort;
       if (!Object.hasOwn(sortModes, sort)) return fail("invalid_input", "sort must be one of " + Object.keys(sortModes).join(", ") + ".");
@@ -176,10 +178,11 @@
       if (!Number.isInteger(limit) || limit < 1 || limit > 25) return fail("invalid_input", "limit must be an integer from 1 to 25.");
 
       const query = {
-        destination, check_in: input.check_in, check_out: input.check_out, adults: input.adults, children_ages: ages, currency: input.currency, sort,
+        destination, check_in: input.check_in ?? null, check_out: input.check_out ?? null, adults, children_ages: ages, currency: input.currency ?? null, sort,
         star_ratings: [...stars].sort(), min_review_score: input.min_review_score ?? null, free_cancellation_only: input.free_cancellation_only === true, breakfast_included: input.breakfast_included === true, limit
       };
-      const params = new URLSearchParams({ ss: destination, checkin: query.check_in, checkout: query.check_out, group_adults: String(query.adults), no_rooms: "1", group_children: String(ages.length) });
+      const params = new URLSearchParams(dated ? { ss: destination, checkin: query.check_in, checkout: query.check_out } : { ss: destination });
+      for (const [k, v] of [["group_adults", adults], ["no_rooms", 1], ["group_children", ages.length]]) params.set(k, String(v));
       for (const age of ages) params.append("age", String(age));
       if (sortModes[sort]) params.set("order", sortModes[sort]);
       const filters = [...query.star_ratings.map(s => "class=" + s)];
@@ -203,7 +206,8 @@
       };
       const currencyCodes = new Set(Intl.supportedValuesOf("currency"));
       const currencyMarkers = [[/\bUS\$/, ["USD"]], [/\b(?:CA\$|C\$)/, ["CAD"]], [/\b(?:AU\$|A\$)/, ["AUD"]], [/\bNZ\$/, ["NZD"]], [/\bHK\$/, ["HKD"]], [/\b(?:SG\$|S\$)/, ["SGD"]], [/\bNT\$/, ["TWD"]], [/€/, ["EUR"]], [/£/, ["GBP"]], [/¥/, ["JPY", "CNY"]], [/₹/, ["INR"]]];
-      const differentCurrency = s => (s.match(/(?<![A-Z])[A-Z]{3}(?![A-Z])/g) || []).some(c => currencyCodes.has(c) && c !== query.currency) || currencyMarkers.some(([pattern, currencies]) => pattern.test(s) && !currencies.includes(query.currency));
+      let currency = query.currency;
+      const differentCurrency = s => (s.match(/(?<![A-Z])[A-Z]{3}(?![A-Z])/g) || []).some(c => currencyCodes.has(c) && c !== currency) || currencyMarkers.some(([pattern, currencies]) => pattern.test(s) && !currencies.includes(currency));
       const cfg = (html, re) => (re.exec(html) || [])[1] ?? null;
       const observedAt = new Date().toISOString();
 
@@ -251,12 +255,13 @@
         const occupancy = text(pickTid(doc, "occupancy-config"));
         const occ = { adults: Number((/(\d+)\s+adults?/i.exec(occupancy) || [])[1]), children: Number((/(\d+)\s+child(?:ren)?/i.exec(occupancy) || [])[1] || 0), rooms: Number((/(\d+)\s+rooms?/i.exec(occupancy) || [])[1]) };
         if (!configCurrency || !occ.adults || !occ.rooms) return fail("site_changed", "The results page does not expose the currency and guests it searched; Booking.com's markup may have changed.");
-        if (shownCurrency !== query.currency || configCurrency !== query.currency) return fail("currency_mismatch", "Booking.com is showing " + (/^[A-Z]{3}$/.test(shownCurrency) && shownCurrency === configCurrency ? shownCurrency : "prices in a mix of currencies or one it does not label with a code") + ", not " + query.currency + ". This tool never changes the site's currency: pass the currency the site shows, or change it in the site's currency picker first.");
+        currency = currency ?? shownCurrency;
+        if (shownCurrency !== currency || configCurrency !== currency) return fail("currency_mismatch", "Booking.com is showing " + (/^[A-Z]{3}$/.test(shownCurrency) && shownCurrency === configCurrency ? shownCurrency : "prices in a mix of currencies or one it does not label with a code") + ", not " + currency + ". This tool never changes the site's currency: omit currency to use the one it shows, or change it in the site's currency picker first.");
         if (!/\bb_selected_currency\s*:/.test(html) && !result.searchMeta) return fail("site_changed", "The results page does not expose the dates it searched; Booking.com's markup may have changed.");
         if (result.searchMeta && meta.dates && (!checkIn || !checkOut || !interval)) return fail("site_changed", "The results page's search data has dates in an unexpected form; Booking.com's markup may have changed.");
-        if (!checkIn || !checkOut || !interval) return fail("search_not_applied", "Booking.com did not apply the dates " + query.check_in + " to " + query.check_out + " (it ignores dates it cannot book, such as dates in the past) and returned an undated search.");
-        if (checkIn !== query.check_in || checkOut !== query.check_out || interval !== nights || occ.adults !== query.adults || occ.children !== ages.length || occ.rooms !== 1) {
-          return fail("search_not_applied", "Booking.com searched " + checkIn + " to " + checkOut + " for " + occupancy + ", not the " + query.check_in + " to " + query.check_out + ", " + query.adults + " adults, " + ages.length + " children, 1 room requested.");
+        if (dated && (!checkIn || !checkOut || !interval)) return fail("search_not_applied", "Booking.com did not apply the dates " + query.check_in + " to " + query.check_out + " (it ignores dates it cannot book, such as dates in the past) and returned an undated search.");
+        if ((dated && (checkIn !== query.check_in || checkOut !== query.check_out || interval !== nights)) || occ.adults !== query.adults || occ.children !== ages.length || occ.rooms !== 1) {
+          return fail("search_not_applied", "Booking.com searched " + (checkIn ? checkIn + " to " + checkOut : "without dates") + " for " + occupancy + ", not the " + (dated ? query.check_in + " to " + query.check_out : "undated search") + ", " + query.adults + " adults, " + ages.length + " children, 1 room requested.");
         }
         const profile = !!pickTid(doc, "header-profile"), signIn = !!pickTid(doc, "header-sign-in-button");
         const signedIn = profile === signIn ? null : profile;
@@ -268,7 +273,7 @@
           country_code: cfg(html, /"b_countrycode"\s*:\s*'([a-z]{2})'/) ?? (typeof destLocation.countryCode === "string" && /^[a-z]{2}$/.test(destLocation.countryCode) ? destLocation.countryCode : null),
           breadcrumb: crumbs
         };
-        const effective = { check_in: checkIn, check_out: checkOut, nights: interval, adults: occ.adults, children: occ.children, rooms: occ.rooms, currency: shownCurrency, signed_in: signedIn };
+        const effective = { check_in: checkIn || null, check_out: checkOut || null, nights: interval || null, adults: occ.adults, children: occ.children, rooms: occ.rooms, currency: shownCurrency, signed_in: signedIn };
         if (totalFound === 0 && cardEls.length) return fail("site_changed", "The heading reports 0 properties but the page lists property cards; Booking.com's markup may have changed.");
         if (totalFound === 0) return { status: "no_results", observed_at: observedAt, query, effective, destination: dest, total_found: 0, message: "Booking.com found no properties for this destination, dates and filters." };
         if (!cardEls.length) return fail("site_changed", "The heading reports " + totalFound + " properties but no property cards were readable; Booking.com's markup may have changed.");
@@ -276,6 +281,7 @@
         const warnings = [];
         if (signedIn) warnings.push("The browser is signed in to Booking.com, so prices may include member (Genius) discounts.");
         if (ages.length) warnings.push("The results page echoes only the number of children, so the ages sent could not be confirmed.");
+        if (!dated && checkIn) warnings.push("No dates were sent, but Booking.com applied the dates this session last searched (see effective); prices are for those dates.");
         const properties = [];
         const seen = new Set();
         let unpriced = 0, unscored = 0, skipped = 0;
@@ -342,7 +348,7 @@
         if (skipped) warnings.push(skipped + " result cards were skipped because they had no name or a non-property URL, or repeated a property.");
         const output = {
           status: "ok", observed_at: observedAt, query, effective,
-          price_basis: { scope: "stay_total", nights: interval, adults: occ.adults, children: occ.children, currency: shownCurrency, taxes_and_fees: "not_itemized_on_results_card" },
+          price_basis: { scope: "stay_total", nights: interval || null, adults: occ.adults, children: occ.children, currency: shownCurrency, taxes_and_fees: "not_itemized_on_results_card" },
           destination: dest, total_found: totalFound, returned: properties.length, has_more: totalFound > properties.length,
           results_url: ORIGIN + "/searchresults.html?" + params.toString(), warnings, properties
         };
