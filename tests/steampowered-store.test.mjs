@@ -161,12 +161,28 @@ test("get_app reads the user tags and the all-languages total the header leaves 
 
 test("get_app reads several apps in one call, in input order", async () => {
   const fetched = [];
-  const { output } = await run("get_app", { apps: ["4242", "https://store.steampowered.com/app/1/", "x"] }, { url: ORIGIN + "/", html: page("<div>Welcome</div>"), fetched, pages: { "/app/4242/": { html: APP, url: "/app/4242/Fabricated_Farm/" } } });
-  assert.equal(output.status, "ok");
-  assert.deepEqual(output.results.map(r => [r.status, r.app?.name ?? r.app_id]), [["ok", "Fabricated Farm"], ["not_found", "1"], ["invalid_input", null]]);
+  const pages = { "/app/4242/": { html: APP, url: "/app/4242/Fabricated_Farm/" }, "/agecheck/app/7/": { html: page("<form></form>") }, "/app/7/": { html: page("<form></form>"), url: "/agecheck/app/7/" } };
+  const { output } = await run("get_app", { apps: ["4242", "https://store.steampowered.com/app/1/"] }, { url: ORIGIN + "/", html: page("<div>Welcome</div>"), fetched, pages });
+  assert.equal(output.status, "ok", "ok when at least one app was read");
+  assert.deepEqual(output.results.map(r => [r.status, r.app?.name ?? r.app_id]), [["ok", "Fabricated Farm"], ["not_found", "1"]]);
   assert.ok(output.results.every(r => !("available_actions" in r)));
   assert.deepEqual(fetched.map(f => f.path), ["/app/4242/", "/app/1/"]);
+  for (const [apps, status] of [[["1"], "not_found"], [["1", "2"], "not_found"], [["1", "7"], "none_read"], [["7"], "age_check"]]) {
+    const read = await run("get_app", { apps }, { url: ORIGIN + "/", html: page(""), pages });
+    assert.equal(read.output.status, status, JSON.stringify(apps));
+  }
   for (const input of [{ apps: [] }, { apps: ["1", "2", "3", "4", "5", "6"] }, { app: "1", apps: ["2"] }]) assert.equal((await run("get_app", input, { url: ORIGIN + "/", html: page("") })).output.status, "invalid_input");
+});
+
+test("get_app rejects every invalid apps entry before reading any app", async () => {
+  for (const apps of [[413150], [null], [""], ["4242", "x"], ["https://evil.example/app/1/", "4242"]]) {
+    const fetched = [];
+    const { output } = await run("get_app", { apps }, { url: ORIGIN + "/", html: page(""), fetched, pages: { "/app/4242/": { html: APP } } });
+    assert.equal(output.status, "invalid_input", JSON.stringify(apps));
+    assert.equal(fetched.length, 0, "nothing is fetched for " + JSON.stringify(apps));
+  }
+  const { output } = await run("get_app", { apps: ["4242", "x", 7] }, { url: ORIGIN + "/", html: page("") });
+  assert.match(output.message, /\["x",7\]/);
 });
 
 test("get_app reads a free-to-play option and a page without reviews or prices", async () => {

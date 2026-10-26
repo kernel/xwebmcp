@@ -195,19 +195,25 @@
       const actions = steamActions(page, registered, steamText(document.querySelector(page.type === "age_check" ? "title" : "#appHubAppName")));
       const notOk = (status, message, appId = page.app_id) => ({ status, message, page_type: page.type, app_id: appId, registered_tools: registered, available_actions: actions, next_steps: steamNextSteps(actions, "get_app") });
       if (input === null || typeof input !== "object" || Array.isArray(input) || Object.keys(input).some(k => k !== "app" && k !== "apps")) return notOk("invalid_input", "Pass app (an app id or store URL), apps (a list of up to 5) or {} to read the app page open in this tab.");
+      // An app id, or the id in a store.steampowered.com/app/<id>/ URL; nothing for anything else.
+      const appIdOf = value => {
+        const given = value?.trim?.() ?? "";
+        if (/^\d{1,10}$/.test(given)) return given;
+        try {
+          const url = new URL(given.replace(/^(?=store\.steampowered\.com\/)/i, "https://"), STEAM_ORIGIN);
+          return /^https?:\/\/store\.steampowered\.com$/.test(url.origin) && /^\/app\/(\d{1,10})(?:\/|$)/.exec(url.pathname)?.[1];
+        } catch {}
+      };
       if (input.apps !== undefined) {
         if (input.app !== undefined || !Array.isArray(input.apps) || !input.apps.length || input.apps.length > 5) return notOk("invalid_input", "apps must list 1 to 5 app ids or store URLs, and replaces app.", null);
+        const bad = input.apps.filter(app => !appIdOf(app));
+        if (bad.length) return notOk("invalid_input", "Nothing was read: these apps entries are not app ids such as '413150' or store.steampowered.com/app/<id>/ URLs: " + JSON.stringify(bad) + ".", null);
         const results = (await Promise.all(input.apps.map(app => get({ app })))).map(({ registered_tools, available_actions, next_steps, ...result }) => result);
-        return { status: "ok", message: results.map(r => r.message).join(" "), results, registered_tools: registered, available_actions: actions, next_steps: steamNextSteps(actions, "get_app") };
+        const statuses = [...new Set(results.map(r => r.status))];
+        return { status: statuses.includes("ok") ? "ok" : statuses[1] ? "none_read" : statuses[0], message: results.map(r => r.message).join(" "), results, registered_tools: registered, available_actions: actions, next_steps: steamNextSteps(actions, "get_app") };
       }
-      let wanted = null;
-      if (input.app !== undefined) {
-        const given = typeof input.app === "string" ? input.app.trim() : "";
-        let url = null;
-        try { url = /^\d+$/.test(given) ? null : new URL(/^store\.steampowered\.com\//i.test(given) ? "https://" + given : given, STEAM_ORIGIN); } catch { url = null; }
-        wanted = /^\d{1,10}$/.test(given) ? given : url && /^https?:$/.test(url.protocol) && url.hostname === "store.steampowered.com" ? (/^\/app\/(\d{1,10})(?:\/|$)/.exec(url.pathname) || [])[1] ?? null : null;
-        if (!wanted) return notOk("invalid_input", "app must be a Steam app id such as '413150' or a store.steampowered.com/app/<id>/ URL.", null);
-      }
+      const wanted = input.app === undefined ? null : appIdOf(input.app) || "";
+      if (wanted === "") return notOk("invalid_input", "app must be a Steam app id such as '413150' or a store.steampowered.com/app/<id>/ URL.", null);
 
       // The open app page is read as shown; another app is read from its page's markup without leaving this one.
       let doc = document, visible = steamVisible, appId = page.app_id, source = null;
@@ -219,10 +225,9 @@
         if (!fetched.doc && ![404, 410].includes(fetched.status)) return notOk("not_ready", "Steam did not return app " + wanted + "'s page (HTTP " + fetched.status + "); try again later.", wanted);
         const landed = steamPage(fetched.url);
         // Adult-only apps send signed-out visitors to the sign-in page, which returns to the app's age check.
-        const signIn = landed.type === "other" && /^\/login\/?$/.test(fetched.url.pathname) ? new URL(fetched.url.searchParams.get("redir") || "/", STEAM_ORIGIN) : null;
-        if (fetched.doc && signIn?.origin === STEAM_ORIGIN && /^\/(?:agecheck\/)?app\/(\d+)(?:\/|$)/.exec(signIn.pathname)?.[1] === wanted) return notOk("sign_in_required", "Steam shows app " + wanted + " only to signed-in accounts and sent this request to its sign-in page. This tool does not sign in; once the tab is signed in to an account allowed to see it, call get_app again.", wanted);
+        if (fetched.doc && /^\/login\/?$/.test(fetched.url.pathname) && appIdOf(fetched.url.searchParams.get("redir")?.replace("agecheck/", "")) === wanted) return notOk("sign_in_required", "Steam shows app " + wanted + " only to signed-in accounts and sent this request to its sign-in page. This tool does not sign in; once the tab is signed in to an account allowed to see it, call get_app again.", wanted);
         if (fetched.doc && landed.type === "age_check") return notOk("age_check", "Steam asks for a birth date before showing app " + wanted + ". Open store.steampowered.com/app/" + wanted + "/, enter the date in the page's own form and press View Page, then call get_app with {} there.", wanted);
-        if (!fetched.doc || landed.type !== "app" || landed.app_id !== wanted) return notOk("not_found", "Steam has no store page for app " + wanted + " (it answered HTTP " + fetched.status + " at " + fetched.url.pathname + ").", wanted);
+        if (!fetched.doc || landed.app_id !== wanted) return notOk("not_found", "Steam has no store page for app " + wanted + " (it answered HTTP " + fetched.status + " at " + fetched.url.pathname + ").", wanted);
         doc = fetched.doc; visible = steamShownInMarkup; appId = wanted; source = fetched.url.href;
       } else {
         if (page.type === "age_check") return notOk("age_check", "Steam shows an age check for app " + page.app_id + " instead of its store page. Enter a birth date in the page's own form and press View Page, then call get_app again.");
@@ -295,12 +300,12 @@
     }
   };
   // apps returns one result per app, each without the page-level fields (the last three of every branch).
-  const branches = definition.tool.outputSchema.oneOf, perPage = props => Object.fromEntries(Object.entries(props).slice(-3));
-  const item = ({ required, properties, ...schema }) => ({ ...schema, required: required.slice(0, -3), properties: Object.fromEntries(Object.entries(properties).slice(0, -3)) });
+  const branches = definition.tool.outputSchema.oneOf, { registered_tools, available_actions, next_steps } = branches[0].properties;
+  const item = ({ required, properties: { registered_tools, available_actions, next_steps, ...properties }, ...schema }) => ({ ...schema, required: required.slice(0, -3), properties });
   branches.push({
     type: "object", additionalProperties: false,
-    required: ["status", "message", "results", ...branches[0].required.slice(-3)],
-    properties: { status: { const: "ok" }, message: { type: "string" }, results: { type: "array", maxItems: 5, items: { oneOf: branches.map(item) } }, ...perPage(branches[0].properties) }
+    required: ["status", "message", "results", "registered_tools", "available_actions", "next_steps"],
+    properties: { status: { enum: ["ok", "none_read", ...branches[1].properties.status.enum], description: "ok when at least one app was read; otherwise the items' shared status, or none_read when they failed for different reasons." }, message: { type: "string" }, results: { type: "array", maxItems: 5, items: { oneOf: branches.map(item) } }, registered_tools, available_actions, next_steps }
   });
   return [definition];
 })()
