@@ -185,33 +185,65 @@
       annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true }
     },
     execute: async (input, context = {}) => {
+      // @xwebmcp-inline lib/booking-stays.js
+      // Booking.com stays helpers shared by search_stays, get_property and select_room: input checks, page facts and the
+      // same-origin page fetch with its error mapping. Uses the tool's input and context.
       const ORIGIN = "https://www.booking.com";
-      const fail = (kind, message) => ({ status: "error", error_kind: kind, error_message: message });
+      const fail = (error_kind, error_message, extra) => ({ status: "error", error_kind, error_message, ...extra });
+      const rawText = el => el ? (el.textContent || "").replace(/\s+/g, " ").trim() : "", pickTid = (root, id) => root.querySelector("[data-testid=\"" + id + "\"]");
+      const cfg = (html, re) => (re.exec(html) || [])[1] ?? null;
+      const isDate = v => typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v) && new Date(Date.parse(v) || 0).toISOString().slice(0, 10) === v;
+      const amount = s => { const token = /[\d][\d,.']*/.exec(s || ""); return token && /^(\d{1,3}(,\d{3})+|\d+)(\.\d+)?$/.test(token[0]) ? Number(token[0].replace(/,/g, "")) : null; };
+      // Dates, adults, children_ages and currency as search_stays and get_property take them, or an invalid_input error.
+      const stayInput = (base = {}) => {
+        const dated = input.check_in !== undefined || input.check_out !== undefined, adults = input.adults ?? 2, ages = input.children_ages ?? [];
+        const nights = dated ? Math.round((Date.parse(input.check_out) - Date.parse(input.check_in)) / 86400000) : null;
+        const problem = dated && !(isDate(input.check_in) && isDate(input.check_out)) ? "check_in and check_out must be real calendar dates, YYYY-MM-DD; give both dates or neither."
+          : dated && Date.parse(input.check_in) < Date.now() - Date.now() % 86400000 - 86400000 ? "check_in " + input.check_in + " is in the past; today is " + new Date().toISOString().slice(0, 10) + " (UTC)."
+          : dated && nights < 1 ? "check_out must be after check_in." : nights > 30 ? "The stay may be at most 30 nights."
+          : !Number.isInteger(adults) || adults < 1 || adults > 30 ? "adults must be an integer from 1 to 30."
+          : !Array.isArray(ages) || ages.length > 10 || ages.some(a => !Number.isInteger(a) || a < 0 || a > 17) ? "children_ages must be at most 10 integers from 0 to 17."
+          : input.currency !== undefined && !/^[A-Z]{3}$/.test(input.currency) ? "currency must be a three-letter uppercase ISO 4217 code such as USD, or omitted." : null;
+        if (problem) return fail("invalid_input", problem);
+        const params = new URLSearchParams(dated ? { ...base, checkin: input.check_in, checkout: input.check_out } : base);
+        for (const [k, v] of [["group_adults", adults], ["no_rooms", 1], ["group_children", ages.length], ...ages.map(age => ["age", age])]) params.append(k, String(v));
+        return { dated, nights, adults, ages, params };
+      };
+      const pageChecks = () => window.location.origin !== ORIGIN ? fail("wrong_page", "Open any https://www.booking.com page first; this tool reads Booking.com pages from there.")
+        : !/^en(-|$)/i.test(document.documentElement.getAttribute("lang") || "") ? fail("unsupported_language", "This tool reads English labels; switch the Booking.com page language to English first.") : null;
+      // The page at url, or the error Booking.com's answer amounts to. notFound names a missing property page.
+      const fetchPage = async (url, notFound) => {
+        const res = await fetch(url, { credentials: "include", headers: { accept: "text/html" }, signal: context.signal ? AbortSignal.any([context.signal, AbortSignal.timeout(25000)]) : AbortSignal.timeout(25000) });
+        const html = await res.text(), botPage = /awswaf|AwsWafIntegration/i.test(html.slice(0, 20000));
+        return context.signal?.aborted ? fail("canceled", "Canceled; nothing was changed.") : res.status === 404 && notFound ? fail("property_not_found", notFound)
+          : res.status === 429 ? fail("rate_limited", "Booking.com returned HTTP 429; wait a few minutes before trying again.")
+          : res.status !== 200 ? ([202, 403, 405].includes(res.status) || botPage ? fail("challenge", "Booking.com's bot protection answered with HTTP " + res.status + "; complete the check in the browser or wait before retrying.") : fail("site_error", "Booking.com returned HTTP " + res.status + "."))
+          : /^(?!\/hotel\/).*\/(sign-?in|login|consent)\b/i.test(new URL(res.url).pathname) ? fail("gated", "Booking.com asked for sign-in or consent instead of showing the page.")
+          : { res, html, botPage, doc: new DOMParser().parseFromString(html, "text/html") };
+      };
+      // The guests the page says it priced, whether the browser is signed in, and the currency it shows.
+      const pageParty = doc => {
+        const occupancy = rawText(pickTid(doc, "occupancy-config")).slice(0, 600), count = re => Number((re.exec(occupancy) || [])[1] || 0), profile = !!pickTid(doc, "header-profile");
+        return { occupancy, adults: count(/(\d+)\s+adults?/i), children: count(/(\d+)\s+child(?:ren)?/i), rooms: count(/(\d+)\s+rooms?/i), signed_in: profile === !!pickTid(doc, "header-sign-in-button") ? null : profile, currency: rawText(pickTid(doc, "header-currency-picker-trigger")) };
+      };
+      const currencyCodes = new Set(Intl.supportedValuesOf("currency"));
+      const currencyMarkers = [[/\bUS\$/, ["USD"]], [/\b(?:CA\$|C\$)/, ["CAD"]], [/\b(?:AU\$|A\$)/, ["AUD"]], [/\bNZ\$/, ["NZD"]], [/\bHK\$/, ["HKD"]], [/\b(?:SG\$|S\$)/, ["SGD"]], [/\bNT\$/, ["TWD"]], [/€/, ["EUR"]], [/£/, ["GBP"]], [/¥/, ["JPY", "CNY"]], [/₹/, ["INR"]]];
+      const differentCurrency = (s, currency) => (s.match(/(?<![A-Z])[A-Z]{3}(?![A-Z])/g) || []).some(c => currencyCodes.has(c) && c !== currency) || currencyMarkers.some(([pattern, currencies]) => pattern.test(s) && !currencies.includes(currency));
+      const currencyMismatch = (shown, configured, currency) => shown === currency && configured === currency ? null : fail("currency_mismatch", "Booking.com is showing " + (/^[A-Z]{3}$/.test(shown) && shown === configured ? shown : "prices in a mix of currencies or one it does not label with a code") + ", not " + currency + ". This tool never changes the site's currency: omit currency to use the one it shows, or change it in the site's currency picker first.");
+      // @xwebmcp-end
       const allowed = ["property_url", "check_in", "check_out", "adults", "children_ages", "currency", "max_rates", "sort"];
       if (!input || typeof input !== "object" || Array.isArray(input) || Object.keys(input).some(k => !allowed.includes(k))) return fail("invalid_input", "Unknown or missing input; allowed fields are " + allowed.join(", ") + ".");
 
       let propertyPath = null;
       try {
-        if (typeof input.property_url !== "string" || input.property_url.length > 300) throw new Error("bad url");
-        const u = new URL(input.property_url);
+        const u = new URL(input.property_url.slice(0, 301));
         const m = /^\/hotel\/([a-z]{2})\/([A-Za-z0-9_-]+)(?:\.[a-z]{2}(?:-[a-z]{2})?)?\.html$/.exec(u.pathname);
-        if (u.protocol === "https:" && u.hostname === "www.booking.com" && !u.port && !u.username && !u.password && m) propertyPath = "/hotel/" + m[1] + "/" + m[2] + ".html";
-      } catch (e) { propertyPath = null; }
+        if (input.property_url.length <= 300 && u.protocol === "https:" && u.hostname === "www.booking.com" && !u.port && !u.username && !u.password && m) propertyPath = "/hotel/" + m[1] + "/" + m[2] + ".html";
+      } catch { }
       if (!propertyPath) return fail("invalid_input", "property_url must be a https://www.booking.com/hotel/<country>/<slug>.html URL of at most 300 characters, as returned by search_stays.");
-      const isDate = v => typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v) && Number.isFinite(Date.parse(v + "T00:00:00Z")) && new Date(v + "T00:00:00Z").toISOString().slice(0, 10) === v;
-      const dated = input.check_in !== undefined || input.check_out !== undefined;
-      if (dated && !isDate(input.check_in)) return fail("invalid_input", "check_in must be a real calendar date, YYYY-MM-DD; give both dates or neither.");
-      if (dated && !isDate(input.check_out)) return fail("invalid_input", "check_out must be a real calendar date, YYYY-MM-DD; give both dates or neither.");
-      const dayMs = 86400000;
-      const nights = dated ? Math.round((Date.parse(input.check_out) - Date.parse(input.check_in)) / dayMs) : null;
-      if (dated && Date.parse(input.check_in) < Math.floor(Date.now() / dayMs) * dayMs - dayMs) return fail("invalid_input", "check_in " + input.check_in + " is in the past; today is " + new Date().toISOString().slice(0, 10) + " (UTC).");
-      if (dated && nights < 1) return fail("invalid_input", "check_out must be after check_in.");
-      if (nights > 30) return fail("invalid_input", "The stay may be at most 30 nights.");
-      const adults = input.adults ?? 2;
-      if (!Number.isInteger(adults) || adults < 1 || adults > 30) return fail("invalid_input", "adults must be an integer from 1 to 30.");
-      const ages = input.children_ages === undefined ? [] : input.children_ages;
-      if (!Array.isArray(ages) || ages.length > 10 || ages.some(a => !Number.isInteger(a) || a < 0 || a > 17)) return fail("invalid_input", "children_ages must be at most 10 integers from 0 to 17.");
-      if (input.currency !== undefined && (typeof input.currency !== "string" || !/^[A-Z]{3}$/.test(input.currency))) return fail("invalid_input", "currency must be a three-letter uppercase ISO 4217 code such as USD, or omitted.");
+      const stay = stayInput();
+      if (stay.status) return stay;
+      const { dated, nights, adults, ages, params } = stay;
       const maxRates = input.max_rates === undefined ? 20 : input.max_rates;
       if (!Number.isInteger(maxRates) || maxRates < 1 || maxRates > 40) return fail("invalid_input", "max_rates must be an integer from 1 to 40.");
 
@@ -219,44 +251,17 @@
       if (!["page_order", "price_low_to_high"].includes(sort)) return fail("invalid_input", "sort must be page_order or price_low_to_high.");
       if (context.signal?.aborted) return fail("canceled", "The read was canceled before any request.");
       const query = { property_url: ORIGIN + propertyPath, check_in: input.check_in ?? null, check_out: input.check_out ?? null, adults, children_ages: ages, currency: input.currency ?? null, max_rates: maxRates, sort };
-      const params = new URLSearchParams(dated ? { checkin: query.check_in, checkout: query.check_out } : {});
-      for (const [k, v] of [["group_adults", adults], ["no_rooms", 1], ["group_children", ages.length]]) params.set(k, String(v));
-      for (const age of ages) params.append("age", String(age));
-
-      if (window.location.origin !== ORIGIN) return fail("wrong_page", "Open any https://www.booking.com page first; this tool reads the property page from that page.");
-      if (!/^en(-|$)/i.test(document.documentElement.getAttribute("lang") || "")) return fail("unsupported_language", "This tool reads English labels; switch the Booking.com page language to English first.");
-
-      const rawText = el => el ? (el.textContent || "").replace(/\s+/g, " ").trim() : "";
+      const wrong = pageChecks();
+      if (wrong) return wrong;
       const text = el => rawText(el).slice(0, 300);
-      const pickTid = (root, id) => root.querySelector("[data-testid=\"" + id + "\"]");
-      const amount = s => {
-        const token = /[\d][\d,.']*/.exec(s || "");
-        if (!token) return null;
-        const value = /^(\d{1,3}(,\d{3})+|\d+)(\.\d+)?$/.test(token[0]) ? Number(token[0].replace(/,/g, "")) : NaN;
-        return Number.isFinite(value) ? value : null;
-      };
-      const currencyCodes = new Set(Intl.supportedValuesOf("currency"));
-      const currencyMarkers = [[/\bUS\$/, ["USD"]], [/\b(?:CA\$|C\$)/, ["CAD"]], [/\b(?:AU\$|A\$)/, ["AUD"]], [/\bNZ\$/, ["NZD"]], [/\bHK\$/, ["HKD"]], [/\b(?:SG\$|S\$)/, ["SGD"]], [/\bNT\$/, ["TWD"]], [/€/, ["EUR"]], [/£/, ["GBP"]], [/¥/, ["JPY", "CNY"]], [/₹/, ["INR"]]];
       let currency = query.currency;
-      const differentCurrency = s => (s.match(/(?<![A-Z])[A-Z]{3}(?![A-Z])/g) || []).some(c => currencyCodes.has(c) && c !== currency) || currencyMarkers.some(([pattern, currencies]) => pattern.test(s) && !currencies.includes(currency));
-      const cfg = (html, re) => (re.exec(html) || [])[1] ?? null;
       const observedAt = new Date().toISOString();
 
       try {
-        const res = await fetch(ORIGIN + propertyPath + "?" + params.toString(), { credentials: "include", headers: { accept: "text/html" }, signal: context.signal ? AbortSignal.any([context.signal, AbortSignal.timeout(25000)]) : AbortSignal.timeout(25000) });
-        const html = await res.text();
-        if (context.signal?.aborted) return fail("canceled", "The read was canceled.");
-        const botPage = /awswaf|AwsWafIntegration/i.test(html.slice(0, 20000));
-        if (res.status === 404) return fail("property_not_found", "Booking.com has no property page at " + propertyPath + ".");
-        if (res.status === 429) return fail("rate_limited", "Booking.com returned HTTP 429; wait a few minutes before reading again.");
-        if (res.status !== 200) {
-          if ([202, 403, 405].includes(res.status) || botPage) return fail("challenge", "Booking.com's bot protection answered with HTTP " + res.status + " instead of the property page; complete the check in the browser or wait before retrying.");
-          return fail("site_error", "Booking.com returned HTTP " + res.status + ".");
-        }
-        const final = new URL(res.url);
-        if (final.pathname !== propertyPath && /\/(sign-?in|login|consent)\b/i.test(final.pathname)) return fail("gated", "Booking.com asked for sign-in or consent instead of showing the property.");
-        if (final.pathname !== propertyPath) return fail("search_not_accepted", "Booking.com redirected away from the property page. It does that for dates in the past or beyond its bookable window (observed to end about 16 months ahead), and it may also do it when it treats the request as automated; the tool cannot tell which applied.");
-        const doc = new DOMParser().parseFromString(html, "text/html");
+        const page = await fetchPage(ORIGIN + propertyPath + "?" + params.toString(), "Booking.com has no property page at " + propertyPath + ".");
+        if (page.status) return page;
+        const { res, html, botPage, doc } = page;
+        if (new URL(res.url).pathname !== propertyPath) return fail("search_not_accepted", "Booking.com redirected away from the property page. It does that for dates in the past or beyond its bookable window (observed to end about 16 months ahead), and it may also do it when it treats the request as automated; the tool cannot tell which applied.");
 
         let ld = null;
         for (const script of doc.querySelectorAll("script[type=\"application/ld+json\"]")) {
@@ -288,16 +293,15 @@
         };
         if (!dated) return { status: "property_only", observed_at: observedAt, query, property, message: "No dates were given, so no rates were read; call again with check_in and check_out for room rates." };
 
-        const shownCurrency = text(pickTid(doc, "header-currency-picker-trigger"));
+        const occ = pageParty(doc), { occupancy, signed_in: signedIn, currency: shownCurrency } = occ;
         const configCurrency = cfg(html, /\bb_selected_currency\s*:\s*'([A-Za-z_]+)'/);
         const checkIn = cfg(html, /"b_checkin_date"\s*:\s*'(\d{4}-\d{2}-\d{2})'/);
         const checkOut = cfg(html, /"b_checkout_date"\s*:\s*'(\d{4}-\d{2}-\d{2})'/);
         const interval = Number(cfg(html, /"b_checkin_checkout_interval"\s*:\s*(\d+)\s*,/));
-        const occupancy = text(pickTid(doc, "occupancy-config"));
-        const occ = { adults: Number((/(\d+)\s+adults?/i.exec(occupancy) || [])[1]), children: Number((/(\d+)\s+child(?:ren)?/i.exec(occupancy) || [])[1] || 0), rooms: Number((/(\d+)\s+rooms?/i.exec(occupancy) || [])[1]) };
         if (!configCurrency || !occ.adults || !occ.rooms) return fail("site_changed", "The property page does not expose the currency and guests it priced; Booking.com's markup may have changed.");
         currency = currency ?? shownCurrency;
-        if (shownCurrency !== currency || configCurrency !== currency) return fail("currency_mismatch", "Booking.com is showing " + (/^[A-Z]{3}$/.test(shownCurrency) && shownCurrency === configCurrency ? shownCurrency : "prices in a mix of currencies or one it does not label with a code") + ", not " + currency + ". This tool never changes the site's currency: omit currency to use the one it shows, or change it in the site's currency picker first.");
+        const mismatch = currencyMismatch(shownCurrency, configCurrency, currency);
+        if (mismatch) return mismatch;
         if (!checkIn || !checkOut || !interval) return fail("search_not_applied", "Booking.com did not apply the dates " + query.check_in + " to " + query.check_out + " (it ignores dates it cannot book, such as dates in the past) and showed the property without dates.");
         if (checkIn !== query.check_in || checkOut !== query.check_out || interval !== nights || occ.adults !== query.adults || occ.children !== ages.length || occ.rooms !== 1) {
           return fail("search_not_applied", "Booking.com priced " + checkIn + " to " + checkOut + " for " + occupancy + ", not the " + query.check_in + " to " + query.check_out + ", " + query.adults + " adults, " + ages.length + " children, 1 room requested.");
@@ -310,8 +314,6 @@
           if (shown.length !== asked.length || shown.some((a, i) => a !== asked[i])) return fail("search_not_applied", "Booking.com priced child ages " + shown.join(",") + ", not the " + asked.join(",") + " requested.");
           agesConfirmed = true;
         }
-        const profile = !!pickTid(doc, "header-profile"), signIn = !!pickTid(doc, "header-sign-in-button");
-        const signedIn = profile === signIn ? null : profile;
         const effective = { check_in: checkIn, check_out: checkOut, nights: interval, adults: occ.adults, children: occ.children, children_ages_confirmed: agesConfirmed, rooms: occ.rooms, currency: shownCurrency, signed_in: signedIn };
 
 
@@ -361,7 +363,7 @@
           const before = breakdown.indexOf("Total before taxes");
           const memberAt = breakdown.indexOf("Genius discount");
           const monetaryText = [totalText, text(block.querySelector(".bui-price-display__original")), text(block.querySelector(".js-average-per-night-price")), before >= 0 ? breakdown[before + 1] || "" : "", memberAt >= 0 ? breakdown[memberAt + 1] || "" : ""];
-          if (monetaryText.some(differentCurrency)) return fail("currency_mismatch", "A rate explicitly names a currency different from the requested currency; no price was converted or setting changed.");
+          if (monetaryText.some(s => differentCurrency(s, currency))) return fail("currency_mismatch", "A rate explicitly names a currency different from the requested currency; no price was converted or setting changed.");
           const requiresSignIn = !!block.querySelector(".prd-genius-preview-rate-inline") || /members-only price/i.test(rawText(block));
           if (requiresSignIn) memberOnly++;
           const excludedEl = row.querySelector(".js-us-excluded-fees");

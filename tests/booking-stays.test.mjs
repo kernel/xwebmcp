@@ -1197,7 +1197,7 @@ test("select_room selects one room of the exact rate and schedules the reserve b
   assert.equal(output.taxes_and_fees_excluded, "6 % VAT, € 4 City tax per person per night");
   assert.equal(output.signed_in, false);
   assert.equal(output.next_tool, "get_checkout_step");
-  assert.equal("next_step" in output, false, "the destination is not confirmed when the tool settles");
+  assert.match(output.next_step, /list tools again .* get_checkout_step/);
   assert.equal(calls.length, 0);
   assert.equal(env.live.querySelector(`select[name="nr_rooms_${SELECT.rate_id}"]`).value, "1");
   assert.ok([...env.live.querySelectorAll("select")].filter(s => s.getAttribute("name") !== `nr_rooms_${SELECT.rate_id}`).every(s => s.value === "0"));
@@ -1247,19 +1247,30 @@ for (const [label, page, patch, kind] of [
   });
 }
 
-test("select_room opens page_url from another page and never loops once it is there", async () => {
+test("select_room reserves from another page by sending the fetched page's form, and opens the page only for a Partner Offer", async () => {
   const pageUrl = PROPERTY.property_url + "?checkin=2026-11-10&checkout=2026-11-12&group_adults=2&no_rooms=1&group_children=0";
   for (const start of [HOME, "https://www.booking.com/searchresults.html?ss=Example", "https://www.booking.com/hotel/xx/other.html?checkin=2026-11-10&checkout=2026-11-12&group_adults=2"]) {
-    const { output, timers, env } = await run("select_room", { ...SELECT, page_url: pageUrl }, { start, liveHtml: reservePage(propertyPage({ cfg: config({ hotelId: "999" }) })) });
-    assert.deepEqual(output, { status: "opening_property_page", page_url: pageUrl, next_tool: "select_room" }, start);
+    const { output, timers, env, calls } = await run("select_room", { ...SELECT, page_url: pageUrl }, { start, routes: [propertyRoute({ body: propertyPage() })] });
+    assert.equal(output.status, "navigation_scheduled", start);
+    assert.deepEqual([output.room_name, output.displayed_total, output.check_in, output.adults], ["Studio", 316, "2026-11-10", 2]);
+    assert.equal(calls[0].path + calls[0].search, "/hotel/xx/harbor-view-studios.html?checkin=2026-11-10&checkout=2026-11-12&group_adults=2&no_rooms=1&group_children=0");
+    let assigned = null;
+    env.context.window.location.assign = url => { assigned = url; };
     assert.equal(timers.length, 1);
-    assert.ok([...env.live.querySelectorAll("select")].every(s => s.value === "0"), "nothing is selected before opening the page");
+    timers[0]();
+    assert.equal(assigned, "https://secure.booking.com/book.html?hotel_id=1000001&room1=A%2CA&checkin=2026-11-10&nr_rooms_" + SELECT.rate_id + "=1");
   }
+  const partner = await run("select_room", { ...SELECT, rate_id: "bbasic_0", expected_total: 298, page_url: pageUrl }, { start: HOME, routes: [propertyRoute({ body: propertyPage({ rows: [partnerRow()] }) })] });
+  assert.deepEqual(partner.output, { status: "opening_property_page", page_url: pageUrl, next_tool: "select_room" });
+  const changed = await run("select_room", { ...SELECT, expected_total: 300, page_url: pageUrl }, { start: HOME, routes: [propertyRoute({ body: propertyPage() })] });
+  assert.deepEqual([changed.output.error_kind, changed.timers.length], ["price_changed", 0]);
+  const blocked = await run("select_room", { ...SELECT, page_url: pageUrl }, { start: HOME, routes: [propertyRoute({ status: 202, body: BOT_PAGE })] });
+  assert.equal(blocked.output.error_kind, "challenge");
   const there = await run("select_room", { ...SELECT, property_id: "9999", page_url: pageUrl }, { start: pageUrl + "&aid=1", liveHtml: reservePage() });
   assert.equal(there.output.error_kind, "wrong_page", "already on page_url: a property mismatch is reported, not reopened");
   assert.equal(there.timers.length, 0);
-  const otherDates = await run("select_room", { ...SELECT, page_url: pageUrl }, { start: pageUrl.replace("2026-11-10", "2026-11-09"), liveHtml: reservePage() });
-  assert.equal(otherDates.output.status, "opening_property_page", "the same property for other dates is not page_url");
+  const otherDates = await run("select_room", { ...SELECT, page_url: pageUrl }, { start: pageUrl.replace("2026-11-10", "2026-11-09"), liveHtml: reservePage(), routes: [propertyRoute({ body: propertyPage() })] });
+  assert.equal(otherDates.calls.length, 1, "the same property for other dates is not page_url");
   assert.ok([...otherDates.env.live.querySelectorAll("select")].every(s => s.value === "0"));
   const selected = await run("select_room", { ...SELECT, page_url: pageUrl }, { start: pageUrl, liveHtml: reservePage() });
   assert.equal(selected.output.status, "navigation_scheduled");
