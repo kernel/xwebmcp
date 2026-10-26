@@ -42,10 +42,12 @@
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true }
   },
   execute: async (input) => {
+    // @xwebmcp-inline lib/target-session.js
+    // Session, request and error helpers shared by the target.com page tools.
     const ORIGIN = "https://www.target.com";
     const REDSKY = "https://redsky.target.com/redsky_aggregations/v1/web/";
     const CARTS = "https://carts.target.com/web_checkouts/v1/";
-    const CHALLENGE = "Target's bot protection (PerimeterX) is blocking automated requests from this browser. A person has to complete the 'Press & hold' verification on target.com in this browser; wait a few minutes and do not retry automatically.";
+    const CHALLENGE = "Target's bot protection (PerimeterX) is blocking this browser (the site shows a 'Press & hold' check). A person has to complete that check on target.com in this browser; reloading or calling again does not clear it, so stop and report it.";
     const fail = (kind, message) => ({ status: "error", error_kind: kind, error_message: message });
     const cents = value => typeof value === "number" && isFinite(value) ? Math.round(value * 100) : null;
     const decode = text => typeof text !== "string" ? null : text
@@ -54,7 +56,7 @@
     const session = requireStore => {
       // The tool runs in the page it was invoked on: only www.target.com pages carry the site's API configuration and request signing, and checkout pages are never used.
       if (location.origin !== ORIGIN || /^\/checkout(\/|$)|^\/co-/i.test(location.pathname)) return { error: fail("wrong_page", "Open https://www.target.com/ (or any www.target.com page except checkout) in this tab, then call again. Nothing was changed.") };
-      if (/access to this page has been denied/i.test(document.title) || document.querySelector("[id^='px-captcha']")) return { error: fail("challenge", CHALLENGE) };
+      if (/access to this page has been denied/i.test(document.title) || document.getElementById("px-captcha-modal") || document.getElementById("px-captcha")) return { error: fail("challenge", CHALLENGE) };
       const config = window.__CONFIG__ || {};
       const key = typeof config.defaultServicesApiKey === "string" ? config.defaultServicesApiKey : null;
       if (!key) return { error: fail("site_error", "This Target page has not loaded its API configuration; wait for it to finish loading and call again. Nothing was changed.") };
@@ -102,6 +104,18 @@
       const list = [].concat(json.errors || [], json.alerts || []).map(e => e && (e.message || e.alert_message || e.code || e.alert_code)).filter(m => typeof m === "string");
       return list.length ? list.join("; ").slice(0, 300) : typeof json.message === "string" ? json.message.slice(0, 300) : null;
     };
+    const redsky = async (path, params) => {
+      const url = new URL(REDSKY + path);
+      for (const [name, value] of Object.entries(params)) if (value !== null && value !== undefined && value !== "") url.searchParams.set(name, String(value));
+      let r = await call(url.toString());
+      // Bot protection sometimes rejects one request and passes the next once the page's sensor refreshes its cookie.
+      if (blocked(r)) { await new Promise(done => setTimeout(done, 2000)); r = await call(url.toString()); }
+      if (blocked(r)) return { error: fail("challenge", CHALLENGE) };
+      return r;
+    };
+    // @xwebmcp-end
+    // @xwebmcp-inline lib/target-cart.js
+    // Cart readers shared by the target.com cart tools.
     const CART_FIELDS = "field_groups=CART%2CCART_ITEMS%2CSUMMARY";
     const line = item => {
       const f = item.fulfillment || {};
@@ -128,6 +142,7 @@
       summary: json.summary || null
     });
     const units = cart => cart.lines.reduce((sum, l) => sum + l.quantity, 0);
+    // @xwebmcp-end
     if (input !== undefined) {
     if (!input || typeof input !== "object" || Array.isArray(input) || Object.keys(input).some(k => ![].includes(k))) return fail("invalid_input", "This tool takes no input.");
     }

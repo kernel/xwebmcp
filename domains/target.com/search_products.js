@@ -83,10 +83,12 @@
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true }
   },
   execute: async (input) => {
+    // @xwebmcp-inline lib/target-session.js
+    // Session, request and error helpers shared by the target.com page tools.
     const ORIGIN = "https://www.target.com";
     const REDSKY = "https://redsky.target.com/redsky_aggregations/v1/web/";
     const CARTS = "https://carts.target.com/web_checkouts/v1/";
-    const CHALLENGE = "Target's bot protection (PerimeterX) is blocking this browser's searches. Load https://www.target.com/s?searchTerm=" + encodeURIComponent(String((input || {}).query || "")) + " in this tab (a normal page load lets the site re-check the browser), then rediscover tools and call search_products once more, or read the results grid the page shows. If the page itself shows a 'Press & hold' check, a person has to complete it.";
+    const CHALLENGE = "Target's bot protection (PerimeterX) is blocking this browser (the site shows a 'Press & hold' check). A person has to complete that check on target.com in this browser; reloading or calling again does not clear it, so stop and report it.";
     const fail = (kind, message) => ({ status: "error", error_kind: kind, error_message: message });
     const cents = value => typeof value === "number" && isFinite(value) ? Math.round(value * 100) : null;
     const decode = text => typeof text !== "string" ? null : text
@@ -95,7 +97,7 @@
     const session = requireStore => {
       // The tool runs in the page it was invoked on: only www.target.com pages carry the site's API configuration and request signing, and checkout pages are never used.
       if (location.origin !== ORIGIN || /^\/checkout(\/|$)|^\/co-/i.test(location.pathname)) return { error: fail("wrong_page", "Open https://www.target.com/ (or any www.target.com page except checkout) in this tab, then call again. Nothing was changed.") };
-      if (/access to this page has been denied/i.test(document.title) || document.querySelector("[id^='px-captcha']")) return { error: fail("challenge", CHALLENGE) };
+      if (/access to this page has been denied/i.test(document.title) || document.getElementById("px-captcha-modal") || document.getElementById("px-captcha")) return { error: fail("challenge", CHALLENGE) };
       const config = window.__CONFIG__ || {};
       const key = typeof config.defaultServicesApiKey === "string" ? config.defaultServicesApiKey : null;
       if (!key) return { error: fail("site_error", "This Target page has not loaded its API configuration; wait for it to finish loading and call again. Nothing was changed.") };
@@ -152,6 +154,7 @@
       if (blocked(r)) return { error: fail("challenge", CHALLENGE) };
       return r;
     };
+    // @xwebmcp-end
     const SORTS = { relevance: "relevance", featured: "Featured", price_low_to_high: "PriceLow", price_high_to_low: "PriceHigh", highest_rated: "RatingHigh", bestselling: "bestselling", newest: "newest" };
     if (!input || typeof input !== "object" || Array.isArray(input) || Object.keys(input).some(k => !["query", "sort_by", "page", "limit", "exclude_sponsored", "facet_ids", "filters", "include_facets"].includes(k))) return fail("invalid_input", "Provide query and optionally sort_by, page, limit, exclude_sponsored, facet_ids, filters and include_facets.");
     const query = typeof input.query === "string" ? input.query.replace(/\s+/g, " ").trim() : "";
