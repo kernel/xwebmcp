@@ -16,6 +16,16 @@ import { median } from "../lib/stats.mjs";
 
 const benchDir = resolve(fileURLToPath(import.meta.url), "../..");
 const SCORED = ["correct", "wrong", "malformed", "timeout", "crashed"];
+const BOT_CHECK = /bot (?:protection|check|verification)|perimeterx|captcha|press (?:&|and) hold|human verification|access denied/i;
+
+// A failed trial the site's bot check stopped, by the tool's error, the agent's feedback or its
+// answer. It says nothing about the tools, so the gate leaves it out of both sides.
+export function siteBlocked(row) {
+  if (row.outcome === "correct") return false;
+  if ((row.webmcp?.invocations ?? []).some(call => BOT_CHECK.test(call.error ?? ""))) return true;
+  if ((Array.isArray(row.tool_feedback) ? row.tool_feedback : []).some(fb => fb?.outcome === "site_blocked")) return true;
+  return BOT_CHECK.test(JSON.stringify(row.grade?.answer ?? ""));
+}
 
 function regrade(runDir, run, row, intents) {
   if (!["correct", "wrong", "malformed"].includes(row.outcome)) return row.outcome;
@@ -37,7 +47,8 @@ export function scoreRuns(runDirs, { arm, split } = {}) {
     const run = JSON.parse(readFileSync(join(dir, "run.json"), "utf8"));
     for (const row of latestRows(readRows(join(dir, "rows.jsonl")))) {
       if (!SCORED.includes(row.outcome) || (arm && row.arm !== arm) || (split && intents.get(row.intent)?.split !== split)) continue;
-      trials.push({ ...row, run: run.run_id, outcome: regrade(dir, run, row, intents), split: intents.get(row.intent)?.split ?? null, domain: intents.get(row.intent)?.domain });
+      const outcome = regrade(dir, run, row, intents);
+      trials.push({ ...row, run: run.run_id, outcome, blocked: siteBlocked({ ...row, outcome }), split: intents.get(row.intent)?.split ?? null, domain: intents.get(row.intent)?.domain });
     }
   }
   const group = (rows) => ({
@@ -72,7 +83,7 @@ export function scoreRuns(runDirs, { arm, split } = {}) {
     by_split: byKey(trials, r => `${r.split} ${r.arm}`),
     by_intent: byKey(trials, r => `${r.split} ${r.intent} ${r.arm}`),
     tools: Object.fromEntries([...tools].sort()),
-    trials: trials.map(({ run, domain, intent, arm, split, outcome, duration_ms, turns, tool_calls, trial_dir }) => ({ run, domain, intent, arm, split, outcome, duration_ms, turns, tool_calls, trial_dir })),
+    trials: trials.map(({ run, domain, intent, arm, split, outcome, blocked, duration_ms, turns, tool_calls, trial_dir }) => ({ run, domain, intent, arm, split, outcome, blocked, duration_ms, turns, tool_calls, trial_dir })),
   };
 }
 
