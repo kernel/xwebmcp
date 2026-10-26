@@ -3686,6 +3686,40 @@
       }
     },
     {
+      "domain": "shopify.com",
+      "tool": "get_app",
+      "file": "domains/shopify.com/get_app.js",
+      "kind": "page",
+      "namespace": "shopify.com",
+      "url_patterns": [
+        "https://apps.shopify.com/*"
+      ],
+      "url_patterns_reason": "Narrowed to apps.shopify.com, the Shopify App Store whose search and app pages the tools read; shopify.com also serves the marketing site, merchant admin and help center, which these tools do not cover.",
+      "status": "verified",
+      "last_verified": "2026-09-30",
+      "notes": "Independently verified public App Store listing only, not store-admin coverage. Read-only; works signed out. Bounded developer, pricing, rating and listing fields; no install state, permissions or reviews. English labels only. Validated numeric fallback, cancellation and safe URL handling. Final-source listing invocation succeeded from a different listing page in Kernel and the local extension.",
+      "provenance": {
+        "qa_agent": "agt_8238a5b300a6f1ac6892"
+      }
+    },
+    {
+      "domain": "shopify.com",
+      "tool": "search_apps",
+      "file": "domains/shopify.com/search_apps.js",
+      "kind": "page",
+      "namespace": "shopify.com",
+      "url_patterns": [
+        "https://apps.shopify.com/*"
+      ],
+      "url_patterns_reason": "Narrowed to apps.shopify.com, the Shopify App Store whose search and app pages the tools read; shopify.com also serves the marketing site, merchant admin and help center, which these tools do not cover.",
+      "status": "verified",
+      "last_verified": "2026-09-30",
+      "notes": "Independently verified public App Store search only, not store-admin coverage. One results page via Turbo-Frame with filters and pagination. English labels only; built-in feature cards skipped with a warning; sponsored cards fixture-tested only. Rate limits reported without retries. Cancellation and output bounds checked. Current source succeeded from a different listing page in Kernel; local extension search was rate-limited.",
+      "provenance": {
+        "qa_agent": "agt_8238a5b300a6f1ac6892"
+      }
+    },
+    {
       "domain": "southwest.com",
       "tool": "continue_checkout",
       "file": "domains/southwest.com/continue_checkout.js",
