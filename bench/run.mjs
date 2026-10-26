@@ -4,6 +4,7 @@
 // Usage: node bench/run.mjs --run-id <id> --model <provider/model> [--thinking <level>] [--domain <d>]...
 //          [--intent <id>]... [--pairs <n>] [--adoption <n>] [--slots <n>] [--cap-sec <s>]
 //          [--max-budget-usd <usd>] [--stealth] [--browser kernel|local] [--chrome <path>] [--xwebmcp <path>] [--headless]
+//          [--split train|validation|test]... [--tools-ref <ref>] [--treatment-only] [--feedback]
 
 import { execFileSync } from "node:child_process";
 import { createHash, randomInt } from "node:crypto";
@@ -20,7 +21,7 @@ import { adoptionVerdicts, balancedOrders, holdNeededSec, pairArms, planJobs, ru
 import { composeBatch, domainPatterns, gitShow, matchesUrlPattern, registeredTools, resolveSource } from "./lib/tools.mjs";
 import { blockedAttempts, writeGuardExtension } from "./lib/guard.mjs";
 import { readPage, readPageArg, stepTimeline } from "./lib/page.mjs";
-import { checkRule, gradeAnswer } from "./grade.mjs";
+import { checkRule, extractFeedback, gradeAnswer } from "./grade.mjs";
 import { hiddenPaths, piLauncher, providerPrefixes, sandboxArgs, sandboxDir, sandboxedPiVersion, sandboxEnv, secretValues, visiblePaths } from "./lib/sandbox.mjs";
 
 const benchDir = dirname(fileURLToPath(import.meta.url));
@@ -55,6 +56,10 @@ const { values: opts } = parseArgs({
     chrome: { type: "string" },
     xwebmcp: { type: "string" },
     headless: { type: "boolean", default: false },
+    split: { type: "string", multiple: true },
+    "tools-ref": { type: "string" },
+    "treatment-only": { type: "boolean", default: false },
+    feedback: { type: "boolean", default: false },
   },
 });
 
@@ -149,6 +154,9 @@ async function planRun() {
   if (unknown.length) fail(`no intent matches ${unknown.join(", ")}`);
   if (opts.domain) intents = intents.filter(i => opts.domain.includes(i.domain));
   if (opts.intent) intents = intents.filter(i => opts.intent.includes(i.id));
+  if (opts.split) intents = intents.filter(i => opts.split.includes(i.split));
+  // A candidate branch replaces every intent's tool sources.
+  if (opts["tools-ref"]) intents = intents.map(i => ({ ...i, tools: [{ repo: "kernel/xwebmcp", ref: opts["tools-ref"] }] }));
   intents = intents.filter(intent => !intent.opt_in || opts.intent?.includes(intent.id)
     || (log(`skipping ${intent.id}: ${intent.opt_in}; name it with --intent to run it`), false));
   const skipUnlessNamed = (intent, message) => {
@@ -178,6 +186,8 @@ async function planRun() {
     thinking: opts.thinking ?? null,
     max_budget_usd: flags.maxBudgetUsd,
     adoption: flags.adoption,
+    treatment_only: opts["treatment-only"],
+    feedback: opts.feedback,
     allowlist: experiment.allowlist,
     system_prompt_sha256: sha256(experiment.system_prompt),
     mcp_config: experiment.mcp,
@@ -214,6 +224,7 @@ async function planRun() {
       cap_sec: flags.capSec ?? intent.trial_timeout_sec,
       max_turns: intent.max_turns,
       orders: balancedOrders(pairs, randomInt),
+      treatment_only: opts["treatment-only"],
       guard_extension: intent.guard ? writeGuardExtension(join(runDir, "guards", intent.id), intent.guard) : null,
     };
     log(`${intent.id}: ${tools.length} tools at ${shas.map(s => s.slice(0, 7)).join(", ")}`);
@@ -573,7 +584,7 @@ async function runTrial(plan, intentPlan, arm, key) {
     image_version: null, browser_id: null, setup_attempts: null, start_renavigated: null, start_delay_ms: null, native_tools: null,
     started_at: new Date().toISOString(), outcome: null, reason: null, duration_ms: null, setup_ms: null,
     turns: null, tool_calls: null, unknown_tool_errors: null, tokens_in: null, tokens_out: null, cost_usd: null,
-    registration_changed: null, submit_blocked: null, webmcp: null, grade: null, agent_started_at: null, steps: null,
+    registration_changed: null, submit_blocked: null, webmcp: null, grade: null, agent_started_at: null, steps: null, tool_feedback: null,
   };
   const setupStart = performance.now();
   let browser = null;
@@ -596,7 +607,7 @@ async function runTrial(plan, intentPlan, arm, key) {
     const agentStartedAt = Date.now();
     row.agent_started_at = new Date(agentStartedAt).toISOString();
     const agent = await runPi({
-      args: trialArgs(plan, trialPrompt(intent, plan.backend === "kernel" ? browser : null)),
+      args: trialArgs(plan, trialPrompt(intent, plan.backend === "kernel" ? browser : null, { feedback: plan.feedback && arm === "treatment" })),
       agentDir: join(dir, "agent"), mcpConfig: mcpFor(plan, browser), model: plan.model,
       cwd: dir, capMs: intentPlan.cap_sec * 1000, maxTurns: intentPlan.max_turns, maxBudgetUsd: plan.max_budget_usd,
       transcriptPath: join(dir, "transcript.jsonl"), stderrPath: join(dir, "stderr.txt"),
@@ -604,6 +615,7 @@ async function runTrial(plan, intentPlan, arm, key) {
     row.duration_ms = agent.durationMs;
     const summary = summarize(agent.events, plan.allowlist);
     for (const field of ["turns", "tool_calls", "unknown_tool_errors", "tokens_in", "tokens_out", "cost_usd", "webmcp"]) row[field] = summary[field];
+    if (plan.feedback) row.tool_feedback = extractFeedback(summary.answer);
     try {
       row.registration_changed = registrationFingerprint(setup.before) !== registrationFingerprint(await browsers.listCustomTools(browser));
     } catch (error) {

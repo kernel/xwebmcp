@@ -1,0 +1,17 @@
+{
+  "type": "object",
+  "required": [
+    "count",
+    "first"
+  ],
+  "properties": {
+    "count": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "first": {
+      "type": "string",
+      "minLength": 1
+    }
+  }
+}

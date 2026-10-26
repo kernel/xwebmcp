@@ -1,0 +1,32 @@
+{
+  "id": "youtube-popular-upload",
+  "domain": "youtube.com",
+  "stage": "find",
+  "split": "train",
+  "prompt": "On youtube.com, find the most viewed video ever uploaded by the channel {{handle}}, using the channel's own sort by popularity: its title, video id and view count. Reply with JSON: {\"title\": string, \"video_id\": string, \"views\": integer}.",
+  "fixture": {
+    "handle": "@3blue1brown"
+  },
+  "start_url": "https://www.youtube.com/",
+  "answer_schema": "schemas/popular-video.json",
+  "rules": [
+    {
+      "path": "views",
+      "range": [
+        5000000,
+        200000000
+      ]
+    },
+    {
+      "path": "video_id",
+      "matches": "^[\\w-]{11}$"
+    }
+  ],
+  "agreement": {
+    "path": "video_id",
+    "same": true
+  },
+  "pairs": 3,
+  "trial_timeout_sec": 600,
+  "max_turns": 25
+}

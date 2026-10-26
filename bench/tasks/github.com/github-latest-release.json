@@ -2,14 +2,24 @@
   "id": "github-latest-release",
   "domain": "github.com",
   "stage": "gap",
+  "split": "validation",
   "prompt": "On github.com, find the tag of the latest release of {{repo}} and the date it was published. Reply with JSON: {\"tag\": string, \"published_at\": \"YYYY-MM-DD\"}.",
-  "fixture": {"repo": "microsoft/playwright"},
+  "fixture": {
+    "repo": "microsoft/playwright"
+  },
   "start_url": "https://github.com/explore",
-  "tools": [{"repo": "kernel/xwebmcp", "ref": "hypeship/github-read-tools", "pr": 55, "names": []}],
-  "entry_tool": "get_repository",
   "answer_schema": "schemas/latest-release.json",
-  "rules": [{"path": "tag", "matches": "^v\\d+\\.\\d+\\.\\d+$"}, {"path": "published_at", "date": true}],
+  "rules": [
+    {
+      "path": "tag",
+      "matches": "^v\\d+\\.\\d+\\.\\d+$"
+    },
+    {
+      "path": "published_at",
+      "date": true
+    }
+  ],
   "pairs": 5,
   "trial_timeout_sec": 600,
-  "max_turns": 40
+  "max_turns": 25
 }

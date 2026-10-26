@@ -1,0 +1,39 @@
+{
+  "id": "github-top-repos-by-language",
+  "domain": "github.com",
+  "stage": "find",
+  "split": "train",
+  "prompt": "On github.com, find the three repositories with the most stars whose primary language is {{language}}. Reply with JSON: {\"repositories\": [\"owner/repo\"]}. Most stars first.",
+  "fixture": {
+    "language": "Zig"
+  },
+  "start_url": "https://github.com/explore",
+  "answer_schema": "schemas/top-repositories.json",
+  "rules": [
+    {
+      "path": "repositories",
+      "count": 3
+    },
+    {
+      "path": "repositories[]",
+      "in": [
+        "ghostty-org/ghostty",
+        "ziglang/zig",
+        "lightpanda-io/browser",
+        "tigerbeetle/tigerbeetle",
+        "oven-sh/bun"
+      ]
+    },
+    {
+      "path": "repositories",
+      "unique": true
+    }
+  ],
+  "agreement": {
+    "path": "repositories",
+    "same": true
+  },
+  "pairs": 3,
+  "trial_timeout_sec": 600,
+  "max_turns": 25
+}

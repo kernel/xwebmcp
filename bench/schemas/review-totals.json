@@ -1,0 +1,17 @@
+{
+  "type": "object",
+  "required": [
+    "reviews",
+    "summary"
+  ],
+  "properties": {
+    "reviews": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "summary": {
+      "type": "string",
+      "minLength": 1
+    }
+  }
+}

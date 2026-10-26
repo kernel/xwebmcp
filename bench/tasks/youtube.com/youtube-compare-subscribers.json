@@ -1,0 +1,29 @@
+{
+  "id": "youtube-compare-subscribers",
+  "domain": "youtube.com",
+  "stage": "compare",
+  "split": "train",
+  "prompt": "On youtube.com, find which of the channels {{handle_a}} and {{handle_b}} has more subscribers, with each channel's subscriber count as shown. Reply with JSON: {\"subscribers\": {\"<handle>\": integer}, \"more\": \"<handle>\"}.",
+  "fixture": {
+    "handle_a": "@veritasium",
+    "handle_b": "@3blue1brown"
+  },
+  "start_url": "https://www.youtube.com/",
+  "answer_schema": "schemas/subscriber-comparison.json",
+  "rules": [
+    {
+      "path": "more",
+      "matches": "veritasium"
+    },
+    {
+      "path": "subscribers.@3blue1brown",
+      "range": [
+        4000000,
+        15000000
+      ]
+    }
+  ],
+  "pairs": 3,
+  "trial_timeout_sec": 600,
+  "max_turns": 35
+}

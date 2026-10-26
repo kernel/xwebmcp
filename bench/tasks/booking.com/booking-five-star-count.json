@@ -1,0 +1,34 @@
+{
+  "id": "booking-five-star-count",
+  "domain": "booking.com",
+  "stage": "find",
+  "split": "train",
+  "prompt": "On booking.com, search for stays in {{city}} from {{check_in}} to {{check_out}} for 2 adults in one room, filter to 5-star properties, and report how many properties the site says it found and the name of the first one. Reply with JSON: {\"count\": integer, \"first\": string}.",
+  "fixture": {
+    "city": "Lisbon",
+    "check_in": {
+      "days_from_start": 40
+    },
+    "check_out": {
+      "days_from_start": 42
+    }
+  },
+  "start_url": "https://www.booking.com/",
+  "answer_schema": "schemas/filtered-count.json",
+  "rules": [
+    {
+      "path": "count",
+      "range": [
+        5,
+        400
+      ]
+    }
+  ],
+  "agreement": {
+    "path": "first",
+    "same": true
+  },
+  "pairs": 3,
+  "trial_timeout_sec": 600,
+  "max_turns": 25
+}

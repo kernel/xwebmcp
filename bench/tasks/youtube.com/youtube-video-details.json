@@ -2,6 +2,7 @@
   "id": "youtube-video-details",
   "domain": "youtube.com",
   "stage": "inspect",
+  "split": "train",
   "prompt": "On youtube.com, look up the video with id {{video_id}}: its title, the channel that uploaded it, its length in seconds, its view count and the date it was published. Reply with JSON: {\"title\": string, \"channel\": string, \"duration_seconds\": integer, \"views\": integer, \"published_at\": \"YYYY-MM-DD\"}.",
   "fixture": {
     "video_id": "dQw4w9WgXcQ"
@@ -41,5 +42,5 @@
   ],
   "pairs": 5,
   "trial_timeout_sec": 600,
-  "max_turns": 40
+  "max_turns": 25
 }

@@ -1,0 +1,25 @@
+{
+  "id": "youtube-transcript-quote",
+  "domain": "youtube.com",
+  "stage": "inspect",
+  "split": "test",
+  "prompt": "On youtube.com, in the video with id {{video_id}}, find what the speaker says is cool about the elephants, quoting the words from the video's transcript, and the time it is said. Reply with JSON: {\"quote\": string, \"timestamp\": \"M:SS\"}.",
+  "fixture": {
+    "video_id": "jNQXAC9IVRw"
+  },
+  "start_url": "https://www.youtube.com/",
+  "answer_schema": "schemas/transcript-quote.json",
+  "rules": [
+    {
+      "path": "quote",
+      "matches": "trunk"
+    },
+    {
+      "path": "timestamp",
+      "matches": "^0:0\\d$"
+    }
+  ],
+  "pairs": 3,
+  "trial_timeout_sec": 600,
+  "max_turns": 25
+}

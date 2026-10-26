@@ -1,0 +1,29 @@
+{
+  "id": "target-cheapest-in-search",
+  "domain": "target.com",
+  "stage": "compare",
+  "split": "validation",
+  "prompt": "On target.com, search for \"{{query}}\" and, among the products on the first page of results, find the one with the lowest price. Reply with JSON: {\"product\": string, \"price\": number, \"tcin\": string}.",
+  "fixture": {
+    "query": "Bounty paper towels"
+  },
+  "start_url": "https://www.target.com/",
+  "answer_schema": "schemas/search-result.json",
+  "rules": [
+    {
+      "path": "price",
+      "range": [
+        1,
+        60
+      ]
+    }
+  ],
+  "agreement": {
+    "path": "price",
+    "better": "lower",
+    "tolerance": 0.5
+  },
+  "pairs": 3,
+  "trial_timeout_sec": 600,
+  "max_turns": 35
+}

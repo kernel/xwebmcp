@@ -4,6 +4,8 @@ import { checkSchema } from "./schema.mjs";
 import { matchesUrlPattern } from "./tools.mjs";
 
 const STAGES = ["find", "inspect", "compare", "prepare", "gap"];
+// Tool training reads train trials, accepts a change on validation, and runs test once at the end.
+export const SPLITS = ["train", "validation", "test"];
 const RULE_CHECKS = ["equals", "in", "matches", "range", "count", "time", "date", "unique"];
 
 // A string that is exactly one placeholder takes the fixture value's type.
@@ -24,11 +26,16 @@ export const ALLOW = {
   payment_details: "It also lets you enter the personal and payment details it gives you. They are test data, and the card cannot be charged.",
 };
 
+export const FEEDBACK_OUTCOMES = ["succeeded", "wrong_result", "partial", "tool_error", "site_blocked", "missing_tool"];
+
+// With --feedback, treatment agents rate the tools they invoked in a block before their answer.
+export const FEEDBACK = `Before your answer block, rate the WebMCP tools you invoked in one more \`\`\`json block: {"tool_feedback": [{"tool": string, "outcome": ${FEEDBACK_OUTCOMES.filter(o => o !== "missing_tool").map(o => `"${o}"`).join(" | ")}, "reason": string, "suggested_change": string}]}, one entry per tool. Add {"tool": null, "outcome": "missing_tool", "reason": string, "suggested_change": string} for each step where no listed tool did what you needed. Keep reasons to what you observed. Your answer block still comes last.`;
+
 // `browserId` is null for a local browser, the only one the agent can reach.
-export function trialPrompt(intent, browserId) {
+export function trialPrompt(intent, browserId, { feedback = false } = {}) {
   const browser = browserId ? `Use the Kernel browser with session id ${browserId}. It is already open on ${intent.start_url}.` : `The browser is already open on ${intent.start_url}.`;
   const allowed = (intent.allow ?? []).map(key => ALLOW[key]).join(" ");
-  return [fill(intent.prompt, intent.fixture), allowed, intent.instructions, browser].filter(Boolean).join("\n\n");
+  return [fill(intent.prompt, intent.fixture), allowed, intent.instructions, browser, feedback && FEEDBACK].filter(Boolean).join("\n\n");
 }
 
 function validUrlPattern(pattern) {
@@ -83,6 +90,7 @@ export function validateIntent(intent, benchDir) {
   need(typeof intent.id === "string" && /^[a-z0-9.-]+$/.test(intent.id), "id must be lowercase letters, digits, dots and hyphens");
   need(typeof intent.domain === "string", "domain is required");
   need(STAGES.includes(intent.stage), `stage must be one of ${STAGES.join(", ")}`);
+  need(intent.split === undefined || SPLITS.includes(intent.split), `split, when given, must be one of ${SPLITS.join(", ")}`);
   need(typeof intent.prompt === "string" && intent.prompt.length > 0, "prompt is required");
   need(/^https:\/\//.test(intent.start_url ?? ""), "start_url must be https");
   // An intent describes the user's task; `tools` only says which commits to register the domain's

@@ -1,0 +1,22 @@
+{
+  "type": "object",
+  "required": [
+    "title",
+    "video_id",
+    "views"
+  ],
+  "properties": {
+    "title": {
+      "type": "string",
+      "minLength": 1
+    },
+    "video_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "views": {
+      "type": "integer",
+      "minimum": 0
+    }
+  }
+}

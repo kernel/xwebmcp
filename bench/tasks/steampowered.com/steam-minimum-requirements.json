@@ -1,0 +1,25 @@
+{
+  "id": "steam-minimum-requirements",
+  "domain": "steampowered.com",
+  "stage": "inspect",
+  "split": "validation",
+  "prompt": "On store.steampowered.com, find the minimum Windows system requirements for {{game}}: the operating system, the memory in GB and the graphics card it lists. Reply with JSON: {\"os\": string, \"memory_gb\": number, \"graphics\": string}.",
+  "fixture": {
+    "game": "Baldur's Gate 3"
+  },
+  "start_url": "https://store.steampowered.com/",
+  "answer_schema": "schemas/system-requirements.json",
+  "rules": [
+    {
+      "path": "os",
+      "matches": "windows 10"
+    },
+    {
+      "path": "memory_gb",
+      "equals": 8
+    }
+  ],
+  "pairs": 3,
+  "trial_timeout_sec": 600,
+  "max_turns": 25
+}

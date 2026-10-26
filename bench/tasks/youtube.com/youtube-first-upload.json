@@ -1,0 +1,39 @@
+{
+  "id": "youtube-first-upload",
+  "domain": "youtube.com",
+  "stage": "inspect",
+  "split": "train",
+  "prompt": "On youtube.com, look up the video with id {{video_id}}: its title, the channel that uploaded it, its length in seconds and the date it was published. Reply with JSON: {\"title\": string, \"channel\": string, \"duration_seconds\": integer, \"published_at\": \"YYYY-MM-DD\"}.",
+  "fixture": {
+    "video_id": "jNQXAC9IVRw"
+  },
+  "start_url": "https://www.youtube.com/",
+  "answer_schema": "schemas/video-summary.json",
+  "rules": [
+    {
+      "path": "title",
+      "matches": "me at the zoo"
+    },
+    {
+      "path": "channel",
+      "matches": "jawed"
+    },
+    {
+      "path": "duration_seconds",
+      "range": [
+        18,
+        20
+      ]
+    },
+    {
+      "path": "published_at",
+      "in": [
+        "2005-04-23",
+        "2005-04-24"
+      ]
+    }
+  ],
+  "pairs": 3,
+  "trial_timeout_sec": 600,
+  "max_turns": 25
+}

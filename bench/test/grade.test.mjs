@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
-import { checkRule, checkSameAsAnswer, extractAnswer, gradeAnswer, resolvePath } from "../grade.mjs";
+import { checkRule, checkSameAsAnswer, extractAnswer, extractFeedback, gradeAnswer, resolvePath } from "../grade.mjs";
 import { fill } from "../lib/intents.mjs";
 
 const benchDir = join(dirname(fileURLToPath(import.meta.url)), "..");
@@ -123,4 +123,14 @@ test("the espresso checkout grades the fields read from the page", () => {
   assert.match(grade({ ...page, fields: { ...page.fields, card_number: "4000 0000 0000 0002" } }).problems[0], /card_number/);
   assert.match(grade({ ...page, invalid: ["card_cvc"] }).problems[0], /invalid: count outside/);
   assert.match(grade({ ...page, url: "https://bluebottlecoffee.com/us/eng" }).problems[0], /url/);
+});
+
+test("a tool_feedback block is kept out of the answer, wherever it is", () => {
+  const feedback = '```json\n{"tool_feedback": [{"tool": "search", "outcome": "succeeded", "reason": "ok", "suggested_change": ""}]}\n```';
+  const answer = '```json\n{"price": 5}\n```';
+  for (const text of [`${feedback}\n${answer}`, `${answer}\n${feedback}`]) {
+    assert.deepEqual(extractAnswer(text, schema), { price: 5 });
+    assert.equal(extractFeedback(text)[0].tool, "search");
+  }
+  assert.equal(extractFeedback(answer), null);
 });

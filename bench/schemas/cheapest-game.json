@@ -1,0 +1,35 @@
+{
+  "type": "object",
+  "required": [
+    "prices",
+    "cheapest"
+  ],
+  "properties": {
+    "prices": {
+      "type": "object",
+      "required": [
+        "Hades",
+        "Hollow Knight",
+        "Portal 2"
+      ],
+      "properties": {
+        "Hades": {
+          "type": "number",
+          "minimum": 0
+        },
+        "Hollow Knight": {
+          "type": "number",
+          "minimum": 0
+        },
+        "Portal 2": {
+          "type": "number",
+          "minimum": 0
+        }
+      }
+    },
+    "cheapest": {
+      "type": "string",
+      "minLength": 1
+    }
+  }
+}

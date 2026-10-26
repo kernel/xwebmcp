@@ -1,0 +1,17 @@
+{
+  "type": "object",
+  "required": [
+    "store",
+    "address"
+  ],
+  "properties": {
+    "store": {
+      "type": "string",
+      "minLength": 1
+    },
+    "address": {
+      "type": "string",
+      "minLength": 1
+    }
+  }
+}

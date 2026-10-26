@@ -2,6 +2,7 @@
   "id": "steam-game-price",
   "domain": "steampowered.com",
   "stage": "inspect",
+  "split": "train",
   "prompt": "On store.steampowered.com, find {{game}}'s current price in the US store and the overall user review summary Steam shows for it, such as \"Very Positive\". Reply with JSON: {\"game\": string, \"price\": number in US dollars, \"review_summary\": string}.",
   "fixture": {
     "game": "Stardew Valley"
@@ -27,5 +28,5 @@
   ],
   "pairs": 5,
   "trial_timeout_sec": 600,
-  "max_turns": 40
+  "max_turns": 25
 }

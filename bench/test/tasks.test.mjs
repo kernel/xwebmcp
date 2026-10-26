@@ -73,6 +73,8 @@ test("validateIntent reports missing fixture values and bad rules", () => {
   assert.deepEqual(validateIntent({ ...intent, fixture: { ip: { days_from_start: 3 } } }, benchDir), []);
   assert.ok(validateIntent({ ...intent, fixture: { ip: { days: 3 } } }, benchDir).some(p => p.startsWith("fixture ip")));
   assert.deepEqual(validateIntent({ ...intent, rules: [{ path: "ip", matches: "^{{ip}}$" }] }, benchDir), []);
+  assert.deepEqual(validateIntent({ ...intent, split: "validation" }, benchDir), []);
+  assert.ok(validateIntent({ ...intent, split: "dev" }, benchDir).some(p => p.startsWith("split")));
   assert.ok(validateIntent({ ...intent, rules: [{ path: "ip", matches: "(" }] }, benchDir).some(p => p.endsWith("needs a valid regex")));
   assert.ok(validateIntent({ ...intent, tools: [{ ...intent.tools[0], repo: "someone/xwebmcp" }] }, benchDir).some(p => p.includes("kernel/xwebmcp")));
   assert.deepEqual(validateIntent({ ...intent, agreement: { path: "asn", better: "lower", tolerance: 1 } }, benchDir), []);

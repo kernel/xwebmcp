@@ -3,7 +3,7 @@ import test from "node:test";
 import { randomInt } from "node:crypto";
 import { setImmediate as tick } from "node:timers/promises";
 import { completePairRows, latestRows, rowKey } from "../lib/rows.mjs";
-import { adoptionVerdicts, balancedOrders, holdNeededSec, nextJob, planJobs, runPairAttempts, runQueue } from "../lib/schedule.mjs";
+import { adoptionVerdicts, balancedOrders, holdNeededSec, nextJob, pairArms, planJobs, runPairAttempts, runQueue } from "../lib/schedule.mjs";
 
 const jobs = (...secs) => secs.map(sec => ({ sec, profile: null }));
 
@@ -151,4 +151,10 @@ test("a job that throws releases its profile, and beforeJob can stop the queue",
   const beforeJob = () => { if (++checks > 1) throw new Error("too many aborts"); };
   await assert.rejects(runQueue(recordingJobs([null, null], []), 1, { beforeJob }), /too many aborts/);
   assert.equal(checks, 2);
+});
+
+test("a treatment-only pair is its treatment trial, and a domain without tools still runs control", () => {
+  assert.deepEqual(pairArms({ treatment_only: true }, "AB"), ["treatment"]);
+  assert.deepEqual(pairArms({ treatment_only: true, uncovered: true }, "AB"), ["control"]);
+  assert.deepEqual(pairArms({}, "BA"), ["treatment", "control"]);
 });

@@ -1,0 +1,26 @@
+{
+  "id": "target-compare-two-products",
+  "domain": "target.com",
+  "stage": "compare",
+  "split": "train",
+  "prompt": "On target.com, find the current prices of the {{product_a}} and the {{product_b}}, and say which is cheaper. Reply with JSON: {\"prices\": {\"<product>\": number}, \"cheaper\": string}.",
+  "fixture": {
+    "product_a": "Apple AirPods 4",
+    "product_b": "Beats Solo Buds"
+  },
+  "start_url": "https://www.target.com/",
+  "answer_schema": "schemas/two-prices.json",
+  "rules": [
+    {
+      "path": "cheaper",
+      "matches": "airpods|beats"
+    }
+  ],
+  "agreement": {
+    "path": "cheaper",
+    "same": true
+  },
+  "pairs": 3,
+  "trial_timeout_sec": 600,
+  "max_turns": 35
+}

@@ -1,0 +1,36 @@
+{
+  "id": "target-top-rated",
+  "domain": "target.com",
+  "stage": "compare",
+  "split": "train",
+  "prompt": "On target.com, search for \"{{query}}\" and, among the products on the first page of results with at least 100 ratings, find the one with the highest star rating. Reply with JSON: {\"product\": string, \"rating\": number, \"ratings\": integer, \"tcin\": string}.",
+  "fixture": {
+    "query": "bluetooth speaker"
+  },
+  "start_url": "https://www.target.com/",
+  "answer_schema": "schemas/rated-product.json",
+  "rules": [
+    {
+      "path": "rating",
+      "range": [
+        3.5,
+        5
+      ]
+    },
+    {
+      "path": "ratings",
+      "range": [
+        100,
+        10000000
+      ]
+    }
+  ],
+  "agreement": {
+    "path": "rating",
+    "better": "higher",
+    "tolerance": 0.05
+  },
+  "pairs": 3,
+  "trial_timeout_sec": 600,
+  "max_turns": 35
+}

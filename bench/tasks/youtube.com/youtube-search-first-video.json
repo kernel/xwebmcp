@@ -2,6 +2,7 @@
   "id": "youtube-search-first-video",
   "domain": "youtube.com",
   "stage": "find",
+  "split": "test",
   "prompt": "On youtube.com, search for \"{{query}}\" and report the first video in the results, skipping ads, Shorts, playlists and channels: its title, its channel and its video id. Reply with JSON: {\"title\": string, \"channel\": string, \"video_id\": string}.",
   "fixture": {
     "query": "how to tie a tie"
@@ -20,5 +21,5 @@
   },
   "pairs": 5,
   "trial_timeout_sec": 600,
-  "max_turns": 40
+  "max_turns": 25
 }

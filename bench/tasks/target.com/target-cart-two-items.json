@@ -1,0 +1,50 @@
+{
+  "id": "target-cart-two-items",
+  "domain": "target.com",
+  "stage": "prepare",
+  "split": "validation",
+  "prompt": "On target.com, put one {{item_a}} and one {{item_b}} in the cart, then open the cart and stop there. Report each line's title and the cart subtotal. Reply with JSON: {\"items\": [string], \"subtotal\": number}.",
+  "fixture": {
+    "item_a": "Crayola 24ct crayons",
+    "item_b": "Elmer's glue stick"
+  },
+  "start_url": "https://www.target.com/",
+  "answer_schema": "schemas/cart-lines.json",
+  "rules": [
+    {
+      "path": "items",
+      "count": 2
+    }
+  ],
+  "check": {
+    "extract": {
+      "subtotal": "Subtotal[^$]{0,60}\\$\\s*([\\d,]+\\.\\d{2})"
+    },
+    "rules": [
+      {
+        "path": "url",
+        "matches": "^https://www\\.target\\.com/cart"
+      },
+      {
+        "path": "text",
+        "matches": "Crayola"
+      },
+      {
+        "path": "extracted.subtotal",
+        "range": [
+          1,
+          500
+        ]
+      }
+    ],
+    "same_as_answer": [
+      {
+        "answer": "subtotal",
+        "end_state": "extracted.subtotal"
+      }
+    ]
+  },
+  "pairs": 3,
+  "trial_timeout_sec": 900,
+  "max_turns": 50
+}

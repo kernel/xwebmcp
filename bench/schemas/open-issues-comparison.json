@@ -1,0 +1,30 @@
+{
+  "type": "object",
+  "required": [
+    "open_issues",
+    "more"
+  ],
+  "properties": {
+    "open_issues": {
+      "type": "object",
+      "required": [
+        "denoland/deno",
+        "oven-sh/bun"
+      ],
+      "properties": {
+        "denoland/deno": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "oven-sh/bun": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "more": {
+      "type": "string",
+      "minLength": 1
+    }
+  }
+}

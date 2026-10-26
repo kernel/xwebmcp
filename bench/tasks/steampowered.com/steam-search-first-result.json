@@ -1,0 +1,39 @@
+{
+  "id": "steam-search-first-result",
+  "domain": "steampowered.com",
+  "stage": "find",
+  "split": "train",
+  "prompt": "On store.steampowered.com, search for \"{{query}}\" and report the first result: its name, its app id and its current price in US dollars (0 if free). Reply with JSON: {\"name\": string, \"app_id\": integer, \"price\": number}.",
+  "fixture": {
+    "query": "hollow knight"
+  },
+  "start_url": "https://store.steampowered.com/",
+  "answer_schema": "schemas/app-search-result.json",
+  "rules": [
+    {
+      "path": "name",
+      "matches": "hollow knight"
+    },
+    {
+      "path": "app_id",
+      "in": [
+        367520,
+        1030300
+      ]
+    },
+    {
+      "path": "price",
+      "range": [
+        0,
+        60
+      ]
+    }
+  ],
+  "agreement": {
+    "path": "app_id",
+    "same": true
+  },
+  "pairs": 3,
+  "trial_timeout_sec": 600,
+  "max_turns": 25
+}

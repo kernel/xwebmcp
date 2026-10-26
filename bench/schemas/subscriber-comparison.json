@@ -1,0 +1,30 @@
+{
+  "type": "object",
+  "required": [
+    "subscribers",
+    "more"
+  ],
+  "properties": {
+    "subscribers": {
+      "type": "object",
+      "required": [
+        "@veritasium",
+        "@3blue1brown"
+      ],
+      "properties": {
+        "@veritasium": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "@3blue1brown": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "more": {
+      "type": "string",
+      "minLength": 1
+    }
+  }
+}

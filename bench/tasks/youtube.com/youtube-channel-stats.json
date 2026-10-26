@@ -1,0 +1,35 @@
+{
+  "id": "youtube-channel-stats",
+  "domain": "youtube.com",
+  "stage": "inspect",
+  "split": "validation",
+  "prompt": "On youtube.com, look up the channel {{handle}}: its name, its subscriber count and how many videos it has, as the channel page shows them. Reply with JSON: {\"name\": string, \"subscribers\": integer, \"videos\": integer}.",
+  "fixture": {
+    "handle": "@veritasium"
+  },
+  "start_url": "https://www.youtube.com/",
+  "answer_schema": "schemas/channel-stats.json",
+  "rules": [
+    {
+      "path": "name",
+      "equals": "Veritasium"
+    },
+    {
+      "path": "subscribers",
+      "range": [
+        15000000,
+        40000000
+      ]
+    },
+    {
+      "path": "videos",
+      "range": [
+        300,
+        3000
+      ]
+    }
+  ],
+  "pairs": 3,
+  "trial_timeout_sec": 600,
+  "max_turns": 25
+}

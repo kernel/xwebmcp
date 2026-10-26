@@ -1,0 +1,26 @@
+{
+  "id": "github-peer-dependency",
+  "domain": "github.com",
+  "stage": "inspect",
+  "split": "train",
+  "prompt": "On github.com, in {{repo}} at the tag {{tag}}, open packages/next/package.json and report the version range it gives for the react peer dependency and its node engine requirement. Reply with JSON: {\"react\": string, \"node\": string}.",
+  "fixture": {
+    "repo": "vercel/next.js",
+    "tag": "v14.0.0"
+  },
+  "start_url": "https://github.com/explore",
+  "answer_schema": "schemas/peer-dependency.json",
+  "rules": [
+    {
+      "path": "react",
+      "equals": "^18.2.0"
+    },
+    {
+      "path": "node",
+      "equals": ">=18.17.0"
+    }
+  ],
+  "pairs": 3,
+  "trial_timeout_sec": 600,
+  "max_turns": 25
+}

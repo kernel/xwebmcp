@@ -1,0 +1,38 @@
+{
+  "id": "github-pr-diff-size",
+  "domain": "github.com",
+  "stage": "inspect",
+  "split": "validation",
+  "prompt": "On github.com, look up pull request #{{number}} in {{repo}}: who opened it, how many commits it has, how many files it changed, and its lines added and removed. Reply with JSON: {\"author\": string, \"commits\": integer, \"files_changed\": integer, \"additions\": integer, \"deletions\": integer}.",
+  "fixture": {
+    "repo": "denoland/deno",
+    "number": 20000
+  },
+  "start_url": "https://github.com/explore",
+  "answer_schema": "schemas/pull-request-size.json",
+  "rules": [
+    {
+      "path": "author",
+      "equals": "dsherret"
+    },
+    {
+      "path": "commits",
+      "equals": 2
+    },
+    {
+      "path": "files_changed",
+      "equals": 2
+    },
+    {
+      "path": "additions",
+      "equals": 3
+    },
+    {
+      "path": "deletions",
+      "equals": 5
+    }
+  ],
+  "pairs": 3,
+  "trial_timeout_sec": 600,
+  "max_turns": 25
+}

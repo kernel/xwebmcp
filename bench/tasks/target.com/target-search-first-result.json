@@ -2,14 +2,33 @@
   "id": "target-search-first-result",
   "domain": "target.com",
   "stage": "find",
+  "split": "train",
   "prompt": "On target.com, search for \"{{query}}\" and report the first product in the results: its title as the product, its price and its TCIN (Target's item number). Reply with JSON: {\"product\": string, \"price\": number in US dollars, \"tcin\": string}.",
-  "fixture": {"query": "AirPods Pro"},
+  "fixture": {
+    "query": "AirPods Pro"
+  },
   "start_url": "https://www.target.com/",
-  "tools": [{"repo": "kernel/xwebmcp", "ref": "main", "names": ["search_products"]}],
+  "tools": [
+    {
+      "repo": "kernel/xwebmcp",
+      "ref": "main",
+      "names": [
+        "search_products"
+      ]
+    }
+  ],
   "entry_tool": "search_products",
   "answer_schema": "schemas/search-result.json",
-  "rules": [{"path": "price", "range": [1, 1000]}],
+  "rules": [
+    {
+      "path": "price",
+      "range": [
+        1,
+        1000
+      ]
+    }
+  ],
   "pairs": 5,
   "trial_timeout_sec": 600,
-  "max_turns": 40
+  "max_turns": 25
 }

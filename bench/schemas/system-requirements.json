@@ -1,0 +1,22 @@
+{
+  "type": "object",
+  "required": [
+    "os",
+    "memory_gb",
+    "graphics"
+  ],
+  "properties": {
+    "os": {
+      "type": "string",
+      "minLength": 1
+    },
+    "memory_gb": {
+      "type": "number",
+      "minimum": 0
+    },
+    "graphics": {
+      "type": "string",
+      "minLength": 1
+    }
+  }
+}

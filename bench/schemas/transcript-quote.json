@@ -1,0 +1,17 @@
+{
+  "type": "object",
+  "required": [
+    "quote",
+    "timestamp"
+  ],
+  "properties": {
+    "quote": {
+      "type": "string",
+      "minLength": 1
+    },
+    "timestamp": {
+      "type": "string",
+      "minLength": 1
+    }
+  }
+}

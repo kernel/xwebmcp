@@ -2,6 +2,7 @@
   "id": "steam-compare-series",
   "domain": "steampowered.com",
   "stage": "compare",
+  "split": "train",
   "prompt": "On store.steampowered.com, compare the {{series}} games {{game_v}}, {{game_vi}} and {{game_vii}}: for each, find its current price in the US store (the base game, not an edition or bundle) and the summary under English Reviews (not Recent Reviews) in its app page header, such as \"Very Positive\". Reply with JSON: {\"games\": [{\"game\": string, \"price\": number in US dollars, \"review_summary\": string}]}, one entry per game in the order given. Use exactly \"{{game_v}}\", \"{{game_vi}}\" and \"{{game_vii}}\" as the game values, not the full store titles or their trademark symbols.",
   "fixture": {
     "series": "Sid Meier's Civilization",
@@ -12,14 +13,42 @@
   "start_url": "https://store.steampowered.com/",
   "answer_schema": "schemas/game-prices.json",
   "rules": [
-    { "path": "games", "count": [3, 3] },
-    { "path": "games[].game", "in": ["{{game_v}}", "{{game_vi}}", "{{game_vii}}"] },
-    { "path": "games[].game", "unique": true },
-    { "path": "games[].price", "range": [1, 100] },
-    { "path": "games[].review_summary", "matches": "positive|mixed|negative" }
+    {
+      "path": "games",
+      "count": [
+        3,
+        3
+      ]
+    },
+    {
+      "path": "games[].game",
+      "in": [
+        "{{game_v}}",
+        "{{game_vi}}",
+        "{{game_vii}}"
+      ]
+    },
+    {
+      "path": "games[].game",
+      "unique": true
+    },
+    {
+      "path": "games[].price",
+      "range": [
+        1,
+        100
+      ]
+    },
+    {
+      "path": "games[].review_summary",
+      "matches": "positive|mixed|negative"
+    }
   ],
-  "agreement": { "path": "games", "same": true },
+  "agreement": {
+    "path": "games",
+    "same": true
+  },
   "pairs": 5,
   "trial_timeout_sec": 600,
-  "max_turns": 40
+  "max_turns": 35
 }

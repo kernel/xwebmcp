@@ -1,0 +1,36 @@
+{
+  "id": "booking-breakfast-room",
+  "domain": "booking.com",
+  "stage": "compare",
+  "split": "test",
+  "prompt": "On booking.com, at {{hotel}} in {{city}} from {{check_in}} to {{check_out}} for 2 adults, find the cheapest room option that includes breakfast: the room's name and the price the site lists for the whole stay in US dollars. Reply with JSON: {\"room\": string, \"total\": number}.",
+  "fixture": {
+    "hotel": "Palacio Ramalhete",
+    "city": "Lisbon",
+    "check_in": {
+      "days_from_start": 40
+    },
+    "check_out": {
+      "days_from_start": 42
+    }
+  },
+  "start_url": "https://www.booking.com/",
+  "answer_schema": "schemas/room-rate.json",
+  "rules": [
+    {
+      "path": "total",
+      "range": [
+        50,
+        10000
+      ]
+    }
+  ],
+  "agreement": {
+    "path": "total",
+    "better": "lower",
+    "tolerance": 1
+  },
+  "pairs": 3,
+  "trial_timeout_sec": 600,
+  "max_turns": 35
+}

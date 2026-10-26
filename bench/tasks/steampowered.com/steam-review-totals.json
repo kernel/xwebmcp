@@ -1,0 +1,28 @@
+{
+  "id": "steam-review-totals",
+  "domain": "steampowered.com",
+  "stage": "inspect",
+  "split": "test",
+  "prompt": "On store.steampowered.com, find how many user reviews {{game}} has in all languages and the review summary Steam gives for them, such as \"Overwhelmingly Positive\". Reply with JSON: {\"reviews\": integer, \"summary\": string}.",
+  "fixture": {
+    "game": "Portal 2"
+  },
+  "start_url": "https://store.steampowered.com/",
+  "answer_schema": "schemas/review-totals.json",
+  "rules": [
+    {
+      "path": "reviews",
+      "range": [
+        300000,
+        3000000
+      ]
+    },
+    {
+      "path": "summary",
+      "matches": "overwhelmingly positive"
+    }
+  ],
+  "pairs": 3,
+  "trial_timeout_sec": 600,
+  "max_turns": 25
+}

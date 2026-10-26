@@ -1,0 +1,54 @@
+{
+  "id": "target-cart-remove",
+  "domain": "target.com",
+  "stage": "prepare",
+  "split": "test",
+  "prompt": "On target.com, put one {{item_a}} and one {{item_b}} in the cart, then remove the {{item_b}} from the cart, and stop on the cart page. Report the titles left in the cart and the subtotal. Reply with JSON: {\"items\": [string], \"subtotal\": number}.",
+  "fixture": {
+    "item_a": "Expo dry erase markers 4ct",
+    "item_b": "Post-it notes"
+  },
+  "start_url": "https://www.target.com/",
+  "answer_schema": "schemas/cart-lines.json",
+  "rules": [
+    {
+      "path": "items",
+      "count": 1
+    },
+    {
+      "path": "items[]",
+      "matches": "expo"
+    }
+  ],
+  "check": {
+    "extract": {
+      "subtotal": "Subtotal[^$]{0,60}\\$\\s*([\\d,]+\\.\\d{2})"
+    },
+    "rules": [
+      {
+        "path": "url",
+        "matches": "^https://www\\.target\\.com/cart"
+      },
+      {
+        "path": "text",
+        "matches": "Expo"
+      },
+      {
+        "path": "extracted.subtotal",
+        "range": [
+          1,
+          500
+        ]
+      }
+    ],
+    "same_as_answer": [
+      {
+        "answer": "subtotal",
+        "end_state": "extracted.subtotal"
+      }
+    ]
+  },
+  "pairs": 3,
+  "trial_timeout_sec": 900,
+  "max_turns": 50
+}

@@ -1,0 +1,45 @@
+{
+  "id": "steam-cheapest-of-three",
+  "domain": "steampowered.com",
+  "stage": "compare",
+  "split": "train",
+  "prompt": "On store.steampowered.com, find the current US price of {{game_a}}, {{game_b}} and {{game_c}} (the base game, not a bundle) and say which is cheapest. Reply with JSON: {\"prices\": {\"<game>\": number}, \"cheapest\": string}.",
+  "fixture": {
+    "game_a": "Hades",
+    "game_b": "Hollow Knight",
+    "game_c": "Portal 2"
+  },
+  "start_url": "https://store.steampowered.com/",
+  "answer_schema": "schemas/cheapest-game.json",
+  "rules": [
+    {
+      "path": "cheapest",
+      "in": [
+        "Hades",
+        "Hollow Knight",
+        "Portal 2"
+      ]
+    },
+    {
+      "path": "prices.Hades",
+      "range": [
+        1,
+        24.99
+      ]
+    },
+    {
+      "path": "prices.Portal 2",
+      "range": [
+        0.5,
+        9.99
+      ]
+    }
+  ],
+  "agreement": {
+    "path": "cheapest",
+    "same": true
+  },
+  "pairs": 3,
+  "trial_timeout_sec": 600,
+  "max_turns": 35
+}

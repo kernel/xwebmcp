@@ -1,0 +1,29 @@
+{
+  "id": "steam-game-credits",
+  "domain": "steampowered.com",
+  "stage": "inspect",
+  "split": "train",
+  "prompt": "On store.steampowered.com, look up {{game}}: its developer, its publisher and its release date. Reply with JSON: {\"developer\": string, \"publisher\": string, \"release_date\": \"YYYY-MM-DD\"}.",
+  "fixture": {
+    "game": "Hades"
+  },
+  "start_url": "https://store.steampowered.com/",
+  "answer_schema": "schemas/game-credits.json",
+  "rules": [
+    {
+      "path": "developer",
+      "equals": "Supergiant Games"
+    },
+    {
+      "path": "publisher",
+      "equals": "Supergiant Games"
+    },
+    {
+      "path": "release_date",
+      "equals": "2020-09-17"
+    }
+  ],
+  "pairs": 3,
+  "trial_timeout_sec": 600,
+  "max_turns": 25
+}

@@ -1,0 +1,35 @@
+{
+  "id": "booking-lowest-price-first",
+  "domain": "booking.com",
+  "stage": "find",
+  "split": "validation",
+  "prompt": "On booking.com, search for stays in {{city}} from {{check_in}} to {{check_out}} for 2 adults in one room, sort the results by lowest price, and report the first property and the price the site shows for the whole stay in US dollars. Reply with JSON: {\"property\": string, \"total\": number}.",
+  "fixture": {
+    "city": "Porto",
+    "check_in": {
+      "days_from_start": 40
+    },
+    "check_out": {
+      "days_from_start": 42
+    }
+  },
+  "start_url": "https://www.booking.com/",
+  "answer_schema": "schemas/stay-price.json",
+  "rules": [
+    {
+      "path": "total",
+      "range": [
+        10,
+        2000
+      ]
+    }
+  ],
+  "agreement": {
+    "path": "total",
+    "better": "lower",
+    "tolerance": 5
+  },
+  "pairs": 3,
+  "trial_timeout_sec": 600,
+  "max_turns": 25
+}

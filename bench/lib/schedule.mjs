@@ -73,7 +73,8 @@ export function balancedOrders(pairs, randomInt) {
 }
 
 // A pair's trials in run order. An intent on a domain with no tools runs control alone.
-export const pairArms = (intentPlan, order) => intentPlan.uncovered ? ["control"] : order === "AB" ? ["control", "treatment"] : ["treatment", "control"];
+// With --treatment-only a pair is just its treatment trial.
+export const pairArms = (intentPlan, order) => intentPlan.uncovered ? ["control"] : intentPlan.treatment_only ? ["treatment"] : order === "AB" ? ["control", "treatment"] : ["treatment", "control"];
 
 // Treatment-only trials interleave across domains, so one broken domain cannot hit the abort
 // limit before its adoption verdict stops it. Pairs interleave across intents to spread site drift.

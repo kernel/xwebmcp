@@ -1,0 +1,41 @@
+{
+  "id": "github-issue-details",
+  "domain": "github.com",
+  "stage": "inspect",
+  "split": "train",
+  "prompt": "On github.com, look up issue #{{number}} in {{repo}}: its title, whether it is open or closed, the login of the user who opened it, and its labels. Reply with JSON: {\"title\": string, \"state\": \"open\" | \"closed\", \"author\": string, \"labels\": [string]}.",
+  "fixture": {
+    "repo": "facebook/react",
+    "number": 13991
+  },
+  "start_url": "https://github.com/explore",
+  "answer_schema": "schemas/issue-details.json",
+  "rules": [
+    {
+      "path": "title",
+      "matches": "multiple instances of react"
+    },
+    {
+      "path": "state",
+      "equals": "open"
+    },
+    {
+      "path": "author",
+      "equals": "brunolemos"
+    },
+    {
+      "path": "labels",
+      "count": 2
+    },
+    {
+      "path": "labels[]",
+      "in": [
+        "Type: Discussion",
+        "Component: Hooks"
+      ]
+    }
+  ],
+  "pairs": 3,
+  "trial_timeout_sec": 600,
+  "max_turns": 25
+}

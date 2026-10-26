@@ -1,0 +1,16 @@
+{
+  "type": "object",
+  "required": [
+    "prices",
+    "cheaper"
+  ],
+  "properties": {
+    "prices": {
+      "type": "object"
+    },
+    "cheaper": {
+      "type": "string",
+      "minLength": 1
+    }
+  }
+}

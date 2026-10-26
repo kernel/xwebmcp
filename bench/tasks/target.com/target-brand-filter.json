@@ -1,0 +1,33 @@
+{
+  "id": "target-brand-filter",
+  "domain": "target.com",
+  "stage": "find",
+  "split": "train",
+  "prompt": "On target.com, search for \"{{query}}\", narrow the results to the brand {{brand}} with the site's filter, and report the first product in the filtered results. Reply with JSON: {\"product\": string, \"price\": number, \"tcin\": string}.",
+  "fixture": {
+    "query": "coffee maker",
+    "brand": "Keurig"
+  },
+  "start_url": "https://www.target.com/",
+  "answer_schema": "schemas/search-result.json",
+  "rules": [
+    {
+      "path": "product",
+      "matches": "keurig"
+    },
+    {
+      "path": "price",
+      "range": [
+        5,
+        500
+      ]
+    }
+  ],
+  "agreement": {
+    "path": "tcin",
+    "same": true
+  },
+  "pairs": 3,
+  "trial_timeout_sec": 600,
+  "max_turns": 25
+}

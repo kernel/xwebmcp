@@ -1,0 +1,26 @@
+{
+  "id": "booking-facilities",
+  "domain": "booking.com",
+  "stage": "gap",
+  "split": "train",
+  "prompt": "On booking.com, find whether {{hotel}} in {{city}} lists an outdoor swimming pool and a fitness centre among its facilities. Reply with JSON: {\"outdoor_pool\": boolean, \"fitness_centre\": boolean}.",
+  "fixture": {
+    "hotel": "Hotel Arts Barcelona",
+    "city": "Barcelona"
+  },
+  "start_url": "https://www.booking.com/",
+  "answer_schema": "schemas/facilities.json",
+  "rules": [
+    {
+      "path": "outdoor_pool",
+      "equals": true
+    },
+    {
+      "path": "fitness_centre",
+      "equals": true
+    }
+  ],
+  "pairs": 3,
+  "trial_timeout_sec": 600,
+  "max_turns": 25
+}

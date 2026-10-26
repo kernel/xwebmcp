@@ -1,0 +1,27 @@
+{
+  "type": "object",
+  "required": [
+    "product",
+    "rating",
+    "ratings",
+    "tcin"
+  ],
+  "properties": {
+    "product": {
+      "type": "string",
+      "minLength": 1
+    },
+    "rating": {
+      "type": "number",
+      "minimum": 0
+    },
+    "ratings": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "tcin": {
+      "type": "string",
+      "minLength": 1
+    }
+  }
+}

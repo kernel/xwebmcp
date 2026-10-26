@@ -1,0 +1,32 @@
+{
+  "type": "object",
+  "required": [
+    "author",
+    "commits",
+    "files_changed",
+    "additions",
+    "deletions"
+  ],
+  "properties": {
+    "author": {
+      "type": "string",
+      "minLength": 1
+    },
+    "commits": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "files_changed": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "additions": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "deletions": {
+      "type": "integer",
+      "minimum": 0
+    }
+  }
+}

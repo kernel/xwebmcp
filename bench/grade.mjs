@@ -22,13 +22,17 @@ function parseObject(text) {
   }
 }
 
+const fencedObjects = (text) => [...text.matchAll(/```[a-zA-Z]*\s*\n([\s\S]*?)```/g)].map(m => parseObject(m[1].trim())).filter(Boolean);
+
+// A tool_feedback block (see --feedback) is never the answer.
 function fromFences(text) {
-  const blocks = [...text.matchAll(/```[a-zA-Z]*\s*\n([\s\S]*?)```/g)].map(m => m[1]);
-  for (const block of blocks.reverse()) {
-    const value = parseObject(block.trim());
-    if (value) return value;
-  }
-  return null;
+  return fencedObjects(text).reverse().find(value => !Object.hasOwn(value, "tool_feedback")) ?? null;
+}
+
+export function extractFeedback(text) {
+  if (typeof text !== "string") return null;
+  const block = fencedObjects(text).find(value => Array.isArray(value.tool_feedback));
+  return block ? block.tool_feedback : null;
 }
 
 // The largest {...} that ends at the message's last closing brace.

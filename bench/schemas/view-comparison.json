@@ -1,0 +1,30 @@
+{
+  "type": "object",
+  "required": [
+    "views",
+    "more"
+  ],
+  "properties": {
+    "views": {
+      "type": "object",
+      "required": [
+        "9bZkp7q19f0",
+        "dQw4w9WgXcQ"
+      ],
+      "properties": {
+        "9bZkp7q19f0": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "dQw4w9WgXcQ": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "more": {
+      "type": "string",
+      "minLength": 1
+    }
+  }
+}

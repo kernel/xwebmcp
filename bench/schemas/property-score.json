@@ -1,0 +1,22 @@
+{
+  "type": "object",
+  "required": [
+    "score",
+    "reviews",
+    "address"
+  ],
+  "properties": {
+    "score": {
+      "type": "number",
+      "minimum": 0
+    },
+    "reviews": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "address": {
+      "type": "string",
+      "minLength": 1
+    }
+  }
+}

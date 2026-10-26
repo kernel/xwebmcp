@@ -1,0 +1,39 @@
+{
+  "id": "target-product-rating",
+  "domain": "target.com",
+  "stage": "inspect",
+  "split": "train",
+  "prompt": "On target.com, find the {{product}}: its price, its star rating, how many ratings it has, and its TCIN. Reply with JSON: {\"product\": string, \"price\": number, \"rating\": number, \"ratings\": integer, \"tcin\": string}.",
+  "fixture": {
+    "product": "Stanley Quencher H2.0 FlowState 40oz Stainless Steel Tumbler"
+  },
+  "start_url": "https://www.target.com/",
+  "answer_schema": "schemas/product-rating.json",
+  "rules": [
+    {
+      "path": "price",
+      "range": [
+        10,
+        80
+      ]
+    },
+    {
+      "path": "rating",
+      "range": [
+        1,
+        5
+      ]
+    },
+    {
+      "path": "tcin",
+      "matches": "^\\d{8,9}$"
+    }
+  ],
+  "agreement": {
+    "path": "tcin",
+    "same": true
+  },
+  "pairs": 3,
+  "trial_timeout_sec": 600,
+  "max_turns": 25
+}

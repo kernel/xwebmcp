@@ -1,0 +1,28 @@
+{
+  "id": "steam-dlc-list",
+  "domain": "steampowered.com",
+  "stage": "inspect",
+  "split": "test",
+  "prompt": "On store.steampowered.com, list the downloadable content Steam sells for {{game}}, each with its current US price. Reply with JSON: {\"dlc\": [{\"name\": string, \"price\": number}]}.",
+  "fixture": {
+    "game": "Hollow Knight"
+  },
+  "start_url": "https://store.steampowered.com/",
+  "answer_schema": "schemas/dlc-list.json",
+  "rules": [
+    {
+      "path": "dlc[].price",
+      "range": [
+        0,
+        30
+      ]
+    }
+  ],
+  "agreement": {
+    "path": "dlc",
+    "same": true
+  },
+  "pairs": 3,
+  "trial_timeout_sec": 600,
+  "max_turns": 25
+}

@@ -1,0 +1,22 @@
+{
+  "type": "object",
+  "required": [
+    "name",
+    "app_id",
+    "price"
+  ],
+  "properties": {
+    "name": {
+      "type": "string",
+      "minLength": 1
+    },
+    "app_id": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "price": {
+      "type": "number",
+      "minimum": 0
+    }
+  }
+}

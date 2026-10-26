@@ -1,0 +1,25 @@
+{
+  "id": "target-nearest-store",
+  "domain": "target.com",
+  "stage": "inspect",
+  "split": "test",
+  "prompt": "On target.com, find the Target store nearest to ZIP code {{zip}}: its name and street address. Reply with JSON: {\"store\": string, \"address\": string}.",
+  "fixture": {
+    "zip": "55403"
+  },
+  "start_url": "https://www.target.com/",
+  "answer_schema": "schemas/store-location.json",
+  "rules": [
+    {
+      "path": "address",
+      "matches": "minneapolis|\\d"
+    }
+  ],
+  "agreement": {
+    "path": "store",
+    "same": true
+  },
+  "pairs": 3,
+  "trial_timeout_sec": 600,
+  "max_turns": 25
+}

@@ -1,0 +1,15 @@
+{
+  "type": "object",
+  "required": [
+    "outdoor_pool",
+    "fitness_centre"
+  ],
+  "properties": {
+    "outdoor_pool": {
+      "type": "boolean"
+    },
+    "fitness_centre": {
+      "type": "boolean"
+    }
+  }
+}

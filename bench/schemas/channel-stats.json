@@ -1,0 +1,22 @@
+{
+  "type": "object",
+  "required": [
+    "name",
+    "subscribers",
+    "videos"
+  ],
+  "properties": {
+    "name": {
+      "type": "string",
+      "minLength": 1
+    },
+    "subscribers": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "videos": {
+      "type": "integer",
+      "minimum": 0
+    }
+  }
+}

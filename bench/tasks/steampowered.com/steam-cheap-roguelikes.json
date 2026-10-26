@@ -1,0 +1,33 @@
+{
+  "id": "steam-cheap-roguelikes",
+  "domain": "steampowered.com",
+  "stage": "find",
+  "split": "validation",
+  "prompt": "On store.steampowered.com, search for \"{{query}}\", limit the results to games under ${{max_price}} with Steam's price filter, and report the first three games in the results with their current prices. Reply with JSON: {\"games\": [{\"name\": string, \"price\": number}]}.",
+  "fixture": {
+    "query": "roguelike",
+    "max_price": 10
+  },
+  "start_url": "https://store.steampowered.com/",
+  "answer_schema": "schemas/priced-games.json",
+  "rules": [
+    {
+      "path": "games",
+      "count": 3
+    },
+    {
+      "path": "games[].price",
+      "range": [
+        0,
+        10
+      ]
+    }
+  ],
+  "agreement": {
+    "path": "games",
+    "same": true
+  },
+  "pairs": 3,
+  "trial_timeout_sec": 600,
+  "max_turns": 25
+}
