@@ -181,7 +181,36 @@
     }
   },
   execute: async (input, context) => {
+    // @xwebmcp-inline lib/youtube-innertube.js
     const fail = (kind, message) => ({ status: "error", error_kind: kind, error_message: message });
+    const clean = (value, max = 300) => {
+      if (typeof value !== "string") return null;
+      const text = value.replace(/[\u0000-\u001f\u007f-\u009f]+/g, " ").replace(/\s+/g, " ").trim();
+      // Cut at a UTF-16 boundary without leaving half of a surrogate pair.
+      return text ? text.slice(0, max).replace(/[\ud800-\udbff]$/, "") : null;
+    };
+    const text = (v, max) => clean(v?.simpleText ?? v?.content ?? v?.runs?.map(x => x?.text || "").join(""), max);
+    // Requests are anonymous: credentials are omitted and only these client fields are sent. The page's own client
+    // version is used once it has loaded; until then YouTube accepts this older one, so there is no need to wait.
+    const configured = window.ytcfg?.get?.("INNERTUBE_CONTEXT")?.client || {};
+    const client = { clientName: "WEB", clientVersion: /^2\.[\d.]{1,40}$/.test(configured.clientVersion) ? configured.clientVersion : "2.20260101.00.00", hl: "en", gl: /^[A-Z]{2}$/.test(configured.gl) ? configured.gl : "US" };
+    // Posts to one of the site's own data endpoints and returns { data } or { error }; badRequest is the error for HTTP 400.
+    const call = async (endpoint, body, badRequest) => {
+      let res, raw, data = null;
+      try {
+        res = await fetch("/youtubei/v1/" + endpoint + "?prettyPrint=false", { method: "POST", credentials: "omit", headers: { "content-type": "application/json" }, body: JSON.stringify({ context: { client }, ...body }), signal: context?.signal });
+        raw = await res.text();
+      } catch { return { error: fail(context?.signal?.aborted ? "canceled" : "site_error", "The request to YouTube did not complete. Nothing was changed and no automatic retry was made.") }; }
+      try { data = JSON.parse(raw); } catch { /* handled below */ }
+      if (res.status === 429) return { error: fail("rate_limited", "YouTube is rate limiting this browser (HTTP 429); wait several minutes before trying again.") };
+      if (res.status === 403 || (!data && /unusual traffic|\/sorry\//i.test(raw))) return { error: fail("challenge", "YouTube refused the request or raised a bot check; a person has to clear it in this browser. Do not retry automatically.") };
+      if (res.status === 400 && badRequest) return { error: badRequest };
+      if (res.status === 404 || data?.alerts?.some(x => x?.alertRenderer?.type === "ERROR")) return { error: fail("not_found", "YouTube shows no such public resource to anonymous visitors.") };
+      if (res.status >= 400) return { error: fail("site_error", "YouTube " + endpoint + " returned HTTP " + res.status + ".") };
+      if (!data || typeof data !== "object" || Array.isArray(data)) return { error: fail("site_changed", "YouTube " + endpoint + " returned an unexpected body.") };
+      return { data };
+    };
+    // @xwebmcp-end
     const keys = ["channel_id", "tab", "sort", "page_token"];
     if (!input || typeof input !== "object" || Array.isArray(input) || Object.keys(input).some(k => !keys.includes(k))) return fail("invalid_input", "Unknown or missing input fields.");
     const paging = input.page_token !== undefined;
@@ -190,42 +219,19 @@
     } else if (typeof input.channel_id !== "string" || !/^(UC[A-Za-z0-9_-]{22}|@[A-Za-z0-9._-]{3,30})$/.test(input.channel_id) || (input.tab !== undefined && !["videos", "shorts"].includes(input.tab)) || (input.sort !== undefined && !["latest", "popular", "oldest"].includes(input.sort))) return fail("invalid_input", "Use a channel_id from search or an @handle, optional tab videos or shorts, and optional sort latest, popular or oldest.");
     if (context?.signal?.aborted) return fail("canceled", "Canceled before any request.");
     if (location.origin !== "https://www.youtube.com") return fail("wrong_page", "Open the main www.youtube.com web app first. Nothing was changed.");
-    const config = window.ytcfg?.get?.("INNERTUBE_CONTEXT")?.client;
-    if (!config || config.clientName !== "WEB" || typeof config.clientVersion !== "string" || !/^[\w.]{1,40}$/.test(config.clientVersion)) return fail("wrong_page", "The main YouTube web app configuration is unavailable; wait for it to load.");
-    const client = { clientName: "WEB", clientVersion: config.clientVersion, hl: "en", gl: /^[A-Z]{2}$/.test(config.gl) ? config.gl : "US" };
-    const call = async (body, followed = false, endpoint = "browse") => {
-      try {
-        const res = await fetch("/youtubei/v1/" + endpoint + "?prettyPrint=false", { method: "POST", credentials: "omit", headers: { "content-type": "application/json" }, body: JSON.stringify({ context: { client }, ...body }), signal: context?.signal });
-        const raw = await res.text();
-        if (res.status === 429) return { error: fail("rate_limited", "YouTube is rate limiting this browser. Do not retry automatically.") };
-        if (res.status === 403) return { error: fail("challenge", "YouTube refused access or raised a bot check. Do not retry automatically.") };
-        let data;
-        try { data = JSON.parse(raw); } catch {
-          if (/unusual traffic|\/sorry\//i.test(raw)) return { error: fail("challenge", "YouTube raised a bot check. Do not retry automatically.") };
-          if (res.ok) return { error: fail("site_changed", "YouTube returned non-JSON browse data.") };
-        }
-        if (res.status === 404) return { error: fail("not_found", "The requested public resource was not found.") };
-        if (res.status === 400 && paging) return { error: !followed ? fail("invalid_page_token", "YouTube did not accept this page_token; it may be altered or expired. Start again from the first page.") : fail("site_error", "YouTube refused a continuation page it had linked to (HTTP 400); the page_token you passed was accepted.") };
-        if (!res.ok) return { error: fail("site_error", "YouTube returned HTTP " + res.status + ".") };
-        if (!data || typeof data !== "object" || Array.isArray(data)) return { error: fail("site_changed", "YouTube returned an unexpected browse response.") };
-        if (data.error) return { error: fail("site_error", "YouTube returned an API error.") };
-        if (data.alerts?.some(x => x.alertRenderer?.type === "ERROR")) return { error: fail("not_found", "This resource is unavailable to anonymous public reads.") };
-        return { data };
-      } catch { return { error: fail(context?.signal?.aborted ? "canceled" : "site_error", "The browse request did not complete. No automatic retry was made.") }; }
-    };
-    const clean = (value, max = 300) => typeof value === "string" ? value.replace(/[\u0000-\u001f\u007f-\u009f]+/g, " ").replace(/\s+/g, " ").trim().slice(0, max).replace(/[\ud800-\udbff]$/, "") : "";
-    const text = v => clean(v?.simpleText ?? v?.content ?? v?.runs?.map(x => x.text || "").join(""));
     const tabsOf = d => (d.contents?.twoColumnBrowseResultsRenderer?.tabs || []).map(x => x.tabRenderer).filter(Boolean);
-    let channelId = input.channel_id, sorted = false;
+    let channelId = input.channel_id, continued = paging;
     if (!paging && channelId[0] === "@") {
-      const resolved = await call({ url: "https://www.youtube.com/" + channelId }, false, "navigation/resolve_url");
+      const resolved = await call("navigation/resolve_url", { url: "https://www.youtube.com/" + channelId });
       if (resolved.error) return resolved.error.error_kind === "not_found" ? fail("not_found", "No channel has the handle " + channelId + ".") : resolved.error;
       channelId = resolved.data.endpoint?.browseEndpoint?.browseId;
       if (!/^UC[A-Za-z0-9_-]{22}$/.test(channelId)) return fail("not_found", input.channel_id + " does not lead to a channel.");
     }
-    let response = await call(paging ? { continuation: input.page_token } : { browseId: channelId });
+    let response = await call("browse", paging ? { continuation: input.page_token } : { browseId: channelId }, paging ? fail("invalid_page_token", "YouTube did not accept this page_token; it may be altered or expired. Start again from the first page.") : undefined);
     if (response.error) return response.error;
     let data = response.data;
+    const unattested = { channel_id: null };
+    // @xwebmcp-inline lib/youtube-continuation.js
     // YouTube can answer a continuation with pages that hold nothing but the next continuation, several in a row
     // before more videos; follow up to 10 of them. A page like that without a token ends the list.
     const continuationOnly = d => {
@@ -239,14 +245,15 @@
       if (token && seen.has(token)) return fail("site_changed", "YouTube returned a continuation token it had already served; the list cannot be paged further.");
       if (!token || hops === 10) {
         const warnings = [token ? "YouTube returned " + (hops + 1) + " continuation pages without videos; pass next_page_token to keep paging." : "The list has ended.", "YouTube does not attest the originating resource for a continuation; its id and title are null."];
-        return { status: token ? "ok" : "no_results", channel_id: null, items: [], next_page_token: token, truncated: false, unsupported_count: 0, warnings };
+        return { status: token ? "ok" : "no_results", ...unattested, items: [], next_page_token: token, truncated: false, unsupported_count: 0, warnings };
       }
       seen.add(token);
       if (context?.signal?.aborted) return fail("canceled", "Canceled between continuation pages.");
-      response = await call({ continuation: token }, true);
+      response = await call("browse", { continuation: token });
       if (response.error) return response.error;
       data = response.data;
     }
+    // @xwebmcp-end
     try {
       if (!paging) {
         if (data.metadata?.channelMetadataRenderer?.externalId !== channelId) return fail("site_changed", "The response did not identify the requested channel.");
@@ -256,33 +263,34 @@
         if (!tab.selected) {
           const endpoint = tab.endpoint?.browseEndpoint;
           if (endpoint?.browseId !== channelId || typeof endpoint.params !== "string" || endpoint.params.length > 2000) return fail("site_changed", "The channel tab has no usable same-channel browse endpoint.");
-          response = await call({ browseId: channelId, params: endpoint.params });
+          response = await call("browse", { browseId: channelId, params: endpoint.params });
           if (response.error) return response.error;
           data = response.data;
           if (data.metadata?.channelMetadataRenderer?.externalId !== channelId || !tabsOf(data).some(x => x.selected && x.title === title)) return fail("site_changed", "The response did not select the requested channel tab.");
         }
         if (input.sort) {
           const chips = (tabsOf(data).find(x => x.selected)?.content?.richGridRenderer?.header?.chipBarViewModel?.chips || []).map(x => x?.chipViewModel).filter(Boolean);
-          const chip = chips.find(x => clean(x.text).toLowerCase() === input.sort);
+          const chip = chips.find(x => clean(x.text)?.toLowerCase() === input.sort);
           if (!chip) return fail("sort_unavailable", "This tab shows no " + input.sort + " sort chip" + (chips.length ? " (it shows " + chips.map(x => clean(x.text, 30)).join(", ") + ")" : "") + "; call again without sort.");
           if (!chip.selected) {
             const token = chip.tapCommand?.innertubeCommand?.continuationCommand?.token;
             if (typeof token !== "string" || !/^[A-Za-z0-9_%=.+/:-]{16,16000}$/.test(token)) return fail("site_changed", "The sort chip has no usable continuation token.");
-            response = await call({ continuation: token });
+            response = await call("browse", { continuation: token });
             if (response.error) return response.error;
             data = response.data;
-            sorted = true;
+            continued = true;
           }
         }
       }
+      // @xwebmcp-inline lib/youtube-list-items.js
       const selected = tabsOf(data).find(x => x.selected);
       const actions = data.onResponseReceivedActions || data.onResponseReceivedCommands;
       const continuationLists = Array.isArray(actions) ? actions.flatMap(x => [x?.appendContinuationItemsAction?.continuationItems, x?.reloadContinuationItemsCommand?.continuationItems].filter(Array.isArray)) : [];
-      const roots = paging || sorted ? continuationLists.flat() : selected?.content ? [selected.content] : null;
-      if (!Array.isArray(roots) || ((paging || sorted) && !continuationLists.length)) return fail("site_changed", "No recognized browse content was returned.");
+      const roots = continued ? continuationLists.flat() : selected?.content ? [selected.content] : null;
+      if (!Array.isArray(roots) || (continued && !continuationLists.length)) return fail("site_changed", "No recognized browse content was returned.");
       const items = [];
       let next = null, truncated = false, unsupported = 0, empty = false, scanned = 0, outputUnits = 0;
-      const stack = [...(paging || sorted ? continuationLists : roots)].reverse();
+      const stack = [...(continued ? continuationLists : roots)].reverse();
       while (stack.length && scanned++ < 20000) {
         const node = stack.pop();
         if (!node || typeof node !== "object") continue;
@@ -324,6 +332,7 @@
       const warnings = [];
       if (truncated) warnings.push("Only the first " + items.length + " items are returned due to count/size bounds. The next token skips omitted items from this page.");
       if (paging) warnings.push("YouTube does not attest the originating resource for a continuation; its id and title are null.");
+      // @xwebmcp-end
       return { status: items.length || next ? "ok" : "no_results", channel_id: paging ? null : channelId, items, next_page_token: next, truncated, unsupported_count: unsupported, warnings };
     } catch { return fail("site_changed", "The channel tab response layout could not be read safely."); }
   }

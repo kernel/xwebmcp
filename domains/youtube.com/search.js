@@ -105,7 +105,7 @@
         },
         {
           type: "object", additionalProperties: false, required: ["status", "error_kind", "error_message"],
-          properties: { status: { const: "error" }, error_kind: { enum: ["invalid_input", "wrong_page", "filter_unavailable", "invalid_page_token", "challenge", "rate_limited", "site_error", "site_changed"] }, error_message: { type: "string", minLength: 1, maxLength: 600 } }
+          properties: { status: { const: "error" }, error_kind: { enum: ["invalid_input", "wrong_page", "filter_unavailable", "invalid_page_token", "not_found", "challenge", "rate_limited", "site_error", "site_changed", "canceled"] }, error_message: { type: "string", minLength: 1, maxLength: 600 } }
         }
       ]
     },
@@ -116,7 +116,36 @@
     const MAX_RESULTS = 200;
     // Bound the complete serialized response, including tokens and warnings.
     const MAX_UNITS = 75000;
-    const fail = (kind, message) => ({ status: "error", error_kind: kind, error_message: message.replace(/[\u0000-\u001f\u007f-\u009f]+/g, " ").slice(0, 600).replace(/[\ud800-\udbff]$/, "") });
+    // @xwebmcp-inline lib/youtube-innertube.js
+    const fail = (kind, message) => ({ status: "error", error_kind: kind, error_message: message });
+    const clean = (value, max = 300) => {
+      if (typeof value !== "string") return null;
+      const text = value.replace(/[\u0000-\u001f\u007f-\u009f]+/g, " ").replace(/\s+/g, " ").trim();
+      // Cut at a UTF-16 boundary without leaving half of a surrogate pair.
+      return text ? text.slice(0, max).replace(/[\ud800-\udbff]$/, "") : null;
+    };
+    const text = (v, max) => clean(v?.simpleText ?? v?.content ?? v?.runs?.map(x => x?.text || "").join(""), max);
+    // Requests are anonymous: credentials are omitted and only these client fields are sent. The page's own client
+    // version is used once it has loaded; until then YouTube accepts this older one, so there is no need to wait.
+    const configured = window.ytcfg?.get?.("INNERTUBE_CONTEXT")?.client || {};
+    const client = { clientName: "WEB", clientVersion: /^2\.[\d.]{1,40}$/.test(configured.clientVersion) ? configured.clientVersion : "2.20260101.00.00", hl: "en", gl: /^[A-Z]{2}$/.test(configured.gl) ? configured.gl : "US" };
+    // Posts to one of the site's own data endpoints and returns { data } or { error }; badRequest is the error for HTTP 400.
+    const call = async (endpoint, body, badRequest) => {
+      let res, raw, data = null;
+      try {
+        res = await fetch("/youtubei/v1/" + endpoint + "?prettyPrint=false", { method: "POST", credentials: "omit", headers: { "content-type": "application/json" }, body: JSON.stringify({ context: { client }, ...body }), signal: context?.signal });
+        raw = await res.text();
+      } catch { return { error: fail(context?.signal?.aborted ? "canceled" : "site_error", "The request to YouTube did not complete. Nothing was changed and no automatic retry was made.") }; }
+      try { data = JSON.parse(raw); } catch { /* handled below */ }
+      if (res.status === 429) return { error: fail("rate_limited", "YouTube is rate limiting this browser (HTTP 429); wait several minutes before trying again.") };
+      if (res.status === 403 || (!data && /unusual traffic|\/sorry\//i.test(raw))) return { error: fail("challenge", "YouTube refused the request or raised a bot check; a person has to clear it in this browser. Do not retry automatically.") };
+      if (res.status === 400 && badRequest) return { error: badRequest };
+      if (res.status === 404 || data?.alerts?.some(x => x?.alertRenderer?.type === "ERROR")) return { error: fail("not_found", "YouTube shows no such public resource to anonymous visitors.") };
+      if (res.status >= 400) return { error: fail("site_error", "YouTube " + endpoint + " returned HTTP " + res.status + ".") };
+      if (!data || typeof data !== "object" || Array.isArray(data)) return { error: fail("site_changed", "YouTube " + endpoint + " returned an unexpected body.") };
+      return { data };
+    };
+    // @xwebmcp-end
     const allowed = ["query", "type", "duration", "upload_date", "sort_by", "page_token"];
     if (!input || typeof input !== "object" || Array.isArray(input) || Object.keys(input).some(k => !allowed.includes(k))) return fail("invalid_input", "Unknown or missing input; allowed fields are " + allowed.join(", ") + ".");
     const FILTERS = [
@@ -144,27 +173,6 @@
     } else if (query === null) return fail("invalid_input", "Give a query for a new search, or a page_token for the next page.");
 
     if (location.origin !== ORIGIN) return fail("wrong_page", "Open a https://www.youtube.com page first; this tool calls the site's search from that page. Nothing was changed.");
-    const configured = window.ytcfg && typeof window.ytcfg.get === "function" ? (window.ytcfg.get("INNERTUBE_CONTEXT") || {}).client : null;
-    if (!configured || typeof configured.clientVersion !== "string" || !/^[\w.]{1,40}$/.test(configured.clientVersion)) return fail("site_error", "YouTube has not finished loading its page configuration; wait for the page to load and call again. Nothing was changed.");
-    if (configured.clientName !== "WEB") return fail("wrong_page", "This YouTube page is not the main web app; open https://www.youtube.com/ and call again. Nothing was changed.");
-    // Only these client fields are sent: the request is anonymous and carries no user, visitor or session data.
-    const clientContext = { client: { clientName: "WEB", clientVersion: configured.clientVersion, hl: "en", gl: /^[A-Z]{2}$/.test(configured.gl) ? configured.gl : "US" } };
-
-    const call = async (body, badRequest) => {
-      let res, text;
-      try {
-        res = await fetch("/youtubei/v1/search?prettyPrint=false", { method: "POST", credentials: "omit", headers: { "content-type": "application/json" }, body: JSON.stringify({ context: clientContext, ...body }), signal: context && context.signal });
-        text = await res.text();
-      } catch (error) { return { error: fail("site_error", "The request to YouTube failed (" + (error && error.name ? error.name : "network error") + "). Nothing was changed.") }; }
-      if (res.status === 429) return { error: fail("rate_limited", "YouTube is rate limiting this browser (HTTP 429); wait several minutes before searching again.") };
-      if (res.status === 403) return { error: fail("challenge", "YouTube refused the request (HTTP 403), which usually means a bot check; a person has to clear it in this browser. Do not retry automatically.") };
-      if (res.status === 400 && badRequest && !/unusual traffic|\/sorry\//i.test(text)) return { error: badRequest };
-      let json = null;
-      try { json = JSON.parse(text); } catch { /* handled below */ }
-      if (!json || typeof json !== "object") return { error: /unusual traffic|\/sorry\//i.test(text) ? fail("challenge", "YouTube served an unusual-traffic page instead of results; a person has to clear it in this browser.") : fail("site_error", "YouTube returned HTTP " + res.status + " with a non-JSON body.") };
-      if (res.status >= 400) return { error: fail("site_error", "YouTube search returned HTTP " + res.status + (json.error && typeof json.error.message === "string" ? ": " + json.error.message.slice(0, 200) : ".")) };
-      return { json };
-    };
     const groupsOf = json => {
       try {
         const dialog = json?.header?.searchHeaderRenderer?.searchFilterButton?.buttonRenderer?.command?.openPopupAction?.popup?.searchFilterOptionsDialogRenderer;
@@ -206,27 +214,27 @@
 
     let response;
     if (pageToken !== undefined) {
-      const page = await call({ continuation: pageToken }, fail("invalid_page_token", "YouTube did not accept this page_token; it may be altered, expired or from a different search. Start a new search."));
+      const page = await call("search", { continuation: pageToken }, fail("invalid_page_token", "YouTube did not accept this page_token; it may be altered, expired or from a different search. Start a new search."));
       if (page.error) return page.error;
-      response = page.json;
+      response = page.data;
     } else {
-      let step = await call({ query });
+      let step = await call("search", { query });
       if (step.error) return step.error;
       for (const [key, title, labels] of FILTERS) {
         if (input[key] === undefined || input[key] === "any") continue;
         const label = labels[input[key]];
-        const group = (groupsOf(step.json) || []).find(g => g.title === title);
+        const group = (groupsOf(step.data) || []).find(g => g.title === title);
         const option = group && group.options.find(o => o.label === label);
-        if ((!option || option.disabled) && isEmptyPage(step.json)) return noResults(step.json);
+        if ((!option || option.disabled) && isEmptyPage(step.data)) return noResults(step.data);
         if (!option) return fail("filter_unavailable", "The site offers no '" + label + "' option in its '" + title + "' filter for this search" + (group ? " (offered: " + group.options.map(o => o.label).join(", ") + ")" : " (the filter group is not offered)") + ". Nothing was changed.");
         if (option.selected) continue;
         if (option.disabled) return fail("filter_unavailable", "The site shows the '" + label + "' option in its '" + title + "' filter but disables it for this search: the site offers some filters only for some result types (for example neither Duration nor Upload date for channels or playlists, and no Duration for Shorts). Nothing was changed.");
         if (typeof option.params !== "string" || !option.params) return fail("site_changed", "The site's '" + label + "' filter has no request token; the filter menu layout has changed.");
-        step = await call({ query, params: option.params });
+        step = await call("search", { query, params: option.params });
         if (step.error) return step.error;
-        if (selectedIn(step.json, title) !== label) return fail("site_changed", "The site did not apply the '" + label + "' filter; the filter menu behaviour has changed.");
+        if (selectedIn(step.data, title) !== label) return fail("site_changed", "The site did not apply the '" + label + "' filter; the filter menu behaviour has changed.");
       }
-      response = step.json;
+      response = step.data;
     }
 
     const observedAt = new Date().toISOString();
@@ -239,13 +247,6 @@
     let token = listed.token;
     if (pageToken !== undefined && blocks.length === 0) return fail("invalid_page_token", "YouTube returned no results for this page_token; it may be altered, expired or from a different search. Start a new search.");
 
-    const clean = (value, max) => {
-      if (typeof value !== "string") return null;
-      const text = value.replace(/[\u0000-\u001f\u007f-\u009f]+/g, " ").replace(/\s+/g, " ").trim();
-      // Cut at a UTF-16 boundary without leaving half of a surrogate pair.
-      return text ? text.slice(0, max).replace(/[\ud800-\udbff]$/, "") : null;
-    };
-    const textOf = node => (node && typeof node.simpleText === "string" ? node.simpleText : node && Array.isArray(node.runs) ? node.runs.map(r => (r && typeof r.text === "string" ? r.text : "")).join("") : null);
     const VIDEO_ID = /^[A-Za-z0-9_-]{11}$/;
     const CHANNEL_ID = /^UC[A-Za-z0-9_-]{22}$/;
     const HANDLE = /^@[A-Za-z0-9._-]{3,30}$/;
@@ -256,7 +257,7 @@
     let badgesTruncated = false;
     const parseVideo = v => {
       const id = VIDEO_ID.test(v.videoId) ? v.videoId : null;
-      const title = clean(textOf(v.title), 300);
+      const title = text(v.title, 300);
       if (!id || !title) return null;
       const owner = v.ownerText?.runs?.[0];
       const endpoint = owner?.navigationEndpoint?.browseEndpoint;
@@ -266,8 +267,8 @@
       return {
         kind: "video", video_id: id, url: ORIGIN + "/watch?v=" + id, title,
         channel: { name: clean(owner?.text, 200), channel_id: CHANNEL_ID.test(endpoint?.browseId) ? endpoint.browseId : null, handle: handleFrom(endpoint?.canonicalBaseUrl) },
-        views_text: clean(textOf(v.viewCountText), 60), published_text: clean(textOf(v.publishedTimeText), 60), duration_text: clean(textOf(v.lengthText), 20),
-        snippet: clean(textOf(v.detailedMetadataSnippets?.[0]?.snippetText), 300), badges, is_live: sourceBadges.some(b => clean(b?.metadataBadgeRenderer?.label, 40) === "LIVE")
+        views_text: text(v.viewCountText, 60), published_text: text(v.publishedTimeText, 60), duration_text: text(v.lengthText, 20),
+        snippet: text(v.detailedMetadataSnippets?.[0]?.snippetText, 300), badges, is_live: sourceBadges.some(b => clean(b?.metadataBadgeRenderer?.label, 40) === "LIVE")
       };
     };
     const parseShort = s => {
@@ -278,15 +279,15 @@
     };
     const parseChannel = c => {
       if (!CHANNEL_ID.test(c.channelId)) return null;
-      const title = clean(textOf(c.title), 300);
+      const title = text(c.title, 300);
       if (!title) return null;
       // The site puts the @handle in subscriberCountText and the subscriber count in videoCountText, so classify by content.
-      const texts = [textOf(c.subscriberCountText), textOf(c.videoCountText)].map(t => clean(t, 80)).filter(Boolean);
+      const texts = [text(c.subscriberCountText, 80), text(c.videoCountText, 80)].filter(Boolean);
       const handle = texts.find(t => HANDLE.test(t)) ?? handleFrom(c.navigationEndpoint?.browseEndpoint?.canonicalBaseUrl);
       return {
         kind: "channel", channel_id: c.channelId, url: ORIGIN + (handle ? "/" + handle : "/channel/" + c.channelId), title, handle,
         subscriber_text: texts.find(t => /subscribers?$/i.test(t)) ?? null, video_count_text: texts.find(t => /\bvideos?$/i.test(t)) ?? null,
-        description_snippet: clean(textOf(c.descriptionSnippet), 300), is_verified: (c.ownerBadges || []).some(b => b?.metadataBadgeRenderer?.style === "BADGE_STYLE_TYPE_VERIFIED")
+        description_snippet: text(c.descriptionSnippet, 300), is_verified: (c.ownerBadges || []).some(b => b?.metadataBadgeRenderer?.style === "BADGE_STYLE_TYPE_VERIFIED")
       };
     };
     const parsePlaylist = l => {
@@ -323,10 +324,10 @@
         } else if (block.searchPyvRenderer || block.adSlotRenderer) sponsored++;
         else if (block.backgroundPromoRenderer || block.messageRenderer) emptyState = true;
         else if (block.showingResultsForRenderer) {
-          const corrected = clean(textOf(block.showingResultsForRenderer.correctedQuery), 200);
+          const corrected = text(block.showingResultsForRenderer.correctedQuery, 200);
           warnings.push("YouTube is showing results for a corrected query" + (corrected ? " ('" + corrected + "')" : "") + ", not the exact text searched.");
         } else if (block.didYouMeanRenderer) {
-          const suggestion = clean(textOf(block.didYouMeanRenderer.correctedQuery), 200);
+          const suggestion = text(block.didYouMeanRenderer.correctedQuery, 200);
           warnings.push("YouTube suggests a different query" + (suggestion ? " ('" + suggestion + "')" : "") + "; these results are for the text searched.");
         } else unsupported++;
       } catch { unsupported++; }
