@@ -186,7 +186,6 @@ async function planRun() {
     thinking: opts.thinking ?? null,
     max_budget_usd: flags.maxBudgetUsd,
     adoption: flags.adoption,
-    treatment_only: opts["treatment-only"],
     feedback: opts.feedback,
     allowlist: experiment.allowlist,
     system_prompt_sha256: sha256(experiment.system_prompt),
