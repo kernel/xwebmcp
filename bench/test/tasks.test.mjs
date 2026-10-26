@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
+import { gradeAnswer } from "../grade.mjs";
 import { ALLOW, fill, loadIntents, loadSchema, pastDates, resolveFixture, trialPrompt, validateDomain, validateIntent } from "../lib/intents.mjs";
 import { checkSchema } from "../lib/schema.mjs";
 import { composeBatch, evaluateDefinitions, matchesUrlPattern, normalize, registeredTools, resolveSource } from "../lib/tools.mjs";
@@ -213,13 +214,26 @@ test("a prepare intent's actions are registered, and must exist", async () => {
   assert.deepEqual(await registeredTools({ ...base, domain: "other.com", exclude: {}, actions: [], entry_tool: undefined, tools: [{ ref: "main" }] }, ["main"], show), []);
 });
 
-test("a domain's actions reach its prepare intents, its checkout actions only those that allow checkout, and intents default to main", () => {
+test("a domain's page actions reach every intent, its actions its prepare intents, its checkout actions only those that allow checkout, and intents default to main", () => {
   const intents = loadIntents(benchDir);
   const actions = (id) => intents.find(i => i.id === id).actions;
   assert.deepEqual(actions("delta-cheapest-fare"), []);
+  assert.ok(actions("google-flights-cheapest-fare").includes("search_flights"));
+  assert.ok(!actions("google-flights-cheapest-fare").includes("select_flight"));
   assert.deepEqual(actions("delta-cart-main-classic"), ["select_fare", "select_fare_experience"]);
   assert.ok(actions("delta-checkout-signed-in").includes("continue_checkout"));
   assert.deepEqual(intents.find(i => i.id === "delta-cart-main-classic").tools, [{ repo: "kernel/xwebmcp", ref: "main" }]);
+});
+
+// What run.mjs registers at startup, from the tools in this checkout, so that a tool change that
+// would make an intent refuse to start (a named tool that is no longer read-only) fails here first.
+test("every intent on main registers its named tools and entry tool from this checkout", async () => {
+  const repoDir = join(benchDir, "..");
+  const show = (_sha, path) => readFileSync(join(repoDir, path), "utf8");
+  for (const intent of loadIntents(benchDir).filter(i => i.tools.every(t => t.ref === "main"))) {
+    const names = (await registeredTools(intent, intent.tools.map(() => "HEAD"), show)).map(t => t.name);
+    for (const name of [...intent.tools.flatMap(t => t.names ?? []), ...(intent.entry_tool ? [intent.entry_tool] : [])]) assert.ok(names.includes(name), `${intent.id}: ${name}`);
+  }
 });
 
 test("local browsers load the extension under the id Chrome gives it, and their MCP config fills in per browser", async () => {
@@ -342,4 +356,14 @@ test("the guard extension runs the guard on its hosts and is named by its conten
   assert.equal(writeGuardExtension(join(dir, "b"), guard).name, first.name);
   assert.notEqual(writeGuardExtension(join(dir, "c"), { ...guard, buttons: "^buy$" }).name, first.name);
   assert.notEqual(writeGuardExtension(join(dir, "d"), { ...guard, selectors: "#buy" }).name, first.name);
+});
+
+test("the DoorDash address check reads the header's address line, not a store or place named after the address", () => {
+  const intent = loadIntents(benchDir).find(i => i.id === "doordash-pizza-near-address");
+  const answer = JSON.stringify({ places: [1, 2, 3].map(n => ({ name: `Pizza ${n}`, detail: "$0 delivery fee" })) });
+  const grade = text => gradeAnswer(intent, loadSchema(benchDir, intent), answer, { output: { url: "https://www.doordash.com/", title: "DoorDash", text, fields: {}, missing: [], invalid: [] } });
+  for (const text of ["DoorDash\n4 Times Sq\nSign In", "DoorDash\nTimes Square\nDelivery"]) assert.equal(grade(text).outcome, "correct", text);
+  for (const text of ["DoorDash\nYour Address\nJohn's of Times Square", "DoorDash\nJohn's of Times Square", "4 Times Sq, New York, NY 10036", "DoorDash\nTimes Square Kitchen\nDelivery", "DoorDash\nTimes Squares Square Dance Club\nDelivery", "DoorDash\nCrowne Plaza Manhattan Times Square\nDelivery"]) {
+    assert.equal(grade(text).outcome, "wrong", text);
+  }
 });

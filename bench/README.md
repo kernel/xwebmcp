@@ -13,7 +13,8 @@ Kernel browser. Both arms get the same model, prompt, kernel MCP server, tool al
 browser settings:
 
 - **control**: a fresh browser on the intent's start URL, with nothing registered;
-- **treatment**: the same, plus the domain's read-only tools at commits pinned for the run.
+- **treatment**: the same, plus the domain's read-only tools at commits pinned for the run, and
+  its `page_actions` (see below).
 
 Both arms get the same system prompt, which tells the agent to list the page's WebMCP tools first
 and fall back to Playwright or computer actions when none fits, as Kernel's docs tell customers
@@ -211,7 +212,8 @@ and deletes every browser.
   `guard`, and see [Checkout intents](#checkout-intents).
 - `tools` (optional, main by default) lists kernel/xwebmcp refs (or full `sha`s) to register
   from, such as a PR's branch after main. Treatment gets every tool `registry.json` lists for the
-  domain at those commits whose file declares `readOnlyHint: true`; later sources replace earlier
+  domain at those commits whose file declares `readOnlyHint: true`, plus the domain's
+  `page_actions` (and a prepare intent's `actions`); later sources replace earlier
   tools of the same name. Tool files are evaluated in a sandboxed child process. `names`
   (optional) are tools the intent expects to be used, and the run fails at start if any would not
   be registered. `entry_tool` (optional) must be live on the start page. A `pr` whose branch is
@@ -226,8 +228,9 @@ and deletes every browser.
 - `agreement` (optional) compares the arms' answers within a pair. `{"path": "price", "better":
   "lower", "tolerance": 1}` counts pairs where one arm missed the cheapest fare. `{"path":
   "issues[]", "same": true}` is for one right answer that changes too often to pin in rules, and
-  counts both-correct pairs whose answers differ as sets. Leave it off intents with many right
-  answers.
+  counts both-correct pairs whose answers differ as sets. A path without `[]` compares the whole
+  value, so `{"path": "games", "same": true}` also counts a reordered array as differing. Leave it
+  off intents with many right answers.
 - `opt_in` (optional) is a reason the intent runs only when named with `--intent`, such as a
   checkout intent not yet rehearsed on the live site.
 
@@ -235,6 +238,11 @@ and deletes every browser.
 
 - `exclude`: read-only tools always left out, each with a reason;
 - `needs_sign_in`: read-only tools that need an account, left out unless the domain has a profile;
+- `page_actions`: tools that change only what the site's page shows, never site state, given to
+  every intent on the domain, each with a reason: submitting a search, switching a results tab,
+  sorting, filtering, expanding a list or opening a details panel. google.com lists its Google
+  Flights search and results controls, which press Google's own controls and so are not read-only;
+  choosing a flight stays out;
 - `actions`: tools that change site state that are safe to give the domain's `prepare` intents,
   each with a reason, such as adding to a cart or choosing a fare. Tools that sign in, pay, book
   or send stay out;

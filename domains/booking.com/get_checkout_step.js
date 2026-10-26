@@ -3,14 +3,14 @@
   match: { url_patterns: ["https://secure.booking.com/*"] },
   tool: {
     name: "get_checkout_step",
-    description: "Read Booking.com's checkout page open in this tab, reached with select_room: secure.booking.com/book.html, or tpi_book for a Partner Offer (partner_offer true): the current step (your_details or finish_booking), the property, check-in and check-out dates and times, what is selected (nights, rooms, party and room names), the total including taxes and fees with its currency, the taxes note, the cancellation policy and whether the browser is signed in. Read-only: never types, clicks or navigates. Elsewhere it returns wrong_page. English pages only.",
+    description: "Read Booking.com's checkout page open in this tab, reached with select_room: secure.booking.com/book.html, or tpi_book for a Partner Offer (partner_offer true): the current step (your_details or finish_booking), the property, check-in and check-out dates and times, what is selected (nights, rooms, party and room names), Booking.com's warning when the selection cannot hold the party (party_warning), the total including taxes and fees with its currency, the taxes note, the cancellation policy and whether the browser is signed in. Read-only: never types, clicks or navigates. Elsewhere it returns wrong_page. English pages only.",
     inputSchema: { type: "object", additionalProperties: false, properties: {} },
     outputSchema: {
       type: "object",
       oneOf: [
         {
           type: "object", additionalProperties: false,
-          required: ["status", "step", "partner_offer", "seller", "payment_timing", "property_id", "property_name", "check_in", "check_out", "check_in_time", "check_out_time", "selection", "units", "total", "currency", "total_text", "price_notes", "cancellation", "signed_in"],
+          required: ["status", "step", "partner_offer", "seller", "payment_timing", "property_id", "property_name", "check_in", "check_out", "check_in_time", "check_out_time", "selection", "units", "party_warning", "total", "currency", "total_text", "price_notes", "cancellation", "signed_in"],
           properties: {
             status: { const: "ok" },
             step: { enum: ["your_details", "finish_booking", "other"], description: "your_details asks for the guest's name and contact details; finish_booking asks for payment." },
@@ -22,6 +22,7 @@
             check_in_time: { type: ["string", "null"], maxLength: 100 }, check_out_time: { type: ["string", "null"], maxLength: 100 },
             selection: { type: ["string", "null"], maxLength: 300, description: "For example \"2 nights, 1 room for 2 adults\"; null on the final step, which does not show it." },
             units: { type: "array", maxItems: 20, items: { type: "string", maxLength: 300 }, description: "Selected rooms, for example \"1 x Double or Twin Room\", or the room name alone where a partner checkout shows no count; empty on the final step." },
+            party_warning: { type: ["string", "null"], maxLength: 300, description: "Booking.com's alert that the selection cannot hold the party, for example \"Your selection accommodates fewer than 3 guests. You need to fit 1 child (5 years old).\"; the stay is then for fewer people than searched. Null when the page shows none." },
             total: { type: ["number", "null"], description: "The price summary's total, which Booking.com says includes taxes and fees unless price_notes says otherwise." },
             currency: { type: ["string", "null"] }, total_text: { type: ["string", "null"], maxLength: 100 },
             price_notes: { type: "array", maxItems: 10, items: { type: "string", maxLength: 300 }, description: "Lines under the total, such as \"Includes taxes and fees\" or the amount in the property's currency." },
@@ -188,10 +189,13 @@
     const seller = partnerPage && step === "finish_booking" && sellerMatch && !/[{}]/.test(sellerMatch[1]) ? sellerMatch[1].slice(0, 200) : null;
     const nameEl = document.querySelector('[data-testid="property-details__metadata--property-type"]')?.closest("div")?.parentElement?.querySelector("h1, h2") || document.querySelector("h1, h2");
     const currency = totalEl ? totalEl.getAttribute("data-currency") : text(tid("header-currency-picker-trigger"));
+    // Booking.com flags a selection that cannot hold the searched party in an alert under "You selected".
+    const fewer = [...document.body.querySelectorAll("p, div, span")].find(e => !e.children.length && /^Your selection accommodates fewer than \d+ guests?\.?$/i.test(text(e) || "") && e.getClientRects().length);
+    const partyWarning = fewer ? sentences(blocks(fewer.closest('[role="alert"]') || fewer.parentElement)).slice(0, 300) : null;
     return {
       status: "ok", step, seller, payment_timing: paymentTiming, partner_offer: partnerPage || all.includes("Partner Offer"), property_id: hotelId, property_name: visible(nameEl),
       check_in: checkIn.date, check_out: checkOut.date, check_in_time: checkIn.time, check_out_time: checkOut.time,
-      selection, units,
+      selection, units, party_warning: partyWarning,
       total: Math.round(total * 100) / 100,
       currency: /^[A-Z]{3}$/.test(currency || "") ? currency : null,
       total_text: totalText, price_notes: notes.slice(0, 10).map(line => line.slice(0, 300)),

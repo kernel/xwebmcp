@@ -1,0 +1,10 @@
+{
+  "page_actions": {
+    "search_flights": "submits Google Flights' search form and reads the results page",
+    "set_results_view": "switches the results between Google's Best and Cheapest tabs",
+    "set_flight_sort": "chooses an entry in Google's sort menu",
+    "set_flight_filters": "sets Google's Stops and Airlines filters",
+    "show_more_flights": "presses View more flights once",
+    "get_flight_details": "opens one result's details panel"
+  }
+}

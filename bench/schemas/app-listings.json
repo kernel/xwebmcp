@@ -1,0 +1,19 @@
+{
+  "type": "object",
+  "required": ["apps"],
+  "properties": {
+    "apps": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["app", "rating", "review_count", "cheapest_paid_monthly_price"],
+        "properties": {
+          "app": { "type": "string", "minLength": 1 },
+          "rating": { "type": "number" },
+          "review_count": { "type": "integer" },
+          "cheapest_paid_monthly_price": { "type": "number" }
+        }
+      }
+    }
+  }
+}
