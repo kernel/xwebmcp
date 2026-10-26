@@ -159,7 +159,7 @@ test("get_app reads the user tags and the all-languages total the header leaves 
 
 test("get_app reads several apps in one call, in input order", async () => {
   const fetched = [];
-  const { output } = await run("get_app", { apps: ["4242", "https://store.steampowered.com/app/1/", "x"] }, { url: ORIGIN + "/", html: page("<div>Welcome</div>"), fetched, pages: { "/app/4242/": { html: APP, url: "/app/4242/Fabricated_Farm/" } } });
+  const { output } = await run("get_app", { apps: ["4242", "https://store.steampowered.com/app/1/", "https://store.steampowered.com/sub/1/"] }, { url: ORIGIN + "/", html: page("<div>Welcome</div>"), fetched, pages: { "/app/4242/": { html: APP, url: "/app/4242/Fabricated_Farm/" } } });
   assert.equal(output.status, "ok");
   assert.deepEqual(output.results.map(r => [r.status, r.app?.name ?? r.app_id]), [["ok", "Fabricated Farm"], ["not_found", "1"], ["invalid_input", null]]);
   assert.ok(output.results.every(r => !("available_actions" in r)));
@@ -314,7 +314,7 @@ test("get_app by id reports age checks, unknown apps and bad input", async () =>
   assert.deepEqual([output.status, output.app_id], ["not_ready", "4242"]);
   ({ output } = await run("get_app", { app: "99999999" }, { url: ORIGIN + "/", html: page(""), pages: { "/app/99999999/": { html: page("<div>Welcome</div>"), url: "/" } } }));
   assert.deepEqual([output.status, output.app_id], ["not_found", "99999999"]);
-  for (const app of ["", "abc", "https://evil.example/app/1/", "evil.example/store.steampowered.com/app/1/", "ftp://store.steampowered.com/app/1/", "https://store.steampowered.com/sub/1/", 7]) {
+  for (const app of ["", "https://evil.example/app/1/", "evil.example/store.steampowered.com/app/1/", "ftp://store.steampowered.com/app/1/", "https://store.steampowered.com/sub/1/", 7]) {
     const fetched = [];
     ({ output } = await run("get_app", { app }, { url: ORIGIN + "/", html: page(""), fetched }));
     assert.equal(output.status, "invalid_input", JSON.stringify(app));
@@ -322,6 +322,30 @@ test("get_app by id reports age checks, unknown apps and bad input", async () =>
   }
   ({ output } = await run("get_app", { app: "1", extra: true }, { url: ORIGIN + "/", html: page("") }));
   assert.equal(output.status, "invalid_input");
+});
+
+test("get_app reads a game named by title as Steam's first search suggestion for it", async () => {
+  const fetched = [];
+  const suggest = "/search/suggest?f=games&cc=DE&l=german&term=fabricated%20farm";
+  const home = page(`<div id="application_config" data-config="{&quot;COUNTRY&quot;:&quot;DE&quot;,&quot;LANGUAGE&quot;:&quot;german&quot;}"></div>`);
+  const pages = {
+    [suggest]: { html: `<a class="match match_bundle" data-ds-bundleid="77" href="${ORIGIN}/bundle/77/"><div class="match_name">Fabricated Farm Bundle</div></a><a class="match match_app" data-ds-appid="99" href="${ORIGIN}/app/99/"><div class="match_name">Fabricated Farm II</div></a><a class="match match_app" data-ds-appid="4242" href="${ORIGIN}/app/4242/"><div class="match_name">Studio’s Fabricated Farm®</div><div class="match_subtitle">$10.49</div></a>` },
+    "/app/4242/": { html: APP, url: "/app/4242/Fabricated_Farm/" }
+  };
+  const { output } = await run("get_app", { apps: ["fabricated farm", "4242"] }, { url: ORIGIN + "/", html: home, pages, fetched });
+  assert.deepEqual(fetched.map(f => f.path), [suggest, "/app/4242/", "/app/4242/"]);
+  assert.deepEqual(output.results.map(r => [r.status, r.app.app_id]), [["ok", "4242"], ["ok", "4242"]]);
+  assert.match(output.results[0].message, /^Steam's search box suggests Fabricated Farm II \(99\), Studio’s Fabricated Farm® \(4242\) for "fabricated farm"; this reads 4242, the suggestion named like it\. /);
+  assert.doesNotMatch(output.results[1].message, /suggests/);
+  const first = await run("get_app", { app: "fabricated" }, { url: ORIGIN + "/", html: page(""), pages: { "/search/suggest?f=games&cc=US&l=english&term=fabricated": pages[suggest], "/app/99/": { html: APP.replace("/app/4242/", "/app/99/") } } });
+  assert.equal(first.output.app.app_id, "99", "without a name match it reads Steam's first suggested app");
+  assert.match(first.output.message, /this reads 99, the first suggestion; pass another id/);
+
+  const none = await run("get_app", { app: "nothing like it" }, { url: ORIGIN + "/", html: page(""), pages: { "/search/suggest?f=games&cc=US&l=english&term=nothing%20like%20it": { html: "" } } });
+  assert.deepEqual([none.output.status, none.output.app_id], ["not_found", null]);
+  assert.match(none.output.message, /get_search_results/);
+  const down = await run("get_app", { app: "farm" }, { url: ORIGIN + "/", html: page(""), pages: { "/search/suggest?f=games&cc=US&l=english&term=farm": { status: 503, html: "" } } });
+  assert.equal(down.output.status, "not_ready");
 });
 
 test("get_app distinguishes failed HTTP requests from missing apps", async () => {

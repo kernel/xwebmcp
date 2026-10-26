@@ -20,11 +20,11 @@
     match: { url_patterns: ["https://store.steampowered.com/*"] },
     tool: {
       name: "get_app",
-      description: "Read a Steam Store app page: the one open in this tab (pass {}), or any app by id or store URL (pass app, or apps for up to 5 at once) from any store page without leaving it (to get ids from names, call get_search_results with term first), read from that page's markup as the store serves it to this browser. Returns, as the page shows it: the app's name, release date, developers, publishers, genres and user-defined tags; every purchase option in the Buy area (the game itself, editions and bundles) with its title, shown price, original price and discount; the store currency; and the review summaries Steam shows next to the header, such as Recent Reviews and All or English Reviews, plus the reviews section's total in all languages when the header shows only one language's, each with its summary (\"Very Positive\"), percent positive and review count. Read-only: never clicks, scrolls, opens a bundle or changes the review language. Prices are the store's prices for this browser's region, before tax, and are not a quote for checkout. An age-gated app returns status age_check: Steam wants a birth date entered in its own form first, which this tool does not do. An app Steam shows only to signed-in accounts (adult-only content) returns sign_in_required. An unknown app id returns not_found. Without app on a page that is not an app page it returns wrong_page with the actions available there.",
+      description: "Read a Steam Store app page: the one open in this tab (pass {}), or any app by id or store URL (pass app, or apps for up to 5 at once) from any store page without leaving it (pass a game's name instead and it reads the matching app Steam's search box suggests for it; check the returned name), read from that page's markup as the store serves it to this browser. Returns, as the page shows it: the app's name, release date, developers, publishers, genres and user-defined tags; every purchase option in the Buy area (the game itself, editions and bundles) with its title, shown price, original price and discount; the store currency; and the review summaries Steam shows next to the header, such as Recent Reviews and All or English Reviews, plus the reviews section's total in all languages when the header shows only one language's, each with its summary (\"Very Positive\"), percent positive and review count. Read-only: never clicks, scrolls, opens a bundle or changes the review language. Prices are the store's prices for this browser's region, before tax, and are not a quote for checkout. An age-gated app returns status age_check: Steam wants a birth date entered in its own form first, which this tool does not do. An app Steam shows only to signed-in accounts (adult-only content) returns sign_in_required. An unknown app id returns not_found. Without app on a page that is not an app page it returns wrong_page with the actions available there.",
       inputSchema: {
         type: "object", additionalProperties: false,
-        properties: { app: { type: "string", minLength: 1, maxLength: 300, description: "An app id such as '413150' or a store.steampowered.com/app/<id>/ URL, to read that app's page from any store page without leaving it. Omit to read the app page open in this tab." },
-          apps: { type: "array", minItems: 1, maxItems: 5, items: { type: "string", minLength: 1, maxLength: 300 }, description: "Instead of app, up to 5 app ids or store URLs to read in one call; results follows this order." }
+        properties: { app: { type: "string", minLength: 1, maxLength: 300, description: "An app id such as '413150', a store.steampowered.com/app/<id>/ URL, or a game's name, to read that app's page from any store page without leaving it. A name reads the app the header's Search the store box suggests for it: the suggestion whose name is or ends with the given name, else the first one; the message lists the suggestions. Omit to read the app page open in this tab." },
+          apps: { type: "array", minItems: 1, maxItems: 5, items: { type: "string", minLength: 1, maxLength: 300 }, description: "Instead of app, up to 5 app ids, store URLs or names to read in one call; results follows this order." }
         }
       },
       outputSchema: {
@@ -168,7 +168,7 @@
       const steamActions = (page, registered, example_term) => {
         const add = (tool, input, note) => ({ tool, registered: registered.known ? registered.names.includes(tool) : null, input, note });
         return [
-          add("get_app", page.type === "app" ? {} : null, page.type === "app" ? "Read this app's prices and review summaries." : page.type === "age_check" ? "Steam asks for a birth date first; enter it in the page's own form and press View Page, then call get_app." : "Pass app, an app id or store URL (for example a result's id from get_search_results), to read that app's page without leaving this one."),
+          add("get_app", page.type === "app" ? {} : null, page.type === "app" ? "Read this app's prices and review summaries." : page.type === "age_check" ? "Steam asks for a birth date first; enter it in the page's own form and press View Page, then call get_app." : "Pass app, an app id, store URL or game name (for example a result's id from get_search_results), to read that app's page without leaving this one."),
           add("get_search_results", page.type === "search" ? {} : example_term ? { term: example_term } : null, page.type === "search" ? "Read the results this search page shows, or pass term to read another search's results." : "Pass term to read the store's search results for it without leaving this page.")
         ];
       };
@@ -183,13 +183,26 @@
         const results = (await Promise.all(input.apps.map(app => get({ app })))).map(({ available_actions, ...result }) => result);
         return { status: "ok", message: results.map(r => r.message).join(" "), results, available_actions: actions };
       }
-      let wanted = null;
+      let wanted = null, suggested = null;
       if (input.app !== undefined) {
         const given = typeof input.app === "string" ? input.app.trim() : "";
         let url = null;
         try { url = /^\d+$/.test(given) ? null : new URL(/^store\.steampowered\.com\//i.test(given) ? "https://" + given : given, STEAM_ORIGIN); } catch { url = null; }
         wanted = /^\d{1,10}$/.test(given) ? given : url && /^https?:$/.test(url.protocol) && url.hostname === "store.steampowered.com" ? (/^\/app\/(\d{1,10})(?:\/|$)/.exec(url.pathname) || [])[1] ?? null : null;
-        if (!wanted) return notOk("invalid_input", "app must be a Steam app id such as '413150' or a store.steampowered.com/app/<id>/ URL. To find a game's id by its name, call get_search_results with term set to the name and use a row's id.", null);
+        // A name is looked up as the header's Search the store box suggests it, for this store's country and language.
+        if (!wanted && given && !/^(\w+:|\/)|steampowered\.com/i.test(given)) {
+          const config = JSON.parse(document.querySelector("#application_config")?.getAttribute("data-config") || "{}");
+          const suggest = await steamFetchPage("/search/suggest?f=games&cc=" + (config.COUNTRY || "US") + "&l=" + (config.LANGUAGE || "english") + "&term=" + encodeURIComponent(given));
+          if (!suggest.doc) return notOk("not_ready", "Steam's search suggestions did not answer for " + JSON.stringify(given) + " (HTTP " + suggest.status + "); try again, or call get_search_results with term.", null);
+          const apps = [...suggest.doc.querySelectorAll("a[data-ds-appid]")].map(a => ({ id: a.getAttribute("data-ds-appid"), name: steamText(a.querySelector(".match_name")) || "" }));
+          // The suggestion named like the given name (its whole name or its ending), else Steam's first suggestion.
+          const plain = text => " " + text.toLowerCase().replace(/[®™]/g, "").replace(/[‘’]/g, "'").replace(/\s+/g, " ").trim();
+          const named = apps.find(a => plain(a.name).endsWith(plain(given))), pick = named || apps[0];
+          if (!pick) return notOk("not_found", "Steam's search box suggests no app for " + JSON.stringify(given) + "; call get_search_results with term to see the store's results.", null);
+          wanted = pick.id;
+          suggested = "Steam's search box suggests " + apps.map(a => a.name + " (" + a.id + ")").join(", ") + " for " + JSON.stringify(given) + "; this reads " + pick.id + (named ? ", the suggestion named like it. " : ", the first suggestion; pass another id if you meant a different game. ");
+        }
+        if (!wanted) return notOk("invalid_input", "app must be a Steam app id such as '413150', a store.steampowered.com/app/<id>/ URL or a game's name.", null);
       }
 
       // The open app page is read as shown; another app is read from its page's markup without leaving this one.
@@ -270,7 +283,7 @@
       };
       return {
         status: "ok",
-        message: (source ? "Read from " + source + " without leaving this page. " : "") + name + ": " + (options.length ? options.length + " purchase option(s)" : "no purchase options shown") + "; " + (reviews.length ? reviews.map(r => r.label + " " + (r.summary || "none")).join(", ") : "no review summary shown") + ".",
+        message: (suggested || "") + (source ? "Read from " + source + " without leaving this page. " : "") + name + ": " + (options.length ? options.length + " purchase option(s)" : "no purchase options shown") + "; " + (reviews.length ? reviews.map(r => r.label + " " + (r.summary || "none")).join(", ") : "no review summary shown") + ".",
         app, currency: doc.querySelector('meta[itemprop="priceCurrency"]')?.getAttribute("content") || null,
         purchase_options: options, reviews, available_actions: actions
       };
