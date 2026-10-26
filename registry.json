@@ -1689,7 +1689,7 @@
       "url_patterns_reason": "Narrowed to github.com: it serves repositories, issues, pull requests and search, and the tools read its pages and endpoints same-origin; other github.com hosts are separate products (docs., gist., api. and others) where they cannot work.",
       "status": "draft",
       "last_verified": null,
-      "notes": "Reads a file or directory at a ref from its code page, requested without cookies. Not yet independently QA'd."
+      "notes": "DEFECT, left draft: (1) a text file GitHub displays but does not embed in the server-rendered page returns text null, line_count null and truncated false, as if binary: torvalds/linux MAINTAINERS (929 KB, 30861 lines, shown in full on github.com) on 2026-10-26; files up to ~300 KB (kernel/sched/core.c, git/git diff.c) returned text. (2) Directory listings stop at 300 entries with entries_total but no input to read the rest: git/git root returns 300 of 562 although the page embeds all 562. Also a submodule entry's path (git/git sha1collisiondetection) passed back is not_found. Otherwise independent QA on 2026-10-26 found correct reads at default branch, slash branch, tag, full and short SHA, Cyrillic/space/#/% paths, symlink, image, renamed repository, character-exact and surrogate-safe max_chars, not_found for missing repository/ref/path, invalid input, wrong_page and live throttled; no clicks or navigation. LFS files, empty repositories and signed-in tabs were not tested."
     },
     {
       "domain": "github.com",
@@ -1702,10 +1702,10 @@
       ],
       "url_patterns_reason": "Narrowed to github.com: it serves repositories, issues, pull requests and search, and the tools read its pages and endpoints same-origin; other github.com hosts are separate products (docs., gist., api. and others) where they cannot work.",
       "status": "verified",
-      "last_verified": "2026-10-16",
-      "notes": "Issue title, state and close reason, labels, assignees, milestone, linked pull requests, body and the timeline items the page holds (first ~15, plus the latest ~16 only when together they cover the whole timeline). Requests the page without cookies, so it reads public repositories only and never marks a signed-in account's notification as read; follows renamed repositories (redirected_from). Body and comment limits count characters. Independent QA on 2026-10-16 ran it live from github.com/explore: open and closed (not_planned, closed by PR) issues, a renamed repository (denoland/deno_std #7355), a PR number (is_pull_request), missing numbers in renamed and non-renamed repositories, character-exact clipping with CJK and emoji, malformed input; throttled/blocked/unknown rename lookups by fixture. Signed-in tabs, private repositories and transferred issues were not tested.",
+      "last_verified": "2026-10-26",
+      "notes": "Issue title, state and close reason, labels, assignees, milestone, linked pull requests, body and the timeline items the page holds (first ~15, plus the latest ~16 only when together they cover the whole timeline). Requests the page without cookies, so it reads public repositories only and never marks a signed-in account's notification as read; follows renamed repositories (redirected_from). Independent QA on 2026-10-26 of the source that moved fetching into the shared lib/github-page.js loader ran it live from github.com/explore and a pull request page: output deep-equal to the previous version for cli/cli #14803 and #575 (with small body, comment and timeline limits), microsoft/playwright #20000 and renamed denoland/deno_std #7355; is_pull_request, not_found in renamed and non-renamed repositories, invalid input and wrong_page; schema-conformant, no clicks or navigation. Signed-in tabs, private repositories and transferred issues were not tested.",
       "provenance": {
-        "qa_agent": "agt_c8aa59c8f978d857cdb2"
+        "qa_agent": "agt_1ff2faec59d72a088e9a"
       }
     },
     {
@@ -1719,10 +1719,10 @@
       ],
       "url_patterns_reason": "Narrowed to github.com: it serves repositories, issues, pull requests and search, and the tools read its pages and endpoints same-origin; other github.com hosts are separate products (docs., gist., api. and others) where they cannot work.",
       "status": "verified",
-      "last_verified": "2026-10-16",
-      "notes": "State (open, draft, closed, merged), branches, head and merge commits, times, sidebar labels and the description as text; no comments, review threads, files, checks or lock state. Requested without cookies, so public repositories only. Independent QA on 2026-10-16 ran it live from the explore, issues, PR and search pages: merged microsoft/playwright #43109 (merger, 3 commits and merge SHA matched the API), closed-unmerged, open drafts including a fork head, a renamed repository (redirected_from), is_issue and not_found. Signed-in tabs and private repositories were not tested.",
+      "last_verified": "2026-10-26",
+      "notes": "State (open, draft, closed, merged), branches, head and merge commits, times, sidebar labels and the description as text; no comments, review threads, files, checks or lock state. Requested without cookies, so public repositories only. Independent QA on 2026-10-26 of the source using the shared lib/github-page.js loader and lib/github-text.js renderer ran it live from github.com/explore and a pull request page: output deep-equal to the previous version for merged microsoft/playwright #43109 and cli/cli #10513 (also with body_max_chars 20); is_issue (including a renamed repository), not_found, invalid input and wrong_page; schema-conformant, no clicks or navigation. Signed-in tabs, private repositories and draft pull requests were not re-tested live.",
       "provenance": {
-        "qa_agent": "agt_5ff0e98492a9b2235c87"
+        "qa_agent": "agt_1ff2faec59d72a088e9a"
       }
     },
     {
@@ -1736,10 +1736,10 @@
       ],
       "url_patterns_reason": "Narrowed to github.com: it serves repositories, issues, pull requests and search, and the tools read its pages and endpoints same-origin; other github.com hosts are separate products (docs., gist., api. and others) where they cannot work.",
       "status": "verified",
-      "last_verified": "2026-10-16",
-      "notes": "Description, topics, counts, license, default branch, creation time, latest commit, root entries and README text; empty_repository for a repository with no commits. Requested without cookies, so it reads public repositories only (a private one is not_found) and works in signed-in tabs, which get a newer repository page without this data. Independent QA on 2026-10-16 ran it live signed out and signed in from github.com/explore and a repository page: microsoft/playwright and kernel/xwebmcp matched the API, plus a renamed repository (redirected_from), not_found and invalid owner.",
+      "last_verified": "2026-10-26",
+      "notes": "Description, topics, counts, license, default branch, creation time, latest commit, root entries and README text; empty_repository for a repository with no commits. Requested without cookies, so it reads public repositories only (a private one is not_found). Independent QA on 2026-10-26 of the source using the shared lib/github-page.js loader and lib/github-text.js renderer ran it live from github.com/explore and a search results page: output deep-equal to the previous version for microsoft/playwright, kernel/xwebmcp, cli/cli (readme_max_chars 0), octocat/Hello-World (readme_max_chars 50) and renamed denoland/deno_std; not_found, invalid owner, the new hint for a stray number field, and wrong_page; schema-conformant, no clicks or navigation. Empty repositories (fixture only) and signed-in tabs were not tested live.",
       "provenance": {
-        "qa_agent": "agt_0859fa5802d9062366dd"
+        "qa_agent": "agt_1ff2faec59d72a088e9a"
       }
     },
     {
@@ -1803,9 +1803,12 @@
         "https://github.com/*"
       ],
       "url_patterns_reason": "Narrowed to github.com: it serves repositories, issues, pull requests and search, and the tools read its pages and endpoints same-origin; other github.com hosts are separate products (docs., gist., api. and others) where they cannot work.",
-      "status": "draft",
-      "last_verified": null,
-      "notes": "Merges the former search_repositories and search_issues tools into one tool with a type input. Not yet independently QA'd."
+      "status": "verified",
+      "last_verified": "2026-10-26",
+      "notes": "Replaces search_repositories and search_issues: type (required) selects repositories, issues or pullrequests and the allowed sorts; one page of 10 results from github.com's search JSON. A descending stars sort without a stars: qualifier appends stars:>0 and says so in warnings, because GitHub's own stars ranking otherwise skips top repositories (confirmed live: language:zig sorted by stars returned 244-star repositories first without it). Independent QA on 2026-10-26 ran it live from github.com/explore and an issue page: results deep-equal to the previous search_issues and search_repositories for four queries across types and sorts, merged/draft pull request flags, no_results, page 100, a 256-character query, sorts invalid for the type, missing or unknown type, unknown fields and wrong_page; schema-conformant, no clicks or navigation. Signed-in tabs and GitHub's throttled response for search were not tested.",
+      "provenance": {
+        "qa_agent": "agt_1ff2faec59d72a088e9a"
+      }
     },
     {
       "domain": "github.com",
