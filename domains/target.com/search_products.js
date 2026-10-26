@@ -3,7 +3,7 @@
   match: { url_patterns: ["https://target.com/*", "https://*.target.com/*"] },
   tool: {
     name: "search_products",
-    description: "Search the Target (target.com) catalog by keyword and return one page of results in the site's own order, optionally sorted the way the site's Sort menu does: relevance (default), featured, price_low_to_high, price_high_to_low, highest_rated (the site's 'Guest rating' sort, which ranks by average stars and can put an item with a single 5-star review first; rating_count is returned so you can judge), bestselling ('Best selling') or newest. Each result has a tcin (Target's item id), title, brand, price in cents, rating average and count, and a sponsored flag: paid placements are part of the site's grid, so the first result may be sponsored; pass exclude_sponsored to drop them. Keywords alone do not filter: to restrict results to a size, color, brand, material and so on, call once with include_facets true, then call again with the chosen option ids in facet_ids (the site's own filters). Prices are for the store the session has selected (see get_store_context). Use get_product with a tcin for variants and availability, and add_to_cart to buy. Read-only; works as a guest.",
+    description: "Search the Target (target.com) catalog by keyword and return one page of results in the site's own order, optionally sorted the way the site's Sort menu does: relevance (default), featured, price_low_to_high, price_high_to_low, highest_rated (the site's 'Guest rating' sort, which ranks by average stars and can put an item with a single 5-star review first; rating_count is returned so you can judge), bestselling ('Best selling') or newest. Each result has a tcin (Target's item id), title, brand, price in cents, rating average and count, and a sponsored flag: paid placements are part of the site's grid, so the first result may be sponsored; pass exclude_sponsored to drop them. Keywords alone do not filter: to restrict results the way the site's filter panel does, pass filters by name, e.g. ['Brand: Acme', 'Color: Black'] (one call), or option ids from include_facets in facet_ids. Prices are for the store the session has selected (see get_store_context). Use get_product with a tcin for variants and availability, and add_to_cart to buy. Read-only; works as a guest.",
     inputSchema: {
       type: "object", additionalProperties: false, required: ["query"],
       properties: {
@@ -13,7 +13,8 @@
         limit: { type: "integer", minimum: 1, maximum: 24, default: 12, description: "Maximum products to return from that page." },
         exclude_sponsored: { type: "boolean", default: false, description: "Drop sponsored placements from the returned list." },
         facet_ids: { type: "array", maxItems: 8, uniqueItems: true, items: { type: "string", pattern: "^[a-z0-9]{3,16}$" }, description: "Filter option ids from a previous include_facets response, e.g. a bed size and a color; results must match all of them." },
-        include_facets: { type: "boolean", default: false, description: "Also return the site's filter groups (size, color, brand, price range, rating...) with option ids for facet_ids." }
+        filters: { type: "array", maxItems: 8, uniqueItems: true, items: { type: "string", minLength: 1, maxLength: 100 }, description: "Site filters by name, 'Group: Option' (e.g. 'Brand: Acme', 'Guest Rating: 4') or just the option name when only one group has it; resolved against the site's full filter list for this query and applied with facet_ids." },
+        include_facets: { type: "boolean", default: false, description: "Also return the site's filter groups (size, color, brand, price range, rating...) with option ids for facet_ids; long groups list their first 40 options (option_count tells the full size), filters accepts any option." }
       }
     },
     outputSchema: {
@@ -26,9 +27,9 @@
             facets: {
               type: ["array", "null"], description: "Filter groups for this query when include_facets is true, otherwise null.",
               items: {
-                type: "object", additionalProperties: false, required: ["name", "options"],
+                type: "object", additionalProperties: false, required: ["name", "option_count", "options"],
                 properties: {
-                  name: { type: "string" },
+                  name: { type: "string" }, option_count: { type: "integer", minimum: 0 },
                   options: { type: "array", items: { type: "object", additionalProperties: false, required: ["id", "name"], properties: { id: { type: "string" }, name: { type: "string" } } } }
                 }
               }
@@ -85,7 +86,7 @@
     const ORIGIN = "https://www.target.com";
     const REDSKY = "https://redsky.target.com/redsky_aggregations/v1/web/";
     const CARTS = "https://carts.target.com/web_checkouts/v1/";
-    const CHALLENGE = "Target's bot protection (PerimeterX) is blocking automated requests from this browser. A person has to complete the 'Press & hold' verification on target.com in this browser; wait a few minutes and do not retry automatically.";
+    const CHALLENGE = "Target's bot protection (PerimeterX) is blocking this browser's searches. Load https://www.target.com/s?searchTerm=" + encodeURIComponent(String((input || {}).query || "")) + " in this tab (a normal page load lets the site re-check the browser), then rediscover tools and call search_products once more, or read the results grid the page shows. If the page itself shows a 'Press & hold' check, a person has to complete it.";
     const fail = (kind, message) => ({ status: "error", error_kind: kind, error_message: message });
     const cents = value => typeof value === "number" && isFinite(value) ? Math.round(value * 100) : null;
     const decode = text => typeof text !== "string" ? null : text
@@ -145,12 +146,14 @@
     const redsky = async (path, params) => {
       const url = new URL(REDSKY + path);
       for (const [name, value] of Object.entries(params)) if (value !== null && value !== undefined && value !== "") url.searchParams.set(name, String(value));
-      const r = await call(url.toString());
+      let r = await call(url.toString());
+      // Bot protection sometimes rejects one request and passes the next once the page's sensor refreshes its cookie.
+      if (blocked(r)) { await new Promise(done => setTimeout(done, 2000)); r = await call(url.toString()); }
       if (blocked(r)) return { error: fail("challenge", CHALLENGE) };
       return r;
     };
     const SORTS = { relevance: "relevance", featured: "Featured", price_low_to_high: "PriceLow", price_high_to_low: "PriceHigh", highest_rated: "RatingHigh", bestselling: "bestselling", newest: "newest" };
-    if (!input || typeof input !== "object" || Array.isArray(input) || Object.keys(input).some(k => !["query", "sort_by", "page", "limit", "exclude_sponsored", "facet_ids", "include_facets"].includes(k))) return fail("invalid_input", "Provide query and optionally sort_by, page, limit, exclude_sponsored, facet_ids and include_facets.");
+    if (!input || typeof input !== "object" || Array.isArray(input) || Object.keys(input).some(k => !["query", "sort_by", "page", "limit", "exclude_sponsored", "facet_ids", "filters", "include_facets"].includes(k))) return fail("invalid_input", "Provide query and optionally sort_by, page, limit, exclude_sponsored, facet_ids, filters and include_facets.");
     const query = typeof input.query === "string" ? input.query.replace(/\s+/g, " ").trim() : "";
     const sortBy = input.sort_by === undefined ? "relevance" : input.sort_by;
     const page = input.page === undefined ? 1 : input.page;
@@ -161,22 +164,49 @@
     if (!Number.isInteger(page) || page < 1 || page > 20) return fail("invalid_input", "page must be an integer from 1 to 20.");
     if (!Number.isInteger(limit) || limit < 1 || limit > 24) return fail("invalid_input", "limit must be an integer from 1 to 24.");
     if (typeof excludeSponsored !== "boolean") return fail("invalid_input", "exclude_sponsored must be true or false.");
-    const facetIds = input.facet_ids === undefined ? [] : input.facet_ids;
+    let facetIds = input.facet_ids === undefined ? [] : input.facet_ids;
     const includeFacets = input.include_facets === undefined ? false : input.include_facets;
     if (!Array.isArray(facetIds) || facetIds.length > 8 || facetIds.some(id => typeof id !== "string" || !/^[a-z0-9]{3,16}$/.test(id)) || new Set(facetIds).size !== facetIds.length) return fail("invalid_input", "facet_ids must be up to 8 distinct option ids from an include_facets response.");
+    const filters = input.filters === undefined ? [] : input.filters;
+    if (!Array.isArray(filters) || filters.length > 8 || filters.some(f => typeof f !== "string" || !f.trim() || f.length > 100)) return fail("invalid_input", "filters must be up to 8 filter names such as 'Brand: Acme'.");
     if (typeof includeFacets !== "boolean") return fail("invalid_input", "include_facets must be true or false.");
+    const norm = text => String(text).toLowerCase().replace(/[–—]/g, "-").replace(/\s+/g, " ").trim();
+    const groupsOf = search => ((search.search_response || {}).facet_list || []).filter(f => f && typeof f.display_name === "string" && Array.isArray(f.options)).map(f => ({
+      name: decode(f.display_name), options: f.options.filter(o => o && typeof o.id === "string").map(o => ({ id: o.id, name: decode(o.display_name || o.value || o.id) }))
+    }));
     try {
       const ctx = session(true);
       if (ctx.error) return ctx.error;
       const offset = (page - 1) * 24;
       // The same request the site's results grid makes, including its sponsored placements and purchasability filter.
-      const r = await redsky("plp_search_v2", {
+      const searchWith = ids => redsky("plp_search_v2", {
         key: ctx.key, channel: "WEB", count: 24, default_purchasability_filter: "true", include_sponsored: "true", keyword: query, offset,
         page: "/s/" + query, platform: "desktop", pricing_store_id: ctx.store.store_id, store_ids: ctx.nearby.join(","),
         scheduled_delivery_store_id: ctx.store.store_id, visitor_id: ctx.visitorId, zip: ctx.location.postal_code || ctx.store.postal_code, sort_by: SORTS[sortBy],
-        faceted_value: facetIds.join("Z")
+        faceted_value: ids.join("Z")
       });
+      let r = await searchWith(facetIds);
       if (r.error) return r.error;
+      if (filters.length && r.status < 300 && r.json && r.json.data && r.json.data.search) {
+        // Names resolve against the full filter list the site offers for this query, as its filter panel shows it.
+        const groups = groupsOf(r.json.data.search);
+        const ids = [...facetIds];
+        for (const wanted of filters) {
+          const at = wanted.indexOf(":");
+          const pick = (group, option) => groups.filter(g => group === null || norm(g.name) === group).flatMap(g => g.options.filter(o => norm(o.name) === option).map(o => ({ group: g.name, ...o })));
+          let found = pick(null, norm(wanted));
+          if (!found.length && at > 0) found = pick(norm(wanted.slice(0, at)), norm(wanted.slice(at + 1)));
+          if (found.length > 1) return fail("invalid_input", "'" + wanted + "' matches several filters: " + found.map(f => f.group + ": " + f.name).join(", ") + ". Pass one of them as 'Group: Option'.");
+          if (!found.length) {
+            const group = at > 0 ? groups.find(g => norm(g.name) === norm(wanted.slice(0, at))) : null;
+            return fail("invalid_input", "Target offers no filter '" + wanted + "' for this query. " + (group ? group.name + " options: " + group.options.map(o => o.name).join(", ") : "Groups: " + groups.map(g => g.name).join(", ")) + ".");
+          }
+          if (!ids.includes(found[0].id)) ids.push(found[0].id);
+        }
+        facetIds = ids;
+        r = await searchWith(facetIds);
+        if (r.error) return r.error;
+      }
       const search = r.json && r.json.data && r.json.data.search;
       if (r.status === 404 || (r.status < 300 && !search)) return { status: "no_results", query, sort_by: sortBy, page, total_results: 0, store: ctx.store, facet_ids: facetIds };
       if (r.status === 400 && facetIds.length) return fail("invalid_input", "Target rejected the search; check that every facet_ids value came from include_facets for this query.");
@@ -206,10 +236,7 @@
         });
       });
       if (!products.length) return { status: "no_results", query, sort_by: sortBy, page, total_results: total, store: ctx.store, facet_ids: facetIds };
-      const facets = includeFacets ? ((search.search_response || {}).facet_list || []).filter(f => f && typeof f.display_name === "string" && Array.isArray(f.options)).map(f => ({
-        name: decode(f.display_name),
-        options: f.options.filter(o => o && typeof o.id === "string").slice(0, 40).map(o => ({ id: o.id, name: decode(o.display_name || o.value || o.id) }))
-      })) : null;
+      const facets = includeFacets ? groupsOf(search).map(g => ({ name: g.name, option_count: g.options.length, options: g.options.slice(0, 40) })) : null;
       return { status: "ok", query, sort_by: sortBy, page, total_results: total, total_pages: Number.isInteger(meta.total_pages) ? meta.total_pages : null, store: ctx.store, facet_ids: facetIds, facets, products };
     } catch (error) {
       return fail("site_error", "Request failed: " + (error && error.message ? error.message : String(error)) + "");

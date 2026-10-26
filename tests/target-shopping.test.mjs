@@ -173,6 +173,7 @@ function harness(name, options = {}) {
   const context = {
     URL, JSON, Object, Array, String, Number, Math, Set,
     atob: value => Buffer.from(value, "base64").toString("binary"),
+    setTimeout: done => setTimeout(done, 0),
     location: { origin: page.origin, pathname: page.pathname, href: page.href },
     document: { title: options.blockedPage ? "Access to this page has been denied" : "Target", cookie, querySelector: selector => (options.captcha && selector.includes("px-captcha") ? {} : null) },
     window: { __CONFIG__: options.noKey ? {} : { defaultServicesApiKey: "fabricated-key" }, __TGT_DATA__: { serverLocationVariables: { store_ids: options.storeIds === undefined ? "1234,5678,abc" : options.storeIds } } },
@@ -373,9 +374,24 @@ test("search_products applies facet ids the way the site does and can list facet
   assert.equal(new URL(h.calls.requests[0].href).searchParams.get("faceted_value"), "abc12Z5y759");
   assert.deepEqual(result.facet_ids, ["abc12", "5y759"]);
   assert.deepEqual(result.facets, [
-    { name: "Bed Size", options: [{ id: "abc12", name: "Standard/Queen" }, { id: "abc13", name: "Twin" }] },
-    { name: "Price", options: [{ id: "pr001", name: "$5 – $10" }] }
+    { name: "Bed Size", option_count: 2, options: [{ id: "abc12", name: "Standard/Queen" }, { id: "abc13", name: "Twin" }] },
+    { name: "Price", option_count: 1, options: [{ id: "pr001", name: "$5 – $10" }] }
   ]);
+});
+
+test("search_products resolves filters by name against the site's filter list, then applies them", async () => {
+  const h = harness("search_products");
+  const result = await h.run({ query: "sheets", facet_ids: ["pr001"], filters: ["bed size: twin", "Standard/Queen"] });
+  assert.deepEqual(h.calls.requests.map(r => new URL(r.href).searchParams.get("faceted_value")), ["pr001", "pr001Zabc13Zabc12"]);
+  assert.deepEqual(result.facet_ids, ["pr001", "abc13", "abc12"]);
+  assert.equal(result.status, "ok");
+  const missing = await harness("search_products").run({ query: "sheets", filters: ["Bed Size: King"] });
+  assert.equal(missing.error_kind, "invalid_input");
+  assert.match(missing.error_message, /Bed Size options: Standard\/Queen, Twin/);
+  const body = searchBody();
+  body.data.search.search_response.facet_list.push({ display_name: "Fit", options: [{ id: "fit01", display_name: "Twin" }] });
+  const ambiguous = await harness("search_products", { search: body }).run({ query: "sheets", filters: ["Twin"] });
+  assert.match(ambiguous.error_message, /Bed Size: Twin, Fit: Twin/);
 });
 
 test("search_products: no matches, 404 and a rejected facet", async () => {
@@ -393,10 +409,25 @@ test("search_products: no matches, 404 and a rejected facet", async () => {
 for (const status of [435, 429, 403]) {
   test(`search_products: HTTP ${status} from bot protection is a challenge`, async () => {
     const h = harness("search_products", { responses: () => ({ status, json: null, challenge: status === 403 }) });
-    assert.equal((await h.run({ query: "mug" })).error_kind, "challenge");
-    assert.equal(h.calls.requests.length, 1);
+    const result = await h.run({ query: "mug cup" });
+    assert.equal(result.error_kind, "challenge");
+    assert.match(result.error_message, /searchTerm=mug%20cup/);
+    assert.equal(h.calls.requests.length, 2);
   });
 }
+
+test("get_product retries a bot-protection rejection once, then reports a challenge", async () => {
+  const blocked = harness("get_product", { responses: () => ({ status: 435, json: null }) });
+  assert.equal((await blocked.run({ tcin: "30000001" })).error_kind, "challenge");
+  assert.equal(blocked.calls.requests.length, 2);
+});
+
+test("search_products retries a bot-protection rejection once", async () => {
+  let blocks = 1;
+  const h = harness("search_products", { responses: () => blocks-- > 0 ? { status: 435, json: null } : null });
+  assert.equal((await h.run({ query: "mug" })).status, "ok");
+  assert.equal(h.calls.requests.length, 2);
+});
 
 // --- get_product ------------------------------------------------------------------------------------
 
@@ -471,7 +502,7 @@ test("add_to_cart: adds a new shipping line with the site's own request body", a
   const result = await h.run({ tcin: "30000002", quantity: 2 });
   assert.deepEqual(result, {
     status: "ok", cart_id: "cart-new", cart_item_id: "line-new-1", tcin: "30000002", title: "Fabricated item 30000002", fulfillment: "ship", store_id: null,
-    previous_quantity: 0, quantity: 2, unit_price_cents: 1800, items_quantity: 2
+    previous_quantity: 0, quantity: 2, unit_price_cents: 1800, items_quantity: 2, cart_product_total_cents: null
   });
   assert.deepEqual(h.calls.writes, [{ path: "/web_checkouts/v1/cart_items", method: "POST", body: { cart_item: { item_channel_id: "10", tcin: "30000002", quantity: 2 }, cart_type: "REGULAR", channel_id: "10", shopping_context: "DIGITAL" } }]);
 });
@@ -479,7 +510,7 @@ test("add_to_cart: adds a new shipping line with the site's own request body", a
 test("add_to_cart: increments an existing line and leaves other lines alone", async () => {
   const h = harness("add_to_cart");
   const result = await h.run({ tcin: "30000001" });
-  assert.deepEqual([result.cart_item_id, result.previous_quantity, result.quantity, result.items_quantity], ["line-existing", 1, 2, 2]);
+  assert.deepEqual([result.cart_item_id, result.previous_quantity, result.quantity, result.items_quantity, result.cart_product_total_cents], ["line-existing", 1, 2, 2, 1800]);
 });
 
 test("add_to_cart: pickup at the selected store only", async () => {

@@ -134,7 +134,9 @@
     const redsky = async (path, params) => {
       const url = new URL(REDSKY + path);
       for (const [name, value] of Object.entries(params)) if (value !== null && value !== undefined && value !== "") url.searchParams.set(name, String(value));
-      const r = await call(url.toString());
+      let r = await call(url.toString());
+      // Bot protection sometimes rejects one request and passes the next once the page's sensor refreshes its cookie.
+      if (blocked(r)) { await new Promise(done => setTimeout(done, 2000)); r = await call(url.toString()); }
       if (blocked(r)) return { error: fail("challenge", CHALLENGE) };
       return r;
     };
