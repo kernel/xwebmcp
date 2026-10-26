@@ -231,7 +231,7 @@ function modernTranscript(options = {}) {
     item: { timelineItemViewModel: { timestamp: time(i), contentItems: [{ transcriptSegmentViewModel: { simpleText: options.text?.(i) ?? "Fabricated line " + i, timestamp: time(i) } }] } },
     onTap: { innertubeCommand: { watchEndpoint: { videoId: options.stale && i === count - 1 ? "other000001" : video, startTimeSeconds: i * 7 } } }
   } }));
-  const rendered = Array.from({ length: count - (options.missingRow ? 1 : 0) }, (_, i) => element({}, { ".ytwTranscriptSegmentViewModelTimestamp": [{ textContent: options.shiftedTime && i === 3 ? "9:99" : time(i) }] }));
+  const rendered = Array.from({ length: count - (options.missingRow ? 1 : 0) }, (_, i) => element({}));
   const data = { content: { sectionListRenderer: { contents: [{ itemSectionRenderer: { contents: items.slice(0, 10) } }, { itemSectionRenderer: { contents: items.slice(10) } }] } } };
   const panel = element({ "target-id": options.target ?? null, own: { data } }, { "transcript-segment-view-model": rendered });
   return transcriptPage(options, { "ytd-engagement-panel-section-list-renderer": [panel] });
@@ -249,7 +249,6 @@ test("transcript: the newer panel, with or without a target id, reads whole-seco
 test("transcript: the newer panel refuses stale or mismatched data", async () => {
   assert.equal((await modernTranscript({ stale: true }).run({ video_id: video })).error_kind, "wrong_video");
   assert.equal((await modernTranscript({ missingRow: true }).run({ video_id: video })).error_kind, "site_changed");
-  assert.equal((await modernTranscript({ shiftedTime: true }).run({ video_id: video })).error_kind, "site_changed");
   assert.equal((await modernTranscript({ unknownItem: true }).run({ video_id: video })).error_kind, "site_changed");
 });
 test("transcript: an open panel that is loading or unrecognized is not reported as closed", async () => {

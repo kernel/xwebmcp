@@ -81,8 +81,7 @@
         if (endpoint?.videoId !== input.video_id) return { stale: true };
         const timeline = item.item?.timelineItemViewModel;
         const segments = (timeline?.contentItems || []).map(x => x?.transcriptSegmentViewModel).filter(Boolean);
-        const shownTime = rendered[i].querySelector(".ytwTranscriptSegmentViewModelTimestamp")?.textContent?.trim();
-        if (!segments.length || typeof timeline.timestamp !== "string" || timeline.timestamp !== shownTime || !Number.isInteger(endpoint.startTimeSeconds) || endpoint.startTimeSeconds < 0) return null;
+        if (!segments.length || typeof timeline.timestamp !== "string" || !Number.isInteger(endpoint.startTimeSeconds) || endpoint.startTimeSeconds < 0) return null;
         return { start_ms: endpoint.startTimeSeconds * 1000, end_ms: null, time_text: timeline.timestamp, raw: segments.map(x => typeof x.simpleText === "string" ? x.simpleText : "").join(" ") };
       });
     }

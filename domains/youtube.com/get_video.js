@@ -58,7 +58,7 @@
         },
         {
           type: "object", additionalProperties: false, required: ["status", "error_kind", "error_message"],
-          properties: { status: { const: "error" }, error_kind: { enum: ["invalid_input", "wrong_page", "video_unavailable", "login_required", "gated", "challenge", "rate_limited", "site_error", "site_changed"] }, error_message: { type: "string", minLength: 1 } }
+          properties: { status: { const: "error" }, error_kind: { enum: ["invalid_input", "wrong_page", "video_unavailable", "login_required", "gated", "not_found", "challenge", "rate_limited", "site_error", "site_changed", "canceled"] }, error_message: { type: "string", minLength: 1 } }
         }
       ]
     },
@@ -66,7 +66,36 @@
   },
   execute: async (input, context) => {
     const ORIGIN = "https://www.youtube.com";
+    // @xwebmcp-inline lib/youtube-innertube.js
     const fail = (kind, message) => ({ status: "error", error_kind: kind, error_message: message });
+    const clean = (value, max = 300) => {
+      if (typeof value !== "string") return null;
+      const text = value.replace(/[\u0000-\u001f\u007f-\u009f]+/g, " ").replace(/\s+/g, " ").trim();
+      // Cut at a UTF-16 boundary without leaving half of a surrogate pair.
+      return text ? text.slice(0, max).replace(/[\ud800-\udbff]$/, "") : null;
+    };
+    const text = (v, max) => clean(v?.simpleText ?? v?.content ?? v?.runs?.map(x => x?.text || "").join(""), max);
+    // Requests are anonymous: credentials are omitted and only these client fields are sent. The page's own client
+    // version is used once it has loaded; until then YouTube accepts this older one, so there is no need to wait.
+    const configured = window.ytcfg?.get?.("INNERTUBE_CONTEXT")?.client || {};
+    const client = { clientName: "WEB", clientVersion: /^2\.[\d.]{1,40}$/.test(configured.clientVersion) ? configured.clientVersion : "2.20260101.00.00", hl: "en", gl: /^[A-Z]{2}$/.test(configured.gl) ? configured.gl : "US" };
+    // Posts to one of the site's own data endpoints and returns { data } or { error }; badRequest is the error for HTTP 400.
+    const call = async (endpoint, body, badRequest) => {
+      let res, raw, data = null;
+      try {
+        res = await fetch("/youtubei/v1/" + endpoint + "?prettyPrint=false", { method: "POST", credentials: "omit", headers: { "content-type": "application/json" }, body: JSON.stringify({ context: { client }, ...body }), signal: context?.signal });
+        raw = await res.text();
+      } catch { return { error: fail(context?.signal?.aborted ? "canceled" : "site_error", "The request to YouTube did not complete. Nothing was changed and no automatic retry was made.") }; }
+      try { data = JSON.parse(raw); } catch { /* handled below */ }
+      if (res.status === 429) return { error: fail("rate_limited", "YouTube is rate limiting this browser (HTTP 429); wait several minutes before trying again.") };
+      if (res.status === 403 || (!data && /unusual traffic|\/sorry\//i.test(raw))) return { error: fail("challenge", "YouTube refused the request or raised a bot check; a person has to clear it in this browser. Do not retry automatically.") };
+      if (res.status === 400 && badRequest) return { error: badRequest };
+      if (res.status === 404 || data?.alerts?.some(x => x?.alertRenderer?.type === "ERROR")) return { error: fail("not_found", "YouTube shows no such public resource to anonymous visitors.") };
+      if (res.status >= 400) return { error: fail("site_error", "YouTube " + endpoint + " returned HTTP " + res.status + ".") };
+      if (!data || typeof data !== "object" || Array.isArray(data)) return { error: fail("site_changed", "YouTube " + endpoint + " returned an unexpected body.") };
+      return { data };
+    };
+    // @xwebmcp-end
     if (!input || typeof input !== "object" || Array.isArray(input) || Object.keys(input).some(k => k !== "video")) return fail("invalid_input", "Unknown or missing input; the only field is video.");
     const VIDEO_ID = /^[A-Za-z0-9_-]{11}$/;
     if (typeof input.video !== "string") return fail("invalid_input", "video must be a string: a video id or a YouTube video URL.");
@@ -88,35 +117,9 @@
     if (!VIDEO_ID.test(id)) return fail("invalid_input", "video must be an 11-character video id or a youtube.com or youtu.be video URL (watch, shorts, live or embed).");
 
     if (location.origin !== ORIGIN) return fail("wrong_page", "Open a https://www.youtube.com page first; this tool calls the site's data endpoints from that page. Nothing was changed.");
-    const configured = window.ytcfg && typeof window.ytcfg.get === "function" ? (window.ytcfg.get("INNERTUBE_CONTEXT") || {}).client : null;
-    if (!configured || typeof configured.clientVersion !== "string" || !/^[\w.]{1,40}$/.test(configured.clientVersion)) return fail("site_error", "YouTube has not finished loading its page configuration; wait for the page to load and call again. Nothing was changed.");
-    if (configured.clientName !== "WEB") return fail("wrong_page", "This YouTube page is not the main web app; open https://www.youtube.com/ and call again. Nothing was changed.");
-    // Only these client fields are sent: the request is anonymous and carries no user, visitor or session data.
-    const clientContext = { client: { clientName: "WEB", clientVersion: configured.clientVersion, hl: "en", gl: /^[A-Z]{2}$/.test(configured.gl) ? configured.gl : "US" } };
-
-    const call = async (endpoint, body) => {
-      let res, text;
-      try {
-        res = await fetch("/youtubei/v1/" + endpoint + "?prettyPrint=false", { method: "POST", credentials: "omit", headers: { "content-type": "application/json" }, body: JSON.stringify({ context: clientContext, ...body }), signal: context && context.signal });
-        text = await res.text();
-      } catch (error) { return { error: fail("site_error", "The request to YouTube failed (" + (error && error.name ? error.name : "network error") + "). Nothing was changed.") }; }
-      if (res.status === 429) return { error: fail("rate_limited", "YouTube is rate limiting this browser (HTTP 429); wait several minutes before trying again.") };
-      if (res.status === 403) return { error: fail("challenge", "YouTube refused the request (HTTP 403), which usually means a bot check; a person has to clear it in this browser. Do not retry automatically.") };
-      let json = null;
-      try { json = JSON.parse(text); } catch { /* handled below */ }
-      if (!json || typeof json !== "object") return { error: /unusual traffic|\/sorry\//i.test(text) ? fail("challenge", "YouTube served an unusual-traffic page instead of data; a person has to clear it in this browser.") : fail("site_error", "YouTube returned HTTP " + res.status + " with a non-JSON body.") };
-      if (res.status >= 400) return { error: fail("site_error", "YouTube " + endpoint + " returned HTTP " + res.status + (json.error && typeof json.error.message === "string" ? ": " + json.error.message.slice(0, 200) : ".")) };
-      return { json };
-    };
     const [player, next] = await Promise.all([call("player", { videoId: id }), call("next", { videoId: id })]);
     if (player.error) return player.error;
 
-    const clean = (value, max) => {
-      if (typeof value !== "string") return null;
-      const text = value.replace(/[\u0000-\u001f\u007f-\u009f]+/g, " ").replace(/\s+/g, " ").trim();
-      // Cut at a UTF-16 boundary without leaving half of a surrogate pair.
-      return text ? text.slice(0, max).replace(/[\ud800-\udbff]$/, "") : null;
-    };
     const count = value => {
       if (typeof value === "string" && /^\d{1,15}$/.test(value)) return Number(value);
       return typeof value === "number" && Number.isSafeInteger(value) && value >= 0 ? value : null;
@@ -127,7 +130,7 @@
       return match ? match[1] : null;
     };
 
-    const playability = player.json.playabilityStatus;
+    const playability = player.data.playabilityStatus;
     if (!playability || typeof playability !== "object") return fail("site_changed", "YouTube's player response had no playability block; the response layout may have changed.");
     const status = playability.status;
     const reason = clean(playability.reason, 200);
@@ -135,32 +138,31 @@
     // the anonymous request reports ordinary public videos as UNPLAYABLE, so playability is not part of the result.
     // A bot check on the player data alone falls back to the watch page's own data, as a person would still see it.
     const botCheck = status === "LOGIN_REQUIRED" && /not a bot|unusual traffic|automated/i.test(reason || "");
-    const joined = v => v?.simpleText ?? v?.runs?.map(r => r?.text || "").join("");
-    const rows = next.json?.contents?.twoColumnWatchNextResults?.results?.results?.contents;
+    const rows = next.data?.contents?.twoColumnWatchNextResults?.results?.results?.contents;
     const primary = Array.isArray(rows) ? rows.find(r => r?.videoPrimaryInfoRenderer)?.videoPrimaryInfoRenderer : null;
     if (botCheck && !primary) return fail("challenge", "YouTube asked this browser to prove it is not a bot" + (reason ? " (" + reason + ")" : "") + " and its watch page data was unavailable too; a person has to clear it. Do not retry automatically.");
     if (status === "LOGIN_REQUIRED" && !botCheck) return fail("login_required", "YouTube requires signing in to see this video" + (reason ? " (" + reason + ")" : "") + ". This tool never signs in.");
     if (status === "CONTENT_CHECK_REQUIRED" || status === "AGE_CHECK_REQUIRED" || status === "AGE_VERIFICATION_REQUIRED") return fail("gated", "YouTube shows a content warning or age check for this video" + (reason ? " (" + reason + ")" : "") + " that a person must accept. This tool never accepts it.");
-    const details = botCheck ? {} : player.json.videoDetails;
+    const details = botCheck ? {} : player.data.videoDetails;
     if (!details || typeof details !== "object") return status === "OK" ? fail("site_changed", "YouTube reported the video as available but returned no video details; the response layout may have changed.") : fail("video_unavailable", "YouTube reports this video as unavailable" + (reason ? " (" + reason + ")" : "") + ": it may be removed, private, or never have existed.");
     if (!botCheck && details.videoId !== id) return fail("site_changed", "YouTube returned details for a different video id than requested.");
-    const title = clean(botCheck ? joined(primary.title) : details.title, 300);
+    const title = botCheck ? text(primary.title, 300) : clean(details.title, 300);
     if (!title) return fail("site_changed", "YouTube returned no title for this video; the response layout may have changed.");
 
     const warnings = [];
-    const meta = player.json.microformat?.playerMicroformatRenderer || {};
+    const meta = player.data.microformat?.playerMicroformatRenderer || {};
     const viewRenderer = primary?.viewCount?.videoViewCountRenderer;
-    const dateText = clean(joined(primary?.dateText), 100) || "";
+    const dateText = text(primary?.dateText, 100) || "";
     const isLive = botCheck ? viewRenderer?.isLive === true : details.isLive === true;
     const isUpcoming = botCheck ? /^(Scheduled|Premieres)/.test(dateText) : details.isUpcoming === true;
     const commentsToken = Array.isArray(rows) ? rows.find(r => r?.itemSectionRenderer?.targetId === "comments-section")?.itemSectionRenderer?.contents?.[0]?.continuationItemRenderer?.continuationEndpoint?.continuationCommand?.token : null;
     const [comments, search] = await Promise.all([typeof commentsToken === "string" ? call("next", { continuation: commentsToken }) : null, botCheck ? call("search", { query: id }) : null]);
-    const commentsHeader = (comments?.json?.onResponseReceivedEndpoints || []).flatMap(x => x?.reloadContinuationItemsCommand?.continuationItems || []).find(x => x?.commentsHeaderRenderer)?.commentsHeaderRenderer;
-    const commentMatch = /^([\d,]{1,20}) Comments?$/.exec(clean(joined(commentsHeader?.countText), 60) || "");
+    const commentsHeader = (comments?.data?.onResponseReceivedEndpoints || []).flatMap(x => x?.reloadContinuationItemsCommand?.continuationItems || []).find(x => x?.commentsHeaderRenderer)?.commentsHeaderRenderer;
+    const commentMatch = /^([\d,]{1,20}) Comments?$/.exec(text(commentsHeader?.countText, 60) || "");
     if (!commentMatch) warnings.push("The comment count above the comments could not be read (comments may be turned off), so comment_count is null.");
     let searchCard = null;
     const findCard = n => { if (searchCard || !n || typeof n !== "object") return; if (n.videoRenderer?.videoId === id) searchCard = n.videoRenderer; else Object.values(n).forEach(findCard); };
-    findCard(search?.json);
+    findCard(search?.data);
     const cardLength = /^(?:(\d+):)?(\d{1,2}):(\d{2})$/.exec(searchCard?.lengthText?.simpleText || "");
     const months = { Jan: "01", Feb: "02", Mar: "03", Apr: "04", May: "05", Jun: "06", Jul: "07", Aug: "08", Sep: "09", Oct: "10", Nov: "11", Dec: "12" };
     const shownDate = /\b([A-Z][a-z]{2}) (\d{1,2}), (\d{4})$/.exec(dateText);
@@ -184,7 +186,7 @@
       try {
         owner = (rows || []).find(r => r && r.videoSecondaryInfoRenderer)?.videoSecondaryInfoRenderer?.owner?.videoOwnerRenderer ?? null;
         if (owner) isVerified = (owner.badges || []).some(b => b?.metadataBadgeRenderer?.style === "BADGE_STYLE_TYPE_VERIFIED");
-        const panel = (next.json.engagementPanels || []).map(p => p?.engagementPanelSectionListRenderer).find(p => p?.panelIdentifier === "engagement-panel-macro-markers-description-chapters");
+        const panel = (next.data.engagementPanels || []).map(p => p?.engagementPanelSectionListRenderer).find(p => p?.panelIdentifier === "engagement-panel-macro-markers-description-chapters");
         for (const entry of panel?.content?.macroMarkersListRenderer?.contents || []) {
           const item = entry?.macroMarkersListItemRenderer;
           const chapterTitle = clean(item?.title?.simpleText, 200);
@@ -213,12 +215,12 @@
       status: "ok", video_id: id, url: ORIGIN + "/watch?v=" + id, title,
       description: description.slice(0, 5000).replace(/[\ud800-\udbff]$/, ""), description_truncated: description.length > 5000,
       channel: {
-        name: clean(botCheck ? joined(owner?.title) : details.author, 200), channel_id: channelId, handle, url: handle ? ORIGIN + "/" + handle : channelId ? ORIGIN + "/channel/" + channelId : null,
+        name: botCheck ? text(owner?.title, 200) : clean(details.author, 200), channel_id: channelId, handle, url: handle ? ORIGIN + "/" + handle : channelId ? ORIGIN + "/channel/" + channelId : null,
         subscriber_text: clean(owner?.subscriberCountText?.simpleText, 60),
         is_verified: isVerified
       },
       published_at: publishedAt, duration_seconds: isLive || isUpcoming || !length ? null : length,
-      view_count: botCheck ? count(/^([\d,]{1,20}) views?$/.exec(clean(joined(viewRenderer?.viewCount), 60) || "")?.[1].replace(/,/g, "")) : count(details.viewCount), like_count: count(meta.likeCount), category: clean(meta.category, 100), keywords,
+      view_count: botCheck ? count(/^([\d,]{1,20}) views?$/.exec(text(viewRenderer?.viewCount, 60) || "")?.[1].replace(/,/g, "")) : count(details.viewCount), like_count: count(meta.likeCount), category: clean(meta.category, 100), keywords,
       is_live: isLive, is_upcoming: isUpcoming, is_shorts_eligible: flag(meta.isShortsEligible), is_family_safe: flag(meta.isFamilySafe), is_unlisted: flag(meta.isUnlisted),
       comment_count: commentMatch ? Number(commentMatch[1].replace(/,/g, "")) : null, chapters, observed_at: new Date().toISOString(), warnings
     };

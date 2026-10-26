@@ -414,16 +414,15 @@ test("search rejects malformed input before any request", async () => {
   assert.equal(h.calls.length, 0, "no request may be sent for invalid input");
 });
 
-test("search refuses other origins, non-web clients and unloaded pages without sending a request", async () => {
+test("search refuses other origins without sending a request, and does not wait for the page configuration", async () => {
   const other = harness("search", { url: "https://example.com/" });
   await other.err({ query: "x" }, "wrong_page");
   const music = harness("search", { url: "https://music.youtube.com/" });
   await music.err({ query: "x" }, "wrong_page");
-  const embedded = harness("search", { clientName: "WEB_EMBEDDED_PLAYER" });
-  await embedded.err({ query: "x" }, "wrong_page");
+  for (const h of [other, music]) assert.equal(h.calls.length, 0);
   const loading = harness("search", { noConfig: true });
-  await loading.err({ query: "x" }, "site_error");
-  for (const h of [other, music, embedded, loading]) assert.equal(h.calls.length, 0);
+  await loading.ok({ query: "x" });
+  assert.deepEqual(loading.calls[0].body.context.client, { clientName: "WEB", clientVersion: "2.20260101.00.00", hl: "en", gl: "US" });
 });
 
 test("search maps rate limits, bot checks, bad bodies and network failures to explicit errors", async () => {
@@ -710,17 +709,15 @@ test("get_video refuses to guess when the response does not match the request or
   await harness("get_video", { player: playerBody(vid(1), { details: { title: "   " } }) }).err({ video: vid(1) }, "site_changed");
 });
 
-test("get_video maps rate limits, bot checks, bad bodies, network failures, wrong pages and unloaded pages", async () => {
+test("get_video maps rate limits, bot checks, bad bodies, network failures and wrong pages, and does not wait for the page configuration", async () => {
   await harness("get_video", { route: endpoint => (endpoint === "player" ? { status: 429, text: "" } : null) }).err({ video: vid(1) }, "rate_limited");
   await harness("get_video", { route: endpoint => (endpoint === "player" ? { status: 403, text: "" } : null) }).err({ video: vid(1) }, "challenge");
   await harness("get_video", { route: endpoint => (endpoint === "player" ? { status: 200, text: "<html>unusual traffic</html>" } : null) }).err({ video: vid(1) }, "challenge");
   await harness("get_video", { route: endpoint => (endpoint === "player" ? { status: 500, text: "<html>oops</html>" } : null) }).err({ video: vid(1) }, "site_error");
   await harness("get_video", { throws: true }).err({ video: vid(1) }, "site_error");
-  const wrong = [harness("get_video", { url: "https://example.com/" }), harness("get_video", { url: "https://music.youtube.com/" }), harness("get_video", { clientName: "TVHTML5" })];
+  const wrong = [harness("get_video", { url: "https://example.com/" }), harness("get_video", { url: "https://music.youtube.com/" })];
   for (const h of wrong) { await h.err({ video: vid(1) }, "wrong_page"); assert.equal(h.calls.length, 0); }
-  const loading = harness("get_video", { noConfig: true });
-  await loading.err({ video: vid(1) }, "site_error");
-  assert.equal(loading.calls.length, 0);
+  await harness("get_video", { noConfig: true }).ok({ video: vid(1) });
 });
 
 test("both tools behave the same from any www.youtube.com page", async () => {
