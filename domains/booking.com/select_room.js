@@ -125,10 +125,9 @@
       ({ doc, html: scripts } = page);
     }
     const text = el => rawText(el).slice(0, 600);
-    const config = re => cfg(scripts, re);
     const table = doc.querySelector("#hprt-table");
     if (!table && /awswaf|AwsWafIntegration/i.test(scripts) && /JavaScript is disabled|verify you are human/i.test(rawText(doc.body))) return fail("challenge", "The page is a bot check, not a property page.");
-    if (config(/\bb_hotel_id\s*:\s*'(\d+)'/) !== input.property_id) return fail("wrong_page", "The property page is not property " + input.property_id + ". Nothing was selected.");
+    if (cfg(scripts, /\bb_hotel_id\s*:\s*'(\d+)'/) !== input.property_id) return fail("wrong_page", "The property page is not property " + input.property_id + ". Nothing was selected.");
     if (!table) return fail("wrong_page", "The property page shows no rates; open it with check-in and check-out dates. Nothing was selected.");
     const rows = [...table.querySelectorAll("tr.js-rt-block-row")];
     const selects = [...table.querySelectorAll('select[name^="nr_rooms_"]')];
@@ -162,8 +161,8 @@
     if (total === null) return fail("site_changed", "The rate's total cannot be read.");
     if (total !== input.expected_total) return fail("price_changed", "The page shows " + priceText + " for this rate, not " + input.expected_total + ". Nothing was selected.", { current_total: total });
     // On the open page, press "I'll reserve"; from elsewhere, send the page's reservation form as that button does.
-    const form = doc.querySelector("#hprt-form");
-    const buttons = onPage ? [...document.querySelectorAll("#hprt-form button.js-reservation-button")].filter(b => b.getClientRects().length) : [];
+    const form = select.closest("form");
+    const buttons = onPage && form ? [...form.querySelectorAll("button.js-reservation-button")].filter(b => b.getClientRects().length) : [];
     if (onPage ? buttons.length !== 1 || buttons[0].disabled : !/^https:\/\/secure\.booking\.com\//.test(form?.getAttribute("action")) || !/^(get)?$/i.test(form.getAttribute("method") || "")) return fail("site_changed", "The page has no single \"I'll reserve\" button. Nothing was selected.");
     if (context.signal?.aborted) return fail("canceled", "Canceled; nothing was selected.");
 
@@ -176,13 +175,13 @@
       select.dispatchEvent(new Event("change", { bubbles: true }));
       setTimeout(() => buttons[0].click(), 100);
     } else {
-      const fields = new URLSearchParams([...form.querySelectorAll('input[type="hidden"]')].map(i => [i.name, i.value]));
+      const fields = new URLSearchParams([...form.querySelectorAll("[type=hidden]")].map(i => [i.name, i.value]));
       fields.set(select.name, "1");
       setTimeout(() => window.location.assign(form.getAttribute("action") + "?" + fields), 100);
     }
     return {
       status: "navigation_scheduled", property_id: input.property_id, rate_id: input.rate_id, room_id: roomId, room_name: text(roomLink).slice(0, 300), partner_offer: partner,
-      check_in: config(/"b_checkin_date"\s*:\s*'(\d{4}-\d{2}-\d{2})'/), check_out: config(/"b_checkout_date"\s*:\s*'(\d{4}-\d{2}-\d{2})'/),
+      check_in: cfg(scripts, /"b_checkin_date"\s*:\s*'(\d{4}-\d{2}-\d{2})'/), check_out: cfg(scripts, /"b_checkout_date"\s*:\s*'(\d{4}-\d{2}-\d{2})'/),
       adults: party.adults || null, children: party.occupancy ? party.children : null, rooms: party.rooms || null,
       currency: /^[A-Z]{3}$/.test(party.currency) ? party.currency : null, displayed_total: total,
       taxes_and_fees_excluded: excluded ? text(excluded).replace(/^Excluded:\s*/i, "") : /^\+/.test(under) ? under.replace(/^\+\s*/, "") : null,

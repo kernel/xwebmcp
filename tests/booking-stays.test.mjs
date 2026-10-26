@@ -132,7 +132,7 @@ function propertyPage({ rows = null, signedIn = false, currency = "USD", occupan
     : rows;
   const availability = noAvailability
     ? `<div>We have no availability here between Tue, Nov 10, 2026 and Thu, Nov 12, 2026. Select different dates to see more availability</div>`
-    : `<table id="hprt-table" class="hprt-table"><thead><tr><th>Accommodation Type</th><th>Available rates</th></tr></thead><tbody>${table.join("")}</tbody></table><form id="hprt-form" action="https://secure.booking.com/book.html"><input type="hidden" name="hotel_id" value="1000001"><input type="hidden" name="room1" value="${room1}"><input type="hidden" name="checkin" value="2026-11-10"></form>`;
+    : `<form id="hprt-form" action="https://secure.booking.com/book.html"><table id="hprt-table" class="hprt-table"><thead><tr><th>Accommodation Type</th><th>Available rates</th></tr></thead><tbody>${table.join("")}</tbody></table><input type="hidden" name="hotel_id" value="1000001"><input type="hidden" name="room1" value="${room1}"><input type="hidden" name="checkin" value="2026-11-10"></form>`;
   const body = `<div id="hp_hotel_name"><div><h2 class="pp-header__title">Harbor View Studios</h2></div></div>` +
     `<div data-testid="review-score-right-component"><div>8.4</div><div>Rated: Very Good 8.4 – based on 1,234 reviews Expand ratings and reviews section</div><div><div>Very Good </div><div>1,234 reviews</div></div></div>` +
     `<div data-testid="ReviewSubscoresDesktop"><div data-testid="review-subscore">Staff, 9.1, Average rating out of 10 Staff 9.1</div><div data-testid="review-subscore">Value for money, 7.9, Average rating out of 10 Value for money 7.9</div></div>` +
