@@ -572,6 +572,91 @@
       }
     },
     {
+      "domain": "amazon.in",
+      "tool": "add_to_cart",
+      "file": "domains/amazon.in/add_to_cart.js",
+      "kind": "page",
+      "namespace": "amazon.in",
+      "url_patterns": [
+        "https://www.amazon.in/*"
+      ],
+      "url_patterns_reason": "Narrowed to www.amazon.in, the Amazon India store: the tools read its search, product and cart pages same-origin and refuse other origins; other amazon.in hosts are separate services such as Seller Central.",
+      "status": "draft",
+      "last_verified": null,
+      "notes": "One recommended item into an empty guest cart only. One POST, no checkout; uncertain outcomes block retries. Write success fixture-only; no live mutation success. Was qa_passed; on 2026-10-20 the source changed to report Amazon's automated-access page (\"503 - Service Unavailable Error\" served with HTTP 200) as challenge instead of site_changed, so it needs independent re-QA.",
+      "provenance": {
+        "qa_agent": "agt_ed7d2d6b0c725fe74e35"
+      }
+    },
+    {
+      "domain": "amazon.in",
+      "tool": "get_cart",
+      "file": "domains/amazon.in/get_cart.js",
+      "kind": "page",
+      "namespace": "amazon.in",
+      "url_patterns": [
+        "https://www.amazon.in/*"
+      ],
+      "url_patterns_reason": "Narrowed to www.amazon.in, the Amazon India store: the tools read its search, product and cart pages same-origin and refuse other origins; other amazon.in hosts are separate services such as Seller Central.",
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Guest active-cart read and dedicated one-item recommendations. Signed-in state refused; empty cart read live, populated rows fixture-only. Was verified; on 2026-10-20 the source changed to report Amazon's automated-access page (\"503 - Service Unavailable Error\" served with HTTP 200) as challenge instead of site_changed, so it needs independent re-QA.",
+      "provenance": {
+        "qa_agent": "agt_ed7d2d6b0c725fe74e35"
+      }
+    },
+    {
+      "domain": "amazon.in",
+      "tool": "get_product",
+      "file": "domains/amazon.in/get_product.js",
+      "kind": "page",
+      "namespace": "amazon.in",
+      "url_patterns": [
+        "https://www.amazon.in/*"
+      ],
+      "url_patterns_reason": "Narrowed to www.amazon.in, the Amazon India store: the tools read its search, product and cart pages same-origin and refuse other origins; other amazon.in hosts are separate services such as Seller Central.",
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Public product page by asin: price and M.R.P. in rupees, rating, availability, seller, bullets, spec tables and variation asins. Live-checked as a guest only; no delivery estimates, reviews or account data. Was verified; on 2026-10-20 the source changed to report Amazon's automated-access page (\"503 - Service Unavailable Error\" served with HTTP 200) as challenge instead of site_changed, so it needs independent re-QA.",
+      "provenance": {
+        "qa_agent": "agt_ed7d2d6b0c725fe74e35"
+      }
+    },
+    {
+      "domain": "amazon.in",
+      "tool": "list_bestsellers",
+      "file": "domains/amazon.in/list_bestsellers.js",
+      "kind": "page",
+      "namespace": "amazon.in",
+      "url_patterns": [
+        "https://www.amazon.in/*"
+      ],
+      "url_patterns_reason": "Narrowed to www.amazon.in, the Amazon India store: the tools read its search, product and cart pages same-origin and refuse other origins; other amazon.in hosts are separate services such as Seller Central.",
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Public Best Sellers chart for a department or category node with subcategories to drill into; ranks 1-30 and 51-80 only (the rest lazy-load). Root chart live-checked from a department chart as a guest. Was verified; on 2026-10-20 the source changed to report Amazon's automated-access page (\"503 - Service Unavailable Error\" served with HTTP 200) as challenge instead of site_changed, so it needs independent re-QA.",
+      "provenance": {
+        "qa_agent": "agt_ed7d2d6b0c725fe74e35"
+      }
+    },
+    {
+      "domain": "amazon.in",
+      "tool": "search_products",
+      "file": "domains/amazon.in/search_products.js",
+      "kind": "page",
+      "namespace": "amazon.in",
+      "url_patterns": [
+        "https://www.amazon.in/*"
+      ],
+      "url_patterns_reason": "Narrowed to www.amazon.in, the Amazon India store: the tools read its search, product and cart pages same-origin and refuse other origins; other amazon.in hosts are separate services such as Seller Central.",
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Public catalog search with the site's departments, sorts, rupee price bounds and filter option ids (include_facets, then facet_ids); sponsored flag and exclude_sponsored. Live-checked as a guest only; 200 KiB UTF-8 output budget. Was verified; on 2026-10-20 the source changed to report Amazon's automated-access page (\"503 - Service Unavailable Error\" served with HTTP 200) as challenge instead of site_changed, so it needs independent re-QA.",
+      "provenance": {
+        "qa_agent": "agt_ed7d2d6b0c725fe74e35"
+      }
+    },
+    {
       "domain": "amctheatres.com",
       "tool": "add_tickets_to_cart",
       "file": "domains/amctheatres.com/add_tickets_to_cart.js",
