@@ -84,10 +84,26 @@
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true }
   },
   execute: async (input) => {
+    // @xwebmcp-inline lib/github-page.js
     const fail = (kind, message) => ({ status: "error", error_kind: kind, error_message: message });
+    // Requests a page without cookies, so reading never marks notifications read; returns its document and React payload, or { error }.
+    const load = async (target, what) => {
+      const response = await fetch(target, { credentials: "omit" });
+      const path = new URL(response.url).pathname;
+      if (response.status === 429) return { error: fail("throttled", "GitHub rate-limited this browser (HTTP 429). Wait a minute or more before retrying; nothing was changed.") };
+      if (response.status === 403) return { error: fail("blocked", "GitHub refused the request (HTTP 403). Nothing was changed.") };
+      if (/^\/login(\/|$)/.test(path)) return { error: fail("login_required", "GitHub asked for sign-in before showing " + what + ".") };
+      if (response.status === 404) return { error: fail("not_found", "GitHub has no " + what + " visible to this browser.") };
+      if (!response.ok) return { error: fail("unknown", "GitHub answered HTTP " + response.status + ".") };
+      const doc = new DOMParser().parseFromString(await response.text(), "text/html");
+      let payload = null;
+      try { payload = JSON.parse(doc.querySelector('script[data-target="react-app.embeddedData"]').textContent).payload; } catch {}
+      return { url: response.url, path, doc, payload };
+    };
+    // @xwebmcp-end
     if (!input || typeof input !== "object" || Array.isArray(input)) return fail("invalid_input", "Input must be an object. Nothing was requested.");
     const unknown = Object.keys(input).find(key => !["owner", "repo", "readme_max_chars"].includes(key));
-    if (unknown) return fail("invalid_input", "Unknown input field " + unknown + ". Nothing was requested.");
+    if (unknown) return fail("invalid_input", "Unknown input field " + unknown + (unknown === "number" ? "; get_issue and get_pull_request take a number" : "") + ". Nothing was requested.");
     const owner = input.owner;
     const repo = input.repo;
     const readmeMax = input.readme_max_chars === undefined ? 2000 : input.readme_max_chars;
@@ -96,6 +112,7 @@
     if (!Number.isInteger(readmeMax) || readmeMax < 0 || readmeMax > 20000) return fail("invalid_input", "readme_max_chars must be an integer from 0 to 20000. Nothing was requested.");
     if (location.origin !== "https://github.com") return fail("wrong_page", "This tool works only on https://github.com pages; open github.com in this tab first. Nothing was requested.");
 
+    // @xwebmcp-inline lib/github-text.js
     const SKIP = new Set(["script", "style", "svg", "img"]);
     const PARAGRAPH = new Set(["p", "ul", "ol", "pre", "blockquote", "table", "h1", "h2", "h3", "h4", "h5", "h6", "hr"]);
     const LINE = new Set(["div", "li", "tr"]);
@@ -109,37 +126,28 @@
       if (PARAGRAPH.has(node.localName)) return "\n\n" + inner + "\n\n";
       return LINE.has(node.localName) ? inner + "\n" : inner;
     };
-    const rendered = html => text(new DOMParser().parseFromString(html, "text/html").body)
-      .replace(/[ \t\u00a0]+/g, " ").replace(/ ?\n ?/g, "\n").replace(/\n{3,}/g, "\n\n").trim();
+    const rendered = node => text(node).replace(/[ \t\u00a0]+/g, " ").replace(/ ?\n ?/g, "\n").replace(/\n{3,}/g, "\n\n").trim();
+    // @xwebmcp-end
     const utc = value => { const time = new Date(value); return Number.isNaN(time.getTime()) ? null : time.toISOString(); };
     const count = value => Number.isInteger(value) && value >= 0 ? value : null;
     const changed = () => Object.assign(new Error("unexpected repository page shape"), { siteChanged: true });
 
     try {
       // Without cookies: signed in, GitHub serves a newer repository page without the data this tool reads.
-      const response = await fetch("/" + owner + "/" + repo, { credentials: "omit" });
-      const path = new URL(response.url).pathname;
-      if (response.status === 429) return fail("throttled", "GitHub rate-limited this browser (HTTP 429). Wait a minute or more before retrying; nothing was changed.");
-      if (response.status === 403) return fail("blocked", "GitHub refused the request (HTTP 403). Nothing was changed.");
-      if (/^\/login(\/|$)/.test(path)) return fail("login_required", "GitHub asked for sign-in before showing this repository.");
-      if (response.status === 404) return fail("not_found", "GitHub has no repository " + owner + "/" + repo + " visible to this browser.");
-      if (!response.ok) return fail("unknown", "GitHub answered HTTP " + response.status + ".");
+      const { error, path, doc, payload } = await load("/" + owner + "/" + repo, "repository " + owner + "/" + repo);
+      if (error) return error;
       if (path.split("/").filter(Boolean).length !== 2) return fail("not_found", owner + "/" + repo + " is not a repository page (GitHub redirected to a different kind of page).");
-      const doc = new DOMParser().parseFromString(await response.text(), "text/html");
       const meta = name => { const element = doc.querySelector('meta[name="' + name + '"]'); return element ? element.getAttribute("content") : null; };
       const pattern = meta("route-pattern");
       if (pattern === null) throw changed();
       if (pattern !== "/:user_id/:repository") return fail("not_found", owner + "/" + repo + " is not a repository page (GitHub redirected to a different kind of page).");
       const requested = owner + "/" + repo;
-      const script = doc.querySelector('script[data-target="react-app.embeddedData"]');
-      if (!script && /This repository is empty/.test(doc.body.textContent)) {
+      if (!payload && /This repository is empty/.test(doc.body.textContent)) {
         const name = meta("octolytics-dimension-repository_nwo");
         const isPublic = meta("octolytics-dimension-repository_public");
         if (!/^[A-Za-z0-9._-]+\/[A-Za-z0-9._-]+$/.test(name || "") || (isPublic !== "true" && isPublic !== "false")) throw changed();
         return { status: "empty_repository", full_name: name, url: "https://github.com/" + name, redirected_from: name.toLowerCase() === requested.toLowerCase() ? null : requested, visibility: isPublic === "true" ? "public" : "private" };
       }
-      let payload;
-      try { payload = JSON.parse(script.textContent).payload; } catch { throw changed(); }
       if (!payload || typeof payload !== "object") throw changed();
       const about = payload.sidebarAbout;
       const layout = payload.codeViewLayoutRoute && payload.codeViewLayoutRoute.repo;
@@ -155,7 +163,7 @@
         : null;
       let readme = null;
       if (file) {
-        const full = rendered(file.richText);
+        const full = rendered(new DOMParser().parseFromString(file.richText, "text/html").body);
         readme = { file_name: String(file.displayName || file.path || "README"), text: full.slice(0, /[\ud800-\udbff]/.test(full[readmeMax - 1] || "") ? readmeMax - 1 : readmeMax), truncated: full.length > readmeMax };
       }
       return {

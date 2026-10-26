@@ -1679,6 +1679,20 @@
     },
     {
       "domain": "github.com",
+      "tool": "get_file",
+      "file": "domains/github.com/get_file.js",
+      "kind": "page",
+      "namespace": "github.com",
+      "url_patterns": [
+        "https://github.com/*"
+      ],
+      "url_patterns_reason": "Narrowed to github.com: it serves repositories, issues, pull requests and search, and the tools read its pages and endpoints same-origin; other github.com hosts are separate products (docs., gist., api. and others) where they cannot work.",
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Reads a file or directory at a ref from its code page, requested without cookies. Not yet independently QA'd."
+    },
+    {
+      "domain": "github.com",
       "tool": "get_issue",
       "file": "domains/github.com/get_issue.js",
       "kind": "page",
@@ -1781,37 +1795,17 @@
     },
     {
       "domain": "github.com",
-      "tool": "search_issues",
-      "file": "domains/github.com/search_issues.js",
+      "tool": "search",
+      "file": "domains/github.com/search.js",
       "kind": "page",
       "namespace": "github.com",
       "url_patterns": [
         "https://github.com/*"
       ],
       "url_patterns_reason": "Narrowed to github.com: it serves repositories, issues, pull requests and search, and the tools read its pages and endpoints same-origin; other github.com hosts are separate products (docs., gist., api. and others) where they cannot work.",
-      "status": "verified",
-      "last_verified": "2026-10-16",
-      "notes": "One page of 10 issue or pull request results with GitHub qualifiers, sorting and paging; only the first 1000 results of a query are reachable. Independent QA on 2026-10-16 ran it live: repo:denoland/deno is:open label:bug sorted by created, pages 1 and 2 matching the API, is:pr is:merged result count matching the API, no_results and an out-of-range page. Signed-in sessions were not tested.",
-      "provenance": {
-        "qa_agent": "agt_5ff0e98492a9b2235c87"
-      }
-    },
-    {
-      "domain": "github.com",
-      "tool": "search_repositories",
-      "file": "domains/github.com/search_repositories.js",
-      "kind": "page",
-      "namespace": "github.com",
-      "url_patterns": [
-        "https://github.com/*"
-      ],
-      "url_patterns_reason": "Narrowed to github.com: it serves repositories, issues, pull requests and search, and the tools read its pages and endpoints same-origin; other github.com hosts are separate products (docs., gist., api. and others) where they cannot work.",
-      "status": "verified",
-      "last_verified": "2026-10-16",
-      "notes": "One page of 10 repository results with GitHub qualifiers, sorting and paging; only the first 1000 results of a query are reachable. Independent QA on 2026-10-16 ran it live: topic:cli stars:>5000 sorted by stars matched the API's order and count, and no_results. Signed-in sessions were not tested.",
-      "provenance": {
-        "qa_agent": "agt_5ff0e98492a9b2235c87"
-      }
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Merges the former search_repositories and search_issues tools into one tool with a type input. Not yet independently QA'd."
     },
     {
       "domain": "github.com",

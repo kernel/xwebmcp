@@ -7,8 +7,11 @@ import { DOMParser, Document } from "./etsy-dom.mjs";
 // Harness for the github.com read tools. Each page tool is re-created from execute.toString(), as the runtime
 // does inside the page, and run against a fake fetch that serves fabricated data; nothing here contacts the
 // live site. Repositories, users, issues and tokens below are invented.
+const TOOLS = ["search", "get_repository", "get_issue", "get_pull_request", "get_file"];
+// search_repositories and search_issues below are the search tool with its type preset.
+const ALIASES = { search_repositories: "repositories", search_issues: "issues" };
 const NAMES = ["search_repositories", "search_issues", "get_repository", "get_issue", "get_pull_request"];
-const sources = Object.fromEntries(NAMES.map(name => [name, readFileSync(new URL(`../domains/github.com/${name}.js`, import.meta.url), "utf8")]));
+const sources = Object.fromEntries(TOOLS.map(name => [name, readFileSync(new URL(`../domains/github.com/${name}.js`, import.meta.url), "utf8")]));
 const registry = JSON.parse(readFileSync(new URL("../registry.json", import.meta.url), "utf8"));
 const ORIGIN = "https://github.com";
 const SECRET = "fabricated-secret-token-000";
@@ -45,7 +48,8 @@ function conforms(schema, value) {
 
 // Runs one tool. route(pathAndSearch, init) returns { status, body, url? } (url is the final URL after redirects).
 function run(name, input, { route, origin = ORIGIN, user = "", head } = {}) {
-  const [definition] = runInNewContext(sources[name]);
+  if (ALIASES[name] && input && typeof input === "object" && !Array.isArray(input)) input = { type: ALIASES[name], ...input };
+  const [definition] = runInNewContext(sources[ALIASES[name] ? "search" : name]);
   const calls = [];
   const context = {
     location: { origin },
@@ -73,8 +77,8 @@ const page = (payload, body = "", head = "") => `<html><head><title>x</title>${h
 // --- registry and contract ----------------------------------------------------------------------------
 
 test("registry entries match the tool files", () => {
-  const entries = registry.tools.filter(t => t.domain === "github.com" && NAMES.includes(t.tool));
-  assert.deepEqual(entries.map(t => t.tool), [...NAMES].sort());
+  const entries = registry.tools.filter(t => t.domain === "github.com" && TOOLS.includes(t.tool));
+  assert.deepEqual(entries.map(t => t.tool), [...TOOLS].sort());
   for (const entry of entries) {
     const [definition] = runInNewContext(sources[entry.tool]);
     assert.equal(entry.kind, "page");
@@ -682,4 +686,56 @@ test("get_issue and get_pull_request enforce their state enums, defaults and kin
   assert.equal((await run("get_pull_request", { owner: "example-org", repo: "widgets", number: 9 }, { route: pullRoute(arrayState, pullBody("<p>x</p>")) })).output.error_kind, "site_changed");
   const notPull = await run("get_pull_request", { owner: "example-org", repo: "widgets", number: 9 }, { route: () => ({ status: 200, body: "<html></html>", url: `${ORIGIN}/example-org/widgets/discussions/9` }) });
   assert.equal(notPull.output.error_kind, "not_found");
+});
+
+test("search needs a type and ranks by stars with a stars: qualifier GitHub's ranking needs", async () => {
+  assert.equal((await run("search", { query: "cli" }, { route: () => assert.fail("no request expected") })).output.error_kind, "invalid_input");
+  const route = () => ({ status: 200, body: JSON.stringify(searchBody("repositories", [repoHit("a", "b")])) });
+  const added = await run("search", { query: "language:zig", type: "repositories", sort: "stars" }, { route });
+  assert.equal(new URL(added.calls[0].target, ORIGIN).searchParams.get("q"), "language:zig stars:>0");
+  assert.equal(added.output.query, "language:zig stars:>0");
+  assert.match(added.output.warnings.join(" "), /Added stars:>0/);
+  for (const input of [{ query: "language:zig stars:>100", sort: "stars" }, { query: "language:zig", sort: "stars", order: "asc" }, { query: "language:zig", sort: "forks" }]) {
+    const { calls, output } = await run("search", { type: "repositories", ...input }, { route });
+    assert.equal(new URL(calls[0].target, ORIGIN).searchParams.get("q"), input.query);
+    assert.deepEqual(output.warnings, []);
+  }
+});
+
+// --- get_file ---------------------------------------------------------------------------------------------
+
+const codeLayout = { codeViewLayoutRoute: { repo: { ownerLogin: "example-org", name: "widgets" } } };
+const refInfo = { name: "v1.0.0", refType: "tag", currentOid: "a".repeat(40) };
+
+test("get_file reads a file's text at a ref through the tree URL, which redirects files to their blob page", async () => {
+  const { output, calls } = await run("get_file", { owner: "example-org", repo: "widgets", ref: "release/v1", path: "src/a b.json", max_chars: 5 }, {
+    route: () => ({ status: 200, url: `${ORIGIN}/example-org/widgets/blob/release/v1/src/a%20b.json`, body: page({ ...codeLayout, codeViewBlobLayoutRoute: { refInfo: { ...refInfo, name: "release/v1", refType: "branch" }, path: "src/a b.json", blob: { language: "JSON", rawBlobUrl: `${ORIGIN}/example-org/widgets/raw/refs/heads/release/v1/src/a%20b.json` } }, "codeViewBlobLayoutRoute.StyledBlob": { rawLines: ["{", "  \"x\": 1", "}"] } }) })
+  });
+  assert.deepEqual(calls.map(c => [c.target, c.credentials]), [["/example-org/widgets/tree/release/v1/src/a%20b.json", "omit"]]);
+  assert.equal(output.type, "file");
+  assert.equal(output.ref_type, "branch");
+  assert.equal(output.line_count, 3);
+  assert.equal(output.text, "{\n  \"");
+  assert.equal(output.truncated, true);
+  const binary = await run("get_file", { owner: "example-org", repo: "widgets", path: "logo.png" }, {
+    route: () => ({ status: 200, body: page({ ...codeLayout, codeViewBlobLayoutRoute: { refInfo, path: "logo.png", blob: { truncated: false } } }) })
+  });
+  assert.equal(binary.calls[0].target, "/example-org/widgets/tree/HEAD/logo.png");
+  assert.deepEqual([binary.output.text, binary.output.line_count, binary.output.truncated], [null, null, false]);
+});
+
+test("get_file lists a directory and reports missing paths, changed pages and bad input", async () => {
+  const items = [{ name: "src", path: "src", contentType: "directory" }, { name: "README.md", path: "README.md", contentType: "file" }, null];
+  const dir = await run("get_file", { owner: "example-org", repo: "widgets", ref: "v1.0.0" }, {
+    route: () => ({ status: 200, body: page({ ...codeLayout, codeViewTreeRoute: { refInfo, path: "/", tree: { items, totalCount: 3 } } }) })
+  });
+  assert.equal(dir.calls[0].target, "/example-org/widgets/tree/v1.0.0/");
+  assert.deepEqual(dir.output.entries, [{ name: "src", path: "src", type: "directory" }, { name: "README.md", path: "README.md", type: "file" }]);
+  assert.equal(dir.output.entries_total, 3);
+  assert.equal((await run("get_file", { owner: "a", repo: "r", path: "x" }, { route: () => ({ status: 404, body: "" }) })).output.error_kind, "not_found");
+  assert.equal((await run("get_file", { owner: "a", repo: "r" }, { route: () => ({ status: 200, body: page({ codeViewTreeRoute: {} }) }) })).output.error_kind, "site_changed");
+  for (const input of [{ owner: "a", repo: "r", path: "../x" }, { owner: "a", repo: "r", ref: "a..b" }, { owner: "a", repo: "r", ref: "" }, { owner: "a", repo: "r", max_chars: -1 }, { owner: "a", repo: "r", surprise: 1 }]) {
+    assert.equal((await run("get_file", input, { route: () => assert.fail("no request expected") })).output.error_kind, "invalid_input", JSON.stringify(input));
+  }
+  assert.equal((await run("get_file", { owner: "a", repo: "r" }, { origin: "https://docs.github.com", route: () => assert.fail("no request expected") })).output.error_kind, "wrong_page");
 });
