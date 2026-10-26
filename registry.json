@@ -3792,11 +3792,11 @@
         "https://target.com/*",
         "https://*.target.com/*"
       ],
-      "status": "qa_passed",
-      "last_verified": "2026-09-26",
-      "notes": "Independent QA verified new ship and pickup lines, increments of the same line, and quantity_limit, unavailable and variant_required refusals with no write, on a guest cart restored afterwards. Signed-in carts not live-tested.",
+      "status": "verified",
+      "last_verified": "2026-10-26",
+      "notes": "Independent QA of the final source, live on guest carts from a product page: new ship and pickup lines, an increment of the same line, cart_product_total_cents equal to get_cart's product_total_cents after each add, and variant_required, unavailable (shipping out of stock), quantity_limit (11 in cart + 10 > 20) and invalid_input refusals with no write; wrong_page on corporate.target.com and challenge while the site showed its Press & hold modal. Carts restored and verified empty. Signed-in carts and the 2-second retry on a rejected product read were not live-tested (unit-tested only).",
       "provenance": {
-        "qa_agent": "agt_9cc0b28ff9abe2ef70d3"
+        "qa_agent": "agt_5e0fa713637b30dddb08"
       }
     },
     {
@@ -3809,11 +3809,11 @@
         "https://target.com/*",
         "https://*.target.com/*"
       ],
-      "status": "qa_passed",
-      "last_verified": "2026-09-26",
-      "notes": "Independent QA verified guest carts before, during and after cart changes (no cart, lines, empty record) against the site's own cart page. Signed-in carts not live-tested; saved-for-later items are not returned.",
+      "status": "verified",
+      "last_verified": "2026-10-26",
+      "notes": "Independent QA of the final source, live on guest carts from home and product pages: no cart, ship and pickup lines, quantities matching the site's own cart page, an emptied cart record, invalid_input for any input, wrong_page on corporate.target.com and challenge while the site showed its Press & hold modal. Signed-in carts not live-tested; saved-for-later items are not returned.",
       "provenance": {
-        "qa_agent": "agt_9cc0b28ff9abe2ef70d3"
+        "qa_agent": "agt_5e0fa713637b30dddb08"
       }
     },
     {
@@ -3826,11 +3826,11 @@
         "https://target.com/*",
         "https://*.target.com/*"
       ],
-      "status": "qa_passed",
-      "last_verified": "2026-09-26",
-      "notes": "Independent QA verified variations with shipping, pickup, in-store and same-day status, an item family with variant_filter and range price, and not_found for an unknown tcin.",
+      "status": "verified",
+      "last_verified": "2026-10-26",
+      "notes": "Independent QA of the final source, live from search and product pages: a single item with shipping, pickup, in-store and same-day status, an out-of-stock item, an item family with variation themes and variant_filter, not_found for an unknown tcin and invalid_input for malformed tcin, variant_filter and extra keys; no navigation. The 2-second retry on a bot-protection rejection is unit-tested only.",
       "provenance": {
-        "qa_agent": "agt_9cc0b28ff9abe2ef70d3"
+        "qa_agent": "agt_5e0fa713637b30dddb08"
       }
     },
     {
@@ -3844,10 +3844,10 @@
         "https://*.target.com/*"
       ],
       "status": "qa_passed",
-      "last_verified": "2026-09-26",
-      "notes": "Independent QA verified store, location, nearby stores and guest session type with no site request, and wrong_page on another target.com host. Read-only; never changes the store.",
+      "last_verified": "2026-10-26",
+      "notes": "Independent QA of the final source, live from the home page in three guest sessions: store, location, nearby stores and guest session type with no site request, invalid_input for any input, and wrong_page on corporate.target.com. Read-only; never changes the store. Not live-tested from another www.target.com page or signed in.",
       "provenance": {
-        "qa_agent": "agt_9cc0b28ff9abe2ef70d3"
+        "qa_agent": "agt_5e0fa713637b30dddb08"
       }
     },
     {
@@ -3860,11 +3860,11 @@
         "https://target.com/*",
         "https://*.target.com/*"
       ],
-      "status": "qa_passed",
-      "last_verified": "2026-09-26",
-      "notes": "Independent QA verified removal of lines it created (echoing the removed line), not_found on a repeat and on an unknown id, and an empty cart afterwards.",
+      "status": "verified",
+      "last_verified": "2026-10-26",
+      "notes": "Independent QA of the final source, live on guest carts from home and product pages: removal of ship and pickup lines it created (echoing the removed line), not_found on a repeat and on an unknown id, invalid_input for malformed ids and extra keys, and an empty cart afterwards. Signed-in carts not live-tested.",
       "provenance": {
-        "qa_agent": "agt_9cc0b28ff9abe2ef70d3"
+        "qa_agent": "agt_5e0fa713637b30dddb08"
       }
     },
     {
@@ -3877,11 +3877,11 @@
         "https://target.com/*",
         "https://*.target.com/*"
       ],
-      "status": "qa_passed",
-      "last_verified": "2026-09-26",
-      "notes": "Independent QA verified all seven site sorts, paging, limit, exclude_sponsored and facet filters against the site's grid. Bot protection can answer a single query with HTTP 435 (challenge); fallback results for misspelled queries are not flagged.",
+      "status": "verified",
+      "last_verified": "2026-10-26",
+      "notes": "Independent QA of the final source, live from home, search and product pages: relevance and price sorts, paging, limit, exclude_sponsored, include_facets with option_count, facet_ids, and the new filters by name ('Color: Black', a bare unique option, 'Guest Rating: 4', a price range with a plain hyphen) giving the same results and the same 961 count as the site's own filtered page; ambiguous and unknown names refused with the choices; product order identical to the original tool. An unknown brand name returns every brand option (about 6 KB). Wrong_page on corporate.target.com; the challenge path and its single 2-second retry are unit-tested only. Misspelled-query fallbacks are not flagged.",
       "provenance": {
-        "qa_agent": "agt_9cc0b28ff9abe2ef70d3"
+        "qa_agent": "agt_5e0fa713637b30dddb08"
       }
     },
     {
@@ -3894,11 +3894,11 @@
         "https://target.com/*",
         "https://*.target.com/*"
       ],
-      "status": "qa_passed",
-      "last_verified": "2026-09-26",
-      "notes": "Independent QA verified up and down changes and a same-quantity call that writes nothing, and not_found for an unknown line; the per-item quantity_limit refusal is fixture-tested only.",
+      "status": "verified",
+      "last_verified": "2026-10-26",
+      "notes": "Independent QA of the final source, live on guest carts from home and product pages: up and down changes, a same-quantity call that writes nothing (changed false), not_found for an unknown line, and invalid_input for quantity 0, 11, missing quantity and malformed ids; cart restored empty. The per-item quantity_limit refusal is fixture-tested only; signed-in carts not live-tested.",
       "provenance": {
-        "qa_agent": "agt_9cc0b28ff9abe2ef70d3"
+        "qa_agent": "agt_5e0fa713637b30dddb08"
       }
     },
     {
