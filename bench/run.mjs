@@ -156,7 +156,7 @@ async function planRun() {
   if (opts.intent) intents = intents.filter(i => opts.intent.includes(i.id));
   if (opts.split) intents = intents.filter(i => opts.split.includes(i.split));
   // A candidate branch replaces every intent's tool sources.
-  if (opts["tools-ref"]) intents = intents.map(i => ({ ...i, tools: [{ repo: "kernel/xwebmcp", ref: opts["tools-ref"] }] }));
+  if (opts["tools-ref"]) intents = intents.map(i => ({ ...i, tools: [{ repo: "kernel/xwebmcp", ref: opts["tools-ref"] }], candidate: true }));
   intents = intents.filter(intent => !intent.opt_in || opts.intent?.includes(intent.id)
     || (log(`skipping ${intent.id}: ${intent.opt_in}; name it with --intent to run it`), false));
   const skipUnlessNamed = (intent, message) => {

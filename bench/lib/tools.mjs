@@ -93,7 +93,8 @@ export async function registeredTools(intent, shas, show) {
     }
   }
   for (const [list, name] of [...Object.keys(intent.exclude).map(name => ["exclude", name]), ...actions.map(name => ["actions", name])]) {
-    if (!known.has(name)) problems.push(`${list} names ${name}, which no source has`);
+    // A candidate branch (--tools-ref) may remove a tool the domain's settings name.
+    if (!known.has(name) && !intent.candidate) problems.push(`${list} names ${name}, which no source has`);
   }
   for (const name of [...intent.tools.flatMap(s => s.names ?? []), ...(intent.entry_tool ? [intent.entry_tool] : [])]) {
     if (!byName.has(name) && !problems.some(p => p.startsWith(`${name} `))) problems.push(`${name} is excluded or neither read-only nor an action, so it would not be registered`);
