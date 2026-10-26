@@ -12,7 +12,10 @@
   "rules": [
     {
       "path": "repositories",
-      "count": 3
+      "count": [
+        3,
+        3
+      ]
     },
     {
       "path": "repositories[]",

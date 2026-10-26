@@ -6,21 +6,7 @@
   ],
   "properties": {
     "subscribers": {
-      "type": "object",
-      "required": [
-        "@veritasium",
-        "@3blue1brown"
-      ],
-      "properties": {
-        "@veritasium": {
-          "type": "integer",
-          "minimum": 0
-        },
-        "@3blue1brown": {
-          "type": "integer",
-          "minimum": 0
-        }
-      }
+      "type": "object"
     },
     "more": {
       "type": "string",

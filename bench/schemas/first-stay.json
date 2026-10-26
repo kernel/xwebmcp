@@ -1,0 +1,17 @@
+{
+  "type": "object",
+  "required": [
+    "property",
+    "total"
+  ],
+  "properties": {
+    "property": {
+      "type": "string",
+      "minLength": 1
+    },
+    "total": {
+      "type": "number",
+      "minimum": 0
+    }
+  }
+}

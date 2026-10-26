@@ -63,10 +63,10 @@ export function measure(source) {
   };
 }
 
-export function domainMetrics(domain) {
-  const dir = join(root, "domains", domain);
+export function domainMetrics(domain, repo = root) {
+  const dir = join(repo, "domains", domain);
   const tools = readdirSync(dir).filter(f => f.endsWith(".js")).sort().map(file => ({ tool: file.replace(/\.js$/, ""), ...measure(readFileSync(join(dir, file), "utf8")) }));
-  const libs = [...new Set(tools.flatMap(t => t.libs))].map(lib => ({ lib, ...measure(readFileSync(join(root, lib), "utf8")) }));
+  const libs = [...new Set(tools.flatMap(t => t.libs))].map(lib => ({ lib, ...measure(readFileSync(join(repo, lib), "utf8")) }));
   const sum = (key) => [...tools, ...libs].reduce((total, t) => total + t[key], 0);
   return { domain, tools, libs, total: { tools: tools.length, tokens: sum("tokens"), branches: sum("branches"), selectors: sum("selectors"), brittleness: sum("brittleness") } };
 }
@@ -75,7 +75,7 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
   const args = process.argv.slice(2);
   const json = args.includes("--json");
   const domains = args.filter(a => a !== "--json");
-  const all = (domains.length ? domains : readdirSync(join(root, "domains")).filter(d => !d.endsWith(".md")).sort()).map(domainMetrics);
+  const all = (domains.length ? domains : readdirSync(join(root, "domains")).filter(d => !d.endsWith(".md")).sort()).map(domain => domainMetrics(domain));
   if (json) {
     console.log(JSON.stringify(all, null, 2));
   } else {

@@ -25,7 +25,10 @@
     },
     {
       "path": "labels",
-      "count": 2
+      "count": [
+        2,
+        2
+      ]
     },
     {
       "path": "labels[]",

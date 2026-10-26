@@ -13,7 +13,10 @@
   "rules": [
     {
       "path": "games",
-      "count": 3
+      "count": [
+        3,
+        3
+      ]
     },
     {
       "path": "games[].price",

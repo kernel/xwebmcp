@@ -14,7 +14,7 @@
     }
   },
   "start_url": "https://www.booking.com/",
-  "answer_schema": "schemas/stay-price.json",
+  "answer_schema": "schemas/first-stay.json",
   "rules": [
     {
       "path": "total",

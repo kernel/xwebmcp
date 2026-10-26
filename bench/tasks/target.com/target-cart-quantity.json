@@ -22,7 +22,7 @@
   ],
   "check": {
     "extract": {
-      "subtotal": "Subtotal[^$]{0,60}\\$\\s*([\\d,]+\\.\\d{2})"
+      "subtotal": "Order summary\\s*\\$\\s*([\\d,]+\\.\\d{2})\\s*subtotal"
     },
     "rules": [
       {

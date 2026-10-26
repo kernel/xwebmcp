@@ -159,6 +159,7 @@ function ruleProblems(rule, fixture) {
   const checks = Object.keys(rule ?? {}).filter(key => key !== "path");
   if (typeof rule?.path !== "string" || checks.length !== 1 || !RULE_CHECKS.includes(checks[0])) return [`rule ${JSON.stringify(rule)} needs a path and one of ${RULE_CHECKS.join(", ")}`];
   if ("matches" in rule && !(typeof rule.matches === "string" && compiles(fillRules([rule], fixture)[0].matches, "iu"))) return [`rule ${JSON.stringify(rule)} needs a valid regex`];
+  if ("count" in rule && !(Array.isArray(rule.count) && rule.count.length === 2 && rule.count.every(Number.isInteger))) return [`rule ${JSON.stringify(rule)} needs count as [min, max]`];
   return [];
 }
 
