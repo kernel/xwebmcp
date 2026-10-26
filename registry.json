@@ -1532,11 +1532,11 @@
         "https://www.ebay.com/*"
       ],
       "url_patterns_reason": "Narrowed to www.ebay.com, the US marketplace: the tools fetch its search, listing and seller pages same-origin and refuse other origins; other ebay.com hosts serve separate flows such as sign-in.",
-      "status": "qa_passed",
-      "last_verified": "2026-09-30",
-      "notes": "Public listing details by item number, including auctions, sellers and variation menus. Read-only; never chooses a variation or purchases. Recognized US, UK and Canadian ship-to postal codes are redacted; other address formats are not guaranteed. Public image hosts are checked exactly and query strings removed. Independent final-source QA on 0c0688f signed off: real Kernel listing success, emulated extension success/failure, malformed-price rejection and cancellation. No all-tool real-success parity or account-action verification.",
+      "status": "verified",
+      "last_verified": "2026-10-26",
+      "notes": "Public listing details by item number, including auctions, sellers and variation menus. Read-only; never chooses a variation or purchases. Recognized US, UK and Canadian ship-to postal codes are redacted; other address formats are not guaranteed. Public image hosts are checked exactly and query strings removed. Independent final-source QA on 0c0688f signed off: real Kernel listing success, emulated extension success/failure, malformed-price rejection and cancellation. No all-tool real-success parity or account-action verification. Live-verified 2026-10-26 in a stealth Kernel browser started on /help/home: a Buy It Now listing from search returned title, price, condition, shipping and seller; item 000000000001 returned not_found; a non-numeric id and an extra key were rejected before any request. Outputs matched outputSchema in 3 bench invocations and this pass.",
       "provenance": {
-        "qa_agent": "agt_d977f53d650492ebf073"
+        "qa_agent": "agt_ea022951bd81089d9b39"
       }
     },
     {
@@ -1549,11 +1549,11 @@
         "https://www.ebay.com/*"
       ],
       "url_patterns_reason": "Narrowed to www.ebay.com, the US marketplace: the tools fetch its search, listing and seller pages same-origin and refuse other origins; other ebay.com hosts serve separate flows such as sign-in.",
-      "status": "qa_passed",
-      "last_verified": "2026-09-30",
-      "notes": "Public seller feedback summary by username: score, positive percentage, counts and detailed ratings. Read-only; no buyer comments, messages or purchases returned. Independent final-source QA on 0c0688f signed off; source hash unchanged from the 5cda1c1 real Kernel success. Extension success/failure is emulated, not live parity. Account and non-US behavior remain untested.",
+      "status": "verified",
+      "last_verified": "2026-10-26",
+      "notes": "Public seller feedback summary by username: score, positive percentage, counts and detailed ratings. Read-only; no buyer comments, messages or purchases returned. Independent final-source QA on 0c0688f signed off; source hash unchanged from the 5cda1c1 real Kernel success. Extension success/failure is emulated, not live parity. Account and non-US behavior remain untested. Live-verified 2026-10-26 in a stealth Kernel browser started on /help/home: the seller of a listing returned score, 12-month positive percentage and period counts; an unknown username returned profile_unavailable; a one-character username was rejected before any request. Output matched outputSchema.",
       "provenance": {
-        "qa_agent": "agt_d977f53d650492ebf073"
+        "qa_agent": "agt_ea022951bd81089d9b39"
       }
     },
     {
@@ -1566,11 +1566,11 @@
         "https://www.ebay.com/*"
       ],
       "url_patterns_reason": "Narrowed to www.ebay.com, the US marketplace: the tools fetch its search, listing and seller pages same-origin and refuse other origins; other ebay.com hosts serve separate flows such as sign-in.",
-      "status": "qa_passed",
-      "last_verified": "2026-09-30",
-      "notes": "One results page, up to 60 items, with eBay sort/filter parameters. Read-only; sold_only needs a signed-in session and sold Best Offer prices may differ from accepted prices. Independent final-source QA on 0c0688f signed off; source hash unchanged from the 5cda1c1 real Kernel success. Extension success/failure is emulated. Signed-in sold-only success on the final source is untested. Verification pages are never solved; stop on challenge/blocked. No cart, watchlist, bid, offer or purchase actions.",
+      "status": "verified",
+      "last_verified": "2026-10-26",
+      "notes": "One results page, up to 60 items, with eBay sort/filter parameters. Read-only; sold_only needs a signed-in session and sold Best Offer prices may differ from accepted prices. Independent final-source QA on 0c0688f signed off; source hash unchanged from the 5cda1c1 real Kernel success. Extension success/failure is emulated. Signed-in sold-only success on the final source is untested. Verification pages are never solved; stop on challenge/blocked. No cart, watchlist, bid, offer or purchase actions. Live-verified 2026-10-26 in a stealth Kernel browser started on /help/home: Buy It Now and sorted/filtered searches returned items with prices and sellers; sold_only signed out returned login_required; page 0, a bad sort, min above max and an extra key were rejected before any request; one burst of calls got eBay's 403 three times and was reported as blocked. Outputs matched outputSchema in 16 bench invocations and this pass.",
       "provenance": {
-        "qa_agent": "agt_d977f53d650492ebf073"
+        "qa_agent": "agt_ea022951bd81089d9b39"
       }
     },
     {
