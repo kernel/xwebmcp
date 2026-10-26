@@ -21,7 +21,55 @@ const STRING = /(["'`])((?:\\.|(?!\1)[^\\\n])*)\1/g;
 // Hashed or build-generated class names: css-1x2y3z, sc-abc12, Foo__bar___a1B2c, or a long mixed run.
 const GENERATED = /^(?:css-|sc-|jsx-|e[0-9a-z]{4,}$)|__[A-Za-z0-9]{5}|[_-][A-Za-z0-9]*\d[A-Za-z0-9]*[A-Z][A-Za-z0-9]*$|^[a-z]{1,3}[A-Z0-9][A-Za-z0-9]{4,}$/;
 
-const stripComments = (source) => source.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:"'`\\])\/\/[^\n]*/g, "$1");
+// Removes comments, skipping strings, template literals and regex literals, so "https://x/*" is
+// not read as the start of a block comment. A slash starts a regex after an operator, an opening
+// bracket or a keyword such as return, and divides otherwise.
+export function stripComments(source) {
+  let out = "";
+  let i = 0;
+  let prev = "";
+  const regexAfter = /^(?:[(,=:[!&|?{};+\-*%<>~^]|return|typeof|case|in|of|delete|void|throw|new|=>)$/;
+  while (i < source.length) {
+    const c = source[i];
+    const next = source[i + 1];
+    if (c === "/" && next === "/") {
+      while (i < source.length && source[i] !== "\n") i++;
+      continue;
+    }
+    if (c === "/" && next === "*") {
+      const end = source.indexOf("*/", i + 2);
+      i = end < 0 ? source.length : end + 2;
+      out += " ";
+      continue;
+    }
+    if (c === '"' || c === "'" || c === "`" || (c === "/" && (prev === "" || regexAfter.test(prev)))) {
+      let j = i + 1;
+      let inClass = false;
+      while (j < source.length) {
+        const d = source[j];
+        if (d === "\\") { j += 2; continue; }
+        if (c === "/" && d === "[") inClass = true;
+        else if (c === "/" && d === "]") inClass = false;
+        else if (d === c && !inClass) break;
+        else if (c !== "`" && d === "\n") break;
+        j++;
+      }
+      out += source.slice(i, j + 1);
+      i = j + 1;
+      prev = "x";
+      continue;
+    }
+    out += c;
+    if (/[A-Za-z_$0-9]/.test(c)) {
+      const word = /^[A-Za-z_$0-9]+$/.test(prev) ? prev + c : c;
+      prev = word;
+    } else if (/\S/.test(c)) {
+      prev = c === ">" && out.endsWith("=>") ? "=>" : c;
+    }
+    i++;
+  }
+  return out;
+}
 
 export function selectorScore(selector) {
   let score = 0;
