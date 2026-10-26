@@ -135,8 +135,9 @@ const nextBody = (extra = {}) => ({
       results: {
         results: {
           contents: [
-            { videoPrimaryInfoRenderer: { title: { runs: [{ text: "Example video title" }] } } },
-            ...(extra.noOwner ? [] : [{ videoSecondaryInfoRenderer: { owner: { videoOwnerRenderer: { title: { runs: [{ text: "Example Channel" }] }, subscriberCountText: { simpleText: "1.23M subscribers" }, navigationEndpoint: { browseEndpoint: { browseId: chId(1), canonicalBaseUrl: "/@examplechannel" } }, badges: [{ metadataBadgeRenderer: { style: "BADGE_STYLE_TYPE_VERIFIED" } }] } } } }])
+            { videoPrimaryInfoRenderer: { title: { runs: [{ text: "Example video title" }] }, viewCount: { videoViewCountRenderer: { viewCount: { simpleText: "4,242 views" } } }, dateText: { simpleText: "May 6, 2024" } } },
+            { itemSectionRenderer: { targetId: "comments-section", contents: [{ continuationItemRenderer: { continuationEndpoint: { continuationCommand: { token: "COMMENTSTOKEN" } } } }] } },
+            ...(extra.noOwner ? [] : [{ videoSecondaryInfoRenderer: { attributedDescription: { content: "Line one\nLine two" }, owner: { videoOwnerRenderer: { title: { runs: [{ text: "Example Channel" }] }, subscriberCountText: { simpleText: "1.23M subscribers" }, navigationEndpoint: { browseEndpoint: { browseId: chId(1), canonicalBaseUrl: "/@examplechannel" } }, badges: [{ metadataBadgeRenderer: { style: "BADGE_STYLE_TYPE_VERIFIED" } }] } } } }])
           ]
         }
       }
@@ -162,7 +163,7 @@ function harness(name, options = {}) {
       return respond(200, firstPage(state, options.items ?? defaultItems(state), options.more ?? true, options));
     }
     if (endpoint === "player") return respond(200, options.player ?? playerBody(body.videoId));
-    if (endpoint === "next") return respond(200, options.next ?? nextBody());
+    if (endpoint === "next") return respond(200, body.continuation ? { onResponseReceivedEndpoints: [{ reloadContinuationItemsCommand: { continuationItems: [{ commentsHeaderRenderer: { countText: { runs: [{ text: options.comments ?? "1,234" }, { text: " Comments" }] } } }] } }] } : options.next ?? nextBody());
     return respond(404, {});
   };
   const context = {
@@ -581,12 +582,13 @@ test("get_video returns a bounded public metadata record and never returns media
     status: "ok", video_id: vid(1), url: `https://www.youtube.com/watch?v=${vid(1)}`, title: "Example video title", description: "Line one\nLine two", description_truncated: false,
     channel: { name: "Example Channel", channel_id: chId(1), handle: "@examplechannel", url: "https://www.youtube.com/@examplechannel", subscriber_text: "1.23M subscribers", is_verified: true },
     published_at: "2024-05-06T07:08:09-07:00", duration_seconds: 754, view_count: 4242, like_count: 321, category: "Education", keywords: ["alpha", "beta"],
-    is_live: false, is_upcoming: false, is_shorts_eligible: false, is_family_safe: true, is_unlisted: false,
+    is_live: false, is_upcoming: false, is_shorts_eligible: false, is_family_safe: true, is_unlisted: false, comment_count: 1234,
     chapters: [{ title: "Intro", start_seconds: 0, time_text: "0:00" }, { title: "Main part", start_seconds: 62, time_text: "1:02" }, { title: "Outro", start_seconds: 3665, time_text: "1:01:05" }],
     observed_at: out.observed_at, warnings: []
   });
-  assert.deepEqual(h.calls.map(c => c.endpoint).sort(), ["next", "player"]);
-  for (const call of h.calls) assert.deepEqual(call.body, { context: { client: { clientName: "WEB", clientVersion: "2.20260925.08.00", hl: "en", gl: "FR" } }, videoId: vid(1) });
+  assert.deepEqual(h.calls.map(c => c.endpoint).sort(), ["next", "next", "player"]);
+  assert.equal(h.calls.find(c => c.body.continuation)?.body.continuation, "COMMENTSTOKEN");
+  for (const call of h.calls.filter(c => !c.body.continuation)) assert.deepEqual(call.body, { context: { client: { clientName: "WEB", clientVersion: "2.20260925.08.00", hl: "en", gl: "FR" } }, videoId: vid(1) });
   const text = JSON.stringify(out);
   for (const secret of ["SECRETSIG", "SECRETCAPTION", "SECRETSQP", "SECRETCOMMENTTEXT", "SECRETVISITOR", "SECRETUA", "SECRETUSER", "videoplayback", "timedtext", "i.ytimg.com"]) assert.ok(!text.includes(secret), secret + " must not appear in the output");
   assert.ok(!("playability" in out) && !("playable" in out), "anonymous playability is not reported");
@@ -601,7 +603,7 @@ test("get_video accepts ids and watch, short, live, embed and youtu.be links and
     const h = harness("get_video");
     const out = await h.ok({ video });
     assert.equal(out.video_id, vid(7), video);
-    assert.ok(h.calls.every(c => c.body.videoId === vid(7)));
+    assert.ok(h.calls.every(c => c.body.continuation || c.body.videoId === vid(7)));
   }
 });
 
@@ -694,7 +696,8 @@ test("get_video reports unavailable videos and sign-in, age and content-warning 
   const age = harness("get_video", { player: { playabilityStatus: { status: "LOGIN_REQUIRED", reason: "Sign in to confirm your age" } } });
   assert.match((await age.err({ video: vid(1) }, "login_required")).error_message, /never signs in/);
   await harness("get_video", { player: { ...playerBody(vid(1)), playabilityStatus: { status: "LOGIN_REQUIRED", reason: "This video is private" } } }).err({ video: vid(1) }, "login_required");
-  await harness("get_video", { player: { playabilityStatus: { status: "LOGIN_REQUIRED", reason: "Sign in to confirm you\u2019re not a bot" } } }).err({ video: vid(1) }, "challenge");
+  const botCheck = { playabilityStatus: { status: "LOGIN_REQUIRED", reason: "Sign in to confirm you\u2019re not a bot" } };
+  await harness("get_video", { player: botCheck, route: endpoint => (endpoint === "next" ? { status: 429, text: "" } : null) }).err({ video: vid(1) }, "challenge");
   for (const status of ["CONTENT_CHECK_REQUIRED", "AGE_CHECK_REQUIRED", "AGE_VERIFICATION_REQUIRED"]) {
     const gated = harness("get_video", { player: { ...playerBody(vid(1)), playabilityStatus: { status, reason: "Viewer discretion is advised" } } });
     assert.match((await gated.err({ video: vid(1) }, "gated")).error_message, /never accepts it/);
@@ -760,7 +763,7 @@ test("get_video keeps the metadata and warns when the watch-page data has an une
     assert.deepEqual(out.chapters, []);
     assert.ok(out.warnings.length > 0, JSON.stringify(out.warnings));
   }
-  const badge = await harness("get_video", { next: (() => { const n = nextBody(); n.contents.twoColumnWatchNextResults.results.results.contents[1].videoSecondaryInfoRenderer.owner.videoOwnerRenderer.badges = {}; return n; })() }).ok({ video: vid(1) });
+  const badge = await harness("get_video", { next: (() => { const n = nextBody(); n.contents.twoColumnWatchNextResults.results.results.contents.at(-1).videoSecondaryInfoRenderer.owner.videoOwnerRenderer.badges = {}; return n; })() }).ok({ video: vid(1) });
   assert.equal(badge.channel.is_verified, null);
   assert.equal(badge.channel.subscriber_text, null);
   assert.deepEqual(badge.chapters, []);
@@ -787,4 +790,29 @@ test("get_video rejects URLs without a scheme", async () => {
   for (const video of [`www.youtube.com/shorts/${vid(1)}`, `www.youtube.com/watch?v=${vid(1)}`, `youtube.com/shorts/${vid(1)}`, `youtu.be/${vid(1)}`]) await h.err({ video }, "invalid_input");
   assert.equal(h.calls.length, 0);
   assert.match(h.definition.tool.inputSchema.properties.video.description, /URLs without https:\/\/ are rejected/);
+});
+
+test("get_video falls back to the watch page and the search card when only the player data is bot-checked", async () => {
+  const h = harness("get_video", { player: { playabilityStatus: { status: "LOGIN_REQUIRED", reason: "Sign in to confirm you\u2019re not a bot" } }, comments: "0" });
+  const out = await h.ok({ video: vid(1) });
+  assert.equal(out.title, "Example video title");
+  assert.deepEqual(out.channel, { name: "Example Channel", channel_id: chId(1), handle: "@examplechannel", url: "https://www.youtube.com/@examplechannel", subscriber_text: "1.23M subscribers", is_verified: true });
+  assert.equal(out.description, "Line one\nLine two");
+  assert.equal(out.published_at, "2024-05-06");
+  assert.equal(out.duration_seconds, 754, "length from the matching search card");
+  assert.equal(out.view_count, 4242);
+  assert.equal(out.comment_count, 0);
+  assert.equal(out.like_count, null);
+  assert.equal(out.is_family_safe, null);
+  assert.match(out.warnings.join(" "), /bot check blocked the player data/);
+  assert.deepEqual(h.calls.find(c => c.endpoint === "search").body.query, vid(1));
+  const noCard = await harness("get_video", { player: { playabilityStatus: { status: "LOGIN_REQUIRED", reason: "Sign in to confirm you\u2019re not a bot" } }, items: [videoBlock(2)] }).ok({ video: vid(1) });
+  assert.equal(noCard.duration_seconds, null);
+  assert.match(noCard.warnings.join(" "), /card, which was not found/);
+});
+
+test("get_video nulls the comment count when the comments header is missing", async () => {
+  const out = await harness("get_video", { comments: "Comments are turned off" }).ok({ video: vid(1) });
+  assert.equal(out.comment_count, null);
+  assert.match(out.warnings.join(" "), /comment count/);
 });

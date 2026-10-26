@@ -110,6 +110,32 @@ test("channel tab uses only observed same-channel endpoint", async () => {
   const d = browse([], "Home"); d.contents.twoColumnBrowseResultsRenderer.tabs[1].tabRenderer.endpoint.browseEndpoint.browseId = other;
   const wrong = harness("list_channel_videos", { route: () => ({ data: d }) }); assert.equal((await wrong.run({ channel_id: channel })).error_kind, "site_changed"); assert.equal(wrong.calls.length, 1);
 });
+for (const name of ["get_channel", "list_channel_videos"]) {
+  test(`${name}: resolves an @handle through the site's URL resolver`, async () => {
+    const h = harness(name, { route: b => (b.url ? { data: { endpoint: { browseEndpoint: { browseId: channel } } } } : undefined) });
+    const o = await h.run({ channel_id: "@example" });
+    assert.equal(o.channel_id, channel);
+    assert.match(h.calls[0].url, /navigation\/resolve_url/); assert.equal(h.calls[0].body.url, "https://www.youtube.com/@example");
+    assert.equal(h.calls[1].body.browseId, channel);
+    assert.equal((await harness(name, { route: () => ({ status: 404, raw: "{}" }) }).run({ channel_id: "@example" })).error_kind, "not_found");
+  });
+}
+
+test("list_channel_videos presses the tab's own sort chip and reads the reloaded list", async () => {
+  const chip = (text, selected) => ({ chipViewModel: { text, selected, tapCommand: { innertubeCommand: { continuationCommand: { token: text.toUpperCase() + "CHIPTOKEN0123456789" } } } } });
+  const chips = [chip("Latest", true), chip("Popular", false), chip("Oldest", false)];
+  const d = browse(); d.contents.twoColumnBrowseResultsRenderer.tabs[1].tabRenderer.content.richGridRenderer.header = { chipBarViewModel: { chips } };
+  const reload = { onResponseReceivedActions: [{ reloadContinuationItemsCommand: { continuationItems: [{ chipBarViewModel: { chips } }] } }, { reloadContinuationItemsCommand: { continuationItems: [{ richItemRenderer: { content: lockup("vid00000002", "Most viewed") } }, cont()] } }] };
+  const h = harness("list_channel_videos", { route: b => ({ data: b.continuation ? reload : d }) });
+  const o = await h.run({ channel_id: channel, sort: "popular" });
+  assert.deepEqual([o.status, o.channel_id, o.items[0].video_id, o.next_page_token], ["ok", channel, "vid00000002", token]);
+  assert.equal(h.calls.at(-1).body.continuation, "POPULARCHIPTOKEN0123456789");
+  const latest = harness("list_channel_videos", { route: () => ({ data: d }) });
+  assert.equal((await latest.run({ channel_id: channel, sort: "latest" })).items[0].video_id, video); assert.equal(latest.calls.length, 1);
+  assert.equal((await harness("list_channel_videos").run({ channel_id: channel, sort: "popular" })).error_kind, "sort_unavailable");
+  assert.equal((await harness("list_channel_videos").run({ channel_id: channel, sort: "views" })).error_kind, "invalid_input");
+});
+
 for (const name of ["list_channel_videos", "get_playlist"]) {
   const input = name === "get_playlist" ? { playlist_id: playlist } : { channel_id: channel };
   test(`${name}: page bounds preserve duplicates and hide raw URLs`, async () => {
