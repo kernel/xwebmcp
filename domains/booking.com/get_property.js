@@ -24,7 +24,7 @@
   const ratesLeftOutSchema = {
     type: "object", additionalProperties: false, required: ["party_too_large", "unreadable"],
     properties: {
-      party_too_large: { type: "integer", minimum: 0, description: "Rate rows the page limits to fewer guests than the party (for example per-bed rates); their prices do not cover everyone. The site may allow selecting several such units, which this tool does not price." },
+      party_too_large: { type: "integer", minimum: 0, description: "Rate rows the page limits to fewer adults than the party, or to fewer guests when the party has no children (for example per-bed rates); their prices do not cover everyone. The site may allow selecting several such units, which this tool does not price." },
       unreadable: { type: "integer", minimum: 0, description: "Rate rows in a room, or with a price, the tool could not read." }
     }
   };
@@ -52,7 +52,7 @@
     match: { url_patterns: ["https://www.booking.com/*"] },
     tool: {
       name: "get_property",
-      description: "Read one Booking.com property page for given dates and party: name, address, review score, popular facilities, check-in and check-out times, and every room with each rate the site lists for the requested party (displayed price for the whole stay, cancellation, prepayment and meal terms, taxes and fees excluded from the price). Get property_url from search_stays. Requires explicit check_in, check_out, adults and currency, for one room. currency must be the currency the site is already showing (its header currency picker): the tool never changes the site's currency and fails with currency_mismatch, naming what the site shows, when they differ. The output echoes the effective dates, guests and currency the page applied and a price_basis, and a page that did not apply them as asked is an error. Rates the page limits to fewer guests than the party are left out, because their prices do not cover the whole party (rates_left_out counts them); when every rate is like that the status is no_rate_for_party. A rate marked as a members-only price needs signing in: price.total then includes a member discount (member_discount) that a signed-out visitor is not given. Read-only: it never selects a room or rate, saves to a list, reserves or opens checkout, and changes no browser or account setting; Booking.com records the page view. Listing a rate is not a hold or a guarantee, and prices can differ by session (member discounts when signed in). Run it on any https://www.booking.com page in an English-language session and do not navigate the tab while it runs. Dates the property cannot offer give status no_availability, and so can dates beyond the site's bookable window; for such dates the page may also apply the party the session last searched, which is reported as search_not_applied.",
+      description: "Read one Booking.com property page for given dates and party: name, address, review score, popular facilities, check-in and check-out times, and every room with each rate the site lists for the requested party (displayed price for the whole stay, cancellation, prepayment and meal terms, taxes and fees excluded from the price). Get property_url from search_stays. Requires explicit check_in, check_out, adults and currency, for one room. currency must be the currency the site is already showing (its header currency picker): the tool never changes the site's currency and fails with currency_mismatch, naming what the site shows, when they differ. The output echoes the effective dates, guests and currency the page applied and a price_basis, and a page that did not apply them as asked is an error. Rates the page limits to fewer adults than the party are left out, because their prices do not cover the whole party (rates_left_out counts them); when every rate is like that the status is no_rate_for_party. With children, a rate with places for the adults but not for every child is kept, marked fits_party false and ranked after the rates that fit, before max_rates applies. A rate marked as a members-only price needs signing in: price.total then includes a member discount (member_discount) that a signed-out visitor is not given. Read-only: it never selects a room or rate, saves to a list, reserves or opens checkout, and changes no browser or account setting; Booking.com records the page view. Listing a rate is not a hold or a guarantee, and prices can differ by session (member discounts when signed in). Run it on any https://www.booking.com page in an English-language session and do not navigate the tab while it runs. Dates the property cannot offer give status no_availability, and so can dates beyond the site's bookable window; for such dates the page may also apply the party the session last searched, which is reported as search_not_applied.",
       inputSchema: {
         type: "object", additionalProperties: false,
         required: ["property_url", "check_in", "check_out", "adults", "currency"],
@@ -64,7 +64,7 @@
           children_ages: { type: "array", maxItems: 10, items: { type: "integer", minimum: 0, maximum: 17 }, description: "Age of each child at check-out, 0 to 17. Omit or leave empty for no children." },
           currency: { type: "string", pattern: "^[A-Z]{3}$", description: "ISO 4217 code of the currency the site is currently showing, for example USD. All prices in the output are in this currency. If the site shows another currency the call fails with currency_mismatch and says which." },
           max_rates: { type: "integer", minimum: 1, maximum: 40, default: 20, description: "Maximum rate rows to return across all rooms, after sorting." },
-          sort: { type: "string", enum: ["page_order", "price_low_to_high"], default: "page_order", description: "Choose the first rates or the lowest readable displayed totals. Rooms remain grouped; comparison_rank gives the global order. Excluded fees are not added, and member previews are not ordinary public prices." }
+          sort: { type: "string", enum: ["page_order", "price_low_to_high"], default: "page_order", description: "Choose the first rates or the lowest readable displayed totals; either way rates marked fits_party false come after the others. Rooms remain grouped; comparison_rank gives the global order. Excluded fees are not added, and member previews are not ordinary public prices." }
         }
       },
       outputSchema: {
@@ -107,13 +107,15 @@
                       type: "array", minItems: 1,
                       items: {
                         type: "object", additionalProperties: false,
-                        required: ["rate_id", "comparison_rank", "partner_offer", "max_guests", "max_adults", "price", "cancellation", "free_cancellation", "non_refundable", "prepayment", "meal_plan", "member_discount"],
+                        required: ["rate_id", "comparison_rank", "partner_offer", "max_guests", "max_adults", "max_children", "fits_party", "price", "cancellation", "free_cancellation", "non_refundable", "prepayment", "meal_plan", "member_discount"],
                         properties: {
                           rate_id: { type: ["string", "null"], description: "The row's data-block-id, for select_room on the same dated property page; null when the row has none." },
                           partner_offer: { type: "boolean", description: "A Partner Offer, sold through a partner company: its price, cancellation terms and availability can change at checkout (get_checkout_step shows the final ones)." },
-                          comparison_rank: { type: "integer", minimum: 1, description: "Global rank across returned rooms, under query.sort; equal prices keep page order." },
+                          comparison_rank: { type: "integer", minimum: 1, description: "Global rank across returned rooms, under query.sort, with fits_party false after the others; equal prices keep page order." },
                           max_guests: { type: ["integer", "null"], description: "The page's 'Max. people' for this rate (shown when the search has no children)." },
-                          max_adults: { type: ["integer", "null"], description: "The page's 'Max adults' for this rate (shown when the search has children)." },
+                          max_adults: { type: ["integer", "null"], description: "The adults this rate is for: the page's 'Max adults', or the adults in its 'Guests:' line." },
+                          max_children: { type: ["integer", "null"], description: "The children this rate is for: the page's 'Max children', or the children in its 'Guests:' line; 0 when the page lists adults only; null when it lists no capacity or only a total ('Max. people')." },
+                          fits_party: { type: ["boolean", "null"], description: "True when the rate's listed places hold every adult and child; false when they hold the adults but not every child (Booking.com may accept a baby in a crib, but for an older child its checkout says the selection cannot hold the party, which get_checkout_step reports as party_warning); null when the page lists no capacity." },
                           price: {
                             type: "object", additionalProperties: false, required: ["total", "original_total", "per_night_average", "total_before_taxes", "taxes_and_fees_excluded", "total_text"],
                             properties: {
@@ -301,10 +303,27 @@
         const warnings = [];
         if (signedIn) warnings.push("The browser is signed in to Booking.com, so prices may include member (Genius) discounts.");
         if (ages.length && !agesConfirmed) warnings.push("The page did not list the child ages, so the ages sent could not be confirmed.");
-        if (ages.length) warnings.push("Adult capacity alone does not confirm that this price covers children or any child supplements; review the property policies manually.");
+        if (ages.length) warnings.push("Child charges and age limits are not checked; review the property's child policies.");
+        // A rate's capacity is in its occupancy cell ("Max. people: 2", "Max adults: 2 Max children: 1", "Only for 1
+        // guest") or, on another layout, in a "Guests: 2 adults, 1 child" line under its conditions. A child may take
+        // an adult place, as Booking.com's checkout counts guests.
+        const capacityOf = row => {
+          const occupancyText = text(row.querySelector(".hprt-table-cell-occupancy"));
+          const sleeps = text(row.querySelector(".hprt-conditions-sleeps"));
+          const guestsText = /^Guests?:/i.test(sleeps) ? sleeps : "";
+          const n = (re, s) => { const m = re.exec(s); return m ? Number(m[1]) : null; };
+          const adults = n(/Max\.? adults?:\s*(\d+)/i, occupancyText) ?? n(/(\d+)\s+adults?\b/i, guestsText);
+          const children = n(/Max\.? child(?:ren)?:\s*(\d+)/i, occupancyText) ?? n(/(\d+)\s+child(?:ren)?\b/i, guestsText);
+          return {
+            people: n(/Max\.? people:\s*(\d+)/i, occupancyText) ?? n(/(\d+)\s+(?:people|guests)\b/i, guestsText) ?? (/Only for 1 guest/i.test(occupancyText) ? 1 : null),
+            adults, children: adults === null ? children : children ?? 0
+          };
+        };
         const party = query.adults + ages.length;
+        const holdsAdults = cap => !((cap.people !== null && cap.people < query.adults) || (cap.adults !== null && cap.adults < query.adults));
+        const holdsParty = cap => !((cap.people !== null && cap.people < party) || (cap.adults !== null && cap.adults + cap.children < party));
         const rooms = [];
-        let room = null, read = 0, tooLarge = 0, unreadableRows = 0, unreadablePrices = 0, noTaxes = 0, memberOnly = 0, partners = 0;
+        let room = null, read = 0, tooLarge = 0, unknownCapacity = 0, childrenShort = 0, unreadableRows = 0, unreadablePrices = 0, noTaxes = 0, memberOnly = 0, partners = 0;
         for (const row of rowEls) {
           const head = row.querySelector("th.hprt-table-cell-roomtype");
           if (head) {
@@ -324,15 +343,16 @@
             }
           }
           if (!room) { unreadableRows++; continue; }
-          const occupancyText = text(row.querySelector(".hprt-table-cell-occupancy"));
-          const maxGuests = /Max\.? people:\s*(\d+)/i.exec(occupancyText);
-          const maxAdults = /Max\.? adults?:\s*(\d+)/i.exec(occupancyText);
-          if ((maxGuests && Number(maxGuests[1]) < party) || (maxAdults && Number(maxAdults[1]) < query.adults) || (/Only for 1 guest/i.test(occupancyText) && party > 1)) { tooLarge++; continue; }
+          const capacity = capacityOf(row);
+          if (!holdsAdults(capacity)) { tooLarge++; continue; }
           const block = row.querySelector(".hprt-price-block");
           const totalEl = block && block.querySelector(".bui-price-display__value");
           const totalText = text(totalEl && totalEl.querySelector("span") ? totalEl.querySelector("span") : totalEl);
           if (!totalText) { unreadableRows++; continue; }
           read++;
+          const known = capacity.people !== null || capacity.adults !== null;
+          if (!known) unknownCapacity++;
+          else if (!holdsParty(capacity)) childrenShort++;
           const breakdown = [...block.querySelectorAll(".prco-pop-breakdown-element")].map(text).filter(Boolean);
           const before = breakdown.indexOf("Total before taxes");
           const memberAt = breakdown.indexOf("Genius discount");
@@ -357,7 +377,7 @@
             rate_id: blockId && /^[A-Za-z0-9]+(?:_[A-Za-z0-9]+){0,9}$/.test(blockId) && blockId.length <= 120 ? blockId : null,
             comparison_rank: 0,
             partner_offer: partner,
-            max_guests: maxGuests ? Number(maxGuests[1]) : null, max_adults: maxAdults ? Number(maxAdults[1]) : null,
+            max_guests: capacity.people, max_adults: capacity.adults, max_children: capacity.children, fits_party: known ? holdsParty(capacity) : null,
             price: {
               total,
               original_total: amount(text(block.querySelector(".bui-price-display__original"))),
@@ -373,6 +393,8 @@
           });
         }
         if (tooLarge) warnings.push(tooLarge + " rates that the page limits to fewer guests than this party were left out, because their prices do not cover everyone (several units of such a rate may be selectable on the site; this tool does not price that).");
+        if (childrenShort) warnings.push(childrenShort + " rates have places for the adults but not for every child (fits_party false). Booking.com may accept them for a baby in a crib; for an older child its checkout says the selection cannot hold the party. Prefer rates with fits_party true.");
+        if (unknownCapacity && party > 1) warnings.push(unknownCapacity + " rates list no guest capacity, so the tool could not check that their price covers this party.");
         if (unreadableRows) warnings.push(unreadableRows + " rate rows in a room or with a price the tool could not read were left out.");
         if (memberOnly) warnings.push(memberOnly + " rates show a members-only price that needs signing in; for those, price.total includes the member discount, so the price without signing in is higher by about member_discount.amount when that amount is readable; otherwise the non-member price is unknown.");
         if (noTaxes) warnings.push(noTaxes + " rates listed no excluded taxes and fees in a form this tool reads; their displayed price may exclude taxes and fees.");
@@ -380,6 +402,8 @@
         if (unreadablePrices) warnings.push(unreadablePrices + " rates showed a price that could not be read as a number; see total_text.");
         const ordered = rooms.flatMap(r => r.rates);
         if (sort === "price_low_to_high") ordered.sort((a, b) => (a.price.total ?? Infinity) - (b.price.total ?? Infinity));
+        // Rates without a place for every child are often the cheapest; keep them from crowding the fitting ones out of max_rates.
+        ordered.sort((a, b) => (a.fits_party === false) - (b.fits_party === false));
         const selected = new Set(ordered.slice(0, maxRates));
         ordered.slice(0, maxRates).forEach((rate, i) => { rate.comparison_rank = i + 1; });
         for (const r of rooms) r.rates = r.rates.filter(rate => selected.has(rate)).sort((a, b) => a.comparison_rank - b.comparison_rank);
