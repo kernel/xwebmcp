@@ -2,6 +2,7 @@
 
 | tool | description |
 |------|-------------|
+| get_file | Reads a file's text or a directory's entries at a branch, tag or commit of a public repository. |
 | get_issue | Reads one public issue's title, state, labels, assignees, linked pull requests, body and the timeline items the page holds. |
 | get_pull_request | Reads one pull request's state, branches, commits, times, labels and description as text. |
 | get_repository | Reads a repository overview: description, topics, counts, license, default branch, latest commit, root entries and README text. |

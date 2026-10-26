@@ -7,7 +7,7 @@ import { DOMParser, Document } from "./etsy-dom.mjs";
 // Harness for the github.com read tools. Each page tool is re-created from execute.toString(), as the runtime
 // does inside the page, and run against a fake fetch that serves fabricated data; nothing here contacts the
 // live site. Repositories, users, issues and tokens below are invented.
-const NAMES = ["search_repositories", "search_issues", "get_repository", "get_issue", "get_pull_request"];
+const NAMES = ["search_repositories", "search_issues", "get_repository", "get_issue", "get_pull_request", "get_file"];
 const sources = Object.fromEntries(NAMES.map(name => [name, readFileSync(new URL(`../domains/github.com/${name}.js`, import.meta.url), "utf8")]));
 const registry = JSON.parse(readFileSync(new URL("../registry.json", import.meta.url), "utf8"));
 const ORIGIN = "https://github.com";
@@ -94,11 +94,12 @@ test("every tool refuses a non-GitHub top document and malformed input before an
     search_issues: [{ query: "" }, { query: "a", type: "commits" }, { query: "a", sort: "stars" }, { query: "a", order: "up" }, { query: "a", page: 101 }, {}],
     get_repository: [{ owner: "", repo: "r" }, { owner: "-bad", repo: "r" }, { owner: "a/b", repo: "r" }, { owner: "a", repo: ".." }, { owner: "a", repo: "r/x" }, { owner: "a", repo: "r", readme_max_chars: -1 }, { owner: "a", repo: "r", readme_max_chars: 20001 }, { owner: "a" }],
     get_issue: [{ owner: "a", repo: "r", number: 0 }, { owner: "a", repo: "r", number: 1.2 }, { owner: "a", repo: "r", number: "5" }, { owner: "a", repo: "r", number: 1, max_timeline_items: 51 }, { owner: "a", repo: "r", number: 1, comment_max_chars: 5001 }, { owner: "a", repo: "r", number: 1, body_max_chars: 20001 }],
-    get_pull_request: [{ owner: "a", repo: "r", number: 3, url: "https://github.com/a/r/pull/3" }, { owner: "a", repo: "r", number: -3 }, { owner: "a b", repo: "r", number: 3 }, { owner: "a", repo: "r", number: 1, body_max_chars: 30000 }]
+    get_pull_request: [{ owner: "a", repo: "r", number: 3, url: "https://github.com/a/r/pull/3" }, { owner: "a", repo: "r", number: -3 }, { owner: "a b", repo: "r", number: 3 }, { owner: "a", repo: "r", number: 1, body_max_chars: 30000 }],
+    get_file: [{ owner: "a", repo: "r" }, { owner: "a", repo: "r", path: "/" }, { owner: "a", repo: "r", path: "a/../b" }, { owner: "a", repo: "r", path: "x", ref: "a b" }, { owner: "a", repo: "r", path: "x", ref: "a..b" }, { owner: "a", repo: "r", path: "x", start_line: 0 }, { owner: "a", repo: "r", path: "x", max_chars: 99 }, { owner: "a", repo: "r", path: "x", extra: 1 }]
   };
   const good = {
     search_repositories: { query: "cli" }, search_issues: { query: "cli" }, get_repository: { owner: "a", repo: "r" },
-    get_issue: { owner: "a", repo: "r", number: 1 }, get_pull_request: { owner: "a", repo: "r", number: 1 }
+    get_issue: { owner: "a", repo: "r", number: 1 }, get_pull_request: { owner: "a", repo: "r", number: 1 }, get_file: { owner: "a", repo: "r", path: "x" }
   };
   for (const name of NAMES) {
     for (const input of [null, [], "text", true, 3, ...bad[name]]) {
@@ -115,7 +116,7 @@ test("every tool refuses a non-GitHub top document and malformed input before an
 test("every tool maps HTTP failures to explicit errors", async () => {
   const inputs = {
     search_repositories: { query: "cli" }, search_issues: { query: "cli" }, get_repository: { owner: "a", repo: "r" },
-    get_issue: { owner: "a", repo: "r", number: 1 }, get_pull_request: { owner: "a", repo: "r", number: 1 }
+    get_issue: { owner: "a", repo: "r", number: 1 }, get_pull_request: { owner: "a", repo: "r", number: 1 }, get_file: { owner: "a", repo: "r", path: "x" }
   };
   for (const name of NAMES) {
     const input = inputs[name];
@@ -136,7 +137,8 @@ test("requests are relative same-origin GETs that carry no extra headers or body
     ["search_repositories", { query: "cli" }, () => ({ status: 200, body: JSON.stringify(searchBody("repositories", [])) })],
     ["get_repository", { owner: "a", repo: "r" }, () => ({ status: 404, body: "" })],
     ["get_issue", { owner: "a", repo: "r", number: 7 }, () => ({ status: 404, body: "" })],
-    ["get_pull_request", { owner: "a", repo: "r", number: 7 }, () => ({ status: 404, body: "" })]
+    ["get_pull_request", { owner: "a", repo: "r", number: 7 }, () => ({ status: 404, body: "" })],
+    ["get_file", { owner: "a", repo: "r", path: "x" }, () => ({ status: 404, body: "" })]
   ]) {
     const { calls } = await run(name, input, { route });
     // get_issue checks the repository page for a rename after a 404.
@@ -145,7 +147,7 @@ test("requests are relative same-origin GETs that carry no extra headers or body
       assert.match(call.target, /^\//);
       assert.equal(call.method, "GET");
       assert.equal(call.body, undefined);
-      assert.equal(call.credentials, ["get_issue", "get_pull_request", "get_repository"].includes(name) ? "omit" : undefined);
+      assert.equal(call.credentials, ["get_issue", "get_pull_request", "get_repository", "get_file"].includes(name) ? "omit" : undefined);
       assert.ok(Object.keys(call.headers).every(h => h === "Accept"), name);
     }
   }
@@ -682,4 +684,38 @@ test("get_issue and get_pull_request enforce their state enums, defaults and kin
   assert.equal((await run("get_pull_request", { owner: "example-org", repo: "widgets", number: 9 }, { route: pullRoute(arrayState, pullBody("<p>x</p>")) })).output.error_kind, "site_changed");
   const notPull = await run("get_pull_request", { owner: "example-org", repo: "widgets", number: 9 }, { route: () => ({ status: 200, body: "<html></html>", url: `${ORIGIN}/example-org/widgets/discussions/9` }) });
   assert.equal(notPull.output.error_kind, "not_found");
+});
+
+test("search_repositories warns that a large language: set is only partly ranked unless stars: narrows it", async () => {
+  const served = count => () => ({ status: 200, body: JSON.stringify(searchBody("repositories", [repoHit("a", "b")], { result_count: count })) });
+  const warned = await run("search_repositories", { query: "language:Go", sort: "stars" }, { route: served(20000) });
+  assert.match(warned.output.warnings[0], /stars:>N/);
+  for (const [input, count] of [[{ query: "language:Go stars:>1000", sort: "stars" }, 20000], [{ query: "language:Go", sort: "stars" }, 900], [{ query: "topic:go", sort: "stars" }, 20000], [{ query: "language:Go" }, 20000]]) {
+    assert.deepEqual((await run("search_repositories", input, { route: served(count) })).output.warnings, [], JSON.stringify(input));
+  }
+});
+
+test("get_file reads a window of lines through the raw link and continues with next_start_line", async () => {
+  const sha = "0123456789abcdef0123456789abcdef01234567";
+  const body = "line one\nline two\nline three\n";
+  const { output, calls } = await run("get_file", { owner: "example", repo: "widgets", path: "src/a b.js", ref: "release/1.0", max_chars: 100 }, { route: () => ({ status: 200, body, url: `https://raw.githubusercontent.com/example/widgets/${sha}/src/a%20b.js` }) });
+  assert.equal(calls[0].target, "/example/widgets/raw/release/1.0/src/a%20b.js");
+  assert.deepEqual(output, { status: "file", repository: "example/widgets", ref: "release/1.0", commit_sha: sha, path: "src/a b.js", url: "https://github.com/example/widgets/blob/release/1.0/src/a%20b.js", binary: false, line_count: 3, start_line: 1, end_line: 3, text: "line one\nline two\nline three", truncated: false, next_start_line: null });
+  const raw = { status: 200, body: "a".repeat(60) + "\n" + "b".repeat(60) + "\n" + "c".repeat(150), url: "https://raw.githubusercontent.com/example/widgets/v1/f.txt" };
+  const first = (await run("get_file", { owner: "example", repo: "widgets", path: "f.txt", ref: "v1", max_chars: 121 }, { route: () => raw })).output;
+  assert.deepEqual([first.commit_sha, first.end_line, first.truncated, first.next_start_line, first.text.length], [null, 2, true, 3, 121]);
+  const long = (await run("get_file", { owner: "example", repo: "widgets", path: "f.txt", ref: "v1", max_chars: 100, start_line: 3 }, { route: () => raw })).output;
+  assert.deepEqual([long.end_line, long.truncated, long.next_start_line, long.text], [3, true, null, "c".repeat(100)]);
+  assert.equal((await run("get_file", { owner: "example", repo: "widgets", path: "f.txt", start_line: 9 }, { route: () => raw })).output.error_kind, "invalid_input");
+  const binary = (await run("get_file", { owner: "example", repo: "widgets", path: "logo.png" }, { route: () => ({ ...raw, body: "PNG\u0000data" }) })).output;
+  assert.deepEqual([binary.binary, binary.text, binary.line_count], [true, null, null]);
+});
+
+test("get_file lists a directory from the tree page GitHub redirects to", async () => {
+  const sha = "0123456789abcdef0123456789abcdef01234567";
+  const items = [{ name: "core", path: "packages/core", contentType: "directory" }, { name: "README.md", path: "packages/README.md", contentType: "file" }];
+  const { output } = await run("get_file", { owner: "example", repo: "widgets", path: "packages/" }, { route: () => ({ status: 200, url: `${ORIGIN}/example/widgets/tree/${sha}/packages`, body: page({ codeViewTreeRoute: { path: "packages", refInfo: { currentOid: sha }, tree: { items, totalCount: 2 } } }) }) });
+  assert.deepEqual(output, { status: "directory", repository: "example/widgets", ref: "HEAD", commit_sha: sha, path: "packages", url: "https://github.com/example/widgets/tree/HEAD/packages", entries: [{ name: "core", path: "packages/core", type: "directory" }, { name: "README.md", path: "packages/README.md", type: "file" }], entries_total: 2 });
+  const odd = await run("get_file", { owner: "example", repo: "widgets", path: "x" }, { route: () => ({ status: 200, url: `${ORIGIN}/example/widgets`, body: page({}) }) });
+  assert.equal(odd.output.error_kind, "site_changed");
 });

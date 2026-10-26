@@ -1679,6 +1679,20 @@
     },
     {
       "domain": "github.com",
+      "tool": "get_file",
+      "file": "domains/github.com/get_file.js",
+      "kind": "page",
+      "namespace": "github.com",
+      "url_patterns": [
+        "https://github.com/*"
+      ],
+      "url_patterns_reason": "Narrowed to github.com: it serves repositories, issues, pull requests and search, and the tools read its pages and endpoints same-origin; other github.com hosts are separate products (docs., gist., api. and others) where they cannot work.",
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Reads one file's text, or a directory's entries, at a branch, tag or commit through github.com's Raw link without cookies: files follow GitHub's redirect to raw.githubusercontent.com (served with CORS), directories redirect to the tree page whose embedded data lists the entries. Public repositories only. Tree pages are rate-limited for signed-out browsers sooner than raw files."
+    },
+    {
+      "domain": "github.com",
       "tool": "get_issue",
       "file": "domains/github.com/get_issue.js",
       "kind": "page",
