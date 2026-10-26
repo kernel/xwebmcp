@@ -13,6 +13,7 @@
     "phone": "4155550123"
   },
   "start_url": "https://www.walmart.com/",
+  "tools": [{"repo": "kernel/xwebmcp", "ref": "hypeship/walmart-read-tools", "pr": 63}],
   "allow": [
     "checkout"
   ],

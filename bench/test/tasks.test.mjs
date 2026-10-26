@@ -222,7 +222,7 @@ test("a domain's page actions reach every intent, its actions its prepare intent
   assert.ok(!actions("google-flights-cheapest-fare").includes("select_flight"));
   assert.deepEqual(actions("delta-cart-main-classic"), ["select_fare", "select_fare_experience"]);
   assert.ok(actions("delta-checkout-signed-in").includes("continue_checkout"));
-  assert.deepEqual(intents.find(i => i.id === "delta-cart-main-classic").tools, [{ repo: "kernel/xwebmcp", ref: "main" }]);
+  assert.deepEqual(intents.find(i => i.id === "airbnb-cheapest-well-rated").tools, [{ repo: "kernel/xwebmcp", ref: "main" }]);
 });
 
 // What run.mjs registers at startup, from the tools in this checkout, so that a tool change that

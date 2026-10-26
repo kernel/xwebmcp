@@ -13,6 +13,7 @@
     "phone": "4155550123"
   },
   "start_url": "https://www.ebay.com/",
+  "tools": [{"repo": "kernel/xwebmcp", "ref": "hypeship/ebay-search-listing", "pr": 80}],
   "allow": [
     "checkout"
   ],

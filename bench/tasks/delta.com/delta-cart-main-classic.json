@@ -9,6 +9,7 @@
     "date": {"days_from_start": 28}
   },
   "start_url": "https://www.delta.com/",
+  "tools": [{"repo": "kernel/xwebmcp", "ref": "hypeship/delta-flight-status", "pr": 67}, {"repo": "kernel/xwebmcp", "ref": "main"}],
   "steps": [
     {"name": "search", "url_patterns": ["https://www.delta.com/", "https://www.delta.com/flightsearch/book-a-flight*"]},
     {"name": "results", "url_patterns": ["https://www.delta.com/flightsearch/search-results*"]},

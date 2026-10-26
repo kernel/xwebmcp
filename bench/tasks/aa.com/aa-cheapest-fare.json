@@ -9,7 +9,7 @@
     "date": {"days_from_start": 28}
   },
   "start_url": "https://www.aa.com/",
-  "tools": [{"repo": "kernel/xwebmcp", "ref": "main", "names": ["search_flights"]}],
+  "tools": [{"repo": "kernel/xwebmcp", "ref": "hypeship/aa-flight-status", "pr": 46}, {"repo": "kernel/xwebmcp", "ref": "main", "names": ["search_flights"]}],
   "entry_tool": "search_flights",
   "answer_schema": "schemas/cheapest-flight.json",
   "rules": [{"path": "departure_time", "time": true}, {"path": "price", "range": [1, 3000]}],

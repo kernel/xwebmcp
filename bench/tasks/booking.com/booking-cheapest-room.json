@@ -14,6 +14,7 @@
     }
   },
   "start_url": "https://www.booking.com/",
+  "tools": [{"repo": "kernel/xwebmcp", "ref": "main"}, {"repo": "kernel/xwebmcp", "ref": "hypeship/booking-select-room-party", "pr": 129}],
   "answer_schema": "schemas/room-rate.json",
   "rules": [
     {

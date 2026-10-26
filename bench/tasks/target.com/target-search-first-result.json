@@ -5,7 +5,7 @@
   "prompt": "On target.com, search for \"{{query}}\" and report the first product in the results: its title as the product, its price and its TCIN (Target's item number). Reply with JSON: {\"product\": string, \"price\": number in US dollars, \"tcin\": string}.",
   "fixture": {"query": "AirPods Pro"},
   "start_url": "https://www.target.com/",
-  "tools": [{"repo": "kernel/xwebmcp", "ref": "main", "names": ["search_products"]}],
+  "tools": [{"repo": "kernel/xwebmcp", "ref": "main", "names": ["search_products"]}, {"repo": "kernel/xwebmcp", "ref": "hypeship/target-store-reviews", "pr": 68}],
   "entry_tool": "search_products",
   "answer_schema": "schemas/search-result.json",
   "rules": [{"path": "price", "range": [1, 1000]}],

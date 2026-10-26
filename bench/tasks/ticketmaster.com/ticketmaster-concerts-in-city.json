@@ -9,7 +9,7 @@
     "end": {"days_from_start": 21}
   },
   "start_url": "https://www.ticketmaster.com/",
-  "tools": [{"repo": "kernel/xwebmcp", "ref": "main", "names": ["search_events"]}],
+  "tools": [{"repo": "kernel/xwebmcp", "ref": "main", "names": ["search_events"]}, {"repo": "kernel/xwebmcp", "ref": "hypeship/ticketmaster-attractions", "pr": 51}],
   "entry_tool": "search_events",
   "answer_schema": "schemas/events.json",
   "rules": [

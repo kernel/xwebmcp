@@ -7,6 +7,7 @@
     "app": "Judge.me Product Reviews"
   },
   "start_url": "https://apps.shopify.com/",
+  "tools": [{"repo": "kernel/xwebmcp", "ref": "hypeship/shopify-app-store-tools", "pr": 59}],
   "answer_schema": "schemas/app-listing.json",
   "rules": [
     {

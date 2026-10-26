@@ -7,6 +7,7 @@
     "query": "usb c cable"
   },
   "start_url": "https://www.amazon.in/",
+  "tools": [{"repo": "kernel/xwebmcp", "ref": "hypeship/amazon-in-shopping", "pr": 62}],
   "answer_schema": "schemas/asin-search-result.json",
   "rules": [
     {

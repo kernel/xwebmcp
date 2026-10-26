@@ -15,6 +15,7 @@
     }
   },
   "start_url": "https://www.vividseats.com/",
+  "tools": [{"repo": "kernel/xwebmcp", "ref": "hypeship/vividseats-events", "pr": 52}],
   "answer_schema": "schemas/ticket-price.json",
   "rules": [
     {

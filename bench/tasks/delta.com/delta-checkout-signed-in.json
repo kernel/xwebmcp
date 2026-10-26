@@ -22,6 +22,7 @@
     }
   },
   "start_url": "https://www.delta.com/",
+  "tools": [{"repo": "kernel/xwebmcp", "ref": "hypeship/delta-flight-status", "pr": 67}, {"repo": "kernel/xwebmcp", "ref": "main"}],
   "allow": [
     "checkout"
   ],

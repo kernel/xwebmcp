@@ -13,6 +13,7 @@
     "phone": "4155550123"
   },
   "start_url": "https://www.target.com/",
+  "tools": [{"repo": "kernel/xwebmcp", "ref": "main"}, {"repo": "kernel/xwebmcp", "ref": "hypeship/target-store-reviews", "pr": 68}],
   "allow": [
     "checkout"
   ],

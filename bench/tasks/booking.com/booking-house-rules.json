@@ -8,6 +8,7 @@
     "city": "Lisbon"
   },
   "start_url": "https://www.booking.com/",
+  "tools": [{"repo": "kernel/xwebmcp", "ref": "main"}, {"repo": "kernel/xwebmcp", "ref": "hypeship/booking-select-room-party", "pr": 129}],
   "answer_schema": "schemas/house-rules.json",
   "rules": [
     {

@@ -4,6 +4,7 @@
   "stage": "inspect",
   "prompt": "On shopify.com, find the monthly price of Shopify's Basic plan in US dollars when it is paid monthly rather than yearly. Do not start a trial. Reply with JSON: {\"plan\": string, \"monthly_price\": number}.",
   "start_url": "https://www.shopify.com/",
+  "tools": [{"repo": "kernel/xwebmcp", "ref": "hypeship/shopify-app-store-tools", "pr": 59}],
   "answer_schema": "schemas/plan-price.json",
   "rules": [
     {

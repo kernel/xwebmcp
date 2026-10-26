@@ -3,7 +3,7 @@
   "domain": "fandango.com",
   "stage": "find",
   "prompt": "On fandango.com, find the three theaters nearest ZIP code {{zip}} that show {{film}} on {{date}}, and at each one the first showtime of that film at or after 17:00 that day. Reply with JSON: {\"theaters\": [{\"name\": string, \"first_evening_showtime\": \"HH:MM\"}]}, nearest first, times in 24-hour local time.",
-  "fixture": {"film": "Verity (2026)", "zip": "10001", "date": "2026-10-13"},
+  "fixture": {"film": "Verity (2026)", "zip": "10001", "date": {"days_from_start": 2}},
   "start_url": "https://www.fandango.com/",
   "tools": [
     {

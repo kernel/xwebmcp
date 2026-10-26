@@ -7,6 +7,7 @@
     "address": "Times Square, New York, NY 10036"
   },
   "start_url": "https://www.doordash.com/",
+  "tools": [{"repo": "kernel/xwebmcp", "ref": "hypeship/doordash-get-store", "pr": 57}],
   "answer_schema": "schemas/named-places.json",
   "rules": [
     {
