@@ -1031,10 +1031,10 @@
       ],
       "url_patterns_reason": "Narrowed to www.booking.com: the stays search and property pages are served there, and the read tools fetch those pages same-origin; a fetch from www.booking.com to flights. or secure.booking.com fails, so the tools cannot work on other booking.com hosts.",
       "status": "verified",
-      "last_verified": "2026-10-16",
-      "notes": "Dated property facts and room rates with effective party and currency, excluded fees, cancellation, prepayment, meals, rate IDs and comparison ranks, plus page_url, the dated property page select_room acts on. Partner Offers keep their row id (bbasic_0, <room>_bbasic_0) and are marked partner_offer, with a warning that their price, terms and availability can change at checkout. Optional lowest-price ordering before the 40-rate cap; scans at most 400 rows. Independent QA on 2026-10-16 ran it live from the home and search pages on more than ten properties and on about a dozen sessions at Palacio Ramalhete with and without Partner Offers: partner flags and counts matched the page, room_id agreed with select_room, plus no-availability dates, currency mismatch, invalid input and past check_in. One room; English.",
+      "last_verified": "2026-10-26",
+      "notes": "Reads one property page fetched same-origin from any www.booking.com page: name, address, review score and categories, popular facilities, highlights, description (2000 chars), every house-rules row (payment cards from image alt text), check-in/out times and page_url. Without dates it returns status property_only (no rates, adults and currency not applied). With dates it returns every room's rates for one room in the site's shown currency (currency optional; a different one is currency_mismatch) with rate IDs, cancellation, prepayment, meals, excluded fees, member discounts and Partner Offers (row ids bbasic_0 / <room>_bbasic_0), optional lowest-price ordering before the 40-rate cap, at most 400 rows. Independent QA on 2026-10-26 of the final source ran it live from the home page, a property page and a results page: dated reads at three Lisbon properties were identical to the previous version apart from the new fields (Partner Offers included), house rules and highlights matched the page, undated property_only in a fresh and a dated session, members-only rates, a party no rate fits (no_rate_for_party), currency_mismatch, 404 property, dates beyond the bookable window, past and malformed input, a non-English page and a secure.booking.com page (wrong_page); every output matched outputSchema and no read clicked, submitted or navigated. Lenient on adults or children_ages given as null (treated as omitted). English; one room; signed-in sessions not tested.",
       "provenance": {
-        "qa_agent": "agt_a45dc06aa2f46d7bcab8"
+        "qa_agent": "agt_9614192734152f9a6e2f"
       }
     },
     {
@@ -1048,10 +1048,10 @@
       ],
       "url_patterns_reason": "Narrowed to www.booking.com: the stays search and property pages are served there, and the read tools fetch those pages same-origin; a fetch from www.booking.com to flights. or secure.booking.com fails, so the tools cannot work on other booking.com hosts.",
       "status": "verified",
-      "last_verified": "2026-10-16",
-      "notes": "Public first results page, up to 25 properties, for explicit destination, dates and guests in the site's current currency, with sort and filters, canonical URLs, reviews and recommended-unit prices; echoes effective dates, guests and currency, flags member previews and added nearby properties, and distinguishes empty, gated, blocked, rate-limited, refused and unapplied searches. A past check_in names today's UTC date. Independent QA on 2026-10-16 ran it live from the home page and a dated property page: Lisbon searches (price-sorted, free cancellation), prices matching get_property on four properties, past and yesterday check_in, refused far-future dates. English; one room. Signed-in and non-English sessions were not tested.",
+      "last_verified": "2026-10-26",
+      "notes": "Fetches the results page same-origin from any www.booking.com page for a destination or property name, optional dates (both or neither) and party, in the site's shown currency (currency optional; a different one is currency_mismatch), with sort and filters; returns up to 25 properties of the first page with canonical URLs, reviews, the recommended unit and stay totals, the effective dates, guests and currency, and distinguishes empty, gated, blocked, rate-limited, refused and unapplied searches. Undated searches show no prices, except that Booking.com applies a session's last searched dates, which the tool reports in effective with a warning. Independent QA on 2026-10-26 of the final source ran it live from the home page, a property page and a results page: dated Lisbon and Porto searches matching the previous version, filters and sorts, children, a property name with added nearby properties, undated in a fresh and a dated session, currency_mismatch, a garbage destination and dates beyond the window (search_not_accepted), past and malformed input, a non-English page and a secure.booking.com page (wrong_page); every output matched outputSchema and no call clicked, submitted or navigated. As before, the fetched page can list a card the rendered page does not show first. Lenient on adults or children_ages given as null. English; one room; signed-in sessions not tested.",
       "provenance": {
-        "qa_agent": "agt_6f9b1c57c3ca72cfb01f"
+        "qa_agent": "agt_9614192734152f9a6e2f"
       }
     },
     {
@@ -1064,11 +1064,11 @@
         "https://www.booking.com/*"
       ],
       "url_patterns_reason": "Narrowed to www.booking.com: it acts on the dated property page served there; the reserve button takes the tab to secure.booking.com, where get_checkout_step reads the result.",
-      "status": "qa_passed",
-      "last_verified": "2026-10-16",
-      "notes": "Selects one room of one rate, Partner Offers included, on the dated property page after checking the property, rate_id, expected_total and that no other rate is selected, then schedules the \"I'll reserve\" press (navigation_scheduled). With page_url it first opens that page from anywhere else (opening_property_page) and never reopens it once there. Never enters guest details, books or pays. Independent QA on 2026-10-16 ran live selections on Booking.com rates and Partner Offers (including a Booking.com rate under a partner header) that reached book.html or tpi_book, page_url from the home, search, another property and the same property for other dates, a wrong property on page_url (wrong_page, no reopen), price_changed, rate_not_found and invalid input. The out-of-range page_url date guard is the reviewer's own fix, checked by fixture. Members-only previews and challenge pages were not reached live.",
+      "status": "verified",
+      "last_verified": "2026-10-26",
+      "notes": "Selects one room of one rate after checking property_id, rate_id, expected_total, that no other rate is selected and that the rate is not a members-only preview, then schedules the reservation (navigation_scheduled) and never fills guest details, books or pays. On the open dated property page it presses \"I'll reserve\"; from any other www.booking.com page with page_url it fetches that page and sends its reservation form (GET to secure.booking.com/book.html) with the rate set to 1, in one call; a Partner Offer from another page first opens page_url (opening_property_page) and is selected by repeating the call there. Independent QA on 2026-10-26 of the final source ran live selections that reached the details step, read with get_checkout_step: on-page and off-page (from the home page) for the same rate gave the same selection and total; off-page from a results page and another property page, including a Booking.com rate under a partner header; a Partner Offer opened from a results page and then reached tpi_book. Also price_changed with current_total, rate_not_found, wrong property, members-only (login_required), selection_present, undated or 404 page_url, malformed input, a non-English page and a secure.booking.com page; every output matched outputSchema and errors neither clicked nor navigated. Accepts a one-element array as page_url (stringified), which the previous version rejected. Signed-in sessions and challenge pages were not reached live.",
       "provenance": {
-        "qa_agent": "agt_61fb16bb07611b7045a1"
+        "qa_agent": "agt_9614192734152f9a6e2f"
       }
     },
     {
