@@ -7,4 +7,4 @@
 | get_checkout_step | Reads Booking.com's checkout page, including a Partner Offer's partner checkout: the step, property, dates, selected rooms and the total including taxes and fees. |
 | get_property | Reads one property's address, reviews, facilities, highlights, description and house rules, and with dates its room rates with IDs, cancellation, prepayment, meals and excluded fees. |
 | search_stays | Searches stays for a destination or property name, optional dates and party in the site's current currency and returns the first results page with prices and reviews. |
-| select_room | Selects one room of an exact rate, including a Partner Offer, on the open property page and presses "I'll reserve", which opens the details step without booking. |
+| select_room | Reserves one room of an exact rate from any www.booking.com page (Partner Offers on their open property page) as "I'll reserve" does, which opens the details step without booking. |
