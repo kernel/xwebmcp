@@ -15,15 +15,17 @@
     }
   };
   const REGISTERED = { type: "object", additionalProperties: false, required: ["known", "names"], properties: { known: { type: "boolean" }, names: { type: "array", items: { type: "string" } } } };
-  return [{
+  const definition = {
     kind: "page",
     match: { url_patterns: ["https://store.steampowered.com/*"] },
     tool: {
       name: "get_app",
-      description: "Read a Steam Store app page: the one open in this tab (pass {}), or any app by id or store URL (pass app) from any store page without leaving it, read from that page's markup as the store serves it to this browser. Returns, as the page shows it: the app's name, release date, developers, publishers and genres; every purchase option in the Buy area (the game itself, editions and bundles) with its title, shown price, original price and discount; the store currency; and the review summaries Steam shows next to the header, such as Recent Reviews and All or English Reviews, each with its summary (\"Very Positive\"), percent positive and review count. Read-only: never clicks, scrolls, opens a bundle or changes the review language. Prices are the store's prices for this browser's region, before tax, and are not a quote for checkout. An age-gated app returns status age_check: Steam wants a birth date entered in its own form first, which this tool does not do. An app Steam shows only to signed-in accounts (adult-only content) returns sign_in_required. An unknown app id returns not_found. Without app on a page that is not an app page it returns wrong_page with the actions available there.",
+      description: "Read a Steam Store app page: the one open in this tab (pass {}), or any app by id or store URL (pass app, or apps for up to 5 at once) from any store page without leaving it, read from that page's markup as the store serves it to this browser. Returns, as the page shows it: the app's name, release date, developers, publishers, genres and user-defined tags; every purchase option in the Buy area (the game itself, editions and bundles) with its title, shown price, original price and discount; the store currency; and the review summaries Steam shows next to the header, such as Recent Reviews and All or English Reviews, plus the reviews section's total in all languages when the header shows only one language's, each with its summary (\"Very Positive\"), percent positive and review count. Read-only: never clicks, scrolls, opens a bundle or changes the review language. Prices are the store's prices for this browser's region, before tax, and are not a quote for checkout. An age-gated app returns status age_check: Steam wants a birth date entered in its own form first, which this tool does not do. An app Steam shows only to signed-in accounts (adult-only content) returns sign_in_required. An unknown app id returns not_found. Without app on a page that is not an app page it returns wrong_page with the actions available there.",
       inputSchema: {
         type: "object", additionalProperties: false,
-        properties: { app: { type: "string", minLength: 1, maxLength: 300, description: "An app id such as '413150' or a store.steampowered.com/app/<id>/ URL, to read that app's page from any store page without leaving it. Omit to read the app page open in this tab." } }
+        properties: { app: { type: "string", minLength: 1, maxLength: 300, description: "An app id such as '413150' or a store.steampowered.com/app/<id>/ URL, to read that app's page from any store page without leaving it. Omit to read the app page open in this tab." },
+          apps: { type: "array", minItems: 1, maxItems: 5, items: { type: "string", minLength: 1, maxLength: 300 }, description: "Instead of app, up to 5 app ids or store URLs to read in one call; results follows this order." }
+        }
       },
       outputSchema: {
         type: "object",
@@ -36,7 +38,7 @@
               message: { type: "string" },
               app: {
                 type: "object", additionalProperties: false,
-                required: ["app_id", "name", "url", "release_date", "coming_soon", "developers", "publishers", "genres"],
+                required: ["app_id", "name", "url", "release_date", "coming_soon", "developers", "publishers", "genres", "tags"],
                 properties: {
                   app_id: { type: "string", pattern: "^[0-9]+$" },
                   name: { type: "string", minLength: 1, maxLength: 300 },
@@ -45,7 +47,8 @@
                   coming_soon: { type: "boolean", description: "The page says the app is not released yet." },
                   developers: { type: "array", items: { type: "string" } },
                   publishers: { type: "array", items: { type: "string" } },
-                  genres: { type: "array", items: { type: "string" } }
+                  genres: { type: "array", items: { type: "string" } },
+                  tags: { type: "array", items: { type: "string" }, description: "User-defined tags in page order; the header shows the first few." }
                 }
               },
               currency: { type: ["string", "null"], description: "ISO currency of the shown prices, from the page's offer data; null when the page has none." },
@@ -70,13 +73,13 @@
                 }
               },
               reviews: {
-                type: "array", maxItems: 4,
-                description: "The review summaries shown in the page header, in page order.",
+                type: "array", maxItems: 5,
+                description: "The header's review summaries in page order, then the reviews section's 'Total reviews in all languages' when the header shows one language's.",
                 items: {
                   type: "object", additionalProperties: false,
                   required: ["label", "summary", "percent_positive", "review_count", "description"],
                   properties: {
-                    label: { type: "string", description: "For example 'Recent Reviews', 'All Reviews' or 'English Reviews'." },
+                    label: { type: "string", description: "For example 'Recent Reviews', 'All Reviews', 'English Reviews' or 'Total reviews in all languages'." },
                     summary: { type: ["string", "null"], description: "For example 'Overwhelmingly Positive' or 'No user reviews'." },
                     percent_positive: { type: ["integer", "null"] },
                     review_count: { type: ["integer", "null"] },
@@ -106,7 +109,7 @@
       },
       annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true }
     },
-    execute: async (input = {}) => {
+    execute: async function get(input = {}) {
       // @xwebmcp-inline lib/steam-store.js
       // Steam Store page model shared by the steampowered.com tools: which store page this is, the shown prices and
       // review summaries, the header search box, and the actions the caller can take next. Reading never clicks anything.
@@ -191,7 +194,12 @@
       const registered = await steamRegistered("get_app");
       const actions = steamActions(page, registered, steamText(document.querySelector(page.type === "age_check" ? "title" : "#appHubAppName")));
       const notOk = (status, message, appId = page.app_id) => ({ status, message, page_type: page.type, app_id: appId, registered_tools: registered, available_actions: actions, next_steps: steamNextSteps(actions, "get_app") });
-      if (input === null || typeof input !== "object" || Array.isArray(input) || Object.keys(input).some(k => k !== "app")) return notOk("invalid_input", "The only input is app, an app id or store URL; pass {} to read the app page open in this tab.");
+      if (input === null || typeof input !== "object" || Array.isArray(input) || Object.keys(input).some(k => k !== "app" && k !== "apps")) return notOk("invalid_input", "Pass app (an app id or store URL), apps (a list of up to 5) or {} to read the app page open in this tab.");
+      if (input.apps !== undefined) {
+        if (input.app !== undefined || !Array.isArray(input.apps) || !input.apps.length || input.apps.length > 5) return notOk("invalid_input", "apps must list 1 to 5 app ids or store URLs, and replaces app.", null);
+        const results = (await Promise.all(input.apps.map(app => get({ app })))).map(({ registered_tools, available_actions, next_steps, ...result }) => result);
+        return { status: "ok", message: results.map(r => r.message).join(" "), results, registered_tools: registered, available_actions: actions, next_steps: steamNextSteps(actions, "get_app") };
+      }
       let wanted = null;
       if (input.app !== undefined) {
         const given = typeof input.app === "string" ? input.app.trim() : "";
@@ -260,13 +268,22 @@
           description
         };
       }).filter(review => review.label);
+      // The reviews section's total in all languages, which the header leaves out when it shows one language's reviews.
+      let global = null;
+      try { global = JSON.parse(doc.querySelector('[data-props*="summaryGlobalNoOutliers"]').getAttribute("data-props")).summary_options.summaryGlobalNoOutliers; } catch {}
+      if (global?.nReviews > 0 && !reviews.some(r => /^all reviews/i.test(r.label))) reviews.push({
+        label: "Total reviews in all languages",
+        summary: [null, "Overwhelmingly Negative", "Very Negative", "Negative", "Mostly Negative", "Mixed", "Mostly Positive", "Positive", "Very Positive", "Overwhelmingly Positive"][global.eReviewScore] ?? null,
+        percent_positive: Math.floor(100 * global.nReviewsPositive / global.nReviews), review_count: global.nReviews, description: null
+      });
 
       const app = {
         app_id: appId, name,
         url: canonical && canonical.startsWith(STEAM_ORIGIN + "/app/") ? canonical : STEAM_ORIGIN + "/app/" + appId + "/",
         release_date: release,
         coming_soon: !!doc.querySelector(".game_area_comingsoon") || /coming soon|to be announced/i.test(release || ""),
-        developers: rowLinks("developer"), publishers: rowLinks("publisher"), genres
+        developers: rowLinks("developer"), publishers: rowLinks("publisher"), genres,
+        tags: [...doc.querySelectorAll(".popular_tags a.app_tag")].map(a => steamText(a)).filter(Boolean).slice(0, 20)
       };
       return {
         status: "ok",
@@ -276,5 +293,14 @@
         registered_tools: registered, available_actions: actions, next_steps: steamNextSteps(actions, "get_app")
       };
     }
-  }];
+  };
+  // apps returns one result per app, each without the page-level fields (the last three of every branch).
+  const branches = definition.tool.outputSchema.oneOf, perPage = props => Object.fromEntries(Object.entries(props).slice(-3));
+  const item = ({ required, properties, ...schema }) => ({ ...schema, required: required.slice(0, -3), properties: Object.fromEntries(Object.entries(properties).slice(0, -3)) });
+  branches.push({
+    type: "object", additionalProperties: false,
+    required: ["status", "message", "results", ...branches[0].required.slice(-3)],
+    properties: { status: { const: "ok" }, message: { type: "string" }, results: { type: "array", maxItems: 5, items: { oneOf: branches.map(item) } }, ...perPage(branches[0].properties) }
+  });
+  return [definition];
 })()
