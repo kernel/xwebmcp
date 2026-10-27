@@ -132,6 +132,8 @@ test("a search field that loses the query stops before choosing", async () => {
 test("signed out and off-site pages are refused", async () => {
   assert.equal((await harness({ initial: { signedIn: false } }).run()).error_kind, "not_signed_in");
   assert.equal((await harness({ initial: { host: "help.doordash.com", header: null } }).run()).error_kind, "unknown");
+  // Off www the sign-in cookie is not visible, so a signed-in account must still get the wrong-page answer.
+  assert.equal((await harness({ initial: { host: "help.doordash.com", header: null, signedIn: false } }).run()).error_kind, "unknown");
 });
 
 test("the Save guard prevents a repeat", async () => {

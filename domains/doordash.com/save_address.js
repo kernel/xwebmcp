@@ -189,8 +189,10 @@
     try {
       step = "session_check";
       let s = await read();
+      // The sign-in cookie is only visible on www.doordash.com, so the host is checked first.
+      if (s.host !== "www.doordash.com") return fail("unknown", "Run this on a www.doordash.com page that shows the header address button. Nothing was changed.");
       if (!s.signedIn) return fail("not_signed_in", "The browser is not signed in to DoorDash.");
-      if (s.host !== "www.doordash.com" || !s.header) return fail("unknown", "Run this on a www.doordash.com page that shows the header address button. Nothing was changed.");
+      if (!s.header) return fail("unknown", "Run this on a www.doordash.com page that shows the header address button. Nothing was changed.");
       if (s.challenge) return fail("captcha_or_challenge", s.challenge);
 
       step = "dialog";
