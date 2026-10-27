@@ -242,7 +242,7 @@ point of view. A full page load ends the call before it can return.
 | --- | --- |
 | `xwebmcp/nextjs` | `<WebMCPProvider site? navigationTimeoutMs?>`, `useWebMCPTool`, `useWebMCPRoute`, `<WebMCPPageContext>`, `refresh` |
 | `xwebmcp/react` | `useWebMCPTool`, `useWebMCPRoute`, `<WebMCPPageContext>`, `<WebMCPPageProvider navigate>` for other routers |
-| `xwebmcp` | `registerTool(tool, { signal })`, `refresh()`, `getModelContext()`, `availableToolNames()`, `subscribe(listener)`, `Registry`; no React |
+| `xwebmcp` | `registerTool(tool, { signal })`, `refresh()`, `getModelContext()`, `availableToolNames()`, `subscribe(listener)`; no React |
 
 `useWebMCPTool({ name, description, inputSchema?, outputSchema?, annotations?, title?, execute, enabled? })`
 takes the fields of a WebMCP tool plus `enabled`.
@@ -255,8 +255,7 @@ For a React app that isn't on Next, render `<WebMCPPageProvider navigate={(href)
 from `xwebmcp/react` with your router's client-side navigation.
 
 Without React, `registerTool(tool, { signal })` registers until the signal aborts and returns
-`{ update(tool) }` to change the definition in place. `Registry<T>` is the keyed,
-newest-wins store the hooks are built on, for anything else that needs the same rule.
+`{ update(tool) }` to change the definition in place. The same newest-wins rule applies.
 
 ## Trying it out
 

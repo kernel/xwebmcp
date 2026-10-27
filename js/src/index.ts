@@ -44,6 +44,11 @@ export interface Registration<T> {
  * it goes away the previous one takes over. Updating a registration keeps
  * its place, so an entry that merely changed does not jump ahead of one
  * that was added after it.
+ *
+ * Exported for the react entry, which imports the core by package name so
+ * all entries share one registry. Not part of the public API.
+ *
+ * @internal
  */
 export class Registry<T> {
   private stacks = new Map<string, Array<{ value: T }>>();

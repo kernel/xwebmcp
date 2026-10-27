@@ -24,7 +24,8 @@
       "xwebmcp/nextjs": [
         "./src/nextjs.tsx"
       ]
-    }
+    },
+    "stripInternal": true
   },
   "include": [
     "src",
