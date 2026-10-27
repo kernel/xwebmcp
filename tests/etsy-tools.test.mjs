@@ -639,7 +639,7 @@ test("get_favorite_status: reads Etsy's favorites map for each listing", async (
 
 // Simulates Etsy's favorite buttons on a page: a press sends the favorites request and toggles the state.
 const favoriteButtons = (behaviour = "toggle") => (doc, path, site) => {
-  for (const button of doc.querySelectorAll('[data-ui="favorite-listing-button"]')) {
+  for (const button of doc.querySelectorAll('[data-ui="favorite-listing-button"], .listing-page-favorite-button, [data-add-to-collection-button]')) {
     button.addEventListener("click", function () {
       site.presses = (site.presses || 0) + 1;
       site.pressed = this;
@@ -675,6 +675,7 @@ for (const [from, to] of [[false, true], [true, false]]) {
     const result = await h.run({ listing_id: "1000000003", favorited: to });
     assert.deepEqual(result, { status: "ok", listing_id: "1000000003", previous_favorited: from, favorited: to, changed: true, mutation_attempted: true });
     assert.equal(h.site.presses, 1);
+    assert.equal(h.site.pressed.getAttribute("data-testid"), "favorite-heart", "the heart, not Add to collection");
     assert.deepEqual(h.calls.navigations, [], "page tools never navigate");
   });
 }
@@ -704,7 +705,7 @@ test("set_favorite: presses the listing page's own button rather than a recommen
   const h = favoriteHarness({ signedIn: true, url: `${ORIGIN}/listing/1000000001` });
   const result = await h.run({ listing_id: "1000000001", favorited: true });
   assert.equal(result.changed, true);
-  assert.equal(h.site.pressed.hasAttribute("data-always-show"), true);
+  assert.equal(h.site.pressed.getAttribute("data-testid"), "favorite-heart");
 });
 
 test("set_favorite: a search result card's button is used when the listing page is not open", async () => {
