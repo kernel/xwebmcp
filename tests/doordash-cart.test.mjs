@@ -9,7 +9,7 @@ const sources = Object.fromEntries(["get_cart", "get_checkout_summary", "remove_
 const plain = value => JSON.parse(JSON.stringify(value));
 const email = "shopper@example.invalid";
 const account = () => ({ email, isGuest: false, defaultAddress: { city: "Testville", state: "ZZ", zipCode: "00000", countryCode: "US", entryCode: "secret-entry" } });
-const item = (id, quantity = 1) => ({ id, quantity, singlePrice: 700, priceOfTotalQuantity: 700 * quantity, priceDisplayString: "$7.00", cartItemStatusType: "CART_ITEM_STATUS_TYPE_UNSPECIFIED", isPrescriptionItem: false, options: [{ id: "extra-1", name: "Tofu", quantity: 1, price: 100 }], item: { id: "menu-" + id, name: "Fabricated bowl", storeId: "1001" } });
+const item = (id, quantity = 1) => ({ id, quantity, singlePrice: 700, priceOfTotalQuantity: 700 * quantity, priceDisplayString: "$7.00", cartItemStatusType: "CART_ITEM_STATUS_TYPE_UNSPECIFIED", isPrescriptionItem: false, options: [{ id: "extra-1", name: "Tofu", quantity: 1, price: 100 }], item: { id: "menu-" + id, name: "Fabricated bowl", storeId: null } });
 const cart = () => ({ id: "cart-1", groupCart: false, isBundle: false, isCatering: false, isMerchantShipping: false, isPrescriptionDelivery: false, isConsumerPickup: false, currencyCode: "USD", subtotal: 1400, total: 1700, restaurant: { id: "1001", name: "Fabricated Kitchen" }, orders: [{ id: "order-1", isSubCartFinalized: false, orderItems: [item("line-1"), item("line-2")], lineItems: [{ label: "Service fee", finalMoney: { unitAmount: 300, displayString: "$3.00" } }] }] });
 
 function conforms(s, v) {
