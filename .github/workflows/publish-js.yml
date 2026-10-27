@@ -1,0 +1,31 @@
+name: publish js
+
+# Publishes js/ to npm with trusted publishing (OIDC); no npm token is stored.
+# npmjs.com must list this repository and publish-js.yml as a trusted
+# publisher for the xwebmcp package, with "npm publish" allowed.
+on:
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  publish:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: js
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          # Trusted publishing needs npm >= 11.5.1, which ships with Node 24.
+          node-version: 24
+          registry-url: https://registry.npmjs.org
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build
+      - run: npm publish
