@@ -29,7 +29,7 @@
     }
   };
   const propertySchema = {
-    type: "object", additionalProperties: false, required: ["property_id", "name", "property_url", "page_url", "address", "review", "review_categories", "popular_facilities", "check_in_time", "check_out_time", "house_rules"],
+    type: "object", additionalProperties: false, required: ["property_id", "name", "property_url", "page_url", "address", "review", "review_categories", "popular_facilities", "check_in_time", "check_out_time", "house_rules", "house_rules_truncated"],
     properties: {
       property_id: { type: ["string", "null"], description: "Booking.com's numeric property id." },
       name: { type: "string" },
@@ -51,8 +51,9 @@
           type: "object", additionalProperties: false, required: ["title", "lines"],
           properties: { title: { type: "string" }, lines: { type: "array", maxItems: 30, items: { type: "string" } } }
         },
-        description: "Every house-rules section in page order, with its title as the page shows it (for example 'Pets', 'Accepted payment methods' or 'Cards accepted at this property', 'Children & Beds', 'Age restriction', 'Smoking', 'Parties', 'Quiet hours') and its text lines: card logos by name, and each crib or extra-bed row as one line ('4 - 12 years: Extra bed upon request, € 12.50 per child, per night'). A section the property did not fill in is absent, not 'allowed'. Empty when the page has no house rules; null when it has a house-rules section the tool could not read, which says nothing about any rule."
-      }
+        description: "Every house-rules section in page order, with its title as the page shows it (for example 'Pets', 'Accepted payment methods' or 'Cards accepted at this property', 'Children & Beds', 'Age restriction', 'Smoking', 'Parties', 'Quiet hours') and its text lines: card logos by name, and each crib or extra-bed row as one line ('4 - 12 years: Extra bed upon request, € 12.50 per child, per night', with '; ' between offers for the same ages). A section the property did not fill in is absent, not 'allowed'. Empty when the page has no house rules; null when it has a house-rules section the tool could not read, which says nothing about any rule."
+      },
+      house_rules_truncated: { type: "boolean", description: "True when house_rules leaves out sections or lines the page lists (more than 20 sections, more than 30 lines in a section, or about 20 KB of text); read the rest on the property page." }
     }
   };
   return [{
@@ -292,15 +293,15 @@
         const rules = rawText(pickTid(doc, "HouseRules-wrapper"));
         const time = label => (new RegExp(label + "\\s*((?:From|Until|Between)\\s+\\d{1,2}(?::\\d{2})?\\s*(?:[AP]M)?(?:\\s*(?:-|to|\\u2013)\\s*\\d{1,2}(?::\\d{2})?\\s*(?:[AP]M)?)?)", "i").exec(rules) || [])[1] ?? null;
         // Each house-rules row is a title cell and a content cell. Content lines are the innermost blocks with text;
-        // card logos are images named by alt text, and a crib or extra-bed row (an age range, then the offer and its
-        // charge) is kept together as one line.
+        // card logos are images named by alt text, and a crib or extra-bed row (an age or age range, then the offer and its
+        // charge, one cell per offer) is kept together as one line.
         const ruleLine = s => s.length > 600 ? s.slice(0, 599) + "…" : s;
         const ruleLines = (el, out) => {
-          if (out.length >= 30 || el.getAttribute("aria-hidden") === "true") return out;
+          if (out.length > 30 || el.getAttribute("aria-hidden") === "true") return out;
           if (el.tagName === "IMG") { const alt = (el.getAttribute("alt") || "").replace(/\s+/g, " ").trim().slice(0, 300); if (alt) out.push(alt); return out; }
           const kids = [...el.children];
-          if (kids.length === 2 && /^\d+\s*(?:[-\u2013]\s*\d+|\+)\s*years?$/i.test(text(kids[0]))) {
-            out.push(ruleLine(text(kids[0]) + ": " + ruleLines(kids[1], []).join(", ")));
+          if (kids.length >= 2 && /^\d+\s*(?:[-\u2013]\s*\d+|\+)?\s*years?(?:\s+old)?$/i.test(text(kids[0]))) {
+            out.push(ruleLine(text(kids[0]) + ": " + kids.slice(1).map(offer => ruleLines(offer, []).join(", ")).join("; ")));
             return out;
           }
           if (!kids.length || [...el.childNodes].some(n => n.nodeType === 3 && n.textContent.trim())) {
@@ -311,13 +312,24 @@
           for (const kid of kids) ruleLines(kid, out);
           return out;
         };
-        // Rows are the siblings of the shallowest <hr>, so a separator inside a row's content is not taken for one.
+        // Rows are the siblings of the shallowest <hr>, so a separator inside a row's content is not taken for one. Every
+        // property lists check-in and check-out, so rows without either are not the section's rows.
         const rulesWrapper = pickTid(doc, "HouseRules-wrapper");
         const depth = el => { let d = 0; for (; el; el = el.parentNode) d++; return d; };
         const ruleSeparator = [...(rulesWrapper?.querySelector("[data-testid=\"property-section--content\"]")?.querySelectorAll("hr") || [])]
           .reduce((top, hr) => !top || depth(hr) < depth(top) ? hr : top, null);
-        const houseRules = [...(ruleSeparator?.parentNode.children || [])].filter(row => row.tagName === "DIV" && row.children.length >= 2 && text(row.children[0]))
-          .slice(0, 20).map(row => ({ title: text(row.children[0]), lines: ruleLines(row.children[1], []) }));
+        const ruleRows = [...(ruleSeparator?.parentNode.children || [])].filter(row => row.tagName === "DIV" && row.children.length >= 2 && text(row.children[0]));
+        const houseRules = [];
+        let ruleBytes = 0, rulesTruncated = false;
+        for (const row of ruleRows) {
+          const lines = ruleLines(row.children[1], []);
+          const rule = { title: text(row.children[0]), lines: lines.slice(0, 30) };
+          ruleBytes += new TextEncoder().encode(JSON.stringify(rule)).length;
+          if (houseRules.length === 20 || ruleBytes > 20000) { rulesTruncated = true; break; }
+          if (lines.length > 30) rulesTruncated = true;
+          houseRules.push(rule);
+        }
+        const rulesRead = houseRules.length > 0 && ruleRows.some(row => /^Check-(?:in|out)$/i.test(text(row.children[0])));
         const property = {
           property_id: cfg(html, /\bb_hotel_id\s*:\s*'(\d{1,20})'/),
           name: name.slice(0, 300), property_url: query.property_url, page_url: query.property_url + "?" + params.toString(),
@@ -325,7 +337,7 @@
           review: scoreMatch ? { score: Number(scoreMatch[1]), label: scoreMatch[2].trim(), count: Number(scoreMatch[3].replace(/,/g, "")) } : null,
           review_categories: [...doc.querySelectorAll("[data-testid=\"review-subscore\"]")].slice(0, 20).map(el => /^(.*?),\s*([\d.]+),\s*Average rating/.exec(text(el))).filter(Boolean).map(m => ({ category: m[1], score: Number(m[2]) })),
           popular_facilities: facilities ? [...facilities.querySelectorAll("li")].map(text).filter(Boolean).slice(0, 20) : [],
-          check_in_time: time("Check-in"), check_out_time: time("Check-out"), house_rules: rulesWrapper ? (houseRules.length ? houseRules : null) : []
+          check_in_time: time("Check-in"), check_out_time: time("Check-out"), house_rules: rulesWrapper ? (rulesRead ? houseRules : null) : [], house_rules_truncated: rulesRead && rulesTruncated
         };
 
         const rowEls = [...doc.querySelectorAll("#hprt-table tr.js-rt-block-row")];
