@@ -245,6 +245,22 @@ test("remaining lines listed in another order still confirm the removal", async 
   assert.equal(out.status, "ok"); assert.deepEqual(out.remaining_cart.lines.map(l => l.line_id), ["line-3", "line-2"]); assert.equal(h.store.size, 0);
 });
 
+test("removing the line the order is named after accepts the order renamed to a remaining line", async () => {
+  const c = cart(); c.orders[0].id = "line-1";
+  const h = harness({ carts: [c], afterWrite: c => { c.orders[0].id = c.orders[0].orderItems[0].id; } });
+  const out = await h.run("remove_cart_item", await removalInput(h));
+  assert.equal(out.status, "ok"); assert.deepEqual(out.remaining_cart.lines.map(l => l.line_id), ["line-2"]); assert.equal(h.store.size, 0);
+});
+
+for (const [label, orderId, renamedTo] of [["to an id that is not a remaining line", "line-1", "order-9"], ["when it was not named after the removed line", "order-1", "line-2"]]) {
+  test(`an order renamed ${label} is not confirmed`, async () => {
+    const c = cart(); c.orders[0].id = orderId;
+    const h = harness({ carts: [c], afterWrite: c => { c.orders[0].id = renamedTo; } });
+    const out = await h.run("remove_cart_item", await removalInput(h));
+    assert.equal(out.error_kind, "outcome_unknown"); assert.equal(h.store.size, 1);
+  });
+}
+
 test("an uncertain write blocks the unchanged cart but not a fresh revision of a changed one", async () => {
   const h = harness({ noRemoval: true }); const input = await removalInput(h);
   assert.equal((await h.run("remove_cart_item", input)).error_kind, "outcome_unknown"); assert.equal(h.store.size, 1);

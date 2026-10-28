@@ -221,7 +221,9 @@
       // The site may reprice the remaining lines (promotions, bundles); their identity, quantity and options must not change.
       const repriced = new Map((Array.isArray(after.orders?.[0]?.orderItems) ? after.orders[0].orderItems : []).map(l => [String(l?.id), l]));
       const kept = l => { const now = repriced.get(String(l.id)); return { ...l, singlePrice: now?.singlePrice, priceOfTotalQuantity: now?.priceOfTotalQuantity, priceDisplayString: now?.priceDisplayString }; };
-      const expected = { ...before, subtotal: after.subtotal, total: after.total, orders: before.orders.map(o => ({ ...o, orderItems: o.orderItems.filter(l => String(l.id) !== input.line_id).map(kept), lineItems: after.orders?.[0]?.lineItems })) };
+      // The site ids the order after its first line, so removing that line renames the order to a remaining line.
+      const renamed = o => String(o.id) === input.line_id && o.orderItems.some(l => String(l.id) !== input.line_id && String(l.id) === String(after.orders?.[0]?.id)) ? after.orders[0].id : o.id;
+      const expected = { ...before, subtotal: after.subtotal, total: after.total, orders: before.orders.map(o => ({ ...o, id: renamed(o), orderItems: o.orderItems.filter(l => String(l.id) !== input.line_id).map(kept), lineItems: after.orders?.[0]?.lineItems })) };
       // The order of the remaining lines is not part of their identity.
       const byLineId = c => ({ ...c, orders: Array.isArray(c.orders) ? c.orders.map(o => (o && Array.isArray(o.orderItems) ? { ...o, orderItems: [...o.orderItems].sort((x, y) => String(x?.id).localeCompare(String(y?.id))) } : o)) : c.orders });
       if (JSON.stringify(canonical(byLineId(expected))) !== JSON.stringify(canonical(byLineId(after)))) return fail("outcome_unknown", "The exact removal with unchanged other lines was not confirmed. Inspect manually; do not retry.", true);
