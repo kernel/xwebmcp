@@ -1,6 +1,6 @@
 {
   "name": "xwebmcp",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Register WebMCP tools from React and Next.js components, with distributed get_page_context and navigate_to_page tools.",
   "license": "MIT",
   "repository": {
