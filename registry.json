@@ -1769,7 +1769,7 @@
       "url_patterns_reason": "Narrowed to www.etsy.com: the marketplace (search, listings, cart, favorites) lives entirely there and etsy.com redirects to it; other subdomains (help center, forums) are unrelated products where the page tools' relative requests would fail.",
       "status": "draft",
       "last_verified": null,
-      "notes": "Signed-in only: records the initial favorite state, no-op if it already matches, otherwise presses the listing's favorite button on the current page once (listing page or a search page showing it) and confirms. Never run signed in (no Etsy account available); signed out returns not_logged_in and presses nothing."
+      "notes": "Signed-in only: records the initial favorite state, no-op if it already matches, otherwise presses the listing's favorite button on the current page once (listing page or a search page showing it) and confirms. The listing page's own heart is button.listing-page-favorite-button (no data-ui attribute), next to an Add to collection button with the same listing id that is never pressed. Author live check on 2026-10-27 (not independent QA), signed in on a listing page: false to true, a no-op repeat, then true to false, each read back with get_favorite_status and the account left as it started. Signed out returns not_logged_in and presses nothing."
     },
     {
       "domain": "etsy.com",

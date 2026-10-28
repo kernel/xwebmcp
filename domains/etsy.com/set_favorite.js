@@ -84,7 +84,7 @@
       if (initial.error) return lookupError(initial, false, null);
       if (initial.favorited === input.favorited) return { status: "ok", listing_id: id, previous_favorited: initial.favorited, favorited: initial.favorited, changed: false, mutation_attempted: false };
       // The listing page's own button first; otherwise a result card's button for the same listing.
-      const buttons = [...document.querySelectorAll(`[data-ui="favorite-listing-button"][data-listing-id="${id}"]`)].filter(b => b.getClientRects().length);
+      const buttons = [...document.querySelectorAll(`[data-ui="favorite-listing-button"][data-listing-id="${id}"], button.listing-page-favorite-button[data-listing-id="${id}"]`)].filter(b => b.getClientRects().length);
       const button = buttons.find(b => !b.closest("[data-listing-card-v2], [data-palette-listing-id]")) || buttons[0];
       if (!button) return fail("listing_not_on_page", `This page shows no favorite button for listing ${id}; open https://www.etsy.com/listing/${id} (or a search page that shows it) and call again. Nothing was changed.`, { previous_favorited: initial.favorited });
       // An observer, because listing pages fill the resource-timing buffer and later entries never reach it.
