@@ -240,6 +240,7 @@ test("search_restaurants defaults the time, omits absent filters, and reports ha
 test("search_restaurants returns no_results for empty or out-of-range pages and never an empty success", async () => {
   const none = await run("search_restaurants", { query: "zzzz nowhere" }, ok(pageHtml(searchState([], { totalRestaurantCount: 0 }))));
   assert.equal(none.output.status, "no_results");
+  assert.match(none.output.message, /in Chicago \/ Illinois\. It searches near the browser's location .*get_restaurant/, "names the area the site searched");
   assertConforms("search_restaurants", none.output);
   const beyond = await run("search_restaurants", { query: "pizza chicago", page: 100 }, ok(pageHtml(searchState([], { totalRestaurantCount: 0, pageNumber: 100 }))));
   assert.equal(beyond.output.status, "no_results");
