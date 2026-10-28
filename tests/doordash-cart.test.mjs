@@ -9,7 +9,7 @@ const sources = Object.fromEntries(["get_cart", "get_checkout_summary", "remove_
 const plain = value => JSON.parse(JSON.stringify(value));
 const email = "shopper@example.invalid";
 const account = () => ({ email, isGuest: false, defaultAddress: { city: "Testville", state: "ZZ", zipCode: "00000", countryCode: "US", entryCode: "secret-entry" } });
-const item = (id, quantity = 1) => ({ id, quantity, singlePrice: 700, priceOfTotalQuantity: 700 * quantity, priceDisplayString: "$7.00", cartItemStatusType: "CART_ITEM_STATUS_TYPE_UNSPECIFIED", isPrescriptionItem: false, options: [{ id: "extra-1", name: "Tofu", quantity: 1, price: 100 }], item: { id: "menu-" + id, name: "Fabricated bowl", storeId: "1001" } });
+const item = (id, quantity = 1) => ({ id, quantity, singlePrice: 700, priceOfTotalQuantity: 700 * quantity, priceDisplayString: "$7.00", cartItemStatusType: "CART_ITEM_STATUS_TYPE_UNSPECIFIED", isPrescriptionItem: false, options: [{ id: "extra-1", name: "Tofu", quantity: 1, price: 100 }], item: { id: "menu-" + id, name: "Fabricated bowl", storeId: null } });
 const cart = () => ({ id: "cart-1", groupCart: false, isBundle: false, isCatering: false, isMerchantShipping: false, isPrescriptionDelivery: false, isConsumerPickup: false, currencyCode: "USD", subtotal: 1400, total: 1700, restaurant: { id: "1001", name: "Fabricated Kitchen" }, orders: [{ id: "order-1", isSubCartFinalized: false, orderItems: [item("line-1"), item("line-2")], lineItems: [{ label: "Service fee", finalMoney: { unitAmount: 300, displayString: "$3.00" } }] }] });
 
 function conforms(s, v) {
@@ -244,6 +244,22 @@ test("remaining lines listed in another order still confirm the removal", async 
   const out = await h.run("remove_cart_item", await removalInput(h));
   assert.equal(out.status, "ok"); assert.deepEqual(out.remaining_cart.lines.map(l => l.line_id), ["line-3", "line-2"]); assert.equal(h.store.size, 0);
 });
+
+test("removing the line the order is named after accepts the order renamed to a remaining line", async () => {
+  const c = cart(); c.orders[0].id = "line-1";
+  const h = harness({ carts: [c], afterWrite: c => { c.orders[0].id = c.orders[0].orderItems[0].id; } });
+  const out = await h.run("remove_cart_item", await removalInput(h));
+  assert.equal(out.status, "ok"); assert.deepEqual(out.remaining_cart.lines.map(l => l.line_id), ["line-2"]); assert.equal(h.store.size, 0);
+});
+
+for (const [label, orderId, renamedTo] of [["to an id that is not a remaining line", "line-1", "order-9"], ["when it was not named after the removed line", "order-1", "line-2"]]) {
+  test(`an order renamed ${label} is not confirmed`, async () => {
+    const c = cart(); c.orders[0].id = orderId;
+    const h = harness({ carts: [c], afterWrite: c => { c.orders[0].id = renamedTo; } });
+    const out = await h.run("remove_cart_item", await removalInput(h));
+    assert.equal(out.error_kind, "outcome_unknown"); assert.equal(h.store.size, 1);
+  });
+}
 
 test("an uncertain write blocks the unchanged cart but not a fresh revision of a changed one", async () => {
   const h = harness({ noRemoval: true }); const input = await removalInput(h);

@@ -187,7 +187,7 @@
       if (projectedBefore.truncated || new TextEncoder().encode(JSON.stringify(projectedBefore)).byteLength > 170000) return fail("blocked", "The complete cart exceeds safe bounds. Nothing was changed.");
       const lines = before.orders[0].orderItems;
       if (!Array.isArray(lines) || lines.length < 2 || lines.length > 100 || lines.some(l => !l || !ident(l.id))) return fail("blocked", "Last-line removal or an incomplete/unsupported cart is not supported.");
-      if (lines.some(l => l.isPrescriptionItem !== false || !ident(l.item?.id) || String(l.item?.storeId) !== input.expected_store_id || !Array.isArray(l.options) || l.options.some(o => !o || !ident(o.id)) || typeof l.quantity !== "number" || !Number.isFinite(l.quantity) || l.quantity <= 0)) return fail("blocked", "Prescription, incomplete or conflicting cart lines are not supported. Nothing was changed.");
+      if (lines.some(l => l.isPrescriptionItem !== false || !ident(l.item?.id) || (l.item?.storeId != null && String(l.item.storeId) !== input.expected_store_id) || !Array.isArray(l.options) || l.options.some(o => !o || !ident(o.id)) || typeof l.quantity !== "number" || !Number.isFinite(l.quantity) || l.quantity <= 0)) return fail("blocked", "Prescription, incomplete or conflicting cart lines are not supported. Nothing was changed.");
       if (lines.filter(l => String(l.id) === input.line_id).length !== 1) return fail("not_found", "That exact line is not present exactly once in this cart.");
       if (await revision(before) !== input.expected_revision) return fail("stale_state", "The cart changed after get_cart. Read it again; no write was sent.");
       await readAccount();
@@ -221,7 +221,9 @@
       // The site may reprice the remaining lines (promotions, bundles); their identity, quantity and options must not change.
       const repriced = new Map((Array.isArray(after.orders?.[0]?.orderItems) ? after.orders[0].orderItems : []).map(l => [String(l?.id), l]));
       const kept = l => { const now = repriced.get(String(l.id)); return { ...l, singlePrice: now?.singlePrice, priceOfTotalQuantity: now?.priceOfTotalQuantity, priceDisplayString: now?.priceDisplayString }; };
-      const expected = { ...before, subtotal: after.subtotal, total: after.total, orders: before.orders.map(o => ({ ...o, orderItems: o.orderItems.filter(l => String(l.id) !== input.line_id).map(kept), lineItems: after.orders?.[0]?.lineItems })) };
+      // The site ids the order after its first line, so removing that line renames the order to a remaining line.
+      const renamed = o => String(o.id) === input.line_id && o.orderItems.some(l => String(l.id) !== input.line_id && String(l.id) === String(after.orders?.[0]?.id)) ? after.orders[0].id : o.id;
+      const expected = { ...before, subtotal: after.subtotal, total: after.total, orders: before.orders.map(o => ({ ...o, id: renamed(o), orderItems: o.orderItems.filter(l => String(l.id) !== input.line_id).map(kept), lineItems: after.orders?.[0]?.lineItems })) };
       // The order of the remaining lines is not part of their identity.
       const byLineId = c => ({ ...c, orders: Array.isArray(c.orders) ? c.orders.map(o => (o && Array.isArray(o.orderItems) ? { ...o, orderItems: [...o.orderItems].sort((x, y) => String(x?.id).localeCompare(String(y?.id))) } : o)) : c.orders });
       if (JSON.stringify(canonical(byLineId(expected))) !== JSON.stringify(canonical(byLineId(after)))) return fail("outcome_unknown", "The exact removal with unchanged other lines was not confirmed. Inspect manually; do not retry.", true);
