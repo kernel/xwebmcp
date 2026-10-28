@@ -350,7 +350,7 @@
         const warnings = [];
         if (signedIn) warnings.push("The browser is signed in to Booking.com, so prices may include member (Genius) discounts.");
         if (ages.length && !agesConfirmed) warnings.push("The page did not list the child ages, so the ages sent could not be confirmed.");
-        if (ages.length) warnings.push("Child charges and age limits are not checked against the rates; see the property's child policies in property.house_rules.");
+        if (ages.length) warnings.push("Child charges and age limits are not checked against the rates; " + (property.house_rules?.length ? "see the property's child policies in property.house_rules." : "review the property's child policies on the property page."));
         // A rate's capacity is in its occupancy cell ("Max. people: 2", "Max adults: 2 Max children: 1", "Only for 1
         // guest") or, on another layout, in a "Guests: 2 adults, 1 child" line under its conditions. A child may take
         // an adult place, as Booking.com's checkout counts guests.

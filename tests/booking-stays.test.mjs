@@ -674,6 +674,9 @@ test("get_property returns house rules with no_availability and none when the pa
   assert.equal(missing.output.status, "ok");
   assert.deepEqual(missing.output.property.house_rules, []);
   assert.equal(missing.output.property.check_in_time, null);
+  const childPolicies = async houseRules => (await run("get_property", { ...PROPERTY, children_ages: [7] }, { routes: [propertyRoute({ body: propertyPage({ occupancy: "2 adults · 1 child · 1 room", room1: "A,A,7", houseRules }) })] })).output.warnings.find(w => /child policies/.test(w));
+  assert.match(await childPolicies(FULL_HOUSE_RULES), /in property\.house_rules\.$/);
+  assert.match(await childPolicies(""), /on the property page\.$/, "no house rules to point at");
 });
 
 test("get_property splits house rules on the section's own separators and reports a section it cannot read as null", async () => {
