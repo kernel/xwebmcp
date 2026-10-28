@@ -727,6 +727,12 @@ test("get_property bounds the house rules and says when it leaves some out", asy
   assert.equal(unavailable.property.house_rules_truncated, true);
   assert.equal(unavailable.property.house_rules[0].title, "Check-in");
   assert.ok(new TextEncoder().encode(JSON.stringify(unavailable)).length < 30000);
+
+  const medium = section(checkIn + Array.from({ length: 8 }, (_, i) => ruleRow("Rule " + i, Array(8).fill(`<div>${"a".repeat(600)}</div>`).join(""))).join(""));
+  const { output: bounded } = await run("get_property", PROPERTY, { routes: [propertyRoute({ body: propertyPage({ houseRules: medium }) })] });
+  assert.deepEqual(bounded.property.house_rules.map(r => r.title), ["Check-in", "Rule 0", "Rule 1", "Rule 2", "Rule 3"]);
+  assert.ok(new TextEncoder().encode(JSON.stringify(bounded.property.house_rules)).length <= 20000);
+  assert.equal(bounded.property.house_rules_truncated, true);
 });
 
 test("get_property keeps an unreadable price as text and warns instead of guessing", async () => {
