@@ -126,9 +126,25 @@ const partnerRow = ({ head = ROOM_A, blockId = "bbasic_0", total = "$298" } = {}
   .replace('<tr class="js-rt-block-row', '<tr class="tpi_table__row js-rt-block-row')
   .replace(`<a data-room-id="${head.id}" id="room_type_id_${head.id}">`, `<a class="hprt-roomtype-link" id="room_type_id_${blockId}">`)
   .replace("</ul></div></td>", '</ul><div data-bui-component="Badge"><span>Partner Offer</span></div><p><span>Same room, lower price. Facilitated by a trusted partner company.</span></p></div></td>');
+const HOUSE_RULES = `<div data-testid="HouseRules-wrapper" id="hp_policies_box"><section><div><h2><div>House rules</div></h2></div><div data-testid="property-section--content"><div><div><div><span></span><div>Check-in</div></div></div><div><div>From 2:00 PM</div><div>Guests are required to show a photo ID.</div></div></div><hr><div><div><div><span></span><div>Check-out</div></div></div><div><div>Until 11:00 AM</div></div></div></div></section></div>`;
+// One house-rules row as observed: an icon and title cell, then a content cell.
+const ruleRow = (title, content) => `<div><div><div><span aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M0 0h24v24H0z"/></svg></span><div>${title}</div></div></div><div>${content}</div></div><hr aria-hidden="true">`;
+const FULL_HOUSE_RULES = `<div data-testid="HouseRules-wrapper" id="hp_policies_box"><section id="policies"><div><div><h2><div>House rules</div></h2><div>Harbor View Studios takes special requests – add in the next step!</div></div><div><button type="button"><span>See availability</span></button></div></div><div data-testid="property-section--content"><div>` +
+  ruleRow("Check-in", `<div>From 3:00 PM to 11:30 PM</div><div>Guests are required to show a photo ID and credit card at check-in.</div>`) +
+  ruleRow("Check-out", `<div>Until 12:00 PM</div>`) +
+  ruleRow("Cancellation/ prepayment", `<div>Cancellation and prepayment policies vary according to accommodation type. Check what <a href="#availability_target">conditions</a> apply to each option when making your selection.</div>`) +
+  ruleRow("Children &amp; Beds", `<div data-test-id="child-policies-block"><div><h3>Child policies</h3><p>Children of all ages are welcome.</p><p>Children 13 and above will be charged as adults at this property.</p></div><h3>Crib and extra bed policies</h3>` +
+    `<div><div>0 - 3 years</div><div><span><span aria-hidden="true"><svg viewBox="0 0 24 24"></svg></span><span>Crib upon request</span></span><span><div>Free</div></span></div></div>` +
+    `<div><div>13+ years</div><div><span><span aria-hidden="true"><svg viewBox="0 0 24 24"></svg></span><span>Extra bed upon request</span></span><span><div>€&nbsp;25 per person, per night</div></span></div></div>` +
+    `<div><p>All cribs and extra beds are subject to availability.</p></div></div>`) +
+  ruleRow("Age restriction", `<div>The minimum age for check-in is 18</div>`) +
+  ruleRow("Pets", `<div>Pets are not allowed.</div>`) +
+  ruleRow("Cards accepted at this property", `<div><picture><img src="https://cf.bstatic.com/static/img/transparent/x.gif" alt="Visa" loading="lazy"></picture><picture><img src="https://cf.bstatic.com/static/img/transparent/x.gif" alt="Mastercard" loading="lazy"></picture><span>Debit card</span> <span><span>Cash is not accepted</span></span></div>`) +
+  ruleRow("Quiet hours", `<div>Guests need be quiet between 10:00 PM and 7:00 AM.</div>`) +
+  `</div></div></section></div>`;
 const ROOM_B = { id: "1002", name: "Executive One-Bedroom Apartment", beds: "Bedroom 1: 1 queen bed", left: null };
 
-function propertyPage({ rows = null, signedIn = false, currency = "USD", occupancy = "2 adults · 0 children · 1 room", room1 = "A,A", cfg = config({ currency, hotelId: "1000001" }), ld = PROPERTY_LD, noAvailability = false, extraBody = "" } = {}) {
+function propertyPage({ rows = null, signedIn = false, currency = "USD", occupancy = "2 adults · 0 children · 1 room", room1 = "A,A", cfg = config({ currency, hotelId: "1000001" }), ld = PROPERTY_LD, noAvailability = false, extraBody = "", houseRules = HOUSE_RULES } = {}) {
   const table = rows === null
     ? [rateRow({ head: ROOM_A }), rateRow({ blockId: "1001_2002_2_2_0", total: "$338", original: "$375", perNight: "$169", before: "$337.56", cancellation: "Free cancellation before October 27, 2026", meal: "Wonderful breakfast included" }), rateRow({ head: ROOM_B, blockId: "1002_2001_2_2_0", guests: null, total: "$348", original: null, perNight: "$174", before: "$348.10", excluded: null, meal: null, cancellation: "Free cancellation" })]
     : rows;
@@ -139,8 +155,7 @@ function propertyPage({ rows = null, signedIn = false, currency = "USD", occupan
     `<div data-testid="review-score-right-component"><div>8.4</div><div>Rated: Very Good 8.4 – based on 1,234 reviews Expand ratings and reviews section</div><div><div>Very Good </div><div>1,234 reviews</div></div></div>` +
     `<div data-testid="ReviewSubscoresDesktop"><div data-testid="review-subscore">Staff, 9.1, Average rating out of 10 Staff 9.1</div><div data-testid="review-subscore">Value for money, 7.9, Average rating out of 10 Value for money 7.9</div></div>` +
     `<div data-testid="property-most-popular-facilities-wrapper"><h3><div>Most popular amenities</div></h3><ul><li><div><span data-testid="facility-icon"></span><div><span><div><span>Free Wifi</span> </div></span></div></div></li><li><div><span data-testid="facility-icon"></span><div><span><div><span>Air conditioning</span> </div></span></div></div></li></ul></div>` +
-    `<div data-testid="HouseRules-wrapper" id="hp_policies_box"><section><div><h2><div>House rules</div></h2></div><div data-testid="property-section--content"><div><div><div><span></span><div>Check-in</div></div></div><div><div>From 2:00 PM</div><div>Guests are required to show a photo ID.</div></div></div><hr><div><div><div><span></span><div>Check-out</div></div></div><div><div>Until 11:00 AM</div></div></div></div></section></div>` +
-    `${availability}${extraBody}`;
+    houseRules + `${availability}${extraBody}`;
   const ldScript = ld ? `<script type="application/ld+json">${JSON.stringify(ld)}</script>` : "";
   return shell({ body: body + ldScript, currency, signedIn, occupancy, cfg });
 }
@@ -603,7 +618,8 @@ test("get_property reads rooms, rates, cancellation, meal, taxes and the page's 
     page_url: "https://www.booking.com/hotel/xx/harbor-view-studios.html?checkin=2026-11-10&checkout=2026-11-12&group_adults=2&no_rooms=1&group_children=0",
     address: "1 Example Quay, Old Quarter, 1000-000 Example Harbor, Examplia", review: { score: 8.4, label: "Very Good", count: 1234 },
     review_categories: [{ category: "Staff", score: 9.1 }, { category: "Value for money", score: 7.9 }], popular_facilities: ["Free Wifi", "Air conditioning"],
-    check_in_time: "From 2:00 PM", check_out_time: "Until 11:00 AM"
+    check_in_time: "From 2:00 PM", check_out_time: "Until 11:00 AM",
+    house_rules: [{ title: "Check-in", lines: ["From 2:00 PM", "Guests are required to show a photo ID."] }, { title: "Check-out", lines: ["Until 11:00 AM"] }]
   });
   assert.equal(output.rates_total, 3);
   assert.equal(output.rates_returned, 3);
@@ -630,6 +646,33 @@ test("get_property reads rooms, rates, cancellation, meal, taxes and the page's 
   assert.equal(suite.rates[0].price.taxes_and_fees_excluded, null);
   assert.equal(suite.rates[0].meal_plan, null);
   assert.doesNotMatch(JSON.stringify(output), /fake-tracking|label=|secure\.booking\.com|book\.html/, "no tracking or booking-form data may be returned");
+});
+
+test("get_property returns every house-rules section as the page lists it", async () => {
+  const { output } = await run("get_property", PROPERTY, { routes: [propertyRoute({ body: propertyPage({ houseRules: FULL_HOUSE_RULES }) })] });
+  assert.equal(output.status, "ok");
+  assert.equal(output.property.check_in_time, "From 3:00 PM to 11:30 PM");
+  assert.equal(output.property.check_out_time, "Until 12:00 PM");
+  assert.deepEqual(output.property.house_rules, [
+    { title: "Check-in", lines: ["From 3:00 PM to 11:30 PM", "Guests are required to show a photo ID and credit card at check-in."] },
+    { title: "Check-out", lines: ["Until 12:00 PM"] },
+    { title: "Cancellation/ prepayment", lines: ["Cancellation and prepayment policies vary according to accommodation type. Check what conditions apply to each option when making your selection."] },
+    { title: "Children & Beds", lines: ["Child policies", "Children of all ages are welcome.", "Children 13 and above will be charged as adults at this property.", "Crib and extra bed policies", "0 - 3 years: Crib upon request, Free", "13+ years: Extra bed upon request, € 25 per person, per night", "All cribs and extra beds are subject to availability."] },
+    { title: "Age restriction", lines: ["The minimum age for check-in is 18"] },
+    { title: "Pets", lines: ["Pets are not allowed."] },
+    { title: "Cards accepted at this property", lines: ["Visa", "Mastercard", "Debit card", "Cash is not accepted"] },
+    { title: "Quiet hours", lines: ["Guests need be quiet between 10:00 PM and 7:00 AM."] }
+  ]);
+});
+
+test("get_property returns house rules with no_availability and none when the page has no section", async () => {
+  const unavailable = await run("get_property", PROPERTY, { routes: [propertyRoute({ body: propertyPage({ noAvailability: true, houseRules: FULL_HOUSE_RULES }) })] });
+  assert.equal(unavailable.output.status, "no_availability");
+  assert.deepEqual(unavailable.output.property.house_rules.find(r => r.title === "Pets"), { title: "Pets", lines: ["Pets are not allowed."] });
+  const missing = await run("get_property", PROPERTY, { routes: [propertyRoute({ body: propertyPage({ houseRules: "" }) })] });
+  assert.equal(missing.output.status, "ok");
+  assert.deepEqual(missing.output.property.house_rules, []);
+  assert.equal(missing.output.property.check_in_time, null);
 });
 
 test("get_property keeps an unreadable price as text and warns instead of guessing", async () => {
