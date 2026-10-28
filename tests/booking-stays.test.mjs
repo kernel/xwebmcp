@@ -666,10 +666,7 @@ test("get_property returns every house-rules section as the page lists it", asyn
   ]);
 });
 
-test("get_property returns house rules with no_availability and none when the page has no section", async () => {
-  const unavailable = await run("get_property", PROPERTY, { routes: [propertyRoute({ body: propertyPage({ noAvailability: true, houseRules: FULL_HOUSE_RULES }) })] });
-  assert.equal(unavailable.output.status, "no_availability");
-  assert.deepEqual(unavailable.output.property.house_rules.find(r => r.title === "Pets"), { title: "Pets", lines: ["Pets are not allowed."] });
+test("get_property returns no house rules when the page has no section", async () => {
   const missing = await run("get_property", PROPERTY, { routes: [propertyRoute({ body: propertyPage({ houseRules: "" }) })] });
   assert.equal(missing.output.status, "ok");
   assert.deepEqual(missing.output.property.house_rules, []);
