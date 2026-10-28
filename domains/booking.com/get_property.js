@@ -46,12 +46,12 @@
       check_in_time: { type: ["string", "null"], description: "The house-rules text, for example 'From 2:00 PM'." },
       check_out_time: { type: ["string", "null"] },
       house_rules: {
-        type: "array", maxItems: 20,
+        type: ["array", "null"], maxItems: 20,
         items: {
           type: "object", additionalProperties: false, required: ["title", "lines"],
           properties: { title: { type: "string" }, lines: { type: "array", maxItems: 30, items: { type: "string" } } }
         },
-        description: "Every house-rules section in page order, with its title as the page shows it (for example 'Pets', 'Accepted payment methods' or 'Cards accepted at this property', 'Children & Beds', 'Age restriction', 'Smoking', 'Parties', 'Quiet hours') and its text lines: card logos by name, and each crib or extra-bed row as one line ('4 - 12 years: Extra bed upon request, € 12.50 per child, per night'). A section the property did not fill in is absent, not 'allowed'. Empty when the page has no house rules."
+        description: "Every house-rules section in page order, with its title as the page shows it (for example 'Pets', 'Accepted payment methods' or 'Cards accepted at this property', 'Children & Beds', 'Age restriction', 'Smoking', 'Parties', 'Quiet hours') and its text lines: card logos by name, and each crib or extra-bed row as one line ('4 - 12 years: Extra bed upon request, € 12.50 per child, per night'). A section the property did not fill in is absent, not 'allowed'. Empty when the page has no house rules; null when it has a house-rules section the tool could not read, which says nothing about any rule."
       }
     }
   };
@@ -294,25 +294,29 @@
         // Each house-rules row is a title cell and a content cell. Content lines are the innermost blocks with text;
         // card logos are images named by alt text, and a crib or extra-bed row (an age range, then the offer and its
         // charge) is kept together as one line.
+        const ruleLine = s => s.length > 600 ? s.slice(0, 599) + "…" : s;
         const ruleLines = (el, out) => {
           if (out.length >= 30 || el.getAttribute("aria-hidden") === "true") return out;
           if (el.tagName === "IMG") { const alt = (el.getAttribute("alt") || "").replace(/\s+/g, " ").trim().slice(0, 300); if (alt) out.push(alt); return out; }
           const kids = [...el.children];
-          if (kids.length === 2 && /^\d+\s*(?:-\s*\d+|\+)\s*years?$/i.test(text(kids[0]))) {
-            out.push((text(kids[0]) + ": " + ruleLines(kids[1], []).join(", ")).slice(0, 300));
+          if (kids.length === 2 && /^\d+\s*(?:[-\u2013]\s*\d+|\+)\s*years?$/i.test(text(kids[0]))) {
+            out.push(ruleLine(text(kids[0]) + ": " + ruleLines(kids[1], []).join(", ")));
             return out;
           }
           if (!kids.length || [...el.childNodes].some(n => n.nodeType === 3 && n.textContent.trim())) {
-            const line = text(el);
+            const line = ruleLine(rawText(el));
             if (line) out.push(line);
             return out;
           }
           for (const kid of kids) ruleLines(kid, out);
           return out;
         };
-        const rulesContent = pickTid(doc, "HouseRules-wrapper")?.querySelector("[data-testid=\"property-section--content\"]");
-        const ruleRows = (rulesContent?.querySelector("hr")?.parentNode || rulesContent)?.children || [];
-        const houseRules = [...ruleRows].filter(row => row.tagName === "DIV" && row.children.length >= 2 && text(row.children[0]))
+        // Rows are the siblings of the shallowest <hr>, so a separator inside a row's content is not taken for one.
+        const rulesWrapper = pickTid(doc, "HouseRules-wrapper");
+        const depth = el => { let d = 0; for (; el; el = el.parentNode) d++; return d; };
+        const ruleSeparator = [...(rulesWrapper?.querySelector("[data-testid=\"property-section--content\"]")?.querySelectorAll("hr") || [])]
+          .reduce((top, hr) => !top || depth(hr) < depth(top) ? hr : top, null);
+        const houseRules = [...(ruleSeparator?.parentNode.children || [])].filter(row => row.tagName === "DIV" && row.children.length >= 2 && text(row.children[0]))
           .slice(0, 20).map(row => ({ title: text(row.children[0]), lines: ruleLines(row.children[1], []) }));
         const property = {
           property_id: cfg(html, /\bb_hotel_id\s*:\s*'(\d{1,20})'/),
@@ -321,7 +325,7 @@
           review: scoreMatch ? { score: Number(scoreMatch[1]), label: scoreMatch[2].trim(), count: Number(scoreMatch[3].replace(/,/g, "")) } : null,
           review_categories: [...doc.querySelectorAll("[data-testid=\"review-subscore\"]")].slice(0, 20).map(el => /^(.*?),\s*([\d.]+),\s*Average rating/.exec(text(el))).filter(Boolean).map(m => ({ category: m[1], score: Number(m[2]) })),
           popular_facilities: facilities ? [...facilities.querySelectorAll("li")].map(text).filter(Boolean).slice(0, 20) : [],
-          check_in_time: time("Check-in"), check_out_time: time("Check-out"), house_rules: houseRules
+          check_in_time: time("Check-in"), check_out_time: time("Check-out"), house_rules: rulesWrapper ? (houseRules.length ? houseRules : null) : []
         };
 
         const rowEls = [...doc.querySelectorAll("#hprt-table tr.js-rt-block-row")];
@@ -334,7 +338,7 @@
         const warnings = [];
         if (signedIn) warnings.push("The browser is signed in to Booking.com, so prices may include member (Genius) discounts.");
         if (ages.length && !agesConfirmed) warnings.push("The page did not list the child ages, so the ages sent could not be confirmed.");
-        if (ages.length) warnings.push("Child charges and age limits are not checked; review the property's child policies.");
+        if (ages.length) warnings.push("Child charges and age limits are not checked against the rates; see the property's child policies in property.house_rules.");
         // A rate's capacity is in its occupancy cell ("Max. people: 2", "Max adults: 2 Max children: 1", "Only for 1
         // guest") or, on another layout, in a "Guests: 2 adults, 1 child" line under its conditions. A child may take
         // an adult place, as Booking.com's checkout counts guests.

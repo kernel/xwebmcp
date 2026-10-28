@@ -675,6 +675,27 @@ test("get_property returns house rules with no_availability and none when the pa
   assert.equal(missing.output.property.check_in_time, null);
 });
 
+test("get_property splits house rules on the section's own separators and reports a section it cannot read as null", async () => {
+  const section = rows => `<div data-testid="HouseRules-wrapper"><section><div data-testid="property-section--content"><div>${rows}</div></div></section></div>`;
+  const nested = section(ruleRow("Check-in", `<div>From 2:00 PM</div><hr><div>Guests are required to show a photo ID.</div>`) +
+    ruleRow("Children &amp; Beds", `<div><div>0 – 3 years</div><div><span>Crib upon request</span><span>Free</span></div></div>`) +
+    ruleRow("Damage policy", `<div>${"word ".repeat(150)}</div>`));
+  const { output } = await run("get_property", PROPERTY, { routes: [propertyRoute({ body: propertyPage({ houseRules: nested }) })] });
+  assert.equal(output.status, "ok");
+  assert.deepEqual(output.property.house_rules.slice(0, 2), [
+    { title: "Check-in", lines: ["From 2:00 PM", "Guests are required to show a photo ID."] },
+    { title: "Children & Beds", lines: ["0 – 3 years: Crib upon request, Free"] }
+  ]);
+  const [damage] = output.property.house_rules[2].lines;
+  assert.equal(damage.length, 600);
+  assert.ok(damage.endsWith("…"));
+
+  const unreadable = section(`<div><div>Pets</div><div>Pets are not allowed.</div></div>`);
+  const { output: unread } = await run("get_property", PROPERTY, { routes: [propertyRoute({ body: propertyPage({ houseRules: unreadable }) })] });
+  assert.equal(unread.status, "ok");
+  assert.equal(unread.property.house_rules, null);
+});
+
 test("get_property keeps an unreadable price as text and warns instead of guessing", async () => {
   const rows = [rateRow({ head: ROOM_A, total: "1'234 USD", original: null })];
   const { output } = await run("get_property", PROPERTY, { routes: [propertyRoute({ body: propertyPage({ rows }) })] });
