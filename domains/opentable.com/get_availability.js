@@ -240,9 +240,11 @@
       try {
         const path = "/restaurant/profile/" + input.restaurant_id;
         const params = new URLSearchParams({ dateTime: date + "T" + input.time + ":00", covers: String(input.party_size) });
+        // The site can refuse these reads while the restaurant's own page still shows times in its booking widget.
+        const refused = problem => (problem?.error_kind === "challenge" ? otFail("challenge", "OpenTable refused or challenged the request; nothing was retried. The restaurant's page often still shows times: open " + OT_ORIGIN + path + "?" + params + " and read its booking widget without selecting a time.") : problem);
         const res = await fetch(path + "?" + params, { credentials: "same-origin", redirect: "error", headers: { accept: "text/html" }, signal });
         const html = await res.text();
-        const problem = otCheck(res, html);
+        const problem = refused(otCheck(res, html));
         if (problem) return problem;
         if (html.length > 2000000) return otFail("site_changed", "The profile document exceeded the supported read bound.");
         const tag = /<script\b[^>]*\bid="primary-window-vars"[^>]*>([\s\S]*?)<\/script>/.exec(html);
@@ -275,7 +277,7 @@
           seen.add(modulePath);
           const moduleRes = await fetch(modulePath, { credentials: "same-origin", redirect: "error", signal });
           const text = await moduleRes.text();
-          const moduleError = otCheck(moduleRes, text);
+          const moduleError = refused(otCheck(moduleRes, text));
           if (moduleError) return moduleError;
           totalBytes += text.length;
           if (text.length > 2000000 || totalBytes > 20000000) return otFail("site_changed", "First-party modules exceeded the supported read bound.");
@@ -294,7 +296,7 @@
         };
         const response = await fetch("/dapi/fe/gql?optype=query&opname=RestaurantsAvailability", { method: "POST", credentials: "same-origin", redirect: "error", signal, headers: { "content-type": "application/json", "x-csrf-token": csrf, "ot-page-type": "restprofilepage", "ot-page-group": "rest-profile", "x-query-timeout": "5500" }, body: JSON.stringify(body) });
         const text = await response.text();
-        const queryError = otCheck(response, text);
+        const queryError = refused(otCheck(response, text));
         if (queryError) return queryError;
         if (text.length > 1000000) return otFail("site_changed", "The availability response exceeded the supported read bound.");
         const json = JSON.parse(text);

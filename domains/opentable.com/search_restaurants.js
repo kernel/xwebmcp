@@ -166,7 +166,9 @@
           max_party_size: int(r.features?.reservationMaxPartySize), has_takeout: flag(r.hasTakeout), has_private_dining: flag(r.privateDining?.hasPrivateDining), phone: str(r.contactInformation?.formattedPhoneNumber)
         });
       }
-      if (!restaurants.length) return { status: "no_results", query: normalized, observed_at: observedAt, message: page === 1 ? "OpenTable found no restaurants matching this search." : "OpenTable returned no restaurants on page " + page + "; the search has fewer pages, so try a lower page." };
+      // OpenTable reads a place in the text only when it recognizes it, and otherwise searches near the browser's location.
+      const near = str(search.metro?.name, 100);
+      if (!restaurants.length) return { status: "no_results", query: normalized, observed_at: observedAt, message: page === 1 ? "OpenTable found no restaurants matching this search" + (near ? " in " + near : "") + ". It searches near the browser's location when it does not recognize the place in the query; if you meant somewhere else, search again with a shorter name and the city, or call get_restaurant with the restaurant's short address (for example '/kokkari-estiatorio')." : "OpenTable returned no restaurants on page " + page + "; the search has fewer pages, so try a lower page." };
       const metro = search.metro && typeof search.metro === "object" ? search.metro : null;
       const location = (metro || num(search.latitude) !== null) ? { metro_id: int(metro?.metroId ?? search.metroId), metro_name: str(metro?.name), latitude: num(search.latitude), longitude: num(search.longitude) } : null;
       return {
