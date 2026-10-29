@@ -3,7 +3,7 @@
   match: { url_patterns: ["https://www.vividseats.com/*"] },
   tool: {
     name: "search_events",
-    description: "Search Vivid Seats (US marketplace, USD) for events by text, place, dates, category, performer, venue or a lowest-price ceiling, using the same JSON search the site's Explore and results pages call. Until the page has had user input such as mouse movement, scrolling or a click, Vivid Seats' bot protection may answer that search with a generic 404; a text search then reads the site's own search page instead (a team, artist or show name opens its page of upcoming events), unless that page cannot apply a requested date, category, performer, venue or price filter, when it returns site_error rather than unfiltered results. Returns the production_id (pass it to get_ticket_offers), name, local date and time at the venue, venue, performers, distance from the searched place, listing and ticket counts, and the lowest and highest all-in ticket price the site shows for the event. Prices and counts come from the site's search index, which lags live inventory: an event can show tickets here and none on its page, so treat them as a rough guide and confirm with get_ticket_offers. Results are one page at a time (page, page_size); the site never reports more than 1000 matches. Parking passes are excluded unless exclude_parking is false. Runs inside the current www.vividseats.com page without navigating and reads only; it does not sign in, add to a cart or buy.",
+    description: "Search Vivid Seats (US marketplace, USD) for events by text, place, dates, category, performer, venue or a lowest-price ceiling, using the same JSON search the site's Explore and results pages call. Until the page has had user input such as mouse movement, scrolling or a click, Vivid Seats' bot protection may answer that search with a generic 404; a text search then reads the site's own search page instead (a team, artist or show name opens its page of upcoming events), unless that page cannot apply a requested date, category, performer, venue or price filter, when it returns site_error rather than unfiltered results. Returns the production_id, the event page url (open it and read its listings with list_listings), name, local date and time at the venue, venue, performers, distance from the searched place, listing and ticket counts, and the lowest and highest all-in ticket price the site shows for the event. Prices and counts come from the site's search index, which lags live inventory: an event can show tickets here and none on its page, so treat them as a rough guide and confirm on the event page with list_listings. Results are one page at a time (page, page_size); the site never reports more than 1000 matches. Parking passes are excluded unless exclude_parking is false. Runs inside the current www.vividseats.com page without navigating and reads only; it does not sign in, add to a cart or buy.",
     inputSchema: {
       type: "object", additionalProperties: false,
       properties: {
@@ -55,9 +55,9 @@
                 required: ["rank", "production_id", "name", "url", "local_date", "local_time", "weekday", "time_zone", "start_utc", "date_tbd", "time_tbd", "if_necessary", "delay_type", "venue", "performers", "category_id", "subcategory_id", "distance_miles", "listing_count", "ticket_count", "lowest_all_in_price", "highest_all_in_price", "pricing_refreshed_at"],
                 properties: {
                   rank: { type: "integer", minimum: 1, description: "Position across all pages of this search." },
-                  production_id: { type: "integer", description: "The site's event id; pass it to get_ticket_offers." },
+                  production_id: { type: "integer", description: "The site's event id." },
                   name: { type: "string" },
-                  url: { type: ["string", "null"], description: "The event page on www.vividseats.com." },
+                  url: { type: ["string", "null"], description: "The event page on www.vividseats.com; open it to read its listings with list_listings." },
                   local_date: { type: ["string", "null"], description: "YYYY-MM-DD at the venue; null when the date is to be announced." },
                   local_time: { type: ["string", "null"], description: "HH:MM 24-hour at the venue; null when the time is to be announced." },
                   weekday: { type: ["string", "null"] },
@@ -310,10 +310,10 @@
       if (beyond) warnings.push(beyond + " event(s) are farther than radius_miles; the site's radius is approximate, so filter on distance_miles when a hard limit matters.");
       // A time-TBD event carries a placeholder instant, so only events with a stated start time can be called started.
       const started = events.filter(e => !e.time_tbd && e.start_utc && Date.parse(e.start_utc) < Date.parse(observedAt)).length;
-      if (started) warnings.push(started + " event(s) have already started; the index prices and listing counts for them can be stale, and get_ticket_offers shows whether any tickets remain.");
+      if (started) warnings.push(started + " event(s) have already started; the index prices and listing counts for them can be stale, and the event page's listings (list_listings) show whether any tickets remain.");
       return {
         status: "ok", query: echo(), resolved_location: resolved, currency: "USD",
-        price_basis: "Prices are per ticket in USD as the site's search index shows them. Included fees and VAT vary by event; use get_ticket_offers for the site's explicit price basis, not a final checkout total. The index refreshes periodically (pricing_refreshed_at) and can differ from the event page; get_ticket_offers reads the live listings.",
+        price_basis: "Prices are per ticket in USD as the site's search index shows them. Included fees and VAT vary by event; the event page's listings show prices with the site's 'Fees Incl.' mark, not a final checkout total. The index refreshes periodically (pricing_refreshed_at) and can differ from the event page; list_listings reads the page's live listings.",
         page, page_size: pageSize, total: body.total, number_of_pages: body.numberOfPages, has_more: page < body.numberOfPages, observed_at: observedAt, warnings, events
       };
     } catch {

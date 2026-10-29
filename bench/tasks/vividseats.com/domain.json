@@ -1,0 +1,8 @@
+{
+  "page_actions": {
+    "set_ticket_quantity": "answers the event page's 'How many tickets?' prompt or chooses in its quantity menu",
+    "set_listing_sort": "chooses an entry in the event page's sort menu",
+    "set_listing_filters": "sets the event page's zone, price, deal score and perks filters or presses Clear",
+    "show_more_listings": "scrolls the event page's listings panel so it loads more rows"
+  }
+}

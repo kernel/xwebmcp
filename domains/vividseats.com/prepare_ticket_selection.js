@@ -3,7 +3,7 @@
   match: { url_patterns: ["https://www.vividseats.com/*"] },
   tool: {
     name: "prepare_ticket_selection",
-    description: "Prepare an exact ticket choice without selecting it on the site or creating a hold. Requires the full event URL and exact listing_id, quantity, expected all-in USD price per ticket and expected_price_group_id from a recent get_ticket_offers result. Re-reads the public event and inventory, checks the event is future with a stated time, and fails closed on a missing listing, unsupported quantity, changed price/group or unknown fee basis. Returns a bounded quote and event-page handoff, NOT a reservation, checkout total, approval or purchase. No cart/checkout request, navigation, account access, duplicate write or automatic retry; confirmed=true is not accepted. Seat numbers are not supplied by this listing feed.",
+    description: "Prepare an exact ticket choice without selecting it on the site or creating a hold. Requires the full event URL and exact listing_id, quantity, expected all-in USD price per ticket and expected_price_group_id from a recent list_listings read of the event page (a row's listing_id and price_per_ticket, the page's selected quantity, and price_group_id). Re-reads the public event and inventory, checks the event is future with a stated time, and fails closed on a missing listing, unsupported quantity, changed price/group or unknown fee basis. Returns a bounded quote and event-page handoff, NOT a reservation, checkout total, approval or purchase. No cart/checkout request, navigation, account access, duplicate write or automatic retry; confirmed=true is not accepted. Seat numbers are not supplied by this listing feed.",
     inputSchema: {
       type: "object",
       additionalProperties: false,
@@ -224,7 +224,7 @@
         // The listings proxy answers this generic 404, even for an event whose page just loaded, until the page has had user input.
         let generic = false;
         try { generic = json && JSON.parse(await response.text()).error === "Request failed with status code 404"; } catch { /* not JSON */ }
-        if (generic) return { error: vsFail("site_error", "Vivid Seats is not serving listings to this browser yet; its bot protection answers with a generic 404 until the page has had user input. The listing may still exist: move the mouse over the page or scroll it, then call get_ticket_offers and prepare again.") };
+        if (generic) return { error: vsFail("site_error", "Vivid Seats is not serving listings to this browser yet; its bot protection answers with a generic 404 until the page has had user input. The listing may still exist: move the mouse over the page or scroll it, then read the event page's listings with list_listings and prepare again.") };
         return { error: vsFail("not_found", "The requested public page or inventory was not found.") };
       }
       if (!response.ok) return { error: vsFail("site_error", "The site returned HTTP " + response.status + ".") };
@@ -295,11 +295,11 @@
     if (!input || typeof input !== "object" || Array.isArray(input) || Object.keys(input).some(k => !allowed.includes(k))) return vsFail("invalid_input", "Provide only event, listing_id, quantity, expected_all_in_price_per_ticket and expected_price_group_id.");
     const target = vsTarget(input.event, "event");
     if (target.error) return target.error;
-    if (typeof input.listing_id !== "string" || !/^[A-Za-z0-9_-]{1,40}$/.test(input.listing_id)) return vsFail("invalid_input", "listing_id must be the exact listing id returned by get_ticket_offers.");
+    if (typeof input.listing_id !== "string" || !/^[A-Za-z0-9_-]{1,40}$/.test(input.listing_id)) return vsFail("invalid_input", "listing_id must be the exact listing id returned by list_listings.");
     if (!Number.isInteger(input.quantity) || input.quantity < 1 || input.quantity > 8) return vsFail("invalid_input", "quantity must be an integer from 1 to 8.");
     const expected = input.expected_all_in_price_per_ticket;
     if (typeof expected !== "number" || !Number.isFinite(expected) || expected <= 0 || expected > 100000 || Math.abs(money(expected) - expected) > 0.000001) return vsFail("invalid_input", "expected_all_in_price_per_ticket must be a positive USD price up to 100000 with at most two decimals.");
-    if (input.expected_price_group_id !== null && (typeof input.expected_price_group_id !== "string" || !/^\d{1,6}$/.test(input.expected_price_group_id))) return vsFail("invalid_input", "expected_price_group_id must be the string or null returned by get_ticket_offers.");
+    if (input.expected_price_group_id !== null && (typeof input.expected_price_group_id !== "string" || !/^\d{1,6}$/.test(input.expected_price_group_id))) return vsFail("invalid_input", "expected_price_group_id must be the price_group_id string or null returned by list_listings.");
     try {
       const guard = vsPageFailure(signal);
       if (guard) return guard;

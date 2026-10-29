@@ -341,7 +341,7 @@ test("prepare_ticket_selection: the listings proxy's generic 404 before user inp
   const early = harness("prepare_ticket_selection", { listingsError: "Request failed with status code 404" });
   const result = await early.run(preparedInput);
   assert.equal(result.error_kind, "site_error");
-  assert.match(result.error_message, /not serving listings.*get_ticket_offers/);
+  assert.match(result.error_message, /not serving listings.*list_listings/);
   assert.equal(early.calls.length, 2, "one read of the event page and one of the listings, no retry");
   assert.equal((await harness("prepare_ticket_selection", { listingsError: "No production" }).run(preparedInput)).error_kind, "not_found");
 });

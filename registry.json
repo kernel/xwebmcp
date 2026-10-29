@@ -4822,23 +4822,6 @@
     },
     {
       "domain": "vividseats.com",
-      "tool": "get_ticket_offers",
-      "file": "domains/vividseats.com/get_ticket_offers.js",
-      "kind": "page",
-      "namespace": "vividseats.com",
-      "url_patterns": [
-        "https://www.vividseats.com/*"
-      ],
-      "url_patterns_reason": "Narrowed to www.vividseats.com, the Vivid Seats marketplace: the tools call its same-origin event and listing endpoints and refuse other origins; other vividseats.com hosts are separate products.",
-      "status": "draft",
-      "last_verified": null,
-      "notes": "Source changed on 2026-10-28 after that QA, so this is draft until fresh independent QA: the generic-404 messages now say that Vivid Seats' bot protection withholds listings and search results until the page has had user input (mouse movement, scrolling or a click), and ask the agent to provide it, since live checks showed waiting alone often does not end it. Public, read-only listings for one event with all-in USD prices, exact quantity splits, price/zone/section filters and grouping, cheapest first. Only two-decimal string all-in prices are accepted, as prepare_ticket_selection requires; others are skipped with a warning. Unknown fee/VAT basis fails closed; never selects, carts or buys. While the listings proxy answers its generic 404, an unknown production_id is not_found and a real one is read again for up to 10 seconds, then not_ready with retry_after_seconds 3, asking for user input on the page. Independent QA 2026-10-26 of this source: domain tests, scratch tests and mutants on the price format and not_ready paths pass. Live in plain Kernel browsers started on /blog or /explore: early in a session not_ready after about 42 seconds with retry_after_seconds 60; unknown ids not_found in under a second; a Knicks home game for 2 tickets returned schema-valid offers (1124 to 1131 listings, every all-in price a two-decimal string) and its cheapest offer prepared end to end with prepare_ticket_selection from /blog. Across 16 fresh browsers the listings endpoint answered only in short windows, each 1 to 5 minutes after that event's page was opened; three browsers (one in stealth) that stayed on /blog for 11 to 23 minutes never got one. Bench 2026-10-26 (plain browsers, low thinking, 5 pairs per intent: the cheapest-pair intent and a temporary one asking for the cheapest pair's section, row and total): Haiku 5.5: cheapest pair correct in 5 of 5 pairs in both arms at 0.2x speed (0:38 to 3:24), with a lower price than control in 4 pairs because control read the page's deal-score preview; section/row/total treatment 2 of 5 vs control 4 of 5 at 0.5x, its 3 misses ending after repeated not_ready without a price. Haiku retried past not_ready and got listings in 5 of 10 trials; of its 58 calls, 5 ok, 24 not_ready, 16 site_error (15 from the 8-second per-request bound) and 13 invoke errors on expired tool refs or MCP timeouts. GPT-6 Luna: cheapest pair treatment 2 of 5 vs control 1 of 5, section/row/total 1 of 5 in both arms; it got listings in 2 of 10 trials and in the other 8 stopped after one or two not_ready results, 7 answering without a price and 1 with the page's preview price. No bot challenge was seen. Live 2026-10-28: in 5 fresh plain browsers left idle on the home page, 3 got the generic 404 on every check for about 30 seconds after load, and each got listings on the first check about 3 seconds after a Playwright mouse movement; in a later check of the new source, 1 of 4 browsers stayed refused after one movement. Bench 2026-10-28 (Haiku 5.5 low, plain, 5 pairs): cheapest pair correct 5 of 5 in both arms, treatment faster in all 5 pairs (median agent time 0:28 vs 0:52); on the previous source the same day it was 3 of 5 vs 5 of 5, with 42-second not_ready calls. Only 1 of the 5 new treatment trials met the 404: two computer_action mouse moves did not end it, opening the event page and moving the mouse with Playwright did. Control's answers mostly came from the event page's server-rendered deal-score preview or its 'tickets start at' price, which ignore quantity; the grader checks only a price range, so control was higher than treatment in 3 of 5 pairs.",
-      "provenance": {
-        "qa_agent": "agt_f30438b3567ade230b86"
-      }
-    },
-    {
-      "domain": "vividseats.com",
       "tool": "get_venue",
       "file": "domains/vividseats.com/get_venue.js",
       "kind": "page",
@@ -4853,6 +4836,20 @@
       "provenance": {
         "qa_agent": "agt_f30438b3567ade230b86"
       }
+    },
+    {
+      "domain": "vividseats.com",
+      "tool": "list_listings",
+      "file": "domains/vividseats.com/list_listings.js",
+      "kind": "page",
+      "namespace": "vividseats.com",
+      "url_patterns": [
+        "https://www.vividseats.com/*"
+      ],
+      "url_patterns_reason": "Narrowed to www.vividseats.com, the Vivid Seats marketplace: the tools call its same-origin event and listing endpoints and refuse other origins; other vividseats.com hosts are separate products.",
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Read-only snapshot of the event page's listings panel as the page shows it: loaded rows in page order (listing id, section, row, ticket count, price per ticket, Fees Incl. mark, deal score, badges), the panel's own 'N listings' count, and the page's quantity, price, deal score, perks, zone and sort settings read from the query the page keeps in step with its controls. Never clicks, hovers, scrolls, filters or sorts; offset/limit bound serialization only. Reports the panel's 'Sorry, there was an error' (bot protection until the page has had mouse input) as not_ready with the recovery (mouse input, then reload), and other pages as wrong_page. Replaces get_ticket_offers, which filtered, sorted and grouped the listings response itself."
     },
     {
       "domain": "vividseats.com",
@@ -4887,6 +4884,62 @@
       "provenance": {
         "qa_agent": "agt_ea022951bd81089d9b39"
       }
+    },
+    {
+      "domain": "vividseats.com",
+      "tool": "set_listing_filters",
+      "file": "domains/vividseats.com/set_listing_filters.js",
+      "kind": "cdp",
+      "namespace": "vividseats.com",
+      "url_patterns": [
+        "https://www.vividseats.com/*"
+      ],
+      "url_patterns_reason": "Narrowed to www.vividseats.com, the Vivid Seats marketplace: the tools call its same-origin event and listing endpoints and refuse other origins; other vividseats.com hosts are separate products.",
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Sets the page's own filters through its controls: zone buttons, the price menu's minimum and maximum boxes (Enter) and deal-score buttons, and the perks menu's checkboxes, or presses Clear; zone names must be ones the page offers and are checked before anything is pressed. Confirms each change by the page's query and a changed listings panel. Changes only what the page shows. CDP exception (kind cdp, body run in the page through js()): every change through these controls makes the site's analytics navigate cross-origin child iframes (Facebook pixel, DoubleClick) while the page itself only updates its URL in place; the page runtime then drops a page tool's result with \"Cannot return tool results after a cross-origin navigation\" although the change was made (observed live on 2026-10-29 for sort, zone and Clear). set_ticket_quantity and show_more_listings trigger no such frame and stay page tools."
+    },
+    {
+      "domain": "vividseats.com",
+      "tool": "set_listing_sort",
+      "file": "domains/vividseats.com/set_listing_sort.js",
+      "kind": "cdp",
+      "namespace": "vividseats.com",
+      "url_patterns": [
+        "https://www.vividseats.com/*"
+      ],
+      "url_patterns_reason": "Narrowed to www.vividseats.com, the Vivid Seats marketplace: the tools call its same-origin event and listing endpoints and refuse other origins; other vividseats.com hosts are separate products.",
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Opens the page's hover sort menu once and chooses Lowest Price, Highest Price, Deal Score, Row Number or Section Number, confirming by the page's sort query and a changed listings panel. The page re-requests its listings for a new sort, so the panel can show its bot-protection error afterwards (not_ready). Changes only what the page shows. CDP exception (kind cdp, body run in the page through js()): every change through these controls makes the site's analytics navigate cross-origin child iframes (Facebook pixel, DoubleClick) while the page itself only updates its URL in place; the page runtime then drops a page tool's result with \"Cannot return tool results after a cross-origin navigation\" although the change was made (observed live on 2026-10-29 for sort, zone and Clear). set_ticket_quantity and show_more_listings trigger no such frame and stay page tools."
+    },
+    {
+      "domain": "vividseats.com",
+      "tool": "set_ticket_quantity",
+      "file": "domains/vividseats.com/set_ticket_quantity.js",
+      "kind": "page",
+      "namespace": "vividseats.com",
+      "url_patterns": [
+        "https://www.vividseats.com/*"
+      ],
+      "url_patterns_reason": "Narrowed to www.vividseats.com, the Vivid Seats marketplace: the tools call its same-origin event and listing endpoints and refuse other origins; other vividseats.com hosts are separate products.",
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Answers the page's 'How many tickets?' prompt, or chooses a quantity in its hover-opened quantity menu, once, then confirms by the page's quantity query and a changed listings panel and returns it. The page then lists only rows that can be bought together in that quantity. Changes only what the page shows."
+    },
+    {
+      "domain": "vividseats.com",
+      "tool": "show_more_listings",
+      "file": "domains/vividseats.com/show_more_listings.js",
+      "kind": "page",
+      "namespace": "vividseats.com",
+      "url_patterns": [
+        "https://www.vividseats.com/*"
+      ],
+      "url_patterns_reason": "Narrowed to www.vividseats.com, the Vivid Seats marketplace: the tools call its same-origin event and listing endpoints and refuse other origins; other vividseats.com hosts are separate products.",
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Scrolls the listings panel's end marker into view once so the page loads its next rows, and returns the newly loaded rows; unavailable when the panel has loaded every listing it announces. Changes only what the page shows."
     },
     {
       "domain": "youtube.com",
