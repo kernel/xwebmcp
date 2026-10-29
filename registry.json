@@ -38,6 +38,40 @@
     },
     {
       "domain": "aa.com",
+      "tool": "get_fare_options",
+      "file": "domains/aa.com/get_fare_options.js",
+      "kind": "page",
+      "namespace": "aa.com",
+      "url_patterns": [
+        "https://aa.com/*",
+        "https://*.aa.com/*"
+      ],
+      "status": "verified",
+      "last_verified": "2026-10-26",
+      "notes": "Current-page cash or award cabin fares and the loaded nearby-date calendar on outbound choose-flights; offset pagination of rendered rows, no requests, clicks or selection. Independent QA 2026-10-26 of the final source, which inlines lib/aa-choose-flights.js: old and new readers returned identical option ids, outputs and failure statuses on every scratch page apart from the intended fixes; K mileages are exact, \"16.1\" without K fails, and a calendar date with no digits (\"--\", empty, \"Not available\") has amount null while a malformed price still returns site_changed. Live in plain and stealth Kernel browsers started on the checked-baggage and flight-status pages, after search_flights: cash, one-way award and round-trip award reads returned ok with schema-valid output, and 79 award fares matched the page; off the results page it returned wrong_page, limit 0 and extra keys error, a challenge page blocked. Injected 16.1K, 32.2K and 64.4K fares on a live award page read as 16100, 32200 and 64400, an injected \"--\" calendar price as null and an injected \"16.1\" as site_changed; none occurred naturally on the 21 live award result pages. Bench (DFW-LAX one-way 28 days out, the cash intent plus a temporary award-miles intent, 5 pairs each, low thinking): Haiku 5.5 plain, treatment vs control correct 5/5 vs 5/5 award (5.2x faster) and 3/5 vs 3/5 cash (7.7x; all four misses were American bot blocks), stealth 5/5 vs 5/5 award (5.3x) and cash (3.9x); GPT-6 Luna plain 5/5 vs 0/5 on both intents, stealth 5/5 vs 1/5 on both; 100% adoption in every treatment arm. Bench agents that called it in parallel with search_flights got wrong_page from the pre-search page, as intended.",
+      "provenance": {
+        "qa_agent": "agt_5efe8bd29bf3cfe03f9d"
+      }
+    },
+    {
+      "domain": "aa.com",
+      "tool": "get_flight_status",
+      "file": "domains/aa.com/get_flight_status.js",
+      "kind": "page",
+      "namespace": "aa.com",
+      "url_patterns": [
+        "https://aa.com/*",
+        "https://*.aa.com/*"
+      ],
+      "status": "verified",
+      "last_verified": "2026-10-26",
+      "notes": "Public snake_case flight status; one same-origin request. Independent final-source QA and live AA100 success passed; successful current-schema extension flow remains untested. Independent QA 2026-10-26 in a plain Kernel browser started on the checked-baggage policy page: AA100 for today returned one flight with aircraft, scheduled and estimated times and terminals; flight 9999 returned no_results; an impossible date and a missing date were rejected before any request.",
+      "provenance": {
+        "qa_agent": "agt_ea022951bd81089d9b39"
+      }
+    },
+    {
+      "domain": "aa.com",
       "tool": "get_page_context",
       "file": "domains/aa.com/get_page_context.js",
       "kind": "page",
@@ -157,6 +191,23 @@
     },
     {
       "domain": "aa.com",
+      "tool": "prepare_itinerary",
+      "file": "domains/aa.com/prepare_itinerary.js",
+      "kind": "page",
+      "namespace": "aa.com",
+      "url_patterns": [
+        "https://aa.com/*",
+        "https://*.aa.com/*"
+      ],
+      "status": "verified",
+      "last_verified": "2026-10-26",
+      "notes": "Read-only exact-option preview; no booking, hold or executable confirmation. Independent QA 2026-10-26 of the final source, which inlines lib/aa-choose-flights.js: option ids and failure statuses are unchanged from the previous copy (its site_changed message no longer mentions the calendar), K mileages are exact and \"16.1\" fails. Live in plain and stealth Kernel browsers started on the checked-baggage and flight-status pages: cash, one-way award and round-trip award option ids from get_fare_options returned prepared with booking_performed and execution_available false; an injected 32.2K option returned 32200; an id from an earlier search returned stale_selection after a new search; a malformed id and a confirmed flag were refused; off the results page it returned wrong_page, a challenge page blocked. Not exercised by the bench intents.",
+      "provenance": {
+        "qa_agent": "agt_5efe8bd29bf3cfe03f9d"
+      }
+    },
+    {
+      "domain": "aa.com",
       "tool": "search_flights",
       "file": "domains/aa.com/search_flights.js",
       "kind": "cdp",
@@ -166,10 +217,10 @@
         "https://*.aa.com/*"
       ],
       "status": "verified",
-      "last_verified": "2026-10-05",
-      "notes": "Changed 2026-10-05: dismisses American's 'Get your miles back' expired-miles dialog ('Remind me later') that intercepted the trip-type click for signed-in members. Independent live QA by american-qa (fingerprint dc124178): DFW-LAX and CVG-DFW returned ok with 40 rows, including a call started from a Review and pay page. First-page outbound options, per-person from-fares; legacy camelCase contract. Needs a foreground tab (trusted input); one unexplained run ended on the home page and a repeat worked.",
+      "last_verified": "2026-10-26",
+      "notes": "Cash or opt-in award miles plus taxes for 1-9 adults; up to 100 first-page outbound rows, no fare selection, session-query-free results URL. CDP because it submits the homepage search form and returns rows parsed from the choose-flights page it lands on. Independent QA 2026-10-26 of the final source: unit suite, scratch tests and an old-vs-new comparison; K mileages are built from their digits (16.1K, 32.2K, 64.4K and 8.05K are exact), a fraction without K and malformed values fail with the tool's own \"Row N: unrecognized award format\" reason, and site or browser error text never reaches the message. Live in plain and stealth Kernel browsers started on the checked-baggage and flight-status pages: 21 award searches on 18 routes (one a round trip) and a cash DFW-LAX search returned ok with schema-valid output, and all 476 award rows compared matched the miles and taxes the page showed; identical airports, a past date, a round trip without returnDate and an unknown pay_with were rejected without searching; challenge and Access Denied pages returned blocked. No live page showed an odd K mileage, so those are verified offline only. Bench (DFW-LAX one-way 28 days out, the cash intent plus a temporary award-miles intent, 5 pairs each, low thinking): Haiku 5.5 plain, treatment vs control correct 5/5 vs 5/5 award (5.2x faster) and 3/5 vs 3/5 cash (7.7x; all four misses were American bot blocks), stealth 5/5 vs 5/5 award (5.3x) and cash (3.9x); GPT-6 Luna plain 5/5 vs 0/5 on both intents, stealth 5/5 vs 1/5 on both; 100% adoption in every treatment arm. Its 41 bench invocations returned ok 38 times and blocked 3 times.",
       "provenance": {
-        "qa_agent": "herdr:american-qa:01a10c3b-a1b0-7010-9d86-eeac85b08610"
+        "qa_agent": "agt_5efe8bd29bf3cfe03f9d"
       }
     },
     {
