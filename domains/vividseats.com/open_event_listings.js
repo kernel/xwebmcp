@@ -91,7 +91,7 @@
         type: "object", additionalProperties: false, required: ["event"],
         properties: {
           event: { type: "string", minLength: 1, maxLength: 400, description: "An event url from search_events: https://www.vividseats.com/<slug>/production/<id>." },
-          quantity: { type: "integer", minimum: 1, maximum: 8, description: "Tickets wanted together; 8 is the page's '8+'. Omit to open the page with Any Quantity (it then asks 'How many tickets?')." },
+          quantity: { type: "integer", minimum: 1, maximum: 8, description: "Tickets wanted together; 8 is the page's '8+'. Omit to leave the choice to the page: it reuses a quantity picked earlier in the session, or shows Any Quantity and asks 'How many tickets?'." },
           limit: { type: "integer", minimum: 1, maximum: 50, default: 20, description: "Most listing rows to return." }
         }
       },
@@ -157,7 +157,12 @@
           perks: vslQ('[data-testid="show-type-filter-button"]'),
           sort: vslQ('[data-testid="listing-sort-label"]'),
           clear: vslQ('[data-testid="clear-filters-button"]'),
-          zones: vslAll('[data-testid^="group-button-"][role="checkbox"]').filter(b => !/^group-button-wrapper-/.test(b.getAttribute("data-testid")))
+          // The page renders each zone button more than once; one per zone, preferring a visible copy.
+          zones: [...vslAll('[data-testid^="group-button-"]').reduce((seen, b) => {
+            const id = b.getAttribute("data-testid");
+            if (/^group-button-\d+$/.test(id) && (!seen.has(id) || (!vslVisible(seen.get(id)) && vslVisible(b)))) seen.set(id, b);
+            return seen;
+          }, new Map()).values()]
         });
         const vslCountText = () => vslAll('[data-testid="listings-header"] span').map(vslText).find(t => /^\d[\d,]* listings?$/.test(t)) ?? null;
         const vslRowNodes = () => { const panel = vslQ('[data-testid="listings-container"]'); return panel ? vslAll("[data-listingid]", panel) : []; };

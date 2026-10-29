@@ -145,21 +145,23 @@ export class VividPage {
     sortButton.on("mouseleave", () => this.closeMenu("sort"));
     this.sortBox.append(sortButton);
     if (this.menus.sort) this.fillMenu("sort");
-    // Zone buttons.
+    // Zone buttons, rendered twice as on the live page.
     const selected = (p.get("selectedGroups") || "").split(",").filter(Boolean);
     this.zones.children = [];
-    const group = n("div", { "data-testid": "zone-chip-container", role: "group" });
-    for (const [id, name] of ZONES) {
-      const button = n("button", { "data-testid": "group-button-" + id, role: "checkbox", "aria-checked": "false" }, [n("span", {}, [], name)]);
-      button.on("click", () => {
-        this.press("zone " + name);
-        const now = (this.params.get("selectedGroups") || "").split(",").filter(Boolean);
-        this.setParam("selectedGroups", (now.includes(id) ? now.filter(z => z !== id) : [...now, id]).join(",") || null);
-        this.change(true);
-      });
-      group.append(n("div", { "data-testid": "group-button-wrapper-" + id }, [button]));
+    for (const copy of [0, 1]) {
+      const group = n("div", { "data-testid": "zone-chip-container", role: "group" });
+      for (const [id, name] of ZONES) {
+        const button = n("button", { "data-testid": "group-button-" + id }, [n("span", {}, [], name)]);
+        button.on("click", () => {
+          this.press("zone " + name);
+          const now = (this.params.get("selectedGroups") || "").split(",").filter(Boolean);
+          this.setParam("selectedGroups", (now.includes(id) ? now.filter(z => z !== id) : [...now, id]).join(",") || null);
+          this.change(true);
+        });
+        group.append(n("div", { "data-testid": "group-button-wrapper-" + id }, [button]));
+      }
+      this.zones.append(group);
     }
-    this.zones.append(group);
     // The panel.
     this.panel.children = [];
     if (this.error) {
