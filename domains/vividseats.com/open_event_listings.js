@@ -86,7 +86,7 @@
     match: { url_patterns: ["https://www.vividseats.com/*"] },
     tool: {
       name: "open_event_listings",
-      description: "Open a Vivid Seats event page and return its listings panel as list_listings reads it, in one call. Pass the event url from search_events and, for a price for N tickets together, quantity: the tool opens the page's own address for that quantity (…?quantity=N, the URL the page uses itself once a quantity is chosen), so the page lists only rows sold together in that quantity and shows no 'How many tickets?' prompt. Navigates the tab; changes no site or account state. Afterwards use list_listings, set_ticket_quantity, set_listing_sort, set_listing_filters and show_more_listings on the opened page. If the panel shows Vivid Seats' 'Sorry, there was an error' (its bot protection until the page has had mouse input), returns not_ready: move the mouse over the page or scroll it, reload the page, then call list_listings.",
+      description: "Open a Vivid Seats event page and return its listings panel as list_listings reads it, in one call. Pass the event url from search_events and, for a price for N tickets together, quantity: the tool opens the page's own address for that quantity (…?quantity=N, the URL the page uses itself once a quantity is chosen), so the page lists only rows sold together in that quantity and shows no 'How many tickets?' prompt. Navigates the tab; changes no site or account state. Afterwards use list_listings, set_ticket_quantity, set_listing_sort, set_listing_filters and show_more_listings on the opened page. If the panel shows Vivid Seats' 'Sorry, there was an error' (its bot protection until the page has had mouse input), returns not_ready: move the mouse over the page or scroll it, then call this tool again. After it returns, list the page's tools again: the new page's tools have new tool_refs.",
       inputSchema: {
         type: "object", additionalProperties: false, required: ["event"],
         properties: {
@@ -133,7 +133,7 @@
         };
         const VSL_DEAL_SCORES = [10, 9, 8, 7, 6];
         const VSL_ID = /^[A-Za-z0-9_-]{1,40}$/;
-        const VSL_GATED = "Vivid Seats' listings panel shows 'Sorry, there was an error'. Its bot protection answers the page's listings request this way until the page has had user input such as mouse movement or scrolling, and the panel does not ask again by itself. Move the mouse over the page or scroll it (a computer action or a Playwright mouse move), reload this event page, then call list_listings again.";
+        const VSL_GATED = "Vivid Seats' listings panel shows 'Sorry, there was an error'. Its bot protection answers the page's listings request this way until the page has had user input such as mouse movement or scrolling, and the panel does not ask again by itself. Move the mouse over the page or scroll it (a computer action or a Playwright mouse move), then call open_event_listings again with this event and quantity: it reloads the page and reads its listings in one call.";
 
         const vslSleep = ms => new Promise(resolve => setTimeout(resolve, ms));
         const vslVisible = e => !!e && e.getClientRects().length > 0;
@@ -270,7 +270,7 @@
             !quantityOffered ? "The page shows no quantity control." : prompt ? "Answers the page's 'How many tickets?' prompt; the panel then lists only rows that can be bought in that quantity." : "Chooses a quantity in the page's quantity menu; the panel then lists only rows that can be bought in that quantity.",
             { quantity: [1, 2, 3, 4, 5, 6, 7, 8] });
           const actionable = ready && !prompt;
-          const blocked = prompt ? "Answer the page's 'How many tickets?' prompt first (set_ticket_quantity)." : s.state === "error" ? "The panel shows its error; reload the page after mouse input." : "The panel has no listings yet.";
+          const blocked = prompt ? "Answer the page's 'How many tickets?' prompt first (set_ticket_quantity)." : s.state === "error" ? "The panel shows its error; after mouse input, call open_event_listings again." : "The panel has no listings yet.";
           add("set_listing_sort", actionable && !!c.sort, true, { sort: s.view.sort === "deal_score" ? "lowest_price" : "deal_score" },
             !c.sort ? "The page shows no sort control." : actionable ? "Chooses an entry in the page's sort menu." : blocked, { sort: Object.keys(VSL_SORTS) });
           const zoneNames = s.view.zones.map(z => z.name);
@@ -363,6 +363,8 @@
       if (!shown || shown.pathname !== target.pathname) {
         return { ...out, status: "not_found", message: "Opening " + address + " " + (shown ? "ended on " + shown.origin + shown.pathname : "did not finish loading") + " instead of the event page; Vivid Seats redirects an unknown or removed event. Find the event again with search_events." };
       }
+      // The tab now shows a new document, whose tools have new tool_refs.
+      out.next_steps = ["The tab now shows a new page: list its WebMCP tools again before calling another tool; earlier tool_refs no longer work.", ...out.next_steps];
       if (!loaded) out.warnings = [...out.warnings, "The page had not finished loading after 25 seconds; this is what it showed then."];
       if (args.quantity && out.view && out.view.quantity !== args.quantity) out.warnings = [...out.warnings, "The page does not show " + args.quantity + " ticket(s) as its quantity; use set_ticket_quantity."];
       return out;

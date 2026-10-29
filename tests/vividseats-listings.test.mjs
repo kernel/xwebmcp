@@ -196,7 +196,7 @@ test("the panel's bot-protection error is not_ready with the recovery, and no ac
   const out = await invoke(p, READ);
   assert.equal(out.status, "not_ready");
   assert.equal(out.results.state, "error");
-  assert.match(out.message, /Sorry, there was an error.*mouse.*reload this event page/);
+  assert.match(out.message, /Sorry, there was an error.*mouse.*open_event_listings again/);
   assert.deepEqual(out.listings, []);
   for (const [name, input] of [["set_ticket_quantity", { quantity: 3 }], ["set_listing_sort", { sort: "deal_score" }], ["set_listing_filters", { clear: true }], ["show_more_listings", {}]]) {
     const refused = await invoke(p, name, input);
@@ -276,7 +276,8 @@ test("open_event_listings without a quantity opens the page as it is, prompt inc
   assert.equal(out.status, "ok");
   assert.equal(out.page.quantity_prompt, true);
   assert.equal(out.view.quantity, null);
-  assert.match(out.next_steps[0], /set_ticket_quantity/);
+  assert.match(out.next_steps[0], /list its WebMCP tools again/);
+  assert.match(out.next_steps[1], /set_ticket_quantity/);
 });
 
 test("the page's quantity control, not its URL, says which quantity it lists: it restores a remembered one", async () => {
@@ -300,7 +301,8 @@ test("open_event_listings reports an unknown event, the panel's error and malfor
   const gated = page({ path: "/", error: true });
   const blocked = await invoke(gated, OPEN, { event: EVENT_URL, quantity: 2 });
   assert.equal(blocked.status, "not_ready");
-  assert.match(blocked.message, /mouse.*reload/);
+  assert.match(blocked.message, /mouse.*open_event_listings again/);
+  assert.match(blocked.next_steps[0], /list its WebMCP tools again/);
   const p = page({ path: "/" });
   for (const input of [{}, { event: "https://example.com" + EVENT_PATH }, { event: "http://www.vividseats.com" + EVENT_PATH }, { event: "https://www.vividseats.com/example/performer/9001" },
     { event: EVENT_URL, quantity: 9 }, { event: EVENT_URL, limit: 0 }, { event: EVENT_URL, extra: true }]) {

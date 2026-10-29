@@ -86,7 +86,7 @@
     match: { url_patterns: ["https://www.vividseats.com/*"] },
     tool: {
       name: "list_listings",
-      description: "Read the ticket listings on the current Vivid Seats event page exactly as its listings panel shows them: each loaded row's listing_id, section, row, ticket count, price per ticket (all-in when the row shows 'Fees Incl.'), deal score and badges, in page order, plus the panel's own 'N listings' count and the page's current quantity, price, deal score, perks, zone and sort settings. Read-only: never clicks, hovers, scrolls or changes a filter or sort; to change what the panel lists use set_ticket_quantity, set_listing_filters, set_listing_sort and show_more_listings, which press the page's own controls. Until a quantity is chosen the panel lists every quantity, so a price for N tickets together needs set_ticket_quantity first. Works only on an event page (…/production/<id>); open one from search_events. If the panel shows Vivid Seats' 'Sorry, there was an error' (its bot protection until the page has had mouse input), returns not_ready with the recovery. offset and limit only bound the response.",
+      description: "Read the ticket listings on the current Vivid Seats event page exactly as its listings panel shows them: each loaded row's listing_id, section, row, ticket count, price per ticket (all-in when the row shows 'Fees Incl.'), deal score and badges, in page order, plus the panel's own 'N listings' count and the page's current quantity, price, deal score, perks, zone and sort settings. Read-only: never clicks, hovers, scrolls or changes a filter or sort; to change what the panel lists use set_ticket_quantity, set_listing_filters, set_listing_sort and show_more_listings, which press the page's own controls. Until a quantity is chosen the panel lists every quantity, so a price for N tickets together needs set_ticket_quantity first. Works only on an event page (…/production/<id>); open one from search_events. If the panel shows Vivid Seats' 'Sorry, there was an error' (its bot protection until the page has had mouse input), returns not_ready with the recovery (mouse input, then open_event_listings again). offset and limit only bound the response.",
       inputSchema: {
         type: "object", additionalProperties: false,
         properties: {
@@ -120,7 +120,7 @@
       };
       const VSL_DEAL_SCORES = [10, 9, 8, 7, 6];
       const VSL_ID = /^[A-Za-z0-9_-]{1,40}$/;
-      const VSL_GATED = "Vivid Seats' listings panel shows 'Sorry, there was an error'. Its bot protection answers the page's listings request this way until the page has had user input such as mouse movement or scrolling, and the panel does not ask again by itself. Move the mouse over the page or scroll it (a computer action or a Playwright mouse move), reload this event page, then call list_listings again.";
+      const VSL_GATED = "Vivid Seats' listings panel shows 'Sorry, there was an error'. Its bot protection answers the page's listings request this way until the page has had user input such as mouse movement or scrolling, and the panel does not ask again by itself. Move the mouse over the page or scroll it (a computer action or a Playwright mouse move), then call open_event_listings again with this event and quantity: it reloads the page and reads its listings in one call.";
 
       const vslSleep = ms => new Promise(resolve => setTimeout(resolve, ms));
       const vslVisible = e => !!e && e.getClientRects().length > 0;
@@ -257,7 +257,7 @@
           !quantityOffered ? "The page shows no quantity control." : prompt ? "Answers the page's 'How many tickets?' prompt; the panel then lists only rows that can be bought in that quantity." : "Chooses a quantity in the page's quantity menu; the panel then lists only rows that can be bought in that quantity.",
           { quantity: [1, 2, 3, 4, 5, 6, 7, 8] });
         const actionable = ready && !prompt;
-        const blocked = prompt ? "Answer the page's 'How many tickets?' prompt first (set_ticket_quantity)." : s.state === "error" ? "The panel shows its error; reload the page after mouse input." : "The panel has no listings yet.";
+        const blocked = prompt ? "Answer the page's 'How many tickets?' prompt first (set_ticket_quantity)." : s.state === "error" ? "The panel shows its error; after mouse input, call open_event_listings again." : "The panel has no listings yet.";
         add("set_listing_sort", actionable && !!c.sort, true, { sort: s.view.sort === "deal_score" ? "lowest_price" : "deal_score" },
           !c.sort ? "The page shows no sort control." : actionable ? "Chooses an entry in the page's sort menu." : blocked, { sort: Object.keys(VSL_SORTS) });
         const zoneNames = s.view.zones.map(z => z.name);
