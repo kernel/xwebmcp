@@ -46,20 +46,35 @@ export class VividPage {
     Object.assign(this, { listings, error, batch, more, path, cookie, registered });
     this.params = new URLSearchParams(query);
     this.prompt = prompt ?? !this.params.has("quantity");
-    this.loaded = batch;
     this.presses = [];
     this.clock = virtualClock();
+    this.load();
+  }
+  // A new document: fresh DOM, window and menus. Vivid Seats redirects an unknown event to /404.
+  load() {
+    this.window = {};
     this.menus = {};
+    this.loaded = this.batch;
     this.body = n("body");
     this.documentElement = new Node("html", { children: [this.body] });
-    if (path.includes("/production/")) this.build(); else this.body.append(n("main", {}, [], "Home"));
+    if (this.path.includes("/production/")) this.build(); else this.body.append(n("main", {}, [], "Home"));
+  }
+  navigate(address) {
+    const url = new URL(address);
+    this.navigations = [...(this.navigations || []), url.pathname + url.search];
+    this.path = /\/production\//.test(url.pathname) && url.pathname !== EVENT_PATH ? "/404" : url.pathname;
+    this.params = new URLSearchParams(url.search);
+    // The live page restores the last chosen quantity on a later visit without putting it in its URL.
+    this.remembered = this.params.get("quantity") ?? this.remembered ?? null;
+    this.prompt = this.path === EVENT_PATH && !this.remembered;
+    this.load();
   }
 
   // --- the page's own state ---------------------------------------------------------------------------
   get query() { const q = this.params.toString(); return q ? "?" + q : ""; }
   setParam(name, value) { if (value === null || value === undefined) this.params.delete(name); else this.params.set(name, String(value)); }
   shown() {
-    const p = this.params, q = Number(p.get("quantity")), zones = (p.get("selectedGroups") || "").split(",").filter(Boolean);
+    const p = this.params, q = Number(p.get("quantity") ?? (this.remembered && !p.has("quantity") && !this.cleared ? this.remembered : 0)), zones = (p.get("selectedGroups") || "").split(",").filter(Boolean);
     const min = Number(p.get("minPrice") || 0), max = Number(p.get("maxPrice") || Infinity), deal = Number(p.get("dealScore") || 0);
     const perks = Object.entries(PERKS).filter(([, param]) => p.get(param) === "true").map(([k]) => k);
     const rows = this.listings.filter(l => (!q || l.splits.includes(q)) && l.price >= min && l.price <= max && l.deal >= deal && (!zones.length || zones.includes(l.zone)) && perks.every(k => l.perks.includes(k)));
@@ -106,12 +121,12 @@ export class VividPage {
     const low = p.get("minPrice") ? "$" + p.get("minPrice") : "$" + Math.min(...shownPrices);
     const high = p.get("maxPrice") ? "$" + p.get("maxPrice") : "$" + Math.max(...shownPrices) + "+";
     this.controls.append(this.menuButton("show-price-filter-button", "Price Filter " + low + " - " + high, "price"));
-    const q = p.get("quantity");
+    const q = p.get("quantity") ?? (this.remembered && !this.cleared ? this.remembered : null);
     this.controls.append(this.menuButton("show-quantity-filter-button", "Quantity filter " + (q ? (q === "8" ? "8+" : q) + " Tickets" : "Any Quantity"), "quantity"));
     this.controls.append(this.menuButton("show-type-filter-button", "Type filter Perks", "perks"));
     if ([...p.keys()].some(k => k !== "sort")) {
       const clear = n("button", { "data-testid": "clear-filters-button" }, [], "Clear");
-      clear.on("click", () => { this.press("clear"); this.params = new URLSearchParams(p.get("sort") ? { sort: p.get("sort") } : {}); this.change(); });
+      clear.on("click", () => { this.press("clear"); this.cleared = true; this.params = new URLSearchParams(p.get("sort") ? { sort: p.get("sort") } : {}); this.change(); });
       this.controls.append(clear);
     }
     for (const menu of Object.keys(this.menus)) if (this.menus[menu]) this.fillMenu(menu);
@@ -153,7 +168,7 @@ export class VividPage {
     this.dialog = null;
     if (this.prompt) {
       this.dialog = n("div", { role: "dialog" }, ["1", "2", "3", "4", "5", "6", "7", "8+"].map(label => n("button", {}, [], label).on("click", () => {
-        this.press("prompt " + label);
+        this.press("prompt " + label); this.cleared = false;
         this.prompt = false;
         this.setParam("quantity", label === "8+" ? 8 : label);
         this.change();
@@ -185,7 +200,7 @@ export class VividPage {
     let content;
     if (menu === "quantity") {
       content = n("div", { "data-testid": "quantity-filter-dropdown" }, [1, 2, 3, 4, 5, 6, 7, 8].map(q => n("button", { "data-testid": "quantity-" + q + "-button", role: "radio", "aria-pressed": String(p.get("quantity") === String(q)) }, [], String(q === 8 ? "8+" : q)).on("click", () => {
-        this.press("quantity " + q); this.prompt = false; this.setParam("quantity", q); this.change();
+        this.press("quantity " + q); this.prompt = false; this.cleared = false; this.setParam("quantity", q); this.change();
       })));
     } else if (menu === "price") {
       const min = n("input", { "data-testid": "priceMin", type: "text", value: p.get("minPrice") ? "$" + p.get("minPrice") : "$" + Math.min(...this.listings.map(l => l.price)) });
@@ -234,7 +249,7 @@ export class VividPage {
     const Event = class { constructor(type, init = {}) { Object.assign(this, { type, bubbles: false, ...init }); } };
     const page = this;
     return {
-      document: this.document, get location() { return page.location; }, navigator: {}, window: {}, setTimeout: this.clock.setTimeout, Date: this.clock.Date, URL, URLSearchParams,
+      document: this.document, get location() { return page.location; }, navigator: {}, window: this.window, setTimeout: this.clock.setTimeout, Date: this.clock.Date, URL, URLSearchParams,
       Event, MouseEvent: Event, PointerEvent: Event, KeyboardEvent: Event,
       HTMLInputElement: class { get value() { return this._value; } set value(v) { this._value = v; } }
     };
@@ -246,11 +261,13 @@ export function tool(name) {
   const [definition] = vm.runInNewContext(`(${source(name)})`, {});
   return definition;
 }
-// Page tools run as execute.toString() in the page; cdp tools run their js() body there, with the input revived from JSON.
+// Page tools run as execute.toString() in the page. cdp tools get the runtime's js(), which runs a function in the page with
+// its argument revived from JSON, and gotoUrl, pageInfo and waitMs.
 export async function invoke(page, name, input = {}) {
   const definition = tool(name);
   const js = async (fn, { arg }) => vm.runInNewContext(`(${fn.toString()})`, page.globals())(JSON.parse(JSON.stringify(arg ?? null)));
-  const execute = definition.kind === "cdp" ? vm.runInNewContext(`(${definition.execute.toString()})`, { js }) : vm.runInNewContext(`(${definition.execute.toString()})`, page.globals());
+  const runtime = { js, URL, Date: page.clock.Date, gotoUrl: async url => { page.navigate(url); return {}; }, pageInfo: async () => ({ url: page.location.href, ready_state: "complete" }), waitMs: ms => new Promise(resolve => page.clock.setTimeout(resolve, ms)) };
+  const execute = definition.kind === "cdp" ? vm.runInNewContext(`(${definition.execute.toString()})`, runtime) : vm.runInNewContext(`(${definition.execute.toString()})`, page.globals());
   const out = JSON.parse(JSON.stringify(await execute(input)));
   validate(definition.tool.outputSchema, out);
   return out;

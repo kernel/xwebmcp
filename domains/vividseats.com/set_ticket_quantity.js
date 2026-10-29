@@ -165,13 +165,16 @@
 
       const vslView = () => {
         const p = vslParams(), c = vslControls();
-        const quantity = /^[1-8]$/.test(p.get("quantity") || "") ? Number(p.get("quantity")) : null;
+        // The quantity control is authoritative: the page can restore a remembered quantity without putting it in its URL.
+        const label = vslText(c.quantity).replace(/^Quantity filter\s*/, "");
+        const labeled = /^([1-8])\+? Tickets?$/i.exec(label);
+        const quantity = labeled ? Number(labeled[1]) : /^Any Quantity$/i.test(label) ? null : /^[1-8]$/.test(p.get("quantity") || "") ? Number(p.get("quantity")) : null;
         const price = name => { const v = Number(p.get(name)); return p.has(name) && Number.isFinite(v) && v > 0 ? v : null; };
         const deal = Number(p.get("dealScore"));
         const selected = (p.get("selectedGroups") || "").split(/[,|]/).filter(Boolean);
         const sortParam = p.get("sort") || null;
         return {
-          quantity, quantity_label: vslText(c.quantity).replace(/^Quantity filter\s*/, "") || null,
+          quantity, quantity_label: label || null,
           min_price: price("minPrice"), max_price: price("maxPrice"), price_label: vslText(c.price).replace(/^Price Filter\s*/, "") || null,
           deal_score_min: VSL_DEAL_SCORES.includes(deal) ? deal : null,
           perks: Object.keys(VSL_PERKS).filter(k => p.get(VSL_PERKS[k].param) === "true"),
@@ -286,7 +289,7 @@
       };
 
       // Reads the page after it settles and returns { snapshot, envelope }.
-      const VSL_WRONG_PAGE = "This is not a Vivid Seats event page. Open an event's page (a URL ending in /production/<id>, from search_events) and call this tool there.";
+      const VSL_WRONG_PAGE = "This is not a Vivid Seats event page. Open one with open_event_listings (an event url from search_events, optionally with a quantity), or navigate to an event URL ending in /production/<id> and call this tool there.";
       const vslRead = async ({ self, offset = 0, limit = 20, settle_ms = 8000 } = {}) => {
         const event = vslProductionId() !== null;
         const settled = event ? await vslSettle({ ms: settle_ms }) : true;
@@ -405,7 +408,7 @@
       if (refusal) return refusal;
       const wanted = args.quantity;
       const label = wanted === 8 ? "8+" : String(wanted);
-      const reflected = () => vslParams().get("quantity") === String(wanted) && !vslQuantityPrompt();
+      const reflected = () => vslView().quantity === wanted && !vslQuantityPrompt();
       const prompt = vslQuantityPrompt();
       if (!prompt && before.snapshot.view.quantity === wanted) return { ...before.envelope, status: "unchanged", clicked: false, message: "The page already lists " + label + " ticket(s) together. Nothing was pressed." };
       const watch = vslWatch();

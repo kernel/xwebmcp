@@ -149,7 +149,7 @@ for (const name of NAMES) {
 
 test("registry lists the vividseats.com namespace sorted with status-consistent provenance", () => {
   const entries = registry.tools.filter(t => t.domain === "vividseats.com");
-  assert.deepEqual(entries.map(t => t.tool), ["get_event", "get_venue", "list_listings", "prepare_ticket_selection", "search_events", "set_listing_filters", "set_listing_sort", "set_ticket_quantity", "show_more_listings"]);
+  assert.deepEqual(entries.map(t => t.tool), ["get_event", "get_venue", "list_listings", "open_event_listings", "prepare_ticket_selection", "search_events", "set_listing_filters", "set_listing_sort", "set_ticket_quantity", "show_more_listings"]);
   for (const entry of entries) {
     if (entry.status === "draft") assert.equal(entry.last_verified, null);
     else {
@@ -446,7 +446,7 @@ test("search_events reads the site's search page when the JSON search answers it
 
 test("search_events never returns search-page results without a filter the caller asked for, and does not use it for place, later-page or popularity searches", async () => {
   const searchPage = () => ({ html: nextData({ initialAllProductionListParams: { query: "band" }, initialAllProductionListData: productions([production(6001, "Example Band")]) }) });
-  for (const filter of [{ start_date: "2099-10-01" }, { category: "concerts" }, { performer_id: 77 }, { venue_id: 88 }, { max_lowest_all_in_price: 100 }]) {
+  for (const filter of [{ start_date: "2099-10-01" }, { category: "sports" }, { performer_id: 77 }, { venue_id: 88 }, { max_lowest_all_in_price: 100 }]) {
     const refused = await harness("search_events", { route: proxy404, pages: searchPage }).run({ query: "band", ...filter });
     assert.equal(refused.error_kind, "site_error", JSON.stringify(filter));
     assert.match(refused.error_message, /cannot apply .*no unfiltered results/);
@@ -458,6 +458,18 @@ test("search_events never returns search-page results without a filter the calle
     const other = harness("search_events", { route: proxy404, pages: () => { throw new Error("the search page must not be read for " + JSON.stringify(input)); } });
     assert.equal((await other.run(input)).error_kind, "site_error", JSON.stringify(input));
   }
+});
+
+test("search_events keeps a category the search page has no filter for when every event the page holds is in it", async () => {
+  const mixed = [production(6001, "Example Band"), production(6002, "Example Team", { categoryId: 3 })];
+  const page = items => () => ({ html: nextData({ initialAllProductionListParams: { query: "band" }, initialAllProductionListData: productions(items) }) });
+  const held = await harness("search_events", { route: proxy404, pages: page([production(6001, "Example Band"), production(6003, "Example Band")]) }).run({ query: "band", category: "concerts" });
+  assert.equal(held.status, "ok");
+  assert.deepEqual(held.events.map(e => e.category_id), [2, 2]);
+  assert.ok(held.warnings.some(w => /no category filter; every event it holds is in the requested category \(concerts\)/.test(w)));
+  const notHeld = await harness("search_events", { route: proxy404, pages: page(mixed) }).run({ query: "band", category: "concerts" });
+  assert.equal(notHeld.error_kind, "site_error");
+  assert.match(notHeld.error_message, /cannot apply category/);
 });
 
 const eventPage = p => (p === "/event/production/6001" ? { url: "/example-band-tickets/production/6001", html: "<html></html>" } : null);

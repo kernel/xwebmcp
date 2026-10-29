@@ -5,11 +5,13 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 import { validate } from "./google-flights-dom.mjs";
-import { VividPage, listing, invoke, tool } from "./vividseats-listings-page.mjs";
+import { EVENT_PATH, VividPage, listing, invoke, tool } from "./vividseats-listings-page.mjs";
 
 const registry = JSON.parse(readFileSync(new URL("../registry.json", import.meta.url), "utf8"));
 const READ = "list_listings";
 const ACTIONS = ["set_ticket_quantity", "set_listing_sort", "set_listing_filters", "show_more_listings"];
+const OPEN = "open_event_listings";
+const EVENT_URL = "https://www.vividseats.com" + EVENT_PATH;
 
 // The cheapest row sells only one ticket, so a quantity of 2 drops it; fillers make the panel load in batches.
 const LISTINGS = [
@@ -26,7 +28,7 @@ const pageState = p => JSON.stringify({ query: p.query, presses: p.presses, menu
 const ids = out => out.listings.map(l => [l.listing_id, l.price_per_ticket]);
 
 test("every listings tool is one expression with typed schemas and a matching registry entry", () => {
-  for (const name of [READ, ...ACTIONS]) {
+  for (const name of [READ, ...ACTIONS, OPEN]) {
     const source = readFileSync(new URL(`../domains/vividseats.com/${name}.js`, import.meta.url), "utf8");
     assert.equal(source.trimEnd().endsWith(";"), false);
     assert.equal(/\b(Buffer|require|process)\b/.test(source), false);
@@ -37,12 +39,15 @@ test("every listings tool is one expression with typed schemas and a matching re
     assert.deepEqual(entry.url_patterns, [...definition.match.url_patterns]);
     assert.equal(definition.tool.inputSchema.additionalProperties, false);
     assert.equal(definition.tool.annotations.readOnlyHint, name === READ);
+    if (name === OPEN) continue;
     assert.equal(definition.tool.annotations.destructiveHint, false);
     const body = definition.execute.toString();
     assert.equal(/\b(location\.assign|location\.href\s*=|location\.reload|\.submit\(|requestSubmit|history\.)/.test(body), false, name + " must not navigate");
     assert.equal(/\bfetch\(/.test(body), false, name + " reads the page, not the site's API");
-    // cdp only as the documented exception: the page's analytics navigate cross-origin iframes on these changes.
-    if (definition.kind === "cdp") {
+    // cdp only where it is needed: open_event_listings navigates and reads the destination; sort and filters are the
+    // documented exception, because the page's analytics navigate cross-origin iframes on those changes.
+    if (name === OPEN) assert.equal(definition.kind, "cdp");
+    else if (definition.kind === "cdp") {
       assert.ok(["set_listing_sort", "set_listing_filters"].includes(name));
       assert.match(body, /^async \(input\) => js\(async \(input\) =>/);
       assert.match(entry.notes, /CDP exception/);
@@ -247,4 +252,59 @@ test("registered_tools is known only when the page's tool registry lists the cal
   assert.equal(known.available_actions.find(a => a.tool === "set_listing_sort").registered, false);
   const unknown = await invoke(page({ query: "quantity=2", registered: ["get_event"] }), READ, { limit: 1 });
   assert.deepEqual(unknown.registered_tools, { known: false, names: [] });
+});
+
+test("open_event_listings opens the page's own quantity address and returns its listings in one call", async () => {
+  const p = page({ path: "/" });
+  const out = await invoke(p, OPEN, { event: EVENT_URL, quantity: 2, limit: 5 });
+  assert.equal(out.status, "ok");
+  assert.deepEqual(p.navigations, [EVENT_PATH + "?quantity=2"]);
+  assert.deepEqual(p.presses, []);
+  assert.equal(out.page.quantity_prompt, false);
+  assert.equal(out.view.quantity, 2);
+  assert.deepEqual(ids(out), p.visible().slice(0, 5));
+  assert.equal(out.listings.some(l => l.listing_id === "VB4"), false);
+  const prepare = out.available_actions.find(a => a.tool === "prepare_ticket_selection");
+  assert.deepEqual(prepare.input, { event: EVENT_URL, listing_id: "VB1", quantity: 2, expected_all_in_price_per_ticket: 177, expected_price_group_id: "416" });
+  validate(tool("prepare_ticket_selection").tool.inputSchema, prepare.input);
+});
+
+test("open_event_listings without a quantity opens the page as it is, prompt included", async () => {
+  const p = page({ path: "/" });
+  const out = await invoke(p, OPEN, { event: EVENT_URL + "?quantity=3&sort=deal_score" });
+  assert.deepEqual(p.navigations, [EVENT_PATH]);
+  assert.equal(out.status, "ok");
+  assert.equal(out.page.quantity_prompt, true);
+  assert.equal(out.view.quantity, null);
+  assert.match(out.next_steps[0], /set_ticket_quantity/);
+});
+
+test("the page's quantity control, not its URL, says which quantity it lists: it restores a remembered one", async () => {
+  const p = page({ path: "/" });
+  await invoke(p, OPEN, { event: EVENT_URL, quantity: 3 });
+  const again = await invoke(p, OPEN, { event: EVENT_URL });
+  assert.deepEqual(p.navigations, [EVENT_PATH + "?quantity=3", EVENT_PATH]);
+  assert.equal(p.query, "");
+  assert.equal(again.page.quantity_prompt, false);
+  assert.equal(again.view.quantity, 3);
+  assert.deepEqual(ids(again), p.visible());
+  assert.equal((await invoke(p, "set_ticket_quantity", { quantity: 3 })).status, "unchanged");
+  assert.deepEqual(p.presses, []);
+});
+
+test("open_event_listings reports an unknown event, the panel's error and malformed input", async () => {
+  const unknown = page({ path: "/" });
+  const missing = await invoke(unknown, OPEN, { event: "https://www.vividseats.com/no-such-event/production/999", quantity: 2 });
+  assert.equal(missing.status, "not_found");
+  assert.match(missing.message, /\/404.*search_events/);
+  const gated = page({ path: "/", error: true });
+  const blocked = await invoke(gated, OPEN, { event: EVENT_URL, quantity: 2 });
+  assert.equal(blocked.status, "not_ready");
+  assert.match(blocked.message, /mouse.*reload/);
+  const p = page({ path: "/" });
+  for (const input of [{}, { event: "https://example.com" + EVENT_PATH }, { event: "http://www.vividseats.com" + EVENT_PATH }, { event: "https://www.vividseats.com/example/performer/9001" },
+    { event: EVENT_URL, quantity: 9 }, { event: EVENT_URL, limit: 0 }, { event: EVENT_URL, extra: true }]) {
+    assert.equal((await invoke(p, OPEN, input)).status, "invalid_input", JSON.stringify(input));
+  }
+  assert.equal(p.navigations, undefined);
 });

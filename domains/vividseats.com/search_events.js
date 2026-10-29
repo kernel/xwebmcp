@@ -3,7 +3,7 @@
   match: { url_patterns: ["https://www.vividseats.com/*"] },
   tool: {
     name: "search_events",
-    description: "Search Vivid Seats (US marketplace, USD) for events by text, place, dates, category, performer, venue or a lowest-price ceiling, using the same JSON search the site's Explore and results pages call. Until the page has had user input such as mouse movement, scrolling or a click, Vivid Seats' bot protection may answer that search with a generic 404; a text search then reads the site's own search page instead (a team, artist or show name opens its page of upcoming events), unless that page cannot apply a requested date, category, performer, venue or price filter, when it returns site_error rather than unfiltered results. Returns the production_id, the event page url (open it and read its listings with list_listings), name, local date and time at the venue, venue, performers, distance from the searched place, listing and ticket counts, and the lowest and highest all-in ticket price the site shows for the event. Prices and counts come from the site's search index, which lags live inventory: an event can show tickets here and none on its page, so treat them as a rough guide and confirm on the event page with list_listings. Results are one page at a time (page, page_size); the site never reports more than 1000 matches. Parking passes are excluded unless exclude_parking is false. Runs inside the current www.vividseats.com page without navigating and reads only; it does not sign in, add to a cart or buy.",
+    description: "Search Vivid Seats (US marketplace, USD) for events by text, place, dates, category, performer, venue or a lowest-price ceiling, using the same JSON search the site's Explore and results pages call. Until the page has had user input such as mouse movement, scrolling or a click, Vivid Seats' bot protection may answer that search with a generic 404; a text search then reads the site's own search page instead (a team, artist or show name opens its page of upcoming events), unless that page cannot apply a requested date, category, performer, venue or price filter, when it returns site_error rather than unfiltered results. Returns the production_id, the event page url (pass it to open_event_listings to read its listings), name, local date and time at the venue, venue, performers, distance from the searched place, listing and ticket counts, and the lowest and highest all-in ticket price the site shows for the event. Prices and counts come from the site's search index, which lags live inventory: an event can show tickets here and none on its page, so treat them as a rough guide and confirm on the event page with list_listings. Results are one page at a time (page, page_size); the site never reports more than 1000 matches. Parking passes are excluded unless exclude_parking is false. Runs inside the current www.vividseats.com page without navigating and reads only; it does not sign in, add to a cart or buy.",
     inputSchema: {
       type: "object", additionalProperties: false,
       properties: {
@@ -57,7 +57,7 @@
                   rank: { type: "integer", minimum: 1, description: "Position across all pages of this search." },
                   production_id: { type: "integer", description: "The site's event id." },
                   name: { type: "string" },
-                  url: { type: ["string", "null"], description: "The event page on www.vividseats.com; open it to read its listings with list_listings." },
+                  url: { type: ["string", "null"], description: "The event page on www.vividseats.com; pass it to open_event_listings to open it with a ticket quantity and read its listings." },
                   local_date: { type: ["string", "null"], description: "YYYY-MM-DD at the venue; null when the date is to be announced." },
                   local_time: { type: ["string", "null"], description: "HH:MM 24-hour at the venue; null when the time is to be announced." },
                   weekday: { type: ["string", "null"] },
@@ -203,15 +203,19 @@
       }
       if (!found || (found.data.i18n && found.data.i18n.to !== "USD")) return null;
       const datesApplied = (!startDate || found.params.startDate === startDate) && (!endDate || found.params.endDate === endDate);
+      // The page has no category filter, but a performer page usually holds one category's events; when every event it
+      // holds is in the requested category, its results are already what the filter would return.
+      const categoryHeld = !!category && found.data.items.length > 0 && found.data.items.every(e => e?.categoryId === { concerts: 2, sports: 3, theater: 4 }[category]);
       // Results the caller narrowed are never returned unnarrowed; only the default parking exclusion is reported instead.
       const ignored = [
-        !datesApplied && "start_date/end_date", category && "category", checks.performer.value && "performer_id", checks.venue.value && "venue_id",
+        !datesApplied && "start_date/end_date", category && !categoryHeld && "category", checks.performer.value && "performer_id", checks.venue.value && "venue_id",
         checks.ceiling.value && "max_lowest_all_in_price"
       ].filter(Boolean);
       if (ignored.length) return { ignored };
       // A page holding fewer events than page_size sets the page size, so page 2 continues where it ends.
       const size = found.data.total > found.data.items.length ? Math.max(1, Math.min(pageSize, found.data.items.length)) : pageSize;
       const notes = ["Vivid Seats' JSON search answered a generic 404, as it does until the page has had user input, so these results come from the site's own page " + found.url.pathname + ", in its order."];
+      if (categoryHeld) notes.push("That page has no category filter; every event it holds is in the requested category (" + category + ").");
       // The search page is the JSON search by date without the parking exclusion, so it continues only with exclude_parking false.
       const withParking = excludeParking && !/\/performer\//.test(found.url.pathname);
       if (withParking) notes.push("That page did not apply exclude_parking; parking passes may be listed as events.");

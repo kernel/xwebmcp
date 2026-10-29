@@ -4853,6 +4853,20 @@
     },
     {
       "domain": "vividseats.com",
+      "tool": "open_event_listings",
+      "file": "domains/vividseats.com/open_event_listings.js",
+      "kind": "cdp",
+      "namespace": "vividseats.com",
+      "url_patterns": [
+        "https://www.vividseats.com/*"
+      ],
+      "url_patterns_reason": "Narrowed to www.vividseats.com, the Vivid Seats marketplace: the tools call its same-origin event and listing endpoints and refuse other origins; other vividseats.com hosts are separate products.",
+      "status": "draft",
+      "last_verified": null,
+      "notes": "kind cdp: navigates the tab to an event page and returns the listings panel read from that page in the same call (rows, count, the page's settings and next actions). With quantity it opens the page's own address for that quantity (?quantity=N), which the page applies itself so its 'How many tickets?' prompt does not appear. Detects the new document with a marker set in the old one, then reads as list_listings does; an event address that ends elsewhere (Vivid Seats redirects unknown events) is not_found. Changes no site or account state."
+    },
+    {
+      "domain": "vividseats.com",
       "tool": "prepare_ticket_selection",
       "file": "domains/vividseats.com/prepare_ticket_selection.js",
       "kind": "page",
