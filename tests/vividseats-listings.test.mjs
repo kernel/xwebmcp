@@ -298,10 +298,12 @@ test("open_event_listings reports an unknown event, the panel's error and malfor
   const missing = await invoke(unknown, OPEN, { event: "https://www.vividseats.com/no-such-event/production/999", quantity: 2 });
   assert.equal(missing.status, "not_found");
   assert.match(missing.message, /\/404.*search_events/);
-  const gated = page({ path: "/", error: true });
-  const blocked = await invoke(gated, OPEN, { event: EVENT_URL, quantity: 2 });
+  // A panel that stays in its error after the tool's mouse input and two reloads.
+  const stuck = page({ path: "/", error: true });
+  const blocked = await invoke(stuck, OPEN, { event: EVENT_URL, quantity: 2 });
   assert.equal(blocked.status, "not_ready");
-  assert.match(blocked.message, /mouse.*open_event_listings again/);
+  assert.ok(stuck.navigations.length >= 3);
+  assert.match(blocked.message, /still shows .*reloaded it \d+ time\(s\).*open_event_listings again/);
   assert.match(blocked.next_steps[0], /list its WebMCP tools again/);
   const p = page({ path: "/" });
   for (const input of [{}, { event: "https://example.com" + EVENT_PATH }, { event: "http://www.vividseats.com" + EVENT_PATH }, { event: "https://www.vividseats.com/example/performer/9001" },
@@ -309,4 +311,23 @@ test("open_event_listings reports an unknown event, the panel's error and malfor
     assert.equal((await invoke(p, OPEN, input)).status, "invalid_input", JSON.stringify(input));
   }
   assert.equal(p.navigations, undefined);
+});
+
+test("open_event_listings gets past the panel's bot-protection error the way a person does: mouse input, then a reload", async () => {
+  const p = page({ path: "/", gated: 1 });
+  const out = await invoke(p, OPEN, { event: EVENT_URL, quantity: 2, limit: 3 });
+  assert.equal(out.status, "ok");
+  assert.deepEqual(p.navigations, [EVENT_PATH + "?quantity=2", EVENT_PATH + "?quantity=2"]);
+  assert.ok(p.mouseInput > 0);
+  assert.deepEqual(ids(out), p.visible().slice(0, 3));
+  assert.ok(out.warnings.some(w => /moved the mouse over the page and reloaded it 1 time/.test(w)));
+  const twice = page({ path: "/", gated: 2 });
+  const second = await invoke(twice, OPEN, { event: EVENT_URL, quantity: 2 });
+  assert.equal(second.status, "ok");
+  assert.equal(twice.navigations.length, 3);
+  // Once the browser has had input, the page loads its listings at once.
+  const again = await invoke(p, OPEN, { event: EVENT_URL, quantity: 3 });
+  assert.equal(again.status, "ok");
+  assert.equal(p.navigations.length, 3);
+  assert.equal(again.warnings.some(w => /reloaded/.test(w)), false);
 });

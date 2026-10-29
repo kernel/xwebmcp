@@ -86,7 +86,7 @@
     match: { url_patterns: ["https://www.vividseats.com/*"] },
     tool: {
       name: "open_event_listings",
-      description: "Open a Vivid Seats event page and return its listings panel as list_listings reads it, in one call. Pass the event url from search_events and, for a price for N tickets together, quantity: the tool opens the page's own address for that quantity (…?quantity=N, the URL the page uses itself once a quantity is chosen), so the page lists only rows sold together in that quantity and shows no 'How many tickets?' prompt. Navigates the tab; changes no site or account state. Afterwards use list_listings, set_ticket_quantity, set_listing_sort, set_listing_filters and show_more_listings on the opened page. If the panel shows Vivid Seats' 'Sorry, there was an error' (its bot protection until the page has had mouse input), returns not_ready: move the mouse over the page or scroll it, then call this tool again. After it returns, list the page's tools again: the new page's tools have new tool_refs.",
+      description: "Open a Vivid Seats event page and return its listings panel as list_listings reads it, in one call. Pass the event url from search_events and, for a price for N tickets together, quantity: the tool opens the page's own address for that quantity (…?quantity=N, the URL the page uses itself once a quantity is chosen), so the page lists only rows sold together in that quantity and shows no 'How many tickets?' prompt. Navigates the tab; changes no site or account state. Afterwards use list_listings, set_ticket_quantity, set_listing_sort, set_listing_filters and show_more_listings on the opened page. Vivid Seats' bot protection holds listings back until the page has had mouse input; the tool moves the mouse over the page after it loads and, if the panel still shows 'Sorry, there was an error', moves it again and reloads, as often as fits in about 50 seconds, before returning not_ready. After it returns, list the page's tools again: the new page's tools have new tool_refs.",
       inputSchema: {
         type: "object", additionalProperties: false, required: ["event"],
         properties: {
@@ -346,17 +346,53 @@
       }, { arg: { limit: valid ? limit : 0, settle } });
       if (!valid) return { ...await read(0), status: "invalid_input", message: "Pass event as an event url from search_events (https://www.vividseats.com/<slug>/production/<id>), and optionally quantity 1–8 and limit 1–50. The tab was not navigated." };
       const address = target.origin + target.pathname + (args.quantity ? "?quantity=" + args.quantity : "");
+      const deadline = Date.now() + 52000;
+      // Vivid Seats' bot protection answers the panel's listings request with an error until the browser has had user
+      // input, and the panel does not ask again; a person moves the mouse and reloads, sometimes more than once. The tool
+      // does the same through the browser's input pipeline. Its script reports the input in the background and updates
+      // the bm_s cookie, and a reload before that is still refused, so each reload waits for the cookie to settle and at
+      // least settle_ms, which grows with each attempt.
+      const sensorCookie = () => js(() => (/(?:^|;\s*)bm_s=([^;]*)/.exec(document.cookie) || [])[1] ?? null).catch(() => null);
+      const moveMouse = async (settle_ms = 0) => {
+        const before = await sensorCookie(), start = Date.now();
+        for (const [x, y] of [[420, 360], [560, 430], [700, 520], [820, 600], [640, 480], [500, 400], [600, 450]]) {
+          await cdp("Input.dispatchMouseEvent", { type: "mouseMoved", x, y }).catch(() => {});
+          await waitMs(150);
+        }
+        if (!settle_ms) return;
+        const until = Math.min(start + settle_ms + 6000, deadline - 12000);
+        let last = await sensorCookie(), since = Date.now();
+        while (Date.now() < until) {
+          await waitMs(250);
+          const now = await sensorCookie();
+          if (now !== last) { last = now; since = Date.now(); }
+          else if (last !== before && Date.now() - since >= 1000 && Date.now() - start >= settle_ms) break;
+        }
+      };
       // A marker in the current document tells the new document apart from it, even when the tab already shows the event.
-      const marker = "vsl-" + Date.now() + "-" + Math.random().toString(36).slice(2);
-      await js(m => { window.__vslOpened = m; }, { arg: marker }).catch(() => {});
-      await gotoUrl(address);
-      const until = Date.now() + 25000;
-      let loaded = false;
-      while (!loaded && Date.now() < until) {
-        await waitMs(300);
-        loaded = await js(m => window.__vslOpened !== m && document.readyState !== "loading", { arg: marker }).catch(() => false);
+      const open = async () => {
+        const marker = "vsl-" + Date.now() + "-" + Math.random().toString(36).slice(2);
+        await js(m => { window.__vslOpened = m; }, { arg: marker }).catch(() => {});
+        await gotoUrl(address);
+        const until = Math.min(Date.now() + 20000, deadline - 8000);
+        let loaded = false;
+        while (!loaded && Date.now() < until) {
+          await waitMs(300);
+          loaded = await js(m => window.__vslOpened !== m && document.readyState !== "loading", { arg: marker }).catch(() => false);
+        }
+        await moveMouse();
+        return loaded;
+      };
+      await moveMouse();
+      let loaded = await open();
+      let out = await read(Math.max(1000, Math.min(12000, deadline - Date.now())));
+      let reloads = 0;
+      while (out.results.state === "error" && Date.now() + 15000 < deadline) {
+        reloads++;
+        await moveMouse(1000 + 2000 * reloads);
+        loaded = await open();
+        out = await read(Math.max(1000, Math.min(10000, deadline - Date.now())));
       }
-      const out = await read(15000);
       const now = (await pageInfo().catch(() => null))?.url || "";
       let shown = null;
       try { shown = new URL(now); } catch { /* keep null */ }
@@ -365,7 +401,9 @@
       }
       // The tab now shows a new document, whose tools have new tool_refs.
       out.next_steps = ["The tab now shows a new page: list its WebMCP tools again before calling another tool; earlier tool_refs no longer work.", ...out.next_steps];
-      if (!loaded) out.warnings = [...out.warnings, "The page had not finished loading after 25 seconds; this is what it showed then."];
+      if (!loaded) out.warnings = [...out.warnings, "The page had not finished loading; this is what it showed then."];
+      if (reloads) out.warnings = [...out.warnings, "The listings panel showed Vivid Seats' bot-protection error; the tool moved the mouse over the page and reloaded it " + reloads + " time(s)."];
+      if (out.results.state === "error") out.message = "The listings panel still shows Vivid Seats' 'Sorry, there was an error' after the tool moved the mouse over the page and reloaded it " + reloads + " time(s). Its bot protection sometimes holds listings back for a minute or more: scroll the page or move the mouse yourself, wait a little, then call open_event_listings again.";
       if (args.quantity && out.view && out.view.quantity !== args.quantity) out.warnings = [...out.warnings, "The page does not show " + args.quantity + " ticket(s) as its quantity; use set_ticket_quantity."];
       return out;
     }

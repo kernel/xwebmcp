@@ -42,8 +42,11 @@ export const EVENT_PATH = "/example-band-tickets-springfield-example-hall-10-10-
 export class VividPage {
   // error: the panel shows the bot-protection error. prompt: the 'How many tickets?' prompt is open (default: no quantity
   // in the query). batch: rows the panel loads at first and per scroll. path/query: the page's URL.
-  constructor({ listings, error = false, prompt, batch = 20, more = 16, path = EVENT_PATH, query = "", cookie = "locale=en-US; pgid=416", registered = null } = {}) {
-    Object.assign(this, { listings, error, batch, more, path, cookie, registered });
+  // gated: the number of event-page loads the bot protection refuses (like error) before one after mouse input loads
+  // its listings; the live page sometimes refuses a load that follows input, too.
+  constructor({ listings, error = false, gated = false, prompt, batch = 20, more = 16, path = EVENT_PATH, query = "", cookie = "locale=en-US; pgid=416", registered = null } = {}) {
+    Object.assign(this, { listings, error: error || gated, gated, batch, more, path, cookie, registered });
+    this.mouseInput = 0;
     this.params = new URLSearchParams(query);
     this.prompt = prompt ?? !this.params.has("quantity");
     this.presses = [];
@@ -67,6 +70,11 @@ export class VividPage {
     // The live page restores the last chosen quantity on a later visit without putting it in its URL.
     this.remembered = this.params.get("quantity") ?? this.remembered ?? null;
     this.prompt = this.path === EVENT_PATH && !this.remembered;
+    if (this.gated && this.path === EVENT_PATH) {
+      this.refused = this.refused || 0;
+      this.error = this.refused < this.gated || !this.mouseInput;
+      if (this.error) this.refused++;
+    }
     this.load();
   }
 
@@ -262,11 +270,12 @@ export function tool(name) {
   return definition;
 }
 // Page tools run as execute.toString() in the page. cdp tools get the runtime's js(), which runs a function in the page with
-// its argument revived from JSON, and gotoUrl, pageInfo and waitMs.
+// its argument revived from JSON, cdp() for mouse input, and gotoUrl, pageInfo and waitMs.
 export async function invoke(page, name, input = {}) {
   const definition = tool(name);
   const js = async (fn, { arg }) => vm.runInNewContext(`(${fn.toString()})`, page.globals())(JSON.parse(JSON.stringify(arg ?? null)));
-  const runtime = { js, URL, Date: page.clock.Date, gotoUrl: async url => { page.navigate(url); return {}; }, pageInfo: async () => ({ url: page.location.href, ready_state: "complete" }), waitMs: ms => new Promise(resolve => page.clock.setTimeout(resolve, ms)) };
+  const cdp = async (method, params) => { if (method === "Input.dispatchMouseEvent") page.mouseInput++; else throw new Error("unexpected cdp " + method); };
+  const runtime = { js, cdp, URL, Date: page.clock.Date, gotoUrl: async url => { page.navigate(url); return {}; }, pageInfo: async () => ({ url: page.location.href, ready_state: "complete" }), waitMs: ms => new Promise(resolve => page.clock.setTimeout(resolve, ms)) };
   const execute = definition.kind === "cdp" ? vm.runInNewContext(`(${definition.execute.toString()})`, runtime) : vm.runInNewContext(`(${definition.execute.toString()})`, page.globals());
   const out = JSON.parse(JSON.stringify(await execute(input)));
   validate(definition.tool.outputSchema, out);
