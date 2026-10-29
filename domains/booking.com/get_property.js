@@ -29,7 +29,7 @@
     }
   };
   const propertySchema = {
-    type: "object", additionalProperties: false, required: ["property_id", "name", "property_url", "page_url", "address", "review", "review_categories", "popular_facilities", "check_in_time", "check_out_time"],
+    type: "object", additionalProperties: false, required: ["property_id", "name", "property_url", "page_url", "address", "review", "review_categories", "popular_facilities", "check_in_time", "check_out_time", "house_rules", "house_rules_truncated"],
     properties: {
       property_id: { type: ["string", "null"], description: "Booking.com's numeric property id." },
       name: { type: "string" },
@@ -44,7 +44,16 @@
       review_categories: { type: "array", items: { type: "object", additionalProperties: false, required: ["category", "score"], properties: { category: { type: "string" }, score: { type: "number" } } } },
       popular_facilities: { type: "array", items: { type: "string" } },
       check_in_time: { type: ["string", "null"], description: "The house-rules text, for example 'From 2:00 PM'." },
-      check_out_time: { type: ["string", "null"] }
+      check_out_time: { type: ["string", "null"] },
+      house_rules: {
+        type: ["array", "null"], maxItems: 20,
+        items: {
+          type: "object", additionalProperties: false, required: ["title", "lines"],
+          properties: { title: { type: "string" }, lines: { type: "array", maxItems: 30, items: { type: "string" } } }
+        },
+        description: "Every house-rules section in page order, with its title as the page shows it (for example 'Pets', 'Accepted payment methods' or 'Cards accepted at this property', 'Children & Beds', 'Age restriction', 'Smoking', 'Parties', 'Quiet hours') and its text lines: card logos by name, and each crib or extra-bed row as one line ('4 - 12 years: Extra bed upon request, € 12.50 per child, per night', with '; ' between offers for the same ages). A section the property did not fill in is absent, not 'allowed'. Empty when the page has no house rules; null when it has a house-rules section the tool could not read, which says nothing about any rule."
+      },
+      house_rules_truncated: { type: "boolean", description: "True when house_rules leaves out sections or lines the page lists (more than 20 sections, more than 30 lines in a section, or about 20 KB of text); read the rest on the property page." }
     }
   };
   return [{
@@ -52,7 +61,7 @@
     match: { url_patterns: ["https://www.booking.com/*"] },
     tool: {
       name: "get_property",
-      description: "Read one Booking.com property page for given dates and party: name, address, review score, popular facilities, check-in and check-out times, and every room with each rate the site lists for the requested party (displayed price for the whole stay, cancellation, prepayment and meal terms, taxes and fees excluded from the price). Get property_url from search_stays. Requires explicit check_in, check_out, adults and currency, for one room. currency must be the currency the site is already showing (its header currency picker): the tool never changes the site's currency and fails with currency_mismatch, naming what the site shows, when they differ. The output echoes the effective dates, guests and currency the page applied and a price_basis, and a page that did not apply them as asked is an error. Rates the page limits to fewer adults than the party are left out, because their prices do not cover the whole party (rates_left_out counts them); when every rate is like that the status is no_rate_for_party. With children, a rate with places for the adults but not for every child is kept, marked fits_party false and ranked after the rates that fit, before max_rates applies. A rate marked as a members-only price needs signing in: price.total then includes a member discount (member_discount) that a signed-out visitor is not given. Read-only: it never selects a room or rate, saves to a list, reserves or opens checkout, and changes no browser or account setting; Booking.com records the page view. Listing a rate is not a hold or a guarantee, and prices can differ by session (member discounts when signed in). Run it on any https://www.booking.com page in an English-language session and do not navigate the tab while it runs. Dates the property cannot offer give status no_availability, and so can dates beyond the site's bookable window; for such dates the page may also apply the party the session last searched, which is reported as search_not_applied.",
+      description: "Read one Booking.com property page for given dates and party: name, address, review score, popular facilities, check-in and check-out times, the house rules (pets, accepted payment methods and cash, children and extra beds, age restriction, smoking, parties, quiet hours, as the property lists them), and every room with each rate the site lists for the requested party (displayed price for the whole stay, cancellation, prepayment and meal terms, taxes and fees excluded from the price). Get property_url from search_stays. Requires explicit check_in, check_out, adults and currency, for one room. currency must be the currency the site is already showing (its header currency picker): the tool never changes the site's currency and fails with currency_mismatch, naming what the site shows, when they differ. The output echoes the effective dates, guests and currency the page applied and a price_basis, and a page that did not apply them as asked is an error. Rates the page limits to fewer adults than the party are left out, because their prices do not cover the whole party (rates_left_out counts them); when every rate is like that the status is no_rate_for_party. With children, a rate with places for the adults but not for every child is kept, marked fits_party false and ranked after the rates that fit, before max_rates applies. A rate marked as a members-only price needs signing in: price.total then includes a member discount (member_discount) that a signed-out visitor is not given. Read-only: it never selects a room or rate, saves to a list, reserves or opens checkout, and changes no browser or account setting; Booking.com records the page view. Listing a rate is not a hold or a guarantee, and prices can differ by session (member discounts when signed in). Run it on any https://www.booking.com page in an English-language session and do not navigate the tab while it runs. Dates the property cannot offer give status no_availability, and so can dates beyond the site's bookable window; for such dates the page may also apply the party the session last searched, which is reported as search_not_applied.",
       inputSchema: {
         type: "object", additionalProperties: false,
         required: ["property_url", "check_in", "check_out", "adults", "currency"],
@@ -283,6 +292,44 @@
         const facilities = pickTid(doc, "property-most-popular-facilities-wrapper");
         const rules = rawText(pickTid(doc, "HouseRules-wrapper"));
         const time = label => (new RegExp(label + "\\s*((?:From|Until|Between)\\s+\\d{1,2}(?::\\d{2})?\\s*(?:[AP]M)?(?:\\s*(?:-|to|\\u2013)\\s*\\d{1,2}(?::\\d{2})?\\s*(?:[AP]M)?)?)", "i").exec(rules) || [])[1] ?? null;
+        // Each house-rules row is a title cell and a content cell. Content lines are the innermost blocks with text;
+        // card logos are images named by alt text, and a crib or extra-bed row (an age or age range, then the offer and its
+        // charge, one cell per offer) is kept together as one line.
+        const ruleLine = s => s.length > 600 ? s.slice(0, 599) + "…" : s;
+        const ruleLines = (el, out) => {
+          if (out.length > 30 || el.getAttribute("aria-hidden") === "true") return out;
+          if (el.tagName === "IMG") { const alt = (el.getAttribute("alt") || "").replace(/\s+/g, " ").trim().slice(0, 300); if (alt) out.push(alt); return out; }
+          const kids = [...el.children];
+          if (kids.length >= 2 && /^\d+\s*(?:[-\u2013]\s*\d+|\+)?\s*years?(?:\s+old)?$/i.test(text(kids[0]))) {
+            out.push(ruleLine(text(kids[0]) + ": " + kids.slice(1).map(offer => ruleLines(offer, []).join(", ")).join("; ")));
+            return out;
+          }
+          if (!kids.length || [...el.childNodes].some(n => n.nodeType === 3 && n.textContent.trim())) {
+            const line = ruleLine(rawText(el));
+            if (line) out.push(line);
+            return out;
+          }
+          for (const kid of kids) ruleLines(kid, out);
+          return out;
+        };
+        // Rows are the siblings of the shallowest <hr>, so a separator inside a row's content is not taken for one. Every
+        // property lists check-in and check-out, so rows without either are not the section's rows.
+        const rulesWrapper = pickTid(doc, "HouseRules-wrapper");
+        const depth = el => { let d = 0; for (; el; el = el.parentNode) d++; return d; };
+        const ruleSeparator = [...(rulesWrapper?.querySelector("[data-testid=\"property-section--content\"]")?.querySelectorAll("hr") || [])]
+          .reduce((top, hr) => !top || depth(hr) < depth(top) ? hr : top, null);
+        const ruleRows = [...(ruleSeparator?.parentNode.children || [])].filter(row => row.tagName === "DIV" && row.children.length >= 2 && text(row.children[0]));
+        const houseRules = [];
+        let ruleBytes = 0, rulesTruncated = false;
+        for (const row of ruleRows) {
+          const lines = ruleLines(row.children[1], []);
+          const rule = { title: text(row.children[0]), lines: lines.slice(0, 30) };
+          ruleBytes += new TextEncoder().encode(JSON.stringify(rule)).length;
+          if (houseRules.length === 20 || ruleBytes > 20000) { rulesTruncated = true; break; }
+          if (lines.length > 30) rulesTruncated = true;
+          houseRules.push(rule);
+        }
+        const rulesRead = houseRules.length > 0 && ruleRows.some(row => /^Check-(?:in|out)$/i.test(text(row.children[0])));
         const property = {
           property_id: cfg(html, /\bb_hotel_id\s*:\s*'(\d{1,20})'/),
           name: name.slice(0, 300), property_url: query.property_url, page_url: query.property_url + "?" + params.toString(),
@@ -290,7 +337,7 @@
           review: scoreMatch ? { score: Number(scoreMatch[1]), label: scoreMatch[2].trim(), count: Number(scoreMatch[3].replace(/,/g, "")) } : null,
           review_categories: [...doc.querySelectorAll("[data-testid=\"review-subscore\"]")].slice(0, 20).map(el => /^(.*?),\s*([\d.]+),\s*Average rating/.exec(text(el))).filter(Boolean).map(m => ({ category: m[1], score: Number(m[2]) })),
           popular_facilities: facilities ? [...facilities.querySelectorAll("li")].map(text).filter(Boolean).slice(0, 20) : [],
-          check_in_time: time("Check-in"), check_out_time: time("Check-out")
+          check_in_time: time("Check-in"), check_out_time: time("Check-out"), house_rules: rulesWrapper ? (rulesRead ? houseRules : null) : [], house_rules_truncated: rulesRead && rulesTruncated
         };
 
         const rowEls = [...doc.querySelectorAll("#hprt-table tr.js-rt-block-row")];
@@ -303,7 +350,7 @@
         const warnings = [];
         if (signedIn) warnings.push("The browser is signed in to Booking.com, so prices may include member (Genius) discounts.");
         if (ages.length && !agesConfirmed) warnings.push("The page did not list the child ages, so the ages sent could not be confirmed.");
-        if (ages.length) warnings.push("Child charges and age limits are not checked; review the property's child policies.");
+        if (ages.length) warnings.push("Child charges and age limits are not checked against the rates; " + (property.house_rules?.length ? "see the property's child policies in property.house_rules." : "review the property's child policies on the property page."));
         // A rate's capacity is in its occupancy cell ("Max. people: 2", "Max adults: 2 Max children: 1", "Only for 1
         // guest") or, on another layout, in a "Guests: 2 adults, 1 child" line under its conditions. A child may take
         // an adult place, as Booking.com's checkout counts guests.

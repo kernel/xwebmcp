@@ -1,7 +1,7 @@
 {
   "id": "booking-house-rules",
   "domain": "booking.com",
-  "stage": "gap",
+  "stage": "inspect",
   "prompt": "On booking.com, find whether {{hotel}} in {{city}} allows pets and whether it accepts cash, as its house rules say. Reply with JSON: {\"pets_allowed\": boolean, \"cash_accepted\": boolean}.",
   "fixture": {
     "hotel": "Palacio Ramalhete",
