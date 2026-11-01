@@ -114,6 +114,24 @@ describe('with WebMCP', () => {
     expect(ctx.tools.has('a')).toBe(true);
   });
 
+  it('derives consequentialHint from destructiveHint', async () => {
+    const ctx = installFakeModelContext();
+    core.registerTool({ ...tool('a'), annotations: { destructiveHint: true } }, { signal: new AbortController().signal });
+    core.registerTool(
+      { ...tool('b'), annotations: { destructiveHint: true, consequentialHint: false } },
+      { signal: new AbortController().signal },
+    );
+    await flush();
+    expect((ctx.tools.get('a') as { annotations?: object }).annotations).toEqual({
+      destructiveHint: true,
+      consequentialHint: true,
+    });
+    expect((ctx.tools.get('b') as { annotations?: object }).annotations).toEqual({
+      destructiveHint: true,
+      consequentialHint: false,
+    });
+  });
+
   it('lists tools registered outside this package', async () => {
     const ctx = installFakeModelContext();
     ctx.registerTool({ ...tool('native'), inputSchema: {} }, { signal: new AbortController().signal });
