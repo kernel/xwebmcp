@@ -245,7 +245,9 @@ point of view. A full page load ends the call before it can return.
 | `xwebmcp` | `registerTool(tool, { signal })`, `refresh()`, `getModelContext()`, `availableToolNames()`, `subscribe(listener)`; no React |
 
 `useWebMCPTool({ name, description, inputSchema?, outputSchema?, annotations?, title?, execute, enabled? })`
-takes the fields of a WebMCP tool plus `enabled`.
+takes the fields of a WebMCP tool plus `enabled`. Chrome reads `consequentialHint` rather than
+MCP's `destructiveHint`; when only the latter is set it is copied over, so a destructive tool is
+marked as needing confirmation.
 
 `useWebMCPRoute({ path, description, enabled? })`.
 

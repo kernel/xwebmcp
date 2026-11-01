@@ -6,6 +6,11 @@ export interface ToolAnnotations {
   idempotentHint?: boolean;
   openWorldHint?: boolean;
   untrustedContentHint?: boolean;
+  /**
+   * WebMCP's name for an action with effects the user would want to confirm.
+   * Defaults to `destructiveHint`, so MCP-style annotations carry over.
+   */
+  consequentialHint?: boolean;
 }
 
 export interface WebMCPTool<Input = any, Output = unknown> {
@@ -121,6 +126,11 @@ function notify() {
   for (const listener of listeners) listener();
 }
 
+function withConsequentialHint(annotations: ToolAnnotations): ToolAnnotations {
+  if (annotations.consequentialHint !== undefined || annotations.destructiveHint === undefined) return annotations;
+  return { ...annotations, consequentialHint: annotations.destructiveHint };
+}
+
 function sync(name: string) {
   const ctx = context();
   if (!ctx) return;
@@ -134,14 +144,19 @@ function sync(name: string) {
   if (top) {
     const controller = new AbortController();
     active.set(name, { tool: top, controller });
-    const { execute, ...definition } = top;
+    const { execute, annotations, ...definition } = top;
     // Deferred so that replacing a registration within one task only
     // registers the final one with the browser.
     Promise.resolve()
       .then(() => {
         if (controller.signal.aborted) return;
         return ctx.registerTool(
-          { inputSchema: { type: 'object', properties: {} }, ...definition, execute },
+          {
+            inputSchema: { type: 'object', properties: {} },
+            ...definition,
+            ...(annotations ? { annotations: withConsequentialHint(annotations) } : {}),
+            execute,
+          },
           { signal: controller.signal },
         );
       })
