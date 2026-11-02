@@ -255,6 +255,10 @@ test("network failures, challenges and aborts are explicit, with no automatic re
     const valid = name.includes("account") || name.includes("saved") ? account : query;
     await failure(name, valid, "rate_limited", { status: 429 }, 1);
     await failure(name, valid, "challenge", { status: 403 }, 1);
+    if (name === "get_availability" || name === "prepare_reservation") {
+      const refused = await run(name, valid, { status: 403 });
+      assert.match(refused.result.error_message, /open https:\/\/www\.opentable\.com\/restaurant\/profile\/\d+\?dateTime=.*&covers=\d+ and read its booking widget/, name + " points at the restaurant's page");
+    }
     await failure(name, valid, "site_error", { respond: () => { throw new Error("https://secret.example/PRIVATE"); } }, 1);
     const signal = { aborted: false };
     await failure(name, valid, "canceled", { signal, respond: () => { signal.aborted = true; throw new Error("Abort"); } }, 1);
