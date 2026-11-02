@@ -4153,6 +4153,57 @@
       }
     },
     {
+      "domain": "streeteasy.com",
+      "tool": "get_listing",
+      "file": "domains/streeteasy.com/get_listing.js",
+      "kind": "page",
+      "namespace": "streeteasy.com",
+      "url_patterns": [
+        "https://streeteasy.com/*",
+        "https://*.streeteasy.com/*"
+      ],
+      "status": "verified",
+      "last_verified": "2026-09-30",
+      "notes": "Independent public detail QA passed from home/area pages; gated prices remain null. No account actions.",
+      "provenance": {
+        "qa_agent": "agt_544e3b89630c41ca5e86"
+      }
+    },
+    {
+      "domain": "streeteasy.com",
+      "tool": "prepare_contact",
+      "file": "domains/streeteasy.com/prepare_contact.js",
+      "kind": "page",
+      "namespace": "streeteasy.com",
+      "url_patterns": [
+        "https://streeteasy.com/*",
+        "https://*.streeteasy.com/*"
+      ],
+      "status": "qa_passed",
+      "last_verified": "2026-09-30",
+      "notes": "Independent exact-page question/tour draft QA passed with zero observed side effects. No submission or trusted approval execution.",
+      "provenance": {
+        "qa_agent": "agt_544e3b89630c41ca5e86"
+      }
+    },
+    {
+      "domain": "streeteasy.com",
+      "tool": "search_rentals",
+      "file": "domains/streeteasy.com/search_rentals.js",
+      "kind": "page",
+      "namespace": "streeteasy.com",
+      "url_patterns": [
+        "https://streeteasy.com/*",
+        "https://*.streeteasy.com/*"
+      ],
+      "status": "verified",
+      "last_verified": "2026-09-30",
+      "notes": "Independent active/rented search QA passed from home/other area pages; bounded pagination and exact criteria. No saves or alerts.",
+      "provenance": {
+        "qa_agent": "agt_544e3b89630c41ca5e86"
+      }
+    },
+    {
       "domain": "target.com",
       "tool": "add_to_cart",
       "file": "domains/target.com/add_to_cart.js",
