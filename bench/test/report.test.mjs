@@ -302,6 +302,50 @@ test("tool failures are counted per tool, with the most common errors first", ()
   assert.match(buildReport(run, reportRows), /in scored treatment trials\. 1 invocation\(s\) made through Playwright or the REPL have no recorded result and are not counted\.\n\n\| tool \|[^\n]*\n[^\n]*\n\| fandango\.com\/get_theater_showtimes \| 9 \| 1 \| 1× UI_CHANGED \|/);
 });
 
+test("three-arm reports compare Playwright to each hybrid on matched outcomes", () => {
+  const hybrid = exampleRows().map(r => ({ ...r, attempt: 1, order: r.pair % 2 ? "CAB" : "BCA", turns: 5, tokens_in: 1000, tokens_out: 200 }));
+  const playwright = hybrid.filter(r => r.arm === "control").map(r => ({ ...r, arm: "playwright", duration_ms: r.duration_ms * 2, turns: 10, tokens_in: 2000, tokens_out: 400 }));
+  const run = {
+    run_id: "three", model: "m", playwright: {},
+    intents: { "fandango-theater-showtimes": { intent: { id: "fandango-theater-showtimes", domain: "fandango.com", stage: "inspect" }, sources: [], cap_sec: 600 } },
+  };
+  const rows = [...hybrid, ...playwright];
+  const stats = pairStats(rows, null, "playwright", "control");
+  assert.deepEqual([stats.both, stats.control_median, stats.treatment_median, stats.speedup], [7, 370_000, 185_000, 2]);
+  const report = buildReport(run, rows);
+  assert.match(report, /# A\/B\/C screening/);
+  assert.match(report, /30 trials scored, 0 aborted, 0 left out/);
+  assert.doesNotMatch(report, /pair\(s\) left out/);
+  assert.match(report, /\| fandango-theater-showtimes \| playwright \| 10 \| 7 \| 6:10 \|[^\n]*\| 10 \| 2000 \| 400 \| \$0\.400 \|/);
+  assert.match(report, /\| fandango-theater-showtimes \| playwright → control \| 10 \| 0 \| n\/a \| 7 \| 6:10 → 3:05 \| 2\.0×/);
+  assert.match(report, /\| fandango-theater-showtimes \| playwright → treatment \| 10 \| \+2/);
+  assert.match(report, /order check: treatment faster in 4 of 4 both-correct pairs that ran control first, and in 3 of 3 that ran treatment first/);
+
+  playwright[0].outcome = "aborted";
+  assert.match(buildReport(run, rows), /27 trials scored, 1 aborted, 2 left out/);
+  assert.match(buildReport(run, rows), /1 pair\(s\) left out[^\n]*playwright 1/);
+  playwright[0].outcome = "correct";
+  playwright[0].attempt = 2;
+  assert.match(buildReport(run, rows), /27 trials scored, 0 aborted, 3 left out/);
+  playwright[0].attempt = 1;
+  playwright[0].outcome = "timeout";
+  const timeoutStats = pairStats(rows, null, "playwright", "control");
+  assert.deepEqual([timeoutStats.both, timeoutStats.only_treatment, timeoutStats.speedup], [6, 1, 2]);
+});
+
+test("Playwright comparisons include uncovered domains without pooling their control metrics", () => {
+  const run = { run_id: "uncovered", model: "m", playwright: {}, intents: {
+    lookup: { intent: { id: "lookup", domain: "example.com", stage: "find" }, sources: [], uncovered: true },
+  } };
+  const row = (arm, seconds) => ({ intent: "lookup", arm, pair: 1, adoption: null, outcome: "correct", attempt: 1, duration_ms: seconds * 1000 });
+  const report = buildReport(run, [row("control", 30), row("playwright", 60)]);
+  assert.match(report, /2 trials scored/);
+  assert.match(report, /## Tasks with no tools yet[\s\S]*\| lookup \| 1 \| 1 \| 1 correct \| 0:30/);
+  assert.match(report, /\| lookup \| playwright → control \| 1 \| 0 \| n\/a \| 1 \| 1:00 → 0:30 \| 2\.0×/);
+  assert.doesNotMatch(report, /playwright → treatment/);
+  assert.match(buildReport(run, [row("playwright", 60)]), /0 trials scored, 0 aborted, 1 left out/);
+});
+
 test("steps show where each arm spent its time and which steps treatment covered with a tool", () => {
   const step = (name, seconds, invocations = []) => ({ step: name, ms: seconds * 1000, calls: invocations.length + 1, invocations });
   const rows = exampleRows().map(r => ({

@@ -56,7 +56,7 @@ function startKernelApi(dir, state) {
 function workspace({ domain = { profile: "bench-example", signed_in_check: { tool: "lookup" } }, intent = lookupIntent, sourceTools = ["lookup", "add"] } = {}) {
   const dir = mkdtempSync(join(tmpdir(), "bench-run-"));
   const bench = join(dir, "bench");
-  for (const path of ["run.mjs", "grade.mjs", "lib", "prompts", "allowlist.txt", "mcp.json", "allowlist.local.txt", "mcp.local.json", "schemas"]) cpSync(join(benchDir, path), join(bench, path), { recursive: true });
+  for (const path of ["run.mjs", "grade.mjs", "lib", "prompts", "allowlist.txt", "allowlist.playwright.txt", "mcp.json", "allowlist.local.txt", "mcp.local.json", "schemas"]) cpSync(join(benchDir, path), join(bench, path), { recursive: true });
   symlinkSync(join(benchDir, "node_modules"), join(bench, "node_modules"));
   cpSync(join(benchDir, "../extension/lib/url-pattern.js"), join(dir, "extension/lib/url-pattern.js"));
   mkdirSync(join(bench, "tasks/example.com"), { recursive: true });
@@ -131,6 +131,68 @@ test("a signed-in pair runs the sign-in check in both arms and control starts wi
   const again = run("ok");
   assert.equal(again.status, 0, again.stderr);
   assert.match(again.stdout, /nothing to run/);
+});
+
+test("the Playwright arm uses its own prompt and allowlist, and resumes a whole three-arm block", { timeout: 120_000 }, () => {
+  const { run, rows, log, bench } = workspace();
+  const result = run("three", {}, ["--playwright", "--pairs", "2"]);
+  assert.equal(result.status, 0, result.stderr + result.stdout);
+  const plan = JSON.parse(readFileSync(join(bench, "results/three/run.json"), "utf8"));
+  assert.deepEqual(plan.playwright.allowlist, ["mcp__kernel__execute_playwright_code", "read"]);
+  const names = { A: "control", B: "treatment", C: "playwright" };
+  for (const pair of [1, 2]) assert.deepEqual(rows("three").filter(r => r.pair === pair).map(r => r.arm), [...plan.intents["example-lookup"].orders[pair - 1]].map(letter => names[letter]));
+  for (const row of rows("three")) {
+    assert.equal(row.outcome, "correct");
+    assert.ok(row.start_delay_ms >= START_DELAY_MS);
+    const config = readFileSync(join(bench, "results/three", row.trial_dir, "transcript.jsonl"), "utf8").trim().split("\n").map(line => JSON.parse(line)).find(event => event.type === "stub_config");
+    assert.deepEqual(config.tools, row.arm === "playwright" ? plan.playwright.allowlist : plan.allowlist);
+    assert.equal(config.system_prompt, readFileSync(join(bench, row.arm === "playwright" ? "prompts/system.playwright.md" : "prompts/system.md"), "utf8"));
+    if (row.arm === "playwright") assert.deepEqual(log().filter(entry => entry[1] === row.browser_id).map(entry => entry[0]), ["create", "add", "invoke", "remove"]);
+  }
+  // An interrupted block must rerun all three, rather than reuse earlier arms.
+  const rowsFile = join(bench, "results/three/rows.jsonl");
+  writeFileSync(rowsFile, rows("three").filter(r => r.pair !== 2 || r.arm !== "playwright").map(r => JSON.stringify(r) + "\n").join(""));
+  const resumed = run("three");
+  assert.equal(resumed.status, 0, resumed.stderr + resumed.stdout);
+  assert.deepEqual(rows("three").filter(r => r.pair === 2 && r.attempt === 2).map(r => r.arm).sort(), ["control", "playwright", "treatment"]);
+  assert.match(run("three").stdout, /nothing to run/);
+
+  writeFileSync(join(bench, "prompts/system.playwright.md"), "changed");
+  const changed = run("three");
+  assert.equal(changed.status, 1);
+  assert.match(changed.stderr, /prompts\/system.playwright.md changed since run three/);
+});
+
+test("the third arm is Kernel-only and cannot be added to a resumed two-arm run", { timeout: 120_000 }, () => {
+  const { run, rows } = workspace();
+  const local = run("local-pw", {}, ["--playwright", "--browser", "local"]);
+  assert.equal(local.status, 1);
+  assert.match(local.stderr, /--playwright requires --browser kernel/);
+  assert.equal(run("old").status, 0);
+  assert.match(run("old", {}, ["--playwright"]).stdout, /nothing to run/);
+  assert.equal(rows("old").length, 2);
+});
+
+test("three-arm runs keep no-adoption domains and compare uncovered domains with Playwright", { timeout: 120_000 }, () => {
+  const covered = workspace({ domain: {}, intent: taskIntent });
+  const result = covered.run("no-adoption", {}, ["--playwright", "--adoption", "1"]);
+  assert.equal(result.status, 0, result.stderr + result.stdout);
+  assert.match(result.stdout, /keeping example.com in all three arms despite no adoption/);
+  assert.deepEqual(covered.rows("no-adoption").filter(r => r.pair !== null).map(r => r.arm).sort(), ["control", "playwright", "treatment"]);
+  const uncovered = workspace({ domain: {}, intent: taskIntent, sourceTools: [] });
+  const empty = uncovered.run("uncovered-pw", {}, ["--playwright"]);
+  assert.equal(empty.status, 0, empty.stderr + empty.stdout);
+  assert.deepEqual(uncovered.rows("uncovered-pw").map(r => r.arm).sort(), ["control", "playwright"]);
+  assert.ok(!uncovered.log().some(entry => entry[0] === "add"));
+});
+
+test("a Playwright baseline with stray custom tools aborts", { timeout: 120_000 }, () => {
+  const { run, rows } = workspace();
+  const result = run("stray-pw", { STUB_LIVE_CUSTOM_ARMS: "playwright" }, ["--playwright"]);
+  assert.equal(result.status, 0, result.stderr + result.stdout);
+  const playwright = rows("stray-pw").filter(r => r.arm === "playwright");
+  assert.deepEqual(playwright.map(r => r.outcome), ["aborted", "aborted"]);
+  for (const row of playwright) assert.equal(row.reason, "playwright browser has live custom tools");
 });
 
 test("a control browser that is signed out aborts its trial, and the pair is left incomplete", { timeout: 120_000 }, () => {

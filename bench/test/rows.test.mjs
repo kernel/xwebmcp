@@ -16,6 +16,17 @@ test("rows cut short are skipped and the latest row per trial wins", () => {
   assert.equal(rowKey({ intent: "i", pair: null, adoption: 2, arm: "treatment" }), "i|a2|treatment");
 });
 
+test("third-arm rows cannot leak into a two-arm comparison or mix attempts", () => {
+  const arms = ["control", "treatment", "playwright"];
+  const rows = arms.map(arm => ({ intent: "i", pair: 1, adoption: null, arm, outcome: "correct", attempt: 1 }));
+  assert.deepEqual(completePairRows(rows).map(r => r.arm), ["control", "treatment"]);
+  assert.equal(completePairRows(rows, arms).length, 3);
+  rows[2].outcome = "aborted";
+  assert.deepEqual(completePairRows(rows, arms), []);
+  rows[2] = { ...rows[2], outcome: "correct", attempt: 2 };
+  assert.deepEqual(completePairRows(rows, arms), []);
+});
+
 test("only pairs with both trials scored count", () => {
   const row = (intent, pair, arm, outcome) => ({ intent, pair, adoption: null, arm, outcome });
   const rows = [

@@ -3,7 +3,7 @@ import test from "node:test";
 import { randomInt } from "node:crypto";
 import { setImmediate as tick } from "node:timers/promises";
 import { completePairRows, latestRows, rowKey } from "../lib/rows.mjs";
-import { adoptionVerdicts, balancedOrders, holdNeededSec, nextJob, planJobs, runPairAttempts, runQueue } from "../lib/schedule.mjs";
+import { adoptionVerdicts, balancedOrders, holdNeededSec, nextJob, pairArms, planJobs, runPairAttempts, runQueue } from "../lib/schedule.mjs";
 
 const jobs = (...secs) => secs.map(sec => ({ sec, profile: null }));
 
@@ -48,8 +48,19 @@ test("pair orders split evenly between AB and BA, in random sequence", () => {
     const five = balancedOrders(5, randomInt);
     assert.equal(Math.abs(count(five, "AB") - count(five, "BA")), 1);
   }
-  assert.deepEqual(balancedOrders(1, () => 1), ["BA"]);
-  assert.deepEqual(balancedOrders(3, () => 0), ["BA", "AB", "AB"]);
+  assert.deepEqual(balancedOrders(1, () => 1), ["AB"]);
+  assert.deepEqual(balancedOrders(3, () => 0), ["AB", "BA", "BA"]);
+});
+
+test("three-arm orders balance all permutations and uncovered domains omit treatment", () => {
+  const variants = ["ABC", "ACB", "BAC", "BCA", "CAB", "CBA"];
+  const orders = balancedOrders(12, randomInt, variants);
+  for (const order of variants) assert.equal(orders.filter(o => o === order).length, 2);
+  assert.equal(new Set(balancedOrders(5, randomInt, variants)).size, 5);
+  assert.deepEqual(pairArms({}, "CAB"), ["playwright", "control", "treatment"]);
+  assert.deepEqual(pairArms({ uncovered: true }, "CBA"), ["playwright", "control"]);
+  assert.deepEqual(pairArms({ uncovered: true }, "BA"), ["control"]);
+  assert.deepEqual(balancedOrders(4, randomInt, ["AC", "CA"]).sort(), ["AC", "AC", "CA", "CA"]);
 });
 
 const intentPlan = (id, domain, orders, { stage = "find", fixture = {} } = {}) => ({ intent: { id, domain, stage, fixture }, orders });
@@ -66,6 +77,15 @@ test("pairs are interleaved across intents, and a pair runs again unless both tr
   const { pairJobs, adoptionJobs, stale } = planJobs(plans, 0, latest, "2026-10-07");
   assert.deepEqual(pairJobs.map(j => `${j.intentPlan.intent.id}${j.pair}${j.order}`), ["b1BA", "a2BA", "a3AB"]);
   assert.deepEqual([adoptionJobs, stale], [[], []]);
+});
+
+test("three-arm resume requires every arm from one attempt", () => {
+  const plan = intentPlan("a", "x.com", ["ABC"]);
+  const rows = ["control", "treatment", "playwright"].map(arm => ({ ...pairRow("a", 1, arm, "correct"), attempt: 1 }));
+  assert.equal(planJobs([plan], 0, latestOf(rows), "2026-10-07").pairJobs.length, 0);
+  assert.equal(planJobs([plan], 0, latestOf(rows.slice(0, 2)), "2026-10-07").pairJobs.length, 1);
+  rows[2].attempt = 2;
+  assert.equal(planJobs([plan], 0, latestOf(rows), "2026-10-07").pairJobs.length, 1);
 });
 
 test("treatment-only trials cycle through a domain's non-gap intents, interleave across domains and skip scored ones", () => {
@@ -115,6 +135,15 @@ test("an aborted trial runs its pair again whole, and a complete pair comes from
     assert.equal(pair.length === 2, complete, JSON.stringify(outcomes));
     if (complete) assert.equal(new Set(pair.map(r => r.attempt)).size, 1, JSON.stringify(outcomes));
   }
+});
+
+test("a third arm abort reruns the entire block and never mixes attempts", async () => {
+  const arms = ["control", "treatment", "playwright"];
+  const { rows } = await scriptedPair(arms, ["correct", "correct", "aborted", "correct", "wrong", "correct"]);
+  assert.deepEqual(rows.map(r => r.arm), [...arms, ...arms]);
+  assert.deepEqual(completePairRows(latestRows(rows), arms).map(r => [r.arm, r.attempt]), arms.map(arm => [arm, 2]));
+  const partial = await scriptedPair(arms, ["correct", "correct", "aborted", "correct", null]);
+  assert.deepEqual(completePairRows(latestRows(partial.rows), arms), []);
 });
 
 const recordingJobs = (profiles, log, failing = []) => profiles.map((profile, i) => ({

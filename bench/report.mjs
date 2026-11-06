@@ -49,6 +49,7 @@ export function armStats(rows) {
     tool_median: median(withStatus.map(i => i.duration_ms).filter(d => d !== null)),
     turns: median(rows.map(r => r.turns).filter(t => typeof t === "number")),
     tokens_in: median(rows.map(r => r.tokens_in).filter(t => typeof t === "number")),
+    tokens_out: median(rows.map(r => r.tokens_out).filter(t => typeof t === "number")),
     cost: median(rows.map(r => r.cost_usd).filter(c => typeof c === "number")),
   };
 }
@@ -80,15 +81,15 @@ function agreementStats(pairs, { path, better, tolerance = 0, same }) {
 
 // The speedup and the sign test use the same both-correct pairs, so a treatment answer whose
 // control timed out does not shorten the treatment median.
-export function pairStats(rows, agreement = null) {
+export function pairStats(rows, agreement = null, baseline = "control", candidate = "treatment") {
   const byPair = new Map();
   for (const row of rows.filter(r => r.pair !== null)) {
     const key = `${row.intent}|${row.pair}`;
     byPair.set(key, { ...byPair.get(key), [row.arm]: row });
   }
-  const both = [...byPair.values()].filter(p => p.control?.outcome === "correct" && p.treatment?.outcome === "correct");
+  const paired = [...byPair.values()].map(p => ({ control: p[baseline], treatment: p[candidate] })).filter(p => p.control && p.treatment);
+  const both = paired.filter(p => p.control.outcome === "correct" && p.treatment.outcome === "correct");
   // Pairs correct in one arm only; an exact McNemar test on them uses the pairing.
-  const paired = [...byPair.values()].filter(p => p.control && p.treatment);
   const onlyTreatment = paired.filter(p => p.treatment.outcome === "correct" && p.control.outcome !== "correct").length;
   const onlyControl = paired.filter(p => p.control.outcome === "correct" && p.treatment.outcome !== "correct").length;
   const faster = both.filter(p => p.treatment.duration_ms < p.control.duration_ms).length;
@@ -227,20 +228,48 @@ function prKey(plan) {
   return prs.length ? `${plan.intent.domain} ${prs.join(" + ")}` : `${plan.intent.domain} @ ${plan.sources.map(s => s.ref).join(" + ")}`;
 }
 
+function playwrightTables(run, rows) {
+  const summaries = [];
+  const comparisons = [];
+  for (const { intent, uncovered } of Object.values(run.intents)) {
+    const intentRows = rows.filter(r => r.intent === intent.id);
+    const arms = uncovered ? ["control", "playwright"] : ["control", "treatment", "playwright"];
+    for (const arm of arms) {
+      const stats = armStats(intentRows.filter(r => r.arm === arm));
+      summaries.push([intent.id, arm, stats.n, stats.correct, clock(stats.median), clock(stats.median_all),
+        stats.min_per_correct === null ? na : stats.min_per_correct.toFixed(1), count(stats.turns), count(stats.tokens_in), count(stats.tokens_out), usd(stats.cost)]);
+    }
+    for (const arm of arms.filter(a => a !== "playwright")) {
+      const pairs = pairStats(intentRows, intent.agreement ?? null, "playwright", arm);
+      const agreement = pairs.agreement;
+      const checked = agreement ? (agreement.differed !== undefined ? `${agreement.differed}/${agreement.checked} differ`
+        : `worse answer: playwright ${agreement.control_worse}, ${arm} ${agreement.treatment_worse} (${agreement.checked} checked)`) : "—";
+      comparisons.push([intent.id, `playwright → ${arm}`, intentRows.filter(r => r.arm === arm).length,
+        signed(pairs.only_treatment - pairs.only_control), pValue(pairs.correct_p), pairs.both,
+        `${clock(pairs.control_median)} → ${clock(pairs.treatment_median)}`, ratio(pairs.speedup), pValue(pairs.p), checked]);
+    }
+  }
+  return ["## Playwright-only baseline", "",
+    "control and treatment keep their mixed browser tools. playwright gets only execute_playwright_code and read, without injected tools, and is instructed not to use WebMCP, REPL, computer actions, raw CDP or HTTP clients. Only complete matched blocks from one attempt count below.", "",
+    table(["intent", "arm", "n", "correct", "median correct", "median all", "min/correct", "median turns", "median input tokens", "median output tokens", "median model cost"], summaries), "",
+    "Each comparison uses Playwright as the baseline: positive Δ correct and speedup >1 favor the named hybrid arm. Timing uses only both-correct pairs; correctness includes all scored outcomes. These are exploratory comparisons, without multiple-testing correction.", "",
+    table(["intent", "comparison", "pairs", "Δ correct", "McNemar p", "both correct", "paired median (playwright → hybrid)", "speedup", "sign p", "answer agreement"], comparisons)].join("\n");
+}
+
 export function buildReport(run, allRows, smokeRows = []) {
   const rows = latestRows(allRows);
   const aborted = rows.filter(r => r.outcome === "aborted");
-  const pairRows = completePairRows(rows);
-  // An intent on a domain with no tools runs control alone, so its pairs are single trials.
-  const uncoveredRows = rows.filter(r => run.intents[r.intent]?.uncovered && r.pair !== null && r.outcome !== "aborted");
-  const scored = [...rows.filter(r => r.adoption !== null && r.outcome !== "aborted"), ...pairRows, ...uncoveredRows];
+  const completeRows = completePairRows(rows.filter(r => !run.intents[r.intent]?.uncovered), run.playwright ? ["control", "treatment", "playwright"] : undefined);
+  const pairRows = completeRows.filter(r => r.arm !== "playwright");
+  const uncoveredRows = completePairRows(rows.filter(r => run.intents[r.intent]?.uncovered), run.playwright ? ["control", "playwright"] : ["control"]);
+  const scored = [...rows.filter(r => r.adoption !== null && r.outcome !== "aborted"), ...completeRows, ...uncoveredRows];
   const unpaired = rows.length - aborted.length - scored.length;
   const out = [];
-  out.push(`# A/B screening · ${run.run_id}`);
+  out.push(`# ${run.playwright ? "A/B/C" : "A/B"} screening · ${run.run_id}`);
   out.push("");
   const spend = (list) => `$${sum(list.map(r => r.cost_usd ?? 0)).toFixed(2)}`;
   out.push(`model \`${run.model}\`${run.thinking ? ` (thinking ${run.thinking})` : ""} · agent ${run.agent ?? na}${[run.kernel_cli, run.kernel_sdk].filter(Boolean).map(version => ` · ${version}`).join("")}${run.backend === "local" ? ` · local browsers (${run.browser.chrome_version})` : ""} · started ${run.created_at} · `
-    + `${scored.length} trials scored, ${aborted.length} aborted, ${unpaired} left out because their pair's other trial aborted or has not run · `
+    + `${scored.length} trials scored, ${aborted.length} aborted, ${unpaired} left out because their matched block is incomplete · `
     + `spend ${spend(allRows)} over every recorded attempt${smokeRows.length ? `, plus ${spend(smokeRows)} on smoke gates` : ""}`);
   out.push("");
   out.push("Labels are screening labels, not verdicts. Grading checks shape and rules only, so \"correct\" means plausible and "
@@ -265,9 +294,10 @@ export function buildReport(run, allRows, smokeRows = []) {
     const { intent } = plan;
     if (plan.uncovered) continue;
     const intentRows = pairRows.filter(r => r.intent === intent.id);
-    const leftOut = new Set(rows.filter(r => r.intent === intent.id && r.pair !== null && !intentRows.includes(r)).map(r => r.pair)).size;
+    const leftOut = new Set(rows.filter(r => r.intent === intent.id && r.pair !== null && !completeRows.includes(r)).map(r => r.pair)).size;
     const abortedIn = (arm) => aborted.filter(r => r.intent === intent.id && r.pair !== null && r.arm === arm).length;
-    const abortedText = abortedIn("control") || abortedIn("treatment") ? ` (aborted: control ${abortedIn("control")}, treatment ${abortedIn("treatment")})` : "";
+    const arms = run.playwright ? ["control", "treatment", "playwright"] : ["control", "treatment"];
+    const abortedText = arms.some(arm => abortedIn(arm)) ? ` (aborted: ${arms.map(arm => `${arm} ${abortedIn(arm)}`).join(", ")})` : "";
     const leftOutText = leftOut ? `${leftOut} pair(s) left out because a trial aborted or has not run${abortedText}.` : "";
     if (!intentRows.length) {
       if (leftOut) out.push("", `### ${intentTitle(intent, plan)}`, "", `no complete pairs; ${leftOutText}`);
@@ -324,15 +354,17 @@ export function buildReport(run, allRows, smokeRows = []) {
 
   const uncovered = Object.values(run.intents).filter(plan => plan.uncovered);
   if (uncovered.length) {
-    out.push("", "## Tasks with no tools yet", "", "These domains have no tools, so their tasks ran control alone: where the agent spends its time is where a tool would help.", "");
+    out.push("", "## Tasks with no tools yet", "", `These domains have no tools, so their tasks ran ${run.playwright ? "control and playwright (compared below)" : "control alone"}: where control spends its time is where a tool would help.`, "");
     out.push(table(["intent", "trials", "correct", "outcomes", "median correct", "slowest steps"], uncovered.map(plan => {
-      const intentRows = uncoveredRows.filter(r => r.intent === plan.intent.id);
+      const intentRows = uncoveredRows.filter(r => r.intent === plan.intent.id && r.arm === "control");
       const stats = armStats(intentRows);
       const coverage = stepCoverage(intentRows);
       for (const step of coverage.steps) if (step.control_ms >= BACKLOG_MIN_MS) backlog.push({ intent: plan.intent.id, ...step, treatment_trials: 0 });
       return [plan.intent.id, stats.n, stats.correct, outcomeText(stats.outcomes), clock(stats.median), coverage.steps.slice(0, 3).map(step => `${step.step} ${seconds(step.control_ms)}`).join(", ") || na];
     })));
   }
+
+  if (run.playwright) out.push("", playwrightTables(run, [...completeRows, ...uncoveredRows]));
 
   if (backlog.length) {
     out.push("", "## Tool backlog", "", `Steps where control spent at least ${BACKLOG_MIN_MS / 1000}s per trial and treatment invoked a tool in fewer than half its trials, longest first.`, "");
@@ -377,11 +409,11 @@ export function buildReport(run, allRows, smokeRows = []) {
         + "covers them, so expected Δ is zero; a consistent difference here comes from registration itself, not from a tool that fits the task.");
     }
     const totals = (arm) => {
-      const armRows = pairRows.filter(r => r.arm === arm);
+      const armRows = completeRows.filter(r => r.arm === arm);
       return `${Math.round(sum(armRows.map(r => r.duration_ms ?? 0)) / 60_000)} agent-minutes, ${sum(armRows.map(r => r.turns ?? 0))} turns and ${spend(armRows)}`;
     };
-    out.push("", `over complete pairs: control ${totals("control")}; treatment ${totals("treatment")}.`);
-    const [controlFirst, treatmentFirst] = ["AB", "BA"].map(order => pairStats(pairRows.filter(r => r.order === order)));
+    out.push("", `over complete ${run.playwright ? "blocks" : "pairs"}: control ${totals("control")}; treatment ${totals("treatment")}${run.playwright ? `; playwright ${totals("playwright")}` : ""}.`);
+    const [controlFirst, treatmentFirst] = ["AB", "BA"].map(order => pairStats(pairRows.filter(r => r.order?.replace("C", "") === order)));
     out.push("", `order check: treatment faster in ${controlFirst.faster} of ${controlFirst.both} both-correct pairs that ran control first, `
       + `and in ${treatmentFirst.faster} of ${treatmentFirst.both} that ran treatment first. A large gap means a pair's first trial affects its second.`);
     const skews = startDelaySkews(pairRows);

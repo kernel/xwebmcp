@@ -3,7 +3,7 @@
 // read-only tools registered. See README.md.
 // Usage: node bench/run.mjs --run-id <id> --model <provider/model> [--thinking <level>] [--domain <d>]...
 //          [--intent <id>]... [--pairs <n>] [--adoption <n>] [--slots <n>] [--cap-sec <s>]
-//          [--max-budget-usd <usd>] [--stealth] [--browser kernel|local] [--chrome <path>] [--xwebmcp <path>] [--headless]
+//          [--max-budget-usd <usd>] [--stealth] [--playwright] [--browser kernel|local] [--chrome <path>] [--xwebmcp <path>] [--headless]
 
 import { execFileSync } from "node:child_process";
 import { createHash, randomInt } from "node:crypto";
@@ -51,6 +51,7 @@ const { values: opts } = parseArgs({
     "cap-sec": { type: "string" },
     "max-budget-usd": { type: "string", default: "2" },
     stealth: { type: "boolean", default: false },
+    playwright: { type: "boolean", default: false },
     browser: { type: "string", default: "kernel" },
     chrome: { type: "string" },
     xwebmcp: { type: "string" },
@@ -89,6 +90,7 @@ const log = (message) => console.log(`${new Date().toISOString()} [${runId}] ${m
 // `xwebmcp mcp` plus Chrome DevTools MCP for a local Chromium.
 const EXPERIMENT_FILES = {
   kernel: { allowlist: "allowlist.txt", system_prompt: "prompts/system.md", mcp: "mcp.json" },
+  playwright: { allowlist: "allowlist.playwright.txt", system_prompt: "prompts/system.playwright.md", mcp: "mcp.json" },
   local: { allowlist: "allowlist.local.txt", system_prompt: "prompts/system.local.md", mcp: "mcp.local.json" },
 };
 const experimentFor = (backend) => {
@@ -100,7 +102,20 @@ const experimentFor = (backend) => {
     mcp: JSON.parse(readFileSync(join(benchDir, files.mcp), "utf8")),
   };
 };
+const experimentSettings = (config) => ({
+  allowlist: config.allowlist,
+  system_prompt_sha256: sha256(config.system_prompt),
+  mcp_config: config.mcp,
+});
+function checkExperiment(settings, config) {
+  const { files } = config;
+  if (JSON.stringify(settings.allowlist) !== JSON.stringify(config.allowlist)) fail(`${files.allowlist} changed since run ${runId} started; start a new run`);
+  if (JSON.stringify(settings.mcp_config) !== JSON.stringify(config.mcp)) fail(`${files.mcp} changed since run ${runId} started; start a new run`);
+  if (settings.system_prompt_sha256 !== sha256(config.system_prompt)) fail(`${files.system_prompt} changed since run ${runId} started; start a new run`);
+}
 let experiment = experimentFor(opts.browser);
+let playwrightExperiment = null;
+const armSettings = (plan, arm) => arm === "playwright" ? plan.playwright : plan;
 // Only Kernel browsers need the SDK, so a local run works without bench's npm dependencies.
 const backend = async (name) => {
   if (name === "local") return local;
@@ -123,10 +138,11 @@ async function planRun() {
     plan.backend ??= "kernel";
     experiment = experimentFor(plan.backend);
     browsers = await backend(plan.backend);
-    const { files } = experiment;
-    if (JSON.stringify(plan.allowlist) !== JSON.stringify(experiment.allowlist)) fail(`${files.allowlist} changed since run ${runId} started; start a new run`);
-    if (JSON.stringify(plan.mcp_config) !== JSON.stringify(experiment.mcp)) fail(`${files.mcp} changed since run ${runId} started; start a new run`);
-    if (plan.system_prompt_sha256 !== sha256(experiment.system_prompt)) fail(`${files.system_prompt} changed since run ${runId} started; start a new run`);
+    checkExperiment(plan, experiment);
+    if (plan.playwright) {
+      playwrightExperiment = experimentFor("playwright");
+      checkExperiment(plan.playwright, playwrightExperiment);
+    }
     if (Object.values(plan.intents).some(p => !p.start_patterns)) fail(`run ${runId} was planned before intents became task-first; start a new run`);
     if (plan.backend === "local") {
       const now = useLocal(plan.browser);
@@ -134,11 +150,13 @@ async function planRun() {
         if (now[key] !== plan.browser[key]) log(`warning: run ${runId} started with ${plan.browser[key]}, and this machine has ${now[key]}`);
       }
     }
-    log(`resuming; run.json is authoritative, so selection, model, cap and browser flags are ignored`);
+    log(`resuming; run.json is authoritative, so selection, model, cap, browser and arm flags are ignored`);
     return { plan, fresh: false };
   }
   if (existsSync(rowsFile)) fail(`${rowsFile} exists without run.json; restore run.json or start a new run id`);
   if (!/^[\w.-]+\/\S+$/.test(opts.model ?? "")) fail("--model <provider/model> is required for a new run, for example openai/gpt-5.4 or anthropic/claude-sonnet-5-5");
+  if (opts.playwright && opts.browser !== "kernel") fail("--playwright requires --browser kernel");
+  if (opts.playwright) playwrightExperiment = experimentFor("playwright");
   browsers = await backend(opts.browser);
   const createdAt = new Date();
   let intents = loadIntents(benchDir).map(intent => ({ ...intent, fixture: resolveFixture(intent.fixture, createdAt) }));
@@ -178,9 +196,8 @@ async function planRun() {
     thinking: opts.thinking ?? null,
     max_budget_usd: flags.maxBudgetUsd,
     adoption: flags.adoption,
-    allowlist: experiment.allowlist,
-    system_prompt_sha256: sha256(experiment.system_prompt),
-    mcp_config: experiment.mcp,
+    ...experimentSettings(experiment),
+    playwright: playwrightExperiment ? experimentSettings(playwrightExperiment) : null,
     backend: opts.browser,
     browser: opts.browser === "local" ? useLocal(localOptions()) : { ...browsers.BROWSER, stealth: opts.stealth },
     intents: {},
@@ -199,7 +216,7 @@ async function planRun() {
     const tools = await registeredTools(intent, shas, gitShow(cacheDir));
     if (intent.signed_in_check && !tools.some(tool => tool.name === intent.signed_in_check.tool)) fail(`${intent.id}: the signed_in_check tool ${intent.signed_in_check.tool} would not be registered`);
     if (tools.length) writeFileSync(join(runDir, "sources", `${intent.id}.js`), composeBatch(tools));
-    else log(`${intent.id}: ${intent.domain} has no tools to register, so its trials run control-only`);
+    else log(`${intent.id}: ${intent.domain} has no tools to register, so its trials run ${plan.playwright ? "control and playwright" : "control-only"}`);
     const pairs = flags.pairs ?? intent.pairs;
     plan.intents[intent.id] = {
       intent,
@@ -213,7 +230,7 @@ async function planRun() {
       start_patterns: intent.entry_tool ? tools.find(tool => tool.name === intent.entry_tool).urlPatterns : domainPatterns(intent.domain),
       cap_sec: flags.capSec ?? intent.trial_timeout_sec,
       max_turns: intent.max_turns,
-      orders: balancedOrders(pairs, randomInt),
+      orders: balancedOrders(pairs, randomInt, plan.playwright ? (tools.length ? ["ABC", "ACB", "BAC", "BCA", "CAB", "CBA"] : ["AC", "CA"]) : undefined),
       guard_extension: intent.guard ? writeGuardExtension(join(runDir, "guards", intent.id), intent.guard) : null,
     };
     log(`${intent.id}: ${tools.length} tools at ${shas.map(s => s.slice(0, 7)).join(", ")}`);
@@ -288,8 +305,9 @@ function runnerAlive(pid) {
 
 const mcpFor = (plan, browser) => plan.backend === "local" ? fill(plan.mcp_config, local.browserInfo(browser)) : plan.mcp_config;
 
-function trialArgs(plan, prompt) {
-  return piArgs({ prompt, systemPrompt: experiment.system_prompt, allow: plan.allowlist, model: plan.model, thinking: plan.thinking });
+function trialArgs(plan, prompt, arm = "control") {
+  const config = arm === "playwright" ? playwrightExperiment : experiment;
+  return piArgs({ prompt, systemPrompt: config.system_prompt, allow: armSettings(plan, arm).allowlist, model: plan.model, thinking: plan.thinking });
 }
 
 // Set by the smoke gate when the allowlist has a built-in tool: agents then run in a sandbox, with
@@ -370,21 +388,24 @@ async function smokeGate(plan, probe, signedIn) {
   // The agent's MCP servers are checked against a real browser, treatment unless no selected domain
   // has tools, since a local one's servers connect to that browser.
   const probeArm = probe.uncovered ? "control" : "treatment";
-  const setup = await setUpBrowser(plan, probe, probeArm, "smoke");
-  if (setup.stopped) return;
-  if (setup.error) fail(`${probeArm} setup failed for ${probe.intent.id} after ${setup.attempts} browsers: ${setup.error}`);
-  const configured = await runPi({
-    args: trialArgs(plan, "Reply with the single word READY. Do not call any tools."),
-    agentDir: join(dir, "configured-agent"), mcpConfig: mcpFor(plan, setup.browser), model: plan.model,
-    cwd: dir, capMs: 120_000, transcriptPath: join(dir, "configured.jsonl"), stderrPath: join(dir, "configured.stderr"),
-  });
-  await releaseBrowser(setup.browser);
-  if (stopping) return;
-  const { tools, cost_usd: configuredCost } = summarize(configured.events, plan.allowlist);
-  logSmokeSpend(configuredCost);
-  if (JSON.stringify([...tools].sort()) !== JSON.stringify([...plan.allowlist].sort())) {
-    fail(`the agent's tools differ from ${experiment.files.allowlist}; an MCP server did not connect or a name did not match.\n`
-      + `  tools:     ${tools.join(", ") || "none"}\n  allowlist: ${plan.allowlist.join(", ")}`);
+  for (const arm of [probeArm, ...(plan.playwright ? ["playwright"] : [])]) {
+    const setup = await setUpBrowser(plan, probe, arm, "smoke");
+    if (setup.stopped) return;
+    if (setup.error) fail(`${arm} setup failed for ${probe.intent.id} after ${setup.attempts} browsers: ${setup.error}`);
+    const configured = await runPi({
+      args: trialArgs(plan, "Reply with the single word READY. Do not call any tools.", arm),
+      agentDir: join(dir, `${arm}-agent`), mcpConfig: mcpFor(plan, setup.browser), model: plan.model,
+      cwd: dir, capMs: 120_000, transcriptPath: join(dir, `${arm}.jsonl`), stderrPath: join(dir, `${arm}.stderr`),
+    });
+    await releaseBrowser(setup.browser);
+    if (stopping) return;
+    const { allowlist } = armSettings(plan, arm);
+    const { tools, cost_usd: configuredCost } = summarize(configured.events, allowlist);
+    logSmokeSpend(configuredCost);
+    if (JSON.stringify([...tools].sort()) !== JSON.stringify([...allowlist].sort())) {
+      fail(`the ${arm} agent's tools differ from its allowlist; an MCP server did not connect or a name did not match.\n`
+        + `  tools:     ${tools.join(", ") || "none"}\n  allowlist: ${allowlist.join(", ")}`);
+    }
   }
   for (const intentPlan of signedIn.filter(p => p.profile.name !== probe.profile?.name)) {
     const check = await setUpBrowser(plan, intentPlan, "treatment", "smoke");
@@ -518,16 +539,16 @@ async function setUpBrowser(plan, intentPlan, arm, label) {
         if (!entryLive) throw new Error(`entry tool ${intent.entry_tool} is not live on ${page.url}`);
         if (intent.signed_in_check) await checkSignedIn(browser, intent, live);
       } else if (intent.signed_in_check) {
-        // Control runs the same sign-in check, then removes the tools, so neither arm starts signed out.
+        // Baselines run the same sign-in check, then remove the tools.
         await browsers.addCustomTools(browser, intent.domain, join(runDir, "sources", `${intent.id}.js`));
         await checkSignedIn(browser, intent, await browsers.listLiveTools(browser));
         for (const tool of await browsers.listCustomTools(browser)) await browsers.removeCustomTool(browser, tool.id);
       }
       const before = await browsers.listCustomTools(browser);
-      if (arm === "control" && before.length) throw new Error(`control browser already has ${before.length} custom tool(s) in ${[...new Set(before.map(t => t.namespace))].join(", ")}`);
+      if (arm !== "treatment" && before.length) throw new Error(`${arm} browser already has ${before.length} custom tool(s) in ${[...new Set(before.map(t => t.namespace))].join(", ")}`);
       // The page's own WebMCP tools reach both arms, so control is not tool-free where a site has them.
       const live = await browsers.listLiveTools(browser);
-      if (arm === "control" && live.some(t => t.source?.custom)) throw new Error("control browser has live custom tools");
+      if (arm !== "treatment" && live.some(t => t.source?.custom)) throw new Error(`${arm} browser has live custom tools`);
       const nativeTools = live.filter(t => !t.source?.custom).map(t => t.tool?.name ?? "unknown");
       return { browser, page, loadedAt, before, nativeTools, attempts: attempt };
     } catch (error) {
@@ -596,13 +617,14 @@ async function runTrial(plan, intentPlan, arm, key) {
     const agentStartedAt = Date.now();
     row.agent_started_at = new Date(agentStartedAt).toISOString();
     const agent = await runPi({
-      args: trialArgs(plan, trialPrompt(intent, plan.backend === "kernel" ? browser : null)),
+      args: trialArgs(plan, trialPrompt(intent, plan.backend === "kernel" ? browser : null), arm),
       agentDir: join(dir, "agent"), mcpConfig: mcpFor(plan, browser), model: plan.model,
       cwd: dir, capMs: intentPlan.cap_sec * 1000, maxTurns: intentPlan.max_turns, maxBudgetUsd: plan.max_budget_usd,
       transcriptPath: join(dir, "transcript.jsonl"), stderrPath: join(dir, "stderr.txt"),
     });
     row.duration_ms = agent.durationMs;
-    const summary = summarize(agent.events, plan.allowlist);
+    const { allowlist } = armSettings(plan, arm);
+    const summary = summarize(agent.events, allowlist);
     for (const field of ["turns", "tool_calls", "unknown_tool_errors", "tokens_in", "tokens_out", "cost_usd", "webmcp"]) row[field] = summary[field];
     try {
       row.registration_changed = registrationFingerprint(setup.before) !== registrationFingerprint(await browsers.listCustomTools(browser));
@@ -619,7 +641,7 @@ async function runTrial(plan, intentPlan, arm, key) {
       }
     }
     const verdict = row.submit_blocked ? ["crashed", `tried to submit: the guard blocked ${row.submit_blocked} attempt(s)`]
-      : classifyTrial(summary, agent, plan.allowlist, stderrTail(join(dir, "stderr.txt")));
+      : classifyTrial(summary, agent, allowlist, stderrTail(join(dir, "stderr.txt")), arm);
     if (verdict) {
       [row.outcome, row.reason] = verdict;
     } else {
@@ -664,10 +686,12 @@ async function runAdoption(plan, intentPlan, adoption) {
 }
 
 async function runPair(plan, intentPlan, pair, order) {
+  const previous = readRows(rowsFile).filter(row => row.intent === intentPlan.intent.id && row.pair === pair);
+  const lastAttempt = Math.max(0, ...previous.map(row => row.attempt ?? 0));
   await runPairAttempts(
     pairArms(intentPlan, order),
     JOB_ATTEMPTS,
-    (arm, attempt) => runTrial(plan, intentPlan, arm, { pair, order, attempt }),
+    (arm, attempt) => runTrial(plan, intentPlan, arm, { pair, order, attempt: lastAttempt + attempt }),
     () => log(`${intentPlan.intent.id} p${pair}: a trial aborted; running the pair again`),
   );
 }
@@ -720,6 +744,10 @@ async function main() {
       if (!verdict.trials) continue;
       log(`adoption ${verdict.domain}: ${verdict.adopted} of ${verdict.trials} treatment-only trials invoked a tool, ${verdict.aborted} aborted`);
       if (!verdict.stop) continue;
+      if (plan.playwright) {
+        log(`keeping ${verdict.domain} in all three arms despite no adoption`);
+        continue;
+      }
       stopped.add(verdict.domain);
       const why = verdict.aborted === verdict.trials ? "every treatment-only trial aborted, so its treatment setup does not work" : "no treatment-only trial invoked a tool";
       log(`stopping ${verdict.domain}: ${why}. Fix it, then start a new run; a resume keeps these results.`);

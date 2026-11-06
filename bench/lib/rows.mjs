@@ -23,8 +23,11 @@ export function latestRows(rows) {
 
 export const isScored = (row) => row !== undefined && row.outcome !== "aborted";
 
-// A pair with an aborted or missing arm drops out of both arms.
-export function completePairRows(rows) {
+// Keep only complete matched blocks from the same attempt.
+export function completePairRows(rows, arms = ["control", "treatment"]) {
   const byPair = Map.groupBy(rows.filter(row => row.pair !== null), row => `${row.intent}|${row.pair}`);
-  return [...byPair.values()].filter(pair => ["control", "treatment"].every(arm => isScored(pair.find(row => row.arm === arm)))).flat();
+  return [...byPair.values()].flatMap(pair => {
+    const selected = arms.map(arm => pair.find(row => row.arm === arm));
+    return selected.every(isScored) && new Set(selected.map(row => row.attempt)).size === 1 ? selected : [];
+  });
 }

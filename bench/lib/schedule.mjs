@@ -1,5 +1,5 @@
 import { pastDates } from "./intents.mjs";
-import { isScored, rowKey } from "./rows.mjs";
+import { completePairRows, isScored, rowKey } from "./rows.mjs";
 
 // Upper bound on the remaining jobs' duration, for sizing the VM hold. Retries are not included.
 export function holdNeededSec(stages, slots) {
@@ -61,10 +61,14 @@ export function adoptionVerdicts(domains, rows) {
   });
 }
 
-// Half control first (AB), half treatment first (BA), shuffled.
-export function balancedOrders(pairs, randomInt) {
-  const orders = Array.from({ length: pairs }, (_, i) => (i % 2 ? "BA" : "AB"));
-  if (pairs % 2 && randomInt(2)) orders[pairs - 1] = "BA";
+// Balance the permutations before shuffling the sequence; randomize the remainder too.
+export function balancedOrders(pairs, randomInt, variants = ["AB", "BA"]) {
+  const choices = [...variants];
+  for (let i = choices.length - 1; i > 0; i--) {
+    const j = randomInt(i + 1);
+    [choices[i], choices[j]] = [choices[j], choices[i]];
+  }
+  const orders = Array.from({ length: pairs }, (_, i) => choices[i % choices.length]);
   for (let i = pairs - 1; i > 0; i--) {
     const j = randomInt(i + 1);
     [orders[i], orders[j]] = [orders[j], orders[i]];
@@ -72,8 +76,8 @@ export function balancedOrders(pairs, randomInt) {
   return orders;
 }
 
-// A pair's trials in run order. An intent on a domain with no tools runs control alone.
-export const pairArms = (intentPlan, order) => intentPlan.uncovered ? ["control"] : order === "AB" ? ["control", "treatment"] : ["treatment", "control"];
+// A = control, B = treatment, C = Playwright-only. Uncovered domains omit treatment.
+export const pairArms = (intentPlan, order) => [...order].filter(letter => !intentPlan.uncovered || letter !== "B").map(letter => ({ A: "control", B: "treatment", C: "playwright" })[letter]);
 
 // Treatment-only trials interleave across domains, so one broken domain cannot hit the abort
 // limit before its adoption verdict stops it. Pairs interleave across intents to spread site drift.
@@ -95,7 +99,10 @@ export function planJobs(intentPlans, adoption, latest, today) {
   for (let pair = 1; pair <= maxPairs; pair++) {
     for (const intentPlan of intentPlans) {
       const order = intentPlan.orders[pair - 1];
-      if (!order || pairArms(intentPlan, order).every(arm => scored(intentPlan, { pair }, arm))) continue;
+      if (!order) continue;
+      const arms = pairArms(intentPlan, order);
+      const rows = arms.map(arm => latest.get(rowKey({ intent: intentPlan.intent.id, pair, arm }))).filter(Boolean);
+      if (completePairRows(rows, arms).length === arms.length) continue;
       pairJobs.push({ intentPlan, pair, order });
     }
   }
@@ -111,7 +118,7 @@ export function planJobs(intentPlans, adoption, latest, today) {
   return { adoptionJobs, pairJobs, stale };
 }
 
-// If either trial aborts the whole pair runs again, so a complete pair comes from one attempt.
+// If a trial aborts the whole block runs again, so comparisons come from one attempt.
 export async function runPairAttempts(arms, attempts, runArm, onRetry = () => {}) {
   for (let attempt = 1; attempt <= attempts; attempt++) {
     let outcome;

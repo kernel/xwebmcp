@@ -258,12 +258,13 @@ export function summarize(events, allow) {
 // A trial's outcome, or null when the answer should be graded. pi waits only 10s for MCP servers,
 // so a slow connection starts the agent without its tools: that trial is aborted, as is one that
 // ended on a provider error pi gave up retrying.
-export function classifyTrial(summary, agent, allow, stderr) {
+export function classifyTrial(summary, agent, allow, stderr, arm = "control") {
   const same = (tools) => JSON.stringify([...tools].sort()) === JSON.stringify([...allow].sort());
   const { final } = summary;
   if (!same(summary.tools)) return ["aborted", `the agent started with tools [${summary.tools.join(", ")}], not the allowlist`];
   if (!same(summary.tools_final)) return ["aborted", `the agent's tools changed during the trial to [${summary.tools_final.join(", ")}]`];
   if (summary.outside_allowlist.length) return ["crashed", `successful call outside the allowlist: ${summary.outside_allowlist.join(", ")}`];
+  if (arm === "playwright" && (summary.webmcp?.listed || summary.webmcp?.adopted)) return ["crashed", "Playwright-only trial used WebMCP"];
   if (agent.limit === "no cost reported") return ["crashed", "pi reported a cost that is not a number, so the spend cap could not apply"];
   if (agent.limit) return ["timeout", agent.limit];
   if (!summary.settled || !final) return ["crashed", `agent exited ${agent.exitCode} without settling: ${stderr}`.slice(0, 300)];

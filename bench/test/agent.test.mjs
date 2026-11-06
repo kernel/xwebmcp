@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { chmodSync, mkdtempSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { delimiter, join } from "node:path";
 import test from "node:test";
@@ -143,6 +143,26 @@ test("trial outcomes follow the documented order", () => {
   assert.equal(classify({ final: { stopReason: "error", errorMessage: "429" } }), "crashed");
   assert.equal(classify({ final: { stopReason: "error", errorMessage: "429" }, retries_exhausted: { attempts: 3, error: "429" } }), "aborted");
   assert.equal(classify({ retries_exhausted: { attempts: 3, error: "429" } }, { limit: "time cap" }), "timeout");
+});
+
+test("Playwright-only calls to WebMCP through code fail the arm check", () => {
+  const playwrightAllow = ["mcp__kernel__execute_playwright_code", "read"];
+  for (const code of ["return await webmcp.listTools()", "return await webmcp.invokeTool(ref, {})"]) {
+    const summary = summarize([
+      { type: "message_end", message: { role: "system", toolsAdded: playwrightAllow.map(name => ({ name })) } },
+      assistant([call("1", "mcp__kernel__execute_playwright_code", { code })]),
+    ], playwrightAllow);
+    assert.deepEqual(classifyTrial(summary, {}, playwrightAllow, "", "playwright"), ["crashed", "Playwright-only trial used WebMCP"]);
+  }
+});
+
+test("Playwright-only keeps the same safety rules without the WebMCP-first instruction", () => {
+  const prompt = (name) => readFileSync(new URL(`../prompts/${name}`, import.meta.url), "utf8");
+  const control = prompt("system.md");
+  const playwright = prompt("system.playwright.md");
+  assert.equal(playwright.slice(playwright.indexOf("Rules:")), control.slice(control.indexOf("Rules:")));
+  assert.match(playwright, /Do not discover or invoke WebMCP tools/);
+  assert.doesNotMatch(playwright, /list the browser.s WebMCP tools/);
 });
 
 test("a provider error pi gave up retrying is reported, and a retry that recovered is not", () => {

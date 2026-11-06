@@ -1,0 +1,2 @@
+mcp__kernel__execute_playwright_code
+read

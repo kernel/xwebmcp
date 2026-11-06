@@ -22,6 +22,32 @@ to instruct their agents. It never mentions xwebmcp or whether tools are registe
 agent lists, finds nothing and falls back. A treatment trial that never invokes a tool still
 counts as treatment; adoption is reported next to every treatment number.
 
+### Playwright-only baseline
+
+Add `--playwright` to a new Kernel run for three arms:
+
+| arm | browser tools | injected xwebmcp tools |
+|---|---|---|
+| `control` | Playwright, browser REPL, computer actions, native WebMCP | none |
+| `treatment` | same as control | the domain's selected tools |
+| `playwright` | `execute_playwright_code` only | none |
+
+All three keep the same model, thinking level, browser settings, task, grader and trial limits.
+The third arm also gets pi's `read` for truncated tool output, but has its own system prompt in
+`prompts/system.playwright.md` and allowlist in `allowlist.playwright.txt`. Its prompt requires
+Playwright DOM/UI actions and forbids WebMCP (including native tools and calls through code), REPL,
+computer actions, raw CDP and direct HTTP clients. Detected WebMCP listing or invocation in its
+transcript makes the trial `crashed`. This is a tool-availability and prompt restriction, not a
+sandbox for arbitrary Playwright code; the transcript check does not prove the absence of every
+possible indirect call.
+
+For example, add `--playwright` to the service command below. `--pairs 5` then means five matched
+blocks of three trials per covered intent, not five trials total. All six arm permutations are
+balanced and shuffled; domains with no tools run control and playwright in balanced order instead.
+Adding the third arm increases the required hold and trial budget. Existing runs keep their saved
+arms on resume, even if `--playwright` is passed; start a new run to change the comparison.
+`--browser local` does not support this arm.
+
 ## Layout
 
 ```
@@ -78,19 +104,21 @@ node bench/report.mjs bench/results/pilot-1 > pilot-1.md
 | `--run-id` | names `results/<run_id>/`; rerunning the same id resumes |
 | `--model`, `--thinking` | `provider/model` and thinking level |
 | `--domain`, `--intent` | select intents (repeatable); default is all |
-| `--pairs` | pairs per intent; default is the intent's `pairs` |
+| `--pairs` | matched repetitions per intent (two arms, or three with `--playwright`); default is the intent's `pairs` |
 | `--adoption` | treatment-only trials per domain before any pairs |
 | `--slots` | jobs run in parallel |
 | `--cap-sec` | per-trial time cap; default is the intent's `trial_timeout_sec` |
 | `--max-budget-usd` | per-trial spend cap, default 2 |
 | `--stealth` | stealth browsers for every trial |
+| `--playwright` | add a Playwright-only third arm to a new Kernel run |
 
 Once the smoke gate passes, a new run writes `run.json`: intents with fixtures resolved, schemas,
 tool commits, the MCP config, the pi and Kernel SDK versions, and each pair's order (`AB` runs
 control first, `BA` treatment first, split evenly within each intent and shuffled). On resume
 `run.json` is authoritative, and the run refuses to continue if the allowlist, `mcp.json`, the
-system prompt or the pi version changed. A resume reruns aborted or missing treatment-only
-trials and every pair without a scored trial in both arms. One runner per run id.
+system prompt or the pi version changed, including the third arm's files when enabled. A resume
+reruns aborted or missing treatment-only trials and every matched block without scored trials from
+one attempt in all its arms. One runner per run id.
 
 ### Local browsers
 
@@ -140,8 +168,10 @@ Before any trial, stopping on the first failure:
 ### Stages
 
 With `--adoption N`, each domain first gets N treatment-only trials, cycling through its non-gap
-intents. A domain where none of them invoked a tool, or all aborted, gets no pairs. Pairs follow,
-interleaved across intents; a pair's two trials run back to back in one slot.
+intents. A domain where none of them invoked a tool, or all aborted, gets no pairs in a two-arm
+run. With `--playwright`, those domains stay in all three arms so adoption does not select which
+tasks reach the baseline comparison. Matched blocks follow, interleaved across intents; each
+block's trials run back to back in one slot.
 
 ### A trial
 
@@ -166,9 +196,9 @@ interleaved across intents; a pair's two trials run back to back in one slot.
 A setup failure gets up to three browsers before the trial is `aborted` (a signed-out profile
 gets one). A trial is also `aborted` when the agent started without exactly the allowlisted tools
 (pi waits only 10s for MCP servers), when pi gave up retrying a provider error, or on a runner
-error. An aborted trial reruns its whole pair once; a pair still incomplete is left out of both
-arms. The run stops after max(6, 2 × slots) aborts in a row. Ctrl-C or SIGTERM stops the agents
-and deletes every browser.
+error. An aborted trial reruns its whole matched block once; a block still incomplete is left out
+of every arm. Reports never combine trials from different attempts. The run stops after
+max(6, 2 × slots) aborts in a row. Ctrl-C or SIGTERM stops the agents and deletes every browser.
 
 ## Intents
 
@@ -404,6 +434,13 @@ smoke gates, the label histogram (noting labels from `shape only` intents), medi
 arm's agent-minutes, turns and spend over complete pairs, the pooled gap-intent placebo, an order
 check, a start delay check, a native tools check (control trials that started with the page's own
 WebMCP tools), cap calibration, and how many labels to expect from noise.
+
+With `--playwright`, the report adds a three-arm metric table and matched comparisons of
+playwright → control and playwright → treatment, including correctness deltas, both-correct
+latency medians and speedups, agreement checks, input/output tokens and model cost. The existing
+xwebmcp labels, adoption checks and tool backlog still compare control with treatment. Comparison
+tables use only complete matched blocks; a missing or aborted third arm excludes that block from all
+three arms. The extra comparisons are exploratory, without multiple-testing correction.
 
 ## Not built yet
 
