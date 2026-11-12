@@ -54,13 +54,16 @@ export function fillRules(rules = [], fixture = {}) {
   });
 }
 
-const relativeDate = (value) => value !== null && typeof value === "object" && Number.isInteger(value.days_from_start);
+// How a site shows a date without its year, such as "Dec 10", for rules on its page text.
+const MONTH_DAY = new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", timeZone: "UTC" });
+const relativeDate = (value) => value !== null && typeof value === "object" && Number.isInteger(value.days_from_start)
+  && (value.format === undefined || value.format === "month_day");
 
 export function resolveFixture(fixture = {}, start) {
   return Object.fromEntries(Object.entries(fixture).map(([key, value]) => {
     if (!relativeDate(value)) return [key, value];
     const date = new Date(start.getTime() + value.days_from_start * 86_400_000);
-    return [key, date.toISOString().slice(0, 10)];
+    return [key, value.format === "month_day" ? MONTH_DAY.format(date) : date.toISOString().slice(0, 10)];
   }));
 }
 
@@ -138,7 +141,7 @@ export function validateIntent(intent, benchDir) {
   need(agreement === undefined || (typeof agreement?.path === "string" && (best(agreement) || same(agreement))),
     "agreement needs a path and either better (lower or higher) with an optional tolerance of at least 0, or same: true");
   for (const [key, value] of Object.entries(intent.fixture ?? {})) {
-    need(typeof value === "string" || typeof value === "number" || relativeDate(value), `fixture ${key} must be a string, a number or {"days_from_start": n}`);
+    need(typeof value === "string" || typeof value === "number" || relativeDate(value), `fixture ${key} must be a string, a number or {"days_from_start": n}, optionally with "format": "month_day"`);
   }
   const text = JSON.stringify([intent.prompt, intent.rules ?? [], check?.rules ?? []]);
   for (const [, key] of text.matchAll(/\{\{(\w+)\}\}/g)) need(Object.hasOwn(intent.fixture ?? {}, key), `{{${key}}} has no fixture value`);

@@ -220,8 +220,10 @@ and deletes every browser.
   gone resolves to `refs/pull/<pr>/head`, and the report marks it. Leave all three off a new
   intent: it describes the user's task, and the report shows which tools it used.
 - `{{name}}` in `prompt` and `rules` comes from `fixture`. `{"days_from_start": n}` resolves to a
-  date when the run starts. A fixed date that has passed skips the intent, or stops the run if
-  the intent was selected by name; move dates tied to a film's run forward before each run.
+  date when the run starts, and with `"format": "month_day"` to that date as a page shows it
+  without its year (`Dec 10`), for a check's rule on the page text. A fixed date that has passed
+  skips the intent, or stops the run if the intent was selected by name; move dates tied to a
+  film's run forward before each run.
 - `rules` apply to every value a path resolves to (`[]` steps into arrays): `equals` and `in`
   (case- and whitespace-insensitive), `matches` (case-insensitive regex; fixture values match
   literally), `range`, `count`, `time` (`HH:MM`), `date` (`YYYY-MM-DD`) and `unique`.

@@ -71,6 +71,8 @@ test("validateIntent reports missing fixture values and bad rules", () => {
   assert.ok(problems.some(p => p.includes("{{ip}} has no fixture value")));
   assert.ok(problems.some(p => p.startsWith("rule ")));
   assert.deepEqual(validateIntent({ ...intent, fixture: { ip: { days_from_start: 3 } } }, benchDir), []);
+  assert.deepEqual(validateIntent({ ...intent, fixture: { ip: { days_from_start: 3, format: "month_day" } } }, benchDir), []);
+  assert.ok(validateIntent({ ...intent, fixture: { ip: { days_from_start: 3, format: "long" } } }, benchDir).some(p => p.startsWith("fixture ip must be")));
   assert.ok(validateIntent({ ...intent, fixture: { ip: { days: 3 } } }, benchDir).some(p => p.startsWith("fixture ip")));
   assert.deepEqual(validateIntent({ ...intent, rules: [{ path: "ip", matches: "^{{ip}}$" }] }, benchDir), []);
   assert.ok(validateIntent({ ...intent, rules: [{ path: "ip", matches: "(" }] }, benchDir).some(p => p.endsWith("needs a valid regex")));
@@ -116,6 +118,9 @@ test("relative fixture dates resolve from the run's start", () => {
   const start = new Date("2026-10-07T23:30:00Z");
   assert.deepEqual(resolveFixture({ date: { days_from_start: 28 }, zip: "10001", n: 3 }, start), { date: "2026-11-04", zip: "10001", n: 3 });
   assert.deepEqual(resolveFixture(undefined, start), {});
+  // A date as the site's page shows it, for a rule on the page's text.
+  assert.deepEqual(resolveFixture({ date: { days_from_start: 28 }, shown: { days_from_start: 28, format: "month_day" } }, start), { date: "2026-11-04", shown: "Nov 4" });
+  assert.deepEqual(resolveFixture({ shown: { days_from_start: 64, format: "month_day" } }, start), { shown: "Dec 10" });
 });
 
 test("URL patterns match the way Kernel's do", () => {

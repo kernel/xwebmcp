@@ -1,5 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+import { loadSchema, resolveFixture } from "../lib/intents.mjs";
 import { extractValues, stepName, stepTimeline } from "../lib/page.mjs";
 import { gradeAnswer } from "../grade.mjs";
 
@@ -65,4 +68,26 @@ test("a failing rule on long page text shows only the start of it", () => {
   const schema = { type: "object" };
   const grade = gradeAnswer(intent, schema, "```json\n{}\n```", { output: { url: "u", text: "x".repeat(50_000) } });
   assert.ok(grade.problems[0].length < 200, grade.problems[0].length);
+});
+
+test("the Delta cart check needs the flight in the cart to be on the date the task asked for", () => {
+  const benchDir = fileURLToPath(new URL("..", import.meta.url));
+  const original = JSON.parse(readFileSync(new URL("../tasks/delta.com/delta-cart-main-classic.json", import.meta.url), "utf8"));
+  // Trip Summary's visible text for DL 750 on Dec 10, as delta.com showed it.
+  const summary = "ATL - MCO\nOne Way\nDec 10\n1 Passenger\nModify\nTrip Summary\nATL\nto\nMCO\nChange Flight\nJourney date\nThu, Dec 10\nFlight number\nDL750\n"
+    + "Departure time\n6:05am - \nArrival time\n7:40am\nFlight duration\nNonstop, 1h 35m\nCabin class\nMain Classic\nChangeable / Nonrefundable\n"
+    + "Trip Total\nCurrency Calculator\n1 Passenger\nFlights\n$123.72\nTaxes, Fees & Charges\n$24.68\nAmount Due\nView Details\n$148.40 USD";
+  const grade = (start, text = summary) => {
+    const intent = { ...original, fixture: resolveFixture(original.fixture, new Date(start)) };
+    const page = { output: { url: "https://www.delta.com/purchase/flights/trip-summary", title: "Trip Summary", text, fields: {}, missing: [], invalid: [] } };
+    return gradeAnswer(intent, loadSchema(benchDir, intent), '{"flight_numbers": ["DL 750"], "amount_due": 148.4}', page);
+  };
+  assert.equal(grade("2026-11-12T16:00:00Z").outcome, "correct");
+  assert.equal(grade("2026-11-12T16:00:00Z", summary.replace("Journey date\nThu, Dec 10", "Journey date Thu, Dec 10, 2026")).outcome, "correct");
+  // The task asked for Dec 11 or Dec 1, and the cart holds a flight on Dec 10.
+  for (const start of ["2026-11-13T16:00:00Z", "2026-11-03T16:00:00Z"]) {
+    const wrong = grade(start);
+    assert.equal(wrong.outcome, "wrong");
+    assert.match(wrong.problems.join(), /does not match \/Journey date/);
+  }
 });

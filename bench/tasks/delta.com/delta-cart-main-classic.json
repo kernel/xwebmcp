@@ -6,7 +6,8 @@
   "fixture": {
     "origin": "Atlanta (ATL)",
     "destination": "Orlando (MCO)",
-    "date": {"days_from_start": 28}
+    "date": {"days_from_start": 28},
+    "date_shown": {"days_from_start": 28, "format": "month_day"}
   },
   "start_url": "https://www.delta.com/",
   "steps": [
@@ -25,6 +26,7 @@
     "rules": [
       {"path": "url", "matches": "^https://www\\.delta\\.com/(purchase/flights|completepurchase)/trip-summary"},
       {"path": "text", "matches": "\\bATL - MCO\\s*\\n\\s*One Way\\b"},
+      {"path": "text", "matches": "Journey date\\s*[^\\n]*\\b{{date_shown}}\\b"},
       {"path": "extracted.cabin", "equals": "Main Classic"},
       {"path": "extracted.passengers", "equals": 1},
       {"path": "extracted.amount_due", "range": [1, 3000]}
