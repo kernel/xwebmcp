@@ -4804,6 +4804,176 @@
       }
     },
     {
+      "domain": "vividseats.com",
+      "tool": "get_event",
+      "file": "domains/vividseats.com/get_event.js",
+      "kind": "page",
+      "namespace": "vividseats.com",
+      "url_patterns": [
+        "https://www.vividseats.com/*"
+      ],
+      "url_patterns_reason": "Narrowed to www.vividseats.com, the Vivid Seats marketplace: the tools call its same-origin event and listing endpoints and refuse other origins; other vividseats.com hosts are separate products.",
+      "status": "verified",
+      "last_verified": "2026-10-29",
+      "notes": "Public event details from an exact event URL: identity, stated local date/time, time zone, lineup, seat restrictions and venue address; TBD date/time stay null. Reads the server-rendered page without following redirects; no navigation, hold or account read. Independent QA 2026-10-26 of earlier source, including the shared lib/vividseats-records.js: domain tests, scratch tests and mutants on the redirect and 404 paths pass. Live in a plain Kernel browser started on /blog: a Knicks home game at Madison Square Garden returned schema-valid details, unknown event ids returned not_found (the site redirects them to /404), and a checkout path and another host were rejected before any request. Limitation: a real event reached through a non-canonical slug also redirects, to its canonical URL, and is reported as not_found; all 20 event URLs search_events returned during QA loaded directly. Bench 2026-10-26 (plain browsers, low thinking, 5 pairs per intent: the cheapest-pair intent and a temporary one asking for the cheapest pair's section, row and total): all 7 get_event calls by Haiku 5.5 returned ok; GPT-6 Luna did not call it. QA 2026-10-29 of the source at ccdd9b6, run by the Hypeship conversation that also wrote the listings tools and accepted as this tool's QA by the PR owner: plain Kernel browsers started on the vividseats.com home page, a Knicks game at Madison Square Garden and Hamilton at the Richard Rodgers Theatre, with every listings result checked against the page read separately (rows, 'N listings' count, URL). get_event returned both events, matching search_events; an unknown production id returned not_found.",
+      "provenance": {
+        "qa_agent": "agt_f009472a350a7a79a637"
+      }
+    },
+    {
+      "domain": "vividseats.com",
+      "tool": "get_venue",
+      "file": "domains/vividseats.com/get_venue.js",
+      "kind": "page",
+      "namespace": "vividseats.com",
+      "url_patterns": [
+        "https://www.vividseats.com/*"
+      ],
+      "url_patterns_reason": "Narrowed to www.vividseats.com, the Vivid Seats marketplace: the tools call its same-origin event and listing endpoints and refuse other origins; other vividseats.com hosts are separate products.",
+      "status": "verified",
+      "last_verified": "2026-10-29",
+      "notes": "Public venue address, coordinates, time zone and catalog capacity from an exact venue URL; capacity is not configuration-specific availability. Reads the server-rendered page without following redirects; no navigation or account reads. Independent QA 2026-10-26 of earlier source, including the shared lib/vividseats-records.js: domain tests, scratch tests and mutants on the redirect and 404 paths pass. Live in a plain Kernel browser started on /blog: Madison Square Garden returned schema-valid details with capacity, an unknown venue id returned not_found (the site redirects it to /404), and a non-numeric id was rejected before any request. Limitation: a real venue reached through a non-canonical slug redirects to its canonical URL and is reported as not_found. Not called by either model in the bench. QA 2026-10-29 of the source at ccdd9b6, run by the Hypeship conversation that also wrote the listings tools and accepted as this tool's QA by the PR owner: plain Kernel browsers started on the vividseats.com home page, a Knicks game at Madison Square Garden and Hamilton at the Richard Rodgers Theatre, with every listings result checked against the page read separately (rows, 'N listings' count, URL). get_venue returned Madison Square Garden and the Richard Rodgers Theatre from get_event's venue URLs; an unknown venue id returned not_found.",
+      "provenance": {
+        "qa_agent": "agt_f009472a350a7a79a637"
+      }
+    },
+    {
+      "domain": "vividseats.com",
+      "tool": "list_listings",
+      "file": "domains/vividseats.com/list_listings.js",
+      "kind": "page",
+      "namespace": "vividseats.com",
+      "url_patterns": [
+        "https://www.vividseats.com/*"
+      ],
+      "url_patterns_reason": "Narrowed to www.vividseats.com, the Vivid Seats marketplace: the tools call its same-origin event and listing endpoints and refuse other origins; other vividseats.com hosts are separate products.",
+      "status": "verified",
+      "last_verified": "2026-10-29",
+      "notes": "Read-only snapshot of the event page's listings panel as the page shows it: loaded rows in page order (listing id, section, row, ticket count, price per ticket, Fees Incl. mark, deal score, badges), the panel's own 'N listings' count, the page's quantity from its quantity control (the page can restore a remembered quantity without its URL), and its price, deal score, perks, zone and sort settings from the query it keeps in step with those controls. Never clicks, hovers, scrolls, filters or sorts; offset/limit bound serialization only. Reports the panel's 'Sorry, there was an error' (bot protection until the page has had mouse input) as not_ready with the recovery (mouse input, then open_event_listings again), and other pages as wrong_page. Replaces get_ticket_offers, which filtered, sorted and grouped the listings response itself. QA 2026-10-29 of the source at ccdd9b6, run by the Hypeship conversation that also wrote the listings tools and accepted as this tool's QA by the PR owner: plain Kernel browsers started on the vividseats.com home page, a Knicks game at Madison Square Garden and Hamilton at the Richard Rodgers Theatre, with every listings result checked against the page read separately (rows, 'N listings' count, URL). list_listings returned wrong_page on the home page and, on the event page, the same rows and count as the page without moving the tab; offset returned rows loaded by show_more_listings. Earlier on 2026-10-29 the panel showed its error after a sort change mid-session, which list_listings and the action tools report as not_ready.",
+      "provenance": {
+        "qa_agent": "agt_f009472a350a7a79a637"
+      }
+    },
+    {
+      "domain": "vividseats.com",
+      "tool": "open_event_listings",
+      "file": "domains/vividseats.com/open_event_listings.js",
+      "kind": "cdp",
+      "namespace": "vividseats.com",
+      "url_patterns": [
+        "https://www.vividseats.com/*"
+      ],
+      "url_patterns_reason": "Narrowed to www.vividseats.com, the Vivid Seats marketplace: the tools call its same-origin event and listing endpoints and refuse other origins; other vividseats.com hosts are separate products.",
+      "status": "verified",
+      "last_verified": "2026-10-29",
+      "notes": "kind cdp: navigates the tab to an event page and returns the listings panel read from that page in the same call (rows, count, the page's settings and next actions). With quantity it opens the page's own address for that quantity (?quantity=N), which the page applies itself so its 'How many tickets?' prompt does not appear. Detects the new document with a marker set in the old one, then reads as list_listings does; an event address that ends elsewhere (Vivid Seats redirects unknown events) is not_found. Vivid Seats' bot protection holds the panel's listings back until the page has had mouse input; the tool moves the mouse through the browser's input pipeline (Input.dispatchMouseEvent) before and after opening the page and, while the panel shows its error, moves it again, waits until the protection's bm_s cookie has settled and a growing minimum time (3, 5, 7 s) has passed, and reloads, within a 52-second budget, before returning not_ready. Changes no site or account state. QA 2026-10-29 of the source at ccdd9b6, run by the Hypeship conversation that also wrote the listings tools and accepted as this tool's QA by the PR owner: plain Kernel browsers started on the vividseats.com home page, a Knicks game at Madison Square Garden and Hamilton at the Richard Rodgers Theatre, with every listings result checked against the page read separately (rows, 'N listings' count, URL). With quantity 2 the tab moved to ?quantity=2 and the rows and count (700 and 27) matched the page; an unknown event returned not_found and a non-Vivid Seats URL invalid_input; without a quantity the page reused the 2 picked earlier, which the tool reported. 12 fresh browsers calling it from the home page all returned listings (about 12 s typical, 31 s at most). Bench 2026-10-29 on 0e09dc0 (same tool apart from the zone read): GPT-6 Luna 5/5 vs control 1/5 and Haiku 5.5 5/5, a median of 4 turns.",
+      "provenance": {
+        "qa_agent": "agt_f009472a350a7a79a637"
+      }
+    },
+    {
+      "domain": "vividseats.com",
+      "tool": "prepare_ticket_selection",
+      "file": "domains/vividseats.com/prepare_ticket_selection.js",
+      "kind": "page",
+      "namespace": "vividseats.com",
+      "url_patterns": [
+        "https://www.vividseats.com/*"
+      ],
+      "url_patterns_reason": "Narrowed to www.vividseats.com, the Vivid Seats marketplace: the tools call its same-origin event and listing endpoints and refuse other origins; other vividseats.com hosts are separate products.",
+      "status": "verified",
+      "last_verified": "2026-10-29",
+      "notes": "GET-only quote preparation: revalidates exact event/listing/quantity/price/group and fee basis, and returns an ordinary event-page handoff; no site selection, checkout, hold, approval or payment execution. A redirecting event page is not_found without being followed; the listings proxy's generic 404 is a site_error. Independent QA 2026-10-26 of earlier source, including the shared lib/vividseats-records.js: domain tests, scratch tests and mutants pass, including a check that every listed price prepares at the same price and total. Live in plain Kernel browsers: the cheapest 2-ticket offer for a Knicks home game prepared from /blog with the listing, section, row, price, total and price group the listings reported, inventory_reserved and site_selection_made false; it also prepared from the event page. A changed price group was stale_selection, an unknown event not_found, a three-decimal price and confirmed=true rejected before any request; while the listings endpoint was not answering the call was site_error as designed. The live price-change, quantity and missing-listing outcomes were not reached because listings were unavailable at the time; they are fixture-tested. In the bench Haiku 5.5 called it twice with inputs it rejected (invalid_input) and GPT-6 Luna did not call it. QA 2026-10-29 of the source at ccdd9b6, run by the Hypeship conversation that also wrote the listings tools and accepted as this tool's QA by the PR owner: plain Kernel browsers started on the vividseats.com home page, a Knicks game at Madison Square Garden and Hamilton at the Richard Rodgers Theatre, with every listings result checked against the page read separately (rows, 'N listings' count, URL). The input list_listings offers in available_actions prepared at the row's price (Hamilton $712 x 2 = $1,424 estimated total, inventory_reserved false); a changed price returned stale_selection, an unknown listing listing_unavailable and an extra confirmed field invalid_input.",
+      "provenance": {
+        "qa_agent": "agt_f009472a350a7a79a637"
+      }
+    },
+    {
+      "domain": "vividseats.com",
+      "tool": "search_events",
+      "file": "domains/vividseats.com/search_events.js",
+      "kind": "page",
+      "namespace": "vividseats.com",
+      "url_patterns": [
+        "https://www.vividseats.com/*"
+      ],
+      "url_patterns_reason": "Narrowed to www.vividseats.com, the Vivid Seats marketplace: the tools call its same-origin event and listing endpoints and refuse other origins; other vividseats.com hosts are separate products.",
+      "status": "verified",
+      "last_verified": "2026-10-29",
+      "notes": "Public read-only events by text, location, local dates, category, performer, venue and price ceiling, within the site's 1000-match window. Search-index prices/counts can be stale; radius is approximate and warns; USD only. When the JSON search answers its early-session generic 404, a first-page, date-sorted text search without a place reads the site's search or performer page instead, and returns site_error rather than results without a requested date, category, performer, venue or price filter, except a category every event on that page is already in; when that page holds fewer events than page_size, its count becomes page_size, and the warning names the page 2 call that continues it: the same text search with exclude_parking false after a search page, or performer_id without the text after a performer page, whose list is that performer's events. Independent live QA passed on 2026-09-30 for earlier source. Author live check on 2026-10-22 early in a Kernel browser session: 'Hamilton' at page_size 50 returned the performer page's 25 events with page_size 25 and 32 pages. On 2026-10-23 the search pages for 'comedy night' and 'halloween party' held the same events, order and total as the JSON search by date without the parking exclusion. Independent QA 2026-10-26 in a plain Kernel browser started on /blog: \"Knicks\" with a date range returned events with ids, local dates, listing counts and price bounds; page 0 and a latitude without a longitude were rejected before any request; a range in the past returned an error. In the bench, the JSON search answered its generic 404 in about half of 56 invocations and the tool fell back to the site's search page or reported it. QA 2026-10-29 of the source at ccdd9b6, run by the Hypeship conversation that also wrote the listings tools and accepted as this tool's QA by the PR owner: plain Kernel browsers started on the vividseats.com home page, a Knicks game at Madison Square Garden and Hamilton at the Richard Rodgers Theatre, with every listings result checked against the page read separately (rows, 'N listings' count, URL). search_events succeeded on its first call before any page input (performer-page fallback, category held), for 'New York Knicks' (sports) and 'Hamilton' (theater) with a 60-day range; with dates the site's own performer page also returned two Date TBD playoff games, marked date_tbd. A nonsense query returned no_results and reversed dates invalid_input.",
+      "provenance": {
+        "qa_agent": "agt_f009472a350a7a79a637"
+      }
+    },
+    {
+      "domain": "vividseats.com",
+      "tool": "set_listing_filters",
+      "file": "domains/vividseats.com/set_listing_filters.js",
+      "kind": "cdp",
+      "namespace": "vividseats.com",
+      "url_patterns": [
+        "https://www.vividseats.com/*"
+      ],
+      "url_patterns_reason": "Narrowed to www.vividseats.com, the Vivid Seats marketplace: the tools call its same-origin event and listing endpoints and refuse other origins; other vividseats.com hosts are separate products.",
+      "status": "verified",
+      "last_verified": "2026-10-29",
+      "notes": "Sets the page's own filters through its controls: zone buttons, the price menu's minimum and maximum boxes (Enter) and deal-score buttons, and the perks menu's checkboxes, or presses Clear; zone names must be ones the page offers and are checked before anything is pressed. Confirms each change by the page's query and a changed listings panel. Changes only what the page shows. CDP exception (kind cdp, body run in the page through js()): every change through these controls makes the site's analytics navigate cross-origin child iframes (Facebook pixel, DoubleClick) while the page itself only updates its URL in place; the page runtime then drops a page tool's result with \"Cannot return tool results after a cross-origin navigation\" although the change was made (observed live on 2026-10-29 for sort, zone and Clear). set_ticket_quantity and show_more_listings trigger no such frame and stay page tools. QA 2026-10-29 of the source at ccdd9b6, run by the Hypeship conversation that also wrote the listings tools and accepted as this tool's QA by the PR owner: plain Kernel browsers started on the vividseats.com home page, a Knicks game at Madison Square Garden and Hamilton at the Richard Rodgers Theatre, with every listings result checked against the page read separately (rows, 'N listings' count, URL). A zone with a maximum price and deal score 7+ matched the page's rows, count and selectedGroups; min price with Super Seller on the Knicks page matched; Hamilton's page has no Perks menu and the call was unavailable without a press; an unknown zone was refused before any press; Clear reset every filter and Clear with another filter was invalid_input. The first run found the zone buttons had lost role=checkbox and are rendered twice (zones read empty; one zone pressed twice, undoing it), fixed in ccdd9b6.",
+      "provenance": {
+        "qa_agent": "agt_f009472a350a7a79a637"
+      }
+    },
+    {
+      "domain": "vividseats.com",
+      "tool": "set_listing_sort",
+      "file": "domains/vividseats.com/set_listing_sort.js",
+      "kind": "cdp",
+      "namespace": "vividseats.com",
+      "url_patterns": [
+        "https://www.vividseats.com/*"
+      ],
+      "url_patterns_reason": "Narrowed to www.vividseats.com, the Vivid Seats marketplace: the tools call its same-origin event and listing endpoints and refuse other origins; other vividseats.com hosts are separate products.",
+      "status": "verified",
+      "last_verified": "2026-10-29",
+      "notes": "Opens the page's hover sort menu once and chooses Lowest Price, Highest Price, Deal Score, Row Number or Section Number, confirming by the page's sort query and a changed listings panel. The page re-requests its listings for a new sort, so the panel can show its bot-protection error afterwards (not_ready). Changes only what the page shows. CDP exception (kind cdp, body run in the page through js()): every change through these controls makes the site's analytics navigate cross-origin child iframes (Facebook pixel, DoubleClick) while the page itself only updates its URL in place; the page runtime then drops a page tool's result with \"Cannot return tool results after a cross-origin navigation\" although the change was made (observed live on 2026-10-29 for sort, zone and Clear). set_ticket_quantity and show_more_listings trigger no such frame and stay page tools. QA 2026-10-29 of the source at ccdd9b6, run by the Hypeship conversation that also wrote the listings tools and accepted as this tool's QA by the PR owner: plain Kernel browsers started on the vividseats.com home page, a Knicks game at Madison Square Garden and Hamilton at the Richard Rodgers Theatre, with every listings result checked against the page read separately (rows, 'N listings' count, URL). Deal Score, Highest Price, Section Number and back to Lowest Price each matched the page's rows and URL; a repeat was unchanged without a press and an unknown sort was rejected.",
+      "provenance": {
+        "qa_agent": "agt_f009472a350a7a79a637"
+      }
+    },
+    {
+      "domain": "vividseats.com",
+      "tool": "set_ticket_quantity",
+      "file": "domains/vividseats.com/set_ticket_quantity.js",
+      "kind": "page",
+      "namespace": "vividseats.com",
+      "url_patterns": [
+        "https://www.vividseats.com/*"
+      ],
+      "url_patterns_reason": "Narrowed to www.vividseats.com, the Vivid Seats marketplace: the tools call its same-origin event and listing endpoints and refuse other origins; other vividseats.com hosts are separate products.",
+      "status": "verified",
+      "last_verified": "2026-10-29",
+      "notes": "Answers the page's 'How many tickets?' prompt, or chooses a quantity in its hover-opened quantity menu, once, then confirms by the page's quantity query and a changed listings panel and returns it. The page then lists only rows that can be bought together in that quantity. Changes only what the page shows. QA 2026-10-29 of the source at ccdd9b6, run by the Hypeship conversation that also wrote the listings tools and accepted as this tool's QA by the PR owner: plain Kernel browsers started on the vividseats.com home page, a Knicks game at Madison Square Garden and Hamilton at the Richard Rodgers Theatre, with every listings result checked against the page read separately (rows, 'N listings' count, URL). Returned wrong_page on the home page without pressing; 2 to 4 to 2 each matched the page's rows, count and URL, a repeat was unchanged without a press, and it set 2 after Clear.",
+      "provenance": {
+        "qa_agent": "agt_f009472a350a7a79a637"
+      }
+    },
+    {
+      "domain": "vividseats.com",
+      "tool": "show_more_listings",
+      "file": "domains/vividseats.com/show_more_listings.js",
+      "kind": "page",
+      "namespace": "vividseats.com",
+      "url_patterns": [
+        "https://www.vividseats.com/*"
+      ],
+      "url_patterns_reason": "Narrowed to www.vividseats.com, the Vivid Seats marketplace: the tools call its same-origin event and listing endpoints and refuse other origins; other vividseats.com hosts are separate products.",
+      "status": "verified",
+      "last_verified": "2026-10-29",
+      "notes": "Scrolls the listings panel's end marker into view once so the page loads its next rows, and returns the newly loaded rows; unavailable when the panel has loaded every listing it announces. Changes only what the page shows. QA 2026-10-29 of the source at ccdd9b6, run by the Hypeship conversation that also wrote the listings tools and accepted as this tool's QA by the PR owner: plain Kernel browsers started on the vividseats.com home page, a Knicks game at Madison Square Garden and Hamilton at the Richard Rodgers Theatre, with every listings result checked against the page read separately (rows, 'N listings' count, URL). Loaded the next rows on both events; the page's loaded row count matched the tool's rendered_rows.",
+      "provenance": {
+        "qa_agent": "agt_f009472a350a7a79a637"
+      }
+    },
+    {
       "domain": "youtube.com",
       "tool": "get_channel",
       "file": "domains/youtube.com/get_channel.js",
