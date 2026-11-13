@@ -18,8 +18,8 @@ jobs:
       run:
         working-directory: js
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v4.4.0
+      - uses: actions/setup-node@v4.4.0
         with:
           # Trusted publishing needs npm >= 11.5.1, which ships with Node 24.
           node-version: 24
