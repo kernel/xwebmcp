@@ -4921,6 +4921,54 @@
       "provenance": {
         "qa_agent": "agt_3f71312cec739d8ec9a3"
       }
+    },
+    {
+      "domain": "zillow.com",
+      "tool": "get_listing",
+      "file": "domains/zillow.com/get_listing.js",
+      "kind": "page",
+      "namespace": "zillow.com",
+      "url_patterns": [
+        "https://www.zillow.com/*"
+      ],
+      "status": "verified",
+      "last_verified": "2026-09-30",
+      "notes": "Independent final-source QA and live read from homepage passed. One anonymous HTML GET for core facts; no navigation, personalized state or contact action.",
+      "provenance": {
+        "qa_agent": "agt_d1036a3d605c8c4f3d7b"
+      }
+    },
+    {
+      "domain": "zillow.com",
+      "tool": "prepare_contact",
+      "file": "domains/zillow.com/prepare_contact.js",
+      "kind": "page",
+      "namespace": "zillow.com",
+      "url_patterns": [
+        "https://www.zillow.com/*"
+      ],
+      "status": "qa_passed",
+      "last_verified": "2026-09-30",
+      "notes": "Independent final-source QA and Kernel live preview passed. Requires exact property and open dialog; reads rendered consent and previews supplied details without filling, sending or approval. Local independent testing is fixture-only.",
+      "provenance": {
+        "qa_agent": "agt_d1036a3d605c8c4f3d7b"
+      }
+    },
+    {
+      "domain": "zillow.com",
+      "tool": "search",
+      "file": "domains/zillow.com/search.js",
+      "kind": "page",
+      "namespace": "zillow.com",
+      "url_patterns": [
+        "https://www.zillow.com/*"
+      ],
+      "status": "verified",
+      "last_verified": "2026-09-30",
+      "notes": "Independent final-source QA and live search from a property page passed. Exact US city/state sale-only; at most two anonymous HTML GETs, one page, 41 rows and no retries.",
+      "provenance": {
+        "qa_agent": "agt_d1036a3d605c8c4f3d7b"
+      }
     }
   ]
 }
