@@ -198,7 +198,7 @@
       if (formOpen) steps.push("An Availability form is open. Its Save and Delete are the user's; to change entries use add_availability or delete_availability, and leave the form with " + go("#calendar") + " (needs discard_form: true).");
       if (pageType === "calendar" || pageType === "item") {
         if (has("list_availability")) steps.push("Use list_availability({ start_date, end_date }) to read days off (unavailable or limited) in a range.");
-        if (has("add_availability")) steps.push("Use add_availability({ start_date, end_date, availability: \"unavailable\", reason: \"Vacation\" }) to add days off; then " + go("#calendar") + " reloads the calendar to show it.");
+        if (has("add_availability")) steps.push("Use add_availability({ start_date, end_date, availability: \"unavailable\", reason: \"Vacation\" }) to add days off; then " + (has("navigate_to_page") ? "navigate_to_page({ url: \"#calendar\", reload: true })" : "reload the page") + " shows it on the calendar.");
       } else if (pageType === "login" || pageType === "website" || pageType === "app_landing" || pageType === "other") {
         steps.push("Signed in. Days off (Availability) live on the calendar: " + go("#calendar") + ".");
       } else {
@@ -207,7 +207,7 @@
       if (account && account.is_athlete === false) steps.push("This is not an athlete account; the availability tools write only to the signed-in athlete's own calendar.");
     }
     if (cookieBanner.settings_open) steps.push("The Cookie Settings panel is open; the user finishes or closes it there.");
-    else if (cookieBanner.visible) steps.push("The cookie-consent banner is showing" + (cookieBanner.blocks_page ? " and its overlay blocks clicks on the page" : "") + ". Ask the user whether to Reject All or Accept Cookies, then " + (has("answer_cookie_banner") ? "answer_cookie_banner({ choice: \"reject_all\" })" : "press that button") + " with their choice; never choose for them.");
+    else if (cookieBanner.visible) steps.push("The cookie-consent banner is showing" + (cookieBanner.blocks_page ? " and its overlay blocks clicks on the page" : "") + ". " + (has("answer_cookie_banner") ? "answer_cookie_banner({}) closes it with Reject All (only strictly necessary cookies); pass choice: \"accept_all\" only if the user wants it." : "Its Reject All button closes it with only strictly necessary cookies.") );
 
     return {
       status: "ok",

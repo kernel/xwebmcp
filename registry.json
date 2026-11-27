@@ -4334,7 +4334,7 @@
       ],
       "status": "draft",
       "last_verified": null,
-      "notes": "Sends the Availability form's own save request (POST fitness/v1/athletes/{id}/availability; body captured from the form on 2026-11-27 with the request stubbed) once, after reading the range: an identical entry is already_exists and other overlaps are refused unless allow_overlap. Confirms by reading the entry back. Uses the API rather than the form's date pickers; the calendar needs a reload to show the entry. Builder live run 2026-11-27: overlap, already_exists, wrong_account and invalid input wrote nothing. Live creation not yet exercised."
+      "notes": "Sends the Availability form's own save request (POST fitness/v1/athletes/{id}/availability; body captured from the form on 2026-11-27 with the request stubbed) once, after reading the range: an identical entry is already_exists and other overlaps are refused unless allow_overlap. Confirms by reading the entry back. Uses the API rather than the form's date pickers; the calendar needs a reload to show the entry. Builder live run 2026-11-27: overlap, already_exists, wrong_account and invalid input wrote nothing. Builder live run 2026-11-27: created three adjacent entries on the real account (two unavailable, one limited with bike), each read back with its id and shown on the calendar after navigate_to_page({ url: \"#calendar\", reload: true }); switching routes without a reload showed the cached calendar without them."
     },
     {
       "domain": "trainingpeaks.com",
@@ -4348,7 +4348,7 @@
       ],
       "status": "draft",
       "last_verified": null,
-      "notes": "Presses the OneTrust banner's own Reject All or Accept Cookies button once, for an explicit choice passed by the caller (never a default), and confirms the banner closed and the OptanonAlertBoxClosed cookie was set; reports the recorded consent groups. Does nothing without a banner and refuses while Cookie Settings is open. Page kind: the click does not navigate. Fixture-tested; live run pending."
+      "notes": "Presses the OneTrust banner's own Reject All or Accept Cookies button once, with choice defaulting to reject_all (only strictly necessary cookies), and confirms the banner closed and the OptanonAlertBoxClosed cookie was set; reports the recorded consent groups. Does nothing without a banner and refuses while Cookie Settings is open. Page kind: the click does not navigate. Builder live run 2026-11-27: {} pressed Reject All; the banner and its page-wide overlay closed and only C0001 (strictly necessary) was recorded, and get_page_context then reported answered true. accept_all and settings_open are fixture-tested only."
     },
     {
       "domain": "trainingpeaks.com",
@@ -4418,7 +4418,7 @@
       ],
       "status": "draft",
       "last_verified": null,
-      "notes": "Schedules a same-tab navigation to an app.trainingpeaks.com route 100 ms after returning: a hash change within the app, a full load from other trainingpeaks.com hosts, or a reload when the address is already open (used to show availability changes, since the calendar does not refresh after an API write). Refuses other hosts, protocol-relative and javascript: URLs, and leaving an open Availability form unless discard_form is true. Builder live run 2026-11-27: form_open refusal, discard to #calendar, reload of #calendar, #dashboard, and refused login-host and protocol-relative URLs."
+      "notes": "Schedules a same-tab navigation to an app.trainingpeaks.com route 100 ms after returning: a hash change within the app, a full load from other trainingpeaks.com hosts, or a reload when the address is already open or reload is true (the app shows cached calendar data after switching routes, observed live 2026-11-27, so availability changes need reload: true). Refuses other hosts, protocol-relative and javascript: URLs, and leaving an open Availability form unless discard_form is true. Builder live run 2026-11-27: form_open refusal, discard to #calendar, reload of #calendar, #dashboard, and refused login-host and protocol-relative URLs."
     },
     {
       "domain": "ubereats.com",

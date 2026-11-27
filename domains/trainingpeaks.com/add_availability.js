@@ -4,7 +4,7 @@
   tool: {
     name: "add_availability",
     title: "Add availability (days off)",
-    description: "Add one Availability entry to the signed-in athlete's TrainingPeaks calendar, as the calendar's day menu > Add... > Availability form does: a date range (inclusive) when the athlete is unable to train, or has limited availability (optionally naming the sports still possible), with an optional reason (Vacation, Work, Sick, Injury, Appointment, Other) and description. Use it for vacations and other days off; coaches and TrainingPeaks plans see it on the calendar. Runs on https://app.trainingpeaks.com while signed in (use login first). Before writing it reads the range: an identical entry returns already_exists without writing, and any other overlapping entry is refused with overlap unless allow_overlap is true. It sends the form's save request once and never retries; on outcome_unknown call list_availability before trying again. Success is confirmed by reading the entry back. The calendar on screen does not refresh by itself: reload it with navigate_to_page({ url: \"#calendar\" }). Remove an entry with delete_availability.",
+    description: "Add one Availability entry to the signed-in athlete's TrainingPeaks calendar, as the calendar's day menu > Add... > Availability form does: a date range (inclusive) when the athlete is unable to train, or has limited availability (optionally naming the sports still possible), with an optional reason (Vacation, Work, Sick, Injury, Appointment, Other) and description. Use it for vacations and other days off; coaches and TrainingPeaks plans see it on the calendar. Runs on https://app.trainingpeaks.com while signed in (use login first). Before writing it reads the range: an identical entry returns already_exists without writing, and any other overlapping entry is refused with overlap unless allow_overlap is true. It sends the form's save request once and never retries; on outcome_unknown call list_availability before trying again. Success is confirmed by reading the entry back. The calendar on screen does not refresh by itself: reload it with navigate_to_page({ url: \"#calendar\", reload: true }). Remove an entry with delete_availability.",
     inputSchema: {
       type: "object", additionalProperties: false, required: ["start_date", "end_date"],
       properties: {
@@ -133,7 +133,7 @@
     let existing;
     try { existing = await tpListAvailability(session, start, end); } catch (error) { return fail("site_error", String(error && error.message || error).slice(0, 300)); }
     const identical = existing.find(sameEntry);
-    const next = "Reload the calendar with navigate_to_page({ url: \"#calendar\" }) to see it on screen.";
+    const next = "Reload the calendar with navigate_to_page({ url: \"#calendar\", reload: true }) to see it on screen.";
     if (identical) return { status: "already_exists", account: session.user.username, entry: identical, next_step: "Nothing was written. " + next };
     if (existing.length && input.allow_overlap !== true) return fail("overlap", "Other availability entries already overlap these dates; nothing was written. Change or delete them, or pass allow_overlap: true.", existing);
     // The exact request the Availability form's Save button sends.

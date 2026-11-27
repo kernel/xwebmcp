@@ -167,6 +167,10 @@ test("navigate_to_page schedules app routes after returning, reloads the open ad
   const again = page("navigate_to_page");
   assert.equal((await again.run({ url: "#calendar" })).reload, true);
   assert.deepEqual(again.scheduled, [{ reload: true }]);
+  const fresh = page("navigate_to_page", { href: "https://app.trainingpeaks.com/#dashboard" });
+  assert.equal((await fresh.run({ url: "#calendar", reload: true })).reload, true);
+  assert.deepEqual(fresh.scheduled, [{ hash: "#calendar" }, { reload: true }], "switching routes alone shows cached calendar data");
+  assert.equal((await page("navigate_to_page").run({ url: "#calendar", reload: "yes" })).error_kind, "invalid_input");
   const fromLogin = page("navigate_to_page", { href: "https://home.trainingpeaks.com/login" });
   await fromLogin.run({ url: "https://app.trainingpeaks.com/#calendar" });
   assert.deepEqual(fromLogin.scheduled, [{ assign: "https://app.trainingpeaks.com/#calendar" }]);
@@ -199,7 +203,7 @@ test("get_page_context reports the page, account, calendar range, open item and 
   assert.deepEqual(result.available_tools, [...tools, "answer_cookie_banner"].sort());
   assert.ok(result.suggested_next_steps.some(s => s.includes("discard_form")));
   assert.deepEqual(result.cookie_banner, { visible: true, settings_open: false, blocks_page: true, answered: false });
-  assert.ok(result.suggested_next_steps.some(s => s.includes("answer_cookie_banner") && s.includes("never choose for them")));
+  assert.ok(result.suggested_next_steps.some(s => s.includes("answer_cookie_banner({}) closes it with Reject All")));
   const login = await page("get_page_context", { href: "https://home.trainingpeaks.com/login", api: site({ signedIn: false }), tools: ["login"] }).run({});
   assert.deepEqual([login.page_type, login.signed_in, login.account], ["login", false, null]);
   assert.deepEqual(login.cookie_banner, { visible: false, settings_open: false, blocks_page: false, answered: false });
@@ -234,10 +238,13 @@ test("answer_cookie_banner presses only the button for the user's choice and rep
   }
 });
 
-test("answer_cookie_banner requires an explicit choice and presses nothing without a banner or with Cookie Settings open", async () => {
+test("answer_cookie_banner defaults to Reject All and presses nothing for bad input, without a banner or with Cookie Settings open", async () => {
   const { p, state } = bannerPage();
-  for (const input of [{}, { choice: "close" }, { choice: "reject_all", extra: 1 }]) assert.equal((await p.run(input)).error_kind, "invalid_input");
+  for (const input of [{ choice: "close" }, { choice: "reject_all", extra: 1 }]) assert.equal((await p.run(input)).error_kind, "invalid_input");
   assert.deepEqual(state.pressed, []);
+  const byDefault = bannerPage();
+  assert.equal((await byDefault.p.run({})).choice, "reject_all");
+  assert.deepEqual(byDefault.state.pressed, ["reject"]);
   const none = bannerPage({ shown: false });
   const absent = await none.p.run({ choice: "reject_all" });
   assert.deepEqual([absent.status, absent.choice], ["no_banner", null]);

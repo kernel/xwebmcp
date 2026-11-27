@@ -4,7 +4,7 @@
   tool: {
     name: "delete_availability",
     title: "Delete an availability entry",
-    description: "Delete one Availability entry from the signed-in athlete's TrainingPeaks calendar, as the entry's Delete button does after its \"This cannot be undone\" confirmation. Pass the availability_id from list_availability or add_availability together with the entry's start_date, which must still match: this guards against deleting a different entry. Runs on https://app.trainingpeaks.com while signed in. It sends the delete once and confirms the entry is gone by reading the calendar's availability again; on outcome_unknown call list_availability before trying again. Cannot be undone: re-create the entry with add_availability if needed. The calendar on screen does not refresh by itself: reload it with navigate_to_page({ url: \"#calendar\" }).",
+    description: "Delete one Availability entry from the signed-in athlete's TrainingPeaks calendar, as the entry's Delete button does after its \"This cannot be undone\" confirmation. Pass the availability_id from list_availability or add_availability together with the entry's start_date, which must still match: this guards against deleting a different entry. Runs on https://app.trainingpeaks.com while signed in. It sends the delete once and confirms the entry is gone by reading the calendar's availability again; on outcome_unknown call list_availability before trying again. Cannot be undone: re-create the entry with add_availability if needed. The calendar on screen does not refresh by itself: reload it with navigate_to_page({ url: \"#calendar\", reload: true }).",
     inputSchema: {
       type: "object", additionalProperties: false, required: ["availability_id", "start_date"],
       properties: {
@@ -115,6 +115,6 @@
       return fail("outcome_unknown", "TrainingPeaks accepted the delete but availability could not be read again; call list_availability.");
     }
     if (after.some(e => e.availability_id === id)) return fail("outcome_unknown", "TrainingPeaks accepted the delete but the entry is still listed; call list_availability.");
-    return { status: "deleted", account: session.user.username, deleted_entry: entry, next_step: "Reload the calendar with navigate_to_page({ url: \"#calendar\" }) to see the change on screen." };
+    return { status: "deleted", account: session.user.username, deleted_entry: entry, next_step: "Reload the calendar with navigate_to_page({ url: \"#calendar\", reload: true }) to see the change on screen." };
   }
 }]
