@@ -15,7 +15,7 @@ import (
 )
 
 // FlagEntry is the chrome://flags entry that enables document.modelContext
-// (feature WebMCPTesting). The @1 suffix selects "Enabled".
+// (feature WebMCP; WebMCPTesting before Chrome 157). The @1 suffix selects "Enabled".
 const FlagEntry = "enable-webmcp-testing@1"
 
 // Browser is a supported Chrome flavor.

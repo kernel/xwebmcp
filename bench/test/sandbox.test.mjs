@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { delimiter, dirname, join } from "node:path";
 import test from "node:test";
@@ -73,7 +73,9 @@ test("the paths checked hidden are the bench and the home entries that hold no m
   assert.deepEqual(paths.sort(), [join(home, ".config"), join(home, "xwebmcp"), join(home, "xwebmcp/bench")]);
 });
 
-const bwrapWorks = spawnSync("bwrap", [...sandboxArgs(tmpdir()), "--", "true"]).status === 0;
+// The host's bwrap: the sandboxed runs below pass an environment whose PATH holds only pi's and Node's directories.
+const bwrap = (process.env.PATH ?? "").split(delimiter).map(dir => join(dir, "bwrap")).find(path => existsSync(path)) ?? "bwrap";
+const bwrapWorks = spawnSync(bwrap, [...sandboxArgs(tmpdir()), "--", "true"]).status === 0;
 
 test("in a real sandbox the agent sees its directory, not other files or processes", { skip: !bwrapWorks && "bwrap cannot create a sandbox here" }, () => {
   const other = mkdtempSync(join(tmpdir(), "bench-other-"));
@@ -91,8 +93,8 @@ console.log(JSON.stringify({
   const dir = sandboxDir({ mcpServers: { kernel: {} } });
   try {
     const { mounts, command } = piLauncher(env);
-    const result = spawnSync("bwrap", [...sandboxArgs(dir, mounts), "--", ...command], { encoding: "utf8", env: sandboxEnv("openai/gpt", dir, env) });
-    assert.equal(result.status, 0, result.stderr);
+    const result = spawnSync(bwrap, [...sandboxArgs(dir, mounts), "--", ...command], { encoding: "utf8", env: sandboxEnv("openai/gpt", dir, env) });
+    assert.equal(result.status, 0, `status ${result.status}, signal ${result.signal}, error ${result.error?.message}, stderr: ${result.stderr}`);
     const seen = JSON.parse(result.stdout);
     assert.deepEqual({ ...seen, processes: seen.processes <= 3 }, { secret: false, etc: false, prefix: false, mcp: { mcpServers: { kernel: {} } }, processes: true, cwd: dir });
     assert.match(dir, /^\/tmp\/xwebmcp-agent-/);
