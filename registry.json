@@ -1879,6 +1879,142 @@
       }
     },
     {
+      "domain": "fandango.com",
+      "tool": "get_movie",
+      "file": "domains/fandango.com/get_movie.js",
+      "kind": "page",
+      "namespace": "fandango.com",
+      "url_patterns": [
+        "https://www.fandango.com/*"
+      ],
+      "status": "verified",
+      "last_verified": "2026-10-26",
+      "notes": "Final-source independent QA passed; live Kernel and extension invocations from public HOME succeeded on 2026-09-30. Public movie overview, bounded cast and scores; no media playback or account access. Independent QA 2026-10-26 in a plain Kernel browser started on /gift-cards: a movie id from search returned title, runtime, rating and cast; an unknown id returned not_found and a malformed id was rejected before any request.",
+      "provenance": {
+        "qa_agent": "agt_ea022951bd81089d9b39"
+      },
+      "url_patterns_reason": "Narrowed to www.fandango.com, the public movie-ticket product and its /napi endpoints: athome, store and redeem hosts are unrelated streaming and retail products, and tickets.fandango.com is the transaction host these tools stop before entering."
+    },
+    {
+      "domain": "fandango.com",
+      "tool": "get_movie_showtimes",
+      "file": "domains/fandango.com/get_movie_showtimes.js",
+      "kind": "page",
+      "namespace": "fandango.com",
+      "url_patterns": [
+        "https://www.fandango.com/*"
+      ],
+      "status": "verified",
+      "last_verified": "2026-10-26",
+      "notes": "Page tool: one movie's showtimes on one local date at theaters near a required US ZIP, grouped by theater and format, with a status per showtime; returns no_showtimes with available_dates for empty or out-of-window dates. Reads only the site's /napi showtimes and calendar endpoints and the site's first page of theaters (it warns when the site reports more pages); no ticket pages, seat maps or prices. Independent QA of this source on 2026-10-26: validator, compose check, domain tests and scratch tests (real AbortSignals, Ajv validation against the outputSchema, mutants) pass; live in a plain Kernel browser, invoked from /movies-in-theaters, a theater page, a movie page and /gift-cards, with every output schema-valid and no tool listed on a non-Fandango page. Live: Clayface near ZIP 10001 listed 41 theaters; limit 40 returned 40 with next_offset 40 and truncated true, offset 40 returned the last theater with next_offset null, and offset 41 returned invalid_input. Verity near ZIP 07030 read in pages of 10 matched a single 40-theater read exactly. A far date returned no_showtimes, an unknown movie not_found, and a malformed ZIP or offset 1000 invalid_input. A page-side caller aborting 30 ms in got AbortError and the site request was aborted; the canceled output itself is covered offline only, because the runtime returns AbortError to the caller. Bench, plain browsers: 6/6 invocations completed on Claude Haiku 5.5 and 5/5 on GPT-6 Luna; on the nearest-theaters intent treatment was correct 5/5 on both models (control 5/5 on Haiku at a 5.9x slower median, 0/5 on Luna).",
+      "provenance": {
+        "qa_agent": "agt_09bd750a665f786d0ae6"
+      },
+      "url_patterns_reason": "Narrowed to www.fandango.com, the public movie-ticket product and its /napi endpoints: athome, store and redeem hosts are unrelated streaming and retail products, and tickets.fandango.com is the transaction host these tools stop before entering."
+    },
+    {
+      "domain": "fandango.com",
+      "tool": "get_theater_showtimes",
+      "file": "domains/fandango.com/get_theater_showtimes.js",
+      "kind": "page",
+      "namespace": "fandango.com",
+      "url_patterns": [
+        "https://www.fandango.com/*"
+      ],
+      "status": "verified",
+      "last_verified": "2026-10-26",
+      "notes": "Page tool: every movie and showtime at one theater on one local date, plus theater details and the dates with showtimes; returns no_showtimes for empty or out-of-window dates. Reads only the site's /napi showtimes and calendar endpoints; no ticket pages, seat maps or prices. US only. Independent QA of this source on 2026-10-26: validator, compose check, domain tests and scratch tests (real AbortSignals, Ajv validation against the outputSchema, mutants) pass; live in a plain Kernel browser, invoked from /movies-in-theaters, a theater page, a movie page and /gift-cards, with every output schema-valid and no tool listed on a non-Fandango page. Live: Regal Union Square ScreenX & 4DX, Regal Essex Crossing, AMC Lincoln Square 13, AMC Empire 25, Regal Times Square and AMC 34th Street 14 two days out returned movies with screenings; an unknown theater returned theater_not_found, a far date no_showtimes, and an invalid date or extra field invalid_input. A page-side caller aborting 30 ms in got AbortError and the site request was aborted; the canceled output itself is covered offline only, because the runtime returns AbortError to the caller. Bench, plain browsers: 9/9 invocations completed on Claude Haiku 5.5 and 9/11 on GPT-6 Luna (two calls carried a field the agent invented and were rejected as invalid_input); on the theater-showtimes intent treatment was correct 5/5 on both models (control 5/5 on Haiku, 2.9x slower; 0/5 on Luna).",
+      "provenance": {
+        "qa_agent": "agt_09bd750a665f786d0ae6"
+      },
+      "url_patterns_reason": "Narrowed to www.fandango.com, the public movie-ticket product and its /napi endpoints: athome, store and redeem hosts are unrelated streaming and retail products, and tickets.fandango.com is the transaction host these tools stop before entering."
+    },
+    {
+      "domain": "fandango.com",
+      "tool": "get_ticket_offers",
+      "file": "domains/fandango.com/get_ticket_offers.js",
+      "kind": "page",
+      "namespace": "fandango.com",
+      "url_patterns": [
+        "https://www.fandango.com/*"
+      ],
+      "status": "verified",
+      "last_verified": "2026-10-26",
+      "notes": "Page tool: noninteractive reserved-seat preview of one exact screening; USD price and fee estimates, not a final checkout quote or hold. A numeric site showtime id is required and unsupported identifier shapes fail closed. Independent QA of this source on 2026-10-26: validator, compose check, domain tests and scratch tests (real AbortSignals, Ajv validation against the outputSchema, mutants) pass; live in a plain Kernel browser, invoked from /movies-in-theaters, a theater page, a movie page and /gift-cards, with every output schema-valid and no tool listed on a non-Fandango page. The inlined lib/fandango-screening.js matches the snippet, and the pre-change file returned identical output (apart from the paging fields) on 6 live screenings and 6 failure cases. Live: The Odyssey Premium Format at Regal Union Square ScreenX & 4DX, 293 seats: seat_limit 200 returned 200 seats with next_seat_offset 200, and the next call the remaining 93 with next_seat_offset null, together exactly the site's seat order; a wrong format returned showtime_unavailable and out-of-range seat_offset or seat_limit invalid_input. A seat_offset at or past the end returns ok with no seats. A page-side caller aborting 30 ms in got AbortError and the site request was aborted; the canceled output itself is covered offline only, because the runtime returns AbortError to the caller. Limitation: all 12 sampled AMC Lincoln Square 13, AMC Empire 25 and Regal Times Square maps (134 to 520 seats) returned site_changed, because the site sends their status O seats with an empty areaCode, which the screening read rejects; Regal Union Square and Regal Essex Crossing maps of 23 to 293 seats succeeded. Bench, plain browsers: 10/10 invocations completed on Claude Haiku 5.5 and 9/9 on GPT-6 Luna, 9 of them continuing with seat_offset; on a back-row seat intent treatment was correct 5/5 on both models (control 1/5 and 0/5).",
+      "provenance": {
+        "qa_agent": "agt_09bd750a665f786d0ae6"
+      },
+      "url_patterns_reason": "Narrowed to www.fandango.com, the public movie-ticket product and its /napi endpoints: athome, store and redeem hosts are unrelated streaming and retail products, and tickets.fandango.com is the transaction host these tools stop before entering."
+    },
+    {
+      "domain": "fandango.com",
+      "tool": "list_movies",
+      "file": "domains/fandango.com/list_movies.js",
+      "kind": "page",
+      "namespace": "fandango.com",
+      "url_patterns": [
+        "https://www.fandango.com/*"
+      ],
+      "status": "verified",
+      "last_verified": "2026-10-26",
+      "notes": "Final-source independent QA passed; live Kernel and extension invocations from public HOME succeeded on 2026-09-30. Public now-playing/coming-soon pages; next_page is only a candidate, no total count. Independent QA 2026-10-26 in a plain Kernel browser started on /gift-cards: now_playing returned a page of movies with ids and release dates; an unknown list was rejected before any request.",
+      "provenance": {
+        "qa_agent": "agt_ea022951bd81089d9b39"
+      },
+      "url_patterns_reason": "Narrowed to www.fandango.com, the public movie-ticket product and its /napi endpoints: athome, store and redeem hosts are unrelated streaming and retail products, and tickets.fandango.com is the transaction host these tools stop before entering."
+    },
+    {
+      "domain": "fandango.com",
+      "tool": "prepare_ticket_plan",
+      "file": "domains/fandango.com/prepare_ticket_plan.js",
+      "kind": "page",
+      "namespace": "fandango.com",
+      "url_patterns": [
+        "https://www.fandango.com/*"
+      ],
+      "status": "verified",
+      "last_verified": "2026-10-26",
+      "notes": "Page tool, formerly prepare_checkout: a returned-only ticket plan for one exact reserved-seat screening with quantities, optional proposed independent standard seats and a preview price-plus-fee subtotal; no cart, hold, seat validation or execution. Seat-block members, wheelchair or companion seats, multi-admission tickets and nonempty surcharges fail closed. Independent QA of this source on 2026-10-26: validator, compose check, domain tests and scratch tests (real AbortSignals, Ajv validation against the outputSchema, mutants) pass; live in a plain Kernel browser, invoked from /movies-in-theaters, a theater page, a movie page and /gift-cards, with every output schema-valid and no tool listed on a non-Fandango page. The inlined lib/fandango-screening.js matches the snippet, and the pre-rename file returned identical output on 6 live plans and 3 failure cases. Live, from a theater page: two Adult tickets with seats P2 and P1, then O2 and O3, from past the first 200 seats of the 293-seat Regal Union Square map returned prepared with a 4936-cent subtotal and inventory_reserved, cart_changed and execution_available false; a reserved, wheelchair or unknown seat returned selection_unavailable, a seat count that differs from the quantity or a model-supplied confirmed flag invalid_input, and a wrong time showtime_unavailable. A page-side caller aborting 30 ms in got AbortError and the site request was aborted; the canceled output itself is covered offline only, because the runtime returns AbortError to the caller. Shares get_ticket_offers' site_changed limitation on AMC and Regal Times Square maps. Neither bench model invoked it (agents summed the preview prices themselves), so its evidence is live QA only.",
+      "provenance": {
+        "qa_agent": "agt_09bd750a665f786d0ae6"
+      },
+      "url_patterns_reason": "Narrowed to www.fandango.com, the public movie-ticket product and its /napi endpoints: athome, store and redeem hosts are unrelated streaming and retail products, and tickets.fandango.com is the transaction host these tools stop before entering."
+    },
+    {
+      "domain": "fandango.com",
+      "tool": "search",
+      "file": "domains/fandango.com/search.js",
+      "kind": "page",
+      "namespace": "fandango.com",
+      "url_patterns": [
+        "https://www.fandango.com/*"
+      ],
+      "status": "verified",
+      "last_verified": "2026-10-26",
+      "notes": "Page tool: the header search box's suggestions (movies, theaters, cities, people) as ids and canonical URLs; about four per type, not the full results page. US only. Independent QA of this source on 2026-10-26: validator, compose check, domain tests and scratch tests (real AbortSignals, Ajv validation against the outputSchema, mutants) pass; live in a plain Kernel browser, invoked from /movies-in-theaters, a theater page, a movie page and /gift-cards, with every output schema-valid and no tool listed on a non-Fandango page. Live: \"Verity\" and \"Clayface\" returned movie ids, a nonsense query returned no_results, and a blank query, an unknown type or an extra field were rejected as invalid_input. A page-side caller aborting 30 ms in got AbortError and the site request was aborted; the canceled output itself is covered offline only, because the runtime returns AbortError to the caller. Bench, plain browsers, 5 pairs per intent: 13/13 invocations completed on Claude Haiku 5.5 and 10/10 on GPT-6 Luna.",
+      "provenance": {
+        "qa_agent": "agt_09bd750a665f786d0ae6"
+      },
+      "url_patterns_reason": "Narrowed to www.fandango.com, the public movie-ticket product and its /napi endpoints: athome, store and redeem hosts are unrelated streaming and retail products, and tickets.fandango.com is the transaction host these tools stop before entering."
+    },
+    {
+      "domain": "fandango.com",
+      "tool": "search_theaters",
+      "file": "domains/fandango.com/search_theaters.js",
+      "kind": "page",
+      "namespace": "fandango.com",
+      "url_patterns": [
+        "https://www.fandango.com/*"
+      ],
+      "status": "verified",
+      "last_verified": "2026-10-26",
+      "notes": "Page tool: theaters near a US ZIP or city and state as the site's nearby-theaters list shows them, with distance, chain, amenities and whether tickets are sold online. The ZIP form is the reliable one: the site does not resolve some real city spellings and returns no_results for them. Independent QA of this source on 2026-10-26: validator, compose check, domain tests and scratch tests (real AbortSignals, Ajv validation against the outputSchema, mutants) pass; live in a plain Kernel browser, invoked from /movies-in-theaters, a theater page, a movie page and /gift-cards, with every output schema-valid and no tool listed on a non-Fandango page. Live: ZIP 10001 returned 30 theaters, Chicago, IL and St. Louis, MO returned theaters, an unknown city returned no_results, and a 4-digit ZIP, empty input or a city without a state were rejected as invalid_input. A page-side caller aborting 30 ms in got AbortError and the site request was aborted; the canceled output itself is covered offline only, because the runtime returns AbortError to the caller. Outputs containing a non-ASCII character (an accented address) arrive from the Kernel runtime as a JSON string; parsed, they match the schema. Bench, plain browsers: 10/10 invocations completed on Claude Haiku 5.5 and 10/11 on GPT-6 Luna (the failure was the agent's mistyped browser id).",
+      "provenance": {
+        "qa_agent": "agt_09bd750a665f786d0ae6"
+      },
+      "url_patterns_reason": "Narrowed to www.fandango.com, the public movie-ticket product and its /napi endpoints: athome, store and redeem hosts are unrelated streaming and retail products, and tickets.fandango.com is the transaction host these tools stop before entering."
+    },
+    {
       "domain": "flyfrontier.com",
       "tool": "login",
       "file": "domains/flyfrontier.com/login.js",
