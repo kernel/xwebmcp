@@ -115,6 +115,6 @@
       return fail("outcome_unknown", "TrainingPeaks accepted the delete but availability could not be read again; call list_availability.");
     }
     if (after.some(e => e.availability_id === id)) return fail("outcome_unknown", "TrainingPeaks accepted the delete but the entry is still listed; call list_availability.");
-    return { status: "deleted", account: session.user.username, deleted_entry: entry, next_step: "Reload the calendar with navigate_to_page({ url: \"#calendar\", reload: true }) to see the change on screen." };
+    return { status: "deleted", account: session.user.username, deleted_entry: entry, next_step: "Reload the calendar with navigate_to_page({ url: \"#calendar\", reload: true }), then get_calendar to check the change on screen." };
   }
 }]

@@ -197,6 +197,7 @@
     } else {
       if (formOpen) steps.push("An Availability form is open. Its Save and Delete are the user's; to change entries use add_availability or delete_availability, and leave the form with " + go("#calendar") + " (needs discard_form: true).");
       if (pageType === "calendar" || pageType === "item") {
+        if (pageType === "calendar" && has("get_calendar")) steps.push("Use get_calendar({ start_date, end_date }) to read the workouts and Availability tiles the calendar shows on drawn days.");
         if (has("list_availability")) steps.push("Use list_availability({ start_date, end_date }) to read days off (unavailable or limited) in a range.");
         if (has("add_availability")) steps.push("Use add_availability({ start_date, end_date, availability: \"unavailable\", reason: \"Vacation\" }) to add days off; then " + (has("navigate_to_page") ? "navigate_to_page({ url: \"#calendar\", reload: true })" : "reload the page") + " shows it on the calendar.");
       } else if (pageType === "login" || pageType === "website" || pageType === "app_landing" || pageType === "other") {

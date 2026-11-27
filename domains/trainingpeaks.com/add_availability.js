@@ -133,7 +133,7 @@
     let existing;
     try { existing = await tpListAvailability(session, start, end); } catch (error) { return fail("site_error", String(error && error.message || error).slice(0, 300)); }
     const identical = existing.find(sameEntry);
-    const next = "Reload the calendar with navigate_to_page({ url: \"#calendar\", reload: true }) to see it on screen.";
+    const next = "Reload the calendar with navigate_to_page({ url: \"#calendar\", reload: true }), then get_calendar to check it on screen.";
     if (identical) return { status: "already_exists", account: session.user.username, entry: identical, next_step: "Nothing was written. " + next };
     if (existing.length && input.allow_overlap !== true) return fail("overlap", "Other availability entries already overlap these dates; nothing was written. Change or delete them, or pass allow_overlap: true.", existing);
     // The exact request the Availability form's Save button sends.

@@ -4366,6 +4366,20 @@
     },
     {
       "domain": "trainingpeaks.com",
+      "tool": "get_calendar",
+      "file": "domains/trainingpeaks.com/get_calendar.js",
+      "kind": "page",
+      "namespace": "trainingpeaks.com",
+      "url_patterns": [
+        "https://trainingpeaks.com/*",
+        "https://*.trainingpeaks.com/*"
+      ],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Read-only: reads the calendar's drawn day containers (.day[data-date]) for up to 62 days: workout cards (id, sport, title, planned/complete/isSkipped flags, duration, distance, TSS as shown) and Availability tiles (id, and unavailable/limited joined from the labelled tile, since only the first tile of each week row is labelled). Never clicks or scrolls; undrawn dates are listed in not_drawn. Builder live run 2026-11-27 after a calendar reload: a 14-day range mapped every day of three adjacent availability entries (including unlabelled continuation tiles) to the right id and type, a past week returned completed, planned-and-completed and skipped workouts with their stats, and the default range was today plus 13 days. The not_drawn path is fixture-tested only (the live calendar had drawn every requested date)."
+    },
+    {
+      "domain": "trainingpeaks.com",
       "tool": "get_page_context",
       "file": "domains/trainingpeaks.com/get_page_context.js",
       "kind": "page",

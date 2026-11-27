@@ -189,7 +189,7 @@ test("navigate_to_page schedules app routes after returning, reloads the open ad
 
 test("get_page_context reports the page, account, calendar range, open item and next steps", async () => {
   const days = ["2026-11-29", "2026-11-23", "2026-12-06"].map(date => element({ dataset: { date } }));
-  const tools = ["add_availability", "delete_availability", "get_page_context", "list_availability", "login", "navigate_to_page"];
+  const tools = ["add_availability", "delete_availability", "get_calendar", "get_page_context", "list_availability", "login", "navigate_to_page"];
   const p = page("get_page_context", {
     href: "https://app.trainingpeaks.com/#calendar/athletes/4242/availability/11", tools: [...tools, "answer_cookie_banner"],
     selectors: { "#onetrust-banner-sdk": [element()], ".onetrust-pc-dark-filter": [element()], ".day[data-date]": days, ".day.today[data-date]": [days[0]], '[data-cy="availabilityEditor"]': [element()], ".frameworkMainWrapper": [element()] }
@@ -252,6 +252,47 @@ test("answer_cookie_banner defaults to Reject All and presses nothing for bad in
   const settings = bannerPage({ settingsOpen: true });
   assert.equal((await settings.p.run({ choice: "accept_all" })).error_kind, "settings_open");
   assert.deepEqual(settings.state.pressed, []);
+});
+
+// Calendar day containers as the app draws them: a workout card and a three-day availability entry labelled only on its first tile.
+function calendarDays() {
+  const node = (attrs = {}, children = {}, props = {}) => ({
+    getAttribute: name => attrs[name] ?? null,
+    classList: { contains: name => (attrs.class || "").split(" ").includes(name) },
+    querySelector: sel => children[sel] ?? null,
+    querySelectorAll: sel => children[sel] ?? [],
+    textContent: props.text ?? "",
+    dataset: props.dataset ?? {}
+  });
+  const t = text => node({}, {}, { text });
+  const workout = node({ "data-workoutid": "77" }, {
+    ".workoutComplianceStatus": node({ class: "workoutComplianceStatus planned complete notCompliant past" }),
+    ".sportType": t("Bike"), h6: t("Fixture Ride"),
+    ".keyStats .duration": t("1:00:00"), ".keyStats .distance": t("20.0 mi"), ".keyStats .tss span": t("60")
+  });
+  const tile = label => node({ "data-cy": "availabilityTile", "data-reactid": "501" }, {}, { text: label });
+  const day = (date, items, cls = "day") => node({ class: cls }, { ".activities > *": items }, { dataset: { date } });
+  const tiles = [tile("UNAVAILABLE"), tile(""), tile("")];
+  const days = [day("2026-12-24", [workout], "day today"), day("2026-12-25", [tiles[0]]), day("2026-12-26", [tiles[1]]), day("2026-12-27", [tiles[2]])];
+  return { ".day[data-date]": days, '.day[data-date] [data-cy="availabilityTile"]': tiles };
+}
+
+test("get_calendar reads workouts and availability tiles from drawn days without clicking", async () => {
+  const p = page("get_calendar", { selectors: calendarDays() });
+  const result = await p.run({ start_date: "2026-12-23", end_date: "2026-12-26" });
+  assert.deepEqual(result.not_drawn, ["2026-12-23"]);
+  assert.deepEqual(result.drawn_range, { first_date: "2026-12-24", last_date: "2026-12-27" });
+  assert.deepEqual(result.days[0].workouts, [{ workout_id: 77, sport: "Bike", title: "Fixture Ride", planned: true, completed: true, skipped: false, duration: "1:00:00", distance: "20.0 mi", tss: 60 }]);
+  assert.deepEqual(result.days.slice(1).map(d => d.availability), [[{ availability_id: 501, availability: "unavailable" }], [{ availability_id: 501, availability: "unavailable" }]]);
+  const byDefault = await page("get_calendar", { selectors: calendarDays() }).run({});
+  assert.deepEqual([byDefault.start_date, byDefault.end_date, byDefault.today], ["2026-12-24", "2027-01-06", "2026-12-24"]);
+});
+
+test("get_calendar refuses other pages, long ranges and an undrawn calendar", async () => {
+  assert.equal((await page("get_calendar", { href: "https://app.trainingpeaks.com/#dashboard", selectors: calendarDays() }).run({})).error_kind, "wrong_page");
+  assert.equal((await page("get_calendar", { selectors: calendarDays() }).run({ start_date: "2026-12-01", end_date: "2027-03-01" })).error_kind, "invalid_input");
+  assert.equal((await page("get_calendar", { selectors: calendarDays() }).run({ start_date: "2026-12-02", end_date: "2026-12-01" })).error_kind, "invalid_input");
+  assert.equal((await page("get_calendar").run({})).error_kind, "not_ready");
 });
 
 // The login tool is a cdp tool: its helpers are stubbed and its page functions are recognized by their source.
