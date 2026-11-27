@@ -92,7 +92,7 @@ console.log(JSON.stringify({
   try {
     const { mounts, command } = piLauncher(env);
     const result = spawnSync("bwrap", [...sandboxArgs(dir, mounts), "--", ...command], { encoding: "utf8", env: sandboxEnv("openai/gpt", dir, env) });
-    assert.equal(result.status, 0, result.stderr);
+    assert.equal(result.status, 0, `status ${result.status}, signal ${result.signal}, error ${result.error?.message}, stderr: ${result.stderr}`);
     const seen = JSON.parse(result.stdout);
     assert.deepEqual({ ...seen, processes: seen.processes <= 3 }, { secret: false, etc: false, prefix: false, mcp: { mcpServers: { kernel: {} } }, processes: true, cwd: dir });
     assert.match(dir, /^\/tmp\/xwebmcp-agent-/);
