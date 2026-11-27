@@ -4,7 +4,7 @@
   tool: {
     name: "get_page_context",
     title: "Describe the open TrainingPeaks page",
-    description: "Describe the TrainingPeaks page open in this tab so you can decide what to do next: page type (the login page, the app's Home, Calendar, Dashboard, ATP plan or Settings, an open workout, activity or Availability entry, another trainingpeaks.com page), whether a user is signed in and which (username, user_id, athlete or not), on the Calendar the first and last dates it has drawn and today, whether an Availability form is open, whether the cookie-consent banner is covering the page, which WebMCP tools this page exposes now, whether the page is still loading, and suggested next steps. Call it after every navigation, after login, or whenever you are unsure where the tab is; navigate_to_page opens another page. Read-only: never clicks, types or navigates, and never returns a token or password. Pass wait_for_settled_seconds to wait for the page to finish loading.",
+    description: "Describe the TrainingPeaks page open in this tab so you can decide what to do next: page type (the login page, the app's Home, Calendar, Dashboard, ATP plan or Settings, an open workout, activity or Availability entry, another trainingpeaks.com page), whether a user is signed in and which (username, user_id, athlete or not), on the Calendar the first and last dates it has drawn and today, whether an Availability form is open, whether the cookie-consent banner is showing and blocking clicks, which WebMCP tools this page exposes now, whether the page is still loading, and suggested next steps. Call it after every navigation, after login, or whenever you are unsure where the tab is; navigate_to_page opens another page. Read-only: never clicks, types or navigates, and never returns a token or password. Pass wait_for_settled_seconds to wait for the page to finish loading.",
     inputSchema: {
       type: "object", additionalProperties: false,
       properties: {
@@ -16,7 +16,7 @@
       oneOf: [
         {
           type: "object", additionalProperties: false,
-          required: ["status", "current_url", "page_type", "open_item", "signed_in", "account", "calendar", "availability_form_open", "consent_banner_visible", "available_tools", "unsettled", "unsettled_reasons", "page_messages", "suggested_next_steps"],
+          required: ["status", "current_url", "page_type", "open_item", "signed_in", "account", "calendar", "availability_form_open", "cookie_banner", "available_tools", "unsettled", "unsettled_reasons", "page_messages", "suggested_next_steps"],
           properties: {
             status: { const: "ok" },
             current_url: { type: "string" },
@@ -37,7 +37,16 @@
               properties: { first_drawn_date: { type: ["string", "null"] }, last_drawn_date: { type: ["string", "null"] }, today: { type: ["string", "null"] } }
             },
             availability_form_open: { type: "boolean", description: "The full-screen Availability form (Save, Cancel, Delete) is open." },
-            consent_banner_visible: { type: "boolean", description: "The cookie-consent banner is showing; it can cover buttons near the bottom of the page. No tool answers it for the user." },
+            cookie_banner: {
+              type: "object", additionalProperties: false, required: ["visible", "settings_open", "blocks_page", "answered"],
+              description: "TrainingPeaks' cookie-consent banner (OneTrust). answer_cookie_banner answers it with the user's choice.",
+              properties: {
+                visible: { type: "boolean", description: "The \"We value your privacy\" banner is showing." },
+                settings_open: { type: "boolean", description: "The Cookie Settings panel is open." },
+                blocks_page: { type: "boolean", description: "The banner's dark overlay covers the page, so clicks on the page are intercepted." },
+                answered: { type: "boolean", description: "The browser has a stored answer to the banner." }
+              }
+            },
             available_tools: { type: ["array", "null"], items: { type: "string" }, description: "Tool names this page exposes now, or null when the page's tool list cannot be read." },
             unsettled: { type: "boolean" },
             unsettled_reasons: { type: "array", items: { enum: ["document_loading", "navigating", "app_loading", "busy_region"] } },
@@ -156,7 +165,12 @@
       calendar = { first_drawn_date: days[0] || null, last_drawn_date: days[days.length - 1] || null, today: today ? today.dataset.date : null };
     }
     const formOpen = [...document.querySelectorAll('[data-cy="availabilityEditor"]')].some(visible);
-    const banner = [...document.querySelectorAll("#onetrust-banner-sdk, #onetrust-pc-sdk")].some(visible);
+    const cookieBanner = {
+      visible: visible(document.getElementById("onetrust-banner-sdk")),
+      settings_open: visible(document.getElementById("onetrust-pc-sdk")),
+      blocks_page: [...document.querySelectorAll(".onetrust-pc-dark-filter")].some(visible),
+      answered: /(^|;\s*)OptanonAlertBoxClosed=/.test(document.cookie)
+    };
 
     let tools = null;
     try {
@@ -192,7 +206,8 @@
       }
       if (account && account.is_athlete === false) steps.push("This is not an athlete account; the availability tools write only to the signed-in athlete's own calendar.");
     }
-    if (banner) steps.push("The cookie-consent banner is showing and can cover buttons near the bottom of the page. Do not choose a consent option for the user.");
+    if (cookieBanner.settings_open) steps.push("The Cookie Settings panel is open; the user finishes or closes it there.");
+    else if (cookieBanner.visible) steps.push("The cookie-consent banner is showing" + (cookieBanner.blocks_page ? " and its overlay blocks clicks on the page" : "") + ". Ask the user whether to Reject All or Accept Cookies, then " + (has("answer_cookie_banner") ? "answer_cookie_banner({ choice: \"reject_all\" })" : "press that button") + " with their choice; never choose for them.");
 
     return {
       status: "ok",
@@ -203,7 +218,7 @@
       account,
       calendar,
       availability_form_open: formOpen,
-      consent_banner_visible: banner,
+      cookie_banner: cookieBanner,
       available_tools: tools,
       unsettled: unsettled.length > 0,
       unsettled_reasons: unsettled,

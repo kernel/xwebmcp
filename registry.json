@@ -4338,6 +4338,20 @@
     },
     {
       "domain": "trainingpeaks.com",
+      "tool": "answer_cookie_banner",
+      "file": "domains/trainingpeaks.com/answer_cookie_banner.js",
+      "kind": "page",
+      "namespace": "trainingpeaks.com",
+      "url_patterns": [
+        "https://trainingpeaks.com/*",
+        "https://*.trainingpeaks.com/*"
+      ],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Presses the OneTrust banner's own Reject All or Accept Cookies button once, for an explicit choice passed by the caller (never a default), and confirms the banner closed and the OptanonAlertBoxClosed cookie was set; reports the recorded consent groups. Does nothing without a banner and refuses while Cookie Settings is open. Page kind: the click does not navigate. Fixture-tested; live run pending."
+    },
+    {
+      "domain": "trainingpeaks.com",
       "tool": "delete_availability",
       "file": "domains/trainingpeaks.com/delete_availability.js",
       "kind": "page",
@@ -4362,7 +4376,7 @@
       ],
       "status": "draft",
       "last_verified": null,
-      "notes": "Read-only page summary: page type from host and # route, open workout/activity/availability item, signed-in account from the app's session API, the calendar's drawn date range and today, open Availability form, cookie-consent banner, live tool names, unsettled reasons and next steps. Builder live run 2026-11-27, signed in: calendar, an open Availability entry and dashboard reported as expected. Login page signed out is fixture-tested only."
+      "notes": "Read-only page summary: page type from host and # route, open workout/activity/availability item, signed-in account from the app's session API, the calendar's drawn date range and today, open Availability form, the cookie-consent banner (showing, Cookie Settings open, overlay blocking clicks, already answered), live tool names, unsettled reasons and next steps. Builder live run 2026-11-27, signed in: calendar, an open Availability entry and dashboard reported as expected. Login page signed out is fixture-tested only."
     },
     {
       "domain": "trainingpeaks.com",

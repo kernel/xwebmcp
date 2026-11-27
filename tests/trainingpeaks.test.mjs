@@ -41,7 +41,7 @@ function site({ signedIn = true, user = USER, entries = [], postStatus = 200, po
 }
 
 const element = (props = {}) => ({ getClientRects: () => [1], textContent: "", dataset: {}, ...props });
-function page(name, { href = "https://app.trainingpeaks.com/#calendar", api = site(), selectors = {}, tools = null } = {}) {
+function page(name, { href = "https://app.trainingpeaks.com/#calendar", api = site(), selectors = {}, tools = null, cookie = "" } = {}) {
   const url = new URL(href);
   const scheduled = [];
   const location = {
@@ -52,6 +52,8 @@ function page(name, { href = "https://app.trainingpeaks.com/#calendar", api = si
   };
   const document = {
     readyState: "complete",
+    get cookie() { return typeof cookie === "function" ? cookie() : cookie; },
+    getElementById: id => (selectors["#" + id] || [])[0] || null,
     querySelector: sel => (selectors[sel] || [])[0] || null,
     querySelectorAll: sel => sel.split(",").flatMap(part => selectors[part.trim()] || []),
     modelContext: tools ? { getTools: async () => tools.map(name => ({ name: "custom.trainingpeaks.com." + name })) } : undefined
@@ -185,8 +187,8 @@ test("get_page_context reports the page, account, calendar range, open item and 
   const days = ["2026-11-29", "2026-11-23", "2026-12-06"].map(date => element({ dataset: { date } }));
   const tools = ["add_availability", "delete_availability", "get_page_context", "list_availability", "login", "navigate_to_page"];
   const p = page("get_page_context", {
-    href: "https://app.trainingpeaks.com/#calendar/athletes/4242/availability/11", tools,
-    selectors: { ".day[data-date]": days, ".day.today[data-date]": [days[0]], '[data-cy="availabilityEditor"]': [element()], ".frameworkMainWrapper": [element()] }
+    href: "https://app.trainingpeaks.com/#calendar/athletes/4242/availability/11", tools: [...tools, "answer_cookie_banner"],
+    selectors: { "#onetrust-banner-sdk": [element()], ".onetrust-pc-dark-filter": [element()], ".day[data-date]": days, ".day.today[data-date]": [days[0]], '[data-cy="availabilityEditor"]': [element()], ".frameworkMainWrapper": [element()] }
   });
   const result = await p.run({});
   assert.equal(result.page_type, "calendar");
@@ -194,13 +196,55 @@ test("get_page_context reports the page, account, calendar range, open item and 
   assert.deepEqual(result.account, { user_id: 4242, username: "fixture-athlete", is_athlete: true });
   assert.deepEqual(result.calendar, { first_drawn_date: "2026-11-23", last_drawn_date: "2026-12-06", today: "2026-11-29" });
   assert.equal(result.availability_form_open, true);
-  assert.deepEqual(result.available_tools, tools);
+  assert.deepEqual(result.available_tools, [...tools, "answer_cookie_banner"].sort());
   assert.ok(result.suggested_next_steps.some(s => s.includes("discard_form")));
+  assert.deepEqual(result.cookie_banner, { visible: true, settings_open: false, blocks_page: true, answered: false });
+  assert.ok(result.suggested_next_steps.some(s => s.includes("answer_cookie_banner") && s.includes("never choose for them")));
   const login = await page("get_page_context", { href: "https://home.trainingpeaks.com/login", api: site({ signedIn: false }), tools: ["login"] }).run({});
   assert.deepEqual([login.page_type, login.signed_in, login.account], ["login", false, null]);
+  assert.deepEqual(login.cookie_banner, { visible: false, settings_open: false, blocks_page: false, answered: false });
   assert.ok(login.suggested_next_steps[0].startsWith("Not signed in: use login"));
   assert.equal((await page("get_page_context", { href: "https://app.trainingpeaks.com/#plan" }).run({})).page_type, "plan");
   assert.equal((await page("get_page_context").run({ wait_for_settled_seconds: 99 })).error_kind, "invalid_input");
+});
+
+// A OneTrust banner whose buttons record the choice in cookies and hide the banner, as the site's do.
+function bannerPage({ shown = true, settingsOpen = false } = {}) {
+  const state = { shown, cookie: "OptanonConsent=isGpcEnabled=0&groups=C0001%3A1%2CC0002%3A0", pressed: [] };
+  const press = (name, groups) => element({ click: () => {
+    state.pressed.push(name);
+    state.shown = false;
+    state.cookie = "OptanonConsent=isGpcEnabled=0&groups=" + encodeURIComponent(groups) + "; OptanonAlertBoxClosed=2026-11-27T20:00:00.000Z";
+  } });
+  const selectors = {
+    "#onetrust-banner-sdk": [element({ getClientRects: () => (state.shown ? [1] : []) })],
+    "#onetrust-pc-sdk": settingsOpen ? [element()] : [],
+    "#onetrust-reject-all-handler": [press("reject", "C0001:1,C0002:0,C0003:0,C0004:0")],
+    "#onetrust-accept-btn-handler": [press("accept", "C0001:1,C0002:1,C0003:1,C0004:1")]
+  };
+  return { p: page("answer_cookie_banner", { selectors, cookie: () => state.cookie }), state };
+}
+
+test("answer_cookie_banner presses only the button for the user's choice and reports the recorded consent", async () => {
+  for (const [choice, button, marketing] of [["reject_all", "reject", false], ["accept_all", "accept", true]]) {
+    const { p, state } = bannerPage();
+    const result = await p.run({ choice });
+    assert.deepEqual(state.pressed, [button]);
+    assert.deepEqual([result.status, result.choice, result.banner_visible, result.consent_groups.C0001, result.consent_groups.C0004], ["answered", choice, false, true, marketing]);
+  }
+});
+
+test("answer_cookie_banner requires an explicit choice and presses nothing without a banner or with Cookie Settings open", async () => {
+  const { p, state } = bannerPage();
+  for (const input of [{}, { choice: "close" }, { choice: "reject_all", extra: 1 }]) assert.equal((await p.run(input)).error_kind, "invalid_input");
+  assert.deepEqual(state.pressed, []);
+  const none = bannerPage({ shown: false });
+  const absent = await none.p.run({ choice: "reject_all" });
+  assert.deepEqual([absent.status, absent.choice], ["no_banner", null]);
+  assert.deepEqual(none.state.pressed, []);
+  const settings = bannerPage({ settingsOpen: true });
+  assert.equal((await settings.p.run({ choice: "accept_all" })).error_kind, "settings_open");
+  assert.deepEqual(settings.state.pressed, []);
 });
 
 // The login tool is a cdp tool: its helpers are stubbed and its page functions are recognized by their source.
