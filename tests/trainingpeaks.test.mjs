@@ -10,7 +10,7 @@ const API = "https://tpapi.trainingpeaks.com";
 const source = name => readFileSync(new URL(`../domains/trainingpeaks.com/${name}.js`, import.meta.url), "utf8");
 
 // A stand-in for the availability API the calendar uses.
-function site({ signedIn = true, user = USER, entries = [], postStatus = 200, postThrows = false, deleteStatus = 200 } = {}) {
+function site({ signedIn = true, user = USER, entries = [], postStatus = 200, postThrows = false, deleteStatus = 200, store = row => row } = {}) {
   const rows = entries.map(e => ({ ...e }));
   const requests = [];
   let nextId = 900;
@@ -27,7 +27,7 @@ function site({ signedIn = true, user = USER, entries = [], postStatus = 200, po
       if (postStatus !== 200) return json(postStatus, { message: "Bad request" });
       const b = JSON.parse(options.body);
       const row = { id: nextId++, personId: b.personId, startDate: b.startDate + "T00:00:00", endDate: b.endDate + "T00:00:00", limitedAvailability: b.limitedAvailability, type: b.type, reason: b.reason, description: b.description, availableSportTypes: b.availableSportTypes };
-      rows.push(row);
+      rows.push(store(row));
       return json(200, row);
     }
     const del = new RegExp(`^${API}/fitness/v1/athletes/${user.userId}/availability/(\\d+)$`).exec(url);
@@ -110,7 +110,7 @@ test("add_availability sends the form's exact save request once and confirms it 
 
 test("add_availability writes nothing for identical, overlapping, wrong-account or invalid requests", async () => {
   const same = page("add_availability", { api: site({ entries: [JUNE] }) });
-  const existing = await same.run({ start_date: "2026-05-04", end_date: "2026-05-08", reason: "Vacation" });
+  const existing = await same.run({ start_date: "2026-05-04", end_date: "2026-05-08", reason: "Vacation", description: "fixture trip" });
   assert.equal(existing.status, "already_exists");
   assert.equal(existing.entry.availability_id, 11);
   const overlap = page("add_availability", { api: site({ entries: [JUNE] }) });
@@ -131,6 +131,21 @@ test("add_availability writes nothing for identical, overlapping, wrong-account 
   }
   const allowed = page("add_availability", { api: site({ entries: [JUNE] }) });
   assert.equal((await allowed.run({ start_date: "2026-05-07", end_date: "2026-05-10", allow_overlap: true })).status, "created");
+});
+
+test("add_availability checks every stored field and treats same-date entries with other details as overlaps", async () => {
+  const dropped = page("add_availability", { api: site({ store: row => ({ ...row, description: "", availableSportTypes: [] }) }) });
+  const result = await dropped.run({ start_date: "2026-12-01", end_date: "2026-12-03", availability: "limited", available_sports: ["run"], description: "trip" });
+  assert.equal(result.error_kind, "saved_with_differences");
+  assert.match(result.error_message, /description, available_sports/);
+  assert.deepEqual([result.write_attempted, result.saved_entry.availability_id, result.saved_entry.description], [true, 900, ""]);
+  assert.equal(dropped.api.writes().length, 1);
+  const sportsInAnyOrder = page("add_availability");
+  assert.equal((await sportsInAnyOrder.run({ start_date: "2026-12-01", end_date: "2026-12-01", availability: "limited", available_sports: ["swim", "run"] })).status, "created");
+  const sameDates = page("add_availability", { api: site({ entries: [JUNE] }) });
+  const refused = await sameDates.run({ start_date: "2026-05-04", end_date: "2026-05-08", reason: "Work" });
+  assert.equal(refused.error_kind, "overlap");
+  assert.equal(sameDates.api.writes().length, 0);
 });
 
 test("add_availability reports a rejected or unanswered save without retrying", async () => {

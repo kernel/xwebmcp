@@ -4334,7 +4334,7 @@
       ],
       "status": "draft",
       "last_verified": null,
-      "notes": "Sends the Availability form's own save request (POST fitness/v1/athletes/{id}/availability; body captured from the form on 2026-11-27 with the request stubbed) once, after reading the range: an identical entry is already_exists and other overlaps are refused unless allow_overlap. Confirms by reading the entry back. Uses the API rather than the form's date pickers; the calendar needs a reload to show the entry. Builder live run 2026-11-27: overlap, already_exists, wrong_account and invalid input wrote nothing. Builder live run 2026-11-27: created three adjacent entries on the real account (two unavailable, one limited with bike), each read back with its id and shown on the calendar after navigate_to_page({ url: \"#calendar\", reload: true }); switching routes without a reload showed the cached calendar without them."
+      "notes": "Sends the Availability form's own save request (POST fitness/v1/athletes/{id}/availability; body captured from the form on 2026-11-27 with the request stubbed) once, after reading the range: an identical entry is already_exists and other overlaps are refused unless allow_overlap. Confirms by reading the entry back and comparing every field; a field stored differently from what was sent is saved_with_differences with the stored entry (fixture-tested). already_exists requires every field to match; same dates with other details count as an overlap (live 2026-11-27: an identical call returned already_exists and a changed description returned overlap, neither writing). Uses the API rather than the form's date pickers; the calendar needs a reload to show the entry. Builder live run 2026-11-27: overlap, already_exists, wrong_account and invalid input wrote nothing. Builder live run 2026-11-27: created three adjacent entries on the real account (two unavailable, one limited with bike), each read back with its id and shown on the calendar after navigate_to_page({ url: \"#calendar\", reload: true }); switching routes without a reload showed the cached calendar without them. TrainingPeaks publishes no schema for tpapi (common OpenAPI/Swagger paths return 404 as of 2026-11-27); request shapes are inferred from the web app's own traffic, so a site change can break them without notice."
     },
     {
       "domain": "trainingpeaks.com",
@@ -4362,7 +4362,7 @@
       ],
       "status": "draft",
       "last_verified": null,
-      "notes": "Sends the entry's Delete request (DELETE fitness/v1/athletes/{id}/availability/{availabilityId}; captured from the confirmation dialog on 2026-11-27 with the request stubbed) once, only when the id and start_date match an entry of the signed-in athlete, and confirms it is gone. Builder live run 2026-11-27: a mismatched start_date returned not_found without deleting. Live deletion not yet exercised."
+      "notes": "Sends the entry's Delete request (DELETE fitness/v1/athletes/{id}/availability/{availabilityId}; captured from the confirmation dialog on 2026-11-27 with the request stubbed) once, only when the id and start_date match an entry of the signed-in athlete, and confirms it is gone. Builder live run 2026-11-27: a mismatched start_date returned not_found without deleting. Live deletion not yet exercised. TrainingPeaks publishes no schema for tpapi (common OpenAPI/Swagger paths return 404 as of 2026-11-27); request shapes are inferred from the web app's own traffic, so a site change can break them without notice."
     },
     {
       "domain": "trainingpeaks.com",
@@ -4404,7 +4404,7 @@
       ],
       "status": "draft",
       "last_verified": null,
-      "notes": "Reads fitness/v1/athletes/{id}/availability/{start}/{end}, the request the calendar makes, for the signed-in athlete; ranges over 365 days are refused as TrainingPeaks does. Builder live run 2026-11-27 read two existing entries (limited with a sport, and unavailable)."
+      "notes": "Reads fitness/v1/athletes/{id}/availability/{start}/{end}, the request the calendar makes, for the signed-in athlete; ranges over 365 days are refused as TrainingPeaks does. Builder live run 2026-11-27 read two existing entries (limited with a sport, and unavailable). TrainingPeaks publishes no schema for tpapi (common OpenAPI/Swagger paths return 404 as of 2026-11-27); request shapes are inferred from the web app's own traffic, so a site change can break them without notice."
     },
     {
       "domain": "trainingpeaks.com",

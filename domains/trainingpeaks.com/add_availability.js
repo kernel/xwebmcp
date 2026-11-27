@@ -4,7 +4,7 @@
   tool: {
     name: "add_availability",
     title: "Add availability (days off)",
-    description: "Add one Availability entry to the signed-in athlete's TrainingPeaks calendar, as the calendar's day menu > Add... > Availability form does: a date range (inclusive) when the athlete is unable to train, or has limited availability (optionally naming the sports still possible), with an optional reason (Vacation, Work, Sick, Injury, Appointment, Other) and description. Use it for vacations and other days off; coaches and TrainingPeaks plans see it on the calendar. Runs on https://app.trainingpeaks.com while signed in (use login first). Before writing it reads the range: an identical entry returns already_exists without writing, and any other overlapping entry is refused with overlap unless allow_overlap is true. It sends the form's save request once and never retries; on outcome_unknown call list_availability before trying again. Success is confirmed by reading the entry back. The calendar on screen does not refresh by itself: reload it with navigate_to_page({ url: \"#calendar\", reload: true }). Remove an entry with delete_availability.",
+    description: "Add one Availability entry to the signed-in athlete's TrainingPeaks calendar, as the calendar's day menu > Add... > Availability form does: a date range (inclusive) when the athlete is unable to train, or has limited availability (optionally naming the sports still possible), with an optional reason (Vacation, Work, Sick, Injury, Appointment, Other) and description. Use it for vacations and other days off; coaches and TrainingPeaks plans see it on the calendar. Runs on https://app.trainingpeaks.com while signed in (use login first). Before writing it reads the range: an entry identical in every field returns already_exists without writing, and any other overlapping entry (including one with the same dates but a different reason, description or sports) is refused with overlap unless allow_overlap is true. It sends the form's save request once and never retries; on outcome_unknown call list_availability before trying again. Success is confirmed by reading the entry back and checking every field: if TrainingPeaks stored any field differently from what was sent, the result is saved_with_differences, naming the fields and returning the stored entry (it exists; fix it or delete it with delete_availability rather than adding it again). The calendar on screen does not refresh by itself: reload it with navigate_to_page({ url: \"#calendar\", reload: true }). Remove an entry with delete_availability.",
     inputSchema: {
       type: "object", additionalProperties: false, required: ["start_date", "end_date"],
       properties: {
@@ -43,13 +43,14 @@
           }
         },
         {
-          type: "object", additionalProperties: false, required: ["status", "error_kind", "error_message", "write_attempted", "overlapping_entries"],
+          type: "object", additionalProperties: false, required: ["status", "error_kind", "error_message", "write_attempted", "overlapping_entries", "saved_entry"],
           properties: {
             status: { const: "error" },
-            error_kind: { enum: ["invalid_input", "wrong_page", "signed_out", "wrong_account", "overlap", "site_rejected", "outcome_unknown", "site_error"] },
+            error_kind: { enum: ["invalid_input", "wrong_page", "signed_out", "wrong_account", "overlap", "site_rejected", "saved_with_differences", "outcome_unknown", "site_error"] },
             error_message: { type: "string", minLength: 1 },
             write_attempted: { type: "boolean" },
-            overlapping_entries: { type: "array", items: { type: "object" } }
+            overlapping_entries: { type: "array", items: { type: "object" } },
+            saved_entry: { type: ["object", "null"], description: "For saved_with_differences: the entry as TrainingPeaks stored it." }
           }
         }
       ]
@@ -104,7 +105,7 @@
     };
     // @xwebmcp-end
     let written = false;
-    const fail = (kind, message, overlapping = []) => ({ status: "error", error_kind: kind, error_message: message, write_attempted: written, overlapping_entries: overlapping });
+    const fail = (kind, message, overlapping = [], saved = null) => ({ status: "error", error_kind: kind, error_message: message, write_attempted: written, overlapping_entries: overlapping, saved_entry: saved });
     const KEYS = ["start_date", "end_date", "availability", "reason", "description", "available_sports", "allow_overlap", "expected_account"];
     if (!input || typeof input !== "object" || Array.isArray(input)) return fail("invalid_input", "Input must be an object with start_date and end_date.");
     const extra = Object.keys(input).filter(k => !KEYS.includes(k));
@@ -130,9 +131,17 @@
     if (input.expected_account !== undefined && session.user.username.toLowerCase() !== input.expected_account.trim().toLowerCase()) return fail("wrong_account", "This browser is signed in to a different TrainingPeaks account than expected_account; nothing was written.");
     if (session.user.is_athlete === false) return fail("wrong_account", "The signed-in account is not an athlete account; this tool writes only to the athlete's own calendar.");
     const sameEntry = e => e.start_date === start && e.end_date === end && e.availability === availability;
+    // Fields of a stored entry that differ from what this call sends.
+    const wantedSports = [...sports].sort().join(",");
+    const differences = e => [
+      ...(sameEntry(e) ? [] : ["dates_or_availability"]),
+      ...(e.reason === reason ? [] : ["reason"]),
+      ...(e.description === description ? [] : ["description"]),
+      ...([...e.available_sports].sort().join(",") === wantedSports ? [] : ["available_sports"])
+    ];
     let existing;
     try { existing = await tpListAvailability(session, start, end); } catch (error) { return fail("site_error", String(error && error.message || error).slice(0, 300)); }
-    const identical = existing.find(sameEntry);
+    const identical = existing.find(e => differences(e).length === 0);
     const next = "Reload the calendar with navigate_to_page({ url: \"#calendar\", reload: true }), then get_calendar to check it on screen.";
     if (identical) return { status: "already_exists", account: session.user.username, entry: identical, next_step: "Nothing was written. " + next };
     if (existing.length && input.allow_overlap !== true) return fail("overlap", "Other availability entries already overlap these dates; nothing was written. Change or delete them, or pass allow_overlap: true.", existing);
@@ -163,6 +172,8 @@
     }
     const created = after.find(e => createdId !== null ? e.availability_id === createdId : sameEntry(e) && !existing.some(o => o.availability_id === e.availability_id));
     if (!created) return fail("outcome_unknown", "TrainingPeaks accepted the save request but the new entry is not in the calendar's availability; call list_availability for these dates.");
+    const changed = differences(created);
+    if (changed.length) return fail("saved_with_differences", "TrainingPeaks saved entry " + created.availability_id + " but stored " + changed.join(", ") + " differently from what was sent. The entry exists: do not add it again; fix it in the calendar or delete it with delete_availability.", [], created);
     return { status: "created", account: session.user.username, entry: created, next_step: next };
   }
 }]
