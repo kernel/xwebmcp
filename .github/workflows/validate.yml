@@ -35,15 +35,6 @@ jobs:
         run: node --test "extension/**/*.test.mjs"
       - name: Install bench dependencies
         run: npm ci --prefix bench
-      - name: TEMP sandbox diagnostics
-        run: |
-          uname -a; cat /etc/os-release | head -2; bwrap --version
-          cat /proc/sys/kernel/apparmor_restrict_unprivileged_userns || true
-          cat /proc/sys/kernel/unprivileged_userns_clone || true
-          ls /etc/apparmor.d | grep -i bwrap || true
-          which node; readlink -f "$(which node)"
-          bwrap --unshare-all --share-net --die-with-parent --new-session --ro-bind /usr /usr --ro-bind-try /lib /lib --ro-bind-try /lib64 /lib64 --proc /proc --dev /dev --tmpfs /tmp --ro-bind "$(readlink -f "$(which node)")" "$(readlink -f "$(which node)")" -- "$(readlink -f "$(which node)")" -e 'console.log("node ok in bwrap")'; echo "exit=$?"
-          sudo dmesg | tail -20 || true
       - name: Run bench tests
         run: node --test "bench/**/*.test.mjs"
 
