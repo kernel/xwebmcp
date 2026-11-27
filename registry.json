@@ -4323,6 +4323,90 @@
       }
     },
     {
+      "domain": "trainingpeaks.com",
+      "tool": "add_availability",
+      "file": "domains/trainingpeaks.com/add_availability.js",
+      "kind": "page",
+      "namespace": "trainingpeaks.com",
+      "url_patterns": [
+        "https://trainingpeaks.com/*",
+        "https://*.trainingpeaks.com/*"
+      ],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Sends the Availability form's own save request (POST fitness/v1/athletes/{id}/availability; body captured from the form on 2026-11-27 with the request stubbed) once, after reading the range: an identical entry is already_exists and other overlaps are refused unless allow_overlap. Confirms by reading the entry back. Uses the API rather than the form's date pickers; the calendar needs a reload to show the entry. Builder live run 2026-11-27: overlap, already_exists, wrong_account and invalid input wrote nothing. Live creation not yet exercised."
+    },
+    {
+      "domain": "trainingpeaks.com",
+      "tool": "delete_availability",
+      "file": "domains/trainingpeaks.com/delete_availability.js",
+      "kind": "page",
+      "namespace": "trainingpeaks.com",
+      "url_patterns": [
+        "https://trainingpeaks.com/*",
+        "https://*.trainingpeaks.com/*"
+      ],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Sends the entry's Delete request (DELETE fitness/v1/athletes/{id}/availability/{availabilityId}; captured from the confirmation dialog on 2026-11-27 with the request stubbed) once, only when the id and start_date match an entry of the signed-in athlete, and confirms it is gone. Builder live run 2026-11-27: a mismatched start_date returned not_found without deleting. Live deletion not yet exercised."
+    },
+    {
+      "domain": "trainingpeaks.com",
+      "tool": "get_page_context",
+      "file": "domains/trainingpeaks.com/get_page_context.js",
+      "kind": "page",
+      "namespace": "trainingpeaks.com",
+      "url_patterns": [
+        "https://trainingpeaks.com/*",
+        "https://*.trainingpeaks.com/*"
+      ],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Read-only page summary: page type from host and # route, open workout/activity/availability item, signed-in account from the app's session API, the calendar's drawn date range and today, open Availability form, cookie-consent banner, live tool names, unsettled reasons and next steps. Builder live run 2026-11-27, signed in: calendar, an open Availability entry and dashboard reported as expected. Login page signed out is fixture-tested only."
+    },
+    {
+      "domain": "trainingpeaks.com",
+      "tool": "list_availability",
+      "file": "domains/trainingpeaks.com/list_availability.js",
+      "kind": "page",
+      "namespace": "trainingpeaks.com",
+      "url_patterns": [
+        "https://trainingpeaks.com/*",
+        "https://*.trainingpeaks.com/*"
+      ],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Reads fitness/v1/athletes/{id}/availability/{start}/{end}, the request the calendar makes, for the signed-in athlete; ranges over 365 days are refused as TrainingPeaks does. Builder live run 2026-11-27 read two existing entries (limited with a sport, and unavailable)."
+    },
+    {
+      "domain": "trainingpeaks.com",
+      "tool": "login",
+      "file": "domains/trainingpeaks.com/login.js",
+      "kind": "cdp",
+      "namespace": "trainingpeaks.com",
+      "url_patterns": [
+        "https://trainingpeaks.com/*",
+        "https://*.trainingpeaks.com/*"
+      ],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Signs in on home.trainingpeaks.com/login once, after the page's own reCAPTCHA v3 token is issued, and confirms the account through the app's session API (users/v3/token and users/v3/user); an existing session for another username is wrong_account. CDP because the form submit leaves the login document and the caller needs the signed-in account read afterwards. Submits with Enter in the Password field because the cookie-consent overlay can cover the Login button (observed live: a click was intercepted). Builder live run 2026-11-27: one form_submitted success invoked through a vault webmcp_invoke binding. Not exercised live: invalid_credentials, mfa_required, captcha_unavailable (fixture-tested)."
+    },
+    {
+      "domain": "trainingpeaks.com",
+      "tool": "navigate_to_page",
+      "file": "domains/trainingpeaks.com/navigate_to_page.js",
+      "kind": "page",
+      "namespace": "trainingpeaks.com",
+      "url_patterns": [
+        "https://trainingpeaks.com/*",
+        "https://*.trainingpeaks.com/*"
+      ],
+      "status": "draft",
+      "last_verified": null,
+      "notes": "Schedules a same-tab navigation to an app.trainingpeaks.com route 100 ms after returning: a hash change within the app, a full load from other trainingpeaks.com hosts, or a reload when the address is already open (used to show availability changes, since the calendar does not refresh after an API write). Refuses other hosts, protocol-relative and javascript: URLs, and leaving an open Availability form unless discard_form is true. Builder live run 2026-11-27: form_open refusal, discard to #calendar, reload of #calendar, #dashboard, and refused login-host and protocol-relative URLs."
+    },
+    {
       "domain": "ubereats.com",
       "tool": "add_to_cart",
       "file": "domains/ubereats.com/add_to_cart.js",
